@@ -1,6 +1,6 @@
 # AgentTeams QwenPaw Workbench
 
-**Version**: 0.5.0-beta.8 ｜ **Author**: AgentTeamGuide
+**Version**: 0.5.0-beta.8 ｜ **Author**: LUOSENGWA
 **Requirements**: QwenPaw ≥ 2.1.0 (`qwenpaw_version: >=2.1.0, <2.2.0`) + AgentTeams Controller (HiClaw cluster)
 
 > 中文版本: [README.md](README.md)
