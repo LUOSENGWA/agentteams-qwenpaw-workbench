@@ -95,8 +95,8 @@ qwenpaw plugin uninstall agentteams-qwenpaw-workbench
 
 ## Open-Source Acknowledgments
 
-- **Bundled third-party components** (three.js / 3d-force-graph / three-spritetext / fflate / lucide, with full license texts): [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
-- **Ported code / protocol integration / design references** (QwenPaw, agentteams-dashboard, AgentTeams, Element, etc., each with its source noted): [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md)
+- **Bundled third-party components** (three.js / 3d-force-graph / three-spritetext / fflate / lucide, with full license texts): [THIRD-PARTY-NOTICES.md](docs/THIRD-PARTY-NOTICES.md)
+- **Ported code / protocol integration / design references** (QwenPaw, agentteams-dashboard, AgentTeams, Element, etc., each with its source noted): [ACKNOWLEDGMENTS.md](docs/ACKNOWLEDGMENTS.md)
 
 ## License
 
