@@ -1,0 +1,40 @@
+{
+  "id": "agentteams-qwenpaw-workbench",
+  "name": "AgentTeams QwenPaw Workbench",
+  "version": "0.5.0-beta.12",
+  "type": "general",
+  "description": "AgentTeams team workbench: teams, workflows, projects, deliverables, worker management and knowledge graph through QwenPaw.",
+  "description_i18n": {
+    "zh-CN": "AgentTeams 团队工作台：团队、工作流、项目、产物交付、Worker 管理与 3D 知识图谱，一站式接入 QwenPaw。",
+    "en-US": "AgentTeams team workbench: teams, workflows, projects, deliverables, worker management and knowledge graph through QwenPaw."
+  },
+  "author": "LUOSENGWA",
+  "entry": {
+    "backend": "plugin.py",
+    "frontend": "dist/index.js"
+  },
+  "dependencies": [
+    "httpx>=0.24.0"
+  ],
+  "qwenpaw_version": {
+    "min": "2.0.0",
+    "max": "3.0.0"
+  },
+  "meta": {
+    "pawapp": {
+      "category": "productivity",
+      "icon": "🏢",
+      "icon_url": "",
+      "entry_page": "/apps/agentteams-qwenpaw-workbench",
+      "launch_scope": "page"
+    },
+    "tools": [
+      {
+        "name": "agentteams_qwenpaw_workbench_status",
+        "description": "Query AgentTeams team status (rooms/members/worker tree) for the current user",
+        "icon": "🏢",
+        "requires_config": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>overflow-audit</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f0f0f0; }
+  /* 审计视口：固定 390px（iPhone 14 竖屏），overflow: visible 让溢出看得见 */
+  #audit-viewport { width: 390px; background: #fff; position: relative; }
+  .wb-main {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 12px 20px;
+    height: 900px;
+    overflow: hidden;
+    min-height: 400px;
+    background: #fff;
+  }
+  .wb-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-width: 100%;
+    padding-top: 12px;
+  }
+  /* 与 WorkbenchPage scoped CSS 同步（防回归：审计页必须带同一套防撑链） */
+  .wb-main .ant-row,
+  .wb-main .ant-row .ant-col,
+  .wb-main .ant-card,
+  .wb-main .ant-card-body { min-width: 0; max-width: 100%; }
+  .wb-main .ant-select { min-width: 0; }
+  .wb-main [style*="display:grid"],
+  .wb-main [style*="display: grid"] { grid-template-columns: minmax(0, 1fr); }
+  .wb-main .ant-card-head-title { min-width: 0; }
+  /* 700px 断点规则 —— 真实页面走 @media，审计页窗口宽 → 用 .force-portrait 复刻 */
+  .force-portrait .wb-main { padding: 8px 10px 12px !important; gap: 8px !important; }
+  .force-portrait .wb-main .ant-row > .ant-col { flex: 0 0 100% !important; max-width: 100% !important; }
+  .force-portrait .wb-main .ant-card-body { padding: 10px !important; }
+  .force-portrait .wb-main .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .force-portrait .wb-main pre, .force-portrait .wb-main code { white-space: pre-wrap; word-break: break-all; }
+  #scan-out {
+    width: 700px; margin: 16px; padding: 12px; background: #111; color: #7fff7f;
+    font: 12px/1.5 monospace; white-space: pre-wrap; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+<div id="audit-viewport" class="force-portrait">
+  <div id="root"></div>
+</div>
+<pre id="scan-out">scanning…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import * as antdNs from "antd";
+
+  // 审计保真：mock matchMedia 为固定 390px 视口（antd xs/sm/md/lg 断点
+  // 走 matchMedia；真实手机=xs 单列。窗口宽度不再影响断点判定）。
+  const AUDIT_W = parseInt(new URLSearchParams(location.search).get("w") || "390", 10);
+  document.getElementById("audit-viewport").style.width = AUDIT_W + "px";
+  // 非竖屏审计（桌面回归）：去掉 force-portrait 类
+  if (AUDIT_W >= 576) document.getElementById("audit-viewport").classList.remove("force-portrait");
+  const origMM = window.matchMedia.bind(window);
+  window.matchMedia = (q) => {
+    const m = origMM(q);
+    const minM = q.match(/min-width:\s*([0-9.]+)px/);
+    const maxM = q.match(/max-width:\s*([0-9.]+)px/);
+    let matches = m.matches;
+    if (minM) matches = AUDIT_W >= parseFloat(minM[1]);
+    else if (maxM) matches = AUDIT_W <= parseFloat(maxM[1]);
+    return {
+      ...m,
+      matches,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    };
+  };
+
+  window.QwenPaw = {
+    host: {
+      React,
+      antd: antdNs.default ?? antdNs,
+      useTheme: () => "light",
+      useLocale: () => "zh-CN",
+      // 审计 shim（11.13b）：gateway 路径 → 真实部署后端（活数据）；
+      // 其余 → /gw-proxy fixture。UI 级验证=真实 11.13 前端代码 × 活数据。
+      fetch: async (path, init) => {
+        if (path.includes("/gateway/")) return fetch(path, init);
+        return fetch("/gw-proxy/" + path, init);
+      },
+    },
+  };
+
+  const workers = [
+    { name: "sysdev-lead", phase: "Ready", state: "Running", model: "qwen3.6-plus", runtime: "qwenpaw", containerState: "running", matrixUserID: "@sysdev-lead:matrix.local", roomID: "!sysdev_lead_room_abc123def456:matrix.local", team: "sysdev-team", role: "leader", message: "", version: "1.2.2" },
+    { name: "sysdev-harmony-lead", phase: "Ready", state: "Running", model: "qwen3.6-27b-fp8", runtime: "qwenpaw", containerState: "running", matrixUserID: "@sysdev-harmony-lead:matrix.local", roomID: "!sysdev_harmony_lead_room_xyz789:matrix.local", team: "sysdev-team", role: "leader", message: "", version: "1.2.2" },
+    { name: "sysdev-android-worker-01", phase: "Ready", state: "Running", model: "deepseek-v4-flash", runtime: "qwenpaw", containerState: "running", matrixUserID: "@sysdev-android-worker-01:matrix.local", roomID: "!sysdev_android_01_room_qqq:matrix.local", team: "sysdev-team", role: "worker", message: "" },
+    { name: "sysdev-mcu-worker-02", phase: "Ready", state: "Running", model: "qwen3.6-27b-fp8", runtime: "qwenpaw", containerState: "running", matrixUserID: "@sysdev-mcu-worker-02:matrix.local", roomID: "!sysdev_mcu_02_room_www:matrix.local", team: "sysdev-team", role: "worker", message: "" },
+    { name: "biz-team-lead", phase: "Ready", state: "Running", model: "qwen3.6-plus", runtime: "qwenpaw", containerState: "running", matrixUserID: "@biz-team-lead:matrix.local", roomID: "!biz_team_lead_room_eee:matrix.local", team: "biz-team", role: "leader", message: "" },
+    { name: "biz-report-writer-01", phase: "Ready", state: "Running", model: "deepseek-v4-flash", runtime: "qwenpaw", containerState: "running", matrixUserID: "@biz-report-writer-01:matrix.local", roomID: "!biz_report_writer_01_room_rrr:matrix.local", team: "biz-team", role: "worker", message: "" },
+  ];
+  const teams = [
+    { name: "sysdev-team", teamName: "系统研发团队", phase: "Ready", description: "系统研发全链路（Android/Harmony/MCU/固件）", leaderName: "sysdev-lead", teamRoomID: "!sysdev_team_room_main:matrix.local", leaderReady: true, readyWorkers: 3, totalWorkers: 3, workerNames: ["sysdev-lead", "sysdev-harmony-lead", "sysdev-android-worker-01", "sysdev-mcu-worker-02"], message: "", workerMembers: [{ name: "sysdev-lead", role: "leader" }, { name: "sysdev-harmony-lead", role: "leader" }, { name: "sysdev-android-worker-01", role: "worker" }], heartbeatEvery: "30m", peerMentions: true },
+    { name: "biz-team", teamName: "业务团队", phase: "Ready", description: "", leaderName: "biz-team-lead", teamRoomID: "!biz_team_room_main:matrix.local", leaderReady: true, readyWorkers: 1, totalWorkers: 1, workerNames: ["biz-team-lead", "biz-report-writer-01"], message: "" },
+  ];
+  const humans = [
+    { name: "admin", displayName: "管理员", mxid: "@admin:matrix.local", permissionLevel: "admin", accessibleTeams: [], accessibleWorkers: [], note: "" },
+    { name: "member-b", displayName: "成员B", mxid: "@member-b:matrix.local", permissionLevel: "member", accessibleTeams: ["sysdev-team"], accessibleWorkers: [], note: "业务方" },
+  ];
+  const managers = [
+    { name: "manager-main", phase: "Ready", state: "Running", model: "qwen3.6-plus", runtime: "qwenpaw", containerState: "running", matrixUserID: "@manager:matrix.local", roomID: "!manager_room:matrix.local", version: "1.2.2" },
+  ];
+  const FIXTURE = {
+    "controller/api/v1/workers": { items: workers },
+    "controller/api/v1/teams": { items: teams },
+    "controller/api/v1/humans": { items: humans },
+    "controller/api/v1/managers": { items: managers },
+    "sglang/models": { models: ["qwen3.6-27b-fp8", "qwen3.6-plus-35b-a3b-fp8"] },
+    "gateway/ai-routes": {
+      available: true,
+      data: {
+        code: 0,
+        data: {
+          routes: [
+            { name: "deepseek-v4-flash", modelPredicates: [{ matchType: "EQUAL", matchValue: "deepseek-v4-flash" }], upstreams: [{ provider: "deepseek" }] },
+            { name: "qwen3.6-local", modelPredicates: [{ matchType: "EQUAL", matchValue: "qwen3.6-27b-fp8" }], upstreams: [{ provider: "qwen3.6-local" }] },
+            { name: "qwen3.6-plus-local", modelPredicates: [{ matchType: "EQUAL", matchValue: "qwen3.6-plus" }], upstreams: [{ provider: "qwen3.6-plus-local" }] },
+          ],
+        },
+      },
+    },
+    "gateway/ai-providers": {
+      available: true,
+      data: { code: 0, data: { providers: [{ name: "deepseek" }, { name: "qwen3.6-local" }, { name: "qwen3.6-plus-local" }] } },
+    },
+  };
+  const origFetch = window.fetch.bind(window);
+  window.fetch = (url, opts) => {
+    const u = String(url);
+    if (u.includes("/agentteams-proxy/")) {
+      const path = u.split("/agentteams-proxy/")[1].split("?")[0];
+      const hit = FIXTURE[path] ?? FIXTURE[path.replace(/\/$/, "")] ?? null;
+      return Promise.resolve(
+        new Response(JSON.stringify(hit ?? {}), { status: 200, headers: { "Content-Type": "application/json" } }),
+      );
+    }
+    return origFetch(url, opts);
+  };
+
+  const { default: CrdManage } = await import("./src/components/CrdManage");
+  const { ManagerTable } = await import("./src/components/WorkerManage");
+  const root = createRoot(document.getElementById("root"));
+  root.render(
+    React.createElement(
+      "div",
+      { className: "wb-main" },
+      React.createElement("div", { className: "wb-content" },
+        React.createElement(CrdManage, {
+          admin: { workers, teams, humans, managers },
+          onRefresh: () => {},
+          l1TokenMode: false,
+        }),
+        React.createElement(ManagerTable, {
+          managers,
+          usedModels: managers.map((m) => m.model || ""),
+          onRefreshAdmin: () => {},
+          l1TokenMode: true,
+        }),
+      ),
+    ),
+  );
+
+  // ── gateway 提取验证（beta.12）：复跑 hook 同款提取，渲染到 DOM ──
+  setTimeout(async () => {
+    const mod = await import("./src/modelUnion");
+    const {
+      fetchGatewayAiRoutes,
+      fetchGatewayAiProviders,
+      fetchSglangModels,
+    } = await import("./src/api");
+    const out = document.createElement("div");
+    out.id = "gw-check";
+    out.style.cssText = "width:700px;margin:8px;padding:8px;background:#222;color:#8f8;font:12px/1.5 monospace;white-space:pre-wrap";
+    document.body.appendChild(out);
+    try {
+      const dbg = [];
+      const cb = "?cb=" + Date.now();
+      for (const u of [
+        "/agentteams-proxy/gateway/ai-routes" + cb,
+        "/agentteams-proxy/gateway/ai-providers" + cb,
+        "/agentteams-proxy/admin" + cb,
+      ]) {
+        const rr = await fetch(u, { cache: "no-store" });
+        const tt = await rr.text();
+        dbg.push(u + " -> " + rr.status + "\n" + tt.slice(0, 600));
+      }
+      out.textContent = "LIVE\n" + dbg.join("\n---\n") + "\n";
+      return;
+      const [routes, providers] = await Promise.all([
+        fetchGatewayAiRoutes(),
+        fetchGatewayAiProviders(),
+      ]);
+      const { routesList, providersList } = mod.extractGatewayLists(
+        routes.data,
+        providers.data,
+      );
+      const { buildModelSelectionOptions } = await import("./src/modelCatalog");
+      const aliasOpts = buildModelSelectionOptions(routesList, providersList);
+      const sglang = await fetchSglangModels().catch(() => []);
+      out.textContent =
+        `GW routes.data=${JSON.stringify(routes.data).slice(0, 200)}\n` +
+        `routesList=${routesList.length} providersList=${providersList.length}\n` +
+        `aliasOpts=${aliasOpts.map((o) => o.label).join(" | ") || "(空)"}\n` +
+        `sglang=${JSON.stringify(sglang)}`;
+    } catch (e) {
+      out.textContent = "GW ERROR: " + String(e && e.stack || e);
+    }
+  }, 100);
+
+  // ── 溢出扫描：渲染结果到页面（SDK 无 evaluate，靠 snapshot 读）──
+  setTimeout(() => {
+    const vp = document.getElementById("audit-viewport");
+    const content = vp.querySelector(".wb-content");
+    const contentRight = content ? content.getBoundingClientRect().right : Infinity;
+    // 越界元素：right 边超出 .wb-content 右边界（"超出容器"的直接证据）
+    const beyond = [];
+    vp.querySelectorAll("*").forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0) return;
+      if (r.right > contentRight + 2) {
+        const cs = getComputedStyle(el);
+        if (cs.overflowX === "auto" || cs.overflowX === "scroll") return;
+        const cls = (el.className && el.className.toString ? el.className.toString() : "").trim().split(/\s+/).slice(0, 2).join(".");
+        beyond.push(
+          `right=${Math.round(r.right)}(+${Math.round(r.right - contentRight)}) w=${Math.round(r.width)} ${el.tagName.toLowerCase()}.${cls} :: ${((el.textContent || "").trim().slice(0, 34)) || "(empty)"}`,
+        );
+      }
+    });
+    // 最宽 min-content：按 scrollWidth 排序 top15（找撑宽源头叶子）
+    const widest = [...vp.querySelectorAll("*")]
+      .filter((el) => el.scrollWidth > 250)
+      .map((el) => {
+        const cls = (el.className && el.className.toString ? el.className.toString() : "").trim().split(/\s+/).slice(0, 2).join(".");
+        return { sw: el.scrollWidth, cls, tag: el.tagName.toLowerCase(), text: (el.textContent || "").trim().slice(0, 34) };
+      })
+      .sort((a, b) => b.sw - a.sw)
+      .slice(0, 15)
+      .map((x) => `sw=${x.sw} ${x.tag}.${x.cls} :: ${x.text || "(empty)"}`);
+    // 调试：找「＋ 新建 Worker」按钮的父链与计算样式
+    let dbg = "";
+    const btns = [...vp.querySelectorAll("button")].filter((b) =>
+      (b.textContent || "").includes("新建 Worker"),
+    );
+    if (btns.length) {
+      let el = btns[0];
+      const chain = [];
+      for (let i = 0; i < 8 && el; i++) {
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        const cls = (el.className && el.className.toString ? el.className.toString() : "").trim().split(/\s+/).slice(0, 2).join(".");
+        chain.push(
+          `${el.tagName.toLowerCase()}.${cls} x=${Math.round(r.left)} w=${Math.round(r.width)} disp=${cs.display} pos=${cs.position} ml=${cs.marginLeft} fl=${cs.flex} taw=${cs.textAlign} ow=${cs.overflow}`,
+        );
+        el = el.parentElement;
+      }
+      dbg = `=== BUTTON CHAIN ===\n${chain.join("\n")}`;
+    }
+    const out = document.getElementById("scan-out");
+    out.textContent =
+      `AUDIT viewport=390px(contentRight=${Math.round(contentRight)} vpW=${vp.clientWidth})\n` +
+      dbg + "\n" +
+      `=== BEYOND content-right (${beyond.length}) ===\n` +
+      (beyond.slice(0, 25).join("\n") || "NONE") +
+      `\n=== WIDEST (scrollWidth>250, top15) ===\n` +
+      widest.join("\n");
+  }, 3000);
+</script>
+</body>
+</html>
