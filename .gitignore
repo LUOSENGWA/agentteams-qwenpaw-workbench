@@ -1,0 +1,26 @@
+# 构建依赖与缓存
+frontend/node_modules/
+__pycache__/
+*.pyc
+*.pyo
+
+# 前端构建中间产物（dist/index.js 是交付物，保留提交）
+frontend/.vite/
+
+# 本地配置（含 token，绝不入库）
+.agentteams-qwenpaw-workbench/
+*.tmp
+
+# 构建工具副产物（npm lock 为正主）
+frontend/pnpm-lock.yaml
+frontend/yarn.lock
+# 本地归档（旧组件留底，不入库）
+archive/*.tsx
+
+# ZIP 构建产物（不进 git——代码可重建 ZIP；
+# 根目录=最新 + archive/=归档，纯本地目录约定）
+agentteams-qwenpaw-workbench-*.zip
+archive/*.zip
+dist/*.map
+archive/beta2_surgery.py
+GITHUB-RELEASE/
