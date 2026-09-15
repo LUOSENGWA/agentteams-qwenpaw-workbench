@@ -59,6 +59,7 @@ import ProjectFiles from "./components/ProjectFiles";
 import NotificationCenter from "./components/NotificationCenter";
 import { useThemeColors } from "./theme";
 import { useT } from "./i18n";
+import { useWorkerSessionStates } from "./workerSessionState";
 import WorkerManage from "./components/WorkerManage";
 import KnowledgeBase from "./components/KnowledgeBase";
 import SkillsTab from "./components/SkillsTab";
@@ -1750,6 +1751,10 @@ export default function WorkbenchPage() {
     return map;
   }, [adminData, workerTree]);
 
+  // v0.5.0-beta.12.4（A17）：Worker session 运行指示——统一派生（三落点共用：
+  // 房间卡列表 / Worker 行 / 1:1 聊天头）。纯前端（typing + last_ts），60s 老化。
+  const workerSessionStates = useWorkerSessionStates(rooms, workerTree);
+
   // 通知未读计数（通知 tab badge）。
   const [inboxUnread, setInboxUnread] = React.useState(0);
 
@@ -2619,6 +2624,12 @@ export default function WorkbenchPage() {
                     ? workerBadgeMap[activeRoom.room_id]
                     : undefined
                 }
+                sessionState={
+                  activeRoom
+                    ? workerSessionStates.byRoom[activeRoom.room_id]
+                    : undefined
+                }
+                workerMxids={workerSessionStates.workerMxids}
                 onOpenProject={(runId) => handleOpenProject(runId)}
                 onWorkflowIntervened={() => void refreshWorkflow(true)}
                 onOpenProjectFiles={(room) => void openProjectFiles(room)}
@@ -2629,6 +2640,8 @@ export default function WorkbenchPage() {
                 invites={invites}
                 loading={roomsLoading}
                 user_id={config?.matrix?.user_id}
+                workerSessionByRoom={workerSessionStates.byRoom}
+                workerMxids={workerSessionStates.workerMxids}
                 onOpenRoom={(roomId) => void openRoom(roomId)}
                 onRefresh={() => void refreshRooms()}
                 onInviteSettled={() => void refreshRooms(true, true)}
@@ -2709,6 +2722,7 @@ export default function WorkbenchPage() {
                 hasToken={hasCtlToken}
                 active={tab === "team"}
                 treeSource={treeSource}
+                workerSessionByName={workerSessionStates.byName}
                 myUserId={config?.matrix?.user_id || ""}
                 /* L1 走 controller token（config 或 env）且未配 admin 账号密码 = 无 Higress Console 会话 */
                 l1TokenMode={hasCtlToken && !config?.admin_username}

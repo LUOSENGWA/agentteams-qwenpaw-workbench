@@ -13,6 +13,8 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { MxcAvatar } from "../MxcAvatar";
 import { formatChatTime } from "../util";
+import WorkerSessionDot from "./WorkerSessionDot";
+import type { WorkerSessionState } from "../workerSessionState";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -85,6 +87,7 @@ function GroupCard({
   isFavorite = false,
   onToggleFavorite,
   onExitRoom,
+  workerMxids,
 }: {
   room: TeamRoom;
   user_id?: string;
@@ -95,10 +98,17 @@ function GroupCard({
   onToggleFavorite?: (roomId: string) => void;
   /** 5.0.0 release：房间 ⋯ 菜单（退出 / 退出并删除，Element 同款列表操作）。 */
   onExitRoom?: (room: TeamRoom, forget: boolean) => void;
+  /** v0.5.0-beta.12.4（A17）：全部 Worker MXID——任一 Worker 正在输入则显蓝点。 */
+  workerMxids?: Set<string>;
 }) {
   const t = useThemeColors();
   const tr = useT();
   const memberEntries = Object.entries(room.members || {}).slice(0, 3);
+  // A17：团队群只表达 running（Worker 正在打字）；不显 done/idle
+  //（无 per-user last-sender 数据，人类消息会误触绿）。
+  const groupRunning = !!workerMxids && (room.typing || []).some((m) =>
+    workerMxids.has(m),
+  );
   return (
     <antd.Card
       hoverable
@@ -117,6 +127,7 @@ function GroupCard({
             }}
           >
             {room.name}
+            {groupRunning ? <WorkerSessionDot state="running" /> : null}
             <UnreadBadge room={room} />
             <span
               style={{
@@ -278,6 +289,7 @@ function DmCard({
   isFavorite = false,
   onToggleFavorite,
   onExitRoom,
+  sessionState,
 }: {
   room: TeamRoom;
   user_id?: string;
@@ -287,6 +299,8 @@ function DmCard({
   onToggleFavorite?: (roomId: string) => void;
   /** 5.0.0 release：房间 ⋯ 菜单（退出 / 退出并删除，Element 同款列表操作）。 */
   onExitRoom?: (room: TeamRoom, forget: boolean) => void;
+  /** v0.5.0-beta.12.4（A17）：对方 Worker 的 session 状态（仅 Worker 个人房间有值）。 */
+  sessionState?: WorkerSessionState;
 }) {
   const other = Object.entries(room.members || {}).find(
     ([mxid]) => mxid !== user_id,
@@ -328,6 +342,7 @@ function DmCard({
           }}
         >
           {otherName}
+          {sessionState ? <WorkerSessionDot state={sessionState} /> : null}
           <UnreadBadge room={room} />
           {/* v0.5.0-beta.12 B3：收藏切换（stopPropagation 防误开房间） */}
           <span
@@ -564,6 +579,10 @@ export interface TeamOverviewProps {
   /** 一键全部已读：所有未读房间逐房间双写回执。 */
   onMarkAllRead?: () => void;
   markingAllRead?: boolean;
+  /** v0.5.0-beta.12.4（A17）：Worker 个人房间 room_id → session 状态（DM 卡圆点）。 */
+  workerSessionByRoom?: Record<string, WorkerSessionState>;
+  /** v0.5.0-beta.12.4（A17）：全部 Worker MXID（团队群 running 判定）。 */
+  workerMxids?: Set<string>;
 }
 
 export default function TeamOverview(props: TeamOverviewProps) {
@@ -581,6 +600,8 @@ export default function TeamOverview(props: TeamOverviewProps) {
     onGlobalSearch,
     onMarkAllRead,
     markingAllRead,
+    workerSessionByRoom,
+    workerMxids,
   } = props;
   const [filter, setFilter] = React.useState<"all" | "group" | "dm">("all");
   // v0.5.0-beta.12 B3：房间收藏（客户端本地 localStorage——Element 无房间级收藏协议：
@@ -807,6 +828,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
                     isFavorite
                     onToggleFavorite={toggleFavorite}
                     onExitRoom={doRoomExit}
+                    workerMxids={workerMxids}
                   />
                 ) : (
                   <DmCard
@@ -817,6 +839,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
                     isFavorite
                     onToggleFavorite={toggleFavorite}
                     onExitRoom={doRoomExit}
+                    sessionState={workerSessionByRoom?.[room.room_id]}
                   />
                 ),
               )}
@@ -837,6 +860,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
                       onToggleFavorite={toggleFavorite}
                     onExitRoom={doRoomExit}
                       onDm={onDm}
+                      workerMxids={workerMxids}
                     />
                   ) : (
                     <DmCard
@@ -846,6 +870,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
                       onOpenRoom={onOpenRoom}
                       onToggleFavorite={toggleFavorite}
                     onExitRoom={doRoomExit}
+                      sessionState={workerSessionByRoom?.[room.room_id]}
                     />
                   ),
                 )}
@@ -865,6 +890,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
                       onToggleFavorite={toggleFavorite}
                     onExitRoom={doRoomExit}
                       onDm={onDm}
+                      workerMxids={workerMxids}
                     />
                   ))}
                 </div>
@@ -880,6 +906,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
                       onOpenRoom={onOpenRoom}
                       onToggleFavorite={toggleFavorite}
                     onExitRoom={doRoomExit}
+                      sessionState={workerSessionByRoom?.[room.room_id]}
                     />
                   ))}
                 </div>

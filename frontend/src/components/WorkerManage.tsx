@@ -25,8 +25,10 @@ import CrdManage from "./CrdManage";
 import MyScopeCard from "./MyScopeCard";
 import WorkerChannels from "./WorkerChannels";
 import SkillCenter from "./SkillCenter";
+import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import type { WorkerSessionState } from "../workerSessionState";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -396,6 +398,7 @@ function WorkerRow({
   adminWorker,
   onLifecycle,
   acting,
+  sessionState,
 }: {
   group: WorkerSpawnGroup;
   depth: number;
@@ -403,6 +406,9 @@ function WorkerRow({
   adminWorker?: AdminData["workers"][number];
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
+  /** v0.5.0-beta.12.4（A17）：该 Worker 的 session 状态（typing/last_ts 派生）。
+   *  与行首既有圆点（CR phase / spawn running，进程级）并存——两轴不同。 */
+  sessionState?: WorkerSessionState;
 }) {
   const tr = useT();
   const [expanded, setExpanded] = React.useState(false);
@@ -455,6 +461,7 @@ function WorkerRow({
         <span style={{ fontWeight: 600, fontSize: 13 }}>
           {group.worker_name}
         </span>
+        {sessionState ? <WorkerSessionDot state={sessionState} /> : null}
         {group.is_self ? (
           <antd.Tag style={{ margin: "0 0 0 6px", fontSize: 11 }}>我</antd.Tag>
         ) : null}
@@ -737,12 +744,15 @@ function TeamNode({
   adminByWorker,
   onLifecycle,
   acting,
+  sessionByName,
 }: {
   team: WorkerTreeTeam;
   onDm?: (mxid: string) => void;
   adminByWorker: Map<string, AdminData["workers"][number]>;
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
+  /** v0.5.0-beta.12.4（A17）：worker_name → session 状态（行内圆点）。 */
+  sessionByName?: Record<string, WorkerSessionState>;
 }) {
   const [expanded, setExpanded] = React.useState(true);
   const workerCount = team.workers.length;
@@ -792,6 +802,7 @@ function TeamNode({
               adminWorker={g.worker_name ? adminByWorker.get(g.worker_name) : undefined}
               onLifecycle={onLifecycle}
               acting={acting}
+              sessionState={g.worker_name ? sessionByName?.[g.worker_name] : undefined}
             />
           ))
         : null}
@@ -1291,6 +1302,8 @@ export interface WorkerManageProps {
   myUserId?: string;
   /** L1 走 controller_token（无 Console 会话 → 网关 alias 层不可见提示）。 */
   l1TokenMode?: boolean;
+  /** v0.5.0-beta.12.4（A17）：worker_name → session 状态（行内圆点）。 */
+  workerSessionByName?: Record<string, WorkerSessionState>;
 }
 
 /**
@@ -1315,6 +1328,7 @@ export default function WorkerManage(props: WorkerManageProps) {
     treeSource = "",
     myUserId = "",
     l1TokenMode,
+    workerSessionByName,
   } = props;
   const [acting, setActing] = React.useState<string | null>(null);
 
@@ -1474,6 +1488,7 @@ export default function WorkerManage(props: WorkerManageProps) {
                 adminByWorker={adminByWorker}
                 onLifecycle={hasToken ? handleLifecycle : undefined}
                 acting={acting}
+                sessionByName={workerSessionByName}
               />
             ))}
           </div>

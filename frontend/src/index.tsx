@@ -62,6 +62,19 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* v0.5.0-beta.12.4（A17）：Worker session 运行指示呼吸动画——照搬 QwenPaw
+   AgentStatusIndicator 的 statusPulse（1.2s ease-in-out，opacity 1↔0.35 +
+   box-shadow 扩散）。动画挂在 class 上（非内联），reduced-motion 可关。 */
+@keyframes wbSessionPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(59,130,246,0.5); }
+  50% { opacity: 0.35; box-shadow: 0 0 0 4px rgba(59,130,246,0); }
+}
+.wb-session-dot.running {
+  animation: wbSessionPulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-session-dot.running { animation: none; }
+}
 /* 页面布局（用户反馈「上下边界固定撑满屏幕，参考控制台」）：
    main 撑满（height 100% + minHeight 兜底）+ flex column；header 固定；
    tab 内容区 tabpane 层滚动——nav 固定不动，聊天室输入区固定在
