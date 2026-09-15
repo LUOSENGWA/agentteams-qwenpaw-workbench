@@ -224,6 +224,9 @@ const DICT: Record<string, { en: string }> = {
   "收起": { en: "Collapse" },
   "条回复": { en: " replies" },
   "正在输入…": { en: " is typing…" },
+  // v0.5.0-beta.12.4（A17）：Worker session 运行指示（运行中 复用既有条目）。
+  "运行完成": { en: "Run completed" },
+  "无任务": { en: "Idle" },
   "人": { en: " members" },
   "全部": { en: "All" },
   "私聊": { en: "DMs" },

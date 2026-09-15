@@ -3,11 +3,11 @@
 AgentTeams QwenPaw Workbench (`agentteams-qwenpaw-workbench`) is a **one-stop team collaboration workbench** for AgentTeams (HiClaw) clusters inside QwenPaw: team management, workflow tracking, project artifacts, team knowledge base & knowledge graph, team chat, approvals & notifications, and skill/MCP management — all in a single console page (or a standalone desktop window), with zero changes to host code.
 
 - 中文文档：[README.md](./README.md)
-- Version: v0.5.0-beta.12.3 (supports QwenPaw 2.0 – 2.2)
+- Version: v0.5.0-beta.12.4 (supports QwenPaw 2.0 – 2.2)
 
 ## Quick start (3 steps)
 
-1. **Install**: `qwenpaw plugin install agentteams-qwenpaw-workbench-v0.5.0-beta.12.3.zip` (see [Install & upgrade](./01-install-en.md))
+1. **Install**: `qwenpaw plugin install agentteams-qwenpaw-workbench-v0.5.0-beta.12.4.zip` (see [Install & upgrade](./01-install-en.md))
 2. **Configure**: open the plugin page → Settings tab → default Matrix login mode (L2, no token); paste the admin token (L1) only if you need full management rights (see [5-minute quickstart](./02-quickstart-en.md))
 3. **Go**: home overview, dispatch a task, join a team room, handle approvals
 

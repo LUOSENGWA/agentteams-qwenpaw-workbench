@@ -18,6 +18,8 @@ import MemberDetail from "./MemberDetail";
 import WorkflowCard from "./WorkflowCard";
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
+import WorkerSessionDot from "./WorkerSessionDot";
+import type { WorkerSessionState } from "../workerSessionState";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -1237,6 +1239,11 @@ export interface RoomChatProps {
   /** v0.5.0-beta.12（A8b）：当前房间对应 Worker 的 phase/runtime 徽章
    * （1:1 个人房间才有；数据=Worker CR 字段，零新请求）。 */
   workerBadge?: { phase?: string; runtime?: string };
+  /** v0.5.0-beta.12.4（A17）：当前房间对应 Worker 的 session 状态
+   * （1:1 个人房间才有；typing/last_ts 派生，零新请求）。 */
+  sessionState?: WorkerSessionState;
+  /** v0.5.0-beta.12.4（A17）：全部 Worker MXID——团队房间任一 Worker 正在输入则显蓝点。 */
+  workerMxids?: Set<string>;
 }
 
 export default function RoomChat(props: RoomChatProps) {
@@ -1269,6 +1276,8 @@ export default function RoomChat(props: RoomChatProps) {
     memberRoles,
     memberWorkerNames,
     workerBadge,
+    sessionState,
+    workerMxids,
     onOpenProject,
     onWorkflowIntervened,
     onOpenProjectFiles,
@@ -1964,6 +1973,18 @@ export default function RoomChat(props: RoomChatProps) {
         <antd.Typography.Title level={5} style={{ margin: 0 }}>
           {room.name}
         </antd.Typography.Title>
+        {/* v0.5.0-beta.12.4（A17）：Worker session 运行指示。
+            1:1 Worker 房间 = sessionState 三态（蓝呼吸/绿/灰）；
+            团队房间无 sessionState → 仅当任一 Worker 正在输入时显蓝点。 */}
+        {(() => {
+          const eff: WorkerSessionState | undefined =
+            sessionState ??
+            (workerMxids &&
+            (room.typing || []).some((m) => workerMxids.has(m))
+              ? "running"
+              : undefined);
+          return eff ? <WorkerSessionDot state={eff} /> : null;
+        })()}
         {/* v0.5.0-beta.12（A8b）：1:1 Worker 房间头部双徽章（phase + runtime，
             数据=Worker CR 字段，WorkbenchPage 按 room_id 匹配注入）。 */}
         {workerBadge?.phase ? (
