@@ -5,6 +5,16 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.6 (2026-09-18)
+
+**Knowledge base 3D graph spacing aligned with the dashboard's accepted values**
+
+- **KB 3D graph force parameters tightened**: charge -108→-60, link distance 72→44, link strength 0.46→0.5 — same values the dashboard's KB 3D graph settled on after install verification (the original values spread the nodes too far apart with sparse links); 2D/3D layout, node-click preview and all other interactions are unchanged
+
+**Verification**: pytest 42/42 · tsc 0 · vite build green (single-file dist/index.js) · check-antd cross-check passed
+
+---
+
 ## 0.5.0-beta.12.5 (2026-09-18)
 
 **L2 permission surface completed + model gateway visibility + workflow auto-refresh (parity with dashboard real-time)**
