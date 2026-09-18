@@ -53,8 +53,8 @@ const REMOTE_CAT_COLOR: Record<string, string> = {
   virtual: "#bfbfbf",
 };
 
-const GRAPH_W = 900;
 const GRAPH_H = 420;
+const EMPTY_POS_MAP = new Map<string, { x: number; y: number }>();
 
 interface GraphNodeLike {
   id: string;
@@ -73,73 +73,171 @@ interface GraphNodeLike {
 
 
 
-/** 确定性种子 + 一次性的 2D 力导向布局（斥力 O(n²) + 边弹簧 + 弱居中）。
- * 非动画：useMemo 里跑完 ~120 轮迭代后静止渲染，278 节点约 100ms。 */
-function layoutGraph(
+// 确定性分层径向布局（2D v2，替代 v1 纯力导向；dashboard 知识库
+// knowledge-section radialLayout 同算法同值——双端 2D 图谱观感一致）。
+// v1 问题：无类别意识（不同分类节点混叠）、稠密边成毛球、标签互相压盖。
+// v2 = 扇区 + 深度环：扇区 = 虚拟分类根（单 Agent）/ Agent（聚合模式，
+// 顺序=agentOrder）；hub=扇区中心角小半径处（单扇区置圆心）；深度=自 hub
+// 的 BFS 层（无向边），depth d 落在环半径 R0+(d-1)*DR（DMAX 封顶）；环内
+// 按 name 排序等角分布，单环过密（每节点弧长 <34px）自动外溢同心环；
+// 视野按内容自适应。纯函数、无 Math.random——确定性可复现。
+interface RadialView { minX: number; minY: number; width: number; height: number }
+function radialLayout(
   nodes: GraphNodeLike[],
-  edges: { source: string; target: string; target_anchor?: string | null }[],
-): { x: number; y: number }[] {
+  edgePairs: Array<[string, string]>,
+  agentOrder?: string[],
+): { pos: Map<string, { x: number; y: number }>; view: RadialView } {
   const n = nodes.length;
-  if (n === 0) return [];
-  const idx = new Map<string, number>();
-  nodes.forEach((node, i) => idx.set(node.id, i));
-  const pos = nodes.map((_, i) => {
-    const angle = (i / n) * Math.PI * 2;
-    const r = Math.min(GRAPH_W, GRAPH_H) / 3;
-    return {
-      x: GRAPH_W / 2 + r * Math.cos(angle) + ((i * 37) % 11) - 5,
-      y: GRAPH_H / 2 + r * Math.sin(angle) + ((i * 53) % 11) - 5,
-    };
-  });
-  const ITER = 120;
-  for (let it = 0; it < ITER; it++) {
-    const cool = 1 - it / ITER;
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        let dx = pos[i].x - pos[j].x;
-        let dy = pos[i].y - pos[j].y;
-        let d2 = dx * dx + dy * dy;
-        if (d2 < 0.01) {
-          dx = 0.1;
-          dy = 0.1;
-          d2 = 0.02;
+  const pos = new Map<string, { x: number; y: number }>();
+  if (n === 0)
+    return { pos, view: { minX: -450, minY: -210, width: 900, height: 420 } };
+  const idxOf = new Map<string, number>();
+  nodes.forEach((nd, i) => idxOf.set(nd.id, i));
+  const adj: number[][] = Array.from({ length: n }, () => []);
+  const deg = new Array<number>(n).fill(0);
+  for (const [a, b] of edgePairs) {
+    const i = idxOf.get(a);
+    const j = idxOf.get(b);
+    if (i === undefined || j === undefined || i === j) continue;
+    adj[i].push(j);
+    adj[j].push(i);
+    deg[i] += 1;
+    deg[j] += 1;
+  }
+  // 1) 扇区 hub：聚合模式=每 Agent 一个（virtual 根优先，否则度数最高文件）；
+  //    单 Agent=各虚拟分类根；无根时取度数 top3 文件作伪根。
+  const isVirtual = (nd: GraphNodeLike): boolean =>
+    Boolean(nd.virtual) || nd.id.startsWith("virtual:");
+  const degRank = (x: number, y: number) =>
+    deg[x] - deg[y] ||
+    nodes[x].name.localeCompare(nodes[y].name) ||
+    x - y;
+  const sectors: { hub: number }[] = [];
+  if (agentOrder && agentOrder.length > 0) {
+    for (const agent of agentOrder) {
+      const members: number[] = [];
+      nodes.forEach((nd, i) => {
+        if (nd.agent === agent) members.push(i);
+      });
+      if (members.length === 0) continue;
+      let hub = -1;
+      for (const i of members) if (isVirtual(nodes[i])) { hub = i; break; }
+      if (hub < 0) {
+        members.sort(degRank);
+        hub = members[0];
+      }
+      sectors.push({ hub });
+    }
+  } else {
+    const virtuals: number[] = [];
+    nodes.forEach((nd, i) => {
+      if (isVirtual(nd)) virtuals.push(i);
+    });
+    if (virtuals.length > 0) {
+      virtuals.forEach((hub) => sectors.push({ hub }));
+    } else {
+      nodes.map((_, i) => i).sort(degRank).slice(0, Math.min(3, n)).forEach((hub) => sectors.push({ hub }));
+    }
+  }
+  if (sectors.length === 0) sectors.push({ hub: 0 });
+  // 2) 多源 BFS：每节点归属扇区（首个到达的 hub）+ 深度；孤立节点挂末扇区 depth 1。
+  const depth = new Array<number>(n).fill(-1);
+  const sectorIdx = new Array<number>(n).fill(-1);
+  {
+    const queue: number[] = [];
+    sectors.forEach((s, si) => {
+      depth[s.hub] = 0;
+      sectorIdx[s.hub] = si;
+      queue.push(s.hub);
+    });
+    let head = 0;
+    while (head < queue.length) {
+      const u = queue[head];
+      head += 1;
+      for (const v of adj[u]) {
+        if (depth[v] === -1) {
+          depth[v] = depth[u] + 1;
+          sectorIdx[v] = sectorIdx[u];
+          queue.push(v);
         }
-        const d = Math.sqrt(d2);
-        const f = (1400 / d2) * cool;
-        const fx = (dx / d) * f;
-        const fy = (dy / d) * f;
-        pos[i].x += fx;
-        pos[i].y += fy;
-        pos[j].x -= fx;
-        pos[j].y -= fy;
       }
     }
-    for (const e of edges) {
-      const a = idx.get(e.source);
-      const b = idx.get(e.target);
-      if (a === undefined || b === undefined) continue;
-      const dx = pos[b].x - pos[a].x;
-      const dy = pos[b].y - pos[a].y;
-      const d = Math.max(Math.sqrt(dx * dx + dy * dy), 0.1);
-      const f = ((d - 70) / d) * 0.025;
-      const fx = dx * f;
-      const fy = dy * f;
-      pos[a].x += fx;
-      pos[a].y += fy;
-      pos[b].x -= fx;
-      pos[b].y -= fy;
-    }
-    for (const p of pos) {
-      p.x += (GRAPH_W / 2 - p.x) * 0.002;
-      p.y += (GRAPH_H / 2 - p.y) * 0.002;
+    for (let i = 0; i < n; i += 1) {
+      if (depth[i] === -1) {
+        depth[i] = 1;
+        sectorIdx[i] = sectors.length - 1;
+      }
     }
   }
-  const pad = 16;
-  for (const p of pos) {
-    p.x = Math.min(Math.max(p.x, pad), GRAPH_W - pad);
-    p.y = Math.min(Math.max(p.y, pad), GRAPH_H - pad);
+  // 3) 几何：扇区中心角 + 深度环（name 序等角分布 + 过密外溢同心环）。
+  const R0 = 96;       // depth 1 环半径
+  const DR = 58;       // 每层深度环间距
+  const DMAX = 5;      // 深度显示封顶（更深归外环）
+  const RING_GAP = 46; // 过密外溢环的额外间距（标签行高留白）
+  const ARC_PER_NODE = 40; // 单环每节点最小弧长（px，≈10px 字体短标签）
+  const R = sectors.length;
+  sectors.forEach((s, si) => {
+    const theta = -Math.PI / 2 + (si * 2 * Math.PI) / R;
+    const half = (Math.PI / R) * 0.92;
+    const hubR = R === 1 ? 0 : 46;
+    pos.set(nodes[s.hub].id, { x: Math.cos(theta) * hubR, y: Math.sin(theta) * hubR });
+    const byDepth = new Map<number, number[]>();
+    for (let i = 0; i < n; i += 1) {
+      if (sectorIdx[i] !== si || i === s.hub) continue;
+      const d = Math.min(DMAX, Math.max(1, depth[i]));
+      const arr = byDepth.get(d);
+      if (arr) arr.push(i);
+      else byDepth.set(d, [i]);
+    }
+    byDepth.forEach((arr, d) => {
+      arr.sort((x, y) => nodes[x].name.localeCompare(nodes[y].name) || x - y);
+      const baseR = R0 + (d - 1) * DR;
+      const rings: number[][] = [];
+      for (const i of arr) {
+        const cur = rings[rings.length - 1];
+        const r = baseR + (rings.length - 1) * RING_GAP;
+        // 容量按扇区弧长（2*half*r）而非整圆——扇区制布局下整圆公式
+        // 会系统性低估密度（大扇区环挤爆的根因）。
+        const cap = Math.max(4, Math.floor((2 * half * r) / ARC_PER_NODE));
+        if (cur && cur.length < cap) cur.push(i);
+        else rings.push([i]);
+      }
+      rings.forEach((ring, ri) => {
+        const r = baseR + ri * RING_GAP;
+        ring.forEach((i, k) => {
+          const a = theta - half + ((k + 0.5) * 2 * half) / ring.length;
+          pos.set(nodes[i].id, { x: Math.cos(a) * r, y: Math.sin(a) * r });
+        });
+      });
+    });
+  });
+  // 4) 视野自适应（含标签留白）。
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  pos.forEach((p) => {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  });
+  if (!Number.isFinite(minX)) {
+    minX = -450;
+    minY = -210;
+    maxX = 450;
+    maxY = 210;
   }
-  return pos;
+  const pad = 64;
+  return {
+    pos,
+    view: {
+      minX: minX - pad,
+      minY: minY - pad,
+      width: maxX - minX + pad * 2,
+      height: maxY - minY + pad * 2,
+    },
+  };
 }
 
 /** 5.0.0-beta.6：预览内容直接存盘下载（Blob + a.download，
@@ -312,14 +410,21 @@ function GraphCard(props: {
     setHoverId("");
   }, [graph]);
 
-  const posById = React.useMemo(() => {
-    const m = new Map<string, { x: number; y: number }>();
-    if (!graph) return m;
-    layoutGraph(graph.nodes, graph.edges).forEach((p, i) =>
-      m.set(graph.nodes[i].id, p),
+  const layout = React.useMemo(() => {
+    if (!graph) return null;
+    const pairs = graph.edges.map(
+      (e) => [e.source, e.target] as [string, string],
     );
-    return m;
-  }, [graph]);
+    const order = agentLegend ? agentLegend.map((l) => l.name) : undefined;
+    return radialLayout(graph.nodes, pairs, order);
+  }, [graph, agentLegend]);
+  const posById = layout?.pos ?? EMPTY_POS_MAP;
+  const view: RadialView = layout?.view ?? {
+    minX: -450,
+    minY: -210,
+    width: 900,
+    height: 420,
+  };
   const degree = React.useMemo(() => {
     const d = new Map<string, number>();
     graph?.edges.forEach((e) => {
@@ -732,7 +837,7 @@ function GraphCard(props: {
             </div>
             <svg
               ref={svgRef}
-              viewBox={`0 0 ${GRAPH_W} ${GRAPH_H}`}
+              viewBox={`${view.minX} ${view.minY} ${view.width} ${view.height}`}
               width="100%"
               height={GRAPH_H}
               style={{ display: "block" }}
@@ -850,6 +955,10 @@ function GraphCard(props: {
                         fontSize={root ? 11 : 10}
                         fontWeight={root || isDirect(node) ? 600 : 400}
                         fill={selected ? GRAPH_ROOT_COLOR : t.text}
+                        style={{ paintOrder: "stroke" }}
+                        stroke={t.cardBg}
+                        strokeWidth={3}
+                        strokeLinejoin="round"
                       >
                         {node.name.length > 16
                           ? `${node.name.slice(0, 15)}…`

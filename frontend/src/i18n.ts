@@ -475,6 +475,19 @@ const DICT: Record<string, { en: string }> = {
   "事件": { en: "Events" },
   "卡片": { en: "Cards" },
   "拓扑": { en: "Topology" },
+  "请选择左侧项目": { en: "Select a project on the left" },
+  "暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡": {
+    en: "No tasks yet — the project may still be planning (Coordinator drafting); task cards appear once tasks are registered",
+  },
+  "暂无拓扑数据——本项目可能还在 planning（Coordinator 起草计划中），计划生成后请重试": {
+    en: "No topology data yet — this project may still be planning; retry after the plan is generated",
+  },
+  "外部依赖（非本项目）：{list}": { en: "External dep(s) (outside this project): {list}" },
+  "项目任务依赖图": { en: "Project task dependency graph" },
+  "依赖已满足（就绪，待开始）": { en: "Ready (dependencies satisfied)" },
+  "事件/卡片/看板/DAG 拓扑四种视图；卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）": {
+    en: "Four views: Events / Cards / Board / DAG Topology. Cards & Topology are a project list (left) + detail (right), aligned with the dashboard task board 'Projects' section; board column mapping shares the dashboard source (workflow API)",
+  },
   "节点依赖成环或无根节点，无法渲染树形（请检查 nodes dependsOn）": {
     en: "Circular dependencies or no root node — cannot render tree (check nodes dependsOn)",
   },

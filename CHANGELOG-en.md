@@ -5,6 +5,20 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.7 (2026-09-18)
+
+**Major 2D/3D knowledge graph overhaul + workflow page rework (cards/topology → project list + detail)**
+
+- **2D knowledge graph switched to a hierarchical radial layout**: category roots (Wiki/Personal/SOP) or Workers (aggregated mode) form sectors, hubs centered, files arranged by BFS depth rings sorted by name, crowded rings auto-overflow into concentric rings, labels get a halo stroke and the viewbox fits the content — replacing the old pure force layout (cross-category nodes intermixed, hairball edges, overlapping labels); same algorithm and values as the dashboard KB 2D graph
+- **3D knowledge graph tightened further**: charge -60→-50, link distance 44→38, link strength 0.5→0.52 (one more step of clustering, same values on both surfaces); label policy aligned with the dashboard (all nodes labeled; the old count≤42 condition dropped)
+- **Workflow cards view reworked to master-detail**: left = project list (time/status/name sorting, independent scroll, status-color bar highlight), right = detail of the selected project (event card + task-card grid reusing the board's task cards incl. cancel/retry); the left selection is shared between the cards and topology views
+- **Workflow topology view reworked into a layered DAG**: ports the dashboard task-board algorithm (edges from dependsOn, top-down layering, bezier edges with arrows, ready-state dashed cyan frame/dot, external-dependency note) replacing the old indented tree; cyclic/rootless graphs still get an honest hint
+- **More specific empty states**: a selected project still in planning now says "may still be planning (Coordinator drafting)" in the cards/topology views instead of a generic empty state
+
+**Verification**: pytest 42/42 · tsc 0 · vite build green (440 modules, dual guards) · i18n ui↔dict cross-check (6 new keys registered, zero orphans)
+
+---
+
 ## 0.5.0-beta.12.6 (2026-09-18)
 
 **Knowledge base 3D graph spacing aligned with the dashboard's accepted values**

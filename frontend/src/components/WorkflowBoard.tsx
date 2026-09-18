@@ -12,8 +12,13 @@ import {
   fetchProjectHistory,
   fetchProjectHistorySnapshot,
 } from "../api";
-import { useThemeColors } from "../theme";
+import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
+import {
+  WorkflowDagSvg,
+  buildWorkflowDag,
+  type DagNodeColor,
+} from "./WorkflowDag";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -51,6 +56,145 @@ function fmtTime(ts: number): string {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`;
 }
 
+/** DAG 节点配色（主题感知；stroke 与 STATUS_COLOR 同源——看板/DAG 一致）。 */
+function dagNodeColors(t: ThemeColors): Record<string, DagNodeColor> {
+  return {
+    pending: { fill: "rgba(153,153,153,0.12)", stroke: "#999", text: t.text },
+    assigned: { fill: "rgba(22,119,255,0.10)", stroke: "#1677ff", text: t.text },
+    in_progress: { fill: "rgba(114,46,209,0.10)", stroke: "#722ed1", text: t.text },
+    revision: { fill: "rgba(250,140,22,0.10)", stroke: "#fa8c16", text: t.text },
+    completed: { fill: "rgba(82,196,26,0.12)", stroke: "#52c41a", text: t.text },
+    failed: { fill: "rgba(255,77,79,0.12)", stroke: "#ff4d4f", text: t.text },
+    blocked: { fill: "rgba(250,140,22,0.10)", stroke: "#fa8c16", text: t.text },
+    unknown: { fill: "rgba(140,140,140,0.08)", stroke: "#8c8c8c", text: t.text },
+  };
+}
+
+/** 左栏项目列表（卡片/拓扑视图共用选择；排序=顶部下拉，独立滚动——
+ * 对齐 dashboard 任务看板「项目」区 master-detail 结构）。 */
+function ProjectRail(props: {
+  events: WorkflowEvent[];
+  selected: string;
+  onSelect: (runId: string) => void;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  const { events, selected, onSelect } = props;
+  if (events.length === 0) return null;
+  return (
+    <div
+      style={{
+        border: `1px solid ${t.border}`,
+        borderRadius: 8,
+        background: t.cardBg,
+        maxHeight: "calc(100vh - 320px)",
+        overflowY: "auto",
+      }}
+    >
+      {events.map((ev) => {
+        const active = ev.runId === selected;
+        const meta = statusMeta(ev.status);
+        const n = (ev.nodes ?? []).length;
+        return (
+          <div
+            key={ev.runId}
+            onClick={() => onSelect(ev.runId)}
+            style={{
+              cursor: "pointer",
+              padding: "8px 12px",
+              borderBottom: `1px solid ${t.border}`,
+              borderLeft: active ? `3px solid ${meta.color}` : "3px solid transparent",
+              background: active ? `${meta.color}14` : undefined,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: t.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {ev.title}
+            </div>
+            <div
+              style={{
+                marginTop: 3,
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+                fontSize: 11,
+                color: t.textSecondary,
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: meta.color,
+                  display: "inline-block",
+                  flexShrink: 0,
+                }}
+              />
+              <span>{tr(meta.label)}</span>
+              <span>·</span>
+              <span>
+                {n} {tr("任务")}
+              </span>
+              {ev.ts ? (
+                <span style={{ marginLeft: "auto", flexShrink: 0 }}>
+                  {fmtTime(ev.ts)}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 拓扑主体：分层 DAG（buildWorkflowDag → WorkflowDagSvg，dashboard
+ * 同源算法）+ 外部依赖注记 + ready 图例。 */
+function DagTopo(props: { ev: WorkflowEvent; t: ThemeColors }) {
+  const { ev, t } = props;
+  const tr = useT();
+  const dag = React.useMemo(() => buildWorkflowDag(ev.nodes ?? []), [ev]);
+  const colors = dagNodeColors(t);
+  return (
+    <div>
+      <div
+        style={{
+          overflow: "auto",
+          border: `1px solid ${t.border}`,
+          borderRadius: 8,
+          padding: 10,
+        }}
+      >
+        <WorkflowDagSvg
+          dag={dag}
+          nodeColors={colors}
+          title={`${ev.title} — ${tr("项目任务依赖图")}`}
+        />
+      </div>
+      {dag.externalDeps.length > 0 ? (
+        <div style={{ marginTop: 8, fontSize: 11, color: t.textSecondary }}>
+          {tr("外部依赖（非本项目）：{list}", {
+            list: dag.externalDeps.join(", "),
+          })}
+        </div>
+      ) : null}
+      <div style={{ marginTop: 8, fontSize: 11, color: t.textSecondary }}>
+        <span style={{ color: "#13c2c2" }}>◌</span>{" "}
+        {tr("依赖已满足（就绪，待开始）")}
+      </div>
+    </div>
+  );
+}
+
 /** 节点显示名：task 优先，否则 subagent/name/id。 */
 function nodeLabel(n: WorkflowNode): string {
   const task = typeof n.task === "string" ? n.task.trim() : "";
@@ -62,23 +206,7 @@ function nodeLabel(n: WorkflowNode): string {
   return typeof n.id === "string" ? n.id : "节点";
 }
 
-/** DAG → 树：按 dependsOn 建子边，无父者为根。 */
-function buildNodeTree(nodes: WorkflowNode[]): {
-  roots: WorkflowNode[];
-  childrenOf: Map<string, WorkflowNode[]>;
-} {
-  const childrenOf = new Map<string, WorkflowNode[]>();
-  const hasParent = new Set<string>();
-  for (const n of nodes) {
-    for (const dep of n.dependsOn || []) {
-      if (!childrenOf.has(dep)) childrenOf.set(dep, []);
-      childrenOf.get(dep)!.push(n);
-      if (typeof n.id === "string") hasParent.add(n.id);
-    }
-  }
-  const roots = nodes.filter((n) => !(typeof n.id === "string" && hasParent.has(n.id)));
-  return { roots, childrenOf };
-}
+
 
 // ── 看板视图（第四视图）──────────────────────────────
 // 状态映射与 dashboard #85 workflowStatusToTaskStatus 逐条对齐
@@ -361,57 +489,6 @@ function BoardColumnsView(props: {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/** 递归渲染拓扑树（竖线缩进，SpawnTree 同款连线风格）。 */
-function TopoNode({
-  node,
-  childrenOf,
-  depth,
-  t,
-}: {
-  node: WorkflowNode;
-  childrenOf: Map<string, WorkflowNode[]>;
-  depth: number;
-  t: ReturnType<typeof useThemeColors>;
-}) {
-  const kids = (typeof node.id === "string" && childrenOf.get(node.id)) || [];
-  const st = statusMeta(String(node.status || ""));
-  return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginLeft: depth * 22,
-          padding: "4px 8px",
-          borderRadius: 8,
-          border: `1px solid ${t.border}`,
-          background: t.cardBg,
-          marginBottom: 6,
-        }}
-      >
-        <span style={{ fontSize: 12, fontWeight: 600 }}>{nodeLabel(node)}</span>
-        {typeof node.subagent === "string" && node.subagent ? (
-          <span style={{ fontSize: 11, color: t.textSecondary, fontFamily: "monospace" }}>
-            @{node.subagent.split(":")[0].replace(/^@/, "")}
-          </span>
-        ) : null}
-        <antd.Tag color={st.color} style={{ margin: 0, fontSize: 11 }}>
-          {st.label}
-        </antd.Tag>
-        {(node.dependsOn || []).length > 0 ? (
-          <span style={{ fontSize: 10, color: "#999" }}>
-            ← {(node.dependsOn || []).join(", ")}
-          </span>
-        ) : null}
-      </div>
-      {kids.map((k) => (
-        <TopoNode key={String(k.id || nodeLabel(k))} node={k} childrenOf={childrenOf} depth={depth + 1} t={t} />
-      ))}
     </div>
   );
 }
@@ -1134,8 +1211,9 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
   }, [highlightRunId, onViewChange, onTopoRunChange]);
 
   const topoEvent = events.find((e) => e.runId === topoRun) || withNodes[0] || null;
-  const topoTree = React.useMemo(
-    () => (topoEvent ? buildNodeTree(topoEvent.nodes || []) : { roots: [], childrenOf: new Map() }),
+  // 卡片视图：选中项目的任务卡（复用看板 BoardCard——状态/取消同一条路）。
+  const cardTasks = React.useMemo(
+    () => (topoEvent ? boardTasksFromEvents([topoEvent]) : []),
     [topoEvent],
   );
 
@@ -1174,13 +1252,13 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>🔀 {tr("工作流")}</span>
         <antd.Tooltip
-          title={tr("事件/卡片/看板/树状拓扑四种视图；看板列映射与 dashboard 任务看板同源（workflow API）")}
+          title={tr("事件/卡片/看板/DAG 拓扑四种视图；卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）")}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
         </antd.Tooltip>
         <div style={{ flex: 1 }} />
-        {/* v0.5.0-beta.12 ：排序（时间/状态/名称）——列表/卡片/看板跟随，
-            拓扑是 DAG 结构不排序。 */}
+        {/* v0.5.0-beta.12 ：排序（时间/状态/名称）——列表/看板跟随；
+            卡片/拓扑的左栏项目列表跟随（DAG 内部结构不排序）。 */}
         <antd.Select
           size="small"
           value={sortBy}
@@ -1296,10 +1374,35 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
         events.length === 0 ? (
           <antd.Empty description={tr("暂无工作流事件")} />
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-            {sortedEvents.map((ev) => (
-              <EventCard key={ev.runId} ev={ev} t={t} onIntervention={() => onRefresh?.()} />
-            ))}
+          /* master-detail：左=项目列表（排序/独立滚动），右=选中项目详情
+             （EventCard + 任务卡网格）——对齐 dashboard 任务看板「项目」区。 */
+          <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+            <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
+            <div style={{ minWidth: 0 }}>
+              {topoEvent ? (
+                <div>
+                  <EventCard ev={topoEvent} t={t} onIntervention={() => onRefresh?.()} />
+                  {cardTasks.length > 0 ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10, marginTop: 12 }}>
+                      {cardTasks.map((task, i) => (
+                        <BoardCard
+                          key={`${task.node.id ?? i}`}
+                          task={task}
+                          t={t}
+                          onTaskDone={() => onRefresh?.()}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 12, fontSize: 12, color: t.textSecondary, padding: "14px 12px", border: `1px dashed ${t.border}`, borderRadius: 8 }}>
+                      {tr("暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡")}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <antd.Empty description={tr("请选择左侧项目")} />
+              )}
+            </div>
           </div>
         )
       ) : view === "board" ? (
@@ -1318,34 +1421,19 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
             onTaskDone={() => onRefresh?.()}
           />
         )
-      ) : withNodes.length === 0 ? (
-        <antd.Empty
-          description={
-            emptyEventCount > 0
-              ? tr("已有 {n} 个项目，但任务图（nodes）全空——多为 planning 状态：项目刚建、任务在群聊 @mention 协调，未登记进 Controller 的任务 DAG", { n: emptyEventCount })
-              : tr("暂无拓扑数据——Agent 以 DAG 模式（workflow_run nodes）执行任务后这里会显示依赖树")
-          }
-        />
       ) : (
-        <div style={{ display: "grid", gap: 10 }}>
-          <div>
-            <antd.Select
-              size="small"
-              style={{ width: 320, maxWidth: "100%" }}
-              value={topoEvent?.runId || ""}
-              onChange={setTopoRun}
-              options={withNodes.map((e) => ({
-                value: e.runId,
-                label: `${e.title || e.runId}（${e.nodes?.length || 0} 节点）`,
-              }))}
-            />
-          </div>
+        /* master-detail：左=项目列表（含 planning 项目，诚实空态），右=
+           分层 DAG（WorkflowDagSvg，dashboard 同源算法）+ 干预/中断/loop。 */
+        <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+          <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
           <div
             style={{
+              minWidth: 0,
               padding: 12,
               borderRadius: 10,
               border: `1px solid ${t.border}`,
-              overflowX: "auto",
+              maxHeight: "calc(100vh - 300px)",
+              overflow: "auto",
             }}
           >
             {topoEvent ? (
@@ -1374,23 +1462,17 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
                   pauseReason={topoEvent.pause_reason}
                 />
                 {topoEvent.loop ? <LoopBlock loop={topoEvent.loop} /> : null}
-                {topoTree.roots.length === 0 ? (
-                  <div style={{ color: t.textSecondary, fontSize: 12 }}>
-                    {tr("节点依赖成环或无根节点，无法渲染树形（请检查 nodes dependsOn）")}
-                  </div>
+                {(topoEvent.nodes || []).length > 0 ? (
+                  <DagTopo ev={topoEvent} t={t} />
                 ) : (
-                  topoTree.roots.map((n) => (
-                    <TopoNode
-                      key={String(n.id || nodeLabel(n))}
-                      node={n}
-                      childrenOf={topoTree.childrenOf}
-                      depth={0}
-                      t={t}
-                    />
-                  ))
+                  <div style={{ color: t.textSecondary, fontSize: 12 }}>
+                    {tr("暂无拓扑数据——本项目可能还在 planning（Coordinator 起草计划中），计划生成后请重试")}
+                  </div>
                 )}
               </div>
-            ) : null}
+            ) : (
+              <antd.Empty description={tr("请选择左侧项目")} />
+            )}
           </div>
         </div>
       )}

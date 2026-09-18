@@ -495,11 +495,11 @@ function Graph3D(props: G3DGraph) {
     glow.visible = false;
     obj.add(glow);
 
-    // 标签——QwenPaw 条件同值：count<=42 || root || deg>=4。
+    // 标签——与 dashboard 知识库 3D 同标准：全节点标注（验收定案「每个点都有
+    // 标题」；旧官方条件 count<=42 || root || deg>=4 废弃，双端对齐）。
     // SpriteText(text, textHeight世界单位, color)；fontSize=76 是
     // 画布分辨率（清晰度），不是字号（混淆了两者）。
-    const count = s.nodeCount;
-    if (count <= 42 || root || deg >= 4) {
+    {
       const raw = String(n.name);
       const text =
         raw.length > 22 ? `${raw.slice(0, 21)}…` : raw;
@@ -746,12 +746,13 @@ function Graph3D(props: G3DGraph) {
       graph.renderer().toneMappingExposure = p.isDark
         ? 1.1
         : 0.98;
-      // 物理力——收紧值与 dashboard 知识库 3D 图谱定案值同款
-      // （charge -60 / 距离 44 / 强度 0.5；原官方原值 -108/72/0.46 废弃；不设 collide 同官方）。
-      graph.d3Force("charge")?.strength?.(-60);
+      // 物理力——收紧值与 dashboard 知识库 3D 图谱定案值同款（双端同值）：
+      // charge -50 / 距离 38 / 强度 0.52（两轮收紧终值；原官方 -108/72/0.46
+      // 与 -60/44/0.5 均废弃；不设 collide 同官方）。
+      graph.d3Force("charge")?.strength?.(-50);
       const linkForce: any = graph.d3Force("link");
-      linkForce?.distance?.(44);
-      linkForce?.strength?.(0.5);
+      linkForce?.distance?.(38);
+      linkForce?.strength?.(0.52);
 
       // 数据灌入 + 官方双 fit：rAF 立即 fit（初始视角根治「无限远」）
       // + 引擎收敛 onEngineStop 平滑 480ms 重 fit。
