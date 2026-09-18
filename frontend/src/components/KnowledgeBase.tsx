@@ -55,6 +55,7 @@ const REMOTE_CAT_COLOR: Record<string, string> = {
 
 const GRAPH_H = 420;
 const EMPTY_POS_MAP = new Map<string, { x: number; y: number }>();
+const EMPTY_SIZE_MAP = new Map<string, { w: number; h: number }>();
 
 interface GraphNodeLike {
   id: string;
@@ -73,32 +74,36 @@ interface GraphNodeLike {
 
 
 
-// 确定性分层径向布局（2D v2，替代 v1 纯力导向；dashboard 知识库
-// knowledge-section radialLayout 同算法同值——双端 2D 图谱观感一致）。
-// v1 问题：无类别意识（不同分类节点混叠）、稠密边成毛球、标签互相压盖。
-// v2 = 扇区 + 深度环：扇区 = 虚拟分类根（单 Agent）/ Agent（聚合模式，
-// 顺序=agentOrder）；hub=扇区中心角小半径处（单扇区置圆心）；深度=自 hub
-// 的 BFS 层（无向边），depth d 落在环半径 R0+(d-1)*DR（DMAX 封顶）；环内
-// 按 name 排序等角分布，单环过密（每节点弧长 <34px）自动外溢同心环；
-// 视野按内容自适应。纯函数、无 Math.random——确定性可复现。
+// ── 2D v4：簇块网格布局 + 缩放/聚焦纯函数（dashboard knowledge-section
+// clusterGridLayout 同算法同值——双端 2D 图谱观感一致）。
+// v3（扇区+深度环）问题：簇多/环深时节点互叠成毛球、标签压盖看不清；
+// 无 virtual 根时 top-3 度数 hub 把单连通簇切碎成 3 扇区（边被误判跨簇）。
+// v4 = 簇矩形块：簇=连通分量（聚合模式=agent 字段），hub=簇内首个 virtual 根
+// 或最高度数文件；hub 横幅置块顶 + 成员网格（depth 升序→name 升序），
+// 块间大留白，标签水平直排永不重叠（网格保证）。纯函数、无 Math.random。
 interface RadialView { minX: number; minY: number; width: number; height: number }
 
-// ── 2D 缩放 / 聚焦 / 簇分离 纯函数（第 11 轮；dashboard knowledge-section 同算法同值）──
+/** 簇块包围盒（渲染虚线框 + 聚焦视野）。 */
+export interface ClusterBlock { hubId: string; minX: number; minY: number; w: number; h: number }
 
-/** 扇区间隙角（弧度）：簇分离——相邻扇区间留出的空白楔。
- * 旧公式 half=(π/R)*0.92 在 R≥8 时相邻弧带重叠；新公式保证 2*half+GAP = 2π/R。 */
-export function sectorGapAngle(sectorCount: number): number {
-  return sectorCount <= 6 ? 0.38 : 0.24;
-}
+// 几何常量（双端同值——dashboard 镜像时逐字对齐，勿单端调参）。
+export const KB2D = {
+  CHIP_H: 26,        // 成员节点 chip 高
+  HUB_H: 34,         // hub（簇横幅）chip 高
+  CHIP_PAD_X: 12,    // chip 左右内边距（各）
+  FONT_W: 6.2,       // 11px 字体平均字宽（中英文混合估）
+  MIN_W: 44,
+  MAX_W: 180,
+  GAP_X: 16,         // 簇内网格列距
+  GAP_Y: 14,         // 簇内网格行距
+  HUB_GAP_Y: 12,     // hub 与成员网格间距
+  BLOCK_GAP_X: 88,   // 簇块间横向留白（「分开簇」）
+  BLOCK_GAP_Y: 72,   // 簇块间纵向留白
+  ROW_MAX_W: 1560,   // 块流式换行阈值
+  PAD: 64,           // 视野留白
+} as const;
 
-/** 单扇区半角（弧度）。单扇区=整圆。 */
-export function sectorHalfAngle(sectorCount: number): number {
-  if (sectorCount <= 0) return 0;
-  if (sectorCount === 1) return Math.PI;
-  return Math.max(0.05, (Math.PI * 2 / sectorCount - sectorGapAngle(sectorCount)) / 2);
-}
-
-/** 聚焦目标：扇区（hub 簇）或单节点邻域。 */
+/** 聚焦目标：簇（hub 块）或单节点邻域。 */
 export type FocusTarget = { kind: "sector"; hubId: string } | { kind: "node"; id: string };
 
 /** 一组点的包围盒 + 留白（聚焦视野）。空集 → null。 */
@@ -133,179 +138,217 @@ export function clampZoomView(
   return { minX: cx - width / 2, minY: cy - (vb.height * (width / vb.width)) / 2, width, height: vb.height * (width / vb.width) };
 }
 
-/** 高倍标签薄化阈值（>2.5× 只留根+悬停标签）。 */
-export const LABEL_CULL_ZOOM = 2.5;
+/** chip 宽：按 name 估宽，钳制 [MIN_W, MAX_W]。 */
+export function chipWidth(label: string): number {
+  const w = label.length * KB2D.FONT_W + KB2D.CHIP_PAD_X * 2;
+  return Math.min(KB2D.MAX_W, Math.max(KB2D.MIN_W, Math.round(w)));
+}
 
-function radialLayout(
+export interface ClusterLayout {
+  /** 节点 id → chip 中心。 */
+  pos: Map<string, { x: number; y: number }>;
+  /** 节点 id → chip 尺寸（渲染 rect）。 */
+  size: Map<string, { w: number; h: number }>;
+  /** 节点 id → 所属簇 hub 的节点 id。 */
+  sectorOf: Map<string, string>;
+  /** 簇 hub 的节点 id 列表（顺序=簇顺序）。 */
+  hubs: string[];
+  /** 簇块包围盒（虚线框 + 聚焦）。 */
+  blocks: ClusterBlock[];
+  /** 自适应视野。 */
+  view: RadialView;
+}
+
+export function clusterGridLayout(
   nodes: GraphNodeLike[],
   edgePairs: Array<[string, string]>,
   agentOrder?: string[],
-): {
-  pos: Map<string, { x: number; y: number }>;
-  view: RadialView;
-  /** 节点 id → 所属扇区 hub 的节点 id（聚焦/簇淡出归属）。 */
-  sectorOf: Map<string, string>;
-  /** 扇区 hub 的节点 id 列表（顺序=扇区顺序）。 */
-  hubs: string[];
-} {
+): ClusterLayout {
   const n = nodes.length;
-  const pos = new Map<string, { x: number; y: number }>();
-  const sectorOf = new Map<string, string>();
-  if (n === 0)
-    return { pos, view: { minX: -450, minY: -210, width: 900, height: 420 }, sectorOf, hubs: [] };
-  const idxOf = new Map<string, number>();
-  nodes.forEach((nd, i) => idxOf.set(nd.id, i));
+  const empty: ClusterLayout = {
+    pos: new Map(),
+    size: new Map(),
+    sectorOf: new Map(),
+    hubs: [],
+    blocks: [],
+    view: { minX: -450, minY: -210, width: 900, height: 420 },
+  };
+  if (n === 0) return empty;
+  const idxOf = new Map<string, number>(nodes.map((nd, i) => [nd.id, i]));
   const adj: number[][] = Array.from({ length: n }, () => []);
   const deg = new Array<number>(n).fill(0);
   for (const [a, b] of edgePairs) {
     const i = idxOf.get(a);
     const j = idxOf.get(b);
-    if (i === undefined || j === undefined || i === j) continue;
-    adj[i].push(j);
-    adj[j].push(i);
-    deg[i] += 1;
-    deg[j] += 1;
+    if (i == null || j == null || i === j) continue;
+    adj[i].push(j); adj[j].push(i); deg[i] += 1; deg[j] += 1;
   }
-  // 1) 扇区 hub：聚合模式=每 Agent 一个（virtual 根优先，否则度数最高文件）；
-  //    单 Agent=各虚拟分类根；无根时取度数 top3 文件作伪根。
+  // 1) 簇 = 连通分量（v4 语义：一块=一个连通簇）。
+  //    聚合模式例外：簇按 agent 字段划分（Agent 块），不被跨 Agent 链接切碎。
   const isVirtual = (nd: GraphNodeLike): boolean =>
     Boolean(nd.virtual) || nd.id.startsWith("virtual:");
   const degRank = (x: number, y: number) =>
-    deg[x] - deg[y] ||
-    nodes[x].name.localeCompare(nodes[y].name) ||
-    x - y;
+    // 降序：最高度数优先（hub=簇内最连接文件）。v3 的 deg[x]-deg[y] 是升序，
+    // hub 会取到最低度叶子——R12 冒烟 T1 抓出，双端同修。
+    deg[y] - deg[x] || nodes[x].name.localeCompare(nodes[y].name) || x - y;
+  const sectorIdx = new Array<number>(n).fill(-1);
   const sectors: { hub: number }[] = [];
   if (agentOrder && agentOrder.length > 0) {
-    for (const agent of agentOrder) {
+    agentOrder.forEach((agent, si) => {
       const members: number[] = [];
-      nodes.forEach((nd, i) => {
-        if (nd.agent === agent) members.push(i);
-      });
-      if (members.length === 0) continue;
+      nodes.forEach((nd, i) => { if (nd.agent === agent) members.push(i); });
+      if (members.length === 0) return;
       let hub = -1;
       for (const i of members) if (isVirtual(nodes[i])) { hub = i; break; }
-      if (hub < 0) {
-        members.sort(degRank);
-        hub = members[0];
-      }
+      if (hub < 0) { members.sort(degRank); hub = members[0]; }
       sectors.push({ hub });
-    }
-  } else {
-    const virtuals: number[] = [];
-    nodes.forEach((nd, i) => {
-      if (isVirtual(nd)) virtuals.push(i);
+      nodes.forEach((nd, i) => { if (nd.agent === agent) sectorIdx[i] = si; });
     });
-    if (virtuals.length > 0) {
-      virtuals.forEach((hub) => sectors.push({ hub }));
-    } else {
-      nodes.map((_, i) => i).sort(degRank).slice(0, Math.min(3, n)).forEach((hub) => sectors.push({ hub }));
+  } else {
+    // 连通分量（按最小节点序确定顺序）→ 每分量一个簇：
+    // hub = 分量内 virtual 根（首个）；无 virtual → 分量内最高度数节点。
+    const comp = new Array<number>(n).fill(-1);
+    let ci = 0;
+    for (let s = 0; s < n; s += 1) {
+      if (comp[s] !== -1) continue;
+      const queue = [s];
+      comp[s] = ci;
+      let head = 0;
+      while (head < queue.length) {
+        const u = queue[head];
+        head += 1;
+        for (const v of adj[u]) if (comp[v] === -1) { comp[v] = ci; queue.push(v); }
+      }
+      ci += 1;
+    }
+    for (let c = 0; c < ci; c += 1) {
+      const members: number[] = [];
+      for (let i = 0; i < n; i += 1) if (comp[i] === c) members.push(i);
+      let hub = -1;
+      for (const i of members) if (isVirtual(nodes[i])) { hub = i; break; }
+      if (hub < 0) { members.sort(degRank); hub = members[0]; }
+      sectors.push({ hub });
+      members.forEach((i) => { sectorIdx[i] = sectors.length - 1; });
     }
   }
   if (sectors.length === 0) sectors.push({ hub: 0 });
-  // 2) 多源 BFS：每节点归属扇区（首个到达的 hub）+ 深度；孤立节点挂末扇区 depth 1。
+  // 未归属节点（agent 不在列表/陈旧数据）→ 挂末簇，不丢点。
+  nodes.forEach((_, i) => { if (sectorIdx[i] === -1) sectorIdx[i] = sectors.length - 1; });
   const depth = new Array<number>(n).fill(-1);
-  const sectorIdx = new Array<number>(n).fill(-1);
   {
     const queue: number[] = [];
-    sectors.forEach((s, si) => {
-      depth[s.hub] = 0;
-      sectorIdx[s.hub] = si;
-      queue.push(s.hub);
-    });
+    sectors.forEach((s) => { depth[s.hub] = 0; queue.push(s.hub); });
     let head = 0;
     while (head < queue.length) {
       const u = queue[head];
       head += 1;
       for (const v of adj[u]) {
-        if (depth[v] === -1) {
-          depth[v] = depth[u] + 1;
-          sectorIdx[v] = sectorIdx[u];
-          queue.push(v);
-        }
+        if (depth[v] === -1) { depth[v] = depth[u] + 1; queue.push(v); }
       }
     }
-    for (let i = 0; i < n; i += 1) {
-      if (depth[i] === -1) {
-        depth[i] = 1;
-        sectorIdx[i] = sectors.length - 1;
-      }
-    }
+    for (let i = 0; i < n; i += 1) if (depth[i] === -1) depth[i] = 1;
   }
-  // 3) 几何：扇区中心角 + 深度环（name 序等角分布 + 过密外溢同心环）。
-  const R0 = 96;       // depth 1 环半径
-  const DR = 58;       // 每层深度环间距
-  const DMAX = 5;      // 深度显示封顶（更深归外环）
-  const RING_GAP = 46; // 过密外溢环的额外间距（标签行高留白）
-  const ARC_PER_NODE = 40; // 单环每节点最小弧长（px，≈10px 字体短标签）
-  const R = sectors.length;
-  sectors.forEach((s, si) => {
-    const theta = -Math.PI / 2 + (si * 2 * Math.PI) / R;
-    // 簇分离：扇区间留 GAP 空白楔（旧 (π/R)*0.92 在 R≥8 时相邻弧带重叠）。
-    const half = sectorHalfAngle(R);
-    const hubR = R === 1 ? 0 : 46;
-    pos.set(nodes[s.hub].id, { x: Math.cos(theta) * hubR, y: Math.sin(theta) * hubR });
-    sectorOf.set(nodes[s.hub].id, nodes[s.hub].id);
-    const byDepth = new Map<number, number[]>();
+  // 2) 逐簇排块：hub 横幅置顶 + 成员网格（depth 升序 → name 升序，确定性）。
+  const pos = new Map<string, { x: number; y: number }>();
+  const size = new Map<string, { w: number; h: number }>();
+  const sectorOf = new Map<string, string>();
+  interface PlacedBlock { hub: number; members: number[]; w: number; h: number; hubW: number }
+  const colsOf = (m: number): number =>
+    m <= 1 ? 1 : m <= 3 ? 2 : m <= 8 ? 3 : m <= 15 ? 4 : m <= 24 ? 5 : 6;
+  const placed: PlacedBlock[] = sectors.map((s) => {
+    const members: number[] = [];
     for (let i = 0; i < n; i += 1) {
-      if (sectorIdx[i] !== si || i === s.hub) continue;
-      const d = Math.min(DMAX, Math.max(1, depth[i]));
-      const arr = byDepth.get(d);
-      if (arr) arr.push(i);
-      else byDepth.set(d, [i]);
+      if (sectorIdx[i] === sectors.indexOf(s) && i !== s.hub) members.push(i);
     }
-    byDepth.forEach((arr, d) => {
-      arr.sort((x, y) => nodes[x].name.localeCompare(nodes[y].name) || x - y);
-      const baseR = R0 + (d - 1) * DR;
-      const rings: number[][] = [];
-      for (const i of arr) {
-        const cur = rings[rings.length - 1];
-        const r = baseR + (rings.length - 1) * RING_GAP;
-        // 容量按扇区弧长（2*half*r）而非整圆——扇区制布局下整圆公式
-        // 会系统性低估密度（大扇区环挤爆的根因）。
-        const cap = Math.max(4, Math.floor((2 * half * r) / ARC_PER_NODE));
-        if (cur && cur.length < cap) cur.push(i);
-        else rings.push([i]);
+    members.sort((x, y) => depth[x] - depth[y] || nodes[x].name.localeCompare(nodes[y].name) || x - y);
+    const m = members.length;
+    const cols = colsOf(m);
+    const rows = Math.ceil(m / cols);
+    const widths = members.map((i) => chipWidth(nodes[i].name));
+    const cellW = widths.length > 0 ? Math.max(...widths) : 0;
+    const hubW = chipWidth(nodes[s.hub].name);
+    const gridW = cols * cellW + (cols - 1) * KB2D.GAP_X;
+    const w = Math.max(gridW, hubW);
+    const h = KB2D.HUB_H + KB2D.HUB_GAP_Y + (rows > 0 ? rows * KB2D.CHIP_H + (rows - 1) * KB2D.GAP_Y : 0);
+    return { hub: s.hub, members, w, h, hubW };
+  });
+  // 3) 块流式布局（按簇顺序，超 ROW_MAX_W 换行，行内整体居中）。
+  const rowsBlocks: PlacedBlock[][] = [];
+  {
+    let row: PlacedBlock[] = [];
+    let rowW = 0;
+    for (const b of placed) {
+      const need = row.length === 0 ? b.w : rowW + KB2D.BLOCK_GAP_X + b.w;
+      if (row.length > 0 && need > KB2D.ROW_MAX_W) {
+        rowsBlocks.push(row);
+        row = [b];
+        rowW = b.w;
+      } else {
+        row.push(b);
+        rowW = need;
       }
-      rings.forEach((ring, ri) => {
-        const r = baseR + ri * RING_GAP;
-        ring.forEach((i, k) => {
-          const a = theta - half + ((k + 0.5) * 2 * half) / ring.length;
-          pos.set(nodes[i].id, { x: Math.cos(a) * r, y: Math.sin(a) * r });
-          sectorOf.set(nodes[i].id, nodes[s.hub].id);
-        });
+    }
+    if (row.length > 0) rowsBlocks.push(row);
+  }
+  rowsBlocks.forEach((row, ri) => {
+    const rowW = row.reduce((acc, b) => acc + b.w, 0) + (row.length - 1) * KB2D.BLOCK_GAP_X;
+    let x = -rowW / 2;
+    const yTop = ri * (Math.max(...row.map((b) => b.h)) + KB2D.BLOCK_GAP_Y);
+    for (const b of row) {
+      // 行内块顶对齐（hub 横幅一条线，最直观）。
+      const cx = x + b.w / 2;
+      const hubY = yTop + KB2D.HUB_H / 2;
+      pos.set(nodes[b.hub].id, { x: cx, y: hubY });
+      size.set(nodes[b.hub].id, { w: b.hubW, h: KB2D.HUB_H });
+      sectorOf.set(nodes[b.hub].id, nodes[b.hub].id);
+      const m = b.members.length;
+      const cols = colsOf(m);
+      const widths = b.members.map((i) => chipWidth(nodes[i].name));
+      const cellW = widths.length > 0 ? Math.max(...widths) : 0;
+      const gridX0 = x + (b.w - (cols * cellW + (cols - 1) * KB2D.GAP_X)) / 2;
+      const gridY0 = yTop + KB2D.HUB_H + KB2D.HUB_GAP_Y;
+      b.members.forEach((i, k) => {
+        const r = Math.floor(k / cols);
+        const c = k % cols;
+        const nw = chipWidth(nodes[i].name);
+        const px = gridX0 + c * (cellW + KB2D.GAP_X) + cellW / 2;
+        const py = gridY0 + r * (KB2D.CHIP_H + KB2D.GAP_Y) + KB2D.CHIP_H / 2;
+        pos.set(nodes[i].id, { x: px, y: py });
+        size.set(nodes[i].id, { w: nw, h: KB2D.CHIP_H });
+        sectorOf.set(nodes[i].id, nodes[b.hub].id);
       });
-    });
+      x += b.w + KB2D.BLOCK_GAP_X;
+    }
   });
-  // 4) 视野自适应（含标签留白）。
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  pos.forEach((p) => {
-    minX = Math.min(minX, p.x);
-    minY = Math.min(minY, p.y);
-    maxX = Math.max(maxX, p.x);
-    maxY = Math.max(maxY, p.y);
+  // 4) 簇块包围盒（含 chip 半宽半高的外扩）。
+  const blocks: ClusterBlock[] = placed.map((b) => {
+    // 块原点=行内左缘 x0（渲染需 x0——这里从 hub 中心反推）。
+    const hubPos = pos.get(nodes[b.hub].id)!;
+    return {
+      hubId: nodes[b.hub].id,
+      minX: hubPos.x - b.w / 2,
+      minY: hubPos.y - KB2D.HUB_H / 2 - 8,
+      w: b.w + 16,
+      h: b.h + 16,
+    };
   });
-  if (!Number.isFinite(minX)) {
-    minX = -450;
-    minY = -210;
-    maxX = 450;
-    maxY = 210;
-  }
-  const pad = 64;
+  // 5) 视野自适应。
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  blocks.forEach((b) => {
+    minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY);
+    maxX = Math.max(maxX, b.minX + b.w); maxY = Math.max(maxY, b.minY + b.h);
+  });
+  if (!Number.isFinite(minX)) { minX = -450; minY = -210; maxX = 450; maxY = 210; }
   return {
     pos,
-    view: {
-      minX: minX - pad,
-      minY: minY - pad,
-      width: maxX - minX + pad * 2,
-      height: maxY - minY + pad * 2,
-    },
+    size,
     sectorOf,
     hubs: sectors.map((s) => nodes[s.hub].id),
+    blocks,
+    view: { minX: minX - KB2D.PAD, minY: minY - KB2D.PAD, width: maxX - minX + KB2D.PAD * 2, height: maxY - minY + KB2D.PAD * 2 },
   };
 }
+
 
 /** 5.0.0-beta.6：预览内容直接存盘下载（Blob + a.download，
  * 零额外请求——content 已是完整文本，MdText 的 100000 截断只在展示层）。 */
@@ -370,11 +413,9 @@ function GraphCard(props: {
   const tr = useT();
   const [hoverId, setHoverId] = React.useState("");
 
-  // 2D 图统一命中测试。旧 per-node 事件下相邻节点透明命中圈大面积重叠
-  // （节点间距 40–70 viewBox 单位 vs 命中圈直径 44–54，root 更达 54），DOM 靠后
-  // 的节点抢事件；被 root 抢走时静默 return → 用户反馈「焦点在圆点上但点了没反应」。
-  // 现在：svg 层 mousemove 命中测试（可见圆优先，其次命中圈，距离最近者胜），
-  // click 用同一测试 → 所见即所点。
+  // 2D 图统一命中测试。svg 层 mousemove 测试（chip 矩形优先，其次 8px 外扩
+  // 命中圈，归一化距离最近者胜），click 用同一测试 → 所见即所点。
+  // v4 网格布局下 chip 互不重叠，矩形判定无歧义。
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const hitNodeRef = React.useRef<GraphNodeLike | null>(null);
   const hitRafRef = React.useRef(0);
@@ -391,14 +432,17 @@ function GraphCard(props: {
     let ext: { node: GraphNodeLike; d: number } | null = null;
     for (const node of graph.nodes) {
       const p = posById.get(node.id);
-      if (!p) continue;
-      const dx = x - p.x;
-      const dy = y - p.y;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      const r = radius(node);
-      if (d <= r) {
+      const s = sizeById.get(node.id);
+      if (!p || !s) continue;
+      const dx = Math.abs(x - p.x);
+      const dy = Math.abs(y - p.y);
+      const hw = s.w / 2;
+      const hh = s.h / 2;
+      if (dx <= hw && dy <= hh) {
+        const d = Math.max(dx / hw, dy / hh);
         if (!vis || d < vis.d) vis = { node, d };
-      } else if (d <= Math.max(r + 14, 22)) {
+      } else if (dx <= hw + 8 && dy <= hh + 8) {
+        const d = Math.max(dx / (hw + 8), dy / (hh + 8));
         if (!ext || d < ext.d) ext = { node, d };
       }
     }
@@ -439,9 +483,9 @@ function GraphCard(props: {
       if (focusRef.current) applyFocus(null); // 点空白=退出聚焦
       return;
     }
-    if (isRoot(node)) {
-      // root 点击：选中（info 栏名称/说明 + 邻接高亮）+ 簇聚焦
-      // （v3：virtual 根单击=聚焦；无根图谱的伪根文件 isRoot=false → 仍开预览）。
+    if (hubSet.has(node.id)) {
+      // v4：hub（簇根，可能为非 virtual 的高度数文件）单击=簇聚焦；
+      // 其余节点单击=开预览（virtual 根非 hub 时也走预览，不再特殊）。
       setSelectedId(node.id);
       applyFocus({ kind: "sector", hubId: node.id });
       return;
@@ -453,14 +497,14 @@ function GraphCard(props: {
     setSelectedId(node.id);
     onOpenNode(node);
   };
-  // v3：双击=聚焦（根=扇区，非根=节点+一度邻接邻域）；单击语义不变。
+  // v4：双击=聚焦（hub=簇，非 hub=节点+一度邻接邻域）；单击语义不变。
   const handleGraphDblClick = (e: React.MouseEvent<SVGSVGElement>) => {
     const pt = clientToView(e.clientX, e.clientY);
     if (!pt) return;
     const node = hitTestNode(pt.x, pt.y);
     if (!node) return;
     applyFocus(
-      isRoot(node) ? { kind: "sector", hubId: node.id } : { kind: "node", id: node.id },
+      hubSet.has(node.id) ? { kind: "sector", hubId: node.id } : { kind: "node", id: node.id },
     );
   };
   const [selectedId, setSelectedId] = React.useState("");
@@ -501,9 +545,10 @@ function GraphCard(props: {
       (e) => [e.source, e.target] as [string, string],
     );
     const order = agentLegend ? agentLegend.map((l) => l.name) : undefined;
-    return radialLayout(graph.nodes, pairs, order);
+    return clusterGridLayout(graph.nodes, pairs, order);
   }, [graph, agentLegend]);
   const posById = layout?.pos ?? EMPTY_POS_MAP;
+  const sizeById = layout?.size ?? EMPTY_SIZE_MAP;
   const view: RadialView = layout?.view ?? {
     minX: -450,
     minY: -210,
@@ -533,7 +578,6 @@ function GraphCard(props: {
   }
   React.useEffect(() => { vbRef.current = vb; });
   React.useEffect(() => { focusRef.current = focus; });
-  const zoom = view.width / Math.max(1e-6, vb.width);
   const cancelAnim = React.useCallback(() => {
     if (animRafRef.current) cancelAnimationFrame(animRafRef.current);
     animRafRef.current = 0;
@@ -578,6 +622,22 @@ function GraphCard(props: {
     }
     return s;
   }, [focus, graph, layout]);
+  // 跨簇边收敛：同簇对只画一条 hub→hub 线（块-块语义），簇内边=节点级。
+  const crossHubEdges = React.useMemo(() => {
+    const out: { a: string; b: string; k: string }[] = [];
+    if (!graph || !layout) return out;
+    const seen = new Set<string>();
+    graph.edges.forEach((e) => {
+      const sa = layout.sectorOf.get(e.source) ?? e.source;
+      const sb = layout.sectorOf.get(e.target) ?? e.target;
+      if (sa === sb) return;
+      const key = sa < sb ? `${sa}|${sb}` : `${sb}|${sa}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ a: sa, b: sb, k: key });
+    });
+    return out;
+  }, [graph, layout]);
   const applyFocus = React.useCallback((target: FocusTarget | null) => {
     cancelAnim();
     setFocus(target);
@@ -631,7 +691,9 @@ function GraphCard(props: {
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
-  }, [view, cancelAnim]);
+    // viewMode 入依赖：默认 3D 时 2D svg 未挂载，effect 首跑空跑；
+    // 切到 2D 后必须重跑才挂上监听（R12 装验反馈「插件没有滚轮缩放」根因）。
+  }, [view, cancelAnim, viewMode]);
   const zoomBy = React.useCallback((factor: number) => {
     const vb0 = vbRef.current;
     const w1 = vb0.width * factor;
@@ -670,16 +732,7 @@ function GraphCard(props: {
   const focusLabel = focus && graph
     ? (graph.nodes.find((nd) => (focus.kind === "sector" ? nd.id === focus.hubId : nd.id === focus.id))?.name ?? "簇")
     : "簇";
-  const cullLabels = zoom > LABEL_CULL_ZOOM;
   const inFocus = (id: string): boolean => focusSet ? focusSet.has(id) : true;
-  const degree = React.useMemo(() => {
-    const d = new Map<string, number>();
-    graph?.edges.forEach((e) => {
-      d.set(e.source, (d.get(e.source) || 0) + 1);
-      d.set(e.target, (d.get(e.target) || 0) + 1);
-    });
-    return d;
-  }, [graph]);
   const model = React.useMemo((): GraphModel | null => {
     if (!graph) return null;
     const rootIds = new Set(
@@ -727,13 +780,6 @@ function GraphCard(props: {
   const dimmed = (id: string): boolean =>
     Boolean(selectedId) && id !== selectedId && !selNeighbors?.has(id);
 
-  const radius = (node: GraphNodeLike): number => {
-    if (isRoot(node)) return 13;
-    const deg = degree.get(node.id) || 0;
-    if (isDirect(node)) return 8;
-    return 4.5 + Math.min(Math.sqrt(deg) * 1.2, 5);
-  };
-
   const nodeColor = (node: GraphNodeLike): string => {
     if (agentLegend && node.agent) {
       return (
@@ -743,27 +789,6 @@ function GraphCard(props: {
     if (isRoot(node)) return GRAPH_ROOT_COLOR;
     if (isDirect(node)) return GRAPH_DIRECT_COLOR;
     return fileColor;
-  };
-
-  const labeledIds = React.useMemo(() => {
-    if (!graph) return new Set<string>();
-    return new Set(
-      [...graph.nodes]
-        .map((node) => node.id)
-        .sort((a, b) => (degree.get(b) || 0) - (degree.get(a) || 0))
-        .slice(0, 14),
-    );
-  }, [graph, degree]);
-
-  const showLabel = (node: GraphNodeLike): boolean => {
-    if (hoverId === node.id || selectedId === node.id) return true;
-    if (agentLegend) return labeledIds.has(node.id);
-    if (isRoot(node)) return true;
-    if (!graph) return false;
-    if (graph.nodes.length <= 42) return true;
-    if ((degree.get(node.id) || 0) >= 4) return true;
-    if (selectedId && selNeighbors?.has(node.id)) return true;
-    return false;
   };
 
   const legendEntries: { key: string; label: string; color: string }[] =
@@ -1090,7 +1115,7 @@ function GraphCard(props: {
               ) : null}
               {infoNode
                 ? `${infoNode.name}${infoNode.description ? ` — ${infoNode.description}` : ""}`
-                : tr("点击节点查看详情；根=分类，大小=链接度 · 滚轮缩放 · 拖拽平移 · 点根聚焦 · 双击节点邻域 · Esc 退出")}
+                : tr("点节点查看 · 滚轮缩放 · 拖拽平移 · 点簇根聚焦 · 双击节点邻域 · Esc 退出")}
             </div>
             <div style={{ position: "absolute", right: 0, top: 0, zIndex: 2 }}>
               <antd.Button size="small" onClick={() => zoomBy(1 / 1.5)} title="放大" aria-label="放大">
@@ -1154,55 +1179,59 @@ function GraphCard(props: {
                   <path d="M0,-3L6,0L0,3" fill={GRAPH_ROOT_COLOR} />
                 </marker>
               </defs>
-              {/* v3：扇区边界虚线弧（簇分离视觉锚）。 */}
-              {layout && layout.hubs.length > 1
-                ? layout.hubs.map((hubId, si) => {
-                    const theta =
-                      -Math.PI / 2 + (si * 2 * Math.PI) / layout.hubs.length;
-                    const half = sectorHalfAngle(layout.hubs.length);
-                    const rMid = 190;
-                    const a1 = theta - half;
-                    const a2 = theta + half;
+              {/* ③ 簇块虚线框（簇分离视觉锚，替代 v3 扇区边界弧）。 */}
+              {layout
+                ? layout.blocks.map((b) => {
                     const hubNode =
-                      graph.nodes.find((n) => n.id === hubId) || {
-                        id: hubId,
+                      graph.nodes.find((n) => n.id === b.hubId) || {
+                        id: b.hubId,
                         name: "",
                       };
                     return (
-                      <path
-                        key={hubId}
-                        d={`M ${Math.cos(a1) * rMid} ${Math.sin(a1) * rMid} A ${rMid} ${rMid} 0 ${2 * half > Math.PI ? 1 : 0} 1 ${Math.cos(a2) * rMid} ${Math.sin(a2) * rMid}`}
-                        fill="none"
+                      <rect
+                        key={`blk-${b.hubId}`}
+                        x={b.minX}
+                        y={b.minY}
+                        width={b.w}
+                        height={b.h}
+                        rx={16}
+                        fill={nodeColor(hubNode)}
+                        fillOpacity={0.045}
                         stroke={nodeColor(hubNode)}
-                        strokeOpacity={0.14}
+                        strokeOpacity={0.3}
                         strokeWidth={1}
-                        strokeDasharray="3 5"
+                        strokeDasharray="4 5"
                       />
                     );
                   })
                 : null}
+              {/* ②a 簇内边：节点级（chip 之下；箭头止于 chip 边界）。 */}
               {graph.edges.map((e, i) => {
+                const sa = layout?.sectorOf.get(e.source) ?? e.source;
+                const sb = layout?.sectorOf.get(e.target) ?? e.target;
+                if (sa !== sb) return null; // 跨簇边走下面的 hub 线层
                 const a = posById.get(e.source);
                 const b = posById.get(e.target);
                 if (!a || !b) return null;
-                const rb = radius(
-                  graph.nodes.find((n) => n.id === e.target) || {
-                    id: e.target,
-                    name: "",
-                  },
-                );
+                const tb = sizeById.get(e.target) || { w: 44, h: 26 };
                 const dx = b.x - a.x;
                 const dy = b.y - a.y;
                 const d = Math.max(Math.sqrt(dx * dx + dy * dy), 0.1);
                 const ux = dx / d;
                 const uy = dy / d;
-                const x2 = b.x - ux * (rb + 3);
-                const y2 = b.y - uy * (rb + 3);
+                // 终点裁剪到目标 chip 矩形边界（+3px 间距），箭头不埋进 chip。
+                const tx =
+                  Math.abs(ux) > 1e-6 ? (tb.w / 2 + 3) / Math.abs(ux) : Infinity;
+                const ty =
+                  Math.abs(uy) > 1e-6 ? (tb.h / 2 + 3) / Math.abs(uy) : Infinity;
+                const tEnd = Math.min(tx, ty, d);
+                const x2 = b.x - ux * tEnd;
+                const y2 = b.y - uy * tEnd;
                 const active =
                   Boolean(selectedId) &&
                   (e.source === selectedId || e.target === selectedId);
                 const dim = Boolean(selectedId) && !active;
-                // v3 聚焦淡出：两端都在聚焦集内=全不透明，否则 0.12。
+                // 聚焦淡出：两端都在聚焦集内=全不透明，否则 0.12。
                 const fdim =
                   inFocus(e.source) && inFocus(e.target) ? 1 : 0.12;
                 return (
@@ -1223,63 +1252,87 @@ function GraphCard(props: {
                   />
                 );
               })}
+              {/* ②b 跨簇边：簇对去重后 hub→hub 块级单线（v4 毛球治理）。 */}
+              {crossHubEdges.map(({ a, b, k }) => {
+                const pa = posById.get(a);
+                const pb = posById.get(b);
+                if (!pa || !pb) return null;
+                const hubA = graph.nodes.find((n) => n.id === a);
+                const fdim = inFocus(a) && inFocus(b) ? 1 : 0.15;
+                return (
+                  <line
+                    key={`x-${k}`}
+                    x1={pa.x}
+                    y1={pa.y}
+                    x2={pb.x}
+                    y2={pb.y}
+                    stroke={hubA ? nodeColor(hubA) : t.border}
+                    strokeOpacity={0.22 * fdim}
+                    strokeWidth={1.4}
+                  />
+                );
+              })}
+              {/* ① 节点=矩形 chip（标签恒显，网格保证不重叠；hover=描边加粗）。 */}
               {graph.nodes.map((node) => {
                 const p = posById.get(node.id);
-                if (!p) return null;
-                const r = radius(node);
+                const s = sizeById.get(node.id);
+                if (!p || !s) return null;
+                const hub = hubSet.has(node.id);
                 const hovered = hoverId === node.id;
                 const selected = selectedId === node.id;
                 const dim = dimmed(node.id);
-                const root = isRoot(node);
+                const fd = inFocus(node.id) ? 1 : 0.1;
+                const maxChars = Math.max(
+                  3,
+                  Math.floor((s.w - 14) / KB2D.FONT_W),
+                );
+                const shown =
+                  node.name.length > maxChars
+                    ? `${node.name.slice(0, maxChars - 1)}…`
+                    : node.name;
                 return (
                   <g
                     key={node.id}
                     transform={`translate(${p.x},${p.y})`}
                     style={{
-                      opacity: dim ? 0.24 : inFocus(node.id) ? 1 : 0.1,
+                      opacity: dim ? 0.24 : fd,
                       pointerEvents: "none",
                     }}
                   >
-                    {root ? (
-                      <circle
-                        r={r + 3.5}
-                        fill="none"
-                        stroke={GRAPH_ROOT_COLOR}
-                        strokeOpacity={0.42}
-                        strokeWidth={1}
-                      />
-                    ) : null}
-                    <circle
-                      r={r}
+                    <rect
+                      x={-s.w / 2}
+                      y={-s.h / 2}
+                      width={s.w}
+                      height={s.h}
+                      rx={s.h / 2}
                       fill={nodeColor(node)}
-                      fillOpacity={hovered || selected ? 1 : 0.88}
+                      fillOpacity={
+                        dim ? 0.06 : hovered || selected ? 0.32 : hub ? 0.22 : 0.13
+                      }
                       stroke={
                         selected
                           ? GRAPH_ROOT_COLOR
                           : hovered
                             ? t.text
-                            : t.cardBg
+                            : nodeColor(node)
                       }
-                      strokeWidth={selected ? 2 : 1}
+                      strokeOpacity={dim ? 0.15 : hovered || selected ? 1 : 0.75}
+                      strokeWidth={selected ? 2 : hovered ? 1.8 : hub ? 1.4 : 1}
                     />
-                    {showLabel(node) &&
-                    (!cullLabels || isRoot(node) || hoverId === node.id) ? (
-                      <text
-                        y={-r - 5}
-                        textAnchor="middle"
-                        fontSize={root ? 11 : 10}
-                        fontWeight={root || isDirect(node) ? 600 : 400}
-                        fill={selected ? GRAPH_ROOT_COLOR : t.text}
-                        style={{ paintOrder: "stroke" }}
-                        stroke={t.cardBg}
-                        strokeWidth={3}
-                        strokeLinejoin="round"
-                      >
-                        {node.name.length > 16
-                          ? `${node.name.slice(0, 15)}…`
-                          : node.name}
-                      </text>
-                    ) : null}
+                    <text
+                      y={4}
+                      textAnchor="middle"
+                      fontSize={hub ? 11.5 : 11}
+                      fontWeight={hub || isDirect(node) ? 600 : 400}
+                      fill={selected ? GRAPH_ROOT_COLOR : t.text}
+                      style={{ paintOrder: "stroke" }}
+                      stroke={t.cardBg}
+                      strokeWidth={3}
+                      strokeLinejoin="round"
+                    >
+                      {shown}
+                    </text>
+                    <title>{node.name}</title>
                   </g>
                 );
               })}
