@@ -2643,12 +2643,241 @@ def build_router() -> APIRouter:
             status_code=404, detail="未找到工作区目录（容器可能仍在启动中）"
         )
 
+    # ── #1208 workspace-files 兜底数据面（L2 team-scoped / Docker 不可用）──
+    # 上游 #1208：GET /api/v1/workers/{name}/workspace-files/{sub}，
+    # sub∈{tree,file-metadata,file-content,file-download}，allowlist=
+    # MEMORY.md+memory/+digest/（controller 固定 root=workspace）。仅 Worker
+    # （无 manager 端点）。L2 可读本团队 Worker；跨团队→404（W8）；旧
+    # Controller（未合 #1208）→404（路由未注册）。tree limit≤500/默认 200；
+    # file-content limit≤1MB/默认 256KB；path≤4 段。
+    _KB_WSF_MAX_DEPTH = 2  # memory/ 或 digest/ 下最多再下探 2 层（path≤4 段）
+    _KB_WSF_MAX_FILES = 300  # 单分类文件数上限（防大工作区拖死）
+    _KB_WSF_MAX_READ = 512 * 1024  # 单文件返回上限（与 Docker 通道 _KB_MAX_FILE 一致）
+
+    async def _wsf_get(token: str, base: str, agent: str, sub: str,
+                       params: Optional[Dict[str, str]]) -> tuple:
+        """GET /api/v1/workers/{agent}/workspace-files/{sub}?params。
+        返回 (status_code, 解析后 JSON dict|bytes)。"""
+        import httpx as _h
+        import urllib.parse as _up
+        url = (
+            f"{base}/api/v1/workers/{agent}"
+            f"/workspace-files/{sub}"
+        )
+        if params:
+            url += "?" + _up.urlencode(params)
+        async with _h.AsyncClient(timeout=30.0, verify=False) as client:
+            r = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            return r.status_code, r.json()
+        except Exception:  # noqa: BLE001
+            return r.status_code, r.content
+
+    def _wsf_mtime(iso: Optional[str]) -> int:
+        """ISO modified_at → epoch 秒（解析失败→0，与 Docker 通道 mtime 同量级）。"""
+        import datetime as _dt
+        if not iso:
+            return 0
+        try:
+            return int(_dt.datetime.fromisoformat(
+                iso.replace("Z", "+00:00")).timestamp())
+        except Exception:  # noqa: BLE001
+            return 0
+
+    async def _wsf_tree_files(token: str, base: str, agent: str,
+                              root_dir: str) -> List[Dict[str, Any]]:
+        """#1208 tree：递归列 root_dir（memory/digest）下文件，带界。
+        返回 [{path(工作区相对),name,size,mtime}]。path 形如 memory/2026-08-29.md。"""
+        out: List[Dict[str, Any]] = []
+
+        async def _walk(dir_path: str, depth: int) -> None:
+            if depth > _KB_WSF_MAX_DEPTH or len(out) >= _KB_WSF_MAX_FILES:
+                return
+            cursor: Optional[str] = None
+            while True:
+                params: Dict[str, str] = {"path": dir_path, "limit": "200"}
+                if cursor:
+                    params["cursor"] = cursor
+                st, data = await _wsf_get(token, base, agent, "tree", params)
+                if st != 200 or not isinstance(data, dict):
+                    return
+                for e in (data.get("entries") or []):
+                    if len(out) >= _KB_WSF_MAX_FILES:
+                        return
+                    kind = e.get("kind")
+                    p = str(e.get("path") or "")
+                    name = str(e.get("name") or (p.rsplit("/", 1)[-1] if p else ""))
+                    if not p or _kb_is_sensitive(name, p):
+                        continue
+                    if kind == "directory":
+                        if depth < _KB_WSF_MAX_DEPTH:
+                            await _walk(p, depth + 1)
+                    else:
+                        out.append({
+                            "path": p, "name": name,
+                            "size": int(e.get("size") or 0),
+                            "mtime": _wsf_mtime(e.get("modified_at")),
+                        })
+                if data.get("has_more") and data.get("next_cursor"):
+                    cursor = str(data["next_cursor"])
+                else:
+                    break
+
+        await _walk(root_dir, 1)
+        return out
+
+    async def _wsf_read_file(token: str, base: str, agent: str,
+                             path: str) -> Optional[tuple]:
+        """#1208 file-content：分块读到 eof（≤_KB_WSF_MAX_READ）。
+        成功→(size, text)；不存在/非文本/超限→None。"""
+        offset = 0
+        chunks: List[str] = []
+        total = 0
+        while total < _KB_WSF_MAX_READ:
+            st, data = await _wsf_get(token, base, agent, "file-content", {
+                "path": path, "offset": str(offset), "limit": "262144",
+            })
+            if st != 200 or not isinstance(data, dict):
+                return None
+            chunk = data.get("content") or ""
+            chunks.append(chunk)
+            total += len(chunk)
+            if data.get("eof"):
+                break
+            offset = int(data.get("next_offset") or offset)
+        text = "".join(chunks)
+        return (total, text)
+
+    async def _kb_tree_wsf_fallback(token: str, base: str, agent: str) -> Dict[str, Any]:
+        """#1208 兜底树（L2 / Docker 不可用，worker only）：三分类=
+        memory/**（日记）+ digest/**（知识库）+ MEMORY.md（档案）。
+        非 MEMORY.md 的档案文件 + 文件分类不在 #1208 allowlist → 不渲染
+        （L1-only 数据，前端按 dirs=[] 优雅降级）。"""
+        files: List[Dict[str, Any]] = []
+        for e in await _wsf_tree_files(token, base, agent, "memory"):
+            files.append({**e, "category": "daily"})
+        for e in await _wsf_tree_files(token, base, agent, "digest"):
+            files.append({**e, "category": "digest"})
+        st, meta = await _wsf_get(token, base, agent, "file-metadata",
+                                  {"path": "MEMORY.md"})
+        if st == 200 and isinstance(meta, dict):
+            files.append({
+                "path": "MEMORY.md", "name": "MEMORY.md",
+                "size": int(meta.get("size") or 0),
+                "mtime": _wsf_mtime(meta.get("modified_at")),
+                "category": "profile",
+            })
+        keep = [
+            f for f in files
+            if f["path"].lower().endswith(
+                (".md", ".txt", ".yaml", ".yml", ".json"))
+        ][:300]
+        cat_order = {"profile": 0, "daily": 1, "digest": 2, "file": 3}
+        keep.sort(key=lambda f: (cat_order.get(f.get("category", "file"), 3),
+                                 f["path"]))
+        return {
+            "agent": agent,
+            "workspace": "(controller #1208)",
+            "source": "controller",
+            "files": keep, "dirs": [], "count": len(keep),
+        }
+
+    # Docker 通道可用性缓存（per 容器，短 TTL）：L2 token 恒 403 / Docker 挂
+    # 恒 502——30s 内不重复探，避免 tree/file/ls 每次多打一发 /json。
+    _kb_docker_ok_cache: Dict[str, tuple] = {}
+    _KB_DOCKER_OK_TTL = 30.0
+
+    async def _kb_docker_available(token: str, base: str, container: str) -> bool:
+        import time as _time
+        now = _time.time()
+        cached = _kb_docker_ok_cache.get(container)
+        if cached and (now - cached[1]) < _KB_DOCKER_OK_TTL:
+            return cached[0]
+        try:
+            st, _ = await _kb_docker(
+                token, base, f"/containers/{container}/json", timeout=15.0,
+            )
+            ok = st not in (401, 403)
+        except HTTPException:
+            ok = False
+        _kb_docker_ok_cache[container] = (ok, now)
+        return ok
+
+    def _wsf_in_allowlist(path: str) -> bool:
+        """#1208 allowlist：MEMORY.md 单文件 + memory/** + digest/**。"""
+        if path == "MEMORY.md":
+            return True
+        return path.startswith("memory/") or path.startswith("digest/")
+
+    async def _kb_ls_wsf_fallback(token: str, base: str, agent: str,
+                                  dir: str) -> Dict[str, Any]:
+        """#1208 兜底懒加载（L2/docker 不可用，worker only）。
+        dir=""→顶层（memory/ + digest/ + MEMORY.md）；dir 在 memory/**|digest/**
+        内→该层 tree；其它目录（协议文档等）→404（不在 #1208 allowlist）。"""
+        text_ok = (".md", ".txt", ".yaml", ".yml", ".json")
+        if dir == "":
+            dirs_out: List[Dict[str, Any]] = []
+            files_out: List[Dict[str, Any]] = []
+            for root in ("memory", "digest"):
+                st, data = await _wsf_get(
+                    token, base, agent, "tree", {"path": root, "limit": "1"})
+                if st == 200 and isinstance(data, dict):
+                    dirs_out.append(
+                        {"path": root, "name": root, "isdir": True})
+            st, meta = await _wsf_get(
+                token, base, agent, "file-metadata", {"path": "MEMORY.md"})
+            if st == 200 and isinstance(meta, dict):
+                files_out.append({
+                    "path": "MEMORY.md", "name": "MEMORY.md",
+                    "size": int(meta.get("size") or 0),
+                    "mtime": _wsf_mtime(meta.get("modified_at")),
+                    "category": "profile",
+                })
+            return {"agent": agent, "dir": dir,
+                    "files": files_out, "dirs": dirs_out}
+        if not (dir == "memory" or dir == "digest"
+                or dir.startswith("memory/") or dir.startswith("digest/")):
+            raise HTTPException(status_code=404, detail=f"目录不存在：{dir}")
+        if len(dir.split("/")) > 3:
+            raise HTTPException(status_code=404, detail=f"目录不存在：{dir}")
+        st, data = await _wsf_get(
+            token, base, agent, "tree", {"path": dir, "limit": "200"})
+        if st != 200 or not isinstance(data, dict):
+            raise HTTPException(status_code=404, detail=f"目录不存在：{dir}")
+        files_out = []
+        dirs_out = []
+        for e in (data.get("entries") or []):
+            name = str(e.get("name") or "")
+            p = str(e.get("path") or "")
+            if not p or _kb_is_sensitive(name, p):
+                continue
+            if e.get("kind") == "directory":
+                dirs_out.append({"path": p, "name": name, "isdir": True})
+            elif name.lower().endswith(text_ok):
+                files_out.append({
+                    "path": p, "name": name,
+                    "size": int(e.get("size") or 0),
+                    "mtime": _wsf_mtime(e.get("modified_at")),
+                    "category": "file",
+                })
+        files_out.sort(key=lambda f: f["path"])
+        dirs_out.sort(key=lambda d: d["path"])
+        return {"agent": agent, "dir": dir,
+                "files": files_out[:300], "dirs": dirs_out[:120]}
+
     @router.get("/kb/agents")
     async def kb_agents() -> Dict[str, Any]:
         """远端 Agent 清单：Docker 容器列表（agentteams-worker-* +
         agentteams-manager）+ Controller workers API 补 role/team。"""
         token, base = _kb_require_token()
-        st, data = await _kb_docker(token, base, "/containers/json")
+        # L2（403）/ Docker 挂（502）→ #1216 兜底（worker 走 Controller；
+        # manager L1-only）。
+        try:
+            st, data = await _kb_docker(token, base, "/containers/json")
+        except HTTPException:
+            return await _approval_list_wsf(token, base, agent)
+        if st in (401, 403, 502):
+            return await _approval_list_wsf(token, base, agent)
         if st != 200:
             raise HTTPException(
                 status_code=502, detail=f"容器列表获取失败（Docker API {st}）"
@@ -2709,11 +2938,17 @@ def build_router() -> APIRouter:
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
         token, base = _kb_require_token()
-        ws = await _kb_workspace(token, base, agent)
         container = (
             "agentteams-manager" if agent == "manager"
             else f"agentteams-worker-{agent}"
         )
+        # 预探（worker only）：Docker 通道可用性。L2 token → 403（ActionGateway）/
+        # Docker 挂 → 502 → 切 #1208 兜底（三分类，本团队 scope）；Manager 无
+        # #1208 端点 → 走原错误路径（L1 only）。
+        if agent != "manager":
+            if not await _kb_docker_available(token, base, container):
+                return await _kb_tree_wsf_fallback(token, base, agent)
+        ws = await _kb_workspace(token, base, agent)
         import urllib.parse as _up
         # （用户要求对齐 QwenPaw 最新版文件管理）：四分类——
         # 档案 = 6 个默认 workspace markdown（QwenPaw console
@@ -2892,11 +3127,22 @@ def build_router() -> APIRouter:
             # 404 而非 403：不泄露敏感文件存在性（dashboard 同款过滤）
             raise HTTPException(status_code=404, detail=f"文件不存在：{path}")
         token, base = _kb_require_token()
-        ws = await _kb_workspace(token, base, agent)
         container = (
             "agentteams-manager" if agent == "manager"
             else f"agentteams-worker-{agent}"
         )
+        # 兜底（worker only）：Docker 不可用（L2 403 / 挂 502）且 path 在 #1208
+        # allowlist（MEMORY.md|memory/**|digest/**）→ #1208 file-content 分块读。
+        if agent != "manager" and _wsf_in_allowlist(path):
+            if not await _kb_docker_available(token, base, container):
+                res = await _wsf_read_file(token, base, agent, path)
+                if res is None:
+                    raise HTTPException(
+                        status_code=404, detail=f"文件不存在：{path}")
+                size, text = res
+                return {"path": path, "size": size, "content": text,
+                        "source": "controller"}
+        ws = await _kb_workspace(token, base, agent)
         import urllib.parse as _up
         st, data = await _kb_docker(
             token, base,
@@ -2950,11 +3196,15 @@ def build_router() -> APIRouter:
                 raise HTTPException(status_code=400, detail="非法目录路径")
             dir = "/".join(segs)
         token, base = _kb_require_token()
-        ws = await _kb_workspace(token, base, agent)
         container = (
             "agentteams-manager" if agent == "manager"
             else f"agentteams-worker-{agent}"
         )
+        # 兜底（worker only）：Docker 不可用 → #1208 懒加载（memory/**|digest/**|MEMORY.md）。
+        if agent != "manager":
+            if not await _kb_docker_available(token, base, container):
+                return await _kb_ls_wsf_fallback(token, base, agent, dir)
+        ws = await _kb_workspace(token, base, agent)
         target = f"{ws}/{dir}" if dir else ws
         # exec find 列一层（不拉全量 tar——manager live 大工作区场景安全）。
         out = await _kb_exec(
@@ -3846,13 +4096,126 @@ def build_router() -> APIRouter:
                 pass
         return out  # type: ignore[name-defined]
 
+    # ── #1216 approval 兜底数据面（L2 team-scoped / Docker 不可用）────────
+    # 上游 #1216：GET/PUT /api/v1/workers/{name}/approval（worker only，无
+    # manager 端点）。L2 可读写本团队 Worker（OFF 除外→403）；team leader
+    # 只读；跨团队→404（W8）；旧 Controller（未合 #1216）→404（版本门控）。
+    async def _ctl_json(method: str, url: str, token: str,
+                        json_body: Optional[Dict[str, Any]] = None) -> tuple:
+        """通用 Controller JSON 调用。返回 (status_code, 解析 JSON|str, 原始 text)。"""
+        import httpx as _h
+        try:
+            async with _h.AsyncClient(timeout=30.0, verify=False) as client:
+                r = await client.request(
+                    method, url,
+                    json=json_body,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+        except Exception as exc:  # noqa: BLE001
+            return 0, {}, f"请求失败：{exc}"
+        try:
+            return r.status_code, r.json(), r.text
+        except Exception:  # noqa: BLE001
+            return r.status_code, {}, r.text
+
+    async def _approval_list_wsf(token: str, base: str, agent: str) -> Dict[str, Any]:
+        """#1216 兜底列表（L2/docker 不可用）：worker 走 GET /api/v1/workers
+        + 逐个 GET approval；Manager 无 #1216 端点 → 错误标记（L1-only）。"""
+        items: List[Dict[str, Any]] = []
+        st, data, _ = await _ctl_json("GET", f"{base}/api/v1/workers", token)
+        if st != 200:
+            raise HTTPException(status_code=502,
+                                detail=f"Worker 列表获取失败（Controller {st}）")
+        workers = (data.get("workers") or []) if isinstance(data, dict) else []
+        for w in workers:
+            if not isinstance(w, dict):
+                continue
+            wn = str(w.get("name") or "")
+            if not wn:
+                continue
+            if agent and agent not in ("manager", wn):
+                continue
+            item: Dict[str, Any] = {
+                "agent": wn, "container": f"agentteams-worker-{wn}",
+                "kind": "worker",
+                "state": str(w.get("state") or w.get("phase") or ""),
+                "approval_level": None, "error": "",
+            }
+            st2, data2, _ = await _ctl_json(
+                "GET", f"{base}/api/v1/workers/{wn}/approval", token)
+            if st2 == 200 and isinstance(data2, dict):
+                item["approval_level"] = str(
+                    data2.get("approval_level") or "AUTO").upper()
+            elif st2 == 404:
+                item["error"] = "审批端点不可用（Controller < #1216 版本或该 Worker 不在团队 scope）"
+            else:
+                item["error"] = f"审批查询失败（{st2}）"
+            items.append(item)
+        if (not agent) or agent == "manager":
+            items.append({
+                "agent": "manager", "container": "agentteams-manager",
+                "kind": "manager", "state": "", "approval_level": None,
+                "error": "Manager 审批仅 L1 可查（无 #1216 端点）",
+            })
+        items.sort(key=lambda x: (x["kind"] != "worker", x["agent"]))
+        return {"items": items, "levels": list(_APPROVAL_LEVELS),
+                "source": "controller"}
+
+    async def _approval_set_wsf(token: str, base: str, agent: str,
+                                level: str) -> Dict[str, Any]:
+        """#1216 PUT 兜底（L2/docker 不可用，worker only）。
+        L2 仅可设 STRICT/SMART/AUTO（OFF→403 透传）；team leader 只读→403；
+        404=Controller < #1216 版本或跨团队；409=并发冲突。"""
+        url = f"{base}/api/v1/workers/{agent}/approval"
+        st, data, text = await _ctl_json(
+            "PUT", url, token, json_body={"approval_level": level})
+        if st == 200:
+            verified = None
+            st2, data2, _ = await _ctl_json("GET", url, token)
+            if st2 == 200 and isinstance(data2, dict):
+                verified = str(data2.get("approval_level") or "").upper()
+            return {
+                "ok": True, "agent": agent, "level": level,
+                "verified": verified, "source": "controller",
+                "note": (
+                    "已 live 生效（#1216 Controller 审批端点，无需重启）。"
+                    if verified == level
+                    else "设置命令成功但未回读到新值——请刷新列表确认。"
+                ),
+            }
+        detail = ""
+        if isinstance(data, dict):
+            detail = str(data.get("detail") or data.get("message") or "")
+        if not detail:
+            detail = (text or "")[:200]
+        if st == 404:
+            raise HTTPException(
+                status_code=404,
+                detail="审批端点不可用（Controller < #1216 版本，或 Worker 不在团队 scope）")
+        if st == 409:
+            raise HTTPException(
+                status_code=409, detail=f"Worker 更新中（并发冲突），请稍后重试：{detail}")
+        if st == 403:
+            raise HTTPException(
+                status_code=403,
+                detail=detail or "无权限设置该级别（L2 不能设 OFF；team leader 只读）")
+        raise HTTPException(status_code=st or 502,
+                            detail=detail or f"设置失败（{st}）")
+
     @router.get("/approval/list")
     async def approval_list(agent: str = "") -> Dict[str, Any]:
         """各 Worker/Manager 当前 approval_level（只读：archive 直读
         agent.json——与 KB 同通道，零新端点依赖）。
         ?agent=xxx 过滤单个（Worker 管理展开行懒加载用，避免全量扫）。"""
         token, base = _kb_require_token()
-        st, data = await _kb_docker(token, base, "/containers/json")
+        # L2（403）/ Docker 挂（502）→ #1216 兜底（worker 走 Controller；
+        # manager L1-only）。
+        try:
+            st, data = await _kb_docker(token, base, "/containers/json")
+        except HTTPException:
+            return await _approval_list_wsf(token, base, agent)
+        if st in (401, 403, 502):
+            return await _approval_list_wsf(token, base, agent)
         if st != 200:
             raise HTTPException(
                 status_code=502, detail=f"容器列表获取失败（Docker API {st}）"
@@ -3954,6 +4317,11 @@ def build_router() -> APIRouter:
                 detail=f"level 必须是 {_APPROVAL_LEVELS} 之一",
             )
         container = _approval_container_of(agent)
+        # 兜底（worker only）：Docker 不可用（L2 403 / 挂 502）→ #1216 PUT。
+        # Manager 无 #1216 端点 → 保持 docker exec 路径（L1 only）。
+        if agent != "manager":
+            if not await _kb_docker_available(token, base, container):
+                return await _approval_set_wsf(token, base, agent, level)
         port = 18799 if agent == "manager" else 8088
         ts = str(int(time.time()))
         tmp = f"/tmp/.at-appr-{ts}"

@@ -2,13 +2,13 @@
  * 🧩 技能中心（v0.5.0-beta.12，技能中心与 MCP 实施方案 v0.1）。
  *
  * 三节（L1 admin 视角，插件以 admin token 操作 Controller）：
- * ① 技能目录（上游 draft 未合）——GET /api/v1/skills，
- * 未合并时 Controller 404 → 占位卡；合并并升级后自动点亮。
+ * ① 技能目录（#1268 已合 main）——GET /api/v1/skills，
+ * Controller < 合并版本（如 v1.2.3/Node1）→ 404 → 占位卡；升级后自动点亮。
  * 契约：{skills:[{name,description?,source,agents?}],total}。
  * ② Worker 技能分配矩阵（P1，v1.2.3 立即可用）——行=Worker，
  * 列=技能（目录可用=目录 ∪ 已分配；否则=已分配并集）。
  * 勾选 → PUT /workers/{name} {skills:[...]}（整字段替换语义）。
- * L2 无权限（上游未合/已合但 L2 白名单外）→ 403 → 明确 toast
+ * L2 无权限（L2 白名单外）→ 403 → 明确 toast
  * （P3 的角色反馈自动生效，前端无需写死角色判断）。
  * ③ MCP Servers（P1）——行=Worker，行内编辑 mcpServers。
  * 契约 = Go MCPServer {name,url,transport?}（transport: http 默认|sse；
@@ -111,7 +111,7 @@ export default function SkillCenter() {
       }));
       return;
     }
-    // 技能目录（上游 draft——404 降级占位，不阻塞其余各节）。
+    // 技能目录（#1268 已合 main——旧 Controller 404 降级占位，不阻塞其余各节）。
     try {
       const cat = await fetchSkillCatalog();
       setSt((prev) => ({ ...prev, catalog: cat }));
@@ -171,7 +171,7 @@ export default function SkillCenter() {
         const s = httpErrorStatus(e);
         if (s === 403) {
           antd.message.error(
-            tr("无权限修改该 Worker 的技能（当前角色被 Controller 拒绝；L2 自服务仅白名单字段，且上游未合时 L2 全部拒绝）"),
+            tr("无权限修改该 Worker 的技能（当前角色被 Controller 拒绝；L2 自服务仅白名单字段）"),
           );
         } else {
           antd.message.error(e instanceof Error ? e.message : tr("保存失败"));
@@ -244,7 +244,7 @@ export default function SkillCenter() {
         </antd.Button>
       </div>
 
-      {/* ① 技能目录（上游 draft，404 占位） */}
+      {/* ① 技能目录（#1268 已合 main，旧 Controller 404 占位） */}
       <antd.Card
         size="small"
         title={tr("① 技能目录（只读 · 上游 /api/v1/skills）")}

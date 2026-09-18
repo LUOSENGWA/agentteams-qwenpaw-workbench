@@ -5,6 +5,20 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.12.5（2026-09-18）
+
+**L2 权限面补全 + 模型网关可视 + 工作流自动刷新（对齐 dashboard 实时性）**
+
+- **模型网关只读路由目录（运维 tab，L1）**：新增「模型网关路由」卡片——路由名（=网关 `/v1` 入口，非模型 ID）/ 上游 provider+权重 / 授权 consumer，数据来自 Controller 只读端点（token 鉴权，token 模式 L1 也可读）；Controller 低于该端点版本时 404 自动隐藏整卡，L2 调用显权限提示。token 模式下模型下拉仍只列内置 alias + 本地 SGLang（网关 alias 编辑需 Console 密码路径），本卡片提供网关路由配置的只读可视
+- **知识库 L2 可读（Controller 数据面兜底）**：团队 scope 用户（L2）此前读 KB 恒 403（KB 走 Docker 代理，L1-only）。现 Docker 通道不可用时自动切 Controller workspace-files 端点：日记（memory/**）/ 知识库（digest/**）/ MEMORY.md（档案）三分类，本团队 scope；档案其它文件与「文件」分类仍 L1-only。L1 全四分类行为不变（Docker 优先）
+- **审批 L2 可读写（Controller 数据面兜底）**：L2 此前读写 Worker 审批恒 403。现 Docker 不可用时切 Controller approval 端点：L2 可设 严格/智能/自动（关闭 OFF 需 L1）；team leader 只读；Manager 审批仍 L1-only（无对应端点）
+- **工作流 tab 自动刷新（P1-7）**：tab 可见期 15 秒静默轮询（切走即停），对齐 dashboard 的 15s 轮询实时性——此前工作流看板只在挂载/手动刷新/登录时拉取，任务推进不自动更新
+- **注释与文案精确化**：频道接入 / 技能目录两处的「上游未合并」措辞更新为「Controller 版本门控」（相关端点已合入上游主线，仅低于合并版本的 Controller 才 404 占位）
+
+**验证**：pytest 42/42（+6 新：KB/审批 L2 兜底 ×6）· tsc 0 · vite build 绿（439 模块）· i18n ui↔dict 对账（新键全登记、孤儿键清零）
+
+---
+
 ## 0.5.0-beta.12.4（2026-09-15）
 
 **新功能：Worker session 运行指示（A17，零后端改动）**

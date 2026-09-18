@@ -206,6 +206,22 @@ const DICT: Record<string, { en: string }> = {
   "登录": { en: "Sign in" },
   "刷新": { en: "Refresh" },
   "加载中…": { en: "Loading…" },
+  "模型网关路由": { en: "Model gateway routes" },
+  "Controller /api/v1/gateway/ai-routes（只读路由目录：路由名=网关 /v1 入口，非模型 ID；上游 provider+权重；被授权 consumer。token 模式 L1 可读，L2 无权限）": {
+    en: "Controller /api/v1/gateway/ai-routes (read-only route catalog: route name = gateway /v1 entry, NOT a model ID; upstream provider + weight; authorized consumers. Readable by L1 in token mode; L2 has no access)",
+  },
+  "仅 L1 管理员可见（Controller 路由目录，token 鉴权）": {
+    en: "Visible to L1 admins only (Controller route catalog, token-authenticated)",
+  },
+  "模型网关目录获取失败": { en: "Failed to load model gateway catalog" },
+  "暂无 AI 路由（网关未配置路由）": { en: "No AI routes (gateway has none configured)" },
+  "授权 consumer": { en: "Authorized consumers" },
+  "频道接入 API 不可用（Controller 版本较低）": {
+    en: "Channel API unavailable (Controller version too low)",
+  },
+  "当前 Controller 版本（< 合并频道端点的版本，如 v1.2.3）无此 API。升级 Controller 后本节自动点亮（schema 驱动表单，零 per-channel 代码）。": {
+    en: "Current Controller version (< the one that merged the channel endpoints, e.g. v1.2.3) lacks this API. After upgrading the Controller this section lights up automatically (schema-driven forms, zero per-channel code).",
+  },
   "Worker 状态": { en: "Worker state" },
   "容器状态": { en: "Container state" },
   "团队群（{n}）": { en: "Group chat ({n})" },
@@ -1117,7 +1133,6 @@ const DICT: Record<string, { en: string }> = {
     en: "You'll get a desktop notification when a worker needs approval",
   },
   // ── v0.5.0-beta.12：技能中心 + 频道接入 + 宿主技能更名 ──
-  "Controller 频道代理端点尚未合并/Controller 尚未升级，当前版本无此 API。合并并升级后本节自动点亮（schema 驱动表单，零 per-channel 代码）。": { en: "The Controller channel proxy endpoints are not merged / the Controller is not upgraded yet, so this version has no such API. This section activates automatically after merge + upgrade (schema-driven forms, zero per-channel code)." },
   "Worker 列表加载失败：{m}": { en: "Failed to load worker list: {m}" },
   "name（必填）": { en: "name (required)" },
   "transport（http/sse）": { en: "transport (http/sse)" },
@@ -1163,7 +1178,7 @@ const DICT: Record<string, { en: string }> = {
   "无 Worker（admin token 未配置？）": { en: "No workers (admin token not configured?)" },
   "无匹配技能": { en: "No matching skills" },
   "无权限修改该 Worker 的 MCP（当前角色被 Controller 拒绝）": { en: "No permission to modify this worker's MCP (rejected by Controller for current role)" },
-  "无权限修改该 Worker 的技能（当前角色被 Controller 拒绝；L2 自服务仅白名单字段，且上游未合时 L2 全部拒绝）": { en: "No permission to modify this worker's skills (rejected by Controller for current role; L2 self-service is whitelist-only, and all L2 writes are denied until the upstream endpoint merges)" },
+  "无权限修改该 Worker 的技能（当前角色被 Controller 拒绝；L2 自服务仅白名单字段）": { en: "No permission to modify this worker's skills (rejected by Controller for current role; L2 self-service is whitelist-only)" },
   "无频道配置": { en: "No channel config" },
   "未启用": { en: "Disabled" },
   "未配置": { en: "Not configured" },
@@ -1183,7 +1198,6 @@ const DICT: Record<string, { en: string }> = {
   "重启频道": { en: "Restart channel" },
   "频道": { en: "Channels" },
   "频道已重启": { en: "Channel restarted" },
-  "频道接入 API 待上游合并": { en: "Channel API awaiting upstream merge" },
   "（留空=不带前缀）": { en: "(leave empty = no prefix)" },
 
   // ── v0.5.0-beta.12：L1 二选一（admin 账号密码 / token）+ 网关 alias + 运行时 ──

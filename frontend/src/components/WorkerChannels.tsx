@@ -2,15 +2,16 @@
  * 📡 频道接入（v0.5.0-beta.12，频道接入图形化调研结论实现）。
  *
  * 位置：「👷 团队管理」tab 内的子节（设计决策：不独立成 tab）。
- * 数据面：Controller 的 10 个频道代理端点（draft，未合）——
+ * 数据面：Controller 的频道代理端点（#1219/#1269 已合 main；
+ * Controller < 合并版本（如 v1.2.3/Node1）→ 404 兜底）——
  * GET  /workers/{name}/channels[|/types|/schemas]
  * GET/PUT /workers/{name}/channels/{ch}
  * GET  .../{ch}/health | /qrcode | /qrcode/status
  * POST .../{ch}/restart | /conflict-check
  * 走既有通用 Controller 代理（/api/ 白名单，后端零新端点）。
  *
- * 版本门：Controller 未升级（频道端点未合）→ 端点 404 →
- * 整节显示占位说明（不炸 tab，与 L2 冲突检查版本门同模式）。
+ * 版本门：Controller < 合并频道端点的版本（v1.2.3 及更早，如 Node1）
+ * → 端点 404 → 整节显示占位说明（不炸 tab，与 L2 冲突检查版本门同模式）。
  *
  * 表单策略（调研结论「schema 驱动 + 零 per-channel 代码」）：
  * ① 插件频道（schemas 端点有 config_fields 元数据）→ 按元数据渲染；
@@ -431,9 +432,9 @@ export default function WorkerChannels(props: {
         <antd.Alert
           type="info"
           showIcon
-          message={tr("频道接入 API 待上游合并")}
+          message={tr("频道接入 API 不可用（Controller 版本较低）")}
           description={tr(
-            "Controller 频道代理端点尚未合并/Controller 尚未升级，当前版本无此 API。合并并升级后本节自动点亮（schema 驱动表单，零 per-channel 代码）。",
+            "当前 Controller 版本（< 合并频道端点的版本，如 v1.2.3）无此 API。升级 Controller 后本节自动点亮（schema 驱动表单，零 per-channel 代码）。",
           )}
         />
       </div>

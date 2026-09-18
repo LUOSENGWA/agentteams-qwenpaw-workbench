@@ -190,6 +190,36 @@ export async function fetchGatewayAiProviders(): Promise<GatewayListResponse> {
   )) as GatewayListResponse;
 }
 
+// ── 模型网关只读路由目录（上游 #1242，Controller 端点，token 鉴权）────
+// 与上面的 fetchGatewayAiRoutes（Higress Console 透传，需 admin 会话）不同源：
+// 本端点在 Controller 侧（/api/v1/gateway/ai-routes），只凭 controller token
+// 即可读，token 模式 L1 也能用（A13 结构性数据面）。是「路由目录」非「模型目录」：
+// name=网关 /v1 入口名（非模型 ID），一条路由可服务多个模型；upstreams=上游
+// provider 及权重；allowedConsumers=被授权在该路由上的 consumer。
+export interface GatewayRouteUpstream {
+  provider: string;
+  weight?: number;
+}
+
+export interface GatewayRouteInfo {
+  name: string;
+  upstreams?: GatewayRouteUpstream[];
+  allowedConsumers?: string[];
+}
+
+export interface GatewayRouteCatalog {
+  routes: GatewayRouteInfo[];
+  total?: number;
+}
+
+/** 模型网关只读路由目录（#1242；Controller 端点，controller token 鉴权，
+ *  L1-only——L2 调用返 403，调用方需处理权限提示）。 */
+export async function fetchGatewayRouteCatalog(): Promise<GatewayRouteCatalog> {
+  return (await requestJson(
+    "/agentteams-proxy/controller/api/v1/gateway/ai-routes",
+  )) as GatewayRouteCatalog;
+}
+
 /** v0.5.0-beta.12: L1 管理员验证结果。 */
 export interface VerifyAdminResult {
   ok: boolean;
