@@ -2220,6 +2220,16 @@ export default function WorkbenchPage() {
     }
   }, []);
 
+  // v0.5.0-beta.12.5（P1-7）：工作流 tab 自动刷新（15s，仅可见期活跃）——
+  // 对齐 dashboard 15s 轮询（useProjectWorkflow refetchInterval:15000）。
+  // 此前插件只在挂载/手动刷新/登录时拉取，任务推进时看板不自动更新
+  // （P1-7 半链接缺口）。切走 tab 立即停（cleanup 清 interval）。
+  React.useEffect(() => {
+    if (tab !== "workflow") return;
+    const id = window.setInterval(() => void refreshWorkflow(true), 15000);
+    return () => window.clearInterval(id);
+  }, [tab, refreshWorkflow]);
+
   // v0.5.0-beta.12: L1 数据面可用 = 本地配置 token 或宿主 env
   // （AGENTTEAMS_CONTROLLER_TOKEN，env 不落盘——config.controller_token 为空
   // 但 controllerTokenSource="env" 时数据面同样可用，门控以此为准）。
