@@ -971,8 +971,8 @@ const DICT: Record<string, { en: string }> = {
   "分类根": { en: "Category root" },
   "根邻接": { en: "Root-adjacent" },
   "引用方向": { en: "Reference direction" },
-  "点击节点查看详情；根=分类，大小=链接度": {
-    en: "Click a node for details; root = category, size = degree",
+  "点节点查看 · 滚轮缩放 · 拖拽平移 · 点簇根聚焦 · 双击节点邻域 · Esc 退出": {
+    en: "Click a node for details · Wheel to zoom · Drag to pan · Click a cluster hub to focus · Double-click a node for its neighborhood · Esc to exit",
   },
   // 5.0.0-beta.2：对齐 QwenPaw 知识图谱详情面板命名（开源移植，
   // 见 THIRD-PARTY-NOTICES.md）
