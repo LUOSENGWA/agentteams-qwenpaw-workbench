@@ -82,15 +82,77 @@ interface GraphNodeLike {
 // 按 name 排序等角分布，单环过密（每节点弧长 <34px）自动外溢同心环；
 // 视野按内容自适应。纯函数、无 Math.random——确定性可复现。
 interface RadialView { minX: number; minY: number; width: number; height: number }
+
+// ── 2D 缩放 / 聚焦 / 簇分离 纯函数（第 11 轮；dashboard knowledge-section 同算法同值）──
+
+/** 扇区间隙角（弧度）：簇分离——相邻扇区间留出的空白楔。
+ * 旧公式 half=(π/R)*0.92 在 R≥8 时相邻弧带重叠；新公式保证 2*half+GAP = 2π/R。 */
+export function sectorGapAngle(sectorCount: number): number {
+  return sectorCount <= 6 ? 0.38 : 0.24;
+}
+
+/** 单扇区半角（弧度）。单扇区=整圆。 */
+export function sectorHalfAngle(sectorCount: number): number {
+  if (sectorCount <= 0) return 0;
+  if (sectorCount === 1) return Math.PI;
+  return Math.max(0.05, (Math.PI * 2 / sectorCount - sectorGapAngle(sectorCount)) / 2);
+}
+
+/** 聚焦目标：扇区（hub 簇）或单节点邻域。 */
+export type FocusTarget = { kind: "sector"; hubId: string } | { kind: "node"; id: string };
+
+/** 一组点的包围盒 + 留白（聚焦视野）。空集 → null。 */
+export function focusView(points: Array<{ x: number; y: number }>, pad = 70): RadialView | null {
+  if (points.length === 0) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  return { minX: minX - pad, minY: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 };
+}
+
+/** 缩放钳制：zoom = fit.width / vb.width ∈ [minZoom, maxZoom]，越界以视野中心为锚回缩。 */
+export function clampZoomView(
+  vb: RadialView,
+  fit: RadialView,
+  minZoom = 0.25,
+  maxZoom = 8,
+): RadialView {
+  const zoom = fit.width / vb.width;
+  if (zoom >= minZoom && zoom <= maxZoom) return vb;
+  const target = zoom < minZoom ? minZoom : maxZoom;
+  const width = fit.width / target;
+  const cx = vb.minX + vb.width / 2;
+  const cy = vb.minY + vb.height / 2;
+  return { minX: cx - width / 2, minY: cy - (vb.height * (width / vb.width)) / 2, width, height: vb.height * (width / vb.width) };
+}
+
+/** 高倍标签薄化阈值（>2.5× 只留根+悬停标签）。 */
+export const LABEL_CULL_ZOOM = 2.5;
+
 function radialLayout(
   nodes: GraphNodeLike[],
   edgePairs: Array<[string, string]>,
   agentOrder?: string[],
-): { pos: Map<string, { x: number; y: number }>; view: RadialView } {
+): {
+  pos: Map<string, { x: number; y: number }>;
+  view: RadialView;
+  /** 节点 id → 所属扇区 hub 的节点 id（聚焦/簇淡出归属）。 */
+  sectorOf: Map<string, string>;
+  /** 扇区 hub 的节点 id 列表（顺序=扇区顺序）。 */
+  hubs: string[];
+} {
   const n = nodes.length;
   const pos = new Map<string, { x: number; y: number }>();
+  const sectorOf = new Map<string, string>();
   if (n === 0)
-    return { pos, view: { minX: -450, minY: -210, width: 900, height: 420 } };
+    return { pos, view: { minX: -450, minY: -210, width: 900, height: 420 }, sectorOf, hubs: [] };
   const idxOf = new Map<string, number>();
   nodes.forEach((nd, i) => idxOf.set(nd.id, i));
   const adj: number[][] = Array.from({ length: n }, () => []);
@@ -178,9 +240,11 @@ function radialLayout(
   const R = sectors.length;
   sectors.forEach((s, si) => {
     const theta = -Math.PI / 2 + (si * 2 * Math.PI) / R;
-    const half = (Math.PI / R) * 0.92;
+    // 簇分离：扇区间留 GAP 空白楔（旧 (π/R)*0.92 在 R≥8 时相邻弧带重叠）。
+    const half = sectorHalfAngle(R);
     const hubR = R === 1 ? 0 : 46;
     pos.set(nodes[s.hub].id, { x: Math.cos(theta) * hubR, y: Math.sin(theta) * hubR });
+    sectorOf.set(nodes[s.hub].id, nodes[s.hub].id);
     const byDepth = new Map<number, number[]>();
     for (let i = 0; i < n; i += 1) {
       if (sectorIdx[i] !== si || i === s.hub) continue;
@@ -207,6 +271,7 @@ function radialLayout(
         ring.forEach((i, k) => {
           const a = theta - half + ((k + 0.5) * 2 * half) / ring.length;
           pos.set(nodes[i].id, { x: Math.cos(a) * r, y: Math.sin(a) * r });
+          sectorOf.set(nodes[i].id, nodes[s.hub].id);
         });
       });
     });
@@ -237,6 +302,8 @@ function radialLayout(
       width: maxX - minX + pad * 2,
       height: maxY - minY + pad * 2,
     },
+    sectorOf,
+    hubs: sectors.map((s) => nodes[s.hub].id),
   };
 }
 
@@ -359,16 +426,24 @@ function GraphCard(props: {
     });
   };
   const handleGraphClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    // v3：拖拽（平移）后的 click 不当事件处理。
+    if (dragMovedRef.current) {
+      dragMovedRef.current = false;
+      return;
+    }
     const pt = clientToView(e.clientX, e.clientY);
     if (pt) hitNodeRef.current = hitTestNode(pt.x, pt.y);
     const node = hitNodeRef.current;
     if (!node) {
       setSelectedId("");
+      if (focusRef.current) applyFocus(null); // 点空白=退出聚焦
       return;
     }
     if (isRoot(node)) {
-      // root 点击：仅选中（info 栏显示名称/说明 + 邻接高亮），不再静默无反馈。
+      // root 点击：选中（info 栏名称/说明 + 邻接高亮）+ 簇聚焦
+      // （v3：virtual 根单击=聚焦；无根图谱的伪根文件 isRoot=false → 仍开预览）。
       setSelectedId(node.id);
+      applyFocus({ kind: "sector", hubId: node.id });
       return;
     }
     // （设计结论）：已选中
@@ -377,6 +452,16 @@ function GraphCard(props: {
     if (selectedId === node.id) return;
     setSelectedId(node.id);
     onOpenNode(node);
+  };
+  // v3：双击=聚焦（根=扇区，非根=节点+一度邻接邻域）；单击语义不变。
+  const handleGraphDblClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    const pt = clientToView(e.clientX, e.clientY);
+    if (!pt) return;
+    const node = hitTestNode(pt.x, pt.y);
+    if (!node) return;
+    applyFocus(
+      isRoot(node) ? { kind: "sector", hubId: node.id } : { kind: "node", id: node.id },
+    );
   };
   const [selectedId, setSelectedId] = React.useState("");
   const [graphVisible, setGraphVisible] = React.useState(true);
@@ -425,6 +510,168 @@ function GraphCard(props: {
     width: 900,
     height: 420,
   };
+
+  // ── 2D v3：缩放/平移 + 聚焦 + 簇分离（dashboard knowledge-section v3 同算法）──
+  const [vb, setVb] = React.useState<RadialView>(view);
+  const [focus, setFocus] = React.useState<FocusTarget | null>(null);
+  const [panning, setPanning] = React.useState(false);
+  const vbRef = React.useRef(vb);
+  const focusRef = React.useRef(focus);
+  const animRafRef = React.useRef(0);
+  const dragRef = React.useRef<{ startX: number; startY: number; vb0: RadialView; moved: boolean } | null>(null);
+  const dragMovedRef = React.useRef(false);
+  // 布局换图（切 Agent/聚合）→ 重置缩放与聚焦（render 阶段状态调整，
+  // React「adjusting state when props change」模式）。
+  const layoutSig = layout
+    ? `${layout.view.minX},${layout.view.minY},${layout.view.width},${layout.view.height}#${layout.pos.size}`
+    : "none";
+  const [layoutSigRef, setLayoutSigRef] = React.useState(layoutSig);
+  if (layoutSig !== layoutSigRef) {
+    setLayoutSigRef(layoutSig);
+    setVb(view);
+    setFocus(null);
+  }
+  React.useEffect(() => { vbRef.current = vb; });
+  React.useEffect(() => { focusRef.current = focus; });
+  const zoom = view.width / Math.max(1e-6, vb.width);
+  const cancelAnim = React.useCallback(() => {
+    if (animRafRef.current) cancelAnimationFrame(animRafRef.current);
+    animRafRef.current = 0;
+  }, []);
+  const animateTo = React.useCallback((target: RadialView, ms = 320) => {
+    cancelAnim();
+    const from = { ...vbRef.current };
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms);
+      const e = 1 - Math.pow(1 - k, 3); // easeOutCubic
+      setVb({
+        minX: from.minX + (target.minX - from.minX) * e,
+        minY: from.minY + (target.minY - from.minY) * e,
+        width: from.width + (target.width - from.width) * e,
+        height: from.height + (target.height - from.height) * e,
+      });
+      if (k < 1) animRafRef.current = requestAnimationFrame(step);
+    };
+    animRafRef.current = requestAnimationFrame(step);
+  }, [cancelAnim]);
+  React.useEffect(() => cancelAnim, [cancelAnim]);
+  const hubSet = React.useMemo(
+    () => new Set(layout?.hubs && layout.hubs.length > 0 ? layout.hubs : []),
+    [layout],
+  );
+  // 聚焦集：扇区=全成员；节点=节点+一度邻接。
+  const focusSet = React.useMemo<Set<string> | null>(() => {
+    if (!focus || !graph) return null;
+    const s = new Set<string>();
+    if (focus.kind === "sector") {
+      graph.nodes.forEach((nd) => {
+        if ((layout?.sectorOf.get(nd.id) ?? nd.id) === focus.hubId) s.add(nd.id);
+      });
+      if (s.size === 0) s.add(focus.hubId);
+    } else {
+      s.add(focus.id);
+      graph.edges.forEach((e) => {
+        if (e.source === focus.id) s.add(e.target);
+        if (e.target === focus.id) s.add(e.source);
+      });
+    }
+    return s;
+  }, [focus, graph, layout]);
+  const applyFocus = React.useCallback((target: FocusTarget | null) => {
+    cancelAnim();
+    setFocus(target);
+    if (!target || !graph || !layout) {
+      animateTo(view, 320);
+      return;
+    }
+    const ids = new Set<string>();
+    if (target.kind === "sector") {
+      graph.nodes.forEach((nd) => {
+        if ((layout.sectorOf.get(nd.id) ?? nd.id) === target.hubId) ids.add(nd.id);
+      });
+    } else {
+      ids.add(target.id);
+      graph.edges.forEach((e) => {
+        if (e.source === target.id) ids.add(e.target);
+        if (e.target === target.id) ids.add(e.source);
+      });
+    }
+    const pts = [...ids]
+      .map((id) => layout.pos.get(id))
+      .filter((p): p is { x: number; y: number } => Boolean(p));
+    animateTo(focusView(pts) ?? view, 320);
+  }, [graph, layout, view, animateTo, cancelAnim]);
+  // Esc 退出聚焦。
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && focusRef.current) applyFocus(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [applyFocus]);
+  // wheel 缩放：原生 non-passive（React 合成 onWheel 为 passive，preventDefault 无效）。
+  React.useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      cancelAnim();
+      const vb0 = vbRef.current;
+      const factor = e.deltaY < 0 ? 1 / 1.18 : 1.18;
+      let ax = vb0.minX + vb0.width / 2;
+      let ay = vb0.minY + vb0.height / 2;
+      const pt = clientToView(e.clientX, e.clientY);
+      if (pt) { ax = pt.x; ay = pt.y; }
+      const w1 = vb0.width * factor;
+      const h1 = vb0.height * factor;
+      const fx = (ax - vb0.minX) / vb0.width;
+      const fy = (ay - vb0.minY) / vb0.height;
+      setVb(clampZoomView({ minX: ax - fx * w1, minY: ay - fy * h1, width: w1, height: h1 }, view));
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [view, cancelAnim]);
+  const zoomBy = React.useCallback((factor: number) => {
+    const vb0 = vbRef.current;
+    const w1 = vb0.width * factor;
+    const h1 = vb0.height * factor;
+    const cx = vb0.minX + vb0.width / 2;
+    const cy = vb0.minY + vb0.height / 2;
+    animateTo(clampZoomView({ minX: cx - w1 / 2, minY: cy - h1 / 2, width: w1, height: h1 }, view), 160);
+  }, [animateTo, view]);
+  // 拖拽平移（位移 <4px 视为单击，click 处理保留）。
+  const onSvgPanDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    cancelAnim();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, vb0: { ...vbRef.current }, moved: false };
+    dragMovedRef.current = false;
+  };
+  const onSvgPanMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) < 4) return;
+    d.moved = true;
+    dragMovedRef.current = true;
+    const svg = svgRef.current;
+    if (!svg) return;
+    let scale = d.vb0.width / Math.max(1, svg.getBoundingClientRect().width);
+    const ctm = svg.getScreenCTM && svg.getScreenCTM();
+    if (ctm && ctm.a) scale = 1 / ctm.a;
+    if (!panning) setPanning(true);
+    setVb({ ...d.vb0, minX: d.vb0.minX - dx * scale, minY: d.vb0.minY - dy * scale });
+  };
+  const onSvgPanUp = () => {
+    dragRef.current = null;
+    setPanning(false);
+  };
+  const focusLabel = focus && graph
+    ? (graph.nodes.find((nd) => (focus.kind === "sector" ? nd.id === focus.hubId : nd.id === focus.id))?.name ?? "簇")
+    : "簇";
+  const cullLabels = zoom > LABEL_CULL_ZOOM;
+  const inFocus = (id: string): boolean => focusSet ? focusSet.has(id) : true;
   const degree = React.useMemo(() => {
     const d = new Map<string, number>();
     graph?.edges.forEach((e) => {
@@ -822,7 +1069,7 @@ function GraphCard(props: {
               {panel}
             </>
           ) : (
-          <div>
+          <div style={{ position: "relative" }}>
             <div
               style={{
                 fontSize: 12,
@@ -831,22 +1078,56 @@ function GraphCard(props: {
                 minHeight: 18,
               }}
             >
+              {focus ? (
+                <antd.Button
+                  size="small"
+                  type="link"
+                  style={{ padding: 0, height: "auto", fontSize: 12 }}
+                  onClick={() => applyFocus(null)}
+                >
+                  🎯 {focusLabel} · 退出
+                </antd.Button>
+              ) : null}
               {infoNode
                 ? `${infoNode.name}${infoNode.description ? ` — ${infoNode.description}` : ""}`
-                : tr("点击节点查看详情；根=分类，大小=链接度")}
+                : tr("点击节点查看详情；根=分类，大小=链接度 · 滚轮缩放 · 拖拽平移 · 点根聚焦 · 双击节点邻域 · Esc 退出")}
+            </div>
+            <div style={{ position: "absolute", right: 0, top: 0, zIndex: 2 }}>
+              <antd.Button size="small" onClick={() => zoomBy(1 / 1.5)} title="放大" aria-label="放大">
+                +
+              </antd.Button>
+              <antd.Button size="small" onClick={() => zoomBy(1.5)} title="缩小" aria-label="缩小">
+                −
+              </antd.Button>
+              <antd.Button
+                size="small"
+                onClick={() => {
+                  setFocus(null);
+                  animateTo(view, 320);
+                }}
+                title="复位视野"
+                aria-label="复位视野"
+              >
+                ⟳
+              </antd.Button>
             </div>
             <svg
               ref={svgRef}
-              viewBox={`${view.minX} ${view.minY} ${view.width} ${view.height}`}
+              viewBox={`${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`}
               width="100%"
               height={GRAPH_H}
-              style={{ display: "block" }}
+              style={{ display: "block", touchAction: "none", cursor: panning ? "grabbing" : "grab" }}
               onClick={handleGraphClick}
+              onDoubleClick={handleGraphDblClick}
               onMouseMove={handleGraphMove}
+              onMouseDown={onSvgPanDown}
+              onMouseUp={onSvgPanUp}
               onMouseLeave={() => {
                 setHoverId("");
                 hitNodeRef.current = null;
-                if (svgRef.current) svgRef.current.style.cursor = "default";
+                dragRef.current = null;
+                setPanning(false);
+                if (svgRef.current) svgRef.current.style.cursor = "grab";
               }}
             >
               <defs>
@@ -873,6 +1154,33 @@ function GraphCard(props: {
                   <path d="M0,-3L6,0L0,3" fill={GRAPH_ROOT_COLOR} />
                 </marker>
               </defs>
+              {/* v3：扇区边界虚线弧（簇分离视觉锚）。 */}
+              {layout && layout.hubs.length > 1
+                ? layout.hubs.map((hubId, si) => {
+                    const theta =
+                      -Math.PI / 2 + (si * 2 * Math.PI) / layout.hubs.length;
+                    const half = sectorHalfAngle(layout.hubs.length);
+                    const rMid = 190;
+                    const a1 = theta - half;
+                    const a2 = theta + half;
+                    const hubNode =
+                      graph.nodes.find((n) => n.id === hubId) || {
+                        id: hubId,
+                        name: "",
+                      };
+                    return (
+                      <path
+                        key={hubId}
+                        d={`M ${Math.cos(a1) * rMid} ${Math.sin(a1) * rMid} A ${rMid} ${rMid} 0 ${2 * half > Math.PI ? 1 : 0} 1 ${Math.cos(a2) * rMid} ${Math.sin(a2) * rMid}`}
+                        fill="none"
+                        stroke={nodeColor(hubNode)}
+                        strokeOpacity={0.14}
+                        strokeWidth={1}
+                        strokeDasharray="3 5"
+                      />
+                    );
+                  })
+                : null}
               {graph.edges.map((e, i) => {
                 const a = posById.get(e.source);
                 const b = posById.get(e.target);
@@ -894,6 +1202,9 @@ function GraphCard(props: {
                   Boolean(selectedId) &&
                   (e.source === selectedId || e.target === selectedId);
                 const dim = Boolean(selectedId) && !active;
+                // v3 聚焦淡出：两端都在聚焦集内=全不透明，否则 0.12。
+                const fdim =
+                  inFocus(e.source) && inFocus(e.target) ? 1 : 0.12;
                 return (
                   <line
                     key={i}
@@ -902,7 +1213,7 @@ function GraphCard(props: {
                     x2={x2}
                     y2={y2}
                     stroke={active ? GRAPH_ROOT_COLOR : t.border}
-                    strokeOpacity={active ? 0.9 : dim ? 0.08 : 0.5}
+                    strokeOpacity={(active ? 0.9 : dim ? 0.08 : 0.5) * fdim}
                     strokeWidth={active ? 1.6 : 1}
                     markerEnd={
                       active
@@ -924,7 +1235,10 @@ function GraphCard(props: {
                   <g
                     key={node.id}
                     transform={`translate(${p.x},${p.y})`}
-                    style={{ opacity: dim ? 0.24 : 1, pointerEvents: "none" }}
+                    style={{
+                      opacity: dim ? 0.24 : inFocus(node.id) ? 1 : 0.1,
+                      pointerEvents: "none",
+                    }}
                   >
                     {root ? (
                       <circle
@@ -948,7 +1262,8 @@ function GraphCard(props: {
                       }
                       strokeWidth={selected ? 2 : 1}
                     />
-                    {showLabel(node) ? (
+                    {showLabel(node) &&
+                    (!cullLabels || isRoot(node) || hoverId === node.id) ? (
                       <text
                         y={-r - 5}
                         textAnchor="middle"

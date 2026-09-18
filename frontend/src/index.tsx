@@ -72,8 +72,18 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
 .wb-session-dot.running {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }
+/* v0.5.0-beta.12.8（第 11 轮）：聊天工作流卡 LIVE 徽标脉冲点（绿，节奏同
+   wbSessionPulse 1.2s）。 */
+@keyframes wbLivePulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+  50% { opacity: 0.4; box-shadow: 0 0 0 4px rgba(16,185,129,0); }
+}
+.wb-live-dot {
+  animation: wbLivePulse 1.2s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .wb-session-dot.running { animation: none; }
+  .wb-live-dot { animation: none; }
 }
 /* 页面布局（用户反馈「上下边界固定撑满屏幕，参考控制台」）：
    main 撑满（height 100% + minHeight 兜底）+ flex column；header 固定；

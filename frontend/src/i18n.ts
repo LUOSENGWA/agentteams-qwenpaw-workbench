@@ -679,6 +679,7 @@ const DICT: Record<string, { en: string }> = {
   "当前推进": { en: "Current" },
   "步骤 {n}": { en: "Step {n}" },
   "点击查看工作流": { en: "Click to open workflow" },
+  "controller 正源，15s 轮询": { en: "controller source, 15s poll" },
   // ── 项目文件面板（v0.5.0-beta.12）──
   "项目文件": { en: "Project files" },
   "结果": { en: "Result" },

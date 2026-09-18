@@ -16,6 +16,7 @@ import { FilePreview, type PreviewFile } from "./FilePreview";
 import MessageSearch from "./MessageSearch";
 import MemberDetail from "./MemberDetail";
 import WorkflowCard from "./WorkflowCard";
+import type { WorkflowEvent } from "../api";
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
 import WorkerSessionDot from "./WorkerSessionDot";
@@ -768,6 +769,7 @@ function MessageBody({
   onDeliverable,
   onOpenProject,
   onWorkflowIntervened,
+  live,
 }: {
   msg: RoomMessage;
   mine: boolean;
@@ -788,6 +790,9 @@ function MessageBody({
   onWorkflowIntervened?: () => void;
   /** 项目文件面板（v0.5.0-beta.12）：顶部 📁 按钮 → 抽屉。 */
   onOpenProjectFiles?: (room: TeamRoom) => void;
+  /** v0.5.0-beta.12.8（第 11 轮）：该卡片 runId 对应的 live 工作流事件
+   * （controller 正源，15s 轮询）→ 卡片状态/步骤/Worker 实时 overlay。 */
+  live?: WorkflowEvent | null;
 }) {
   const tr = useT();
   const t = useThemeColors();
@@ -824,6 +829,7 @@ function MessageBody({
       <WorkflowCard
         payload={msg.workflow}
         body={msg.body || undefined}
+        live={live ?? null}
         onOpenProject={onOpenProject}
         onIntervened={onWorkflowIntervened}
       />
@@ -1213,6 +1219,11 @@ export interface RoomChatProps {
   onReact?: (eventId: string, emoji: string) => Promise<void> | void;
   /** workflow 卡片点击 → 工作流 tab 选中该项目。 */
   onOpenProject?: (runId: string) => void;
+  /** v0.5.0-beta.12.8（第 11 轮）：live 工作流事件（controller 正源，15s 轮询）——
+   * 聊天内 workflow 卡片按 runId 匹配做 live overlay（状态/步骤/Worker 实时）。
+   * WorkbenchPage 仅在正源轨（workflowSource=controller）时传入；降级轨传空
+   * （events=原始卡重解析=快照恒等，overlay 无增量且会误导 LIVE 徽标）。 */
+  liveWorkflows?: WorkflowEvent[];
   /** workflow 卡片干预成功 → 刷新工作流。 */
   onWorkflowIntervened?: () => void;
   /** 项目文件面板（v0.5.0-beta.12）：顶部 📁 按钮 → 抽屉。 */
@@ -1273,6 +1284,7 @@ export default function RoomChat(props: RoomChatProps) {
     errorNote,
     jumpToEventId,
     onJumpHandled,
+    liveWorkflows,
     memberRoles,
     memberWorkerNames,
     workerBadge,
@@ -1282,6 +1294,13 @@ export default function RoomChat(props: RoomChatProps) {
     onWorkflowIntervened,
     onOpenProjectFiles,
   } = props;
+  // v0.5.0-beta.12.8（第 11 轮）：runId → live 工作流事件（controller 正源
+  // 双轨，WorkbenchPage 15s 轮询；聊天 tab 含 workflow 卡片时保持活跃）。
+  const liveByRunId = React.useMemo(() => {
+    const m = new Map<string, WorkflowEvent>();
+    (liveWorkflows ?? []).forEach((ev) => m.set(ev.runId, ev));
+    return m;
+  }, [liveWorkflows]);
   const [draft, setDraft] = React.useState("");
   // v0.5.0-beta.12 ：编辑模式（Element 同款——banner「正在编辑此消息」+
   // 输入框预填原文；发送=m.replace 替换，Esc/✕ 取消）。
@@ -2444,6 +2463,11 @@ export default function RoomChat(props: RoomChatProps) {
                             onDeliverable={handleDeliverable}
                             onOpenProject={onOpenProject}
                             onWorkflowIntervened={onWorkflowIntervened}
+                            live={
+                              msg.workflow?.runId
+                                ? (liveByRunId.get(msg.workflow.runId) ?? null)
+                                : null
+                            }
                           />
                         </BubbleBoundary>
                         <ReactionChips
