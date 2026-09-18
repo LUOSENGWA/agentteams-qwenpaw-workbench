@@ -1285,6 +1285,27 @@ const DICT: Record<string, { en: string }> = {
   "日志（最近 300 行）": { en: "Logs (last 300 lines)" },
   "Worker 状态（Controller CR phase）": { en: "Worker status (Controller CR phase)" },
   "Worker 运行时（Controller CR runtime）": { en: "Worker runtime (Controller CR runtime)" },
+  // #1233 事件流时间线（WorkflowEventsTimeline）。
+  "事件流": { en: "Event stream" },
+  // 存量缺键补齐（CrdManage/模型设置 12.2-12.3 遗留，i18n 全量核对抓出）。
+  "Higress alias 自检：{n} 条路由 / 0 个可解析 alias——精确匹配（EXACT/EQUAL）且 provider 存在的路由才会进模型下拉；若路由已配仍为 0，检查模型匹配规则是否为「精确匹配」": { en: "Higress alias self-check: {n} route(s) / 0 resolvable alias(es) — only EXACT/EQUAL routes with an existing provider reach the model dropdown; if routes exist but it is still 0, check that the model matching rule is set to exact match" },
+  "Higress alias 自检：{n} 条路由 / {m} 个可解析 alias（模型下拉可见）": { en: "Higress alias self-check: {n} route(s) / {m} resolvable alias(es) (visible in the model dropdown)" },
+  "L1 管理员（token / 账号密码）": { en: "L1 admin (token / account password)" },
+  "Leader (team_leader)": { en: "Leader (team_leader)" },
+  "Manager 模型已保存（重启容器后生效）": { en: "Manager model saved (takes effect after the container restarts)" },
+  "SOUL（可选，多行，worker≤150 行）": { en: "SOUL (optional, multi-line, worker ≤150 lines)" },
+  "Worker (worker)": { en: "Worker (worker)" },
+  "{msg}": { en: "{msg}" },
+  "名称 / 角色": { en: "Name / role" },
+  "已保存（提示：{t}）": { en: "Saved (note: {t})" },
+  "模型（留空=跟随集群默认）": { en: "Model (empty = follow cluster default)" },
+  "留空=跟随集群默认": { en: "empty = follow cluster default" },
+  "（{n} 条）": { en: "({n})" },
+  "Controller 未部署事件流端点（需升级到含 #1233 的版本）": { en: "Controller has no event-stream endpoint yet (upgrade to a version containing #1233 required)" },
+  "事件流加载失败": { en: "Failed to load event stream" },
+  "暂无转换事件——Agent 执行任务（delegate/ack/submit/report_progress）后这里会聚合": { en: "No transition events yet — they aggregate here once agents run tasks (delegate/ack/submit/report_progress)" },
+  "（更早事件超出窗口，显示最近 2000 条）": { en: "(older events beyond the window; showing the latest 2000)" },
+  "by": { en: "by" },
 };
 
 export type Lang = "zh" | "en";

@@ -19,6 +19,7 @@ import {
   buildWorkflowDag,
   type DagNodeColor,
 } from "./WorkflowDag";
+import { WorkflowEventsTimeline } from "./WorkflowEventsTimeline";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -864,8 +865,9 @@ function LoopBlock({
   );
 }
 
-/** 项目干预时间线（history 端点；懒加载：展开时才请求）。 */
-function ProjectTimeline({ projectId }: { projectId: string }) {
+/** 项目干预时间线（history 端点；懒加载：展开时才请求）。
+ * teamId 透传 ?team=——跨团队重名项目裸 id 409（同 /workflow 契约）。 */
+function ProjectTimeline({ projectId, teamId }: { projectId: string; teamId?: string }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
   const [state, setState] = React.useState<
@@ -882,7 +884,7 @@ function ProjectTimeline({ projectId }: { projectId: string }) {
     if (!open) return;
     let alive = true;
     setState({ kind: "loading" });
-    fetchProjectHistory(projectId)
+    fetchProjectHistory(projectId, teamId)
       .then((resp) => {
         if (alive) setState({ kind: "ok", snapshots: resp.snapshots });
       })
@@ -897,7 +899,7 @@ function ProjectTimeline({ projectId }: { projectId: string }) {
   }, [open, projectId]);
 
   const openDetail = (ts: string) => {
-    fetchProjectHistorySnapshot(projectId, ts)
+    fetchProjectHistorySnapshot(projectId, ts, teamId)
       .then((raw) => setDetail(raw))
       .catch(() => setDetail(null));
   };
@@ -1064,7 +1066,9 @@ function EventCard({
       </div>
       <InterruptsBlock interrupts={ev.interrupts || []} pauseReason={ev.pause_reason} />
       {ev.loop ? <LoopBlock loop={ev.loop} /> : null}
-      {ev.runId ? <ProjectTimeline projectId={ev.runId} /> : null}
+      {ev.runId ? <ProjectTimeline projectId={ev.runId} teamId={ev.team_id} /> : null}
+      {/* 任务状态转换事件流（#1233 events 端点）——与干预时间线并列。 */}
+      {ev.runId ? <WorkflowEventsTimeline projectId={ev.runId} teamId={ev.team_id} /> : null}
       {ev.summary ? (
         <div
           style={{
@@ -1469,6 +1473,9 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
                     {tr("暂无拓扑数据——本项目可能还在 planning（Coordinator 起草计划中），计划生成后请重试")}
                   </div>
                 )}
+                {/* 任务状态转换事件流（#1233 events 端点）——拓扑详情补时间线维度
+                    （装验反馈 P1「拓扑不够详细」：DAG 只讲结构，事件流讲过程）。 */}
+                <WorkflowEventsTimeline projectId={topoEvent.runId} teamId={topoEvent.team_id} />
               </div>
             ) : (
               <antd.Empty description={tr("请选择左侧项目")} />

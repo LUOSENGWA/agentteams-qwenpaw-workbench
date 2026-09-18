@@ -784,6 +784,62 @@ export interface WorkflowEvent {
   room_name: string;
   sender: string;
   ts: number;
+  /** 团队 id（正源列表条目 team_id；跨团队重名项目寻址 /events /history
+   * 等裸 id 端点时 ?team= 的必填键——不带 = 409 ambiguous，同 workflow 契约）。 */
+  team_id?: string;
+}
+
+/** 转换引擎事件流单事件（Controller projectEvent，#1233 已合上游 main）。 */
+export interface ProjectTransitionEvent {
+  ts: string;
+  task_id: string;
+  from: string;
+  to: string;
+  actor?: string;
+  action: string;
+  note?: string;
+  /** 写入端持久化单调序号（事件身份；legacy 无 seq 条目缺省）。 */
+  seq?: number;
+}
+
+/** 任务状态转换事件流（Controller GET /api/v1/projects/{id}/events，#1233）。
+ * 游标分页：limit 1..200（默认 50），next_cursor 不透明；
+ * cursor_expired=true → 游标锚点已被截断/失效，调用方必须弃游标从头取。
+ * 事件按时间升序（页1=最旧）。跨团队重名项目必须带 teamId（裸 id 409，
+ * 与 fetchWorkflowProjects 同契约）。
+ * 返回 null = Controller 未部署该端点（404）→ UI 诚实占位，不当错误。 */
+export async function fetchProjectTransitionEvents(
+  projectId: string,
+  teamId?: string,
+  opts?: { limit?: number; cursor?: string },
+): Promise<{
+  events: ProjectTransitionEvent[];
+  nextCursor?: string;
+  cursorExpired: boolean;
+} | null> {
+  const params: string[] = [];
+  if (teamId) params.push(`team=${encodeURIComponent(teamId)}`);
+  if (opts?.limit) params.push(`limit=${opts.limit}`);
+  if (opts?.cursor) params.push(`cursor=${encodeURIComponent(opts.cursor)}`);
+  const q = params.length ? `?${params.join("&")}` : "";
+  try {
+    const raw = (await requestJson(
+      `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/events${q}`,
+    )) as Record<string, unknown>;
+    return {
+      events: (Array.isArray(raw.events)
+        ? raw.events
+        : []) as ProjectTransitionEvent[],
+      nextCursor:
+        typeof raw.next_cursor === "string" && raw.next_cursor
+          ? raw.next_cursor
+          : undefined,
+      cursorExpired: raw.cursor_expired === true,
+    };
+  } catch (e) {
+    if (httpErrorStatus(e) === 404) return null;
+    throw e;
+  }
 }
 
 export async function fetchWorkflowEvents(
@@ -1028,6 +1084,8 @@ function isoToMs(v: unknown): number {
     room_id: typeof wf.source_room_id === "string" ? wf.source_room_id : "",
     room_name: "",
     sender: "",
+    team_id:
+      typeof proj.team_id === "string" && proj.team_id ? proj.team_id : undefined,
     // 正源映射补全（v0.5.0-beta.12）：此前 coordinator/ts 从未映射，
     // 协调者/时间列恒空（即使 CreateProject API 建的项目 meta 里有值）。
     // 老项目 meta 无 requester/updated_at（v1.2.2 脚本模板不写）→ 仍为空，
@@ -2340,9 +2398,12 @@ export class CheckpointUnavailableError extends Error {}
 
 export async function fetchProjectHistory(
   projectId: string,
+  teamId?: string,
 ): Promise<ProjectHistoryResponse> {
+  // teamId 可选：跨团队重名项目不带 = 409 ambiguous（同 /workflow 契约）。
+  const teamQ = teamId ? `?team=${encodeURIComponent(teamId)}` : "";
   const raw = (await requestJson(
-    `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/history`,
+    `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/history${teamQ}`,
   )) as unknown;
   const obj = (raw ?? {}) as Record<string, unknown>;
   const list = Array.isArray(obj.snapshots) ? obj.snapshots : [];
@@ -2360,9 +2421,11 @@ export async function fetchProjectHistory(
 export async function fetchProjectHistorySnapshot(
   projectId: string,
   timestamp: string,
+  teamId?: string,
 ): Promise<Record<string, unknown>> {
+  const teamQ = teamId ? `?team=${encodeURIComponent(teamId)}` : "";
   return (await requestJson(
-    `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/history/${timestamp}`,
+    `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/history/${timestamp}${teamQ}`,
   )) as Record<string, unknown>;
 }
 
