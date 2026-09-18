@@ -1,6 +1,6 @@
 # AgentTeams QwenPaw Workbench
 
-**Version**: 0.5.0-beta.12.7 ｜ **Author**: LUOSENGWA
+**Version**: 0.5.0-beta.12.8 ｜ **Author**: LUOSENGWA
 **Requirements**: QwenPaw 2.0 – 2.2 (`qwenpaw_version: >=2.0.0, <3.0.0` — 2.1+ unlocks host-skill details / knowledge graph / reindex; on 2.0 those features auto-degrade) + AgentTeams Controller (HiClaw cluster)
 
 > 中文版本: [README.md](README.md)
@@ -14,12 +14,12 @@ A team workbench for AgentTeams (HiClaw) clusters through QwenPaw: manage teams,
 | Tab | Capabilities |
 |-----|--------------|
 | 🏠 Home | Teams / tasks / workers / artifacts / recent activity / cluster load overview + pending-approval cards (approve/deny via the host's native approval chain) + quick actions + host-skills entry |
-| 💬 Chat | Team room chat (direct Matrix), thread panel, member detail cards, room favorites / mute / leave / delete (Element-style), "All" single timeline (group/DM interleaved), message search, `@mentions` |
+| 💬 Chat | Team room chat (direct Matrix), thread panel, member detail cards, room favorites / mute / leave / delete (Element-style), "All" single timeline (group/DM interleaved), message search, `@mentions`, in-chat workflow card live refresh (controller source, 15 s, v0.5.0-beta.12.8) |
 | 🔔 Notifications | Notification center (aggregated inbox of `@mentions` / task progress; click a card to jump to the room and locate the message) |
 | 🔀 Workflows | Four views (list / card / board / layered DAG topology); cards & topology are a project list (left, time/status/name sort) + detail (right), the DAG is top-down layered with ready-state highlight + external-dependency note; project task graph (pause / resume / replan) + current view & selected project remembered across reloads (cards/topology master-detail rework in v0.5.0-beta.12.7) |
 | 📦 Artifacts | Project artifact file tree + online preview + download |
 | 👷 Team Management | Worker hierarchy tree, approval mode (4 tool-execution security levels: strict / smart / auto / off), Team / Worker / Human CRD management + team access matrix (L1), create workers while creating teams; "Channels" sub-tab (worker channel config / enable-disable / health check / restart / QR-code auth / conflict pre-check, pending the upstream channel endpoint); "Skill Center" sections (skill catalog, pending the upstream skill endpoint / Worker × skill assignment matrix / MCP servers matrix) |
-| 📚 Knowledge Base | Remote worker KB and local memory: browse, preview, download, 2D/3D knowledge graph (click a node to open the file preview directly) |
+| 📚 Knowledge Base | Remote worker KB and local memory: browse, preview, download, 2D/3D knowledge graph (click a node to open the file preview directly); 2D graph zoom/pan + cluster focus + cluster separation (v0.5.0-beta.12.8) |
 | 🎯 Host Skills | Skill management for the local QwenPaw instance (SkillPool — host skills, not worker skills) |
 | 🔍 Self-check | L0-L3 layered self-check (L0 local environment / L1 connectivity / L2 auth & API / L3 per-room live test) |
 | 🛠️ Ops | Cluster load, container logs (L1) |
@@ -36,26 +36,26 @@ Product-grade feature docs (bilingual, one page per feature): [docs/](./docs/REA
 **Option 1: Console UI (recommended)**
 
 1. Open the QwenPaw console → **Settings → Plugin Manager**
-2. Click **Install** and select the ZIP file (`agentteams-qwenpaw-workbench-v0.5.0-beta.12.7.zip`, available in [Releases](https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases))
+2. Click **Install** and select the ZIP file (`agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip`, available in [Releases](https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases))
 3. Refresh the console after install — **🏢 AgentTeams QwenPaw Workbench** appears in the sidebar
 
 **Option 2: CLI**
 
 ```bash
 # stop QwenPaw first, then install from a local path
-qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.12.7.zip
+qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip
 
 # install from a URL (ZIP supported)
-qwenpaw plugin install https://example.com/agentteams-qwenpaw-workbench-v0.5.0-beta.12.7.zip
+qwenpaw plugin install https://example.com/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip
 
 # force reinstall (in-place upgrade)
-qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.12.7.zip --force
+qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip --force
 ```
 
 **Option 3: GitHub Release URL**
 
 ```bash
-qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases/download/v0.5.0-beta.12.7/agentteams-qwenpaw-workbench-v0.5.0-beta.12.7.zip
+qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases/download/v0.5.0-beta.12.8/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip
 ```
 
 (The Console install dialog also accepts a URL.)

@@ -6,6 +6,7 @@ import {
   resumeProject,
   type WorkflowCardItem,
   type WorkflowCardPayload,
+  type WorkflowEvent,
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
@@ -43,6 +44,53 @@ function statusColor(status?: string): string {
   return "#722ed1";
 }
 
+/** v0.5.0-beta.12.8（第 11 轮）：WorkflowEvent（正源 15s 轮询）→ 卡片 overlay。
+ * steps 优先 nodes（controller 轨 DAG 任务行 id/name/status）；rooms 降级轨
+ * 事件无 nodes → 用事件自带 steps（原始卡片形状）。subagents=nodes.subagent
+ * （assignee）去重；无 nodes 时回退事件 subagents。语义对齐 dashboard
+ * workflowLiveFromProject（双端同值铁律）。 */
+export function liveOverlayFromEvent(ev: WorkflowEvent): {
+  status?: string;
+  title?: string;
+  steps: WorkflowCardItem[];
+  subagents: WorkflowCardItem[];
+} {
+  const nodes = Array.isArray(ev.nodes) ? ev.nodes : [];
+  const steps: WorkflowCardItem[] =
+    nodes.length > 0
+      ? nodes.map((n) => ({
+          id: n.id,
+          name: n.name,
+          status: n.status,
+          ...(n.subagent ? { assignedTo: n.subagent } : {}),
+        }))
+      : (Array.isArray(ev.steps) ? ev.steps : []) as WorkflowCardItem[];
+  const seen = new Set<string>();
+  const subagents: WorkflowCardItem[] = [];
+  for (const n of nodes) {
+    const a = n.subagent;
+    if (a && !seen.has(a)) {
+      seen.add(a);
+      subagents.push({ id: a, name: a });
+    }
+  }
+  if (subagents.length === 0 && Array.isArray(ev.subagents)) {
+    for (const raw of ev.subagents) {
+      const a = (raw || {}) as Partial<WorkflowCardItem>;
+      const id = String(a.id || a.name || "");
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      subagents.push({ id, name: a.name || id, status: a.status });
+    }
+  }
+  return {
+    status: ev.status || undefined,
+    title: ev.title || undefined,
+    steps,
+    subagents,
+  };
+}
+
 /** 项目级状态徽章（卡片头部）。 */
 function ProjectStatusBadge(props: { status?: string; t: ReturnType<typeof useThemeColors> }) {
   const { status } = props;
@@ -72,21 +120,43 @@ function ProjectStatusBadge(props: { status?: string; t: ReturnType<typeof useTh
  * 干预按钮 = WorkflowBoard InterventionActions 同一函数链
  *（pauseProject(resumeProject) + 409 → 抛错 message.error，语义）；
  * 点卡片 → onOpenProject(runId)（工作流 tab 选中该项目）。
- * body 非空时卡片下方保留灰字摘要（信息不丢）。 */
+ * body 非空时卡片下方保留灰字摘要（信息不丢）。
+ *
+ * v0.5.0-beta.12.8（第 11 轮）live overlay（dashboard workflow-card 同语义）：
+ * 项目工作流卡=一次性发布的快照，任务推进在 controller 侧无人再编辑卡片 →
+ * RoomChat 按 runId 传入正源 live 事件（15s 轮询；降级轨传 null）：
+ * 状态/步骤/参与 Worker 优先 live，逐字段回退快照；LIVE 徽标（绿点脉冲 +
+ * 事件 ts）仅 live 接通时显示。workerflow 卡（子代理 fan-out）消息本体靠
+ * m.replace 已实时（消息管线已聚合）→ RoomChat 不传 live，零额外请求。 */
 export default function WorkflowCard(props: {
   payload: WorkflowCardPayload;
   body?: string;
   onOpenProject?: (runId: string) => void;
   /** 干预成功 → 刷新工作流（与 WorkflowBoard onDone 同语义）。 */
   onIntervened?: () => void;
+  /** v0.5.0-beta.12.8（第 11 轮）：runId 匹配的正源 live 事件；null=不 overlay。 */
+  live?: WorkflowEvent | null;
 }) {
-  const { payload, body, onOpenProject, onIntervened } = props;
+  const { payload, body, onOpenProject, onIntervened, live } = props;
   const t = useThemeColors();
   const tr = useT();
-  const title = payload.title || payload.name || tr("工作流");
+  // live overlay：live 非空时逐字段优先 live、回退快照（双端同值铁律）。
+  const ov = live ? liveOverlayFromEvent(live) : null;
+  const title = ov?.title || payload.title || payload.name || tr("工作流");
   const runId = String(payload.runId || payload.run_id || "");
-  const subagents = Array.isArray(payload.subagents) ? payload.subagents : [];
-  const steps = Array.isArray(payload.steps) ? payload.steps : [];
+  const status = ov?.status || payload.status;
+  const subagents =
+    ov && ov.subagents.length > 0
+      ? ov.subagents
+      : Array.isArray(payload.subagents)
+        ? payload.subagents
+        : [];
+  const steps =
+    ov && ov.steps.length > 0
+      ? ov.steps
+      : Array.isArray(payload.steps)
+        ? payload.steps
+        : [];
   const completed = steps.filter((s) => COMPLETE.has(s.status || "")).length;
   // next 高亮：第一个未终态（非完成/非失败）步骤 = 当前推进位。
   const nextIndex = steps.findIndex((s) => !COMPLETE.has(s.status || "") && !ERROR.has(s.status || ""));
@@ -97,8 +167,8 @@ export default function WorkflowCard(props: {
   const [pauseOpen, setPauseOpen] = React.useState(false);
   const [reason, setReason] = React.useState("");
   const [busy, setBusy] = React.useState<"pause" | "resume" | null>(null);
-  const canPause = runId && (payload.status === "active" || payload.status === "planning" || payload.status === "in_progress");
-  const canResume = runId && payload.status === "paused";
+  const canPause = runId && (status === "active" || status === "planning" || status === "in_progress");
+  const canResume = runId && status === "paused";
 
   const handlePause = async () => {
     setBusy("pause");
@@ -149,10 +219,20 @@ export default function WorkflowCard(props: {
     >
       {/* 头部：项目名 + 状态徽章 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 13, color: t.text, flex: 1, wordBreak: "break-word" }}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: t.text, flex: 1, wordBreak: "break-word", display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           ⚙️ {title}
+          {/* LIVE 徽标（dashboard 同款语义）：正源接通才显示。 */}
+          {live ? (
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 500, color: "#10b981", whiteSpace: "nowrap", flexShrink: 0 }}
+              title={tr("controller 正源，15s 轮询")}
+            >
+              <span className="wb-live-dot" style={{ width: 6, height: 6, borderRadius: 999, background: "#10b981", display: "inline-block", flexShrink: 0 }} />
+              live{live.ts ? ` ${new Date(live.ts).toLocaleTimeString("zh-CN", { hour12: false })}` : ""}
+            </span>
+          ) : null}
         </span>
-        <ProjectStatusBadge status={payload.status} t={t} />
+        <ProjectStatusBadge status={status} t={t} />
       </div>
       {runId ? (
         <div style={{ fontFamily: "monospace", fontSize: 10.5, color: t.textSecondary, wordBreak: "break-all" }}>
@@ -197,7 +277,7 @@ export default function WorkflowCard(props: {
               style={{
                 width: `${progress}%`,
                 height: "100%",
-                background: COMPLETE.has(payload.status || "") ? "#52c41a" : ERROR.has(payload.status || "") ? "#ff4d4f" : "#722ed1",
+                background: COMPLETE.has(status || "") ? "#52c41a" : ERROR.has(status || "") ? "#ff4d4f" : "#722ed1",
                 borderRadius: 3,
                 transition: "width .3s",
               }}

@@ -2224,11 +2224,15 @@ export default function WorkbenchPage() {
   // 对齐 dashboard 15s 轮询（useProjectWorkflow refetchInterval:15000）。
   // 此前插件只在挂载/手动刷新/登录时拉取，任务推进时看板不自动更新
   // （P1-7 半链接缺口）。切走 tab 立即停（cleanup 清 interval）。
+  // 第 11 轮（装验反馈 9/18「聊天工作流卡片 live 刷新要，两边都要」）：聊天 tab 激活
+  // 且当前房间消息含 workflow 载荷时同样轮询——聊天内卡片 live overlay
+  // 复用 workflowEvents 正源（controller projects/workflow 双轨）。
+  const chatHasWfCards = tab === "chat" && messages.some((m) => m.workflow != null);
   React.useEffect(() => {
-    if (tab !== "workflow") return;
+    if (tab !== "workflow" && !chatHasWfCards) return;
     const id = window.setInterval(() => void refreshWorkflow(true), 15000);
     return () => window.clearInterval(id);
-  }, [tab, refreshWorkflow]);
+  }, [tab, chatHasWfCards, refreshWorkflow]);
 
   // v0.5.0-beta.12: L1 数据面可用 = 本地配置 token 或宿主 env
   // （AGENTTEAMS_CONTROLLER_TOKEN，env 不落盘——config.controller_token 为空
@@ -2589,6 +2593,7 @@ export default function WorkbenchPage() {
               <RoomChat
                 room={activeRoom}
                 messages={messages}
+                liveWorkflows={workflowSource === "controller" ? workflowEvents : []}
                 loading={messagesLoading}
                 sending={sending}
                 hasMore={hasMore}

@@ -5,6 +5,20 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.8 (2026-09-18)
+
+**2D knowledge graph zoom/focus/cluster separation + in-chat workflow card live refresh (aligned with the dashboard)**
+
+- **2D knowledge graph zoom/pan**: cursor-anchored wheel zoom (clamped 0.25×–8×, out-of-range clamps re-anchored on the view center) + drag to pan + +/−/reset buttons; labels auto-cull above 2.5× (cluster roots + hovered label only, SVG text scales with the view)
+- **2D knowledge graph cluster focus**: single-click a virtual cluster root (category/Worker root) → animated zoom to that cluster's bounding box (320 ms easeOutCubic) with out-of-cluster elements dimmed to 0.1 + a "focus · exit" chip; double-click a file node → neighborhood focus (node + 1st-degree neighbors); in a rootless graph, double-clicking a pseudo-root (highest-degree file) focuses its sector (single-click on a pseudo-root still opens the file preview — unchanged); Esc / background click / chip / reset to exit
+- **2D knowledge graph cluster separation**: a GAP wedge between sectors (R≤6 sectors: 0.38 rad / >6: 0.24 rad, with 2×half+GAP = full-circle identity — fixes adjacent arc-band overlap of the old formula at R≥8) + dashed sector boundary arcs (hub color, 14% opacity); R=1 single sector = full-circle even distribution (the old 0.92-factor empty wedge is dropped)
+- **In-chat workflow card live refresh**: project workflow cards are one-shot published snapshots while task progress only happens on the Controller side, so cards stayed stale. Now, when the chat tab's active room contains a workflow card, it reuses the workflow tab's 15 s controller-source poll (Controller projects/workflow dual track) to overlay status / steps / participating Workers (per-field fallback to the snapshot), with a LIVE badge (pulsing green dot + event timestamp) shown only when the controller track is connected; on source degradation (no Controller token, joined-room scan track) nothing is passed — no overlay, no badge (no misleading); workerflow cards (subagent fan-out) are already live via m.replace on the message itself — zero extra requests
+- **i18n**: 1 new key registered (ZH/EN)
+
+**Verification**: pytest 42/42 · tsc 0 · check-antd cross-check pass · vite build green (440 modules, dual guard) · i18n ui↔dict cross-check (new key registered)
+
+---
+
 ## 0.5.0-beta.12.7 (2026-09-18)
 
 **Major 2D/3D knowledge graph overhaul + workflow page rework (cards/topology → project list + detail)**
