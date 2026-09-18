@@ -5,6 +5,16 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.12.6（2026-09-18）
+
+**知识库 3D 图谱间距与 dashboard 定案值对齐**
+
+- **知识库 3D 图谱力参数收紧**：电荷 -108→-60、连线距离 72→44、连线强度 0.46→0.5——与 dashboard 知识库 3D 图谱经装验定案的参数同款（原值下节点间距偏大、连线稀疏），2D/3D 图谱布局、点节点预览等交互不受影响
+
+**Verification**: pytest 42/42 · tsc 0 · vite build 绿（dist/index.js 单文件）· check-antd 交叉通过
+
+---
+
 ## 0.5.0-beta.12.5（2026-09-18）
 
 **L2 权限面补全 + 模型网关可视 + 工作流自动刷新（对齐 dashboard 实时性）**

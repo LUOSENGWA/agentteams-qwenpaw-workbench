@@ -746,11 +746,12 @@ function Graph3D(props: G3DGraph) {
       graph.renderer().toneMappingExposure = p.isDark
         ? 1.1
         : 0.98;
-      // 物理力——官方原值（不设 collide，同官方）。
-      graph.d3Force("charge")?.strength?.(-108);
+      // 物理力——收紧值与 dashboard 知识库 3D 图谱定案值同款
+      // （charge -60 / 距离 44 / 强度 0.5；原官方原值 -108/72/0.46 废弃；不设 collide 同官方）。
+      graph.d3Force("charge")?.strength?.(-60);
       const linkForce: any = graph.d3Force("link");
-      linkForce?.distance?.(72);
-      linkForce?.strength?.(0.46);
+      linkForce?.distance?.(44);
+      linkForce?.strength?.(0.5);
 
       // 数据灌入 + 官方双 fit：rAF 立即 fit（初始视角根治「无限远」）
       // + 引擎收敛 onEngineStop 平滑 480ms 重 fit。
