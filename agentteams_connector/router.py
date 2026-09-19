@@ -2415,6 +2415,12 @@ def build_router() -> APIRouter:
     def _kb_is_sensitive(name: str, rel: str) -> bool:
         if rel == "credentials" or rel.startswith("credentials/"):
             return True
+        # B1（维护者 1.2.4 联调验收报告，dashboard 侧同修）：
+        # credentials.yaml 独立凭证文件（不在 credentials/ 目录下）
+        # 原先漏护——KB 视图与文件视图统一补规则。
+        if name.lower().endswith("credentials.yaml") or \
+                name.lower().endswith("credentials.yml"):
+            return True
         if rel == "openclaw.json" or rel == ".hermes/config.yaml":
             return True
         if name.lower().endswith(".lock"):
