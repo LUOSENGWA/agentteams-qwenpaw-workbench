@@ -12,8 +12,10 @@ import {
   fetchProjectHistory,
   fetchProjectHistorySnapshot,
   downloadViaHost,
+  resolvePluginUrl,
 } from "../api";
 import { artifactDownloadUrl } from "./ProjectFiles";
+import { FilePreview, type PreviewFile } from "./FilePreview";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
@@ -521,6 +523,9 @@ function TaskInspectionDrawer(props: {
   const tr = useT();
   const { ev, taskId } = props;
   const [downloading, setDownloading] = React.useState("");
+  // v0.5.0-beta.13（装验 9/19）：产物「查看」——与 dashboard 任务详情
+  // 同款（内联预览 + 下载）；预览走共享 FilePreview（md/图片/文本）。
+  const [preview, setPreview] = React.useState<PreviewFile | null>(null);
   const open = ev !== null && taskId !== null;
   const detail =
     ev && taskId
@@ -538,6 +543,16 @@ function TaskInspectionDrawer(props: {
     detail?.assigned_to ||
     "";
   const status = String(node?.status || detail?.status || "");
+  const view = (path: string) => {
+    if (!ev || !taskId) return;
+    const p = artifactDownloadUrl(ev.runId, taskId, path);
+    setPreview({
+      name: path.split("/").filter(Boolean).pop() || path,
+      url: resolvePluginUrl(p),
+      apiPath: p,
+      needsFetch: true,
+    });
+  };
   const dl = async (path: string) => {
     if (!ev || !taskId) return;
     setDownloading(path);
@@ -603,6 +618,12 @@ function TaskInspectionDrawer(props: {
                     <span style={{ fontFamily: "monospace", fontSize: 11.5 }}>{detail.spec_path}</span>
                     <antd.Button
                       size="small"
+                      onClick={() => view(detail.spec_path!)}
+                    >
+                      {tr("查看")}
+                    </antd.Button>
+                    <antd.Button
+                      size="small"
                       loading={downloading === detail.spec_path}
                       onClick={() => void dl(detail.spec_path!)}
                     >
@@ -617,6 +638,9 @@ function TaskInspectionDrawer(props: {
                   {deliverables.map((d) => (
                     <div key={d} style={{ display: "flex", gap: 8, alignItems: "center", padding: "2px 0" }}>
                       <span style={{ fontFamily: "monospace", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d}</span>
+                      <antd.Button size="small" onClick={() => view(d)}>
+                        {tr("查看")}
+                      </antd.Button>
                       <antd.Button
                         size="small"
                         loading={downloading === d}
@@ -679,6 +703,7 @@ function TaskInspectionDrawer(props: {
           </div>
         </div>
       )}
+      <FilePreview file={preview} onClose={() => setPreview(null)} />
     </antd.Drawer>
   );
 }

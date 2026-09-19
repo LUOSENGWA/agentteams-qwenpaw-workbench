@@ -24,6 +24,7 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 - 卡片/拓扑视图 **master-detail 重构** + 自上而下分层 DAG（就绪高亮 / 外部依赖注记）
 - tab 可见期 **15 秒自动刷新**（切走即停）；任务巡检抽屉（当前 Worker / 最新产物 / 状态时间线 / 耗时）
 - **聊天内工作流卡 live 刷新**（正源 15s overlay + LIVE 徽标；降级轨不显徽标）
+- 拓扑/看板任务详情：产物**「查看」**（内联预览：md/图片/文本，与「下载」并列；装验 9/19 对齐 dashboard）
 
 **模型网关**
 - **「添加提供商 / 添加路由」写操作**（Console 会话透传；失败时 Console 错误信息直显）
@@ -34,6 +35,7 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 - L2 数据面兜底：本团队知识库只读（日记 / 知识库 / MEMORY.md）+ Worker 审批读写（OFF 档仍 L1）
 - 新建 Worker：行情更新（移除 CoPaw、补 DeepSeek Harness、默认 QwenPaw）+ 从建队卡独立成卡
 - CRD 管理：导出 JSON（四类全量）+ 卡片紧凑化 + 品牌 logo 替换 🏢
+- 快捷操作三卡（员工入职 / 创建团队 / 新建 Worker）**同排一行 + 可折叠**（装验 9/19）
 
 **验证**
 tsc 0 · check-antd 交叉通过 · vite build 绿 · pytest 46/46 · 包内三处版本复核一致

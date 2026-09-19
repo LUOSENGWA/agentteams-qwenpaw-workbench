@@ -158,6 +158,8 @@ export default function CrdManage(props: CrdManageProps) {
     </div>
   );
   const { admin, onRefresh, l1TokenMode } = props;
+  // v0.5.0-beta.13（装验 9/19）：三卡同排 + 可折叠。
+  const [crdCardsOpen, setCrdCardsOpen] = React.useState(true);
   const { humans, teams, workers } = admin;
 
   // ── 员工入职（Human CRD 创建）──
@@ -1212,8 +1214,23 @@ export default function CrdManage(props: CrdManageProps) {
             ⚠️ {tr("token 模式无 Higress Console 会话——Higress alias 层当前不可见。配置 admin 账号密码后，「Higress alias（路由可解析）」与「Higress 内置 alias」分组将出现在模型下拉中；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。")}
           </div>
         ) : null}
+        {/* v0.5.0-beta.13（装验 9/19）：三张快捷操作卡同排（lg=8×3）+
+            可折叠——此前 员工入职/创建团队 各占半行、新建 Worker 单占半行。 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: crdCardsOpen ? 6 : 0 }}>
+          <antd.Button
+            size="small"
+            type="text"
+            style={{ padding: 0, fontSize: 12, height: "auto" }}
+            onClick={() => setCrdCardsOpen((v) => !v)}
+          >
+            {crdCardsOpen
+              ? `▾ ${tr("收起快捷操作（员工入职 / 创建团队 / 新建 Worker）")}`
+              : `▸ ${tr("展开快捷操作（员工入职 / 创建团队 / 新建 Worker）")}`}
+          </antd.Button>
+        </div>
+        {crdCardsOpen ? (
         <antd.Row gutter={[10, 10]}>
-          <antd.Col xs={24} lg={12}>
+          <antd.Col xs={24} lg={8}>
             <antd.Card
               size="small"
               title={tr("员工入职（Human CRD）")}
@@ -1306,7 +1323,7 @@ export default function CrdManage(props: CrdManageProps) {
               </div>
             </antd.Card>
           </antd.Col>
-          <antd.Col xs={24} lg={12}>
+          <antd.Col xs={24} lg={8}>
             <antd.Card
               size="small"
               title={tr("创建团队（Team CRD）")}
@@ -1628,7 +1645,7 @@ export default function CrdManage(props: CrdManageProps) {
               新建 Worker 从建队卡内折叠区独立成卡（建队卡聚焦团队字段）。
               行为不变：创建成功后仍自动加入建队表单的 Worker 成员行。
               模型/alias 拉取由组件 mount 时统一触发（原展开时拉取的逻辑移除）。 */}
-          <antd.Col xs={24} lg={12}>
+          <antd.Col xs={24} lg={8}>
             <antd.Card
               size="small"
               title={
@@ -1733,6 +1750,7 @@ export default function CrdManage(props: CrdManageProps) {
             </antd.Card>
           </antd.Col>
         </antd.Row>
+        ) : null}
         <antd.Space
           direction="vertical"
           size={12}

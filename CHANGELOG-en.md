@@ -24,6 +24,7 @@ New since beta.12 (the previous official release), grouped by area:
 - Card/topology views rebuilt **master-detail** + top-down layered DAG (ready highlight / external-dependency notes)
 - **15s auto-refresh** while the tab is active; task inspection drawer (current worker / latest artifacts / state timeline / duration)
 - **In-chat workflow cards go live** (15s overlay + LIVE badge; degraded track shows no badge)
+- Topology / board task details: artifact **View** (inline preview: md/images/text next to Download)
 
 **Model gateway**
 - **Write actions: Add provider / Add route** (through the Console session; Console errors surface verbatim)
@@ -34,6 +35,7 @@ New since beta.12 (the previous official release), grouped by area:
 - L2 data-plane fallbacks: team-scoped KB read (diary / KB / MEMORY.md) + worker approval read/write (OFF still L1)
 - New-worker dialog: runtime list updated (CoPaw removed, DeepSeek Harness added, QwenPaw default) and split out of the create-team card
 - CRD management: export JSON (all four kinds) + compact cards + brand logo replaces the building emoji
+- Quick-action trio (hire human / create team / new worker) now share ONE row and are collapsible
 
 **Verification**
 tsc 0 - check-antd cross-check - vite build green - pytest 46/46 - version re-verified inside the shipped archive (all three places)
