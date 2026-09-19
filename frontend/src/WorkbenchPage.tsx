@@ -2624,6 +2624,7 @@ export default function WorkbenchPage() {
       }
       workerMxids={workerSessionStates.workerMxids}
       workerSessionByMxid={workerSessionStates.byMxid}
+      workers={adminData?.workers ?? []}
       onOpenProject={(runId) => handleOpenProject(runId)}
       onWorkflowIntervened={() => void refreshWorkflow(true)}
       onOpenProjectFiles={(room) => void openProjectFiles(room)}

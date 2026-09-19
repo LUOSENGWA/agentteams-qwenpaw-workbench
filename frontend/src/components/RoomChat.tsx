@@ -16,7 +16,8 @@ import { FilePreview, type PreviewFile } from "./FilePreview";
 import MessageSearch from "./MessageSearch";
 import MemberDetail from "./MemberDetail";
 import WorkflowCard from "./WorkflowCard";
-import type { WorkflowEvent } from "../api";
+import type { WorkerInfo, WorkflowEvent } from "../api";
+import WorkerChats from "./WorkerChats";
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
 import WorkerSessionDot from "./WorkerSessionDot";
@@ -459,6 +460,8 @@ function SenderAvatar({
   onDm,
   workerName,
   onDetail,
+  sessionState,
+  onOpenChats,
 }: {
   mxid: string;
   room: TeamRoom | null;
@@ -469,6 +472,11 @@ function SenderAvatar({
   workerName?: string;
   /** 打开成员详情卡（含审批卡）。 */
   onDetail?: (mxid: string) => void;
+  /** A17（9/19 定案：头像角落灯）：该发送者的 session 状态——有值才显灯
+   * （人类/未知发送者无映射 → 不显）。 */
+  sessionState?: WorkerSessionState;
+  /** v0.5.0-beta.13.1：打开该 Worker 的会话抽屉（完整 session，只读）。 */
+  onOpenChats?: (workerName: string) => void;
 }) {
   const tr = useT();
   const [popOpen, setPopOpen] = React.useState(false);
@@ -477,6 +485,12 @@ function SenderAvatar({
   const isMe = mxid === myUserId;
   // 左键点击弹层（需求：「点击头像可以@和改 worker 配置」）
   const quick: Array<{ label: string; act: () => void }> = [];
+  if (workerName && onOpenChats) {
+    quick.push({
+      label: `💬 ${tr("查看会话")}`,
+      act: () => onOpenChats(workerName),
+    });
+  }
   if (!isMe) {
     quick.push({
       label: `@ ${tr("提及")} ${name}`,
@@ -511,6 +525,15 @@ function SenderAvatar({
             key: "dm",
             label: `💬 ${tr("私聊")} ${name}`,
             onClick: () => onDm(mxid),
+          },
+        ]
+      : []),
+    ...(workerName && onOpenChats
+      ? [
+          {
+            key: "chats",
+            label: `💬 ${tr("查看会话")}`,
+            onClick: () => onOpenChats(workerName),
           },
         ]
       : []),
@@ -554,18 +577,28 @@ function SenderAvatar({
           ) : undefined
         }
       >
-        <MxcAvatar
-          url={member?.avatar_url}
-          size={28}
-          style={{
-            backgroundColor: PRIMARY,
-            fontSize: 13,
-            flexShrink: 0,
-            cursor: quick.length > 0 ? "pointer" : "default",
-          }}
-        >
-          {name.slice(0, 1).toUpperCase()}
-        </MxcAvatar>
+        {/* A17（9/19 定案：灯在头像角落）：relative 容器 + 角落状态灯。 */}
+        <span style={{ position: "relative", display: "inline-flex" }}>
+          <MxcAvatar
+            url={member?.avatar_url}
+            size={28}
+            style={{
+              backgroundColor: PRIMARY,
+              fontSize: 13,
+              flexShrink: 0,
+              cursor: quick.length > 0 ? "pointer" : "default",
+            }}
+          >
+            {name.slice(0, 1).toUpperCase()}
+          </MxcAvatar>
+          {sessionState ? (
+            <WorkerSessionDot
+              state={sessionState}
+              size={7}
+              corner
+            />
+          ) : null}
+        </span>
       </antd.Popover>
     </antd.Dropdown>
   );
@@ -1255,9 +1288,12 @@ export interface RoomChatProps {
   sessionState?: WorkerSessionState;
   /** v0.5.0-beta.12.4（A17）：全部 Worker MXID——团队房间任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
-  /** A17（9/18 落点定案：聊天群内）：Worker MXID → 任务状态（主列表发送者行
-   * 状态点；心跳优先派生，人类发送者无映射 → 不显）。 */
+  /** A17（9/18 落点定案：聊天群内）：Worker MXID → 任务状态（头像角落灯；
+   * 心跳优先派生，人类发送者无映射 → 不显）。 */
   workerSessionByMxid?: Record<string, WorkerSessionState>;
+  /** v0.5.0-beta.13.1（9/19 入口迁移）：Worker 列表——头像抽屉「查看会话」
+   * （WorkerChats fixedWorker 模式）的数据源。 */
+  workers?: WorkerInfo[];
 }
 
 export default function RoomChat(props: RoomChatProps) {
@@ -1294,10 +1330,14 @@ export default function RoomChat(props: RoomChatProps) {
     sessionState,
     workerMxids,
     workerSessionByMxid,
+    workers,
     onOpenProject,
     onWorkflowIntervened,
     onOpenProjectFiles,
   } = props;
+  // v0.5.0-beta.13.1（9/19 入口迁移）：头像点击 → Worker 会话抽屉（只读，
+  // #1295 端点；404 版本门占位）。团队管理不再挂会话 tab。
+  const [chatsWorker, setChatsWorker] = React.useState<string | null>(null);
   // v0.5.0-beta.12.8（第 11 轮）：runId → live 工作流事件（controller 正源
   // 双轨，WorkbenchPage 15s 轮询；聊天 tab 含 workflow 卡片时保持活跃）。
   const liveByRunId = React.useMemo(() => {
@@ -2402,17 +2442,12 @@ export default function RoomChat(props: RoomChatProps) {
                             onDm={onDm}
                             workerName={memberWorkerNames?.[msg.sender]}
                             onDetail={(m) => setDetailMxid(m)}
+                            // A17（9/19 定案：灯在头像角落，不再名字旁）：
+                            // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
+                            sessionState={workerSessionByMxid?.[msg.sender]}
+                            onOpenChats={(w) => setChatsWorker(w)}
                           />
                           {senderShortName(msg.sender, room)}
-                          {/* A17（9/18 落点定案：聊天群内，非 worker 管理）：
-                              发送者任务状态点——Worker byMxid 派生（心跳优先），
-                              人类发送者无映射 → 自然不显。 */}
-                          {workerSessionByMxid?.[msg.sender] ? (
-                            <WorkerSessionDot
-                              state={workerSessionByMxid[msg.sender]}
-                              size={7}
-                            />
-                          ) : null}
                           <span
                             style={{
                               opacity: showTime ? 1 : 0,
@@ -3297,6 +3332,23 @@ export default function RoomChat(props: RoomChatProps) {
           onDm={onDm}
           onClose={() => setDetailMxid(null)}
         />
+      ) : null}
+
+      {/* v0.5.0-beta.13.1（9/19 入口迁移）：头像 → Worker 会话抽屉（只读，
+          #1295 端点 + 版本门；内容=会话列表 → agent 上下文完整 session）。 */}
+      {chatsWorker ? (
+        <antd.Drawer
+          open
+          onClose={() => setChatsWorker(null)}
+          width={560}
+          title={`${chatsWorker} — ${tr("会话")}`}
+          styles={{ body: { padding: 14, background: t.bg } }}
+        >
+          <WorkerChats
+            workers={workers ?? []}
+            fixedWorker={chatsWorker}
+          />
+        </antd.Drawer>
       ) : null}
     </div>
   );

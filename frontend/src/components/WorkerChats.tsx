@@ -69,9 +69,20 @@ function formatTs(ts?: string): string {
   )}:${pad(d.getMinutes())}`;
 }
 
-function WorkerChats({ workers }: { workers: WorkerInfo[] }) {
+/**
+ * v0.5.0-beta.13.1（9/19 入口迁移）：`fixedWorker` = 头像抽屉模式——
+ * 锁定单个 Worker（跳过选择器）。团队管理不再挂本组件；入口在群内
+ * worker 头像点击（RoomChat 抽屉）。
+ */
+function WorkerChats({
+  workers,
+  fixedWorker,
+}: {
+  workers: WorkerInfo[];
+  fixedWorker?: string;
+}) {
   const tr = useT();
-  const [sel, setSel] = React.useState("");
+  const [sel, setSel] = React.useState(fixedWorker ?? "");
   const [gate, setGate] = React.useState<"" | "404" | "err">("");
   const [gateMsg, setGateMsg] = React.useState("");
   const [chats, setChats] = React.useState<WorkerChatSpec[]>([]);
@@ -210,23 +221,31 @@ function WorkerChats({ workers }: { workers: WorkerInfo[] }) {
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
-        <antd.Select
-          size="small"
-          style={{ width: 220 }}
-          value={sel || undefined}
-          onChange={(v: string) => {
-            setSel(v);
-            setOpenId(null);
-            setMsgs([]);
-            setStatus("");
-          }}
-          options={workers.map((w) => ({
-            value: w.name,
-            label: `${w.name}${w.role === "leader" ? "（Leader）" : ""}`,
-          }))}
-          placeholder={tr("选择 Worker")}
-        />
+        {fixedWorker ? (
+          <span style={{ fontWeight: 600 }}>
+            {tr("Worker")}：{fixedWorker}
+          </span>
+        ) : (
+          <>
+            <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
+            <antd.Select
+              size="small"
+              style={{ width: 220 }}
+              value={sel || undefined}
+              onChange={(v: string) => {
+                setSel(v);
+                setOpenId(null);
+                setMsgs([]);
+                setStatus("");
+              }}
+              options={workers.map((w) => ({
+                value: w.name,
+                label: `${w.name}${w.role === "leader" ? "（Leader）" : ""}`,
+              }))}
+              placeholder={tr("选择 Worker")}
+            />
+          </>
+        )}
         <div style={{ flex: 1 }} />
         <antd.Button size="small" onClick={() => void load()} loading={loading}>
           {tr("刷新")}
