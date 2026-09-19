@@ -5,6 +5,22 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.9 (2026-09-19)
+
+**2D knowledge graph v4 cluster-block layout + workflow-page / chat UX batch (dashboard-aligned)**
+
+- **2D knowledge graph v4 cluster-block grid layout**: rectangular cluster blocks + chip nodes with always-visible labels + cross-cluster edge convergence at block level (aligned with the dashboard v4, replacing the intra-cluster overlap of the radial layout)
+- **Workflow tab wired to the event stream**: task-transition timeline (created→running→finished/failed, upstream task-transition event stream pairing, legacy-cursor compatible with zero backfill) + i18n missing-key backlog cleared
+- **Workflow page header project count**: the page header shows only the total "Projects (num)"; per-view counts dropped from each view (view labels kept)
+- **Task inspection drawer**: clicking a board/card task opens a drawer with the task-level inspection (current Worker/runtime, latest artifact, transition timeline, duration)
+- **A17 worker session status dot (heartbeat-first)**: three states (blue running breathing / green done / gray idle) on group-chat sender avatars + wide-screen split layout; data source = worker heartbeat agentStatus authoritative (no 120 s typing ceiling) → live typing fallback → 10-minute done→idle decay
+- **Chat /sync event-driven refresh**: message refresh driven by the Matrix /sync long-poll (replacing the blunt interval); split-pane width/collapse parameterized
+- **Model gateway configuration tab (read-only)**: dashboard-same-source AI gateway model configuration view (Providers / AI Routes / model mapping, read-only)
+
+**Verification**: union four-step gate all green (pytest full pass · tsc 0 · check-antd cross-check · vite build green · i18n cross-check)
+
+---
+
 ## 0.5.0-beta.12.8 (2026-09-18)
 
 **2D knowledge graph zoom/focus/cluster separation + in-chat workflow card live refresh (aligned with the dashboard)**

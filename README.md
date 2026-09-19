@@ -1,6 +1,6 @@
 # AgentTeams QwenPaw Workbench（AgentTeams 团队工作台）
 
-**版本 Version**：0.5.0-beta.12.8 ｜ **作者 Author**：LUOSENGWA
+**版本 Version**：0.5.0-beta.12.9 ｜ **作者 Author**：LUOSENGWA
 **依赖要求 Requirements**：QwenPaw 2.0–2.2（`qwenpaw_version: >=2.0.0, <3.0.0`，2.1+ 解锁宿主技能详情/知识图谱/重索引；2.0 下对应功能自动降级）+ AgentTeams Controller（HiClaw 集群）
 
 > 英文版: [README-en.md](README-en.md) ｜ 更新日志: [CHANGELOG.md](CHANGELOG.md)（[en](CHANGELOG-en.md)）
@@ -16,12 +16,12 @@ A team workbench for AgentTeams (HiClaw) clusters through QwenPaw: manage teams,
 | Tab | 能力 |
 | --- | --- |
 | 🏠 首页 | 团队/任务/Worker/产物/最近动态/集群负载概览 + 待审批卡片（房间审批源=Worker Tool Guard 真实队列，批准/拒绝发带 `@Worker` 的命令，v0.5.0-beta.12）+ 快捷操作 |
-| 💬 聊天 | 团队房间聊天（Matrix 直连）、话题面板、成员详情卡、房间收藏/静音/退出/删除（Element 同款）、消息搜索、@提及、聊天内工作流卡 live 刷新（Controller 正源 15s，v0.5.0-beta.12.8） |
+| 💬 聊天 | 团队房间聊天（Matrix 直连）、话题面板、成员详情卡、房间收藏/静音/退出/删除（Element 同款）、消息搜索、@提及、聊天内工作流卡 live 刷新（Controller 正源 15s，v0.5.0-beta.12.9） |
 | 🔔 通知 | 通知中心（@提及/任务进展聚合收件箱，点击跳房间并定位消息）+ 新房间邀请主动通知（桌面 toast + 通知中心入口，跳团队概览接受/拒绝）+ Worker 工具审批请求主动通知（桌面 toast + 通知中心一键批准/拒绝，v0.5.0-beta.12；批准/拒绝命令带 `@Worker`——群房间无 mention 的命令 Worker 不消费，首轮 sync 补检离线期间审批，v0.5.0-beta.12） |
 | 🔀 工作流 | 四视图（事件列表/卡片/看板/DAG 拓扑）；卡片与拓扑为左侧项目列表（时间/状态/名称排序、独立滚动）+ 右侧详情，拓扑为自上而下分层 DAG（就绪态高亮、外部依赖注记）+ 项目任务图（暂停/继续/重规划）；当前视图与选中项目记忆（与主 tab 同机制，v0.5.0-beta.12）；tab 可见期 15 秒自动刷新（切走即停，v0.5.0-beta.12.5）；卡片/拓扑 master-detail 重构（v0.5.0-beta.12.7） |
 | 📦 产物 | 项目产物文件树 + 在线预览 + 下载 |
 | 👷 团队管理 | Worker 层级树、审批模式（工具执行安全四档：严格/智能/自动/关闭）、团队/Worker/员工（Human CR）CRD 管理与团队访问矩阵（L1），建团队时可直接新建 Worker；建队表单 Worker 行支持模型（在服∪在用候选 + 写前三重校验：路径形态硬拒/在服列表命中/候选缺失警示）与 SOUL 富文本（多行/上传，行数预算告警），创建后自动跑创建自检（CRD 回读 + 阶段轮询，v0.5.0-beta.12）；「频道」子 tab（v0.5.0-beta.12）：Worker 频道配置卡片（schema 驱动表单/JSON 双模式）、启用/停用、健康检查、重启、二维码扫码授权（凭据自动回填）、保存前冲突预检、PUT 热加载+读回校验（Controller 版本门控：低于合并频道端点的版本时 404 占位，升级后自动点亮）；审批模式团队 scope 用户（L2）可读写本团队 Worker（Controller 数据面兜底，OFF 档需 L1，v0.5.0-beta.12.5） |
-| 📚 知识库 | 远端 Worker KB 与本地记忆浏览、预览、下载、2D/3D 知识图谱（点节点直接预览对应文件，v0.5.0-beta.12 ；2D/3D 命中区放大=好点，v0.5.0-beta.12）；团队 scope 用户（L2）可读本团队 Worker 知识库（Controller 数据面兜底：日记/知识库/MEMORY.md 三分类，v0.5.0-beta.12.5）；2D 图谱缩放/平移 + 簇聚焦 + 簇分离（v0.5.0-beta.12.8） |
+| 📚 知识库 | 远端 Worker KB 与本地记忆浏览、预览、下载、2D/3D 知识图谱（点节点直接预览对应文件，v0.5.0-beta.12 ；2D/3D 命中区放大=好点，v0.5.0-beta.12）；团队 scope 用户（L2）可读本团队 Worker 知识库（Controller 数据面兜底：日记/知识库/MEMORY.md 三分类，v0.5.0-beta.12.5）；2D 图谱缩放/平移 + 簇聚焦 + 簇分离（v0.5.0-beta.12.9） |
 | 🧩 技能中心 | 团队技能统一面（v0.5.0-beta.12）：技能目录（只读，等上游技能端点合并后自动点亮）+ Worker 技能分配矩阵（勾选保存，PUT 合并语义）+ MCP Servers 矩阵（name/url/transport 行内编辑）。L1 可写，L2/Leader 写被拒时明确提示；首页有快捷入口 |
 | 🎯 宿主技能 | 宿主 Agent（本机助手）技能管理（SkillPool：清单/详情/启停/新建/ZIP 上传；宿主 2.0 下详情 404 自动降级） |
 | 🔍 自检 | L0-L3 分层自检（L0 本地环境 / L1 连通性 / L2 认证与 API / L3 房间实测） |
@@ -40,26 +40,26 @@ A team workbench for AgentTeams (HiClaw) clusters through QwenPaw: manage teams,
 **方式一：控制台界面（推荐）** / **Option 1: Console UI (recommended)**
 
 1. 打开 QwenPaw 控制台 → **设置 → 插件管理**（Settings → Plugin Manager）
-2. 点击 **安装**（Install），选择本 ZIP 文件（`agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip`）
+2. 点击 **安装**（Install），选择本 ZIP 文件（`agentteams-qwenpaw-workbench-v0.5.0-beta.12.9.zip`）
 3. 安装完成后刷新控制台，侧边栏出现 **🏢 AgentTeams QwenPaw Workbench**
 
 **方式二：CLI** / **Option 2: CLI**
 
 ```bash
 # 从本地安装（先停 QwenPaw）/ install from local path (stop QwenPaw first)
-qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip
+qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.12.9.zip
 
 # 从 URL 安装（支持 ZIP）/ install from URL (ZIP supported)
-qwenpaw plugin install https://example.com/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip
+qwenpaw plugin install https://example.com/agentteams-qwenpaw-workbench-v0.5.0-beta.12.9.zip
 
 # 强制重新安装（覆盖升级）/ force reinstall (upgrade in place)
-qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip --force
+qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.12.9.zip --force
 ```
 
 **方式三：GitHub Release URL** / **Option 3: GitHub Release URL**
 
 ```bash
-qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases/download/v0.5.0-beta.12.8/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip
+qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases/download/v0.5.0-beta.12.9/agentteams-qwenpaw-workbench-v0.5.0-beta.12.8.zip
 ```
 
 （控制台「安装」弹窗同样支持粘贴 URL 安装。/ The Console install dialog also accepts a URL.）

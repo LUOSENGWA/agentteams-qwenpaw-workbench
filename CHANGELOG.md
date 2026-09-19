@@ -5,6 +5,22 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.12.9（2026-09-19）
+
+**2D 知识图谱 v4 簇块布局 + 工作流页/聊天 UX 一批（与 dashboard 对齐）**
+
+- **2D 知识图谱 v4 簇块网格布局**：簇矩形块 + chip 节点恒显标签 + 跨簇边块级收敛（对齐 dashboard v4，替代分层径向的簇内混叠）
+- **工作流 tab 接入事件流**：任务状态转换时间线（created→running→finished/failed，上游 task-transition 事件流对接，legacy 游标兼容零回填）+ i18n 存量缺键清零
+- **工作流页头部项目计数**：页头只显「项目(num)」总数，各视图去掉冗余 per-view 计数（视图标签保留）
+- **任务巡检抽屉**：看板/卡片任务点击 → 抽屉显示任务级巡检（当前 Worker/运行时、最新产物、状态迁移时间线、耗时）
+- **A17 worker 会话状态灯（heartbeat-first）**：三态（蓝 running 呼吸/绿 done/灰 idle）显示在群聊消息发送者头像 + 宽屏分栏布局；数据源 = worker 心跳 agentStatus 权威（无 120s typing 上限）→ typing 实时回退 → 10 分钟 done→idle 衰减
+- **聊天 /sync 事件驱动刷新**：消息刷新由 Matrix /sync 长轮询驱动（替代粗轮询），分栏宽度/折叠参数化
+- **模型网关配置 tab（只读）**：与 dashboard 同源的 AI 网关模型配置视图（Provider/AI Routes/模型映射，只读）
+
+**Verification**: union 四步门全绿（pytest 全过 · tsc 0 · check-antd 交叉 · vite build 绿 · i18n 对账）
+
+---
+
 ## 0.5.0-beta.12.8（2026-09-18）
 
 **2D 知识图谱缩放/聚焦/簇分离 + 聊天内工作流卡 live 刷新（与 dashboard 对齐）**
