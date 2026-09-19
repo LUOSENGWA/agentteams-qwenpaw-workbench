@@ -5,6 +5,19 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.1（2026-09-19）
+
+**Worker 内置工具设置 + 会话只读面板（给无头 QwenPaw Worker「补头」）**
+
+- **内置工具 tab（团队管理）**：消费上游 #1255（已合 main）Controller 端点——逐 Worker「启用 / 异步执行」双开关（乐观更新 + 失败回滚）、`requiresConfig` 只做徽章（工具配置值在 Controller 代理边界已剔除，任何客户端永不可见）、404 版本门占位（旧 Controller / L2 跨团队隐藏，统一中性文案不暴露原因）、PATCH 403（团队 Leader 只读 / L2 越权写）整面板转只读
+- **会话 tab（团队管理）**：消费上游 #1295 会话端点（ready 等 review）——会话列表（名称 / 通道 / 最后活动，置顶·已归档徽章）→ 详情视图恒显**「Agent 上下文」标注**（agent 工作上下文可能含压缩历史与未发送的工具调用/输出，与实发房间消息不同）、内容块保守渲染（文本直出、工具块压成标签、未知形态截断 JSON）、idle/running 状态灯（404 隐藏 = QwenPaw <2.2.1 版本无关门）、列表 404 = 占位横幅（旧 Controller / L2 房间边界外，设计上不可区分）
+- **数据面**：两者均复用既有通用 Controller 代理（`/api/agentteams/*` 透传），后端零新端点；只读端点无审计（上游一致先例）
+- **i18n**：26 新键登记（中英）
+
+**Verification**: pytest 46/46 · tsc 0 · i18n ui↔dict 对账 0 缺 · check-antd 38 引用全合法 · vite build 绿
+
+---
+
 ## 0.5.0-beta.13（2026-09-19 · 正式号）
 
 相对 beta.12（上一正式号）的新增与修复（按功能归类）：

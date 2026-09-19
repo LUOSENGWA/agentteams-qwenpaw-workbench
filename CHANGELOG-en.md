@@ -5,6 +5,19 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.1 (2026-09-19)
+
+**Worker built-in tools + read-only chats panel (putting a head on the headless QwenPaw worker)**
+
+- **Built-in tools tab (Team management)**: consumes upstream #1255 (merged to main) controller endpoints - per-worker "enabled / async execution" switches (optimistic update with rollback), `requiresConfig` shown as a badge only (tool config values are redacted at the controller proxy boundary and never surface in any client), 404 version-gate placeholder (older controller / L2 cross-team hide, one neutral banner by design), PATCH 403 (team leader read-only / L2) flips the whole panel read-only
+- **Chats tab (Team management)**: consumes upstream #1295 chat endpoints (ready, awaiting review) - chat list (name / channel / last activity, pinned & archived tags) to a detail view with a constant **agent-context banner** (the agent's working context may include compacted history and unsent tool calls/output, distinct from sent room messages), conservative content-block rendering (text straight, tool blocks compressed to labels, unknown shapes truncated JSON), idle/running status tag (hidden on 404 = QwenPaw < 2.2.1, version-agnostic gate), 404 list = placeholder banner (older controller / L2 room-boundary exclusion, indistinguishable by design)
+- **Data plane**: both reuse the existing generic Controller proxy (`/api/agentteams/*` pass-through) - zero new backend endpoints; read-only endpoints carry no audit (upstream-consistent precedent)
+- **i18n**: 26 new keys registered (zh + en)
+
+**Verification**: pytest 46/46, tsc 0, i18n ui-vs-dict audit 0 missing, check-antd 38 references all legal, vite build green
+
+---
+
 ## 0.5.0-beta.13 (2026-09-19 - official release)
 
 New since beta.12 (the previous official release), grouped by area:
