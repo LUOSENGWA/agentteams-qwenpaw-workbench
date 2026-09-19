@@ -664,6 +664,27 @@ async def _run() -> None:
                 content = ev.get("content") or {}
                 if not isinstance(content, dict):
                     continue
+                # ⑤ 房间消息 SSE 触发（P6：12s 轮询 → /sync 事件驱动主路，
+                # IM 式）。载荷只带触发元数据不带正文——内容源 = 前端收到后
+                # 拉该房间最新消息（复用 pollMessages，附件/工作流/媒体渲染
+                # 路径零改动）。排除：基线轮（存量不重放）、编辑
+                # （m.new_content——前端列表不替换旧消息内容，下轮拉取兜底）、
+                # 自己的消息（乐观回显路径已自行刷新）。
+                if (
+                    not baseline
+                    and sender
+                    and sender != me
+                    and not content.get("m.new_content")
+                ):
+                    await _broadcast(
+                        {
+                            "type": "room_message",
+                            "room_id": str(room_id),
+                            "event_id": eid,
+                            "sender": sender,
+                            "ts": int(ev.get("origin_server_ts") or 0),
+                        }
+                    )
                 # ① 任务状态变化：agentteams.workflow payload（基线轮跳过）。
                 if not baseline:
                     wf = content.get("agentteams.workflow")
