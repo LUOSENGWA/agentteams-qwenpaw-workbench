@@ -31,9 +31,12 @@ const STATE_TEXT: Record<WorkerSessionState, string> = {
 export default function WorkerSessionDot({
   state,
   size = 8,
+  corner = false,
 }: {
   state: WorkerSessionState;
   size?: number;
+  /** A17（9/19 定案：灯在头像角落）：absolute 挂右下 + 白描边环。 */
+  corner?: boolean;
 }) {
   const tr = useT();
   // key={state} 强制重挂载：状态切换时 Tooltip 重新定位/刷新文案。
@@ -41,16 +44,32 @@ export default function WorkerSessionDot({
     <antd.Tooltip key={state} title={tr(STATE_TEXT[state])}>
       <span
         className={state === "running" ? "wb-session-dot running" : "wb-session-dot"}
-        style={{
-          display: "inline-block",
-          width: size,
-          height: size,
-          borderRadius: "50%",
-          background: STATE_COLOR[state],
-          flexShrink: 0,
-          marginLeft: 6,
-          verticalAlign: "middle",
-        }}
+        style={
+          corner
+            ? {
+                position: "absolute",
+                right: -2,
+                bottom: -2,
+                display: "inline-block",
+                width: size,
+                height: size,
+                borderRadius: "50%",
+                background: STATE_COLOR[state],
+                border: "1.5px solid #fff",
+                boxShadow: "0 0 0 0.5px rgba(0,0,0,0.15)",
+                pointerEvents: "auto",
+              }
+            : {
+                display: "inline-block",
+                width: size,
+                height: size,
+                borderRadius: "50%",
+                background: STATE_COLOR[state],
+                flexShrink: 0,
+                marginLeft: 6,
+                verticalAlign: "middle",
+              }
+        }
       />
     </antd.Tooltip>
   );

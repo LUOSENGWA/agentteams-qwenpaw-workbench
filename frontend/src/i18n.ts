@@ -258,6 +258,7 @@ const DICT: Record<string, { en: string }> = {
   "人": { en: " members" },
   "全部": { en: "All" },
   "私聊": { en: "DMs" },
+  "查看会话": { en: "View Sessions" },
   "团队房间": { en: "Team Rooms" },
   "当前身份：": { en: "Signed in as: " },
   "还没有加入任何团队房间": { en: "No team rooms joined yet" },
