@@ -1178,7 +1178,7 @@ export default function CrdManage(props: CrdManageProps) {
   ];
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "grid", gap: 10 }}>
       <antd.Card
         size="small"
         title={
@@ -1193,7 +1193,7 @@ export default function CrdManage(props: CrdManageProps) {
             {tr("导出 JSON")}
           </antd.Button>
         }
-        styles={{ body: { padding: 12 } }}
+        styles={{ body: { padding: 8 } }}
       >
         {/* token 模式无 Higress Console 会话 → 网关 alias 层不可见（显式提示，
             不再静默降级——用户反馈：token 模式要提示）。 */}
@@ -1212,12 +1212,12 @@ export default function CrdManage(props: CrdManageProps) {
             ⚠️ {tr("token 模式无 Higress Console 会话——Higress alias 层当前不可见。配置 admin 账号密码后，「Higress alias（路由可解析）」与「Higress 内置 alias」分组将出现在模型下拉中；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。")}
           </div>
         ) : null}
-        <antd.Row gutter={[12, 12]}>
+        <antd.Row gutter={[10, 10]}>
           <antd.Col xs={24} lg={12}>
             <antd.Card
               size="small"
               title={tr("员工入职（Human CRD）")}
-              styles={{ body: { padding: 12 } }}
+              styles={{ body: { padding: 10 } }}
             >
               <div style={{ display: "grid", gap: 8 }}>
                 <antd.Input
@@ -1310,7 +1310,7 @@ export default function CrdManage(props: CrdManageProps) {
             <antd.Card
               size="small"
               title={tr("创建团队（Team CRD）")}
-              styles={{ body: { padding: 12 } }}
+              styles={{ body: { padding: 10 } }}
             >
               <div style={{ display: "grid", gap: 8 }}>
                 <FieldLabel>{tr("团队 ID（唯一，小写字母/数字/-）")}</FieldLabel>
@@ -1636,7 +1636,7 @@ export default function CrdManage(props: CrdManageProps) {
                   {tr("新建 Worker（Worker CRD）")}
                 </span>
               }
-              styles={{ body: { padding: 12 } }}
+              styles={{ body: { padding: 10 } }}
             >
               <div style={{ display: "grid", gap: 6 }}>
                 <FieldLabel>{tr("Worker 名（唯一，小写字母/数字/-）")}</FieldLabel>
