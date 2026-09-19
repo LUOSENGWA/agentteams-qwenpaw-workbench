@@ -91,7 +91,8 @@ export const KB2D = {
   CHIP_H: 26,        // 成员节点 chip 高
   HUB_H: 34,         // hub（簇横幅）chip 高
   CHIP_PAD_X: 12,    // chip 左右内边距（各）
-  FONT_W: 6.2,       // 11px 字体平均字宽（中英文混合估）
+  FONT_W: 6.2,       // 11px 字体拉丁平均字宽
+  FONT_W_CJK: 11,    // 11px 字体 CJK 全角字宽（= 字号，1:1）
   MIN_W: 44,
   MAX_W: 180,
   GAP_X: 16,         // 簇内网格列距
@@ -139,8 +140,22 @@ export function clampZoomView(
 }
 
 /** chip 宽：按 name 估宽，钳制 [MIN_W, MAX_W]。 */
+/** CJK 加权文本像素宽（11px 字体：CJK/全角 ≈ 字号，拉丁 ≈ FONT_W）。
+ *  装验反馈 9/19（P1「簇不要重叠」）：原先 label.length * FONT_W 一律宽，
+ *  中文文件名 chip 被严重低估 → 长中文名 chip 横向溢出与邻居压盖。
+ *  chipWidth 与标签截断共用（同一估宽，避免两端口径漂移）。 */
+export function textWidthUnits(label: string): number {
+  let units = 0;
+  for (const ch of label) {
+    units += /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/.test(ch)
+      ? KB2D.FONT_W_CJK
+      : KB2D.FONT_W;
+  }
+  return units;
+}
+
 export function chipWidth(label: string): number {
-  const w = label.length * KB2D.FONT_W + KB2D.CHIP_PAD_X * 2;
+  const w = textWidthUnits(label) + KB2D.CHIP_PAD_X * 2;
   return Math.min(KB2D.MAX_W, Math.max(KB2D.MIN_W, Math.round(w)));
 }
 
@@ -560,6 +575,9 @@ function GraphCard(props: {
   const [vb, setVb] = React.useState<RadialView>(view);
   const [focus, setFocus] = React.useState<FocusTarget | null>(null);
   const [panning, setPanning] = React.useState(false);
+  // 装验反馈 9/19（P1「空白处可拖动整个画板」）：pan 本身 beta.12.8 已有
+  //（整 SVG mousedown + 4px 阈值），但无 cursor 提示 → 用户不知道可拖。
+  // grab/grabbing 双态给可发现性。
   const vbRef = React.useRef(vb);
   const focusRef = React.useRef(focus);
   const animRafRef = React.useRef(0);
@@ -1146,6 +1164,7 @@ function GraphCard(props: {
               onDoubleClick={handleGraphDblClick}
               onMouseMove={handleGraphMove}
               onMouseDown={onSvgPanDown}
+              style={{ cursor: panning ? "grabbing" : "grab" }}
               onMouseUp={onSvgPanUp}
               onMouseLeave={() => {
                 setHoverId("");
@@ -1282,10 +1301,17 @@ function GraphCard(props: {
                 const selected = selectedId === node.id;
                 const dim = dimmed(node.id);
                 const fd = inFocus(node.id) ? 1 : 0.1;
-                const maxChars = Math.max(
-                  3,
-                  Math.floor((s.w - 14) / KB2D.FONT_W),
-                );
+                // P1：截断用 CJK 加权宽逐字累加估（与 chipWidth 同口径），
+                // 不再一律 / FONT_W——否则 CJK 截断过晚、文字溢出 rect。
+                let usedW = 0;
+                let maxChars = 0;
+                for (let ci = 0; ci < node.name.length; ci += 1) {
+                  const cw = textWidthUnits(node.name[ci]);
+                  if (usedW + cw > s.w - 14) break;
+                  usedW += cw;
+                  maxChars = ci + 1;
+                }
+                maxChars = Math.max(3, maxChars);
                 const shown =
                   node.name.length > maxChars
                     ? `${node.name.slice(0, maxChars - 1)}…`
