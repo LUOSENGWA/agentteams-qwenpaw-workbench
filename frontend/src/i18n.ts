@@ -1371,6 +1371,12 @@ const DICT: Record<string, { en: string }> = {
   // ── 12.13：模型页写面（添加提供商/添加路由）──
   "读写": { en: "Read/Write" },
   "只读": { en: "Read-only" },
+  // ── 12.14：聊天分栏（强制开关 + 自检诊断）──
+  "聊天页面强制左右分栏": { en: "Force side-by-side chat layout" },
+  "忽略宽度判定：房间列表与聊天框始终左右分栏、各自独立滚动。窄面板下可用拖动条调宽、⟨ 可收起列表。": { en: "Ignore width detection: the room list and the chat pane always sit side by side with independent scrolling. On narrow panels use the drag handle to resize, ⟨ to collapse the list." },
+  "聊天布局诊断（客户端）": { en: "Chat layout diagnostics (client-side)" },
+  "重新测量": { en: "Measure again" },
+  "排查「聊天分栏/滚动」问题时：把上面几行原样发我（数字即现场）。": { en: "When debugging chat split/scroll issues: send me those lines verbatim (the numbers are the scene)." },
   "名称": { en: "Name" },
   "添加提供商": { en: "Add provider" },
   "添加路由": { en: "Add route" },

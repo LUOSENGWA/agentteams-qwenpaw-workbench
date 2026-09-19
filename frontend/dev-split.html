@@ -16,8 +16,11 @@
   import { createRoot } from "react-dom/client";
   import * as antdNs from "antd";
 
-  // 强制宽屏：覆盖 innerWidth（分栏判定用），并 mock matchMedia 断点。
-  try { Object.defineProperty(window, "innerWidth", { value: 1400, configurable: true }); } catch (e) {}
+  // 宽度实验：?w=900 设容器宽 + 覆盖 innerWidth（两者都设，保持一致性）。
+  const QW = parseInt(new URLSearchParams(location.search).get("w") || "1400", 10);
+  try { Object.defineProperty(window, "innerWidth", { value: QW, configurable: true }); } catch (e) {}
+  const rootEl = document.getElementById("root");
+  if (rootEl) rootEl.style.width = QW + "px";
   const origMM = window.matchMedia.bind(window);
   window.matchMedia = (q) => {
     const m = origMM(q);
