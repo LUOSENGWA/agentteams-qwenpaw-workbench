@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.11 (2026-09-19)
+
+**True fix for split-pane independent scrolling (last hop of the height chain)**
+
+- **Chat split-pane independent scrolling, completed**: 12.10 locked only the antd Tabs CSS height chain; the content-area wrapper was not flex-enabled, so Tabs `flex:1` was a no-op and the whole chain collapsed — the left pane still could not scroll independently (re-reported at install verification). This release: wrapper `display:flex` + pane `overflow-y:auto` fallback — the chain is now truly connected.
+- Everything else is identical to 12.10.
+
+**Verification**: tsc 0 · check-antd cross-check · vite build green · pytest 42/42
+
+---
+
 ## 0.5.0-beta.12.10 (2026-09-19)
 
 **Verification-feedback batch: chat split-pane independent scroll + topo detail sections + 2D CJK width fix + model page full display**

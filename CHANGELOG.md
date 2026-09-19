@@ -5,6 +5,17 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.12.11（2026-09-19）
+
+**分栏独立滚动真修复（补 12.10 高度链最后一跳）**
+
+- **聊天分栏左右独立滚动补强**：12.10 只锁了 antd Tabs 的 CSS 高度链；但内容区容器未 flex 化 → Tabs `flex:1` 空转、整链塌陷，左栏独立滚动仍失效（装验复报）。本版补齐：内容区容器 `display:flex` + 面板 `overflow-y:auto` 回退滚动，高度链真正接通。
+- 其余内容与 12.10 一致。
+
+**Verification**: tsc 0 · check-antd 交叉通过 · vite build 绿 · pytest 42/42
+
+---
+
 ## 0.5.0-beta.12.10（2026-09-19）
 
 **装验反馈批：聊天分栏独立滚动 + 拓扑详情三区 + 2D 图谱字宽修复 + 模型页全套展示**
