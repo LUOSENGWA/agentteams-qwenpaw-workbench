@@ -472,8 +472,9 @@ const DICT: Record<string, { en: string }> = {
   "已有 {n} 个项目，但任务图（nodes）全空——多为 planning 状态：项目刚建、任务在群聊 @mention 协调，未登记进 Controller 的任务 DAG": {
     en: "{n} project(s) listed but the task graph (nodes) is empty — usually planning state: tasks are coordinated via @mentions in the room, not yet registered in the Controller DAG",
   },
-  "事件": { en: "Events" },
-  "卡片": { en: "Cards" },
+  "项目": { en: "Projects" },
+  "项目列表": { en: "Project list" },
+  "项目卡片": { en: "Project cards" },
   "拓扑": { en: "Topology" },
   "请选择左侧项目": { en: "Select a project on the left" },
   "暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡": {
@@ -485,8 +486,8 @@ const DICT: Record<string, { en: string }> = {
   "外部依赖（非本项目）：{list}": { en: "External dep(s) (outside this project): {list}" },
   "项目任务依赖图": { en: "Project task dependency graph" },
   "依赖已满足（就绪，待开始）": { en: "Ready (dependencies satisfied)" },
-  "事件/卡片/看板/DAG 拓扑四种视图；卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）": {
-    en: "Four views: Events / Cards / Board / DAG Topology. Cards & Topology are a project list (left) + detail (right), aligned with the dashboard task board 'Projects' section; board column mapping shares the dashboard source (workflow API)",
+  "项目列表/项目卡片/看板/DAG 拓扑四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）": {
+    en: "Four views: Project list / Project cards / Board / DAG Topology. Cards & Topology are a project list (left) + detail (right), aligned with the dashboard task board 'Projects' section; board column mapping shares the dashboard source (workflow API)",
   },
   "节点依赖成环或无根节点，无法渲染树形（请检查 nodes dependsOn）": {
     en: "Circular dependencies or no root node — cannot render tree (check nodes dependsOn)",
