@@ -523,6 +523,9 @@ const DICT: Record<string, { en: string }> = {
   "上游提供商（权重）": { en: "Upstream provider (weight)" },
   "授权 Consumer": { en: "Allowed consumers" },
   "请求模型（alias）": { en: "Request model (alias)" },
+  // P7b（9/19 装验反馈）：alias 全集聚合块 + 目录源标注
+  "可请求模型（alias 全集，{n}）": { en: "Requestable models (alias union, {n})" },
+  "—（目录源无 alias 数据）": { en: "— (catalog source has no alias data)" },
   "LLM Provider（{n}）": { en: "LLM providers ({n})" },
   "Provider": { en: "Provider" },
   "暂无 AI 路由": { en: "No AI routes" },
@@ -539,6 +542,12 @@ const DICT: Record<string, { en: string }> = {
   "外部依赖（非本项目）：{list}": { en: "External dep(s) (outside this project): {list}" },
   "项目任务依赖图": { en: "Project task dependency graph" },
   "依赖已满足（就绪，待开始）": { en: "Ready (dependencies satisfied)" },
+  // P2（9/19 装验反馈）：拓扑详情三区（dashboard WorkflowDetail 同语义）
+  "任务分布": { en: "Task distribution" },
+  "任务详情（{n}）": { en: "Task details ({n})" },
+  "节点（{n}）": { en: "Nodes ({n})" },
+  "产物 {a} · 状态转换 {b}": { en: "Deliverables {a} · transitions {b}" },
+  "验收": { en: "Acceptance" },
   "项目列表/项目卡片/看板/DAG 拓扑四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）": {
     en: "Four views: Project list / Project cards / Board / DAG Topology. Cards & Topology are a project list (left) + detail (right), aligned with the dashboard task board 'Projects' section; board column mapping shares the dashboard source (workflow API)",
   },
@@ -570,6 +579,9 @@ const DICT: Record<string, { en: string }> = {
   },
   "刷新日志": { en: "Refresh logs" },
   "成员": { en: "Members" },
+  // P8b（9/19 装验反馈）：房间卡成员列表折叠
+  "隐藏成员": { en: "Hide members" },
+  "显示成员": { en: "Show members" },
   "@ 提及": { en: "@ Mention" },
   "复制 MXID": { en: "Copy MXID" },
   "隐藏工具": { en: "Hide tools" },
