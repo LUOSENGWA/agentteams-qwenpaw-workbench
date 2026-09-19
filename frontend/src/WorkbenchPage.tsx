@@ -2772,25 +2772,37 @@ export default function WorkbenchPage() {
         .wb-main .ant-row,
         .wb-main .ant-row .ant-col,
         .wb-main .ant-card,
-        .wb-main .ant-card-body { min-width: 0; max-width: 100%; }
+        .wb-main .ant-card-body,
+        .wb-main .qwenpaw-row,
+        .wb-main .qwenpaw-row .qwenpaw-col,
+        .wb-main .qwenpaw-card,
+        .wb-main .qwenpaw-card-body { min-width: 0; max-width: 100%; }
         /* v0.5.0-beta.12：行内 Select 默认 min-width:auto=内容宽（长占位符撑行）
            → 强制可收缩（内容自行裁剪），断「创建团队卡溢出」最后一条链。 */
-        .wb-main .ant-select { min-width: 0; }
+        .wb-main .ant-select,
+        .wb-main .qwenpaw-select { min-width: 0; }
         /* 装验反馈 9/19（P8a）：聊天分栏左右独立滚动——antd Tabs 内部
            content 链默认无高度（auto 跟随内容）→ 分栏容器 height:100%
            塌陷、房间列表撑高被 wb-main overflow:hidden 裁掉。锁定
            content holder/content/tabpane 高度链（chatWide 分栏专用；
            其他 tab 内容自身有高度约束；12.11 起 tabpane 加 overflow-y:auto
            回退滚动、内容区容器 flex 化——整链真正接通）。 */
-        .wb-main .ant-tabs-content-holder { flex: 1; min-height: 0; }
-        .wb-main .ant-tabs-content { height: 100%; }
-        .wb-main .ant-tabs-tabpane-active { height: 100%; min-height: 0; overflow-y: auto; }
+        /* 12.15 真机复现（罗总宿主实测）：QwenPaw 宿主是自家前缀的 antd 分支
+           （qwenpaw-tabs-*，无 .ant-tabs-*）——上面整条链在真宿主从未命中
+           （左栏被撑到 8193px、整页滚动 4 轮复报的确证根因）。双前缀双写。 */
+        .wb-main .ant-tabs-content-holder,
+        .wb-main .qwenpaw-tabs-content-holder { flex: 1; min-height: 0; }
+        .wb-main .ant-tabs-content,
+        .wb-main .qwenpaw-tabs-content { height: 100%; }
+        .wb-main .ant-tabs-tabpane-active,
+        .wb-main .qwenpaw-tabs-tabpane-active { height: 100%; min-height: 0; overflow-y: auto; }
         /* v0.5.0-beta.12（390px 审计真根因）：antd 断点最小档 xs=576px——
            390px 手机低于一切断点，Col 无任何断点样式 → 基础 width:100%
            + flex-shrink 把「员工入职/创建团队」两卡挤成 50/50（各 174px，
            内容需 330+ → 整条溢出链的源头）。<576px 强制单列通宽。 */
         @media (max-width: 575px) {
-          .wb-main .ant-row > .ant-col {
+          .wb-main .ant-row > .ant-col,
+          .wb-main .qwenpaw-row > .qwenpaw-col {
             flex: 0 0 100% !important;
             max-width: 100% !important;
           }

@@ -5456,25 +5456,37 @@ PRE:qwen-`})),Tt.createElement("div",null,Tt.createElement("div",{style:os},i("\
         .wb-main .ant-row,
         .wb-main .ant-row .ant-col,
         .wb-main .ant-card,
-        .wb-main .ant-card-body { min-width: 0; max-width: 100%; }
+        .wb-main .ant-card-body,
+        .wb-main .qwenpaw-row,
+        .wb-main .qwenpaw-row .qwenpaw-col,
+        .wb-main .qwenpaw-card,
+        .wb-main .qwenpaw-card-body { min-width: 0; max-width: 100%; }
         /* v0.5.0-beta.12\uFF1A\u884C\u5185 Select \u9ED8\u8BA4 min-width:auto=\u5185\u5BB9\u5BBD\uFF08\u957F\u5360\u4F4D\u7B26\u6491\u884C\uFF09
            \u2192 \u5F3A\u5236\u53EF\u6536\u7F29\uFF08\u5185\u5BB9\u81EA\u884C\u88C1\u526A\uFF09\uFF0C\u65AD\u300C\u521B\u5EFA\u56E2\u961F\u5361\u6EA2\u51FA\u300D\u6700\u540E\u4E00\u6761\u94FE\u3002 */
-        .wb-main .ant-select { min-width: 0; }
+        .wb-main .ant-select,
+        .wb-main .qwenpaw-select { min-width: 0; }
         /* \u88C5\u9A8C\u53CD\u9988 9/19\uFF08P8a\uFF09\uFF1A\u804A\u5929\u5206\u680F\u5DE6\u53F3\u72EC\u7ACB\u6EDA\u52A8\u2014\u2014antd Tabs \u5185\u90E8
            content \u94FE\u9ED8\u8BA4\u65E0\u9AD8\u5EA6\uFF08auto \u8DDF\u968F\u5185\u5BB9\uFF09\u2192 \u5206\u680F\u5BB9\u5668 height:100%
            \u584C\u9677\u3001\u623F\u95F4\u5217\u8868\u6491\u9AD8\u88AB wb-main overflow:hidden \u88C1\u6389\u3002\u9501\u5B9A
            content holder/content/tabpane \u9AD8\u5EA6\u94FE\uFF08chatWide \u5206\u680F\u4E13\u7528\uFF1B
            \u5176\u4ED6 tab \u5185\u5BB9\u81EA\u8EAB\u6709\u9AD8\u5EA6\u7EA6\u675F\uFF1B12.11 \u8D77 tabpane \u52A0 overflow-y:auto
            \u56DE\u9000\u6EDA\u52A8\u3001\u5185\u5BB9\u533A\u5BB9\u5668 flex \u5316\u2014\u2014\u6574\u94FE\u771F\u6B63\u63A5\u901A\uFF09\u3002 */
-        .wb-main .ant-tabs-content-holder { flex: 1; min-height: 0; }
-        .wb-main .ant-tabs-content { height: 100%; }
-        .wb-main .ant-tabs-tabpane-active { height: 100%; min-height: 0; overflow-y: auto; }
+        /* 12.15 \u771F\u673A\u590D\u73B0\uFF08\u7F57\u603B\u5BBF\u4E3B\u5B9E\u6D4B\uFF09\uFF1AQwenPaw \u5BBF\u4E3B\u662F\u81EA\u5BB6\u524D\u7F00\u7684 antd \u5206\u652F
+           \uFF08qwenpaw-tabs-*\uFF0C\u65E0 .ant-tabs-*\uFF09\u2014\u2014\u4E0A\u9762\u6574\u6761\u94FE\u5728\u771F\u5BBF\u4E3B\u4ECE\u672A\u547D\u4E2D
+           \uFF08\u5DE6\u680F\u88AB\u6491\u5230 8193px\u3001\u6574\u9875\u6EDA\u52A8 4 \u8F6E\u590D\u62A5\u7684\u786E\u8BC1\u6839\u56E0\uFF09\u3002\u53CC\u524D\u7F00\u53CC\u5199\u3002 */
+        .wb-main .ant-tabs-content-holder,
+        .wb-main .qwenpaw-tabs-content-holder { flex: 1; min-height: 0; }
+        .wb-main .ant-tabs-content,
+        .wb-main .qwenpaw-tabs-content { height: 100%; }
+        .wb-main .ant-tabs-tabpane-active,
+        .wb-main .qwenpaw-tabs-tabpane-active { height: 100%; min-height: 0; overflow-y: auto; }
         /* v0.5.0-beta.12\uFF08390px \u5BA1\u8BA1\u771F\u6839\u56E0\uFF09\uFF1Aantd \u65AD\u70B9\u6700\u5C0F\u6863 xs=576px\u2014\u2014
            390px \u624B\u673A\u4F4E\u4E8E\u4E00\u5207\u65AD\u70B9\uFF0CCol \u65E0\u4EFB\u4F55\u65AD\u70B9\u6837\u5F0F \u2192 \u57FA\u7840 width:100%
            + flex-shrink \u628A\u300C\u5458\u5DE5\u5165\u804C/\u521B\u5EFA\u56E2\u961F\u300D\u4E24\u5361\u6324\u6210 50/50\uFF08\u5404 174px\uFF0C
            \u5185\u5BB9\u9700 330+ \u2192 \u6574\u6761\u6EA2\u51FA\u94FE\u7684\u6E90\u5934\uFF09\u3002<576px \u5F3A\u5236\u5355\u5217\u901A\u5BBD\u3002 */
         @media (max-width: 575px) {
-          .wb-main .ant-row > .ant-col {
+          .wb-main .ant-row > .ant-col,
+          .wb-main .qwenpaw-row > .qwenpaw-col {
             flex: 0 0 100% !important;
             max-width: 100% !important;
           }

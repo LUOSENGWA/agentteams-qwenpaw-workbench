@@ -5,6 +5,18 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.15 (2026-09-19)
+
+**Real root cause (host prefix): qwenpaw-tabs-* height chain**
+
+- **Reproduced in the real host** (the user's own QwenPaw instance): the host ships a **custom-prefixed antd fork** -- `.ant-tabs-*` classnames do NOT exist there (`qwenpaw-tabs-content-holder/content/tabpane-active` instead) -> the whole height chain from 12.10/12.11 never matched: the left pane grew to **8193px** (74 rooms), the outer wrapper scrolled ("whole page scrolls"), the list itself could not scroll.
+- Fix: the height chain + overflow guards + 575px single-column rules are now written for **both prefixes**; re-measured in the real host: left pane 300x488 bounded, last card 8208->504px internal scroll, container box unmoved.
+- 12.14's threshold / force toggle / diagnostics are kept (container width 990px was the separate half of the story).
+
+**Verification**: tsc 0 · check-antd 38 · vite build green · pytest 46/46 · **real-host verification (local QwenPaw 2.2.1 console)**
+
+---
+
 ## 0.5.0-beta.12.14 (2026-09-19)
 
 **Chat split trio: threshold 600 + force toggle + diagnostics**
