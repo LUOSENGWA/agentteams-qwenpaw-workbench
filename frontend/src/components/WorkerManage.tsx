@@ -24,6 +24,7 @@ import ApprovalControl from "./ApprovalControl";
 import CrdManage from "./CrdManage";
 import MyScopeCard from "./MyScopeCard";
 import WorkerChannels from "./WorkerChannels";
+import WorkerTools from "./WorkerTools";
 import SkillCenter from "./SkillCenter";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
@@ -1464,6 +1465,13 @@ export default function WorkerManage(props: WorkerManageProps) {
             key: "channels",
             label: tr("频道"),
             children: <WorkerChannels workers={admin.workers} />,
+          },
+          // v0.5.0-beta.13.1：内置工具（#1255 消费；与频道接入同款版本门
+          // ——Controller 未含该端点时 404 占位，不炸 tab）。
+          {
+            key: "tools",
+            label: tr("工具"),
+            children: <WorkerTools workers={admin.workers} />,
           },
           // v0.5.0-beta.12 ：技能中心从顶层 tab 收编（设计结论——团队级
           // 技能/MCP 资源治理归团队管理，不独立顶层 tab）。

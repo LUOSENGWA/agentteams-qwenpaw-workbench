@@ -1416,7 +1416,7 @@ export async function postController(
 // ── v0.5.0-beta.12: CRD 管理（L1）——走现有通用 Controller 代理（PUT/DELETE 已支持）──
 
 async function controllerRequest(
-  method: "GET" | "POST" | "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
   path: string,
   body?: Record<string, unknown>,
 ): Promise<unknown> {
@@ -1613,6 +1613,39 @@ export function fetchWorkerChannelQrcodeStatus(
     credentials: Record<string, unknown> | null;
   }>;
 }
+
+// ── Worker 内置工具设置（#1255 已合 main；404 = Controller 版本门）────
+export interface WorkerToolInfo {
+  name: string;
+  enabled: boolean;
+  description?: string;
+  asyncExecution?: boolean;
+  icon?: string;
+  requiresConfig?: boolean;
+}
+/** 工具列表（只含状态，配置值在 Controller 代理边界已剔除）。 */
+export function fetchWorkerTools(
+  name: string,
+): Promise<{ tools: WorkerToolInfo[]; total: number }> {
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/tools`,
+  ) as Promise<{ tools: WorkerToolInfo[]; total: number }>;
+}
+/** 声明式单/双字段更新（{enabled} 和/或 {asyncExecution}；幂等可重试）。
+ * 403 = Leader 只读 / L2 跨团队写；404 = 未知 worker/工具（W8 防探测）。 */
+export function patchWorkerTool(
+  name: string,
+  tool: string,
+  patch: { enabled?: boolean; asyncExecution?: boolean },
+): Promise<WorkerToolInfo> {
+  return controllerRequest(
+    "PATCH",
+    `/workers/${encodeURIComponent(name)}/tools/${encodeURIComponent(tool)}`,
+    patch,
+  ) as Promise<WorkerToolInfo>;
+}
+
 export const deleteTeam = (name: string) =>
   controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
 
