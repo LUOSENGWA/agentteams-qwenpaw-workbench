@@ -5,6 +5,24 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.10 (2026-09-19)
+
+**Verification-feedback batch: chat split-pane independent scroll + topo detail sections + 2D CJK width fix + model page full display**
+
+- **Chat split-pane independent scrolling**: fixed the antd Tabs content height chain collapse that clipped the room list — Tabs container flex fill + content-holder/content/tabpane height lock + left-pane overflow-y with overscroll-contain
+- **Room-card member list hidden by default**: rooms with many members no longer stretch the card; tap the "N members" tag to expand/collapse (DM-on-member unchanged)
+- **Workflow topo detail sections** (aligned with the dashboard task detail page): task distribution (status counts) + task details (N) (expandable rows: spec/summary/deliverables/transition audit) + nodes (N) two-column grid
+- **Workflow view-tab counts removed**: header "Projects (N)" kept; redundant kanban/topo tab counts dropped
+- **2D graph CJK width weighting**: fixed under-estimated chip widths for Chinese filenames causing horizontal overlap (root cause of "cluster overlap"); label truncation uses the same metric
+- **Model gateway page full display**: requestable-model alias union block; request-model (alias) and allowed-consumer columns split (fixed the catalog source putting consumers into the alias column); fixed the per-character alias rendering bug (string spread)
+- **KB sensitive-file rule extension**: standalone credentials.yaml/yml credential files now filtered (aligned with the dashboard-side B1 fix)
+- **CRD management cards compacted**: padding/gap/gutter density pass
+- **i18n**: new keys registered (EN+ZH)
+
+**Verification**: pytest 42/42 · tsc 0 · check-antd cross-check pass · vite build green · i18n ui↔dict reconciliation
+
+---
+
 ## 0.5.0-beta.12.9 (2026-09-19)
 
 **2D knowledge graph v4 cluster-block layout + workflow-page / chat UX batch (dashboard-aligned)**
