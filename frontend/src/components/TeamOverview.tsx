@@ -104,6 +104,9 @@ function GroupCard({
   const t = useThemeColors();
   const tr = useT();
   const memberEntries = Object.entries(room.members || {}).slice(0, 3);
+  // 装验反馈 9/19（P8b）：成员列表默认隐藏（成员多的房间 chips 占卡高度，
+  // 房间列又长又密），点「N 人」tag 展开/收起。
+  const [membersOpen, setMembersOpen] = React.useState(false);
   // A17：团队群只表达 running（Worker 正在打字）；不显 done/idle
   //（无 per-user last-sender 数据，人类消息会误触绿）。
   const groupRunning = !!workerMxids && (room.typing || []).some((m) =>
@@ -196,7 +199,17 @@ function GroupCard({
             </span>
           </div>
           <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-            <antd.Tag style={{ margin: 0 }}>{room.member_count} 人</antd.Tag>
+            {/* P8b：N 人 tag 兼作成员列表开关（点成员仍走 chip 的 DM 入口） */}
+            <antd.Tag
+              style={{ margin: 0, cursor: "pointer", userSelect: "none" }}
+              title={membersOpen ? tr("隐藏成员") : tr("显示成员")}
+              onClick={(e: ReactNS.MouseEvent) => {
+                e.stopPropagation();
+                setMembersOpen(!membersOpen);
+              }}
+            >
+              {room.member_count} 人 {membersOpen ? "▴" : "▾"}
+            </antd.Tag>
           </div>
           {/* v0.5.0-beta.12（A8c-b）：最后消息正文预览（72 字 + 媒体标记）。 */}
           {(() => {
@@ -218,8 +231,9 @@ function GroupCard({
               </div>
             ) : null;
           })()}
-          {/* 成员 chips：点击成员 → DM（任务发起入口） */}
-          {onDm ? (
+          {/* 成员 chips：点击成员 → DM（任务发起入口）。
+              P8b：默认隐藏（membersOpen 才渲染），点「N 人」tag 展开。 */}
+          {onDm && membersOpen ? (
             <div
               style={{
                 display: "flex",
