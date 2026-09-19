@@ -35,23 +35,33 @@ interface RouteRow {
   name: string;
   upstreams: string;
   aliases: string;
+  /** P7b（9/19 全套抄 dashboard）：授权 consumer 与请求模型 alias 分列
+   * （原先 controller 源把 allowedConsumers 填进 alias 列，语义错位）。 */
+  consumers: string;
 }
 
 function routeRowOf(r: AiRouteLite): RouteRow {
   const ups = (r.upstreams || [])
     .map((u) => (u.weight != null ? `${u.provider}（${u.weight}%）` : u.provider))
     .join("、");
-  const preds = (r.modelPredicates || [])
-    .map((p) => `${p.matchType === "PRE" ? "前缀:" : ""}${String(p.matchValue)}`)
-    .join("、");
+  // 装验反馈 9/19（P7）：preds 原先是 join("、") 后的字符串，下面
+  // [...preds] spread 字符串 = 逐字符拆开（"d、e、p、s、k、-"）。
+  // 拆成 predsArr（数组）+ 显示串两段，spread 用数组。
+  const predsArr = (r.modelPredicates || []).map(
+    (p) => `${p.matchType === "PRE" ? "前缀:" : ""}${String(p.matchValue)}`,
+  );
+  const preds = predsArr.join("、");
   const mappingKeys = (r.upstreams || [])
     .flatMap((u) => Object.keys(u.modelMapping ?? {}))
     .filter((k) => k && !k.includes("*"));
-  const aliasSet = [...new Set([...mappingKeys, ...preds])];
+  const aliasSet = [...new Set([...mappingKeys, ...predsArr])];
   return {
     name: r.name,
     upstreams: ups || "—",
     aliases: aliasSet.join("、") || (preds ? "（按路由匹配）" : "—"),
+    consumers: (r.allowedConsumers || [])
+      .map((c) => c.replace(/^@/, ""))
+      .join("、") || "—",
   };
 }
 
@@ -138,7 +148,9 @@ export default function ModelsTab() {
               u.weight != null ? `${u.provider}（${u.weight}%）` : u.provider,
             )
             .join("、") || "—",
-          aliases: (r.allowedConsumers || [])
+          // controller 源（#1242 目录）无 predicate/modelMapping → alias 不可知。
+          aliases: "—（目录源无 alias 数据）",
+          consumers: (r.allowedConsumers || [])
             .map((c) => c.replace(/^@/, ""))
             .join("、") || "—",
         }));
@@ -152,13 +164,12 @@ export default function ModelsTab() {
       key: "upstreams",
     },
     {
-      title:
-        source === "controller"
-          ? tr("授权 Consumer")
-          : tr("请求模型（alias）"),
+      // P7a（9/19）：alias 逐字拆开 bug 修后，本列正常显示请求模型别名。
+      title: tr("请求模型（alias）"),
       dataIndex: "aliases",
       key: "aliases",
     },
+    { title: tr("授权 Consumer"), dataIndex: "consumers", key: "consumers" },
   ];
 
   return (
@@ -225,6 +236,35 @@ export default function ModelsTab() {
           />
           {source === "console" ? (
             <>
+              {/* P7b（9/19 全套抄 dashboard）：可请求模型（alias）全集——
+                  路由 predicate/mapping 去重聚合，即 Worker 模型下拉的
+                  「网关 alias」分组内容（dashboard 模型页同信息）。 */}
+              {(() => {
+                const all = [...new Set(routeRows.flatMap((r) =>
+                  r.aliases
+                    .split("、")
+                    .map((a) => a.trim())
+                    .filter((a) => a && a !== "（按路由匹配）"),
+                ))].sort();
+                if (all.length === 0) return null;
+                return (
+                  <>
+                    <antd.Typography.Text
+                      strong
+                      style={{ display: "block", margin: "16px 0 6px" }}
+                    >
+                      {tr("可请求模型（alias 全集，{n}）", { n: all.length })}
+                    </antd.Typography.Text>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {all.map((a) => (
+                        <antd.Tag key={a} style={{ margin: 0, fontFamily: "monospace" }}>
+                          {a}
+                        </antd.Tag>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
               <antd.Typography.Text
                 strong
                 style={{ display: "block", margin: "16px 0 6px" }}
