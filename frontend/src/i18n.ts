@@ -492,6 +492,14 @@ const DICT: Record<string, { en: string }> = {
     en: "Values match worker entry span attributes (tracing backend is deployment-specific; no URL is constructed)",
   },
   "下载失败": { en: "Download failed" },
+  "房间列表": { en: "Room list" },
+  "隐藏房间列表": { en: "Hide room list" },
+  "显示房间列表": { en: "Show room list" },
+  "拖动调整房间列表宽度": { en: "Drag to resize room list" },
+  "选择左侧房间开始聊天": { en: "Pick a room on the left to start chatting" },
+  "房间列表已隐藏——点左上角 ☰ 显示": {
+    en: "Room list hidden — click ☰ at top-left to show",
+  },
   "拓扑": { en: "Topology" },
   "请选择左侧项目": { en: "Select a project on the left" },
   "暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡": {

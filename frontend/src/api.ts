@@ -1293,6 +1293,14 @@ export interface WorkerInfo {
   skills?: string[];
   /** v0.5.0-beta.12：Worker 挂载的 MCP server（name/url/transport）。 */
   mcpServers?: McpServerInfo[];
+  /** v0.5.0-beta.12.9（A17 数据面）：Worker 心跳 agent 状态字段
+   * （controller WorkerResponse 顶层平铺透传，worker-agent-status 契约——
+   * 任务级真相，取代 typing 2min 硬上限假熄灭；旧版 controller 无 → 派生
+   * 优雅降级 typing+last_ts，同 dashboard 3ad94e2 语义）。 */
+  agentStatus?: string;
+  runningTaskCount?: number;
+  lastRunAt?: string;
+  lastFinishAt?: string;
 }
 
 export interface TeamInfo {
