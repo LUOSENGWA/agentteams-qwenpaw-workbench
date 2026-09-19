@@ -11,7 +11,9 @@ import {
   replanProject,
   fetchProjectHistory,
   fetchProjectHistorySnapshot,
+  downloadViaHost,
 } from "../api";
+import { artifactDownloadUrl } from "./ProjectFiles";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
@@ -287,6 +289,182 @@ function boardTasksFromEvents(events: WorkflowEvent[]): BoardTask[] {
   return out;
 }
 
+/** #1230 任务巡检 Drawer：任务级明细（正源 tasks_detail 强类型 taskDetails）
+ * + 依赖（nodes 反推 dependsOn）+ tracing 过滤提示。
+ * 入口 = 看板/卡片视图任务卡点击。数据边界：Matrix 降级轨事件无 taskDetails
+ * → 显式提示，不编造。tracing 提示语义=过滤提示（值匹配 worker entry span
+ * 的 agentteams.project.id / agentteams.task.id 属性，不构造 URL）。 */
+function TaskInspectionDrawer(props: {
+  ev: WorkflowEvent | null;
+  taskId: string | null;
+  onClose: () => void;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  const { ev, taskId } = props;
+  const [downloading, setDownloading] = React.useState("");
+  const open = ev !== null && taskId !== null;
+  const detail =
+    ev && taskId
+      ? (ev.taskDetails || []).find((d) => d.task_id === taskId)
+      : undefined;
+  const node =
+    ev && taskId ? (ev.nodes || []).find((n) => n.id === taskId) : undefined;
+  const deps = (node?.dependsOn || []).filter(Boolean);
+  const history = Array.isArray(detail?.history) ? detail.history : [];
+  const deliverables = (
+    Array.isArray(detail?.deliverables) ? detail.deliverables : []
+  ).filter((d): d is string => typeof d === "string");
+  const assignee =
+    (typeof node?.subagent === "string" && node.subagent.trim()) ||
+    detail?.assigned_to ||
+    "";
+  const status = String(node?.status || detail?.status || "");
+  const dl = async (path: string) => {
+    if (!ev || !taskId) return;
+    setDownloading(path);
+    const name = path.split("/").filter(Boolean).pop() || path;
+    const ok = await downloadViaHost(
+      artifactDownloadUrl(ev.runId, taskId, path),
+      name,
+    );
+    setDownloading("");
+    if (!ok) antd.message.error(tr("下载失败"));
+  };
+  const meta = statusMeta(status);
+  return (
+    <antd.Drawer
+      open={open}
+      onClose={props.onClose}
+      width={460}
+      title={node ? nodeLabel(node) : taskId || tr("任务巡检")}
+    >
+      {!ev || !taskId ? null : (
+        <div style={{ display: "grid", gap: 12, fontSize: 12.5 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <antd.Tag color={meta.color} style={{ margin: 0 }}>
+              {meta.label}
+            </antd.Tag>
+            {assignee ? (
+              <antd.Tag style={{ margin: 0 }}>
+                👤 {assignee.split(":")[0].replace(/^@/, "")}
+              </antd.Tag>
+            ) : null}
+            <span style={{ fontFamily: "monospace", fontSize: 11, color: t.textSecondary }}>
+              {taskId}
+            </span>
+          </div>
+          {!detail ? (
+            <div style={{ color: t.textSecondary, fontSize: 12 }}>
+              {tr("无任务级明细——正源任务图有该任务，但 TaskMeta 未落盘（或 Matrix 降级轨无 tasks_detail）")}
+            </div>
+          ) : (
+            <>
+              {detail.summary ? (
+                <div>
+                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("摘要")}</div>
+                  <div style={{ lineHeight: 1.6 }}>{detail.summary}</div>
+                </div>
+              ) : null}
+              {detail.result_status ? (
+                <div>
+                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("验收结果")}</div>
+                  <div>{detail.result_status}</div>
+                </div>
+              ) : null}
+              {detail.cancel_reason ? (
+                <div>
+                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("取消原因")}</div>
+                  <div>{detail.cancel_reason}</div>
+                </div>
+              ) : null}
+              {detail.spec_path ? (
+                <div>
+                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("任务规格")}</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 11.5 }}>{detail.spec_path}</span>
+                    <antd.Button
+                      size="small"
+                      loading={downloading === detail.spec_path}
+                      onClick={() => void dl(detail.spec_path!)}
+                    >
+                      {tr("下载")}
+                    </antd.Button>
+                  </div>
+                </div>
+              ) : null}
+              {deliverables.length > 0 ? (
+                <div>
+                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("交付物")}</div>
+                  {deliverables.map((d) => (
+                    <div key={d} style={{ display: "flex", gap: 8, alignItems: "center", padding: "2px 0" }}>
+                      <span style={{ fontFamily: "monospace", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d}</span>
+                      <antd.Button
+                        size="small"
+                        loading={downloading === d}
+                        onClick={() => void dl(d)}
+                      >
+                        {tr("下载")}
+                      </antd.Button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {deps.length > 0 ? (
+                <div>
+                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("依赖任务")}</div>
+                  {deps.map((d) => (
+                    <antd.Tag key={d} color="geekblue" style={{ fontFamily: "monospace", fontSize: 10.5 }}>
+                      {d}
+                    </antd.Tag>
+                  ))}
+                </div>
+              ) : null}
+              {history.length > 0 ? (
+                <div>
+                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 6 }}>
+                    {tr("状态转换（{n}，新→旧）", { n: history.length })}
+                  </div>
+                  <antd.Timeline
+                    items={[...history].reverse().map((h, i) => ({
+                      key: h.seq ?? i,
+                      children: (
+                        <div style={{ fontSize: 11.5, fontFamily: "monospace", paddingBottom: 2 }}>
+                          <b>{h.from || "∅"} → {h.to}</b>
+                          <span style={{ color: t.textSecondary }}>
+                            {" "}{h.action}
+                            {h.actor ? `（${h.actor}）` : ""}
+                          </span>
+                          <div style={{ color: t.textSecondary, fontSize: 10.5, fontFamily: "inherit" }}>
+                            {h.ts}
+                            {h.note ? ` · ${h.note}` : ""}
+                          </div>
+                        </div>
+                      ),
+                    }))}
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
+          <div>
+            <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("tracing 过滤提示")}</div>
+            <antd.Typography.Text
+              copyable={{ text: `agentteams.project.id=${ev.runId} · agentteams.task.id=${taskId}` }}
+              style={{ fontFamily: "monospace", fontSize: 11 }}
+            >
+              agentteams.project.id={ev.runId} · agentteams.task.id={taskId}
+            </antd.Typography.Text>
+            <div style={{ color: t.textSecondary, fontSize: 10.5, marginTop: 2 }}>
+              {tr("值用于匹配 worker entry span 属性（tracing 后端为部署特定，不构造 URL）")}
+            </div>
+          </div>
+        </div>
+      )}
+    </antd.Drawer>
+  );
+}
+
 /** 看板任务卡：任务名 + 项目 + 负责人 + 依赖 badge + 非终态任务取消按钮。
  * 依赖不画跨列连线（与 dashboard 一致：看板列内 badge，依赖树走拓扑视图）。
  * 取消=任务级（/tasks/{id}/cancel，reason 必填；终态任务 409 幂等收敛）。
@@ -297,8 +475,10 @@ function BoardCard(props: {
   task: BoardTask;
   t: ReturnType<typeof useThemeColors>;
   onTaskDone?: () => void;
+  /** #1230：卡标题点击 → 任务巡检 Drawer（runId 显式传——看板列跨项目混排）。 */
+  onOpenDetail?: (taskId: string, runId: string) => void;
 }) {
-  const { task, t, onTaskDone } = props;
+  const { task, t, onTaskDone, onOpenDetail } = props;
   const tr = useT();
   const { node } = task;
   const [cancelOpen, setCancelOpen] = React.useState(false);
@@ -350,8 +530,16 @@ function BoardCard(props: {
           fontSize: 12.5,
           color: t.text,
           wordBreak: "break-word",
+          cursor: taskId && onOpenDetail ? "pointer" : "default",
         }}
-        title={nodeLabel(node)}
+        title={
+          taskId && onOpenDetail
+            ? `${nodeLabel(node)}（点击巡检：明细/依赖/状态转换/tracing）`
+            : nodeLabel(node)
+        }
+        onClick={
+          taskId && onOpenDetail ? () => onOpenDetail(taskId, task.runId) : undefined
+        }
       >
         {nodeLabel(node)}
       </div>
@@ -429,8 +617,9 @@ function BoardColumnsView(props: {
   events: WorkflowEvent[];
   t: ReturnType<typeof useThemeColors>;
   onTaskDone?: () => void;
+  onOpenDetail?: (taskId: string, runId: string) => void;
 }) {
-  const { events, t, onTaskDone } = props;
+  const { events, t, onTaskDone, onOpenDetail } = props;
   const tr = useT();
   const tasks = React.useMemo(() => boardTasksFromEvents(events), [events]);
   return (
@@ -485,6 +674,11 @@ function BoardColumnsView(props: {
                 task={task}
                 t={t}
                 onTaskDone={onTaskDone}
+                onOpenDetail={
+                  onOpenDetail
+                    ? (tid) => onOpenDetail(tid, task.runId)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -1220,6 +1414,15 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
     () => (topoEvent ? boardTasksFromEvents([topoEvent]) : []),
     [topoEvent],
   );
+  // #1230 任务巡检：任务卡点击 → Drawer（runId+taskId 双键定位；
+  // 事件被刷新剔除时 find 落 null → Drawer 自动空态关闭语义由 open 判空覆盖）。
+  const [inspect, setInspect] = React.useState<{
+    runId: string;
+    taskId: string;
+  } | null>(null);
+  const inspectEv = inspect
+    ? events.find((e) => e.runId === inspect.runId) || null
+    : null;
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -1397,6 +1600,9 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
                           task={task}
                           t={t}
                           onTaskDone={() => onRefresh?.()}
+                          onOpenDetail={(tid) =>
+                            setInspect({ runId: topoEvent.runId, taskId: tid })
+                          }
                         />
                       ))}
                     </div>
@@ -1426,6 +1632,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
             events={sortedEvents}
             t={t}
             onTaskDone={() => onRefresh?.()}
+            onOpenDetail={(tid, rid) => setInspect({ runId: rid, taskId: tid })}
           />
         )
       ) : (
@@ -1486,6 +1693,12 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
           </div>
         </div>
       )}
+      {/* #1230 任务巡检 Drawer（看板/卡片任务卡点击） */}
+      <TaskInspectionDrawer
+        ev={inspectEv}
+        taskId={inspect?.taskId ?? null}
+        onClose={() => setInspect(null)}
+      />
     </div>
   );
 }
