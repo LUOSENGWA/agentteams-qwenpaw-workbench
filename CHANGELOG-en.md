@@ -5,6 +5,19 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.14 (2026-09-19)
+
+**Chat split trio: threshold 600 + force toggle + diagnostics**
+
+- **Split threshold 1024 -> 600** (container width): repeated "no split" reports came from 1024-classifying host panels/narrow windows as narrow forever; below 600 keeps phone semantics, above gets the side-by-side layout.
+- **New Settings toggle "Force side-by-side chat layout"**: ignores width detection entirely (narrow panels can still drag-resize / collapse the list).
+- **New self-check card "Chat layout diagnostics (client-side)"**: window/container sizes, mode + threshold + forced flag, left-pane visible/content heights and overflowY -- the numeric scene for split/scroll issues, one-click re-measure.
+- Reproduction bench verified: 900px -> split; 500px -> narrow; force toggle -> split at 500px; diagnostics numbers accurate.
+
+**Verification**: tsc 0 · check-antd 38 · vite build green · pytest 46/46
+
+---
+
 ## 0.5.0-beta.12.13 (2026-09-19)
 
 **Model page write actions (Add provider / Add route) + container-based split**

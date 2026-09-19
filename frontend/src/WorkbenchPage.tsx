@@ -385,11 +385,16 @@ function SettingsTab({
   config,
   onConfigChange,
   onLoginSuccess,
+  chatForceWide,
+  onChatForceWideChange,
 }: {
   config: WorkbenchConfig | null;
   onConfigChange: () => void;
   // v0.5.0-beta.12: 登录（账号切换）成功后 → 清本地旧账号数据 + 全量刷新。
   onLoginSuccess?: () => void;
+  // 12.14：聊天分栏强制开关（忽略宽度判定）。
+  chatForceWide?: boolean;
+  onChatForceWideChange?: (v: boolean) => void;
 }) {
   const tr = useT();
   const [matrixLan, setMatrixLan] = React.useState("");
@@ -639,6 +644,20 @@ function SettingsTab({
         内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），
         无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到
         最快可达的一条，外网/内网切换自动识别。
+      </div>
+
+      {/* 12.14：聊天分栏强制开关——宿主面板宽度判定为窄屏时的豁免。 */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <antd.Switch
+          checked={Boolean(chatForceWide)}
+          onChange={(v: boolean) => onChatForceWideChange?.(v)}
+        />
+        <div>
+          <div style={{ fontWeight: 600 }}>{tr("聊天页面强制左右分栏")}</div>
+          <div style={{ fontSize: 12, color: "#888" }}>
+            {tr("忽略宽度判定：房间列表与聊天框始终左右分栏、各自独立滚动。窄面板下可用拖动条调宽、⟨ 可收起列表。")}
+          </div>
+        </div>
       </div>
 
       <div style={{ display: "grid", gap: 12 }}>
@@ -1132,7 +1151,77 @@ function SettingsTab({
   );
 }
 
-function SelfCheckTab({ config }: { config: WorkbenchConfig | null }) {
+/** 12.14：聊天布局客户端诊断（自检页）——分栏/滚动问题的数字现场。 */
+function ChatLayoutDiagCard({
+  layout,
+}: {
+  layout?: { wide: boolean; forced: boolean; threshold: number };
+}) {
+  const tr = useT();
+  const [lines, setLines] = React.useState<string[]>([]);
+  const measure = React.useCallback(() => {
+    const out: string[] = [];
+    out.push(`window.innerWidth = ${window.innerWidth}px`);
+    const main = document.querySelector(".wb-main") as HTMLElement | null;
+    if (main) {
+      out.push(`容器 .wb-main = ${main.clientWidth} × ${main.clientHeight}px`);
+    }
+    if (layout) {
+      out.push(
+        `模式 = ${layout.wide ? "宽屏分栏" : "窄屏单列"}（阈值 ${layout.threshold}px${layout.forced ? "，已强制分栏" : ""}）`,
+      );
+    }
+    const left = document.querySelector(
+      '.wb-main div[style*="overscroll"]',
+    ) as HTMLElement | null;
+    if (left && left.clientHeight > 0) {
+      out.push(
+        `左栏: 可视高 ${left.clientHeight}px / 内容高 ${left.scrollHeight}px / overflowY=${getComputedStyle(left).overflowY} → ${left.scrollHeight > left.clientHeight ? "内容超限（应可滚动）" : "内容未超限"}`,
+      );
+    } else {
+      out.push(
+        "左栏未渲染或聊天 tab 未激活（先点「聊天」tab 再回自检点「重新测量」可测左栏滚动数据）",
+      );
+    }
+    setLines(out);
+  }, [layout]);
+  React.useEffect(() => {
+    measure();
+  }, [measure]);
+  return (
+    <antd.Card
+      size="small"
+      title={tr("聊天布局诊断（客户端）")}
+      extra={
+        <antd.Button size="small" onClick={measure}>
+          {tr("重新测量")}
+        </antd.Button>
+      }
+    >
+      <pre
+        style={{
+          margin: 0,
+          fontSize: 12,
+          whiteSpace: "pre-wrap",
+          lineHeight: 1.7,
+        }}
+      >
+        {lines.join("\n") || "…"}
+      </pre>
+      <div style={{ fontSize: 11, color: "#888", marginTop: 6 }}>
+        {tr("排查「聊天分栏/滚动」问题时：把上面几行原样发我（数字即现场）。")}
+      </div>
+    </antd.Card>
+  );
+}
+
+function SelfCheckTab({
+  config,
+  layout,
+}: {
+  config: WorkbenchConfig | null;
+  layout?: { wide: boolean; forced: boolean; threshold: number };
+}) {
   const tr = useT();
   const [result, setResult] = React.useState<SelfCheckResult | null>(null);
   const [running, setRunning] = React.useState<string | null>(null);
@@ -1153,6 +1242,7 @@ function SelfCheckTab({ config }: { config: WorkbenchConfig | null }) {
 
   return (
     <div style={{ display: "grid", gap: 16, maxWidth: 760 }}>
+      <ChatLayoutDiagCard layout={layout} />
       <antd.Space wrap>
         <antd.Button loading={running === "l0"} onClick={() => void run("l0")}>
           L0 本地环境
@@ -1209,6 +1299,10 @@ function readStartupPref(): "last" | "home" {
   }
 }
 
+/** 12.14：聊天分栏最小容器宽——1024→600（宿主内嵌面板/窄窗场景
+ *  1024 下判定窄屏、罗总装验多轮复报「无分栏」；600 以下=手机竖屏语义）。 */
+const CHAT_SPLIT_MIN_CONTAINER_W = 600;
+
 export default function WorkbenchPage() {
   const t = useThemeColors();
   const tr = useT();
@@ -1257,6 +1351,8 @@ export default function WorkbenchPage() {
     // P6：聊天分栏宽度（string 存储，读取时 Number 化）+ 房间列折叠状态。
     chatSplitW?: string;
     chatListHidden?: string;
+    // 12.14：强制左右分栏开关（忽略宽度判定）。
+    chatForceWide?: string;
   } => {
     try {
       const raw = window.localStorage.getItem(key);
@@ -2388,16 +2484,27 @@ export default function WorkbenchPage() {
   // 宽屏：左房间/DM 列表（宽度可拖 220-560，持久化）+ 右聊天（未选房间显占位）。
   // 窄屏（<1024px，竖屏/手机）：保持微信移动版语义——列表页点击进全屏聊天，
   // 左上角 ← 返回退出（RoomChat onBack 既有按钮）。列表可隐藏（宽屏）。
-  const [chatWide, setChatWide] = React.useState(
-    () => window.innerWidth >= 1024,
+  const [chatWideMeasured, setChatWideMeasured] = React.useState(
+    () => window.innerWidth >= CHAT_SPLIT_MIN_CONTAINER_W,
   );
-  // 12.13（罗总「分栏还是不行」）：分栏判定从窗口宽度改为「容器实际宽度」——
-  // 宿主内嵌面板可能窄于窗口（innerWidth 会骗人：宽窗窄面板时误判宽屏）。
-  // ResizeObserver 跟随容器；无 RO 环境回退 window 宽度。
+  // 12.14：强制分栏开关（配置页）——忽略宽度判定，持久化 ui-state。
+  const [chatForceWide, setChatForceWide] = React.useState<boolean>(
+    () => readUiState(UI_STATE_KEY).chatForceWide === "true",
+  );
+  const setChatForceWidePersist = React.useCallback(
+    (v: boolean) => {
+      setChatForceWide(v);
+      mergeUiState({ chatForceWide: v ? "true" : "false" });
+    },
+    [mergeUiState],
+  );
+  // 12.13→12.14：判定改「容器实际宽度」（宿主内嵌面板可能窄于窗口），
+  // 阈值 1024→600；强制开关优先。ResizeObserver 跟随容器；无 RO 回退窗口宽。
   const mainRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const el = mainRef.current;
-    const measure = (w: number) => setChatWide(w >= 1024);
+    const measure = (w: number) =>
+      setChatWideMeasured(w >= CHAT_SPLIT_MIN_CONTAINER_W);
     if (el && typeof ResizeObserver !== "undefined") {
       const ro = new ResizeObserver((entries) => {
         const w = entries[0]?.contentRect?.width;
@@ -2411,6 +2518,7 @@ export default function WorkbenchPage() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  const chatWide = chatForceWide || chatWideMeasured;
   const [chatSplitW, setChatSplitW] = React.useState<number>(() => {
     const v = Number(readUiState(UI_STATE_KEY).chatSplitW);
     return Number.isFinite(v) && v >= 160 && v <= 480 ? v : 300;
@@ -2980,7 +3088,16 @@ export default function WorkbenchPage() {
           {
             key: "selfcheck",
             label: `🔍 ${tr("自检")}`,
-            children: <SelfCheckTab config={config} />,
+            children: (
+              <SelfCheckTab
+                config={config}
+                layout={{
+                  wide: chatWide,
+                  forced: chatForceWide,
+                  threshold: CHAT_SPLIT_MIN_CONTAINER_W,
+                }}
+              />
+            ),
           },
           {
             key: "ops",
@@ -3002,6 +3119,8 @@ export default function WorkbenchPage() {
                 onLoginSuccess={onLoginSuccess}
                 config={config}
                 onConfigChange={() => void refreshConfig()}
+                chatForceWide={chatForceWide}
+                onChatForceWideChange={setChatForceWidePersist}
               />
             ),
           },
