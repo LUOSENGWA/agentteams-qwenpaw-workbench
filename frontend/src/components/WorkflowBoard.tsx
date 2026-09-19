@@ -1255,8 +1255,11 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
       ) : null}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 700, fontSize: 15 }}>🔀 {tr("工作流")}</span>
+        <span style={{ fontSize: 12.5, color: t.textSecondary }}>
+          {tr("项目")}（{events.length}）
+        </span>
         <antd.Tooltip
-          title={tr("事件/卡片/看板/DAG 拓扑四种视图；卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）")}
+          title={tr("项目列表/项目卡片/看板/DAG 拓扑四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）")}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
         </antd.Tooltip>
@@ -1284,8 +1287,8 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
             setView(v as "list" | "card" | "board" | "topo")
           }
           options={[
-            { value: "list", label: `📋 ${tr("事件")}（${events.length}）` },
-            { value: "card", label: `🗂️ ${tr("卡片")}（${events.length}）` },
+            { value: "list", label: `📋 ${tr("项目列表")}` },
+            { value: "card", label: `🗂️ ${tr("项目卡片")}` },
             { value: "board", label: `📊 ${tr("看板")}（${boardTaskCount}）` },
             { value: "topo", label: `🌳 ${tr("拓扑")}（${withNodes.length}）` },
           ]}
