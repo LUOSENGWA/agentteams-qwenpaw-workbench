@@ -24,3 +24,6 @@ archive/*.zip
 dist/*.map
 archive/beta2_surgery.py
 GITHUB-RELEASE/
+
+# 会话本地 TODO（coding 模式约定，不入库）
+*_TODO.md

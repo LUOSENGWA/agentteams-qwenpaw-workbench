@@ -81,6 +81,12 @@ Behavior rules:
 | Cluster load (SGLang/GPU) | ❌ | ✅ |
 | Gateway aliases in model dropdown (gateway side) | ❌ | ✅ (needs ② password-mode verification) |
 
+## Model gateway page (L1: browse + add provider / add route)
+
+- The **Model gateway** section in settings: read-only providers / AI routes / model mappings + aggregated "resolvable models (alias)" set + split request-alias / allowed-consumer columns
+- **Write actions new in v0.5.0-beta.13**: **"Add provider"** and **"Add route"** (same field shapes as the dashboard) — requests are proxied through the connector to the Higress Console session; console errors (e.g. 409 conflicts) surface verbatim in the dialog
+- Requires **L1 + a valid Console session** (L2 has no Console session = read-only browse; the write entries are hidden)
+
 ## Token security
 
 - Stored **on this machine only** (browser localStorage + the plugin backend's local config) — zero-credential principle: page JavaScript never holds Matrix/Controller credentials directly; everything goes through the in-host in-process proxy

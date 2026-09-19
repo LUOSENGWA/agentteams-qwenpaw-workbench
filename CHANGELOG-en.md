@@ -36,6 +36,7 @@ New since beta.12 (the previous official release), grouped by area:
 - New-worker dialog: runtime list updated (CoPaw removed, DeepSeek Harness added, QwenPaw default) and split out of the create-team card
 - CRD management: export JSON (all four kinds) + compact cards + brand logo replaces the building emoji
 - Quick-action trio (hire human / create team / new worker) now share ONE row and are collapsible
+- **Spawn tool/skill whitelist display**: spawn tree nodes now show "Allowed tools / Allowed skills" tags when the data is available — tool narrowing applied to a subagent dispatch is persisted and surfaced to the workbench through the Controller spawn endpoint; workers without such data show nothing (zero noise)
 
 **Verification**
 tsc 0 - check-antd cross-check - vite build green - pytest 46/46 - version re-verified inside the shipped archive (all three places)
