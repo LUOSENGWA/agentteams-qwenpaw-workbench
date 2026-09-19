@@ -2520,7 +2520,11 @@ export default function WorkbenchPage() {
               width: chatSplitW,
               flexShrink: 0,
               minWidth: 0,
-              overflow: "hidden",
+              // 装验反馈 9/19（P8a）：房间列表独立滚动（原先 overflow:hidden
+              // 直接裁掉底部房间，列表无法滚动）；overscroll-contain 防
+              // 滚动链传播到页面。
+              overflowY: "auto",
+              overscrollBehavior: "contain",
               borderRight: `1px solid ${t.border}`,
             }}
           >
@@ -2648,6 +2652,14 @@ export default function WorkbenchPage() {
         /* v0.5.0-beta.12：行内 Select 默认 min-width:auto=内容宽（长占位符撑行）
            → 强制可收缩（内容自行裁剪），断「创建团队卡溢出」最后一条链。 */
         .wb-main .ant-select { min-width: 0; }
+        /* 装验反馈 9/19（P8a）：聊天分栏左右独立滚动——antd Tabs 内部
+           content 链默认无高度（auto 跟随内容）→ 分栏容器 height:100%
+           塌陷、房间列表撑高被 wb-main overflow:hidden 裁掉。锁定
+           content holder/content/tabpane 高度链（chatWide 分栏专用；
+           其他 tab 内容自身有高度约束，100% 无副作用）。 */
+        .wb-main .ant-tabs-content-holder { flex: 1; min-height: 0; }
+        .wb-main .ant-tabs-content { height: 100%; }
+        .wb-main .ant-tabs-tabpane-active { height: 100%; min-height: 0; }
         /* v0.5.0-beta.12（390px 审计真根因）：antd 断点最小档 xs=576px——
            390px 手机低于一切断点，Col 无任何断点样式 → 基础 width:100%
            + flex-shrink 把「员工入职/创建团队」两卡挤成 50/50（各 174px，
@@ -2830,6 +2842,7 @@ export default function WorkbenchPage() {
         renderTabBar={() => null}
         activeKey={tab}
         onChange={setTab}
+        style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
         items={[
           {
             key: "home",
