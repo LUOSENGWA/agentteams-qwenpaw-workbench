@@ -1248,13 +1248,19 @@ export default function WorkbenchPage() {
   };
   const readUiState = (
     key: string,
-  ): { tab?: string; roomId?: string; wfView?: string; wfTopo?: string } => {
+  ): {
+    tab?: string;
+    roomId?: string;
+    wfView?: string;
+    wfTopo?: string;
+    // P6：聊天分栏宽度（string 存储，读取时 Number 化）+ 房间列折叠状态。
+    chatSplitW?: string;
+    chatListHidden?: string;
+  } => {
     try {
       const raw = window.localStorage.getItem(key);
       if (!raw) return {};
-      const parsed = JSON.parse(
-        raw,
-      ) as { tab?: string; roomId?: string; wfView?: string; wfTopo?: string };
+      const parsed = JSON.parse(raw) as ReturnType<typeof readUiState>;
       return typeof parsed === "object" && parsed ? parsed : {};
     } catch {
       return {};
@@ -1751,9 +1757,16 @@ export default function WorkbenchPage() {
     return map;
   }, [adminData, workerTree]);
 
-  // v0.5.0-beta.12.4（A17）：Worker session 运行指示——统一派生（三落点共用：
-  // 房间卡列表 / Worker 行 / 1:1 聊天头）。纯前端（typing + last_ts），60s 老化。
-  const workerSessionStates = useWorkerSessionStates(rooms, workerTree);
+  // v0.5.0-beta.12.4（A17）：Worker session 运行指示——统一派生（四落点共用：
+  // 房间卡列表 / Worker 行 / 1:1 聊天头 / 聊天主列表发送者行）。
+  // v0.5.0-beta.12.9：心跳优先（adminData.workers 的 agentStatus/runningTaskCount/
+  // lastFinishAt，GET /workers 既有通道零新请求；旧版 controller 无 → 降级
+  // typing+last_ts），60s 老化。
+  const workerSessionStates = useWorkerSessionStates(
+    rooms,
+    workerTree,
+    adminData?.workers,
+  );
 
   // 通知未读计数（通知 tab badge）。
   const [inboxUnread, setInboxUnread] = React.useState(0);
@@ -2342,6 +2355,232 @@ export default function WorkbenchPage() {
     return "";
   }, [config?.matrix?.user_id, rooms]);
 
+  // ── P6 聊天 tab（罗总 9/18 ⑤）：宽屏 Element 式分栏 / 窄屏微信式单屏 ──
+  // 宽屏：左房间/DM 列表（宽度可拖 220-560，持久化）+ 右聊天（未选房间显占位）。
+  // 窄屏（<900px，竖屏/手机）：保持微信移动版语义——列表页点击进全屏聊天，
+  // 左上角 ← 返回退出（RoomChat onBack 既有按钮）。列表可隐藏（宽屏）。
+  const [chatWide, setChatWide] = React.useState(
+    () => window.innerWidth >= 900,
+  );
+  React.useEffect(() => {
+    const onResize = () => setChatWide(window.innerWidth >= 900);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const [chatSplitW, setChatSplitW] = React.useState<number>(() => {
+    const v = Number(readUiState(UI_STATE_KEY).chatSplitW);
+    return Number.isFinite(v) && v >= 220 && v <= 560 ? v : 320;
+  });
+  const [chatListHidden, setChatListHidden] = React.useState<boolean>(
+    () => readUiState(UI_STATE_KEY).chatListHidden === "true",
+  );
+  const setChatListHiddenPersist = React.useCallback(
+    (hidden: boolean) => {
+      setChatListHidden(hidden);
+      mergeUiState({ chatListHidden: hidden ? "true" : "false" });
+    },
+    [mergeUiState],
+  );
+  const closeChatRoom = React.useCallback(() => {
+    setActiveRoom(null);
+    setRoomError("");
+    writeUiState(tab, null);
+  }, [tab, writeUiState]);
+  const startChatSplitDrag = React.useCallback(
+    (e: ReactNS.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = chatSplitW;
+      const clamp = (w: number) => Math.min(560, Math.max(220, w));
+      const onMove = (ev: globalThis.MouseEvent) => {
+        setChatSplitW(clamp(startW + (ev.clientX - startX)));
+      };
+      const onUp = (ev: globalThis.MouseEvent) => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        // 落点一次写 localStorage（拖动中不写——高频写盘无谓）。
+        mergeUiState({
+          chatSplitW: String(clamp(startW + (ev.clientX - startX))),
+        });
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [chatSplitW, mergeUiState],
+  );
+
+  // P6：聊天双元素提取（宽/窄屏两分支共用一份 JSX——props 长，禁止复制）。
+  const chatRoomEl = activeRoom ? (
+    <RoomChat
+      room={activeRoom}
+      messages={messages}
+      liveWorkflows={workflowSource === "controller" ? workflowEvents : []}
+      loading={messagesLoading}
+      sending={sending}
+      hasMore={hasMore}
+      user_id={config?.matrix?.user_id}
+      errorNote={
+        roomError === "not_found"
+          ? tr("该房间历史暂时无法加载——可能是房间已失效，也可能是权限或服务端问题。可返回聊天页换其他房间。")
+          : ""
+      }
+      onSend={(text, replyTo, threadRoot) =>
+        void handleSend(text, replyTo, threadRoot)
+      }
+      onSendApproval={(mxid, cmd, replyTo) =>
+        void handleSendApproval(mxid, cmd, replyTo)
+      }
+      onSendFiles={(files) => void handleSendFiles(files)}
+      onSendEdit={(eventId, body) => void handleSendEdit(eventId, body)}
+      onRedact={(eventId) => void handleRedact(eventId)}
+      onLeaveRoom={() => void handleLeaveRoom()}
+      onRenameRoom={(name) => void handleRenameRoom(name)}
+      muted={activeRoom ? mutedRooms.includes(activeRoom.room_id) : false}
+      onToggleMute={() => void handleToggleMute()}
+      onReact={(eventId, emoji) => void handleReact(eventId, emoji)}
+      onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
+      onBack={() => {
+        closeChatRoom();
+        // 窄屏=微信式退出聊天（回列表页）；宽屏=关聊天回占位（列表恒显）。
+        if (!chatWide) setChatListHiddenPersist(false);
+      }}
+      onNewTask={() => void 0}
+      onLoadMore={() => void loadMore()}
+      onPoll={() => void pollMessages()}
+      jumpToEventId={jumpToEventId}
+      onJumpHandled={() => setJumpToEventId(null)}
+      memberRoles={memberRoles}
+      memberWorkerNames={memberWorkerNames}
+      workerBadge={
+        activeRoom ? workerBadgeMap[activeRoom.room_id] : undefined
+      }
+      sessionState={
+        activeRoom ? workerSessionStates.byRoom[activeRoom.room_id] : undefined
+      }
+      workerMxids={workerSessionStates.workerMxids}
+      workerSessionByMxid={workerSessionStates.byMxid}
+      onOpenProject={(runId) => handleOpenProject(runId)}
+      onWorkflowIntervened={() => void refreshWorkflow(true)}
+      onOpenProjectFiles={(room) => void openProjectFiles(room)}
+    />
+  ) : null;
+  const chatListEl = (
+    <TeamOverview
+      rooms={rooms}
+      invites={invites}
+      loading={roomsLoading}
+      user_id={config?.matrix?.user_id}
+      workerSessionByRoom={workerSessionStates.byRoom}
+      workerMxids={workerSessionStates.workerMxids}
+      onOpenRoom={(roomId) => void openRoom(roomId)}
+      onRefresh={() => void refreshRooms()}
+      onInviteSettled={() => void refreshRooms(true, true)}
+      onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
+      onGlobalSearch={() => setGlobalSearchOpen(true)}
+      onMarkAllRead={() => void handleMarkAllRead()}
+      markingAllRead={markingAllRead}
+    />
+  );
+  const chatTabChildren = chatWide ? (
+    <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+      {!chatListHidden ? (
+        <>
+          <div
+            style={{
+              position: "relative",
+              width: chatSplitW,
+              flexShrink: 0,
+              minWidth: 0,
+              overflow: "hidden",
+              borderRight: `1px solid ${t.border}`,
+            }}
+          >
+            {chatListEl}
+            <button
+              type="button"
+              onClick={() => setChatListHiddenPersist(true)}
+              title={tr("隐藏房间列表")}
+              style={{
+                position: "absolute",
+                top: 8,
+                right: 8,
+                zIndex: 10,
+                border: `1px solid ${t.border}`,
+                background: t.bg,
+                color: t.textSecondary,
+                borderRadius: 6,
+                cursor: "pointer",
+                padding: "2px 7px",
+                fontSize: 12,
+                lineHeight: "18px",
+              }}
+            >
+              ⟨
+            </button>
+          </div>
+          <div
+            onMouseDown={startChatSplitDrag}
+            title={tr("拖动调整房间列表宽度")}
+            style={{
+              width: 5,
+              flexShrink: 0,
+              cursor: "col-resize",
+              background: "transparent",
+            }}
+          />
+        </>
+      ) : null}
+      <div style={{ flex: 1, minWidth: 0, position: "relative", minHeight: 0 }}>
+        {chatListHidden ? (
+          <button
+            type="button"
+            onClick={() => setChatListHiddenPersist(false)}
+            title={tr("显示房间列表")}
+            style={{
+              position: "absolute",
+              top: 10,
+              left: 10,
+              zIndex: 10,
+              border: `1px solid ${t.border}`,
+              background: t.bg,
+              color: t.text,
+              borderRadius: 6,
+              cursor: "pointer",
+              padding: "3px 9px",
+              fontSize: 13,
+            }}
+          >
+            ☰ {tr("房间列表")}
+          </button>
+        ) : null}
+        {chatRoomEl || (
+          <div
+            style={{
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              color: t.textSecondary,
+            }}
+          >
+            <div style={{ fontSize: 34 }}>💬</div>
+            <div style={{ fontSize: 13 }}>
+              {chatListHidden
+                ? tr("房间列表已隐藏——点左上角 ☰ 显示")
+                : tr("选择左侧房间开始聊天")}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  ) : activeRoom ? (
+    chatRoomEl
+  ) : (
+    chatListEl
+  );
+
   return (
     <antd.ConfigProvider
       theme={{
@@ -2589,83 +2828,7 @@ export default function WorkbenchPage() {
           {
             key: "chat",
             label: `💬 ${tr("聊天")}`,
-            children: activeRoom ? (
-              <RoomChat
-                room={activeRoom}
-                messages={messages}
-                liveWorkflows={workflowSource === "controller" ? workflowEvents : []}
-                loading={messagesLoading}
-                sending={sending}
-                hasMore={hasMore}
-                user_id={config?.matrix?.user_id}
-                errorNote={
-                  roomError === "not_found"
-                    ? tr("该房间历史暂时无法加载——可能是房间已失效，也可能是权限或服务端问题。可返回聊天页换其他房间。")
-                    : ""
-                }
-                onSend={(text, replyTo, threadRoot) =>
-                  void handleSend(text, replyTo, threadRoot)
-                }
-                onSendApproval={(mxid, cmd, replyTo) =>
-                  void handleSendApproval(mxid, cmd, replyTo)
-                }
-                onSendFiles={(files) => void handleSendFiles(files)}
-                onSendEdit={(eventId, body) => void handleSendEdit(eventId, body)}
-                onRedact={(eventId) => void handleRedact(eventId)}
-                onLeaveRoom={() => void handleLeaveRoom()}
-                onRenameRoom={(name) => void handleRenameRoom(name)}
-                muted={
-                  activeRoom
-                    ? mutedRooms.includes(activeRoom.room_id)
-                    : false
-                }
-                onToggleMute={() => void handleToggleMute()}
-                onReact={(eventId, emoji) => void handleReact(eventId, emoji)}
-                onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
-                onBack={() => {
-                  setActiveRoom(null);
-                  setRoomError("");
-                  writeUiState(tab, null);
-                }}
-                onNewTask={() => void 0}
-                onLoadMore={() => void loadMore()}
-                onPoll={() => void pollMessages()}
-                jumpToEventId={jumpToEventId}
-                onJumpHandled={() => setJumpToEventId(null)}
-                memberRoles={memberRoles}
-                memberWorkerNames={memberWorkerNames}
-                workerBadge={
-                  activeRoom
-                    ? workerBadgeMap[activeRoom.room_id]
-                    : undefined
-                }
-                sessionState={
-                  activeRoom
-                    ? workerSessionStates.byRoom[activeRoom.room_id]
-                    : undefined
-                }
-                workerMxids={workerSessionStates.workerMxids}
-                onOpenProject={(runId) => handleOpenProject(runId)}
-                onWorkflowIntervened={() => void refreshWorkflow(true)}
-                onOpenProjectFiles={(room) => void openProjectFiles(room)}
-              />
-            ) : (
-              <TeamOverview
-                rooms={rooms}
-                invites={invites}
-                loading={roomsLoading}
-                user_id={config?.matrix?.user_id}
-                workerSessionByRoom={workerSessionStates.byRoom}
-                workerMxids={workerSessionStates.workerMxids}
-                onOpenRoom={(roomId) => void openRoom(roomId)}
-                onRefresh={() => void refreshRooms()}
-                onInviteSettled={() => void refreshRooms(true, true)}
-                onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
-                onGlobalSearch={() => setGlobalSearchOpen(true)}
-                onMarkAllRead={() => void handleMarkAllRead()}
-                markingAllRead={markingAllRead}
-              />
-            ),
+            children: chatTabChildren,
           },
           {
             key: "inbox",

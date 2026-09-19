@@ -1255,6 +1255,9 @@ export interface RoomChatProps {
   sessionState?: WorkerSessionState;
   /** v0.5.0-beta.12.4（A17）：全部 Worker MXID——团队房间任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
+  /** A17（9/18 落点定案：聊天群内）：Worker MXID → 任务状态（主列表发送者行
+   * 状态点；心跳优先派生，人类发送者无映射 → 不显）。 */
+  workerSessionByMxid?: Record<string, WorkerSessionState>;
 }
 
 export default function RoomChat(props: RoomChatProps) {
@@ -1290,6 +1293,7 @@ export default function RoomChat(props: RoomChatProps) {
     workerBadge,
     sessionState,
     workerMxids,
+    workerSessionByMxid,
     onOpenProject,
     onWorkflowIntervened,
     onOpenProjectFiles,
@@ -2397,6 +2401,15 @@ export default function RoomChat(props: RoomChatProps) {
                             onDetail={(m) => setDetailMxid(m)}
                           />
                           {senderShortName(msg.sender, room)}
+                          {/* A17（9/18 落点定案：聊天群内，非 worker 管理）：
+                              发送者任务状态点——Worker byMxid 派生（心跳优先），
+                              人类发送者无映射 → 自然不显。 */}
+                          {workerSessionByMxid?.[msg.sender] ? (
+                            <WorkerSessionDot
+                              state={workerSessionByMxid[msg.sender]}
+                              size={7}
+                            />
+                          ) : null}
                           <span
                             style={{
                               opacity: showTime ? 1 : 0,
