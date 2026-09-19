@@ -36,6 +36,7 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 - 新建 Worker：行情更新（移除 CoPaw、补 DeepSeek Harness、默认 QwenPaw）+ 从建队卡独立成卡
 - CRD 管理：导出 JSON（四类全量）+ 卡片紧凑化 + 品牌 logo 替换 🏢
 - 快捷操作三卡（员工入职 / 创建团队 / 新建 Worker）**同排一行 + 可折叠**（装验 9/19）
+- **spawn 工具/技能白名单显示**：spawn 树节点在数据具备时展示「工具白名单 / 技能白名单」标签——子 Agent 派发时的工具收窄会持久化，并经 Controller spawn 端点透传到工作台；无该数据的 Worker 不显示、零噪音
 
 **验证**
 tsc 0 · check-antd 交叉通过 · vite build 绿 · pytest 46/46 · 包内三处版本复核一致

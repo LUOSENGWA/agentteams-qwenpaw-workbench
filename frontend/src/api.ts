@@ -1651,6 +1651,11 @@ export interface SpawnNode {
   children?: SpawnNode[];
   /** 正源：父 spawn 的 session_id（root_session_id），用于建树后不展示。 */
   rootSessionId?: string;
+  /* spawn 工具/技能白名单——QwenPaw #7004 持久化（meta.subagent_allowed_tools/
+     subagent_skills）经 Controller spawn 端点透传（需上游 main 64a77b5f+，v1.2.3 tag 未含）；仅当派发时
+     受限且 Worker 运行 QwenPaw 2.1+ 时出现，2.0.1 恒无（不渲染）。 */
+  allowedTools?: string[];
+  skills?: string[];
 }
 
 export interface WorkerSpawnGroup {
@@ -1735,6 +1740,15 @@ export async function fetchWorkerSpawns(): Promise<{
   }
 }
 
+/** Controller spawn 端点白名单字段 → string[]（防御：非数组/空串过滤；空=undefined 不渲染）。 */
+function spawnStringList(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter(
+    (x): x is string => typeof x === "string" && x !== "",
+  );
+  return out.length ? out : undefined;
+}
+
 /** spawnInfo → SpawnNode（UI 契约映射）。 */
 function mapSpawnInfo(s: Record<string, unknown>): SpawnNode {
   const createdIso = typeof s.created_at === "string" ? s.created_at : "";
@@ -1754,6 +1768,8 @@ function mapSpawnInfo(s: Record<string, unknown>): SpawnNode {
           ),
         }
       : {}),
+    allowedTools: spawnStringList(s.subagent_allowed_tools),
+    skills: spawnStringList(s.subagent_skills),
   } as SpawnNode;
 }
 

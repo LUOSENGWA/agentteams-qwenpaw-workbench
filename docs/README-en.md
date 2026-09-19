@@ -29,6 +29,7 @@ AgentTeams QwenPaw Workbench (`agentteams-qwenpaw-workbench`) is a **one-stop te
 | 12 | [Configuration reference](./12-config-en.md) | Address auto-probing, dual auth modes, L1/L2 permission matrix |
 | 13 | [Self-check & ops](./13-selfcheck-ops-en.md) | L0-L3 layered self-check, cluster load |
 | 14 | [Architecture & security](./14-architecture-en.md) | In-process proxy, zero-credential principle, known limitations |
+| 15 | [Controller version compatibility](./15-controller-compatibility-en.md) | why some features are not visible: feature × controller version matrix, behavior when missing |
 
 ## Requirements
 

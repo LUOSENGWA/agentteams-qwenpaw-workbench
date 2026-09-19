@@ -197,6 +197,19 @@ const DICT: Record<string, { en: string }> = {
   "暂无活跃会话——接入 spawn 端点后显示": {
     en: "No active sessions — shown once the spawn endpoint is connected",
   },
+  "工具白名单": { en: "Allowed tools" },
+  "技能白名单": { en: "Allowed skills" },
+  /* v0.5.0-beta.13：补录 beta.13 收尾新增 UI 的漏登记词条（此前 EN 回退中文）。 */
+  "展开快捷操作（员工入职 / 创建团队 / 新建 Worker）": {
+    en: "Expand quick actions (onboard employee / create team / new worker)",
+  },
+  "收起快捷操作（员工入职 / 创建团队 / 新建 Worker）": {
+    en: "Collapse quick actions (onboard employee / create team / new worker)",
+  },
+  "忽略宽窄判定：房间列表与聊天框始终左右分栏、各自独立滚动。窄面板下可用拖动条调宽、⟨ 可收起列表。": {
+    en: "Ignore aspect-ratio heuristic: room list and chat pane always split left/right with independent scrolling. On narrow panels drag the handle to resize; ⟨ collapses the list.",
+  },
+  "spec": { en: "Spec" },
   "管理数据加载中——团队/用户/Manager 全量状态": {
     en: "Loading admin data — teams/users/managers",
   },

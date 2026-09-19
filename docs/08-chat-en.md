@@ -8,6 +8,14 @@ Direct Matrix-connected team room chat — not a message relay: real-time sync (
 - **Team rooms / DM switch**: top-level Segmented between team rooms (>2 members) and DMs
 - Each room card shows unread count / latest message preview
 
+## Split view (v0.5.0-beta.13)
+
+- **Landscape windows (width-to-height ratio ≥ 600px) = side-by-side two panes**: room list on the left, chat pane on the right, each scrolling **independently**; portrait windows keep the single-column flow
+- **Wide/narrow is decided aspect-ratio-first** (not width alone) — avoids false positives on narrow-tall windows
+- **Settings → "Force side-by-side chat layout"**: manual override of the automatic decision
+- **Self-check → "Chat layout diagnostics" card**: live container size, ratio and left-pane scroll heights, with one-click re-measure
+- The split is written for both the host's own component prefixes, so it genuinely works inside the QwenPaw host panel
+
 ## In-conversation features
 
 | Feature | Notes |

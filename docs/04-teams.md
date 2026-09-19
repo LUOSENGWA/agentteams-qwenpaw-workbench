@@ -4,7 +4,7 @@
 
 ## 团队（n）
 
-- **团队列表 + Worker 树**：每个团队下挂真实 Worker 结构（spawn 树按正源填充），Worker 卡显示运行状态/阶段
+- **团队列表 + Worker 树**：每个团队下挂真实 Worker 结构（spawn 树按正源填充），Worker 卡显示运行状态/阶段；**spawn 树节点显示「工具白名单 / 技能白名单」标签**（v0.5.0-beta.13：数据 = 子 Agent 派发时的工具收窄，由 Worker 运行时持久化、经 Controller spawn 聚合端点透传；**Controller 无该端点或数据缺失时不显示——零噪音**，可见条件见 [Controller 版本兼容](./15-controller-compatibility.md)）
 - **Worker 模型内联编辑**（v0.5.0-beta.9 起）：Worker 卡上直接改模型（provider 不动、diff 只发改动、保存走 `PUT /workers` 合并语义、保存后回读校验）；换绑 Worker 会重新拉基线
 - **模型候选下拉 = 并集**（v0.5.0-beta.12 起，v0.5.0-beta.12 扩到 Manager 表）：建 Worker 弹窗/建队行/团队配置内联三入口 + Manager 表模型列（v0.5.0-beta.12）共用同一候选并集（`../modelUnion` 共享模块，同一写前校验）= ① 网关 alias（路由可解析，经 L1 密码模式的 Console 会话从 Higress AI routes + providers 实时取）② 内置 alias（AgentTeams 官方 16 别名）③ 在服 SGLang ∪ 在用模型；无 Console 会话时 alias 层隐藏，**token 模式下显式提示**（v0.5.0-beta.12：CRD 面板顶 + Manager 表上方黄条——配 admin 账号密码可读，或等 P1-3），自由输入照旧
 - **建队 / 入职 / 改配 / 删除**（L1）：CRD 管理入口。创建流程内置防线：建队行级 model/SOUL 先落 Worker CR 再建 Team、写前三入口校验（路径形态硬拒）、创建自检（CRD 回读 + 阶段轮询）

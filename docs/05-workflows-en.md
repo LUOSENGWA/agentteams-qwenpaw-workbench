@@ -9,7 +9,14 @@ Execution views for team tasks/workflows. Data source: Controller projects/workf
 | 📋 **Events** | the timeline — what happened in a workflow, replayed in order |
 | 🗂️ **Cards** | one card per workflow — status/phase/owner at a glance |
 | 📊 **Board** | tasks in phase columns (live counts) — team load and blockers |
-| 🌳 **Topology** | execution force graph (live node counts) — dispatch chains and structure |
+| 🌳 **Topology** | layered execution DAG (live node counts) — dispatch chains and structure |
+
+### Card / Topology = master-detail (rebuilt in v0.5.0-beta.13)
+
+- **Left: project list** (time / status / name sort, independent scrolling); **right: project detail** — click to select, no page jumps
+- **Topology = top-down layered DAG** (no longer a force graph): ready-state highlight + external-dependency notes
+- **Task inspection drawer**: per-task current worker/runtime, latest artifacts, state-transition timeline, duration
+- **In-chat workflow cards go live**: workflow cards posted in rooms are overlaid with fresh controller data every 15 s + LIVE badge (the degraded track intentionally shows no badge)
 
 - The current view and the topology's selected runId **persist in page state** — refreshes / switching top tabs don't lose them
 - **15s auto-refresh** (since v0.5.0-beta.12, , aligned with the dashboard `refetchInterval:15000`): silent polling only while the Workflows tab is active (stops when switched away, no flicker)

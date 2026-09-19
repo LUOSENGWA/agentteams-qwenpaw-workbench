@@ -81,6 +81,12 @@ token 无接口可获取（上游安全设计），由部署管理员线下提�
 | 集群负载（SGLang/GPU） | ❌ | ✅ |
 | 模型下拉网关 alias（网关面） | ❌ | ✅（需 ② 密码模式验证） |
 
+## 模型网关页（L1：浏览 + 添加提供商 / 添加路由）
+
+- 设置页 **模型网关** 区块：providers / AI routes / model mappings 只读浏览 + 聚合「可解析模型（alias）」集合 + request-alias / allowed-consumer 分列
+- **v0.5.0-beta.13 新增写操作**：**「添加提供商」** 与 **「添加路由」**（字段形态与 dashboard 同款）——请求经 connector 代理到 Higress Console 会话；Console 错误（如 409 冲突）原样浮出到对话框
+- 需要 **L1 + 有效 Console 会话**（L2 无 Console 会话 = 只读浏览，写入口不出现）
+
 ## token 安全
 
 - 只在**本机**存储（浏览器 localStorage + 插件后端本机配置）——浏览器零凭据原则：页面 JS 永远不直接持有 Matrix/Controller 凭据直连外部，一切经宿主进程内代理

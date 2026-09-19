@@ -29,6 +29,7 @@ AgentTeams QwenPaw Workbench（`agentteams-qwenpaw-workbench`）是 AgentTeams�
 | 12 | [配置参考](./12-config.md) | 地址自动探测、双模式认证、L1/L2 权限矩阵 |
 | 13 | [自检与运维](./13-selfcheck-ops.md) | L0-L3 分层自检、集群负载 |
 | 14 | [架构与安全](./14-architecture.md) | 进程内代理、零凭据原则、已知限制 |
+| 15 | [Controller 版本兼容](./15-controller-compatibility.md) | 为什么有些功能看不到：功能 × Controller 版本要求矩阵、缺失时表现 |
 
 ## 环境要求
 

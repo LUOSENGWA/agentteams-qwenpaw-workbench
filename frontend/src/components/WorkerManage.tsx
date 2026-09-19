@@ -223,6 +223,57 @@ function SpawnRow({
           </span>
         ) : null}
       </div>
+      {node.allowedTools?.length || node.skills?.length ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 4,
+            rowGap: 2,
+            marginLeft: depth * 22 + 34,
+            paddingBottom: 3,
+          }}
+        >
+          {node.allowedTools?.length ? (
+            <>
+              <span style={{ color: t.textSecondary, fontSize: 11 }}>
+                {tr("工具白名单")}
+              </span>
+              {node.allowedTools.map((tool) => (
+                <antd.Tag
+                  key={`tool-${tool}`}
+                  style={{ margin: 0, fontSize: 11, lineHeight: "18px" }}
+                >
+                  {tool}
+                </antd.Tag>
+              ))}
+            </>
+          ) : null}
+          {node.skills?.length ? (
+            <>
+              <span
+                style={{
+                  color: t.textSecondary,
+                  fontSize: 11,
+                  marginLeft: node.allowedTools?.length ? 8 : 0,
+                }}
+              >
+                {tr("技能白名单")}
+              </span>
+              {node.skills.map((skill) => (
+                <antd.Tag
+                  key={`skill-${skill}`}
+                  color="blue"
+                  style={{ margin: 0, fontSize: 11, lineHeight: "18px" }}
+                >
+                  {skill}
+                </antd.Tag>
+              ))}
+            </>
+          ) : null}
+        </div>
+      ) : null}
       {(node.children || []).map((child) => (
         <SpawnRow key={child.session_id} node={child} depth={depth + 1} />
       ))}
