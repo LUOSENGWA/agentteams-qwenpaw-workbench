@@ -2656,10 +2656,11 @@ export default function WorkbenchPage() {
            content 链默认无高度（auto 跟随内容）→ 分栏容器 height:100%
            塌陷、房间列表撑高被 wb-main overflow:hidden 裁掉。锁定
            content holder/content/tabpane 高度链（chatWide 分栏专用；
-           其他 tab 内容自身有高度约束，100% 无副作用）。 */
+           其他 tab 内容自身有高度约束；12.11 起 tabpane 加 overflow-y:auto
+           回退滚动、内容区容器 flex 化——整链真正接通）。 */
         .wb-main .ant-tabs-content-holder { flex: 1; min-height: 0; }
         .wb-main .ant-tabs-content { height: 100%; }
-        .wb-main .ant-tabs-tabpane-active { height: 100%; min-height: 0; }
+        .wb-main .ant-tabs-tabpane-active { height: 100%; min-height: 0; overflow-y: auto; }
         /* v0.5.0-beta.12（390px 审计真根因）：antd 断点最小档 xs=576px——
            390px 手机低于一切断点，Col 无任何断点样式 → 基础 width:100%
            + flex-shrink 把「员工入职/创建团队」两卡挤成 50/50（各 174px，
@@ -2830,6 +2831,11 @@ export default function WorkbenchPage() {
         style={{
           flex: "1 1 auto",
           minHeight: 0,
+          /* v0.5.0-beta.12.11（P8a 真修复·最后一跳）：本容器必须 flex 化——
+             否则 Tabs 的 flex:1 空转 → content-holder 的 flex:1 整链塌陷，
+             分栏左右仍不能独立滚动（12.10 只锁了 CSS 链，漏了这里）。 */
+          display: "flex",
+          flexDirection: "column",
           /* v0.5.0-beta.12（用户反馈第二轮：容器过宽）：overflowX 锁死——宽叶子不撑出横向滚动，容器恒=视口宽；
              配合 scoped CSS min-width:0 断 flex/grid 撑宽链。 */
           overflowY: "auto",
