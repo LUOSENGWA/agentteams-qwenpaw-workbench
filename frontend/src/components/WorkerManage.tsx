@@ -25,6 +25,7 @@ import CrdManage from "./CrdManage";
 import MyScopeCard from "./MyScopeCard";
 import WorkerChannels from "./WorkerChannels";
 import WorkerTools from "./WorkerTools";
+import WorkerChats from "./WorkerChats";
 import SkillCenter from "./SkillCenter";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
@@ -1472,6 +1473,13 @@ export default function WorkerManage(props: WorkerManageProps) {
             key: "tools",
             label: tr("工具"),
             children: <WorkerTools workers={admin.workers} />,
+          },
+          // v0.5.0-beta.13.1：会话只读（#1295 等合并；给无头 QwenPaw Worker
+          // 「补头」——列表 → agent 上下文详情；同款版本门）。
+          {
+            key: "chats",
+            label: tr("会话"),
+            children: <WorkerChats workers={admin.workers} />,
           },
           // v0.5.0-beta.12 ：技能中心从顶层 tab 收编（设计结论——团队级
           // 技能/MCP 资源治理归团队管理，不独立顶层 tab）。
