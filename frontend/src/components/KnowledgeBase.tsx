@@ -1164,7 +1164,6 @@ function GraphCard(props: {
               onDoubleClick={handleGraphDblClick}
               onMouseMove={handleGraphMove}
               onMouseDown={onSvgPanDown}
-              style={{ cursor: panning ? "grabbing" : "grab" }}
               onMouseUp={onSvgPanUp}
               onMouseLeave={() => {
                 setHoverId("");
