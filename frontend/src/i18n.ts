@@ -500,6 +500,34 @@ const DICT: Record<string, { en: string }> = {
   "房间列表已隐藏——点左上角 ☰ 显示": {
     en: "Room list hidden — click ☰ at top-left to show",
   },
+  "路由": { en: "Route" },
+  "只读": { en: "Read-only" },
+  "模型网关配置": { en: "Model gateway configuration" },
+  "Higress Console（透传）": { en: "Higress Console (passthrough)" },
+  "Controller 只读目录（#1242）": { en: "Controller read-only catalog (#1242)" },
+  "数据不可用": { en: "Data unavailable" },
+  "本页面为只读视图——路由/提供商编辑请使用 Higress Console 或 dashboard 模型管理面": {
+    en: "Read-only view — edit routes/providers in the Higress Console or the dashboard models admin",
+  },
+  "路由目录为空——检查 Higress 是否已配置 AI 路由": {
+    en: "Route catalog is empty — check whether Higress has AI routes configured",
+  },
+  "仅 L1 管理员可查看只读路由目录（当前会话无权限）": {
+    en: "Only L1 admins can view the read-only route catalog (current session lacks permission)",
+  },
+  "模型网关数据不可用——Console 会话未配置且 Controller 版本过旧（需含 #1242 路由目录端点）": {
+    en: "Model gateway data unavailable — no Console session and the Controller predates the #1242 route catalog endpoint",
+  },
+  "AI 路由（{n}）": { en: "AI routes ({n})" },
+  "上游提供商": { en: "Upstream provider" },
+  "上游提供商（权重）": { en: "Upstream provider (weight)" },
+  "授权 Consumer": { en: "Allowed consumers" },
+  "请求模型（alias）": { en: "Request model (alias)" },
+  "LLM Provider（{n}）": { en: "LLM providers ({n})" },
+  "Provider": { en: "Provider" },
+  "暂无 AI 路由": { en: "No AI routes" },
+  "暂无 Provider": { en: "No providers" },
+  "暂无模型网关数据": { en: "No model gateway data" },
   "拓扑": { en: "Topology" },
   "请选择左侧项目": { en: "Select a project on the left" },
   "暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡": {

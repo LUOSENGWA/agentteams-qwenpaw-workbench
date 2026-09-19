@@ -63,6 +63,7 @@ import { useWorkerSessionStates } from "./workerSessionState";
 import WorkerManage from "./components/WorkerManage";
 import KnowledgeBase from "./components/KnowledgeBase";
 import SkillsTab from "./components/SkillsTab";
+import ModelsTab from "./ModelsTab";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -2757,6 +2758,7 @@ export default function WorkbenchPage() {
           { key: "knowledge", label: `📚 ${tr("知识库")}` },
           { key: "selfcheck", label: `🔍 ${tr("自检")}` },
           { key: "ops", label: `🛠️ ${tr("运维")}` },
+          { key: "models", label: `🧠 ${tr("模型")}` },
 
           { key: "settings", label: `⚙️ ${tr("配置")}` },
         ].map((item) => {
@@ -2951,6 +2953,11 @@ export default function WorkbenchPage() {
             children: (
               <OpsPanel refreshTick={opsTick} />
             ),
+          },
+          {
+            key: "models",
+            label: `🧠 ${tr("模型")}`,
+            children: <ModelsTab />,
           },
           {
             key: "settings",
