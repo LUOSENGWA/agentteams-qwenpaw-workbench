@@ -5,6 +5,24 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.12.10（2026-09-19）
+
+**装验反馈批：聊天分栏独立滚动 + 拓扑详情三区 + 2D 图谱字宽修复 + 模型页全套展示**
+
+- **聊天分栏左右独立滚动**：修复 antd Tabs content 高度链塌陷导致房间列表被裁剪/无法滚动——Tabs 容器 flex 占满 + content-holder/content/tabpane 高度锁定 + 左栏 overflow-y 独立滚动（overscroll-contain 防传播）
+- **房间卡成员列表默认隐藏**：成员多的房间 chips 不再撑高卡片，点「N 人」tag 展开/收起（展开后点成员 DM 入口不变）
+- **工作流拓扑详情三区**（与 dashboard 任务详情页对齐）：任务分布（状态计数）+ 任务详情(N)（可展开行：spec/摘要/产物/转换审计）+ 节点(N) 双列网格
+- **工作流视图 tab 计数取消**：页头「项目 (N)」保留，看板/拓扑 tab 冗余计数移除
+- **2D 图谱 CJK 字宽加权**：修复中文文件名 chip 宽度低估导致的横向压盖（「簇重叠」根因），标签截断同口径
+- **模型网关页全套展示**：可请求模型 alias 全集聚合块；请求模型(alias) 与授权 Consumer 分列（修复目录源把 consumers 填进 alias 列的语义错位）；修复 alias 逐字拆开显示 bug（字符串 spread）
+- **KB 敏感文件规则扩展**：credentials.yaml/yml 独立凭证文件纳入过滤（与 dashboard 侧 B1 修复对齐）
+- **CRD 管理卡片紧凑化**：padding/gap/gutter 密度压缩
+- **i18n**：新键登记（中英）
+
+**Verification**: pytest 42/42 · tsc 0 · check-antd 交叉通过 · vite build 绿 · i18n ui↔dict 对账
+
+---
+
 ## 0.5.0-beta.12.9（2026-09-19）
 
 **2D 知识图谱 v4 簇块布局 + 工作流页/聊天 UX 一批（与 dashboard 对齐）**
