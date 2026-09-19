@@ -1771,6 +1771,25 @@ export default function WorkbenchPage() {
   // 通知未读计数（通知 tab badge）。
   const [inboxUnread, setInboxUnread] = React.useState(0);
 
+  // P6（罗总 9/18 ⑨「自动刷新有点蠢，即时信息」）：/sync 事件驱动主路。
+  // ref 镜像——SSE effect deps 为空（一次连接），闭包必须走 ref 取最新。
+  const activeRoomRef = React.useRef<TeamRoom | null>(null);
+  React.useEffect(() => {
+    activeRoomRef.current = activeRoom;
+  }, [activeRoom]);
+  const pollMessagesRef = React.useRef<() => Promise<void>>(async () => {});
+  React.useEffect(() => {
+    pollMessagesRef.current = pollMessages;
+  }, [pollMessages]);
+  // 房间列表预览刷新节流（room_message 事件高频 → ≥10s 一次 /teams/sync）。
+  const roomListRefreshAt = React.useRef(0);
+  const scheduleRoomListRefresh = React.useCallback(() => {
+    const now = Date.now();
+    if (now - roomListRefreshAt.current < 10000) return;
+    roomListRefreshAt.current = now;
+    void refreshRooms();
+  }, [refreshRooms]);
+
   // ── IM 式事件触发（用户反馈「30s 轮询太笨」）────────────────────
   // 后端 sync watcher：Matrix /sync 长轮询检测 @提到我 / 任务状态变化 →
   // 写宿主收件箱 + SSE 广播（GET /agentteams-proxy/events）。前端订阅：
@@ -1858,6 +1877,15 @@ export default function WorkbenchPage() {
               ) {
                 void refreshRooms();
                 setNotifyTick((t) => t + 1);
+              } else if (data.type === "room_message") {
+                // P6：/sync 事件驱动消息刷新（IM 式主路；RoomChat 12s 轮询
+                // 降为断连兜底）。当前房间 → 立即拉新（内容源=拉取，附件/
+                // 工作流渲染路径零改动）；房间列表预览 10s 节流刷新。
+                const rid = String((data as { room_id?: string }).room_id || "");
+                if (rid && rid === activeRoomRef.current?.room_id) {
+                  void pollMessagesRef.current();
+                }
+                scheduleRoomListRefresh();
               }
             } catch {
               /* 忽略非法帧 */
@@ -2357,19 +2385,19 @@ export default function WorkbenchPage() {
 
   // ── P6 聊天 tab（罗总 9/18 ⑤）：宽屏 Element 式分栏 / 窄屏微信式单屏 ──
   // 宽屏：左房间/DM 列表（宽度可拖 220-560，持久化）+ 右聊天（未选房间显占位）。
-  // 窄屏（<900px，竖屏/手机）：保持微信移动版语义——列表页点击进全屏聊天，
+  // 窄屏（<1024px，竖屏/手机）：保持微信移动版语义——列表页点击进全屏聊天，
   // 左上角 ← 返回退出（RoomChat onBack 既有按钮）。列表可隐藏（宽屏）。
   const [chatWide, setChatWide] = React.useState(
-    () => window.innerWidth >= 900,
+    () => window.innerWidth >= 1024,
   );
   React.useEffect(() => {
-    const onResize = () => setChatWide(window.innerWidth >= 900);
+    const onResize = () => setChatWide(window.innerWidth >= 1024);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const [chatSplitW, setChatSplitW] = React.useState<number>(() => {
     const v = Number(readUiState(UI_STATE_KEY).chatSplitW);
-    return Number.isFinite(v) && v >= 220 && v <= 560 ? v : 320;
+    return Number.isFinite(v) && v >= 160 && v <= 480 ? v : 300;
   });
   const [chatListHidden, setChatListHidden] = React.useState<boolean>(
     () => readUiState(UI_STATE_KEY).chatListHidden === "true",
@@ -2391,7 +2419,7 @@ export default function WorkbenchPage() {
       e.preventDefault();
       const startX = e.clientX;
       const startW = chatSplitW;
-      const clamp = (w: number) => Math.min(560, Math.max(220, w));
+      const clamp = (w: number) => Math.min(480, Math.max(160, w));
       const onMove = (ev: globalThis.MouseEvent) => {
         setChatSplitW(clamp(startW + (ev.clientX - startX)));
       };

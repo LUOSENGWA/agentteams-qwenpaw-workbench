@@ -1714,7 +1714,10 @@ export default function RoomChat(props: RoomChatProps) {
     [onSend, tr],
   );
 
-  // 长轮询：每 12s 拉一次新消息（仅在有房间时）。
+  // 兜底轮询：每 12s 拉一次新消息（仅在有房间时）。
+  // P6（9/18 ⑨）：主路已切 /sync 事件驱动（后端 sync watcher → SSE
+  // room_message → WorkbenchPage 立即拉取）——本定时器降为 SSE 断连/
+  // 事件丢失的保险（与后端 60s 兜底轮询同层语义）。
   React.useEffect(() => {
     if (!room || !onPoll) return;
     const timer = window.setInterval(() => {
