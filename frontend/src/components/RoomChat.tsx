@@ -21,6 +21,7 @@ import WorkerChats from "./WorkerChats";
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
 import WorkerSessionDot from "./WorkerSessionDot";
+import MemberStrip from "./MemberStrip";
 import type { WorkerSessionState } from "../workerSessionState";
 
 const host = window.QwenPaw.host;
@@ -2203,6 +2204,13 @@ export default function RoomChat(props: RoomChatProps) {
           title={tr("隐藏/显示 Agent 工具调用消息（read_file 等）")}
         />
         <div style={{ flex: 1 }} />
+        {/* 9/19 定案（模仿 dashboard 成员列表）：标题栏右侧成员头像条——
+            Worker 角落状态灯 + 多出来 +N 点击展开；窄屏换行到标题栏下面。 */}
+        <MemberStrip
+          room={room}
+          workerSessionByMxid={workerSessionByMxid}
+          onOpenPanel={() => setMemberPanelOpen(true)}
+        />
         {onNewTask && room.member_count <= 2 ? (
           <antd.Button
             size="small"
@@ -3201,13 +3209,19 @@ export default function RoomChat(props: RoomChatProps) {
                   background: t.hoverBg,
                 }}
               >
-                <MxcAvatar
-                  url={member?.avatar_url}
-                  size={30}
-                  style={{ backgroundColor: PRIMARY, flexShrink: 0 }}
-                >
-                  {name.slice(0, 1).toUpperCase()}
-                </MxcAvatar>
+                {/* 9/19：成员列表头像角落状态灯（与消息头像同款；Worker 才有映射）。 */}
+                <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+                  <MxcAvatar
+                    url={member?.avatar_url}
+                    size={30}
+                    style={{ backgroundColor: PRIMARY, flexShrink: 0 }}
+                  >
+                    {name.slice(0, 1).toUpperCase()}
+                  </MxcAvatar>
+                  {workerSessionByMxid?.[mxid] ? (
+                    <WorkerSessionDot state={workerSessionByMxid[mxid]} size={8} corner />
+                  ) : null}
+                </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
