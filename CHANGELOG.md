@@ -5,6 +5,18 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.12.13（2026-09-19）
+
+**模型页写面（添加提供商/添加路由）+ 分栏判定容器化**
+
+- **「添加提供商 / 添加路由」（P7b）**：模型页新增两个写操作，字段与 dashboard models-section 同款（provider = name/type/protocol/tokens/rawConfigs{openaiCustomUrl,pathPrefix,modelMapping}/tokenFailoverConfig；route = name/pathPredicate(PRE)/upstreams[]/modelPredicates[]/authConfig）；经连接器 `/gateway/*` POST 透传到 Higress Console（console_session），Console 错误信息（如 409 冲突）直接透到界面。
+- **分栏判定改「容器实际宽度」**（装验复报排查）：宽屏/窄屏判定从 `window.innerWidth` 改为 ResizeObserver 监听容器——宿主内嵌面板窄于窗口时不再误判宽屏；另经真机复现台（真实前端 × fixture 数据）验证左栏独立滚动成立（末位房间 5210→542px，左栏盒不动）。
+- 连接器写面新增 4 条回归测试（POST 透传/无会话守卫/name 守卫/Console 详情透出）。
+
+**Verification**: tsc 0 · check-antd 38 · vite build 绿 · pytest 46/46 · 真机复现台 UI 冒烟（创建链路成功消息 + 列表刷新）
+
+---
+
 ## 0.5.0-beta.12.12（2026-09-19）
 
 **「簇重叠」真根因修复（双端同款）+ 鼠标拖拽接线**

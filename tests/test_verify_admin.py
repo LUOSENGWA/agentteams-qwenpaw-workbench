@@ -76,6 +76,7 @@ class _FakeClient:
 
     async def post(self, url, json=None, **k):
         self.calls.append(("POST", url))
+        self.last_post_json = json
         return self._match(url, _FakeClient.post_spec)
 
     async def get(self, url, headers=None, **k):
@@ -390,6 +391,74 @@ def test_gateway_ai_providers_http_error(client):
     body = r.json()
     assert body["available"] is False
     assert body["reason"] == "http_503"
+
+
+# ── 12.13 写面：POST /gateway/ai-*（添加提供商/添加路由）────────────
+
+
+def test_gateway_ai_routes_create_forwards_post(client):
+    """有会话 → POST 透传到 Console /v1/ai/routes，body 原样。"""
+    tc, state = client
+    state["data"]["console_session"] = "s=1"
+    state["data"]["gateway_admin_url"] = "http://10.0.0.1:8001"
+    _FakeClient.post_spec["/v1/ai/routes"] = _FakeResponse(
+        200, json_body={"success": True}
+    )
+    body_in = {
+        "name": "r1",
+        "pathPredicate": {"matchType": "PRE", "matchValue": "/"},
+        "upstreams": [{"provider": "p1", "weight": 100}],
+    }
+    r = tc.post("/gateway/ai-routes", json=body_in)
+    body = r.json()
+    assert body["available"] is True
+    assert body["data"] == {"success": True}
+    c = _last_client()
+    assert ("POST", "http://10.0.0.1:8001/v1/ai/routes") in c.calls
+    assert c.last_post_json == body_in
+
+
+def test_gateway_ai_providers_create_requires_session(client):
+    """无 Console 会话 → no_console_session（不构造 client）。"""
+    tc, state = client
+    r = tc.post(
+        "/gateway/ai-providers",
+        json={"name": "p1", "type": "openai", "tokens": ["sk-1"]},
+    )
+    body = r.json()
+    assert body["available"] is False
+    assert body["reason"] == "no_console_session"
+    assert _FakeClient.instances == []
+
+
+def test_gateway_ai_providers_create_name_required(client):
+    """name 缺失 → invalid（本地守卫，不发请求）。"""
+    tc, state = client
+    state["data"]["console_session"] = "s=1"
+    state["data"]["gateway_admin_url"] = "http://10.0.0.1:8001"
+    r = tc.post("/gateway/ai-providers", json={"type": "openai"})
+    body = r.json()
+    assert body["available"] is False
+    assert body["reason"] == "invalid"
+    assert _FakeClient.instances == []
+
+
+def test_gateway_ai_providers_create_console_error_detail(client):
+    """Console 409 → available=false + detail=Console message（UI 可显示）。"""
+    tc, state = client
+    state["data"]["console_session"] = "s=1"
+    state["data"]["gateway_admin_url"] = "http://10.0.0.1:8001"
+    _FakeClient.post_spec["/v1/ai/providers"] = _FakeResponse(
+        409, json_body={"message": "provider already exists"}
+    )
+    r = tc.post(
+        "/gateway/ai-providers",
+        json={"name": "p1", "type": "openai", "tokens": ["sk-1"]},
+    )
+    body = r.json()
+    assert body["available"] is False
+    assert body["reason"] == "http_409"
+    assert body["detail"] == "provider already exists"
 
 
 # ── 脱敏（纯函数，无网络）────────────────────────────────

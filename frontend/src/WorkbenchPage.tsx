@@ -2391,8 +2391,23 @@ export default function WorkbenchPage() {
   const [chatWide, setChatWide] = React.useState(
     () => window.innerWidth >= 1024,
   );
+  // 12.13（罗总「分栏还是不行」）：分栏判定从窗口宽度改为「容器实际宽度」——
+  // 宿主内嵌面板可能窄于窗口（innerWidth 会骗人：宽窗窄面板时误判宽屏）。
+  // ResizeObserver 跟随容器；无 RO 环境回退 window 宽度。
+  const mainRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
-    const onResize = () => setChatWide(window.innerWidth >= 1024);
+    const el = mainRef.current;
+    const measure = (w: number) => setChatWide(w >= 1024);
+    if (el && typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver((entries) => {
+        const w = entries[0]?.contentRect?.width;
+        if (typeof w === "number" && w > 0) measure(w);
+      });
+      ro.observe(el);
+      measure(el.clientWidth);
+      return () => ro.disconnect();
+    }
+    const onResize = () => measure(el ? el.clientWidth : window.innerWidth);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -2623,6 +2638,7 @@ export default function WorkbenchPage() {
       }}
     >
     <main
+      ref={mainRef}
       className="wb-main"
       style={{
         // 固定视口高度（宿主同款公式：header 56px + 8px 边距，见宿主

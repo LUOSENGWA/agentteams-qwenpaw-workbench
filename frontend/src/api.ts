@@ -190,6 +190,38 @@ export async function fetchGatewayAiProviders(): Promise<GatewayListResponse> {
   )) as GatewayListResponse;
 }
 
+// ── 网关写面（12.13 P7b）：创建提供商 / 创建路由（Console 会话透传）──
+// 与 dashboard models-section 同款字段形状（serializeProviderForm /
+// serializeRouteForm 语义），经后端 /gateway/* POST 透传到 Higress Console
+// /v1/ai/providers、/v1/ai/routes。写失败时返回 {available:false, detail}。
+export interface GatewayMutationResponse {
+  available: boolean;
+  data: unknown;
+  reason?: string;
+  /** Console 侧错误信息（HTTP 4xx/5xx 时的 message/detail）。 */
+  detail?: string;
+}
+
+export async function createGatewayAiProvider(
+  body: Record<string, unknown>,
+): Promise<GatewayMutationResponse> {
+  return (await requestJson("/agentteams-proxy/gateway/ai-providers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })) as GatewayMutationResponse;
+}
+
+export async function createGatewayAiRoute(
+  body: Record<string, unknown>,
+): Promise<GatewayMutationResponse> {
+  return (await requestJson("/agentteams-proxy/gateway/ai-routes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })) as GatewayMutationResponse;
+}
+
 // ── 模型网关只读路由目录（上游 #1242，Controller 端点，token 鉴权）────
 // 与上面的 fetchGatewayAiRoutes（Higress Console 透传，需 admin 会话）不同源：
 // 本端点在 Controller 侧（/api/v1/gateway/ai-routes），只凭 controller token

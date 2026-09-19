@@ -24,6 +24,10 @@ import { extractGatewayLists } from "./modelUnion";
 import type { AiRouteLite, LlmProviderLite } from "./modelCatalog";
 import { useThemeColors } from "./theme";
 import { useT } from "./i18n";
+import {
+  ProviderCreateModal,
+  RouteCreateModal,
+} from "./GatewayCreateModals";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -84,6 +88,8 @@ export default function ModelsTab() {
   >([]);
   const [catalog, setCatalog] = React.useState<GatewayRouteCatalog | null>(null);
   const [note, setNote] = React.useState("");
+  const [providerOpen, setProviderOpen] = React.useState(false);
+  const [routeOpen, setRouteOpen] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -193,17 +199,31 @@ export default function ModelsTab() {
               ? tr("Controller 只读目录（#1242）")
               : tr("数据不可用")}
         </antd.Tag>
-        <antd.Tag>{tr("只读")}</antd.Tag>
+        <antd.Tag>{source === "console" ? tr("读写") : tr("只读")}</antd.Tag>
         <antd.Button size="small" onClick={() => void load()} loading={loading}>
           {tr("刷新")}
         </antd.Button>
+        {source === "console" ? (
+          <>
+            <antd.Button
+              size="small"
+              type="primary"
+              onClick={() => setProviderOpen(true)}
+            >
+              {tr("添加提供商")}
+            </antd.Button>
+            <antd.Button size="small" onClick={() => setRouteOpen(true)}>
+              {tr("添加路由")}
+            </antd.Button>
+          </>
+        ) : null}
       </div>
 
       <antd.Alert
         type="info"
         showIcon
         style={{ marginBottom: 14 }}
-        message={tr("本页面为只读视图——路由/提供商编辑请使用 Higress Console 或 dashboard 模型管理面")}
+        message={tr("写操作（添加提供商/添加路由）经 Console 会话透传；编辑/删除请用 Higress Console 或 dashboard 模型管理面")}
       />
 
       {note ? (
@@ -289,6 +309,17 @@ export default function ModelsTab() {
           ) : null}
         </>
       )}
+      <ProviderCreateModal
+        open={providerOpen}
+        onClose={() => setProviderOpen(false)}
+        onCreated={() => void load()}
+      />
+      <RouteCreateModal
+        open={routeOpen}
+        onClose={() => setRouteOpen(false)}
+        onCreated={() => void load()}
+        providerNames={consoleProviders.map((p) => p.name)}
+      />
       {/* 主题引用保留（表格外框与页面底色一致）——防 t 未用告警。 */}
       <div style={{ display: "none", background: t.bg }} />
     </div>
