@@ -18,6 +18,9 @@ export interface AiRouteLite {
     modelMapping?: Record<string, string>;
   }[];
   modelPredicates?: { matchType: string; matchValue: string }[];
+  /** P7b（9/19）：路由授权 consumer 列表（Higress Console 透传；
+   *  目录源 GatewayRouteInfo 同源字段）。 */
+  allowedConsumers?: string[];
 }
 
 /** Higress LLM Provider（最小子集：name + rawConfigs.modelMapping）。 */
