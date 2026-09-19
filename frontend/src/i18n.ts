@@ -1421,6 +1421,29 @@ const DICT: Record<string, { en: string }> = {
   "已创建路由「{n}」": { en: "Route \u201c{n}\u201d created" },
   "写操作（添加提供商/添加路由）经 Console 会话透传；编辑/删除请用 Higress Console 或 dashboard 模型管理面": { en: "Create operations pass through the Console session; use Higress Console or the dashboard to edit/delete" },
 
+
+  // ── v0.5.0-beta.13.1：内置工具（消费 #1255）──
+  "工具": { en: "Tools" },
+  "重试": { en: "Retry" },
+  "描述": { en: "Description" },
+  "异步执行": { en: "Async execution" },
+  "需配置": { en: "Needs config" },
+  "{w} 已启用": { en: "{w} enabled" },
+  "{w} 已停用": { en: "{w} disabled" },
+  "修改失败：{m}": { en: "Update failed: {m}" },
+  "当前角色仅可查看工具设置，不能修改（Controller 拒绝）": {
+    en: "Current role can only view tool settings, not modify them (rejected by Controller)",
+  },
+  "当前角色仅可查看工具设置，不能修改（团队 Leader 只读 / L2 限本团队）": {
+    en: "Current role can only view tool settings, not modify them (team leader read-only / L2 limited to own teams)",
+  },
+  "内置工具 API 不可用（Controller 版本较低或无该 Worker 访问权）": {
+    en: "Built-in tools API unavailable (older Controller or no access to this worker)",
+  },
+  "当前 Controller 版本（未合并 #1255 的版本）无此 API，或当前账号无该 Worker 的访问权。升级 Controller 后本节自动点亮。": {
+    en: "The current Controller (pre-#1255) has no such API, or the current account has no access to this worker. This section activates automatically after upgrading the Controller.",
+  },
+  "内置工具加载失败": { en: "Failed to load built-in tools" },
 };
 
 export type Lang = "zh" | "en";
