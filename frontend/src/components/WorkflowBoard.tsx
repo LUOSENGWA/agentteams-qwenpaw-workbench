@@ -204,7 +204,7 @@ function DagTopo(props: { ev: WorkflowEvent; t: ThemeColors }) {
       </div>
       {/* 装验反馈 9/19（P2）：拓扑详情区补 dashboard 任务详情页三区
           （任务分布 / 任务详情(N) / 节点(N)——projects-section
-          WorkflowDetail 同语义；罗总「看看我的 PR 是怎么做的」= 抄该
+          WorkflowDetail 同语义；对齐要求：抄该
           实现，插件 antd 风格）。数据=ev.nodes / ev.taskDetails 既有
           通道，零新请求。 */}
       {statuses.length > 0 ? (

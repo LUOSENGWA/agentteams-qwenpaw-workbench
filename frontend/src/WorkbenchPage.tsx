@@ -655,7 +655,7 @@ function SettingsTab({
         <div>
           <div style={{ fontWeight: 600 }}>{tr("聊天页面强制左右分栏")}</div>
           <div style={{ fontSize: 12, color: "#888" }}>
-            {tr("忽略宽度判定：房间列表与聊天框始终左右分栏、各自独立滚动。窄面板下可用拖动条调宽、⟨ 可收起列表。")}
+            {tr("忽略宽窄判定：房间列表与聊天框始终左右分栏、各自独立滚动。窄面板下可用拖动条调宽、⟨ 可收起列表。")}
           </div>
         </div>
       </div>
@@ -1168,7 +1168,12 @@ function ChatLayoutDiagCard({
     }
     if (layout) {
       out.push(
-        `模式 = ${layout.wide ? "宽屏分栏" : "窄屏单列"}（阈值 ${layout.threshold}px${layout.forced ? "，已强制分栏" : ""}）`,
+        `模式 = ${layout.wide ? "宽屏分栏" : "窄屏单列"}（横屏且≥${layout.threshold}px 才分栏${layout.forced ? "；已强制分栏" : ""}）`,
+      );
+    }
+    if (main) {
+      out.push(
+        `长宽比 = ${(main.clientHeight / Math.max(main.clientWidth, 1)).toFixed(2)}（${main.clientWidth >= main.clientHeight ? "横屏" : "竖屏"}）`,
       );
     }
     const left = document.querySelector(
@@ -1300,8 +1305,13 @@ function readStartupPref(): "last" | "home" {
 }
 
 /** 12.14：聊天分栏最小容器宽——1024→600（宿主内嵌面板/窄窗场景
- *  1024 下判定窄屏、罗总装验多轮复报「无分栏」；600 以下=手机竖屏语义）。 */
+ *  1024 下判定窄屏、装验多轮复报「无分栏」；600 以下=手机竖屏语义）。
+ *  12.16：宽窄判定「长宽比优先」——竖屏（高>宽）一律单列，横屏且 ≥600 才分栏。 */
 const CHAT_SPLIT_MIN_CONTAINER_W = 600;
+/** 12.16：宽窄判定——横屏（宽≥高）且容器 ≥600px 才用分栏。 */
+function isWideLayout(w: number, h: number): boolean {
+  return w >= CHAT_SPLIT_MIN_CONTAINER_W && w >= h;
+}
 
 export default function WorkbenchPage() {
   const t = useThemeColors();
@@ -1868,7 +1878,7 @@ export default function WorkbenchPage() {
   // 通知未读计数（通知 tab badge）。
   const [inboxUnread, setInboxUnread] = React.useState(0);
 
-  // P6（罗总 9/18 ⑨「自动刷新有点蠢，即时信息」）：/sync 事件驱动主路。
+  // P6（装验 9/18 ⑨「自动刷新有点蠢，即时信息」）：/sync 事件驱动主路。
   // ref 镜像——SSE effect deps 为空（一次连接），闭包必须走 ref 取最新。
   const activeRoomRef = React.useRef<TeamRoom | null>(null);
   React.useEffect(() => {
@@ -2480,12 +2490,12 @@ export default function WorkbenchPage() {
     return "";
   }, [config?.matrix?.user_id, rooms]);
 
-  // ── P6 聊天 tab（罗总 9/18 ⑤）：宽屏 Element 式分栏 / 窄屏微信式单屏 ──
+  // ── P6 聊天 tab（装验 9/18 ⑤）：宽屏 Element 式分栏 / 窄屏微信式单屏 ──
   // 宽屏：左房间/DM 列表（宽度可拖 220-560，持久化）+ 右聊天（未选房间显占位）。
   // 窄屏（<1024px，竖屏/手机）：保持微信移动版语义——列表页点击进全屏聊天，
   // 左上角 ← 返回退出（RoomChat onBack 既有按钮）。列表可隐藏（宽屏）。
   const [chatWideMeasured, setChatWideMeasured] = React.useState(
-    () => window.innerWidth >= CHAT_SPLIT_MIN_CONTAINER_W,
+    () => isWideLayout(window.innerWidth, window.innerHeight),
   );
   // 12.14：强制分栏开关（配置页）——忽略宽度判定，持久化 ui-state。
   const [chatForceWide, setChatForceWide] = React.useState<boolean>(
@@ -2503,18 +2513,21 @@ export default function WorkbenchPage() {
   const mainRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const el = mainRef.current;
-    const measure = (w: number) =>
-      setChatWideMeasured(w >= CHAT_SPLIT_MIN_CONTAINER_W);
+    const measure = (w: number, h: number) => setChatWideMeasured(isWideLayout(w, h));
     if (el && typeof ResizeObserver !== "undefined") {
       const ro = new ResizeObserver((entries) => {
-        const w = entries[0]?.contentRect?.width;
-        if (typeof w === "number" && w > 0) measure(w);
+        const r = entries[0]?.contentRect;
+        if (r && r.width > 0 && r.height > 0) measure(r.width, r.height);
       });
       ro.observe(el);
-      measure(el.clientWidth);
+      measure(el.clientWidth, el.clientHeight);
       return () => ro.disconnect();
     }
-    const onResize = () => measure(el ? el.clientWidth : window.innerWidth);
+    const onResize = () =>
+      measure(
+        el ? el.clientWidth : window.innerWidth,
+        el ? el.clientHeight : window.innerHeight,
+      );
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -2787,7 +2800,7 @@ export default function WorkbenchPage() {
            content holder/content/tabpane 高度链（chatWide 分栏专用；
            其他 tab 内容自身有高度约束；12.11 起 tabpane 加 overflow-y:auto
            回退滚动、内容区容器 flex 化——整链真正接通）。 */
-        /* 12.15 真机复现（罗总宿主实测）：QwenPaw 宿主是自家前缀的 antd 分支
+        /* 12.15 真机复现（真实宿主实测）：QwenPaw 宿主是自家前缀的 antd 分支
            （qwenpaw-tabs-*，无 .ant-tabs-*）——上面整条链在真宿主从未命中
            （左栏被撑到 8193px、整页滚动 4 轮复报的确证根因）。双前缀双写。 */
         .wb-main .ant-tabs-content-holder,

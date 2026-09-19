@@ -1,4 +1,4 @@
-// 12.13 P7b「添加提供商 / 添加路由」（罗总 9/19 ⑤）：插件模型页写面。
+// 12.13 P7b「添加提供商 / 添加路由」（装验 9/19）：插件模型页写面。
 // 字段形状与 dashboard models-section 的 serializeProviderForm /
 // serializeRouteForm 对齐：
 //   provider → { name, type, protocol, tokens[], tokenFailoverConfig?,
