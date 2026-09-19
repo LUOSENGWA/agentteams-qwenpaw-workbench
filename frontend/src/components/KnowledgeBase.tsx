@@ -305,10 +305,14 @@ export function clusterGridLayout(
     }
     if (row.length > 0) rowsBlocks.push(row);
   }
-  rowsBlocks.forEach((row, ri) => {
+  // 12.12：yTop 改累计行高（原 ri*(本行 max 高+gap) 行高不等时跨行重叠——
+  // 「簇重叠」真根因（数值复现：588×104px 块重叠）；累计落地后行行相扣。
+  let yAcc = 0;
+  rowsBlocks.forEach((row) => {
     const rowW = row.reduce((acc, b) => acc + b.w, 0) + (row.length - 1) * KB2D.BLOCK_GAP_X;
     let x = -rowW / 2;
-    const yTop = ri * (Math.max(...row.map((b) => b.h)) + KB2D.BLOCK_GAP_Y);
+    const yTop = yAcc;
+    yAcc += Math.max(...row.map((b) => b.h)) + KB2D.BLOCK_GAP_Y;
     for (const b of row) {
       // 行内块顶对齐（hub 横幅一条线，最直观）。
       const cx = x + b.w / 2;
@@ -464,6 +468,9 @@ function GraphCard(props: {
     return (vis || ext)?.node || null;
   };
   const handleGraphMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    // 12.12：拖拽中悬停停更（平移由 onSvgPanMove 处理——原实现 move 未接线，
+    // 「鼠标无法拖动」真根因）。
+    if (dragRef.current) return;
     const cx = e.clientX;
     const cy = e.clientY;
     cancelAnimationFrame(hitRafRef.current);
@@ -724,6 +731,7 @@ function GraphCard(props: {
   const onSvgPanDown = (e: React.MouseEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
     cancelAnim();
+    cancelAnimationFrame(hitRafRef.current); // 12.12：拖拽优先，停掉悬停 rAF
     dragRef.current = { startX: e.clientX, startY: e.clientY, vb0: { ...vbRef.current }, moved: false };
     dragMovedRef.current = false;
   };
@@ -1162,7 +1170,10 @@ function GraphCard(props: {
               style={{ display: "block", touchAction: "none", cursor: panning ? "grabbing" : "grab" }}
               onClick={handleGraphClick}
               onDoubleClick={handleGraphDblClick}
-              onMouseMove={handleGraphMove}
+              onMouseMove={(e) => {
+                onSvgPanMove(e);
+                handleGraphMove(e);
+              }}
               onMouseDown={onSvgPanDown}
               onMouseUp={onSvgPanUp}
               onMouseLeave={() => {
