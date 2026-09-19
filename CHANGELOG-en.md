@@ -5,6 +5,18 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.12 (2026-09-19)
+
+**True root-cause fix for cluster overlap (both ends) + drag-pan wiring**
+
+- **2D cluster-block row stacking (root cause)**: `yTop = ri * (this row's max height + gap)` overlapped rows whenever heights differed (numeric repro: 588x104 px block overlap; 30-dataset fuzz: old formula 1027 overlapping chip pairs -> new formula 0). Now uses cumulative row heights.
+- **Drag-pan wiring**: `onSvgPanMove` was defined but never attached to the SVG (move was a no-op after mousedown) - wired, with hover paused while dragging.
+- Mirrored on the dashboard side (same row stacking fix + CJK width port); 2D look stays consistent across both ends.
+
+**Verification**: tsc 0 - check-antd 38 - vite build green - pytest 42/42 - layout fuzz zero overlaps across 30 datasets
+
+---
+
 ## 0.5.0-beta.12.11 (2026-09-19)
 
 **True fix for split-pane independent scrolling (last hop of the height chain)**
