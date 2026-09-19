@@ -167,6 +167,15 @@ function DagTopo(props: { ev: WorkflowEvent; t: ThemeColors }) {
   const tr = useT();
   const dag = React.useMemo(() => buildWorkflowDag(ev.nodes ?? []), [ev]);
   const colors = dagNodeColors(t);
+  // P2：任务分布 = 节点按 status 计数（dashboard NODE_STATUS 分布同语义）。
+  const statuses = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of ev.nodes ?? []) {
+      const st = n.status || "unknown";
+      m.set(st, (m.get(st) ?? 0) + 1);
+    }
+    return [...m.entries()];
+  }, [ev]);
   return (
     <div>
       <div
@@ -191,9 +200,218 @@ function DagTopo(props: { ev: WorkflowEvent; t: ThemeColors }) {
         </div>
       ) : null}
       <div style={{ marginTop: 8, fontSize: 11, color: t.textSecondary }}>
-        <span style={{ color: "#13c2c2" }}>◌</span>{" "}
-        {tr("依赖已满足（就绪，待开始）")}
+        <span style={{ color: "#13c2c2" }}>◌</span>{" " + tr("依赖已满足（就绪，待开始）")}
       </div>
+      {/* 装验反馈 9/19（P2）：拓扑详情区补 dashboard 任务详情页三区
+          （任务分布 / 任务详情(N) / 节点(N)——projects-section
+          WorkflowDetail 同语义；罗总「看看我的 PR 是怎么做的」= 抄该
+          实现，插件 antd 风格）。数据=ev.nodes / ev.taskDetails 既有
+          通道，零新请求。 */}
+      {statuses.length > 0 ? (
+        <div style={{ marginTop: 10 }}>
+          <p style={secTitleStyle(t)}>{tr("任务分布")}</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {statuses.map(([st, count]) => {
+              const info = statusMeta(st);
+              return (
+                <antd.Tag
+                  key={st}
+                  style={{
+                    margin: 0,
+                    fontSize: 11,
+                    borderColor: info.color,
+                    color: info.color,
+                    background: "transparent",
+                  }}
+                >
+                  {info.label}: {count}
+                </antd.Tag>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      {ev.taskDetails && ev.taskDetails.length > 0 ? (
+        <div style={{ marginTop: 10 }}>
+          <p style={secTitleStyle(t)}>
+            {tr("任务详情（{n}）", { n: ev.taskDetails.length })}
+          </p>
+          <div style={{ display: "grid", gap: 6 }}>
+            {ev.taskDetails.map((td) => (
+              <TopoTaskDetailRow key={td.task_id} td={td} t={t} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div style={{ marginTop: 10 }}>
+        <p style={secTitleStyle(t)}>
+          {tr("节点（{n}）", { n: (ev.nodes ?? []).length })}
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          {(ev.nodes ?? []).map((n) => {
+            const st = n.status || "";
+            const info = statusMeta(st);
+            return (
+              <div
+                key={n.id || nodeLabel(n)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 6,
+                  padding: "6px 8px",
+                  background: t.bg,
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={nodeLabel(n)}
+                  >
+                    {nodeLabel(n)}
+                  </p>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 10,
+                      fontFamily: "monospace",
+                      color: t.textSecondary,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {typeof n.id === "string" ? n.id : ""}
+                  </p>
+                </div>
+                <antd.Tag
+                  style={{
+                    margin: 0,
+                    fontSize: 10,
+                    lineHeight: "16px",
+                    borderColor: info.color,
+                    color: info.color,
+                    background: "transparent",
+                    flexShrink: 0,
+                  }}
+                >
+                  {info.label}
+                </antd.Tag>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** P2：详情区 section 标题样式（三区统一）。 */
+function secTitleStyle(t: ThemeColors): ReactNS.CSSProperties {
+  return {
+    margin: "0 0 6px",
+    fontSize: 11,
+    fontWeight: 600,
+    color: t.textSecondary,
+  };
+}
+
+/** P2：任务详情行（dashboard TaskDetailRow 语义精简版：任务名+状态+
+ *  负责人，展开显 spec/摘要/产物数/转换审计条数——完整明细走既有
+ *  任务巡检 Drawer，不重复造轮子）。 */
+function TopoTaskDetailRow(props: {
+  td: import("../api").TaskDetail;
+  t: ThemeColors;
+}) {
+  const { td, t } = props;
+  const tr = useT();
+  const [open, setOpen] = React.useState(false);
+  const info = statusMeta(td.status || "");
+  const deliverables = Array.isArray(td.deliverables) ? td.deliverables.length : 0;
+  const histCount = Array.isArray(td.history) ? td.history.length : 0;
+  return (
+    <div
+      style={{
+        border: `1px solid ${t.border}`,
+        borderRadius: 6,
+        background: t.bg,
+        cursor: "pointer",
+      }}
+      onClick={() => setOpen(!open)}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 10px",
+        }}
+      >
+        <span style={{ fontSize: 10, color: t.textSecondary }}>{open ? "▾" : "▸"}</span>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: 12,
+            fontWeight: 500,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={td.task_id}
+        >
+          {td.task_id}
+        </span>
+        {td.assigned_to ? (
+          <span style={{ fontSize: 10, color: t.textSecondary, flexShrink: 0 }}>
+            {td.assigned_to}
+          </span>
+        ) : null}
+        <antd.Tag
+          style={{
+            margin: 0,
+            fontSize: 10,
+            lineHeight: "16px",
+            borderColor: info.color,
+            color: info.color,
+            background: "transparent",
+            flexShrink: 0,
+          }}
+        >
+          {info.label}
+        </antd.Tag>
+      </div>
+      {open ? (
+        <div style={{ padding: "0 10px 8px 28px", fontSize: 11, color: t.textSecondary, lineHeight: 1.7 }}>
+          {td.spec_path ? <div>{tr("spec")}: <span style={{ fontFamily: "monospace" }}>{td.spec_path}</span></div> : null}
+          {td.summary ? (
+            <div
+              style={{
+                overflow: "hidden",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+              }}
+              title={td.summary}
+            >
+              {td.summary}
+            </div>
+          ) : null}
+          <div>
+            {tr("产物 {a} · 状态转换 {b}", { a: deliverables, b: histCount })}
+            {td.result_status ? ` · ${tr("验收")}: ${td.result_status}` : ""}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1489,11 +1707,13 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
           onChange={(v: ReactNS.Key | number) =>
             setView(v as "list" | "card" | "board" | "topo")
           }
+          // 装验反馈 9/19（P3）：看板/拓扑视图 tab 计数取消——
+          // 页头「项目 (N)」已给总量，视图 tab 上的计数冗余。
           options={[
             { value: "list", label: `📋 ${tr("项目列表")}` },
             { value: "card", label: `🗂️ ${tr("项目卡片")}` },
-            { value: "board", label: `📊 ${tr("看板")}（${boardTaskCount}）` },
-            { value: "topo", label: `🌳 ${tr("拓扑")}（${withNodes.length}）` },
+            { value: "board", label: `📊 ${tr("看板")}` },
+            { value: "topo", label: `🌳 ${tr("拓扑")}` },
           ]}
         />
         <antd.Tooltip title="刷新">
