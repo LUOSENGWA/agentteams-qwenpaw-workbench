@@ -1444,6 +1444,26 @@ const DICT: Record<string, { en: string }> = {
     en: "The current Controller (pre-#1255) has no such API, or the current account has no access to this worker. This section activates automatically after upgrading the Controller.",
   },
   "内置工具加载失败": { en: "Failed to load built-in tools" },
+  "会话": { en: "Chats" },
+  "置顶": { en: "Pinned" },
+  "已归档": { en: "Archived" },
+  "通道": { en: "Channel" },
+  "最后活动": { en: "Last activity" },
+  "该会话暂无消息": { en: "No messages in this chat yet" },
+  "会话不存在或无访问权（404）": { en: "Chat not found or no access (404)" },
+  "无可见会话（Controller 版本较低或无该 Worker 访问权）": {
+    en: "No visible chats (older Controller or no access to this worker)",
+  },
+  "L2 仅可查看自己所在 Matrix 房间内的会话；Controller 版本未含会话端点或当前账号无该 Worker 访问权时同样显示此提示。升级 Controller 后本节自动点亮。": {
+    en: "L2 can only see chats in Matrix rooms it has joined; this note also appears when the Controller lacks the chats endpoint or the current account has no access to this worker. This section activates automatically after upgrading the Controller.",
+  },
+  "会话加载失败": { en: "Failed to load chats" },
+  "当前账号在此 Worker 的可见范围内没有会话（L2 仅自己所在房间）": {
+    en: "No chats in this worker for the current account (L2 sees only its own rooms)",
+  },
+  "Agent 上下文视图——可能含压缩历史与未发送的工具调用/输出，与实发房间消息不同。": {
+    en: "Agent context view - may include compacted history and unsent tool calls/output; distinct from sent room messages.",
+  },
 };
 
 export type Lang = "zh" | "en";

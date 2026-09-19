@@ -1646,6 +1646,59 @@ export function patchWorkerTool(
   ) as Promise<WorkerToolInfo>;
 }
 
+// ── Worker 会话只读（#1295 等合并；给无头 QwenPaw Worker「补头」）──────
+// 404 = 未知 worker / L2 房间边界外 / Controller 未含该端点（W8 统一不可探测）。
+// detail = agent 上下文（可能含压缩历史/未发送工具输出，UI 必须标注）。
+export interface WorkerChatSpec {
+  id: string;
+  name?: string;
+  session_id?: string;
+  user_id?: string;
+  channel?: string;
+  created_at?: string;
+  updated_at?: string;
+  pinned?: boolean;
+  archived?: boolean;
+  source?: string;
+}
+export interface WorkerChatMessage {
+  id?: string;
+  type?: string;
+  role?: string;
+  content: unknown;
+  status?: string;
+}
+export interface WorkerChatDetail {
+  messages?: WorkerChatMessage[];
+  status?: string;
+}
+export function fetchWorkerChats(name: string): Promise<WorkerChatSpec[]> {
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/chats`,
+  ) as Promise<WorkerChatSpec[]>;
+}
+export function fetchWorkerChat(
+  name: string,
+  chatId: string,
+): Promise<WorkerChatDetail> {
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/chats/${encodeURIComponent(chatId)}`,
+  ) as Promise<WorkerChatDetail>;
+}
+/** /status 仅 QwenPaw ≥2.2.1——旧 runtime 404 = 隐藏状态灯（版本无关门）。
+ * 恒 200 时 {status:"idle"|"running"}（chat 不存在也 idle）。 */
+export function fetchWorkerChatStatus(
+  name: string,
+  chatId: string,
+): Promise<{ status: string }> {
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/chats/${encodeURIComponent(chatId)}/status`,
+  ) as Promise<{ status: string }>;
+}
+
 export const deleteTeam = (name: string) =>
   controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
 
