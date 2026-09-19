@@ -182,7 +182,7 @@ const GW_FIXTURES: Record<string, unknown> = {
     ],
     invites: [],
     muted_rooms: [],
-    user_id: "@lsw:matrix.local",
+    user_id: "@admin:matrix.local",
   },
   "/agentteams-proxy/gateway/ai-providers": {
     available: true,

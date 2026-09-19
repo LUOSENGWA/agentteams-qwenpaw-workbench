@@ -5,6 +5,56 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13 (2026-09-19 - official release)
+
+New since beta.12 (the previous official release), grouped by area:
+
+**Chat**
+- **Side-by-side split with independent scrolling** (real root cause fixed): room list and chat pane scroll separately; wide/narrow decided **aspect-ratio-first** (landscape and >=600px -> split; portrait -> single column); new Settings toggle "Force side-by-side chat layout"; new self-check card "Chat layout diagnostics" (width/height, ratio, left-pane scroll numbers, one-click re-measure); adapted to the QwenPaw host's own antd prefix (ant- / qwenpaw- class duality) so the split truly works inside the host panel
+- **Worker session status dots**: blue (running, breathing) / green (recently done) / grey (idle) on room cards, worker rows and 1:1 chat headers (heartbeat-first, typing fallback)
+- Message refresh is now **/sync event-driven**
+- Room cards: last-message preview + collapsible member list ("N people")
+
+**Knowledge graph**
+- **2D v4 cluster-block layout**; cursor-anchored zoom (0.25x-8x), drag pan, cluster focus, cluster separation, reset
+- **Cluster-overlap real root cause fixed** (cumulative row stacking + CJK width weighting) + blank-area drag pan wired (previously inert)
+- 3D force parameters aligned with the dashboard's settled values; sensitive-file rules extended (credentials.yaml/yml etc. -> direct read 404)
+
+**Workflows**
+- Card/topology views rebuilt **master-detail** + top-down layered DAG (ready highlight / external-dependency notes)
+- **15s auto-refresh** while the tab is active; task inspection drawer (current worker / latest artifacts / state timeline / duration)
+- **In-chat workflow cards go live** (15s overlay + LIVE badge; degraded track shows no badge)
+
+**Model gateway**
+- **Write actions: Add provider / Add route** (through the Console session; Console errors surface verbatim)
+- Read-only model-gateway tab (providers / AI routes / model mappings) + aggregated resolvable-alias set
+- Model-gateway read-only route catalog (ops tab, L1; hides itself when the controller endpoint is missing)
+
+**Team management & permissions**
+- L2 data-plane fallbacks: team-scoped KB read (diary / KB / MEMORY.md) + worker approval read/write (OFF still L1)
+- New-worker dialog: runtime list updated (CoPaw removed, DeepSeek Harness added, QwenPaw default) and split out of the create-team card
+- CRD management: export JSON (all four kinds) + compact cards + brand logo replaces the building emoji
+
+**Verification**
+tsc 0 - check-antd cross-check - vite build green - pytest 46/46 - version re-verified inside the shipped archive (all three places)
+
+**Known limitations** (as in beta.12)
+- Skill catalog / channels sections depend on upstream endpoints; 404 placeholders until merged (expected)
+- 3D graph falls back to 2D where WebGL is unavailable
+
+---
+
+## 0.5.0-beta.12.16 (2026-09-19)
+
+**Wide/narrow now aspect-ratio-first (portrait semantics)**
+
+- The split decision no longer keys on width alone: **landscape (container width >= height) and >=600px -> split; portrait (height > width) -> single column** -- phone/portrait-window semantics, matching Element-style clients.
+- The force toggle still overrides; the self-check diagnostics card now reports the **aspect ratio** (landscape/portrait).
+
+**Verification**: tsc 0 · check-antd 38 · vite build green · pytest 46/46
+
+---
+
 ## 0.5.0-beta.12.15 (2026-09-19)
 
 **Real root cause (host prefix): qwenpaw-tabs-* height chain**
