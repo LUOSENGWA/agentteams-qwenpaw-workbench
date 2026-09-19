@@ -26,8 +26,9 @@ interface TaskFile {
 }
 
 /** 正源产物下载 URL（项目产物端点，query path 透传——
- * 与 Artifacts.tsx artifactDownloadUrl 同契约，交叉验证基准）。 */
-function artifactDownloadUrl(projectId: string, taskId: string, path: string): string {
+ * 与 Artifacts.tsx artifactDownloadUrl 同契约，交叉验证基准）。
+ * export：#1230 任务巡检 Drawer（WorkflowBoard）复用同一下载通道。 */
+export function artifactDownloadUrl(projectId: string, taskId: string, path: string): string {
   return (
     `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}` +
     `/tasks/${encodeURIComponent(taskId)}/artifact?path=${encodeURIComponent(path)}`

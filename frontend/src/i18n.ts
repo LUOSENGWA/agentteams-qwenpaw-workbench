@@ -475,6 +475,23 @@ const DICT: Record<string, { en: string }> = {
   "项目": { en: "Projects" },
   "项目列表": { en: "Project list" },
   "项目卡片": { en: "Project cards" },
+  "事件": { en: "Events" },
+  "卡片": { en: "Cards" },
+  "任务巡检": { en: "Task inspection" },
+  "无任务级明细——正源任务图有该任务，但 TaskMeta 未落盘（或 Matrix 降级轨无 tasks_detail）": {
+    en: "No task-level detail — the project task graph has this task, but its TaskMeta is not on disk (or Matrix fallback track carries no tasks_detail)",
+  },
+  "摘要": { en: "Summary" },
+  "验收结果": { en: "Result status" },
+  "取消原因": { en: "Cancel reason" },
+  "任务规格": { en: "Task spec" },
+  "依赖任务": { en: "Depends on" },
+  "状态转换（{n}，新→旧）": { en: "State transitions ({n}, newest first)" },
+  "tracing 过滤提示": { en: "Tracing filter hint" },
+  "值用于匹配 worker entry span 属性（tracing 后端为部署特定，不构造 URL）": {
+    en: "Values match worker entry span attributes (tracing backend is deployment-specific; no URL is constructed)",
+  },
+  "下载失败": { en: "Download failed" },
   "拓扑": { en: "Topology" },
   "请选择左侧项目": { en: "Select a project on the left" },
   "暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡": {

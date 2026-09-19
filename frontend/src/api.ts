@@ -746,6 +746,35 @@ export interface WorkflowInterrupt {
   description?: string;
 }
 
+/** 任务状态转换审计单条（task meta history 数组，TeamHarness 转换引擎写入）。
+ * 形状对齐 controller taskTransition（#1230 巡检契约）。 */
+export interface TaskTransition {
+  ts: string;
+  from?: string;
+  to: string;
+  action: string;
+  actor?: string;
+  note?: string;
+  seq?: number;
+}
+
+/** 任务级明细（controller taskDetail，?includeTasks=true 的 tasks_detail 条目）。
+ * #1230 任务巡检数据面：spec/摘要/验收/产物/转换审计。 */
+export interface TaskDetail {
+  task_id: string;
+  project_id?: string;
+  status?: string;
+  spec_path?: string;
+  assigned_to?: string;
+  summary?: string;
+  result_status?: string;
+  deliverables?: unknown[];
+  result_path?: string;
+  cancel_reason?: string;
+  submission_id?: string;
+  history?: TaskTransition[];
+}
+
 export interface WorkflowEvent {
   runId: string;
   title: string;
@@ -787,6 +816,9 @@ export interface WorkflowEvent {
   /** 团队 id（正源列表条目 team_id；跨团队重名项目寻址 /events /history
    * 等裸 id 端点时 ?team= 的必填键——不带 = 409 ambiguous，同 workflow 契约）。 */
   team_id?: string;
+  /** 任务级明细（正源 tasks_detail，#1230 巡检数据面；steps 的强类型副本——
+   * steps 保留 unknown[] 兼容既有消费方（卡片降级轨），新代码用 taskDetails）。 */
+  taskDetails?: TaskDetail[];
 }
 
 /** 转换引擎事件流单事件（Controller projectEvent，#1233 已合上游 main）。 */
@@ -1032,6 +1064,8 @@ function isoToMs(v: unknown): number {
     status: String(wf.status || proj.status || "unknown"),
     summary: typeof wf.summary === "string" ? wf.summary : "",
     steps: (Array.isArray(wf.tasks_detail) ? wf.tasks_detail : []) as unknown[],
+    // #1230 任务巡检：tasks_detail 强类型副本（与 steps 同源；降级轨事件无 tasks_detail → 空）。
+    taskDetails: (Array.isArray(wf.tasks_detail) ? wf.tasks_detail : []) as TaskDetail[],
     nodes,
     interrupts,
     pause_reason: typeof wf.pause_reason === "string" ? wf.pause_reason : undefined,
