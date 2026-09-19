@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>split-audit</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #eef0f2; }
+  #root { max-width: 1400px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import * as antdNs from "antd";
+
+  // 强制宽屏：覆盖 innerWidth（分栏判定用），并 mock matchMedia 断点。
+  try { Object.defineProperty(window, "innerWidth", { value: 1400, configurable: true }); } catch (e) {}
+  const origMM = window.matchMedia.bind(window);
+  window.matchMedia = (q) => {
+    const m = origMM(q);
+    const minM = q.match(/min-width:\s*([0-9.]+)px/);
+    const maxM = q.match(/max-width:\s*([0-9.]+)px/);
+    let matches = m.matches;
+    if (minM) matches = 1400 >= parseFloat(minM[1]);
+    else if (maxM) matches = 1400 <= parseFloat(maxM[1]);
+    return { ...m, matches, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false };
+  };
+
+  window.QwenPaw = {
+    host: {
+      React,
+      antd: antdNs.default ?? antdNs,
+      useTheme: () => "light",
+      useLocale: () => "zh-CN",
+      getApiUrl: (p) => p,
+      getApiToken: () => "",
+      fetch: async (path, init) => fetch("/gw-proxy/" + path, init),
+    },
+  };
+
+  const { default: WorkbenchPage } = await import("./src/WorkbenchPage");
+  createRoot(document.getElementById("root")).render(React.createElement(WorkbenchPage));
+</script>
+</body>
+</html>

@@ -5,6 +5,18 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.12.13 (2026-09-19)
+
+**Model page write actions (Add provider / Add route) + container-based split**
+
+- **Add provider / Add route (P7b)**: two write actions on the model page with the same field shapes as the dashboard models-section (provider = name/type/protocol/tokens/rawConfigs{openaiCustomUrl,pathPrefix,modelMapping}/tokenFailoverConfig; route = name/pathPredicate(PRE)/upstreams[]/modelPredicates[]/authConfig); proxied through the connector /gateway/* POST to the Higress Console (console_session). Console errors (e.g. 409 conflicts) surface in the UI.
+- **Split decision now uses the container width** (investigation of the persistent report): wide/narrow detection switched from window.innerWidth to a ResizeObserver on the actual container, so an embedded panel narrower than the window no longer mis-detects as wide. Verified with a real-frontend reproduction bench (fixture data): the left pane scrolls independently (last room 5210 -> 542px, pane box unmoved).
+- 4 new regression tests for the write plane (POST passthrough / no-session guard / name guard / Console detail).
+
+**Verification**: tsc 0 · check-antd 38 · vite build green · pytest 46/46 · reproduction-bench UI smoke (create flow success + list refresh)
+
+---
+
 ## 0.5.0-beta.12.12 (2026-09-19)
 
 **True root-cause fix for cluster overlap (both ends) + drag-pan wiring**

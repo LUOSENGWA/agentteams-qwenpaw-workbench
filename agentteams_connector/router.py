@@ -28,7 +28,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Body, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -1520,8 +1520,15 @@ def build_router() -> APIRouter:
             "ok": False,
             "error": "请填写管理员账号与密码，或 Controller 管理员 token（二选一；token 获取命令见设置页提示，或部署期注入 env AGENTTEAMS_CONTROLLER_TOKEN）",
         }
-    async def _gateway_passthrough(path: str) -> Dict[str, Any]:
+    async def _gateway_passthrough(
+        path: str,
+        method: str = "GET",
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """v0.5.0-beta.12: 网关面透传（Higress Console，8001）。
+
+        v0.5.0-beta.12.13：加写面（POST，「添加提供商/添加路由」P7b）；
+        写失败时透出 Console 的 message/detail 供 UI 显示。
 
         消费密码模式持有的 Console 管理员会话（console_session）；
         无会话/不可达 → available=false（前端优雅降级：模型选择器
@@ -1537,11 +1544,40 @@ def build_router() -> APIRouter:
             return {"available": False, "data": None, "reason": "no_console_session"}
         try:
             async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
-                r = await client.get(
-                    f"{console_url}{path}", headers={"Cookie": session}
-                )
-            if r.status_code != 200:
-                return {"available": False, "data": None, "reason": f"http_{r.status_code}"}
+                if method == "POST":
+                    r = await client.post(
+                        f"{console_url}{path}",
+                        headers={
+                            "Cookie": session,
+                            "Content-Type": "application/json",
+                        },
+                        json=json_body or {},
+                    )
+                else:
+                    r = await client.get(
+                        f"{console_url}{path}", headers={"Cookie": session}
+                    )
+            if r.status_code not in (200, 201):
+                out: Dict[str, Any] = {
+                    "available": False,
+                    "data": None,
+                    "reason": f"http_{r.status_code}",
+                }
+                detail = ""
+                try:
+                    j = r.json()
+                    msg = j.get("message") or j.get("error") or j.get("detail")
+                    if msg:
+                        detail = str(msg)
+                except Exception:
+                    detail = ""
+                if not detail:
+                    text = getattr(r, "text", "") or ""
+                    if isinstance(text, str):
+                        detail = text[:300]
+                if detail:
+                    out["detail"] = detail
+                return out
             return {"available": True, "data": r.json()}
         except Exception as exc:
             return {"available": False, "data": None, "reason": exc.__class__.__name__}
@@ -1555,6 +1591,24 @@ def build_router() -> APIRouter:
     async def gateway_ai_providers() -> Dict[str, Any]:
         """网关 LLM Provider 列表（alias 可解析性判定用）。"""
         return await _gateway_passthrough("/v1/ai/providers")
+
+    @router.post("/gateway/ai-routes")
+    async def gateway_ai_routes_create(
+        payload: Dict[str, Any] = Body(...),
+    ) -> Dict[str, Any]:
+        """网关 AI 路由创建（Console 写面透传；12.13 P7b「添加路由」）。"""
+        if not str(payload.get("name") or "").strip():
+            return {"available": False, "data": None, "reason": "invalid", "detail": "name 必填"}
+        return await _gateway_passthrough("/v1/ai/routes", method="POST", json_body=payload)
+
+    @router.post("/gateway/ai-providers")
+    async def gateway_ai_providers_create(
+        payload: Dict[str, Any] = Body(...),
+    ) -> Dict[str, Any]:
+        """网关 LLM Provider 创建（Console 写面透传；12.13 P7b「添加提供商」）。"""
+        if not str(payload.get("name") or "").strip():
+            return {"available": False, "data": None, "reason": "invalid", "detail": "name 必填"}
+        return await _gateway_passthrough("/v1/ai/providers", method="POST", json_body=payload)
 
     @router.get("/teams/rooms")
     # 【历史替代，勿删】实时聚合版；现役用 /teams/sync（缓存+force）。排查缓存问题时的对照端点。

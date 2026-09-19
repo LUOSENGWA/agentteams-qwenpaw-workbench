@@ -136,6 +136,54 @@ const GW_FIXTURES: Record<string, unknown> = {
       },
     },
   },
+  "/agentteams-proxy/teams/sync": {
+    ok: true,
+    rooms: [
+          { room_id: "!proj-01:matrix.local", name: "项目群-压力测试-01", member_count: 3, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000001, last_body: "最后一条消息 01" },
+          { room_id: "!proj-02:matrix.local", name: "项目群-压力测试-02", member_count: 4, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000002, last_body: "最后一条消息 02" },
+          { room_id: "!proj-03:matrix.local", name: "项目群-压力测试-03", member_count: 5, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000003, last_body: "最后一条消息 03" },
+          { room_id: "!proj-04:matrix.local", name: "项目群-压力测试-04", member_count: 6, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000004, last_body: "最后一条消息 04" },
+          { room_id: "!proj-05:matrix.local", name: "项目群-压力测试-05", member_count: 7, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000005, last_body: "最后一条消息 05" },
+          { room_id: "!proj-06:matrix.local", name: "项目群-压力测试-06", member_count: 8, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000006, last_body: "最后一条消息 06" },
+          { room_id: "!proj-07:matrix.local", name: "项目群-压力测试-07", member_count: 2, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000007, last_body: "最后一条消息 07" },
+          { room_id: "!proj-08:matrix.local", name: "项目群-压力测试-08", member_count: 3, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000008, last_body: "最后一条消息 08" },
+          { room_id: "!proj-09:matrix.local", name: "项目群-压力测试-09", member_count: 4, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000009, last_body: "最后一条消息 09" },
+          { room_id: "!proj-10:matrix.local", name: "项目群-压力测试-10", member_count: 5, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000010, last_body: "最后一条消息 10" },
+          { room_id: "!proj-11:matrix.local", name: "项目群-压力测试-11", member_count: 6, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000011, last_body: "最后一条消息 11" },
+          { room_id: "!proj-12:matrix.local", name: "项目群-压力测试-12", member_count: 7, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000012, last_body: "最后一条消息 12" },
+          { room_id: "!proj-13:matrix.local", name: "项目群-压力测试-13", member_count: 8, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000013, last_body: "最后一条消息 13" },
+          { room_id: "!proj-14:matrix.local", name: "项目群-压力测试-14", member_count: 2, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000014, last_body: "最后一条消息 14" },
+          { room_id: "!proj-15:matrix.local", name: "项目群-压力测试-15", member_count: 3, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000015, last_body: "最后一条消息 15" },
+          { room_id: "!proj-16:matrix.local", name: "项目群-压力测试-16", member_count: 4, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000016, last_body: "最后一条消息 16" },
+          { room_id: "!proj-17:matrix.local", name: "项目群-压力测试-17", member_count: 5, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000017, last_body: "最后一条消息 17" },
+          { room_id: "!proj-18:matrix.local", name: "项目群-压力测试-18", member_count: 6, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000018, last_body: "最后一条消息 18" },
+          { room_id: "!proj-19:matrix.local", name: "项目群-压力测试-19", member_count: 7, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000019, last_body: "最后一条消息 19" },
+          { room_id: "!proj-20:matrix.local", name: "项目群-压力测试-20", member_count: 8, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000020, last_body: "最后一条消息 20" },
+          { room_id: "!proj-21:matrix.local", name: "项目群-压力测试-21", member_count: 2, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000021, last_body: "最后一条消息 21" },
+          { room_id: "!proj-22:matrix.local", name: "项目群-压力测试-22", member_count: 3, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000022, last_body: "最后一条消息 22" },
+          { room_id: "!proj-23:matrix.local", name: "项目群-压力测试-23", member_count: 4, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000023, last_body: "最后一条消息 23" },
+          { room_id: "!proj-24:matrix.local", name: "项目群-压力测试-24", member_count: 5, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000024, last_body: "最后一条消息 24" },
+          { room_id: "!proj-25:matrix.local", name: "项目群-压力测试-25", member_count: 6, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000025, last_body: "最后一条消息 25" },
+          { room_id: "!proj-26:matrix.local", name: "项目群-压力测试-26", member_count: 7, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000026, last_body: "最后一条消息 26" },
+          { room_id: "!proj-27:matrix.local", name: "项目群-压力测试-27", member_count: 8, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000027, last_body: "最后一条消息 27" },
+          { room_id: "!proj-28:matrix.local", name: "项目群-压力测试-28", member_count: 2, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000028, last_body: "最后一条消息 28" },
+          { room_id: "!proj-29:matrix.local", name: "项目群-压力测试-29", member_count: 3, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000029, last_body: "最后一条消息 29" },
+          { room_id: "!proj-30:matrix.local", name: "项目群-压力测试-30", member_count: 4, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000030, last_body: "最后一条消息 30" },
+          { room_id: "!proj-31:matrix.local", name: "项目群-压力测试-31", member_count: 5, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000031, last_body: "最后一条消息 31" },
+          { room_id: "!proj-32:matrix.local", name: "项目群-压力测试-32", member_count: 6, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000032, last_body: "最后一条消息 32" },
+          { room_id: "!proj-33:matrix.local", name: "项目群-压力测试-33", member_count: 7, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000033, last_body: "最后一条消息 33" },
+          { room_id: "!proj-34:matrix.local", name: "项目群-压力测试-34", member_count: 8, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000034, last_body: "最后一条消息 34" },
+          { room_id: "!proj-35:matrix.local", name: "项目群-压力测试-35", member_count: 2, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000035, last_body: "最后一条消息 35" },
+          { room_id: "!proj-36:matrix.local", name: "项目群-压力测试-36", member_count: 3, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000036, last_body: "最后一条消息 36" },
+          { room_id: "!proj-37:matrix.local", name: "项目群-压力测试-37", member_count: 4, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000037, last_body: "最后一条消息 37" },
+          { room_id: "!proj-38:matrix.local", name: "项目群-压力测试-38", member_count: 5, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000038, last_body: "最后一条消息 38" },
+          { room_id: "!proj-39:matrix.local", name: "项目群-压力测试-39", member_count: 6, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000039, last_body: "最后一条消息 39" },
+          { room_id: "!proj-40:matrix.local", name: "项目群-压力测试-40", member_count: 7, members: { "@m:matrix.local": { display_name: "m" } }, last_ts: 1789000000040, last_body: "最后一条消息 40" },
+    ],
+    invites: [],
+    muted_rooms: [],
+    user_id: "@lsw:matrix.local",
+  },
   "/agentteams-proxy/gateway/ai-providers": {
     available: true,
     data: {
@@ -158,7 +206,14 @@ function gwProxyMiddleware(): Plugin {
         const url = req.url || "";
         const m = url.match(/^\/gw-proxy\/(.*)/);
         if (!m) return next();
-        const key = "/" + m[1].split("?")[0];
+        const key = "/" + m[1].split("?")[0].replace(/^\/+/, "");
+        // 12.13 写面冒烟：POST 固定成功信封（真写面由连接器直连 Console）。
+        if ((req.method || "GET") === "POST" && key.startsWith("/agentteams-proxy/gateway/")) {
+          res.setHeader("content-type", "application/json");
+          res.statusCode = 200;
+          res.end(JSON.stringify({ available: true, data: { success: true } }));
+          return;
+        }
         const body = GW_FIXTURES[key];
         res.setHeader("content-type", "application/json");
         if (body === undefined) {
