@@ -619,6 +619,9 @@ const DICT: Record<string, { en: string }> = {
   },
   "暂无回复": { en: "No replies yet" },
   "关闭话题": { en: "Close thread" },
+  // ── 第四批：一键置底（v0.5.0-beta.13.2，Element JumpToLatestButton 同款）──
+  "回到最新消息": { en: "Back to latest" },
+  "条新消息": { en: "new messages" },
   "查看": { en: "View" },
   "查看中": { en: "Viewing" },
   "跳转到原消息": { en: "Jump to original message" },

@@ -1,6 +1,6 @@
 # AgentTeams QwenPaw Workbench
 
-**Version**: 0.5.0-beta.13.1 ｜ **Author**: LUOSENGWA
+**Version**: 0.5.0-beta.13.2 ｜ **Author**: LUOSENGWA
 **Requirements**: QwenPaw 2.0 – 2.2 (`qwenpaw_version: >=2.0.0, <3.0.0` — 2.1+ unlocks host-skill details / knowledge graph / reindex; on 2.0 those features auto-degrade) + AgentTeams Controller (HiClaw cluster)
 
 > 中文版本: [README.md](README.md)
@@ -36,26 +36,26 @@ Product-grade feature docs (bilingual, one page per feature): [docs/](./docs/REA
 **Option 1: Console UI (recommended)**
 
 1. Open the QwenPaw console → **Settings → Plugin Manager**
-2. Click **Install** and select the ZIP file (`agentteams-qwenpaw-workbench-v0.5.0-beta.13.1.zip`, available in [Releases](https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases))
+2. Click **Install** and select the ZIP file (`agentteams-qwenpaw-workbench-v0.5.0-beta.13.2.zip`, available in [Releases](https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases))
 3. Refresh the console after install — **🏢 AgentTeams QwenPaw Workbench** appears in the sidebar
 
 **Option 2: CLI**
 
 ```bash
 # stop QwenPaw first, then install from a local path
-qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.13.1.zip
+qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.13.2.zip
 
 # install from a URL (ZIP supported)
-qwenpaw plugin install https://example.com/agentteams-qwenpaw-workbench-v0.5.0-beta.13.1.zip
+qwenpaw plugin install https://example.com/agentteams-qwenpaw-workbench-v0.5.0-beta.13.2.zip
 
 # force reinstall (in-place upgrade)
-qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.13.1.zip --force
+qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.13.2.zip --force
 ```
 
 **Option 3: GitHub Release URL**
 
 ```bash
-qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases/download/v0.5.0-beta.13.1/agentteams-qwenpaw-workbench-v0.5.0-beta.13.1.zip
+qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases/download/v0.5.0-beta.13.2/agentteams-qwenpaw-workbench-v0.5.0-beta.13.2.zip
 ```
 
 (The Console install dialog also accepts a URL.)

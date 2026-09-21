@@ -213,6 +213,7 @@ function ThreadPanelView({
   onClose,
   onReact,
   onJump,
+  workerSessionByMxid,
 }: {
   root: RoomMessage;
   replies: RoomMessage[];
@@ -221,6 +222,8 @@ function ThreadPanelView({
   onSendThread: (text: string) => Promise<void> | void;
   onClose: () => void;
   onReact?: (eventId: string, emoji: string) => Promise<void> | void;
+  /** v0.5.0-beta.13.2：话题内 Worker 头像角落状态灯（与主列表消息头像同源）。 */
+  workerSessionByMxid?: Record<string, WorkerSessionState>;
   /** workflow 卡片点击 → 工作流 tab 选中该项目。 */
   onOpenProject?: (runId: string) => void;
   /** workflow 卡片干预成功 → 刷新工作流。 */
@@ -246,12 +249,28 @@ function ThreadPanelView({
     if (threadOpenKeyRef.current !== key) {
       threadOpenKeyRef.current = key;
       el.scrollTop = el.scrollHeight;
+      setThreadShowJump(false);
       return;
     }
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
       el.scrollTop = el.scrollHeight;
     }
   }, [root.event_id, replies.length]);
+
+  // v0.5.0-beta.13.2：话题内一键置底（与主列表同款，窄面板故无徽章）。
+  const [threadShowJump, setThreadShowJump] = React.useState(false);
+  const handleThreadScroll = React.useCallback(() => {
+    const el = threadScrollRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setThreadShowJump(dist >= 120);
+  }, []);
+  const threadJumpToBottom = React.useCallback(() => {
+    const el = threadScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    setThreadShowJump(false);
+  }, []);
 
   const handleSend = async () => {
     const text = draft.trim();
@@ -301,8 +320,21 @@ function ThreadPanelView({
           ✕
         </antd.Button>
       </div>
+      {/* v0.5.0-beta.13.2：relative wrapper = 话题内一键置底按钮锚点。 */}
+      <div
+        style={{
+          position: "relative",
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          minWidth: 0,
+          maxWidth: "100%",
+        }}
+      >
       <div
         ref={threadScrollRef}
+        onScroll={handleThreadScroll}
         style={{
           flex: 1,
           overflowY: "auto",
@@ -326,13 +358,19 @@ function ThreadPanelView({
           title={onJump ? tr("跳转到原消息") : undefined}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-            <MxcAvatar
-              url={room?.members?.[root.sender]?.avatar_url}
-              size={20}
-              style={{ backgroundColor: PRIMARY, fontSize: 10, flexShrink: 0 }}
-            >
-              {senderShortName(root.sender, room).slice(0, 1).toUpperCase()}
-            </MxcAvatar>
+            {/* v0.5.0-beta.13.2：话题根消息头像角落状态灯（Worker 才有）。 */}
+            <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+              <MxcAvatar
+                url={room?.members?.[root.sender]?.avatar_url}
+                size={20}
+                style={{ backgroundColor: PRIMARY, fontSize: 10, flexShrink: 0 }}
+              >
+                {senderShortName(root.sender, room).slice(0, 1).toUpperCase()}
+              </MxcAvatar>
+              {workerSessionByMxid?.[root.sender] ? (
+                <WorkerSessionDot state={workerSessionByMxid[root.sender]} size={6} corner />
+              ) : null}
+            </span>
             <span style={{ fontSize: 12, fontWeight: 600 }}>
               {senderShortName(root.sender, room)}
             </span>
@@ -381,13 +419,19 @@ function ThreadPanelView({
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                     {!rMine ? (
-                      <MxcAvatar
-                        url={room?.members?.[r.sender]?.avatar_url}
-                        size={20}
-                        style={{ backgroundColor: PRIMARY, fontSize: 10, flexShrink: 0 }}
-                      >
-                        {senderShortName(r.sender, room).slice(0, 1).toUpperCase()}
-                      </MxcAvatar>
+                      /* v0.5.0-beta.13.2：话题回复头像角落状态灯。 */
+                      <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+                        <MxcAvatar
+                          url={room?.members?.[r.sender]?.avatar_url}
+                          size={20}
+                          style={{ backgroundColor: PRIMARY, fontSize: 10, flexShrink: 0 }}
+                        >
+                          {senderShortName(r.sender, room).slice(0, 1).toUpperCase()}
+                        </MxcAvatar>
+                        {workerSessionByMxid?.[r.sender] ? (
+                          <WorkerSessionDot state={workerSessionByMxid[r.sender]} size={6} corner />
+                        ) : null}
+                      </span>
                     ) : null}
                     <span style={{ fontSize: 12, fontWeight: 600 }}>
                       {senderShortName(r.sender, room)}
@@ -422,6 +466,28 @@ function ThreadPanelView({
             })}
           </div>
         )}
+      </div>
+      {threadShowJump ? (
+        <antd.Button
+          shape="circle"
+          size="small"
+          style={{
+            position: "absolute",
+            right: 10,
+            bottom: 8,
+            zIndex: 5,
+            backgroundColor: PRIMARY,
+            borderColor: PRIMARY,
+            color: "#fff",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
+          }}
+          onClick={threadJumpToBottom}
+          title={tr("回到最新消息")}
+          aria-label={tr("回到最新消息")}
+        >
+          ↓
+        </antd.Button>
+      ) : null}
       </div>
       <div style={{ flexShrink: 0, paddingTop: 10, borderTop: `1px solid ${t.border}` }}>
         <antd.Input.TextArea
@@ -1555,6 +1621,31 @@ export default function RoomChat(props: RoomChatProps) {
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const hoverTimerRef = React.useRef<number | null>(null);
+
+  // ── v0.5.0-beta.13.2（一键置底，Element JumpToLatestButton 同款交互）──
+  // 上翻回看历史时，右下角悬浮「↓」圆钮 + 「N 条新消息」徽章；点击平滑
+  // 滚回底部并清零。near-bottom 阈值 120px 与自动跟随共用（below = 近底）。
+  const [showJumpBottom, setShowJumpBottom] = React.useState(false);
+  const [newMsgCount, setNewMsgCount] = React.useState(0);
+  const prevMsgLenRef = React.useRef(0);
+  const handleListScroll = React.useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (dist < 120) {
+      setShowJumpBottom(false);
+      setNewMsgCount(0);
+    } else {
+      setShowJumpBottom(true);
+    }
+  }, []);
+  const jumpToBottom = React.useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    setNewMsgCount(0);
+    setShowJumpBottom(false);
+  }, []);
   const t = useThemeColors();
   const tr = useT();
 
@@ -1792,15 +1883,38 @@ export default function RoomChat(props: RoomChatProps) {
     }
   }, [messages]);
 
-  // 新消息到达自动滚到底部（仅当用户本来就在底部附近）。
+  // 新消息到达自动滚到底部（仅当用户本来就在底部附近）；不在附近且
+  // 消息真的增长（排除自己发的——发送路径已主动置底，防竞态误计）→
+  // 计「N 条新消息」+ 显示置底钮（v0.5.0-beta.13.2）。
   React.useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    const grew = messages.length > prevMsgLenRef.current;
+    prevMsgLenRef.current = messages.length;
+    const nearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (nearBottom) {
       el.scrollTop = el.scrollHeight;
+      setNewMsgCount(0);
+      return;
     }
-  }, [messages]);
+    const last = messages[messages.length - 1];
+    if (grew && (!last || last.sender !== user_id)) {
+      setNewMsgCount((c) => c + 1);
+      setShowJumpBottom(true);
+    }
+  }, [messages, user_id]);
+
+  // 换房间：重置置底状态 + 贴底（Element 开房间即在最新消息处）。
+  React.useEffect(() => {
+    prevMsgLenRef.current = 0;
+    setNewMsgCount(0);
+    setShowJumpBottom(false);
+    requestAnimationFrame(() => {
+      const el = listRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  }, [room?.room_id]);
 
   if (!room) {
     return (
@@ -1997,6 +2111,7 @@ export default function RoomChat(props: RoomChatProps) {
         onReact={onReact}
         // 主题根/引用原消息可能不在已加载窗口 → handleSearchJump 兜底 /context。
         onJump={(eventId) => void handleSearchJump(eventId)}
+        workerSessionByMxid={workerSessionByMxid}
       />
     );
   }, [
@@ -2244,9 +2359,19 @@ export default function RoomChat(props: RoomChatProps) {
             minWidth: 0,
           }}
         >
-          {/* 消息流 */}
+          {/* 消息流（v0.5.0-beta.13.2：relative wrapper = 一键置底按钮锚点） */}
+          <div
+            style={{
+              position: "relative",
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 0,
+            }}
+          >
           <div
         ref={listRef}
+        onScroll={handleListScroll}
         style={{
           flex: 1,
           overflowY: "auto",
@@ -2687,16 +2812,22 @@ export default function RoomChat(props: RoomChatProps) {
                           const preview = (last.body || "").replace(/\n+/g, " ").slice(0, 60);
                           return (
                             <>
-                              <antd.Avatar
-                                size={18}
-                                style={{
-                                  backgroundColor: PRIMARY,
-                                  fontSize: 10,
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {name.slice(0, 1).toUpperCase()}
-                              </antd.Avatar>
+                              {/* v0.5.0-beta.13.2：线程摘要最后回复人头像角落灯。 */}
+                              <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+                                <antd.Avatar
+                                  size={18}
+                                  style={{
+                                    backgroundColor: PRIMARY,
+                                    fontSize: 10,
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {name.slice(0, 1).toUpperCase()}
+                                </antd.Avatar>
+                                {workerSessionByMxid?.[last.sender] ? (
+                                  <WorkerSessionDot state={workerSessionByMxid[last.sender]} size={6} corner />
+                                ) : null}
+                              </span>
                               <span style={{ color: t.text, fontWeight: 600, flexShrink: 0 }}>
                                 {name}
                               </span>
@@ -2726,6 +2857,58 @@ export default function RoomChat(props: RoomChatProps) {
           </div>
         )}
       </div>
+        {showJumpBottom ? (
+          /* 一键置底（Element 同款）：悬浮右下，上翻时出现；
+             「N 条新消息」徽章=不在底部期间到达的非本人消息数。 */
+          <div
+            style={{
+              position: "absolute",
+              right: 14,
+              bottom: 10,
+              zIndex: 5,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            {newMsgCount > 0 ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: PRIMARY,
+                  background: t.bubbleOther,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 10,
+                  padding: "1px 8px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {newMsgCount} {tr("条新消息")}
+              </span>
+            ) : null}
+            <antd.Button
+              shape="circle"
+              style={{
+                width: 38,
+                height: 38,
+                minWidth: 38,
+                backgroundColor: PRIMARY,
+                borderColor: PRIMARY,
+                color: "#fff",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
+                fontSize: 16,
+              }}
+              onClick={jumpToBottom}
+              title={tr("回到最新消息")}
+              aria-label={tr("回到最新消息")}
+            >
+              ↓
+            </antd.Button>
+          </div>
+        ) : null}
+          </div>
 
       {/* 搜索跳转定位区（修复）：目标事件不在已加载窗口时，展示
           /context 前后文片段 + 高亮目标 + 关闭；点击结果后滚动至此。 */}

@@ -5,6 +5,21 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.2 (2026-09-21)
+
+**Chat UX overhaul: dot-source fix (no more false green) + thread avatar dots + jump-to-bottom**
+
+- **Session status dot source fix (root cause of "always green")**: the done fallback previously used the **room-level last_ts** — the user's own message in a room refreshed it and turned every worker in that room green (for up to 10 minutes). Now **per-sender** (same source as dashboard 9a9cc8d): the backend `/teams/sync` room entry carries `last_sender` (MXID of the last message's sender), and the frontend done fallback only counts the worker's **own** last message (<=10 min, then decays to gray). When heartbeat fields are present (Controller >= worker-agent-status contract) done is driven solely by `lastFinishAt` (task-level finish) and the fallback never fires; in team rooms a human message no longer turns any worker green, and a message from worker A only turns A green
+- **Thread avatar status dots**: the thread panel's root-message avatar, the reply-list avatars, and the thread summary's "last replier" avatar in the main list all get the same corner dot (6px dot + white ring + tooltip; workers only, humans get nothing)
+- **Jump-to-bottom (Element JumpToLatestButton-style interaction)**: main message list + thread panel — a floating circular "down" button appears at the bottom-right while the user is scrolled up; incoming non-own messages away from the bottom accumulate an "N new messages" badge; clicking smooth-scrolls to the bottom and clears the count; the 120px near-bottom threshold is shared with auto-follow (it never fights the user's back-scrolling); switching rooms resets the state and sticks to the bottom; the user's own sends are never counted (the send path already scrolls to bottom, preventing a race-induced false count)
+- **done-to-idle decay tick 60s -> 15s** (aligned with the dashboard useSessionTick direction; pure derivation, zero network cost)
+- **a11y**: status dots get `role="img"` + `aria-label` (screen readers announce the state; same fix the dashboard #127 maintainer applied at merge time)
+- **i18n**: 2 new keys registered (zh + en)
+
+**Verification**: pytest 50/50 (incl. 4 last_sender regressions), tsc 0, derivation logic live-run 11/11 (incl. "user message does not turn green" regression), vite build green
+
+---
+
 ## 0.5.0-beta.13.1 (2026-09-19)
 
 **Worker built-in tools + read-only chats panel (putting a head on the headless QwenPaw worker)**

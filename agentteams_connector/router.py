@@ -369,6 +369,7 @@ def _parse_sync_rooms(
         # /sync 无 since（每次全量快照）→ timeline(limit=1) 恒为该房间最新事件。
         last_ts = 0
         last_body = ""
+        last_sender = ""
         tl_events = (room_data.get("timeline") or {}).get("events") or []
         if tl_events:
             last_ev = tl_events[-1]
@@ -382,6 +383,10 @@ def _parse_sync_rooms(
                 and lc.get("msgtype") in ("m.text", "m.notice", "m.file", "m.image")
             ):
                 last_body = str(lc.get("body") or "")[:120]
+                # v0.5.0-beta.13.2（灯源修正）：最后一条消息的发送者——
+                # session 灯 done 回退只认 Worker 自己的消息（per-sender，
+                # 与 dashboard 9a9cc8d 同源），用户消息不再点绿整个房间。
+                last_sender = str(last_ev.get("sender") or "")
         # 未读计数（sync 的 unread_notifications：highlight+notification）。
         unread = 0
         unread_high = 0
@@ -404,6 +409,7 @@ def _parse_sync_rooms(
             "typing": typing_users,
             "last_ts": last_ts,
             "last_body": last_body,
+            "last_sender": last_sender,
         }
         if not entry["name"]:
             # 无名房间命名优先级（v0.5.0-beta.12）：
