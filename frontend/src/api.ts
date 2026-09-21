@@ -379,6 +379,9 @@ export interface TeamRoom {
   last_ts?: number;
   /** 最后一条消息正文摘要（m.room.message 才有，≤120 字）。 */
   last_body?: string;
+  /** 最后一条消息的发送者 MXID（v0.5.0-beta.13.2：per-sender 灯源，
+   *  session 灯 done 回退只认 Worker 自己的消息，用户消息不再点绿整个房间）。 */
+  last_sender?: string;
 }
 
 /** 邀请房间（/sync rooms.invite 段，v0.5.0-beta.12 ——此前插件完全不可见）。 */

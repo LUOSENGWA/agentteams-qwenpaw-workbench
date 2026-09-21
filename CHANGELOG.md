@@ -5,6 +5,21 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.2（2026-09-21）
+
+**聊天大改进：灯源修正（不再误绿）+ 话题头像灯 + 一键置底**
+
+- **会话状态灯来源修正（「灯一直绿」根因修复）**：done 回退原用**房间级 last_ts**——用户自己在房间里发一条消息也会刷新 last_ts，把该房间所有 Worker 全部点绿（10 分钟内持续）。现改为 **per-sender**（与 dashboard 9a9cc8d 同源）：后端 `/teams/sync` 房间条目新增 `last_sender`（最后一条消息的发送者 MXID），前端 done 回退只认**该 Worker 自己**的最后一条消息（≤10min，过后衰减灰）。心跳字段在场时（Controller ≥ worker-agent-status 契约）done 只由 `lastFinishAt`（任务级完成）驱动，回退根本不触发；团队房间里人类消息不再点绿任何 Worker，Worker A 发言只点绿 A
+- **话题（Thread）头像状态灯**：线程面板根消息头像、回复列表头像、主列表线程摘要「最后回复人」头像三处补齐同款角落灯（6px 圆点 + 白描边环 + Tooltip；Worker 才有映射，人类不显）
+- **一键置底（Element JumpToLatestButton 同款交互）**：主消息列表 + 话题面板——上翻回看历史时右下角悬浮「↓」圆钮；非本人新消息到达且不在底部时累加「N 条新消息」徽章；点击平滑滚回底部并清零；120px 近底阈值与自动跟随共用（不抢用户的回看）；换房间重置状态并贴底；自己发送不受计数（发送路径已主动置底，防竞态误计）
+- **done→idle 衰减 tick 60s → 15s**（对齐 dashboard `useSessionTick` 方向，纯派生零网络成本）
+- **a11y**：状态灯 dot 补 `role="img"` + `aria-label`（屏幕阅读器读出状态；dashboard #127 合并时维护者 a11y 修复同款）
+- **i18n**：2 新键登记（中英）
+
+**Verification**: pytest 50/50（含 4 条 last_sender 回归）· tsc 0 · 派生逻辑实跑 11/11（含「用户消息不点绿」回归）· vite build 绿
+
+---
+
 ## 0.5.0-beta.13.1（2026-09-19）
 
 **Worker 内置工具设置 + 会话只读面板（给无头 QwenPaw Worker「补头」）**

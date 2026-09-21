@@ -40,9 +40,13 @@ export default function WorkerSessionDot({
 }) {
   const tr = useT();
   // key={state} 强制重挂载：状态切换时 Tooltip 重新定位/刷新文案。
+  // role="img" + aria-label：屏幕阅读器读出状态（dashboard #127 合并时
+  // 维护者 a11y 修复同款，beta.13.2 对齐）。
   return (
     <antd.Tooltip key={state} title={tr(STATE_TEXT[state])}>
       <span
+        role="img"
+        aria-label={tr(STATE_TEXT[state])}
         className={state === "running" ? "wb-session-dot running" : "wb-session-dot"}
         style={
           corner
