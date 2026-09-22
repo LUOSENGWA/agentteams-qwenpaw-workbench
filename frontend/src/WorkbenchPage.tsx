@@ -2622,6 +2622,30 @@ export default function WorkbenchPage() {
     [chatSplitW, mergeUiState],
   );
 
+  // v0.5.0-beta.13.6（装验反馈：房间列表按钮与返回按钮重叠）：
+  // 「☰ 房间列表」按钮不再 absolute 浮在聊天区左上角（与 RoomChat 顶栏
+  // ← 返回 键重叠）——有房间时经 headerPrefix 进 RoomChat 顶栏最左
+  // （Element 汉堡位）；无房间时（占位页）仍浮在左上角（无顶栏可挂）。
+  const chatListToggleBtn = chatListHidden ? (
+    <button
+      type="button"
+      onClick={() => setChatListHiddenPersist(false)}
+      title={tr("显示房间列表")}
+      style={{
+        border: `1px solid ${t.border}`,
+        background: t.bg,
+        color: t.text,
+        borderRadius: 6,
+        cursor: "pointer",
+        padding: "3px 9px",
+        fontSize: 13,
+        lineHeight: "20px",
+      }}
+    >
+      ☰ {tr("房间列表")}
+    </button>
+  ) : null;
+
   // P6：聊天双元素提取（宽/窄屏两分支共用一份 JSX——props 长，禁止复制）。
   const chatRoomEl = activeRoom ? (
     <RoomChat
@@ -2652,6 +2676,7 @@ export default function WorkbenchPage() {
       onToggleMute={() => void handleToggleMute()}
       onReact={(eventId, emoji) => void handleReact(eventId, emoji)}
       onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
+      headerPrefix={chatListToggleBtn}
       onBack={() => {
         closeChatRoom();
         // 窄屏=微信式退出聊天（回列表页）；宽屏=关聊天回占位（列表恒显）。
@@ -2749,27 +2774,11 @@ export default function WorkbenchPage() {
         </>
       ) : null}
       <div style={{ flex: 1, minWidth: 0, position: "relative", minHeight: 0 }}>
-        {chatListHidden ? (
-          <button
-            type="button"
-            onClick={() => setChatListHiddenPersist(false)}
-            title={tr("显示房间列表")}
-            style={{
-              position: "absolute",
-              top: 10,
-              left: 10,
-              zIndex: 10,
-              border: `1px solid ${t.border}`,
-              background: t.bg,
-              color: t.text,
-              borderRadius: 6,
-              cursor: "pointer",
-              padding: "3px 9px",
-              fontSize: 13,
-            }}
-          >
-            ☰ {tr("房间列表")}
-          </button>
+        {chatListHidden && !chatRoomEl ? (
+          // 无房间选中（占位页）：顶栏不存在，按钮仍浮左上角。
+          <div style={{ position: "absolute", top: 10, left: 10, zIndex: 10 }}>
+            {chatListToggleBtn}
+          </div>
         ) : null}
         {chatRoomEl || (
           <div

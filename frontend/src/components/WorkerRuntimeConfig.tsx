@@ -108,6 +108,59 @@ const SOURCE_COLOR: Record<string, string> = {
   plugin: "purple",
 };
 
+
+/** QwenPaw console Form.Item 行等价物（label + ⓘ tooltip 左 / 控件右，
+ *  垂直堆叠行——Agent Config 页的呈现语言）。 */
+function CfgRow({
+  label,
+  tip,
+  children,
+}: {
+  label: string;
+  tip?: string;
+  children: ReactNS.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "150px 1fr",
+        gap: 10,
+        alignItems: "center",
+        padding: "7px 0",
+        borderBottom: "1px solid rgba(127,127,127,0.12)",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          fontSize: 13,
+          color: "rgba(127,127,127,0.95)",
+        }}
+      >
+        {label}
+        {tip ? (
+          <antd.Tooltip title={tip}>
+            <span
+              style={{
+                fontSize: 11,
+                color: "rgba(127,127,127,0.55)",
+                cursor: "help",
+                lineHeight: 1,
+              }}
+            >
+              ⓘ
+            </span>
+          </antd.Tooltip>
+        ) : null}
+      </span>
+      <div style={{ minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
+
 function WorkerRuntimeConfig({ name }: { name: string }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
@@ -365,7 +418,6 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
   }
 
   const lv = cfg ? parseLoop(cfg.loop) : null;
-  const inputStyle: ReactNS.CSSProperties = { width: 110 };
   const labelStyle: ReactNS.CSSProperties = {
     fontSize: 12,
     color: "rgba(127,127,127,0.95)",
@@ -438,313 +490,431 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
         />
       ) : null}
 
+      {/* v0.5.0-beta.13.6（装验反馈「太简陋太不直观」）：按 QwenPaw console
+          Agent Config 页正源重构呈现——Tabs 分域 + 每域 Card + 表单项行
+          （label + tooltip 左 / 控件右）+ 滑杆带数值显示。旧版把所有字段
+          挤进一行 flex-wrap：窄容器换行错乱、语义分组不可见。
+          数据范围不变（L2 白名单键 + diff 只发改动键），只改呈现层。 */}
       {cfg && !gate ? (
-        <>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", alignItems: "center" }}>
-            <span style={labelStyle}>{tr("最大迭代")}</span>
-            <antd.InputNumber
-              size="small"
-              style={inputStyle}
-              min={1}
-              defaultValue={num(cfg.max_iters) ?? undefined}
-              onChange={(v: number | null) =>
-                setMaxIters(v === null || v === undefined ? null : String(v))
-              }
-            />
-            <span style={labelStyle}>{tr("LLM 自动重试")}</span>
-            <antd.Switch
-              size="small"
-              defaultChecked={cfg.llm_retry_enabled === true}
-              onChange={(v: boolean) => setRetryOn(v)}
-            />
-            <antd.InputNumber
-              size="small"
-              style={{ width: 84 }}
-              min={0}
-              defaultValue={num(cfg.llm_max_retries) ?? undefined}
-              onChange={(v: number | null) =>
-                setMaxRetries(v === null || v === undefined ? null : String(v))
-              }
-            />
-            <span style={labelStyle}>{tr("退避")}</span>
-            <antd.InputNumber
-              size="small"
-              style={{ width: 84 }}
-              min={0}
-              defaultValue={num(cfg.llm_backoff_base) ?? undefined}
-              addonAfter="s"
-              onChange={(v: number | null) =>
-                setBackoffBase(v === null || v === undefined ? null : String(v))
-              }
-            />
-            <antd.InputNumber
-              size="small"
-              style={{ width: 84 }}
-              min={0}
-              defaultValue={num(cfg.llm_backoff_cap) ?? undefined}
-              addonAfter="s"
-              onChange={(v: number | null) =>
-                setBackoffCap(v === null || v === undefined ? null : String(v))
-              }
-            />
-          </div>
-
-          {/* loop 配置：结构化速览 + 整块 JSON 替换（键名=契约顶层 loop）。 */}
-          {lv ? (
-            <div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", alignItems: "center" }}>
-                <span style={labelStyle}>{tr("loop")}</span>
-                <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                  iteration {lv.iterationEnabled ? "on" : "off"}
-                  {lv.iterationMax != null ? ` max=${lv.iterationMax}` : ""}
-                </antd.Tag>
-                <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                  doom-loop {lv.doomEnabled ? "on" : "off"}
-                  {lv.doomWindow != null ? ` w=${lv.doomWindow}` : ""}
-                </antd.Tag>
-                <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                  rubric {lv.rubricEnabled ? "on" : "off"}
-                </antd.Tag>
-                <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                  goal {lv.goalEnabled ? "on" : "off"}
-                  {lv.goalMaxIters != null ? ` max=${lv.goalMaxIters}` : ""}
-                </antd.Tag>
-                <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                  mission {lv.missionEnabled ? "on" : "off"}
-                </antd.Tag>
-                <antd.Button
-                  size="small"
-                  type="link"
-                  style={{ padding: 0, fontSize: 12 }}
-                  onClick={() => {
-                    if (loopText === null) {
-                      setLoopText(
-                        JSON.stringify(cfg.loop ?? null, null, 2),
-                      );
-                    }
-                    setLoopOpen(true);
-                  }}
-                >
-                  {tr("编辑整块 JSON")}
-                </antd.Button>
-              </div>
-              {loopOpen ? (
-                <div style={{ marginTop: 6 }}>
-                  <antd.Input.TextArea
-                    rows={10}
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: 11.5,
-                      width: "100%",
-                    }}
-                    value={loopText ?? ""}
-                    onChange={(e: { target: { value: string } }) => setLoopText(e.target.value)}
-                  />
-                  <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginTop: 2 }}>
-                    {tr("loop 为整块替换语义——保存后整个 loop 对象以此 JSON 为准；loop 变更将通知团队 Leader。")}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {/* Loop 模式节：目录（GET /loops）+ 自定义 CRUD（/loops/custom）。 */}
-          <div
-            style={{
-              borderTop: "1px dashed rgba(127,127,127,0.25)",
-              paddingTop: 8,
-              display: "grid",
-              gap: 6,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={labelStyle}>{tr("Loop 模式")}</span>
-              <antd.Button size="small" type="link" style={{ padding: 0, fontSize: 11.5 }} onClick={() => void loadLoops()} loading={loopsLoading}>
-                {tr("刷新")}
-              </antd.Button>
-              <div style={{ flex: 1 }} />
-              <antd.Button size="small" onClick={() => setCreating((v) => !v)}>
-                {tr("新建自定义 Loop")}
-              </antd.Button>
-            </div>
-            {loopMsg ? (
-              <antd.Alert
-                type={loopMsg.ok ? "success" : "error"}
-                showIcon
-                message={loopMsg.text}
-                closable
-                onClose={() => setLoopMsg(null)}
-              />
-            ) : null}
-            {loopsErr ? (
-              <antd.Alert
-                type="info"
-                showIcon
-                message={tr("loop 模式不可用")}
-                description={loopsErr}
-              />
-            ) : (
-              <>
-                {loops ? (
-                  <div>
-                    <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginBottom: 3 }}>
-                      {tr("模式目录")}
+        <antd.Tabs
+          size="small"
+          items={[
+            {
+              key: "basic",
+              label: tr("基本"),
+              children: (
+                <antd.Card size="small" title={tr("基本")} style={{ marginTop: 4 }}>
+                  <CfgRow
+                    label={tr("最大迭代")}
+                    tip={tr("单次任务允许的最大 LLM 迭代轮数（max_iters）。越大越能啃硬任务，越慢越贵。")}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <antd.Slider
+                        style={{ flex: 1, minWidth: 0, margin: "0 4px" }}
+                        min={1}
+                        max={Math.max(100, num(cfg.max_iters) ?? 100)}
+                        value={
+                          maxIters !== null && isPosInt(maxIters)
+                            ? Number(maxIters)
+                            : (num(cfg.max_iters) ?? 0)
+                        }
+                        onChange={(v: number) => setMaxIters(String(v))}
+                      />
+                      <span style={{ minWidth: 40, textAlign: "right", fontSize: 13, fontWeight: 500 }}>
+                        {maxIters !== null && isPosInt(maxIters)
+                          ? maxIters
+                          : String(num(cfg.max_iters) ?? "-")}
+                      </span>
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                      {loops.map((m) => (
-                        <antd.Tag
-                          key={m.id}
-                          color={SOURCE_COLOR[m.source || "builtin"] || "default"}
-                          style={{ marginInlineEnd: 0, fontSize: 10.5 }}
-                          title={m.description || m.name}
-                        >
-                          {m.name}
-                          {m.slash_command ? ` /${m.slash_command}` : ""}
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("Shell 超时")}
+                    tip={tr("单次 shell 命令超时（秒）。L1-only 键，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 13 }}>
+                      {tr("{n} 秒", { n: String(num(cfg.shell_command_timeout) ?? "-") })}
+                    </span>
+                  </CfgRow>
+                </antd.Card>
+              ),
+            },
+            {
+              key: "loop",
+              label: tr("Agent Loop"),
+              children: (
+                <antd.Card size="small" title={tr("Agent Loop")} style={{ marginTop: 4 }}>
+                  {/* loop 配置：结构化速览 + 整块 JSON 替换（键名=契约顶层 loop）。 */}
+                  {lv ? (
+                    <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        <antd.Tag color={lv.iterationEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
+                          iteration {lv.iterationEnabled ? "on" : "off"}
+                          {lv.iterationMax != null ? ` max=${lv.iterationMax}` : ""}
                         </antd.Tag>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                <div>
-                  <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 3px" }}>
-                    {tr("自定义 Loop")}
-                  </div>
-                  {customs && customs.length === 0 ? (
-                    <div style={{ fontSize: 11, color: "rgba(127,127,127,0.6)" }}>
-                      {tr("该 Worker 暂无自定义 loop")}
+                        <antd.Tag color={lv.doomEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
+                          doom-loop {lv.doomEnabled ? "on" : "off"}
+                          {lv.doomWindow != null ? ` w=${lv.doomWindow}` : ""}
+                        </antd.Tag>
+                        <antd.Tag color={lv.rubricEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
+                          rubric {lv.rubricEnabled ? "on" : "off"}
+                        </antd.Tag>
+                        <antd.Tag color={lv.goalEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
+                          goal {lv.goalEnabled ? "on" : "off"}
+                          {lv.goalMaxIters != null ? ` max=${lv.goalMaxIters}` : ""}
+                        </antd.Tag>
+                        <antd.Tag color={lv.missionEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
+                          mission {lv.missionEnabled ? "on" : "off"}
+                        </antd.Tag>
+                      </div>
+                      <div>
+                        <antd.Button
+                          size="small"
+                          type="link"
+                          style={{ padding: 0, fontSize: 12 }}
+                          onClick={() => {
+                            if (loopText === null) {
+                              setLoopText(
+                                JSON.stringify(cfg.loop ?? null, null, 2),
+                              );
+                            }
+                            setLoopOpen(true);
+                          }}
+                        >
+                          {tr("编辑整块 JSON")}
+                        </antd.Button>
+                      </div>
+                      {loopOpen ? (
+                        <div>
+                          <antd.Input.TextArea
+                            rows={10}
+                            style={{
+                              fontFamily: "monospace",
+                              fontSize: 11.5,
+                              width: "100%",
+                            }}
+                            value={loopText ?? ""}
+                            onChange={(e: { target: { value: string } }) => setLoopText(e.target.value)}
+                          />
+                          <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginTop: 2 }}>
+                            {tr("loop 为整块替换语义——保存后整个 loop 对象以此 JSON 为准；loop 变更将通知团队 Leader。")}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
-                  {customs?.map((m) => {
-                    const gates = Array.isArray(m.gates) ? m.gates : [];
-                    const on = gates.filter((g) => g.enabled).length;
-                    return (
-                      <div
-                        key={m.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "3px 0",
-                          fontSize: 11.5,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <antd.Switch
-                          size="small"
-                          checked={m.enabled === true}
-                          disabled={busyId === m.id}
-                          onChange={(v: boolean) => void toggleCustom(m, v)}
-                        />
-                        <span style={{ fontFamily: "monospace", fontWeight: 500 }}>{m.id}</span>
-                        <span style={{ color: "rgba(127,127,127,0.85)" }}>{m.name}</span>
-                        <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10 }}>
-                          /{m.slash_command}
-                        </antd.Tag>
-                        <span style={{ fontSize: 10.5, color: "rgba(127,127,127,0.7)" }}>
-                          {tr("门禁 {a} 个（启用 {b}）", { a: gates.length, b: on })}
-                        </span>
-                        <div style={{ flex: 1 }} />
-                        <antd.Popconfirm
-                          title={tr("删除该自定义 loop？")}
-                          okText={tr("确认删除")}
-                          cancelText={tr("取消")}
-                          onConfirm={() => void removeCustom(m)}
-                        >
-                          <antd.Button size="small" danger disabled={busyId === m.id} loading={busyId === m.id}>
-                            {tr("删除")}
-                          </antd.Button>
-                        </antd.Popconfirm>
-                      </div>
-                    );
-                  })}
-                </div>
-                {creating ? (
-                  <div>
-                    <antd.Input.TextArea
-                      rows={8}
-                      style={{ fontFamily: "monospace", fontSize: 11.5 }}
-                      placeholder={tr("新自定义 loop 完整 JSON（字段：id / name / slash_command / enabled / gates）")}
-                      value={newJson ?? ""}
-                      onChange={(e: { target: { value: string } }) => setNewJson(e.target.value)}
-                    />
-                    <div style={{ fontSize: 10.5, color: "rgba(127,127,127,0.75)", margin: "2px 0 4px" }}>
-                      {tr("id 与 slash_command 须小写字母/数字/_/-；gates 为 {id,type,enabled,params} 数组（可空）；重名或 slash 冲突 409，管道校验失败 422。")}
-                    </div>
-                    <antd.Button
-                      size="small"
-                      type="primary"
-                      loading={busyId === "__create__"}
-                      onClick={() => void createCustom()}
-                    >
-                      {tr("创建")}
-                    </antd.Button>
-                  </div>
-                ) : null}
-              </>
-            )}
-          </div>
 
-          {/* 只读区：不在面板可编辑范围（L1-only 键 / 审批端点专属 / 高风险记忆配置）。 */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, color: "rgba(127,127,127,0.85)" }}>
-            <span>
-              {tr("审批级别")}:{" "}
-              <b style={{ color: undefined }}>{String(cfg.approval_level ?? "-")}</b>
-              （{tr("由审批端点管理")}）
-            </span>
-            <span>
-              {tr("长期记忆")}: {String(cfg.memory_manager_backend ?? "-")}
-            </span>
-            <span>
-              {tr("上下文后端")}: {String(cfg.context_manager_backend ?? "-")}
-            </span>
-            <span>
-              {tr("Shell 超时")}: {String(num(cfg.shell_command_timeout) ?? "-")}s
-            </span>
-            <span>
-              {tr("reme 轻量记忆")}: {hasMem && remeCfg ? tr("已配置") : tr("未配置")}
-              {hasMem ? "" : ""}
-            </span>
-            <span>
-              {tr("adbpg 记忆")}: {adbpgCfg && typeof adbpgCfg === "object" && Object.keys(adbpgCfg as Rc).length > 0 ? tr("已配置") : tr("未配置")}
-            </span>
-            {hasMem ? (
-              <antd.Button
-                size="small"
-                type="link"
-                style={{ padding: 0, fontSize: 11 }}
-                onClick={() => setMemOpen((v) => !v)}
-              >
-                {memOpen ? tr("隐藏配置 JSON") : tr("查看配置 JSON")}
-              </antd.Button>
-            ) : null}
-          </div>
-          {memOpen && hasMem ? (
-            <pre
-              style={{
-                margin: 0,
-                padding: 8,
-                fontSize: 10.5,
-                fontFamily: "monospace",
-                background: "rgba(127,127,127,0.06)",
-                border: "1px solid rgba(127,127,127,0.2)",
-                borderRadius: 6,
-                maxHeight: 180,
-                overflow: "auto",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-all",
-              }}
-            >
-              {JSON.stringify(
-                {
-                  reme_light_memory_config: remeCfg ?? null,
-                  adbpg_memory_config: adbpgCfg ?? null,
-                },
-                null,
-                2,
-              )}
-            </pre>
-          ) : null}
-        </>
+                  {/* Loop 模式节：目录（GET /loops）+ 自定义 CRUD（/loops/custom）。 */}
+                  <div
+                    style={{
+                      borderTop: "1px dashed rgba(127,127,127,0.25)",
+                      paddingTop: 8,
+                      display: "grid",
+                      gap: 6,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={labelStyle}>{tr("Loop 模式")}</span>
+                      <antd.Button size="small" type="link" style={{ padding: 0, fontSize: 11.5 }} onClick={() => void loadLoops()} loading={loopsLoading}>
+                        {tr("刷新")}
+                      </antd.Button>
+                      <div style={{ flex: 1 }} />
+                      <antd.Button size="small" onClick={() => setCreating((v) => !v)}>
+                        {tr("新建自定义 Loop")}
+                      </antd.Button>
+                    </div>
+                    {loopMsg ? (
+                      <antd.Alert
+                        type={loopMsg.ok ? "success" : "error"}
+                        showIcon
+                        message={loopMsg.text}
+                        closable
+                        onClose={() => setLoopMsg(null)}
+                      />
+                    ) : null}
+                    {loopsErr ? (
+                      <antd.Alert
+                        type="info"
+                        showIcon
+                        message={tr("loop 模式不可用")}
+                        description={loopsErr}
+                      />
+                    ) : (
+                      <>
+                        {loops ? (
+                          <div>
+                            <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginBottom: 3 }}>
+                              {tr("模式目录")}
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {loops.map((m) => (
+                                <antd.Tag
+                                  key={m.id}
+                                  color={SOURCE_COLOR[m.source || "builtin"] || "default"}
+                                  style={{ marginInlineEnd: 0, fontSize: 10.5 }}
+                                  title={m.description || m.name}
+                                >
+                                  {m.name}
+                                  {m.slash_command ? ` /${m.slash_command}` : ""}
+                                </antd.Tag>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        <div>
+                          <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 3px" }}>
+                            {tr("自定义 Loop")}
+                          </div>
+                          {customs && customs.length === 0 ? (
+                            <div style={{ fontSize: 11, color: "rgba(127,127,127,0.6)" }}>
+                              {tr("该 Worker 暂无自定义 loop")}
+                            </div>
+                          ) : null}
+                          {customs?.map((m) => {
+                            const gates = Array.isArray(m.gates) ? m.gates : [];
+                            const on = gates.filter((g) => g.enabled).length;
+                            return (
+                              <div
+                                key={m.id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  padding: "3px 0",
+                                  fontSize: 11.5,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <antd.Switch
+                                  size="small"
+                                  checked={m.enabled === true}
+                                  disabled={busyId === m.id}
+                                  onChange={(v: boolean) => void toggleCustom(m, v)}
+                                />
+                                <span style={{ fontFamily: "monospace", fontWeight: 500 }}>{m.id}</span>
+                                <span style={{ color: "rgba(127,127,127,0.85)" }}>{m.name}</span>
+                                <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10 }}>
+                                  /{m.slash_command}
+                                </antd.Tag>
+                                <span style={{ fontSize: 10.5, color: "rgba(127,127,127,0.7)" }}>
+                                  {tr("门禁 {a} 个（启用 {b}）", { a: gates.length, b: on })}
+                                </span>
+                                <div style={{ flex: 1 }} />
+                                <antd.Popconfirm
+                                  title={tr("删除该自定义 loop？")}
+                                  okText={tr("确认删除")}
+                                  cancelText={tr("取消")}
+                                  onConfirm={() => void removeCustom(m)}
+                                >
+                                  <antd.Button size="small" danger disabled={busyId === m.id} loading={busyId === m.id}>
+                                    {tr("删除")}
+                                  </antd.Button>
+                                </antd.Popconfirm>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {creating ? (
+                          <div>
+                            <antd.Input.TextArea
+                              rows={8}
+                              style={{ fontFamily: "monospace", fontSize: 11.5 }}
+                              placeholder={tr("新自定义 loop 完整 JSON（字段：id / name / slash_command / enabled / gates）")}
+                              value={newJson ?? ""}
+                              onChange={(e: { target: { value: string } }) => setNewJson(e.target.value)}
+                            />
+                            <div style={{ fontSize: 10.5, color: "rgba(127,127,127,0.75)", margin: "2px 0 4px" }}>
+                              {tr("id 与 slash_command 须小写字母/数字/_/-；gates 为 {id,type,enabled,params} 数组（可空）；重名或 slash 冲突 409，管道校验失败 422。")}
+                            </div>
+                            <antd.Button
+                              size="small"
+                              type="primary"
+                              loading={busyId === "__create__"}
+                              onClick={() => void createCustom()}
+                            >
+                              {tr("创建")}
+                            </antd.Button>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </antd.Card>
+              ),
+            },
+            {
+              key: "retry",
+              label: tr("LLM 重试"),
+              children: (
+                <antd.Card size="small" title={tr("LLM 自动重试")} style={{ marginTop: 4 }}>
+                  <CfgRow
+                    label={tr("启用自动重试")}
+                    tip={tr("LLM 调用失败（限流/超时/5xx）时自动重试。关闭后失败立即上抛。")}
+                  >
+                    <antd.Switch
+                      checked={
+                        retryOn !== null
+                          ? retryOn
+                          : (cfg.llm_retry_enabled === true)
+                      }
+                      onChange={(v: boolean) => setRetryOn(v)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("最大重试次数")}
+                    tip={tr("连续失败最多重试几次（llm_max_retries）。")}
+                  >
+                    <antd.InputNumber
+                      style={{ width: 160 }}
+                      min={1}
+                      disabled={retryOn === false}
+                      value={
+                        maxRetries !== null && isPosInt(maxRetries)
+                          ? Number(maxRetries)
+                          : (num(cfg.llm_max_retries) ?? undefined)
+                      }
+                      onChange={(v: number | null) =>
+                        setMaxRetries(v === null || v === undefined ? null : String(v))
+                      }
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("退避基数（秒）")}
+                    tip={tr("指数退避基数（llm_backoff_base）：第 n 次重试前等待 ≈ 基数 × 2^(n-1)。")}
+                  >
+                    <antd.InputNumber
+                      style={{ width: 160 }}
+                      min={0}
+                      step={0.5}
+                      addonAfter="s"
+                      disabled={retryOn === false}
+                      value={
+                        backoffBase !== null && isPosNum(backoffBase)
+                          ? Number(backoffBase)
+                          : (num(cfg.llm_backoff_base) ?? undefined)
+                      }
+                      onChange={(v: number | null) =>
+                        setBackoffBase(v === null || v === undefined ? null : String(v))
+                      }
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("退避上限（秒）")}
+                    tip={tr("指数退避上限（llm_backoff_cap），须 ≥ 退避基数。")}
+                  >
+                    <antd.InputNumber
+                      style={{ width: 160 }}
+                      min={0}
+                      step={0.5}
+                      addonAfter="s"
+                      disabled={retryOn === false}
+                      value={
+                        backoffCap !== null && isPosNum(backoffCap)
+                          ? Number(backoffCap)
+                          : (num(cfg.llm_backoff_cap) ?? undefined)
+                      }
+                      onChange={(v: number | null) =>
+                        setBackoffCap(v === null || v === undefined ? null : String(v))
+                      }
+                    />
+                  </CfgRow>
+                </antd.Card>
+              ),
+            },
+            {
+              key: "system",
+              label: tr("系统（只读）"),
+              children: (
+                <antd.Card size="small" title={tr("系统（只读）")} style={{ marginTop: 4 }}>
+                  <CfgRow
+                    label={tr("审批级别")}
+                    tip={tr("approval_level——由审批端点（#1216）管理，本面板只读（PUT 会被服务端 400 拒绝）。")}
+                  >
+                    <b>{String(cfg.approval_level ?? "-")}</b>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("长期记忆后端")}
+                    tip={tr("memory_manager_backend——L1 键，本面板只读展示。")}
+                  >
+                    <span style={{ fontFamily: "monospace", fontSize: 12.5 }}>
+                      {String(cfg.memory_manager_backend ?? "-")}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("上下文后端")}
+                    tip={tr("context_manager_backend——L1 键，本面板只读展示。")}
+                  >
+                    <span style={{ fontFamily: "monospace", fontSize: 12.5 }}>
+                      {String(cfg.context_manager_backend ?? "-")}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("reme 轻量记忆")}
+                    tip={tr("reme_light_memory_config——记忆参数高风险，仅展示不开放编辑。")}
+                  >
+                    <antd.Tag color={hasMem && remeCfg ? "blue" : "default"} style={{ marginInlineEnd: 0 }}>
+                      {hasMem && remeCfg ? tr("已配置") : tr("未配置")}
+                    </antd.Tag>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("adbpg 记忆")}
+                    tip={tr("adbpg_memory_config——记忆参数高风险，仅展示不开放编辑。")}
+                  >
+                    <antd.Tag
+                      color={
+                        adbpgCfg && typeof adbpgCfg === "object" && Object.keys(adbpgCfg as Rc).length > 0
+                          ? "blue"
+                          : "default"
+                      }
+                      style={{ marginInlineEnd: 0 }}
+                    >
+                      {adbpgCfg && typeof adbpgCfg === "object" && Object.keys(adbpgCfg as Rc).length > 0
+                        ? tr("已配置")
+                        : tr("未配置")}
+                    </antd.Tag>
+                  </CfgRow>
+                  {hasMem ? (
+                    <div style={{ marginTop: 6 }}>
+                      <antd.Button
+                        size="small"
+                        type="link"
+                        style={{ padding: 0, fontSize: 11.5 }}
+                        onClick={() => setMemOpen((v) => !v)}
+                      >
+                        {memOpen ? tr("隐藏配置 JSON") : tr("查看配置 JSON")}
+                      </antd.Button>
+                      {memOpen ? (
+                        <pre
+                          style={{
+                            margin: "6px 0 0",
+                            padding: 8,
+                            fontSize: 10.5,
+                            fontFamily: "monospace",
+                            background: "rgba(127,127,127,0.06)",
+                            border: "1px solid rgba(127,127,127,0.2)",
+                            borderRadius: 6,
+                            maxHeight: 180,
+                            overflow: "auto",
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-all",
+                          }}
+                        >
+                          {JSON.stringify(
+                            {
+                              reme_light_memory_config: remeCfg ?? null,
+                              adbpg_memory_config: adbpgCfg ?? null,
+                            },
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </antd.Card>
+              ),
+            },
+          ]}
+        />
       ) : null}
     </div>
   );

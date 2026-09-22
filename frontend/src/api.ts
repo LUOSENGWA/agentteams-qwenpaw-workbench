@@ -607,6 +607,16 @@ export async function downloadViaHost(
     a.click();
     a.remove();
     window.setTimeout(() => URL.revokeObjectURL(obj), 5000);
+    // v0.5.0-beta.13.6（装验反馈「下载不知道下载到哪里去」）：成功 toast
+    // 显形去向——浏览器默认下载目录 + 文件名。单一落点（6 个调用方全
+    // 覆盖），不逐处改。
+    try {
+      window.QwenPaw?.host?.antd?.message?.success?.(
+        `已下载到浏览器默认下载目录：${filename}`,
+      );
+    } catch {
+      /* 宿主 antd 不可用时静默——下载本身已成功 */
+    }
     return true;
   } catch {
     return false;
@@ -1732,6 +1742,20 @@ export function fetchWorkerLoopStatus(
 ): Promise<WorkerLoopStatus> {
   const q = new URLSearchParams({ chat_id: chatId });
   if (sessionId) q.set("session_id", sessionId);
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/loops/status?${q.toString()}`,
+  ) as Promise<WorkerLoopStatus>;
+}
+/** GET /workers/{name}/loops/status?session_id=——仅按 session 查激活 loop。
+ * v0.5.0-beta.13.6：聊天页 composer 消费点（QwenPaw 前端 LoopModeSelector
+ * 同位）——1:1 Worker 房间 session_id = `matrix:{room_id}`（qwenpaw matrix
+ * channel resolve_session_id 实锤：DM/群房间均为 matrix:{room_id}）。 */
+export function fetchWorkerLoopStatusBySession(
+  name: string,
+  sessionId: string,
+): Promise<WorkerLoopStatus> {
+  const q = new URLSearchParams({ session_id: sessionId });
   return controllerRequest(
     "GET",
     `/workers/${encodeURIComponent(name)}/loops/status?${q.toString()}`,

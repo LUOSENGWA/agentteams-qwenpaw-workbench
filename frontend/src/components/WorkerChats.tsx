@@ -36,11 +36,9 @@ import {
   type WorkerInfo,
   type WorkerChatSpec,
   type WorkerChatMessage,
-  type WorkerLoopModeInfo,
   fetchWorkerChats,
   fetchWorkerChat,
   fetchWorkerChatStatus,
-  fetchWorkerLoopStatus,
   httpErrorStatus,
 } from "../api";
 import MdText from "./MdText";
@@ -167,9 +165,6 @@ function WorkerChats({
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [detailErr, setDetailErr] = React.useState("");
   const [status, setStatus] = React.useState<"" | "idle" | "running">("");
-  // v0.5.0-beta.13.5：单会话激活 loop（#1231 loops/status 端点消费点；
-  // 404 = 旧 runtime 无该路由 → 隐藏标签，版本无关门）。
-  const [loopMode, setLoopMode] = React.useState<WorkerLoopModeInfo | null>(null);
   const detailListRef = React.useRef<HTMLDivElement | null>(null);
 
   const load = React.useCallback(async () => {
@@ -206,17 +201,13 @@ function WorkerChats({
     setMsgs([]);
     setDetailErr("");
     setStatus("");
-    setLoopMode(null);
     setDetailLoading(true);
     // 状态灯与详情并发拉取；404 = 旧 runtime，隐藏灯
+    // （会话级 loop 状态显示点迁至聊天页输入区——RoomChat composer chip，
+    // 9/22 定案，本视图不再查 /loops/status。）
     void fetchWorkerChatStatus(sel, chatId)
       .then((r) => setStatus(r?.status === "running" ? "running" : "idle"))
       .catch(() => setStatus(""));
-    // 会话级 loop 模式（chat_id + session_id 二参；失败/404 = 隐藏标签）
-    const spec = chats.find((c) => c.id === chatId);
-    void fetchWorkerLoopStatus(sel, chatId, spec?.session_id)
-      .then((r) => setLoopMode(r && r.mode ? r.mode : null))
-      .catch(() => setLoopMode(null));
     try {
       const d = await fetchWorkerChat(sel, chatId);
       setMsgs(Array.isArray(d?.messages) ? d.messages : []);
@@ -304,15 +295,9 @@ function WorkerChats({
           {status === "idle" ? (
             <antd.Tag style={{ marginInlineEnd: 0 }}>idle</antd.Tag>
           ) : null}
-          {loopMode ? (
-            <antd.Tag
-              color={status === "running" ? "geekblue" : "default"}
-              style={{ marginInlineEnd: 0, fontSize: 10.5 }}
-              title={loopMode.description || loopMode.id}
-            >
-              {tr("loop: {m}", { m: loopMode.name })}
-            </antd.Tag>
-          ) : null}
+          {/* v0.5.0-beta.13.6：会话级 loop 标签撤出——显示位置定案=聊天页
+              输入区（QwenPaw console LoopModeSelector 正源），唯一落点，
+              不双显。running/idle 灯保留（会话状态，非 loop）。 */}
           {openChatSpec?.channel ? (
             <antd.Tag
               color={CHANNEL_COLORS[openChatSpec.channel] || "default"}
@@ -366,11 +351,13 @@ function WorkerChats({
               overflowY: "auto",
               overscrollBehavior: "contain",
               background: "rgba(127,127,127,0.05)",
-              display: "grid",
-              gap: 8,
-              alignContent: "end",
             }}
           >
+            {/* v0.5.0-beta.13.6（「会话页面依旧不能滚动」真根因·浏览器 harness
+                实证）：13.5 的 display:grid + alignContent:"end" 在内容超容器
+                时顶部溢出进入不可滚动区（scrollTop 恒 0，实测 scrollH==clientH）
+                ——上半截会话永远看不了。改普通块级流 + 既有 JS 滚底
+                （scrollTop=scrollHeight，实测 scrollable=true）。 */}
             {detailLoading ? (
               <antd.Spin size="small" />
             ) : msgs.length === 0 ? (
@@ -380,7 +367,10 @@ function WorkerChats({
                 const c = classifyMessage(m);
                 if (c.kind === "user") {
                   return (
-                    <div key={m.id ?? i} style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <div
+                      key={m.id ?? i}
+                      style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}
+                    >
                       <div
                         style={{
                           maxWidth: "86%",
@@ -411,6 +401,7 @@ function WorkerChats({
                         textAlign: "center",
                         fontSize: 11,
                         color: "rgba(127,127,127,0.9)",
+                        marginBottom: 8,
                       }}
                     >
                       {c.toolBlocks.join(" ") || c.textBlocks.join("\n") || m.role || m.type || "…"}
@@ -418,7 +409,10 @@ function WorkerChats({
                   );
                 }
                 return (
-                  <div key={m.id ?? i} style={{ display: "flex", justifyContent: "flex-start" }}>
+                  <div
+                    key={m.id ?? i}
+                    style={{ display: "flex", justifyContent: "flex-start", marginBottom: 8 }}
+                  >
                     <div
                       style={{
                         maxWidth: "92%",
@@ -503,29 +497,6 @@ function WorkerChats({
         ),
     },
     {
-      title: tr("用户"),
-      dataIndex: "user_id",
-      key: "user_id",
-      render: (v?: string) =>
-        v ? (
-          <span
-            style={{
-              display: "block",
-              width: "100%",
-              fontSize: 11,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={v}
-          >
-            {v.split(":")[0].replace(/^@/, "")}
-          </span>
-        ) : (
-          "-"
-        ),
-    },
-    {
       // QwenPaw UpdatedAt 列：可排序、默认倒序。
       title: tr("最后活动"),
       dataIndex: "updated_at",
@@ -575,7 +546,6 @@ function WorkerChats({
                 setOpenId(null);
                 setMsgs([]);
                 setStatus("");
-                setLoopMode(null);
               }}
               options={workers.map((w) => ({
                 value: w.name,

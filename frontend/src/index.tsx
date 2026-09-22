@@ -81,9 +81,15 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
 .wb-live-dot {
   animation: wbLivePulse 1.2s ease-in-out infinite;
 }
+/* v0.5.0-beta.13.6：聊天输入区 loop 状态 chip 呼吸点（复用 wbSessionPulse
+   蓝色节奏；awaiting_user 为静态琥珀点，不挂动画）。 */
+.wb-loop-dot.running {
+  animation: wbSessionPulse 1.2s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   .wb-session-dot.running { animation: none; }
   .wb-live-dot { animation: none; }
+  .wb-loop-dot.running { animation: none; }
 }
 /* 页面布局（用户反馈「上下边界固定撑满屏幕，参考控制台」）：
    main 撑满（height 100% + minHeight 兜底）+ flex column；header 固定；

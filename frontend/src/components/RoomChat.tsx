@@ -8,7 +8,10 @@ import {
   type TeamMember,
   type TeamRoom,
   fetchRoomPowerInfo,
-  type RoomPowerInfo,} from "../api";
+  type RoomPowerInfo,
+  fetchWorkerLoopStatusBySession,
+  type WorkerLoopStatus,
+} from "../api";
 import { useMediaObjectUrl } from "../useMediaObjectUrl";
 import { MxcAvatar } from "../MxcAvatar";
 import MdText from "./MdText";
@@ -1246,16 +1249,11 @@ function MessageBody({
   if (isToolMessage(msg.body || "")) {
     return <ToolBubble msg={msg} mine={mine} />;
   }
+  // v0.5.0-beta.13.6（装验反馈「消息框难看」，Element modern 同款）：
+  // 纯文本消息常态无气泡框（扁平时间线），hover 行背景由外层行 div 统一
+  // 提供（Element 的 hover pill）；媒体/工具/审批/线程等保留各自容器。
   return (
-    <div
-      style={{
-        padding: "8px 12px",
-        borderRadius: CARD_RADIUS,
-        background: mine ? t.bubbleMine : t.bubbleOther,
-        fontSize: 14,
-        maxWidth: 520,
-      }}
-    >
+    <div style={{ fontSize: 14, maxWidth: 520, minWidth: 0 }}>
       <MdText text={msg.body || ""} />
       {/* v0.5.0-beta.12 ：「已编辑」标记（Element 同款；m.replace 聚合在
           fetchRoomMessages——替换事件不独立显示，正文写回原消息）。 */}
@@ -1331,6 +1329,10 @@ export interface RoomChatProps {
   /** 打开/创建与成员的私聊（头像右键菜单）。 */
   onDm?: (mxid: string, roomId?: string) => void;
   onBack?: () => void;
+  /** v0.5.0-beta.13.6（装验反馈：房间列表按钮与返回按钮重叠）：顶栏最左
+   * 前置节点（Element 汉堡位）——WorkbenchPage 宽屏收起列表时把
+   * 「☰ 房间列表」按钮传进来，不再 absolute 浮在聊天区左上角压住返回键。 */
+  headerPrefix?: ReactNS.ReactNode;
   /** DM 房间显示"发起任务"按钮（Phase 2 任务向导入口，〇）。 */
   onNewTask?: () => void;
   /** 向上翻页（父组件 fetch 更早消息并前插）。 */
@@ -1384,6 +1386,7 @@ export default function RoomChat(props: RoomChatProps) {
     onReact,
     onDm,
     onBack,
+    headerPrefix,
     onNewTask,
     onLoadMore,
     onPoll,
@@ -1638,7 +1641,22 @@ export default function RoomChat(props: RoomChatProps) {
     } else {
       setShowJumpBottom(true);
     }
-  }, []);
+    // v0.5.0-beta.13.6：滚到顶部 40px 内自动加载更早历史（Element 式
+    // 无限滚动；保留顶部按钮作显式入口）。autoLoadRef 防重入，新数据
+    // 到位（首条 id 变化）或 4s 兜底超时后复位。
+    if (
+      el.scrollTop < 40 &&
+      hasMore &&
+      onLoadMore &&
+      !autoLoadRef.current
+    ) {
+      autoLoadRef.current = true;
+      window.setTimeout(() => {
+        autoLoadRef.current = false;
+      }, 4000);
+      void onLoadMore();
+    }
+  }, [hasMore, onLoadMore]);
   const jumpToBottom = React.useCallback(() => {
     const el = listRef.current;
     if (!el) return;
@@ -1886,11 +1904,15 @@ export default function RoomChat(props: RoomChatProps) {
   // 新消息到达自动滚到底部（仅当用户本来就在底部附近）；不在附近且
   // 消息真的增长（排除自己发的——发送路径已主动置底，防竞态误计）→
   // 计「N 条新消息」+ 显示置底钮（v0.5.0-beta.13.2）。
+  // v0.5.0-beta.13.6：grew 判定改「末条 id 变化」——旧版用 length 增长，
+  // loadMore 前插 50 条也触发 grew → 上翻加载历史被误计「1 条新消息」。
+  const lastMsgIdRef = React.useRef("");
   React.useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    const grew = messages.length > prevMsgLenRef.current;
-    prevMsgLenRef.current = messages.length;
+    const lastId = messages[messages.length - 1]?.event_id || "";
+    const grew = lastId !== "" && lastId !== lastMsgIdRef.current;
+    lastMsgIdRef.current = lastId;
     const nearBottom =
       el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (nearBottom) {
@@ -1905,6 +1927,41 @@ export default function RoomChat(props: RoomChatProps) {
     }
   }, [messages, user_id]);
 
+  // v0.5.0-beta.13.6（「历史滚动没修」真根因·实证 harness 定位）：
+  // loadMore 前插更早消息时保持滚动锚——旧版前插 50 条后视口被顶到
+  // 最顶部，用户看到「历史滚不动/跳走」。检测=首条消息 id 变化（前插
+  // 特征），锚=前插前记录的 (scrollTop, scrollHeight)；恢复式：
+  // newScrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight)。
+  // useLayoutEffect（paint 前）——闪顶不可见。
+  const prevFirstIdRef = React.useRef("");
+  const scrollAnchorRef = React.useRef<{ top: number; height: number } | null>(null);
+  const roomKeyRef = React.useRef("");
+  const autoLoadRef = React.useRef(false);
+  React.useLayoutEffect(() => {
+    const el = listRef.current;
+    // 换房间：清锚（新房间首条 id 变化不是前插，防误恢复）。
+    const rk = room?.room_id || "";
+    if (roomKeyRef.current !== rk) {
+      roomKeyRef.current = rk;
+      prevFirstIdRef.current = "";
+      scrollAnchorRef.current = null;
+      lastMsgIdRef.current = "";
+      autoLoadRef.current = false;
+    }
+    const firstId = visibleMessages[0]?.event_id || "";
+    const prepended =
+      prevFirstIdRef.current !== "" &&
+      firstId !== "" &&
+      firstId !== prevFirstIdRef.current;
+    if (prepended) {
+      autoLoadRef.current = false; // 自动加载完成（新数据已到位）
+      const a = scrollAnchorRef.current;
+      if (el && a) el.scrollTop = a.top + (el.scrollHeight - a.height);
+    }
+    if (el) scrollAnchorRef.current = { top: el.scrollTop, height: el.scrollHeight };
+    prevFirstIdRef.current = firstId;
+  });
+
   // 换房间：重置置底状态 + 贴底（Element 开房间即在最新消息处）。
   React.useEffect(() => {
     prevMsgLenRef.current = 0;
@@ -1915,6 +1972,44 @@ export default function RoomChat(props: RoomChatProps) {
       if (el) el.scrollTop = el.scrollHeight;
     });
   }, [room?.room_id]);
+
+  // ── v0.5.0-beta.13.6（会话级 loop 状态显示位置定案）─────────────
+  // 罗总 9/22 装验：「会话级 loop 状态你需要查清楚应该在哪里显示」——
+  // 正源=QwenPaw console 前端（LoopModeSelector，chat composer 内
+  // 输入工具条）：idle 显所选模式；非 idle 换激活模式指示（图标+模式名
+  // +状态词+Tooltip）。插件侧同位落地：1:1 Worker 房间输入区行左侧
+  // chip，10s 轮询 /loops/status?session_id=matrix:{room_id}（matrix
+  // channel resolve_session_id 实锤：房间会话 session_id=matrix:{room_id}）。
+  // 404 = 旧 runtime 无路由 → 恒不显（版本无关门，同 A2 门）。
+  const roomWorkerName = React.useMemo(() => {
+    if (!workerMxids || workerMxids.size !== 1) return undefined;
+    const [mxid] = workerMxids;
+    return memberWorkerNames?.[mxid];
+  }, [workerMxids, memberWorkerNames]);
+  const [roomLoop, setRoomLoop] = React.useState<WorkerLoopStatus | null>(null);
+  React.useEffect(() => {
+    setRoomLoop(null);
+    if (!roomWorkerName || !room) return;
+    let dead = false;
+    const sid = `matrix:${room.room_id}`;
+    const tick = () => {
+      void fetchWorkerLoopStatusBySession(roomWorkerName, sid)
+        .then((r) => {
+          if (dead) return;
+          // 非 idle 且有模式才显（QwenPaw：state != idle && activeMode）。
+          setRoomLoop(r && r.state !== "idle" && r.mode ? r : null);
+        })
+        .catch(() => {
+          if (!dead) setRoomLoop(null);
+        });
+    };
+    tick();
+    const timer = window.setInterval(tick, 10000);
+    return () => {
+      dead = true;
+      window.clearInterval(timer);
+    };
+  }, [roomWorkerName, room?.room_id]);
 
   if (!room) {
     return (
@@ -2140,7 +2235,7 @@ export default function RoomChat(props: RoomChatProps) {
         minWidth: 0,
       }}
     >
-      {/* 顶部栏：返回 + 房间名 + 成员数 + 发起任务 */}
+      {/* 顶部栏：[前置] + 返回 + 房间名 + 成员数 + 发起任务 */}
       <div
         style={{
           display: "flex",
@@ -2151,6 +2246,7 @@ export default function RoomChat(props: RoomChatProps) {
           flexWrap: "wrap",
         }}
       >
+        {headerPrefix}
         {onBack ? (
           <antd.Button size="small" onClick={onBack}>
             ← 返回
@@ -2442,9 +2538,32 @@ export default function RoomChat(props: RoomChatProps) {
         ) : null}
         {hasMore ? (
           <div style={{ textAlign: "center", paddingBottom: 12 }}>
-            <antd.Button size="small" type="link" onClick={onLoadMore}>
+            <antd.Button
+              size="small"
+              type="link"
+              onClick={() => {
+                autoLoadRef.current = true;
+                window.setTimeout(() => {
+                  autoLoadRef.current = false;
+                }, 4000);
+                void onLoadMore?.();
+              }}
+            >
               {tr("加载更早的消息 ↑")}
             </antd.Button>
+          </div>
+        ) : visibleMessages.length > 0 ? (
+          // v0.5.0-beta.13.6：翻到头标记（Element「no more events」同款）。
+          <div
+            style={{
+              textAlign: "center",
+              fontSize: 11,
+              color: t.textSecondary,
+              paddingBottom: 8,
+              opacity: 0.7,
+            }}
+          >
+            {tr("已到最早的消息")}
           </div>
         ) : null}
         {visibleMessages.length === 0 ? (
@@ -2507,24 +2626,42 @@ export default function RoomChat(props: RoomChatProps) {
                       />
                     </div>
                   ) : null}
+                  {/* v0.5.0-beta.13.6：日期分隔 Element 同款居中胶囊
+                      （旧 antd.Divider 通栏线太散，与扁平消息行不搭）。 */}
                   {sep ? (
-                    <antd.Divider
-                      plain
+                    <div
                       style={{
-                        fontSize: 12,
-                        color: t.textSecondary,
-                        margin: "16px 0 12px",
+                        display: "flex",
+                        justifyContent: "center",
+                        margin: "14px 0 10px",
                       }}
                     >
-                      {dateLabel(msg.origin_server_ts, tr)}
-                    </antd.Divider>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          color: t.textSecondary,
+                          background: t.cardBg,
+                          border: `1px solid ${t.border}`,
+                          borderRadius: 12,
+                          padding: "2px 12px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {dateLabel(msg.origin_server_ts, tr)}
+                      </span>
+                    </div>
                   ) : null}
                   <div
                     data-event-id={msg.event_id}
                     style={{
                       display: "flex",
                       justifyContent: mine ? "flex-end" : "flex-start",
-                      padding: "3px 0",
+                      // v0.5.0-beta.13.6（Element hover pill 同款）：hover
+                      // 行整体浅底圆角——扁平消息行的唯一框感来源。
+                      padding: "3px 6px",
+                      borderRadius: 8,
+                      background:
+                        hoveredId === msg.event_id ? t.bubbleOther : "transparent",
                       position: "relative",
                       // 最近 5 条淡入（新消息视觉反馈；历史消息不重放）。
                       animation:
@@ -3115,6 +3252,17 @@ export default function RoomChat(props: RoomChatProps) {
           </div>
         ) : null}
         {canSend ? (
+          // v0.5.0-beta.13.6（Element composer 同款）：输入框 + 操作行收进
+          // 同一圆角容器——旧版输入框裸挂、按钮行游离下方，观感散。
+          // 外层不写 overflow:hidden（@mention 弹层 absolute 向上溢出，
+          // 裁掉就废了）；圆角由容器边框 + 内层各块自然贴合。
+          <div
+            style={{
+              border: `1px solid ${t.border}`,
+              borderRadius: 10,
+              background: t.cardBg,
+            }}
+          >
           <div style={{ position: "relative" }}>
             {/* @mention 弹层：输入框正上方，Element 同款（圆角只圆上两角）。 */}
             {mentionQuery !== null && mentionCandidates.length > 0 ? (
@@ -3218,21 +3366,77 @@ export default function RoomChat(props: RoomChatProps) {
             />
             </div>
           </div>
-        ) : (
+          {/* v0.5.0-beta.13.6：操作行移进圆角容器（Element：与输入框同
+              块）——loop 状态 chip 居左（QwenPaw LoopModeSelector 同位），
+              表情/附件/发送居右。chip 仅 1:1 Worker 房间且 Worker 有激活
+              loop 时出现（轮询 10s；404 旧 runtime 恒不显）。 */}
           <div
             style={{
-              textAlign: "center",
-              fontStyle: "italic",
-              color: t.textSecondary,
-              padding: "18px 0",
-              fontSize: 13,
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: 4,
+              padding: "2px 8px 8px 10px",
             }}
           >
-            {tr("你没有在此房间发送消息的权限")}
-          </div>
-        )}
-        {canSend ? (
-          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4 }}>
+            {roomLoop ? (
+              <antd.Tooltip
+                title={
+                  roomLoop.mode?.description ||
+                  roomLoop.mode?.name ||
+                  tr("Worker 正在执行激活 loop")
+                }
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginRight: "auto",
+                    fontSize: 12,
+                    lineHeight: "22px",
+                    padding: "0 10px",
+                    borderRadius: 11,
+                    whiteSpace: "nowrap",
+                    color:
+                      roomLoop.state === "awaiting_user" ? "#d46b08" : "#0958d9",
+                    background:
+                      roomLoop.state === "awaiting_user"
+                        ? "rgba(250,173,20,0.12)"
+                        : "rgba(24,144,255,0.10)",
+                    border: `1px solid ${
+                      roomLoop.state === "awaiting_user"
+                        ? "rgba(250,173,20,0.40)"
+                        : "rgba(24,144,255,0.35)"
+                    }`,
+                  }}
+                >
+                  <span
+                    className={
+                      roomLoop.state === "running"
+                        ? "wb-loop-dot running"
+                        : "wb-loop-dot"
+                    }
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      background:
+                        roomLoop.state === "awaiting_user" ? "#faad14" : "#1890ff",
+                    }}
+                  />
+                  {tr("loop: {m}", {
+                    m: roomLoop.mode?.name || roomLoop.mode?.id || "…",
+                  })}
+                  <span style={{ opacity: 0.7 }}>
+                    {roomLoop.state === "awaiting_user"
+                      ? tr("等待输入")
+                      : tr("运行中")}
+                  </span>
+                </span>
+              </antd.Tooltip>
+            ) : null}
             <antd.Popover
               trigger="click"
               placement="topRight"
@@ -3308,7 +3512,20 @@ export default function RoomChat(props: RoomChatProps) {
               </antd.Button>
             ) : null}
           </div>
-        ) : null}
+          </div>
+        ) : (
+          <div
+            style={{
+              textAlign: "center",
+              fontStyle: "italic",
+              color: t.textSecondary,
+              padding: "18px 0",
+              fontSize: 13,
+            }}
+          >
+            {tr("你没有在此房间发送消息的权限")}
+          </div>
+        )}
       </div>
 
         </div>
