@@ -205,6 +205,30 @@ function ReactionChips({
   );
 }
 
+/** v0.5.0-beta.13.11（F6「话题 emoji 改成消息旗气泡 SVG」）：话题图标
+ * = 消息气泡 + 小旗（currentColor 跟随文字色，替换全 🧵 emoji）。 */
+function ThreadIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      style={{ verticalAlign: "-1px", flexShrink: 0 }}
+      aria-hidden="true"
+    >
+      <path
+        d="M2 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H8l-3 2.6V11H4a2 2 0 0 1-2-2z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path d="M6.3 4.4v4.4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      <path d="M6.3 4.4h3l-0.9 1 0.9 1h-3z" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** 线程面板内容（Element ThreadView 同款）：root 消息 + 回复列表 + 输入框。
  * 宽屏放右侧固定面板，窄屏放 antd.Drawer——同一组件两种容器。 */
 function ThreadPanelView({
@@ -313,7 +337,17 @@ function ThreadPanelView({
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 14, fontWeight: 700 }}>🧵 {tr("话题")}</span>
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <ThreadIcon size={15} /> {tr("话题")}
+        </span>
         <span style={{ fontSize: 12, color: t.textSecondary }}>
           {replies.length}
           {tr("条回复")}
@@ -1384,6 +1418,10 @@ export interface RoomChatProps {
    * 前置节点（Element 汉堡位）——WorkbenchPage 宽屏收起列表时把
    * 「☰ 房间列表」按钮传进来，不再 absolute 浮在聊天区左上角压住返回键。 */
   headerPrefix?: ReactNS.ReactNode;
+  /** v0.5.0-beta.13.11（F1 会话窗 Element 化）：SSE room_message 递增的
+   * tick——头像会话窗（WorkerChats fixedWorker）打开时，任意房间来消息
+   * 即触发其立即刷新（事件驱动主路，替代纯 4s 轮询）。 */
+  chatsTick?: number;
   /** DM 房间显示"发起任务"按钮（Phase 2 任务向导入口，〇）。 */
   onNewTask?: () => void;
   /** 向上翻页（父组件 fetch 更早消息并前插）。 */
@@ -1438,6 +1476,7 @@ export default function RoomChat(props: RoomChatProps) {
     onDm,
     onBack,
     headerPrefix,
+    chatsTick,
     onNewTask,
     onLoadMore,
     onPoll,
@@ -3001,8 +3040,17 @@ export default function RoomChat(props: RoomChatProps) {
                           transition: "background 0.15s",
                         }}
                       >
-                        <span style={{ color: PRIMARY, fontWeight: 600, flexShrink: 0 }}>
-                          🧵 {replies.length}
+                        <span
+                          style={{
+                            color: PRIMARY,
+                            fontWeight: 600,
+                            flexShrink: 0,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <ThreadIcon size={13} /> {replies.length}
                           {tr("条回复")}
                         </span>
                         {(() => {
@@ -3631,7 +3679,11 @@ export default function RoomChat(props: RoomChatProps) {
       <antd.Drawer
         open={!isWide && threadPanelBody !== null}
         onClose={() => setActiveThread(null)}
-        title={`🧵 ${tr("话题")}`}
+        title={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <ThreadIcon size={15} /> {tr("话题")}
+          </span>
+        }
         width={Math.min(460, typeof window !== "undefined" ? window.innerWidth * 0.92 : 460)}
         styles={{ body: { padding: 12 } }}
       >
@@ -3824,6 +3876,7 @@ export default function RoomChat(props: RoomChatProps) {
           <WorkerChats
             workers={workers ?? []}
             fixedWorker={chatsWorker}
+            refreshTick={chatsTick}
           />
         </antd.Drawer>
       ) : null}

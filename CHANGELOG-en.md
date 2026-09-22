@@ -5,6 +5,27 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.11 (2026-09-22)
+
+**Close of 12 feedback items from the 13.10 verification: session list as cards (the real E1 target) / event-driven live session window / cross-room history root cause / wide-narrow dual-baseline + full-width container / approval notification sync / tab shake / thread flag SVG / workflow topology zoom + executor / QwenPaw-style session avatars & copy**
+
+- **Session list as cards (the real E1 target — the 13.10 decision was "card the *session list*", 13.10 mis-fired on artifact rows)**: the worker session list moves from antd.Table to a card list (mirroring the dashboard worker-chats-panel) — whole card opens the detail, full name / full session_id wrap without clipping, squeeze-resistant in narrow containers; the table sorter survives as a sort dropdown (last-activity ↓ / created ↓ / name A–Z); Active/Archived tabs and the worker selector are unchanged
+- **Event-driven live session window ("a 4s round is a bit dumb")**: the main path is now the backend /sync watcher → SSE → the open session window refreshes **immediately** (latency ≈ one network RTT); the 4s poll is demoted to the SSE-disconnect fallback (same semantics as the RoomChat P6). The running/idle status light refreshes on the same event
+- **Cross-room history root cause (why "messages scroll out of history" still mis-fired)**: switching rooms left the previous room's messages / end-token / pagination state behind, so the merge mixed two rooms' messages into one window ("scrambled") and the mixed body got written into the new room's cache (back = "gone"). Fix = per-room timeline state is wiped whole on room change (Element semantics: timeline state is per-room)
+- **Wide-narrow dual baseline + full-width container**: the split decision is now **min(window width, measured plugin-container width) ≥ 800** — when the window is full-width the container fills the host and splits; a narrow host container (half-window panel / host margins) or a genuinely narrow window = the chat page auto-collapses to a single column (no forced split); container width tracks a ResizeObserver (host layout changes that don't fire window resize still switch it)
+- **Approval notification sync ("I approved, but the panel still shows the un-approved card")**: root cause = the backend /sync watcher only clears the pending-approval buffer once it *sees the approval-command message* (async, ~1–2s) — the 30s poll landing inside that resolve window pulled the not-yet-cleared item back, resurrecting the card. Fix = re-fetch immediately after sending plus a 3s follow-up, forcing the panel state to align with the backend buffer
+- **QwenPaw-style tab shake (new approvals)**: when a pending approval appears, the sidebar logo shakes once (bell shake, 1.2s, reduced-motion friendly) and shows a red count badge (15s poll of /room-approvals, same source as the notification center; silently degrades when not logged in)
+- **Thread icon → message-flag bubble SVG (replacing the 🧵 emoji)**: unified across the message-row "N replies" badge, the thread panel title, and the narrow-screen drawer title
+- **Workflow topology upgrades (mirroring the dashboard + improvements)**: ① a stats strip (N tasks · M deps · K external deps) ② a zoom toolbar (− / percent / +, 0.4–2.0) so wide graphs never clip and detail stays legible ③ nodes now carry the **subagent executor row** (the Controller nodes field, previously dropped by the projection) ④ clicking a node opens the task-inspection drawer (same entry as the board task cards)
+- **Resizable left project list in topology**: 220–520px (default 320, persisted), shared between the card and topology views
+- **Session window more QwenPaw-like ("still not close enough")**: user right bubble + avatar, assistant left bubble + avatar (HostBubbles-style sides); a hover copy button per bubble (ResponseActions semantics, copies all text parts)
+- **Full @mention re-audit**: the four send paths (main chat / quote / thread / approval command) all confirmed to carry the Element triple (body short name + formatted_body matrix.to + m.mentions.user_ids) with no gaps
+- **i18n**: +11 keys (zh/en mirrored), full reconciliation 0 missing / 0 duplicate
+
+**Verification**: tsc 0 · vite build 2,146.06kB · pytest 60/60 · i18n dict 0 missing / 0 duplicate · sensitive scan src 0 real names
+
+---
+
 ## 0.5.0-beta.13.10 (2026-09-22)
 
 **Full close of 12 acceptance-verification items: bidirectional Element-format @mentions / messages no longer scroll out of history / live session window with stick-to-bottom / over-folding fix / two-credential L1 guidance / KB listing of symlinks + non-text files / window-based wide-narrow detection / artifact rows as cards**

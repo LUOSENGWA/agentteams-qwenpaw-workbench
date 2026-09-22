@@ -1763,6 +1763,18 @@ const DICT: Record<string, { en: string }> = {
   "L1 账号密码登录只带 Higress Console 会话（网关面），不含 Controller 管理 token（CRD/数据面）。请在 设置 → ① Controller 管理员 token 字段粘贴（部署宿主机取法：docker exec agentteams-controller cat /var/run/agentteams/cli-token）。": {
     en: "L1 account/password login only holds a Higress Console session (gateway side), not the Controller admin token (CRD / data plane). Paste the Controller admin token in Settings → ① Controller admin token (obtain on the deployment host: docker exec agentteams-controller cat /var/run/agentteams/cli-token).",
   },
+  /* v0.5.0-beta.13.11（F1/F4/F5/F6/F7 新增键） */
+  "复制失败": { en: "Copy failed" },
+  "最后活动 ↓": { en: "Last activity ↓" },
+  "创建 ↓": { en: "Created ↓" },
+  "名称 A-Z": { en: "Name A–Z" },
+  "依赖图": { en: "Dependency graph" },
+  "依赖": { en: "deps" },
+  "外部依赖": { en: "external deps" },
+  "缩小": { en: "Zoom out" },
+  "放大": { en: "Zoom in" },
+  "复位": { en: "Reset" },
+  "拖动调整项目列表宽度": { en: "Drag to resize the project list" },
 };
 
 export type Lang = "zh" | "en";
