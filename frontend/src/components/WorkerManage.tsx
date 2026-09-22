@@ -27,6 +27,7 @@ import WorkerChannels from "./WorkerChannels";
 import WorkerTools from "./WorkerTools";
 
 import SkillCenter from "./SkillCenter";
+import WorkerRuntimeConfig from "./WorkerRuntimeConfig";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -439,6 +440,9 @@ function WorkerManageInfo({
           </antd.Tooltip>
         )}
       </div>
+      {/* v0.5.0-beta.13.4（A2 落地）：Worker 运行配置（上游 #1231 消费）——
+          默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。 */}
+      <WorkerRuntimeConfig name={worker.name} />
     </div>
   );
 }

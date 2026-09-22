@@ -3545,10 +3545,11 @@ export default function RoomChat(props: RoomChatProps) {
       {/* v0.5.0-beta.13.1（9/19 入口迁移）：头像 → Worker 会话抽屉（只读，
           #1295 端点 + 版本门；内容=会话列表 → agent 上下文完整 session）。 */}
       {chatsWorker ? (
+        // v0.5.0-beta.13.4：QwenPaw 会话口径五列表需要更宽（560→620）。
         <antd.Drawer
           open
           onClose={() => setChatsWorker(null)}
-          width={560}
+          width={620}
           title={`${chatsWorker} — ${tr("会话")}`}
           styles={{ body: { padding: 14, background: t.bg } }}
         >

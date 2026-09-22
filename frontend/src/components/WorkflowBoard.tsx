@@ -11,11 +11,8 @@ import {
   replanProject,
   fetchProjectHistory,
   fetchProjectHistorySnapshot,
-  downloadViaHost,
-  resolvePluginUrl,
 } from "../api";
-import { artifactDownloadUrl } from "./ProjectFiles";
-import { FilePreview, type PreviewFile } from "./FilePreview";
+import ArtifactLines from "./ArtifactLines";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
@@ -240,7 +237,7 @@ function DagTopo(props: { ev: WorkflowEvent; t: ThemeColors }) {
           </p>
           <div style={{ display: "grid", gap: 6 }}>
             {ev.taskDetails.map((td) => (
-              <TopoTaskDetailRow key={td.task_id} td={td} t={t} />
+              <TopoTaskDetailRow key={td.task_id} td={td} t={t} ev={ev} />
             ))}
           </div>
         </div>
@@ -333,12 +330,18 @@ function secTitleStyle(t: ThemeColors): ReactNS.CSSProperties {
 function TopoTaskDetailRow(props: {
   td: import("../api").TaskDetail;
   t: ThemeColors;
+  /** v0.5.0-beta.13.4：传 ev 供 ArtifactLines 构造产物 URL（此前缺
+      runId 上下文 → 本行只有路径文本无查看/下载，装验「结果产物没解决」）。 */
+  ev: WorkflowEvent;
 }) {
-  const { td, t } = props;
+  const { td, t, ev } = props;
   const tr = useT();
   const [open, setOpen] = React.useState(false);
   const info = statusMeta(td.status || "");
-  const deliverables = Array.isArray(td.deliverables) ? td.deliverables.length : 0;
+  const deliverablesList = (
+    Array.isArray(td.deliverables) ? td.deliverables : []
+  ).filter((d): d is string => typeof d === "string");
+  const deliverables = deliverablesList.length;
   const histCount = Array.isArray(td.history) ? td.history.length : 0;
   return (
     <div
@@ -394,10 +397,19 @@ function TopoTaskDetailRow(props: {
       </div>
       {open ? (
         <div style={{ padding: "0 10px 8px 28px", fontSize: 11, color: t.textSecondary, lineHeight: 1.7 }}>
-          {td.spec_path ? <div>{tr("spec")}: <span style={{ fontFamily: "monospace" }}>{td.spec_path}</span></div> : null}
-          {/* v0.5.0-beta.13.3（P3 对齐 dashboard 任务行 result_path）：提示
-              结果产物存在（查看/下载走任务巡检 Drawer——本行无 runId 上下文）。 */}
-          {td.result_path ? <div>{tr("结果产物")}: <span style={{ fontFamily: "monospace" }}>{td.result_path}</span></div> : null}
+          {/* v0.5.0-beta.13.4：spec/结果产物/交付物 = 共享 ArtifactLines
+              （monospace 路径 + 查看内联预览 + 下载），与任务巡检 Drawer
+              同一组件同一行为。 */}
+          <ArtifactLines
+            runId={ev.runId}
+            taskId={td.task_id}
+            compact
+            lines={[
+              ...(td.spec_path ? [{ label: tr("spec"), path: td.spec_path }] : []),
+              ...(td.result_path ? [{ label: tr("结果产物"), path: td.result_path }] : []),
+              ...deliverablesList.map((d) => ({ label: tr("交付物"), path: d })),
+            ]}
+          />
           {td.summary ? (
             <div
               style={{
@@ -598,10 +610,9 @@ function TaskInspectionDrawer(props: {
   const t = useThemeColors();
   const tr = useT();
   const { ev, taskId } = props;
-  const [downloading, setDownloading] = React.useState("");
-  // v0.5.0-beta.13（装验 9/19）：产物「查看」——与 dashboard 任务详情
-  // 同款（内联预览 + 下载）；预览走共享 FilePreview（md/图片/文本）。
-  const [preview, setPreview] = React.useState<PreviewFile | null>(null);
+  // v0.5.0-beta.13.4：spec/结果产物/交付物的查看/下载/预览 = 共享
+  // ArtifactLines（与拓扑任务详情行同一组件——预览态随组件内聚，
+  // 本 Drawer 不再自持 preview/downloading）。
   // v0.5.0-beta.13.3（P3 对齐）：任务级取消——与看板卡同一门控/同一共享 Modal。
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const open = ev !== null && taskId !== null;
@@ -621,27 +632,6 @@ function TaskInspectionDrawer(props: {
     detail?.assigned_to ||
     "";
   const status = String(node?.status || detail?.status || "");
-  const view = (path: string) => {
-    if (!ev || !taskId) return;
-    const p = artifactDownloadUrl(ev.runId, taskId, path);
-    setPreview({
-      name: path.split("/").filter(Boolean).pop() || path,
-      url: resolvePluginUrl(p),
-      apiPath: p,
-      needsFetch: true,
-    });
-  };
-  const dl = async (path: string) => {
-    if (!ev || !taskId) return;
-    setDownloading(path);
-    const name = path.split("/").filter(Boolean).pop() || path;
-    const ok = await downloadViaHost(
-      artifactDownloadUrl(ev.runId, taskId, path),
-      name,
-    );
-    setDownloading("");
-    if (!ok) antd.message.error(tr("下载失败"));
-  };
   const meta = statusMeta(status);
   const canCancel =
     !!taskId && status !== "" && !TERMINAL_NODE_STATUSES.includes(status);
@@ -701,68 +691,24 @@ function TaskInspectionDrawer(props: {
                   <div>{detail.cancel_reason}</div>
                 </div>
               ) : null}
-              {detail.spec_path ? (
-                <div>
-                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("任务规格")}</div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontFamily: "monospace", fontSize: 11.5 }}>{detail.spec_path}</span>
-                    <antd.Button
-                      size="small"
-                      onClick={() => view(detail.spec_path!)}
-                    >
-                      {tr("查看")}
-                    </antd.Button>
-                    <antd.Button
-                      size="small"
-                      loading={downloading === detail.spec_path}
-                      onClick={() => void dl(detail.spec_path!)}
-                    >
-                      {tr("下载")}
-                    </antd.Button>
-                  </div>
-                </div>
-              ) : null}
-              {detail.result_path ? (
-                <div>
-                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("结果产物")}</div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontFamily: "monospace", fontSize: 11.5 }}>{detail.result_path}</span>
-                    <antd.Button
-                      size="small"
-                      onClick={() => view(detail.result_path!)}
-                    >
-                      {tr("查看")}
-                    </antd.Button>
-                    <antd.Button
-                      size="small"
-                      loading={downloading === detail.result_path}
-                      onClick={() => void dl(detail.result_path!)}
-                    >
-                      {tr("下载")}
-                    </antd.Button>
-                  </div>
-                </div>
-              ) : null}
-              {deliverables.length > 0 ? (
-                <div>
-                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("交付物")}</div>
-                  {deliverables.map((d) => (
-                    <div key={d} style={{ display: "flex", gap: 8, alignItems: "center", padding: "2px 0" }}>
-                      <span style={{ fontFamily: "monospace", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d}</span>
-                      <antd.Button size="small" onClick={() => view(d)}>
-                        {tr("查看")}
-                      </antd.Button>
-                      <antd.Button
-                        size="small"
-                        loading={downloading === d}
-                        onClick={() => void dl(d)}
-                      >
-                        {tr("下载")}
-                      </antd.Button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+              {/* v0.5.0-beta.13.4：共享 ArtifactLines（与拓扑任务详情行
+                  同一组件——monospace 路径 + 查看内联预览 + 下载）。 */}
+              <ArtifactLines
+                runId={ev.runId}
+                taskId={taskId}
+                lines={[
+                  ...(detail.spec_path
+                    ? [{ label: tr("任务规格"), path: detail.spec_path }]
+                    : []),
+                  ...(detail.result_path
+                    ? [{ label: tr("结果产物"), path: detail.result_path }]
+                    : []),
+                  ...deliverables.map((d) => ({
+                    label: tr("交付物"),
+                    path: d,
+                  })),
+                ]}
+              />
               {deps.length > 0 ? (
                 <div>
                   <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("依赖任务")}</div>
@@ -824,7 +770,6 @@ function TaskInspectionDrawer(props: {
           onDone={props.onDone}
         />
       ) : null}
-      <FilePreview file={preview} onClose={() => setPreview(null)} />
     </antd.Drawer>
   );
 }
