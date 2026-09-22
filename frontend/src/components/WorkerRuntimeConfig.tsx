@@ -72,33 +72,76 @@ function isPosNum(s: string): boolean {
   return s.trim() !== "" && Number.isFinite(n) && n > 0;
 }
 
-interface LoopView {
+/**
+ * v0.5.0-beta.13.7 Loop 全 gate 模型（13.6 装验「Loop 设置抄 QwenPaw 没抄完」
+ * 正源 = qwenpaw/config/config.py LoopConfig 数据模型 + QwenPaw console
+ * AgentLoopCard 控件逐一对账）：
+ * - 迭代上限在 **Agent Loop → Default → iteration 门**（QwenPaw
+ *   IterationSection：enable Switch + **InputNumber** min=1 max=500——
+ *   QwenPaw 配置面**没有滑杆**，13.6 的 Slider 是插件自创，废弃）；
+ * - doom_loop 键名 = **window_size**（13.6 parseLoop 误读 `window`，
+ *   恒 null，速览 tag 缺值）；
+ * - rubric/goal/mission 参数 13.6 完全未做，本轮补齐。
+ */
+interface DoomStageV {
+  after: number | null;
+  action: "modify_prompt" | "stop";
+  prompt: string;
+}
+interface LoopGates {
   iterationEnabled: boolean;
   iterationMax: number | null;
   doomEnabled: boolean;
   doomWindow: number | null;
+  doomThreshold: number | null;
+  doomStages: DoomStageV[];
   rubricEnabled: boolean;
-  goalEnabled: boolean;
+  rubricPrompt: string;
+  rubricInterventions: number | null;
   goalMaxIters: number | null;
-  missionEnabled: boolean;
+  goalMaxTokens: number | null;
+  missionMaxIters: number | null;
+  missionMaxRetries: number | null;
+  missionVerifyInstructions: string;
+  missionVerifyCommand: string;
 }
 
-function parseLoop(v: unknown): LoopView {
+function parseLoop(v: unknown): LoopGates {
   const o = (v && typeof v === "object" ? v : {}) as Rc;
   const it = (o.iteration && typeof o.iteration === "object" ? o.iteration : {}) as Rc;
   const doom = (o.doom_loop && typeof o.doom_loop === "object" ? o.doom_loop : {}) as Rc;
   const rub = (o.rubric && typeof o.rubric === "object" ? o.rubric : {}) as Rc;
   const goal = (o.goal && typeof o.goal === "object" ? o.goal : {}) as Rc;
   const mis = (o.mission && typeof o.mission === "object" ? o.mission : {}) as Rc;
+  const stagesRaw = Array.isArray(doom.stages) ? doom.stages : [];
   return {
     iterationEnabled: it.enabled === true,
     iterationMax: num(it.max_iterations),
     doomEnabled: doom.enabled === true,
-    doomWindow: num(doom.window),
+    doomWindow: num(doom.window_size),
+    doomThreshold: num(doom.similarity_threshold),
+    doomStages: stagesRaw
+      .filter((s): s is Rc => s && typeof s === "object")
+      .map((s) => ({
+        after: num(s.after),
+        action: s.action === "stop" ? "stop" : "modify_prompt",
+        prompt: typeof s.prompt === "string" ? s.prompt : "",
+      })),
     rubricEnabled: rub.enabled === true,
-    goalEnabled: goal.enabled === true,
+    rubricPrompt: typeof rub.prompt === "string" ? rub.prompt : "",
+    rubricInterventions: num(rub.max_interventions),
     goalMaxIters: num(goal.max_iterations),
-    missionEnabled: mis.enabled === true,
+    goalMaxTokens: num(goal.max_tokens),
+    missionMaxIters: num(mis.max_iterations),
+    missionMaxRetries: num(mis.max_retries_per_story),
+    missionVerifyInstructions:
+      typeof mis.default_verification_instructions === "string"
+        ? (mis.default_verification_instructions as string)
+        : "",
+    missionVerifyCommand:
+      typeof mis.default_verify_command === "string"
+        ? (mis.default_verify_command as string)
+        : "",
   };
 }
 
@@ -161,6 +204,80 @@ function CfgRow({
   );
 }
 
+/** QwenPaw AgentLoopCard gate 卡（LockedGateCard 同款语义：Switch 启停 +
+ *  点开参数区；未启用时收起无参数）。 */
+function GateSection({
+  title,
+  tip,
+  enabled,
+  onEnabled,
+  children,
+}: {
+  title: string;
+  tip?: string;
+  enabled: boolean;
+  onEnabled?: (v: boolean) => void;
+  children?: ReactNS.ReactNode;
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{ border: "1px solid rgba(127,127,127,0.2)", borderRadius: 8, marginBottom: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "6px 10px",
+          cursor: enabled ? "pointer" : "default",
+          background: "rgba(127,127,127,0.05)",
+          borderRadius: 8,
+        }}
+        onClick={() => {
+          if (enabled) setOpen((v) => !v);
+        }}
+      >
+        <antd.Switch
+          size="small"
+          checked={enabled}
+          onChange={(v: boolean) => onEnabled?.(v)}
+          onClick={(_c: boolean, e: ReactNS.MouseEvent) => e.stopPropagation()}
+        />
+        <span style={{ fontWeight: 600, fontSize: 12.5 }}>{title}</span>
+        {tip ? (
+          <antd.Tooltip title={tip}>
+            <span style={{ fontSize: 11, color: "rgba(127,127,127,0.55)", cursor: "help", lineHeight: 1 }}>ⓘ</span>
+          </antd.Tooltip>
+        ) : null}
+        <div style={{ flex: 1 }} />
+        {enabled ? (
+          <span style={{ fontSize: 9, color: "rgba(0,0,0,0.45)" }}>{open ? "▲" : "▼"}</span>
+        ) : (
+          <span style={{ fontSize: 10.5, color: "rgba(0,0,0,0.35)" }}>off</span>
+        )}
+      </div>
+      {enabled && open ? (
+        <div style={{ padding: "8px 10px", display: "grid", gap: 6 }}>{children}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 参数行（gate 卡内：label 左 / 控件右，紧凑）。 */
+function GateParam({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNS.ReactNode;
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8, alignItems: "center" }}>
+      <span style={{ fontSize: 11.5, color: "rgba(127,127,127,0.95)" }}>{label}</span>
+      <div style={{ minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
+
 function WorkerRuntimeConfig({ name }: { name: string }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
@@ -170,7 +287,27 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
   const [gateMsg, setGateMsg] = React.useState("");
 
   // 编辑值（null = 未改动）。
-  const [maxIters, setMaxIters] = React.useState<string | null>(null);
+  // v0.5.0-beta.13.7（13.6 装验「基本 tab 的拖动条有问题，QwenPaw 是输入
+  // 数字的」）：maxIters Slider 废弃——QwenPaw 正源配置面**无滑杆**，迭代
+  // 上限 = Agent Loop → Default → iteration 门（enable Switch + InputNumber
+  // 1..500）；保存时按 useAgentConfig L183-185 语义镜像 legacy max_iters。
+  const [iterEnabled, setIterEnabled] = React.useState<boolean | null>(null);
+  const [iterValue, setIterValue] = React.useState<string | null>(null);
+  const [doomEnabled, setDoomEnabled] = React.useState<boolean | null>(null);
+  const [doomWindow, setDoomWindow] = React.useState<string | null>(null);
+  const [doomThreshold, setDoomThreshold] = React.useState<string | null>(null);
+  const [doomStages, setDoomStages] = React.useState<DoomStageV[] | null>(null);
+  const [rubricEnabled, setRubricEnabled] = React.useState<boolean | null>(null);
+  const [rubricPrompt, setRubricPrompt] = React.useState<string | null>(null);
+  const [rubricInterventions, setRubricInterventions] = React.useState<string | null>(null);
+  const [goalIters, setGoalIters] = React.useState<string | null>(null);
+  const [goalTokens, setGoalTokens] = React.useState<string | null>(null);
+  const [missionIters, setMissionIters] = React.useState<string | null>(null);
+  const [missionRetries, setMissionRetries] = React.useState<string | null>(null);
+  const [missionInstr, setMissionInstr] = React.useState<string | null>(null);
+  const [missionCmd, setMissionCmd] = React.useState<string | null>(null);
+  // 记忆后端 = L2 白名单键（13.6 误标「L1 只读」，实盘契约纠正）。
+  const [memBackend, setMemBackend] = React.useState<string | null>(null);
   const [retryOn, setRetryOn] = React.useState<boolean | null>(null);
   const [maxRetries, setMaxRetries] = React.useState<string | null>(null);
   const [backoffBase, setBackoffBase] = React.useState<string | null>(null);
@@ -247,7 +384,22 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
   }, [open]);
 
   const resetEdits = () => {
-    setMaxIters(null);
+    setIterEnabled(null);
+    setIterValue(null);
+    setDoomEnabled(null);
+    setDoomWindow(null);
+    setDoomThreshold(null);
+    setDoomStages(null);
+    setRubricEnabled(null);
+    setRubricPrompt(null);
+    setRubricInterventions(null);
+    setGoalIters(null);
+    setGoalTokens(null);
+    setMissionIters(null);
+    setMissionRetries(null);
+    setMissionInstr(null);
+    setMissionCmd(null);
+    setMemBackend(null);
     setRetryOn(null);
     setMaxRetries(null);
     setBackoffBase(null);
@@ -256,16 +408,181 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
     setMsg(null);
   };
 
+  /** gate 编辑合并进当前 loop 对象（PUT loop=整块替换语义，必须发完整合并
+   *  对象）。值域全部按 qwenpaw LoopConfig 数据模型校验（GE/LE 逐条对账）。
+   *  返回 [merged, changed, invalidMsg]。 */
+  const mergeLoopGates = (): {
+    merged: Rc;
+    changed: boolean;
+    invalid: string;
+  } => {
+    const cur =
+      cfg && typeof cfg.loop === "object" && cfg.loop ? (cfg.loop as Rc) : {};
+    const merged = JSON.parse(JSON.stringify(cur)) as Rc;
+    let changed = false;
+    const sub = (k: string): Rc => {
+      if (!merged[k] || typeof merged[k] !== "object") merged[k] = {};
+      return merged[k] as Rc;
+    };
+    const checkInt = (
+      s: string,
+      lo: number,
+      hi: number,
+    ): number | null => {
+      if (!/^\d+$/.test(s.trim())) return null;
+      const n = Number(s.trim());
+      return n >= lo && n <= hi ? n : null;
+    };
+    // ── iteration（Default 模式·迭代限制门）──
+    const it = sub("iteration");
+    if (iterEnabled !== null) {
+      it.enabled = iterEnabled;
+      changed = true;
+    }
+    if (iterValue !== null) {
+      const n = checkInt(iterValue, 1, 500);
+      if (n === null)
+        return { merged, changed, invalid: tr("迭代上限须为 1..500 的整数") };
+      if (n !== num(it.max_iterations)) {
+        it.max_iterations = n;
+        changed = true;
+      }
+    }
+    // ── doom_loop（Default 模式·重复保护门）──
+    const dl = sub("doom_loop");
+    if (doomEnabled !== null) {
+      dl.enabled = doomEnabled;
+      changed = true;
+    }
+    if (doomWindow !== null) {
+      const n = checkInt(doomWindow, 2, 100);
+      if (n === null)
+        return { merged, changed, invalid: tr("重复检测窗口须为 ≥2 的整数") };
+      if (n !== num(dl.window_size)) {
+        dl.window_size = n;
+        changed = true;
+      }
+    }
+    if (doomThreshold !== null) {
+      const s = doomThreshold.trim();
+      const n = Number(s);
+      if (s === "" || !Number.isFinite(n) || n < 0 || n > 1)
+        return {
+          merged,
+          changed,
+          invalid: tr("相似度阈值须为 0..1 的数"),
+        };
+      if (n !== num(dl.similarity_threshold)) {
+        dl.similarity_threshold = n;
+        changed = true;
+      }
+    }
+    if (doomStages !== null) {
+      for (const st of doomStages) {
+        if (st.after === null || !Number.isInteger(st.after) || st.after < 1)
+          return {
+            merged,
+            changed,
+            invalid: tr("重复规则：重复次数须为 ≥1 的整数"),
+          };
+      }
+      const arr = doomStages.map((st) => ({
+        after: st.after,
+        action: st.action,
+        prompt: st.prompt,
+      }));
+      if (JSON.stringify(arr) !== JSON.stringify(dl.stages ?? [])) {
+        dl.stages = arr;
+        changed = true;
+      }
+    }
+    // ── rubric（Default 模式·完成质量检查门）──
+    const rb = sub("rubric");
+    if (rubricEnabled !== null) {
+      rb.enabled = rubricEnabled;
+      changed = true;
+    }
+    if (rubricPrompt !== null) {
+      if (rubricPrompt.length > 4000)
+        return { merged, changed, invalid: tr("Rubric 提示词过长（上限 4000 字）") };
+      if (rubricPrompt !== String(rb.prompt ?? "")) {
+        rb.prompt = rubricPrompt;
+        changed = true;
+      }
+    }
+    if (rubricInterventions !== null) {
+      const n = checkInt(rubricInterventions, 1, 10);
+      if (n === null)
+        return { merged, changed, invalid: tr("Rubric 最大干预次数须为 1..10 的整数") };
+      if (n !== num(rb.max_interventions)) {
+        rb.max_interventions = n;
+        changed = true;
+      }
+    }
+    // ── goal（Goal 内置模式参数）──
+    const gl = sub("goal");
+    if (goalIters !== null) {
+      const n = checkInt(goalIters, 1, 500);
+      if (n === null)
+        return { merged, changed, invalid: tr("Goal 最大迭代须为 1..500 的整数") };
+      if (n !== num(gl.max_iterations)) {
+        gl.max_iterations = n;
+        changed = true;
+      }
+    }
+    if (goalTokens !== null) {
+      const n = checkInt(goalTokens, 1, 10000000);
+      if (n === null)
+        return { merged, changed, invalid: tr("Goal 令牌预算须为正整数") };
+      if (n !== num(gl.max_tokens)) {
+        gl.max_tokens = n;
+        changed = true;
+      }
+    }
+    // ── mission（Mission 内置模式参数）──
+    const ms = sub("mission");
+    if (missionIters !== null) {
+      const n = checkInt(missionIters, 1, 100);
+      if (n === null)
+        return { merged, changed, invalid: tr("Mission 最大迭代须为 1..100 的整数") };
+      if (n !== num(ms.max_iterations)) {
+        ms.max_iterations = n;
+        changed = true;
+      }
+    }
+    if (missionRetries !== null) {
+      const n = checkInt(missionRetries, 0, 10);
+      if (n === null)
+        return { merged, changed, invalid: tr("Mission 每故事重试须为 0..10 的整数") };
+      if (n !== num(ms.max_retries_per_story)) {
+        ms.max_retries_per_story = n;
+        changed = true;
+      }
+    }
+    if (missionInstr !== null) {
+      if (missionInstr.length > 4000)
+        return { merged, changed, invalid: tr("Mission 验证说明过长（上限 4000 字）") };
+      if (missionInstr !== String(ms.default_verification_instructions ?? "")) {
+        ms.default_verification_instructions = missionInstr;
+        changed = true;
+      }
+    }
+    if (missionCmd !== null) {
+      if (missionCmd.length > 2000)
+        return { merged, changed, invalid: tr("Mission 验证命令过长（上限 2000 字）") };
+      if (missionCmd !== String(ms.default_verify_command ?? "")) {
+        ms.default_verify_command = missionCmd;
+        changed = true;
+      }
+    }
+    return { merged, changed, invalid: "" };
+  };
+
   /** 字段级 diff——只发改动的顶层键（read-merge-write 契约）。
    *  返回 [diff, invalidMsg]。 */
   const buildDiff = (): { diff: Rc; invalid: string } => {
     const diff: Rc = {};
     if (!cfg) return { diff, invalid: "" };
-    if (maxIters !== null) {
-      if (!isPosInt(maxIters)) return { diff, invalid: tr("max_iters 须为正整数") };
-      const n = Number(maxIters);
-      if (n !== num(cfg.max_iters)) diff.max_iters = n;
-    }
     if (retryOn !== null && retryOn !== (cfg.llm_retry_enabled === true)) {
       diff.llm_retry_enabled = retryOn;
     }
@@ -287,6 +604,18 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
       const n = Number(backoffCap);
       if (n !== num(cfg.llm_backoff_cap)) diff.llm_backoff_cap = n;
     }
+    // 记忆后端（L2 白名单键）。
+    if (memBackend !== null) {
+      const v = memBackend.trim();
+      if (!v) return { diff, invalid: tr("记忆后端不可为空") };
+      if (v !== String(cfg.memory_manager_backend ?? ""))
+        diff.memory_manager_backend = v;
+    }
+    // loop：整块 JSON 优先（显式全量替换）；否则 gate 编辑合并。
+    // legacy max_iters 镜像 = QwenPaw console useAgentConfig L183-185 语义：
+    // 迭代上限是唯一 UI 入口，保存时 max_iters 跟随（不跟随则旧值仍生效，
+    // 因为 loop.iteration.max_iterations 未设时回退读 max_iters）。
+    let mirrorVal: number | null = null;
     if (loopText !== null) {
       let parsed: unknown;
       try {
@@ -294,18 +623,59 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
       } catch {
         return { diff, invalid: tr("loop 不是合法 JSON") };
       }
-      if (
-        JSON.stringify(parsed) !== JSON.stringify(cfg.loop ?? null)
-      ) {
+      if (JSON.stringify(parsed) !== JSON.stringify(cfg.loop ?? null)) {
         diff.loop = parsed;
+        const pl = parsed as Rc;
+        const pi = pl?.iteration as Rc | undefined;
+        if (
+          pi &&
+          typeof pi.max_iterations === "number" &&
+          Number.isFinite(pi.max_iterations)
+        ) {
+          mirrorVal = pi.max_iterations;
+        }
       }
+    } else {
+      const { merged, changed, invalid } = mergeLoopGates();
+      if (invalid) return { diff, invalid };
+      if (changed && JSON.stringify(merged) !== JSON.stringify(cfg.loop ?? null)) {
+        diff.loop = merged;
+      }
+      if (iterValue !== null && /^\d+$/.test(iterValue.trim())) {
+        const n = Number(iterValue.trim());
+        if (n >= 1 && n <= 500) mirrorVal = n;
+      }
+    }
+    if (mirrorVal !== null && mirrorVal !== num(cfg.max_iters)) {
+      diff.max_iters = mirrorVal;
     }
     return { diff, invalid: "" };
   };
 
   const dirty = React.useMemo(() => Object.keys(buildDiff().diff).length > 0, [
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    cfg, maxIters, retryOn, maxRetries, backoffBase, backoffCap, loopText,
+    cfg,
+    iterEnabled,
+    iterValue,
+    doomEnabled,
+    doomWindow,
+    doomThreshold,
+    doomStages,
+    rubricEnabled,
+    rubricPrompt,
+    rubricInterventions,
+    goalIters,
+    goalTokens,
+    missionIters,
+    missionRetries,
+    missionInstr,
+    missionCmd,
+    memBackend,
+    retryOn,
+    maxRetries,
+    backoffBase,
+    backoffCap,
+    loopText,
   ]);
 
   const save = async () => {
@@ -504,28 +874,38 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
               label: tr("基本"),
               children: (
                 <antd.Card size="small" title={tr("基本")} style={{ marginTop: 4 }}>
+                  {/* v0.5.0-beta.13.7（13.6 装验「基本的拖动条有问题，看看
+                      QwenPaw 怎么做的，是像上一个版本输入数字的」）：
+                      ① 滑杆废弃——QwenPaw 配置面没有滑杆，迭代上限在
+                      Agent Loop → iteration 门（InputNumber，见 Loop tab）；
+                      ② 本 tab 按 QwenPaw ReactAgentCard 行对齐（可编辑=
+                      记忆后端【L2 白名单键，13.6 误标只读】；其余=L1 只读）。 */}
+                  <CfgRow
+                    label={tr("记忆后端")}
+                    tip={tr("长期记忆后端（memory_manager_backend）。remelight=轻量本地记忆，adbpg=AnalyticDB PG 向量记忆。L2 白名单键，可编辑。")}
+                  >
+                    <antd.Select
+                      style={{ width: 200 }}
+                      value={memBackend ?? String(cfg.memory_manager_backend || "remelight")}
+                      onChange={(v: string) => setMemBackend(v)}
+                      options={[
+                        { value: "remelight", label: "remelight（轻量本地）" },
+                        { value: "adbpg", label: "adbpg（AnalyticDB PG）" },
+                        { value: String(cfg.memory_manager_backend || "remelight"), label: String(cfg.memory_manager_backend || "remelight") },
+                      ].filter((o, i, a) => a.findIndex((x) => x.value === o.value) === i)}
+                    />
+                  </CfgRow>
                   <CfgRow
                     label={tr("最大迭代")}
-                    tip={tr("单次任务允许的最大 LLM 迭代轮数（max_iters）。越大越能啃硬任务，越慢越贵。")}
+                    tip={tr("单次任务最大 LLM 迭代轮数。唯一编辑入口在 Agent Loop → iteration 门（与 QwenPaw console 一致）；此处只读展示。")}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                      <antd.Slider
-                        style={{ flex: 1, minWidth: 0, margin: "0 4px" }}
-                        min={1}
-                        max={Math.max(100, num(cfg.max_iters) ?? 100)}
-                        value={
-                          maxIters !== null && isPosInt(maxIters)
-                            ? Number(maxIters)
-                            : (num(cfg.max_iters) ?? 0)
-                        }
-                        onChange={(v: number) => setMaxIters(String(v))}
-                      />
-                      <span style={{ minWidth: 40, textAlign: "right", fontSize: 13, fontWeight: 500 }}>
-                        {maxIters !== null && isPosInt(maxIters)
-                          ? maxIters
-                          : String(num(cfg.max_iters) ?? "-")}
-                      </span>
-                    </div>
+                    <span style={{ fontSize: 13 }}>
+                      {String(
+                        lv && lv.iterationMax != null
+                          ? lv.iterationMax
+                          : num(cfg.max_iters) ?? "-",
+                      )}
+                    </span>
                   </CfgRow>
                   <CfgRow
                     label={tr("Shell 超时")}
@@ -535,6 +915,28 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
                       {tr("{n} 秒", { n: String(num(cfg.shell_command_timeout) ?? "-") })}
                     </span>
                   </CfgRow>
+                  <CfgRow
+                    label={tr("Shell 可执行文件")}
+                    tip={tr("shell 命令使用的可执行文件（shell_command_executable）。L1-only 键，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 13, fontFamily: "monospace" }}>
+                      {String(cfg.shell_command_executable || tr("默认"))}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("自动标题")}
+                    tip={tr("会话自动标题（auto_title_config）。L1-only 键，本面板只读。")}
+                  >
+                    {(() => {
+                      const at = (cfg.auto_title_config && typeof cfg.auto_title_config === "object" ? cfg.auto_title_config : {}) as Rc;
+                      return (
+                        <antd.Tag color={at.enabled === true ? "green" : "default"} style={{ marginInlineEnd: 0 }}>
+                          {at.enabled === true ? tr("已启用") : tr("未启用")}
+                          {num(at.timeout_seconds) != null ? `（${num(at.timeout_seconds)}s）` : ""}
+                        </antd.Tag>
+                      );
+                    })()}
+                  </CfgRow>
                 </antd.Card>
               ),
             },
@@ -543,30 +945,274 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
               label: tr("Agent Loop"),
               children: (
                 <antd.Card size="small" title={tr("Agent Loop")} style={{ marginTop: 4 }}>
-                  {/* loop 配置：结构化速览 + 整块 JSON 替换（键名=契约顶层 loop）。 */}
+                  {/* v0.5.0-beta.13.7（13.6 装验「Loop 设置抄 QwenPaw 没抄
+                      完」）：按 QwenPaw AgentLoopCard 补齐——Default 模式 gate
+                      管道（iteration/doom_loop/rubric）+ Goal/Mission 内置
+                      参数，全部 InputNumber（QwenPaw 配置面无滑杆）；13.6
+                      tag 速览废弃（goal/mission 数据模型无 enabled 字段，
+                      tag 恒 off 误导）；整块 JSON 保留为高级兜底。值域逐条
+                      对账 qwenpaw LoopConfig（iteration 1..500 / doom
+                      window≥2 / threshold 0..1 / stages after≥1 / rubric
+                      1..10 / goal 1..500 / mission 1..100·retry 0..10）。 */}
                   {lv ? (
-                    <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        <antd.Tag color={lv.iterationEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
-                          iteration {lv.iterationEnabled ? "on" : "off"}
-                          {lv.iterationMax != null ? ` max=${lv.iterationMax}` : ""}
-                        </antd.Tag>
-                        <antd.Tag color={lv.doomEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
-                          doom-loop {lv.doomEnabled ? "on" : "off"}
-                          {lv.doomWindow != null ? ` w=${lv.doomWindow}` : ""}
-                        </antd.Tag>
-                        <antd.Tag color={lv.rubricEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
-                          rubric {lv.rubricEnabled ? "on" : "off"}
-                        </antd.Tag>
-                        <antd.Tag color={lv.goalEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
-                          goal {lv.goalEnabled ? "on" : "off"}
-                          {lv.goalMaxIters != null ? ` max=${lv.goalMaxIters}` : ""}
-                        </antd.Tag>
-                        <antd.Tag color={lv.missionEnabled ? "green" : "default"} style={{ marginInlineEnd: 0, fontSize: 11 }}>
-                          mission {lv.missionEnabled ? "on" : "off"}
-                        </antd.Tag>
+                    <div style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginBottom: 2 }}>
+                        {tr("Default 模式 · gate 管道")}
                       </div>
-                      <div>
+                      <GateSection
+                        title={tr("迭代限制")}
+                        tip={tr("单任务最大 LLM 迭代轮数（loop.iteration），超限终止。QwenPaw console 同款：启用开关 + 数字输入 1..500；保存时同步 legacy max_iters。")}
+                        enabled={iterEnabled !== null ? iterEnabled : lv.iterationEnabled}
+                        onEnabled={(v) => setIterEnabled(v)}
+                      >
+                        <GateParam label={tr("最大迭代")}>
+                          <antd.InputNumber
+                            style={{ width: 200 }}
+                            min={1}
+                            max={500}
+                            value={
+                              iterValue !== null && isPosInt(iterValue)
+                                ? Number(iterValue)
+                                : lv.iterationMax ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setIterValue(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                      </GateSection>
+                      <GateSection
+                        title={tr("重复保护")}
+                        tip={tr("检测滑动窗口内重复的工具调用并干预：注入提示或终止任务（loop.doom_loop）。窗口≥2，相似度 0..1。")}
+                        enabled={doomEnabled !== null ? doomEnabled : lv.doomEnabled}
+                        onEnabled={(v) => setDoomEnabled(v)}
+                      >
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                          <GateParam label={tr("检测窗口")}>
+                            <antd.InputNumber
+                              style={{ width: "100%" }}
+                              min={2}
+                              value={
+                                doomWindow !== null && isPosInt(doomWindow)
+                                  ? Number(doomWindow)
+                                  : lv.doomWindow ?? undefined
+                              }
+                              onChange={(v: number | null) =>
+                                setDoomWindow(v === null || v === undefined ? null : String(v))
+                              }
+                            />
+                          </GateParam>
+                          <GateParam label={tr("相似度阈值")}>
+                            <antd.InputNumber
+                              style={{ width: "100%" }}
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={
+                                doomThreshold !== null && doomThreshold.trim() !== "" && Number.isFinite(Number(doomThreshold))
+                                  ? Number(doomThreshold)
+                                  : lv.doomThreshold ?? undefined
+                              }
+                              onChange={(v: number | null) =>
+                                setDoomThreshold(v === null || v === undefined ? null : String(v))
+                              }
+                            />
+                          </GateParam>
+                        </div>
+                        <GateParam label={tr("干预规则")}>
+                          <div style={{ display: "grid", gap: 4 }}>
+                            {(doomStages !== null ? doomStages : lv.doomStages).map((st, idx) => (
+                              <div key={idx} style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                                <antd.InputNumber
+                                  size="small"
+                                  style={{ width: 72 }}
+                                  min={1}
+                                  value={st.after ?? undefined}
+                                  onChange={(v: number | null) =>
+                                    setDoomStages((prev) =>
+                                      (prev ?? lv.doomStages).map((x, j) =>
+                                        j === idx ? { ...x, after: v === null ? null : Number(v) } : x,
+                                      ),
+                                    )
+                                  }
+                                />
+                                <antd.Select
+                                  size="small"
+                                  style={{ width: 112 }}
+                                  value={st.action}
+                                  options={[
+                                    { value: "modify_prompt", label: tr("注入提醒") },
+                                    { value: "stop", label: tr("终止任务") },
+                                  ]}
+                                  onChange={(v: "modify_prompt" | "stop") =>
+                                    setDoomStages((prev) =>
+                                      (prev ?? lv.doomStages).map((x, j) =>
+                                        j === idx ? { ...x, action: v } : x,
+                                      ),
+                                    )
+                                  }
+                                />
+                                <antd.Input
+                                  size="small"
+                                  style={{ flex: 1, minWidth: 120 }}
+                                  placeholder={tr("提示词（注入提醒必填）")}
+                                  value={st.prompt}
+                                  onChange={(e: { target: { value: string } }) =>
+                                    setDoomStages((prev) =>
+                                      (prev ?? lv.doomStages).map((x, j) =>
+                                        j === idx ? { ...x, prompt: e.target.value } : x,
+                                      ),
+                                    )
+                                  }
+                                />
+                                <antd.Button
+                                  size="small"
+                                  type="text"
+                                  danger
+                                  onClick={() =>
+                                    setDoomStages((prev) =>
+                                      (prev ?? lv.doomStages).filter((_, j) => j !== idx),
+                                    )
+                                  }
+                                >
+                                  {tr("移除")}
+                                </antd.Button>
+                              </div>
+                            ))}
+                            <antd.Button
+                              size="small"
+                              type="dashed"
+                              block
+                              onClick={() =>
+                                setDoomStages((prev) => [
+                                  ...(prev ?? lv.doomStages),
+                                  { after: 3, action: "modify_prompt", prompt: "" },
+                                ])
+                              }
+                            >
+                              {tr("添加规则")}
+                            </antd.Button>
+                          </div>
+                        </GateParam>
+                      </GateSection>
+                      <GateSection
+                        title={tr("完成质量检查")}
+                        tip={tr("完成前用 Rubric 提示词评估任务是否真正达成，未过则注入评估继续（loop.rubric，仅 in-loop 模式），最多干预 1..10 次。")}
+                        enabled={rubricEnabled !== null ? rubricEnabled : lv.rubricEnabled}
+                        onEnabled={(v) => setRubricEnabled(v)}
+                      >
+                        <GateParam label={tr("Rubric 提示词")}>
+                          <antd.Input.TextArea
+                            rows={2}
+                            style={{ width: "100%", fontSize: 11.5 }}
+                            value={rubricPrompt !== null ? rubricPrompt : lv.rubricPrompt}
+                            onChange={(e: { target: { value: string } }) => setRubricPrompt(e.target.value)}
+                          />
+                        </GateParam>
+                        <GateParam label={tr("最大干预次数")}>
+                          <antd.InputNumber
+                            style={{ width: 120 }}
+                            min={1}
+                            max={10}
+                            value={
+                              rubricInterventions !== null && isPosInt(rubricInterventions)
+                                ? Number(rubricInterventions)
+                                : lv.rubricInterventions ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setRubricInterventions(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                      </GateSection>
+
+                      <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 2px" }}>
+                        {tr("Goal 模式 · 内置参数")}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <GateParam label={tr("最大迭代")}>
+                          <antd.InputNumber
+                            style={{ width: "100%" }}
+                            min={1}
+                            max={500}
+                            value={
+                              goalIters !== null && isPosInt(goalIters)
+                                ? Number(goalIters)
+                                : lv.goalMaxIters ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setGoalIters(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                        <GateParam label={tr("令牌预算")}>
+                          <antd.InputNumber
+                            style={{ width: "100%" }}
+                            min={1}
+                            value={
+                              goalTokens !== null && isPosInt(goalTokens)
+                                ? Number(goalTokens)
+                                : lv.goalMaxTokens ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setGoalTokens(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                      </div>
+
+                      <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 2px" }}>
+                        {tr("Mission 模式 · 内置参数")}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <GateParam label={tr("最大迭代")}>
+                          <antd.InputNumber
+                            style={{ width: "100%" }}
+                            min={1}
+                            max={100}
+                            value={
+                              missionIters !== null && isPosInt(missionIters)
+                                ? Number(missionIters)
+                                : lv.missionMaxIters ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setMissionIters(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                        <GateParam label={tr("每故事重试")}>
+                          <antd.InputNumber
+                            style={{ width: "100%" }}
+                            min={0}
+                            max={10}
+                            value={
+                              missionRetries !== null && /^\d+$/.test(missionRetries)
+                                ? Number(missionRetries)
+                                : lv.missionMaxRetries ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setMissionRetries(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                      </div>
+                      <GateParam label={tr("验证说明")}>
+                        <antd.Input
+                          style={{ fontSize: 11.5 }}
+                          value={missionInstr !== null ? missionInstr : lv.missionVerifyInstructions}
+                          onChange={(e: { target: { value: string } }) => setMissionInstr(e.target.value)}
+                        />
+                      </GateParam>
+                      <GateParam label={tr("验证命令")}>
+                        <antd.Input
+                          style={{ fontSize: 11.5, fontFamily: "monospace" }}
+                          value={missionCmd !== null ? missionCmd : lv.missionVerifyCommand}
+                          onChange={(e: { target: { value: string } }) => setMissionCmd(e.target.value)}
+                        />
+                      </GateParam>
+
+                      {/* 整块 JSON = 高级兜底（显式全量替换，覆盖上方 gate 编辑）。 */}
+                      <div style={{ borderTop: "1px dashed rgba(127,127,127,0.25)", paddingTop: 6, marginTop: 4 }}>
                         <antd.Button
                           size="small"
                           type="link"
@@ -580,26 +1226,26 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
                             setLoopOpen(true);
                           }}
                         >
-                          {tr("编辑整块 JSON")}
+                          {tr("高级：编辑整块 JSON")}
                         </antd.Button>
-                      </div>
-                      {loopOpen ? (
-                        <div>
-                          <antd.Input.TextArea
-                            rows={10}
-                            style={{
-                              fontFamily: "monospace",
-                              fontSize: 11.5,
-                              width: "100%",
-                            }}
-                            value={loopText ?? ""}
-                            onChange={(e: { target: { value: string } }) => setLoopText(e.target.value)}
-                          />
-                          <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginTop: 2 }}>
-                            {tr("loop 为整块替换语义——保存后整个 loop 对象以此 JSON 为准；loop 变更将通知团队 Leader。")}
+                        {loopOpen ? (
+                          <div>
+                            <antd.Input.TextArea
+                              rows={10}
+                              style={{
+                                fontFamily: "monospace",
+                                fontSize: 11.5,
+                                width: "100%",
+                              }}
+                              value={loopText ?? ""}
+                              onChange={(e: { target: { value: string } }) => setLoopText(e.target.value)}
+                            />
+                            <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginTop: 2 }}>
+                              {tr("loop 为整块替换语义——保存后整个 loop 对象以此 JSON 为准（覆盖上方 gate 编辑）；loop 变更将通知团队 Leader。")}
+                            </div>
                           </div>
-                        </div>
-                      ) : null}
+                        ) : null}
+                      </div>
                     </div>
                   ) : null}
 
@@ -833,7 +1479,7 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
                   </CfgRow>
                   <CfgRow
                     label={tr("长期记忆后端")}
-                    tip={tr("memory_manager_backend——L1 键，本面板只读展示。")}
+                    tip={tr("memory_manager_backend——基本 tab 可编辑（L2 白名单键）。")}
                   >
                     <span style={{ fontFamily: "monospace", fontSize: 12.5 }}>
                       {String(cfg.memory_manager_backend ?? "-")}
@@ -845,6 +1491,64 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
                   >
                     <span style={{ fontFamily: "monospace", fontSize: 12.5 }}>
                       {String(cfg.context_manager_backend ?? "-")}
+                    </span>
+                  </CfgRow>
+                  {/* v0.5.0-beta.13.7（「配置方面还有什么没有对齐」——QwenPaw
+                      LlmRateLimiterCard + 长度类字段，L1-only 只读展示）： */}
+                  <CfgRow
+                    label={tr("LLM 并发上限")}
+                    tip={tr("LLM 同时运行数（llm_max_concurrent）。L1-only，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 12.5 }}>
+                      {String(cfg.llm_max_concurrent ?? "-")}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("LLM QPM")}
+                    tip={tr("LLM 每分钟请求上限（llm_max_qpm）。L1-only，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 12.5 }}>
+                      {String(cfg.llm_max_qpm ?? "-")}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("限速等待")}
+                    tip={tr("触发限速时等待秒数（llm_rate_limit_pause）。L1-only，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 12.5 }}>
+                      {tr("{n} 秒", { n: String(num(cfg.llm_rate_limit_pause) ?? "-") })}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("限速抖动")}
+                    tip={tr("限速等待的随机抖动秒数（llm_rate_limit_jitter）。L1-only，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 12.5 }}>
+                      {tr("{n} 秒", { n: String(num(cfg.llm_rate_limit_jitter) ?? "-") })}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("槽位获取超时")}
+                    tip={tr("获取并发槽位的超时秒数（llm_acquire_timeout）。L1-only，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 12.5 }}>
+                      {tr("{n} 秒", { n: String(num(cfg.llm_acquire_timeout) ?? "-") })}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("最大输入长度")}
+                    tip={tr("单次请求最大输入字符数（max_input_length）。L1-only，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 12.5 }}>
+                      {String(cfg.max_input_length ?? "-")}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("历史消息长度")}
+                    tip={tr("上下文保留的历史消息数（history_max_length）。L1-only，本面板只读。")}
+                  >
+                    <span style={{ fontSize: 12.5 }}>
+                      {String(cfg.history_max_length ?? "-")}
                     </span>
                   </CfgRow>
                   <CfgRow

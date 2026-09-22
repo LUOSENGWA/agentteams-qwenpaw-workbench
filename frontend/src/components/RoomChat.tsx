@@ -675,6 +675,11 @@ function SenderAvatar({
 }
 
 /** 工具消息：默认折叠一行（工具名 + 预览），点击展开全文（QwenPaw 聊天页同款）。 */
+/** v0.5.0-beta.13.7（13.6 装验「看看 QwenPaw 怎么渲染消息」）：对齐 QwenPaw
+ *  ResponseTool 卡——状态识别（🔧 调用中 / ✅ 成功 / ❌ 失败，名称着色）+
+ *  展开后分区展示（调用=参数区 / 输出=结果区，失败红色调），替代 13.6 的
+ *  无状态行 + 整段 RAW pre。Matrix 工具消息格式（bridge 口径）：
+ *  调用 `🔧 **name**` + args；输出 `✅ **name**:` + 结果；失败 `❌ **name**:`。 */
 function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
   const t = useThemeColors();
   const tr = useT();
@@ -682,6 +687,15 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
   const body = msg.body || "";
   const firstLine = body.split("\n")[0] || tr("工具调用");
   const name = toolNameOf(body);
+  const head = firstLine.trimStart();
+  const status: "call" | "ok" | "fail" = head.startsWith("✅")
+    ? "ok"
+    : head.startsWith("❌")
+      ? "fail"
+      : "call";
+  const statusIcon = status === "ok" ? "✅" : status === "fail" ? "❌" : "🔧";
+  const nameColor =
+    status === "fail" ? "#e5484d" : status === "ok" ? "#30a46c" : t.textSecondary;
   // 预览：第一行后的内容前 80 字符（输出消息的实质内容）。
   const rest = body
     .split("\n")
@@ -690,6 +704,11 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
     .replace(/```/g, "")
     .trim()
     .slice(0, 80);
+  const detail = body
+    .split("\n")
+    .slice(1)
+    .join("\n")
+    .trim();
   return (
     <div
       onClick={() => setOpen((v) => !v)}
@@ -705,12 +724,13 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
       title={open ? tr("收起") : tr("点击展开工具调用详情")}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ flexShrink: 0, fontSize: 12 }}>{statusIcon}</span>
         <span
           style={{
             fontFamily: "monospace",
             fontSize: 12,
             fontWeight: 600,
-            color: t.textSecondary,
+            color: nameColor,
             flexShrink: 0,
           }}
         >
@@ -731,22 +751,39 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
           {open ? "▲" : "▼"}
         </span>
       </div>
-      {open ? (
-        <pre
-          style={{
-            margin: "6px 0 0",
-            padding: "8px 10px",
-            background: t.toolBg,
-            borderRadius: 6,
-            fontSize: 12,
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-all",
-            maxHeight: 420,
-            overflow: "auto",
-          }}
-        >
-          {body}
-        </pre>
+      {open && detail ? (
+        <div style={{ margin: "6px 0 0" }}>
+          <div
+            style={{
+              fontSize: 10.5,
+              color: "rgba(127,127,127,0.9)",
+              marginBottom: 3,
+            }}
+          >
+            {status === "call" ? tr("参数") : status === "fail" ? tr("错误") : tr("结果")}
+          </div>
+          <pre
+            style={{
+              margin: 0,
+              padding: "8px 10px",
+              background:
+                status === "fail" ? "rgba(229,72,77,0.06)" : "rgba(127,127,127,0.08)",
+              border:
+                status === "fail"
+                  ? "1px solid rgba(229,72,77,0.3)"
+                  : "1px solid rgba(127,127,127,0.2)",
+              color: status === "fail" ? "#a13336" : t.textSecondary,
+              borderRadius: 6,
+              fontSize: 12,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              maxHeight: 420,
+              overflow: "auto",
+            }}
+          >
+            {detail}
+          </pre>
+        </div>
       ) : null}
     </div>
   );

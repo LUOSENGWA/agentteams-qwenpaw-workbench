@@ -91,52 +91,366 @@ function formatTime(ts?: string | number | null): string {
   }
 }
 
-/** content 块保守渲染（契约 extra=allow）：文本直出，工具块压成标签。 */
-function renderContentBlock(block: unknown): string {
-  if (typeof block === "string") return block;
-  if (block && typeof block === "object") {
-    const b = block as Record<string, unknown>;
-    if (typeof b.text === "string") return b.text;
-    const name =
-      typeof b.name === "string"
-        ? b.name
-        : typeof b.tool_name === "string"
-          ? b.tool_name
-          : typeof b.type === "string" && String(b.type).startsWith("tool")
-            ? String(b.type)
-            : "";
-    if (name) return `🔧 ${name}`;
-    try {
-      const s = JSON.stringify(b);
-      return s.length > 200 ? `${s.slice(0, 200)}…` : s;
-    } catch {
-      return "[不可序列化的内容块]";
-    }
-  }
-  return String(block ?? "");
+/**
+ * v0.5.0-beta.13.7 消息结构化模型（「模仿 QwenPaw 会话消息折叠和渲染」定案）——
+ * 正源逐条核过：
+ * - QwenPaw console HostBubbles.renderResponseMessage：tool-like 类型走
+ *   ResponseTool 卡，REASONING 走 ResponseReasoning，HEARTBEAT → null（不渲染），
+ *   ERROR 恒可见（result-only 下错误也不折叠）；
+ * - messageDisplay.ts result-only（默认偏好 result-collapsed 的完成态）：
+ *   一个回答只显示**最后一条文本**，其前所有过程消息折叠成「N steps」手风琴
+ *   （LazyAccordion destroyOnClose——收起时子内容完全不渲染，本组件同款懒渲染）；
+ * - 消息 JSON 结构（qwenpaw/schemas.py + chats/utils.py）：
+ *   {type, role, content: [{type:"text",text} | {type:"data",data:{call_id,
+ *   name, arguments|output, state?}} | {type:"image",image_url} | {type:"file"}]
+ *   | string, status, metadata}。
+ * 13.6 旧版读 `b.name`（顶层）取工具名——实际在 `b.data.name`，恒 undefined，
+ * 工具块全部退化 RAW JSON.stringify 输出（装验所见「没模仿 QwenPaw」的真根因）。
+ */
+/** QwenPaw console responseMessageTypes.ts TOOL_LIKE 集合 + qwenpaw
+ *  MessageType 的 mcp_tool_call 族（双源并集，大小写归一小写比较）。 */
+const TOOL_LIKE_TYPES = new Set([
+  "plugin_call",
+  "plugin_call_output",
+  "tool_call",
+  "tool_call_output",
+  "function_call",
+  "function_call_output",
+  "component_call",
+  "component_call_output",
+  "mcp_call",
+  "mcp_call_output",
+  "mcp_tool_call",
+  "mcp_tool_call_output",
+]);
+
+type PartKind = "tool" | "thinking" | "text" | "media";
+interface MsgPart {
+  kind: PartKind;
+  /** 工具名 / 文本内容 / 媒体名。 */
+  label: string;
+  /** 工具参数 / 输出 / 错误态（已截断，单行化）。 */
+  detail?: string;
+  failed?: boolean;
+  image?: string;
+}
+interface Extracted {
+  role: string;
+  type: string;
+  parts: MsgPart[];
 }
 
-/** 消息角色分类（QwenPaw 会话原始输出口径）：user 右气泡 /
- *  assistant 左 markdown / 工具块标签 / 其余（system 等）居中提示。 */
-function classifyMessage(m: WorkerChatMessage): {
-  kind: "user" | "assistant" | "system";
-  textBlocks: string[];
-  toolBlocks: string[];
-} {
-  const role = String(m.role || m.type || "").toLowerCase();
-  const raw = Array.isArray(m.content)
-    ? m.content.map(renderContentBlock)
-    : [renderContentBlock(m.content)];
-  const textBlocks: string[] = [];
-  const toolBlocks: string[] = [];
-  for (const b of raw) {
-    if (!b) continue;
-    if (b.startsWith("🔧 ")) toolBlocks.push(b);
-    else textBlocks.push(b);
+/** 工具 data 块 → step part。data = {call_id, name, arguments} 调用 /
+ *  {call_id, name, output, state?} 输出（agentscope_msg_to_message 实锤）。 */
+function dataPart(d: Record<string, unknown>): MsgPart {
+  const name =
+    typeof d.name === "string" && d.name
+      ? d.name
+      : typeof d.tool_name === "string"
+        ? (d.tool_name as string)
+        : "tool";
+  const state = typeof d.state === "string" ? d.state : "";
+  const squash = (s: string) =>
+    s.length > 160 ? `${s.slice(0, 160)}…` : s;
+  if (d.output !== undefined && d.output !== null) {
+    let out: string;
+    if (typeof d.output === "string") out = d.output;
+    else {
+      try {
+        out = JSON.stringify(d.output);
+      } catch {
+        out = String(d.output);
+      }
+    }
+    out = out.replace(/\s+/g, " ").trim();
+    return {
+      kind: "tool",
+      label: name,
+      detail: out ? squash(out) : undefined,
+      failed: state === "error" || state === "failed",
+    };
   }
-  const kind: "user" | "assistant" | "system" =
-    role === "user" ? "user" : role === "assistant" ? "assistant" : "system";
-  return { kind, textBlocks, toolBlocks };
+  let args: string | undefined;
+  if (d.arguments !== undefined && d.arguments !== null) {
+    if (typeof d.arguments === "string") args = d.arguments;
+    else {
+      try {
+        args = JSON.stringify(d.arguments);
+      } catch {
+        args = undefined;
+      }
+    }
+    if (args) {
+      args = args.replace(/\s+/g, " ").trim();
+      args = squash(args);
+    }
+  }
+  return { kind: "tool", label: name, detail: args };
+}
+
+/** 单消息 → 结构化 parts（文本 / 思考 / 工具 / 媒体）。 */
+function extractMsg(m: WorkerChatMessage): Extracted {
+  const role = String(m.role || "").toLowerCase();
+  const type = String(m.type || "").toLowerCase();
+  const blocks = Array.isArray(m.content) ? m.content : [m.content];
+  const parts: MsgPart[] = [];
+  const textKind: PartKind = type === "reasoning" ? "thinking" : "text";
+  for (const raw of blocks) {
+    if (raw === null || raw === undefined) continue;
+    if (typeof raw === "string") {
+      if (raw.trim()) parts.push({ kind: textKind, label: raw });
+      continue;
+    }
+    if (typeof raw !== "object") continue;
+    const b = raw as Record<string, unknown>;
+    const bt = String(b.type || "").toLowerCase();
+    if (typeof b.text === "string" && b.text.trim()) {
+      parts.push({ kind: textKind, label: b.text });
+    } else if (
+      b.data &&
+      typeof b.data === "object" &&
+      (bt === "data" || bt === "")
+    ) {
+      parts.push(dataPart(b.data as Record<string, unknown>));
+    } else if (bt === "image" || typeof b.image_url === "string") {
+      parts.push({
+        kind: "media",
+        label: "一张图片",
+        image: typeof b.image_url === "string" ? b.image_url : undefined,
+      });
+    } else if (bt === "refusal" && typeof b.refusal === "string") {
+      parts.push({ kind: "text", label: b.refusal });
+    } else if (bt === "file" || b.file_url) {
+      parts.push({
+        kind: "media",
+        label: String(b.file_name || b.filename || "一个文件"),
+      });
+    } else {
+      // 未知块：压单行（绝不整段 RAW JSON——13.6 教训）。
+      let s = "";
+      try {
+        s = JSON.stringify(b).replace(/\s+/g, " ");
+      } catch {
+        s = "";
+      }
+      if (s)
+        parts.push({
+          kind: "text",
+          label: s.length > 120 ? `${s.slice(0, 120)}…` : s,
+        });
+    }
+  }
+  return { role, type, parts };
+}
+
+/** 消息分类（QwenPaw result-only 语义）：
+ *  user→用户气泡 / error→恒可见红线 / system→居中提示 /
+ *  assistant 有文本→asst（轮尾=结果可见，轮中=折叠）/ 其余→step（折叠）/
+ *  heartbeat、progress→skip（QwenPaw renderResponseMessage 对两者均不渲染）。 */
+type MsgKind = "user" | "error" | "system" | "asst" | "step" | "skip";
+function msgKind(e: Extracted): MsgKind {
+  if (e.type === "heartbeat" || e.type === "progress") return "skip";
+  if (e.type === "error") return "error";
+  if (e.role === "user") return "user";
+  if (e.role === "system") return "system";
+  const hasText = e.parts.some((p) => p.kind === "text" || p.kind === "thinking");
+  if (e.role === "assistant" || e.type === "result" || e.type === "message") {
+    return hasText ? "asst" : "step";
+  }
+  if (TOOL_LIKE_TYPES.has(e.type) || e.type === "reasoning") return "step";
+  return "step";
+}
+
+/** 轮分组（QwenPaw 每回答一个 response，此处按 user 消息切轮——
+ *  只读转录的最接近等价）：每轮里**最后一条有文本的 assistant** 提升为
+ *  可见结果（result-only），其余全部收进 steps（收起时不渲染子内容）。 */
+type DetailItem =
+  | { k: "user" | "asst" | "error" | "system"; i: number; e: Extracted }
+  | { k: "steps"; items: { i: number; e: Extracted }[] };
+
+function groupTurns(msgs: WorkerChatMessage[]): DetailItem[] {
+  const out: DetailItem[] = [];
+  let pending: { i: number; e: Extracted }[] = [];
+  const flush = () => {
+    if (!pending.length) return;
+    let last = -1;
+    for (let j = pending.length - 1; j >= 0; j--) {
+      const e = pending[j].e;
+      if (
+        (e.role === "assistant" || e.type === "result") &&
+        e.parts.some((p) => p.kind === "text")
+      ) {
+        last = j;
+        break;
+      }
+    }
+    const head = last >= 0 ? pending.slice(0, last) : pending;
+    if (head.length) out.push({ k: "steps", items: head });
+    if (last >= 0) {
+      out.push({ k: "asst", i: pending[last].i, e: pending[last].e });
+      const tail = pending.slice(last + 1);
+      if (tail.length) out.push({ k: "steps", items: tail });
+    }
+    pending = [];
+  };
+  for (let i = 0; i < msgs.length; i++) {
+    const e = extractMsg(msgs[i]);
+    const k = msgKind(e);
+    if (k === "skip") continue;
+    if (k === "user" || k === "error" || k === "system") {
+      flush();
+      out.push({ k, i, e });
+    } else {
+      pending.push({ i, e });
+    }
+  }
+  flush();
+  return out;
+}
+
+/** 步骤行：工具（名+参数/输出单行预览，失败 ❌）/ 思考 💭 / 中间文本 💬 / 媒体。 */
+function StepLine({
+  e,
+  tr,
+}: {
+  e: Extracted;
+  tr: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  return (
+    <div
+      style={{
+        fontSize: 11.5,
+        color: "rgba(0,0,0,0.62)",
+        background: "rgba(127,127,127,0.07)",
+        borderRadius: 6,
+        padding: "3px 8px",
+      }}
+    >
+      {e.parts.length === 0 ? (
+        <span style={{ color: "rgba(0,0,0,0.35)" }}>{e.type || e.role || "…"}</span>
+      ) : (
+        e.parts.map((p, j) => {
+          if (p.kind === "tool") {
+            return (
+              <div
+                key={j}
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  alignItems: "baseline",
+                  overflow: "hidden",
+                }}
+              >
+                <span style={{ flexShrink: 0 }}>{p.failed ? "❌" : "🔧"}</span>
+                <span
+                  style={{
+                    fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {p.label}
+                </span>
+                {p.detail ? (
+                  <span
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      color: "rgba(0,0,0,0.45)",
+                    }}
+                  >
+                    {p.detail}
+                  </span>
+                ) : null}
+              </div>
+            );
+          }
+          if (p.kind === "media") {
+            return (
+              <div key={j}>
+                {p.image ? (
+                  <img
+                    src={p.image}
+                    alt={p.label}
+                    style={{ maxWidth: 160, maxHeight: 120, borderRadius: 6, display: "block" }}
+                  />
+                ) : null}
+                🖼️ {p.label}
+              </div>
+            );
+          }
+          const txt =
+            p.label.length > 150 ? `${p.label.slice(0, 150)}…` : p.label;
+          return (
+            <div
+              key={j}
+              style={{
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                color: "rgba(0,0,0,0.55)",
+              }}
+            >
+              {p.kind === "thinking" ? "💭" : "💬"} {txt}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+/** 步骤折叠（QwenPaw LazyAccordion 同款语义：收起 = 子内容完全不渲染，
+ *  懒加载；完成态默认收起——getCollapsedGroupStatus 的 stepsCompleted 形态）。 */
+function StepsCollapse({
+  items,
+  tr,
+}: {
+  items: { i: number; e: Extracted }[];
+  tr: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{ margin: "0 0 8px 12px" }}>
+      <div
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          padding: "2px 9px",
+          borderRadius: 999,
+          background: "rgba(127,127,127,0.10)",
+          fontSize: 11.5,
+          color: "rgba(0,0,0,0.55)",
+          userSelect: "none",
+        }}
+        title={open ? tr("收起") : tr("点击展开步骤详情")}
+      >
+        <span>⚙️</span>
+        <span>{tr("{n} 步", { n: items.length })}</span>
+        <span style={{ fontSize: 9 }}>{open ? "▲" : "▼"}</span>
+      </div>
+      {open ? (
+        <div
+          style={{
+            marginTop: 5,
+            display: "grid",
+            gap: 4,
+            paddingLeft: 6,
+            borderLeft: "2px solid rgba(127,127,127,0.18)",
+          }}
+        >
+          {items.map(({ i, e }) => (
+            <StepLine key={i} e={e} tr={tr} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -159,6 +473,11 @@ function WorkerChats({
 
   // v0.5.0-beta.13.4：QwenPaw 会话页同款 Active/Archived 双 tab。
   const [tab, setTab] = React.useState<"active" | "archived">("active");
+
+  // v0.5.0-beta.13.7（13.6 装验「依旧拥挤，会话列可以缩短并增加鼠标悬浮和
+  // 点击展开」）：会话名点击行内展开（全名换行 + session_id 全值），
+  // 悬浮 = antd.Tooltip 全名（QwenPaw Table ellipsis 同语义）。
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
 
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [msgs, setMsgs] = React.useState<WorkerChatMessage[]>([]);
@@ -363,12 +682,22 @@ function WorkerChats({
             ) : msgs.length === 0 ? (
               <antd.Alert type="info" showIcon message={tr("该会话暂无消息")} />
             ) : (
-              msgs.map((m, i) => {
-                const c = classifyMessage(m);
-                if (c.kind === "user") {
+              /* v0.5.0-beta.13.7（13.6 装验「要模仿 QwenPaw 的会话消息折叠和
+                 渲染」）：QwenPaw result-only 轮分组——每轮只显示最后一条文本
+                 （assistant 气泡），中间工具/思考步收进「N 步」pill（懒渲染，
+                 点开才渲染子行）；user 右气泡 / error 红线恒可见 / system 居中。
+                 旧版逐条平铺 + tool 块 RAW JSON 输出，全部替换。 */
+              groupTurns(msgs).map((it) => {
+                if (it.k === "steps") {
+                  return (
+                    <StepsCollapse key={`s${it.items[0].i}`} items={it.items} tr={tr} />
+                  );
+                }
+                const { i, e } = it;
+                if (it.k === "user") {
                   return (
                     <div
-                      key={m.id ?? i}
+                      key={i}
                       style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}
                     >
                       <div
@@ -379,38 +708,73 @@ function WorkerChats({
                           borderRadius: "10px 2px 10px 10px",
                           padding: "6px 10px",
                           fontSize: 12.5,
-                          whiteSpace: "pre-wrap",
                           wordBreak: "break-word",
                         }}
                       >
-                        {c.textBlocks.join("\n")}
-                        {c.toolBlocks.length > 0 ? (
-                          <div style={{ marginTop: 4, fontSize: 11, opacity: 0.75 }}>
-                            {c.toolBlocks.join(" ")}
-                          </div>
-                        ) : null}
+                        {e.parts.map((p, j) =>
+                          p.kind === "media" ? (
+                            p.image ? (
+                              <img
+                                key={j}
+                                src={p.image}
+                                alt={p.label}
+                                style={{ maxWidth: 220, maxHeight: 160, borderRadius: 6, display: "block", margin: "4px 0" }}
+                              />
+                            ) : (
+                              <div key={j} style={{ fontSize: 12, opacity: 0.8 }}>
+                                🖼️ {p.label}
+                              </div>
+                            )
+                          ) : (
+                            <MdText key={j} text={p.label} maxLength={2000} />
+                          )
+                        )}
                       </div>
                     </div>
                   );
                 }
-                if (c.kind === "system") {
+                if (it.k === "error") {
+                  const txt =
+                    e.parts.map((p) => p.label).join("\n") || e.type;
                   return (
                     <div
-                      key={m.id ?? i}
+                      key={i}
+                      style={{
+                        marginBottom: 8,
+                        padding: "4px 10px",
+                        borderRadius: 8,
+                        border: "1px solid rgba(245,34,45,0.35)",
+                        background: "rgba(245,34,45,0.06)",
+                        fontSize: 12,
+                        color: "#cf1322",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      ⚠️ {txt}
+                    </div>
+                  );
+                }
+                if (it.k === "system") {
+                  const txt = e.parts.map((p) => p.label).join("\n");
+                  return (
+                    <div
+                      key={i}
                       style={{
                         textAlign: "center",
                         fontSize: 11,
                         color: "rgba(127,127,127,0.9)",
                         marginBottom: 8,
+                        wordBreak: "break-word",
                       }}
                     >
-                      {c.toolBlocks.join(" ") || c.textBlocks.join("\n") || m.role || m.type || "…"}
+                      {txt || e.type || "…"}
                     </div>
                   );
                 }
+                // asst = 该轮结果（最后一条文本，QwenPaw result-only 可见项）。
                 return (
                   <div
-                    key={m.id ?? i}
+                    key={i}
                     style={{ display: "flex", justifyContent: "flex-start", marginBottom: 8 }}
                   >
                     <div
@@ -422,26 +786,30 @@ function WorkerChats({
                         padding: "6px 10px",
                       }}
                     >
-                      {c.toolBlocks.length > 0 ? (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: 4,
-                            marginBottom: c.textBlocks.length > 0 ? 6 : 0,
-                          }}
-                        >
-                          {c.toolBlocks.map((b, j) => (
-                            <antd.Tag key={j} style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                              {b}
-                            </antd.Tag>
-                          ))}
-                        </div>
-                      ) : null}
-                      {c.textBlocks.map((b, j) => (
-                        // QwenPaw assistant 文本=markdown 渲染（原始输出原样）。
-                        <MdText key={j} text={b} maxLength={4000} />
-                      ))}
+                      {e.parts.map((p, j) =>
+                        p.kind === "tool" || p.kind === "thinking" ? (
+                          <StepLine
+                            key={j}
+                            e={{ role: e.role, type: e.type, parts: [p] }}
+                            tr={tr}
+                          />
+                        ) : p.kind === "media" ? (
+                          <div key={j} style={{ margin: "4px 0" }}>
+                            {p.image ? (
+                              <img
+                                src={p.image}
+                                alt={p.label}
+                                style={{ maxWidth: 220, maxHeight: 160, borderRadius: 6, display: "block" }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: 12 }}>🖼️ {p.label}</span>
+                            )}
+                          </div>
+                        ) : (
+                          // QwenPaw assistant 文本=markdown 渲染（原始输出原样）。
+                          <MdText key={j} text={p.label} maxLength={4000} />
+                        )
+                      )}
                     </div>
                   </div>
                 );
@@ -455,38 +823,89 @@ function WorkerChats({
 
   // ── 列表视图（QwenPaw Control/Sessions 同语义列）────────────────
   const columns = [
-    // v0.5.0-beta.13.5：列宽改容器相对——旧版五列固定宽 528px +
-    // scroll.x=500，抽屉 620px（小窗口更窄）时表格出横向滚动条，「查看」
-    // 被挤到最右要拖条才见。fixed 布局下不定宽列均分剩余空间，任何宽度
-    // 无横滚；长值走单元格内省略。
+    // v0.5.0-beta.13.5：列宽改容器相对（fixed 布局不定宽列均分剩余，任何
+    // 宽度无横滚）。
+    // v0.5.0-beta.13.7（13.6 装验「依旧拥挤，会话列可以缩短并增加鼠标悬浮
+    // 和点击展开」）：会话列=唯一弹性列（flex:1 填满剩余并被其余三列压缩），
+    // 长名省略号；悬浮 = Tooltip 全名；点击 = 行内展开（全名换行 +
+    // session_id 全值），再点收起。其余三列各收窄 6-10px 让位。
     {
       title: tr("会话"),
       dataIndex: "name",
       key: "name",
-      render: (_: unknown, c: WorkerChatSpec) => (
-        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, width: "100%" }}>
-          <span
-            style={{
-              flex: "0 1 auto",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontWeight: 500,
-            }}
-            title={c.name || c.id}
-          >
-            {c.name || c.id.slice(0, 10)}
-          </span>
-          {c.pinned ? <antd.Tag color="gold" style={{ marginInlineEnd: 0, flexShrink: 0 }}>{tr("置顶")}</antd.Tag> : null}
-        </span>
-      ),
+      render: (_: unknown, c: WorkerChatSpec) => {
+        const full = c.name || c.id.slice(0, 10);
+        if (expandedId === c.id) {
+          return (
+            <div
+              style={{ cursor: "pointer", minWidth: 0 }}
+              onClick={() => setExpandedId(null)}
+              title={tr("点击收起")}
+            >
+              <div
+                style={{
+                  fontWeight: 500,
+                  whiteSpace: "normal",
+                  wordBreak: "break-word",
+                  lineHeight: 1.4,
+                }}
+              >
+                {full}
+              </div>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+                  color: "rgba(127,127,127,0.85)",
+                  wordBreak: "break-all",
+                  marginTop: 2,
+                }}
+              >
+                {c.session_id || c.id}
+              </div>
+            </div>
+          );
+        }
+        return (
+          <antd.Tooltip title={full} mouseEnterDelay={0.3}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minWidth: 0,
+                width: "100%",
+                cursor: "pointer",
+              }}
+              onClick={() => setExpandedId(c.id)}
+            >
+              <span
+                style={{
+                  flex: "1 1 auto",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontWeight: 500,
+                }}
+              >
+                {full}
+              </span>
+              {c.pinned ? (
+                <antd.Tag color="gold" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                  {tr("置顶")}
+                </antd.Tag>
+              ) : null}
+            </div>
+          </antd.Tooltip>
+        );
+      },
     },
     {
       // QwenPaw Channel 列：彩色 Tag（CHANNEL_COLORS 逐值抄录）。
       title: tr("通道"),
       dataIndex: "channel",
       key: "channel",
-      width: 72,
+      width: 64,
       render: (v?: string) =>
         v ? (
           <antd.Tag color={CHANNEL_COLORS[v] || "default"} style={{ marginInlineEnd: 0 }}>
@@ -501,7 +920,7 @@ function WorkerChats({
       title: tr("最后活动"),
       dataIndex: "updated_at",
       key: "updated_at",
-      width: 118,
+      width: 112,
       defaultSortOrder: "descend" as const,
       sorter: (a: WorkerChatSpec, b: WorkerChatSpec) =>
         String(a.updated_at || "").localeCompare(String(b.updated_at || "")),
@@ -512,7 +931,7 @@ function WorkerChats({
     {
       title: "",
       key: "op",
-      width: 56,
+      width: 48,
       render: (_: unknown, c: WorkerChatSpec) => (
         // QwenPaw Action 列 View=绿色 link 按钮（#52c41a）。
         <antd.Button
@@ -546,6 +965,7 @@ function WorkerChats({
                 setOpenId(null);
                 setMsgs([]);
                 setStatus("");
+                setExpandedId(null);
               }}
               options={workers.map((w) => ({
                 value: w.name,
@@ -567,6 +987,7 @@ function WorkerChats({
         onChange={(k: string) => {
           setTab(k === "archived" ? "archived" : "active");
           setOpenId(null);
+          setExpandedId(null);
         }}
         items={[
           { key: "active", label: `${tr("活跃")} (${active.length})` },

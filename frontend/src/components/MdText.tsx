@@ -107,11 +107,20 @@ function CopyButton({ text }: { text: string }) {
 }
 
 /** 代码块：深底 + 语言标签 + 复制。 */
+/** v0.5.0-beta.13.7（13.6 装验「看看 dashboard 和 QwenPaw 怎么渲染消息，
+ *  继续优化」）：代码块对齐 dashboard markdown-message CodeBlock 口径——
+ *  浅底卡片 + 边框 + 灰底语言栏 + 复制按钮**hover 才出现**（dashboard
+ *  opacity-0 group-hover:opacity-100 同款），替代 13.6 的暗色底+常显复制
+ *  （聊天流里暗块太跳、常显按钮干扰阅读）。 */
 function CodeBlock({ code, lang }: { code: string; lang: string }) {
+  const [hover, setHover] = React.useState(false);
   return (
     <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
-        background: "#1e1e2e",
+        border: "1px solid rgba(127,127,127,0.25)",
+        background: "rgba(127,127,127,0.08)",
         borderRadius: 8,
         margin: "6px 0",
         overflow: "hidden",
@@ -124,20 +133,28 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
           justifyContent: "space-between",
           padding: "2px 8px",
           fontSize: 11,
-          color: "#8b8b9e",
+          color: "rgba(127,127,127,0.9)",
+          background: "rgba(127,127,127,0.12)",
         }}
       >
         <span>{lang || "code"}</span>
-        <CopyButton text={code} />
+        <span
+          style={{
+            opacity: hover ? 1 : 0,
+            transition: "opacity 0.15s",
+            display: "inline-flex",
+          }}
+        >
+          <CopyButton text={code} />
+        </span>
       </div>
       <pre
         style={{
           margin: 0,
-          padding: "8px 12px 12px",
+          padding: "8px 12px",
           overflowX: "auto",
-          fontSize: 12.5,
+          fontSize: 12,
           lineHeight: 1.55,
-          color: "#d6d6e8",
           fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
         }}
       >
