@@ -1380,8 +1380,14 @@ function mergeMessagePages(
  * 窄屏；且宿主窗口最小宽 + 留空使「拖最窄」永远过不了阈值（窄屏行为
  * 识别不了）。定案（装验反馈）：以**窗口**横向宽为准——横向拉满=分栏，真窄
  * 窗口（<800）=单栏；窄内嵌面板逃生口=「强制分栏」开关 + ⟨ 收起列表。 */
-function isWideLayout(w: number, _h: number): boolean {
-  return w >= CHAT_SPLIT_MIN_CONTAINER_W;
+/** 13.11（13.10 装验「宽窄屏没修，只需容器能横向铺满」）：宽窄双基准——
+ * win = 浏览器/webview 窗口宽，cont = 插件容器实测宽（宿主可能只给
+ * 半窗/带留白）。**min(win, cont) ≥ 800 才分栏**：窗口满宽时容器随宿主
+ * 铺满（主容器 width:100%）→ 分栏；宿主给窄容器或真窄窗口 → 聊天页
+ * 自动单栏（不硬塞双栏）。13.9 容器单基准被宿主留白压窄误判、13.10
+ * 窗口单基准在半窗面板误判——双基准取交集，两边都宽才是"真宽"。 */
+function isWideLayout(win: number, cont: number): boolean {
+  return Math.min(win, cont) >= CHAT_SPLIT_MIN_CONTAINER_W;
 }
 
 // ── @mention 发送侧（F4 — Element 三件套，装验反馈「我点击的 @mention 不是正确格式」）──
@@ -1589,6 +1595,19 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+  // v0.5.0-beta.13.11（F2 真根因——13.10 装验「消息滚出历史」仍未修）：
+  // 换房间时消息状态必须整体重置。此前 messagesRef/messagesEnd 残留**上
+  // 一个房间**的数据 → refreshMessages 的 mergeMessagePages(旧房全量,
+  // 新房最新页) 把两房消息混进同一窗口（「乱了」），setCachedMessages
+  // 再把混合体写进新房缓存（切回再「没了」）。Element 口径：timeline
+  // 状态是 per-room 的——room_id 变化即归零，再拉/再恢复该房自己的缓存。
+  React.useEffect(() => {
+    setMessages([]);
+    setMessagesEnd("");
+    setHasMore(false);
+    setRoomError("");
+    messagesRef.current = [];
+  }, [activeRoom?.room_id]);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [messagesEnd, setMessagesEnd] = React.useState(""); // 分页 token
   const [hasMore, setHasMore] = React.useState(false);
@@ -2036,6 +2055,9 @@ export default function WorkbenchPage() {
   const [notifyTick, setNotifyTick] = React.useState(0);
   const [opsTick, setOpsTick] = React.useState(0);
   const [knowledgeTick, setKnowledgeTick] = React.useState(0);
+  // v0.5.0-beta.13.11（F1 会话窗 Element 化）：任意房间来消息 → 递增 →
+  // WorkerChats 打开的会话窗立即刷新（事件驱动主路；4s 轮询降兜底）。
+  const [chatsTick, setChatsTick] = React.useState(0);
   React.useEffect(() => {
     let abort: AbortController | null = null;
     let fallback: number | null = null;
@@ -2122,6 +2144,9 @@ export default function WorkbenchPage() {
                   void pollMessagesRef.current();
                 }
                 scheduleRoomListRefresh();
+                // F1（13.11）：任意房间来消息 → 递增 chatsTick → 打开的
+                // 头像会话窗立即刷新（事件驱动主路，Element 式延迟≈0）。
+                setChatsTick((v) => v + 1);
               }
             } catch {
               /* 忽略非法帧 */
@@ -2637,7 +2662,8 @@ export default function WorkbenchPage() {
   // 窄屏（<1024px，竖屏/手机）：保持微信移动版语义——列表页点击进全屏聊天，
   // 左上角 ← 返回退出（RoomChat onBack 既有按钮）。列表可隐藏（宽屏）。
   const [chatWideMeasured, setChatWideMeasured] = React.useState(
-    () => isWideLayout(window.innerWidth, window.innerHeight),
+    // 初值按容器满宽假设（首帧），挂载后 measure 实测容器宽修正。
+    () => isWideLayout(window.innerWidth, window.innerWidth),
   );
   // 12.14：强制分栏开关（配置页）——忽略宽度判定，持久化 ui-state。
   const [chatForceWide, setChatForceWide] = React.useState<boolean>(
@@ -2655,13 +2681,23 @@ export default function WorkbenchPage() {
   // 单栏）。窗口 resize 跟随；强制开关优先。
   const mainRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
-    const measure = () =>
-      setChatWideMeasured(
-        isWideLayout(window.innerWidth, window.innerHeight),
-      );
+    const measure = () => {
+      const cont = mainRef.current?.clientWidth ?? window.innerWidth;
+      setChatWideMeasured(isWideLayout(window.innerWidth, cont));
+    };
     measure();
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    // 13.11：宿主布局变化（侧栏收展/分视图）不触发 window resize →
+    // 观察插件容器自身宽度（容器铺满/收窄即时切换宽窄态）。
+    let ro: ResizeObserver | null = null;
+    if (mainRef.current && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(measure);
+      ro.observe(mainRef.current);
+    }
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
   }, []);
   // v0.5.0-beta.13.4（9/22 第二轮反馈·滚动真根因重构）：shell 高度改为
   // 容器相对（Element 模型）——12.x 起用 calc(100vh-64px) 经验值，但宿主
@@ -2815,6 +2851,7 @@ export default function WorkbenchPage() {
         if (!chatWide) setChatListHiddenPersist(false);
       }}
       onNewTask={() => void 0}
+      chatsTick={chatsTick}
       onLoadMore={() => void loadMore()}
       onPoll={() => void pollMessages()}
       jumpToEventId={jumpToEventId}

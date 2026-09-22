@@ -9,12 +9,17 @@ const React: typeof ReactNS = host.React;
 //    适配插件数据面：workflow API 的 nodes[].dependsOn → 边；无 `next`
 //    字段 → ready 走本地推导。算法与 dashboard 同源——拓扑视图观感一致）──
 
-/** 插件 workflow 节点（api.ts WorkflowNode 的 DAG 投影）。 */
+/** 插件 workflow 节点（api.ts WorkflowNode 的 DAG 投影）。
+ * v0.5.0-beta.13.11（F7 拓扑优化）：补 subagent/task——Controller
+ * workflow_run nodes 自带执行者字段，此前投影丢弃（节点只有名字，
+ * 看不出谁在跑）。 */
 interface WfNodeInput {
   id?: string;
   name?: string;
   status?: string;
   dependsOn?: string[];
+  subagent?: string;
+  task?: string;
 }
 
 export interface DagNode {
@@ -22,6 +27,8 @@ export interface DagNode {
   title: string;
   status: string;
   ready: boolean;
+  /** 执行者（subagent 短名；无则不渲染第二行）。 */
+  subagent?: string;
   /** 0-based 依赖深度（分层布局用）。 */
   layer: number;
 }
@@ -128,6 +135,10 @@ export function buildWorkflowDag(nodes: WfNodeInput[]): ProjectDag {
     );
     const allDepsDone = deps.every((d) => completedSet.has(d));
     const status = WORKFLOW_STATUS_MAP[String(n.status ?? "")] ?? "unknown";
+    const subagent =
+      typeof n.subagent === "string" && n.subagent.trim() !== ""
+        ? n.subagent.trim()
+        : undefined;
     return {
       id,
       title:
@@ -136,6 +147,7 @@ export function buildWorkflowDag(nodes: WfNodeInput[]): ProjectDag {
           : id,
       status,
       ready: allDepsDone && status !== "completed",
+      subagent,
       layer: layerOf.get(id) ?? 0,
     };
   });
@@ -212,8 +224,20 @@ export function WorkflowDagSvg(props: {
   nodeHeight?: number;
   gapY?: number;
   title?: string;
+  /** v0.5.0-beta.13.11（F7 拓扑优化）：缩放（工具条 +/-/复位驱动）。 */
+  scale?: number;
+  /** 节点点击 → 任务巡检 Drawer（看板任务卡同款入口）。 */
+  onNodeClick?: (id: string) => void;
 }) {
-  const { dag, nodeColors, nodeWidth = 190, nodeHeight = 40, gapY = 64 } = props;
+  const {
+    dag,
+    nodeColors,
+    nodeWidth = 190,
+    nodeHeight = 40,
+    gapY = 64,
+    scale = 1,
+    onNodeClick,
+  } = props;
   const W = nodeWidth;
   const H = nodeHeight;
   const GY = gapY;
@@ -232,12 +256,12 @@ export function WorkflowDagSvg(props: {
 
   return (
     <svg
-      width={width}
-      height={height}
+      width={width * scale}
+      height={height * scale}
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label={props.title ?? tr("项目任务依赖图")}
-      style={{ display: "block" }}
+      style={{ display: "block", maxWidth: "none" }}
     >
       {dag.edges.map((e, i) => {
         const a = positions.get(e.source);
@@ -277,9 +301,14 @@ export function WorkflowDagSvg(props: {
         const colors = nodeColors[n.status] ?? nodeColors.unknown;
         // ~14 个 CJK 字形在 11px 下放得进默认 190px 节点宽。
         const label = n.title.length > 14 ? `${n.title.slice(0, 14)}…` : n.title;
+        const sub = n.subagent ? (n.subagent.length > 16 ? `${n.subagent.slice(0, 16)}…` : n.subagent) : null;
         return (
-          <g key={n.id}>
-            <title>{n.title}</title>
+          <g
+            key={n.id}
+            onClick={onNodeClick ? () => onNodeClick(n.id) : undefined}
+            style={onNodeClick ? { cursor: "pointer" } : undefined}
+          >
+            <title>{sub ? `${n.title} — ${n.subagent}` : n.title}</title>
             <rect
               x={p.x}
               y={p.y}
@@ -294,15 +323,40 @@ export function WorkflowDagSvg(props: {
             {n.ready ? (
               <circle cx={p.x + 10} cy={p.y + H / 2} r={3} fill="#22d3ee" />
             ) : null}
-            <text
-              x={p.x + 18}
-              y={p.y + H / 2 + 4}
-              fontSize={11}
-              fill={colors.text}
-              fontFamily="inherit"
-            >
-              {label}
-            </text>
+            {sub ? (
+              <>
+                <text
+                  x={p.x + 18}
+                  y={p.y + H / 2 - 3}
+                  fontSize={11}
+                  fontWeight={600}
+                  fill={colors.text}
+                  fontFamily="inherit"
+                >
+                  {label}
+                </text>
+                <text
+                  x={p.x + 18}
+                  y={p.y + H / 2 + 11}
+                  fontSize={9.5}
+                  fill={colors.text}
+                  opacity={0.7}
+                  fontFamily="inherit"
+                >
+                  {sub}
+                </text>
+              </>
+            ) : (
+              <text
+                x={p.x + 18}
+                y={p.y + H / 2 + 4}
+                fontSize={11}
+                fill={colors.text}
+                fontFamily="inherit"
+              >
+                {label}
+              </text>
+            )}
           </g>
         );
       })}

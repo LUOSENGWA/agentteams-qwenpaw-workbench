@@ -116,6 +116,13 @@ export default function NotificationCenter(props: {
           action === "approve" ? tr("已发送批准命令（Worker 继续执行）") : tr("已发送拒绝命令"),
         );
         setApprovals((prev) => prev.filter((x) => (x.event_id || x.room_id) !== key));
+        // v0.5.0-beta.13.11（13.10 装验「点了批准，通知面板还见未批准卡片」
+        // 真根因）：后端 sync watcher 收到审批命令消息后才 _resolve_approval
+        // 清缓冲（异步，≈1-2s）——乐观删除后 30s 轮询若在 resolve 窗口前
+        // 拉取，未清项被拉回=卡片"复活"。修法=发送成功后立即重拉 + 3s
+        // 再拉（覆盖后端 resolve 异步窗口），状态与后端缓冲强制对齐。
+        void loadApprovals();
+        window.setTimeout(() => void loadApprovals(), 3000);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("发送失败"));
       } finally {

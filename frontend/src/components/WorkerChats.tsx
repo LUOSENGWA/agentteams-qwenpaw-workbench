@@ -66,26 +66,6 @@ const CHANNEL_LABELS: Record<string, string> = {
   voice: "Voice",
 };
 
-/** 容器宽测量（13.8 列自适应：<640 隐藏通道列，把宽度让给会话列/查看钮）。 */
-function useContainerWidth(
-  ref: ReactNS.RefObject<HTMLDivElement | null>,
-): number {
-  const [w, setW] = React.useState(0);
-  React.useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setW(el.clientWidth);
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver((es) => {
-      const r = es[0]?.contentRect;
-      if (r) setW(Math.round(r.width));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-  return w;
-}
-
 /** QwenPaw console constants/channel.ts CHANNEL_COLORS 逐值抄录
  *  （会话通道色板与 QwenPaw 原生会话页一致）。 */
 const CHANNEL_COLORS: Record<string, string> = {
@@ -502,13 +482,20 @@ function StepsCollapse({
 /**
  * v0.5.0-beta.13.1（9/19 入口迁移）：`fixedWorker` = 头像抽屉模式——
  * 锁定单个 Worker（跳过选择器）。
+ * v0.5.0-beta.13.11（13.10 装验 E1 定案「卡片化是会话列表」）：列表
+ * antd.Table → 卡片列表（参照 dashboard worker-chats-panel 口径：整卡
+ * 点击进详情、全名/全 session_id 换行不裁切、窄容器不挤压）；
+ * `refreshTick` = SSE room_message 事件驱动刷新（Element 式主路——
+ * 房间来消息即刷当前会话；4s 轮询降为断连兜底）。
  */
 function WorkerChats({
   workers,
   fixedWorker,
+  refreshTick,
 }: {
   workers: WorkerInfo[];
   fixedWorker?: string;
+  refreshTick?: number;
 }) {
   const tr = useT();
   const [sel, setSel] = React.useState(fixedWorker ?? "");
@@ -520,10 +507,11 @@ function WorkerChats({
   // v0.5.0-beta.13.4：QwenPaw 会话页同款 Active/Archived 双 tab。
   const [tab, setTab] = React.useState<"active" | "archived">("active");
 
-  // v0.5.0-beta.13.7（13.6 装验「依旧拥挤，会话列可以缩短并增加鼠标悬浮和
-  // 点击展开」）：会话名点击行内展开（全名换行 + session_id 全值），
-  // 悬浮 = antd.Tooltip 全名（QwenPaw Table ellipsis 同语义）。
-  const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  // v0.5.0-beta.13.11：卡片列表排序（Table sorter 的卡片等价物；
+  // 默认最后活动倒序 = QwenPaw 会话页默认）。
+  const [sortKey, setSortKey] = React.useState<"updated" | "created" | "name">(
+    "updated",
+  );
 
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [msgs, setMsgs] = React.useState<WorkerChatMessage[]>([]);
@@ -599,46 +587,58 @@ function WorkerChats({
     }
   };
 
-  // v0.5.0-beta.13.10（13.9 装验「会话窗能不能实时更新，点开之后应该
-  // 像 QwenPaw 的对话框一样实时更新」）：详情 4s 轮询——消息列表按
-  // 「长度+末条」轻量判变（避免无变化时整表重渲染），状态灯同步刷
-  // （running→idle 切换 = 头像灯/头灯实时）。
+  // v0.5.0-beta.13.10（13.9 装验「会话窗能不能实时更新」）→
+  // v0.5.0-beta.13.11（13.10 装验「4s 一轮有点蠢，参考 Element」）：
+  // 实时主路 = **事件驱动**（Element /sync 同款语义）——后端 sync watcher
+  // 收到房间消息 → SSE room_message → WorkbenchPage 递增 refreshTick →
+  // 下方 effect 立即拉详情/状态（延迟≈网络 RTT，非周期轮询）；4s 轮询
+  // 降为 SSE 断连/事件丢失兜底（RoomChat P6 同构语义）。消息列表按
+  // 「长度+末条」轻量判变（避免无变化时重渲染），状态灯同步刷。
   const selRef = React.useRef(sel);
   selRef.current = sel;
   const openIdRef = React.useRef(openId);
   openIdRef.current = openId;
+  const refreshOpenChat = React.useCallback(async () => {
+    const s = selRef.current;
+    const oid = openIdRef.current;
+    if (!s || !oid) return;
+    try {
+      const d = await fetchWorkerChat(s, oid);
+      const next = Array.isArray(d?.messages) ? d.messages : null;
+      if (next)
+        setMsgs((prev) =>
+          prev.length === next.length &&
+          (next.length === 0 ||
+            JSON.stringify(prev[prev.length - 1]) ===
+              JSON.stringify(next[next.length - 1]))
+            ? prev
+            : next,
+        );
+    } catch {
+      /* 静默——失败不打扰（下一轮再试） */
+    }
+    try {
+      const r = await fetchWorkerChatStatus(s, oid);
+      if (r?.status === "running" || r?.status === "idle")
+        setStatus(r.status);
+    } catch {
+      /* 静默 */
+    }
+  }, []);
   React.useEffect(() => {
     if (!openId) return;
-    const id = window.setInterval(async () => {
-      const s = selRef.current;
-      const oid = openIdRef.current;
-      if (!s || !oid) return;
-      try {
-        const d = await fetchWorkerChat(s, oid);
-        const next = Array.isArray(d?.messages) ? d.messages : null;
-        if (next)
-          setMsgs((prev) =>
-            prev.length === next.length &&
-            (next.length === 0 ||
-              JSON.stringify(prev[prev.length - 1]) ===
-                JSON.stringify(next[next.length - 1]))
-              ? prev
-              : next,
-          );
-      } catch {
-        /* 静默——轮询失败不打扰（状态灯轮次下再试） */
-      }
-      try {
-        const r = await fetchWorkerChatStatus(s, oid);
-        if (r?.status === "running" || r?.status === "idle")
-          setStatus(r.status);
-      } catch {
-        /* 静默 */
-      }
-    }, 4000);
+    const id = window.setInterval(() => void refreshOpenChat(), 4000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openId]);
+  }, [openId, refreshOpenChat]);
+  // SSE 事件驱动主路：refreshTick 变化（room_message 等）→ 立即刷新。
+  const tickRef = React.useRef(refreshTick);
+  React.useEffect(() => {
+    if (refreshTick === undefined) return;
+    if (refreshTick !== tickRef.current) {
+      tickRef.current = refreshTick;
+      void refreshOpenChat();
+    }
+  }, [refreshTick, refreshOpenChat]);
 
   // 底部跟随（QwenPaw 对话框口径）：消息变化时——用户已在底部（近底
   // 100px 内）= 自动贴底；用户上翻看历史 = 不动（不打断阅读）。
@@ -656,10 +656,10 @@ function WorkerChats({
     }
   }, [detailLoading, openId, msgs]);
 
-  // v0.5.0-beta.13.8：容器宽测量——**必须在所有早退 return 之前**（列表/
-  // 详情/空态/gate 各视图 hook 数必须一致，否则 React #300 崩）。
+  // 容器宽测量——**必须在所有早退 return 之前**（列表/详情/空态/gate 各
+  // 视图 hook 数必须一致，否则 React #300 崩）。13.11 卡片列表后宽度
+  // 阈值逻辑移除，ref 保留（hook 顺序 + 列表容器锚点）。
   const cwrapRef = React.useRef<HTMLDivElement | null>(null);
-  const cwrapW = useContainerWidth(cwrapRef);
 
   // v0.5.0-beta.13.10（13.9 装验「从点开会话之后，经常显示无worker」
   // 真根因）：workers 列表来自 adminData（需要 Controller token）——
@@ -726,10 +726,37 @@ function WorkerChats({
 
   const active = chats.filter((c) => !c.archived);
   const archived = chats.filter((c) => !!c.archived);
-  const list = tab === "active" ? active : archived;
+  const list = React.useMemo(() => {
+    const arr = [...(tab === "active" ? active : archived)];
+    arr.sort((a, b) => {
+      if (sortKey === "name")
+        return String(a.name || a.id).localeCompare(String(b.name || b.id));
+      const key = sortKey === "created" ? "created_at" : "updated_at";
+      return String(b[key] || "").localeCompare(String(a[key] || ""));
+    });
+    return arr;
+  }, [tab, active, archived, sortKey]);
   const openChatSpec = openId
     ? chats.find((c) => c.id === openId)
     : undefined;
+
+  // v0.5.0-beta.13.11（F8 QwenPaw 化：ResponseActions 同款复制——气泡
+  // hover 显 ⧉，复制该条全部文本部分）。
+  const copyParts = React.useCallback(
+    async (parts: MsgPart[]) => {
+      const txt = parts
+        .filter((p) => p.kind === "text" || p.kind === "thinking")
+        .map((p) => p.label)
+        .join("\n");
+      try {
+        await navigator.clipboard.writeText(txt);
+        antd.message.success(tr("已复制"));
+      } catch {
+        antd.message.error(tr("复制失败"));
+      }
+    },
+    [tr],
+  );
 
   // ── 详情视图（QwenPaw /chat/{id} 口径：列表让位，← 返回列表）──────
   // v0.5.0-beta.13.5：高度链改容器相对（#629 家规）——抽屉 body 是定高
@@ -738,6 +765,27 @@ function WorkerChats({
   if (openId) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+        {/* v0.5.0-beta.13.11（F8 QwenPaw 化）：气泡 hover 复制钮样式。 */}
+        <style>{`
+          .wb-chat-bubble .wb-copy {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            z-index: 1;
+            cursor: pointer;
+            font-size: 11px;
+            line-height: 1;
+            padding: 2px 4px;
+            border-radius: 4px;
+            color: rgba(127,127,127,0.7);
+            background: rgba(255,255,255,0.9);
+            border: 1px solid rgba(127,127,127,0.25);
+            opacity: 0;
+            transition: opacity 0.12s;
+          }
+          .wb-chat-bubble:hover .wb-copy { opacity: 1; }
+          .wb-chat-bubble .wb-copy:hover { color: #1677ff; border-color: #1677ff; }
+        `}</style>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: "0 0 auto" }}>
           <antd.Button
             size="small"
@@ -847,38 +895,53 @@ function WorkerChats({
                   return (
                     <div
                       key={i}
-                      style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}
+                      className="wb-chat-bubble"
+                      style={{ display: "flex", justifyContent: "flex-end", alignItems: "flex-start", gap: 6, marginBottom: 8 }}
                     >
-                      <div
-                        style={{
-                          maxWidth: "86%",
-                          background: "rgba(255,127,22,0.14)",
-                          border: "1px solid rgba(255,127,22,0.35)",
-                          borderRadius: "10px 2px 10px 10px",
-                          padding: "6px 10px",
-                          fontSize: 12.5,
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {e.parts.map((p, j) =>
-                          p.kind === "media" ? (
-                            p.image ? (
-                              <img
-                                key={j}
-                                src={p.image}
-                                alt={p.label}
-                                style={{ maxWidth: 220, maxHeight: 160, borderRadius: 6, display: "block", margin: "4px 0" }}
-                              />
+                      <div style={{ position: "relative" }}>
+                        <div
+                          style={{
+                            maxWidth: "86%",
+                            background: "rgba(255,127,22,0.14)",
+                            border: "1px solid rgba(255,127,22,0.35)",
+                            borderRadius: "10px 2px 10px 10px",
+                            padding: "6px 10px",
+                            fontSize: 12.5,
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {e.parts.map((p, j) =>
+                            p.kind === "media" ? (
+                              p.image ? (
+                                <img
+                                  key={j}
+                                  src={p.image}
+                                  alt={p.label}
+                                  style={{ maxWidth: 220, maxHeight: 160, borderRadius: 6, display: "block", margin: "4px 0" }}
+                                />
+                              ) : (
+                                <div key={j} style={{ fontSize: 12, opacity: 0.8 }}>
+                                  🖼️ {p.label}
+                                </div>
+                              )
                             ) : (
-                              <div key={j} style={{ fontSize: 12, opacity: 0.8 }}>
-                                🖼️ {p.label}
-                              </div>
+                              <MdText key={j} text={p.label} maxLength={2000} />
                             )
-                          ) : (
-                            <MdText key={j} text={p.label} maxLength={2000} />
-                          )
-                        )}
+                          )}
+                        </div>
+                        <span
+                          className="wb-copy"
+                          onClick={() => void copyParts(e.parts)}
+                          title={tr("复制")}
+                        >
+                          ⧉
+                        </span>
                       </div>
+                      {/* v0.5.0-beta.13.11（F8 QwenPaw 化：HostBubbles 同款
+                          Avatar 分侧——user 右 / assistant 左）。 */}
+                      <antd.Avatar size="small" style={{ background: "#ff7f16", flexShrink: 0 }}>
+                        <span style={{ fontSize: 11 }}>👤</span>
+                      </antd.Avatar>
                     </div>
                   );
                 }
@@ -924,17 +987,23 @@ function WorkerChats({
                 return (
                   <div
                     key={i}
-                    style={{ display: "flex", justifyContent: "flex-start", marginBottom: 8 }}
+                    className="wb-chat-bubble"
+                    style={{ display: "flex", justifyContent: "flex-start", alignItems: "flex-start", gap: 6, marginBottom: 8 }}
                   >
-                    <div
-                      style={{
-                        maxWidth: "92%",
-                        background: "rgba(255,255,255,0.75)",
-                        border: "1px solid rgba(127,127,127,0.22)",
-                        borderRadius: "2px 10px 10px 10px",
-                        padding: "6px 10px",
-                      }}
-                    >
+                    {/* v0.5.0-beta.13.11（F8 QwenPaw 化）：assistant 左 Avatar。 */}
+                    <antd.Avatar size="small" style={{ background: "#1677ff", flexShrink: 0 }}>
+                      <span style={{ fontSize: 11 }}>🤖</span>
+                    </antd.Avatar>
+                    <div style={{ position: "relative", flex: "0 1 auto", minWidth: 0 }}>
+                      <div
+                        style={{
+                          maxWidth: "92%",
+                          background: "rgba(255,255,255,0.75)",
+                          border: "1px solid rgba(127,127,127,0.22)",
+                          borderRadius: "2px 10px 10px 10px",
+                          padding: "6px 10px",
+                        }}
+                      >
                       {e.parts.map((p, j) =>
                         p.kind === "tool" || p.kind === "thinking" ? (
                           <StepLine
@@ -959,6 +1028,14 @@ function WorkerChats({
                           <MdText key={j} text={p.label} maxLength={4000} />
                         )
                       )}
+                      </div>
+                      <span
+                        className="wb-copy"
+                        onClick={() => void copyParts(e.parts)}
+                        title={tr("复制")}
+                      >
+                        ⧉
+                      </span>
                     </div>
                   </div>
                 );
@@ -977,157 +1054,15 @@ function WorkerChats({
   // + 按钮 nowrap + padding 收窄，任何容器宽恒整词可见 ③ 会话列 =
   // 唯一弹性列（min 120）+ 每会话 status 点（running 蓝呼吸，/chats
   // 自带字段，零新请求）。
-  const showChannelCol = cwrapW === 0 || cwrapW >= 640;
-  const columns = [
-    {
-      title: tr("会话"),
-      dataIndex: "name",
-      key: "name",
-      render: (_: unknown, c: WorkerChatSpec) => {
-        const full = c.name || c.id.slice(0, 10);
-        const running = c.status === "running";
-        if (expandedId === c.id) {
-          return (
-            <div
-              style={{ cursor: "pointer", minWidth: 0 }}
-              onClick={() => setExpandedId(null)}
-              title={tr("点击收起")}
-            >
-              <div
-                style={{
-                  fontWeight: 500,
-                  whiteSpace: "normal",
-                  wordBreak: "break-word",
-                  lineHeight: 1.4,
-                }}
-              >
-                {full}
-              </div>
-              <div
-                style={{
-                  fontSize: 10.5,
-                  fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
-                  color: "rgba(127,127,127,0.85)",
-                  wordBreak: "break-all",
-                  marginTop: 2,
-                }}
-              >
-                {c.session_id || c.id}
-              </div>
-            </div>
-          );
-        }
-        return (
-          <antd.Tooltip title={running ? `${full}（running）` : full} mouseEnterDelay={0.3}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                minWidth: 0,
-                width: "100%",
-                cursor: "pointer",
-              }}
-              onClick={() => setExpandedId(c.id)}
-            >
-              {/* 13.8：per-session 状态点（/chats 自带 status 字段——
-                  qwenpaw app 自维护的会话状态，零新请求）：running=蓝呼吸，
-                  idle 不显（避免满屏灰点）。 */}
-              {running ? (
-                <span
-                  className="wb-session-dot running"
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    background: "#3b82f6",
-                    flexShrink: 0,
-                    display: "inline-block",
-                  }}
-                />
-              ) : null}
-              <span
-                style={{
-                  flex: "1 1 auto",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  fontWeight: 500,
-                }}
-              >
-                {full}
-              </span>
-              {c.pinned ? (
-                <antd.Tag color="gold" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
-                  {tr("置顶")}
-                </antd.Tag>
-              ) : null}
-            </div>
-          </antd.Tooltip>
-        );
-      },
-    },
-    ...(showChannelCol
-      ? [
-          {
-            // QwenPaw Channel 列：彩色 Tag（CHANNEL_COLORS 逐值抄录）；
-            // 13.8 短名 + Tooltip 全名（agentteams_matrix 全名是挤爆主因）。
-            title: tr("通道"),
-            dataIndex: "channel",
-            key: "channel",
-            width: 56,
-            render: (v?: string) =>
-              v ? (
-                <antd.Tooltip title={v} mouseEnterDelay={0.3}>
-                  <antd.Tag
-                    color={CHANNEL_COLORS[v] || "default"}
-                    style={{ marginInlineEnd: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}
-                  >
-                    {CHANNEL_LABELS[v] || v}
-                  </antd.Tag>
-                </antd.Tooltip>
-              ) : (
-                "-"
-              ),
-          },
-        ]
-      : []),
-    {
-      // QwenPaw UpdatedAt 列：可排序、默认倒序。13.8 112→104（给会话列让位）。
-      title: tr("最后活动"),
-      dataIndex: "updated_at",
-      key: "updated_at",
-      width: 104,
-      defaultSortOrder: "descend" as const,
-      sorter: (a: WorkerChatSpec, b: WorkerChatSpec) =>
-        String(a.updated_at || "").localeCompare(String(b.updated_at || "")),
-      render: (v?: string) => (
-        <span style={{ fontSize: 11, whiteSpace: "nowrap" }}>{formatTime(v)}</span>
-      ),
-    },
-    {
-      // 13.8：查看列 48→44 + 按钮 nowrap/padding 收窄——任何容器宽整词可见。
-      title: "",
-      key: "op",
-      width: 44,
-      render: (_: unknown, c: WorkerChatSpec) => (
-        // QwenPaw Action 列 View=绿色 link 按钮（#52c41a）。
-        <antd.Button
-          size="small"
-          type="link"
-          style={{
-            padding: "0 2px",
-            color: "#52c41a",
-            fontSize: 12,
-            whiteSpace: "nowrap",
-          }}
-          onClick={() => void openChat(c.id)}
-        >
-          {tr("查看")}
-        </antd.Button>
-      ),
-    },
-  ];
+  // v0.5.0-beta.13.11（13.10 装验 E1 定案「卡片化是会话列表」）：
+  // antd.Table → 卡片列表——Table fixed 布局在窄容器被挤压（查看列
+  // 裁切，13.8 已三次压列宽打地鼠）。卡片口径参照 dashboard
+  // worker-chats-panel：整卡可点进详情、全名/全 session_id 换行
+  // 不裁切、窄容器抗挤压；Table sorter 能力保留为排序下拉。
+  const emptyText =
+    tab === "active"
+      ? tr("当前账号在此 Worker 的可见范围内没有活跃会话（L2 仅自己所在房间）")
+      : tr("没有已归档会话");
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
@@ -1148,7 +1083,6 @@ function WorkerChats({
                 setOpenId(null);
                 setMsgs([]);
                 setStatus("");
-                setExpandedId(null);
               }}
               options={workers.map((w) => ({
                 value: w.name,
@@ -1159,6 +1093,17 @@ function WorkerChats({
           </>
         )}
         <div style={{ flex: 1 }} />
+        <antd.Select
+          size="small"
+          style={{ width: 128 }}
+          value={sortKey}
+          onChange={(v: "updated" | "created" | "name") => setSortKey(v)}
+          options={[
+            { value: "updated", label: tr("最后活动 ↓") },
+            { value: "created", label: tr("创建 ↓") },
+            { value: "name", label: tr("名称 A-Z") },
+          ]}
+        />
         <antd.Button size="small" onClick={() => void load()} loading={loading}>
           {tr("刷新")}
         </antd.Button>
@@ -1170,7 +1115,6 @@ function WorkerChats({
         onChange={(k: string) => {
           setTab(k === "archived" ? "archived" : "active");
           setOpenId(null);
-          setExpandedId(null);
         }}
         items={[
           { key: "active", label: `${tr("活跃")} (${active.length})` },
@@ -1179,21 +1123,125 @@ function WorkerChats({
       />
 
       <div ref={cwrapRef} style={{ minWidth: 0 }}>
-        <antd.Table
-          rowKey="id"
-          size="small"
-          tableLayout="fixed"
-          loading={loading}
-          columns={columns}
-          dataSource={list}
-          pagination={false}
-          locale={{
-            emptyText:
-              tab === "active"
-                ? tr("当前账号在此 Worker 的可见范围内没有活跃会话（L2 仅自己所在房间）")
-                : tr("没有已归档会话"),
-          }}
-        />
+        {loading && chats.length === 0 ? (
+          <antd.Spin size="small" />
+        ) : list.length === 0 ? (
+          <antd.Alert type="info" showIcon message={emptyText} />
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {list.map((c) => {
+              const full = c.name || c.id.slice(0, 10);
+              const running = c.status === "running";
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => void openChat(c.id)}
+                  style={{
+                    border: "1px solid rgba(127,127,127,0.25)",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                    background: "rgba(127,127,127,0.03)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minWidth: 0,
+                    }}
+                  >
+                    {running ? (
+                      <span
+                        className="wb-session-dot running"
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          background: "#3b82f6",
+                          flexShrink: 0,
+                          display: "inline-block",
+                        }}
+                      />
+                    ) : null}
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        fontSize: 12.5,
+                        wordBreak: "break-word",
+                        whiteSpace: "normal",
+                        flex: "1 1 auto",
+                        minWidth: 0,
+                      }}
+                    >
+                      {full}
+                    </span>
+                    {c.pinned ? (
+                      <antd.Tag
+                        color="gold"
+                        style={{ marginInlineEnd: 0, flexShrink: 0 }}
+                      >
+                        {tr("置顶")}
+                      </antd.Tag>
+                    ) : null}
+                    {c.archived ? (
+                      <antd.Tag style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                        {tr("已归档")}
+                      </antd.Tag>
+                    ) : null}
+                    <antd.Button
+                      size="small"
+                      type="link"
+                      style={{
+                        padding: "0 2px",
+                        color: "#52c41a",
+                        fontSize: 12,
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                      onClick={(e: ReactNS.MouseEvent) => {
+                        e.stopPropagation();
+                        void openChat(c.id);
+                      }}
+                    >
+                      {tr("查看")}
+                    </antd.Button>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 10.5,
+                      fontFamily:
+                        "ui-monospace, SFMono-Regular, Consolas, monospace",
+                      color: "rgba(127,127,127,0.85)",
+                      wordBreak: "break-all",
+                      marginTop: 3,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: "2px 10px",
+                    }}
+                  >
+                    <span>{c.session_id || c.id}</span>
+                    {c.channel ? (
+                      <antd.Tag
+                        color={CHANNEL_COLORS[c.channel] || "default"}
+                        style={{ marginInlineEnd: 0, fontFamily: "inherit" }}
+                      >
+                        {CHANNEL_LABELS[c.channel] || c.channel}
+                      </antd.Tag>
+                    ) : null}
+                    {c.updated_at ? (
+                      <span style={{ fontFamily: "inherit" }}>
+                        {formatTime(c.updated_at)}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

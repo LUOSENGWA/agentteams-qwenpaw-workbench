@@ -5,6 +5,27 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.11（2026-09-22）
+
+**13.10 装验反馈 12 件收口：会话列表卡片化（E1 真对象）/ 会话窗 Element 式事件驱动 / 消息历史跨房间真根因 / 宽窄屏双基准+容器铺满 / 审批通知面板同步 / Tab 震动 / 话题旗 SVG / 工作流拓扑放大+执行者 / 会话窗 QwenPaw 头像复制**
+
+- **会话列表卡片化（E1 真对象——定案是「会话列表做卡片」，13.10 误改产物行）**：Worker 会话列表 antd.Table → 卡片列表（参照 dashboard worker-chats-panel 口径）——整卡点击进详情、全名/全 session_id 换行不裁切、窄容器抗挤压；Table sorter 保留为排序下拉（最后活动↓/创建↓/名称A-Z）；Active/Archived 双 tab 与 Worker 选择不变
+- **会话窗 Element 式事件驱动（「4s 一轮有点蠢」）**：主路 = 后端 /sync watcher 收到房间消息 → SSE → 打开的会话窗**立即**刷新（延迟≈网络 RTT）；4s 轮询降为 SSE 断连兜底（RoomChat P6 同构语义）。状态灯（running/idle）随事件同刷
+- **消息跨房间真根因（「消息滚出历史」仍未修的根因）**：换房间时 messages/messagesEnd/pagination token 残留**上一房间**数据 → 合并逻辑把两房消息混进同一窗口（「乱了」）+ 混合体写进新房缓存（切回「没了」）。修 = per-room timeline 状态整体归零（Element 口径：timeline 状态是 per-room 的）
+- **宽窄屏双基准 + 容器横向铺满**：分栏判定 = **min(窗口宽, 插件容器实测宽) ≥ 800**——窗口满宽时容器随宿主铺满即分栏；宿主给窄容器（半窗面板/留白）或真窄窗口 = 聊天页自动单栏（不硬塞双栏）；容器宽 ResizeObserver 跟随（宿主布局变化不触发 window resize 也切换）
+- **审批通知面板同步（「点了批准，通知面板还见未批准卡片」）**：真根因 = 后端 /sync watcher 收到审批命令消息后才清未决缓冲（异步 1-2s）——乐观删除后的 30s 轮询若在 resolve 窗口前拉取，未清项被拉回=卡片复活。修 = 发送成功后立即重拉 + 3s 再拉，状态与后端缓冲强制对齐
+- **QwenPaw 同款 Tab 震动（新审批）**：侧栏 logo 出现待审批 → 晃一次（bell shake 1.2s，reduced-motion 可关）+ 红点计数（15s 轮询 /room-approvals，与通知中心同源；未登录静默降级）
+- **话题图标 → 消息旗气泡 SVG（替换 🧵 emoji）**：消息行「N 条回复」徽章 / 话题面板标题 / 窄屏 Drawer 标题三处统一
+- **工作流拓扑优化（参照 dashboard + 改进）**：① 统计条（N 任务·M 依赖·K 外部依赖）② 缩放工具条（−/百分比/+，0.4–2.0）——宽图不裁、细节可读 ③ 节点补 **subagent 执行者行**（Controller nodes 自带字段，此前投影丢弃）④ 节点点击 → 任务巡检 Drawer（看板任务卡同款入口）
+- **拓扑左侧项目列表可拖宽度**：220–520px（默认 320，持久化），卡片/拓扑双视图共享同一左栏宽
+- **会话窗 QwenPaw 化（「还不够像」）**：user 右气泡 + 头像、assistant 左气泡 + 头像（HostBubbles 同款分侧）；气泡 hover 复制钮（ResponseActions 同款语义，复制全部文本部分）
+- **@mention 全量复查**：主聊/引用/线程/审批命令四发送点全部 Element 三元组（body 短名 + formatted_body matrix.to + m.mentions.user_ids）确认无遗漏
+- **i18n**：+11 新键（中英镜像），全量对账 0 缺 0 重复
+
+**Verification**: tsc 0 · vite build 2,146.06kB · pytest 60/60 · i18n 字典 0 缺 0 重复 · 敏感扫 src 0 实名
+
+---
+
 ## 0.5.0-beta.13.10（2026-09-22）
 
 **装验 12 件全收口：@mention 双向 Element 格式 / 消息不再滚出历史 / 会话窗实时+底部跟随 / 过度折叠修 / L1 凭证两套指引 / 知识库符号链接+非文本全量列取 / 宽窄屏窗口基准 / 产物行卡片化**

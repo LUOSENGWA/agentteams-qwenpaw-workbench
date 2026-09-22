@@ -29,8 +29,90 @@ const LOGO_ICON: ReactNS.ReactNode = hostReact
     })
   : "🏢";
 
+// v0.5.0-beta.13.11（F5 QwenPaw 同款 Tab 震动）：侧栏 logo 待审批徽标——
+// 轮询 /room-approvals（与通知中心同源），出现待审批即红点计数 + 图标
+// 晃一次（wbTabShake）。宿主侧栏 icon 接受 ReactNode（console types.ts
+// 「ReactNode for custom」）；宿主 React 缺失时降级回静态 LOGO_ICON。
+// 轮询失败/未登录静默降级为 0（不打扰，也不误报）。
+function SidebarApprovalIcon() {
+  const [count, setCount] = hostReact.useState(0);
+  const [shake, setShake] = hostReact.useState(false);
+  const prevRef = hostReact.useRef(0);
+  hostReact.useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const list = await fetchRoomApprovals(30);
+        if (alive) setCount(Array.isArray(list) ? list.length : 0);
+      } catch {
+        /* 未登录/后端不可达 → 静默 0 */
+      }
+    };
+    void poll();
+    const id = window.setInterval(() => void poll(), 15000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
+  // 新增审批（0→n 或 n→n+m）触发一次震动（reduced-motion 由 CSS 关闭）。
+  hostReact.useEffect(() => {
+    if (count > prevRef.current) {
+      setShake(true);
+      const t = window.setTimeout(() => setShake(false), 1300);
+      prevRef.current = count;
+      return () => window.clearTimeout(t);
+    }
+    prevRef.current = count;
+  }, [count]);
+  return hostReact.createElement(
+    "span",
+    { style: { position: "relative", display: "inline-flex" } },
+    hostReact.createElement("img", {
+      src: LOGO_URL,
+      width: 16,
+      height: 16,
+      alt: "",
+      className: shake ? "wb-tab-shake" : undefined,
+      style: {
+        display: "block",
+        animation: shake ? "wbTabShake 1.2s ease-in-out" : undefined,
+      },
+    }),
+    count > 0
+      ? hostReact.createElement(
+          "span",
+          {
+            style: {
+              position: "absolute",
+              top: -5,
+              right: -7,
+              minWidth: 13,
+              height: 13,
+              lineHeight: "13px",
+              padding: "0 3px",
+              boxSizing: "border-box",
+              borderRadius: 7,
+              background: "#ff4d4f",
+              color: "#fff",
+              fontSize: 9,
+              fontWeight: 700,
+              textAlign: "center",
+              border: "1px solid rgba(255,255,255,0.75)",
+            },
+          },
+          count > 99 ? "99+" : String(count),
+        )
+      : null,
+  );
+}
+const SIDEBAR_ICON: ReactNS.ReactNode = hostReact
+  ? hostReact.createElement(SidebarApprovalIcon)
+  : LOGO_ICON;
+
 import WorkbenchPage from "./WorkbenchPage";
 import ApprovalCard from "./components/ApprovalCard";
+import { fetchRoomApprovals } from "./api";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -86,10 +168,21 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
 .wb-loop-dot.running {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }
+/* v0.5.0-beta.13.11（F5 QwenPaw 同款 Tab 震动）：有待审批时侧栏 logo
+   晃一次（bell shake，1.2s）；持续待批挂红点计数（静态，不循环晃）。 */
+@keyframes wbTabShake {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(-14deg); }
+  30% { transform: rotate(11deg); }
+  45% { transform: rotate(-8deg); }
+  60% { transform: rotate(6deg); }
+  75% { transform: rotate(-3deg); }
+}
 @media (prefers-reduced-motion: reduce) {
   .wb-session-dot.running { animation: none; }
   .wb-live-dot { animation: none; }
   .wb-loop-dot.running { animation: none; }
+  .wb-tab-shake { animation: none !important; }
 }
 /* 页面布局（用户反馈「上下边界固定撑满屏幕，参考控制台」）：
    main 撑满（height 100% + minHeight 兜底）+ flex column；header 固定；
@@ -173,7 +266,7 @@ window.QwenPaw.menu?.add("agentteams-qwenpaw-workbench", {
   id: "agentteams-qwenpaw-workbench.sidebar",
   location: "primary.agentScoped",
   label: "团队工作台",
-  icon: LOGO_ICON,
+  icon: SIDEBAR_ICON,
   route: "agentteams-qwenpaw-workbench.main",
   order: 12, // right after core.inbox (10), before core.app-center (15)
 });

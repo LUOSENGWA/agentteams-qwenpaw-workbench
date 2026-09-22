@@ -160,12 +160,23 @@ function ProjectRail(props: {
 }
 
 /** 拓扑主体：分层 DAG（buildWorkflowDag → WorkflowDagSvg，dashboard
- * 同源算法）+ 外部依赖注记 + ready 图例。 */
-function DagTopo(props: { ev: WorkflowEvent; t: ThemeColors }) {
-  const { ev, t } = props;
+ * 同源算法）+ 外部依赖注记 + ready 图例。
+ * v0.5.0-beta.13.11（F7 拓扑优化，参照 dashboard + 改进）：
+ * ① 统计条（N 任务·M 依赖·K 外部依赖——dashboard ProjectDagView 同款）
+ * ② 缩放工具条（- / 百分比 / + / 复位）——宽图不裁切、细节可读
+ * ③ 节点带 subagent 执行者行 + 点击 → 任务巡检 Drawer。 */
+function DagTopo(props: {
+  ev: WorkflowEvent;
+  t: ThemeColors;
+  onNodeClick?: (nodeId: string) => void;
+}) {
+  const { ev, t, onNodeClick } = props;
   const tr = useT();
   const dag = React.useMemo(() => buildWorkflowDag(ev.nodes ?? []), [ev]);
   const colors = dagNodeColors(t);
+  // 缩放（0.4–2.0，步进 0.2；1 = 原始尺寸）。
+  const [zoom, setZoom] = React.useState(1);
+  const clampZoom = (z: number) => Math.min(2, Math.max(0.4, Math.round(z * 10) / 10));
   // P2：任务分布 = 节点按 status 计数（dashboard NODE_STATUS 分布同语义）。
   const statuses = React.useMemo(() => {
     const m = new Map<string, number>();
@@ -177,6 +188,92 @@ function DagTopo(props: { ev: WorkflowEvent; t: ThemeColors }) {
   }, [ev]);
   return (
     <div>
+      {/* 统计条 + 缩放工具条（dashboard 同款统计；缩放为本插件改进）。 */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 8,
+          fontSize: 11,
+          color: t.textSecondary,
+        }}
+      >
+        <span style={{ fontWeight: 600 }}>
+          {tr("依赖图")}
+        </span>
+        <span>
+          {dag.nodes.length} {tr("任务")} · {dag.edges.length}{" "}
+          {tr("依赖")}
+          {dag.externalDeps.length > 0 &&
+            ` · ${dag.externalDeps.length} ${tr("外部依赖")}`}
+        </span>
+        <span style={{ flex: 1 }} />
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setZoom((z) => clampZoom(z - 0.2))}
+            disabled={zoom <= 0.4}
+            style={{
+              width: 22,
+              height: 22,
+              border: `1px solid ${t.border}`,
+              borderRadius: 5,
+              background: t.cardBg,
+              color: t.text,
+              cursor: zoom <= 0.4 ? "not-allowed" : "pointer",
+              fontSize: 13,
+              lineHeight: 1,
+            }}
+            title={tr("缩小")}
+          >
+            −
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoom(1)}
+            style={{
+              height: 22,
+              padding: "0 7px",
+              border: `1px solid ${t.border}`,
+              borderRadius: 5,
+              background: t.cardBg,
+              color: t.text,
+              cursor: "pointer",
+              fontSize: 11,
+            }}
+            title={tr("复位")}
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoom((z) => clampZoom(z + 0.2))}
+            disabled={zoom >= 2}
+            style={{
+              width: 22,
+              height: 22,
+              border: `1px solid ${t.border}`,
+              borderRadius: 5,
+              background: t.cardBg,
+              color: t.text,
+              cursor: zoom >= 2 ? "not-allowed" : "pointer",
+              fontSize: 13,
+              lineHeight: 1,
+            }}
+            title={tr("放大")}
+          >
+            +
+          </button>
+        </span>
+      </div>
       <div
         style={{
           overflow: "auto",
@@ -188,6 +285,8 @@ function DagTopo(props: { ev: WorkflowEvent; t: ThemeColors }) {
         <WorkflowDagSvg
           dag={dag}
           nodeColors={colors}
+          scale={zoom}
+          onNodeClick={onNodeClick}
           title={`${ev.title} — ${tr("项目任务依赖图")}`}
         />
       </div>
@@ -1697,6 +1796,39 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
     ? events.find((e) => e.runId === inspect.runId) || null
     : null;
 
+  // v0.5.0-beta.13.11（F7 装验「拓扑左侧项目列表要可拖宽度」）：左栏宽
+  // 220–520，默认 320，持久化（与聊天分栏 chatSplitW 同款交互）。
+  const RAIL_KEY = "agentteams-qwenpaw-workbench:workflow-rail-w";
+  const [railW, setRailW] = React.useState<number>(() => {
+    try {
+      const v = Number(localStorage.getItem(RAIL_KEY));
+      return Number.isFinite(v) && v >= 220 && v <= 520 ? v : 320;
+    } catch {
+      return 320;
+    }
+  });
+  const railWRef = React.useRef(railW);
+  railWRef.current = railW;
+  const startRailDrag = React.useCallback((e: ReactNS.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = railWRef.current;
+    const clamp = (w: number) => Math.min(520, Math.max(220, w));
+    const onMove = (ev: globalThis.MouseEvent) =>
+      setRailW(clamp(startW + (ev.clientX - startX)));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      try {
+        localStorage.setItem(RAIL_KEY, String(railWRef.current));
+      } catch {
+        /* 隐私模式 localStorage 不可用——本次会话有效即可 */
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {/* v0.5.0-beta.12: 正源降级横幅（不再静默）——用户「Leader 项目看不到，只有
@@ -1861,9 +1993,22 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
         ) : (
           /* master-detail：左=项目列表（排序/独立滚动），右=选中项目详情
              （EventCard + 任务卡网格）——对齐 dashboard 任务看板「项目」区。 */
-          <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: `${railW}px 6px minmax(0, 1fr)`, gap: "12px 0", alignItems: "start" }}>
             <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
-            <div style={{ minWidth: 0 }}>
+            <div
+              onMouseDown={startRailDrag}
+              title={tr("拖动调整项目列表宽度")}
+              style={{
+                cursor: "col-resize",
+                alignSelf: "stretch",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <div style={{ width: 3, height: "100%", background: t.border, borderRadius: 2 }} />
+            </div>
+            <div style={{ minWidth: 0, paddingLeft: 12 }}>
               {topoEvent ? (
                 <div>
                   <EventCard ev={topoEvent} t={t} onIntervention={() => onRefresh?.()} />
@@ -1913,12 +2058,26 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
       ) : (
         /* master-detail：左=项目列表（含 planning 项目，诚实空态），右=
            分层 DAG（WorkflowDagSvg，dashboard 同源算法）+ 干预/中断/loop。 */
-        <div style={{ display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: `${railW}px 6px minmax(0, 1fr)`, gap: "12px 0", alignItems: "start" }}>
           <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
+          <div
+            onMouseDown={startRailDrag}
+            title={tr("拖动调整项目列表宽度")}
+            style={{
+              cursor: "col-resize",
+              alignSelf: "stretch",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <div style={{ width: 3, height: "100%", background: t.border, borderRadius: 2 }} />
+          </div>
           <div
             style={{
               minWidth: 0,
               padding: 12,
+              paddingLeft: 24,
               borderRadius: 10,
               border: `1px solid ${t.border}`,
               maxHeight: "calc(100vh - 300px)",
@@ -1952,7 +2111,13 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
                 />
                 {topoEvent.loop ? <LoopBlock loop={topoEvent.loop} /> : null}
                 {(topoEvent.nodes || []).length > 0 ? (
-                  <DagTopo ev={topoEvent} t={t} />
+                  <DagTopo
+                    ev={topoEvent}
+                    t={t}
+                    onNodeClick={(nodeId) =>
+                      setInspect({ runId: topoEvent.runId, taskId: nodeId })
+                    }
+                  />
                 ) : (
                   <div style={{ color: t.textSecondary, fontSize: 12 }}>
                     {tr("暂无拓扑数据——本项目可能还在 planning（Coordinator 起草计划中），计划生成后请重试")}
