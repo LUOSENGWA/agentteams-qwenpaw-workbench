@@ -2535,15 +2535,18 @@ def build_router() -> APIRouter:
                 ),
             )
 
-    async def _kb_exec(
+    async def _kb_exec_full(
         token: str, base: str, container: str, cmd: List[str],
         timeout: float = 40.0,
-    ) -> str:
+    ) -> Optional[str]:
         """ Controller 代理 docker exec（只读 find/ls 用途）。
         manager live 大工作区超 20MB tar 上限时的轻量列取。
         实测：POST /exec → 201，POST /exec/{id}/start → 多路复用帧
         （8 字节头：stream+3×0+4B big-endian len + payload）。
-        输出上限 2MB（find -maxdepth 1 行式清单足够）。"""
+        输出上限 2MB（find -maxdepth 1 行式清单足够）。
+        传输失败（超时/非 200/缺 Id）→ None——调用方需区分「通道挂」
+        与「命令成功但输出为空」（后者含 find 目标不存在：find 报错走
+        stderr、stdout 为空，exec 仍 200）。"""
         import httpx as _h
         headers = {"Authorization": f"Bearer {token}"}
         try:
@@ -2558,19 +2561,19 @@ def build_router() -> APIRouter:
                     headers=headers,
                 )
                 if r1.status_code not in (200, 201):
-                    return ""
+                    return None
                 eid = (r1.json() or {}).get("Id", "")
                 if not eid:
-                    return ""
+                    return None
                 r2 = await client.post(
                     f"{base}/docker/v1.41/exec/{eid}/start",
                     json={"Detach": False, "Tty": False},
                     headers=headers,
                 )
         except _h.TimeoutException:
-            return ""
+            return None
         if r2.status_code != 200:
-            return ""
+            return None
         raw = r2.content
         out: List[str] = []
         i = 0
@@ -2584,6 +2587,13 @@ def build_router() -> APIRouter:
                 out.append(raw[i:i + ln].decode("utf-8", "replace"))
             i += ln
         return "".join(out)
+
+    async def _kb_exec(
+        token: str, base: str, container: str, cmd: List[str],
+        timeout: float = 40.0,
+    ) -> str:
+        """兼容包装：传输失败返空串（不区分失败的调用方用）。"""
+        return (await _kb_exec_full(token, base, container, cmd, timeout)) or ""
 
     def _kb_tar_entries(data: bytes) -> List[Dict[str, Any]]:
         """Docker archive tar → 相对条目列表。目录请求时顶层条目名=
@@ -2647,6 +2657,122 @@ def build_router() -> APIRouter:
                      "size": e["size"], "mtime": e["mtime"], "isdir": False}
                 )
         return out
+
+    # ── KB 目录列取双通道（v0.5.0-beta.13.9 真根因修）────────────────
+    # 真机反馈 9/22：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
+    # kb_tree 顶层（worker 支）/ memory / digest 子树全走「先整目录递归
+    # tar 下载完、下载完才查大小」→ 413「工作区顶层超过 20MB，无法列取」
+    # （manager 顶层早前已单独切 exec find，worker 支漏改=同类没扫全）。
+    # 真根因 = 列取路径不再依赖整树下载：
+    #   主通道 _kb_find_list —— exec find（零下载，manager live 大工作区
+    #       生产已验证的链路；实测 125 条目 ~100ms）；
+    #   兜底 _kb_tar_list  —— Docker archive tar（小工作区保留旧精确解析
+    #       + 413 守卫，仅主通道失败时可达）。
+    # 失败语义：find 返 None=传输失败（切 tar）；tar 返 None=路径不存在
+    # （404）；tar 超限→413（仅兜底路径可触达）。
+
+    async def _kb_find_list(
+        token: str, base: str, container: str, target: str,
+        maxdepth: Optional[int] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """主通道：exec find 列目录（零下载）。
+        返回 [{type,size,mtime,rel}]（rel 相对 target，顶层条目=裸名）；
+        通道失败 → None（调用方切 tar 兜底）；目标不存在/空目录 → 空列表
+        （find 报错走 stderr、stdout 空——调用方必要时以 HEAD 探针区分
+        空目录与不存在）。"""
+        cmd = ["find", target]
+        if maxdepth is not None:
+            cmd += ["-maxdepth", str(maxdepth)]
+        cmd += ["-printf", "%y %s %T@ %P\n"]
+        out = await _kb_exec_full(token, base, container, cmd, timeout=90.0)
+        if out is None:
+            return None
+        entries: List[Dict[str, Any]] = []
+        for ln in out.splitlines():
+            parts = ln.split(" ", 3)
+            if len(parts) != 4:
+                continue
+            typ, size_s, mtime_s, rel = parts
+            rel = rel.replace("\\", "/")
+            if not rel or rel.startswith("/"):
+                continue
+            try:
+                size = int(float(size_s))
+            except ValueError:
+                size = 0
+            try:
+                mtime = int(float(mtime_s))
+            except ValueError:
+                mtime = 0
+            entries.append({"type": typ, "size": size,
+                            "mtime": mtime, "rel": rel})
+        return entries
+
+    async def _kb_tar_list(
+        token: str, base: str, container: str, target: str,
+        maxdepth: Optional[int] = None,
+        include_dirs: bool = False,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """兜底通道：Docker archive tar 列目录（递归 tar，只解析到指定层）。
+        返回 [{type,size,mtime,rel}]；路径不存在 → None；tar 超
+        _KB_MAX_TAR → 413；其余非 200/304 → 502。
+        maxdepth=1 + include_dirs=True → 一级文件+目录（tree 顶层/kb_ls）；
+        maxdepth=None → 全层文件（tree memory/digest 子树，旧
+        _kb_tar_entries 语义）。"""
+        import io as _io
+        import tarfile as _tf
+        import urllib.parse as _up
+        st, data = await _kb_docker(
+            token, base,
+            f"/containers/{container}/archive?path={_up.quote(target)}",
+            timeout=60.0,
+        )
+        if st in (400, 404):
+            return None
+        if st not in (200, 304):
+            raise HTTPException(
+                status_code=502, detail=f"目录列取失败（Docker API {st}）")
+        if not data:
+            return []
+        if len(data) > _KB_MAX_TAR:
+            raise HTTPException(
+                status_code=413,
+                detail="目录过大（tar 超过 20MB），无法列取")
+        try:
+            tf = _tf.open(fileobj=_io.BytesIO(data), mode="r:*")
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail="tar 解析失败")
+        members = []
+        with tf:
+            for m in tf.getmembers():
+                nm = m.name.replace("\\", "/")
+                parts = [q for q in nm.split("/") if q and q != "."]
+                if parts:
+                    members.append((m, parts))
+        if not members:
+            return []
+        # 统一顶层=所请求目录自身（剥前缀）；不一致=条目已归一（按相对）。
+        tops = {p[0] for _, p in members}
+        strip = len(tops) == 1
+        entries: List[Dict[str, Any]] = []
+        for m, parts in members:
+            rel_parts = parts[1:] if strip else parts
+            if not rel_parts:
+                continue  # 所请求目录自身
+            depth = len(rel_parts)
+            if maxdepth is not None and depth > maxdepth:
+                continue
+            if m.isdir():
+                if not include_dirs:
+                    continue
+                entries.append({"type": "d", "size": 0,
+                                "mtime": int(m.mtime),
+                                "rel": "/".join(rel_parts)})
+            elif m.isfile():
+                entries.append({"type": "f", "size": m.size,
+                                "mtime": int(m.mtime),
+                                "rel": "/".join(rel_parts)})
+        return entries
 
     async def _kb_workspace(token: str, base: str, agent: str) -> str:
         """探测 Agent 工作区路径（5min 缓存）。无则 404。"""
@@ -3051,108 +3177,60 @@ def build_router() -> APIRouter:
                      "category": category}
                 )
 
-        # ① 顶层：档案（6 默认 md）+ 文件（其余文件 + 目录条目）
-        if agent == "manager":
-            # manager live 工作区体积大（实测，含 history.db
-            # 23MB + 垃圾目录），全量 tar 会吃 20MB 上限且下载重——直接走
-            # exec find 轻量列取（只读，输出行式 type/size/name）。
-            out = await _kb_exec(
-                token, base, container,
-                ["find", ws, "-maxdepth", "1",
-                 "-printf", "%y %s %f\n"],
-                timeout=90.0,
+        # ① 顶层：档案（6 默认 md）+ 文件（其余文件 + 目录条目）。
+        # v0.5.0-beta.13.9 双通道：exec find 主（零下载，manager/worker 统一）
+        # + tar 兜底（小工作区精确解析）。旧 worker 支整树 tar 在大工作区
+        # （实测 180MB）必 413；旧 manager 支 exec-only 无兜底——同批收口。
+        entries = await _kb_find_list(token, base, container, ws, maxdepth=1)
+        if entries is None:
+            entries = await _kb_tar_list(
+                token, base, container, ws,
+                maxdepth=1, include_dirs=True,
             )
-            for ln in out.splitlines():
-                parts = ln.split(" ", 2)
-                if len(parts) != 3:
+        for e in (entries or []):
+            name = e["rel"]
+            if name.startswith(".") or name in (
+                "memory", "digest",
+            ) or _kb_is_sensitive(name, name):
+                continue  # 隐藏项 + ②③ 专属分类 + 敏感文件
+            if name in seen:
+                continue
+            seen.add(name)
+            if e["type"] == "d":
+                dirs.append(
+                    {"path": name, "name": name, "isdir": True,
+                     "category": "file"}
+                )
+            else:
+                files.append(
+                    {"path": name, "name": name,
+                     "size": e["size"], "mtime": e["mtime"],
+                     "category": "profile" if name in _PROFILE_FILES
+                     else "file"}
+                )
+
+        # ②③ 日记（memory/**）+ 知识库（digest/**）：双通道（旧版整子树
+        # 先 tar 后查大小，长期运行 agent 子树过 20MB 即 413，与 ① 同批真根因修）。
+        for sub, cat in (("memory", "daily"), ("digest", "digest")):
+            sub_target = f"{ws}/{sub}"
+            entries = await _kb_find_list(token, base, container, sub_target)
+            if entries is None:
+                entries = await _kb_tar_list(token, base, container, sub_target)
+            if not entries:
+                continue
+            for e in entries:
+                rel = f"{sub}/{e['rel']}"
+                nm = e["rel"].rsplit("/", 1)[-1]
+                if _kb_is_sensitive(nm, rel):
+                    continue  # 敏感文件过滤（dashboard SENSITIVE_PATTERNS 对齐）
+                if rel in seen:
                     continue
-                typ, size_s, name = parts
-                if not name or name.startswith(".") \
-                        or _kb_is_sensitive(name, name):
-                    continue
-                if name in ("memory", "digest"):
-                    continue  # ②③ 专属分类
-                if name in seen:
-                    continue
-                seen.add(name)
-                if typ == "d":
-                    dirs.append(
-                        {"path": name, "name": name, "isdir": True,
-                         "category": "file"}
-                    )
-                else:
-                    files.append(
-                        {"path": name, "name": name,
-                         "size": int(size_s or 0), "mtime": 0,
-                         "category": "profile" if name in _PROFILE_FILES
-                         else "file"}
-                    )
-        else:
-            st_top, data_top = await _kb_docker(
-                token, base,
-                f"/containers/{container}/archive?path={_up.quote(ws)}",
-                timeout=60.0,
-            )
-            if st_top in (200, 304) and data_top:
-                if len(data_top) > _KB_MAX_TAR:
-                    raise HTTPException(
-                        status_code=413,
-                        detail="工作区顶层超过 20MB，无法列取")
-                # _kb_tar_entries 丢目录条目——顶层目录清单需原生 tarfile 解析
-                # （Docker archive 目录请求：顶层段=所请求目录自身，parts[1]=
-                # 真实顶层条目名；仅 parts 长 2 = 直接顶层条目）。
-                import io as _io
-                import tarfile as _tf
-                with _tf.open(
-                    fileobj=_io.BytesIO(data_top), mode="r:*",
-                ) as tf:
-                    for m in tf.getmembers():
-                        nm = m.name.replace("\\", "/")
-                        parts = [q for q in nm.split("/")
-                                 if q and q != "."]
-                        if len(parts) != 2:
-                            continue
-                        top = parts[1]
-                        if top.startswith(".") or top in (
-                            "memory", "digest",
-                        ) or _kb_is_sensitive(top, top):
-                            continue  # 隐藏项 + ②③ 专属分类 + 敏感文件
-                        if top in seen:
-                            continue
-                        seen.add(top)
-                        if m.isdir():
-                            dirs.append(
-                                {"path": top, "name": top,
-                                 "isdir": True, "category": "file"})
-                        else:
-                            files.append(
-                                {"path": top, "name": top,
-                                 "size": m.size, "mtime": m.mtime,
-                                 "category": "profile"
-                                 if top in _PROFILE_FILES else "file"}
-                            )
-        # ② 日记（daily = memory/**，原全子树逻辑保留）
-        st_mem, data_mem = await _kb_docker(
-            token, base,
-            f"/containers/{container}/archive?path={_up.quote(ws + '/memory')}",
-            timeout=60.0,
-        )
-        if st_mem in (200, 304) and data_mem:
-            if len(data_mem) > _KB_MAX_TAR:
-                raise HTTPException(
-                    status_code=413, detail="memory/ 超过 20MB，无法列取")
-            await _add_entries(data_mem, "memory", "daily")
-        # ③ 知识库（digest = digest/**，QwenPaw digest section 同款路径）
-        st_dig, data_dig = await _kb_docker(
-            token, base,
-            f"/containers/{container}/archive?path={_up.quote(ws + '/digest')}",
-            timeout=60.0,
-        )
-        if st_dig in (200, 304) and data_dig:
-            if len(data_dig) > _KB_MAX_TAR:
-                raise HTTPException(
-                    status_code=413, detail="digest/ 超过 20MB，无法列取")
-            await _add_entries(data_dig, "digest", "digest")
+                seen.add(rel)
+                files.append(
+                    {"path": rel, "name": nm, "size": e["size"],
+                     "mtime": e["mtime"], "category": cat}
+                )
+
         # ④ 兼容旧逻辑：单独抓 6 档案文件中未随顶层 tar 出现者（布局差异兜底）
         for sub in ("MEMORY.md", "SOUL.md", "AGENTS.md", "PROFILE.md",
                     "HEARTBEAT.md", "BOOTSTRAP.md"):
@@ -3250,8 +3328,8 @@ def build_router() -> APIRouter:
         子目录文件也看不见」）：一级目录懒加载——前端目录树展开时按层
         取内容。dir 空=工作区顶层；协议文档目录=该目录一级内容。
         返回 files（文本可点开，路径=工作区相对全路径，直接喂 /file）+
-        dirs（可继续展开）。tar 只解析一层（parts 长 2=直接子条目），
-        深层条目跳过不返回。"""
+        dirs（可继续展开）。列取走双通道（exec find 主/tar 兜底，
+        v0.5.0-beta.13.9），只返回一级子条目，深层跳过。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
         if dir:
@@ -3272,41 +3350,53 @@ def build_router() -> APIRouter:
                 return await _kb_ls_wsf_fallback(token, base, agent, dir)
         ws = await _kb_workspace(token, base, agent)
         target = f"{ws}/{dir}" if dir else ws
-        # exec find 列一层（不拉全量 tar——manager live 大工作区场景安全）。
-        out = await _kb_exec(
-            token, base, container,
-            ["find", target, "-maxdepth", "1",
-             "-printf", "%y %s %f\n"],
-            timeout=60.0,
-        )
-        if not out:
-            raise HTTPException(
-                status_code=404,
-                detail=f"目录不存在：{dir or '（工作区顶层）'}",
+        # v0.5.0-beta.13.9 双通道（旧版 exec-only：通道挂时把传输失败误报
+        # 「目录不存在」404）：exec find 主 + tar 兜底；「通道正常但输出空」
+        # 以 HEAD 探针（零下载）区分空目录（200/304）与不存在（404）。
+        entries = await _kb_find_list(token, base, container, target, maxdepth=1)
+        if entries is None:
+            entries = await _kb_tar_list(
+                token, base, container, target,
+                maxdepth=1, include_dirs=True,
             )
+            if entries is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"目录不存在：{dir or '（工作区顶层）'}",
+                )
+        elif not entries:
+            import urllib.parse as _up
+            st_head, _ = await _kb_docker(
+                token, base,
+                f"/containers/{container}/archive?path={_up.quote(target)}",
+                head=True, timeout=20.0,
+            )
+            if st_head not in (200, 304):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"目录不存在：{dir or '（工作区顶层）'}",
+                )
+
         own = target.rstrip("/").rsplit("/", 1)[-1]
         files: List[Dict[str, Any]] = []
         dirs: Dict[str, Dict[str, Any]] = {}
         text_ok = (".md", ".txt", ".yaml", ".yml", ".json")
-        for ln in out.splitlines():
-            parts = ln.split(" ", 2)
-            if len(parts) != 3:
-                continue
-            typ, size_s, name = parts
+        for e in entries:
+            name = e["rel"]
             if not name or name.startswith(".") \
                     or _kb_is_sensitive(name, f"{dir}/{name}" if dir else name):
                 continue
-            if typ == "d" and name == own:
-                continue  # find 首行=所请求目录自身
+            if e["type"] == "d" and name == own:
+                continue  # 所请求目录自身（防御：exec 通道 %P 首行为空已滤）
             rel = f"{dir}/{name}" if dir else name
-            if typ == "d":
+            if e["type"] == "d":
                 dirs.setdefault(name, {
                     "path": rel, "name": name, "isdir": True,
                 })
-            elif typ == "f" and name.lower().endswith(text_ok):
+            elif e["type"] == "f" and name.lower().endswith(text_ok):
                 files.append({
                     "path": rel, "name": name,
-                    "size": int(size_s or 0), "mtime": 0,
+                    "size": e["size"], "mtime": e["mtime"],
                     "category": "file",
                 })
         files.sort(key=lambda f: f["path"])
