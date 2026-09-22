@@ -47,6 +47,44 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
+/** 通道短名（13.8「会话列表拥挤依旧」：agentteams_matrix 全名 Tag 挤爆 64px
+ *  列——短名 + Tooltip 全名；未知值原样回退）。 */
+const CHANNEL_LABELS: Record<string, string> = {
+  agentteams_matrix: "Matrix",
+  matrix: "Matrix",
+  console: "Console",
+  qq: "QQ",
+  dingtalk: "钉钉",
+  feishu: "飞书",
+  discord: "Discord",
+  telegram: "Telegram",
+  slack: "Slack",
+  imessage: "iMessage",
+  mattermost: "Mattermost",
+  mqtt: "MQTT",
+  voice: "Voice",
+};
+
+/** 容器宽测量（13.8 列自适应：<640 隐藏通道列，把宽度让给会话列/查看钮）。 */
+function useContainerWidth(
+  ref: ReactNS.RefObject<HTMLDivElement | null>,
+): number {
+  const [w, setW] = React.useState(0);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setW(el.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((es) => {
+      const r = es[0]?.contentRect;
+      if (r) setW(Math.round(r.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return w;
+}
+
 /** QwenPaw console constants/channel.ts CHANNEL_COLORS 逐值抄录
  *  （会话通道色板与 QwenPaw 原生会话页一致）。 */
 const CHANNEL_COLORS: Record<string, string> = {
@@ -412,27 +450,43 @@ function StepsCollapse({
   tr: (k: string, v?: Record<string, string | number>) => string;
 }) {
   const [open, setOpen] = React.useState(false);
+  // v0.5.0-beta.13.8（13.7 装验「折叠可以做得更像 QwenPaw」）：inline pill
+  // 改 QwenPaw LazyAccordion 同款**整行头**——图标 + 文案 + 计数 + 右对齐
+  // 旋转 chevron，整行可点，浅底圆角行（@agentscope-ai/chat Accordion
+  // group header 同构；收起=子内容不渲染的懒语义保持）。
   return (
     <div style={{ margin: "0 0 8px 12px" }}>
       <div
         onClick={() => setOpen((v) => !v)}
         style={{
           cursor: "pointer",
-          display: "inline-flex",
+          display: "flex",
           alignItems: "center",
-          gap: 5,
-          padding: "2px 9px",
-          borderRadius: 999,
-          background: "rgba(127,127,127,0.10)",
+          gap: 6,
+          width: "100%",
+          padding: "5px 10px",
+          borderRadius: 8,
+          background: "rgba(127,127,127,0.08)",
+          border: "1px solid rgba(127,127,127,0.14)",
           fontSize: 11.5,
-          color: "rgba(0,0,0,0.55)",
+          color: "rgba(0,0,0,0.62)",
           userSelect: "none",
         }}
         title={open ? tr("收起") : tr("点击展开步骤详情")}
       >
-        <span>⚙️</span>
+        <span>🔧</span>
         <span>{tr("{n} 步", { n: items.length })}</span>
-        <span style={{ fontSize: 9 }}>{open ? "▲" : "▼"}</span>
+        <span
+          style={{
+            marginLeft: "auto",
+            fontSize: 9,
+            transition: "transform 0.15s",
+            transform: open ? "rotate(180deg)" : "none",
+            display: "inline-block",
+          }}
+        >
+          ▼
+        </span>
       </div>
       {open ? (
         <div
@@ -547,6 +601,11 @@ function WorkerChats({
       el.scrollTop = el.scrollHeight;
     }
   }, [detailLoading, openId, msgs]);
+
+  // v0.5.0-beta.13.8：容器宽测量——**必须在所有早退 return 之前**（列表/
+  // 详情/空态/gate 各视图 hook 数必须一致，否则 React #300 崩）。
+  const cwrapRef = React.useRef<HTMLDivElement | null>(null);
+  const cwrapW = useContainerWidth(cwrapRef);
 
   if (workers.length === 0) {
     return <antd.Alert type="info" showIcon message={tr("无 Worker")} />;
@@ -822,19 +881,21 @@ function WorkerChats({
   }
 
   // ── 列表视图（QwenPaw Control/Sessions 同语义列）────────────────
+  // v0.5.0-beta.13.8（13.7 装验「会话列表拥挤依旧，自适应宽度，查看按钮
+  // 不被挤压」）：① 通道列 64→56 + 短名（agentteams_matrix 全名 Tag 是
+  // 挤爆主因）+ <640px 容器整列隐藏（宽度让给会话列）② 查看列 48→44
+  // + 按钮 nowrap + padding 收窄，任何容器宽恒整词可见 ③ 会话列 =
+  // 唯一弹性列（min 120）+ 每会话 status 点（running 蓝呼吸，/chats
+  // 自带字段，零新请求）。
+  const showChannelCol = cwrapW === 0 || cwrapW >= 640;
   const columns = [
-    // v0.5.0-beta.13.5：列宽改容器相对（fixed 布局不定宽列均分剩余，任何
-    // 宽度无横滚）。
-    // v0.5.0-beta.13.7（13.6 装验「依旧拥挤，会话列可以缩短并增加鼠标悬浮
-    // 和点击展开」）：会话列=唯一弹性列（flex:1 填满剩余并被其余三列压缩），
-    // 长名省略号；悬浮 = Tooltip 全名；点击 = 行内展开（全名换行 +
-    // session_id 全值），再点收起。其余三列各收窄 6-10px 让位。
     {
       title: tr("会话"),
       dataIndex: "name",
       key: "name",
       render: (_: unknown, c: WorkerChatSpec) => {
         const full = c.name || c.id.slice(0, 10);
+        const running = c.status === "running";
         if (expandedId === c.id) {
           return (
             <div
@@ -867,7 +928,7 @@ function WorkerChats({
           );
         }
         return (
-          <antd.Tooltip title={full} mouseEnterDelay={0.3}>
+          <antd.Tooltip title={running ? `${full}（running）` : full} mouseEnterDelay={0.3}>
             <div
               style={{
                 display: "flex",
@@ -879,6 +940,22 @@ function WorkerChats({
               }}
               onClick={() => setExpandedId(c.id)}
             >
+              {/* 13.8：per-session 状态点（/chats 自带 status 字段——
+                  qwenpaw app 自维护的会话状态，零新请求）：running=蓝呼吸，
+                  idle 不显（避免满屏灰点）。 */}
+              {running ? (
+                <span
+                  className="wb-session-dot running"
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "#3b82f6",
+                    flexShrink: 0,
+                    display: "inline-block",
+                  }}
+                />
+              ) : null}
               <span
                 style={{
                   flex: "1 1 auto",
@@ -900,27 +977,37 @@ function WorkerChats({
         );
       },
     },
+    ...(showChannelCol
+      ? [
+          {
+            // QwenPaw Channel 列：彩色 Tag（CHANNEL_COLORS 逐值抄录）；
+            // 13.8 短名 + Tooltip 全名（agentteams_matrix 全名是挤爆主因）。
+            title: tr("通道"),
+            dataIndex: "channel",
+            key: "channel",
+            width: 56,
+            render: (v?: string) =>
+              v ? (
+                <antd.Tooltip title={v} mouseEnterDelay={0.3}>
+                  <antd.Tag
+                    color={CHANNEL_COLORS[v] || "default"}
+                    style={{ marginInlineEnd: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}
+                  >
+                    {CHANNEL_LABELS[v] || v}
+                  </antd.Tag>
+                </antd.Tooltip>
+              ) : (
+                "-"
+              ),
+          },
+        ]
+      : []),
     {
-      // QwenPaw Channel 列：彩色 Tag（CHANNEL_COLORS 逐值抄录）。
-      title: tr("通道"),
-      dataIndex: "channel",
-      key: "channel",
-      width: 64,
-      render: (v?: string) =>
-        v ? (
-          <antd.Tag color={CHANNEL_COLORS[v] || "default"} style={{ marginInlineEnd: 0 }}>
-            {v}
-          </antd.Tag>
-        ) : (
-          "-"
-        ),
-    },
-    {
-      // QwenPaw UpdatedAt 列：可排序、默认倒序。
+      // QwenPaw UpdatedAt 列：可排序、默认倒序。13.8 112→104（给会话列让位）。
       title: tr("最后活动"),
       dataIndex: "updated_at",
       key: "updated_at",
-      width: 112,
+      width: 104,
       defaultSortOrder: "descend" as const,
       sorter: (a: WorkerChatSpec, b: WorkerChatSpec) =>
         String(a.updated_at || "").localeCompare(String(b.updated_at || "")),
@@ -929,15 +1016,21 @@ function WorkerChats({
       ),
     },
     {
+      // 13.8：查看列 48→44 + 按钮 nowrap/padding 收窄——任何容器宽整词可见。
       title: "",
       key: "op",
-      width: 48,
+      width: 44,
       render: (_: unknown, c: WorkerChatSpec) => (
         // QwenPaw Action 列 View=绿色 link 按钮（#52c41a）。
         <antd.Button
           size="small"
           type="link"
-          style={{ padding: 0, color: "#52c41a", fontSize: 12 }}
+          style={{
+            padding: "0 2px",
+            color: "#52c41a",
+            fontSize: 12,
+            whiteSpace: "nowrap",
+          }}
           onClick={() => void openChat(c.id)}
         >
           {tr("查看")}
@@ -995,21 +1088,23 @@ function WorkerChats({
         ]}
       />
 
-      <antd.Table
-        rowKey="id"
-        size="small"
-        tableLayout="fixed"
-        loading={loading}
-        columns={columns}
-        dataSource={list}
-        pagination={false}
-        locale={{
-          emptyText:
-            tab === "active"
-              ? tr("当前账号在此 Worker 的可见范围内没有活跃会话（L2 仅自己所在房间）")
-              : tr("没有已归档会话"),
-        }}
-      />
+      <div ref={cwrapRef} style={{ minWidth: 0 }}>
+        <antd.Table
+          rowKey="id"
+          size="small"
+          tableLayout="fixed"
+          loading={loading}
+          columns={columns}
+          dataSource={list}
+          pagination={false}
+          locale={{
+            emptyText:
+              tab === "active"
+                ? tr("当前账号在此 Worker 的可见范围内没有活跃会话（L2 仅自己所在房间）")
+                : tr("没有已归档会话"),
+          }}
+        />
+      </div>
     </div>
   );
 }

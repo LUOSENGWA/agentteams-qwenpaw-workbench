@@ -1673,6 +1673,9 @@ export interface WorkerChatSpec {
   pinned?: boolean;
   archived?: boolean;
   source?: string;
+  /** qwenpaw ChatSpec.status（app/chats/models.py:136）："idle" | "running"
+   * ——qwenpaw app 自维护的 per-session 会话状态（13.8 状态灯正源）。 */
+  status?: string;
 }
 export interface WorkerChatMessage {
   id?: string;

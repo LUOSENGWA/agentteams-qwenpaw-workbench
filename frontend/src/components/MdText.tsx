@@ -8,7 +8,52 @@ const antd = host.antd;
 
 const PRIMARY = "#FF7F16";
 
-/** 行内格式：`code` / **bold** / *italic* / @mention / 裸 URL。 */
+/** v0.5.0-beta.13.8（13.7 装验「@mention 格式不对——Element 渲染整 MXID」）：
+ *  Element/Matrix 口径——消息 body 里的整 MXID（@local:server[:port]）被
+ *  正则扫描渲染成 pill（Element Pill.tsx 同款前端后处理；本集群
+ *  formatted_body 不含 matrix.to 链接，纯前端正则即正解）。chip 显
+ *  localpart（Element pill 显示 displayname 的同位），Tooltip 给整 MXID，
+ *  点击 = onMentionClick(整 MXID)。短 @name（无 :server）保留旧高亮。
+ *  正则对齐 Matrix MXID 规范：localpart 允许 a-z0-9._=+/-，server 允许
+ *  a-z0-9.- 与可选 :port。 */
+/** 整 MXID 判型（无 g——.test 无 lastIndex 状态坑；全锚定）。 */
+const MXID_TEST = /^@[a-z0-9._=+-]+:[a-z0-9.-]+(?::\d+)?$/i;
+
+function MentionPill({
+  mxid,
+  onMentionClick,
+}: {
+  mxid: string;
+  onMentionClick?: (mxid: string) => void;
+}) {
+  const localpart = mxid.split(":")[0].replace(/^@/, "");
+  return (
+    <antd.Tooltip title={mxid} mouseEnterDelay={0.3}>
+      <span
+        onClick={onMentionClick ? () => onMentionClick(mxid) : undefined}
+        style={{
+          display: "inline-block",
+          padding: "0 6px",
+          margin: "0 1px",
+          borderRadius: 999,
+          background: "rgba(255,127,22,0.12)",
+          border: "1px solid rgba(255,127,22,0.35)",
+          color: "#d46b08",
+          fontWeight: 600,
+          fontSize: "0.92em",
+          lineHeight: "1.6em",
+          cursor: onMentionClick ? "pointer" : undefined,
+          whiteSpace: "nowrap",
+          overflowWrap: "anywhere",
+        }}
+      >
+        @{localpart}
+      </span>
+    </antd.Tooltip>
+  );
+}
+
+/** 行内格式：`code` / **bold** / *italic* / @mention（整 MXID pill + 短名）/ 裸 URL。 */
 function InlineMd({
   text,
   onMentionClick,
@@ -18,7 +63,7 @@ function InlineMd({
 }) {
   const nodes: ReactNS.ReactNode[] = [];
   const regex =
-    /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|@[\w\u4e00-\u9fa5-]+|https?:\/\/[^\s]+)/g;
+    /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|@[a-z0-9._=+-]+:[a-z0-9.-]+(?::\d+)?|@[\w\u4e00-\u9fa5-]+|https?:\/\/[^\s]+)/gi;
   let last = 0;
   let m: RegExpExecArray | null;
   let key = 0;
@@ -48,21 +93,29 @@ function InlineMd({
     } else if (tok.startsWith("*") && tok.endsWith("*") && tok.length > 2) {
       nodes.push(<i key={key++}>{tok.slice(1, -1)}</i>);
     } else if (tok.startsWith("@")) {
-      nodes.push(
-        <span
-          key={key++}
-          style={{
-            color: PRIMARY,
-            fontWeight: 600,
-            cursor: onMentionClick ? "pointer" : undefined,
-          }}
-          onClick={
-            onMentionClick ? () => onMentionClick(tok.slice(1)) : undefined
-          }
-        >
-          {tok}
-        </span>,
-      );
+      // 13.8：整 MXID → Element 式 pill（chip=localpart，Tooltip=整 MXID）；
+      // 短 @name → 旧高亮（onMentionClick 传短名，插入输入框走原逻辑）。
+      if (MXID_TEST.test(tok)) {
+        nodes.push(
+          <MentionPill key={key++} mxid={tok} onMentionClick={onMentionClick} />,
+        );
+      } else {
+        nodes.push(
+          <span
+            key={key++}
+            style={{
+              color: PRIMARY,
+              fontWeight: 600,
+              cursor: onMentionClick ? "pointer" : undefined,
+            }}
+            onClick={
+              onMentionClick ? () => onMentionClick(tok.slice(1)) : undefined
+            }
+          >
+            {tok}
+          </span>,
+        );
+      }
     } else {
       nodes.push(
         <a

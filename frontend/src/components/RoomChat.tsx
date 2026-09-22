@@ -1286,11 +1286,25 @@ function MessageBody({
   if (isToolMessage(msg.body || "")) {
     return <ToolBubble msg={msg} mine={mine} />;
   }
-  // v0.5.0-beta.13.6（装验反馈「消息框难看」，Element modern 同款）：
-  // 纯文本消息常态无气泡框（扁平时间线），hover 行背景由外层行 div 统一
-  // 提供（Element 的 hover pill）；媒体/工具/审批/线程等保留各自容器。
+  // v0.5.0-beta.13.8（13.7 装验「应该加上聊天气泡」，QwenPaw console
+  // 口径：user 右对齐橙调气泡 / 对方左对齐中性气泡）：13.6 的扁平无框
+  // 时间线改回气泡——常态背景 bubbleMine（右，橙调）/bubbleOther（左，
+  // 中性），圆角 10（己方右上角 3 做尾），hover 行背景仍由外层提供。
+  // 媒体/工具/审批/线程保留各自容器（不套气泡，避免双框）。
   return (
-    <div style={{ fontSize: 14, maxWidth: 520, minWidth: 0 }}>
+    <div
+      style={{
+        fontSize: 14,
+        maxWidth: 520,
+        minWidth: 0,
+        padding: "8px 12px",
+        borderRadius: mine ? "10px 3px 10px 10px" : "3px 10px 10px 10px",
+        background: mine ? t.bubbleMine : t.bubbleOther,
+        border: mine
+          ? "1px solid rgba(255,127,22,0.25)"
+          : `1px solid ${t.border}`,
+      }}
+    >
       <MdText text={msg.body || ""} />
       {/* v0.5.0-beta.12 ：「已编辑」标记（Element 同款；m.replace 聚合在
           fetchRoomMessages——替换事件不独立显示，正文写回原消息）。 */}

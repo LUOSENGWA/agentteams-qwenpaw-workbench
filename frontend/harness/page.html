@@ -6,8 +6,8 @@
 </head>
 <body>
 <div id="root"></div>
-<script src="/node_modules/react/umd/react.production.min.js"></script>
-<script src="/node_modules/react-dom/umd/react-dom.production.min.js"></script>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
 <script src="/node_modules/dayjs/dayjs.min.js"></script>
 <script src="/node_modules/antd/dist/antd.min.js"></script>
 <script>
@@ -77,6 +77,30 @@ const RC = {
   max_input_length: 100000,
   history_max_length: 40,
   auto_title_config: { enabled: true, timeout_seconds: 30 },
+  // v0.5.0-beta.13.8 六 tab 补齐：上下文管理 + 长期记忆 mock（结构 = Node1 实盘 GET）。
+  light_context_config: {
+    strategy: "scroll",
+    dialog_path: "dialog",
+    token_count_estimate_divisor: 4,
+    context_compact_config: { enabled: true, compact_threshold_ratio: 0.8, reserve_threshold_ratio: 0.1 },
+    tool_result_pruning_config: {
+      enabled: true,
+      pruning_recent_n: 2,
+      pruning_old_msg_max_bytes: 3000,
+      pruning_recent_msg_max_bytes: 50000,
+      offload_retention_days: 30,
+      exempt_file_extensions: [".md"],
+      exempt_tool_names: ["chat_with_agent"],
+    },
+  },
+  reme_light_memory_config: {
+    metadata_dir: "mem_metadata",
+    summarize_when_compact: true,
+    inbox_push_enabled: true,
+    auto_memory_interval: 5,
+    dream_cron_enabled: true,
+    dream_cron: "0 23 * * *",
+  },
 };
 const LOOP_CATALOG = [
   { id: "default", name: "Default", slash_command: "default", source: "builtin" },

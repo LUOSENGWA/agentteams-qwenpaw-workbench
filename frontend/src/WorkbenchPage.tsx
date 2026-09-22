@@ -60,6 +60,7 @@ import NotificationCenter from "./components/NotificationCenter";
 import { useThemeColors } from "./theme";
 import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
+import { useWorkerChatStatuses } from "./workerChatStatus";
 import WorkerManage from "./components/WorkerManage";
 import KnowledgeBase from "./components/KnowledgeBase";
 import SkillsTab from "./components/SkillsTab";
@@ -1307,10 +1308,17 @@ function readStartupPref(): "last" | "home" {
 /** 12.14：聊天分栏最小容器宽——1024→600（宿主内嵌面板/窄窗场景
  *  1024 下判定窄屏、装验多轮复报「无分栏」；600 以下=手机竖屏语义）。
  *  12.16：宽窄判定「长宽比优先」——竖屏（高>宽）一律单列，横屏且 ≥600 才分栏。 */
-const CHAT_SPLIT_MIN_CONTAINER_W = 600;
+/** 聊天分栏最小容器宽（13.8：600→800——双栏可用性下限：列表 160 + 聊天
+ *  ≥320 + 拖柄；16:9 全屏恒过线，竖屏手机不过线）。 */
+const CHAT_SPLIT_MIN_CONTAINER_W = 800;
 /** 12.16：宽窄判定——横屏（宽≥高）且容器 ≥600px 才用分栏。 */
-function isWideLayout(w: number, h: number): boolean {
-  return w >= CHAT_SPLIT_MIN_CONTAINER_W && w >= h;
+function isWideLayout(w: number, _h: number): boolean {
+  // v0.5.0-beta.13.8（13.7 装验「16:9 全屏被识别成竖屏→聊天单栏」）：
+  // 旧判定 w>=600 且 w>=h——宽高比项在「定高内嵌容器/高分屏」下误判
+  // （容器高度随内容或视口变化，宽 ≥ 高不成立→单栏）。改纯宽度阈值：
+  // 16:9 全屏内容宽恒 ≥ 800 → 必双栏；真竖屏手机（390）仍单栏；
+  // 窄竖面板（600-800）单栏但「强制分栏」开关可覆盖（既有）。
+  return w >= CHAT_SPLIT_MIN_CONTAINER_W;
 }
 
 export default function WorkbenchPage() {
@@ -1869,10 +1877,25 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12.9：心跳优先（adminData.workers 的 agentStatus/runningTaskCount/
   // lastFinishAt，GET /workers 既有通道零新请求；旧版 controller 无 → 降级
   // typing+last_ts），60s 老化。
+  // v0.5.0-beta.13.8（13.7 装验「状态灯不准确」）：session 级正源轮询——
+  // /chats per-session status（idle|running，qwenpaw app 自维护）。
+  // v1.2.4 GET /workers 无心跳字段，消息级启发式在「任务执行中未发言」时
+  // 恒灰；chat.running 优先于 typing，修掉该盲区。30s tick、仅可见时、
+  // 失败静默保旧值（降级回消息级启发式）。
+  const chatPollNames = React.useMemo(() => {
+    const s = new Set<string>();
+    for (const team of workerTree || [])
+      for (const w of team.workers || []) if (w.worker_name) s.add(w.worker_name);
+    for (const w of adminData?.workers || [])
+      if (w.name) s.add(w.name);
+    return Array.from(s).sort();
+  }, [workerTree, adminData?.workers]);
+  const chatStatuses = useWorkerChatStatuses(chatPollNames, true);
   const workerSessionStates = useWorkerSessionStates(
     rooms,
     workerTree,
     adminData?.workers,
+    chatStatuses,
   );
 
   // 通知未读计数（通知 tab badge）。
@@ -2826,8 +2849,10 @@ export default function WorkbenchPage() {
         // 宿主 header 56px + 8px 边距，见宿主 layouts/index.module.less
         // .sider）。12.x 的纯 vh 经验值在 OS 窗口小于屏幕时溢出 → 整页滚。
         height: shellH != null ? `${shellH}px` : "calc(100vh - 64px)",
-        maxWidth: 1160,
-        margin: "0 auto",
+        // v0.5.0-beta.13.8（13.7 装验「左右留空太多，插件宽度应自适应」）：
+        // 去掉 1160 硬上限——16:9 全屏两侧各 ~380px 留空。全宽自适应：
+        // 内容随窗口伸缩（表格/网格自行 minmax(0,1fr) 收放）。
+        width: "100%",
         padding: "12px 20px 16px",
         display: "flex",
         flexDirection: "column",
