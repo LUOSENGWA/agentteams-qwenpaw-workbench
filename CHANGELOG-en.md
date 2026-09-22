@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.3 (2026-09-22)
+
+**Chat height-chain regression fix + workflow task cancel / result-artifact dashboard parity**
+
+- **Chat main list scrolling regression fix (introduced in beta.13.2)**: the relative wrapper added for jump-to-bottom lacked `min-height: 0` — an overflow-visible flex middle layer's automatic minimum size is its content's minimum size, so the list's `overflow: auto` clamping did not propagate through it; the wrapper stretched to the full message height (measured 7500+ px) and the list lost independent scrolling: wheel input bubbled into **page-level scrolling** and back-scrolling pushed older messages out of view (Element/dashboard keep a bounded height with internal scrolling). Proven by an A/B browser harness (13.2: list 7532 px / not scrollable; fixed: 367 px / 7165 px internally scrollable — identical to 13.1 item for item)
+- **Workflow: task-level cancel in the inspection drawer**: cancel was previously reachable only from the kanban card — opening a task's detail (topo/card view) removed the entry, while the dashboard task row keeps it in every context. The kanban card and the drawer now share one cancel modal (reason required, terminal-status gate, upstream 409 idempotent convergence); a successful cancel refreshes the board
+- **Workflow: result artifact (result_path) surfaced**: dashboard task rows show the result-artifact link while the plugin typed the field but never rendered it — the drawer now shows a "Result artifact" section with view (FilePreview) + download, and the topo task detail row shows a result_path hint line
+- **i18n**: 1 new key registered (结果产物 / Result artifact)
+
+**Verification**: tsc 0 · check-antd 38 · i18n 0 missing (934 used / 1020 defined) · vite build green · pytest 50/50
+
 ## 0.5.0-beta.13.2 (2026-09-21)
 
 **Chat UX overhaul: dot-source fix (no more false green) + thread avatar dots + jump-to-bottom**
