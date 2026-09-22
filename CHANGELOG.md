@@ -5,6 +5,24 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.9（2026-09-22）
+
+**运行配置六 tab 补齐 + QwenPaw Loop 模板移植 + 状态灯 session 正源 + 聊天气泡与 @mention 渲染 + 插件全宽自适应 + 知识库大工作区列取真根因修**
+
+- **运行配置六 tab 补齐 + L1/L2 门控**：页签 = ReAct 智能体 / 智能体 Loop 设置 / LLM 自动重试 / LLM 并发限流 / 上下文管理 / 长期记忆 / 系统（只读），每域独立 Card + 表单项行（label + 悬停 ⓘ 说明左 / 控件右）；按 Controller PUT 白名单门控——L1 可编辑（除 approval_level 全可写），L2 只读 + 警示（9 键白名单实锤）；上下文管理嵌套合并 light_context_config（12 字段：token divisor / 压缩阈值比例 / 工具结果修剪 8 键）；长期记忆 reme 5 键可编辑 + 完整 JSON 查看；保存走 buildDiff 只发改动键
+- **Loop 设置 QwenPaw 模板移植（开源礼仪：出处署名）**：4 模板（安全运行 / 预算研究 / 质量优先 / 空管道）+ 7 gate 定义含默认值，逐值移植自 QwenPaw console AgentLoopCard（注释保留上游源文件 + 行号、模板区标注「模板设计：QwenPaw 上游」）；选模板 →「按模板创建自定义模式」弹窗（模式名 / slash 命令 / 描述 / 管道预览）→ 自定义 loop CRUD
+- **会话列表自适应宽度**（13.7 装验「依旧拥挤」续修）：通道列 64→56（短名 + 悬停 Tooltip，容器 <640 整列隐藏）、会话列唯一弹性列（min 120）、查看列 44 nowrap——「查看」按钮恒可见；per-session running 蓝点；**React #300 真 bug 修**：两 hook 落在详情视图早退 return 之后 → 点「查看」即崩（Rendered fewer hooks），移至全部早退之前（harness 实证）
+- **插件全局宽度自适应 + 横竖屏误判修**：主容器 maxWidth:1160 → 100% 全宽（16:9 全屏两侧大留空根因）；宽屏判定去掉宽高比项改纯宽度 ≥800（定高容器/面板下宽高比误判「竖屏单栏」根因——16:9 全屏必双栏、手机 390 单栏、强制开关保留）
+- **会话窗折叠更像 QwenPaw**：「N 步」pill 升级整行头（图标 + 文案 + 计数 + 右对齐旋转 chevron，浅底圆角行；懒渲染语义保持——收起时子行不渲染）
+- **聊天页气泡 + @mention 渲染**（对标 dashboard/QwenPaw/Element）：自己/对方主题气泡；@mention 整 MXID Element 式 pill chip（localpart 显示 + 悬停 Tooltip 整 MXID + 点击跳转），短 @name 保留旧高亮
+- **状态灯信息源升级**（13.7 装验「显示不准确」续修）：新 workerChatStatus 模块轮询 /chats per-session status（idle|running——qwenpaw app 自维护的正确 session 状态，30s tick / 仅页面可见时 / 并发 4 / 失败静默保旧值降级消息级启发式）；状态机优先序 = 心跳（若有）> chat.running > typing；chat.updated_at 不用于 done（user 消息也刷新它 → 假绿）
+- **i18n 术语修正**：「令牌预算」→「词元预算」（LLM token = 词元，4 处）、「每故事重试」→「每个 Story 最大重试次数」（= QwenPaw zh 原文 maxRetriesPerStory）；约 70 新键登记（中英），全量对账 0 缺 0 重复
+- **知识库大工作区列取 HTTP 413 真根因修**：旧通道把整个 workspace 打 tar 上传 Controller 列取（顶层超 20MB → 413；180MB 生产工作区恒报错）→ 双通道：容器内 `exec find` 为主（零下载、单请求返回全量文件列表）+ tarball 降为单文件读取/旧版本兼容回退；顶层与 memory/digest 子树同通道覆盖；+7 回归测试；实盘端到端验证：180MB / 176MB / 21MB 三个真实工作区列取 0.16–0.22s 全 200（修复前 413）
+
+**Verification**: tsc 0 · pytest 57/57 · vite build 2,128.77kB · 浏览器 harness 13.7 24/24 + 13.8 35/35（真实 React+antd 挂载：七 tab / L2 只读门 / L1 全值 / 模板 4 tag + 4 gate 勾选 + 弹窗预览 / 术语 / 无 pageerror）· i18n 1241 字典键 / 1137 用键 0 缺 0 重复 · antd 引用交叉 38 · dist 锚点 14/14 + 旧术语 0 + ant-slider=0 · 敏感扫 0 · 实盘端到端（180MB 工作区 0.22s 200）
+
+---
+
 ## 0.5.0-beta.13.7（2026-09-22）
 
 **会话窗 QwenPaw 消息折叠 + 会话列表悬浮展开 + Loop 设置对齐 QwenPaw gate 管道 + 聊天渲染对标**
