@@ -5,6 +5,21 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.7 (2026-09-22)
+
+**QwenPaw-style session message folding + session list hover-expand + loop settings aligned to the QwenPaw gate pipeline + chat rendering parity**
+
+- **Session window messages now fold QwenPaw result-only**: each response turn shows only its last text (assistant bubble); intermediate tool calls/reasoning collapse into "N steps" pills with lazy rendering (collapsed = children not rendered at all, rendered only on expand); root-cause fix for tool blocks degenerating into raw JSON output (tool name was read from the wrong nesting level — it lives inside the data block); error messages stay always visible (QwenPaw behavior: errors are never folded)
+- **Session list hover + click-to-expand**: long session names elide in a flexible column; hover shows the full name; click expands inline (full name + session ID), click again to collapse; the channel/activity/action columns each narrow to make room
+- **Loop settings aligned to QwenPaw (slider retired)**: the iteration limit moves from a basic-tab slider to the Agent Loop → iteration gate (enable switch + number input 1..500 — the QwenPaw config surface has no sliders); the legacy top-level field is mirrored on save; added the doom-loop gate (window / similarity threshold / add-edit-remove intervention stages) and the completion rubric gate (rubric prompt / max interventions); added Goal/Mission built-in parameters (max iterations / token budget / retries per story / verify instructions / verify command); fixed the doom-loop window field name (window_size)
+- **Runtime config surface full reconciliation**: memory backend is now editable (L2 whitelisted key — the old read-only label was wrong); the System tab gains read-only rows for LLM concurrency / QPM / rate-limit pause / jitter / slot acquire timeout / max input length / history length (QwenPaw rate-limiter card pattern)
+- **Chat message rendering parity**: tool messages get status coloring (call / success / failure, failure name in red) + sectioned expansion (args / result / error, failure tinted red); markdown code blocks match the dashboard pattern (light card + border + copy button on hover only)
+- **i18n**: ~60 new keys registered (zh/en)
+
+**Verification**: tsc 0 · pytest 50/50 · vite build green · browser harness 24/24 (real React+antd mount: list expand/collapse / result-only folding with lazy render / no slider in basic tab / gate value ranges / window_size source / diff enables save / failure status color / hover copy button)
+
+---
+
 ## 0.5.0-beta.13.6 (2026-09-22)
 
 **Element-style chat timeline rebuild + session window scroll root-cause fix + runtime config panel aligned to QwenPaw console**
