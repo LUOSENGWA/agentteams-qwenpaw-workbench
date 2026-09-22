@@ -5,6 +5,25 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.6 (2026-09-22)
+
+**Element-style chat timeline rebuild + session window scroll root-cause fix + runtime config panel aligned to QwenPaw console**
+
+- **Element-style chat timeline**: plain-text messages drop the bubble box (flat timeline + hover row pill) — the old per-message colored boxes read as "ugly message boxes"; date separators become Element-style centered pills
+- **History scrolling fixed (root cause)**: loading older messages (50 prepended) yanked the viewport to the very top — the anchor is now preserved on prepend (layout effect, restored before paint, no visible jump); scrolling within 40px of the top auto-loads older history (Element-style infinite scroll, explicit button kept); an "earliest messages" end marker; prepending no longer mis-counts as "new messages"
+- **Session window scroll fixed (root cause, browser-harness proven)**: the 13.5 detail view used grid + align-content:end — when content exceeds the container, top overflow lands in the non-scrollable zone (scrollTop stays 0) and the upper half of the conversation was unreachable; replaced with a plain block flow + JS scroll-to-bottom (harness-verified scrollable)
+- **Session list drops the "user" column**: five columns reduced to four (session / channel / last activity / actions) — the user column was unreadable and meaningless for worker-perspective sessions
+- **Runtime config panel rebuilt to the QwenPaw console pattern**: the single crammed row becomes four tabs (Basic / Agent Loop / LLM Retry / System read-only) — each tab a Card with form rows (label + hover info tooltip left / control right); max iterations is a slider with value readout; retry fields auto-disable when the retry switch is off; data scope unchanged (whitelisted keys + diff-only changed keys), presentation only
+- **Session-level loop state display location settled (source: QwenPaw console LoopModeSelector)**: moved from the session detail header to the **chat composer** (1:1 worker room; polls the room's active loop — running = blue pulse / awaiting input = amber + mode name + hover description; legacy runtimes (404) hide it)
+- **"Room list" button no longer overlaps the back button**: after collapsing the list in wide mode, the toggle is injected at the top-bar prefix slot (Element hamburger position) instead of floating over the back button
+- **Download destination made explicit**: every download (artifact preview / project files / workflow artifacts) shows a success toast with the target directory and file name
+- **i18n**: 25 new keys registered (zh/en)
+
+**Verification**: tsc 0 · pytest 50/50 · vite build green · browser harness 2 cases (grid-alignEnd unscrollable → block flow scrollable)
+
+---
+
+
 ## 0.5.0-beta.13.5 (2026-09-22)
 
 **Session window layout fixes (2) + artifact "view" behavior fix + runtime config panel endpoint reconciliation (#1231 endpoint family, 7/7 wired)**
