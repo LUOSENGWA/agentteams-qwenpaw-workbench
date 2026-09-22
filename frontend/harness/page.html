@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>ui-harness-13.7</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.production.min.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.production.min.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+// 宿主 mock：React/antd 实例 + 空壳 API（entry 不执行 index.tsx，直接挂组件）。
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    // api.ts 无 host.fetch 时走 fetch(host.getApiUrl(path))——同域直回（fetch 已被 mock）。
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+  },
+};
+
+// fetch mock：Controller 端点 canned 数据；未知 URL → 404。
+const CHATS = [
+  {
+    id: "c1",
+    name: "这是一个非常长的会话名称用来测试省略号与悬停展开行为-20260922",
+    channel: "matrix",
+    user_id: "@luo:hs",
+    session_id: "sess-abc-123",
+    created_at: "2026-09-22T05:00:00Z",
+    updated_at: "2026-09-22T06:00:00Z",
+    archived: false,
+    pinned: false,
+  },
+];
+const DATA_BLOCKS = {
+  c1: {
+    messages: [
+      { type: "message", role: "user", content: [{ type: "text", text: "帮我读一下 README" }] },
+      { type: "reasoning", role: "assistant", content: [{ type: "text", text: "我需要先查看文件内容" }] },
+      { type: "plugin_call", role: "assistant", content: [{ type: "data", data: { call_id: "a1", name: "read_file", arguments: { path: "README.md" } } }] },
+      { type: "plugin_call_output", role: "assistant", content: [{ type: "data", data: { call_id: "a1", name: "read_file", output: "# Title\ncontent...", state: "success" } }] },
+      { type: "message", role: "assistant", content: [{ type: "text", text: "文件内容是 **标题** 加正文。" }] },
+      { type: "message", role: "user", content: [{ type: "text", text: "第二步" }] },
+      { type: "plugin_call", role: "assistant", content: [{ type: "data", data: { call_id: "a2", name: "bash", arguments: { command: "ls" } } }] },
+      { type: "plugin_call_output", role: "assistant", content: [{ type: "data", data: { call_id: "a2", name: "bash", output: "error: no such file", state: "error" } }] },
+    ],
+    status: "completed",
+  },
+};
+const RC = {
+  max_iters: 80,
+  loop: {
+    iteration: { enabled: true, max_iterations: 80 },
+    doom_loop: { enabled: true, window_size: 4, similarity_threshold: 0.9, stages: [{ after: 3, action: "modify_prompt", prompt: "hint" }] },
+    rubric: { enabled: false, prompt: "", max_interventions: 3 },
+    goal: { max_iterations: 100, max_tokens: 200000 },
+    mission: { max_iterations: 20, max_retries_per_story: 2, default_verification_instructions: "check docs", default_verify_command: "make test" },
+  },
+  llm_retry_enabled: true,
+  llm_max_retries: 3,
+  llm_backoff_base: 1.5,
+  llm_backoff_cap: 30,
+  shell_command_timeout: 60,
+  shell_command_executable: "/bin/sh",
+  memory_manager_backend: "remelight",
+  approval_level: "AUTO",
+  context_manager_backend: "light",
+  llm_max_concurrent: 2,
+  llm_max_qpm: 30,
+  llm_rate_limit_pause: 5,
+  llm_rate_limit_jitter: 1,
+  llm_acquire_timeout: 60,
+  max_input_length: 100000,
+  history_max_length: 40,
+  auto_title_config: { enabled: true, timeout_seconds: 30 },
+};
+const LOOP_CATALOG = [
+  { id: "default", name: "Default", slash_command: "default", source: "builtin" },
+  { id: "goal", name: "Goal", slash_command: "goal", source: "builtin" },
+];
+const P = "/agentteams-proxy/controller/api/v1/workers/w1/";
+const ROUTES = {
+  [P + "chats"]: CHATS,
+  [P + "chats/c1"]: DATA_BLOCKS.c1,
+  [P + "chats/c1/status"]: { status: "idle" },
+  [P + "runtime-config"]: RC,
+  [P + "loops"]: LOOP_CATALOG,
+  [P + "loops/custom"]: [],
+};
+window.fetch = async (url, init) => {
+  const u = String(url);
+  // 最长键优先（/chats 不得吃掉 /chats/c1）。
+  const key = Object.keys(ROUTES)
+    .filter((k) => u.includes(k))
+    .sort((a, b) => b.length - a.length)[0];
+  if (key) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ROUTES[key],
+      text: async () => JSON.stringify(ROUTES[key]),
+    };
+  }
+  return {
+    ok: false,
+    status: 404,
+    json: async () => ({ detail: "not found" }),
+    text: async () => JSON.stringify({ detail: "not found" }),
+  };
+};
+</script>
+<script src="/harness/bundle.js"></script>
+</body>
+</html>
