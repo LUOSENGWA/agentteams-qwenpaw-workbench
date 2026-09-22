@@ -395,6 +395,9 @@ function TopoTaskDetailRow(props: {
       {open ? (
         <div style={{ padding: "0 10px 8px 28px", fontSize: 11, color: t.textSecondary, lineHeight: 1.7 }}>
           {td.spec_path ? <div>{tr("spec")}: <span style={{ fontFamily: "monospace" }}>{td.spec_path}</span></div> : null}
+          {/* v0.5.0-beta.13.3（P3 对齐 dashboard 任务行 result_path）：提示
+              结果产物存在（查看/下载走任务巡检 Drawer——本行无 runId 上下文）。 */}
+          {td.result_path ? <div>{tr("结果产物")}: <span style={{ fontFamily: "monospace" }}>{td.result_path}</span></div> : null}
           {td.summary ? (
             <div
               style={{
@@ -509,15 +512,88 @@ function boardTasksFromEvents(events: WorkflowEvent[]): BoardTask[] {
   return out;
 }
 
+/** 终态任务判定（上游归一化状态：completed/revision/blocked——blocked 含
+ *  cancelled）。v0.5.0-beta.13.3：上移——任务巡检 Drawer 的门控也要用。 */
+const TERMINAL_NODE_STATUSES = ["completed", "revision", "blocked"];
+
+/** 任务级取消 Modal（dashboard TaskDetailRow CancelTaskButton 同款语义：
+ *  reason 必填、非终态门控、上游 409 幂等收敛）。v0.5.0-beta.13.3（P3
+ *  对齐）：看板卡 + 任务巡检 Drawer 共用——此前只有看板卡有取消入口，
+ *  拓扑/卡片视图点开任务详情后取消功能「消失」（dashboard 任务行始终可
+ *  取消）。 */
+function TaskCancelModal(props: {
+  open: boolean;
+  title: string;
+  runId: string;
+  taskId: string;
+  onClose: () => void;
+  onDone?: () => void;
+}) {
+  const tr = useT();
+  const [reason, setReason] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const ok = async () => {
+    const r = reason.trim();
+    if (!r) return;
+    setBusy(true);
+    try {
+      await cancelTask(props.runId, props.taskId, r);
+      antd.message.success(tr("任务已取消"));
+      setReason("");
+      props.onClose();
+      props.onDone?.();
+    } catch (e) {
+      antd.message.error(
+        `${tr("取消任务失败")}${e instanceof Error ? `：${e.message}` : ""}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <antd.Modal
+      open={props.open}
+      title={`${tr("取消任务")} — ${props.title}`}
+      okText={tr("确认取消")}
+      cancelText={tr("返回")}
+      okButtonProps={{ disabled: !reason.trim() }}
+      confirmLoading={busy}
+      onOk={() => void ok()}
+      onCancel={() => {
+        setReason("");
+        props.onClose();
+      }}
+      width={440}
+    >
+      <div style={{ fontSize: 12, color: "#999", marginBottom: 8, lineHeight: 1.6 }}>
+        {tr("取消将写入项目任务图并通知项目群；依赖此任务的任务将保持阻塞。")}
+      </div>
+      <antd.Input.TextArea
+        value={reason}
+        onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
+          setReason(e.target.value)
+        }
+        placeholder={tr("取消原因（必填，将通知团队）")}
+        rows={3}
+        maxLength={200}
+      />
+    </antd.Modal>
+  );
+}
+
 /** #1230 任务巡检 Drawer：任务级明细（正源 tasks_detail 强类型 taskDetails）
  * + 依赖（nodes 反推 dependsOn）+ tracing 过滤提示。
  * 入口 = 看板/卡片视图任务卡点击。数据边界：Matrix 降级轨事件无 taskDetails
  * → 显式提示，不编造。tracing 提示语义=过滤提示（值匹配 worker entry span
- * 的 agentteams.project.id / agentteams.task.id 属性，不构造 URL）。 */
+ * 的 agentteams.project.id / agentteams.task.id 属性，不构造 URL）。
+ * v0.5.0-beta.13.3（P3 对齐 dashboard）：补 result_path 查看/下载（此前
+ * 类型有字段、UI 不渲染）+ 任务级取消（走共享 TaskCancelModal）。 */
 function TaskInspectionDrawer(props: {
   ev: WorkflowEvent | null;
   taskId: string | null;
   onClose: () => void;
+  /** 取消成功后父组件静默刷新（对齐看板卡 onTaskDone 语义）。 */
+  onDone?: () => void;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -526,6 +602,8 @@ function TaskInspectionDrawer(props: {
   // v0.5.0-beta.13（装验 9/19）：产物「查看」——与 dashboard 任务详情
   // 同款（内联预览 + 下载）；预览走共享 FilePreview（md/图片/文本）。
   const [preview, setPreview] = React.useState<PreviewFile | null>(null);
+  // v0.5.0-beta.13.3（P3 对齐）：任务级取消——与看板卡同一门控/同一共享 Modal。
+  const [cancelOpen, setCancelOpen] = React.useState(false);
   const open = ev !== null && taskId !== null;
   const detail =
     ev && taskId
@@ -565,6 +643,8 @@ function TaskInspectionDrawer(props: {
     if (!ok) antd.message.error(tr("下载失败"));
   };
   const meta = statusMeta(status);
+  const canCancel =
+    !!taskId && status !== "" && !TERMINAL_NODE_STATUSES.includes(status);
   return (
     <antd.Drawer
       open={open}
@@ -586,6 +666,16 @@ function TaskInspectionDrawer(props: {
             <span style={{ fontFamily: "monospace", fontSize: 11, color: t.textSecondary }}>
               {taskId}
             </span>
+            {canCancel ? (
+              <antd.Button
+                size="small"
+                danger
+                style={{ marginLeft: "auto" }}
+                onClick={() => setCancelOpen(true)}
+              >
+                {tr("取消任务")}
+              </antd.Button>
+            ) : null}
           </div>
           {!detail ? (
             <div style={{ color: t.textSecondary, fontSize: 12 }}>
@@ -626,6 +716,27 @@ function TaskInspectionDrawer(props: {
                       size="small"
                       loading={downloading === detail.spec_path}
                       onClick={() => void dl(detail.spec_path!)}
+                    >
+                      {tr("下载")}
+                    </antd.Button>
+                  </div>
+                </div>
+              ) : null}
+              {detail.result_path ? (
+                <div>
+                  <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 3 }}>{tr("结果产物")}</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontFamily: "monospace", fontSize: 11.5 }}>{detail.result_path}</span>
+                    <antd.Button
+                      size="small"
+                      onClick={() => view(detail.result_path!)}
+                    >
+                      {tr("查看")}
+                    </antd.Button>
+                    <antd.Button
+                      size="small"
+                      loading={downloading === detail.result_path}
+                      onClick={() => void dl(detail.result_path!)}
                     >
                       {tr("下载")}
                     </antd.Button>
@@ -703,6 +814,16 @@ function TaskInspectionDrawer(props: {
           </div>
         </div>
       )}
+      {ev && taskId ? (
+        <TaskCancelModal
+          open={cancelOpen}
+          title={node ? nodeLabel(node) : taskId}
+          runId={ev.runId}
+          taskId={taskId}
+          onClose={() => setCancelOpen(false)}
+          onDone={props.onDone}
+        />
+      ) : null}
       <FilePreview file={preview} onClose={() => setPreview(null)} />
     </antd.Drawer>
   );
@@ -712,8 +833,6 @@ function TaskInspectionDrawer(props: {
  * 依赖不画跨列连线（与 dashboard 一致：看板列内 badge，依赖树走拓扑视图）。
  * 取消=任务级（/tasks/{id}/cancel，reason 必填；终态任务 409 幂等收敛）。
  * 终态判定用上游归一化状态（completed/revision/blocked——blocked 含 cancelled）。 */
-const TERMINAL_NODE_STATUSES = ["completed", "revision", "blocked"];
-
 function BoardCard(props: {
   task: BoardTask;
   t: ReturnType<typeof useThemeColors>;
@@ -725,8 +844,6 @@ function BoardCard(props: {
   const tr = useT();
   const { node } = task;
   const [cancelOpen, setCancelOpen] = React.useState(false);
-  const [cancelReason, setCancelReason] = React.useState("");
-  const [cancelling, setCancelling] = React.useState(false);
   const assignee =
     (typeof node.subagent === "string" && node.subagent.trim()) ||
     (typeof node.assignee === "string" && (node.assignee as string).trim()) ||
@@ -736,25 +853,6 @@ function BoardCard(props: {
   const canCancel =
     taskId !== "" &&
     !TERMINAL_NODE_STATUSES.includes(String(node.status || ""));
-
-  const handleCancel = async () => {
-    const reason = cancelReason.trim();
-    if (!reason) return;
-    setCancelling(true);
-    try {
-      await cancelTask(task.runId, taskId, reason);
-      antd.message.success(tr("任务已取消"));
-      setCancelOpen(false);
-      setCancelReason("");
-      onTaskDone?.();
-    } catch (e) {
-      antd.message.error(
-        `${tr("取消任务失败")}${e instanceof Error ? `：${e.message}` : ""}`,
-      );
-    } finally {
-      setCancelling(false);
-    }
-  };
 
   return (
     <div
@@ -827,30 +925,14 @@ function BoardCard(props: {
           </antd.Tooltip>
         ) : null}
       </div>
-      <antd.Modal
+      <TaskCancelModal
         open={cancelOpen}
-        title={`${tr("取消任务")} — ${nodeLabel(node)}`}
-        okText={tr("确认取消")}
-        cancelText={tr("返回")}
-        okButtonProps={{ disabled: !cancelReason.trim() }}
-        confirmLoading={cancelling}
-        onOk={() => void handleCancel()}
-        onCancel={() => setCancelOpen(false)}
-        width={440}
-      >
-        <div style={{ fontSize: 12, color: "#999", marginBottom: 8, lineHeight: 1.6 }}>
-          {tr("取消将写入项目任务图并通知项目群；依赖此任务的任务将保持阻塞。")}
-        </div>
-        <antd.Input.TextArea
-          value={cancelReason}
-          onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
-            setCancelReason(e.target.value)
-          }
-          placeholder={tr("取消原因（必填，将通知团队）")}
-          rows={3}
-          maxLength={200}
-        />
-      </antd.Modal>
+        title={nodeLabel(node)}
+        runId={task.runId}
+        taskId={taskId}
+        onClose={() => setCancelOpen(false)}
+        onDone={onTaskDone}
+      />
     </div>
   );
 }
@@ -1943,6 +2025,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
         ev={inspectEv}
         taskId={inspect?.taskId ?? null}
         onClose={() => setInspect(null)}
+        onDone={() => onRefresh?.()}
       />
     </div>
   );
