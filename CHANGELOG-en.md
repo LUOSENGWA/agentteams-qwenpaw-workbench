@@ -5,6 +5,25 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.10 (2026-09-22)
+
+**Full close of 12 acceptance-verification items: bidirectional Element-format @mentions / messages no longer scroll out of history / live session window with stick-to-bottom / over-folding fix / two-credential L1 guidance / KB listing of symlinks + non-text files / window-based wide-narrow detection / artifact rows as cards**
+
+- **Bidirectional Element-format @mentions (root-cause fix for "plain strings")**: send side — @-mentions in text (exact localpart/displayname match, same rules as the @ popup) now produce the Element triple: body keeps the readable short name, `formatted_body` uses matrix.to links, and the `m.mentions.user_ids` triple carries the notification (previously a bare body only — under group-room `_require_mention` the worker never received the message at all); receive side — full MXIDs and short @names now render as unified Element-style pills (short names were orange-bold text before)
+- **Messages no longer scroll out of history / reorder (root-cause fix)**: `messagesCache` upgraded from "latest 50-item page" to "full loaded history" (including the older messages prepended by load-more); `refreshMessages` changed from full replacement to event_id-deduplicated merge — paged history no longer vanishes when switching pages/rooms, and the scroll anchor no longer jumps
+- **Live session window + stick-to-bottom (QwenPaw dialog semantics)**: the session detail now polls every 4s (lightweight change detection on length + last message, zero re-render when unchanged) with the status dot synced (running→idle flips in real time); stick-to-bottom = auto-scroll only while within 100px of the bottom, reading older history is not interrupted
+- **Over-folding fix ("too many messages swallowed into replies")**: every assistant message with text is now its own bubble (QwenPaw dialog semantics); only tool/thinking/text-less steps collapse into an "N steps" pill (collapsed = children not rendered, lazy render on expand)
+- **Two-credential L1 guidance (B1 root cause)**: root cause = the `l1` prop was dropped in the TeamNode→WorkerRow layer (the runtime-config panel was permanently read-only even with a token) — fixed the whole prop chain; the L1 read-only alert now states precisely that the Console session and the Controller token are two different credentials, with an "Open Settings" jump; after L1 password verification succeeds without a token → a persistent hint in Settings (with the token retrieval command); "max iterations" is pre-filled with the runtime default 40 when not explicitly configured (what you see is what runs; persisted only on save)
+- **KB full listing (symlinks + non-text files)**: top-level / ls now follows symlinks and marks them (🔗); non-text files are listed too but shown greyed and non-openable with a "non-text" badge; hidden/sensitive filtering and file caps unchanged; +regression tests
+- **Window-based wide-narrow detection (acceptance decision)**: the split-layout decision now uses window width (`window.innerWidth` + resize tracking) — eliminates the false portrait detection caused by host left/right padding squeezing the measured container; the "force split" switch and "collapse list" escape hatch are kept
+- **Artifact rows as cards (fixes the clipped "view" button)**: spec / result-artifact / deliverable rows are now cards — the path wraps fully with no truncation and the view/download buttons sit on their own row, never clipped (shared component, effective in both the task-inspection drawer and the topology row)
+- **Session-list credential gating made explicit**: 401/502 now say "Controller token not configured / unreachable" with the retrieval command (previously a generic "failed to load" — the real identity of "often shows no workers"); 403 → "no access to this worker"
+- **i18n**: +8 new keys (zh/en mirror), full cross-check 0 missing / 0 duplicates
+
+**Verification**: tsc 0 · vite build 2,137.68kB · pytest 60/60 · browser harness 13.7 24/24 + 13.8 35/35 + window-shell all pass · i18n 1249 dict keys, 0 missing / 0 duplicates · sensitive scan dist 0 / src 0 real names
+
+---
+
 ## 0.5.0-beta.13.9 (2026-09-22)
 
 **Six-tab runtime config + QwenPaw loop templates ported + session-status-driven status dots + chat bubbles & @mention pills + full-width adaptive layout + root-cause fix for KB listing on large workspaces**
