@@ -5,6 +5,17 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.3（2026-09-22）
+
+**聊天高度链回归修复 + 工作流任务级取消/结果产物对齐 dashboard**
+
+- **聊天主列表滚动回归修复（beta.13.2 引入）**：一键置底引入的 relative wrapper 漏配 `min-height: 0`——overflow 可见的 flex 中间层自动最小高度 = 内容最小高度，列表的 `overflow: auto` 钳制无法穿透传递，wrapper 被全部消息撑高（实测 7500+px），列表失去独立滚动：滚轮冒泡成**整页滚动**、回看时旧消息滚出视野（Element/dashboard 均为定高内部滚动）。A/B 浏览器实测证实（13.2 列表高 7532px/不可滚 → 修复后 367px/内部可滚 7165px，与 13.1 逐项一致）
+- **工作流：任务级取消进入任务巡检 Drawer**：此前取消只在看板卡上有入口，拓扑/卡片视图点开任务详情后取消「消失」（dashboard 任务行任何上下文都可取消）。现看板卡与 Drawer 共用同一取消 Modal（原因必填、非终态门控、409 幂等收敛），取消后自动刷新
+- **工作流：结果产物（result_path）显形**：dashboard 任务行有结果产物链接，插件类型里有字段但 UI 不渲染——现 Drawer 补「结果产物」查看/下载（与 spec/交付物同款），拓扑任务详情行补 result_path 提示行
+- **i18n**：1 新键登记（结果产物 / Result artifact）
+
+**Verification**: tsc 0 · check-antd 38 · i18n 0 missing（934 用 / 1020 定）· vite build 绿 · pytest 50/50
+
 ## 0.5.0-beta.13.2（2026-09-21）
 
 **聊天大改进：灯源修正（不再误绿）+ 话题头像灯 + 一键置底**
