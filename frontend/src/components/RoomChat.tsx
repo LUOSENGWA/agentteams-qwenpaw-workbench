@@ -2359,7 +2359,13 @@ export default function RoomChat(props: RoomChatProps) {
             minWidth: 0,
           }}
         >
-          {/* 消息流（v0.5.0-beta.13.2：relative wrapper = 一键置底按钮锚点） */}
+          {/* 消息流（v0.5.0-beta.13.2：relative wrapper = 一键置底按钮锚点）。
+              v0.5.0-beta.13.3：minHeight: 0 是 flex 高度链必配项（教训 #615：
+              高度链沿链验证到容器属性）——overflow 可见的中间层 flex 子项
+              自动最小高度 = 内容最小高度（子列表的 overflow:auto 钳制不会
+              穿透传递），缺它 wrapper 被 300 条消息撑到 7500+px、列表失去
+              独立滚动 → 滚轮冒泡成整页滚动 + 旧消息滚出视野（9/22 装验回归，
+              浏览器 A/B 实测证实；话题面板 wrapper 本就带此值）。 */}
           <div
             style={{
               position: "relative",
@@ -2367,6 +2373,7 @@ export default function RoomChat(props: RoomChatProps) {
               display: "flex",
               flexDirection: "column",
               minWidth: 0,
+              minHeight: 0,
             }}
           >
           <div
