@@ -1538,6 +1538,52 @@ const DICT: Record<string, { en: string }> = {
   "查看配置 JSON": { en: "Show config JSON" },
   "隐藏配置 JSON": { en: "Hide config JSON" },
   "loop: {m}": { en: "loop: {m}" },
+  // ── v0.5.0-beta.13.6（聊天 UI 重构 + 运行配置对标 QwenPaw + 下载去向）──
+  "已到最早的消息": { en: "You've reached the earliest messages" },
+  "等待输入": { en: "Awaiting input" },
+  "Worker 正在执行激活 loop": { en: "Worker is running an active loop" },
+  "基本": { en: "Basic" },
+  "LLM 重试": { en: "LLM Retry" },
+  "系统（只读）": { en: "System (read-only)" },
+  "单次任务允许的最大 LLM 迭代轮数（max_iters）。越大越能啃硬任务，越慢越贵。": {
+    en: "Max LLM iterations per task (max_iters). Higher tackles harder tasks but is slower and costlier.",
+  },
+  "单次 shell 命令超时（秒）。L1-only 键，本面板只读。": {
+    en: "Per-shell-command timeout (seconds). L1-only key; read-only here.",
+  },
+  "{n} 秒": { en: "{n}s" },
+  "启用自动重试": { en: "Enable auto-retry" },
+  "LLM 调用失败（限流/超时/5xx）时自动重试。关闭后失败立即上抛。": {
+    en: "Auto-retry when an LLM call fails (throttling / timeout / 5xx). When off, failures surface immediately.",
+  },
+  "最大重试次数": { en: "Max retries" },
+  "连续失败最多重试几次（llm_max_retries）。": {
+    en: "How many times to retry consecutive failures (llm_max_retries).",
+  },
+  "退避基数（秒）": { en: "Backoff base (s)" },
+  "指数退避基数（llm_backoff_base）：第 n 次重试前等待 ≈ 基数 × 2^(n-1)。": {
+    en: "Exponential backoff base (llm_backoff_base): wait ~ base * 2^(n-1) before retry n.",
+  },
+  "退避上限（秒）": { en: "Backoff cap (s)" },
+  "指数退避上限（llm_backoff_cap），须 ≥ 退避基数。": {
+    en: "Exponential backoff cap (llm_backoff_cap); must be >= the backoff base.",
+  },
+  "长期记忆后端": { en: "Memory backend" },
+  "memory_manager_backend——L1 键，本面板只读展示。": {
+    en: "memory_manager_backend - L1 key; shown read-only here.",
+  },
+  "context_manager_backend——L1 键，本面板只读展示。": {
+    en: "context_manager_backend - L1 key; shown read-only here.",
+  },
+  "approval_level——由审批端点（#1216）管理，本面板只读（PUT 会被服务端 400 拒绝）。": {
+    en: "approval_level - managed by the approval endpoint (#1216); read-only here (PUT is rejected with 400).",
+  },
+  "reme_light_memory_config——记忆参数高风险，仅展示不开放编辑。": {
+    en: "reme_light_memory_config - high-risk memory params; display only, not editable.",
+  },
+  "adbpg_memory_config——记忆参数高风险，仅展示不开放编辑。": {
+    en: "adbpg_memory_config - high-risk memory params; display only, not editable.",
+  },
 };
 
 export type Lang = "zh" | "en";
