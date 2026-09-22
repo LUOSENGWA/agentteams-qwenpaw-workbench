@@ -374,11 +374,16 @@ const LOOP_GATE_DEFS: Record<
 function WorkerRuntimeConfig({
   name,
   l1,
+  onOpenSettings,
 }: {
   name: string;
   /** 当前账号 L1（controller token）——L1-only 字段（并发限流/上下文管理/
    *  shell 组/auto_title）可编辑；L2 只读（PUT 非 L2 白名单键被服务端 403）。 */
   l1?: boolean;
+  /** v0.5.0-beta.13.10（B1：L1 登录仍见「只读」Alert）：跳「设置」页
+   *  配 Controller token 的入口（L1 账号密码登录只落 Higress Console
+   *  会话 ≠ Controller 管理 token——两套凭证，Alert 给明确指引）。 */
+  onOpenSettings?: () => void;
 }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
@@ -1518,12 +1523,28 @@ function WorkerRuntimeConfig({
                             value={
                               iterValue !== null && isPosInt(iterValue)
                                 ? Number(iterValue)
-                                : lv.iterationMax ?? undefined
+                                : // v0.5.0-beta.13.10（B1b：「最大迭代等窗口应该
+                                  // 被自动填入当前值，而不是空的框」）：实盘
+                                  // max_iterations=None（未显式配置）时预填
+                                  // 运行时默认 40（QwenPaw LOOP 正源默认）——
+                                  // 显示的即运行时真实生效值，保存才落库。
+                                  lv.iterationMax ?? 40
                             }
                             onChange={(v: number | null) =>
                               setIterValue(v === null || v === undefined ? null : String(v))
                             }
                           />
+                          {lv.iterationMax == null ? (
+                            <div
+                              style={{
+                                fontSize: 10.5,
+                                color: "rgba(127,127,127,0.75)",
+                                marginTop: 2,
+                              }}
+                            >
+                              {tr("未显式配置——显示运行时默认 40，保存后落库")}
+                            </div>
+                          ) : null}
                         </GateParam>
                       </GateSection>
                       <GateSection
@@ -2023,7 +2044,16 @@ function WorkerRuntimeConfig({
                       type="info"
                       showIcon
                       style={{ marginBottom: 8 }}
-                      message={tr("L1-only 字段——当前账号只读（Controller PUT 白名单外会被 403 拒绝）")}
+                      message={tr(
+                        "L1-only 字段——当前账号没有 Controller 管理 token：L1 账号/密码登录只建立网关 Console 会话（与 Controller token 是两套凭证），无 token 时 L1 字段不可写（PUT 403）。获取 token 与配置方法见「设置」页。",
+                      )}
+                      action={
+                        onOpenSettings ? (
+                          <antd.Button size="small" onClick={onOpenSettings}>
+                            {tr("去设置")}
+                          </antd.Button>
+                        ) : undefined
+                      }
                     />
                   ) : null}
                   <CfgRow
@@ -2109,7 +2139,16 @@ function WorkerRuntimeConfig({
                       type="info"
                       showIcon
                       style={{ marginBottom: 8 }}
-                      message={tr("L1-only 字段——当前账号只读（Controller PUT 白名单外会被 403 拒绝）")}
+                      message={tr(
+                        "L1-only 字段——当前账号没有 Controller 管理 token：L1 账号/密码登录只建立网关 Console 会话（与 Controller token 是两套凭证），无 token 时 L1 字段不可写（PUT 403）。获取 token 与配置方法见「设置」页。",
+                      )}
+                      action={
+                        onOpenSettings ? (
+                          <antd.Button size="small" onClick={onOpenSettings}>
+                            {tr("去设置")}
+                          </antd.Button>
+                        ) : undefined
+                      }
                     />
                   ) : null}
                   <CfgRow
