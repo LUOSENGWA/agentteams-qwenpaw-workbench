@@ -764,6 +764,7 @@ const DICT: Record<string, { en: string }> = {
   // ── 项目文件面板（v0.5.0-beta.12）──
   "项目文件": { en: "Project files" },
   "结果": { en: "Result" },
+  "结果产物": { en: "Result artifact" },
   "任务书": { en: "Spec" },
   "交付物": { en: "Deliverable" },
   "项目文件（任务结果/任务书/交付物，产物端点 产物端点）": {
