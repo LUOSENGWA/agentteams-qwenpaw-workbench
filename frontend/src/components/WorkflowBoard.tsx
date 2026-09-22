@@ -349,17 +349,20 @@ function TopoTaskDetailRow(props: {
         border: `1px solid ${t.border}`,
         borderRadius: 6,
         background: t.bg,
-        cursor: "pointer",
       }}
-      onClick={() => setOpen(!open)}
     >
+      {/* v0.5.0-beta.13.5：展开开关只挂头部行——整卡 onClick 会把展开区内
+          按钮（ArtifactLines「查看/下载」）的点击也当切换，点「查看」即收起
+          面板、预览 Modal 随组件卸载消失（装验反馈「点击查看却收回了菜单」）。 */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
           padding: "6px 10px",
+          cursor: "pointer",
         }}
+        onClick={() => setOpen(!open)}
       >
         <span style={{ fontSize: 10, color: t.textSecondary }}>{open ? "▾" : "▸"}</span>
         <span

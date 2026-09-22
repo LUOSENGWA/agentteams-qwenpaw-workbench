@@ -36,9 +36,11 @@ import {
   type WorkerInfo,
   type WorkerChatSpec,
   type WorkerChatMessage,
+  type WorkerLoopModeInfo,
   fetchWorkerChats,
   fetchWorkerChat,
   fetchWorkerChatStatus,
+  fetchWorkerLoopStatus,
   httpErrorStatus,
 } from "../api";
 import MdText from "./MdText";
@@ -165,6 +167,9 @@ function WorkerChats({
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [detailErr, setDetailErr] = React.useState("");
   const [status, setStatus] = React.useState<"" | "idle" | "running">("");
+  // v0.5.0-beta.13.5：单会话激活 loop（#1231 loops/status 端点消费点；
+  // 404 = 旧 runtime 无该路由 → 隐藏标签，版本无关门）。
+  const [loopMode, setLoopMode] = React.useState<WorkerLoopModeInfo | null>(null);
   const detailListRef = React.useRef<HTMLDivElement | null>(null);
 
   const load = React.useCallback(async () => {
@@ -201,11 +206,17 @@ function WorkerChats({
     setMsgs([]);
     setDetailErr("");
     setStatus("");
+    setLoopMode(null);
     setDetailLoading(true);
     // 状态灯与详情并发拉取；404 = 旧 runtime，隐藏灯
     void fetchWorkerChatStatus(sel, chatId)
       .then((r) => setStatus(r?.status === "running" ? "running" : "idle"))
       .catch(() => setStatus(""));
+    // 会话级 loop 模式（chat_id + session_id 二参；失败/404 = 隐藏标签）
+    const spec = chats.find((c) => c.id === chatId);
+    void fetchWorkerLoopStatus(sel, chatId, spec?.session_id)
+      .then((r) => setLoopMode(r && r.mode ? r.mode : null))
+      .catch(() => setLoopMode(null));
     try {
       const d = await fetchWorkerChat(sel, chatId);
       setMsgs(Array.isArray(d?.messages) ? d.messages : []);
@@ -268,10 +279,13 @@ function WorkerChats({
     : undefined;
 
   // ── 详情视图（QwenPaw /chat/{id} 口径：列表让位，← 返回列表）──────
+  // v0.5.0-beta.13.5：高度链改容器相对（#629 家规）——抽屉 body 是定高
+  // flex 项，消息区 flex:1 + minHeight:0 自滚，不再写 420 魔法数（窗口
+  // 矮时旧写法内容被抽屉底裁切且不可滚）。
   if (openId) {
     return (
-      <div style={{ display: "grid", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: "0 0 auto" }}>
           <antd.Button
             size="small"
             icon={<span>←</span>}
@@ -290,6 +304,15 @@ function WorkerChats({
           {status === "idle" ? (
             <antd.Tag style={{ marginInlineEnd: 0 }}>idle</antd.Tag>
           ) : null}
+          {loopMode ? (
+            <antd.Tag
+              color={status === "running" ? "geekblue" : "default"}
+              style={{ marginInlineEnd: 0, fontSize: 10.5 }}
+              title={loopMode.description || loopMode.id}
+            >
+              {tr("loop: {m}", { m: loopMode.name })}
+            </antd.Tag>
+          ) : null}
           {openChatSpec?.channel ? (
             <antd.Tag
               color={CHANNEL_COLORS[openChatSpec.channel] || "default"}
@@ -307,6 +330,7 @@ function WorkerChats({
             gap: "2px 14px",
             fontSize: 11,
             color: "rgba(127,127,127,0.95)",
+            flex: "0 0 auto",
           }}
         >
           <span style={{ fontFamily: "monospace" }}>
@@ -323,12 +347,13 @@ function WorkerChats({
         <antd.Alert
           type="info"
           showIcon
+          style={{ flex: "0 0 auto" }}
           message={tr(
             "Agent 上下文视图——可能含压缩历史与未发送的工具调用/输出，与实发房间消息不同。",
           )}
         />
         {detailErr ? (
-          <antd.Alert type="error" showIcon message={detailErr} />
+          <antd.Alert type="error" showIcon style={{ flex: "0 0 auto" }} message={detailErr} />
         ) : (
           <div
             ref={detailListRef}
@@ -336,8 +361,10 @@ function WorkerChats({
               border: "1px solid rgba(127,127,127,0.25)",
               borderRadius: 8,
               padding: 10,
-              maxHeight: 420,
+              flex: 1,
+              minHeight: 0,
               overflowY: "auto",
+              overscrollBehavior: "contain",
               background: "rgba(127,127,127,0.05)",
               display: "grid",
               gap: 8,
@@ -434,15 +461,19 @@ function WorkerChats({
 
   // ── 列表视图（QwenPaw Control/Sessions 同语义列）────────────────
   const columns = [
+    // v0.5.0-beta.13.5：列宽改容器相对——旧版五列固定宽 528px +
+    // scroll.x=500，抽屉 620px（小窗口更窄）时表格出横向滚动条，「查看」
+    // 被挤到最右要拖条才见。fixed 布局下不定宽列均分剩余空间，任何宽度
+    // 无横滚；长值走单元格内省略。
     {
       title: tr("会话"),
       dataIndex: "name",
       key: "name",
-      width: 150,
       render: (_: unknown, c: WorkerChatSpec) => (
-        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, width: "100%" }}>
           <span
             style={{
+              flex: "0 1 auto",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -452,7 +483,7 @@ function WorkerChats({
           >
             {c.name || c.id.slice(0, 10)}
           </span>
-          {c.pinned ? <antd.Tag color="gold" style={{ marginInlineEnd: 0 }}>{tr("置顶")}</antd.Tag> : null}
+          {c.pinned ? <antd.Tag color="gold" style={{ marginInlineEnd: 0, flexShrink: 0 }}>{tr("置顶")}</antd.Tag> : null}
         </span>
       ),
     },
@@ -461,7 +492,7 @@ function WorkerChats({
       title: tr("通道"),
       dataIndex: "channel",
       key: "channel",
-      width: 90,
+      width: 72,
       render: (v?: string) =>
         v ? (
           <antd.Tag color={CHANNEL_COLORS[v] || "default"} style={{ marginInlineEnd: 0 }}>
@@ -475,11 +506,17 @@ function WorkerChats({
       title: tr("用户"),
       dataIndex: "user_id",
       key: "user_id",
-      width: 90,
       render: (v?: string) =>
         v ? (
           <span
-            style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            style={{
+              display: "block",
+              width: "100%",
+              fontSize: 11,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
             title={v}
           >
             {v.split(":")[0].replace(/^@/, "")}
@@ -493,18 +530,18 @@ function WorkerChats({
       title: tr("最后活动"),
       dataIndex: "updated_at",
       key: "updated_at",
-      width: 140,
+      width: 118,
       defaultSortOrder: "descend" as const,
       sorter: (a: WorkerChatSpec, b: WorkerChatSpec) =>
         String(a.updated_at || "").localeCompare(String(b.updated_at || "")),
       render: (v?: string) => (
-        <span style={{ fontSize: 11 }}>{formatTime(v)}</span>
+        <span style={{ fontSize: 11, whiteSpace: "nowrap" }}>{formatTime(v)}</span>
       ),
     },
     {
       title: "",
       key: "op",
-      width: 58,
+      width: 56,
       render: (_: unknown, c: WorkerChatSpec) => (
         // QwenPaw Action 列 View=绿色 link 按钮（#52c41a）。
         <antd.Button
@@ -538,6 +575,7 @@ function WorkerChats({
                 setOpenId(null);
                 setMsgs([]);
                 setStatus("");
+                setLoopMode(null);
               }}
               options={workers.map((w) => ({
                 value: w.name,
@@ -569,11 +607,11 @@ function WorkerChats({
       <antd.Table
         rowKey="id"
         size="small"
+        tableLayout="fixed"
         loading={loading}
         columns={columns}
         dataSource={list}
         pagination={false}
-        scroll={{ x: 500 }}
         locale={{
           emptyText:
             tab === "active"

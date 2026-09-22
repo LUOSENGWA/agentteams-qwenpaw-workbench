@@ -1702,6 +1702,99 @@ export function fetchWorkerChatStatus(
   ) as Promise<{ status: string }>;
 }
 
+// ── Worker loop 模式（上游 #1231 端点族，pinned qwenpaw loops router 契约）──
+// catalog = builtin/custom/plugin 三源；custom CRUD 为整块替换语义（PUT 全量）；
+// status 按会话（chat_id/session_id 二参白名单，Controller 透传）。
+export interface WorkerLoopModeInfo {
+  id: string;
+  name: string;
+  slash_command: string;
+  description?: string;
+  source?: string; // builtin | custom | plugin
+}
+/** GET /workers/{name}/loops——可用 loop 模式目录。 */
+export function fetchWorkerLoops(name: string): Promise<WorkerLoopModeInfo[]> {
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/loops`,
+  ) as Promise<WorkerLoopModeInfo[]>;
+}
+export interface WorkerLoopStatus {
+  state: string; // idle | running | awaiting_user
+  mode?: WorkerLoopModeInfo | null;
+}
+/** GET /workers/{name}/loops/status?chat_id=&session_id=——单会话的激活 loop。
+ * 无参恒 idle；404 = 旧 runtime 无该路由（UI 隐藏）。 */
+export function fetchWorkerLoopStatus(
+  name: string,
+  chatId: string,
+  sessionId?: string,
+): Promise<WorkerLoopStatus> {
+  const q = new URLSearchParams({ chat_id: chatId });
+  if (sessionId) q.set("session_id", sessionId);
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/loops/status?${q.toString()}`,
+  ) as Promise<WorkerLoopStatus>;
+}
+export interface WorkerLoopGateConfig {
+  id: string;
+  type: string;
+  enabled?: boolean;
+  params?: Record<string, unknown>;
+}
+export interface WorkerLoopCustomMode {
+  id: string;
+  name: string;
+  description?: string;
+  slash_command: string;
+  enabled?: boolean;
+  gates?: WorkerLoopGateConfig[];
+}
+/** GET /workers/{name}/loops/custom——已存自定义 loop 模式。 */
+export function fetchWorkerLoopCustoms(
+  name: string,
+): Promise<WorkerLoopCustomMode[]> {
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/loops/custom`,
+  ) as Promise<WorkerLoopCustomMode[]>;
+}
+/** POST /workers/{name}/loops/custom——新建（整对象；409 重名/422 管道校验失败）。 */
+export function createWorkerLoopCustom(
+  name: string,
+  mode: WorkerLoopCustomMode,
+): Promise<WorkerLoopCustomMode> {
+  return controllerRequest(
+    "POST",
+    `/workers/${encodeURIComponent(name)}/loops/custom`,
+    mode as unknown as Record<string, unknown>,
+  ) as Promise<WorkerLoopCustomMode>;
+}
+/** PUT /workers/{name}/loops/custom/{id}——整块替换（body.id 必须等于路径 id，
+ * 否则 422；循环变更由服务端通知团队 Leader）。 */
+export function updateWorkerLoopCustom(
+  name: string,
+  modeId: string,
+  mode: WorkerLoopCustomMode,
+): Promise<WorkerLoopCustomMode> {
+  return controllerRequest(
+    "PUT",
+    `/workers/${encodeURIComponent(name)}/loops/custom/${encodeURIComponent(modeId)}`,
+    mode as unknown as Record<string, unknown>,
+  ) as Promise<WorkerLoopCustomMode>;
+}
+/** DELETE /workers/{name}/loops/custom/{id}——204 无 body。 */
+export function deleteWorkerLoopCustom(
+  name: string,
+  modeId: string,
+): Promise<void> {
+  return controllerRequest(
+    "DELETE",
+    `/workers/${encodeURIComponent(name)}/loops/custom/${encodeURIComponent(modeId)}`,
+  ) as Promise<void>;
+}
+
 export const deleteTeam = (name: string) =>
   controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
 

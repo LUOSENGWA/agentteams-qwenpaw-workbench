@@ -1460,11 +1460,11 @@ const DICT: Record<string, { en: string }> = {
   "运行配置": { en: "Runtime config" },
   "运行配置不可用": { en: "Runtime config unavailable" },
   "该 Worker 不支持运行配置": { en: "This worker does not support runtime config" },
-  "仅 spec.runtime = qwenpaw 的 Worker 支持（上游 #1231 契约）。": {
-    en: "Only workers with spec.runtime = qwenpaw are supported (upstream #1231 contract).",
+  "仅 spec.runtime = qwenpaw 的 Worker 支持。": {
+    en: "Only workers with spec.runtime = qwenpaw are supported.",
   },
-  "Controller 版本未含运行配置端点（#1231），或当前账号无该 Worker 访问权（L2 仅限自己团队）。": {
-    en: "Controller lacks the runtime config endpoint (#1231), or this account has no access to the worker (L2 is limited to its own team).",
+  "Controller 版本未含运行配置端点，或当前账号无该 Worker 访问权（L2 仅限自己团队）。": {
+    en: "Controller lacks the runtime config endpoint, or this account has no access to the worker (L2 is limited to its own team).",
   },
   "最大迭代": { en: "Max iterations" },
   "LLM 自动重试": { en: "LLM auto-retry" },
@@ -1511,6 +1511,33 @@ const DICT: Record<string, { en: string }> = {
   "Agent 上下文视图——可能含压缩历史与未发送的工具调用/输出，与实发房间消息不同。": {
     en: "Agent context view - may include compacted history and unsent tool calls/output; distinct from sent room messages.",
   },
+  // v0.5.0-beta.13.5（loop 模式节 + 记忆配置只读 + 会话 loop 状态）
+  "Loop 模式": { en: "Loop modes" },
+  "模式目录": { en: "Catalog" },
+  "自定义 Loop": { en: "Custom loops" },
+  "新建自定义 Loop": { en: "New custom loop" },
+  "内置": { en: "builtin" },
+  "自定义": { en: "custom" },
+  "插件": { en: "plugin" },
+  "该 Worker 暂无自定义 loop": { en: "No custom loops for this worker yet" },
+  "门禁 {a} 个（启用 {b}）": { en: "{a} gates ({b} enabled)" },
+  "loop 模式不可用": { en: "Loop modes unavailable" },
+  "新自定义 loop 完整 JSON（字段：id / name / slash_command / enabled / gates）": {
+    en: "Full JSON of the new custom loop (fields: id / name / slash_command / enabled / gates)",
+  },
+  "id 与 slash_command 须小写字母/数字/_/-；gates 为 {id,type,enabled,params} 数组（可空）；重名或 slash 冲突 409，管道校验失败 422。": {
+    en: "id and slash_command must use lowercase letters/digits/_/-; gates is an array of {id,type,enabled,params} (may be empty); duplicate id/command → 409, invalid pipeline → 422.",
+  },
+  "已创建": { en: "Created" },
+  "已更新": { en: "Updated" },
+  "删除该自定义 loop？": { en: "Delete this custom loop?" },
+  "确认删除": { en: "Confirm delete" },
+  "reme 轻量记忆": { en: "reme light memory" },
+  "adbpg 记忆": { en: "adbpg memory" },
+  "已配置": { en: "configured" },
+  "查看配置 JSON": { en: "Show config JSON" },
+  "隐藏配置 JSON": { en: "Hide config JSON" },
+  "loop: {m}": { en: "loop: {m}" },
 };
 
 export type Lang = "zh" | "en";

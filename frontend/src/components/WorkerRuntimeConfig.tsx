@@ -1,38 +1,54 @@
 /**
- * WorkerRuntimeConfig.tsx — A2：Worker 运行配置（消费上游 #1231）。
+ * WorkerRuntimeConfig.tsx — A2：Worker 运行配置（消费上游 #1231 端点族）。
  *
- * 9/6 顺序铁律「插件 A2 先做先验证，dashboard 后对齐」——插件侧本轮（
- * v0.5.0-beta.13.4）落地，dashboard B5（#103）为镜像语义；罗总 9/22
- * 反馈「runtime config 没有」= 本面板此前从未实现（grep 0 命中）。
+ * 9/6 顺序铁律「插件 A2 先做先验证，dashboard 后对齐」——插件侧本轮落地，
+ * dashboard B5（#103）为镜像语义。
  *
- * 契约（上游 75c1a7fa pinned qwenpaw running-config contract 实读 +
- * Node1 v1.2.4 实盘 GET 交叉验证）：
- * - GET/PUT /api/v1/workers/{name}/runtime-config = 透传 Worker 运行配置
- *   对象（qwenpaw 进程 :8088 端点）；PUT = read-merge-write，部分字段
- *   安全，未带字段不动，空 body = no-op。
+ * 契约（上游 pinned qwenpaw running-config + loops router 实读 +
+ * Node1 v1.2.4 实盘 GET 交叉验证；#13.5 按 pr-body 字段清单全量对账）：
+ * - GET/PUT /api/v1/workers/{name}/runtime-config = 5-tab 运行配置
+ *   （max_iters / loop / llm_retry_enabled / llm_max_retries /
+ *   llm_backoff_base / llm_backoff_cap / memory_manager_backend /
+ *   reme_light_memory_config / adbpg_memory_config）；PUT = read-merge-
+ *   write，只发改动顶层键，未带键不动，空 body = no-op。
+ * - GET /loops = 模式目录（builtin/custom/plugin 三源）。
+ * - GET /loops/status = 单会话激活 loop（chat_id/session_id 二参，
+ *   消费点=WorkerChats 会话详情头，非本面板）。
+ * - GET/POST/PUT/DELETE /loops/custom[/{id}] = 自定义 loop CRUD
+ *   （PUT 整块替换，body.id 必须等于路径 id；409 重名 / 422 管道校验）。
  * - 仅 spec.runtime == "qwenpaw" 生效（其余 runtime → 400）。
- * - L1 全字段（除 approval_level）；L2 = 团队作用域（404 越权）+ 字段
- *   白名单（workbench 5-tab 字段），未知键 **拒绝**（不静默丢弃）→
- *   本面板可编辑键全部在 L2 白名单内，diff body 按构造 L2 安全。
- * - approval_level 由 #1216 /approval 端点管理——本面板只读展示。
- * - loop（iteration/doom_loop/rubric/goal/mission/custom_modes）改动
- *   成功后服务端自动通知团队 Leader。
- * - 409 = Worker 正在执行任务/配置锁定；404 = Controller 未含 #1231
- *   或 Worker 非团队作用域（L2）→ 占位横幅降级。
+ * - L1 全字段（除 approval_level）；L2 = 5-tab 字段白名单，未知键拒绝
+ *   不静默丢弃 → 本面板可编辑键全部在 L2 白名单内，diff 按构造 L2 安全。
+ * - approval_level 由审批端点（#1216）管理——本面板只读展示，PUT 发送
+ *   会被服务端 400 拒绝。
+ * - loop（含 custom_modes）改动成功后服务端自动通知团队 Leader。
+ * - 409 = Worker 正在执行任务/配置锁定；404 = Controller 未含该端点
+ *   或 L2 越权 → 占位横幅降级。
  *
  * ⚠️ 字段名勘误（交叉验证发现）：dashboard B5（#103）spec 用的
  * max_input_tokens / compaction_threshold / loop_config 与 pinned 契约
  * 不符（实盘键 = max_input_length / 嵌套 light_context_config.
  * context_compact_config.compact_threshold_ratio / 顶层 loop）——L2 发
  * 白名单外键 400、L1 发则写入垃圾键。本面板按实盘契约命名；dashboard
- * 侧需随动（9/13 override 记录「插件批次落地时 dashboard 随动」）。
+ * 侧需随动。
  *
  * 纪律：React/antd 取宿主（window.QwenPaw.host）；只走
  * /agentteams-proxy/controller 通用代理（后端零新端点）。
  */
 import type * as ReactNS from "react";
 
-import { requestJson, httpErrorStatus, httpErrorDetail } from "../api";
+import {
+  requestJson,
+  httpErrorStatus,
+  httpErrorDetail,
+  fetchWorkerLoops,
+  fetchWorkerLoopCustoms,
+  createWorkerLoopCustom,
+  updateWorkerLoopCustom,
+  deleteWorkerLoopCustom,
+  type WorkerLoopModeInfo,
+  type WorkerLoopCustomMode,
+} from "../api";
 import { useT } from "../i18n";
 
 const host = window.QwenPaw.host;
@@ -86,6 +102,12 @@ function parseLoop(v: unknown): LoopView {
   };
 }
 
+const SOURCE_COLOR: Record<string, string> = {
+  builtin: "blue",
+  custom: "orange",
+  plugin: "purple",
+};
+
 function WorkerRuntimeConfig({ name }: { name: string }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
@@ -103,10 +125,41 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
   const [loopText, setLoopText] = React.useState<string | null>(null);
   const [loopOpen, setLoopOpen] = React.useState(false);
 
+  // loop 模式节（#1231 端点族：目录 + 自定义 CRUD）。
+  const [loops, setLoops] = React.useState<WorkerLoopModeInfo[] | null>(null);
+  const [customs, setCustoms] = React.useState<WorkerLoopCustomMode[] | null>(null);
+  const [loopsErr, setLoopsErr] = React.useState("");
+  const [loopsLoading, setLoopsLoading] = React.useState(false);
+  const [creating, setCreating] = React.useState(false);
+  const [newJson, setNewJson] = React.useState<string | null>(null);
+  const [busyId, setBusyId] = React.useState("");
+  const [loopMsg, setLoopMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [memOpen, setMemOpen] = React.useState(false);
+
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
 
-  const url = `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(name)}/runtime-config`;
+  const base = `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(name)}`;
+  const url = `${base}/runtime-config`;
+
+  const loadLoops = React.useCallback(async () => {
+    setLoopsLoading(true);
+    setLoopsErr("");
+    try {
+      const [l, c] = await Promise.all([
+        fetchWorkerLoops(name),
+        fetchWorkerLoopCustoms(name),
+      ]);
+      setLoops(Array.isArray(l) ? l : []);
+      setCustoms(Array.isArray(c) ? c : []);
+    } catch (e) {
+      setLoops(null);
+      setCustoms(null);
+      setLoopsErr(httpErrorDetail(e) || (e instanceof Error ? e.message : tr("加载失败")));
+    } finally {
+      setLoopsLoading(false);
+    }
+  }, [name, tr]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -115,6 +168,7 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
     try {
       const d = (await requestJson(url)) as Rc;
       setCfg(d && typeof d === "object" ? d : null);
+      void loadLoops();
     } catch (e) {
       const st = httpErrorStatus(e);
       if (st === 404) {
@@ -132,7 +186,7 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
     } finally {
       setLoading(false);
     }
-  }, [url, tr]);
+  }, [url, tr, loadLoops]);
 
   React.useEffect(() => {
     if (open && !cfg && !loading) void load();
@@ -238,6 +292,62 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
     }
   };
 
+  // ── 自定义 loop CRUD ─────────────────────────────────────────────
+  const createCustom = async () => {
+    if (newJson === null) return;
+    let parsed: WorkerLoopCustomMode;
+    try {
+      const o = JSON.parse(newJson);
+      if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error("not an object");
+      parsed = o as WorkerLoopCustomMode;
+    } catch {
+      setLoopMsg({ ok: false, text: tr("loop 不是合法 JSON") });
+      return;
+    }
+    setBusyId("__create__");
+    setLoopMsg(null);
+    try {
+      await createWorkerLoopCustom(name, parsed);
+      setNewJson(null);
+      setCreating(false);
+      setLoopMsg({ ok: true, text: tr("已创建") });
+      void loadLoops();
+    } catch (e) {
+      setLoopMsg({ ok: false, text: httpErrorDetail(e) || tr("保存失败") });
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const toggleCustom = async (m: WorkerLoopCustomMode, enabled: boolean) => {
+    setBusyId(m.id);
+    setLoopMsg(null);
+    try {
+      // PUT = 整块替换（我们持有 GET 全量对象，改 enabled 后整体回写）。
+      await updateWorkerLoopCustom(name, m.id, { ...m, enabled });
+      setLoopMsg({ ok: true, text: tr("已更新") });
+      void loadLoops();
+    } catch (e) {
+      setLoopMsg({ ok: false, text: httpErrorDetail(e) || tr("保存失败") });
+    } finally {
+      setBusyId("");
+    }
+  };
+
+  const removeCustom = async (m: WorkerLoopCustomMode) => {
+    setBusyId(m.id);
+    setLoopMsg(null);
+    try {
+      await deleteWorkerLoopCustom(name, m.id);
+      setLoopMsg({ ok: true, text: tr("已删除") });
+      void loadLoops();
+    } catch (e) {
+      setLoopMsg({ ok: false, text: httpErrorDetail(e) || tr("保存失败") });
+    } finally {
+      setBusyId("");
+    }
+  };
+
   // 折叠头（Worker 管理展开区内的可折叠段）。
   if (!open) {
     return (
@@ -248,7 +358,7 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
           style={{ padding: 0, fontSize: 12 }}
           onClick={() => setOpen(true)}
         >
-          {tr("运行配置")}（#1231 · qwenpaw）▾
+          {tr("运行配置")}（qwenpaw）▾
         </antd.Button>
       </div>
     );
@@ -260,6 +370,11 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
     fontSize: 12,
     color: "rgba(127,127,127,0.95)",
   };
+  const remeCfg = cfg?.reme_light_memory_config;
+  const adbpgCfg = cfg?.adbpg_memory_config;
+  const hasMem =
+    (remeCfg && typeof remeCfg === "object" && Object.keys(remeCfg as Rc).length > 0) ||
+    (adbpgCfg && typeof adbpgCfg === "object" && Object.keys(adbpgCfg as Rc).length > 0);
 
   return (
     <div
@@ -269,12 +384,14 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
         borderRadius: 8,
         padding: 10,
         display: "grid",
-        gap: 8,
+        gap: 10,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 600, fontSize: 12.5 }}>{tr("运行配置")}</span>
-        <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10.5 }}>#1231</antd.Tag>
+        <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
+          qwenpaw
+        </antd.Tag>
         <div style={{ flex: 1 }} />
         <antd.Button size="small" onClick={() => void load()} loading={loading}>
           {tr("刷新")}
@@ -309,7 +426,7 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
           showIcon
           message={tr("运行配置不可用")}
           description={tr(
-            "Controller 版本未含运行配置端点（#1231），或当前账号无该 Worker 访问权（L2 仅限自己团队）。",
+            "Controller 版本未含运行配置端点，或当前账号无该 Worker 访问权（L2 仅限自己团队）。",
           )}
         />
       ) : gate === "400" ? (
@@ -317,7 +434,7 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
           type="warning"
           showIcon
           message={tr("该 Worker 不支持运行配置")}
-          description={gateMsg || tr("仅 spec.runtime = qwenpaw 的 Worker 支持（上游 #1231 契约）。")}
+          description={gateMsg || tr("仅 spec.runtime = qwenpaw 的 Worker 支持。")}
         />
       ) : null}
 
@@ -372,7 +489,7 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
             />
           </div>
 
-          {/* loop 配置：结构化速览 + 整块 JSON 替换（dashboard B5 同款入口，键名修正为 pinned 契约的顶层 loop）。 */}
+          {/* loop 配置：结构化速览 + 整块 JSON 替换（键名=契约顶层 loop）。 */}
           {lv ? (
             <div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", alignItems: "center" }}>
@@ -431,6 +548,142 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
             </div>
           ) : null}
 
+          {/* Loop 模式节：目录（GET /loops）+ 自定义 CRUD（/loops/custom）。 */}
+          <div
+            style={{
+              borderTop: "1px dashed rgba(127,127,127,0.25)",
+              paddingTop: 8,
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={labelStyle}>{tr("Loop 模式")}</span>
+              <antd.Button size="small" type="link" style={{ padding: 0, fontSize: 11.5 }} onClick={() => void loadLoops()} loading={loopsLoading}>
+                {tr("刷新")}
+              </antd.Button>
+              <div style={{ flex: 1 }} />
+              <antd.Button size="small" onClick={() => setCreating((v) => !v)}>
+                {tr("新建自定义 Loop")}
+              </antd.Button>
+            </div>
+            {loopMsg ? (
+              <antd.Alert
+                type={loopMsg.ok ? "success" : "error"}
+                showIcon
+                message={loopMsg.text}
+                closable
+                onClose={() => setLoopMsg(null)}
+              />
+            ) : null}
+            {loopsErr ? (
+              <antd.Alert
+                type="info"
+                showIcon
+                message={tr("loop 模式不可用")}
+                description={loopsErr}
+              />
+            ) : (
+              <>
+                {loops ? (
+                  <div>
+                    <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginBottom: 3 }}>
+                      {tr("模式目录")}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {loops.map((m) => (
+                        <antd.Tag
+                          key={m.id}
+                          color={SOURCE_COLOR[m.source || "builtin"] || "default"}
+                          style={{ marginInlineEnd: 0, fontSize: 10.5 }}
+                          title={m.description || m.name}
+                        >
+                          {m.name}
+                          {m.slash_command ? ` /${m.slash_command}` : ""}
+                        </antd.Tag>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <div>
+                  <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 3px" }}>
+                    {tr("自定义 Loop")}
+                  </div>
+                  {customs && customs.length === 0 ? (
+                    <div style={{ fontSize: 11, color: "rgba(127,127,127,0.6)" }}>
+                      {tr("该 Worker 暂无自定义 loop")}
+                    </div>
+                  ) : null}
+                  {customs?.map((m) => {
+                    const gates = Array.isArray(m.gates) ? m.gates : [];
+                    const on = gates.filter((g) => g.enabled).length;
+                    return (
+                      <div
+                        key={m.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "3px 0",
+                          fontSize: 11.5,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <antd.Switch
+                          size="small"
+                          checked={m.enabled === true}
+                          disabled={busyId === m.id}
+                          onChange={(v: boolean) => void toggleCustom(m, v)}
+                        />
+                        <span style={{ fontFamily: "monospace", fontWeight: 500 }}>{m.id}</span>
+                        <span style={{ color: "rgba(127,127,127,0.85)" }}>{m.name}</span>
+                        <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10 }}>
+                          /{m.slash_command}
+                        </antd.Tag>
+                        <span style={{ fontSize: 10.5, color: "rgba(127,127,127,0.7)" }}>
+                          {tr("门禁 {a} 个（启用 {b}）", { a: gates.length, b: on })}
+                        </span>
+                        <div style={{ flex: 1 }} />
+                        <antd.Popconfirm
+                          title={tr("删除该自定义 loop？")}
+                          okText={tr("确认删除")}
+                          cancelText={tr("取消")}
+                          onConfirm={() => void removeCustom(m)}
+                        >
+                          <antd.Button size="small" danger disabled={busyId === m.id} loading={busyId === m.id}>
+                            {tr("删除")}
+                          </antd.Button>
+                        </antd.Popconfirm>
+                      </div>
+                    );
+                  })}
+                </div>
+                {creating ? (
+                  <div>
+                    <antd.Input.TextArea
+                      rows={8}
+                      style={{ fontFamily: "monospace", fontSize: 11.5 }}
+                      placeholder={tr("新自定义 loop 完整 JSON（字段：id / name / slash_command / enabled / gates）")}
+                      value={newJson ?? ""}
+                      onChange={(e: { target: { value: string } }) => setNewJson(e.target.value)}
+                    />
+                    <div style={{ fontSize: 10.5, color: "rgba(127,127,127,0.75)", margin: "2px 0 4px" }}>
+                      {tr("id 与 slash_command 须小写字母/数字/_/-；gates 为 {id,type,enabled,params} 数组（可空）；重名或 slash 冲突 409，管道校验失败 422。")}
+                    </div>
+                    <antd.Button
+                      size="small"
+                      type="primary"
+                      loading={busyId === "__create__"}
+                      onClick={() => void createCustom()}
+                    >
+                      {tr("创建")}
+                    </antd.Button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+
           {/* 只读区：不在面板可编辑范围（L1-only 键 / 审批端点专属 / 高风险记忆配置）。 */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, color: "rgba(127,127,127,0.85)" }}>
             <span>
@@ -447,7 +700,50 @@ function WorkerRuntimeConfig({ name }: { name: string }) {
             <span>
               {tr("Shell 超时")}: {String(num(cfg.shell_command_timeout) ?? "-")}s
             </span>
+            <span>
+              {tr("reme 轻量记忆")}: {hasMem && remeCfg ? tr("已配置") : tr("未配置")}
+              {hasMem ? "" : ""}
+            </span>
+            <span>
+              {tr("adbpg 记忆")}: {adbpgCfg && typeof adbpgCfg === "object" && Object.keys(adbpgCfg as Rc).length > 0 ? tr("已配置") : tr("未配置")}
+            </span>
+            {hasMem ? (
+              <antd.Button
+                size="small"
+                type="link"
+                style={{ padding: 0, fontSize: 11 }}
+                onClick={() => setMemOpen((v) => !v)}
+              >
+                {memOpen ? tr("隐藏配置 JSON") : tr("查看配置 JSON")}
+              </antd.Button>
+            ) : null}
           </div>
+          {memOpen && hasMem ? (
+            <pre
+              style={{
+                margin: 0,
+                padding: 8,
+                fontSize: 10.5,
+                fontFamily: "monospace",
+                background: "rgba(127,127,127,0.06)",
+                border: "1px solid rgba(127,127,127,0.2)",
+                borderRadius: 6,
+                maxHeight: 180,
+                overflow: "auto",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+              }}
+            >
+              {JSON.stringify(
+                {
+                  reme_light_memory_config: remeCfg ?? null,
+                  adbpg_memory_config: adbpgCfg ?? null,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          ) : null}
         </>
       ) : null}
     </div>
