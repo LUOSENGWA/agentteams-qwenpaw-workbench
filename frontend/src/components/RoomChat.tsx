@@ -2130,10 +2130,14 @@ export default function RoomChat(props: RoomChatProps) {
       style={{
         display: "flex",
         flexDirection: "column",
-        // 视口减固定预留（宿主导航 64 + 页头 ~63 + tab 栏 ~38 + 边距）：
-        // 聊天室撑满视口，输入区贴屏幕底（v0.5.0-beta.12 同款经验值）。
-        height: "calc(100vh - 230px)",
-        minHeight: 420,
+        // v0.5.0-beta.13.4（滚动真根因重构）：撑满容器（Element 模型）——
+        // 父链已全程定高：wb-main(shellH 实测) → 内容区 flex:1 min-0 →
+        // Tabs/content-holder/content → tabpane-active(height:100% min-0)
+        // → 分栏行 height:100% → 右栏 flex:1 min-0（窄屏模式 RoomChat 直挂
+        // tabpane，同款定高）。12.x 的 calc(100vh-230px)+minHeight:420 在
+        // OS 窗口小于屏幕时撑破容器 → 整页滚 + 顶栏 flexWrap 时进一步溢出。
+        height: "100%",
+        minWidth: 0,
       }}
     >
       {/* 顶部栏：返回 + 房间名 + 成员数 + 发起任务 */}

@@ -1,7 +1,7 @@
 {
   "name": "agentteams-qwenpaw-workbench-ui",
   "private": true,
-  "version": "0.5.0-beta.13.3",
+  "version": "0.5.0-beta.13.4",
   "scripts": {
     "build": "vite build"
   },
@@ -11,6 +11,7 @@
     "@types/three": "0.185.4",
     "@vitejs/plugin-react": "^4.3.1",
     "antd": "^5.29.3",
+    "playwright-core": "^1.63.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.5.4",

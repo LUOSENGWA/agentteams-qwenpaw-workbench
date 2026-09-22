@@ -2531,6 +2531,54 @@ export default function WorkbenchPage() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  // v0.5.0-beta.13.4（9/22 第二轮反馈·滚动真根因重构）：shell 高度改为
+  // 容器相对（Element 模型）——12.x 起用 calc(100vh-64px) 经验值，但宿主
+  // 是 Desktop OS 窗口（OsAppHost .content：flex:1 + overflow:auto 定高
+  // 容器，可拖拽任意大小，100vh=浏览器视口≠窗口内容高）：窗口小于屏幕时
+  // shell 溢出 → .content 整页滚 →「聊天框带着整个页面滚」。
+  // 实测优先，三级判定：
+  // ① iframe 宿主（PawApps iframe 模式）→ iframe 视口=全部可用区；
+  // ② 父容器定高且小于视口（OS 窗口 .content / 任何定高内嵌容器）→ 用父
+  //    容器 clientHeight（窗口拖拽/宿主重排时 ResizeObserver 跟随）；
+  // ③ 父容器不定高（经典页面挂载）→ 回退 calc(100vh - 64px) 旧经验值。
+  const [shellH, setShellH] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    const measure = () => {
+      const el = mainRef.current;
+      if (!el) return;
+      try {
+        if (window.self !== window.top) {
+          setShellH(window.innerHeight);
+          return;
+        }
+      } catch {
+        /* 跨域 iframe 访问异常——按非 iframe 处理 */
+      }
+      const p = el.parentElement;
+      if (
+        p &&
+        p.clientHeight > 0 &&
+        p.clientHeight < window.innerHeight - 4
+      ) {
+        setShellH(p.clientHeight);
+        return;
+      }
+      setShellH(null);
+    };
+    measure();
+    const p = mainRef.current?.parentElement;
+    if (p && typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(measure);
+      ro.observe(p);
+      window.addEventListener("resize", measure);
+      return () => {
+        ro.disconnect();
+        window.removeEventListener("resize", measure);
+      };
+    }
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
   const chatWide = chatForceWide || chatWideMeasured;
   const [chatSplitW, setChatSplitW] = React.useState<number>(() => {
     const v = Number(readUiState(UI_STATE_KEY).chatSplitW);
@@ -2763,10 +2811,12 @@ export default function WorkbenchPage() {
       ref={mainRef}
       className="wb-main"
       style={{
-        // 固定视口高度（宿主同款公式：header 56px + 8px 边距，见宿主
-        // layouts/index.module.less .sider）——不依赖父级百分比链（宿主
-        // 多层 wrapper 无高度时 height:100% 塌陷，两版实测教训）。
-        height: "calc(100vh - 64px)",
+        // v0.5.0-beta.13.4：容器相对高度（Element 模型）——shellH 实测：
+        // ① iframe 宿主=iframe 视口 ② 定高父容器（OS 窗口 .content）=父
+        // clientHeight ③ 不定高回退旧经验值 calc(100vh-64px)（经典页面：
+        // 宿主 header 56px + 8px 边距，见宿主 layouts/index.module.less
+        // .sider）。12.x 的纯 vh 经验值在 OS 窗口小于屏幕时溢出 → 整页滚。
+        height: shellH != null ? `${shellH}px` : "calc(100vh - 64px)",
         maxWidth: 1160,
         margin: "0 auto",
         padding: "12px 20px 16px",
