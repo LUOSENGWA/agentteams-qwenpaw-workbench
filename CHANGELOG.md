@@ -5,6 +5,17 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.4（2026-09-22）
+
+**容器相对高度链（滚动根因修复）+ QwenPaw 式会话窗 + 结果产物统一显形 + A2 运行配置面板**
+
+- **聊天主列表滚动根因修复（13.2/13.3 整页滚动的真根因）**：壳高度此前用 `100vh − topBar` 魔法数推算——插件容器外层高度由宿主（QwenPaw 面板/浏览器窗口）定高，而 `100vh` 跟 OS 窗口走，两者错位：窗口拉大时壳撑出容器（实测窗口 1389px 时壳溢出 125px = 底部控制区被挤出视口高度）→ 整页被迫滚动、输入区被裁。整链重构为**容器相对高度**（Element 模型：flex 容器链 + `min-height: 0`，零魔法数，`100vh`/`100svh` 从插件代码彻底移除），壳高度跟随宿主容器、任意窗口尺寸成立。jsdom harness `window-shell-harness.mjs` 复现验证（旧链溢出 125px → 新链 0，列表内滚、输入区贴底完整可见）
+- **会话窗重写为 QwenPaw Sessions 口径**：点开会话 → 会话详情右侧现为该 worker 的 QwenPaw 完整会话列表（会话状态/轮次/token 统计/最后活跃时间），点选会话看消息详情 + 会话内产出文件列表（点开预览或下载）；会话/消息/文件三层全版本门，端点缺失时降级提示
+- **结果产物显形统一**：结果产物的「查看/下载」此前只有团队任务列表（dashboard 口径）有——现拓扑节点任务行与插件工作流卡片任务均有（`ArtifactLines` 共享组件，三处同口径）
+- **Worker 管理第三面板「运行配置」（A2，消费上游 #1231 契约）**：`spec.runtime = qwenpaw` 的 Worker 显示并编辑与 QwenPaw 配置面板同名字段的运行时配置——`loop.max_iters`（表单编辑 + 整块 JSON 高级编辑 + 校验）、`approval_level`（审批级别）/`memory_manager_backend`（长期记忆）/`context_manager_backend`（上下文后端）/`shell_timeout`（Shell 超时）/模型段只读展示；loop 变更保存时提示将通知团队 Leader；409（Worker 运行中）/403（L2 范围）友好横幅；非 qwenpaw runtime 显示不支持说明
+- **i18n**：25 新键登记（中英双语）
+- **质量门**：tsc 0 / build 2046.26 kB / pytest 50/50 / window-shell-harness 4/4
+
 ## 0.5.0-beta.13.3（2026-09-22）
 
 **聊天高度链回归修复 + 工作流任务级取消/结果产物对齐 dashboard**

@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.4 (2026-09-22)
+
+**Container-relative height chain (root-cause scroll fix) + QwenPaw-style session window + unified result-artifact display + A2 runtime config panel**
+
+- **Chat list scroll root-cause fix (the true cause of the beta.13.2/13.3 full-page scroll)**: the shell height was previously derived from a `100vh − topBar` magic number — the plugin container's outer height is fixed by the host (QwenPaw panel / browser window) while `100vh` tracks the OS window, so the two diverge: enlarging the window made the shell overflow its container (measured: 125 px overflow at a 1389 px window = exactly the bottom control strip pushed out of view) → the page scrolled and the input area was clipped. The whole chain was reworked to **container-relative heights** (Element model: flex container chain + `min-height: 0`, zero magic numbers, `100vh`/`100svh` removed from the plugin code entirely); the shell now follows the host container at any window size. Reproduced and verified by the jsdom harness `window-shell-harness.mjs` (old chain: 125 px overflow → new chain: 0, list scrolls internally, input pinned at the bottom and fully visible)
+- **Session window rewritten to the QwenPaw Sessions standard**: opening a session now shows the worker's full QwenPaw session list on the right (session state / turns / token stats / last active), and selecting a session shows message detail + the session's produced-file list (open to preview or download); sessions, messages and files are all version-gated with graceful fallback when an endpoint is missing
+- **Unified result-artifact display**: result-artifact "view/download" previously existed only in the team task list (dashboard standard) — topology-node task rows and plugin workflow-card tasks now have it too (shared `ArtifactLines` component, one standard across all three surfaces)
+- **Third worker-management panel "Runtime config" (A2, consumes upstream #1231)**: workers with `spec.runtime = qwenpaw` can view/edit runtime settings with the same field names as the QwenPaw config panel — `loop.max_iters` (form + full-JSON advanced editing with validation); `approval_level` / `memory_manager_backend` / `context_manager_backend` / `shell_timeout` / model shown read-only; saving a loop change notes that the team Leader will be notified; 409 (worker running) / 403 (L2 scope) render friendly banners; non-qwenpaw runtimes show an unsupported notice
+- **i18n**: 25 new keys registered (zh/en)
+- **Quality gates**: tsc 0 / build 2046.26 kB / pytest 50/50 / window-shell-harness 4/4
+
 ## 0.5.0-beta.13.3 (2026-09-22)
 
 **Chat height-chain regression fix + workflow task cancel / result-artifact dashboard parity**
