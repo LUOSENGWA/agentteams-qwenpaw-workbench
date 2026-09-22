@@ -5,6 +5,22 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.5 (2026-09-22)
+
+**Session window layout fixes (2) + artifact "view" behavior fix + runtime config panel endpoint reconciliation (#1231 endpoint family, 7/7 wired)**
+
+- **Session list horizontal overflow fix**: the session table previously used five fixed column widths (528 px total) plus a 500 px minimum scroll width — when the drawer width was constrained by the window, the table grew a horizontal scrollbar and the "View" button got pushed to the far right (only reachable by dragging the bottom scrollbar). Now fixed table layout + container-relative column widths (unfixed columns share the remaining space, long values ellipsize inside the cell): no horizontal scroll at any drawer width, "View" always visible
+- **Session context view scroll fix**: the session detail (agent context view) message area previously had a 420 px magic-number cap — on short windows the content was clipped by the drawer bottom and could not scroll. Now a container-relative height chain (detail area = the drawer's full remaining height, message area flex-scrolls, zero magic numbers); scrollable at any window size
+- **Artifact "view" no longer collapses the panel**: the topology task row's expand toggle was previously bound to the whole card — clicking "View" bubbled up, toggled the row closed, and the preview modal unmounted with it ("clicking view collapsed the menu"). The toggle is now on the header row only; button clicks inside the expanded area no longer collapse it
+- **Runtime config panel endpoint reconciliation**: the panel previously consumed only 1 of the 7 #1231 endpoint-group calls (runtime-config). This release wires the rest against the upstream contract —
+  - **Loop mode catalog** (GET /loops): builtin/custom/plugin modes as color-coded tags (name + slash command + hover description)
+  - **Custom loop CRUD** (GET/POST/PUT/DELETE /loops/custom): list rows with an enable switch (whole-object rewrite), id / name / slash command / gate count, and delete (with confirmation); creation via a full-JSON form (409 duplicate / 422 pipeline-validation errors surfaced verbatim)
+  - **Per-session loop status** (GET /loops/status): wired into the session detail header — the active loop mode of that session shows as a tag (blue while running, default otherwise); older runtimes (404) hide it automatically
+  - **Memory config surfaced**: the reme light memory / adbpg memory fields (contract 5-tab fields) show configured / not-configured, read-only, with a collapsible config JSON view
+- **UI copy cleanup**: internal PR-number references removed from the runtime config panel (panel/banners no longer show #1231)
+- **i18n**: 23 new keys registered (zh/en)
+- **Gates**: tsc 0 / build 2054.71 kB / pytest 50/50 / window-shell-harness 4/4 / i18n 0 missing / dist anchors 9/9
+
 ## 0.5.0-beta.13.4 (2026-09-22)
 
 **Container-relative height chain (root-cause scroll fix) + QwenPaw-style session window + unified result-artifact display + A2 runtime config panel**

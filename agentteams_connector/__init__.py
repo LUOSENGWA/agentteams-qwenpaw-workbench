@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
 """AgentTeams QwenPaw Workbench backend package."""
 
-__version__ = "0.5.0-beta.13.4"
+__version__ = "0.5.0-beta.13.5"
