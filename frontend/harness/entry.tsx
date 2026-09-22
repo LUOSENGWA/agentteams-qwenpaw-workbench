@@ -52,8 +52,13 @@ function HarnessApp() {
         </div>
       </section>
       <section id="hrc" style={{ border: "1px solid #ccc", padding: 8 }}>
-        <div style={{ fontSize: 12, marginBottom: 4 }}>WorkerRuntimeConfig</div>
+        <div style={{ fontSize: 12, marginBottom: 4 }}>WorkerRuntimeConfig (L2 只读)</div>
         <WorkerRuntimeConfig name="w1" />
+      </section>
+      {/* v0.5.0-beta.13.8：L1 挂载（并发限流/上下文管理/shell 组可编辑）。 */}
+      <section id="hrc1" style={{ border: "1px solid #ccc", padding: 8 }}>
+        <div style={{ fontSize: 12, marginBottom: 4 }}>WorkerRuntimeConfig (L1 可编辑)</div>
+        <WorkerRuntimeConfig name="w1" l1 />
       </section>
       <section id="hroom" style={{ border: "1px solid #ccc", padding: 8, height: 420, display: "flex", flexDirection: "column" }}>
         <div style={{ flex: "0 0 auto", fontSize: 12, marginBottom: 4 }}>RoomChat</div>

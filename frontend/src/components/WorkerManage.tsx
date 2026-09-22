@@ -289,10 +289,14 @@ function WorkerManageInfo({
   worker,
   onLifecycle,
   acting,
+  l1,
 }: {
   worker: AdminData["workers"][number];
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
+  /** v0.5.0-beta.13.8：L1 账号（controller token）→ 运行配置面板 L1-only
+   *  字段可编辑；L2 只读（PUT 非白名单键会被服务端 403 拒绝）。 */
+  l1?: boolean;
 }) {
   const tr = useT();
   const meta = phaseMeta(worker.phase);
@@ -442,7 +446,7 @@ function WorkerManageInfo({
       </div>
       {/* v0.5.0-beta.13.4（A2 落地）：Worker 运行配置（上游 #1231 消费）——
           默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。 */}
-      <WorkerRuntimeConfig name={worker.name} />
+      <WorkerRuntimeConfig name={worker.name} l1={l1} />
     </div>
   );
 }
@@ -456,6 +460,7 @@ function WorkerRow({
   onLifecycle,
   acting,
   sessionState,
+  l1,
 }: {
   group: WorkerSpawnGroup;
   depth: number;
@@ -463,6 +468,8 @@ function WorkerRow({
   adminWorker?: AdminData["workers"][number];
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
+  /** v0.5.0-beta.13.8：L1 账号 → 运行配置面板 L1-only 字段可编辑。 */
+  l1?: boolean;
   /** v0.5.0-beta.12.4（A17）：该 Worker 的 session 状态（typing/last_ts 派生）。
    *  与行首既有圆点（CR phase / spawn running，进程级）并存——两轴不同。 */
   sessionState?: WorkerSessionState;
@@ -604,6 +611,7 @@ function WorkerRow({
               worker={adminWorker}
               onLifecycle={onLifecycle}
               acting={acting}
+              l1={l1}
             />
           ) : null}
           {spawns.length
@@ -802,6 +810,7 @@ function TeamNode({
   onLifecycle,
   acting,
   sessionByName,
+  l1,
 }: {
   team: WorkerTreeTeam;
   onDm?: (mxid: string) => void;
@@ -810,6 +819,9 @@ function TeamNode({
   acting: string | null;
   /** v0.5.0-beta.12.4（A17）：worker_name → session 状态（行内圆点）。 */
   sessionByName?: Record<string, WorkerSessionState>;
+  /** v0.5.0-beta.13.8：当前账号 L1（controller token）→ 运行配置面板的
+   *  L1-only 字段（并发限流/上下文管理/shell 组/auto_title）可编辑。 */
+  l1?: boolean;
 }) {
   const [expanded, setExpanded] = React.useState(true);
   const workerCount = team.workers.length;
@@ -1556,6 +1568,7 @@ export default function WorkerManage(props: WorkerManageProps) {
                 onLifecycle={hasToken ? handleLifecycle : undefined}
                 acting={acting}
                 sessionByName={workerSessionByName}
+                l1={!!hasToken}
               />
             ))}
           </div>

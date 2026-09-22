@@ -90,7 +90,8 @@ await iterRowCell.waitFor({ timeout: 3000 });
 const iterRowText = await iterRowCell.locator("xpath=..").innerText();
 report("③ 基本 tab 最大迭代只读=80", iterRowText.includes("80"), iterRowText.replace(/\n/g, " ").slice(0, 40));
 // Agent Loop tab：gate 编辑器
-await page.locator("#hrc .ant-tabs-tab").getByText("Agent Loop", { exact: true }).click();
+// 13.8：tab 改名「Agent Loop」→「智能体 Loop 设置」（六 tab 补齐定案）。
+await page.locator("#hrc .ant-tabs-tab").getByText("智能体 Loop 设置", { exact: true }).click();
 await page.waitForTimeout(300);
 const gatePipeline = page.locator("#hrc").getByText("Default 模式 · gate 管道", { exact: true });
 await gatePipeline.waitFor({ timeout: 3000 });
@@ -126,11 +127,14 @@ report("③ 未改动时保存禁用", (await saveBtn.count()) >= 1 && (await sa
 await iterInput.fill("100");
 await page.waitForTimeout(200);
 report("③ 改动后保存点亮", !(await saveBtn.first().isDisabled()));
-// 系统 tab：限速器只读行
+// 系统 tab：13.8 瘦身——只留审批级别（限速器 5 键已独立成「LLM 并发限流」tab，
+// 见 ui-harness-138）。此处断言系统 tab 含审批级别且不再含限速器行。
 await page.locator("#hrc .ant-tabs-tab").getByText("系统（只读）", { exact: true }).click();
 await page.waitForTimeout(200);
-const rateRows = await page.locator("#hrc").getByText("LLM 并发上限").count();
-report("③ 系统 tab 限速器行", rateRows >= 1);
+const sysPane = "#hrc .ant-tabs-tabpane-active";
+const apprRows = await page.locator(sysPane).getByText("审批级别").count();
+const rateRows = await page.locator(sysPane).getByText("LLM 并发上限").count();
+report("③ 系统 tab 只留审批级别", apprRows >= 1 && rateRows === 0, `appr=${apprRows} rate=${rateRows}`);
 
 // ── ④ RoomChat ToolBubble + MdText CodeBlock ───────────────────────
 const roomPane = page.locator("#hroom");

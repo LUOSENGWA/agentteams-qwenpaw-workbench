@@ -65,18 +65,24 @@ export interface WorkerHeartbeatInfo {
 export function deriveWorkerSessionState(opts: {
   heartbeat?: WorkerHeartbeatInfo | null;
   isTyping: boolean;
+  /** v0.5.0-beta.13.8：session 级正源（/chats 任一 session status=running，
+   *  qwenpaw app 自维护）——优先级：心跳（若有）> chat.running > typing。
+   *  任务执行中但 Worker 未发言时（无 typing/消息）也正确显示蓝。 */
+  chatRunning?: boolean;
   /** v0.5.0-beta.13.2：该 Worker 自己最后一条消息的 epoch ms（0/undefined = 无）。
    *  房间级活动（他人消息）不得传入——那是 roomWorkerState 的语义。 */
   lastActivityTs?: number;
   now?: number;
 }): WorkerSessionState {
-  const { heartbeat, isTyping, lastActivityTs, now = Date.now() } = opts;
+  const { heartbeat, isTyping, chatRunning, lastActivityTs, now = Date.now() } =
+    opts;
   if (
     heartbeat?.agentStatus === "running" ||
     (heartbeat?.runningTaskCount ?? 0) > 0
   ) {
     return "running";
   }
+  if (chatRunning) return "running";
   if (isTyping) return "running";
   const finishTs = heartbeat?.lastFinishAt
     ? Date.parse(heartbeat.lastFinishAt)
@@ -89,12 +95,14 @@ export function deriveWorkerSessionState(opts: {
   return "idle";
 }
 
-/** Per-Worker 三态：按 Worker MXID 跨全部房间派生（心跳优先，v2）。 */
+/** Per-Worker 三态：按 Worker MXID 跨全部房间派生（心跳优先，v2；
+ *  v0.5.0-beta.13.8 加 session 级 chatRunning 正源）。 */
 export function workerSessionState(
   mxid: string | undefined,
   rooms: readonly SessionRoomLike[],
   heartbeat?: WorkerHeartbeatInfo | null,
   now: number = Date.now(),
+  chatRunning?: boolean,
 ): WorkerSessionState {
   if (!mxid) return "idle";
   let isTyping = false;
@@ -111,6 +119,7 @@ export function workerSessionState(
   return deriveWorkerSessionState({
     heartbeat,
     isTyping,
+    chatRunning,
     lastActivityTs: lastOwnTs,
     now,
   });
@@ -175,6 +184,9 @@ export function useWorkerSessionStates(
         lastFinishAt?: string;
       }[]
     | null,
+  /** v0.5.0-beta.13.8：worker_name → session 级聚合（useWorkerChatStatuses；
+   *  未传 = 旧行为，消息级启发式兜底）。 */
+  chatStatuses?: Record<string, { running: boolean; lastUpdated: number }>,
 ): WorkerSessionStates {
   const React = window.QwenPaw.host.React;
   const [tick, setTick] = React.useState(0);
@@ -183,6 +195,7 @@ export function useWorkerSessionStates(
     return () => window.clearInterval(id);
   }, []);
   return React.useMemo(() => {
+    const now = Date.now();
     const rs = rooms || [];
     const byName: Record<string, WorkerSessionState> = {};
     const byRoom: Record<string, WorkerSessionState> = {};
@@ -206,12 +219,15 @@ export function useWorkerSessionStates(
         const hb =
           hbByName.get(w.worker_name) ??
           (w.mxid ? hbByMxid.get(w.mxid) : undefined);
-        const st = workerSessionState(w.mxid, rs, hb);
+        // v0.5.0-beta.13.8：session 级正源（/chats 任一 running）进 running
+        // 判定，优先级 心跳 > chat.running > typing（见 derive）。
+        const chatRunning = chatStatuses?.[w.worker_name]?.running;
+        const st = workerSessionState(w.mxid, rs, hb, now, chatRunning);
         byName[w.worker_name] = st;
         if (w.mxid) byMxid[w.mxid] = st;
         if (w.room_id) byRoom[w.room_id] = st;
       }
     }
     return { byName, byRoom, byMxid, workerMxids: collectWorkerMxids(workerTree) };
-  }, [rooms, workerTree, workers, tick]);
+  }, [rooms, workerTree, workers, chatStatuses, tick]);
 }
