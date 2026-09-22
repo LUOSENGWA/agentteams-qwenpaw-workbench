@@ -78,44 +78,64 @@ export default function ArtifactLines(props: {
 
   if (props.lines.length === 0) return null;
   const fs = props.compact ? 11 : 11.5;
+  // v0.5.0-beta.13.10（E1：「查看按钮恒可见但依旧被挤压裁切」→ 定案卡片化（装验反馈）
+  // 卡片化）：单行 flex + 路径 ellipsis 在窄容器里把按钮挤没。改卡片——
+  // 路径完整换行显示（break-all，无截断），按钮独立一行（永不被裁）。
   return (
     <>
       {props.lines.map((line) => (
         <div
           key={line.path}
           style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            padding: "2px 0",
-            flexWrap: "wrap",
+            border: "1px solid rgba(127,127,127,0.25)",
+            borderRadius: 6,
+            padding: "6px 8px",
+            margin: "4px 0",
+            background: "rgba(127,127,127,0.05)",
           }}
         >
-          <span style={{ fontSize: fs, color: t.textSecondary, flexShrink: 0 }}>
-            {line.label}
-          </span>
-          <span
+          <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+            <span
+              style={{
+                fontSize: fs,
+                color: t.textSecondary,
+                flexShrink: 0,
+                fontWeight: 600,
+              }}
+            >
+              {line.label}
+            </span>
+            <span
+              style={{
+                fontFamily: "monospace",
+                fontSize: fs,
+                wordBreak: "break-all",
+                overflowWrap: "anywhere",
+              }}
+              title={line.path}
+            >
+              {line.path}
+            </span>
+          </div>
+          <div
             style={{
-              fontFamily: "monospace",
-              fontSize: fs,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              display: "flex",
+              gap: 8,
+              marginTop: 5,
+              justifyContent: "flex-end",
             }}
-            title={line.path}
           >
-            {line.path}
-          </span>
-          <antd.Button size="small" onClick={() => view(line.path)}>
-            {tr("查看")}
-          </antd.Button>
-          <antd.Button
-            size="small"
-            loading={downloading === line.path}
-            onClick={() => void dl(line.path)}
-          >
-            {tr("下载")}
-          </antd.Button>
+            <antd.Button size="small" onClick={() => view(line.path)}>
+              {tr("查看")}
+            </antd.Button>
+            <antd.Button
+              size="small"
+              loading={downloading === line.path}
+              onClick={() => void dl(line.path)}
+            >
+              {tr("下载")}
+            </antd.Button>
+          </div>
         </div>
       ))}
       <FilePreview file={preview} onClose={() => setPreview(null)} />

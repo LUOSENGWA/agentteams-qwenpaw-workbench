@@ -2679,8 +2679,11 @@ def build_router() -> APIRouter:
         返回 [{type,size,mtime,rel}]（rel 相对 target，顶层条目=裸名）；
         通道失败 → None（调用方切 tar 兜底）；目标不存在/空目录 → 空列表
         （find 报错走 stderr、stdout 空——调用方必要时以 HEAD 探针区分
-        空目录与不存在）。"""
-        cmd = ["find", target]
+        空目录与不存在）。
+        v0.5.0-beta.13.10：-H 跟随**命令行参数**层的符号链接（worker
+        工作区 shared → teams/.../shared 团队目录符号链接——kb_ls 展开
+        符号链接目录需要；条目内深层符号链接仍不跟随，防环）。"""
+        cmd = ["find", "-H", target]
         if maxdepth is not None:
             cmd += ["-maxdepth", str(maxdepth)]
         cmd += ["-printf", "%y %s %T@ %P\n"]
@@ -3174,7 +3177,7 @@ def build_router() -> APIRouter:
                 files.append(
                     {"path": p, "name": e["name"] or p.rsplit("/", 1)[-1],
                      "size": e["size"], "mtime": e["mtime"],
-                     "category": category}
+                     "category": category, "openable": True}
                 )
 
         # ① 顶层：档案（6 默认 md）+ 文件（其余文件 + 目录条目）。
@@ -3187,6 +3190,8 @@ def build_router() -> APIRouter:
                 token, base, container, ws,
                 maxdepth=1, include_dirs=True,
             )
+        _text_ok = (".md", ".txt", ".yaml", ".yml", ".json")
+        _symlink_names: List[str] = []
         for e in (entries or []):
             name = e["rel"]
             if name.startswith(".") or name in (
@@ -3196,18 +3201,67 @@ def build_router() -> APIRouter:
             if name in seen:
                 continue
             seen.add(name)
-            if e["type"] == "d":
+            et = e["type"]
+            if et == "d":
                 dirs.append(
                     {"path": name, "name": name, "isdir": True,
                      "category": "file"}
                 )
+            elif et == "l":
+                # v0.5.0-beta.13.10（13.9 装验「知识库目录不全」真根因①）：
+                # 符号链接此前被整条跳过（worker 工作区 shared →
+                # teams/{team}/shared 团队共享目录不可见）。批量解析目标
+                # 类型（python3 argv 传路径，不经过 shell 解析——manager
+                # 工作区存在含空格/逗号/引号的目录名，shell 拼串必碎）。
+                # 目标=目录 → 目录条目（kb_ls -H 可展开）；目标=文件/
+                # 断链 → 非文本文件条目（列出不可点开）。
+                _symlink_names.append(name)
+                files.append(
+                    {"path": name, "name": name,
+                     "size": e["size"], "mtime": e["mtime"],
+                     "category": "file", "openable": False,
+                     "symlink": True, "_pending_resolve": True}
+                )
             else:
+                # 真根因②：非文本文件（.jsonl/.py/.bak/.db 等）此前被
+                # 文本过滤器整条吞掉 → 列表与实盘目录对不上（「不全」
+                # 感观）。改为全量列出 + openable 标记（前端不可点开）。
                 files.append(
                     {"path": name, "name": name,
                      "size": e["size"], "mtime": e["mtime"],
                      "category": "profile" if name in _PROFILE_FILES
-                     else "file"}
+                    else "file",
+                    "openable": name.lower().endswith(_text_ok)}
                 )
+        if _symlink_names:
+            try:
+                _targets = [f"{ws}/{n}" for n in _symlink_names]
+                _out = await _kb_exec_full(
+                    token, base, container,
+                    ["python3", "-c",
+                     "import os,sys;print('\\n'.join("
+                     "'D' if os.path.isdir(p) else 'F' "
+                     "for p in sys.argv[1:]))",
+                     *_targets],
+                    timeout=30.0,
+                )
+                _resolved = (
+                    dict(zip(_symlink_names, _out.splitlines()))
+                    if _out else {}
+                )
+                for _f in files:
+                    if _f.pop("_pending_resolve", False):
+                        _t = _resolved.get(_f["name"], "")
+                        if _t == "D":
+                            dirs.append(
+                                {"path": _f["path"], "name": _f["name"],
+                                 "isdir": True, "category": "file",
+                                 "symlink": True}
+                            )
+                            files.remove(_f)
+            except Exception:  # noqa: BLE001 — 解析失败保持文件条目
+                for _f in files:
+                    _f.pop("_pending_resolve", None)
 
         # ②③ 日记（memory/**）+ 知识库（digest/**）：双通道（旧版整子树
         # 先 tar 后查大小，长期运行 agent 子树过 20MB 即 413，与 ① 同批真根因修）。
@@ -3219,16 +3273,25 @@ def build_router() -> APIRouter:
             if not entries:
                 continue
             for e in entries:
+                if e["type"] not in ("f", "l"):
+                    continue  # ②③ 子树只列文件（目录不单独成条目）
                 rel = f"{sub}/{e['rel']}"
                 nm = e["rel"].rsplit("/", 1)[-1]
-                if _kb_is_sensitive(nm, rel):
-                    continue  # 敏感文件过滤（dashboard SENSITIVE_PATTERNS 对齐）
+                if (
+                    _kb_is_sensitive(nm, rel)
+                    or any(q.startswith(".") for q in e["rel"].split("/"))
+                ):
+                    continue  # 敏感文件 + 隐藏项（dashboard 对齐）
                 if rel in seen:
                     continue
                 seen.add(rel)
+                # v0.5.0-beta.13.10：非文本文件同样列出（openable=False）——
+                # 与 ① 顶层同口径，列表=实盘目录的诚实镜像。
                 files.append(
                     {"path": rel, "name": nm, "size": e["size"],
-                     "mtime": e["mtime"], "category": cat}
+                     "mtime": e["mtime"], "category": cat,
+                     "openable": e["type"] == "f"
+                     and nm.lower().endswith(_text_ok)}
                 )
 
         # ④ 兼容旧逻辑：单独抓 6 档案文件中未随顶层 tar 出现者（布局差异兜底）
@@ -3245,15 +3308,18 @@ def build_router() -> APIRouter:
                 continue
             await _add_entries(data, sub, "profile")
 
-        # 文本过滤 + 排序（档案优先，其余按路径）。
-        keep = [
-            f for f in files
-            if f["path"].lower().endswith((".md", ".txt", ".yaml", ".yml", ".json"))
-        ][:300]
+        # v0.5.0-beta.13.10：不再按文本扩展名整体过滤——每条自带 openable
+        # 标记（前端据此决定可否点开），列表=实盘目录诚实镜像（非文本
+        # 灰显不可点）。排序：分类优先 → 可打开优先 → 路径。
         cat_order = {"profile": 0, "daily": 1, "digest": 2, "file": 3}
-        keep.sort(
-            key=lambda f: (cat_order.get(f.get("category", "file"), 3), f["path"])
+        files.sort(
+            key=lambda f: (
+                cat_order.get(f.get("category", "file"), 3),
+                0 if f.get("openable", False) else 1,
+                f["path"],
+            )
         )
+        keep = files[:300]
         keep_dirs = dirs[:60]
         return {
             "agent": agent, "workspace": ws,
@@ -3381,6 +3447,7 @@ def build_router() -> APIRouter:
         files: List[Dict[str, Any]] = []
         dirs: Dict[str, Dict[str, Any]] = {}
         text_ok = (".md", ".txt", ".yaml", ".yml", ".json")
+        symlink_names: List[str] = []
         for e in entries:
             name = e["rel"]
             if not name or name.startswith(".") \
@@ -3393,13 +3460,55 @@ def build_router() -> APIRouter:
                 dirs.setdefault(name, {
                     "path": rel, "name": name, "isdir": True,
                 })
-            elif e["type"] == "f" and name.lower().endswith(text_ok):
+            elif e["type"] == "l":
+                # v0.5.0-beta.13.10：符号链接列全（目标=目录→可展开，
+                # find -H 展开已支持；目标=文件/断链→非文本条目）。
+                symlink_names.append(name)
+                files.append({
+                    "path": rel, "name": name,
+                    "size": e["size"], "mtime": e["mtime"],
+                    "category": "file", "openable": False,
+                    "symlink": True, "_pending_resolve": True,
+                })
+            elif e["type"] == "f":
+                # 非文本文件列出 + openable 标记（13.9「不全」真根因②，
+                # 与 kb_tree 同口径）。
                 files.append({
                     "path": rel, "name": name,
                     "size": e["size"], "mtime": e["mtime"],
                     "category": "file",
+                    "openable": name.lower().endswith(text_ok),
                 })
-        files.sort(key=lambda f: f["path"])
+        if symlink_names:
+            try:
+                _targets = [f"{target.rstrip('/')}/{n}" for n in symlink_names]
+                _out = await _kb_exec_full(
+                    token, base, container,
+                    ["python3", "-c",
+                     "import os,sys;print('\\n'.join("
+                     "'D' if os.path.isdir(p) else 'F' "
+                     "for p in sys.argv[1:]))",
+                     *_targets],
+                    timeout=30.0,
+                )
+                _resolved = (
+                    dict(zip(symlink_names, _out.splitlines()))
+                    if _out else {}
+                )
+                for _f in files:
+                    if _f.pop("_pending_resolve", False):
+                        if _resolved.get(_f["name"]) == "D":
+                            dirs.setdefault(_f["name"], {
+                                "path": _f["path"], "name": _f["name"],
+                                "isdir": True, "symlink": True,
+                            })
+                            files.remove(_f)
+            except Exception:  # noqa: BLE001 — 解析失败保持文件条目
+                for _f in files:
+                    _f.pop("_pending_resolve", None)
+        files.sort(
+            key=lambda f: (0 if f.get("openable", False) else 1, f["path"])
+        )
         dir_list = sorted(dirs.values(), key=lambda d: d["path"])
         return {
             "agent": agent, "dir": dir,

@@ -6,8 +6,6 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-const PRIMARY = "#FF7F16";
-
 /** v0.5.0-beta.13.8（13.7 装验「@mention 格式不对——Element 渲染整 MXID」）：
  *  Element/Matrix 口径——消息 body 里的整 MXID（@local:server[:port]）被
  *  正则扫描渲染成 pill（Element Pill.tsx 同款前端后处理；本集群
@@ -93,27 +91,21 @@ function InlineMd({
     } else if (tok.startsWith("*") && tok.endsWith("*") && tok.length > 2) {
       nodes.push(<i key={key++}>{tok.slice(1, -1)}</i>);
     } else if (tok.startsWith("@")) {
-      // 13.8：整 MXID → Element 式 pill（chip=localpart，Tooltip=整 MXID）；
-      // 短 @name → 旧高亮（onMentionClick 传短名，插入输入框走原逻辑）。
+      // 13.8 收口（F4）：整 MXID 与短 @name **统一 pill**（此前短名只是橙色
+      // 加粗——装验反馈「@mention 是简单字符串」）。MentionPill 对无 :server 的
+      // 短名同样工作（chip=localpart，Tooltip=短名，点击=onMentionClick 短名
+      // 插入输入框走原逻辑）。
       if (MXID_TEST.test(tok)) {
         nodes.push(
           <MentionPill key={key++} mxid={tok} onMentionClick={onMentionClick} />,
         );
       } else {
         nodes.push(
-          <span
+          <MentionPill
             key={key++}
-            style={{
-              color: PRIMARY,
-              fontWeight: 600,
-              cursor: onMentionClick ? "pointer" : undefined,
-            }}
-            onClick={
-              onMentionClick ? () => onMentionClick(tok.slice(1)) : undefined
-            }
-          >
-            {tok}
-          </span>,
+            mxid={tok}
+            onMentionClick={onMentionClick ? () => onMentionClick(tok.slice(1)) : undefined}
+          />,
         );
       }
     } else {

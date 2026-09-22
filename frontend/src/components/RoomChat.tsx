@@ -2025,7 +2025,7 @@ export default function RoomChat(props: RoomChatProps) {
   }, [room?.room_id]);
 
   // ── v0.5.0-beta.13.6（会话级 loop 状态显示位置定案）─────────────
-  // 罗总 9/22 装验：「会话级 loop 状态你需要查清楚应该在哪里显示」——
+  // 9/22 装验：「会话级 loop 状态你需要查清楚应该在哪里显示」——
   // 正源=QwenPaw console 前端（LoopModeSelector，chat composer 内
   // 输入工具条）：idle 显所选模式；非 idle 换激活模式指示（图标+模式名
   // +状态词+Tooltip）。插件侧同位落地：1:1 Worker 房间输入区行左侧

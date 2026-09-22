@@ -2009,7 +2009,11 @@ export async function fetchTeamsSync(
 // ── 模块级缓存（页面重开立即显示，后台刷新）──────────────────────────
 // 离开 tab 组件卸载后数据仍在；重新打开先用缓存渲染再后台拉新。
 let roomsCache: TeamsRoomsResponse | null = null;
-const messagesCache = new Map<string, RoomMessagesPage>();
+// v0.5.0-beta.13.10（13.9 装验「消息被滚出历史」真根因）：缓存从「最新
+// 50 条页」升级为「全量已加载历史」（含 loadMore 前插的更早消息）——
+// 旧版切页/切房间回来 refresh 用最新 50 全量替换，翻过的历史全丢
+// （「很多没了」「乱了」）。
+const messagesCache = new Map<string, { messages: RoomMessage[]; end: string }>();
 
 export function getCachedRooms(): TeamsRoomsResponse | null {
   return roomsCache;
@@ -2019,15 +2023,22 @@ export function setCachedRooms(data: TeamsRoomsResponse): void {
   roomsCache = data;
 }
 
-export function getCachedMessages(roomId: string): RoomMessagesPage | null {
+export function getCachedMessages(
+  roomId: string,
+): { messages: RoomMessage[]; end: string } | null {
   return messagesCache.get(roomId) ?? null;
 }
 
 export function setCachedMessages(
   roomId: string,
   page: RoomMessagesPage,
+  /** 当前 UI 全量消息（含 loadMore 前插历史）——缺省=只存本页。 */
+  fullList?: RoomMessage[],
 ): void {
-  messagesCache.set(roomId, page);
+  messagesCache.set(roomId, {
+    messages: fullList && fullList.length > 0 ? fullList : page.messages,
+    end: page.end,
+  });
   // 上限 20 个房间，防内存膨胀
   if (messagesCache.size > 20) {
     const first = messagesCache.keys().next().value;
@@ -2268,14 +2279,59 @@ export async function sendRoomFile(
   )) as { event_id: string };
 }
 
+/** v0.5.0-beta.13.10（13.9 装验「@mention 是单纯字符串」真根因）：
+ * composer 记录的 mention 目标——发送时构造 Element 同款三重标记
+ * （m.mentions 结构化 + formatted_body matrix.to 链接 + body 纯文本
+ * @localpart），缺任何一层都可能被群房间 _require_mention 静默丢弃
+ * （Worker 收不到）。命名 SendMention——与旧 RoomMention（@提及通知
+ * feed，fetchRoomMentions）区分，同文件重名会接口合并成超集。 */
+export interface SendMention {
+  mxid: string;
+  /** MXID localpart（@ 后的可读名，body 里实际出现的文本）。 */
+  localpart: string;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Element MessageComposer 同款：body 里每处 @localpart → matrix.to
+ * 链接（已 HTML 转义后替换，负向 lookahead 防更长 localpart 双包）。 */
+function buildMentionHtml(body: string, mentions: SendMention[]): string {
+  let html = escapeHtml(body);
+  for (const m of mentions) {
+    if (!m.localpart) continue;
+    const esc = m.localpart.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`@${esc}(?![\\w.])`, "g");
+    const link = `<a href="https://matrix.to/#/${encodeURIComponent(
+      m.mxid,
+    )}" class="mx-Mention">@${escapeHtml(m.localpart)}</a>`;
+    html = html.replace(re, link);
+  }
+  return html;
+}
+
 export async function sendRoomMessage(
   roomId: string,
   body: string,
   replyTo?: { event_id: string; sender: string; body: string },
   threadRoot?: string,
+  mentions?: SendMention[],
 ): Promise<{ event_id: string }> {
   const txn = `wb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const content: Record<string, unknown> = { msgtype: "m.text", body };
+  if (mentions && mentions.length > 0) {
+    content["format"] = "org.matrix.custom.html";
+    content["formatted_body"] = buildMentionHtml(body, mentions);
+    content["m.mentions"] = {
+      user_ids: [...new Set(mentions.map((m) => m.mxid))],
+    };
+  }
   if (threadRoot) {
     // 线程回复：m.thread rel_type（Agent 线程协议，agentteams-matrix-channel
     // L3618 同款——比 m.in_reply_to 更适合 Agent 场景，Element 也支持）。
@@ -3120,6 +3176,11 @@ export interface KbFileItem {
   /** 四分类（对齐 QwenPaw 文件管理）：
    * profile=档案 / daily=日记 / digest=知识库 / file=文件 */
   category?: string;
+  /** v0.5.0-beta.13.10：false=非文本/符号链接文件——列出但不可点开
+   * （工作区目录诚实镜像；缺省=true 兼容旧响应）。 */
+  openable?: boolean;
+  /** v0.5.0-beta.13.10：符号链接文件（目标=文件/断链）。 */
+  symlink?: boolean;
 }
 
 /** 远端 workspace 顶层目录（只列不展开）。 */
@@ -3128,6 +3189,8 @@ export interface KbDirItem {
   name: string;
   isdir: boolean;
   category?: string;
+  /** v0.5.0-beta.13.10：目录是符号链接（find -H 展开时跟随）。 */
+  symlink?: boolean;
 }
 
 export interface KbTree {

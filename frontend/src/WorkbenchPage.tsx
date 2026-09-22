@@ -994,6 +994,49 @@ function SettingsTab({
                   )}
                 </div>
               ) : null}
+              {/* v0.5.0-beta.13.10（F8：L1 路径 A 成功后明示「还需 Controller
+                  token」）——路径 A（账号+密码）只建立 Higress Console 会话
+                  （模型下拉 alias 面）；Worker 运行配置 L1 字段 / CRD 管理
+                  需要 Controller 管理员 token（另一套凭证，无签发端点）。
+                  密码验证通过且 token 未配 → 常驻指引（取法命令 + 回贴入口）。 */}
+              {verifyRes &&
+              verifyRes.ok &&
+              verifyRes.mode === "password" &&
+              !(
+                config?.controller_token ||
+                config?.controllerTokenSource === "env"
+              ) ? (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#d46b08",
+                    background: "rgba(250,173,20,0.1)",
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    display: "grid",
+                    gap: 4,
+                    marginTop: 6,
+                  }}
+                >
+                  <span>
+                    {tr("L1 账号/密码验证通过 = 已持有网关 Console 会话（模型下拉的 alias 可用）。但 Worker 运行配置的 L1 字段（并发限流/上下文管理/shell 组等）与 CRD 管理还需要 Controller 管理员 token——另一套凭证，密码不替代 token。")}
+                  </span>
+                  <span>
+                    {tr("获取（在部署宿主机执行后复制，粘进上方 ① 字段）：")}
+                    <code
+                      style={{
+                        background: "rgba(0,0,0,0.06)",
+                        borderRadius: 4,
+                        padding: "1px 5px",
+                        fontSize: 11.5,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      docker exec agentteams-controller cat /var/run/agentteams/cli-token
+                    </code>
+                  </span>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div
@@ -1311,16 +1354,64 @@ function readStartupPref(): "last" | "home" {
 /** 聊天分栏最小容器宽（13.8：600→800——双栏可用性下限：列表 160 + 聊天
  *  ≥320 + 拖柄；16:9 全屏恒过线，竖屏手机不过线）。 */
 const CHAT_SPLIT_MIN_CONTAINER_W = 800;
-/** 12.16：宽窄判定——横屏（宽≥高）且容器 ≥600px 才用分栏。 */
+
+/** v0.5.0-beta.13.10：消息页合并（升序口径）——prev 为当前已加载全量
+ * （含 loadMore 前插历史），page 为最新一页（dir=b，窗口内升序）。
+ * page 的缺失项只可能出现在 prev 末尾之后（房间消息只增不改序）→
+ * event_id 去重追加；prev 空 = 直接取页。编辑（m.replace）由
+ * fetchRoomMessages 聚合，这里不重复处理。 */
+function mergeMessagePages(
+  prev: RoomMessage[],
+  page: RoomMessage[],
+): RoomMessage[] {
+  if (prev.length === 0) return page;
+  const known = new Set(prev.map((m) => m.event_id));
+  const fresh = page.filter((m) => !known.has(m.event_id));
+  if (fresh.length === 0) return prev;
+  return [...prev, ...fresh];
+}
+/** 12.16→13.10：宽窄判定基准 = **窗口宽**（window.innerWidth）。
+ * v0.5.0-beta.13.8（13.7 装验「16:9 全屏被识别成竖屏→聊天单栏」）：
+ * 旧判定 w>=600 且 w>=h——宽高比项在「定高内嵌容器/高分屏」下误判
+ * （容器高度随内容或视口变化，宽 ≥ 高不成立→单栏）。改纯宽度阈值。
+ * v0.5.0-beta.13.10（13.9 装验「窄屏行为识别不了，框拖到最窄也不行；
+ * 窗口横向拉满就行；上一版横向全屏被识别成竖屏」）：容器测量被宿主
+ * 左右留空（面板 padding/导航）压窄 → 窗口横向拉满时容器仍 <800 被误判
+ * 窄屏；且宿主窗口最小宽 + 留空使「拖最窄」永远过不了阈值（窄屏行为
+ * 识别不了）。定案（装验反馈）：以**窗口**横向宽为准——横向拉满=分栏，真窄
+ * 窗口（<800）=单栏；窄内嵌面板逃生口=「强制分栏」开关 + ⟨ 收起列表。 */
 function isWideLayout(w: number, _h: number): boolean {
-  // v0.5.0-beta.13.8（13.7 装验「16:9 全屏被识别成竖屏→聊天单栏」）：
-  // 旧判定 w>=600 且 w>=h——宽高比项在「定高内嵌容器/高分屏」下误判
-  // （容器高度随内容或视口变化，宽 ≥ 高不成立→单栏）。改纯宽度阈值：
-  // 16:9 全屏内容宽恒 ≥ 800 → 必双栏；真竖屏手机（390）仍单栏；
-  // 窄竖面板（600-800）单栏但「强制分栏」开关可覆盖（既有）。
   return w >= CHAT_SPLIT_MIN_CONTAINER_W;
 }
 
+// ── @mention 发送侧（F4 — Element 三件套，装验反馈「我点击的 @mention 不是正确格式」）──
+// 此前发送只有裸 body 文本（短 @name）：无 m.mentions 三元组 → 收端不通知/不高亮；
+// 无 formatted_body → 标准客户端不认。Element 口径：body 保留人类可读短名，
+// formatted_body 用 matrix.to 链接，`m.mentions.user_ids` 三元组负责通知
+// （服务端 _require_mention 也认三元组——13.7 已实证）。
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+/** 从文本提取被 @ 的房间成员（localpart 精确 / displayname 精确，与 @ 弹层同口径；
+ *  词边界防 @sys 误中 @sys-dev）。 */
+function detectMentions(
+  text: string,
+  members?: Record<string, { display_name?: string }>,
+): string[] {
+  const out: string[] = [];
+  if (!members) return out;
+  const lower = text.toLowerCase();
+  for (const [mxid, member] of Object.entries(members)) {
+    const local = (mxid.split(":")[0] || mxid).replace(/^@/, "").toLowerCase();
+    const disp = (member?.display_name || "").trim().toLowerCase();
+    const reLocal = new RegExp(`@${escapeRe(local)}(?![\\w.=-])`, "i");
+    const reDisp = disp
+      ? new RegExp(`@${escapeRe(disp)}(?![\\w.=-])`, "i")
+      : null;
+    if (reLocal.test(lower) || (reDisp && reDisp.test(lower))) out.push(mxid);
+  }
+  return out;
+}
 export default function WorkbenchPage() {
   const t = useThemeColors();
   const tr = useT();
@@ -1707,11 +1798,18 @@ export default function WorkbenchPage() {
         setHasMore(Boolean(cached.end));
       }
       const page = await fetchRoomMessages(room.room_id, 50);
-      setMessages((prev) => (JSON.stringify(prev) === JSON.stringify(page.messages) ? prev : page.messages));
+      // v0.5.0-beta.13.10（13.9 装验「消息被滚出历史」真根因）：合并而非
+      // 全量替换——旧版用「最新 50 条」整体覆盖，loadMore 翻过的更早
+      // 历史瞬间蒸发（切页回来「很多没了」），覆盖瞬间的列表收缩也让
+      // 滚动位置错乱（「乱了」）。两边都升序：page=最新 50，缺失项只
+      // 可能出现在末尾 → 去重追加，滚动锚不动。
+      const merged = mergeMessagePages(messagesRef.current, page.messages);
+      setMessages(merged);
       setMessagesEnd(page.end);
       setHasMore(Boolean(page.end));
       setRoomError(page.error === "not_found" ? "not_found" : "");
-      setCachedMessages(room.room_id, page);
+      // 缓存存全量已加载历史（含 loadMore 前插），切页回来不丢。
+      setCachedMessages(room.room_id, page, merged);
       // 已读：messages 升序，末条 = 最新。
       void markCurrentRead(room.room_id, page.messages[page.messages.length - 1]?.event_id);
     } catch (e) {
@@ -1726,7 +1824,15 @@ export default function WorkbenchPage() {
     if (!activeRoom || !messagesEnd) return;
     try {
       const page = await fetchRoomMessages(activeRoom.room_id, 50, messagesEnd);
-      setMessages((prev) => [...page.messages, ...prev]);
+      // v0.5.0-beta.13.10：前插历史同步进缓存——切页回来仍在
+      // （旧版缓存只存最新 50，翻过的历史必丢）。
+      const known = new Set(messagesRef.current.map((m) => m.event_id));
+      const older = page.messages.filter((m) => !known.has(m.event_id));
+      const merged = older.length
+        ? [...older, ...messagesRef.current]
+        : messagesRef.current;
+      setMessages(merged);
+      setCachedMessages(activeRoom.room_id, { ...page, messages: merged }, merged);
       setMessagesEnd(page.end);
       setHasMore(Boolean(page.end));
     } catch (e) {
@@ -2074,7 +2180,20 @@ export default function WorkbenchPage() {
       setMessages((prev) => [...prev, pendingMsg]);
       setSending(true);
       try {
-        await sendRoomMessage(activeRoom.room_id, text, replyTo, threadRoot);
+        // F4：@mention 三件套（body 短名不变；formatted_body=matrix.to
+        // 链接；m.mentions 三元组负责通知——Element 同款，api.ts 内构造）。
+        const detected = detectMentions(text, activeRoom.members);
+        const mentionList = detected.map((mxid) => ({
+          mxid,
+          localpart: (mxid.split(":")[0] || mxid).replace(/^@/, ""),
+        }));
+        await sendRoomMessage(
+          activeRoom.room_id,
+          text,
+          replyTo,
+          threadRoot,
+          mentionList,
+        );
         await refreshMessages(activeRoom);
       } catch (e) {
         setMessages((prev) =>
@@ -2531,28 +2650,18 @@ export default function WorkbenchPage() {
     },
     [mergeUiState],
   );
-  // 12.13→12.14：判定改「容器实际宽度」（宿主内嵌面板可能窄于窗口），
-  // 阈值 1024→600；强制开关优先。ResizeObserver 跟随容器；无 RO 回退窗口宽。
+  // 12.13→13.10：判定基准=**窗口宽**（13.9 装验定案：容器测量被宿主
+  // 左右留空压窄→横向全屏误判窄屏；宿主最小窗宽又使拖窄永远不触发
+  // 单栏）。窗口 resize 跟随；强制开关优先。
   const mainRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
-    const el = mainRef.current;
-    const measure = (w: number, h: number) => setChatWideMeasured(isWideLayout(w, h));
-    if (el && typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver((entries) => {
-        const r = entries[0]?.contentRect;
-        if (r && r.width > 0 && r.height > 0) measure(r.width, r.height);
-      });
-      ro.observe(el);
-      measure(el.clientWidth, el.clientHeight);
-      return () => ro.disconnect();
-    }
-    const onResize = () =>
-      measure(
-        el ? el.clientWidth : window.innerWidth,
-        el ? el.clientHeight : window.innerHeight,
+    const measure = () =>
+      setChatWideMeasured(
+        isWideLayout(window.innerWidth, window.innerHeight),
       );
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
   }, []);
   // v0.5.0-beta.13.4（9/22 第二轮反馈·滚动真根因重构）：shell 高度改为
   // 容器相对（Element 模型）——12.x 起用 calc(100vh-64px) 经验值，但宿主
@@ -3180,6 +3289,8 @@ export default function WorkbenchPage() {
                 onRefreshTree={(silent) => void refreshTree(silent)} /* v0.5.0-beta.12 参数透传：`() =>` 会吃掉 30s 自动刷新的 silent */
                 onRefreshAdmin={(silent) => void refreshAdmin(silent)}
                 onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
+                /* v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳配置页 */
+                onOpenSettings={() => setTab("settings")}
                 hasToken={hasCtlToken}
                 active={tab === "team"}
                 treeSource={treeSource}

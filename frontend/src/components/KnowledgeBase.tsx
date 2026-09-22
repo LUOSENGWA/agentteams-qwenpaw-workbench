@@ -2694,6 +2694,8 @@ interface AnyFile {
   path?: string;
   size?: number;
   mtime?: number;
+  /** v0.5.0-beta.13.10：非文本文件灰显不可点（后端全量列目录）。 */
+  openable?: boolean;
 }
 
 /** 目录懒加载缓存条目。 */
@@ -2737,8 +2739,8 @@ function DirNode(props: {
         <span style={{ width: 10, color: t.textSecondary, fontSize: 10 }}>
           {isExp ? "▾" : "▸"}
         </span>
-        <span>📁</span>
-        <span style={{ color: t.text }}>
+        <span>{dir.symlink ? "🔗" : "📁"}</span>
+        <span style={{ color: t.text }} title={dir.symlink ? `${dir.path}（符号链接）` : dir.path}>
           {dir.name}
           {child === "loading" ? " …" : ""}
         </span>
@@ -2760,24 +2762,26 @@ function DirNode(props: {
           {child.files.map((f) => {
             const isSel =
               selected?.section === "remote" && selected.filename === f.path;
+            const openable = f.openable !== false;
             return (
               <div
                 key={f.path}
-                onClick={() => onOpenFile(f.path)}
-                title={f.path}
+                onClick={openable ? () => onOpenFile(f.path) : undefined}
+                title={openable ? f.path : `${f.path} · 非文本文件（不可在线预览）`}
                 style={{
-                  cursor: "pointer",
+                  cursor: openable ? "pointer" : "default",
                   fontSize: 12,
                   display: "flex",
                   alignItems: "center",
                   gap: 4,
                   padding: `2px 4px 2px ${childIndent}px`,
                   color: isSel ? "#FF7F16" : t.text,
+                  opacity: openable ? undefined : 0.55,
                   background: isSel ? "rgba(255,127,22,0.08)" : undefined,
                 }}
               >
                 <span style={{ width: 10, display: "inline-block" }} />
-                <span>📄</span>
+                <span>{openable ? "📄" : "🚫"}</span>
                 <span
                   style={{
                     overflow: "hidden",
@@ -2871,11 +2875,14 @@ function FileGroup({
             const key = keyOf(f);
             const name = key.split("/").pop() || key;
             const active = selected?.filename === key;
+            // v0.5.0-beta.13.10（13.9 装验「知识库不全」）：非文本文件
+            // 列出但灰显不可点开（openable=false，后端全量列目录）。
+            const openable = f.openable !== false;
             return (
               <div
                 key={key}
-                onClick={() => onSelect(key)}
-                title={`${key}${f.mtime ? ` · ${new Date(f.mtime * 1000).toLocaleString("zh-CN")}` : ""}`}
+                onClick={openable ? () => onSelect(key) : undefined}
+                title={`${key}${!openable ? " · 非文本文件（不可在线预览）" : ""}${f.mtime ? ` · ${new Date(f.mtime * 1000).toLocaleString("zh-CN")}` : ""}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -2883,8 +2890,9 @@ function FileGroup({
                   fontSize: 12.5,
                   padding: "3px 8px 3px 12px",
                   borderRadius: 6,
-                  cursor: "pointer",
+                  cursor: openable ? "pointer" : "default",
                   color: active ? "#fff" : t.text,
+                  opacity: openable ? undefined : 0.55,
                   background: active ? color : "transparent",
                   overflow: "hidden",
                   whiteSpace: "nowrap",
@@ -2892,6 +2900,11 @@ function FileGroup({
               >
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                   {name}
+                  {!openable ? (
+                    <span style={{ fontSize: 9.5, marginLeft: 6, opacity: 0.8 }}>
+                      非文本
+                    </span>
+                  ) : null}
                 </span>
                 {f.size != null && f.size > 0 ? (
                   <span style={{ color: active ? "rgba(255,255,255,0.75)" : t.textSecondary, fontSize: 10.5, flexShrink: 0 }}>

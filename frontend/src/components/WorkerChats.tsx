@@ -42,6 +42,7 @@ import {
   httpErrorStatus,
 } from "../api";
 import MdText from "./MdText";
+import WorkerSessionDot from "./WorkerSessionDot";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -281,9 +282,9 @@ function extractMsg(m: WorkerChatMessage): Extracted {
   return { role, type, parts };
 }
 
-/** 消息分类（QwenPaw result-only 语义）：
+/** 消息分类（v0.5.0-beta.13.10 QwenPaw 对话框语义）：
  *  user→用户气泡 / error→恒可见红线 / system→居中提示 /
- *  assistant 有文本→asst（轮尾=结果可见，轮中=折叠）/ 其余→step（折叠）/
+ *  assistant 有文本→asst（**每条独立气泡**）/ 其余→step（折叠 pill）/
  *  heartbeat、progress→skip（QwenPaw renderResponseMessage 对两者均不渲染）。 */
 type MsgKind = "user" | "error" | "system" | "asst" | "step" | "skip";
 function msgKind(e: Extracted): MsgKind {
@@ -299,9 +300,10 @@ function msgKind(e: Extracted): MsgKind {
   return "step";
 }
 
-/** 轮分组（QwenPaw 每回答一个 response，此处按 user 消息切轮——
- *  只读转录的最接近等价）：每轮里**最后一条有文本的 assistant** 提升为
- *  可见结果（result-only），其余全部收进 steps（收起时不渲染子内容）。 */
+/** 会话转录分组（v0.5.0-beta.13.10）：user/error/system 消息切段；
+ *  每条带文本的 assistant 消息独立成气泡（QwenPaw 对话框口径）；
+ *  连续的 tool/thinking/无文本 assistant 消息收进 steps pill（收起时
+ *  不渲染子内容，点开懒渲染）。 */
 type DetailItem =
   | { k: "user" | "asst" | "error" | "system"; i: number; e: Extracted }
   | { k: "steps"; items: { i: number; e: Extracted }[] };
@@ -310,32 +312,22 @@ function groupTurns(msgs: WorkerChatMessage[]): DetailItem[] {
   const out: DetailItem[] = [];
   let pending: { i: number; e: Extracted }[] = [];
   const flush = () => {
-    if (!pending.length) return;
-    let last = -1;
-    for (let j = pending.length - 1; j >= 0; j--) {
-      const e = pending[j].e;
-      if (
-        (e.role === "assistant" || e.type === "result") &&
-        e.parts.some((p) => p.kind === "text")
-      ) {
-        last = j;
-        break;
-      }
-    }
-    const head = last >= 0 ? pending.slice(0, last) : pending;
-    if (head.length) out.push({ k: "steps", items: head });
-    if (last >= 0) {
-      out.push({ k: "asst", i: pending[last].i, e: pending[last].e });
-      const tail = pending.slice(last + 1);
-      if (tail.length) out.push({ k: "steps", items: tail });
-    }
+    if (pending.length) out.push({ k: "steps", items: pending });
     pending = [];
   };
   for (let i = 0; i < msgs.length; i++) {
     const e = extractMsg(msgs[i]);
     const k = msgKind(e);
     if (k === "skip") continue;
+    // v0.5.0-beta.13.10（13.9 装验「太多消息被收进回复里」）：旧版每轮
+    // 只把**最后一条** assistant 文本提升为气泡、中间全部文本吞进 steps
+    // （长会话几乎只剩工具行）。改 QwenPaw 对话框口径：**每条带文本的
+    // assistant 消息 = 独立气泡**；仅 tool/thinking/无文本消息折叠成
+    // 「N 步」pill（点开懒渲染）。
     if (k === "user" || k === "error" || k === "system") {
+      flush();
+      out.push({ k, i, e });
+    } else if (k === "asst") {
       flush();
       out.push({ k, i, e });
     } else {
@@ -520,7 +512,7 @@ function WorkerChats({
 }) {
   const tr = useT();
   const [sel, setSel] = React.useState(fixedWorker ?? "");
-  const [gate, setGate] = React.useState<"" | "404" | "err">("");
+  const [gate, setGate] = React.useState<"" | "404" | "err" | "notoken">("");
   const [gateMsg, setGateMsg] = React.useState("");
   const [chats, setChats] = React.useState<WorkerChatSpec[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -553,6 +545,17 @@ function WorkerChats({
       if (st === 404) {
         setGate("404");
         setChats([]);
+      } else if (st === 401 || st === 502) {
+        // v0.5.0-beta.13.10：凭证缺失（L1 账号密码登录不带 Controller
+        // token / L2 无数据面 / controller 不可达）→ 明确指引，不笼统
+        // 「加载失败」（13.9 装验「经常显示无worker」的根因面之一）。
+        setGate("notoken");
+        setChats([]);
+      } else if (st === 403) {
+        // W8 防探测：跨团队/无该 Worker 访问权（有 token 但 scope 不够）。
+        setGate("err");
+        setGateMsg(tr("无该 Worker 访问权（跨团队或当前账号 scope 不含该 Worker）"));
+        setChats([]);
       } else {
         setGate("err");
         setGateMsg(e instanceof Error ? e.message : tr("加载失败"));
@@ -575,6 +578,8 @@ function WorkerChats({
     setDetailErr("");
     setStatus("");
     setDetailLoading(true);
+    // v0.5.0-beta.13.10：打开即视为贴底（首屏滚底 + 后续跟随基准）。
+    nearBottomRef.current = true;
     // 状态灯与详情并发拉取；404 = 旧 runtime，隐藏灯
     // （会话级 loop 状态显示点迁至聊天页输入区——RoomChat composer chip，
     // 9/22 定案，本视图不再查 /loops/status。）
@@ -594,11 +599,60 @@ function WorkerChats({
     }
   };
 
-  // 详情加载完滚到底（会话口径：最新在下）。
+  // v0.5.0-beta.13.10（13.9 装验「会话窗能不能实时更新，点开之后应该
+  // 像 QwenPaw 的对话框一样实时更新」）：详情 4s 轮询——消息列表按
+  // 「长度+末条」轻量判变（避免无变化时整表重渲染），状态灯同步刷
+  // （running→idle 切换 = 头像灯/头灯实时）。
+  const selRef = React.useRef(sel);
+  selRef.current = sel;
+  const openIdRef = React.useRef(openId);
+  openIdRef.current = openId;
   React.useEffect(() => {
-    if (!detailLoading && openId && detailListRef.current) {
-      const el = detailListRef.current;
-      el.scrollTop = el.scrollHeight;
+    if (!openId) return;
+    const id = window.setInterval(async () => {
+      const s = selRef.current;
+      const oid = openIdRef.current;
+      if (!s || !oid) return;
+      try {
+        const d = await fetchWorkerChat(s, oid);
+        const next = Array.isArray(d?.messages) ? d.messages : null;
+        if (next)
+          setMsgs((prev) =>
+            prev.length === next.length &&
+            (next.length === 0 ||
+              JSON.stringify(prev[prev.length - 1]) ===
+                JSON.stringify(next[next.length - 1]))
+              ? prev
+              : next,
+          );
+      } catch {
+        /* 静默——轮询失败不打扰（状态灯轮次下再试） */
+      }
+      try {
+        const r = await fetchWorkerChatStatus(s, oid);
+        if (r?.status === "running" || r?.status === "idle")
+          setStatus(r.status);
+      } catch {
+        /* 静默 */
+      }
+    }, 4000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+
+  // 底部跟随（QwenPaw 对话框口径）：消息变化时——用户已在底部（近底
+  // 100px 内）= 自动贴底；用户上翻看历史 = 不动（不打断阅读）。
+  const nearBottomRef = React.useRef(true);
+  const handleDetailScroll = React.useCallback(() => {
+    const el = detailListRef.current;
+    if (!el) return;
+    nearBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+  }, []);
+  React.useEffect(() => {
+    if (detailLoading || !openId || !detailListRef.current) return;
+    if (nearBottomRef.current) {
+      detailListRef.current.scrollTop = detailListRef.current.scrollHeight;
     }
   }, [detailLoading, openId, msgs]);
 
@@ -607,9 +661,19 @@ function WorkerChats({
   const cwrapRef = React.useRef<HTMLDivElement | null>(null);
   const cwrapW = useContainerWidth(cwrapRef);
 
-  if (workers.length === 0) {
+  // v0.5.0-beta.13.10（13.9 装验「从点开会话之后，经常显示无worker」
+  // 真根因）：workers 列表来自 adminData（需要 Controller token）——
+  // L1 账号密码登录只带 Higress Console 会话、不带 Controller token 时
+  // adminData=null → workers=[] → 旧门恒「无 Worker」。fixedWorker 模式
+  // （头像抽屉锁定单 Worker）不依赖列表，直接按名拉取，门只看列表
+  // 选择器是否可用。
+  if (workers.length === 0 && !fixedWorker) {
     return <antd.Alert type="info" showIcon message={tr("无 Worker")} />;
   }
+  // fixedWorker 模式 + 列表为空：**不硬阻断**——adminData 是异步的，
+  // 首次打开点头像可能早于管理数据加载完成（token 实际可用）。直接
+  // 按 fixedWorker 拉取；真无 token 时 401/502 落到 gate=err 分支，
+  // 由那里给出 token 明确指引（见下）。
 
   if (gate === "404") {
     return (
@@ -620,6 +684,26 @@ function WorkerChats({
         description={tr(
           "L2 仅可查看自己所在 Matrix 房间内的会话；Controller 版本未含会话端点或当前账号无该 Worker 访问权时同样显示此提示。升级 Controller 后本节自动点亮。",
         )}
+      />
+    );
+  }
+
+  if (gate === "notoken") {
+    // v0.5.0-beta.13.10：Controller token 缺失的明确指引（L1 账号密码
+    // 登录只带 Higress Console 会话 ≠ Controller 管理 token）。
+    return (
+      <antd.Alert
+        type="warning"
+        showIcon
+        message={tr("会话列表需要 Controller 管理员 token（当前账号未配置或不可达）")}
+        description={tr(
+          "L1 账号密码登录只带 Higress Console 会话（网关面），不含 Controller 管理 token（CRD/数据面）。请在 设置 → ① Controller 管理员 token 字段粘贴（部署宿主机取法：docker exec agentteams-controller cat /var/run/agentteams/cli-token）。",
+        )}
+        action={
+          <antd.Button size="small" onClick={() => void load()}>
+            {tr("重试")}
+          </antd.Button>
+        }
       />
     );
   }
@@ -665,13 +749,18 @@ function WorkerChats({
           <span style={{ fontWeight: 600, fontSize: 13.5 }}>
             {openChatSpec?.name || openId.slice(0, 12)}
           </span>
-          {status === "running" ? (
-            <antd.Tag color="blue" style={{ marginInlineEnd: 0 }}>
-              running
-            </antd.Tag>
-          ) : null}
-          {status === "idle" ? (
-            <antd.Tag style={{ marginInlineEnd: 0 }}>idle</antd.Tag>
+          {/* v0.5.0-beta.13.10（13.9 装验「蓝点能不能改成 QwenPaw 同款
+              灯」）：状态 Tag（蓝 tag/灰 tag）→ WorkerSessionDot——
+              QwenPaw console AgentStatusIndicator 同款呼吸灯（组件
+              既有：8px 圆点 + 1.2s 呼吸 + Tooltip + reduced-motion
+              降级），与成员头像角落灯同一正源。 */}
+          {status === "running" || status === "idle" ? (
+            <span style={{ display: "inline-flex", alignItems: "center" }}>
+              <WorkerSessionDot state={status} />
+              <span style={{ fontSize: 11, marginLeft: 2, color: "rgba(127,127,127,0.9)" }}>
+                {status === "running" ? tr("运行中") : tr("无任务")}
+              </span>
+            </span>
           ) : null}
           {/* v0.5.0-beta.13.6：会话级 loop 标签撤出——显示位置定案=聊天页
               输入区（QwenPaw console LoopModeSelector 正源），唯一落点，
@@ -720,6 +809,7 @@ function WorkerChats({
         ) : (
           <div
             ref={detailListRef}
+            onScroll={handleDetailScroll}
             style={{
               border: "1px solid rgba(127,127,127,0.25)",
               borderRadius: 8,

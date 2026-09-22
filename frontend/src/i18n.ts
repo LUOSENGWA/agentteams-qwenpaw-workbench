@@ -1740,6 +1740,29 @@ const DICT: Record<string, { en: string }> = {
   "adbpg_memory_config——记忆参数高风险，仅展示不开放编辑。": {
     en: "adbpg_memory_config - high-risk memory params; display only, not editable.",
   },
+  // ── v0.5.0-beta.13.10（13.9 装验 12 件收口）──
+  "L1-only 字段——当前账号没有 Controller 管理 token：L1 账号/密码登录只建立网关 Console 会话（与 Controller token 是两套凭证），无 token 时 L1 字段不可写（PUT 403）。获取 token 与配置方法见「设置」页。": {
+    en: "L1-only fields — the current account has no Controller admin token: L1 account/password login only creates the gateway Console session (a different credential from the Controller token); without the token, L1 fields are read-only (PUT 403). See the Settings page for how to obtain and configure the token.",
+  },
+  "去设置": { en: "Open Settings" },
+  "L1 账号/密码验证通过 = 已持有网关 Console 会话（模型下拉的 alias 可用）。但 Worker 运行配置的 L1 字段（并发限流/上下文管理/shell 组等）与 CRD 管理还需要 Controller 管理员 token——另一套凭证，密码不替代 token。": {
+    en: "L1 account/password verified = gateway Console session held (model dropdown aliases available). Worker runtime L1 fields (rate limiting / context management / shell group, etc.) and CRD management still require the Controller admin token — a separate credential the password does not replace.",
+  },
+  "获取（在部署宿主机执行后复制，粘进上方 ① 字段）：": {
+    en: "To obtain (run on the deployment host, copy, paste into the ① field above):",
+  },
+  "会话列表需要 Controller 管理员 token（当前账号未配置或不可达）": {
+    en: "Session list requires the Controller admin token (not configured for the current account, or unreachable)",
+  },
+  "无该 Worker 访问权（跨团队或当前账号 scope 不含该 Worker）": {
+    en: "No access to this worker (cross-team, or the current account scope does not include it)",
+  },
+  "未显式配置——显示运行时默认 40，保存后落库": {
+    en: "Not explicitly configured — showing the runtime default of 40; persisted on save",
+  },
+  "L1 账号密码登录只带 Higress Console 会话（网关面），不含 Controller 管理 token（CRD/数据面）。请在 设置 → ① Controller 管理员 token 字段粘贴（部署宿主机取法：docker exec agentteams-controller cat /var/run/agentteams/cli-token）。": {
+    en: "L1 account/password login only holds a Higress Console session (gateway side), not the Controller admin token (CRD / data plane). Paste the Controller admin token in Settings → ① Controller admin token (obtain on the deployment host: docker exec agentteams-controller cat /var/run/agentteams/cli-token).",
+  },
 };
 
 export type Lang = "zh" | "en";

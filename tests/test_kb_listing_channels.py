@@ -193,11 +193,21 @@ def _dir_archive_gets() -> list:
 
 
 def _exec_find_spec():
+    # v0.5.0-beta.13.10：find 带 -H（跟随命令行参数层符号链接）。
     return [
-        (f"find {WS}/memory", MEM_FIND),
-        (f"find {WS}/digest", DIG_FIND),
-        (f"find {WS} -maxdepth 1", TOP_FIND),
+        (f"find -H {WS}/memory", MEM_FIND),
+        (f"find -H {WS}/digest", DIG_FIND),
+        (f"find -H {WS} -maxdepth 1", TOP_FIND),
     ]
+
+
+# 13.10 符号链接回归：shared→目录 / note-link→文件（python3 解析返回
+# 按 argv 顺序 D/F）。
+TOP_FIND_LINKS = (
+    TOP_FIND
+    + "l 0 1758000006.0 shared\n"
+    + "l 0 1758000007.0 note-link\n"
+)
 
 
 # ── 主通道：大工作区零下载无 413 ────────────────────────────────────────
@@ -209,10 +219,12 @@ def test_tree_large_workspace_exec_primary_zero_download(client):
     assert r.status_code == 200, r.text
     body = r.json()
     files = {f["path"]: f for f in body["files"]}
-    # 200 = 核心（旧版整树 tar 到 20MB 就 413，连一个文件都拿不到）；
-    # 顶层文本过滤口径不变（KB 树只列知识文本，bigfile.bin 不入列=预期）
-    assert "bigfile.bin" not in files
+    # 200 = 核心（旧版整树 tar 到 20MB 就 413，连一个文件都拿不到）。
+    # v0.5.0-beta.13.10（13.9 装验「知识库不全」真根因②）：非文本文件
+    # 全量列出 + openable=False（旧断言「bigfile.bin 不入列」已废弃）。
+    assert files["bigfile.bin"]["openable"] is False
     assert "AGENTS.md" in files
+    assert files["AGENTS.md"].get("openable", True) is True
     # 档案分类 + mtime 真值（旧 manager 支恒 0）
     assert files["AGENTS.md"]["category"] == "profile"
     assert files["AGENTS.md"]["mtime"] == 1758000000
@@ -266,7 +278,7 @@ def test_tree_exec_down_tar_fallback(client):
     files = {f["path"]: f for f in r.json()["files"]}
     assert files["AGENTS.md"]["category"] == "profile"
     assert files["MEMORY.md"]["category"] == "profile"
-    assert "bigfile.bin" not in files  # 顶层文本过滤口径不变
+    assert files["bigfile.bin"]["openable"] is False  # 13.10：非文本列出
     assert "docs/notes.md" not in files  # 顶层列取只返一层
     assert files["memory/2026-09-22.md"]["category"] == "daily"
     assert "memory/credentials.yaml" not in files
@@ -294,19 +306,23 @@ def test_tree_fallback_tar_over_limit_413(client):
 def test_ls_lazy_one_level_zero_download(client):
     tc, _ = client
     _FakeClient.exec_spec = [
-        (f"find {WS} -maxdepth 1", TOP_FIND),
+        (f"find -H {WS} -maxdepth 1", TOP_FIND),
     ]
     r = tc.get("/kb/big/ls")
     assert r.status_code == 200, r.text
     body = r.json()
     names = {f["name"] for f in body["files"]}
-    assert names == {"AGENTS.md"}  # 只文本文件；bigfile.bin/.hidden 不入
+    # 13.10：非文本文件列出（bigfile.bin openable=False）；.hidden 隐藏项
+    # 仍不入列。
+    assert names == {"AGENTS.md", "bigfile.bin"}
+    by_name = {f["name"]: f for f in body["files"]}
+    assert by_name["bigfile.bin"]["openable"] is False
     assert {d["name"] for d in body["dirs"]} == {"memory", "digest", "docs"}
     assert _archive_gets() == []
 
     # 展开 memory 子层
     _FakeClient.exec_spec = [
-        (f"find {WS}/memory -maxdepth 1",
+        (f"find -H {WS}/memory -maxdepth 1",
          "f 100 1758000100.5 2026-09-22.md\n"
          "f 9 1758000103.0 credentials.yaml\n"
          "d 4096 1758000104.0 sub\n"),
@@ -321,7 +337,7 @@ def test_ls_lazy_one_level_zero_download(client):
 def test_ls_missing_dir_404(client):
     """exec 通道正常但输出空（find 报错走 stderr）+ HEAD 404 → 404。"""
     tc, _ = client
-    _FakeClient.exec_spec = [(f"find {WS}/nope -maxdepth 1", "")]
+    _FakeClient.exec_spec = [(f"find -H {WS}/nope -maxdepth 1", "")]
     _FakeClient.head_spec = {
         # 更具体的键在前（archive?path=WS 是 archive?path=WS/nope 的子串）
         f"archive?path={WS}/nope": 404,
@@ -335,7 +351,7 @@ def test_ls_missing_dir_404(client):
 def test_ls_empty_dir_200(client):
     """exec 空输出 + HEAD 200 → 空目录 200（旧版误报 404 的改善）。"""
     tc, _ = client
-    _FakeClient.exec_spec = [(f"find {WS}/empty -maxdepth 1", "")]
+    _FakeClient.exec_spec = [(f"find -H {WS}/empty -maxdepth 1", "")]
     _FakeClient.head_spec = {
         f"archive?path={WS}": 200,
         f"archive?path={WS}/empty": 200,
@@ -357,3 +373,64 @@ def test_ls_exec_down_tar_404_is_404(client):
     r = tc.get("/kb/big/ls", params={"dir": "nope2"})
     assert r.status_code == 404, r.text
     assert "目录不存在" in r.text
+
+
+# ── v0.5.0-beta.13.10：符号链接列全（13.9 装验「知识库不全」真根因①）──
+def test_tree_symlink_dir_and_file(client):
+    """shared→目录（python3 解析 D）入 dirs + symlink 标记；
+    note-link→文件（解析 F）入 files openable=False。"""
+    tc, _ = client
+    _FakeClient.exec_spec = [
+        (f"find -H {WS}/memory", MEM_FIND),
+        (f"find -H {WS}/digest", DIG_FIND),
+        (f"find -H {WS} -maxdepth 1", TOP_FIND_LINKS),
+        ("python3", "D\nF"),
+    ]
+    r = tc.get("/kb/big/tree")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    by_dir = {d["name"]: d for d in body["dirs"]}
+    assert by_dir["shared"]["symlink"] is True
+    by_file = {f["name"]: f for f in body["files"]}
+    assert by_file["note-link"]["openable"] is False
+    assert by_file["note-link"]["symlink"] is True
+    # 符号链接文件不得混入 dirs；断链/文件链接不可点开。
+    assert "note-link" not in by_dir
+
+
+def test_ls_symlink_dir_expandable(client):
+    """kb_ls：符号链接目录入 dirs（symlink 标记）——前端展开走
+    find -H（跟随起始链接）。"""
+    tc, _ = client
+    _FakeClient.exec_spec = [
+        (f"find -H {WS} -maxdepth 1", TOP_FIND_LINKS),
+        ("python3", "D\nF"),
+    ]
+    r = tc.get("/kb/big/ls")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    by_dir = {d["name"]: d for d in body["dirs"]}
+    assert by_dir["shared"]["symlink"] is True
+    by_file = {f["name"]: f for f in body["files"]}
+    assert by_file["note-link"]["openable"] is False
+
+
+def test_tree_symlink_resolve_exec_down_degrades(client):
+    """python3 解析 exec 挂（500）→ 符号链接保持文件条目（openable
+    False），不 500 不吞目录。"""
+    tc, _ = client
+    _FakeClient.exec_spec = [
+        (f"find -H {WS}/memory", MEM_FIND),
+        (f"find -H {WS}/digest", DIG_FIND),
+        (f"find -H {WS} -maxdepth 1", TOP_FIND_LINKS),
+    ]
+    # 第二个 exec（python3）无 spec 命中 → 空输出（_kb_exec_full → ""）；
+    # 真 500 场景由 exec_create_status 模拟会连累 find——用空输出等价
+    # 覆盖「解析失败」分支。
+    r = tc.get("/kb/big/tree")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    by_file = {f["name"]: f for f in body["files"]}
+    assert by_file["shared"]["openable"] is False
+    assert by_file["note-link"]["openable"] is False
+    assert {d["name"] for d in body["dirs"]} == {"docs"}

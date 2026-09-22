@@ -290,6 +290,7 @@ function WorkerManageInfo({
   onLifecycle,
   acting,
   l1,
+  onOpenSettings,
 }: {
   worker: AdminData["workers"][number];
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
@@ -297,6 +298,7 @@ function WorkerManageInfo({
   /** v0.5.0-beta.13.8：L1 账号（controller token）→ 运行配置面板 L1-only
    *  字段可编辑；L2 只读（PUT 非白名单键会被服务端 403 拒绝）。 */
   l1?: boolean;
+  onOpenSettings?: () => void;
 }) {
   const tr = useT();
   const meta = phaseMeta(worker.phase);
@@ -446,7 +448,11 @@ function WorkerManageInfo({
       </div>
       {/* v0.5.0-beta.13.4（A2 落地）：Worker 运行配置（上游 #1231 消费）——
           默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。 */}
-      <WorkerRuntimeConfig name={worker.name} l1={l1} />
+      <WorkerRuntimeConfig
+        name={worker.name}
+        l1={l1}
+        onOpenSettings={onOpenSettings}
+      />
     </div>
   );
 }
@@ -461,6 +467,7 @@ function WorkerRow({
   acting,
   sessionState,
   l1,
+  onOpenSettings,
 }: {
   group: WorkerSpawnGroup;
   depth: number;
@@ -470,6 +477,8 @@ function WorkerRow({
   acting: string | null;
   /** v0.5.0-beta.13.8：L1 账号 → 运行配置面板 L1-only 字段可编辑。 */
   l1?: boolean;
+  /** v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳转透传。 */
+  onOpenSettings?: () => void;
   /** v0.5.0-beta.12.4（A17）：该 Worker 的 session 状态（typing/last_ts 派生）。
    *  与行首既有圆点（CR phase / spawn running，进程级）并存——两轴不同。 */
   sessionState?: WorkerSessionState;
@@ -612,6 +621,7 @@ function WorkerRow({
               onLifecycle={onLifecycle}
               acting={acting}
               l1={l1}
+              onOpenSettings={onOpenSettings}
             />
           ) : null}
           {spawns.length
@@ -811,6 +821,7 @@ function TeamNode({
   acting,
   sessionByName,
   l1,
+  onOpenSettings,
 }: {
   team: WorkerTreeTeam;
   onDm?: (mxid: string) => void;
@@ -822,6 +833,8 @@ function TeamNode({
   /** v0.5.0-beta.13.8：当前账号 L1（controller token）→ 运行配置面板的
    *  L1-only 字段（并发限流/上下文管理/shell 组/auto_title）可编辑。 */
   l1?: boolean;
+  /** v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳转透传。 */
+  onOpenSettings?: () => void;
 }) {
   const [expanded, setExpanded] = React.useState(true);
   const workerCount = team.workers.length;
@@ -872,6 +885,11 @@ function TeamNode({
               onLifecycle={onLifecycle}
               acting={acting}
               sessionState={g.worker_name ? sessionByName?.[g.worker_name] : undefined}
+              // v0.5.0-beta.13.10（B1 真根因）：l1 此前在此层丢失——
+              // TeamNode 拿到 l1 却没传给 WorkerRow，运行配置面板恒
+              // l1=undefined → 恒「只读」Alert（装验：L1 登录仍见只读）。
+              l1={l1}
+              onOpenSettings={onOpenSettings}
             />
           ))
         : null}
@@ -1373,6 +1391,8 @@ export interface WorkerManageProps {
   l1TokenMode?: boolean;
   /** v0.5.0-beta.12.4（A17）：worker_name → session 状态（行内圆点）。 */
   workerSessionByName?: Record<string, WorkerSessionState>;
+  /** v0.5.0-beta.13.10（B1）：运行配置 L1 只读 Alert 的「去设置」跳转。 */
+  onOpenSettings?: () => void;
 }
 
 /**
@@ -1569,6 +1589,7 @@ export default function WorkerManage(props: WorkerManageProps) {
                 acting={acting}
                 sessionByName={workerSessionByName}
                 l1={!!hasToken}
+                onOpenSettings={props.onOpenSettings}
               />
             ))}
           </div>
