@@ -118,14 +118,40 @@ interface FieldRow {
   removed?: boolean;
 }
 
-function configToRows(cfg: WorkerChannelConfig): FieldRow[] {
+function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
   const rows: FieldRow[] = [];
   for (const [k, v] of Object.entries(cfg)) {
     if (k === "enabled" || k === "bot_prefix" || k === "isBuiltin") continue;
     rows.push({ key: k, value: v });
   }
+  // v0.5.0-beta.13.15（B10 sender 隔离开关）：agentteams_matrix 的
+  // share_session_in_group 旧版 Controller 下发的频道配置可能不带该字段
+  // （9/5 语义定案后才进 payload）→ 缺省行注入 false（=按发送者隔离，
+  // 上游 AGENTTEAMS_MATRIX_SHARE_SESSION 默认 false 同款）。旧 runtime
+  // 忽略未知键（无害）；升级后该值即生效。
+  if (
+    channel === "agentteams_matrix" &&
+    !Object.prototype.hasOwnProperty.call(cfg, "share_session_in_group")
+  ) {
+    rows.push({ key: "share_session_in_group", value: false });
+  }
   return rows;
 }
+
+/** v0.5.0-beta.13.15（B10）：已知频道字段专属标签（通用编辑器默认裸键名
+ *  显示——布尔开关必须有语义化名字，否则用户不敢动）。 */
+const FIELD_LABELS: Record<string, { zh: string; en: string }> = {
+  share_session_in_group: {
+    zh: "群会话共享（关=按发送者隔离，默认）",
+    en: "Share one group session (off = per-sender isolation, default)",
+  },
+};
+const FIELD_TIPS: Record<string, { zh: string; en: string }> = {
+  share_session_in_group: {
+    zh: "群聊会话语义（#7001，AgentTeams 9/5 默认定案=隔离）：开=群内所有成员共享一个会话（旧 room-wide 行为，多人上下文互相污染）；关=每个发送者独立会话（默认，防共享上下文爆炸）。保存即时热生效；worker 重新 reconcile 时 Controller 可能按部署默认（AGENTTEAMS_MATRIX_SHARE_SESSION 环境变量）再归一。",
+    en: "Group session semantics (#7001; AgentTeams 9/5 decision: default isolated): ON = all group members share one session (legacy room-wide; contexts cross-pollinate); OFF = per-sender isolated sessions (default). Hot-applied on save; the Controller may re-normalize to the deployment default (AGENTTEAMS_MATRIX_SHARE_SESSION) on the next worker reconcile.",
+  },
+};
 
 export default function WorkerChannels(props: {
   workers: WorkerInfo[];
@@ -228,7 +254,7 @@ export default function WorkerChannels(props: {
     setDrawerCh(ch);
     setEnabled(Boolean(cfg.enabled));
     setBotPrefix(String(cfg.bot_prefix ?? ""));
-    setRows(configToRows(cfg));
+    setRows(configToRows(cfg, ch));
     setQrImg("");
     stopQrPoll();
     setPersisted("");
@@ -237,7 +263,7 @@ export default function WorkerChannels(props: {
       const fresh = await fetchWorkerChannel(sel, ch);
       setEnabled(Boolean(fresh.enabled));
       setBotPrefix(String(fresh.bot_prefix ?? ""));
-      setRows(configToRows(fresh));
+      setRows(configToRows(fresh, ch));
     } catch {
       /* 现值读失败用卡片缓存 */
     }
@@ -575,9 +601,32 @@ export default function WorkerChannels(props: {
                 return (
                   <div key={`${r.key}-${idx}`} style={{ display: "grid", gap: 2 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: t.textSecondary, minWidth: 130 }}>
-                        {f?.label || r.key}
-                      </span>
+                      {(() => {
+                        // v0.5.0-beta.13.15（B10）：语义化标签 + 悬停说明。
+                        const lbl =
+                          f?.label || FIELD_LABELS[r.key]?.[lang] || r.key;
+                        const tip = FIELD_TIPS[r.key]?.[lang];
+                        const span = (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: t.textSecondary,
+                              minWidth: 130,
+                              cursor: tip ? "help" : undefined,
+                            }}
+                          >
+                            {lbl}
+                            {tip ? " ⓘ" : ""}
+                          </span>
+                        );
+                        return tip ? (
+                          <antd.Tooltip title={tip} key="tip">
+                            {span}
+                          </antd.Tooltip>
+                        ) : (
+                          span
+                        );
+                      })()}
                       <div style={{ flex: 1 }}>
                         {type === "bool" ? (
                           <antd.Switch

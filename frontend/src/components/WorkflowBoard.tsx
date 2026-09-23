@@ -630,6 +630,8 @@ interface BoardTask {
   projectStatus: string;
   node: WorkflowNode;
   col: BoardCol;
+  /** v0.5.0-beta.13.15（B7）：原节点序（列内时间排序的同项目保序键）。 */
+  __seq?: number;
 }
 
 /** 事件流 nodes → 看板任务（按状态分列）。 */
@@ -1010,7 +1012,14 @@ function BoardCard(props: {
   );
 }
 
-/** 看板四列…七列容器：状态分列 + 任务卡（列布局同 dashboard 任务看板）。 */
+/** 看板容器（v0.5.0-beta.13.15 B7，13.14 装验「项目看板改成两行四列，
+ *  每个看板显示三个卡片，再多滚动 col，时间排序要做好」）：
+ *  - 8 状态列 4×2 网格（旧 1×8 横滚——列窄到不可读、一屏塞 8 列过密）；
+ *  - 每列卡区限高 ≈3 卡（BOARD_CARD_CAP_PX），超出列内纵向滚动；
+ *  - 列内显式时间排序：项目活动 ts 新→旧（看板恒时间序——项目级 sortBy
+ *    是列表/轨道视图语义，不应扰动看板列内顺序；旧版列内顺序=events
+ *    传入序，受 sortBy 影响，「时间排序」不成立）。 */
+const BOARD_CARD_CAP_PX = 330; // ≈3 × BoardCard(~100px 含标题换行余量) + 2 gap
 function BoardColumnsView(props: {
   events: WorkflowEvent[];
   t: ReturnType<typeof useThemeColors>;
@@ -1019,20 +1028,38 @@ function BoardColumnsView(props: {
 }) {
   const { events, t, onTaskDone, onOpenDetail } = props;
   const tr = useT();
-  const tasks = React.useMemo(() => boardTasksFromEvents(events), [events]);
+  // 列内时间序：按 (项目 ts 新→旧, 原节点序) 稳定排序。
+  const tasksByCol = React.useMemo(() => {
+    const tsOf = new Map(events.map((e) => [e.runId, e.ts || 0]));
+    const m = new Map<BoardCol, BoardTask[]>();
+    for (const col of BOARD_COLUMNS) m.set(col.key, []);
+    boardTasksFromEvents(events).forEach((tk, idx) => {
+      m.get(tk.col)?.push(tk);
+      tk.__seq = idx; // 原节点序（同项目内保序）
+    });
+    for (const list of m.values()) {
+      list.sort(
+        (a, b) =>
+          (tsOf.get(b.runId) || 0) - (tsOf.get(a.runId) || 0) ||
+          (a.__seq || 0) - (b.__seq || 0),
+      );
+    }
+    return m;
+  }, [events]);
   return (
     <div
       style={{
         display: "grid",
-        // v0.5.0-beta.13.12：7→8 列（新增「已取消」）。
-        gridTemplateColumns: `repeat(${BOARD_COLUMNS.length}, minmax(150px, 1fr))`,
+        // B7：4 列 × 2 行（8 状态列；minmax 230 保证卡可读宽度）。
+        // 窄窗口（< 4×230）横向滚动，不裁剪。
+        gridTemplateColumns: "repeat(4, minmax(230px, 1fr))",
         gap: 10,
-        overflowX: "auto",
         alignItems: "start",
+        overflowX: "auto",
       }}
     >
       {BOARD_COLUMNS.map((col) => {
-        const colTasks = tasks.filter((tk) => tk.col === col.key);
+        const colTasks = tasksByCol.get(col.key) || [];
         return (
           <div
             key={col.key}
@@ -1041,7 +1068,7 @@ function BoardColumnsView(props: {
               borderRadius: 10,
               background: t.cardBg,
               padding: 8,
-              minWidth: 150,
+              minWidth: 230,
               display: "grid",
               gap: 8,
             }}
@@ -1067,19 +1094,30 @@ function BoardColumnsView(props: {
               />
               {tr(col.zh)}（{colTasks.length}）
             </div>
-            {colTasks.map((task) => (
-              <BoardCard
-                key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
-                task={task}
-                t={t}
-                onTaskDone={onTaskDone}
-                onOpenDetail={
-                  onOpenDetail
-                    ? (tid) => onOpenDetail(tid, task.runId)
-                    : undefined
-                }
-              />
-            ))}
+            {/* B7：卡区限高 3 卡 + 列内滚动 col。 */}
+            <div
+              style={{
+                display: "grid",
+                gap: 8,
+                maxHeight: BOARD_CARD_CAP_PX,
+                overflowY: colTasks.length > 3 ? "auto" : "visible",
+                overflowX: "hidden",
+              }}
+            >
+              {colTasks.map((task) => (
+                <BoardCard
+                  key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
+                  task={task}
+                  t={t}
+                  onTaskDone={onTaskDone}
+                  onOpenDetail={
+                    onOpenDetail
+                      ? (tid) => onOpenDetail(tid, task.runId)
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
           </div>
         );
       })}

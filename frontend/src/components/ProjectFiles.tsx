@@ -4,6 +4,7 @@ import {
   downloadViaHost,
   requestJson,
   resolvePluginUrl,
+  roomMatchesProject,
   type TeamRoom,
   type WorkflowEvent,
 } from "../api";
@@ -117,7 +118,11 @@ async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
  * v0.5.0-beta.13.14（13.13 装验定案）：面板只显示当前房间项目（「其他
  * 项目」折叠区移除——聊天上下文只讲本群）；标题行去冗余（Drawer 标题
  * 已带文件夹 SVG +「项目文件」）；文件行主点击=弹窗预览（同产物 tab
- * FilePreview，不再触发下载跳外部应用）+ 独立下载按钮。 */
+ * FilePreview，不再触发下载跳外部应用）+ 独立下载按钮。
+ * v0.5.0-beta.13.15（B3 真根因修）：关联判定改 roomMatchesProject 双源
+ * （source_room_id 严格匹配 ∪ 标准项目群命名 `Project: <项目名>`）——
+ * 旧严格相等在「项目从 QQ/DM 发起」时 source_room_id≠项目群 ID，
+ * 标准项目群也 miss（13.14 装验空面板）。 */
 export default function ProjectFiles(props: {
   room: TeamRoom | null;
   workflowEvents: WorkflowEvent[];
@@ -129,11 +134,17 @@ export default function ProjectFiles(props: {
 
   // v0.5.0-beta.13.14：只显示当前房间项目（13.13 的「其他项目」折叠区
   // 按装验定案移除——聊天上下文只讲本群）。
+  // v0.5.0-beta.13.15（B3）：匹配改 roomMatchesProject 双源判定——
+  // source_room_id 严格相等只覆盖「发起房间=当前房间」；标准项目群
+  // （名 `Project: <项目名>`）按命名关联（真根因：project_room_id 不
+  // 走 API，见 api.ts roomMatchesProject 头注）。
   const roomProjects = React.useMemo(
     () =>
-      workflowEvents.filter(
-        (ev) => ev.room_id && ev.room_id === room?.room_id,
-      ),
+      room
+        ? workflowEvents.filter((ev) =>
+            roomMatchesProject(room.room_id, room.name, undefined, ev),
+          )
+        : [],
     [workflowEvents, room],
   );
 

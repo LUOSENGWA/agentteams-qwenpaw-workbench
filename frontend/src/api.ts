@@ -1056,6 +1056,41 @@ function isoToMs(v: unknown): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
+/** v0.5.0-beta.13.15（B3 真根因修）：项目↔房间关联判定。
+ *  实盘根因（源码实证，create-project.sh + project_handler.go）：
+ *  ① 项目群真 ID 写在 meta.json 的 `project_room_id`，Controller 的 Go
+ *     projectMeta 结构体只挑 source_room_id 透传 → API 从不暴露项目群 ID；
+ *  ② workflow.room_id（= meta.source_room_id）只是「发起房间」——QQ 发起
+ *     为 `qq:...`、DM 发起为 DM 房间 → 与项目群 room_id 严格相等恒 miss
+ *     （13.14 装验「当前房间无直接关联项目」）。
+ *  双源判定（任一命中即关联）：
+ *  ① source_room_id 严格匹配（`matrix:` 前缀归一后比较）；
+ *  ② 标准项目群命名：房间名/话题 = `Project: <项目名>`（create-project.sh
+ *     建群固定命名 `Project: <title>` / topic `Project room for <title>`）。
+ *  上游若日后暴露 project_room_id（待提 PR），本函数优先其为准源。 */
+export function roomMatchesProject(
+  roomId: string,
+  roomName: string | undefined,
+  roomTopic: string | undefined,
+  ev: WorkflowEvent,
+): boolean {
+  if (!roomId) return false;
+  const src = typeof ev.room_id === "string" ? ev.room_id.trim() : "";
+  if (src) {
+    const norm = (s: string) => s.trim().replace(/^matrix:/i, "");
+    if (norm(src) === norm(roomId)) return true;
+  }
+  const title = typeof ev.title === "string" ? ev.title.trim() : "";
+  if (title) {
+    const prefix = `Project: ${title}`;
+    for (const v of [roomName, roomTopic]) {
+      const s = typeof v === "string" ? v.trim() : "";
+      if (s === prefix) return true;
+    }
+  }
+  return false;
+}
+
 /** project + workflow → WorkflowEvent（UI 契约映射）。edges 反推 dependsOn。 */function mapProjectWorkflow(
   proj: Record<string, unknown>,
   wf: Record<string, unknown>,
@@ -1679,6 +1714,28 @@ export function patchWorkerTool(
     `/workers/${encodeURIComponent(name)}/tools/${encodeURIComponent(tool)}`,
     patch,
   ) as Promise<WorkerToolInfo>;
+}
+
+// ── Worker 运行时技能（物化层；GET /workers/{name}/skills 代理 worker
+//    qwenpaw app /api/skills，controller worker_skills.go）──────────────
+// v0.5.0-beta.13.15（B6 双层技能真相）：
+//   分配层 = WorkerResponse.skills（spec.skills，CRD 显式分配，PUT /workers
+//     {skills} 写入）——「管理员声明给了什么」。
+//   物化层 = 本端点（worker 容器内实际装载，runtime 自报）——「实际能调用
+//     什么」。二者可背离：团队层技能 materialize-at-assign（#1238）/ builtin
+//     恢复 / 镜像·插件自带技能都不写 spec.skills → 分配层空但物化层非空
+//     = 13.14 装验「矩阵全显未分配但可正常调用」的真相。
+// 404 = Controller 未含端点（版本门）/ L2 跨团队 W8 防探测；403 = 只读身份。
+export interface WorkerRuntimeSkill {
+  name: string;
+  enabled?: boolean;
+  preload?: boolean;
+}
+export function fetchWorkerSkills(name: string): Promise<WorkerRuntimeSkill[]> {
+  return controllerRequest(
+    "GET",
+    `/workers/${encodeURIComponent(name)}/skills`,
+  ) as Promise<WorkerRuntimeSkill[]>;
 }
 
 // ── Worker 会话只读（#1295 等合并；给无头 QwenPaw Worker「补头」）──────

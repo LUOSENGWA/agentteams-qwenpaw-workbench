@@ -20,6 +20,7 @@ import {
   openDm,
   redactRoomMessage,
   requestJson,
+  roomMatchesProject,
   leaveRoom,
   sendRoomMessage,
   sendApprovalCommand,
@@ -1869,67 +1870,84 @@ export default function WorkbenchPage() {
     }
   }, [activeRoom, messagesEnd]);
 
-  // v0.5.0-beta.13.13（13.12 装验「很多信息『已滚出历史』但 Element 里信息
-  // 都在，看看 Element 怎么做的」）：Element 的 timeline 是 per-room 全量
-  // 不驱逐 + 按需向前翻页（scrollToEvent：点引用条→自动加载更早分页直到
-  // 原消息进入窗口，而不是标死『滚出历史』）。对齐该语义：引用条原消息
-  // 不在已加载窗口时 → 点「加载原消息」→ 这里链式 backfill（每页 50，
-  // 滚动到哪里加载到哪里——不设页数上限，加载到原消息为止）。
-  // v0.5.0-beta.13.14（13.13 装验「15 页×50 能不能多点」）：去掉 15 页
-  // 硬上限，改由四个真实终止条件兜底：① 原消息进窗口 ② 触底（!end）
-  // ③ 分页无新数据（防服务端异常导致死循环）④ 切房（代际号作废进行中
-  // 的链，丢弃未写入的页）。500 页（2.5 万条）仅为理论回退护栏。
+  // v0.5.0-beta.13.13（13.12 装验「很多信息『已滚出历史』但 Element 里
+  // 信息都在，看看 Element 怎么做的」）：引用条原消息不在已加载窗口时 →
+  // 点「加载原消息」→ backfill 到原消息进窗口（不标死『滚出历史』）。
+  // v0.5.0-beta.13.15（B2 Element 式滚动化，13.14 装验「加载原消息能不能
+  // 滚动到哪里就自动加载，参考 Element」）：旧版 = 点一下后台 burst 连拉
+  // （500 页护栏内一口气拉完，用户看不见进度、API 突发）。新版 =
+  // 滚动驱动的分页节奏：
+  //   ① 点「加载原消息」→ set pending + kickstart 一页（用户未必在顶部，
+  //      40px 触发不可依赖）；
+  //   ② 之后 RoomChat 侧滚动到哪加载到哪：40px 触顶自动触发（既有）+
+  //      停在顶部时每次前插后自动续一页（新增 effect）——页面按用户
+  //      滚动节奏逐页前进，锚保持视口稳定（13.6 锚机制）；
+  //   ③ 终止条件：原消息进窗口（自动定位 + 高亮，jumpToEventId 复用
+  //      搜索跳转链路）/ 触底（!hasMore → banner 落 /context 兜底）/
+  //      用户滚离顶部（停止续拉）/ 切房（pending 作废 resolve false）。
   const hasMoreRef = React.useRef(false);
   React.useEffect(() => {
     hasMoreRef.current = hasMore;
   }, [hasMore]);
-  const loadOrigLockRef = React.useRef(false);
-  const loadOrigGenRef = React.useRef(0);
+  const [pendingOriginalId, setPendingOriginalId] =
+    React.useState<string | null>(null);
+  const pendingOrigResolveRef = React.useRef<
+    ((kind: "found" | "exhausted" | "cancelled") => void) | null
+  >(null);
+  const pendingOrigIdRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    // 切房/关房 → 作废进行中的加载链（其 fetch 回来后不再写入任何状态）。
-    loadOrigGenRef.current += 1;
-  }, [activeRoom?.room_id]);
-  const loadOriginal = React.useCallback(
-    async (eventId: string): Promise<boolean> => {
-      if (!activeRoom || !eventId || loadOrigLockRef.current) return false;
-      loadOrigLockRef.current = true;
-      const gen = loadOrigGenRef.current;
-      const roomId = activeRoom.room_id;
-      try {
-        let end = messagesEnd;
-        let guard = 0;
-        while (guard++ < 500) {
-          if (messagesRef.current.some((m) => m.event_id === eventId))
-            return true;
-          if (!end) break; // 触底：房间历史已全部在窗口内
-          const page = await fetchRoomMessages(roomId, 50, end);
-          if (gen !== loadOrigGenRef.current) break; // 切房 → 中止
-          const known = new Set(
-            messagesRef.current.map((m) => m.event_id),
-          );
-          const older = page.messages.filter((m) => !known.has(m.event_id));
-          if (!older.length) break; // 无新数据 → 分页失效，防死循环
-          const merged = [...older, ...messagesRef.current];
-          // 直接更新 ref：循环内下一轮判断要看到本轮合并结果（state 是
-          // 异步的，等 effect 同步会慢一轮）。
-          messagesRef.current = merged;
-          setMessages(merged);
-          setCachedMessages(roomId, { ...page, messages: merged }, merged);
-          end = page.end;
-          setMessagesEnd(end);
-          setHasMore(Boolean(end));
-        }
-        return (
-          gen === loadOrigGenRef.current &&
-          messagesRef.current.some((m) => m.event_id === eventId)
-        );
-      } catch {
-        return false;
-      } finally {
-        loadOrigLockRef.current = false;
+    pendingOrigIdRef.current = pendingOriginalId;
+  }, [pendingOriginalId]);
+  const settlePendingOriginal = React.useCallback(
+    (kind: "found" | "exhausted" | "cancelled") => {
+      if (pendingOrigResolveRef.current) {
+        pendingOrigResolveRef.current(kind);
+        pendingOrigResolveRef.current = null;
       }
+      setPendingOriginalId(null);
     },
-    [activeRoom, messagesEnd],
+    [],
+  );
+  React.useEffect(() => {
+    // 切房/关房 → 作废进行中的加载（cancelled：banner 回 idle，不标 notfound）。
+    if (pendingOrigIdRef.current) settlePendingOriginal("cancelled");
+  }, [activeRoom?.room_id, settlePendingOriginal]);
+  // 收口：原消息进窗口 → 自动定位 + 高亮；触底仍无 → 交给 banner 兜底。
+  React.useEffect(() => {
+    if (!pendingOriginalId) return;
+    if (messagesRef.current.some((m) => m.event_id === pendingOriginalId)) {
+      setJumpToEventId(pendingOriginalId);
+      settlePendingOriginal("found");
+      return;
+    }
+    if (!hasMore) settlePendingOriginal("exhausted");
+  }, [messages, hasMore, pendingOriginalId, settlePendingOriginal]);
+  // 停滞看门狗：每页落地会重置计时（deps 含 messages）；30s 无任何新页
+  // （服务端分页异常）→ 释放 pending（banner 回 idle 可再点），不静默死挂。
+  React.useEffect(() => {
+    if (!pendingOriginalId) return;
+    const timer = window.setTimeout(() => {
+      settlePendingOriginal("cancelled");
+    }, 30000);
+    return () => window.clearTimeout(timer);
+  }, [messages, hasMore, pendingOriginalId, settlePendingOriginal]);
+  const loadOriginal = React.useCallback(
+    async (
+      eventId: string,
+    ): Promise<"found" | "exhausted" | "cancelled"> => {
+      if (!activeRoom || !eventId) return "cancelled";
+      if (pendingOrigIdRef.current === eventId) return "cancelled"; // 已在进行中
+      if (pendingOrigIdRef.current)
+        settlePendingOriginal("cancelled"); // 换目标：旧目标回 idle
+      setPendingOriginalId(eventId);
+      // Kickstart 一页：用户点引用条时大概率不在列表顶部（banner 在中部），
+      // 40px 触顶触发不会来——先拉一页保证前进（后续页由滚动驱动）。
+      void loadMore();
+      return new Promise((resolve) => {
+        pendingOrigResolveRef.current = resolve;
+      });
+    },
+    [activeRoom, loadMore, settlePendingOriginal],
   );
 
   // 长轮询：增量拉新消息（dir=b 前 10 条），按 event_id 去重合并。
@@ -2933,6 +2951,7 @@ export default function WorkbenchPage() {
       sending={sending}
       hasMore={hasMore}
       onLoadOriginal={(id) => loadOriginal(id)}
+      pendingOriginal={pendingOriginalId}
       user_id={config?.matrix?.user_id}
       errorNote={
         roomError === "not_found"
@@ -2982,18 +3001,24 @@ export default function WorkbenchPage() {
       onOpenProjectFiles={(room) => void openProjectFiles(room)}
     />
   ) : null;
-  // v0.5.0-beta.13.14（装验反馈）：房间卡项目名——Controller 工作流事件
-  // room_id → title 去重列表（与 ProjectFiles 面板同一正源数据）。
+  // v0.5.0-beta.13.14（装验反馈）：房间卡项目名——与 ProjectFiles 面板
+  // 同一正源数据。v0.5.0-beta.13.15（B4）：匹配改 roomMatchesProject
+  // 双源（source_room_id 严格匹配 ∪ 标准项目群命名 `Project: <项目名>`）
+  // ——旧版只按 ev.room_id 建索引，标准项目群（source_room_id 指向发起
+  // 房间）卡片恒无项目名（13.14 装验反馈）。
   const roomProjectNames = React.useMemo(() => {
     const m: Record<string, string[]> = {};
-    for (const ev of workflowEvents) {
-      if (!ev.room_id) continue;
-      const list = m[ev.room_id] || (m[ev.room_id] = []);
-      const title = ev.title || ev.runId;
-      if (!list.includes(title)) list.push(title);
+    for (const room of rooms) {
+      for (const ev of workflowEvents) {
+        if (roomMatchesProject(room.room_id, room.name, undefined, ev)) {
+          const list = m[room.room_id] || (m[room.room_id] = []);
+          const title = ev.title || ev.runId;
+          if (!list.includes(title)) list.push(title);
+        }
+      }
     }
     return m;
-  }, [workflowEvents]);
+  }, [rooms, workflowEvents]);
 
   const chatListEl = (
     <TeamOverview

@@ -30,12 +30,41 @@ import {
   type TeamInfo,
   type McpServerInfo,
   type SkillCatalogItem,
+  type WorkerRuntimeSkill,
   fetchAdminData,
   fetchL2AdminData,
   updateWorker,
   fetchSkillCatalog,
+  fetchWorkerSkills,
   httpErrorStatus,
 } from "../api";
+
+/** v0.5.0-beta.13.15（B5a 矩阵按团队分类）：Worker 行按 team 分组
+ * （保持原始相对序；无 team 的归「未分组」殿后）。 */
+function groupWorkersByTeam(
+  workers: WorkerInfo[],
+): { team: string; workers: WorkerInfo[] }[] {
+  const order: string[] = [];
+  const m = new Map<string, WorkerInfo[]>();
+  for (const w of workers) {
+    const key = w.team || "\u0000";
+    if (!m.has(key)) {
+      m.set(key, []);
+      order.push(key);
+    }
+    m.get(key)!.push(w);
+  }
+  // 未分组殿后（稳定：先分组、组内原序）。
+  order.sort((a, b) => {
+    if (a === "\u0000") return 1;
+    if (b === "\u0000") return -1;
+    return 0;
+  });
+  return order.map((team) => ({
+    team: team === "\u0000" ? "" : team,
+    workers: m.get(team)!,
+  }));
+}
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -79,6 +108,36 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
   const [baseMatrix, setBaseMatrix] = React.useState<Record<string, string[]>>({});
   // v0.5.0-beta.13.14：单 Worker 展开态（一次只展开一个，面板恒紧凑）。
   const [expandedWorker, setExpandedWorker] = React.useState<string | null>(null);
+  // v0.5.0-beta.13.15（B6 双层技能真相）：物化层（runtime /api/skills，
+  // 实际能调用什么）懒加载——展开哪个 Worker 拉哪个（N+1 只在展开时发生，
+  // 矩阵首屏零额外请求）。null=未加载；"loading"=拉取中；"err"=404/403
+  // 版本门或权限门（显示占位不炸）；数组=已加载。
+  const [matByWorker, setMatByWorker] = React.useState<
+    Record<string, WorkerRuntimeSkill[] | "loading" | "err" | null>
+  >({});
+  React.useEffect(() => {
+    if (!expandedWorker) return;
+    const cur = matByWorker[expandedWorker];
+    if (cur !== undefined && cur !== null) return; // 已加载/拉取中/已判错
+    setMatByWorker((prev) =>
+      prev[expandedWorker] === undefined ? { ...prev, [expandedWorker]: "loading" } : prev,
+    );
+    let dead = false;
+    void fetchWorkerSkills(expandedWorker)
+      .then((list) => {
+        if (dead) return;
+        setMatByWorker((prev) => ({ ...prev, [expandedWorker]: list || [] }));
+      })
+      .catch(() => {
+        if (dead) return;
+        setMatByWorker((prev) => ({ ...prev, [expandedWorker]: "err" }));
+      });
+    return () => {
+      dead = true;
+    };
+    // matByWorker 不入 deps（cur 判断用函数式 setState 兜底竞态）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedWorker]);
   const [mcpMap, setMcpMap] = React.useState<Record<string, McpServerInfo[]>>({});
   const [savingRow, setSavingRow] = React.useState("");
   const [mcpEditWorker, setMcpEditWorker] = React.useState("");
@@ -383,13 +442,34 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
       >
         {st.workers.length ? (
           <div style={{ display: "grid", gap: 6 }}>
-            {st.workers.map((w) => {
+            {groupWorkersByTeam(st.workers).map((tg) => (
+              <div key={tg.team || "ungrouped"}>
+                {/* v0.5.0-beta.13.15（B5a）：团队分组头（组内 Worker 卡原渲染）。 */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "2px 2px 0",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: 12, color: t.text }}>
+                    {tg.team ? tg.team : tr("未分组")}
+                  </span>
+                  <span style={{ color: t.textSecondary, fontSize: 11 }}>
+                    {tr("{n} Worker", { n: tg.workers.length })}
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: t.border }} />
+                </div>
+                <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
+                {tg.workers.map((w) => {
               const assigned = matrix[w.name] || [];
               const base = baseMatrix[w.name] || [];
               const dirty =
                 assigned.length !== base.length ||
                 assigned.some((s) => !base.includes(s));
               const expanded = expandedWorker === w.name;
+              const mat = matByWorker[w.name];
               return (
                 <div
                   key={w.name}
@@ -431,6 +511,20 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
                             {s}
                           </antd.Tag>
                         ))
+                      ) : Array.isArray(mat) && mat.length ? (
+                        // v0.5.0-beta.13.15（B6）：分配层空但物化层非空——
+                        // 「未分配但可调用」的可视化真相（团队层自动物化/
+                        // builtin 恢复/镜像自带不写 spec.skills）。
+                        <antd.Tooltip
+                          title={tr(
+                            "未显式分配（CRD 分配层为空），但运行时已装载 {n} 个技能（团队层物化/内置恢复/镜像自带）——展开行查看明细",
+                            { n: mat.length },
+                          )}
+                        >
+                          <antd.Tag color="cyan" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
+                            {tr("运行时已装载 {n}", { n: mat.length })}
+                          </antd.Tag>
+                        </antd.Tooltip>
                       ) : (
                         <span style={{ color: t.textSecondary, fontSize: 11 }}>
                           {tr("暂无技能分配")}
@@ -468,6 +562,57 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
                         background: t.popoverBg,
                       }}
                     >
+                      {/* v0.5.0-beta.13.15（B6）：物化层明细（runtime 实际
+                          装载，懒加载首展即拉；404/403 版本/权限门占位）。 */}
+                      {mat === "loading" ? (
+                        <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 8 }}>
+                          {tr("运行时技能加载中…")}
+                        </div>
+                      ) : mat === "err" ? (
+                        <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 8 }}>
+                          {tr(
+                            "运行时技能列表不可用（Controller 未含该端点或当前身份无权限——分配层不受影响）",
+                          )}
+                        </div>
+                      ) : Array.isArray(mat) && mat.length ? (
+                        <div
+                          style={{
+                            marginBottom: 10,
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            background: t.cardBg,
+                            border: `1px solid ${t.border}`,
+                          }}
+                        >
+                          <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 4 }}>
+                            {tr(
+                              "运行时已装载（物化层——实际可调用；分配层空而这里非空 = 团队层自动物化/内置恢复/镜像自带）",
+                            )}
+                          </div>
+                          <div style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+                            {mat.map((s) => {
+                              const a = s.name;
+                              const inAssigned = assigned.includes(a);
+                              return (
+                                <antd.Tag
+                                  key={a}
+                                  color={inAssigned ? "blue" : "cyan"}
+                                  style={{ marginInlineEnd: 0, fontSize: 10.5 }}
+                                  title={
+                                    inAssigned
+                                      ? tr("已分配 + 已物化")
+                                      : tr("仅物化（未显式分配）") +
+                                        (s.preload ? " · 预加载" : "")
+                                  }
+                                >
+                                  {a}
+                                  {inAssigned ? " ✓" : ""}
+                                </antd.Tag>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
                       <div
                         style={{
                           display: "grid",
@@ -603,7 +748,10 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
                   ) : null}
                 </div>
               );
-            })}
+                })}
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <antd.Empty

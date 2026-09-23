@@ -98,12 +98,17 @@ function ReplyBanner({
   messages,
   onJump,
   onLoadOriginal,
+  pendingOriginal,
 }: {
   msg: RoomMessage;
   room: TeamRoom | null;
   messages: RoomMessage[];
   onJump: (eventId: string) => void;
-  onLoadOriginal?: (eventId: string) => Promise<boolean>;
+  onLoadOriginal?: (
+    eventId: string,
+  ) => Promise<"found" | "exhausted" | "cancelled">;
+  /** v0.5.0-beta.13.15（B2）：该引用条正是正在滚动回填的目标。 */
+  pendingOriginal?: string | null;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -187,9 +192,9 @@ function ReplyBanner({
       </span>
       {original ? (
         <span style={{ fontSize: 11, color: "#aaa", flexShrink: 0 }}>↗</span>
-      ) : loadState === "loading" ? (
+      ) : loadState === "loading" || pendingOriginal === reply.event_id ? (
         <span style={{ fontSize: 11, color: PRIMARY, flexShrink: 0 }}>
-          {tr("正在加载…")}
+          {tr("正在加载…（滚到顶部自动续拉）")}
         </span>
       ) : loadState === "notfound" ? (
         <span style={{ fontSize: 11, color: "#ccc", flexShrink: 0 }}>
@@ -204,16 +209,25 @@ function ReplyBanner({
             textDecoration: onLoadOriginal ? "underline" : "none",
             flexShrink: 0,
           }}
+          title={
+            onLoadOriginal
+              ? tr("开始按需加载，滚到顶部会自动继续拉取")
+              : undefined
+          }
           onClick={async (e) => {
             if (!onLoadOriginal) return;
             e.stopPropagation();
             setLoadState("loading");
-            const found = await onLoadOriginal(reply.event_id);
-            if (!found) {
+            const r = await onLoadOriginal(reply.event_id);
+            if (r === "exhausted") {
               // 到底仍无 → 现有 /context 定位区兜底（不丢信息）。
               setLoadState("notfound");
               onJump(reply.event_id);
+            } else if (r === "cancelled") {
+              // 换目标/切房 → 回 idle（可再点）。
+              setLoadState("idle");
             }
+            // found：原消息进窗口 → 本条自动转正常态（上方 original 分支）。
           }}
         >
           {onLoadOriginal ? tr("加载原消息") : tr("已滚出历史")}
@@ -1524,8 +1538,15 @@ export interface RoomChatProps {
   workers?: WorkerInfo[];
   /** v0.5.0-beta.13.13（Element 同款按需加载）：引用条「加载原消息」——
    * 链式向前分页把原消息拉进时间线；返回是否找到（找不到由 UI 落
-   * /context 定位区兜底）。 */
-  onLoadOriginal?: (eventId: string) => Promise<boolean>;
+   * /context 定位区兜底）。
+   * v0.5.0-beta.13.15（B2 滚动化）：调用后只 kickstart 一页，其余页由
+   * 滚动驱动（触顶 40px 触发 + 停顶自动续拉，见下方 useLayoutEffect）。 */
+  onLoadOriginal?: (
+    eventId: string,
+  ) => Promise<"found" | "exhausted" | "cancelled">;
+  /** v0.5.0-beta.13.15（B2）：正在回填的原消息 event_id（引用条显示
+   * 「正在加载原消息…」；非空时停在顶部会自动续拉分页）。 */
+  pendingOriginal?: string | null;
 }
 
 export default function RoomChat(props: RoomChatProps) {
@@ -1569,6 +1590,7 @@ export default function RoomChat(props: RoomChatProps) {
     onWorkflowIntervened,
     onOpenProjectFiles,
     onLoadOriginal,
+    pendingOriginal,
   } = props;
   // v0.5.0-beta.13.1（9/19 入口迁移）：头像点击 → Worker 会话抽屉（只读，
   // #1295 端点；404 版本门占位）。团队管理不再挂会话 tab。
@@ -2149,6 +2171,25 @@ export default function RoomChat(props: RoomChatProps) {
     }
     if (el) scrollAnchorRef.current = { top: el.scrollTop, height: el.scrollHeight };
     prevFirstIdRef.current = firstId;
+  });
+
+  // v0.5.0-beta.13.15（B2 Element 式「滚动到哪里就自动加载」）：加载原
+  // 消息进行中（pendingOriginal 非空）且用户停在顶部（锚恢复后 scrollTop
+  // < 80）且还有历史 → 自动续拉一页。节奏=用户滚动节奏：每页落地后重查
+  // 顶部位置，停顶就继续、滚离就停（40px 触顶触发覆盖滚动事件路径，
+  // 本 effect 覆盖「停在顶部等历史」路径）。终止由父侧收口（found →
+  // 自动定位 / 触底 / 切房 → pending 清空）。声明在锚 effect 之后：
+  // 读到的是锚恢复后的 scrollTop。
+  React.useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el || !pendingOriginal || !hasMore || !onLoadMore) return;
+    if (el.scrollTop < 80 && !autoLoadRef.current) {
+      autoLoadRef.current = true;
+      window.setTimeout(() => {
+        autoLoadRef.current = false;
+      }, 4000);
+      void onLoadMore();
+    }
   });
 
   // 换房间：重置置底状态 + 贴底（Element 开房间即在最新消息处）。
