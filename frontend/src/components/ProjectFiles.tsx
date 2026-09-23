@@ -1,4 +1,5 @@
-import { PageIcon, EyeIcon, FolderIcon, CloseIcon } from "./icons";
+import { PageIcon, CloseIcon } from "./icons";
+import type * as ReactNS from "react";
 import {
   downloadViaHost,
   requestJson,
@@ -13,6 +14,11 @@ import { FilePreview, type PreviewFile } from "./FilePreview";
 const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
+const icons = (host.antdIcons || {}) as Record<string, ReactNS.ComponentType>;
+const EmptyIcon = (() => null) as unknown as ReactNS.FC<Record<string, unknown>>;
+const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
+  (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
+const DownloadIcon = pick("DownloadOutlined");
 
 /** 任务文件条目（产物端点 artifact 声明：result_path/spec_path/deliverables）。 */
 interface TaskFile {
@@ -107,7 +113,11 @@ async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
  *   ① 当前房间项目（严格匹配）→ 自动加载文件；
  *   ② 其他项目（不匹配但已注册）→ 折叠列表懒加载（点开才拉）；
  *   ③ 每项目拉取失败显形（旧版静默 continue = 黑盒）+ 刷新按钮全量重拉
- *  已加载项目。 */
+ *  已加载项目。
+ * v0.5.0-beta.13.14（13.13 装验定案）：面板只显示当前房间项目（「其他
+ * 项目」折叠区移除——聊天上下文只讲本群）；标题行去冗余（Drawer 标题
+ * 已带文件夹 SVG +「项目文件」）；文件行主点击=弹窗预览（同产物 tab
+ * FilePreview，不再触发下载跳外部应用）+ 独立下载按钮。 */
 export default function ProjectFiles(props: {
   room: TeamRoom | null;
   workflowEvents: WorkflowEvent[];
@@ -117,17 +127,12 @@ export default function ProjectFiles(props: {
   const t = useThemeColors();
   const tr = useT();
 
+  // v0.5.0-beta.13.14：只显示当前房间项目（13.13 的「其他项目」折叠区
+  // 按装验定案移除——聊天上下文只讲本群）。
   const roomProjects = React.useMemo(
     () =>
       workflowEvents.filter(
         (ev) => ev.room_id && ev.room_id === room?.room_id,
-      ),
-    [workflowEvents, room],
-  );
-  const otherProjects = React.useMemo(
-    () =>
-      workflowEvents.filter(
-        (ev) => !(ev.room_id && ev.room_id === room?.room_id),
       ),
     [workflowEvents, room],
   );
@@ -138,7 +143,6 @@ export default function ProjectFiles(props: {
   const [errByProject, setErrByProject] = React.useState<Record<string, string>>({});
   const [loadingSet, setLoadingSet] = React.useState<Record<string, boolean>>({});
   const [loadedSet, setLoadedSet] = React.useState<Record<string, boolean>>({});
-  const [expanded, setExpanded] = React.useState<string[]>([]);
 
   const loading = Object.values(loadingSet).some(Boolean);
 
@@ -165,11 +169,10 @@ export default function ProjectFiles(props: {
   );
 
   const refresh = React.useCallback(async () => {
-    // 全量重拉：当前房间项目 + 已展开的其他项目。
-    const targets = [...roomProjects, ...otherProjects.filter((ev) => expanded.includes(ev.runId))];
+    // 全量重拉：当前房间项目（13.14 起面板只含本群项目）。
     setLoadedSet({});
-    await Promise.all(targets.map((ev) => loadOne(ev, true)));
-  }, [roomProjects, otherProjects, expanded, loadOne]);
+    await Promise.all(roomProjects.map((ev) => loadOne(ev, true)));
+  }, [roomProjects, loadOne]);
 
   // 当前房间项目：挂载/项目集变化自动加载。
   React.useEffect(() => {
@@ -283,22 +286,31 @@ export default function ProjectFiles(props: {
                       }}
                     >
                       {kindTag(f.kind)}
-                      <a
-                        href={resolvePluginUrl(artifactDownloadUrl(f.projectId, f.taskId, f.path))}
-                        target="_blank"
-                        rel="noreferrer"
+                      {/* v0.5.0-beta.13.14（装验反馈）：主点击=弹窗预览
+                          （同产物 tab FilePreview，不再触发下载→外部应用
+                          打开）；下载=独立按钮（blob 下载带鉴权）。 */}
+                      <span
+                        role="button"
                         style={{
                           flex: 1,
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                           color: "#1677ff",
+                          cursor: "pointer",
                         }}
-                        title={`${f.path}（${tr("下载")}）`}
-                        onClick={(e) => {
-                          // v0.5.0-beta.12: 解析后 /api URL 裸导航带不了鉴权头（401）
-                          // → 一律 host.fetch blob 下载。
-                          e.preventDefault();
+                        title={`${f.path}（${tr("预览")}）`}
+                        onClick={() => openFile(f)}
+                      >
+                        <PageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {basenameOf(f.path) || f.path}
+                      </span>
+                      <antd.Button
+                        size="small"
+                        type="text"
+                        style={{ fontSize: 11, padding: "0 4px", flexShrink: 0 }}
+                        icon={<DownloadIcon />}
+                        title={tr("下载")}
+                        onClick={() => {
                           void (async () => {
                             const ok = await downloadViaHost(
                               artifactDownloadUrl(f.projectId, f.taskId, f.path),
@@ -307,18 +319,7 @@ export default function ProjectFiles(props: {
                             if (!ok) antd.message.error(tr("下载失败，请稍后重试"));
                           })();
                         }}
-                      >
-                        <PageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {basenameOf(f.path) || f.path}
-                      </a>
-                      <antd.Button
-                        size="small"
-                        type="text"
-                        style={{ fontSize: 11, padding: "0 4px" }}
-                        onClick={() => openFile(f)}
-                        title={tr("预览")}
-                      >
-                        <EyeIcon size={12} />
-                      </antd.Button>
+                      />
                     </div>
                   ))}
                 </div>
@@ -332,10 +333,9 @@ export default function ProjectFiles(props: {
 
   return (
     <div style={{ display: "grid", gap: 10, padding: 12 }}>
+      {/* v0.5.0-beta.13.14：标题行只留房间标签+操作（Drawer 标题已带
+          文件夹 SVG +「项目文件」，这里不再重复）。 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 14, color: t.text, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <FolderIcon size={14} /> {tr("项目文件")}
-        </span>
         <antd.Tag style={{ fontSize: 10.5 }}>{room?.name || ""}</antd.Tag>
         <div style={{ flex: 1 }} />
         <antd.Button size="small" loading={loading} onClick={() => void refresh()}>
@@ -366,49 +366,9 @@ export default function ProjectFiles(props: {
               type="info"
               showIcon
               style={{ fontSize: 11.5 }}
-              message={tr("当前房间无直接关联项目（项目可能从 QQ 等其他通道发起，或尚未在 Controller 注册）——可查下方其他项目")}
+              message={tr("当前房间无直接关联项目（项目可能从 QQ 等其他通道发起，或尚未在 Controller 注册）")}
             />
           )}
-          {otherProjects.length > 0 ? (
-            <>
-              <div style={{ fontSize: 12, fontWeight: 600, color: t.textSecondary }}>
-                {tr("其他项目（{n}）", { n: otherProjects.length })}
-              </div>
-              <antd.Collapse
-                size="small"
-                activeKey={expanded}
-                onChange={(keys: string | string[]) => {
-                  const list = Array.isArray(keys) ? keys.map(String) : [String(keys)];
-                  setExpanded(list);
-                  list.forEach((k) => {
-                    const ev = otherProjects.find((e) => e.runId === k);
-                    if (ev) void loadOne(ev);
-                  });
-                }}
-                items={otherProjects.map((ev) => ({
-                  key: ev.runId,
-                  label: (
-                    <span style={{ fontSize: 12 }}>
-                      {ev.title || ev.runId}
-                      {"  "}
-                      <antd.Tag color={statusColor(ev.status)} style={{ margin: 0, fontSize: 10 }}>
-                        {ev.status || "?"}
-                      </antd.Tag>
-                      {filesByProject[ev.runId] ? (
-                        <span style={{ color: t.textSecondary, fontSize: 10.5 }}>
-                          {"（"}
-                          {filesByProject[ev.runId].length}
-                          {tr("个文件")}
-                          {"）"}
-                        </span>
-                      ) : null}
-                    </span>
-                  ),
-                  children: renderProjectBlock(ev),
-                }))}
-              />
-            </>
-          ) : null}
         </>
       )}
 

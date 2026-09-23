@@ -1,4 +1,4 @@
-import { PictureIcon, ClipIcon, StarIcon, StarOutlineIcon, DoorIcon, TrashIcon, MessageIcon, MailIcon, CheckIcon, UsersIcon, SearchIcon } from "./icons";
+import { PictureIcon, ClipIcon, StarIcon, StarOutlineIcon, DoorIcon, TrashIcon, MessageIcon, MailIcon, CheckIcon, UsersIcon, SearchIcon, FolderIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -92,11 +92,14 @@ function GroupCard({
   onToggleFavorite,
   onExitRoom,
   workerMxids,
+  projectTitles,
 }: {
   room: TeamRoom;
   user_id?: string;
   onOpenRoom?: (roomId: string) => void;
   onDm?: (mxid: string, roomId?: string) => void;
+  /** v0.5.0-beta.13.14：本房间项目名（卡片名称下小字显示）。 */
+  projectTitles?: string[];
   /** v0.5.0-beta.12 B3：收藏态（客户端本地）。 */
   isFavorite?: boolean;
   onToggleFavorite?: (roomId: string) => void;
@@ -203,6 +206,26 @@ function GroupCard({
               </antd.Dropdown>
             </span>
           </div>
+          {/* v0.5.0-beta.13.14（装验反馈）：房间名下面显示项目名
+              （数据=Controller 工作流事件 room_id→title；无项目不占行）。 */}
+          {projectTitles && projectTitles.length ? (
+            <div
+              style={{
+                fontSize: 11,
+                color: t.textSecondary,
+                marginTop: 2,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={projectTitles.join("、")}
+            >
+              <span style={{ display: "inline-flex", verticalAlign: "-1px", marginRight: 3 }}>
+                <FolderIcon size={10} />
+              </span>
+              {projectTitles.join("、")}
+            </div>
+          ) : null}
           <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
             {/* P8b：N 人 tag 兼作成员列表开关（点成员仍走 chip 的 DM 入口） */}
             <antd.Tag
@@ -603,6 +626,8 @@ export interface TeamOverviewProps {
   workerSessionByRoom?: Record<string, WorkerSessionState>;
   /** v0.5.0-beta.12.4（A17）：全部 Worker MXID（团队群 running 判定）。 */
   workerMxids?: Set<string>;
+  /** v0.5.0-beta.13.14：房间 room_id → 该项目名列表（房间卡名称下显示）。 */
+  roomProjectNames?: Record<string, string[]>;
 }
 
 export default function TeamOverview(props: TeamOverviewProps) {
@@ -622,6 +647,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
     markingAllRead,
     workerSessionByRoom,
     workerMxids,
+    roomProjectNames,
   } = props;
   const [filter, setFilter] = React.useState<"all" | "group" | "dm">("all");
   // v0.5.0-beta.12 B3：房间收藏（客户端本地 localStorage——Element 无房间级收藏协议：
@@ -763,6 +789,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
         onToggleFavorite={toggleFavorite}
         onExitRoom={doRoomExit}
         workerMxids={workerMxids}
+        projectTitles={roomProjectNames?.[room.room_id]}
       />
     ) : (
       <DmCard

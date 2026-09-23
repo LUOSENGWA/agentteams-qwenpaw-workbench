@@ -1425,8 +1425,20 @@ const DICT: Record<string, { en: string }> = {
   "扫码授权（如支持）": { en: "QR auth (if supported)" },
   "技能中心": { en: "Skill Center" },
   // v0.5.0-beta.12 ：技能中心防刷屏（空 Worker 行默认收起）
-  "已隐藏 {n} 个未分配技能的 Worker": { en: "Hidden {n} worker(s) without skills" },
-  "显示 {n} 个未分配技能的 Worker": { en: "Show {n} worker(s) without skills" },
+  // 技能矩阵按 Worker 行重构（13.14）
+  "点行展开/收起该 Worker 的技能编辑": { en: "Click the row to expand/collapse skill editing for this worker" },
+  // 技能中心 L2 双模式（13.14：上游 l2-worker-scoped-write/team-skills/skill-catalog 已合）
+  "技能中心（我的团队）": { en: "Skill Center (My Teams)" },
+  "选择团队": { en: "Select a team" },
+  "团队技能目录不可用（Controller 待升级或团队无技能）": { en: "Team skill catalog unavailable (controller pending upgrade, or the team has no skills)" },
+  "② Worker 技能分配（L2 我的团队 · 仅 skills 可写 · PUT 合并语义）": { en: "② Worker skill assignment (L2 my team · skills writable only · PUT merge semantics)" },
+  "③ MCP Servers（L2 只读 · 写权限待上游 elevated capability 设计）": { en: "③ MCP Servers (L2 read-only · write pending the upstream elevated-capability design)" },
+  "无 Worker（L2 可见范围=我的团队）": { en: "No workers (L2 visibility = my teams)" },
+  "暂无技能分配": { en: "No skills assigned" },
+  "未保存": { en: "Unsaved" },
+  "编辑技能": { en: "Edit skills" },
+  "暂无可用技能列表（目录未点亮且尚无已分配技能）": { en: "No skill list available yet (catalog not live and nothing assigned)" },
+  "重置为当前值": { en: "Reset to current value" },
   "已隐藏 {n} 个无 MCP 的 Worker": { en: "Hidden {n} worker(s) without MCP" },
   "显示 {n} 个无 MCP 的 Worker": { en: "Show {n} worker(s) without MCP" },
   "技能目录 API 待上游合并": { en: "Skill catalog API awaiting upstream merge" },
@@ -1526,8 +1538,7 @@ const DICT: Record<string, { en: string }> = {
   "该项目暂无已声明的文件（任务完成并产出结果后会显示）": { en: "This project has no declared files yet (they will appear after tasks produce results)" },
   "未获取到任何项目工作流（Controller 未连通或无注册项目）——点刷新重试": { en: "No project workflows retrieved (Controller unreachable or no registered projects) — click refresh to retry" },
   "当前房间项目": { en: "Current room's project(s)" },
-  "当前房间无直接关联项目（项目可能从 QQ 等其他通道发起，或尚未在 Controller 注册）——可查下方其他项目": { en: "No projects directly linked to this room (a project may have been started from another channel such as QQ, or is not yet registered in the Controller) — see other projects below" },
-  "其他项目（{n}）": { en: "Other projects ({n})" },
+  "当前房间无直接关联项目（项目可能从 QQ 等其他通道发起，或尚未在 Controller 注册）": { en: "No projects directly linked to this room (a project may have been started from another channel such as QQ, or is not yet registered in the Controller)" },
   "下载失败，请稍后重试": { en: "Download failed, please try again later" },
   "Higress 地址（Console 管理面，必填；宿主端口部署时自选，默认 18001）": { en: "Higress URL (Console admin plane, required; host port chosen at deploy time, default 18001)" },
   /* v0.5.0-beta.12：L669 此前无 en 条目（en 界面显示中文）——补条目，

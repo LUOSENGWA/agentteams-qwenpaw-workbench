@@ -20,16 +20,18 @@
  * 原「🎯 技能」tab 更名「宿主技能」（host agent 技能管理，本插件
  * 专用，与团队技能矩阵不同维度）。
  */
-import { PuzzleIcon, CloseIcon } from "./icons";
+import { BoltIcon, CloseIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
   type WorkerInfo,
+  type TeamInfo,
   type McpServerInfo,
   type SkillCatalogItem,
   fetchAdminData,
+  fetchL2AdminData,
   updateWorker,
   fetchSkillCatalog,
   httpErrorStatus,
@@ -46,7 +48,21 @@ interface MatrixState {
   catalogNote: string; // 404 时的说明
 }
 
-export default function SkillCenter() {
+/**
+ * v0.5.0-beta.13.14（L2 双模式——9/11 调研 P0 定案 + 上游设计文档
+ * docs/design/l2-worker-scoped-write.md（#1274 已合）+ team-skills.md +
+ * skill-catalog-api.md 已合 main）：
+ *   l2=true → Matrix 身份（无 admin token）：
+ *     ① 目录 = GET /skills?team=<本团队>（Controller 按 accessibleTeams
+ *        scope；cross-team → 404 反探测）；
+ *     ② 矩阵 = L2 scoped workers（standalone 隐藏）+ PUT {skills} 可写
+ *        （白名单唯一字段；remoteSkills/mcpServers 400 待 elevated
+ *        capability 设计）；
+ *     ③ MCP = 只读（写权限同上待设计）。
+ *   铁律（9/11 P0）：L2 路径不走 admin token——代理链在 router.py
+ *   catch-all 已实现（admin token 空 → Matrix access_token）。
+ */
+export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
   const t = useThemeColors();
   const tr = useT();
   const [st, setSt] = React.useState<MatrixState>({
@@ -55,27 +71,22 @@ export default function SkillCenter() {
     catalog: null,
     catalogNote: "",
   });
+  // v0.5.0-beta.13.14：L2 团队选择（accessibleTeams 单团队自动；多团队显选择器）。
+  const [l2Teams, setL2Teams] = React.useState<TeamInfo[]>([]);
+  const [l2Team, setL2Team] = React.useState("");
   const [matrix, setMatrix] = React.useState<Record<string, string[]>>({});
+  // v0.5.0-beta.13.14：服务端基线（脏检测用——矩阵相对基线有改动才显「保存」）。
+  const [baseMatrix, setBaseMatrix] = React.useState<Record<string, string[]>>({});
+  // v0.5.0-beta.13.14：单 Worker 展开态（一次只展开一个，面板恒紧凑）。
+  const [expandedWorker, setExpandedWorker] = React.useState<string | null>(null);
   const [mcpMap, setMcpMap] = React.useState<Record<string, McpServerInfo[]>>({});
   const [savingRow, setSavingRow] = React.useState("");
   const [mcpEditWorker, setMcpEditWorker] = React.useState("");
   const [mcpDraft, setMcpDraft] = React.useState<McpServerInfo[]>([]);
   const [mcpSaving, setMcpSaving] = React.useState(false);
   const [catalogSearch, setCatalogSearch] = React.useState("");
-  // v0.5.0-beta.12  防刷屏（用户报告「技能中心刷屏」）：空行默认收起，一键展开。
-  const [showEmptySkills, setShowEmptySkills] = React.useState(false);
+  // v0.5.0-beta.12  防刷屏（用户报告「技能中心刷屏」）：MCP 空行默认收起。
   const [showAllMcp, setShowAllMcp] = React.useState(false);
-  const emptySkillCount = React.useMemo(
-    () => st.workers.filter((w) => !(w.skills || []).length).length,
-    [st.workers],
-  );
-  const visibleSkillWorkers = React.useMemo(
-    () =>
-      showEmptySkills
-        ? st.workers
-        : st.workers.filter((w) => (w.skills || []).length),
-    [st.workers, showEmptySkills],
-  );
   const mcpWithCount = React.useMemo(
     () => st.workers.filter((w) => (mcpMap[w.name] || []).length).length,
     [st.workers, mcpMap],
@@ -89,9 +100,10 @@ export default function SkillCenter() {
   );
 
 
-  const load = React.useCallback(async () => {
+  const loadWorkers = React.useCallback(async () => {
     try {
-      const admin = await fetchAdminData();
+      // v0.5.0-beta.13.14：L2 用宽松取数（humans/managers 403 置空不炸）。
+      const admin = l2 ? await fetchL2AdminData() : await fetchAdminData();
       const workers = admin.workers;
       const m: Record<string, string[]> = {};
       const mm: Record<string, McpServerInfo[]> = {};
@@ -100,7 +112,18 @@ export default function SkillCenter() {
         mm[w.name] = [...(w.mcpServers || [])];
       }
       setMatrix(m);
+      setBaseMatrix(m);
       setMcpMap(mm);
+      if (l2) {
+        const teams = admin.teams;
+        setL2Teams(teams);
+        // 单团队自动选中；多团队保持/重置选择（切团队 → loadCatalog 重拉）。
+        setL2Team((prev) => {
+          if (teams.length === 1) return teams[0]?.name || "";
+          if (prev && teams.some((tm) => tm.name === prev)) return prev;
+          return teams[0]?.name || "";
+        });
+      }
       setSt((prev) => ({ ...prev, workers, loading: false }));
     } catch (e) {
       setSt((prev) => ({
@@ -110,11 +133,14 @@ export default function SkillCenter() {
           m: e instanceof Error ? e.message : "?",
         }),
       }));
-      return;
     }
-    // 技能目录（#1268 已合 main——旧 Controller 404 降级占位，不阻塞其余各节）。
+  }, [l2, tr]);
+
+  // 技能目录（#1268 已合 main——旧 Controller 404 降级占位，不阻塞其余各节）。
+  // v0.5.0-beta.13.14：L2 带 ?team=（skill-catalog-api.md W8 反探测契约）。
+  const loadCatalog = React.useCallback(async () => {
     try {
-      const cat = await fetchSkillCatalog();
+      const cat = await fetchSkillCatalog(l2 ? l2Team || undefined : undefined);
       setSt((prev) => ({ ...prev, catalog: cat }));
     } catch (e) {
       const s = httpErrorStatus(e);
@@ -123,17 +149,25 @@ export default function SkillCenter() {
         catalog: undefined,
         catalogNote:
           s === 404
-            ? tr("技能目录 API 待上游合并——合并并升级后本节自动点亮")
+            ? l2
+              ? tr("团队技能目录不可用（Controller 待升级或团队无技能）")
+              : tr("技能目录 API 待上游合并——合并并升级后本节自动点亮")
             : tr("技能目录加载失败：{m}", {
                 m: e instanceof Error ? e.message : "?",
               }),
       }));
     }
-  }, [tr]);
+  }, [l2, l2Team, tr]);
 
   React.useEffect(() => {
-    void load();
-  }, [load]);
+    void loadWorkers();
+  }, [loadWorkers]);
+
+  React.useEffect(() => {
+    // L2：团队名未定前不发请求（避免无 ?team= 的 L2 调用 403 闪烁）。
+    if (l2 && !l2Team) return;
+    void loadCatalog();
+  }, [loadCatalog, l2, l2Team]);
 
   // 技能列 = 目录（如可用）∪ 已分配并集（目录不可用时的降级全集）。
   const skillColumns = React.useMemo(() => {
@@ -167,6 +201,9 @@ export default function SkillCenter() {
       try {
         // PUT 合并语义：只发 skills（整字段替换该 Worker 的 skills）。
         await updateWorker(worker, { skills: matrix[worker] || [] });
+        // v0.5.0-beta.13.14：服务端已接受 → 基线推进（脏标记消失）；
+        // 失败不推进，dirty 保留可重试。
+        setBaseMatrix((prev) => ({ ...prev, [worker]: [...(matrix[worker] || [])] }));
         antd.message.success(tr("{w} 的技能已保存", { w: worker }));
       } catch (e) {
         const s = httpErrorStatus(e);
@@ -231,19 +268,44 @@ export default function SkillCenter() {
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><PuzzleIcon size={15} /> {tr("技能中心")}</span>
+        <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><BoltIcon size={15} /> {tr("技能中心")}</span>
         <antd.Tooltip
           title={tr(
-            "团队技能/MCP 的统一管理面：技能目录（只读）+ Worker 技能分配矩阵 + MCP Servers。L1（admin）可写；L2/Leader 写操作被 Controller 拒绝时明确提示。频道接入见「团队管理 → 频道」。",
+            l2
+            ? "团队技能/MCP 的统一管理面（L2 我的团队视角）：技能目录（本团队，只读）+ Worker 技能分配（可写 skills）+ MCP Servers（只读，写权限待上游 elevated capability 设计）。身份=Matrix token，L2 路径不走 admin token。频道接入见「团队管理 → 频道」。"
+            : "团队技能/MCP 的统一管理面：技能目录（只读）+ Worker 技能分配矩阵 + MCP Servers。L1（admin）可写；L2/Leader 写操作被 Controller 拒绝时明确提示。频道接入见「团队管理 → 频道」。",
           )}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
         </antd.Tooltip>
         <div style={{ flex: 1 }} />
-        <antd.Button size="small" onClick={() => void load()} loading={st.loading}>
+        <antd.Button
+          size="small"
+          onClick={() => {
+            void loadWorkers();
+            void loadCatalog();
+          }}
+          loading={st.loading}
+        >
           {tr("刷新")}
         </antd.Button>
       </div>
+
+      {/* v0.5.0-beta.13.14：L2 多团队选择器（accessibleTeams >1 时；
+          单团队自动选中不出选择器）。切团队 → 目录按 ?team= 重拉。 */}
+      {l2 && l2Teams.length > 1 ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("团队")}</span>
+          <antd.Select
+            size="small"
+            style={{ minWidth: 200 }}
+            value={l2Team || undefined}
+            placeholder={tr("选择团队")}
+            onChange={(v: string) => setL2Team(v)}
+            options={l2Teams.map((tm) => ({ value: tm.name, label: tm.name }))}
+          />
+        </div>
+      ) : null}
 
       {/* ① 技能目录（#1268 已合 main，旧 Controller 404 占位） */}
       <antd.Card
@@ -304,82 +366,269 @@ export default function SkillCenter() {
         )}
       </antd.Card>
 
-      {/* ② Worker 技能分配矩阵（P1，立即可用） */}
+      {/* ② Worker 技能分配矩阵（P1，立即可用）
+          v0.5.0-beta.13.14（13.13 装验反馈「矩阵太占地方、不直观、不好用」）：
+          宽表（行=Worker × 列=技能 checkbox，技能 10+ 即横向溢出）→ 按
+          Worker 紧凑行：默认收起只显已分配技能标签（最多 3 + N）；点行
+          展开该 Worker 的完整技能勾选区（名称+来源标签+描述两行截断），
+          只保存该 Worker 的技能。脏检测（矩阵 vs 服务端基线）：有改动显
+          「未保存」橙标，展开区底部出 重置/保存（保存成功基线推进）。 */}
       <antd.Card
         size="small"
-        title={tr("② Worker 技能分配矩阵（L1 可写 · PUT 合并语义 · skills 整字段替换）")}
+        title={
+          l2
+            ? tr("② Worker 技能分配（L2 我的团队 · 仅 skills 可写 · PUT 合并语义）")
+            : tr("② Worker 技能分配矩阵（L1 可写 · PUT 合并语义 · skills 整字段替换）")
+        }
       >
         {st.workers.length ? (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th style={thStyle(t)}>{tr("Worker")}</th>
-                  {skillColumns.map((s) => (
-                    <th key={s} style={{ ...thStyle(t), minWidth: 92 }}>
-                      <div title={catalogByName.get(s)?.description || ""} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {s}
-                      </div>
-                    </th>
-                  ))}
-                  <th style={thStyle(t)}>{tr("操作")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleSkillWorkers.map((w) => (
-                  <tr key={w.name}>
-                    <td style={tdStyle(t)}>
-                      <div style={{ fontWeight: 600 }}>{w.name}</div>
-                      <div style={{ color: t.textSecondary, fontSize: 11 }}>
-                        {w.team || "—"} · {w.role || "worker"}
-                      </div>
-                    </td>
-                    {skillColumns.map((s) => (
-                      <td key={s} style={{ ...tdStyle(t), textAlign: "center" }}>
-                        <antd.Checkbox
-                          checked={(matrix[w.name] || []).includes(s)}
-                          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => toggleSkill(w.name, s, e.target.checked)}
-                        />
-                      </td>
-                    ))}
-                    <td style={tdStyle(t)}>
-                      <antd.Button
-                        size="small"
-                        type="link"
-                        loading={savingRow === w.name}
-                        onClick={() => void saveWorkerSkills(w.name)}
-                      >
-                        {tr("保存")}
-                      </antd.Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {emptySkillCount ? (
-              <div style={{ marginTop: 6, fontSize: 12 }}>
-                <antd.Button
-                  size="small"
-                  type="link"
-                  style={{ padding: 0 }}
-                  onClick={() => setShowEmptySkills((v) => !v)}
+          <div style={{ display: "grid", gap: 6 }}>
+            {st.workers.map((w) => {
+              const assigned = matrix[w.name] || [];
+              const base = baseMatrix[w.name] || [];
+              const dirty =
+                assigned.length !== base.length ||
+                assigned.some((s) => !base.includes(s));
+              const expanded = expandedWorker === w.name;
+              return (
+                <div
+                  key={w.name}
+                  style={{
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 8,
+                    background: t.cardBg,
+                    overflow: "hidden",
+                  }}
                 >
-                  {showEmptySkills
-                    ? tr("显示 {n} 个未分配技能的 Worker", { n: emptySkillCount })
-                    : tr("已隐藏 {n} 个未分配技能的 Worker", { n: emptySkillCount })}
-                </antd.Button>
-              </div>
-            ) : null}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "7px 10px",
+                      flexWrap: "wrap",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => setExpandedWorker(expanded ? null : w.name)}
+                    title={tr("点行展开/收起该 Worker 的技能编辑")}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: 12.5 }}>{w.name}</span>
+                    <span style={{ color: t.textSecondary, fontSize: 11 }}>
+                      {w.team || "—"} · {w.role || "worker"}
+                    </span>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        gap: 4,
+                        flexWrap: "wrap",
+                        flex: 1,
+                        minWidth: 0,
+                      }}
+                    >
+                      {assigned.length ? (
+                        assigned.slice(0, 3).map((s) => (
+                          <antd.Tag key={s} style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
+                            {s}
+                          </antd.Tag>
+                        ))
+                      ) : (
+                        <span style={{ color: t.textSecondary, fontSize: 11 }}>
+                          {tr("暂无技能分配")}
+                        </span>
+                      )}
+                      {assigned.length > 3 ? (
+                        <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
+                          +{assigned.length - 3}
+                        </antd.Tag>
+                      ) : null}
+                    </span>
+                    {dirty ? (
+                      <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
+                        {tr("未保存")}
+                      </antd.Tag>
+                    ) : null}
+                    <antd.Button
+                      size="small"
+                      type="text"
+                      style={{ flexShrink: 0 }}
+                      onClick={(e: ReactNS.MouseEvent) => {
+                        e.stopPropagation();
+                        setExpandedWorker(expanded ? null : w.name);
+                      }}
+                    >
+                      {expanded ? tr("收起") : tr("编辑技能")} {expanded ? "▴" : "▾"}
+                    </antd.Button>
+                  </div>
+                  {expanded ? (
+                    <div
+                      style={{
+                        border: `1px solid ${t.border}`,
+                        borderTop: "none",
+                        padding: 10,
+                        background: t.popoverBg,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+                          gap: 6,
+                        }}
+                      >
+                        {skillColumns.map((s) => {
+                          const on = assigned.includes(s);
+                          const desc = catalogByName.get(s)?.description;
+                          return (
+                            <div
+                              key={s}
+                              onClick={() => toggleSkill(w.name, s, !on)}
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: 6,
+                                padding: "6px 8px",
+                                borderRadius: 6,
+                                border: `1px solid ${on ? "rgba(22,119,255,0.5)" : t.border}`,
+                                background: on ? "rgba(22,119,255,0.06)" : t.cardBg,
+                                cursor: "pointer",
+                              }}
+                            >
+                              <antd.Checkbox
+                                checked={on}
+                                style={{ marginTop: 1 }}
+                                onClick={(e: ReactNS.MouseEvent) => e.stopPropagation()}
+                                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                                  toggleSkill(w.name, s, e.target.checked)
+                                }
+                              />
+                              <div style={{ minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontWeight: 600,
+                                      fontSize: 12,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                    title={s}
+                                  >
+                                    {s}
+                                  </span>
+                                  <antd.Tag
+                                    color={
+                                      catalogByName.get(s)?.source === "builtin"
+                                        ? "blue"
+                                        : "purple"
+                                    }
+                                    style={{
+                                      marginInlineEnd: 0,
+                                      fontSize: 10,
+                                      lineHeight: "16px",
+                                    }}
+                                  >
+                                    {catalogByName.get(s)?.source || "custom"}
+                                  </antd.Tag>
+                                </div>
+                                {desc ? (
+                                  <div
+                                    style={{
+                                      fontSize: 11,
+                                      color: t.textSecondary,
+                                      marginTop: 2,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      display: "-webkit-box",
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: "vertical",
+                                    }}
+                                    title={desc}
+                                  >
+                                    {desc}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {!skillColumns.length ? (
+                          <div
+                            style={{
+                              color: t.textSecondary,
+                              fontSize: 12,
+                              gridColumn: "1 / -1",
+                            }}
+                          >
+                            {tr("暂无可用技能列表（目录未点亮且尚无已分配技能）")}
+                          </div>
+                        ) : null}
+                      </div>
+                      {dirty ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            marginTop: 10,
+                            justifyContent: "flex-end",
+                          }}
+                        >
+                          <antd.Button
+                            size="small"
+                            onClick={() =>
+                              setMatrix((prev) => ({ ...prev, [w.name]: [...base] }))
+                            }
+                          >
+                            {tr("重置为当前值")}
+                          </antd.Button>
+                          <antd.Button
+                            size="small"
+                            type="primary"
+                            loading={savingRow === w.name}
+                            onClick={() => void saveWorkerSkills(w.name)}
+                          >
+                            {tr("保存")}
+                          </antd.Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <antd.Empty description={st.loading ? tr("加载中…") : tr("无 Worker（admin token 未配置？）")} />
+          <antd.Empty
+            description={
+              st.loading
+                ? tr("加载中…")
+                : l2
+                  ? tr("无 Worker（L2 可见范围=我的团队）")
+                  : tr("无 Worker（admin token 未配置？）")
+            }
+          />
         )}
       </antd.Card>
 
-      {/* ③ MCP Servers（P1） */}
+      {/* ③ MCP Servers（P1）
+          v0.5.0-beta.13.14（L2 只读——l2-worker-scoped-write.md 契约：
+          mcpServers 对默认 L2 关闭（网关 bearer key 注入每条条目，L2
+          可控 URL 会外泄它）→ elevated capability 设计落地前只读。 */}
       <antd.Card
         size="small"
-        title={tr("③ MCP Servers（L1 可写 · PUT 合并语义 · mcpServers 整字段替换）")}
+        title={
+          l2
+            ? tr("③ MCP Servers（L2 只读 · 写权限待上游 elevated capability 设计）")
+            : tr("③ MCP Servers（L1 可写 · PUT 合并语义 · mcpServers 整字段替换）")
+        }
       >
         {st.workers.length ? (
           <div style={{ display: "grid", gap: 8 }}>
@@ -410,9 +659,11 @@ export default function SkillCenter() {
                     <span style={{ color: t.textSecondary, fontSize: 12 }}>{tr("无 MCP")}</span>
                   )}
                   <div style={{ flex: 1 }} />
-                  <antd.Button size="small" onClick={() => openMcpEdit(w.name)}>
-                    {tr("编辑")}
-                  </antd.Button>
+                  {!l2 ? (
+                    <antd.Button size="small" onClick={() => openMcpEdit(w.name)}>
+                      {tr("编辑")}
+                    </antd.Button>
+                  ) : null}
                 </div>
               );
             })}
@@ -498,20 +749,3 @@ export default function SkillCenter() {
   );
 }
 
-function thStyle(t: ReturnType<typeof useThemeColors>): React.CSSProperties {
-  return {
-    textAlign: "left",
-    padding: "6px 8px",
-    borderBottom: `1px solid ${t.border}`,
-    color: t.textSecondary,
-    fontSize: 11,
-    whiteSpace: "nowrap",
-  };
-}
-function tdStyle(t: ReturnType<typeof useThemeColors>): React.CSSProperties {
-  return {
-    padding: "6px 8px",
-    borderBottom: `1px solid ${t.border}`,
-    verticalAlign: "middle",
-  };
-}

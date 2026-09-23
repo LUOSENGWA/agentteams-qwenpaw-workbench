@@ -1488,17 +1488,25 @@ export const updateManagerModel = (name: string, model: string) =>
   controllerRequest("PUT", `/managers/${encodeURIComponent(name)}`, { model });
 
 // ── v0.5.0-beta.12：技能中心 ──────────────────────────────────────────────
-/** GET /api/v1/skills 契约（上游 draft）：技能目录条目。
- * source = builtin | nacos | builtin+nacos；上游合并前 Controller
- * 404 → 目录节显示占位（fetchSkillCatalog 抛错由 UI 捕获）。 */
+/** GET /api/v1/skills 契约（skill-catalog-api.md，已合 main）：技能目录条目。
+ * source = builtin | shared | plugin（team 层=团队技能，team-skills.md）。
+ * L1（admin）：builtin + shared（deployment 全局）。
+ * L2：必须带 ?team=<本团队>（上游 W8 反探测——cross-team/unknown → 404）
+ *   → builtin + teams/<t>/skills/（team-skills.md 契约）。
+ * 上游合并前 Controller 404 → 目录节显示占位（抛错由 UI 捕获）。 */
 export interface SkillCatalogItem {
   name: string;
   description?: string;
   source: string;
   agents?: string[];
+  runtimes?: string[];
+  version?: string;
 }
-export async function fetchSkillCatalog(): Promise<SkillCatalogItem[]> {
-  const raw = (await controllerRequest("GET", "/skills")) as Record<
+export async function fetchSkillCatalog(
+  team?: string,
+): Promise<SkillCatalogItem[]> {
+  const q = team ? `?team=${encodeURIComponent(team)}` : "";
+  const raw = (await controllerRequest("GET", `/skills${q}`)) as Record<
     string,
     unknown
   >;
@@ -1863,6 +1871,30 @@ function normalizeList(payload: unknown): unknown[] {
     }
   }
   return [];
+}
+
+/** v0.5.0-beta.13.14（L2 双模式，9/11 调研 P0 + 上游 l2-worker-scoped-write.md
+ *  / team-skills.md 已合 main）：L2 身份（Matrix token，无 admin token）取数。
+ * 与 fetchAdminData 的区别：humans/managers 是 L1 管理面（L2 无权限或无意义）
+ * → 失败置空不炸；workers/teams 是 L2 技能中心正源（Controller 按
+ * accessibleTeams 自动 scope——standalone worker 隐藏，防探测）。 */
+export async function fetchL2AdminData(): Promise<AdminData> {
+  const [workers, teams, humans, managers] = await Promise.all([
+    fetchControllerJson<unknown>("/workers").then(normalizeList),
+    fetchControllerJson<unknown>("/teams").then(normalizeList),
+    fetchControllerJson<unknown>("/humans")
+      .then(normalizeList)
+      .catch(() => [] as unknown[]),
+    fetchControllerJson<unknown>("/managers")
+      .then(normalizeList)
+      .catch(() => [] as unknown[]),
+  ]);
+  return {
+    workers: workers as WorkerInfo[],
+    teams: teams as TeamInfo[],
+    humans: humans as HumanInfo[],
+    managers: managers as ManagerInfo[],
+  };
 }
 
 export interface SpawnNode {

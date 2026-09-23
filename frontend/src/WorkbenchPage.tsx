@@ -62,7 +62,7 @@ import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
 import { useWorkerChatStatuses } from "./workerChatStatus";
 import WorkerManage from "./components/WorkerManage";
-import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, RefreshIcon, MenuIcon, MonitorIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon } from "./components/icons";
+import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, RefreshIcon, MenuIcon, MonitorIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon, FolderIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import SkillsTab from "./components/SkillsTab";
 import ModelsTab from "./ModelsTab";
@@ -1873,42 +1873,56 @@ export default function WorkbenchPage() {
   // 都在，看看 Element 怎么做的」）：Element 的 timeline 是 per-room 全量
   // 不驱逐 + 按需向前翻页（scrollToEvent：点引用条→自动加载更早分页直到
   // 原消息进入窗口，而不是标死『滚出历史』）。对齐该语义：引用条原消息
-  // 不在已加载窗口时 → 点「加载原消息」→ 这里链式 backfill（每页 50，最多
-  // 15 页 = 750 条）直到原消息出现或触底。
+  // 不在已加载窗口时 → 点「加载原消息」→ 这里链式 backfill（每页 50，
+  // 滚动到哪里加载到哪里——不设页数上限，加载到原消息为止）。
+  // v0.5.0-beta.13.14（13.13 装验「15 页×50 能不能多点」）：去掉 15 页
+  // 硬上限，改由四个真实终止条件兜底：① 原消息进窗口 ② 触底（!end）
+  // ③ 分页无新数据（防服务端异常导致死循环）④ 切房（代际号作废进行中
+  // 的链，丢弃未写入的页）。500 页（2.5 万条）仅为理论回退护栏。
   const hasMoreRef = React.useRef(false);
   React.useEffect(() => {
     hasMoreRef.current = hasMore;
   }, [hasMore]);
   const loadOrigLockRef = React.useRef(false);
+  const loadOrigGenRef = React.useRef(0);
+  React.useEffect(() => {
+    // 切房/关房 → 作废进行中的加载链（其 fetch 回来后不再写入任何状态）。
+    loadOrigGenRef.current += 1;
+  }, [activeRoom?.room_id]);
   const loadOriginal = React.useCallback(
     async (eventId: string): Promise<boolean> => {
       if (!activeRoom || !eventId || loadOrigLockRef.current) return false;
       loadOrigLockRef.current = true;
+      const gen = loadOrigGenRef.current;
+      const roomId = activeRoom.room_id;
       try {
         let end = messagesEnd;
-        for (let i = 0; i < 15; i++) {
+        let guard = 0;
+        while (guard++ < 500) {
           if (messagesRef.current.some((m) => m.event_id === eventId))
             return true;
-          if (!end) break;
-          const page = await fetchRoomMessages(activeRoom.room_id, 50, end);
+          if (!end) break; // 触底：房间历史已全部在窗口内
+          const page = await fetchRoomMessages(roomId, 50, end);
+          if (gen !== loadOrigGenRef.current) break; // 切房 → 中止
           const known = new Set(
             messagesRef.current.map((m) => m.event_id),
           );
           const older = page.messages.filter((m) => !known.has(m.event_id));
-          const merged = older.length
-            ? [...older, ...messagesRef.current]
-            : messagesRef.current;
+          if (!older.length) break; // 无新数据 → 分页失效，防死循环
+          const merged = [...older, ...messagesRef.current];
           // 直接更新 ref：循环内下一轮判断要看到本轮合并结果（state 是
           // 异步的，等 effect 同步会慢一轮）。
           messagesRef.current = merged;
           setMessages(merged);
-          setCachedMessages(activeRoom.room_id, { ...page, messages: merged }, merged);
+          setCachedMessages(roomId, { ...page, messages: merged }, merged);
           end = page.end;
           setMessagesEnd(end);
           setHasMore(Boolean(end));
-          if (!end) break;
         }
-        return messagesRef.current.some((m) => m.event_id === eventId);
+        return (
+          gen === loadOrigGenRef.current &&
+          messagesRef.current.some((m) => m.event_id === eventId)
+        );
       } catch {
         return false;
       } finally {
@@ -2968,6 +2982,19 @@ export default function WorkbenchPage() {
       onOpenProjectFiles={(room) => void openProjectFiles(room)}
     />
   ) : null;
+  // v0.5.0-beta.13.14（装验反馈）：房间卡项目名——Controller 工作流事件
+  // room_id → title 去重列表（与 ProjectFiles 面板同一正源数据）。
+  const roomProjectNames = React.useMemo(() => {
+    const m: Record<string, string[]> = {};
+    for (const ev of workflowEvents) {
+      if (!ev.room_id) continue;
+      const list = m[ev.room_id] || (m[ev.room_id] = []);
+      const title = ev.title || ev.runId;
+      if (!list.includes(title)) list.push(title);
+    }
+    return m;
+  }, [workflowEvents]);
+
   const chatListEl = (
     <TeamOverview
       rooms={rooms}
@@ -2976,6 +3003,7 @@ export default function WorkbenchPage() {
       user_id={config?.matrix?.user_id}
       workerSessionByRoom={workerSessionStates.byRoom}
       workerMxids={workerSessionStates.workerMxids}
+      roomProjectNames={roomProjectNames}
       onOpenRoom={(roomId) => void openRoom(roomId)}
       onRefresh={() => void refreshRooms()}
       onInviteSettled={() => void refreshRooms(true, true)}
@@ -3509,8 +3537,14 @@ export default function WorkbenchPage() {
         }}
       />
       {/* 项目文件面板（产物端点 版：任务结果/任务书/交付物） */}
+      {/* v0.5.0-beta.13.14（装验反馈）：项目文件 Drawer 标题带文件夹 SVG；
+          面板内不再重复「项目文件」标题行。 */}
       <antd.Drawer
-        title={tr("项目文件")}
+        title={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <FolderIcon size={14} /> {tr("项目文件")}
+          </span>
+        }
         open={projectFilesRoom !== null}
         onClose={() => setProjectFilesRoom(null)}
         width={440}

@@ -1,4 +1,4 @@
-import { SendIcon, MessageIcon, SearchIcon, BellIcon, NotesIcon, PuzzleIcon, SettingsIcon, UserIcon, UsersIcon, TodoIcon, TreeIcon, ShieldIcon, CheckIcon, CloseIcon, BoxIcon } from "./icons";
+import { SendIcon, MessageIcon, SearchIcon, BellIcon, NotesIcon, BoltIcon, SettingsIcon, UserIcon, UsersIcon, TodoIcon, BotIcon, ShieldIcon, CheckIcon, CloseIcon, BoxIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -446,7 +446,7 @@ export default function HomePage(props: HomePageProps) {
             () => onGotoTab("knowledge"),
           )}
           {quickBtn(
-            <PuzzleIcon size={20} />,
+            <BoltIcon size={20} />,
             tr("技能中心"),
             tr("团队技能与 MCP 矩阵"),
             () => onGotoTab("team"),
@@ -572,7 +572,7 @@ export default function HomePage(props: HomePageProps) {
               onClick={() => onGotoTab("team")}
             >
               <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TreeIcon size={14} /> {tr("Worker")}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BotIcon size={14} /> {tr("Worker")}</span>
               </div>
               <div style={{ display: "flex", gap: 20, marginTop: 8 }}>
                 <div>

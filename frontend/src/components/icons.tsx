@@ -113,11 +113,24 @@ export const BellIcon = makeFilled([
 "M14.9582748,20.2514642 C14.7196327,21.6696004 13.4859868,22.75 12,22.75 C10.5140132,22.75 9.28036729,21.6696004 9.04172524,20.2514642 L14.9582748,20.2514642 Z M12,1.25 C13.0131341,1.25 13.8698705,1.91961797 14.1517769,2.84042162 C16.5760914,3.62851632 18.4385407,5.71822154 18.8629658,8.33785645 L18.8977377,8.5788123 L20.06,17.75 L21.25,17.75 C21.6642136,17.75 22,18.0857864 22,18.5 C22,18.9142136 21.6642136,19.25 21.25,19.25 L2.75,19.25 C2.33578644,19.25 2,18.9142136 2,18.5 C2,18.0857864 2.33578644,17.75 2.75,17.75 L3.94,17.75 L5.1022623,8.5788123 C5.44846558,5.84679782 7.3499867,3.65255543 9.84955386,2.83970599 C10.1301295,1.91961797 10.9868659,1.25 12,1.25 Z M12,4 C9.33196649,4 7.06843888,5.92761382 6.62475187,8.53554061 L6.5903618,8.76738558 L5.452,17.75 L18.547,17.75 L17.4096382,8.76738558 C17.074225,6.12051936 14.8773437,4.11728079 12.234329,4.00497072 L12,4 Z",
 ], "BellIcon");
 
-/** 📦 产物/盒子（HarmonyOS ic_public_appstore）。
+/** 📦 产物/箱子（立体纸箱——13.14 装验反馈：旧路径实为购物袋造型，非箱子）。
  *  export BoxIcon */
-export const BoxIcon = makeFilled([
-"M18,2 C20.209139,2 22,3.790861 22,6 L22,18 C22,20.209139 20.209139,22 18,22 L6,22 C3.790861,22 2,20.209139 2,18 L2,6 C2,3.790861 3.790861,2 6,2 L18,2 Z M18,3.5 L6,3.5 C4.6745166,3.5 3.58996133,4.53153594 3.50531768,5.83562431 L3.5,6 L3.5,18 C3.5,19.3254834 4.53153594,20.4100387 5.83562431,20.4946823 L6,20.5 L18,20.5 C19.3254834,20.5 20.4100387,19.4684641 20.4946823,18.1643757 L20.5,18 L20.5,6 C20.5,4.6745166 19.4684641,3.58996133 18.1643757,3.50531768 L18,3.5 Z M16.5,6 C16.9142136,6 17.25,6.33578644 17.25,6.75 C17.25,9.64949494 14.8994949,12 12,12 C9.10050506,12 6.75,9.64949494 6.75,6.75 C6.75,6.33578644 7.08578644,6 7.5,6 C7.91421356,6 8.25,6.33578644 8.25,6.75 C8.25,8.82106781 9.92893219,10.5 12,10.5 C14.0710678,10.5 15.75,8.82106781 15.75,6.75 C15.75,6.33578644 16.0857864,6 16.5,6 Z",
-], "BoxIcon");
+export function BoxIcon({ size = 14, style, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
+      className={className}
+      aria-hidden
+    >
+      <path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
+<path d="M3.5 7.5 12 12l8.5-4.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
+<path d="M12 12v9" stroke="currentColor" stroke-width="1.6" fill="none"/>
+    </svg>
+  );
+}
 
 /** 🔍 搜索（HarmonyOS ic_public_search）。
  *  export SearchIcon */
@@ -366,7 +379,9 @@ export function BrainIcon({ size = 14, style, className }: IconProps) {
 }
 
 /** 📡 雷达/信号（手写 stroke，HarmonyOS 无对应件）。 */
-export function RadarIcon({ size = 14, style, className }: IconProps) {
+/** 📈 事件流/活动脉冲（13.14 装验反馈：事件流图标换雷达→活动波形）。
+ *  export PulseIcon */
+export function PulseIcon({ size = 14, style, className }: IconProps) {
   return (
     <svg
       width={size}
@@ -376,15 +391,12 @@ export function RadarIcon({ size = 14, style, className }: IconProps) {
       className={className}
       aria-hidden
     >
-      <path d="M6 11.5A6.5 6.5 0 0 1 12.5 18" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-<path d="M6 7.5A10.5 10.5 0 0 1 16.5 18" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-<circle cx="6" cy="18" r="1.8" fill="currentColor"/>
-<path d="M18.5 4.5 14 12l7.5-4.5z" fill="currentColor"/>
+      <path d="M2.5 12.5h4l3-7.5 5 14 3-6.5h4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   );
 }
 
-/** ⚡ 闪电/负载（手写 stroke，HarmonyOS 无对应件）。 */
+/** ⚡ 闪电（技能/能力/负载——13.14 起技能中心与首页技能入口用它替代拼图）。 */
 export function BoltIcon({ size = 14, style, className }: IconProps) {
   return (
     <svg
@@ -455,8 +467,9 @@ export function RobotIcon({ size = 14, style, className }: IconProps) {
   );
 }
 
-/** 🌳 组织树/Worker（手写 stroke，HarmonyOS 无对应件）。 */
-export function TreeIcon({ size = 14, style, className }: IconProps) {
+/** 🤖 Worker/Agent（机器人——13.14 装验反馈：Worker 图标换组织树→机器人）。
+ *  export BotIcon */
+export function BotIcon({ size = 14, style, className }: IconProps) {
   return (
     <svg
       width={size}
@@ -466,10 +479,12 @@ export function TreeIcon({ size = 14, style, className }: IconProps) {
       className={className}
       aria-hidden
     >
-      <rect x="8.5" y="2.5" width="7" height="4.5" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
-<rect x="2.5" y="15" width="7" height="4.5" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
-<rect x="14.5" y="15" width="7" height="4.5" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
-<path d="M12 7v3.5M6 15v-2h12v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+      <rect x="4.5" y="8" width="15" height="12" rx="3" stroke="currentColor" stroke-width="1.6" fill="none"/>
+<path d="M12 8V4.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+<circle cx="12" cy="3.5" r="1.4" fill="currentColor"/>
+<circle cx="9" cy="13" r="1.5" fill="currentColor"/>
+<circle cx="15" cy="13" r="1.5" fill="currentColor"/>
+<path d="M9 17h6" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
     </svg>
   );
 }
@@ -635,24 +650,7 @@ export function PlugIcon({ size = 14, style, className }: IconProps) {
   );
 }
 
-/** 🧩 拼图/技能（手写 stroke，HarmonyOS 无对应件）。 */
-export function PuzzleIcon({ size = 14, style, className }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
-      className={className}
-      aria-hidden
-    >
-      <path d="M9.5 4h3.2a2.3 2.3 0 1 1 0 4.6H9.5a2.3 2.3 0 1 1 0-4.6z" stroke="currentColor" stroke-width="1.5" fill="none"/>
-<path d="M9.5 8.6H7a1 1 0 0 0-1 1V12a2.3 2.3 0 1 0 4.6 0v-3.4" stroke="currentColor" stroke-width="1.5" fill="none"/>
-<path d="M9.5 8.6h7a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-3.4" stroke="currentColor" stroke-width="1.5" fill="none"/>
-<path d="M16.5 8.6h1a1 1 0 0 1 1 1V12" stroke="currentColor" stroke-width="1.5" fill="none"/>
-    </svg>
-  );
-}
+
 
 /** 🧵 线程/会话线（手写 stroke，HarmonyOS 无对应件）。 */
 export function ThreadIcon({ size = 14, style, className }: IconProps) {
