@@ -1808,6 +1808,39 @@ const DICT: Record<string, { en: string }> = {
   "放大": { en: "Zoom in" },
   "复位": { en: "Reset" },
   "拖动调整项目列表宽度": { en: "Drag to resize the project list" },
+  /* v0.5.0-beta.13.15（B2/B5/B6/B10 新增键） */
+  "正在加载…（滚到顶部自动续拉）": { en: "Loading… (auto-continues when you scroll to the top)" },
+  "开始按需加载，滚到顶部会自动继续拉取": { en: "Starts on-demand loading; auto-continues when you scroll to the top" },
+  "技能": { en: "Skills" },
+  "MCP": { en: "MCP" },
+  "{n} Worker": { en: "{n} worker(s)" },
+  "未显式分配": { en: "Not explicitly assigned" },
+  "运行时已装载 {n}": { en: "{n} loaded at runtime" },
+  "已分配 + 已物化": { en: "Assigned + materialized" },
+  "仅物化（未显式分配）": { en: "Materialized only (not explicitly assigned)" },
+  "运行时技能加载中…": { en: "Loading runtime skills…" },
+  "未显式分配（CRD 分配层为空），但运行时已装载 {n} 个技能（团队层物化/内置恢复/镜像自带）——展开行查看明细": {
+    en: "Nothing explicitly assigned (CRD assignment layer empty), but {n} skill(s) are loaded at runtime (team-layer materialization / builtin recovery / image-bundled) — expand the row for details",
+  },
+  "运行时技能列表不可用（Controller 未含该端点或当前身份无权限——分配层不受影响）": {
+    en: "Runtime skill list unavailable (Controller lacks the endpoint or this identity has no access — the assignment layer is unaffected)",
+  },
+  "运行时已装载（物化层——实际可调用；分配层空而这里非空 = 团队层自动物化/内置恢复/镜像自带）": {
+    en: "Loaded at runtime (materialization layer — actually callable; assignment layer empty while this is not = team-layer auto-materialization / builtin recovery / image-bundled)",
+  },
+  "分配层（CRD spec.skills——显式分配）": { en: "Assignment layer (CRD spec.skills — explicitly assigned)" },
+  "物化层（运行时实际装载——可调用）": { en: "Materialization layer (loaded at runtime — callable)" },
+  "仅物化（团队层自动物化/内置恢复/镜像自带）": { en: "Materialized only (team-layer auto-materialization / builtin recovery / image-bundled)" },
+  "运行时未装载技能": { en: "No skills loaded at runtime" },
+  "分配层为空但物化层非空——技能由团队层自动物化/内置恢复/镜像自带，非显式分配，属预期": {
+    en: "Assignment layer is empty but the materialization layer is not — skills come from team-layer auto-materialization / builtin recovery / image bundling, not explicit assignment; expected",
+  },
+  "去技能中心编辑（全量矩阵）": { en: "Edit in Skill Center (full matrix)" },
+  "不可用（Controller 未含该端点或无权限）": { en: "Unavailable (Controller lacks this endpoint or this identity has no access)" },
+  "未挂载 MCP Server": { en: "No MCP servers mounted" },
+  "首次打开加载频道编辑器…": { en: "Loading channel editor on first open…" },
+  "首次打开加载工具面板…": { en: "Loading tools panel on first open…" },
+  "资源治理（技能 / MCP / 频道 / 工具）": { en: "Resources (Skills / MCP / Channels / Tools)" },
 };
 
 export type Lang = "zh" | "en";
