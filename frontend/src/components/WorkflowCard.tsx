@@ -1,3 +1,4 @@
+import { SettingsIcon, CheckIcon, CloseIcon, PlayIcon, PauseIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -225,7 +226,7 @@ export default function WorkflowCard(props: {
       {/* 头部：项目名 + 状态徽章 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 13, color: t.text, flex: 1, wordBreak: "break-word", display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-          ⚙️ {title}
+          <SettingsIcon size={13} style={{ flexShrink: 0 }} /> {title}
           {/* LIVE 徽标（dashboard 同款语义）：正源接通才显示。 */}
           {live ? (
             <span
@@ -307,8 +308,8 @@ export default function WorkflowCard(props: {
                   }}
                   title={isNext ? tr("当前推进") : undefined}
                 >
-                  <span style={{ color, fontSize: 11, flexShrink: 0 }}>
-                    {COMPLETE.has(s.status || "") ? "✅" : ERROR.has(s.status || "") ? "❌" : isNext ? "▶" : "○"}
+                  <span style={{ color, fontSize: 11, flexShrink: 0, display: "inline-flex", alignItems: "center" }}>
+                    {COMPLETE.has(s.status || "") ? <CheckIcon size={11} /> : ERROR.has(s.status || "") ? <CloseIcon size={11} /> : isNext ? <PlayIcon size={11} /> : <span style={{ opacity: 0.4 }}>○</span>}
                   </span>
                   <span
                     style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.text }}
@@ -338,7 +339,7 @@ export default function WorkflowCard(props: {
             }}
             style={{ color: "#fa8c16" }}
           >
-            ⏸ {tr("暂停")}
+            <PauseIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("暂停")}
           </antd.Button>
         ) : null}
         {canResume ? (
@@ -351,7 +352,7 @@ export default function WorkflowCard(props: {
               void handleResume();
             }}
           >
-            ▶ {tr("恢复")}
+            <PlayIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("恢复")}
           </antd.Button>
         ) : null}
         {body ? (

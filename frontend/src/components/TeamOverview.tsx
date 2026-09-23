@@ -1,3 +1,4 @@
+import { PictureIcon, ClipIcon, StarIcon, StarOutlineIcon, DoorIcon, TrashIcon, MessageIcon, MailIcon, CheckIcon, UsersIcon, SearchIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -74,10 +75,10 @@ const MEDIA_FILE_RE =
   /\.(pdf|docx?|xlsx?|pptx?|zip|tar|gz|7z|rar|mp4|mov|mkv|avi|mp3|wav|m4a|csv|json|log|txt)$/i;
 function lastBodyPreview(
   body?: string,
-): { text: string; marker: string } | null {
+): { text: string; marker: "img" | "file" | null } | null {
   const b = (body || "").replace(/\s+/g, " ").trim();
   if (!b) return null;
-  const marker = MEDIA_IMG_RE.test(b) ? "🖼 " : MEDIA_FILE_RE.test(b) ? "📎 " : "";
+  const marker = MEDIA_IMG_RE.test(b) ? "img" : MEDIA_FILE_RE.test(b) ? "file" : null;
   return { text: b.length > 72 ? b.slice(0, 72) + "…" : b, marker };
 }
 
@@ -158,10 +159,11 @@ function GroupCard({
                 color: isFavorite ? "#faad14" : t.textSecondary,
                 opacity: isFavorite ? 1 : 0.45,
                 marginLeft: 6,
+                display: "inline-flex",
               }}
               title={isFavorite ? tr("取消收藏") : tr("收藏到顶部")}
             >
-              {isFavorite ? "★" : "☆"}
+              {isFavorite ? <StarIcon size={15} /> : <StarOutlineIcon size={15} />}
             </span>
             {/* 5.0.0 release：房间 ⋯ 菜单（退出/退出并删除，Element 列表操作同款） */}
             <span
@@ -176,12 +178,12 @@ function GroupCard({
                     {
                       key: "leave",
                       danger: true,
-                      label: `🚪 ${tr("退出房间")}`,
+                      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
                     },
                     {
                       key: "leave-forget",
                       danger: true,
-                      label: `🗑️ ${tr("退出并删除")}`,
+                      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TrashIcon size={13} /> {tr("退出并删除")}</span>,
                     },
                   ],
                   onClick: ({ key }: { key: string }) =>
@@ -227,9 +229,9 @@ function GroupCard({
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                 }}
-                title={p.marker + p.text}
+                title={p.text}
               >
-                {p.marker}
+                {p.marker === "img" ? <PictureIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> : p.marker === "file" ? <ClipIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> : null}
                 {p.text}
               </div>
             ) : null;
@@ -258,7 +260,7 @@ function GroupCard({
                   }}
                 >
                   {memberShortName(mxid, member)}
-                  {mxid === user_id ? "（我）" : " 💬"}
+                  {mxid === user_id ? "（我）" : <MessageIcon size={10} style={{ marginLeft: 3, verticalAlign: "-1px" }} />}
                 </antd.Tag>
               ))}
             </div>
@@ -374,10 +376,11 @@ function DmCard({
               color: isFavorite ? "#faad14" : t.textSecondary,
               opacity: isFavorite ? 1 : 0.45,
               marginLeft: 6,
+              display: "inline-flex",
             }}
             title={isFavorite ? tr("取消收藏") : tr("收藏到顶部")}
           >
-            {isFavorite ? "★" : "☆"}
+            {isFavorite ? <StarIcon size={14} /> : <StarOutlineIcon size={14} />}
           </span>
           {/* 5.0.0 release：房间 ⋯ 菜单（退出/退出并删除，Element 列表操作同款） */}
           <span
@@ -392,12 +395,12 @@ function DmCard({
                   {
                     key: "leave",
                     danger: true,
-                    label: `🚪 ${tr("退出房间")}`,
+                    label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
                   },
                   {
                     key: "leave-forget",
                     danger: true,
-                    label: `🗑️ ${tr("退出并删除")}`,
+                    label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TrashIcon size={13} /> {tr("退出并删除")}</span>,
                   },
                 ],
                 onClick: ({ key }: { key: string }) =>
@@ -427,7 +430,7 @@ function DmCard({
           }}
           title={(() => {
             const p = lastBodyPreview(room.last_body);
-            return p ? `${tr("最后消息")}：${p.marker}${p.text}` : undefined;
+            return p ? `${tr("最后消息")}：${p.text}` : undefined;
           })()}
         >
           {tr("最后消息")} {formatChatTime(room.last_ts) || "—"}
@@ -435,7 +438,7 @@ function DmCard({
             const p = lastBodyPreview(room.last_body);
             return p ? (
               <span style={{ marginLeft: 6, opacity: 0.85 }}>
-                {p.marker}
+                {p.marker === "img" ? <PictureIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> : p.marker === "file" ? <ClipIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> : null}
                 {p.text}
               </span>
             ) : null;
@@ -507,7 +510,7 @@ function InviteSection(props: {
       }}
     >
       <div style={{ fontWeight: 600, fontSize: 13 }}>
-        📩 {tr("邀请（{n}）", { n: invites.length })}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><MailIcon size={13} /> {tr("邀请（{n}）", { n: invites.length })}</span>
       </div>
       {invites.map((inv) => {
         const state = busy[inv.room_id];
@@ -809,7 +812,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
             onClick={() => onMarkAllRead()}
             title={tr("一键全部已读（m.read + m.fully_read 双写，清 Element 侧未读）")}
           >
-            ✓ {tr("全部已读")}
+            <CheckIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("全部已读")}
             {unreadRoomCount > 0 ? `（${unreadRoomCount}）` : ""}
           </antd.Button>
         ) : null}
@@ -821,8 +824,8 @@ export default function TeamOverview(props: TeamOverviewProps) {
           }
           options={[
             { value: "all", label: `全部（${rooms.length}）` },
-            { value: "group", label: `👥 ${tr("团队群（{n}）", { n: groups.length })}` },
-            { value: "dm", label: `💬 私聊（${dms.length}）` },
+            { value: "group", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><UsersIcon size={12} /> {tr("团队群（{n}）", { n: groups.length })}</span> },
+            { value: "dm", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><MessageIcon size={12} /> 私聊（{dms.length}）</span> },
           ]}
         />
         {/* v0.5.0-beta.13.12：排序切换（时间↓默认 / 名称 A-Z），本地持久化 */}
@@ -878,7 +881,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
               el.style.transform = "none";
             }}
           >
-            <span style={{ fontSize: 14, lineHeight: 1 }}>🔍</span>
+            <SearchIcon size={14} />
             {tr("搜索消息")}
           </button>
         ) : null}
@@ -926,7 +929,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
                   color: t.textSecondary,
                 }}
               >
-                ⭐ {tr("收藏（{n}）", { n: favRoomsForFilter.length })}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><StarIcon size={12} style={{ color: "#faad14" }} /> {tr("收藏（{n}）", { n: favRoomsForFilter.length })}</span>
               </div>
               {favRoomsForFilter.map((room) => renderRoomCard(room, "fav-"))}
             </div>

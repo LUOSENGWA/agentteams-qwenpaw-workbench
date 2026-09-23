@@ -24,6 +24,7 @@
  * 保存前 conflict-check（并发保存踢出防护，上游非 mutating 端点）；
  * PUT 后 GET 读回校验（治 MinIO 丢 secret 类历史故）。
  */
+import { BrickIcon, PlugIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
@@ -489,7 +490,7 @@ export default function WorkerChannels(props: {
                 onClick={() => void openDrawer(key)}
                 title={
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {cfg.isBuiltin ? "🧱" : "🔌"} {channelLabel(key, lang)}
+                    {cfg.isBuiltin ? <BrickIcon size={13} style={{ verticalAlign: "-2px" }} /> : <PlugIcon size={13} style={{ verticalAlign: "-2px" }} />} {channelLabel(key, lang)}
                   </span>
                 }
                 extra={

@@ -20,6 +20,7 @@
  * 原「🎯 技能」tab 更名「宿主技能」（host agent 技能管理，本插件
  * 专用，与团队技能矩阵不同维度）。
  */
+import { PuzzleIcon, CloseIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
@@ -230,7 +231,7 @@ export default function SkillCenter() {
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>🧩 {tr("技能中心")}</span>
+        <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><PuzzleIcon size={15} /> {tr("技能中心")}</span>
         <antd.Tooltip
           title={tr(
             "团队技能/MCP 的统一管理面：技能目录（只读）+ Worker 技能分配矩阵 + MCP Servers。L1（admin）可写；L2/Leader 写操作被 Controller 拒绝时明确提示。频道接入见「团队管理 → 频道」。",
@@ -475,7 +476,7 @@ export default function SkillCenter() {
                 type="text"
                 onClick={() => setMcpDraft((prev) => prev.filter((_, j) => j !== i))}
               >
-                ✕
+                <CloseIcon size={12} />
               </antd.Button>
             </div>
           ))}

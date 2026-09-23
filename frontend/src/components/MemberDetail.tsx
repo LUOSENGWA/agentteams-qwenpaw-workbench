@@ -1,3 +1,4 @@
+import { MessageIcon, WarnIcon } from "./icons";
 import { fetchMemberMessages, type MemberMessage } from "../api";
 import { useAvatarUrl } from "../useAvatar";
 import { useThemeColors } from "../theme";
@@ -158,7 +159,7 @@ export default function MemberDetail(props: MemberDetailProps) {
               onClose();
             }}
           >
-            💬 {tr("私聊")}
+            <MessageIcon size={13} style={{ verticalAlign: "-2px", marginRight: 3 }} /> {tr("私聊")}
           </antd.Button>
         ) : null}
         {onMention ? (
@@ -200,7 +201,7 @@ export default function MemberDetail(props: MemberDetailProps) {
       {loading ? (
         <antd.Skeleton active paragraph={{ rows: 3 }} />
       ) : error ? (
-        <div style={{ color: "#ff4d4f", fontSize: 12.5 }}>⚠️ {error}</div>
+        <div style={{ color: "#ff4d4f", fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}><WarnIcon size={12} /> {error}</div>
       ) : messages.length === 0 ? (
         <div style={{ color: t.textSecondary, fontSize: 12.5 }}>
           {tr("暂无消息")}

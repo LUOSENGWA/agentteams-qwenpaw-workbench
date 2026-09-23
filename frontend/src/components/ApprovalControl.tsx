@@ -1,3 +1,4 @@
+import { WarnIcon, InfoIcon } from "./icons";
 import type * as ReactNS from "react";
 import { fetchApprovalList, setApprovalLevel } from "../api";
 import { useT } from "../i18n";
@@ -260,7 +261,7 @@ function ApprovalControl({ workerName }: { workerName: string }) {
               flexBasis: "100%",
             }}
           >
-            ℹ️ {tr("配置工具调用的审批策略，控制智能体执行工具时的安全级别")}
+            <InfoIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("配置工具调用的审批策略，控制智能体执行工具时的安全级别")}
           </span>
         </div>
 
@@ -311,7 +312,7 @@ function ApprovalControl({ workerName }: { workerName: string }) {
           >
             {isPermError
               ? tr("L2 账号无权限读取（需 L1 管理员凭据；上游 L2 写路径 PR 合并后自动开放）")
-              : `⚠ ${readError}`}
+              : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={11} /> {readError}</span>}
           </div>
         ) : (
           <antd.Spin size="small" />

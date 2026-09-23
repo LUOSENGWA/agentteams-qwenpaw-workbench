@@ -5,6 +5,7 @@
  * 中文文案 + severity 颜色 + 批准/拒绝动作（POST /approval/approve|deny，
  * 同原生 handleApprove 链路）→ onResolved 关闭卡片。
  */
+import { ShieldIcon, CheckIcon, CloseIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
@@ -106,7 +107,7 @@ export default function ApprovalCard({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 18 }}>🛡️</span>
+        <ShieldIcon size={18} />
         <span style={{ fontWeight: 700, fontSize: 14 }}>
           {approval.toolName || tr("工具调用审批")}
         </span>
@@ -175,7 +176,7 @@ export default function ApprovalCard({
           }}
           onClick={() => void send("approve")}
         >
-          ✅ {tr("批准")}
+          <CheckIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("批准")}
         </antd.Button>
         <antd.Button
           size="small"
@@ -183,7 +184,7 @@ export default function ApprovalCard({
           loading={acting === "deny"}
           onClick={() => void send("deny")}
         >
-          ❌ {tr("拒绝")}
+          <CloseIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("拒绝")}
         </antd.Button>
         <antd.Input
           size="small"

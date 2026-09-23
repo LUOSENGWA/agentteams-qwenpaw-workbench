@@ -246,7 +246,7 @@ export default function OpsPanel({
             marginBottom: 10,
           }}
         >
-          <span style={{ fontWeight: 700, fontSize: 15 }}>📡 {tr("集群状态")}</span>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>集群状态</span>
           <antd.Tooltip title={tr("Controller /api/v1/status（L1 视图，dashboard cluster-status 同源）")}>
             <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
           </antd.Tooltip>
@@ -327,7 +327,7 @@ export default function OpsPanel({
             }}
           >
             <span style={{ fontWeight: 700, fontSize: 15 }}>
-              🧭 {tr("模型网关路由")}
+              模型网关路由
             </span>
             <antd.Tooltip
               title={tr(
@@ -429,7 +429,7 @@ export default function OpsPanel({
             }}
           >
             <span style={{ fontWeight: 700, fontSize: 15 }}>
-              ⚡ {tr("集群负载")}
+              集群负载
             </span>
             <span style={{ fontSize: 11, color: t.textSecondary }}>
               {tr("自动刷新 1 秒")}
@@ -610,7 +610,7 @@ export default function OpsPanel({
             flexWrap: "wrap",
           }}
         >
-          <span style={{ fontWeight: 700, fontSize: 15 }}>📜 {tr("组件日志")}</span>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>组件日志</span>
           <antd.Tooltip title={tr("经 Controller Docker API 代理拉容器日志（dashboard debug-log 同源；需要管理员 token）")}>
             <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
           </antd.Tooltip>

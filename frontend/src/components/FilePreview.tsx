@@ -1,3 +1,4 @@
+import { ClipIcon, WarnIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { downloadViaHost, fetchFile } from "../api";
@@ -336,7 +337,7 @@ export function FilePreview({
             padding: "0 24px",
           }}
         >
-          <div style={{ fontSize: 22 }}>📎</div>
+          <span style={{ display: "inline-flex" }}><ClipIcon size={22} /></span>
           <div style={{ color: "#666" }}>该附件没有可用的文件地址</div>
           {file.rawUrl ? (
             <div
@@ -371,7 +372,7 @@ export function FilePreview({
             padding: "0 24px",
           }}
         >
-          <div style={{ fontSize: 22 }}>⚠️</div>
+          <span style={{ display: "inline-flex" }}><WarnIcon size={22} /></span>
           <div style={{ color: "#666", fontSize: 13 }}>文件内容拉取失败</div>
           <div
             style={{

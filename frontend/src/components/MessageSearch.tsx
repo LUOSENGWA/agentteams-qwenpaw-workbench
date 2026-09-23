@@ -1,3 +1,4 @@
+import { PinIcon, SearchIcon, WarnIcon, MessageIcon, UsersIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -192,7 +193,7 @@ function ContextPreview(props: {
             style={{ fontSize: 12 }}
             onClick={() => onJump(highlightId)}
           >
-            📍 {tr("定位到聊天")}
+            <PinIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("定位到聊天")}
           </antd.Button>
         ) : null}
       </div>
@@ -357,7 +358,7 @@ export default function MessageSearch(props: MessageSearchProps) {
       width={Math.min(430, Math.max(320, window.innerWidth * 0.55))}
       title={
         <span style={{ fontSize: 15, fontWeight: 700 }}>
-          🔍 {tr("搜索消息")}
+          <SearchIcon size={13} style={{ verticalAlign: "-2px", marginRight: 3 }} /> {tr("搜索消息")}
           {roomId ? (
             <span style={{ fontSize: 12, color: t.textSecondary, fontWeight: 400 }}>
               {" "}
@@ -390,7 +391,7 @@ export default function MessageSearch(props: MessageSearchProps) {
       />
       {error ? (
         <div style={{ color: "#ff4d4f", fontSize: 13, marginBottom: 8 }}>
-          ⚠️ {tr("搜索失败")}：{error}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={12} /> {tr("搜索失败")}：</span>{error}
         </div>
       ) : null}
       {roomMatches.length > 0 ? (
@@ -428,8 +429,8 @@ export default function MessageSearch(props: MessageSearchProps) {
                 cursor: "pointer",
               }}
             >
-              <span style={{ fontSize: 15 }}>
-                {r.unread ? "💬" : "👥"}
+              <span style={{ fontSize: 15, display: "inline-flex" }}>
+                {r.unread ? <MessageIcon size={15} /> : <UsersIcon size={15} />}
               </span>
               <span
                 style={{

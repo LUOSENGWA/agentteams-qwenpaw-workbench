@@ -1,3 +1,4 @@
+import { BoxIcon, ClipIcon, WarnIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
@@ -186,11 +187,11 @@ function artifactKind(a: Artifact): ArtifactKind {
 }
 
 const KIND_META: Record<ArtifactKind, { label: string; icon: ReactNS.ReactNode }> = {
-  image: { label: "🖼️ 图片", icon: <ImageIcon style={{ color: PRIMARY }} /> },
-  document: { label: "📄 文档", icon: <TextIcon style={{ color: "#1677ff" }} /> },
-  data: { label: "📊 数据", icon: <DataIcon style={{ color: "#52c41a" }} /> },
-  code: { label: "💻 代码", icon: <CodeIcon style={{ color: "#722ed1" }} /> },
-  other: { label: "📎 其他", icon: <FileIcon style={{ color: "#999" }} /> },
+  image: { label: "图片", icon: <ImageIcon style={{ color: PRIMARY }} /> },
+  document: { label: "文档", icon: <TextIcon style={{ color: "#1677ff" }} /> },
+  data: { label: "数据", icon: <DataIcon style={{ color: "#52c41a" }} /> },
+  code: { label: "代码", icon: <CodeIcon style={{ color: "#722ed1" }} /> },
+  other: { label: "其他", icon: <FileIcon style={{ color: "#999" }} /> },
 };
 
 /** 统一文件条目（正源产物 / 房间附件共用渲染）。 */
@@ -552,7 +553,7 @@ export default function Artifacts(props: ArtifactsProps) {
       for (const f of inKind) srcCounts.set(f.source, (srcCounts.get(f.source) || 0) + 1);
       return {
         key: `kind:${k}`,
-        title: `${KIND_META[k].label}（${inKind.length}）`,
+        title: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{KIND_META[k].icon} {KIND_META[k].label}（{inKind.length}）</span>,
         children: Array.from(srcCounts.entries()).map(([src, cnt]) => ({
           key: `asrc:${k}:${src}`,
           // v0.5.0-beta.12: 两行排版 + antd Tooltip——
@@ -586,14 +587,14 @@ export default function Artifacts(props: ArtifactsProps) {
     return [
       {
         key: "projects",
-        title: `📦 ${tr("项目产物")}（${projectFiles.length}）${projectsLoading ? "…" : ""}`,
+        title: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><BoxIcon size={13} /> {tr("项目产物")}（{projectFiles.length}）{projectsLoading ? "…" : ""}</span>,
         children: projectNodes.length
           ? projectNodes
           : [{ key: "proj:empty", title: <span style={{ color: "#bbb", fontSize: 12 }}>{projectsLoading ? tr("加载中…") : tr("暂无已登记项目——经 projectflow 登记的项目会显示在这里")}</span>, isLeaf: true }],
       },
       {
         key: "attachments",
-        title: `📎 ${tr("房间附件")}（${attachmentFiles.length}）`,
+        title: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><ClipIcon size={13} /> {tr("房间附件")}（{attachmentFiles.length}）</span>,
         children: attachNodes,
       },
     ];
@@ -755,7 +756,7 @@ export default function Artifacts(props: ArtifactsProps) {
             color: t.text,
           }}
         >
-          ⚠️ {tr("项目产物（Controller 正源）未接通")}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={13} /> {tr("项目产物（Controller 正源）未接通")}</span>
           {o19Fail === "auth"
             ? tr("——token 未配置或无效。配置页填入 controller_token（L1）后可见全部项目产物（含 Leader 创建、你不在其房间内的）")
             : o19Fail === "not_deployed"
@@ -787,7 +788,7 @@ export default function Artifacts(props: ArtifactsProps) {
             ← {tr("返回")}
           </antd.Button>
         ) : null}
-        <span style={{ fontWeight: 700, fontSize: 15 }}>📦 {tr("团队产物")}</span>
+        <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><BoxIcon size={15} /> {tr("团队产物")}</span>
         <antd.Tooltip title="项目产物来自 Controller 项目端点（上游端点）；房间附件为 Matrix 消息扫描兜底。同一 project_id 若在团队目录与全局目录各有一份注册（数据侧重复），此处按 project_id 合并为一条显示（优先带团队的记录）。">
           <span style={{ color: "#999", cursor: "help", fontSize: 12 }}>ⓘ</span>
         </antd.Tooltip>
@@ -937,7 +938,7 @@ export default function Artifacts(props: ArtifactsProps) {
                   width: 80,
                   render: (k: ArtifactKind) => (
                     <antd.Tag style={{ margin: 0 }} color={k === "image" ? "orange" : k === "document" ? "blue" : k === "data" ? "green" : k === "code" ? "purple" : undefined}>
-                      {KIND_META[k].label.replace(/^\S+\s/, "")}
+                      {KIND_META[k].label}
                     </antd.Tag>
                   ),
                 },
