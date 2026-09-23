@@ -5,6 +5,24 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.12 (2026-09-23)
+
+**Close of 7 feedback items from the 13.11 verification: always-visible session status dot / Element-style pinned scroll-to-bottom / measured visible width for wide-narrow / room list mentions section + sort / topology & team icons as SVG / team-tab manual refresh now instant (negative-cache root cause) / event-stream empty-state copy + cancelled as a first-class status**
+
+- **Session status dot always visible ("never saw the dot")**: the card dot previously rendered only when running (no dot for idle/done, and most on-disk sessions are idle) — now the WorkerSessionDot always renders (idle = steady gray, running = breathing blue, with tooltip), same source as the detail header and the member-avatar corner dots
+- **Element-style pinned scroll-to-bottom ("the ↓ button doesn't stick to the bottom")**: root cause = mid-smooth-scroll, a new-message effect re-computed nearBottom=false → the button re-appeared and the counter reset-then-incremented. Now an explicit atBottom state + an 800 ms pinned lock (incoming messages during the lock keep following without re-popping the button) + instant follow (smooth dropped — its target drifts as scrollHeight grows); scrolling up to read history is never interrupted; switching rooms pins to the latest
+- **Measured visible width for wide-narrow ("auto single-column didn't kick in")**: the container width was measured only at the plugin `<main>`'s direct parent, while the host's real constraining layer (Desktop OS window frame) sits higher in the ancestor chain. Now the width is the min of clientWidth up the ancestor chain to body, intersected with the viewport, with a ResizeObserver on the whole chain — works uniformly across OS-window / classic-page / iframe hosts
+- **Room list sorting**: ① new pinned "Mentions" section (Element X semantics: rooms with @me/highlighted unread float to the top, hidden when empty) ② sort toggle (Recent ↓ default / Name A–Z, persisted locally) ③ the three sections (mentions/favourites/main) now share one render helper, removing triplication
+- **Icons as SVG**: workflow "Topology" button 🌳 → DAG icon (nodes + edges); team-management tab 👷 → two overlapping figures (both the horizontal tab and the top Tabs). Pure inline SVG (no icon-package dependency), tinted by active state
+- **Team tab manual refresh now instant ("refuses to refresh manually; only the 30 s auto-refresh worked") root cause, both ends**: the backend /teams/structure 60 s TTL cache also cached **first-failure/empty-tree results for 60 s (negative cache)** — once the token was not ready and the first pull got an empty tree, every manual refresh within 60 s hit that empty cache; the 30 s tick happened to land after TTL expiry and "fixed" it. Now failure/degraded/empty results are negative-cached for only 5 s, and success (controller-workers, non-empty) gets the full 60 s (ttl stored per entry); the frontend forces `force=true` on manual refresh / tab switch / login, while the 30 s background tick still uses the cache; +4 TTL regression tests
+- **Event-stream empty-state copy (platform gap, settled)**: Controller event ingestion is not wired (endpoint read-only POST→405, all existing projects' events empty, runtime has no reporting — on-site 9/23 full-chain investigation) → the empty state now states "data source not connected, this panel is always empty; see the topology/board for task status" instead of implying "agents will aggregate after running"; the copy drops report_progress, which the current runtime action set does not have
+- **Cancelled promoted to a first-class status ("cancelled shown as blocked" mapping defect, full sweep)**: topology nodes get their own dark-red color (no longer folded into blocked orange); the board gains a "Cancelled" column (7→8 columns); cards / task-inspection drawer show "Cancelled" (dark red #cf1322, distinct from failed #ff4d4f — failure = execution error, cancellation = human termination); terminal-state detection includes cancelled; a cancelled node no longer gets a false "ready" cyan frame
+- **i18n**: +5 new keys (zh/en mirror: Cancelled / Recent ↓ / Mentions (n) / the event-stream empty-state sentence)
+
+**Verification**: tsc 0 · vite build 2,149.65 kB · pytest 64/64 (+4 negative-cache TTL regressions) · i18n dict 0 missing 0 duplicate · in-package version check across 3 carriers consistent · 13.12 file set vs 13.11 = +icons.tsx only
+
+---
+
 ## 0.5.0-beta.13.11 (2026-09-22)
 
 **Close of 12 feedback items from the 13.10 verification: session list as cards (the real E1 target) / event-driven live session window / cross-room history root cause / wide-narrow dual-baseline + full-width container / approval notification sync / tab shake / thread flag SVG / workflow topology zoom + executor / QwenPaw-style session avatars & copy**

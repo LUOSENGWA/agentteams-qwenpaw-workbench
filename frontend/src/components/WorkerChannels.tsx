@@ -3,14 +3,14 @@
  *
  * 位置：「👷 团队管理」tab 内的子节（设计决策：不独立成 tab）。
  * 数据面：Controller 的频道代理端点（#1219/#1269 已合 main；
- * Controller < 合并版本（如 v1.2.3/Node1）→ 404 兜底）——
+ * Controller < 合并版本（如 v1.2.3 验证实盘）→ 404 兜底）——
  * GET  /workers/{name}/channels[|/types|/schemas]
  * GET/PUT /workers/{name}/channels/{ch}
  * GET  .../{ch}/health | /qrcode | /qrcode/status
  * POST .../{ch}/restart | /conflict-check
  * 走既有通用 Controller 代理（/api/ 白名单，后端零新端点）。
  *
- * 版本门：Controller < 合并频道端点的版本（v1.2.3 及更早，如 Node1）
+ * 版本门：Controller < 合并频道端点的版本（v1.2.3 及更早验证实盘）
  * → 端点 404 → 整节显示占位说明（不炸 tab，与 L2 冲突检查版本门同模式）。
  *
  * 表单策略（调研结论「schema 驱动 + 零 per-channel 代码」）：

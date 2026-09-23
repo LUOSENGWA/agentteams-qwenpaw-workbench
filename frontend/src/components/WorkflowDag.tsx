@@ -45,8 +45,9 @@ export interface ProjectDag {
   externalDeps: string[];
 }
 
-/** 节点状态 → 看板状态空间（与 dashboard WORKFLOW_STATUS_MAP 同表：
- * revision 保留自身状态，cancelled 折入 blocked）。 */
+/** 节点状态 → 看板状态空间（revision 保留自身状态；
+ * v0.5.0-beta.13.12：cancelled 独立态——此前折入 blocked 是状态映射
+ * 不一致缺陷（现场 9/23 报告：cancelled 任务显示成 blocked）。 */
 const WORKFLOW_STATUS_MAP: Record<string, string> = {
   pending: "pending",
   planned: "pending",
@@ -61,9 +62,19 @@ const WORKFLOW_STATUS_MAP: Record<string, string> = {
   error: "failed",
   revision: "revision",
   blocked: "blocked",
-  cancelled: "blocked",
+  cancelled: "cancelled",
+  canceled: "cancelled",
   unknown: "unknown",
 };
+
+/** 终态集合（ready 推导排除——终态节点不再画「就绪」青虚线框）。 */
+const DAG_TERMINAL_STATUSES = new Set([
+  "completed",
+  "failed",
+  "revision",
+  "blocked",
+  "cancelled",
+]);
 
 /**
  * 从 workflow nodes（dependsOn 建边）构建 ProjectDag + 迭代分层
@@ -146,7 +157,10 @@ export function buildWorkflowDag(nodes: WfNodeInput[]): ProjectDag {
           ? n.name.trim()
           : id,
       status,
-      ready: allDepsDone && status !== "completed",
+      // v0.5.0-beta.13.12：终态（completed/failed/revision/blocked/
+      // cancelled）不画 ready 青框——此前只排 completed，cancelled 节点
+      // 依赖全绿时误显「就绪」。
+      ready: allDepsDone && !DAG_TERMINAL_STATUSES.has(status),
       subagent,
       layer: layerOf.get(id) ?? 0,
     };

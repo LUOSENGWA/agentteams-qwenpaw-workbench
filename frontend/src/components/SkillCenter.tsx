@@ -3,7 +3,7 @@
  *
  * 三节（L1 admin 视角，插件以 admin token 操作 Controller）：
  * ① 技能目录（#1268 已合 main）——GET /api/v1/skills，
- * Controller < 合并版本（如 v1.2.3/Node1）→ 404 → 占位卡；升级后自动点亮。
+ * Controller < 合并版本（如 v1.2.3 验证实盘）→ 404 → 占位卡；升级后自动点亮。
  * 契约：{skills:[{name,description?,source,agents?}],total}。
  * ② Worker 技能分配矩阵（P1，v1.2.3 立即可用）——行=Worker，
  * 列=技能（目录可用=目录 ∪ 已分配；否则=已分配并集）。

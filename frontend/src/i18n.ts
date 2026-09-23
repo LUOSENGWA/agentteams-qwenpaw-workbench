@@ -869,6 +869,13 @@ const DICT: Record<string, { en: string }> = {
   "提到我": { en: "mentions" },
   "任务进展": { en: "Tasks" },
   "阻塞": { en: "Blocked" },
+  // ── v0.5.0-beta.13.12：cancelled 独立态 + 房间排序 + 事件流空态 ──
+  "已取消": { en: "Cancelled" },
+  "时间 ↓": { en: "Recent ↓" },
+  "提及（{n}）": { en: "Mentions ({n})" },
+  "暂无转换事件——平台侧 Controller 事件摄取尚未接通（端点只读、写入链路未部署，存量项目均为空），此面板当前恒为空。任务状态请查看上方拓扑/看板。": {
+    en: "No transition events — the Controller-side event ingestion is not wired up yet (endpoint is read-only, write path not deployed, all existing projects are empty), so this panel is currently always empty. See the topology/board above for task status.",
+  },
   "暂无工作流数据": { en: "No workflow data" },
   "共 {n} 条工作流": { en: "{n} workflows" },
   "暂无 Worker 数据": { en: "No worker data" },

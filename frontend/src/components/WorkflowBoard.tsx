@@ -21,6 +21,7 @@ import {
   type DagNodeColor,
 } from "./WorkflowDag";
 import { WorkflowEventsTimeline } from "./WorkflowEventsTimeline";
+import { TopologyIcon } from "./icons";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -41,13 +42,27 @@ const STATUS_COLOR: Record<string, string> = {
   failed: "#ff4d4f",
   error: "#ff4d4f",
   blocked: "#fa8c16",
+  // v0.5.0-beta.13.12（现场 9/23 报告顺带缺陷：cancelled 显示成
+  // blocked）：cancelled 独立态——深红 #cf1322（与 failed #ff4d4f 区分：
+  // 失败=执行出错，取消=人为终止，语义不同不同色）。
+  cancelled: "#cf1322",
+  canceled: "#cf1322",
   pending: "#999",
   merging: "#722ed1",
   created: "#999",
 };
+// 状态中文标签（cancelled→已取消；其余原样）。
+const STATUS_LABEL: Record<string, string> = {
+  cancelled: "已取消",
+  canceled: "已取消",
+};
 
 function statusMeta(status: string): { label: string; color: string } {
-  return { label: status || "?", color: STATUS_COLOR[status] || "#999" };
+  const s = status || "";
+  return {
+    label: STATUS_LABEL[s] || s || "?",
+    color: STATUS_COLOR[s] || "#999",
+  };
 }
 
 function fmtTime(ts: number): string {
@@ -68,6 +83,8 @@ function dagNodeColors(t: ThemeColors): Record<string, DagNodeColor> {
     completed: { fill: "rgba(82,196,26,0.12)", stroke: "#52c41a", text: t.text },
     failed: { fill: "rgba(255,77,79,0.12)", stroke: "#ff4d4f", text: t.text },
     blocked: { fill: "rgba(250,140,22,0.10)", stroke: "#fa8c16", text: t.text },
+    // v0.5.0-beta.13.12：cancelled 独立节点色（深红，与 failed 区分）。
+    cancelled: { fill: "rgba(207,19,34,0.10)", stroke: "#cf1322", text: t.text },
     unknown: { fill: "rgba(140,140,140,0.08)", stroke: "#8c8c8c", text: t.text },
   };
 }
@@ -559,6 +576,7 @@ type BoardCol =
   | "completed"
   | "failed"
   | "blocked"
+  | "cancelled"
   | "unknown";
 
 function workflowStatusToTaskStatus(status?: string): BoardCol {
@@ -580,15 +598,19 @@ function workflowStatusToTaskStatus(status?: string): BoardCol {
     case "error":
       return "failed";
     case "blocked":
-    case "cancelled":
     case "revision":
       return "blocked";
+    // v0.5.0-beta.13.12：cancelled 独立列（不再折入 blocked——状态映射
+    // 不一致缺陷，现场 9/23 报告）。
+    case "cancelled":
+    case "canceled":
+      return "cancelled";
     default:
       return "unknown";
   }
 }
 
-/** 列配置（顺序/语义同 dashboard TASK_STATUS_COLUMNS）。 */
+/** 列配置（顺序/语义同 dashboard TASK_STATUS_COLUMNS + 已取消列）。 */
 const BOARD_COLUMNS: Array<{ key: BoardCol; zh: string; color: string }> = [
   { key: "pending", zh: "待办", color: "#64748b" },
   { key: "assigned", zh: "已派发", color: "#1677ff" },
@@ -596,6 +618,7 @@ const BOARD_COLUMNS: Array<{ key: BoardCol; zh: string; color: string }> = [
   { key: "completed", zh: "已完成", color: "#52c41a" },
   { key: "failed", zh: "失败", color: "#ff4d4f" },
   { key: "blocked", zh: "阻塞", color: "#fa8c16" },
+  { key: "cancelled", zh: "已取消", color: "#cf1322" },
   { key: "unknown", zh: "未知", color: "#8c8c8c" },
 ];
 
@@ -626,9 +649,10 @@ function boardTasksFromEvents(events: WorkflowEvent[]): BoardTask[] {
   return out;
 }
 
-/** 终态任务判定（上游归一化状态：completed/revision/blocked——blocked 含
- *  cancelled）。v0.5.0-beta.13.3：上移——任务巡检 Drawer 的门控也要用。 */
-const TERMINAL_NODE_STATUSES = ["completed", "revision", "blocked"];
+/** 终态任务判定（上游归一化状态：completed/revision/blocked/cancelled）。
+ *  v0.5.0-beta.13.3：上移——任务巡检 Drawer 的门控也要用。
+ *  v0.5.0-beta.13.12：cancelled 升为独立终态（不再藏进 blocked）。 */
+const TERMINAL_NODE_STATUSES = ["completed", "revision", "blocked", "cancelled"];
 
 /** 任务级取消 Modal（dashboard TaskDetailRow CancelTaskButton 同款语义：
  *  reason 必填、非终态门控、上游 409 幂等收敛）。v0.5.0-beta.13.3（P3
@@ -748,7 +772,7 @@ function TaskInspectionDrawer(props: {
         <div style={{ display: "grid", gap: 12, fontSize: 12.5 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <antd.Tag color={meta.color} style={{ margin: 0 }}>
-              {meta.label}
+              {tr(meta.label)}
             </antd.Tag>
             {assignee ? (
               <antd.Tag style={{ margin: 0 }}>
@@ -879,7 +903,7 @@ function TaskInspectionDrawer(props: {
 /** 看板任务卡：任务名 + 项目 + 负责人 + 依赖 badge + 非终态任务取消按钮。
  * 依赖不画跨列连线（与 dashboard 一致：看板列内 badge，依赖树走拓扑视图）。
  * 取消=任务级（/tasks/{id}/cancel，reason 必填；终态任务 409 幂等收敛）。
- * 终态判定用上游归一化状态（completed/revision/blocked——blocked 含 cancelled）。 */
+ * 终态判定用上游归一化状态（completed/revision/blocked/cancelled 四态）。 */
 function BoardCard(props: {
   task: BoardTask;
   t: ReturnType<typeof useThemeColors>;
@@ -998,7 +1022,8 @@ function BoardColumnsView(props: {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(7, minmax(150px, 1fr))",
+        // v0.5.0-beta.13.12：7→8 列（新增「已取消」）。
+        gridTemplateColumns: `repeat(${BOARD_COLUMNS.length}, minmax(150px, 1fr))`,
         gap: 10,
         overflowX: "auto",
         alignItems: "start",
@@ -1900,7 +1925,15 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
             { value: "list", label: `📋 ${tr("项目列表")}` },
             { value: "card", label: `🗂️ ${tr("项目卡片")}` },
             { value: "board", label: `📊 ${tr("看板")}` },
-            { value: "topo", label: `🌳 ${tr("拓扑")}` },
+            {
+              value: "topo",
+              // v0.5.0-beta.13.12：🌳 一棵树 → DAG 拓扑图标（表依赖拓扑）。
+              label: (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <TopologyIcon size={14} /> {tr("拓扑")}
+                </span>
+              ),
+            },
           ]}
         />
         <antd.Tooltip title="刷新">
