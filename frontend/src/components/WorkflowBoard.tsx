@@ -1,9 +1,11 @@
+import { UserIcon, CloseIcon, PauseIcon, PlayIcon, CheckIcon, TodoIcon, RefreshIcon, HistoryIcon, WarnIcon, ChartIcon, AppIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
   type WorkflowEvent,
   type WorkflowNode,
   type WorkflowInterrupt,
+  type TaskDetail,
   pauseProject,
   resumeProject,
   cancelTask,
@@ -776,7 +778,7 @@ function TaskInspectionDrawer(props: {
             </antd.Tag>
             {assignee ? (
               <antd.Tag style={{ margin: 0 }}>
-                👤 {assignee.split(":")[0].replace(/^@/, "")}
+                <UserIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {assignee.split(":")[0].replace(/^@/, "")}
               </antd.Tag>
             ) : null}
             <span style={{ fontFamily: "monospace", fontSize: 11, color: t.textSecondary }}>
@@ -970,7 +972,7 @@ function BoardCard(props: {
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
         {assignee ? (
           <antd.Tag style={{ margin: 0, fontSize: 10.5 }}>
-            👤 {assignee.split(":")[0].replace(/^@/, "")}
+            <UserIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {assignee.split(":")[0].replace(/^@/, "")}
           </antd.Tag>
         ) : null}
         {deps.length > 0 ? (
@@ -991,7 +993,7 @@ function BoardCard(props: {
               style={{ marginLeft: "auto", padding: "0 4px", height: 20 }}
               onClick={() => setCancelOpen(true)}
             >
-              ✕
+              <CloseIcon size={12} />
             </antd.Button>
           </antd.Tooltip>
         ) : null}
@@ -1245,7 +1247,7 @@ function InterventionActions({
           onClick={() => setPauseOpen(true)}
           style={{ color: "#fa8c16" }}
         >
-          ⏸ {tr("暂停")}
+          <PauseIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("暂停")}
         </antd.Button>
       ) : null}
       {resumeInterrupt ? (
@@ -1255,7 +1257,7 @@ function InterventionActions({
           loading={busy === "resume"}
           onClick={() => void handleResume()}
         >
-          ▶ {tr("恢复")}
+          <PlayIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("恢复")}
         </antd.Button>
       ) : null}
       {canComplete ? (
@@ -1265,7 +1267,7 @@ function InterventionActions({
           onClick={() => setCompleteOpen(true)}
           style={{ color: "#52c41a" }}
         >
-          ✅ {tr("完成")}
+          <CheckIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("完成")}
         </antd.Button>
       ) : null}
       {canReplan ? (
@@ -1275,7 +1277,7 @@ function InterventionActions({
           onClick={openReplan}
           style={{ color: "#1677ff" }}
         >
-          📋 {tr("重规划")}
+          <TodoIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("重规划")}
         </antd.Button>
       ) : null}
       <antd.Modal
@@ -1342,39 +1344,77 @@ function InterventionActions({
   );
 }
 
-/** 中断横幅：展示 interrupts 与暂停原因（paused interrupt）。 */
+/** 中断横幅：展示 interrupts 与暂停原因（paused interrupt）。
+ *  v0.5.0-beta.13.13（13.12 装验「顶上三个 ⚠ blocked 只显示 '⚠ blocked'
+ *  有点突兀」）：interrupt.id 即 task_id（实盘 jev 项目 3 条 blocked
+ *  interrupt id=...-03/-04/-07 与 tasks_detail task_id 一一对应）→
+ *  横幅带任务短编号 + 当前状态 + 分配 Worker，可定位到具体任务。
+ *  无 task 匹配（interrupt 非任务维度）→ 保持原样。 */
 function InterruptsBlock({
   interrupts,
   pauseReason,
+  tasks,
 }: {
   interrupts: WorkflowInterrupt[];
   pauseReason?: string;
+  tasks?: TaskDetail[];
 }) {
   const tr = useT();
   if (interrupts.length === 0) return null;
+  const taskById = new Map<string, TaskDetail>();
+  (tasks || []).forEach((tk) => {
+    if (tk.task_id) taskById.set(tk.task_id, tk);
+  });
+  const shortId = (id: string) => {
+    const parts = id.split("-");
+    return parts.length > 1 ? parts[parts.length - 1] : id;
+  };
   return (
     <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-      {interrupts.map((it) => (
-        <div
-          key={it.id || it.value}
-          style={{
-            fontSize: 12,
-            padding: "6px 10px",
-            borderRadius: 8,
-            border: "1px solid #fa8c16",
-            background: "rgba(250, 140, 22, 0.06)",
-            color: "#d46b08",
-          }}
-        >
-          {it.value === "paused" ? `⏸ ${tr("项目已暂停")}` : `⚠ ${it.value}`}
-          {it.description ? (
-            <span style={{ opacity: 0.8 }}> — {it.description}</span>
-          ) : null}
-          {pauseReason && it.value !== "paused" ? (
-            <span style={{ opacity: 0.8 }}>：{pauseReason}</span>
-          ) : null}
-        </div>
-      ))}
+      {interrupts.map((it) => {
+        const task = taskById.get(it.id);
+        const detail: string[] = [];
+        if (task) {
+          detail.push(tr("任务 {n}", { n: shortId(it.id) }));
+          if (task.status) detail.push(task.status);
+          if (task.assigned_to) detail.push(task.assigned_to);
+        }
+        return (
+          <div
+            key={it.id || it.value}
+            style={{
+              fontSize: 12,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #fa8c16",
+              background: "rgba(250, 140, 22, 0.06)",
+              color: "#d46b08",
+            }}
+          >
+            {it.value === "paused" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <PauseIcon size={12} /> {tr("项目已暂停")}
+              </span>
+            ) : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <WarnIcon size={12} /> {it.value === "blocked" ? tr("阻塞") : it.value}
+              </span>
+            )}
+            {detail.length > 0 ? (
+              <span style={{ opacity: 0.85 }}>
+                {"："}
+                {detail.join(" · ")}
+              </span>
+            ) : null}
+            {it.description ? (
+              <span style={{ opacity: 0.8 }}> — {it.description}</span>
+            ) : null}
+            {pauseReason && it.value !== "paused" ? (
+              <span style={{ opacity: 0.8 }}>：{pauseReason}</span>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1403,7 +1443,7 @@ function LoopBlock({
       }}
     >
       <div style={{ fontWeight: 700 }}>
-        🔁 {tr("循环任务")}
+        <RefreshIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("循环任务")}
         {loop.status ? (
           <span style={{ marginLeft: 8, fontWeight: 400, opacity: 0.7 }}>
             {loop.status}
@@ -1510,7 +1550,7 @@ function ProjectTimeline({ projectId, teamId }: { projectId: string; teamId?: st
         <span style={{ fontSize: 11, color: "#888" }}>
           {open ? "▾" : "▸"}
         </span>
-        <span>📜 {tr("时间线")}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><HistoryIcon size={12} /> {tr("时间线")}</span>
         {state.kind === "ok" && state.snapshots.length > 0 ? (
           <antd.Badge
             count={state.snapshots.length}
@@ -1655,7 +1695,11 @@ function EventCard({
       >
         <InterventionActions ev={ev} onDone={onIntervention} />
       </div>
-      <InterruptsBlock interrupts={ev.interrupts || []} pauseReason={ev.pause_reason} />
+      <InterruptsBlock
+        interrupts={ev.interrupts || []}
+        pauseReason={ev.pause_reason}
+        tasks={ev.taskDetails}
+      />
       {ev.loop ? <LoopBlock loop={ev.loop} /> : null}
       {ev.runId ? <ProjectTimeline projectId={ev.runId} teamId={ev.team_id} /> : null}
       {/* 任务状态转换事件流（#1233 events 端点）——与干预时间线并列。 */}
@@ -1869,7 +1913,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
             color: t.text,
           }}
         >
-          ⚠️ {tr("当前只显示你已加入房间的项目")}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={12} /> {tr("当前只显示你已加入房间的项目")}</span>
           {failReason === "auth"
             ? tr("——Controller 正源未接通（token 未配置或无效）。配置页填入 controller_token（L1）后可查看全部项目（含 Leader 创建、你不在其房间内的）")
             : failReason === "not_deployed"
@@ -1887,7 +1931,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
         </div>
       ) : null}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>🔀 {tr("工作流")}</span>
+        <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><TopologyIcon size={15} /> {tr("工作流")}</span>
         <span style={{ fontSize: 12.5, color: t.textSecondary }}>
           {tr("项目")}（{events.length}）
         </span>
@@ -1922,9 +1966,9 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
           // 装验反馈 9/19（P3）：看板/拓扑视图 tab 计数取消——
           // 页头「项目 (N)」已给总量，视图 tab 上的计数冗余。
           options={[
-            { value: "list", label: `📋 ${tr("项目列表")}` },
-            { value: "card", label: `🗂️ ${tr("项目卡片")}` },
-            { value: "board", label: `📊 ${tr("看板")}` },
+            { value: "list", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><TodoIcon size={12} /> {tr("项目列表")}</span> },
+            { value: "card", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><AppIcon size={12} /> {tr("项目卡片")}</span> },
+            { value: "board", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><ChartIcon size={12} /> {tr("看板")}</span> },
             {
               value: "topo",
               // v0.5.0-beta.13.12：🌳 一棵树 → DAG 拓扑图标（表依赖拓扑）。
@@ -2141,6 +2185,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
                 <InterruptsBlock
                   interrupts={topoEvent.interrupts || []}
                   pauseReason={topoEvent.pause_reason}
+                  tasks={topoEvent.taskDetails}
                 />
                 {topoEvent.loop ? <LoopBlock loop={topoEvent.loop} /> : null}
                 {(topoEvent.nodes || []).length > 0 ? (

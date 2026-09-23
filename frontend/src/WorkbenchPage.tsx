@@ -62,7 +62,7 @@ import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
 import { useWorkerChatStatuses } from "./workerChatStatus";
 import WorkerManage from "./components/WorkerManage";
-import { TeamIcon } from "./components/icons";
+import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, RefreshIcon, MenuIcon, MonitorIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import SkillsTab from "./components/SkillsTab";
 import ModelsTab from "./ModelsTab";
@@ -81,8 +81,8 @@ const FileZipOutlined = pick("FileZipOutlined");
 
 function StatusIcon({ ok }: { ok: boolean }) {
   return (
-    <span style={{ color: ok ? "#52c41a" : "#ff4d4f", fontWeight: 700 }}>
-      {ok ? "✅" : "❌"}
+    <span style={{ color: ok ? "#52c41a" : "#ff4d4f", display: "inline-flex" }}>
+      {ok ? <CheckIcon size={14} /> : <CloseIcon size={14} />}
     </span>
   );
 }
@@ -139,7 +139,7 @@ function ConnDiagPanel({ diag }: { diag: ProbeDiag }) {
         <div><b>{tr("分步过程")}</b></div>
         {diag.steps.map((s) => (
           <div key={s.name}>
-            {s.ok ? "✓" : "✗"} {s.name} <span style={{ color: "#999" }}>{s.ms} ms</span>
+            {s.ok ? <CheckIcon size={12} style={{ color: "#52c41a", verticalAlign: "-1px" }} /> : <CloseIcon size={12} style={{ color: "#ff4d4f", verticalAlign: "-1px" }} />} {s.name} <span style={{ color: "#999" }}>{s.ms} ms</span>
             {s.detail ? ` — ${s.detail}` : ""}
           </div>
         ))}
@@ -210,7 +210,7 @@ function ConnRow({
             {open ? "▾" : "▸"}
           </span>
         ) : null}
-        <span style={{ flexShrink: 0 }}>{!row.ok ? "❌" : degraded ? "⚠️" : "✅"}</span>
+        <span style={{ flexShrink: 0 }}>{!row.ok ? <CloseIcon size={13} style={{ color: "#ff4d4f" }} /> : degraded ? <WarnIcon size={13} style={{ color: "#fa8c16" }} /> : <CheckIcon size={13} style={{ color: "#52c41a" }} />}</span>
         <span style={{ color: "#999", flexShrink: 0, width: 64 }}>{tag}</span>
         <span
           title={row.url}
@@ -281,7 +281,7 @@ function CheckList({ result }: { result: SelfCheckResult | null }) {
                 ) : null}
                 {c.hint ? (
                   <div style={{ color: "#fa8c16", fontSize: 12, marginTop: 2 }}>
-                    💡 {c.hint}
+                    <BulbIcon size={12} style={{ verticalAlign: "-1px" }} /> {c.hint}
                   </div>
                 ) : null}
               </div>
@@ -320,10 +320,10 @@ function RoomResultTable({ rooms }: { rooms: L3RoomResult[] }) {
               <antd.Tag style={{ margin: 0 }}>{r.members} 人</antd.Tag>
             ) : null}
             <antd.Tag color={r.ping_ok ? "green" : "red"} style={{ margin: 0 }}>
-              发送{r.ping_ok ? "✅" : "❌"}
+              发送 {r.ping_ok ? <CheckIcon size={11} style={{ verticalAlign: "-1px" }} /> : <CloseIcon size={11} style={{ verticalAlign: "-1px" }} />}
             </antd.Tag>
             <antd.Tag color={r.reply?.ok ? "green" : "orange"} style={{ margin: 0 }}>
-              回复{r.reply?.ok ? "✅" : "❌"}
+              回复 {r.reply?.ok ? <CheckIcon size={11} style={{ verticalAlign: "-1px" }} /> : <CloseIcon size={11} style={{ verticalAlign: "-1px" }} />}
             </antd.Tag>
           </div>
           {r.ping_error ? (
@@ -335,7 +335,7 @@ function RoomResultTable({ rooms }: { rooms: L3RoomResult[] }) {
             </div>
           ) : (
             <div style={{ color: "#fa8c16" }}>
-              💡 {r.reply?.detail || tr("无回复")}
+              <BulbIcon size={12} style={{ verticalAlign: "-1px" }} /> {r.reply?.detail || tr("无回复")}
               —— 可能被权限墙静默拦截（allowlist 不含你），或 Agent 未响应
             </div>
           )}
@@ -365,7 +365,7 @@ function StartupPrefRow() {
   return (
     <div>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>
-        🖥️ {tr("启动页")}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MonitorIcon size={14} /> {tr("启动页")}</span>
         <span style={{ fontWeight: 400, color: "#888", marginLeft: 8, fontSize: 12 }}>
           {tr("下次打开插件时先看到哪里")}
         </span>
@@ -375,7 +375,7 @@ function StartupPrefRow() {
         onChange={(v: string | number) => apply(v as "last" | "home")}
         options={[
           { label: tr("上次打开的页面"), value: "last" },
-          { label: `🏠 ${tr("首页")}`, value: "home" },
+          { label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><HomeIcon size={13} /> {tr("首页")}</span>, value: "home" },
         ]}
         style={{ marginBottom: 12 }}
       />
@@ -723,7 +723,7 @@ function SettingsTab({
                 )
               }
             >
-              🔍 {tr("连通性测试")}
+              <SearchIcon size={14} style={{ verticalAlign: "-2px" }} /> {tr("连通性测试")}
             </antd.Button>
             <span style={{ fontSize: 12, color: "#888" }}>
               {tr("逐个地址测延迟（失败重试一次），识别外网/内网，测完自动切到最快；后台按状态自适应重测（稳定时低频、单地址不探测）")}
@@ -777,7 +777,7 @@ function SettingsTab({
               {connTest.applied ? (
                 connTest.switched?.matrix || connTest.switched?.controller ? (
                   <>
-                    🔄 {tr("已自动切换到最快可达")}：
+                    <RefreshIcon size={13} style={{ verticalAlign: "-2px" }} /> {tr("已自动切换到最快可达")}：
                     {[
                       connTest.switched?.matrix
                         ? `Matrix → ${connTest.effective.matrix}`
@@ -791,7 +791,7 @@ function SettingsTab({
                   </>
                 ) : (
                   <>
-                    ✅ {tr("当前生效地址已是最快，无变化")}
+                    <CheckIcon size={13} style={{ color: "#52c41a", verticalAlign: "-2px" }} /> {tr("当前生效地址已是最快，无变化")}
                   </>
                 )
               ) : (
@@ -887,11 +887,11 @@ function SettingsTab({
                 {/* token 来源状态提示（值永不离开连接器进程，只见来源标记）。 */}
                 {config?.controllerTokenSource === "env" ? (
                   <div style={{ fontSize: 12, color: "#389e0d" }}>
-                    {tr("✓ 当前使用 QwenPaw 宿主环境变量 AGENTTEAMS_CONTROLLER_TOKEN（手动粘贴的值优先。）")}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><CheckIcon size={13} /> {tr("当前使用 QwenPaw 宿主环境变量 AGENTTEAMS_CONTROLLER_TOKEN（手动粘贴的值优先。）")}</span>
                   </div>
                 ) : config?.controllerTokenSource === "invalid" ? (
                   <div style={{ fontSize: 12, color: "#cf1322" }}>
-                    {tr("⚠ token 内容含非法字符（复制时混入不可见字符）——重新复制纯 ASCII 内容，或改用 env 注入。")}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><WarnIcon size={13} /> {tr("token 内容含非法字符（复制时混入不可见字符）——重新复制纯 ASCII 内容，或改用 env 注入。")}</span>
                   </div>
                 ) : null}
               </div>
@@ -1060,7 +1060,7 @@ function SettingsTab({
         <StartupPrefRow />
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            ⚡ 集群负载（可选模块）
+            集群负载（可选模块）
             <span style={{ fontWeight: 400, color: "#888", marginLeft: 8, fontSize: 12 }}>
               L1 专属——只有部署了本地 SGLang 推理集群才需要开启
             </span>
@@ -1323,8 +1323,8 @@ function SelfCheckTab({
         </antd.Button>
       </antd.Space>
       {!config?.matrix_homeservers?.length ? (
-        <div style={{ color: "#fa8c16" }}>
-          💡 尚未配置 Matrix 地址——先去「配置」tab 填写并保存，再跑自检。
+        <div style={{ color: "#fa8c16", display: "flex", alignItems: "center", gap: 4 }}>
+          <BulbIcon size={12} style={{ flexShrink: 0 }} /> {tr("尚未配置 Matrix 地址——先去「配置」tab 填写并保存，再跑自检。")}
         </div>
       ) : null}
       <CheckList result={result} />
@@ -1868,6 +1868,55 @@ export default function WorkbenchPage() {
       message.error(e instanceof Error ? e.message : tr("加载更早消息失败"));
     }
   }, [activeRoom, messagesEnd]);
+
+  // v0.5.0-beta.13.13（13.12 装验「很多信息『已滚出历史』但 Element 里信息
+  // 都在，看看 Element 怎么做的」）：Element 的 timeline 是 per-room 全量
+  // 不驱逐 + 按需向前翻页（scrollToEvent：点引用条→自动加载更早分页直到
+  // 原消息进入窗口，而不是标死『滚出历史』）。对齐该语义：引用条原消息
+  // 不在已加载窗口时 → 点「加载原消息」→ 这里链式 backfill（每页 50，最多
+  // 15 页 = 750 条）直到原消息出现或触底。
+  const hasMoreRef = React.useRef(false);
+  React.useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+  const loadOrigLockRef = React.useRef(false);
+  const loadOriginal = React.useCallback(
+    async (eventId: string): Promise<boolean> => {
+      if (!activeRoom || !eventId || loadOrigLockRef.current) return false;
+      loadOrigLockRef.current = true;
+      try {
+        let end = messagesEnd;
+        for (let i = 0; i < 15; i++) {
+          if (messagesRef.current.some((m) => m.event_id === eventId))
+            return true;
+          if (!end) break;
+          const page = await fetchRoomMessages(activeRoom.room_id, 50, end);
+          const known = new Set(
+            messagesRef.current.map((m) => m.event_id),
+          );
+          const older = page.messages.filter((m) => !known.has(m.event_id));
+          const merged = older.length
+            ? [...older, ...messagesRef.current]
+            : messagesRef.current;
+          // 直接更新 ref：循环内下一轮判断要看到本轮合并结果（state 是
+          // 异步的，等 effect 同步会慢一轮）。
+          messagesRef.current = merged;
+          setMessages(merged);
+          setCachedMessages(activeRoom.room_id, { ...page, messages: merged }, merged);
+          end = page.end;
+          setMessagesEnd(end);
+          setHasMore(Boolean(end));
+          if (!end) break;
+        }
+        return messagesRef.current.some((m) => m.event_id === eventId);
+      } catch {
+        return false;
+      } finally {
+        loadOrigLockRef.current = false;
+      }
+    },
+    [activeRoom, messagesEnd],
+  );
 
   // 长轮询：增量拉新消息（dir=b 前 10 条），按 event_id 去重合并。
   const pollMessages = React.useCallback(async () => {
@@ -2517,6 +2566,8 @@ export default function WorkbenchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const refreshWorkflow = React.useCallback(async (silent = false) => {
+    // v0.5.0-beta.13.13: 记录拉取时间——切 tab 立即刷新用 2s 去抖（防连环拉）。
+    workflowLastFetchRef.current = Date.now();
     if (!silent) setWorkflowLoading(true);
     try {
       const { events, apiOk, failReason, failDetail } =
@@ -2557,6 +2608,19 @@ export default function WorkbenchPage() {
     if (tab !== "workflow" && !chatHasWfCards) return;
     const id = window.setInterval(() => void refreshWorkflow(true), 15000);
     return () => window.clearInterval(id);
+  }, [tab, chatHasWfCards, refreshWorkflow]);
+
+  // v0.5.0-beta.13.13（13.12 装验「工作流一点开应先自动刷新，而不是等 15s
+  // 自动刷新或手动刷新」）：切到工作流 tab（或聊天出现工作流卡）立即拉一次
+  // 正源——此前只有 15s interval + 手动/登录时拉，tab 切回时看到的是最长
+  // 15s 前的数据。2s 去抖防止快速切 tab 连环拉取。
+  const workflowLastFetchRef = React.useRef(0);
+  React.useEffect(() => {
+    if (tab !== "workflow" && !chatHasWfCards) return;
+    const now = Date.now();
+    if (now - workflowLastFetchRef.current < 2000) return;
+    workflowLastFetchRef.current = now;
+    void refreshWorkflow(true);
   }, [tab, chatHasWfCards, refreshWorkflow]);
 
   // v0.5.0-beta.12: L1 数据面可用 = 本地配置 token 或宿主 env
@@ -2841,7 +2905,7 @@ export default function WorkbenchPage() {
         lineHeight: "20px",
       }}
     >
-      ☰ {tr("房间列表")}
+      <MenuIcon size={14} style={{ verticalAlign: "-2px" }} /> {tr("房间列表")}
     </button>
   ) : null;
 
@@ -2854,6 +2918,7 @@ export default function WorkbenchPage() {
       loading={messagesLoading}
       sending={sending}
       hasMore={hasMore}
+      onLoadOriginal={(id) => loadOriginal(id)}
       user_id={config?.matrix?.user_id}
       errorNote={
         roomError === "not_found"
@@ -2992,7 +3057,7 @@ export default function WorkbenchPage() {
               color: t.textSecondary,
             }}
           >
-            <div style={{ fontSize: 34 }}>💬</div>
+            <span style={{ display: "inline-flex" }}><MessageIcon size={34} /></span>
             <div style={{ fontSize: 13 }}>
               {chatListHidden
                 ? tr("房间列表已隐藏——点左上角 ☰ 显示")
@@ -3173,11 +3238,11 @@ export default function WorkbenchPage() {
         }}
       >
         {[
-          { key: "home", label: `🏠 ${tr("首页")}` },
-          { key: "chat", label: `💬 ${tr("聊天")}` },
-          { key: "inbox", label: `🔔 ${tr("通知")}` },
-          { key: "workflow", label: `🔀 ${tr("工作流")}` },
-          { key: "artifacts", label: `📦 ${tr("产物")}` },
+          { key: "home", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><HomeIcon size={15} /> {tr("首页")}</span> },
+          { key: "chat", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={15} /> {tr("聊天")}</span> },
+          { key: "inbox", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellIcon size={15} /> {tr("通知")}</span> },
+          { key: "workflow", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TopologyIcon size={15} /> {tr("工作流")}</span> },
+          { key: "artifacts", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BoxIcon size={15} /> {tr("产物")}</span> },
           {
             key: "team",
             // v0.5.0-beta.13.12：👷 工人 → 双人重叠图标（表团队/协作）。
@@ -3187,12 +3252,12 @@ export default function WorkbenchPage() {
               </span>
             ),
           },
-          { key: "knowledge", label: `📚 ${tr("知识库")}` },
-          { key: "selfcheck", label: `🔍 ${tr("自检")}` },
-          { key: "ops", label: `🛠️ ${tr("运维")}` },
-          { key: "models", label: `🧠 ${tr("模型")}` },
+          { key: "knowledge", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><NotesIcon size={15} /> {tr("知识库")}</span> },
+          { key: "selfcheck", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SearchIcon size={15} /> {tr("自检")}</span> },
+          { key: "ops", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><WrenchIcon size={15} /> {tr("运维")}</span> },
+          { key: "models", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BrainIcon size={15} /> {tr("模型")}</span> },
 
-          { key: "settings", label: `⚙️ ${tr("配置")}` },
+          { key: "settings", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SettingsIcon size={15} /> {tr("配置")}</span> },
         ].map((item) => {
           const active = tab === item.key;
           return (
@@ -3271,7 +3336,7 @@ export default function WorkbenchPage() {
         items={[
           {
             key: "home",
-            label: `🏠 ${tr("首页")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><HomeIcon size={15} /> {tr("首页")}</span>,
             children: (
               <HomePage
                 rooms={rooms}
@@ -3295,14 +3360,14 @@ export default function WorkbenchPage() {
           },
           {
             key: "chat",
-            label: `💬 ${tr("聊天")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={15} /> {tr("聊天")}</span>,
             children: chatTabChildren,
           },
           {
             key: "inbox",
             label: (
-              <span>
-                🔔 {tr("通知")}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <BellIcon size={15} /> {tr("通知")}
                 {inboxUnread > 0 ? (
                   <antd.Badge
                     count={inboxUnread}
@@ -3331,7 +3396,7 @@ export default function WorkbenchPage() {
           },
           {
             key: "workflow",
-            label: `🔀 ${tr("工作流")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TopologyIcon size={15} /> {tr("工作流")}</span>,
             children: (
               <WorkflowBoard
                 events={workflowEvents}
@@ -3350,7 +3415,7 @@ export default function WorkbenchPage() {
           },
           {
             key: "artifacts",
-            label: `📦 ${tr("产物")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BoxIcon size={15} /> {tr("产物")}</span>,
             children: <Artifacts rooms={rooms} />,
           },
           {
@@ -3384,12 +3449,12 @@ export default function WorkbenchPage() {
           },
           {
             key: "knowledge",
-            label: `📚 ${tr("知识库")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><NotesIcon size={15} /> {tr("知识库")}</span>,
             children: <KnowledgeBase refreshTick={knowledgeTick} />,
           },
           {
             key: "selfcheck",
-            label: `🔍 ${tr("自检")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SearchIcon size={15} /> {tr("自检")}</span>,
             children: (
               <SelfCheckTab
                 config={config}
@@ -3403,19 +3468,19 @@ export default function WorkbenchPage() {
           },
           {
             key: "ops",
-            label: `🛠️ ${tr("运维")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><WrenchIcon size={15} /> {tr("运维")}</span>,
             children: (
               <OpsPanel refreshTick={opsTick} />
             ),
           },
           {
             key: "models",
-            label: `🧠 ${tr("模型")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BrainIcon size={15} /> {tr("模型")}</span>,
             children: <ModelsTab />,
           },
           {
             key: "settings",
-            label: `⚙️ ${tr("配置")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SettingsIcon size={15} /> {tr("配置")}</span>,
             children: (
               <SettingsTab
                 onLoginSuccess={onLoginSuccess}

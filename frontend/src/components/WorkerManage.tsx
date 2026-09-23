@@ -1,3 +1,4 @@
+import { BookmarkIcon, TeamIcon, HistoryIcon, WarnIcon, MessageIcon as ChatIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -712,7 +713,7 @@ function CheckpointCard({ workerName }: { workerName: string }) {
         onClick={() => setOpen((v) => !v)}
       >
         <span style={{ fontSize: 11 }}>{open ? "▾" : "▸"}</span>
-        <span>🔖 {tr("检查点")}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><BookmarkIcon size={12} /> {tr("检查点")}</span>
         {state.kind === "ok" && state.graph.summary.total > 0 ? (
           <antd.Badge
             count={state.graph.summary.total}
@@ -853,7 +854,7 @@ function TeamNode({
         <span style={{ width: 14, fontSize: 11, color: "#888" }}>
           {expanded ? "▾" : "▸"}
         </span>
-        <span style={{ fontSize: 14, marginRight: 6 }}>🏛</span>
+        <span style={{ marginRight: 6, display: "inline-flex" }}><TeamIcon size={15} /></span>
         <span style={{ fontWeight: 700, fontSize: 14 }}>{team.team_name}</span>
         <antd.Tag style={{ margin: "0 0 0 8px", fontSize: 11 }}>
           {workerCount} 人
@@ -1127,7 +1128,7 @@ function ManagerDetail({
             size="small"
             onClick={() => onDm(mgr.matrixUserID, mgr.roomID || undefined)}
           >
-            💬 {tr("私聊（个人房间）")}
+            <ChatIcon size={13} style={{ verticalAlign: "-2px", marginRight: 3 }} /> {tr("私聊（个人房间）")}
           </antd.Button>
         ) : null}
         {hasToken ? (
@@ -1136,7 +1137,7 @@ function ManagerDetail({
             loading={logsLoading}
             onClick={() => void loadLogs()}
           >
-            📜 {tr("日志（最近 300 行）")}
+            <HistoryIcon size={13} style={{ verticalAlign: "-2px", marginRight: 3 }} /> {tr("日志（最近 300 行）")}
           </antd.Button>
         ) : null}
       </div>
@@ -1253,7 +1254,7 @@ export function ManagerTable({
             marginBottom: 8,
           }}
         >
-          ⚠️ {tr("token 模式无 Higress Console 会话——「Higress alias」分组当前不可见。配置 admin 账号密码后可读；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。")}
+          <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 5 }}><WarnIcon size={13} style={{ marginTop: 2, flexShrink: 0 }} /> {tr("token 模式无 Higress Console 会话——「Higress alias」分组当前不可见。配置 admin 账号密码后可读；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。")}</span>
         </div>
       ) : null}
       <antd.Table
@@ -1526,7 +1527,7 @@ export default function WorkerManage(props: WorkerManageProps) {
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>👷 {tr("团队管理")}</span>
+        <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><TeamIcon size={15} /> {tr("团队管理")}</span>
         <antd.Tooltip
           title={tr(
             "拓扑树（团队 → Worker → spawn）；点 Worker 行展开管理信息（Worker 状态[CRD] / 容器状态[docker，不一致时标红] / 模型 / 唤醒休眠）与检查点；底部团队/用户/Manager 全量表；自动刷新不闪页（静默+diff）",

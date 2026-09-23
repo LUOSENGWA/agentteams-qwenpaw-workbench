@@ -1,3 +1,4 @@
+import { NotesIcon, WarnIcon, DocIcon, CheckIcon, CloseIcon, ClipIcon, SearchIcon, RefreshIcon, ClockIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -1184,8 +1185,8 @@ export default function CrdManage(props: CrdManageProps) {
       <antd.Card
         size="small"
         title={
-          <span style={{ fontWeight: 700 }}>
-            🧾 {tr("CRD 管理（L1 管理员）")}
+          <span style={{ fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <NotesIcon size={14} /> {tr("CRD 管理（L1 管理员）")}
           </span>
         }
         extra={
@@ -1211,7 +1212,7 @@ export default function CrdManage(props: CrdManageProps) {
               marginBottom: 8,
             }}
           >
-            ⚠️ {tr("token 模式无 Higress Console 会话——Higress alias 层当前不可见。配置 admin 账号密码后，「Higress alias（路由可解析）」与「Higress 内置 alias」分组将出现在模型下拉中；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。")}
+            <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 5 }}><WarnIcon size={12} style={{ marginTop: 2, flexShrink: 0 }} /> {tr("token 模式无 Higress Console 会话——Higress alias 层当前不可见。配置 admin 账号密码后，「Higress alias（路由可解析）」与「Higress 内置 alias」分组将出现在模型下拉中；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。")}</span>
           </div>
         ) : null}
         {/* v0.5.0-beta.13（装验 9/19）：三张快捷操作卡同排（lg=8×3）+
@@ -1475,9 +1476,15 @@ export default function CrdManage(props: CrdManageProps) {
                                 color: rowMv.level === "error" ? "#f5222d" : "#fa8c16",
                               }}
                             >
-                              {rowMv.level === "error"
-                                ? tr("✗ 路径形态")
-                                : tr("⚠ 未命中")}
+                              {rowMv.level === "error" ? (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                  <CloseIcon size={10} /> {tr("路径形态")}
+                                </span>
+                              ) : (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                  <WarnIcon size={10} /> {tr("未命中")}
+                                </span>
+                              )}
                             </span>
                           </antd.Tooltip>
                         ) : null}
@@ -1492,8 +1499,8 @@ export default function CrdManage(props: CrdManageProps) {
                             updateRow(i, { soulOpen: !row.soulOpen })
                           }
                         >
-                          📝 {tr("SOUL（可选，多行/上传）")}
-                          {(row.soul || "").trim() ? " ✓" : ""}
+                          <DocIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {tr("SOUL（可选，多行/上传）")}
+                          {(row.soul || "").trim() ? <CheckIcon size={10} style={{ color: "#52c41a", verticalAlign: "-1px", marginLeft: 2 }} /> : null}
                           {row.soulOpen ? " ▾" : " ▸"}
                         </antd.Button>
                         {row.soulOpen ? (
@@ -1517,7 +1524,7 @@ export default function CrdManage(props: CrdManageProps) {
                               }}
                             >
                               <antd.Button size="small" type="text" style={{ padding: 0, height: "auto" }}>
-                                📎 {tr("上传 SOUL 文件")}
+                                <ClipIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {tr("上传 SOUL 文件")}
                               </antd.Button>
                             </antd.Upload>
                           </div>
@@ -1577,8 +1584,8 @@ export default function CrdManage(props: CrdManageProps) {
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>
-                    🔍 {tr("创建自检")}
+                  <span style={{ fontWeight: 700, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <SearchIcon size={12} /> {tr("创建自检")}
                   </span>
                   {tCheck.running ? (
                     <antd.Tag color="processing">{tr("进行中（5s 轮询，最长 3 分钟）")}</antd.Tag>
@@ -1597,7 +1604,7 @@ export default function CrdManage(props: CrdManageProps) {
                       )
                     }
                   >
-                    ↻ {tr("重新检查")}
+                    <RefreshIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("重新检查")}
                   </antd.Button>
                 </div>
                 <div style={{ display: "grid", gap: 5, fontSize: 12 }}>
@@ -1607,20 +1614,26 @@ export default function CrdManage(props: CrdManageProps) {
                       style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
                     >
                       <span style={{ fontWeight: 600, minWidth: 150 }}>
-                        {r.ready ? "✅" : "⏳"} {r.name}
+                        {r.ready ? <CheckIcon size={12} style={{ color: "#52c41a", verticalAlign: "-1px", marginRight: 3 }} /> : <ClockIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} />} {r.name}
                       </span>
                       <span style={{ color: r.modelOk ? t.textSecondary : "#f5222d" }}>
                         {r.sentModel ? (
                           r.crdModel === r.sentModel ? (
-                            `model ✓ ${r.sentModel}`
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              model <CheckIcon size={10} style={{ color: "#52c41a" }} /> {r.sentModel}
+                            </span>
                           ) : r.crdModel ? (
-                            `model ✗ 期望 ${r.sentModel}，CRD=${r.crdModel}`
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              model <CloseIcon size={10} style={{ color: "#f5222d" }} /> {tr("期望")} {r.sentModel}，CRD={r.crdModel}
+                            </span>
                           ) : (
                             `model … 已提交 ${r.sentModel}（CRD 尚未回读）`
                           )
                         ) : (
                           <>
-                            model ⚠ {tr("无显式模型（跟随集群默认；若集群无默认，该 Worker 无模型）")}
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              model <WarnIcon size={10} style={{ color: "#fa8c16" }} /> {tr("无显式模型（跟随集群默认；若集群无默认，该 Worker 无模型）")}
+                            </span>
                           </>
                         )}
                       </span>
@@ -1707,7 +1720,7 @@ export default function CrdManage(props: CrdManageProps) {
                               : "#52c41a",
                       }}
                     >
-                      {mv.level === "ok" ? "✓ " : mv.level === "error" ? "✗ " : "⚠ "}
+                      {mv.level === "ok" ? <CheckIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} /> : mv.level === "error" ? <CloseIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} /> : <WarnIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} />}
                       {modelVerdictText(tr, mv, nw.model, modelCandidates)}
                     </div>
                   );
@@ -1716,7 +1729,7 @@ export default function CrdManage(props: CrdManageProps) {
                 <antd.Input.TextArea
                   size="small"
                   autoSize={{ minRows: 2, maxRows: 6 }}
-                  placeholder={tr("SOUL（可选，多行；📎 可上传 .md/.txt，worker≤150 行）")}
+                  placeholder={tr("SOUL（可选，多行；可上传 .md/.txt，worker≤150 行）")}
                   value={nw.soul}
                   onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
                     setNw((p) => ({ ...p, soul: e.target.value }))
@@ -1732,7 +1745,7 @@ export default function CrdManage(props: CrdManageProps) {
                   }}
                 >
                   <antd.Button size="small" type="text" style={{ padding: 0, height: "auto" }}>
-                    📎 {tr("上传 SOUL 文件")}
+                    <ClipIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {tr("上传 SOUL 文件")}
                   </antd.Button>
                 </antd.Upload>
                 <antd.Button
@@ -2085,7 +2098,15 @@ export default function CrdManage(props: CrdManageProps) {
                               title={modelVerdictText(tr, cmv, row.model || "", modelCandidates)}
                             >
                               <antd.Tag color={cmv.level === "error" ? "red" : "orange"}>
-                                {cmv.level === "error" ? "✗ 路径形态" : "⚠ 未命中"}
+                                {cmv.level === "error" ? (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                    <CloseIcon size={10} /> {tr("路径形态")}
+                                  </span>
+                                ) : (
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                    <WarnIcon size={10} /> {tr("未命中")}
+                                  </span>
+                                )}
                               </antd.Tag>
                             </antd.Tooltip>
                           );

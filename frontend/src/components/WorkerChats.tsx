@@ -29,6 +29,7 @@
  * - /status 仅 QwenPaw ≥2.2.1：旧 runtime 404 → 隐藏状态灯（版本无关门）。
  * - 只读：无发送/编辑面。
  */
+import { CloseIcon, WrenchIcon, PictureIcon, ThoughtIcon, MessageIcon, UserIcon, WarnIcon, RobotIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useT } from "../i18n";
@@ -351,7 +352,7 @@ function StepLine({
                   overflow: "hidden",
                 }}
               >
-                <span style={{ flexShrink: 0 }}>{p.failed ? "❌" : "🔧"}</span>
+                <span style={{ flexShrink: 0 }}>{p.failed ? <CloseIcon size={12} style={{ color: "#ff4d4f", verticalAlign: "-1px" }} /> : <WrenchIcon size={12} style={{ verticalAlign: "-1px" }} />}</span>
                 <span
                   style={{
                     fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
@@ -388,7 +389,7 @@ function StepLine({
                     style={{ maxWidth: 160, maxHeight: 120, borderRadius: 6, display: "block" }}
                   />
                 ) : null}
-                🖼️ {p.label}
+                <PictureIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {p.label}
               </div>
             );
           }
@@ -403,7 +404,7 @@ function StepLine({
                 color: "rgba(0,0,0,0.55)",
               }}
             >
-              {p.kind === "thinking" ? "💭" : "💬"} {txt}
+              {p.kind === "thinking" ? <ThoughtIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> : <MessageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} />} {txt}
             </div>
           );
         })
@@ -446,7 +447,7 @@ function StepsCollapse({
         }}
         title={open ? tr("收起") : tr("点击展开步骤详情")}
       >
-        <span>🔧</span>
+        <span style={{ display: "inline-flex" }}><WrenchIcon size={12} /></span>
         <span>{tr("{n} 步", { n: items.length })}</span>
         <span
           style={{
@@ -921,7 +922,7 @@ function WorkerChats({
                                 />
                               ) : (
                                 <div key={j} style={{ fontSize: 12, opacity: 0.8 }}>
-                                  🖼️ {p.label}
+                                  <PictureIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {p.label}
                                 </div>
                               )
                             ) : (
@@ -940,7 +941,7 @@ function WorkerChats({
                       {/* v0.5.0-beta.13.11（F8 QwenPaw 化：HostBubbles 同款
                           Avatar 分侧——user 右 / assistant 左）。 */}
                       <antd.Avatar size="small" style={{ background: "#ff7f16", flexShrink: 0 }}>
-                        <span style={{ fontSize: 11 }}>👤</span>
+                        <UserIcon size={12} style={{ color: "#fff" }} />
                       </antd.Avatar>
                     </div>
                   );
@@ -962,7 +963,7 @@ function WorkerChats({
                         wordBreak: "break-word",
                       }}
                     >
-                      ⚠️ {txt}
+                      <WarnIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {txt}
                     </div>
                   );
                 }
@@ -992,7 +993,7 @@ function WorkerChats({
                   >
                     {/* v0.5.0-beta.13.11（F8 QwenPaw 化）：assistant 左 Avatar。 */}
                     <antd.Avatar size="small" style={{ background: "#1677ff", flexShrink: 0 }}>
-                      <span style={{ fontSize: 11 }}>🤖</span>
+                      <RobotIcon size={12} style={{ color: "#fff" }} />
                     </antd.Avatar>
                     <div style={{ position: "relative", flex: "0 1 auto", minWidth: 0 }}>
                       <div
@@ -1020,7 +1021,7 @@ function WorkerChats({
                                 style={{ maxWidth: 220, maxHeight: 160, borderRadius: 6, display: "block" }}
                               />
                             ) : (
-                              <span style={{ fontSize: 12 }}>🖼️ {p.label}</span>
+                              <span style={{ fontSize: 12 }}><PictureIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {p.label}</span>
                             )}
                           </div>
                         ) : (

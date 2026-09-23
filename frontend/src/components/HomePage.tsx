@@ -1,3 +1,4 @@
+import { SendIcon, MessageIcon, SearchIcon, BellIcon, NotesIcon, PuzzleIcon, SettingsIcon, UserIcon, UsersIcon, TodoIcon, TreeIcon, ShieldIcon, CheckIcon, CloseIcon, BoxIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -310,7 +311,7 @@ export default function HomePage(props: HomePageProps) {
 
   // 快捷操作（文字+emoji，零 antdIcons 依赖）。
   const quickBtn = (
-    emoji: string,
+    icon: ReactNS.ReactNode,
     label: string,
     desc: string,
     onClick: () => void,
@@ -335,7 +336,7 @@ export default function HomePage(props: HomePageProps) {
         (e.currentTarget as HTMLElement).style.boxShadow = "none";
       }}
     >
-      <div style={{ fontSize: 20, lineHeight: "24px" }}>{emoji}</div>
+      <div style={{ display: "flex", alignItems: "center", height: 24 }}>{icon}</div>
       <div
         style={{
           fontSize: 13,
@@ -388,11 +389,14 @@ export default function HomePage(props: HomePageProps) {
           {/* v0.5.0-beta.12：身份行——当前账号 + Controller 视图级别（多账号/双模式
               时一眼看清看的是谁的数据；L2 只看到授权团队，L1 全量）。 */}
           <div style={{ fontSize: 11, color: t.textSecondary }}>
-            {config?.matrix?.user_id
-              ? `👤 ${config.matrix.user_id.startsWith("@")
+            {config?.matrix?.user_id ? (
+              <>
+                <UserIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} />
+                {config.matrix.user_id.startsWith("@")
                   ? config.matrix.user_id.slice(1).split(":")[0]
-                  : config.matrix.user_id} · `
-              : ""}
+                  : config.matrix.user_id}{" · "}
+              </>
+            ) : null}
             {config?.controller_token
               ? tr("Controller L1 全量")
               : config?.matrix?.user_id
@@ -412,42 +416,42 @@ export default function HomePage(props: HomePageProps) {
           }}
         >
           {quickBtn(
-            "🚀",
+            <SendIcon size={20} />,
             tr("发起任务"),
             tr("选 Leader 派发新任务"),
             openNewTask,
           )}
           {quickBtn(
-            "💬",
+            <MessageIcon size={20} />,
             tr("打开群聊"),
             unreadTotal > 0 ? tr("有 {n} 条未读", { n: unreadTotal }) : tr("进入团队群聊"),
             () => onGotoTab("chat"),
           )}
           {quickBtn(
-            "🔍",
+            <SearchIcon size={20} />,
             tr("全局搜索"),
             tr("搜消息和群聊"),
             () => onGlobalSearch?.(),
           )}
           {quickBtn(
-            "🔔",
+            <BellIcon size={20} />,
             tr("通知中心"),
             inboxUnread > 0 ? tr("有 {n} 条通知", { n: inboxUnread }) : tr("审批与房间 @你"),
             () => onGotoTab("inbox"),
           )}
           {quickBtn(
-            "📚",
+            <NotesIcon size={20} />,
             tr("知识库"),
             tr("团队知识一屏览"),
             () => onGotoTab("knowledge"),
           )}
           {quickBtn(
-            "🧩",
+            <PuzzleIcon size={20} />,
             tr("技能中心"),
             tr("团队技能与 MCP 矩阵"),
             () => onGotoTab("team"),
           )}
-          {quickBtn("⚙️", tr("快速配置"), tr("检查连接与自检"), () =>
+          {quickBtn(<SettingsIcon size={20} />, tr("快速配置"), tr("检查连接与自检"), () =>
             onGotoTab("settings"),
           )}
         </div>
@@ -462,7 +466,7 @@ export default function HomePage(props: HomePageProps) {
               onClick={() => onGotoTab("chat")}
             >
               <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                👥 {tr("团队")}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><UsersIcon size={14} /> {tr("团队")}</span>
               </div>
               <div style={{ display: "flex", gap: 20, marginTop: 8 }}>
                 <div>
@@ -526,7 +530,7 @@ export default function HomePage(props: HomePageProps) {
               onClick={() => onGotoTab("workflow")}
             >
               <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                📋 {tr("任务进展")}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TodoIcon size={14} /> {tr("任务进展")}</span>
               </div>
               <div style={{ display: "flex", gap: 20, marginTop: 8 }}>
                 <div>
@@ -568,7 +572,7 @@ export default function HomePage(props: HomePageProps) {
               onClick={() => onGotoTab("team")}
             >
               <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                🌳 {tr("Worker")}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TreeIcon size={14} /> {tr("Worker")}</span>
               </div>
               <div style={{ display: "flex", gap: 20, marginTop: 8 }}>
                 <div>
@@ -608,7 +612,7 @@ export default function HomePage(props: HomePageProps) {
             {/* v0.5.0-beta.12：空态压缩为单行细条（此前空态也占整卡高度） */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                🛡️ {tr("待审批")}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldIcon size={14} /> {tr("待审批")}</span>
                 {approvals.length > 0 && (
                   <span
                     style={{
@@ -727,7 +731,7 @@ export default function HomePage(props: HomePageProps) {
                       loading={approvalBusy === key}
                       onClick={() => void handleApproval("approve", item)}
                     >
-                      ✅ {tr("批准")}
+                      <CheckIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("批准")}
                     </antd.Button>
                     <antd.Button
                       size="small"
@@ -735,7 +739,7 @@ export default function HomePage(props: HomePageProps) {
                       loading={approvalBusy === key}
                       onClick={() => void handleApproval("deny", item)}
                     >
-                      ❌ {tr("拒绝")}
+                      <CloseIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("拒绝")}
                     </antd.Button>
                   </div>
                 );
@@ -750,7 +754,7 @@ export default function HomePage(props: HomePageProps) {
         <antd.Col xs={24} sm={16}>
           <antd.Card style={cardStyle} styles={{ body: cardBody }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-              💬 {tr("最近动态")}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={14} /> {tr("最近动态")}</span>
             </div>
             {roomsByActivity.length === 0 ? (
               <div
@@ -845,7 +849,7 @@ export default function HomePage(props: HomePageProps) {
                 onClick={() => onGotoTab("artifacts")}
               >
                 <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                  📦 {tr("产物")}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BoxIcon size={14} /> {tr("产物")}</span>
                 </div>
                 <div style={{ display: "flex", gap: 20, marginTop: 8 }}>
                   <div>
@@ -896,7 +900,7 @@ export default function HomePage(props: HomePageProps) {
                   onClick={() => onGotoTab("ops")}
                 >
                   <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                    ⚡ {tr("集群负载")}
+                    集群负载
                   </div>
                   {!sglang.loaded ? (
                     <div

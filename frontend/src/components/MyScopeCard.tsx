@@ -1,3 +1,4 @@
+import { UserIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import type { HumanInfo, WorkerTreeTeam } from "../api";
@@ -54,7 +55,7 @@ export default function MyScopeCard(props: MyScopeCardProps) {
     <antd.Card size="small" styles={{ body: { padding: "10px 14px" } }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px 16px" }}>
         <span style={{ fontWeight: 700, fontSize: 13 }}>
-          🪪 {tr("当前账号")}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><UserIcon size={13} /> {tr("当前账号")}</span>
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <span style={{ fontSize: 12.5 }}>

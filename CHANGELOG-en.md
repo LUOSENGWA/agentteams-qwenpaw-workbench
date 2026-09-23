@@ -5,6 +5,23 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.13 (2026-09-23)
+
+**Close of 10 feedback items from the 13.12 verification: workflow blocked banners carry info / workflow tab refreshes on open / chat-group project files fixed / Element-style "load original" instead of "scrolled out" / download destination made explicit (desktop) / KB equal-height + independent tree scroll / all emoji → SVG (27 files, 71-icon library)**
+
+- **Workflow blocked banners carry info ("only '⚠ blocked' shows, feels abrupt")**: each interrupted-task banner (previously several rows showing a bare "⚠ blocked" word) now carries the task short ID + task status + assigned Worker + the reason inline (task interrupt description / project pause reason), so the specific task is directly locatable
+- **Workflow tab refreshes on open ("it should auto-refresh as soon as it opens")**: previously only the 15s poll + manual refresh — switching to the workflow tab (or a workflow card appearing in chat) now fetches the source immediately, with a 2s debounce against rapid tab switching
+- **Chat-group project files fixed ("cannot be read")**: three fixes — ① project list cap 20 → 100 (previously the current project's files never loaded when it fell outside the alphabetical top 20) ② matching model reworked: grouped by project ID (previously by project name, colliding/missing across teams) + per-project lazy loading (current room's project loads automatically, others load on expand, per-project error display + refresh) ③ download URLs now carry a &team= qualifier to prevent cross-team collisions
+- **Element-style "scrolled out of history" ("Element still has the messages")**: when the original message is outside the loaded window it no longer shows the dead-end "scrolled out of history" — it now offers an Element-style "load original message" action (chained pagination rewinding up to 15 pages × 50 messages from the loaded window; inserted in place as a quote bar on hit, or an explicit "original message not in loadable history" + jump fallback when exhausted)
+- **Download destination made explicit (desktop still unknown)**: a single-point toast in downloadViaHost (covers all 6 call sites) — browser: "default download directory + filename"; Electron desktop: explicitly names the OS "Downloads" folder (e.g. C:\Users\<name>\Downloads) and notes that no download list is provided
+- **KB equal-height + independent tree scroll**: the knowledge-file column and preview column stretch to equal height; the file-tree column scrolls on its own and no longer bubbles the wheel into page scroll
+- **All emoji → SVG (T7–T10 + full sweep)**: new icons.tsx library (71 icons: 43 HarmonyOS ic_public_* fill paths inlined directly + 28 hand-drawn stroke icons for items with no system counterpart — brain/radar/shield/brick etc.); UI emoji replaced across 27 files (top 4 tab icons + per-panel buttons/labels/empty states/verdict symbols/menu items/download buttons/status markers). **Documented keep-list**: message protocol regexes (🔧✅❌ parsing, Approval Required detection) / emoji picker & quick reactions (Matrix emoji content) / outgoing review-message text / browser notification titles (platform strings) / host string-API limits (sidebar icon fallback 🏢) / single-char text glyphs (✓✗○▶☰↻) / code comments
+- **i18n**: 1277 keys, 0 missing, 0 empty en (new: Matrix-not-configured hint / path-like·not matched·expected / de-emoji-fied SOUL upload placeholder; legacy "✗ path-like" and "⚠ not matched" keys reworked to plain text + SVG prefix)
+
+**Verification**: tsc 0 · vite build 2,268.12kB · pytest 64/64 · i18n 1277 keys 0 missing 0 empty · full-repo emoji final scan = documented keep-list only · 12 version carriers (4 code + README×2 + docs×4 + CHANGELOG×2)
+
+---
+
 ## 0.5.0-beta.13.12 (2026-09-23)
 
 **Close of 7 feedback items from the 13.11 verification: always-visible session status dot / Element-style pinned scroll-to-bottom / measured visible width for wide-narrow / room list mentions section + sort / topology & team icons as SVG / team-tab manual refresh now instant (negative-cache root cause) / event-stream empty-state copy + cancelled as a first-class status**

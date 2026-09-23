@@ -1,3 +1,4 @@
+import { BellIcon, CheckIcon, RefreshIcon, MailIcon, ShieldIcon, WarnIcon, MessageIcon, MonitorIcon, TrashIcon, CloseIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -227,7 +228,7 @@ export default function NotificationCenter(props: {
       {/* 顶部工具条 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <antd.Typography.Title level={4} style={{ margin: 0 }}>
-          🔔 {tr("通知中心")}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><BellIcon size={15} /> {tr("通知中心")}</span>
         </antd.Typography.Title>
         {unread > 0 ? (
           <antd.Badge count={unread} overflowCount={99} style={{ backgroundColor: PRIMARY }} />
@@ -248,10 +249,10 @@ export default function NotificationCenter(props: {
           disabled={unread === 0}
           onClick={() => void markAll()}
         >
-          ✓ {tr("全部已读")}
+          <CheckIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("全部已读")}
         </antd.Button>
         <antd.Button size="small" onClick={() => void load()}>
-          ↻ {tr("刷新")}
+          <RefreshIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("刷新")}
         </antd.Button>
       </div>
 
@@ -270,7 +271,7 @@ export default function NotificationCenter(props: {
             gap: 8,
           }}
         >
-          <span style={{ fontSize: 16 }}>🛡️</span>
+          <ShieldIcon size={16} />
           <span style={{ fontWeight: 600, color: PRIMARY, flex: 1 }}>
             {tr("有 {n} 条工具调用待审批", { n: approvals.length })}
           </span>
@@ -281,7 +282,7 @@ export default function NotificationCenter(props: {
       ) : null}
 
       {error ? (
-        <div style={{ color: "#ff4d4f", fontSize: 13 }}>⚠️ {error}</div>
+        <div style={{ color: "#ff4d4f", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}><WarnIcon size={12} /> {error}</div>
       ) : null}
 
       {/* v0.5.0-beta.12（邀请主动通知）：新邀请卡片 → 跳团队概览处理。
@@ -300,7 +301,7 @@ export default function NotificationCenter(props: {
               gap: 6,
             }}
           >
-            📩 {tr("邀请（{n}）", { n: invites.length })}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><MailIcon size={13} /> {tr("邀请（{n}）", { n: invites.length })}</span>
             <span style={{ fontSize: 11, color: t.textSecondary, fontWeight: 400 }}>
               {tr("新房间邀请 · 点击到团队概览接受/拒绝")}
             </span>
@@ -354,14 +355,14 @@ export default function NotificationCenter(props: {
             gap: 6,
           }}
         >
-          🛡️ {tr("待审批请求（{n}）", { n: approvals.length })}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><ShieldIcon size={13} /> {tr("待审批请求（{n}）", { n: approvals.length })}</span>
           <span style={{ fontSize: 11, color: t.textSecondary, fontWeight: 400 }}>
             {tr("Worker 受控工具调用 · 一键批准/拒绝或去房间")}
           </span>
         </div>
         {approvalsError ? (
           <div style={{ color: t.textSecondary, fontSize: 12 }}>
-            ⚠️ {tr("待审批请求加载失败")}：{approvalsError}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={12} /> {tr("待审批请求加载失败")}：</span>{approvalsError}
           </div>
         ) : approvals.length === 0 ? (
           <div style={{ color: t.textSecondary, fontSize: 12, padding: "4px 0" }}>
@@ -425,7 +426,7 @@ export default function NotificationCenter(props: {
                     loading={approvalActing === (a.event_id || a.room_id)}
                     onClick={() => void doApproval(a, "approve")}
                   >
-                    ✓ {tr("批准")}
+                    <CheckIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("批准")}
                   </antd.Button>
                   <antd.Button
                     size="small"
@@ -433,7 +434,7 @@ export default function NotificationCenter(props: {
                     disabled={approvalActing === (a.event_id || a.room_id)}
                     onClick={() => void doApproval(a, "deny")}
                   >
-                    ✗ {tr("拒绝")}
+                    <CloseIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("拒绝")}
                   </antd.Button>
                   <antd.Button
                     size="small"
@@ -441,7 +442,7 @@ export default function NotificationCenter(props: {
                     style={{ fontSize: 11.5 }}
                     onClick={() => onGotoRoom?.(a.room_id, a.event_id || undefined)}
                   >
-                    💬 {tr("去房间")}
+                    <MessageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("去房间")}
                   </antd.Button>
                 </div>
               </div>
@@ -463,7 +464,7 @@ export default function NotificationCenter(props: {
             gap: 6,
           }}
         >
-          💬 {tr("房间通知")}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><MessageIcon size={13} /> {tr("房间通知")}</span>
           <span style={{ fontSize: 11, color: t.textSecondary, fontWeight: 400 }}>
             {tr("团队房间 @提到你 · 点击跳转对应消息")}
           </span>
@@ -472,7 +473,7 @@ export default function NotificationCenter(props: {
           <antd.Skeleton active paragraph={{ rows: 2 }} />
         ) : mentionsError ? (
           <div style={{ color: t.textSecondary, fontSize: 12 }}>
-            ⚠️ {tr("房间通知加载失败")}：{mentionsError}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={12} /> {tr("房间通知加载失败")}：</span>{mentionsError}
           </div>
         ) : mentions.length === 0 ? (
           <div style={{ color: t.textSecondary, fontSize: 12, padding: "4px 0" }}>
@@ -558,7 +559,7 @@ export default function NotificationCenter(props: {
             gap: 6,
           }}
         >
-          🖥️ {tr("宿主通知")}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><MonitorIcon size={13} /> {tr("宿主通知")}</span>
           <span style={{ fontSize: 11, color: t.textSecondary, fontWeight: 400 }}>
             {tr("本机 QwenPaw 事件 · 与团队房间通知不同源，多数无房间可跳")}
           </span>
@@ -702,7 +703,7 @@ export default function NotificationCenter(props: {
                           }}
                           title={tr("去房间")}
                         >
-                          💬 {tr("去房间")}
+                          <MessageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("去房间")}
                         </antd.Button>
                       ) : null}
                       <antd.Button
@@ -715,7 +716,7 @@ export default function NotificationCenter(props: {
                         }}
                         title={tr("删除")}
                       >
-                        🗑
+                        <TrashIcon size={12} />
                       </antd.Button>
                     </div>
                   </div>

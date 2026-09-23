@@ -23,6 +23,26 @@ import type { WorkerInfo, WorkflowEvent } from "../api";
 import WorkerChats from "./WorkerChats";
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
+import {
+  CheckIcon,
+  CloseIcon,
+  ClipIcon,
+  PictureIcon,
+  WrenchIcon,
+  ShieldIcon,
+  DocIcon,
+  FolderIcon,
+  SearchIcon,
+  EditIcon,
+  BellIcon,
+  BellOffIcon,
+  DoorIcon,
+  TodoIcon,
+  TrashIcon,
+  WarnIcon,
+  PinIcon,
+  MessageIcon,
+} from "./icons";
 import WorkerSessionDot from "./WorkerSessionDot";
 import MemberStrip from "./MemberStrip";
 import type { WorkerSessionState } from "../workerSessionState";
@@ -66,21 +86,35 @@ function toolNameOf(body: string): string {
 }
 
 /** 引用回复折叠条（Element 同款：左竖色条 + 16px 小头像 + 着色名字 + 单行预览；
- * 点击滚动定位原消息并高亮闪烁，不再内联展开副本）。 */
+ * 点击滚动定位原消息并高亮闪烁，不再内联展开副本）。
+ *  v0.5.0-beta.13.13（13.12 装验「很多信息『已滚出历史』但 Element 里信息
+ * 都在」）：原消息不在已加载窗口时不再标死「已滚出历史」——对齐 Element
+ * 按需加载语义：显示可点的「加载原消息」→ 链式向前分页把原消息拉进时间线
+ * （onLoadOriginal）；加载成功引用条自动转为正常态（可点定位）；到底仍无 →
+ * 落 /context 定位区兜底（onJump 现有链路）并标「原消息不在可加载历史」。 */
 function ReplyBanner({
   msg,
   room,
   messages,
   onJump,
+  onLoadOriginal,
 }: {
   msg: RoomMessage;
   room: TeamRoom | null;
   messages: RoomMessage[];
   onJump: (eventId: string) => void;
+  onLoadOriginal?: (eventId: string) => Promise<boolean>;
 }) {
   const t = useThemeColors();
   const tr = useT();
   const reply = msg.reply;
+  const [loadState, setLoadState] = React.useState<
+    "idle" | "loading" | "notfound"
+  >("idle");
+  React.useEffect(() => {
+    // 换引用目标（同组件实例复用）时复位。
+    setLoadState("idle");
+  }, [reply?.event_id]);
   if (!reply) return null;
   // 原消息在已加载历史里 → 渲染原消息内容缩略（Element ReplyTile 同款：
   // 文本截断 / 图片缩略 / 文件图标名 / 工具消息名）；否则用 fallback 摘要。
@@ -91,16 +125,16 @@ function ReplyBanner({
       ? senderShortName(original.sender, room)
       : tr("消息");
   let summary = "";
-  let summaryIcon = "";
+  let summaryIcon: ReactNS.ReactNode = null;
   if (original) {
     if (original.msgtype === "m.image") {
-      summaryIcon = "🖼️ ";
+      summaryIcon = <PictureIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} />;
       summary = "图片";
     } else if (original.msgtype === "m.file") {
-      summaryIcon = "📎 ";
+      summaryIcon = <ClipIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} />;
       summary = original.filename || original.body || "文件";
     } else if (isToolMessage(original.body || "")) {
-      summaryIcon = "🔧 ";
+      summaryIcon = <WrenchIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} />;
       summary = toolNameOf(original.body || "") || original.body;
     } else {
       summary = (original.body || "").replace(/\n+/g, " ").slice(0, 120);
@@ -153,8 +187,37 @@ function ReplyBanner({
       </span>
       {original ? (
         <span style={{ fontSize: 11, color: "#aaa", flexShrink: 0 }}>↗</span>
+      ) : loadState === "loading" ? (
+        <span style={{ fontSize: 11, color: PRIMARY, flexShrink: 0 }}>
+          {tr("正在加载…")}
+        </span>
+      ) : loadState === "notfound" ? (
+        <span style={{ fontSize: 11, color: "#ccc", flexShrink: 0 }}>
+          {tr("原消息不在可加载历史")}
+        </span>
       ) : (
-        <span style={{ fontSize: 11, color: "#ccc", flexShrink: 0 }}>{tr("已滚出历史")}</span>
+        <span
+          style={{
+            fontSize: 11,
+            color: onLoadOriginal ? PRIMARY : "#ccc",
+            cursor: onLoadOriginal ? "pointer" : "default",
+            textDecoration: onLoadOriginal ? "underline" : "none",
+            flexShrink: 0,
+          }}
+          onClick={async (e) => {
+            if (!onLoadOriginal) return;
+            e.stopPropagation();
+            setLoadState("loading");
+            const found = await onLoadOriginal(reply.event_id);
+            if (!found) {
+              // 到底仍无 → 现有 /context 定位区兜底（不丢信息）。
+              setLoadState("notfound");
+              onJump(reply.event_id);
+            }
+          }}
+        >
+          {onLoadOriginal ? tr("加载原消息") : tr("已滚出历史")}
+        </span>
       )}
     </div>
   );
@@ -355,7 +418,7 @@ function ThreadPanelView({
         </span>
         <div style={{ flex: 1 }} />
         <antd.Button type="text" size="small" onClick={onClose} title={tr("关闭话题")}>
-          ✕
+          <CloseIcon size={12} />
         </antd.Button>
       </div>
       {/* v0.5.0-beta.13.2：relative wrapper = 话题内一键置底按钮锚点。 */}
@@ -589,10 +652,10 @@ function SenderAvatar({
   const member = room?.members?.[mxid];
   const isMe = mxid === myUserId;
   // 左键点击弹层（需求：「点击头像可以@和改 worker 配置」）
-  const quick: Array<{ label: string; act: () => void }> = [];
+  const quick: Array<{ label: ReactNS.ReactNode; act: () => void }> = [];
   if (workerName && onOpenChats) {
     quick.push({
-      label: `💬 ${tr("查看会话")}`,
+      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={13} /> {tr("查看会话")}</span>,
       act: () => onOpenChats(workerName),
     });
   }
@@ -604,13 +667,13 @@ function SenderAvatar({
   }
   if (workerName && onDetail) {
     quick.push({
-      label: `🛡️ ${tr("Worker 配置（审批模式）")}`,
+      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldIcon size={13} /> {tr("Worker 配置（审批模式）")}</span>,
       act: () => onDetail(mxid),
     });
   }
   if (!isMe && onDm) {
     quick.push({
-      label: `💬 ${tr("私聊")} ${name}`,
+      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={13} /> {tr("私聊")} {name}</span>,
       act: () => onDm(mxid),
     });
   }
@@ -628,7 +691,7 @@ function SenderAvatar({
       ? [
           {
             key: "dm",
-            label: `💬 ${tr("私聊")} ${name}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={13} /> {tr("私聊")} {name}</span>,
             onClick: () => onDm(mxid),
           },
         ]
@@ -637,7 +700,7 @@ function SenderAvatar({
       ? [
           {
             key: "chats",
-            label: `💬 ${tr("查看会话")}`,
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={13} /> {tr("查看会话")}</span>,
             onClick: () => onOpenChats(workerName),
           },
         ]
@@ -728,7 +791,13 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
     : head.startsWith("❌")
       ? "fail"
       : "call";
-  const statusIcon = status === "ok" ? "✅" : status === "fail" ? "❌" : "🔧";
+  const statusIcon = status === "ok" ? (
+    <CheckIcon size={12} style={{ color: "#30a46c" }} />
+  ) : status === "fail" ? (
+    <CloseIcon size={12} style={{ color: "#e5484d" }} />
+  ) : (
+    <WrenchIcon size={12} />
+  );
   const nameColor =
     status === "fail" ? "#e5484d" : status === "ok" ? "#30a46c" : t.textSecondary;
   // 预览：第一行后的内容前 80 字符（输出消息的实质内容）。
@@ -1048,7 +1117,7 @@ function MessageBody({
             marginBottom: 6,
           }}
         >
-          <span style={{ fontSize: 16 }}>🛡️</span>
+          <ShieldIcon size={16} />
           <span style={{ fontWeight: 600, fontSize: 14 }}>
             {toolMatch?.[1]?.trim() || tr("工具调用审批")}
           </span>
@@ -1087,14 +1156,14 @@ function MessageBody({
               }}
               onClick={() => onApprovalAction?.(msg, "approve")}
             >
-              ✅ {tr("批准")}
+              <CheckIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("批准")}
             </antd.Button>
             <antd.Button
               size="small"
               danger
               onClick={() => onApprovalAction?.(msg, "deny")}
             >
-              ❌ {tr("拒绝")}
+              <CloseIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("拒绝")}
             </antd.Button>
             <span style={{ fontSize: 11, color: "#bbb", alignSelf: "center" }}>
               {tr("将发送 @{name} {cmd}", {
@@ -1245,7 +1314,7 @@ function MessageBody({
         {!mine && onDeliverable ? (
           accepted ? (
             <div style={{ fontSize: 12, color: "#52c41a" }}>
-              ✅ {tr("已接受")}
+              <CheckIcon size={12} style={{ color: "#52c41a", verticalAlign: "-1px" }} /> {tr("已接受")}
             </div>
           ) : revising ? (
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -1297,10 +1366,10 @@ function MessageBody({
                   setAccepted(true);
                 }}
               >
-                ✅ {tr("接受")}
+                <CheckIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("接受")}
               </antd.Button>
               <antd.Button size="small" onClick={() => setRevising(true)}>
-                📝 {tr("修改意见")}
+                <DocIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("修改意见")}
               </antd.Button>
             </div>
           )
@@ -1453,6 +1522,10 @@ export interface RoomChatProps {
   /** v0.5.0-beta.13.1（9/19 入口迁移）：Worker 列表——头像抽屉「查看会话」
    * （WorkerChats fixedWorker 模式）的数据源。 */
   workers?: WorkerInfo[];
+  /** v0.5.0-beta.13.13（Element 同款按需加载）：引用条「加载原消息」——
+   * 链式向前分页把原消息拉进时间线；返回是否找到（找不到由 UI 落
+   * /context 定位区兜底）。 */
+  onLoadOriginal?: (eventId: string) => Promise<boolean>;
 }
 
 export default function RoomChat(props: RoomChatProps) {
@@ -1495,6 +1568,7 @@ export default function RoomChat(props: RoomChatProps) {
     onOpenProject,
     onWorkflowIntervened,
     onOpenProjectFiles,
+    onLoadOriginal,
   } = props;
   // v0.5.0-beta.13.1（9/19 入口迁移）：头像点击 → Worker 会话抽屉（只读，
   // #1295 端点；404 版本门占位）。团队管理不再挂会话 tab。
@@ -2424,7 +2498,7 @@ export default function RoomChat(props: RoomChatProps) {
             onClick={() => onOpenProjectFiles(room)}
             title={tr("项目文件（任务结果/任务书/交付物，产物端点 产物端点）")}
           >
-            📁 {tr("项目文件")}
+            <FolderIcon size={13} style={{ verticalAlign: "-2px" }} /> {tr("项目文件")}
           </antd.Button>
         ) : null}
         <button
@@ -2460,7 +2534,7 @@ export default function RoomChat(props: RoomChatProps) {
             el.style.transform = "none";
           }}
         >
-          <span style={{ fontSize: 14, lineHeight: 1 }}>🔍</span>
+          <SearchIcon size={14} />
           {tr("搜索")}
         </button>
         {/* v0.5.0-beta.12 ：房间操作（Element 同款能力：静音 + 退出房间）。
@@ -2477,7 +2551,7 @@ export default function RoomChat(props: RoomChatProps) {
                   ? [
                       {
                         key: "rename",
-                        label: `✏️ ${tr("重命名房间")}`,
+                        label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><EditIcon size={13} /> {tr("重命名房间")}</span>,
                       },
                     ]
                   : []),
@@ -2489,8 +2563,8 @@ export default function RoomChat(props: RoomChatProps) {
                       {
                         key: "mute",
                         label: muted
-                          ? `🔔 ${tr("取消静音")}`
-                          : `🔇 ${tr("静音此房间")}`,
+                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellIcon size={13} /> {tr("取消静音")}</span>
+                          : <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellOffIcon size={13} /> {tr("静音此房间")}</span>,
                       },
                     ]
                   : []),
@@ -2500,7 +2574,7 @@ export default function RoomChat(props: RoomChatProps) {
                       {
                         key: "leave",
                         danger: true,
-                        label: `🚪 ${tr("退出房间")}`,
+                        label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
                       },
                     ]
                   : []),
@@ -2532,8 +2606,8 @@ export default function RoomChat(props: RoomChatProps) {
           size="small"
           checked={hideTools}
           onChange={setHideTools}
-          checkedChildren={`🔧 ${tr("隐藏工具")}`}
-          unCheckedChildren={`🔧 ${tr("显示工具")}`}
+          checkedChildren={<span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><WrenchIcon size={11} /> {tr("隐藏工具")}</span>}
+          unCheckedChildren={<span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><WrenchIcon size={11} /> {tr("显示工具")}</span>}
           title={tr("隐藏/显示 Agent 工具调用消息（read_file 等）")}
         />
         <div style={{ flex: 1 }} />
@@ -2562,7 +2636,7 @@ export default function RoomChat(props: RoomChatProps) {
               onNewTask();
             }}
           >
-            📋 发起任务
+            <TodoIcon size={13} style={{ verticalAlign: "-2px" }} /> 发起任务
           </antd.Button>
         ) : null}
       </div>
@@ -2651,7 +2725,7 @@ export default function RoomChat(props: RoomChatProps) {
               fontSize: 13,
             }}
           >
-            ⚠️ {errorNote}
+            <WarnIcon size={13} style={{ verticalAlign: "-2px" }} /> {errorNote}
           </div>
         ) : null}
         {hasMore ? (
@@ -2883,6 +2957,7 @@ export default function RoomChat(props: RoomChatProps) {
                           // handleSearchJump（而非 jumpToMessage）：原消息不在
                           // 已加载窗口时自动拉 /context 定位区，不再静默无反应。
                           onJump={(eventId) => void handleSearchJump(eventId)}
+                          onLoadOriginal={onLoadOriginal}
                         />
                       ) : null}
                       <div
@@ -2991,7 +3066,7 @@ export default function RoomChat(props: RoomChatProps) {
                                   .catch(() => undefined);
                               }}
                             >
-                              {tr("复制") && "📋 " + tr("复制")}
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><TodoIcon size={12} /> {tr("复制")}</span>
                             </antd.Button>
                             {/* v0.5.0-beta.12 ：编辑/撤回自己的消息（Element 同款；
                                 Matrix 事件不可变——编辑=m.replace 标注替换，
@@ -3014,7 +3089,7 @@ export default function RoomChat(props: RoomChatProps) {
                                     );
                                   }}
                                 >
-                                  {"✏️ " + tr("编辑")}
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><EditIcon size={12} /> {tr("编辑")}</span>
                                 </antd.Button>
                                 <antd.Popconfirm
                                   title={tr("撤回这条消息？其他成员将看到「已撤回」")}
@@ -3030,7 +3105,7 @@ export default function RoomChat(props: RoomChatProps) {
                                     danger
                                     style={{ borderRadius: 0, fontSize: 12, fontWeight: 500 }}
                                   >
-                                    {"🗑️ " + tr("撤回")}
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><TrashIcon size={12} /> {tr("撤回")}</span>
                                   </antd.Button>
                                 </antd.Popconfirm>
                               </>
@@ -3208,7 +3283,7 @@ export default function RoomChat(props: RoomChatProps) {
             }}
           >
             <span style={{ fontSize: 12, fontWeight: 700, color: PRIMARY }}>
-              📌 {tr("搜索定位")}
+              <PinIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("搜索定位")}
             </span>
             <span style={{ fontSize: 11.5, color: t.textSecondary, flex: 1 }}>
               {tr("目标消息不在已加载范围，显示前后文片段")}
@@ -3219,7 +3294,7 @@ export default function RoomChat(props: RoomChatProps) {
               onClick={clearJumpContext}
               style={{ fontSize: 12 }}
             >
-              ✕
+              <CloseIcon size={12} />
             </antd.Button>
           </div>
           {jumpContext.events.map((m) => {
@@ -3315,7 +3390,7 @@ export default function RoomChat(props: RoomChatProps) {
               title={tr("取消回复")}
               onClick={() => setReplyTo(null)}
             >
-              ✕
+              <CloseIcon size={12} />
             </antd.Button>
           </div>
         ) : null}
@@ -3333,7 +3408,7 @@ export default function RoomChat(props: RoomChatProps) {
               fontSize: 13,
             }}
           >
-            <span style={{ color: PRIMARY, flexShrink: 0 }}>✏️</span>
+            <span style={{ color: PRIMARY, flexShrink: 0, display: "inline-flex" }}><EditIcon size={13} /></span>
             <span
               style={{
                 flex: 1,
@@ -3356,7 +3431,7 @@ export default function RoomChat(props: RoomChatProps) {
                 setDraft("");
               }}
             >
-              ✕
+              <CloseIcon size={12} />
             </antd.Button>
           </div>
         ) : null}

@@ -1,3 +1,4 @@
+import { RadarIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -167,7 +168,7 @@ export function WorkflowEventsTimeline(props: {
         onClick={() => setOpen((v) => !v)}
       >
         <span style={{ fontSize: 11, color: "#888" }}>{open ? "▾" : "▸"}</span>
-        <span>📡 {tr("事件流")}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><RadarIcon size={13} /> {tr("事件流")}</span>
         {events.length > 0 ? (
           <span style={{ color: "#888", fontWeight: 400 }}>
             {tr("（{n} 条）", { n: events.length })}

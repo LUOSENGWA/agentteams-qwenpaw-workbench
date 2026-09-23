@@ -871,6 +871,7 @@ const DICT: Record<string, { en: string }> = {
   "阻塞": { en: "Blocked" },
   // ── v0.5.0-beta.13.12：cancelled 独立态 + 房间排序 + 事件流空态 ──
   "已取消": { en: "Cancelled" },
+  "尚未配置 Matrix 地址——先去「配置」tab 填写并保存，再跑自检。": { en: "Matrix address not configured — fill in and save in the Settings tab first, then run the check." },
   "时间 ↓": { en: "Recent ↓" },
   "提及（{n}）": { en: "Mentions ({n})" },
   "暂无转换事件——平台侧 Controller 事件摄取尚未接通（端点只读、写入链路未部署，存量项目均为空），此面板当前恒为空。任务状态请查看上方拓扑/看板。": {
@@ -1314,8 +1315,9 @@ const DICT: Record<string, { en: string }> = {
   "仍要保存吗？": { en: "Save anyway?" },
   "确认强写": { en: "Force write" },
   "返回修改": { en: "Go back" },
-  "✗ 路径形态": { en: "✗ path-like" },
-  "⚠ 未命中": { en: "⚠ not matched" },
+  "路径形态": { en: "path-like" },
+  "未命中": { en: "not matched" },
+  "期望": { en: "expected" },
   "选择 Worker（已有 CR）": { en: "Select worker (existing CR)" },
   "模型（留空=跟随集群默认；下拉=在服模型∪在用模型）": {
     en: "Model (empty = cluster default; dropdown = serving ∪ in-use)",
@@ -1327,8 +1329,8 @@ const DICT: Record<string, { en: string }> = {
     en: "Model (empty = keep; dropdown = serving ∪ in-use, provider unchanged)",
   },
   // SOUL 富入口
-  "SOUL（可选，多行；📎 可上传 .md/.txt，worker≤150 行）": {
-    en: "SOUL (optional, multi-line; 📎 upload .md/.txt, worker ≤150 lines)",
+  "SOUL（可选，多行；可上传 .md/.txt，worker≤150 行）": {
+    en: "SOUL (optional, multi-line; upload .md/.txt, worker ≤150 lines)",
   },
   "上传 SOUL 文件": { en: "Upload SOUL file" },
   "SOUL 文件过大（>200KB），已忽略": {
@@ -1512,8 +1514,21 @@ const DICT: Record<string, { en: string }> = {
   "获取命令（在 Controller 宿主机执行，复制输出粘贴到下方）：": { en: "Fetch command (run on the Controller host, copy the output and paste it below):" },
   "非 docker 部署：部署期给 QwenPaw 进程注入环境变量 AGENTTEAMS_CONTROLLER_TOKEN（注入值优先于粘贴值需重贴才覆盖）。": { en: "Non-docker deployments: inject the AGENTTEAMS_CONTROLLER_TOKEN env var into the QwenPaw process at deploy time (pasted values take precedence over env)." },
   "粘贴 token 内容（见上方获取命令；部署期注入 env 时留空即可）": { en: "Paste the token content (see the fetch command above; leave empty when env-injected)" },
-  "✓ 当前使用 QwenPaw 宿主环境变量 AGENTTEAMS_CONTROLLER_TOKEN（手动粘贴的值优先。）": { en: "✓ Using the QwenPaw host env var AGENTTEAMS_CONTROLLER_TOKEN (a manually pasted value takes precedence.)" },
-  "⚠ token 内容含非法字符（复制时混入不可见字符）——重新复制纯 ASCII 内容，或改用 env 注入。": { en: "⚠ Token contains invalid characters (invisible chars mixed in when copying) — re-copy pure ASCII content, or use env injection." },
+  "当前使用 QwenPaw 宿主环境变量 AGENTTEAMS_CONTROLLER_TOKEN（手动粘贴的值优先。）": { en: "Using the QwenPaw host env var AGENTTEAMS_CONTROLLER_TOKEN (a manually pasted value takes precedence.)" },
+  "token 内容含非法字符（复制时混入不可见字符）——重新复制纯 ASCII 内容，或改用 env 注入。": { en: "Token contains invalid characters (invisible chars mixed in when copying) — re-copy pure ASCII content, or use env injection." },
+  /* v0.5.0-beta.13.13：装验反馈六件新增键（工作流中断横幅任务定位 /
+     引用条按需加载 / 项目文件面板重构 / 下载反馈）。 */
+  "任务 {n}": { en: "Task {n}" },
+  "正在加载…": { en: "Loading…" },
+  "加载原消息": { en: "Load original message" },
+  "原消息不在可加载历史": { en: "Original message not in loadable history" },
+  "该项目工作流拉取失败": { en: "Failed to fetch this project's workflow" },
+  "该项目暂无已声明的文件（任务完成并产出结果后会显示）": { en: "This project has no declared files yet (they will appear after tasks produce results)" },
+  "未获取到任何项目工作流（Controller 未连通或无注册项目）——点刷新重试": { en: "No project workflows retrieved (Controller unreachable or no registered projects) — click refresh to retry" },
+  "当前房间项目": { en: "Current room's project(s)" },
+  "当前房间无直接关联项目（项目可能从 QQ 等其他通道发起，或尚未在 Controller 注册）——可查下方其他项目": { en: "No projects directly linked to this room (a project may have been started from another channel such as QQ, or is not yet registered in the Controller) — see other projects below" },
+  "其他项目（{n}）": { en: "Other projects ({n})" },
+  "下载失败，请稍后重试": { en: "Download failed, please try again later" },
   "Higress 地址（Console 管理面，必填；宿主端口部署时自选，默认 18001）": { en: "Higress URL (Console admin plane, required; host port chosen at deploy time, default 18001)" },
   /* v0.5.0-beta.12：L669 此前无 en 条目（en 界面显示中文）——补条目，
      并修「模型网关都依赖它」= Controller/Higress 混淆（模型网关=Higress

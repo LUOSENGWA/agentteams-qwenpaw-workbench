@@ -14,6 +14,7 @@
  * 纪律：requiresConfig 只做徽章——工具配置值可能含凭据，
  * Controller 代理边界已剔除，前端永不展示配置内容（fail-closed 不放松）。
  */
+import { WrenchIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useT } from "../i18n";
@@ -164,7 +165,7 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
       key: "name",
       render: (_: unknown, t: WorkerToolInfo) => (
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span aria-hidden>{t.icon || "🔧"}</span>
+          <span aria-hidden style={{ display: "inline-flex" }}>{t.icon || <WrenchIcon size={12} />}</span>
           <span style={{ fontFamily: "monospace" }}>{t.name}</span>
           {t.requiresConfig ? (
             <antd.Tag color="orange">{tr("需配置")}</antd.Tag>

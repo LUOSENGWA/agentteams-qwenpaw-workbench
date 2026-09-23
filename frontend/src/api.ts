@@ -610,9 +610,18 @@ export async function downloadViaHost(
     // v0.5.0-beta.13.6（装验反馈「下载不知道下载到哪里去」）：成功 toast
     // 显形去向——浏览器默认下载目录 + 文件名。单一落点（6 个调用方全
     // 覆盖），不逐处改。
+    // v0.5.0-beta.13.13（13.12 装验：桌面版还是不知道下到哪——宿主桥只有
+    // getApiUrl/getApiToken/fetch，无文件 API，web 内容无法拿实际落盘路径）：
+    // Electron 桌面版单独明示——下载到操作系统默认「下载」文件夹（Windows:
+    // C:\Users\<用户名>\Downloads；macOS: ~/Downloads），QwenPaw 桌面版不
+    // 提供下载列表/进度条。
     try {
+      const isElectron = /electron/i.test(navigator.userAgent || "");
+      const where = isElectron
+        ? "操作系统「下载」文件夹（桌面版不提供下载列表，如 Windows C:\\Users\\<用户名>\\Downloads）"
+        : "浏览器默认下载目录";
       window.QwenPaw?.host?.antd?.message?.success?.(
-        `已下载到浏览器默认下载目录：${filename}`,
+        `已下载到${where}：${filename}`,
       );
     } catch {
       /* 宿主 antd 不可用时静默——下载本身已成功 */
@@ -990,8 +999,13 @@ export async function fetchWorkflowProjects(): Promise<{
   try {
     const list = await fetchProjectSummaries();
     if (list.length === 0) return { events: [], apiOk: true };
+    // v0.5.0-beta.13.13（13.12 装验「聊天群的项目文件读取不到」真根因之一）：
+    // 旧版 slice(0, 20) 只拉前 20 个项目的工作流，而列表端点无排序参数
+    // （实盘 2026-09-23 = 45 个项目，字母序前 20 全是老项目）→ 新房间绑定的
+    // 项目整体缺席 workflowEvents → 聊天 📁 面板与 live overlay 全空。
+    // 控制器端点本地可达、单项目 JSON 小 → 全量拉（100 为安全上限）。
     const mapped = await Promise.all(
-      list.slice(0, 20).map(async (proj) => {
+      list.slice(0, 100).map(async (proj) => {
         const pid = String(proj.project_id || "");
         if (!pid) return null;
         try {

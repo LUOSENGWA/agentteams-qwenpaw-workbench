@@ -1,3 +1,4 @@
+import { TargetIcon, SearchIcon, DownloadIcon, CrownIcon, GlobeIcon, RobotIcon, LinkIcon, FolderIcon, DocIcon, CloseIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -31,6 +32,12 @@ import { useT } from "../i18n";
 import MdText from "./MdText";
 
 const host = window.QwenPaw.host;
+// v0.5.0-beta.13.13（13.12 装验「知识文件和预览等高、知识文件 col 可滚动」）：
+// 两栏固定等高（min(viewport 余量, 640px)，下限 460），Card 内 body 独立滚动。
+const KB_COL_STYLE = { height: "min(calc(100vh - 330px), 640px)", minHeight: 460, minWidth: 0 } as const;
+const KB_CARD_STYLE = { height: "100%", display: "flex", flexDirection: "column" as const } as const;
+const KB_CARD_BODY_STYLE = { flex: 1, minHeight: 0, overflowY: "auto" as const };
+
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
@@ -1136,7 +1143,7 @@ function GraphCard(props: {
                   style={{ padding: 0, height: "auto", fontSize: 12 }}
                   onClick={() => applyFocus(null)}
                 >
-                  🎯 {focusLabel} · 退出
+                  <TargetIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {focusLabel} · 退出
                 </antd.Button>
               ) : null}
               {infoNode
@@ -1876,7 +1883,7 @@ function RemoteKbView(props: {
           value={searchQ}
           onChange={(e: { target: { value: string } }) => setSearchQ(e.target.value)}
           onPressEnter={() => runSearch(searchQ)}
-          prefix={<span style={{ fontSize: 12 }}>🔍</span>}
+          prefix={<SearchIcon size={12} />}
           suffix={searchBusy ? <antd.Spin size="small" /> : null}
         />
       </div>
@@ -1963,8 +1970,8 @@ function RemoteKbView(props: {
         <antd.Alert type="error" showIcon message={error} />
       ) : null}
       <antd.Row gutter={12}>
-        <antd.Col span={10} style={{ minWidth: 0 }}>
-          <antd.Card size="small" title={<span style={{ fontSize: 13 }}>{tr("知识文件")}</span>}>
+        <antd.Col span={10} style={KB_COL_STYLE}>
+          <antd.Card size="small" style={KB_CARD_STYLE} styles={{ body: KB_CARD_BODY_STYLE }} title={<span style={{ fontSize: 13 }}>{tr("知识文件")}</span>}>
             <antd.Spin spinning={loading}>
               <FileGroup
                 title={tr("档案（工作区核心文件）")}
@@ -2053,9 +2060,11 @@ function RemoteKbView(props: {
             </antd.Spin>
           </antd.Card>
         </antd.Col>
-        <antd.Col span={14} style={{ minWidth: 0 }}>
+        <antd.Col span={14} style={KB_COL_STYLE}>
           <antd.Card
             size="small"
+            style={KB_CARD_STYLE}
+            styles={{ body: KB_CARD_BODY_STYLE }}
             title={
               <span style={{ fontSize: 13 }}>
                 {selected ? selected.title : tr("预览")}
@@ -2070,7 +2079,7 @@ function RemoteKbView(props: {
                       saveTextFile(selected.title, content)
                     }
                   >
-                    ⬇ {tr("下载")}
+                    <DownloadIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("下载")}
                   </antd.Button>
                 )
                 : null
@@ -2083,7 +2092,7 @@ function RemoteKbView(props: {
             ) : content ? (
               <div
                 style={{
-                  maxHeight: 560,
+                  maxHeight: "none",
                   overflow: "auto",
                   fontSize: 13,
                   lineHeight: 1.7,
@@ -2120,7 +2129,7 @@ function agentSelectOptions(
     byTeam.set(team, arr);
   }
   const roleOrder = { leader: 0, worker: 1, critic: 2 };
-  const opts: { value: string; label: string; options?: { value: string; label: string }[] }[] = [];
+  const opts: { value: string; label: ReactNS.ReactNode; options?: { value: string; label: ReactNS.ReactNode }[] }[] = [];
   if (managers.length > 0) {
     opts.push({
       value: "manager",
@@ -2144,7 +2153,7 @@ function agentSelectOptions(
       label: team,
       options: ws.map((a) => ({
         value: a.name,
-        label: `${a.role === "leader" ? "👑 " : ""}${a.name}`,
+        label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>{a.role === "leader" ? <CrownIcon size={11} style={{ color: "#faad14" }} /> : null}{a.name}</span>,
       })),
     });
   }
@@ -2467,8 +2476,8 @@ function LocalKbView(props: { refreshTick: number }) {
       />
 
       <antd.Row gutter={12}>
-        <antd.Col span={10} style={{ minWidth: 0 }}>
-          <antd.Card size="small" title={<span style={{ fontSize: 13 }}>{tr("记忆文件")}</span>}>
+        <antd.Col span={10} style={KB_COL_STYLE}>
+          <antd.Card size="small" style={KB_CARD_STYLE} styles={{ body: KB_CARD_BODY_STYLE }} title={<span style={{ fontSize: 13 }}>{tr("记忆文件")}</span>}>
             <antd.Spin spinning={filesLoading}>
               <FileGroup
                 title={tr("个人偏好")}
@@ -2511,9 +2520,11 @@ function LocalKbView(props: { refreshTick: number }) {
             </antd.Spin>
           </antd.Card>
         </antd.Col>
-        <antd.Col span={14} style={{ minWidth: 0 }}>
+        <antd.Col span={14} style={KB_COL_STYLE}>
           <antd.Card
             size="small"
+            style={KB_CARD_STYLE}
+            styles={{ body: KB_CARD_BODY_STYLE }}
             title={
               <span style={{ fontSize: 13 }}>
                 {selected ? selected.title : tr("预览")}
@@ -2528,7 +2539,7 @@ function LocalKbView(props: { refreshTick: number }) {
                       saveTextFile(selected.title, content)
                     }
                   >
-                    ⬇ {tr("下载")}
+                    <DownloadIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("下载")}
                   </antd.Button>
                 )
                 : null
@@ -2541,7 +2552,7 @@ function LocalKbView(props: { refreshTick: number }) {
             ) : content ? (
               <div
                 style={{
-                  maxHeight: 560,
+                  maxHeight: "none",
                   overflow: "auto",
                   fontSize: 13,
                   lineHeight: 1.7,
@@ -2618,12 +2629,12 @@ export default function KnowledgeBase(props: { refreshTick?: number }) {
           onChange={(v: string | number) => setMode(v as "remote" | "local")}
           options={[
             {
-              label: `🌐 ${tr("远端团队知识库")}`,
+              label: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><GlobeIcon size={12} /> {tr("远端团队知识库")}</span>,
               value: "remote",
               // 探测失败/无远端 Agent → remote 不可选（点「重新检测」再试）。
               disabled: !remoteAvailable || probing,
             },
-            { label: `💻 ${tr("本机宿主 Agent")}`, value: "local" },
+            { label: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><RobotIcon size={12} /> {tr("本机宿主 Agent")}</span>, value: "local" },
           ]}
         />
         <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -2739,7 +2750,7 @@ function DirNode(props: {
         <span style={{ width: 10, color: t.textSecondary, fontSize: 10 }}>
           {isExp ? "▾" : "▸"}
         </span>
-        <span>{dir.symlink ? "🔗" : "📁"}</span>
+        <span style={{ display: "inline-flex" }}>{dir.symlink ? <LinkIcon size={12} /> : <FolderIcon size={12} />}</span>
         <span style={{ color: t.text }} title={dir.symlink ? `${dir.path}（符号链接）` : dir.path}>
           {dir.name}
           {child === "loading" ? " …" : ""}
@@ -2781,7 +2792,7 @@ function DirNode(props: {
                 }}
               >
                 <span style={{ width: 10, display: "inline-block" }} />
-                <span>{openable ? "📄" : "🚫"}</span>
+                <span style={{ display: "inline-flex" }}>{openable ? <DocIcon size={12} /> : <CloseIcon size={12} style={{ color: "#f5222d" }} />}</span>
                 <span
                   style={{
                     overflow: "hidden",
