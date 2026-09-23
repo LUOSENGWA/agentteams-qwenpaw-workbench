@@ -2,7 +2,7 @@
 // session 状态」）：Worker session 级状态轮询——状态灯正源升级。
 //
 // 背景（实盘证据链）：
-//   - Node1 v1.2.4 GET /workers **无心跳字段**（agentStatus/runningTaskCount/
+//   - 验证实盘 v1.2.4 GET /workers **无心跳字段**（agentStatus/runningTaskCount/
 //     lastFinishAt 均为空，controller ≥#1247 才有）→ 旧灯源 = typing +
 //     per-sender 消息启发式：任务执行中但 Worker 未发言时灯恒灰（应蓝）。
 //   - qwenpaw ChatSpec.status 源码实锤（app/chats/models.py:136）=

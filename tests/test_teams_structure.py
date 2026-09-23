@@ -17,7 +17,13 @@ import json
 import pytest
 
 from agentteams_connector import config as cfgmod
-from agentteams_connector.router import _token_or_none, build_router
+from agentteams_connector.router import (
+    _ROOMS_CACHE_TTL,
+    _STRUCTURE_NEGATIVE_TTL,
+    _structure_cache,
+    _token_or_none,
+    build_router,
+)
 
 
 class _FakeResponse:
@@ -157,4 +163,76 @@ def test_token_or_none_returns_token():
 def test_token_or_none_invalid_content_no_raise():
     """token 内容非法（非 ASCII）→ None，不裸抛 TokenValidationError。"""
     assert _token_or_none({"controller_token": "tok\u4e2d123"}) is None
+
+
+# ── v0.5.0-beta.13.12：/teams/structure 缓存 TTL 正负分离回归 ──────────
+# 13.11 装验「团队管理 tab 刷不出完整信息，手动刷新也不行，要等 30s 自动
+# 刷新」后端半真根因：首次失败/空树结果被正缓存 60s（负缓存），锁死后续
+# 手动刷新。修法：成功（controller-workers 且非空）= 60s；降级/空树 = 5s。
+# 本文件护栏：两条 TTL 分支 + force 旁路 + 负缓存快速过期语义。
+
+
+def test_structure_positive_cache_ttl_on_success(client):
+    """成功（controller-workers 非空树）→ 正缓存 60s。"""
+    from agentteams_connector.router import invalidate_data_caches
+
+    invalidate_data_caches("test-reset")
+    tc, _ = client
+    _FakeClient.get_spec["/api/v1/workers"] = _FakeResponse(200, _WORKERS)
+    r = tc.get("/teams/structure", params={"force": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["source"] == "controller-workers"
+    assert _structure_cache["ttl"] == _ROOMS_CACHE_TTL
+    assert _structure_cache["ttl"] == 60.0
+
+
+def test_structure_negative_cache_ttl_on_empty(client):
+    """降级/空树 → 负缓存 5s（不锁死 60s）。"""
+    from agentteams_connector.router import invalidate_data_caches
+
+    invalidate_data_caches("test-reset")
+    tc, state = client
+    state["data"]["controller_urls"] = []
+    state["data"]["controller_token"] = ""
+    r = tc.get("/teams/structure", params={"force": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["tree"] == []
+    assert _structure_cache["ttl"] == _STRUCTURE_NEGATIVE_TTL
+    assert _structure_cache["ttl"] == 5.0
+
+
+def test_structure_negative_cache_hit_within_ttl(client):
+    """空树负缓存 5s 内非 force 命中缓存（cached=True，不再重算）。"""
+    import time as _time
+
+    from agentteams_connector.router import invalidate_data_caches
+
+    invalidate_data_caches("test-reset")
+    tc, state = client
+    state["data"]["controller_urls"] = []
+    state["data"]["controller_token"] = ""
+    # 首拉（force）写入空树 + 5s TTL。
+    r1 = tc.get("/teams/structure", params={"force": True})
+    assert r1.status_code == 200 and r1.json()["tree"] == []
+    # 把 ts 拨到"刚刚"（now - ts ≈ 0 < 5s）→ 非 force 请求应命中缓存。
+    _structure_cache["ts"] = _time.time()
+    r2 = tc.get("/teams/structure")  # 非 force
+    assert r2.status_code == 200
+    assert r2.json().get("cached") is True
+
+
+def test_structure_force_bypasses_negative_cache(client):
+    """force=true 绕过负缓存（前端手动刷新=force，5s 内也可强制重拉）。"""
+    from agentteams_connector.router import invalidate_data_caches
+
+    invalidate_data_caches("test-reset")
+    tc, state = client
+    state["data"]["controller_urls"] = []
+    state["data"]["controller_token"] = ""
+    r1 = tc.get("/teams/structure", params={"force": True})
+    assert r1.status_code == 200
+    # force 请求恒不带 cached 标记（即使缓存未过期）。
+    r2 = tc.get("/teams/structure", params={"force": True})
+    assert r2.status_code == 200
+    assert r2.json().get("cached") is None
 

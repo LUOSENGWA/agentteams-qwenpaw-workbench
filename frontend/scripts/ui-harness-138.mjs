@@ -2,7 +2,7 @@
  * ui-harness-138.mjs — v0.5.0-beta.13.8 UI 实证（playwright-core + chromium）
  *
  * 场景：真实 React + antd（node_modules UMD）挂载 WorkerRuntimeConfig 两实例
- * （#hrc = L2 只读 / #hrc1 = L1 可编辑）+ fetch mock（Node1 实盘结构 RC）。
+ * （#hrc = L2 只读 / #hrc1 = L1 可编辑）+ fetch mock（验证实盘结构 RC）。
  *
  * 断言（13.7 装验「六项都做进去了吗 + 模板抄 QwenPaw + 词元/令牌术语」）：
  * ① 七 tab 全在（ReAct 智能体/智能体 Loop 设置/LLM 自动重试/LLM 并发限流/

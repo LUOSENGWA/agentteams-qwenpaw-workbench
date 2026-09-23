@@ -5,7 +5,7 @@
  * dashboard B5（#103）为镜像语义。
  *
  * 契约（上游 pinned qwenpaw running-config + loops router 实读 +
- * Node1 v1.2.4 实盘 GET 交叉验证；#13.5 按 pr-body 字段清单全量对账）：
+ * 验证实盘 v1.2.4 实盘 GET 交叉验证；#13.5 按 pr-body 字段清单全量对账）：
  * - GET/PUT /api/v1/workers/{name}/runtime-config = 5-tab 运行配置
  *   （max_iters / loop / llm_retry_enabled / llm_max_retries /
  *   llm_backoff_base / llm_backoff_cap / memory_manager_backend /
@@ -833,7 +833,7 @@ function WorkerRuntimeConfig({
       }
       // 上下文管理（L1-only）：context_manager_backend + light_context_config
       // 嵌套合并（read-merge-write：未改键保持现值，PUT 整块回写）。
-      // 实盘结构（Node1 v1.2.4 GET 全字段）：
+      // 实盘结构（验证实盘 v1.2.4 GET 全字段）：
       //   light_context_config{strategy, dialog_path, token_count_estimate_divisor,
       //     context_compact_config{enabled, compact_threshold_ratio, reserve_threshold_ratio},
       //     tool_result_pruning_config{enabled, pruning_recent_n,

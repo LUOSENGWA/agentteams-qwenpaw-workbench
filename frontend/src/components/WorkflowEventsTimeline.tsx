@@ -188,8 +188,16 @@ export function WorkflowEventsTimeline(props: {
               {tr("事件流加载失败")}：{error}
             </div>
           ) : shown.length === 0 && !loading ? (
-            <div style={{ color: "#999" }}>
-              {tr("暂无转换事件——Agent 执行任务（delegate/ack/submit/report_progress）后这里会聚合")}
+            // v0.5.0-beta.13.12（现场 9/23 调查报告定案）：events 端点
+            // 只读（POST→405），Controller 事件摄取链路未实现——6 项目全空
+            // 是平台侧系统性缺口，非本项目未执行。空态文案必须说清「数据源
+            // 未接通」，不再暗示"Agent 执行后会聚合"（摄取未落地前永不出现）；
+            // report_progress 当前 runtime 动作集不存在（taskflow 枚举实锤），
+            // 从文案剔除。任务状态时间线仍可看拓扑/看板。
+            <div style={{ color: "#999", lineHeight: 1.6 }}>
+              {tr(
+                "暂无转换事件——平台侧 Controller 事件摄取尚未接通（端点只读、写入链路未部署，存量项目均为空），此面板当前恒为空。任务状态请查看上方拓扑/看板。",
+              )}
             </div>
           ) : (
             <div style={{ display: "grid", gap: 4, maxHeight: 320, overflow: "auto" }}>

@@ -295,7 +295,8 @@ function ThreadPanelView({
   const threadJumpToBottom = React.useCallback(() => {
     const el = threadScrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    // v0.5.0-beta.13.12：与主列表同款修——instant 置底（smooth 目标漂移）。
+    el.scrollTop = el.scrollHeight;
     setThreadShowJump(false);
   }, []);
 
@@ -1721,14 +1722,28 @@ export default function RoomChat(props: RoomChatProps) {
   const [showJumpBottom, setShowJumpBottom] = React.useState(false);
   const [newMsgCount, setNewMsgCount] = React.useState(0);
   const prevMsgLenRef = React.useRef(0);
+  // v0.5.0-beta.13.12（13.11 装验「置底按钮点了不置底，像滚动位置记忆问题」
+  // 真根因）：旧模型 nearBottom 在**每次 effect 运行时现算**——点 ↓ 触发
+  // smooth 滚动（数百 ms）期间，新消息到达的 effect 跑在滚动中途
+  // （nearBottom=false）→ 按钮重新出现 + 计数清零前又被加 1 → 用户感知
+  // 「点了没用」。QwenPaw/Element 正源模型 = **显式 isAtBottom 状态 +
+  // 点击锁定（pinned）**：点击置底 = 立即（instant，不用 smooth——smooth
+  // 目标随新消息 scrollHeight 增长漂移）+ 锁定窗口内持续贴底、新消息
+  // 不重弹按钮；用户主动上翻（dist≥120）即解锁。
+  const atBottomRef = React.useRef(true);
+  const pinnedUntilRef = React.useRef(0);
   const handleListScroll = React.useCallback(() => {
     const el = listRef.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     if (dist < 120) {
+      atBottomRef.current = true;
       setShowJumpBottom(false);
       setNewMsgCount(0);
     } else {
+      atBottomRef.current = false;
+      // 用户主动上翻 → 解除点击锁定（锁定只保护「正在追底」的瞬间）。
+      pinnedUntilRef.current = 0;
       setShowJumpBottom(true);
     }
     // v0.5.0-beta.13.6：滚到顶部 40px 内自动加载更早历史（Element 式
@@ -1750,7 +1765,12 @@ export default function RoomChat(props: RoomChatProps) {
   const jumpToBottom = React.useCallback(() => {
     const el = listRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    // 立即置底（instant）：smooth 的目标 scrollHeight 会随落地期间的新
+    // 消息增长而漂移，用户看着「没到底」。锁定 800ms：窗口内新消息持续
+    // 贴底跟随且不重弹按钮（下方新消息 effect 消费 pinnedUntilRef）。
+    el.scrollTop = el.scrollHeight;
+    atBottomRef.current = true;
+    pinnedUntilRef.current = Date.now() + 800;
     setNewMsgCount(0);
     setShowJumpBottom(false);
   }, []);
@@ -2003,11 +2023,16 @@ export default function RoomChat(props: RoomChatProps) {
     const lastId = messages[messages.length - 1]?.event_id || "";
     const grew = lastId !== "" && lastId !== lastMsgIdRef.current;
     lastMsgIdRef.current = lastId;
-    const nearBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottom) {
+    // v0.5.0-beta.13.12：显式 atBottom 状态 + 点击锁定窗口（见
+    // handleListScroll 注释）——落地期新消息持续贴底，不重弹按钮。
+    // 跟随用 instant（scrollTop=scrollHeight）：smooth 在消息流式增长下
+    // 目标漂移，用户感知「自动置底不灵」。
+    const pinned = Date.now() < pinnedUntilRef.current;
+    if (atBottomRef.current || pinned) {
+      atBottomRef.current = true;
       el.scrollTop = el.scrollHeight;
       setNewMsgCount(0);
+      setShowJumpBottom(false);
       return;
     }
     const last = messages[messages.length - 1];
@@ -2053,8 +2078,11 @@ export default function RoomChat(props: RoomChatProps) {
   });
 
   // 换房间：重置置底状态 + 贴底（Element 开房间即在最新消息处）。
+  // v0.5.0-beta.13.12：一并重置 atBottom/pinned（换房贴底后视为在底部）。
   React.useEffect(() => {
     prevMsgLenRef.current = 0;
+    atBottomRef.current = true;
+    pinnedUntilRef.current = 0;
     setNewMsgCount(0);
     setShowJumpBottom(false);
     requestAnimationFrame(() => {

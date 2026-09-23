@@ -6,14 +6,14 @@
 |----|------|
 | QwenPaw 宿主 | 2.0 – 2.2.x（插件版本门 `>=2.0.0, <3.0.0`） |
 | AgentTeams 集群 | 已部署的 Controller + Matrix homeserver（插件通过宿主进程内代理访问，凭据在服务器端，浏览器零凭据） |
-| 安装介质 | Release 页的 ZIP（`agentteams-qwenpaw-workbench-v0.5.0-beta.13.9.zip`） |
+| 安装介质 | Release 页的 ZIP（`agentteams-qwenpaw-workbench-v0.5.0-beta.13.12.zip`） |
 
 ## 安装
 
 **方式一：CLI（推荐）**
 
 ```
-qwenpaw plugin install agentteams-qwenpaw-workbench-v0.5.0-beta.13.9.zip
+qwenpaw plugin install agentteams-qwenpaw-workbench-v0.5.0-beta.13.12.zip
 ```
 
 **方式二：控制台**

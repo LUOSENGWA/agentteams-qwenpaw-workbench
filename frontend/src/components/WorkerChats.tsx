@@ -1131,7 +1131,13 @@ function WorkerChats({
           <div style={{ display: "grid", gap: 8 }}>
             {list.map((c) => {
               const full = c.name || c.id.slice(0, 10);
-              const running = c.status === "running";
+              // v0.5.0-beta.13.12（13.11 装验「状态点没看见」）：此前灯只在
+              // running 时渲染（idle/done 无点）——盘上会话多为 idle → 恒不见。
+              // 改恒显 WorkerSessionDot（与详情头/成员头像角灯同一正源：
+              // idle 灰常亮 / running 蓝呼吸，含 Tooltip；/chats 的
+              // status 二值 idle|running 直接映射）。
+              const dotState: "running" | "idle" =
+                c.status === "running" ? "running" : "idle";
               return (
                 <div
                   key={c.id}
@@ -1152,19 +1158,7 @@ function WorkerChats({
                       minWidth: 0,
                     }}
                   >
-                    {running ? (
-                      <span
-                        className="wb-session-dot running"
-                        style={{
-                          width: 6,
-                          height: 6,
-                          borderRadius: "50%",
-                          background: "#3b82f6",
-                          flexShrink: 0,
-                          display: "inline-block",
-                        }}
-                      />
-                    ) : null}
+                    <WorkerSessionDot state={dotState} size={8} />
                     <span
                       style={{
                         fontWeight: 600,

@@ -5,6 +5,24 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.12（2026-09-23）
+
+**13.11 装验反馈 7 项收口：会话状态点恒显 / 会话窗置底 Element 式锁定 / 宽窄屏实测可见宽 / 房间列表提及区+排序 / 拓扑·团队图标 SVG 化 / 团队管理 tab 手动刷新即时完整（负缓存真根因）/ 事件流空态文案 + cancelled 独立态**
+
+- **会话列表状态点恒显（「状态点没看见」）**：卡片灯此前只在 running 渲染（idle/done 无点，盘上多为 idle 故恒不见）→ 改恒显 WorkerSessionDot（idle 灰常亮 / running 蓝呼吸，含 Tooltip，与详情头/成员头像角灯同一正源）
+- **会话窗置底 Element 式锁定（「点置底不灵，像滚动位置记忆问题」）**：真根因 = 点 ↓ 触发 smooth 滚动途中，新消息 effect 现算 nearBottom=false → 按钮重弹 + 计数清零前又被加 1。改显式 atBottom 状态 + 点击 800ms pinned 锁（窗口内新消息持续贴底、不重弹按钮）+ instant 跟随（弃 smooth——目标随新消息 scrollHeight 漂移）；上翻看历史不打扰，换房贴底
+- **宽窄屏实测可见宽（「聊天页自动单栏没做到」）**：cont 此前只量插件 `<main>` 的直接父级，宿主真实约束层（Desktop OS 窗口 frame）在更上层祖先 → 窗口拖窄 main 不跟。改从 main 沿父链到 body 逐层 clientWidth 取 min ∩ 视口宽，ResizeObserver 观察整链——OS 窗口/经典页/iframe 三宿主形态统一生效
+- **房间列表排序优化**：① 新增「@ 提及」置顶分区（Element X 语义：@我/高亮未读独立置顶，无则隐藏）② 排序切换（时间↓默认 / 名称 A-Z，客户端本地持久化）③ 三区（提及/收藏/主列表）渲染收敛为单一 helper 消除重复
+- **图标 emoji → SVG**：工作流「拓扑」钮 🌳 → DAG 拓扑图标（节点+连线）；团队管理 tab 👷 → 双人部分重叠图标（横排 tab + 顶部 Tabs 双处）。纯内联 SVG（无 icon 包依赖），随激活态变色
+- **团队管理 tab 手动刷新即时完整（「刷不出完整信息，手动刷新不行，要等 30s」真根因·双端）**：后端 /teams/structure 60s TTL 缓存此前把**首次失败/空树也缓存 60s（负缓存）**——token 未就绪首拉得空树后 60s 内手动刷新全命中空缓存，30s tick 恰在 TTL 过期后 miss 才"活"。修 = 失败/降级/空树只负缓存 5s、成功（controller-workers 非空）才 60s（ttl 随条目存）；前端手动刷新/切 tab/登录一律 force=true 绕缓存，仅 30s 后台 tick 走缓存；+4 条 TTL 回归测试
+- **事件流空态文案（平台侧缺口定案）**：Controller 事件摄取未接通（端点只读 POST→405、存量项目 events 恒空、runtime 无上报——现场 9/23 全链路调查）→ 空态明示"数据源未接通，此面板恒空，任务状态看拓扑/看板"，不再暗示"Agent 执行后会聚合"；文案剔除当前 runtime 不存在的 report_progress
+- **cancelled 升独立态（「cancelled 显示成 blocked」状态映射缺陷·全量扫描）**：拓扑节点深红独立色（不再折入 blocked 橙）；看板新增「已取消」列（7→8 列）；卡片/任务巡检 Drawer 显「已取消」（深红 #cf1322，与 failed #ff4d4f 区分：失败=执行出错，取消=人为终止）；终态判定加 cancelled；已取消节点不再误画「就绪」青框
+- **i18n**：+5 新键（中英镜像：已取消/时间↓/提及(n)/事件流空态长句）
+
+**Verification**: tsc 0 · vite build 2,149.65kB · pytest 64/64（+4 负缓存 TTL 回归）· i18n 字典 0 缺 0 重复 · 包内版本核验 3 载体一致 · 13.12 比 13.11 文件集仅 +icons.tsx
+
+---
+
 ## 0.5.0-beta.13.11（2026-09-22）
 
 **13.10 装验反馈 12 件收口：会话列表卡片化（E1 真对象）/ 会话窗 Element 式事件驱动 / 消息历史跨房间真根因 / 宽窄屏双基准+容器铺满 / 审批通知面板同步 / Tab 震动 / 话题旗 SVG / 工作流拓扑放大+执行者 / 会话窗 QwenPaw 头像复制**

@@ -1,7 +1,7 @@
 {
   "id": "agentteams-qwenpaw-workbench",
   "name": "AgentTeams QwenPaw Workbench",
-  "version": "0.5.0-beta.13.11",
+  "version": "0.5.0-beta.13.12",
   "type": "general",
   "description": "AgentTeams team workbench: teams, workflows, projects, deliverables, worker management and knowledge graph through QwenPaw.",
   "description_i18n": {

@@ -62,6 +62,7 @@ import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
 import { useWorkerChatStatuses } from "./workerChatStatus";
 import WorkerManage from "./components/WorkerManage";
+import { TeamIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import SkillsTab from "./components/SkillsTab";
 import ModelsTab from "./ModelsTab";
@@ -1720,13 +1721,22 @@ export default function WorkbenchPage() {
 
   // Worker 树数据源 = 真实团队结构（Team/Worker CRD）+ spawn 正源填充
   // （端点已合并；apiOk=false → spawns 保持空，UI 显示占位文案）。
-  const refreshTree = React.useCallback(async (silent = false) => {
-    if (!silent) setSpawnLoading(true);
-    try {
-      const [payload, spawns] = await Promise.all([
-        fetchTeamsStructure(),
-        fetchWorkerSpawns(),
-      ]);
+  // v0.5.0-beta.13.12（13.11 装验「团队管理 tab 刷不出完整信息，手动刷新
+  // 也不行，要等 30s 自动刷新」真根因）：后端 /teams/structure 有 60s TTL
+  // 缓存，且**首次失败/空树也写缓存（负缓存）**——token 未就绪时首拉得
+  // 空树，之后 60s 内所有手动刷新都命中空缓存；30s tick 恰在 TTL 过期后
+  // miss 重拉才"活"。force 语义：用户意图（手动钮/切 tab/登录/mount）
+  // 一律 force=true 绕过缓存；仅 30s 后台 tick 走缓存（silent=true 且不
+  // 显式 force）保护 Controller。
+  const refreshTree = React.useCallback(
+    async (silent = false, force?: boolean) => {
+      const useForce = force ?? !silent;
+      if (!silent) setSpawnLoading(true);
+      try {
+        const [payload, spawns] = await Promise.all([
+          fetchTeamsStructure(useForce),
+          fetchWorkerSpawns(),
+        ]);
       setTreeSource(payload.source);
       if (spawns.apiOk) {
         const tree = payload.tree.map((team) => ({
@@ -2617,7 +2627,9 @@ export default function WorkbenchPage() {
         void refreshRooms(true);
         break;
       case "team":
-        void refreshTree(true);
+        // v0.5.0-beta.13.12：切 tab=用户意图看最新 → force（silent 防闪
+        // 页 + force 绕后端 60s 缓存）；30s 后台 tick 仍走缓存。
+        void refreshTree(true, true);
         void refreshAdmin(true);
         break;
       case "knowledge":
@@ -2680,19 +2692,38 @@ export default function WorkbenchPage() {
   // 左右留空压窄→横向全屏误判窄屏；宿主最小窗宽又使拖窄永远不触发
   // 单栏）。窗口 resize 跟随；强制开关优先。
   const mainRef = React.useRef<HTMLDivElement | null>(null);
+  // v0.5.0-beta.13.12（13.11 装验「聊天页自动单栏没做到」真根因）：
+  // 13.11 的 cont = mainRef.clientWidth 只量插件自己的 <main>——它
+  // width:100% 跟随**直接父级**，而宿主的真实约束层（Desktop OS 窗
+  // 口 frame / 内嵌面板 / 侧栏容器）在更上层祖先：窗口拖窄时若约束
+  // 层是 transform/scale 或非父链布局，main 的 clientWidth 可能不跟
+  // 宿主走（装验反馈「疑似按聊天窗宽判断」——实测基准确实离宿主约束
+  // 层太远）。改 Element 式「实际可见宽」：从 main 沿父链到 body 取
+  // 每层 clientWidth 的 min（任何一层变窄都会拉低），再与视口宽取
+  // min；ResizeObserver 观察**整条父链**（任一层变化即重测）。宿主形
+  // 态无关（OS 窗口/经典页/iframe 都取到真实可见宽）。
   React.useEffect(() => {
     const measure = () => {
-      const cont = mainRef.current?.clientWidth ?? window.innerWidth;
-      setChatWideMeasured(isWideLayout(window.innerWidth, cont));
+      let visible = window.innerWidth;
+      let el: HTMLElement | null = mainRef.current;
+      while (el) {
+        if (el.clientWidth < visible) visible = el.clientWidth;
+        el = el.parentElement;
+      }
+      setChatWideMeasured(visible >= CHAT_SPLIT_MIN_CONTAINER_W);
     };
     measure();
     window.addEventListener("resize", measure);
-    // 13.11：宿主布局变化（侧栏收展/分视图）不触发 window resize →
-    // 观察插件容器自身宽度（容器铺满/收窄即时切换宽窄态）。
     let ro: ResizeObserver | null = null;
     if (mainRef.current && typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver(measure);
-      ro.observe(mainRef.current);
+      // 观察 main + 全部祖先（到 body 为止，DOM 深度有限 ≤ ~20 层）。
+      let el: HTMLElement | null = mainRef.current;
+      while (el) {
+        ro.observe(el);
+        if (el.tagName === "BODY") break;
+        el = el.parentElement;
+      }
     }
     return () => {
       window.removeEventListener("resize", measure);
@@ -3147,7 +3178,15 @@ export default function WorkbenchPage() {
           { key: "inbox", label: `🔔 ${tr("通知")}` },
           { key: "workflow", label: `🔀 ${tr("工作流")}` },
           { key: "artifacts", label: `📦 ${tr("产物")}` },
-          { key: "team", label: `👷 ${tr("团队管理")}` },
+          {
+            key: "team",
+            // v0.5.0-beta.13.12：👷 工人 → 双人重叠图标（表团队/协作）。
+            label: (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <TeamIcon size={15} /> {tr("团队管理")}
+              </span>
+            ),
+          },
           { key: "knowledge", label: `📚 ${tr("知识库")}` },
           { key: "selfcheck", label: `🔍 ${tr("自检")}` },
           { key: "ops", label: `🛠️ ${tr("运维")}` },
@@ -3316,7 +3355,12 @@ export default function WorkbenchPage() {
           },
           {
             key: "team",
-            label: `👷 ${tr("团队管理")}`,
+            // v0.5.0-beta.13.12：👷 → 双人重叠图标（与横排 tab 同源）。
+            label: (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <TeamIcon size={15} /> {tr("团队管理")}
+              </span>
+            ),
             children: (
               <WorkerManage
                 teams={workerTree}

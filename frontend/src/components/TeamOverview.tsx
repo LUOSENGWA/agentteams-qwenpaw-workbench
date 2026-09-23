@@ -29,6 +29,9 @@ const ReloadIcon = pick("ReloadOutlined");
 const PRIMARY = "#FF7F16"; // 品牌主色
 const GREEN = "#52c41a"; // 状态绿（DM 标签）
 const FAV_KEY = "agentteams-qwenpaw-workbench:favorites";
+// v0.5.0-beta.13.12（13.11 装验「房间列表排序感觉可以优化」）：排序偏好
+// 客户端本地持久化（与收藏同一思路——Element 房间排序存客户端本地）。
+const SORT_KEY = "agentteams-qwenpaw-workbench:room-sort";
 const CARD_RADIUS = 10; // 卡片圆角
 
 /** 成员显示名：优先 display_name，否则取 MXID 的 localpart（@ 前段）。 */
@@ -642,6 +645,24 @@ export default function TeamOverview(props: TeamOverviewProps) {
       return next;
     });
   }, []);
+  // v0.5.0-beta.13.12：排序偏好（recent=最后消息新到旧 / name=名称 A-Z）。
+  // 客户端本地持久化；主列表与分区共用，收藏/提及区恒置顶不受影响。
+  const [roomSort, setRoomSort] = React.useState<"recent" | "name">(() => {
+    try {
+      const v = localStorage.getItem(SORT_KEY);
+      return v === "name" ? "name" : "recent";
+    } catch {
+      return "recent";
+    }
+  });
+  const setRoomSortPersist = React.useCallback((v: "recent" | "name") => {
+    setRoomSort(v);
+    try {
+      localStorage.setItem(SORT_KEY, v);
+    } catch {
+      /* localStorage 不可用时仅内存态 */
+    }
+  }, []);
   // 未读房间数（一键全部已读按钮显隐）。
   // 5.0.0 release：房间离开/删除（Element 同款列表操作）。
   // 退出=CS-API leave；删除=forget（须先 leave）。系统团队房间退出后
@@ -691,22 +712,68 @@ export default function TeamOverview(props: TeamOverviewProps) {
   // : 「全部」改 Element 式单一时间序混合列表（群/DM 交错）——
   // 此前两段式（群段整段在前）最新 DM 会沉到所有旧群下面，真机反馈
   // 「房间列表没做时间排序」= 感知无时间序。群/DM 过滤仍分区展示。
-  const byRecent = (list: TeamRoom[]) =>
-    [...list].sort((a, b) => (b.last_ts || 0) - (a.last_ts || 0));
+  // v0.5.0-beta.13.12：排序=用户偏好（recent 默认时间新到旧 / name A-Z），
+  // 替代此前恒定时间序。roomSort 来自 state（闭包每渲染更新，无需 memo）。
+  const sortRooms = (list: TeamRoom[]) =>
+    roomSort === "name"
+      ? [...list].sort((a, b) =>
+          (a.name || "").localeCompare(b.name || "", "zh-Hans-CN"),
+        )
+      : [...list].sort((a, b) => (b.last_ts || 0) - (a.last_ts || 0));
   const isFav = (r: TeamRoom) => favorites.includes(r.room_id);
+  // v0.5.0-beta.13.12（Element X 提及区语义）：@我/高亮未读的房间独立置顶
+  // 分区（unread_highlight>0），主列表剔除——被 @ 的房间不再沉在时间序
+  // 深处。无高亮时该分区整体隐藏（不占位）。
+  const isMention = (r: TeamRoom) => (r.unread_highlight || 0) > 0;
   // 收藏区独立置顶；主列表剔除收藏（不重复展示，同 Element Favourites 分区语义）。
-  const mainRooms = rooms.filter((r) => !isFav(r));
-  const groups = byRecent(mainRooms.filter((r) => (r.member_count ?? 0) > 2));
-  const dms = byRecent(mainRooms.filter((r) => (r.member_count ?? 0) <= 2));
-  const allByRecent = byRecent(mainRooms);
+  const mainRooms = rooms.filter((r) => !isFav(r) && !isMention(r));
+  const groups = sortRooms(mainRooms.filter((r) => (r.member_count ?? 0) > 2));
+  const dms = sortRooms(mainRooms.filter((r) => (r.member_count ?? 0) <= 2));
+  const allByRecent = sortRooms(mainRooms);
   const showGroups = filter === "all" || filter === "group";
   const showDms = filter === "all" || filter === "dm";
   const favRoomsForFilter =
     filter === "group"
-      ? byRecent(rooms.filter((r) => isFav(r) && (r.member_count ?? 0) > 2))
+      ? sortRooms(rooms.filter((r) => isFav(r) && (r.member_count ?? 0) > 2))
       : filter === "dm"
-        ? byRecent(rooms.filter((r) => isFav(r) && (r.member_count ?? 0) <= 2))
-        : byRecent(rooms.filter(isFav));
+        ? sortRooms(rooms.filter((r) => isFav(r) && (r.member_count ?? 0) <= 2))
+        : sortRooms(rooms.filter(isFav));
+  const mentionRoomsForFilter =
+    filter === "group"
+      ? sortRooms(rooms.filter((r) => isMention(r) && !isFav(r) && (r.member_count ?? 0) > 2))
+      : filter === "dm"
+        ? sortRooms(rooms.filter((r) => isMention(r) && !isFav(r) && (r.member_count ?? 0) <= 2))
+        : sortRooms(rooms.filter((r) => isMention(r) && !isFav(r)));
+
+  // v0.5.0-beta.13.12：房间卡渲染 helper——提及/收藏/主列表三区共用，
+  // 群/DM 按 member_count 分派（此前三区各写一份，新增分区会三处漂移）。
+  const renderRoomCard = (room: TeamRoom, keyPrefix = "") => {
+    const key = `${keyPrefix}${room.room_id}`;
+    return (room.member_count ?? 0) > 2 ? (
+      <GroupCard
+        key={key}
+        room={room}
+        user_id={user_id}
+        onOpenRoom={onOpenRoom}
+        onDm={onDm}
+        isFavorite={isFav(room)}
+        onToggleFavorite={toggleFavorite}
+        onExitRoom={doRoomExit}
+        workerMxids={workerMxids}
+      />
+    ) : (
+      <DmCard
+        key={key}
+        room={room}
+        user_id={user_id}
+        onOpenRoom={onOpenRoom}
+        isFavorite={isFav(room)}
+        onToggleFavorite={toggleFavorite}
+        onExitRoom={doRoomExit}
+        sessionState={workerSessionByRoom?.[room.room_id]}
+      />
+    );
+  };
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -756,6 +823,18 @@ export default function TeamOverview(props: TeamOverviewProps) {
             { value: "all", label: `全部（${rooms.length}）` },
             { value: "group", label: `👥 ${tr("团队群（{n}）", { n: groups.length })}` },
             { value: "dm", label: `💬 私聊（${dms.length}）` },
+          ]}
+        />
+        {/* v0.5.0-beta.13.12：排序切换（时间↓默认 / 名称 A-Z），本地持久化 */}
+        <antd.Segmented
+          size="small"
+          value={roomSort}
+          onChange={(v: ReactNS.Key | number) =>
+            setRoomSortPersist(v as "recent" | "name")
+          }
+          options={[
+            { value: "recent", label: tr("时间 ↓") },
+            { value: "name", label: tr("名称 A-Z") },
           ]}
         />
         <antd.Tooltip title="刷新">
@@ -819,6 +898,24 @@ export default function TeamOverview(props: TeamOverviewProps) {
               onSettled={onInviteSettled}
             />
           ) : null}
+          {/* v0.5.0-beta.13.12（Element X 提及区）：@我/高亮未读置顶分区，
+              主列表剔除（isMention 已在 mainRooms 过滤）。无高亮整体隐藏。 */}
+          {mentionRoomsForFilter.length > 0 ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#FF7F16",
+                }}
+              >
+                @ {tr("提及（{n}）", { n: mentionRoomsForFilter.length })}
+              </div>
+              {mentionRoomsForFilter.map((room) =>
+                renderRoomCard(room, "mention-"),
+              )}
+            </div>
+          ) : null}
           {/* v0.5.0-beta.12 B3：⭐ 收藏区（置顶，主列表不再重复） */}
           {favRoomsForFilter.length > 0 ? (
             <div style={{ display: "grid", gap: 8 }}>
@@ -831,63 +928,15 @@ export default function TeamOverview(props: TeamOverviewProps) {
               >
                 ⭐ {tr("收藏（{n}）", { n: favRoomsForFilter.length })}
               </div>
-              {favRoomsForFilter.map((room) =>
-                (room.member_count ?? 0) > 2 ? (
-                  <GroupCard
-                    key={`fav-${room.room_id}`}
-                    room={room}
-                    user_id={user_id}
-                    onOpenRoom={onOpenRoom}
-                    onDm={onDm}
-                    isFavorite
-                    onToggleFavorite={toggleFavorite}
-                    onExitRoom={doRoomExit}
-                    workerMxids={workerMxids}
-                  />
-                ) : (
-                  <DmCard
-                    key={`fav-${room.room_id}`}
-                    room={room}
-                    user_id={user_id}
-                    onOpenRoom={onOpenRoom}
-                    isFavorite
-                    onToggleFavorite={toggleFavorite}
-                    onExitRoom={doRoomExit}
-                    sessionState={workerSessionByRoom?.[room.room_id]}
-                  />
-                ),
-              )}
+              {favRoomsForFilter.map((room) => renderRoomCard(room, "fav-"))}
             </div>
           ) : null}
-          {/* 「全部」= Element 式单一时间序混合列表（群/DM 交错，新到旧）。
-              群/DM 过滤 = 分区展示（各自内部时间序）。 */}
+          {/* 「全部」= Element 式单一排序混合列表（群/DM 交错，按 roomSort）。
+              群/DM 过滤 = 分区展示（各自内部同序）。 */}
           {filter === "all" ? (
             allByRecent.length > 0 ? (
               <div style={{ display: "grid", gap: 12 }}>
-                {allByRecent.map((room) =>
-                  (room.member_count ?? 0) > 2 ? (
-                    <GroupCard
-                      key={room.room_id}
-                      room={room}
-                      user_id={user_id}
-                      onOpenRoom={onOpenRoom}
-                      onToggleFavorite={toggleFavorite}
-                    onExitRoom={doRoomExit}
-                      onDm={onDm}
-                      workerMxids={workerMxids}
-                    />
-                  ) : (
-                    <DmCard
-                      key={room.room_id}
-                      room={room}
-                      user_id={user_id}
-                      onOpenRoom={onOpenRoom}
-                      onToggleFavorite={toggleFavorite}
-                    onExitRoom={doRoomExit}
-                      sessionState={workerSessionByRoom?.[room.room_id]}
-                    />
-                  ),
-                )}
+                {allByRecent.map((room) => renderRoomCard(room))}
               </div>
             ) : null
           ) : (
@@ -895,34 +944,13 @@ export default function TeamOverview(props: TeamOverviewProps) {
               {/* 团队群 */}
               {showGroups && groups.length > 0 ? (
                 <div style={{ display: "grid", gap: 12 }}>
-                  {groups.map((room) => (
-                    <GroupCard
-                      key={room.room_id}
-                      room={room}
-                      user_id={user_id}
-                      onOpenRoom={onOpenRoom}
-                      onToggleFavorite={toggleFavorite}
-                    onExitRoom={doRoomExit}
-                      onDm={onDm}
-                      workerMxids={workerMxids}
-                    />
-                  ))}
+                  {groups.map((room) => renderRoomCard(room))}
                 </div>
               ) : null}
               {/* DM 私聊 */}
               {showDms && dms.length > 0 ? (
                 <div style={{ display: "grid", gap: 8 }}>
-                  {dms.map((room) => (
-                    <DmCard
-                      key={room.room_id}
-                      room={room}
-                      user_id={user_id}
-                      onOpenRoom={onOpenRoom}
-                      onToggleFavorite={toggleFavorite}
-                    onExitRoom={doRoomExit}
-                      sessionState={workerSessionByRoom?.[room.room_id]}
-                    />
-                  ))}
+                  {dms.map((room) => renderRoomCard(room))}
                 </div>
               ) : null}
             </>

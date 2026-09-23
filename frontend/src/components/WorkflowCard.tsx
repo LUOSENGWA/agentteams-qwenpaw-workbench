@@ -15,9 +15,12 @@ const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 
-/** 状态分集（dashboard workflow-card.tsx 同款集合，交叉验证基准）。 */
+/** 状态分集（dashboard workflow-card.tsx 同款集合，交叉验证基准）。
+ *  v0.5.0-beta.13.12：cancelled 从 ERROR 拆出独立集——此前取消任务
+ *  显示「失败」是状态映射不一致缺陷（现场 9/23 报告）。 */
 const COMPLETE = new Set(["completed", "success", "done"]);
-const ERROR = new Set(["failed", "error", "cancelled", "canceled"]);
+const ERROR = new Set(["failed", "error"]);
+const CANCELLED = new Set(["cancelled", "canceled"]);
 
 function itemLabel(item: WorkflowCardItem, fallback: string): string {
   return item.title || item.name || item.id || fallback;
@@ -30,6 +33,7 @@ function statusLabel(
   if (!tr) return status || "等待中";
   if (!status) return tr("等待中");
   if (COMPLETE.has(status)) return tr("已完成");
+  if (CANCELLED.has(status)) return tr("已取消");
   if (ERROR.has(status)) return tr("失败");
   if (status === "in_progress" || status === "running") return tr("进行中");
   if (status === "paused") return tr("已暂停");
@@ -39,6 +43,7 @@ function statusLabel(
 /** 状态色（卡片色标 + 步骤图标共用）。 */
 function statusColor(status?: string): string {
   if (COMPLETE.has(status || "")) return "#52c41a";
+  if (CANCELLED.has(status || "")) return "#cf1322";
   if (ERROR.has(status || "")) return "#ff4d4f";
   if (!status) return "#8c8c8c";
   return "#722ed1";

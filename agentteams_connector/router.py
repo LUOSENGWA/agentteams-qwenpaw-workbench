@@ -283,7 +283,20 @@ _room_mentions_lock = threading.Lock()
 # 实时增量走 sync_watcher 审批缓冲，扫描捞插件关闭期间的未决审批请求）。
 _room_approvals_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 _room_approvals_lock = threading.Lock()
-_structure_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
+# v0.5.0-beta.13.12（13.11 装验「团队管理 tab 刷不出完整信息，手动刷新不
+# 行，要等 30s 自动刷新」真根因·后端半）：/teams/structure 60s TTL 缓存
+# 此前把**首次失败/空树结果也缓存 60s（负缓存）**——token 未就绪时首拉
+# 得空树（source=room-fallback 或 []），之后 60s 内手动刷新（force=true
+# 可绕过，但旧前端不传 force）全部命中空缓存；30s tick 恰在 TTL 过期后
+# miss 重拉才恢复 → 用户感知"只有自动刷新管用"。修法：失败/降级/空树
+# 结果只负缓存 _STRUCT_NEGATIVE_TTL（5s），成功（controller-workers 且非
+# 空）才享 60s。ttl 随条目存（不同结果不同 TTL），读路径按条目 ttl 判。
+_STRUCTURE_NEGATIVE_TTL = 5.0
+_structure_cache: Dict[str, Any] = {
+    "data": None,
+    "ts": 0.0,
+    "ttl": _ROOMS_CACHE_TTL,
+}
 
 
 def invalidate_data_caches(reason: str = "") -> None:
@@ -303,6 +316,8 @@ def invalidate_data_caches(reason: str = "") -> None:
         ):
             c["data"] = None
             c["ts"] = 0.0
+            if "ttl" in c:
+                c["ttl"] = _ROOMS_CACHE_TTL
     logger.info("data caches invalidated (%s)", reason or "no reason")
 
 # Sync filter: only room name + membership state, 1 timeline event, no
@@ -1109,10 +1124,12 @@ def build_router() -> APIRouter:
         now = time_mod.time()
         with _rooms_cache_lock:
             struct_entry = _structure_cache
+            # v0.5.0-beta.13.12：按条目 ttl 判（负缓存 5s / 成功 60s），
+            # 不再统一 60s——失败结果不应挡住后续手动刷新 60s。
             if (
                 not force
                 and struct_entry["data"] is not None
-                and now - struct_entry["ts"] < _ROOMS_CACHE_TTL
+                and now - struct_entry["ts"] < struct_entry["ttl"]
             ):
                 return {**struct_entry["data"], "cached": True}
 
@@ -1239,13 +1256,23 @@ def build_router() -> APIRouter:
                 tree = []
 
         payload = {"ok": True, "tree": tree, "source": source}
+        # v0.5.0-beta.13.12：成功（controller-workers 源且非空树）享 60s
+        # 正缓存；降级（room-fallback）或空树只负缓存 5s——token 未就绪 /
+        # Controller 瞬时不可用时，5s 后手动刷新即重试（不锁死 60s）。
+        struct_ttl = (
+            _ROOMS_CACHE_TTL
+            if source == "controller-workers" and tree
+            else _STRUCTURE_NEGATIVE_TTL
+        )
         with _rooms_cache_lock:
             _structure_cache["data"] = payload
             _structure_cache["ts"] = now
+            _structure_cache["ttl"] = struct_ttl
         logger.info(
-            "teams/structure: %d teams via %s",
+            "teams/structure: %d teams via %s (cache ttl=%.0fs)",
             len(tree),
             source,
+            struct_ttl,
         )
         return payload
 
@@ -3530,7 +3557,7 @@ def build_router() -> APIRouter:
         # （wiki/personal/procedure）+ digest/** 全量 md + memory/**
         # 全量 md + 顶层 md（档案）。旧版只取 memory/** + 3 个顶层文件、
         # 漏掉 digest/ → 用户真机「图谱只有几个点」（实测：
-        # daily-sun digest=6 文件全落选；manager 落错工作区=0 节点）。
+        # 某 daily Worker digest=6 文件全落选；manager 落错工作区=0 节点）。
         md_files = [
             f["path"] for f in tree["files"]
             if f["path"].lower().endswith(".md")
