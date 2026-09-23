@@ -1522,7 +1522,20 @@ export default function WorkerManage(props: WorkerManageProps) {
             children: <SkillCenter />,
           },
         ]
-      : [];
+      : myUserId
+        ? [
+            // v0.5.0-beta.13.14（L2 双模式——9/11 调研 P0 定案 + 上游
+            // l2-worker-scoped-write.md/team-skills.md/skill-catalog-api.md
+            // 已合 main）：L2 身份（Matrix token、无 admin token）只出技能
+            // 中心（我的团队 scope）：目录 ?team= + skills 可写 + MCP 只读。
+            // 团队/用户/Manager/频道/工具是 L1 管理面，L2 不显示。
+            {
+              key: "skills-center",
+              label: tr("技能中心（我的团队）"),
+              children: <SkillCenter l2 />,
+            },
+          ]
+        : [];
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
