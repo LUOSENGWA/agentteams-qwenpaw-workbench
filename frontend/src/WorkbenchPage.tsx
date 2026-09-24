@@ -1556,7 +1556,7 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12 ：工作流页 tab 记忆（用户「点开过的 tab 加上记忆，参考大
   // tab」）——与大 tab 同一 ui-state 对象（wfView/wfTopo 字段，合并写），
   // 不新造 storage key。WorkflowBoard 改受控（view/topoRun 由此下发）。
-  const WF_VIEW_VALUES = ["list", "card", "board", "topo"];
+  const WF_VIEW_VALUES = ["list", "card", "board", "topo", "mermaid"];
   const [wfMem, setWfMemState] = React.useState<{
     view: string;
     topoRun: string;
@@ -2173,14 +2173,9 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     pollMessagesRef.current = pollMessages;
   }, [pollMessages]);
-  // 房间列表预览刷新节流（room_message 事件高频 → ≥10s 一次 /teams/sync）。
-  const roomListRefreshAt = React.useRef(0);
-  const scheduleRoomListRefresh = React.useCallback(() => {
-    const now = Date.now();
-    if (now - roomListRefreshAt.current < 10000) return;
-    roomListRefreshAt.current = now;
-    void refreshRooms();
-  }, [refreshRooms]);
+  // v0.5.0-beta.13.21：房间列表预览/未读的 10s 节流全量刷新退役——改由
+  // room_list_update 增量 SSE 就地合并（Element 式；全量 /teams/sync 降为
+  // 60s 兜底 + 邀请/手动）。
 
   // ── IM 式事件触发（用户反馈「30s 轮询太笨」）────────────────────
   // 后端 sync watcher：Matrix /sync 长轮询检测 @提到我 / 任务状态变化 →
@@ -2257,30 +2252,80 @@ export default function WorkbenchPage() {
                 type?: string;
               };
               if (data.type === "mention") {
-                void refreshRooms();
+                // v0.5.0-beta.13.21（房间列表 Element 化）：房间列表元数据由
+                // room_list_update 增量覆盖（未读/预览/排序），不再全量重拉。
                 setNotifyTick((t) => t + 1);
               } else if (data.type === "task_status") {
                 // 任务状态变化 → 刷新工作流三视图 + 通知中心。
                 void refreshWorkflow();
                 setNotifyTick((t) => t + 1);
               } else if (
-                // v0.5.0-beta.12：新邀请 / 审批请求 / 审批解决 → 刷新房间
-                // 列表（邀请进 teams/sync）+ 通知中心立即更新（IM 式）。
+                // v0.5.0-beta.12：新邀请 / 审批请求 / 审批解决 → 通知中心立即
+                // 更新（IM 式）。邀请=members 变化仍走全量（邀请区数据源=
+                // /teams/sync）；审批不产房间元数据变化（13.21 起不再全量）。
                 data.type === "invite" ||
                 data.type === "approval_request" ||
                 data.type === "approval_resolved"
               ) {
-                void refreshRooms();
+                if (data.type === "invite") void refreshRooms();
                 setNotifyTick((t) => t + 1);
+              } else if (data.type === "room_list_update") {
+                // v0.5.0-beta.13.21（Element 式房间列表）：watcher 每轮 /sync
+                // 的元数据增量 diff——就地合并（更新/插入新房间/移除 leave），
+                // 不做全量 /teams/sync（那是一次带全房间 state 的 Matrix 全量
+                // /sync，房间列表「慢而笨」的真根因）。
+                const upd = ((data as { rooms?: TeamRoom[] }).rooms || []) as Array<
+                  Partial<TeamRoom> & { room_id: string; new?: boolean }
+                >;
+                const left: string[] = (data as { left?: string[] }).left || [];
+                setRooms((prev) => {
+                  let next = left.length
+                    ? prev.filter((r) => !left.includes(r.room_id))
+                    : prev;
+                  for (const it of upd) {
+                    if (!it || !it.room_id) continue;
+                    const idx = next.findIndex((r) => r.room_id === it.room_id);
+                    if (idx >= 0) {
+                      const cur = next[idx];
+                      const merged: TeamRoom = { ...cur };
+                      if (typeof it.name === "string") merged.name = it.name;
+                      if (typeof it.member_count === "number") merged.member_count = it.member_count;
+                      if (typeof it.unread === "number") merged.unread = it.unread;
+                      if (typeof it.unread_highlight === "number") merged.unread_highlight = it.unread_highlight;
+                      if (typeof it.last_ts === "number") merged.last_ts = it.last_ts;
+                      if (typeof it.last_sender === "string") merged.last_sender = it.last_sender;
+                      if (typeof it.last_body === "string") merged.last_body = it.last_body;
+                      if (Array.isArray(it.typing)) merged.typing = it.typing;
+                      next = [...next.slice(0, idx), merged, ...next.slice(idx + 1)];
+                    } else if (it.new) {
+                      next = [
+                        ...next,
+                        {
+                          room_id: it.room_id,
+                          name: it.name || it.room_id,
+                          name_fallback: !it.name,
+                          member_count: it.member_count || 0,
+                          members: {},
+                          unread: it.unread || 0,
+                          unread_highlight: it.unread_highlight || 0,
+                          last_ts: it.last_ts || 0,
+                          last_sender: it.last_sender || undefined,
+                          last_body: it.last_body || undefined,
+                        },
+                      ];
+                    }
+                  }
+                  return next;
+                });
               } else if (data.type === "room_message") {
                 // P6：/sync 事件驱动消息刷新（IM 式主路；RoomChat 12s 轮询
                 // 降为断连兜底）。当前房间 → 立即拉新（内容源=拉取，附件/
-                // 工作流渲染路径零改动）；房间列表预览 10s 节流刷新。
+                // 工作流渲染路径零改动）。房间列表预览/未读由 room_list_update
+                // 增量覆盖（13.21：10s 节流全量刷新退役）。
                 const rid = String((data as { room_id?: string }).room_id || "");
                 if (rid && rid === activeRoomRef.current?.room_id) {
                   void pollMessagesRef.current();
                 }
-                scheduleRoomListRefresh();
                 // F1（13.11）：任意房间来消息 → 递增 chatsTick → 打开的
                 // 头像会话窗立即刷新（事件驱动主路，Element 式延迟≈0）。
                 setChatsTick((v) => v + 1);
@@ -2708,19 +2753,40 @@ export default function WorkbenchPage() {
     config?.controller_token || config?.controllerTokenSource === "env",
   );
 
+  // v0.5.0-beta.13.21（13.20 装验「一开始只能看见拓扑，CRD 管理要点刷新才出」）：
+  // admin 取数连续失败计数——静默失败不再无感空面板，累计后在面板显 Alert+重试。
+  const [adminFailCount, setAdminFailCount] = React.useState(0);
+
   // L1 admin view: only when a Controller token is available (config or env).
   const refreshAdmin = React.useCallback(async (silent = false) => {
     if (!hasCtlToken) return;
     if (!silent) setAdminLoading(true);
     try {
       const data = await fetchAdminData();
+      setAdminFailCount(0);
       setAdminData((prev) => (prev && JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
     } catch (e) {
+      setAdminFailCount((n) => n + 1);
       if (!silent) message.error(e instanceof Error ? e.message : tr("获取管理视图失败"));
     } finally {
       if (!silent) setAdminLoading(false);
     }
   }, [hasCtlToken]);
+
+  // v0.5.0-beta.13.21（同批缺口②）：hasCtlToken false→true 翻转（config 异步就绪/
+  // env 注入晚于挂载）触发首次 admin 取数。此前该翻转无任何重触发——token 未就绪
+  // 窗口内所有 admin 取数被 `if (!hasCtlToken) return` 短路，token 就绪后 admin
+  // 面板恒空，直到用户手动点刷新（首屏只显拓扑的真根因之一）。
+  const adminArmedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!hasCtlToken) {
+      adminArmedRef.current = false;
+      return;
+    }
+    if (adminArmedRef.current) return;
+    adminArmedRef.current = true;
+    void refreshAdmin(true);
+  }, [hasCtlToken, refreshAdmin]);
 
   // v0.5.0-beta.12: 账号切换（登录成功）= 数据源全切——清本地旧账号数据 + 全量重取。
   // 与后端联动：/login 已同步清 60s 聚合缓存（rooms/workflow/artifacts/
@@ -2742,11 +2808,15 @@ export default function WorkbenchPage() {
 
   // 点 Tab 即刷新（用户要求，所有 top tab）：rc-tabs 内容挂载后保活不卸载，
   // 切回不会自动重取——这里按 tab 显式触发对应数据刷新。
+  // v0.5.0-beta.13.21（同批缺口③）：首次运行（prev===""，=挂载/恢复的初始 tab，
+  // tab 是持久化的——上次停在「团队管理」则首开即 team）也触发该 tab 的数据刷新。
+  // 旧版 prev==="" 早退 = 持久化首开 team tab 时 admin 取数零触发（首屏只显拓扑
+  // 的真根因之二；hasCtlToken 翻转 effect 兜底 token 就绪，本处兜底首访意图）。
   const prevTabRef = React.useRef("");
   React.useEffect(() => {
     const prev = prevTabRef.current;
     prevTabRef.current = tab;
-    if (prev === "" || prev === tab) return;
+    if (prev === tab) return;
     switch (tab) {
       case "home":
         // 静默刷新（用户反馈：切 tab/自动刷新不闪页——rc-tabs 保活有旧数据在屏）
@@ -2987,6 +3057,22 @@ export default function WorkbenchPage() {
     </button>
   ) : null;
 
+  // v0.5.0-beta.13.21（A8d AgentActivityTrack）：房间 → 匹配项目事件
+  // （与 roomProjectNames 同匹配源 roomMatchesProject，取首个命中；
+  // 活动轨只需一个项目，多项目房间以列表首个为准，工作流 tab 仍可全看）。
+  const roomProjectByRoom = React.useMemo(() => {
+    const m: Record<string, WorkflowEvent> = {};
+    for (const room of rooms) {
+      for (const ev of workflowEvents) {
+        if (roomMatchesProject(room.room_id, room.name, undefined, ev)) {
+          m[room.room_id] = ev;
+          break;
+        }
+      }
+    }
+    return m;
+  }, [rooms, workflowEvents]);
+
   // P6：聊天双元素提取（宽/窄屏两分支共用一份 JSX——props 长，禁止复制）。
   const chatRoomEl = activeRoom ? (
     <RoomChat
@@ -3043,6 +3129,9 @@ export default function WorkbenchPage() {
       workerMxids={workerSessionStates.workerMxids}
       workerSessionByMxid={workerSessionStates.byMxid}
       workers={adminData?.workers ?? []}
+      activityProject={
+        activeRoom ? roomProjectByRoom[activeRoom.room_id] ?? null : null
+      }
       onOpenProject={(runId) => handleOpenProject(runId)}
       onWorkflowIntervened={() => void refreshWorkflow(true)}
       onOpenProjectFiles={(room) => void openProjectFiles(room)}
@@ -3067,6 +3156,22 @@ export default function WorkbenchPage() {
     return m;
   }, [rooms, workflowEvents]);
 
+  // v0.5.0-beta.13.21（A8c 侧栏角色分组）：MXID → 角色标签（Leader/
+  // Worker/Manager）。WorkerInfo 自带 role（team_leader→Leader，余→
+  // Worker）；Manager 单独归 Manager 类。无 L1 管理数据 → undefined →
+  // TeamOverview 自动退回扁平列表。
+  const workerRoleByMxid = React.useMemo(() => {
+    if (!adminData) return undefined;
+    const m: Record<string, string> = {};
+    for (const w of adminData.workers || []) {
+      if (w.matrixUserID) m[w.matrixUserID] = w.role === "team_leader" ? "Leader" : "Worker";
+    }
+    for (const mg of adminData.managers || []) {
+      if (mg.matrixUserID) m[mg.matrixUserID] = "Manager";
+    }
+    return Object.keys(m).length ? m : undefined;
+  }, [adminData]);
+
   const chatListEl = (
     <TeamOverview
       rooms={rooms}
@@ -3076,6 +3181,7 @@ export default function WorkbenchPage() {
       workerSessionByRoom={workerSessionStates.byRoom}
       workerMxids={workerSessionStates.workerMxids}
       roomProjectNames={roomProjectNames}
+      workerRoleByMxid={workerRoleByMxid}
       onOpenRoom={(roomId) => void openRoom(roomId)}
       onRefresh={() => void refreshRooms()}
       onInviteSettled={() => void refreshRooms(true, true)}
@@ -3543,6 +3649,7 @@ export default function WorkbenchPage() {
                 admin={adminData}
                 treeLoading={spawnLoading}
                 adminLoading={adminLoading}
+                adminFailCount={adminFailCount}
                 onRefreshTree={(silent) => void refreshTree(silent)} /* v0.5.0-beta.12 参数透传：`() =>` 会吃掉 30s 自动刷新的 silent */
                 onRefreshAdmin={(silent) => void refreshAdmin(silent)}
                 onDm={(mxid, roomId) => void handleDm(mxid, roomId)}

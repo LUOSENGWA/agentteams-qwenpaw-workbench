@@ -1049,6 +1049,42 @@ export async function fetchWorkflowProjects(): Promise<{
   }
 }
 
+/** v0.5.0-beta.13.21（A9 mermaid 任务 DAG）：`GET /api/v1/projects/{id}/workflow?format=mermaid`
+ *  （上游 #1230 已合 main——纯渲染同一 workflow 快照，flowchart LR + 状态
+ *  classDef，标签已在上游 sanitize，可直接交给 mermaid 渲染）。
+ *  返回 mermaid 源码文本；null = Controller 未含该端点（404，版本门）。 */
+export async function fetchWorkflowMermaid(
+  projectId: string,
+  teamId?: string,
+): Promise<string | null> {
+  const teamQ =
+    teamId ? `&team=${encodeURIComponent(teamId)}` : "";
+  try {
+    const host = window.QwenPaw.host;
+    const response = host.fetch
+      ? await host.fetch(
+          `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?format=mermaid${teamQ}`,
+        )
+      : await fetch(
+          host.getApiUrl(
+            `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?format=mermaid${teamQ}`,
+          ),
+          {
+            headers: host.getApiToken()
+              ? { Authorization: `Bearer ${host.getApiToken()}` }
+              : {},
+          },
+        );
+    if (response.status === 404) return null; // 版本门：端点未部署
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const text = await response.text();
+    return text && text.trim() ? text : null;
+  } catch (e) {
+    if (httpErrorStatus(e) === 404) return null;
+    throw e; // 其余错误由调用方显式 surface（不当静默空图）
+  }
+}
+
 /** RFC3339（controller updated_at）→ epoch ms；缺省/非法 → 0（fmtTime(0) 渲染空）。 */
 function isoToMs(v: unknown): number {
   if (typeof v !== "string" || !v) return 0;
@@ -1427,6 +1463,8 @@ export interface TeamInfo {
   workerMembers?: { name: string; role: string }[];
   heartbeatEvery?: string;
   peerMentions?: boolean;
+  /** v0.5.0-beta.13.21：团队级 spawn 子代理默认模型（TeamResponse.subagentModel 透传）。 */
+  subagentModel?: string;
 }
 
 export interface HumanInfo {
@@ -1953,8 +1991,16 @@ export async function fetchAdminData(): Promise<AdminData> {
   const [workers, teams, humans, managers] = await Promise.all([
     fetchControllerJson<unknown>("/workers").then(normalizeList),
     fetchControllerJson<unknown>("/teams").then(normalizeList),
-    fetchControllerJson<unknown>("/humans").then(normalizeList),
-    fetchControllerJson<unknown>("/managers").then(normalizeList),
+    // v0.5.0-beta.13.21（13.20 装验「首屏只显拓扑」缺口④）：humans/managers
+    // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版 Promise.all
+    // 里任一 404/超时（旧 Controller 无该端点/瞬时抖动）整体 reject → admin 面板
+    // 整体空白；workers/teams 才是 CRD 管理面板的核心数据。
+    fetchControllerJson<unknown>("/humans")
+      .then(normalizeList)
+      .catch(() => [] as unknown[]),
+    fetchControllerJson<unknown>("/managers")
+      .then(normalizeList)
+      .catch(() => [] as unknown[]),
   ]);
   return {
     workers: workers as WorkerInfo[],

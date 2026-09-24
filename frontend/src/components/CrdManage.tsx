@@ -29,6 +29,7 @@ import {
   validateModelValue,
 } from "../modelUnion";
 import TruncatedId from "./TruncatedId";
+import SkillCenter from "./SkillCenter";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 
@@ -723,6 +724,7 @@ export default function CrdManage(props: CrdManageProps) {
     description: "",
     heartbeatEvery: "",
     peerMentions: true,
+    subagentModel: "",
   });
   const [cfgRows, setCfgRows] = React.useState<WorkerRow[]>([]);
   const [cfgBusy, setCfgBusy] = React.useState(false);
@@ -733,6 +735,7 @@ export default function CrdManage(props: CrdManageProps) {
       description: team.description || "",
       heartbeatEvery: team.heartbeatEvery || "",
       peerMentions: team.peerMentions !== false,
+      subagentModel: team.subagentModel || "",
     });
     // 预填每个成员的当前模型（admin workers 同源），diff 用于保存时只发改动
     setCfgRows(
@@ -794,6 +797,10 @@ export default function CrdManage(props: CrdManageProps) {
       // 空串=不改（上游 PUT 语义：heartbeatEvery 发 null 才表示不改）
       heartbeatEvery: cfg.heartbeatEvery.trim() || null,
       peerMentions: cfg.peerMentions,
+      // v0.5.0-beta.13.21（「团队的技能等团队配置也要放在团队配置里面」）：
+      // subagentModel=团队级 spawn 子代理默认模型（上游 PUT 指针语义：
+      // null=清空/继承 Worker 主模型；值=覆盖）。与 heartbeatEvery 同 UX。
+      subagentModel: cfg.subagentModel.trim() || null,
     };
     // 成员：源响应含 workerMembers 或用户添加了行 → 全量替换（未改动=发同列表 no-op）；
     // 源响应无该字段（旧版本）且无新增行 → 不发（避免误清空）
@@ -896,17 +903,70 @@ export default function CrdManage(props: CrdManageProps) {
     void proceedCfg();
   }, [cfgTeam, cfg, cfgRows, workerNames, onRefresh, tr, modelCandidates]);
 
+  // v0.5.0-beta.13.21（A10 undo）：删团队前快照 → 删除成功后 6s「撤销」
+  // toast → 点撤销按快照重建（createTeam 原字段回写）。诚实语义=重建
+  // 非恢复：Matrix 房间历史/容器状态不随 CRD 回来（上游删除是破坏性的），
+  // toast 文案明示。workerMembers 只含引用（name/role），Worker CR 本体
+  // 不随团队删除而删 → 重建即重新挂接。
+  const undoTeam = React.useCallback(
+    async (snap: TeamInfo) => {
+      try {
+        await createTeam({
+          name: snap.name,
+          teamName: snap.teamName || undefined,
+          description: snap.description || undefined,
+          workerMembers: (snap.workerMembers || []).map((m) => ({
+            name: m.name,
+            role: m.role,
+          })),
+          heartbeatEvery: snap.heartbeatEvery || undefined,
+          peerMentions: snap.peerMentions,
+          subagentModel: snap.subagentModel || undefined,
+        });
+        antd.message.success(tr("团队 {name} 已按快照重建", { name: snap.name }));
+        onRefresh?.(true);
+      } catch (e) {
+        antd.message.error(
+          (tr("重建失败") + "：" + (e instanceof Error ? e.message : String(e))).slice(0, 200),
+        );
+      }
+    },
+    [onRefresh, tr],
+  );
+
   const doDeleteTeam = React.useCallback(
     async (name: string) => {
+      const snap = teams.find((t) => t.name === name) || null;
       try {
         await deleteTeam(name);
-        antd.message.success(tr("已删除"));
+        if (snap) {
+          const key = `atw-undo-team-${Date.now()}`;
+          antd.message.warning({
+            key,
+            duration: 6,
+            content: (
+              <span>
+                {tr("团队 {name} 已删除（房间历史与容器状态不随之恢复）", { name })}{" "}
+                <a
+                  onClick={() => {
+                    antd.message.destroy(key);
+                    void undoTeam(snap);
+                  }}
+                >
+                  {tr("撤销（按快照重建）")}
+                </a>
+              </span>
+            ),
+          });
+        } else {
+          antd.message.success(tr("已删除"));
+        }
         onRefresh?.(true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
       }
     },
-    [onRefresh, tr],
+    [onRefresh, tr, teams, undoTeam],
   );
 
   // ── 权限管理（Human CRD spec 编辑）──
@@ -1964,6 +2024,7 @@ export default function CrdManage(props: CrdManageProps) {
       {cfgTeam ? (
         <antd.Modal
           open
+          width={780}
           title={`${tr("配置团队")} · ${cfgTeam.name}`}
           onCancel={() => setCfgTeam(null)}
           footer={
@@ -1998,6 +2059,17 @@ export default function CrdManage(props: CrdManageProps) {
               value={cfg.heartbeatEvery}
               onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                 setCfg({ ...cfg, heartbeatEvery: e.target.value })
+              }
+            />
+            {/* v0.5.0-beta.13.21（「团队的技能等团队配置也要放在团队配置里面」）：
+                subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型）。 */}
+            <FieldLabel>{tr("子代理默认模型（留空 = 继承各 Worker 主模型）")}</FieldLabel>
+            <antd.Input
+              size="small"
+              placeholder={tr("子代理默认模型（如 qwen3.6:27b-fp8；留空 = 继承）")}
+              value={cfg.subagentModel}
+              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                setCfg({ ...cfg, subagentModel: e.target.value })
               }
             />
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2156,6 +2228,30 @@ export default function CrdManage(props: CrdManageProps) {
                 </antd.Button>
               </>
             ) : null}
+            {/* v0.5.0-beta.13.21（13.20 装验「团队的技能等团队配置也要放在团队
+                配置里面，和技能中心一样的搜索/上传/自定义等」）：团队技能节=
+                SkillCenter 同款组件 onlyTeam 模式内嵌（目录搜索/上传/自定义/
+                下载 + 成员分配矩阵 + MCP 卡；保存走原技能中心端点链，本弹窗
+                底部「保存」只管团队 PUT，互不干扰）。L1/L2 分权：L1 可管理
+                任意团队；L2 用户走「技能中心（我的团队）」（服务端按本团队
+                作用域强校验，两条入口同权同级）。高度封顶 460 弹窗内滚动。 */}
+            <antd.Divider style={{ margin: "10px 0 8px" }}>
+              {tr("团队技能（目录 / 分配矩阵 / MCP）")}
+            </antd.Divider>
+            <div
+              style={{
+                maxHeight: 460,
+                overflowY: "auto",
+                border: `1px solid ${t.border}`,
+                borderRadius: 8,
+                padding: 8,
+              }}
+            >
+              <SkillCenter onlyTeam={cfgTeam.name} />
+            </div>
+            <div style={{ fontSize: 11, color: t.textSecondary }}>
+              {tr("技能/分配/MCP 的保存独立于上方「保存」按钮（走技能中心原端点）；L2 用户经「技能中心（我的团队）」入口，同能力、服务端限本团队。")}
+            </div>
           </div>
         </antd.Modal>
       ) : null}

@@ -122,6 +122,15 @@ function fmtTime(ts: number): string {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** v0.5.0-beta.13.21（#1247 心跳态）：RFC3339（UTC/Z）→ 本地时区
+ *  MM-DD HH:mm:ss；解析失败原样返回（不吞字段）。 */
+function fmtRfc3339(v: string): string {
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return v;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 /** 树形连线：行首缩进 + 竖线 + 横线（经典树视觉）。 */
 function TreeLine({ depth, isLast }: { depth: number; isLast: boolean }) {
   const segs: ReactNS.ReactNode[] = [];
@@ -365,6 +374,32 @@ function WorkerManageInfo({
           warn={!!worker.containerState && !isStateConsistent(worker.state, worker.containerState)}
         />
       </div>
+      {/* v0.5.0-beta.13.21（#1247 心跳态 UI）：心跳任务运行态四字段
+          （worker-agent-status 契约——任务级真相；旧版 Controller 无
+          → 整行隐藏，不显空占位）。 */}
+      {worker.agentStatus ||
+      worker.runningTaskCount != null ||
+      worker.lastRunAt ||
+      worker.lastFinishAt ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
+          <Item label={tr("心跳态")} value={worker.agentStatus || "—"} />
+          <Item
+            label={tr("在跑任务")}
+            value={String(worker.runningTaskCount ?? 0)}
+            warn={(worker.runningTaskCount ?? 0) > 0}
+          />
+          <Item
+            label={tr("上次运行")}
+            value={worker.lastRunAt ? fmtRfc3339(worker.lastRunAt) : "—"}
+            wide
+          />
+          <Item
+            label={tr("上次完成")}
+            value={worker.lastFinishAt ? fmtRfc3339(worker.lastFinishAt) : "—"}
+            wide
+          />
+        </div>
+      ) : null}
       {/* v0.5.0-beta.12（读路径）：Worker 已装载 Skill / MCP——零新后端
           （Controller /workers 响应已含 skills/mcpServers，通用代理透传）。
           写路径（员工自助增删）等上游  PR，此处只读展示。
@@ -1412,6 +1447,8 @@ export interface WorkerManageProps {
   admin: AdminData | null;
   treeLoading?: boolean;
   adminLoading?: boolean;
+  /** v0.5.0-beta.13.21：admin 取数连续失败次数（≥2 且无数据时显 Alert+重试）。 */
+  adminFailCount?: number;
   /** 刷新拓扑树/管理数据。silent=true = 静默刷新（不闪 loading，用户反馈 要求）。 */
   onRefreshTree?: (silent?: boolean) => void;
   onRefreshAdmin?: (silent?: boolean) => void;
@@ -1451,6 +1488,7 @@ export default function WorkerManage(props: WorkerManageProps) {
     admin,
     treeLoading,
     adminLoading,
+    adminFailCount = 0,
     onRefreshTree,
     onRefreshAdmin,
     onDm,
@@ -1682,6 +1720,23 @@ export default function WorkerManage(props: WorkerManageProps) {
       </antd.Card>
       {hasToken && !admin ? (
         <antd.Card size="small">
+          {/* v0.5.0-beta.13.21（13.20 装验「首屏只显拓扑」缺口⑤）：静默失败不再
+              无感空面板——连续失败 ≥2 次显 Alert+重试（此前失败被 silent 吞掉，
+              面板恒显「加载中」，用户只能手动点刷新）。 */}
+          {adminFailCount >= 2 ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message={tr("管理数据获取失败（连续 {n} 次）", { n: adminFailCount })}
+              description={tr("拓扑来自公开接口；CRD 管理表需要 Controller 管理接口——检查 Controller 地址与 token 后重试。")}
+              action={
+                <antd.Button size="small" onClick={() => onRefreshAdmin?.(false)}>
+                  {tr("重试")}
+                </antd.Button>
+              }
+            />
+          ) : null}
           <antd.Spin spinning={adminLoading}>
             <div style={{ color: "#999", fontSize: 12, padding: 12 }}>
               {tr("管理数据加载中——团队/用户/Manager 全量状态")}

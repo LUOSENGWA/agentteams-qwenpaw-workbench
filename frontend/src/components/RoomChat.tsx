@@ -19,6 +19,7 @@ import { FilePreview, type PreviewFile } from "./FilePreview";
 import MessageSearch from "./MessageSearch";
 import MemberDetail from "./MemberDetail";
 import WorkflowCard from "./WorkflowCard";
+import AgentActivityTrack from "./AgentActivityTrack";
 import type { WorkerInfo, WorkflowEvent } from "../api";
 import WorkerChats from "./WorkerChats";
 import { useThemeColors, readThemeColors } from "../theme";
@@ -1493,6 +1494,10 @@ export interface RoomChatProps {
    * WorkbenchPage 仅在正源轨（workflowSource=controller）时传入；降级轨传空
    * （events=原始卡重解析=快照恒等，overlay 无增量且会误导 LIVE 徽标）。 */
   liveWorkflows?: WorkflowEvent[];
+  /** v0.5.0-beta.13.21（A8d AgentActivityTrack）：当前房间匹配的项目
+   *  （roomMatchesProject 同源，父组件算好传入）——composer 上方任务
+   *  进度 + HITL 内联轨；无匹配/项目终态时组件自身不渲染。 */
+  activityProject?: WorkflowEvent | null;
   /** workflow 卡片干预成功 → 刷新工作流。 */
   onWorkflowIntervened?: () => void;
   /** 项目文件面板（v0.5.0-beta.12）：顶部 📁 按钮 → 抽屉。 */
@@ -1582,6 +1587,7 @@ export default function RoomChat(props: RoomChatProps) {
     jumpToEventId,
     onJumpHandled,
     liveWorkflows,
+    activityProject,
     memberRoles,
     memberWorkerNames,
     workerBadge,
@@ -3429,6 +3435,13 @@ export default function RoomChat(props: RoomChatProps) {
           borderTop: `1px solid ${t.border}`,
         }}
       >
+        {/* v0.5.0-beta.13.21（A8d AgentActivityTrack）：composer 上方
+            任务进度 + HITL 内联轨（数据=当前房间项目 workflow，与
+            liveWorkflows 同正源，零新请求；无匹配/终态自隐）。 */}
+        <AgentActivityTrack
+          project={activityProject ?? null}
+          onOpenProject={onOpenProject}
+        />
         {replyTo ? (
           <div
             style={{

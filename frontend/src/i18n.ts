@@ -214,6 +214,12 @@ const DICT: Record<string, { en: string }> = {
     en: "Ignore aspect-ratio heuristic: room list and chat pane always split left/right with independent scrolling. On narrow panels drag the handle to resize; ⟨ collapses the list.",
   },
   "spec": { en: "Spec" },
+  "管理数据获取失败（连续 {n} 次）": {
+    en: "Admin data fetch failed ({n} consecutive)",
+  },
+  "拓扑来自公开接口；CRD 管理表需要 Controller 管理接口——检查 Controller 地址与 token 后重试。": {
+    en: "Topology comes from the public endpoint; the CRD tables need the Controller admin API — check the Controller address and token, then retry.",
+  },
   "管理数据加载中——团队/用户/Manager 全量状态": {
     en: "Loading admin data — teams/users/managers",
   },
@@ -1557,6 +1563,34 @@ const DICT: Record<string, { en: string }> = {
   "Worker 运行时（Controller CR runtime）": { en: "Worker runtime (Controller CR runtime)" },
   // #1233 事件流时间线（WorkflowEventsTimeline）。
   "事件流": { en: "Event stream" },
+  // A8d AgentActivityTrack（composer 上方任务进度+HITL 内联轨）。
+  "点击打开项目工作流": { en: "Click to open the project workflow" },
+  "任务 {done}/{total}": { en: "Tasks {done}/{total}" },
+  "迭代 {cur}/{max}": { en: "Iteration {cur}/{max}" },
+  "等待人工介入（{n}）": { en: "Awaiting human input ({n})" },
+  "+{n} 更多": { en: "+{n} more" },
+  "全部任务已完成（{n}）": { en: "All tasks completed ({n})" },
+  // 团队配置弹窗完整化（13.20 装验「团队的技能等团队配置也要放在团队配置里面」）。
+  "子代理默认模型（留空 = 继承各 Worker 主模型）": { en: "Subagent default model (blank = inherit each Worker's primary model)" },
+  "子代理默认模型（如 qwen3.6:27b-fp8；留空 = 继承）": { en: "Subagent default model (e.g. qwen3.6:27b-fp8; blank = inherit)" },
+  "团队技能（目录 / 分配矩阵 / MCP）": { en: "Team skills (catalog / assignment matrix / MCP)" },
+  "技能/分配/MCP 的保存独立于上方「保存」按钮（走技能中心原端点）；L2 用户经「技能中心（我的团队）」入口，同能力、服务端限本团队。": { en: "Skill/assignment/MCP saves are independent of the Save button above (they use the Skill Center endpoints); L2 users go through the Skill Center (My Team) entry — same capabilities, server-side scoped to their own team." },
+  // A10 undo（删团队快照重建）。
+  "团队 {name} 已删除（房间历史与容器状态不随之恢复）": { en: "Team {name} deleted (room history and container state are not restored)" },
+  "撤销（按快照重建）": { en: "Undo (recreate from snapshot)" },
+  "团队 {name} 已按快照重建": { en: "Team {name} recreated from snapshot" },
+  "重建失败": { en: "Recreate failed" },
+  // #1247 心跳态 UI（Worker 详情心跳任务运行态四字段）。
+  "心跳态": { en: "Agent status" },
+  "在跑任务": { en: "Running tasks" },
+  "上次运行": { en: "Last run" },
+  "上次完成": { en: "Last finished" },
+  // A9 mermaid 任务 DAG 视图。
+  "Mermaid": { en: "Mermaid" },
+  "项目列表/项目卡片/看板/DAG 拓扑/Mermaid 五种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；Mermaid=上游 workflow 快照直渲染（?format=mermaid）": { en: "Five views: project list / project card / board / DAG topology / Mermaid; project card and topology are a left project list + right detail (aligned with the dashboard task board Projects area); board columns share the same source as the dashboard (workflow API); Mermaid renders the upstream workflow snapshot directly (?format=mermaid)" },
+  "Mermaid DAG（上游 workflow 快照直渲染；节点色=任务状态）": { en: "Mermaid DAG (renders the upstream workflow snapshot directly; node color = task status)" },
+  "Controller 未升级到含 mermaid 端点的版本（404）——拓扑视图不受影响": { en: "Controller not upgraded to a version with the mermaid endpoint (404) — the topology view is unaffected" },
+  "Mermaid 渲染失败": { en: "Mermaid rendering failed" },
   // 存量缺键补齐（CrdManage/模型设置 12.2-12.3 遗留，i18n 全量核对抓出）。
   "Higress alias 自检：{n} 条路由 / 0 个可解析 alias——精确匹配（EXACT/EQUAL）且 provider 存在的路由才会进模型下拉；若路由已配仍为 0，检查模型匹配规则是否为「精确匹配」": { en: "Higress alias self-check: {n} route(s) / 0 resolvable alias(es) — only EXACT/EQUAL routes with an existing provider reach the model dropdown; if routes exist but it is still 0, check that the model matching rule is set to exact match" },
   "Higress alias 自检：{n} 条路由 / {m} 个可解析 alias（模型下拉可见）": { en: "Higress alias self-check: {n} route(s) / {m} resolvable alias(es) (visible in the model dropdown)" },

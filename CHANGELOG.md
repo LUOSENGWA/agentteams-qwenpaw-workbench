@@ -5,6 +5,34 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.21（2026-09-24）
+
+**13.20 装验反馈收口 + 残余盘点全批：团队管理首屏一次性就绪 / 房间列表 Element 化增量刷新 / 团队配置弹窗完整化（含团队技能节）/ Worker 配置集成拓扑 / 侧栏角色分组 / composer 上方活动轨 / Mermaid DAG 视图 / 删团队撤销 / 心跳态显形**
+
+- **团队管理首屏数据一次性就绪（「一开始只能看见拓扑，要等一会点刷新才能看见其他」）**：
+  五个结构性缺口全修——① mount effect 补 admin 拉取；② 管理 token `false→true` 翻转补重触发（此前 token 后到首屏恒空）；③ tab 切换 effect 首访早退修（持久化首开团队 tab 不刷新）；④ `fetchAdminData` 改分键容错（humans/managers 任一 404 不再拖垮 workers/teams）；⑤ 失败显形（连续失败计数 + 警示条，不再静默）。
+- **房间列表 Element 化（「刷新是不是有点慢有点笨，看看 Element」）**：
+  ① 后端 watcher 新增 `room_list_update` SSE 增量事件——房间 name/topic/unread/last_ts/member_count 的 delta + 新房间 summary + leave 事件（基于 /sync 事件流就地 diff，不再每次全量 `/teams/sync`）；
+  ② 前端收到增量**就地合并重排**（不整表重拉）；mention/approval 类更新不再触发房间全量刷新（仅真·全量场景：首次同步/登录/显式刷新/接受邀请）；
+  ③ +7 增量 diff 回归测试。
+- **未读气泡 → 左上角**（侧栏图标角标从右上移到左上）。
+- **团队配置弹窗完整化（「团队的技能等团队配置也要放在团队配置里面」）**：
+  ① 补 **subagentModel**（团队级 spawn 子代理默认模型，留空=继承 Worker 主模型）字段 + 保存（PUT 同 heartbeatEvery 语义）；
+  ② 弹窗内嵌**团队技能节**=技能中心同款组件 onlyTeam 模式（目录搜索/上传/自定义新建/下载 + 成员分配矩阵 + MCP 卡；保存走技能中心原端点，与弹窗「保存」按钮互不干扰；高度封顶 460 内滚动）；
+  ③ **L1/L2 分权保留**：L1 可管理任意团队；L2 用户走「技能中心（我的团队）」入口，同能力、服务端限本团队。
+- **Worker 配置集成拓扑（「worker 也是，都集成在拓扑里面」）**：Worker 拓扑「资源管理」技能页签补**目录节**（搜索/上传/自定义/下载，scope=该 Worker 所属团队）+ 原可编辑分配矩阵，一屏看全。
+- **侧栏角色分组（A8c）**：私聊视图按对象角色分区（Leader / Worker / Manager / 其他，组内仍按时间/名称序）；无 L1 管理数据时自动退回扁平列表（L2 无感）。
+- **AgentActivityTrack 活动轨（A8d，composer 上方任务进度 + HITL）**：当前房间匹配项目活跃时，输入框上方显内联轨——项目名+状态+任务 done/total+迭代进度+「等待人工介入」琥珀 chip+在办任务 chip（≤5，状态色点+执行者）；点轨=打开该项目工作流；项目终态/无匹配自隐。数据=既有 workflow API（零新请求）。
+- **Mermaid DAG 视图（A9，第五视图）**：工作流页新增「Mermaid」视图——上游 `GET /projects/{id}/workflow?format=mermaid`（已合 main）快照直渲染（节点色=任务状态，ready 高亮）；mermaid 12.0.0（MIT）随包单文件内联（宿主 blob 环境禁动态 import，`inlineDynamicImports` 全内联；主包 2,308→7,620kB，离线可用零网络依赖）；Controller 未含该端点（404）诚实占位，拓扑视图不受影响。
+- **删团队撤销（A10 undo）**：删团队前快照 → 删除成功 6s「撤销（按快照重建）」toast → 按快照 `createTeam` 回写（teamName/description/workerMembers/heartbeat/peerMentions/subagentModel）。诚实语义=**重建非恢复**（房间历史/容器状态不随 CRD 回来，toast 明示）。
+- **#1247 心跳态显形**：Worker 详情面板补心跳任务运行态四字段（agentStatus / runningTaskCount / lastRunAt / lastFinishAt；旧版 Controller 无字段整行隐藏）。
+- **MCP L2 写权限**：上游 capability-foundation 在途（仅地基：CRD capabilities + audit client）；消费支待其合并后排期——L2 的 MCP 写目前仍阻塞（非插件侧问题）。
+- **i18n**：1368 键 0 缺 0 重 0 空（+25）
+
+**验证**：tsc 0 · vite 单文件 7,620kB（gzip 2,150kB；0 import 语句=宿主 blob 安全）· pytest 71/71 · i18n 1368 键 · 敏感扫 0（源码+dist 解码）· 版本载体 25 处
+
+---
+
 ## 0.5.0-beta.13.20（2026-09-24）
 
 **13.19 装验反馈收口：per-worker 技能一等公民（物化层字段补全 + 预加载开关）/ 团队配置入口上移（拓扑「N人」右侧齿轮）/ 群消息加载逻辑收敛（roomHistory 单一权威 + 开房路径深历史修复）**

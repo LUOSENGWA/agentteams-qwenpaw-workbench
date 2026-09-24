@@ -23,6 +23,7 @@ import {
   type DagNodeColor,
 } from "./WorkflowDag";
 import { WorkflowEventsTimeline } from "./WorkflowEventsTimeline";
+import MermaidDagView from "./MermaidDagView";
 import { TopologyIcon } from "./icons";
 
 const host = window.QwenPaw.host;
@@ -1863,8 +1864,9 @@ export interface WorkflowBoardProps {
   onTopoRunChange?: (runId: string) => void;
 }
 
-/** 工作流页四种视图 tab（v0.5.0-beta.12 ：导出给父组件做记忆校验）。 */
-export type WfView = "list" | "card" | "board" | "topo";
+/** 工作流页视图 tab（v0.5.0-beta.12 四种；v0.5.0-beta.13.21 加 mermaid
+ *  = 上游 workflow 快照 mermaid 直渲染视图，复用 topo 的项目选择）。 */
+export type WfView = "list" | "card" | "board" | "topo" | "mermaid";
 
 export default function WorkflowBoard(props: WorkflowBoardProps) {
   const {
@@ -2038,7 +2040,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
           {tr("项目")}（{events.length}）
         </span>
         <antd.Tooltip
-          title={tr("项目列表/项目卡片/看板/DAG 拓扑四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）")}
+          title={tr("项目列表/项目卡片/看板/DAG 拓扑/Mermaid 五种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；Mermaid=上游 workflow 快照直渲染（?format=mermaid）")}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
         </antd.Tooltip>
@@ -2063,7 +2065,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
           size="small"
           value={view}
           onChange={(v: ReactNS.Key | number) =>
-            setView(v as "list" | "card" | "board" | "topo")
+            setView(v as "list" | "card" | "board" | "topo" | "mermaid")
           }
           // 装验反馈 9/19（P3）：看板/拓扑视图 tab 计数取消——
           // 页头「项目 (N)」已给总量，视图 tab 上的计数冗余。
@@ -2077,6 +2079,15 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
               label: (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                   <TopologyIcon size={14} /> {tr("拓扑")}
+                </span>
+              ),
+            },
+            {
+              value: "mermaid",
+              // v0.5.0-beta.13.21（A9）：上游 workflow 快照 mermaid 直渲染。
+              label: (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <TopologyIcon size={14} /> {tr("Mermaid")}
                 </span>
               ),
             },
@@ -2234,6 +2245,61 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
             onOpenDetail={(tid, rid) => setInspect({ runId: rid, taskId: tid })}
           />
         )
+      ) : view === "mermaid" ? (
+        /* v0.5.0-beta.13.21（A9）：master-detail 复用 topo 同款左栏项目选择
+           （含 planning 项目，同一 topoRun 记忆），右=上游 mermaid 直渲染。 */
+        <div style={{ display: "grid", gridTemplateColumns: `${railW}px 6px minmax(0, 1fr)`, gap: "12px 0", alignItems: "start" }}>
+          <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
+          <div
+            onMouseDown={startRailDrag}
+            title={tr("拖动调整项目列表宽度")}
+            style={{
+              cursor: "col-resize",
+              alignSelf: "stretch",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <div style={{ width: 3, height: "100%", background: t.border, borderRadius: 2 }} />
+          </div>
+          <div
+            style={{
+              minWidth: 0,
+              padding: 12,
+              paddingLeft: 24,
+              borderRadius: 10,
+              border: `1px solid ${t.border}`,
+              maxHeight: "calc(100vh - 300px)",
+              overflow: "auto",
+            }}
+          >
+            {topoEvent ? (
+              <div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    marginBottom: 10,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  {topoEvent.title || topoEvent.runId}
+                  <antd.Tag
+                    color={statusMeta(topoEvent.status).color}
+                    style={{ margin: 0 }}
+                  >
+                    {statusMeta(topoEvent.status).label}
+                  </antd.Tag>
+                </div>
+                <MermaidDagView ev={topoEvent} />
+              </div>
+            ) : (
+              <antd.Empty description={tr("请选择左侧项目")} />
+            )}
+          </div>
+        </div>
       ) : (
         /* master-detail：左=项目列表（含 planning 项目，诚实空态），右=
            分层 DAG（WorkflowDagSvg，dashboard 同源算法）+ 干预/中断/loop。 */

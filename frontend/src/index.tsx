@@ -86,7 +86,7 @@ function SidebarApprovalIcon() {
             style: {
               position: "absolute",
               top: -5,
-              right: -7,
+              left: -7, // v0.5.0-beta.13.21：未读气泡左上角（装验反馈）
               minWidth: 13,
               height: 13,
               lineHeight: "13px",

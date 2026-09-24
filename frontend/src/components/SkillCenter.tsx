@@ -99,6 +99,7 @@ interface MatrixState {
 export default function SkillCenter({
   l2 = false,
   onlyWorker,
+  onlyTeam,
   sections,
 }: {
   l2?: boolean;
@@ -106,6 +107,12 @@ export default function SkillCenter({
    *  限定单 Worker——矩阵只渲染该 Worker 行（自动展开编辑区）、MCP 卡只
    *  渲染该 Worker 行、隐藏页面题头。无此 prop 时行为与既有全量视图完全一致。 */
   onlyWorker?: string;
+  /** v0.5.0-beta.13.21（13.20 装验「团队的技能等团队配置要放在团队配置里，
+   *  和技能中心一样的搜索/上传/自定义，worker 也是」）：限定单团队——
+   *  目录按 ?team= 取（L1 任意团队/L2 本团队）、矩阵/MCP 只渲染该团队
+   *  Worker、上传 scope 固定该团队（选择器隐藏）。团队配置弹窗（齿轮）
+   *  嵌入用；与 onlyWorker 可组合。 */
+  onlyTeam?: string;
   /** 模块裁剪：默认全渲染（目录①+矩阵②+MCP③）；拓扑嵌入按需（如
    *  ["matrix"] 只出可编辑技能矩阵 / ["mcp"] 只出可编辑 MCP 卡）。 */
   sections?: ReadonlyArray<"catalog" | "matrix" | "mcp">;
@@ -241,19 +248,26 @@ export default function SkillCenter({
     () => st.workers.filter((w) => (mcpMap[w.name] || []).length).length,
     [st.workers, mcpMap],
   );
+  // v0.5.0-beta.13.21：onlyWorker/onlyTeam 作用域过滤（两者可组合）。
+  const scopeWorker = React.useCallback(
+    (w: WorkerInfo) =>
+      (!onlyWorker || w.name === onlyWorker) &&
+      (!onlyTeam || w.team === onlyTeam),
+    [onlyWorker, onlyTeam],
+  );
   const mcpVisible = React.useMemo(() => {
     // v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 只出该 Worker 行，且
     // **无条件出**（无 MCP 时行内走「无 MCP」文案——全局「隐藏无 MCP
     // Worker」折叠开关在嵌入态无意义，不能把目标行滤成空白卡）。
-    if (onlyWorker) return st.workers.filter((w) => w.name === onlyWorker);
+    if (onlyWorker || onlyTeam) return st.workers.filter(scopeWorker);
     return mcpWithCount === 0 || showAllMcp
       ? st.workers
       : st.workers.filter((w) => (mcpMap[w.name] || []).length);
-  }, [st.workers, mcpMap, mcpWithCount, showAllMcp, onlyWorker]);
+  }, [st.workers, mcpMap, mcpWithCount, showAllMcp, onlyWorker, onlyTeam, scopeWorker]);
   // v0.5.0-beta.13.16：拓扑嵌入 = 单 Worker 视图（矩阵卡组头/其他行不出）。
   const workersView = React.useMemo(
-    () => (onlyWorker ? st.workers.filter((w) => w.name === onlyWorker) : st.workers),
-    [st.workers, onlyWorker],
+    () => (onlyWorker || onlyTeam ? st.workers.filter(scopeWorker) : st.workers),
+    [st.workers, onlyWorker, onlyTeam, scopeWorker],
   );
 
 
@@ -297,7 +311,10 @@ export default function SkillCenter({
   // v0.5.0-beta.13.14：L2 带 ?team=（skill-catalog-api.md W8 反探测契约）。
   const loadCatalog = React.useCallback(async () => {
     try {
-      const cat = await fetchSkillCatalog(l2 ? l2Team || undefined : undefined);
+      // v0.5.0-beta.13.21：onlyTeam 优先（L1 团队配置弹窗按 ?team= 取该团队目录）。
+      const cat = await fetchSkillCatalog(
+        onlyTeam || (l2 ? l2Team || undefined : undefined),
+      );
       setSt((prev) => ({ ...prev, catalog: cat }));
     } catch (e) {
       const s = httpErrorStatus(e);
@@ -314,7 +331,7 @@ export default function SkillCenter({
               }),
       }));
     }
-  }, [l2, l2Team, tr]);
+  }, [l2, l2Team, onlyTeam, tr]);
 
   React.useEffect(() => {
     void loadWorkers();
@@ -322,9 +339,10 @@ export default function SkillCenter({
 
   React.useEffect(() => {
     // L2：团队名未定前不发请求（避免无 ?team= 的 L2 调用 403 闪烁）。
-    if (l2 && !l2Team) return;
+    // v0.5.0-beta.13.21：onlyTeam 已定团队 → 无需等 l2Team 选择。
+    if (l2 && !onlyTeam && !l2Team) return;
     void loadCatalog();
-  }, [loadCatalog, l2, l2Team]);
+  }, [loadCatalog, l2, l2Team, onlyTeam]);
 
   // v0.5.0-beta.13.19（13.18 装验「自定义技能和技能上传和下载呢」）：
   // 技能包上传 / 自定义新建 / 下载（技能目录卡动作）。
@@ -333,13 +351,15 @@ export default function SkillCenter({
   //   下载 = GET /api/v1/skills/{name}/download（上游 v1.2.4 尚无此端点 →
   //          404 时诚实提示，端点就位即自动可用）
   const teamChoices = React.useMemo(() => {
+    // v0.5.0-beta.13.21：onlyTeam 固定上传 scope（选择器隐藏）。
+    if (onlyTeam) return [onlyTeam];
     if (l2) return l2Teams.map((t) => t.name);
     const set = new Set<string>();
     st.workers.forEach((w) => {
       if (w.team) set.add(w.team);
     });
     return Array.from(set).sort();
-  }, [l2, l2Teams, st.workers]);
+  }, [l2, l2Teams, st.workers, onlyTeam]);
   React.useEffect(() => {
     if (upTeam && teamChoices.includes(upTeam)) return;
     const fallback = l2 ? l2Team || teamChoices[0] || "" : teamChoices[0] || "";
@@ -574,8 +594,9 @@ export default function SkillCenter({
       ) : null}
 
       {/* v0.5.0-beta.13.14：L2 多团队选择器（accessibleTeams >1 时；
-          单团队自动选中不出选择器）。切团队 → 目录按 ?team= 重拉。 */}
-      {l2 && l2Teams.length > 1 ? (
+          单团队自动选中不出选择器）。切团队 → 目录按 ?team= 重拉。
+          v0.5.0-beta.13.21：onlyTeam 嵌入态不出选择器（团队已由入口固定）。 */}
+      {l2 && !onlyTeam && l2Teams.length > 1 ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("团队")}</span>
           <antd.Select

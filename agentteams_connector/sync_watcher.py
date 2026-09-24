@@ -20,7 +20,7 @@ import json as _json
 import logging
 import urllib.parse as _urlparse
 from collections import deque
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -59,6 +59,7 @@ def reset_state() -> None:
     _recent_ids.clear()
     _muted_rooms.clear()  # v0.5.0-beta.12 ：静音集合是账号级状态，切账号重建
     _mention_buffer.clear()  # v0.5.0-beta.12 ：@我缓冲是账号级状态
+    _room_meta.clear()  # v0.5.0-beta.13.21 ：房间列表增量基线随账号重建
     _mention_eids.clear()
     _approval_buffer.clear()  # v0.5.0-beta.12：审批缓冲是账号级状态
     _approval_eids.clear()
@@ -112,6 +113,10 @@ _approval_eids: "OrderedDict[str, None]" = OrderedDict()
 # 重放时 rooms.invite 段会重复出现，按 room_id 去重）。首轮 /sync=基线
 # （只建集合不通知，防插件启动把存量邀请轰炸成 toast）。
 _invited_rooms: set = set()
+
+# v0.5.0-beta.13.21：房间列表增量基线（room_id → {name, member_count}）。
+# 首轮全量 /sync 建基线，后续增量 diff 用；账号切换 reset_state 清空。
+_room_meta: "Dict[str, Dict[str, Any]]" = {}
 
 
 def get_approval_buffer(limit: int = 30) -> List[Dict[str, Any]]:
@@ -523,6 +528,144 @@ def _track_workflow(wf: Dict[str, Any], room_id: str) -> None:
         _remember(_TASK_STATES, key, step_status)
 
 
+def build_room_list_diff(
+    payload: Dict[str, Any], baseline: bool
+) -> "Tuple[List[Dict[str, Any]], List[str]]":
+    """v0.5.0-beta.13.21（房间列表 Element 化）：从一轮 /sync payload 收集
+    各 join 房间元数据增量 diff——(diff_items, left_room_ids)。
+
+    纯函数（除维护模块级基线 ``_room_meta``，账号切换 reset_state 清空）：
+      - baseline 轮：首轮全量 /sync 带全部房间 state → 只建基线（name/member
+        count），不产 diff（前端首载走全量 /teams/sync，不依赖增量）。
+      - 基线后新房间：新房间 /sync 带全 state → 建 summary（name/member_count
+        /last_ts/last_sender/last_body），diff 项带 ``new=True``，前端插入。
+      - 已有房间：m.room.name 变更 / m.room.member join-leave 增减 /
+        timeline 最大 ts（最后活动）/ unread_notifications / m.typing，
+        有变更才产项（变更字段最小化载荷）。
+      - leave 段：房间退出 join → 从基线移除并进 left（前端从列表移除）。
+    """
+    room_diff: List[Dict[str, Any]] = []
+    room_left: List[str] = []
+    rooms = (payload.get("rooms") or {}).get("join") or {}
+    for rid_key, rdata in rooms.items():
+        rid_str = str(rid_key)
+        rdata = rdata if isinstance(rdata, dict) else {}
+        state_events = ((rdata.get("state") or {}).get("events")) or []
+        tl_events = ((rdata.get("timeline") or {}).get("events")) or []
+        ephemeral = ((rdata.get("ephemeral") or {}).get("events")) or []
+        meta = _room_meta.get(rid_str)
+        if meta is None:
+            nm = ""
+            mc = 0
+            for sev in state_events:
+                if not isinstance(sev, dict):
+                    continue
+                st = sev.get("type")
+                sc = sev.get("content") or {}
+                if st == "m.room.name":
+                    nm = str(sc.get("name") or "")
+                elif st == "m.room.member" and sc.get("membership") == "join":
+                    mc += 1
+            _room_meta[rid_str] = {"name": nm, "member_count": mc}
+            if baseline:
+                continue  # 基线轮只建基线不广播
+            item: Dict[str, Any] = {
+                "room_id": rid_str,
+                "new": True,
+                "name": nm,
+                "member_count": mc,
+            }
+            last_ts = 0
+            last_sender = ""
+            last_body = ""
+            for ev in tl_events:
+                if not isinstance(ev, dict):
+                    continue
+                ts = int(ev.get("origin_server_ts") or 0)
+                if ts > last_ts:
+                    last_ts = ts
+                if ev.get("type") == "m.room.message":
+                    last_sender = str(ev.get("sender") or "")
+                    ec = ev.get("content") or {}
+                    if isinstance(ec, dict):
+                        last_body = str(ec.get("body") or "")[:120]
+            if last_ts:
+                item["last_ts"] = last_ts
+            if last_sender:
+                item["last_sender"] = last_sender
+            if last_body:
+                item["last_body"] = last_body
+            room_diff.append(item)
+            continue
+        # 已有房间：收集变更（无变更不广播）。
+        item = {"room_id": rid_str}
+        changed = False
+        for coll in (state_events, tl_events):
+            for ev in coll:
+                if not isinstance(ev, dict):
+                    continue
+                st = ev.get("type")
+                ec = ev.get("content") or {}
+                if not isinstance(ec, dict):
+                    ec = {}
+                if st == "m.room.name":
+                    nn = str(ec.get("name") or "")
+                    if nn != meta["name"]:
+                        meta["name"] = nn
+                        item["name"] = nn
+                        changed = True
+                elif st == "m.room.member":
+                    mship = ec.get("membership")
+                    if mship == "join":
+                        meta["member_count"] = int(meta["member_count"]) + 1
+                        item["member_count"] = meta["member_count"]
+                        changed = True
+                    elif mship in ("leave", "kick", "ban"):
+                        meta["member_count"] = max(0, int(meta["member_count"]) - 1)
+                        item["member_count"] = meta["member_count"]
+                        changed = True
+        # 最后活动=本批 timeline 最大 ts（增量 /sync 只含新事件，单调前进）。
+        last_ts = 0
+        for ev in tl_events:
+            if not isinstance(ev, dict):
+                continue
+            ts = int(ev.get("origin_server_ts") or 0)
+            if ts > last_ts:
+                last_ts = ts
+            if ev.get("type") == "m.room.message":
+                item["last_sender"] = str(ev.get("sender") or "")
+                ec2 = ev.get("content") or {}
+                if isinstance(ec2, dict) and not ec2.get("m.new_content"):
+                    item["last_body"] = str(ec2.get("body") or "")[:120]
+        if last_ts:
+            item["last_ts"] = last_ts
+            changed = True
+        # 未读（/sync 增量响应为有新事件的房间带 unread_notifications）。
+        un = rdata.get("unread_notifications")
+        if isinstance(un, dict):
+            if "notification_count" in un:
+                item["unread"] = int(un.get("notification_count") or 0)
+                changed = True
+            if "highlight_count" in un:
+                item["unread_highlight"] = int(un.get("highlight_count") or 0)
+                changed = True
+        # typing（ephemeral；驱动群卡蓝灯）。
+        for ev in ephemeral:
+            if not isinstance(ev, dict) or ev.get("type") != "m.typing":
+                continue
+            item["typing"] = list(((ev.get("content") or {}).get("user_ids")) or [])
+            changed = True
+        if changed:
+            room_diff.append(item)
+    # leave 段 → 房间列表移除。
+    for lrid in ((payload.get("rooms") or {}).get("leave") or {}):
+        lrid = str(lrid)
+        if lrid in _room_meta:
+            _room_meta.pop(lrid, None)
+            room_left.append(lrid)
+    return room_diff, room_left
+
+
 async def _run() -> None:
     """常驻 /sync 循环：长连接（timeout=30s）等事件，到达即处理。
     多 homeserver failover：working 地址优先，逐个尝试，失败换下一个。"""
@@ -648,6 +791,19 @@ async def _run() -> None:
             )
 
         rooms = (payload.get("rooms") or {}).get("join") or {}
+        # ⑥ v0.5.0-beta.13.21（房间列表 Element 化，装验反馈「刷新慢有点笨，看看
+        #    Element」）：Element 的 room list 从不全量重拉——/sync 增量事件就地
+        #    合并（新房间插入/元数据更新/未读计数/离开移除）。此前插件每次房间
+        #    列表更新=全量 /teams/sync=一次带全房间 state 的 Matrix 全量 /sync
+        #    （76 房间时明显迟钝）。现 watcher 每轮 /sync 收集各 join 房间元数据
+        #    diff（名字/成员数/未读/最后活动/typing + 新房间 summary + leave），
+        #    批量广播 room_list_update SSE → 前端就地合并重排，全量 /teams/sync
+        #    降为 60s 兜底+邀请/手动。
+        room_diff, room_left = build_room_list_diff(payload, baseline)
+        if room_diff or room_left:
+            await _broadcast(
+                {"type": "room_list_update", "rooms": room_diff, "left": room_left}
+            )
         for room_id, room_data in rooms.items():
             events = ((room_data.get("timeline") or {}).get("events")) or []
             for ev in events:

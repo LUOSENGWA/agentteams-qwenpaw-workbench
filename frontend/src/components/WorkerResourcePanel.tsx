@@ -7,7 +7,8 @@
  * + 点开工具不应再选 Worker」——四维全部就地可管理，不再跳页。
  *
  * 四页签（全部复用既有组件/编辑链路，不裸重写）：
- *  ① 技能 = <SkillCenter onlyWorker sections=[matrix]>：技能中心的可编辑
+ *  ① 技能 = <SkillCenter onlyWorker onlyTeam sections=[catalog,matrix]>：
+ *     目录（搜索/上传/自定义/下载，团队 scope）+ 技能中心的可编辑
  *     矩阵（分配 + 物化双层语义原样继承；保存走同一 updateWorker 链路）。
  *  ② MCP = <SkillCenter onlyWorker sections=[mcp]>：MCP 卡（L1 就地编辑
  *     mcpServers；L2 只读=上游契约）。
@@ -63,7 +64,15 @@ export default function WorkerResourcePanel({
         </span>
       ),
       children: (
-        <SkillCenter l2={l2} onlyWorker={worker.name} sections={["matrix"]} />
+        // v0.5.0-beta.13.21（13.20 装验「worker 也是，和技能中心一样的搜索/
+        // 上传/自定义等，都集成在拓扑里面」）：技能节=目录（搜索/上传/自定义/
+        // 下载，scope=该 Worker 所属团队）+ 可编辑分配矩阵（preload 等）。
+        <SkillCenter
+          l2={l2}
+          onlyWorker={worker.name}
+          onlyTeam={worker.team || undefined}
+          sections={["catalog", "matrix"]}
+        />
       ),
     },
     {
