@@ -1019,7 +1019,10 @@ function BoardCard(props: {
  *  - 列内显式时间排序：项目活动 ts 新→旧（看板恒时间序——项目级 sortBy
  *    是列表/轨道视图语义，不应扰动看板列内顺序；旧版列内顺序=events
  *    传入序，受 sortBy 影响，「时间排序」不成立）。 */
-const BOARD_CARD_CAP_PX = 330; // ≈3 × BoardCard(~100px 含标题换行余量) + 2 gap
+// v0.5.0-beta.13.16（13.15 装验）：原「限高 ≈3 卡」静态常量改为按屏动态
+// 计算（见 BoardColumnsView 的 grid 状态：宽 4×2 / 窄 2×4，列高=视口可用
+// 高/行数）——8 列等高、随屏幕高度按比例伸缩、内容超出列内滚动。
+const BOARD_CARD_CAP_PX = 330; // 初始/回退值（≈3 卡）
 function BoardColumnsView(props: {
   events: WorkflowEvent[];
   t: ReturnType<typeof useThemeColors>;
@@ -1046,16 +1049,56 @@ function BoardColumnsView(props: {
     }
     return m;
   }, [events]);
+
+  // v0.5.0-beta.13.16（13.15 装验「每个看板要等高 + 随屏幕高度动态调整 +
+  // 宽屏 4×2 / 窄屏 2×4」）：列数与列高由容器宽/视口高推导——
+  // 宽 ≥ 950 → 4 列 × 2 行；否则 2 列 × 4 行。卡区高 = 视口可用高 / 行数
+  // （下限 200 / 上限 460，含页面头等占位 240 余量）→ 8 列恒等高。
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [grid, setGrid] = React.useState<{ cols: number; h: number }>({
+    cols: 4,
+    h: BOARD_CARD_CAP_PX,
+  });
+  React.useEffect(() => {
+    const compute = () => {
+      const w =
+        wrapRef.current?.clientWidth ||
+        (typeof window !== "undefined" ? window.innerWidth : 1000);
+      const cols = w >= 950 ? 4 : 2;
+      const rows = Math.ceil(BOARD_COLUMNS.length / cols);
+      const avail = Math.max(
+        420,
+        (typeof window !== "undefined" ? window.innerHeight : 900) - 240,
+      );
+      const h = Math.min(460, Math.max(200, Math.floor(avail / rows) - 18));
+      setGrid((prev) => (prev.cols === cols && prev.h === h ? prev : { cols, h }));
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    let ro: ResizeObserver | null = null;
+    try {
+      if (typeof ResizeObserver !== "undefined" && wrapRef.current) {
+        ro = new ResizeObserver(() => compute());
+        ro.observe(wrapRef.current);
+      }
+    } catch {
+      /* 环境无 ResizeObserver：仅 resize 监听兜底 */
+    }
+    return () => {
+      window.removeEventListener("resize", compute);
+      ro?.disconnect();
+    };
+  }, []);
+
   return (
     <div
+      ref={wrapRef}
       style={{
         display: "grid",
-        // B7：4 列 × 2 行（8 状态列；minmax 230 保证卡可读宽度）。
-        // 窄窗口（< 4×230）横向滚动，不裁剪。
-        gridTemplateColumns: "repeat(4, minmax(230px, 1fr))",
+        // 宽屏 4 列 × 2 行；窄屏（<950）2 列 × 4 行。列宽按比例（1fr）。
+        gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`,
         gap: 10,
-        alignItems: "start",
-        overflowX: "auto",
+        alignItems: "stretch",
       }}
     >
       {BOARD_COLUMNS.map((col) => {
@@ -1068,9 +1111,10 @@ function BoardColumnsView(props: {
               borderRadius: 10,
               background: t.cardBg,
               padding: 8,
-              minWidth: 230,
+              minWidth: 0,
               display: "grid",
               gap: 8,
+              alignContent: "start",
             }}
           >
             <div
@@ -1094,13 +1138,14 @@ function BoardColumnsView(props: {
               />
               {tr(col.zh)}（{colTasks.length}）
             </div>
-            {/* B7：卡区限高 3 卡 + 列内滚动 col。 */}
+            {/* B7 + 13.16：卡区高 = 屏高比例（8 列等高），内容超出列内滚动。 */}
             <div
               style={{
                 display: "grid",
                 gap: 8,
-                maxHeight: BOARD_CARD_CAP_PX,
-                overflowY: colTasks.length > 3 ? "auto" : "visible",
+                height: grid.h,
+                alignContent: "start",
+                overflowY: "auto",
                 overflowX: "hidden",
               }}
             >
@@ -1384,7 +1429,7 @@ function InterventionActions({
 
 /** 中断横幅：展示 interrupts 与暂停原因（paused interrupt）。
  *  v0.5.0-beta.13.13（13.12 装验「顶上三个 ⚠ blocked 只显示 '⚠ blocked'
- *  有点突兀」）：interrupt.id 即 task_id（实盘 jev 项目 3 条 blocked
+ *  有点突兀」）：interrupt.id 即 task_id（实盘某项目 3 条 blocked
  *  interrupt id=...-03/-04/-07 与 tasks_detail task_id 一一对应）→
  *  横幅带任务短编号 + 当前状态 + 分配 Worker，可定位到具体任务。
  *  无 task 匹配（interrupt 非任务维度）→ 保持原样。 */

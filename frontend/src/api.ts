@@ -1056,17 +1056,22 @@ function isoToMs(v: unknown): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-/** v0.5.0-beta.13.15（B3 真根因修）：项目↔房间关联判定。
- *  实盘根因（源码实证，create-project.sh + project_handler.go）：
+/** v0.5.0-beta.13.15/13.16（B3 关联判定——两轮真根因收口）：项目↔房间。
+ *  实盘根因（源码 + 部署真值双证）：
  *  ① 项目群真 ID 写在 meta.json 的 `project_room_id`，Controller 的 Go
  *     projectMeta 结构体只挑 source_room_id 透传 → API 从不暴露项目群 ID；
  *  ② workflow.room_id（= meta.source_room_id）只是「发起房间」——QQ 发起
- *     为 `qq:...`、DM 发起为 DM 房间 → 与项目群 room_id 严格相等恒 miss
- *     （13.14 装验「当前房间无直接关联项目」）。
- *  双源判定（任一命中即关联）：
+ *     为 `qq:...`、DM 发起为 DM 房间 → 与项目群 room_id 严格相等恒 miss；
+ *  ③ 13.15 只补了 `Project: <title>` 名称源，但**新项目（按 create_task_room 约定建的）根本
+ *     没有 `Project:` 房**——teamharness MCP create_task_room 建的**任务房
+ *     命名 `TASK：<projectId>`**（server.py L245/L249 契约；实盘 76 房间
+ *     对表：6 个 TASK 房全部漏配）→ 13.16 补第三源。
+ *  三源判定（任一命中即关联）：
  *  ① source_room_id 严格匹配（`matrix:` 前缀归一后比较）；
- *  ② 标准项目群命名：房间名/话题 = `Project: <项目名>`（create-project.sh
- *     建群固定命名 `Project: <title>` / topic `Project room for <title>`）。
+ *  ② 旧约定项目房：房间名/话题 = `Project: <项目名>`（create-project.sh，
+ *     引号容错——兼容手工改名/带引号变体）；
+ *  ③ 新约定任务房：房间名 = `TASK：<projectId>`（全/半角冒号容错）→ 与
+ *     `ev.runId`（= project_id）精确相等——房间名内嵌项目 ID，直连正源。
  *  上游若日后暴露 project_room_id（待提 PR），本函数优先其为准源。 */
 export function roomMatchesProject(
   roomId: string,
@@ -1075,17 +1080,26 @@ export function roomMatchesProject(
   ev: WorkflowEvent,
 ): boolean {
   if (!roomId) return false;
+  const stripQ = (s: string) => s.trim().replace(/^['"“”‘’\s]+|['"“”‘’\s]+$/g, "");
+  const norm = (s: string) => s.trim().replace(/^matrix:/i, "");
+  // ① 源房间（Controller 轨 = wf.source_room_id；连接器轨 = 物理房间）。
   const src = typeof ev.room_id === "string" ? ev.room_id.trim() : "";
-  if (src) {
-    const norm = (s: string) => s.trim().replace(/^matrix:/i, "");
-    if (norm(src) === norm(roomId)) return true;
-  }
+  if (src && norm(src) === norm(roomId)) return true;
   const title = typeof ev.title === "string" ? ev.title.trim() : "";
-  if (title) {
-    const prefix = `Project: ${title}`;
-    for (const v of [roomName, roomTopic]) {
-      const s = typeof v === "string" ? v.trim() : "";
-      if (s === prefix) return true;
+  const runId = typeof ev.runId === "string" ? ev.runId.trim() : "";
+  for (const v of [roomName, roomTopic]) {
+    const s = typeof v === "string" ? stripQ(v) : "";
+    if (!s) continue;
+    // ② 旧约定：项目房命名 `Project: <标题>`（create-project.sh 建）。
+    if (title && s === `Project: ${title}`.trim()) return true;
+    // ③ 新约定：任务房命名 `TASK：<projectId>`（teamharness create_task_room，
+    //    server.py「Project task rooms are named TASK：<projectId>」；全角/半角
+    //    冒号容错）——房间名内嵌项目 ID = 直连正源（13.15 装验实盘
+    //    证明新项目只有任务房、无 `Project:` 房）。
+    const m = /^TASK[:：]\s*(.+)$/.exec(s);
+    if (m) {
+      const pid = stripQ(m[1]);
+      if (pid && runId && pid === runId) return true;
     }
   }
   return false;

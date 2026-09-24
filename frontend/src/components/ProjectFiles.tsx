@@ -109,7 +109,7 @@ async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
  *
  * v0.5.0-beta.13.13（13.12 装验「聊天群的项目文件读取不到」）匹配模型重构：
  * 旧版只认 `ev.room_id === 当前房间 room_id` 严格相等——项目从 QQ/其他通道
- * 发起时 source_room_id 为 `qq:...` 等非 Matrix 房间 ID（实盘 jev 项目
+ * 发起时 source_room_id 为 `qq:...` 等非 Matrix 房间 ID（实盘项目
  * 2026-09-23 实证），任何 Matrix 房间里开 📁 都空面板。新版：
  *   ① 当前房间项目（严格匹配）→ 自动加载文件；
  *   ② 其他项目（不匹配但已注册）→ 折叠列表懒加载（点开才拉）；

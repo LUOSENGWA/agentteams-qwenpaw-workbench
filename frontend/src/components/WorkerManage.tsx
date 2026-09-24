@@ -470,7 +470,6 @@ function WorkerRow({
   sessionState,
   l1,
   onOpenSettings,
-  onOpenSkillCenter,
 }: {
   group: WorkerSpawnGroup;
   depth: number;
@@ -485,8 +484,6 @@ function WorkerRow({
   /** v0.5.0-beta.12.4（A17）：该 Worker 的 session 状态（typing/last_ts 派生）。
    *  与行首既有圆点（CR phase / spawn running，进程级）并存——两轴不同。 */
   sessionState?: WorkerSessionState;
-  /** v0.5.0-beta.13.15（B5b）：资源治理「去技能中心编辑」→ 展开底部折叠区技能中心。 */
-  onOpenSkillCenter?: () => void;
 }) {
   const tr = useT();
   const [expanded, setExpanded] = React.useState(false);
@@ -629,13 +626,12 @@ function WorkerRow({
               onOpenSettings={onOpenSettings}
             />
           ) : null}
-          {/* v0.5.0-beta.13.15（B5b 拓扑集成）：per-Worker 资源治理
-              （技能双层/MCP/频道/工具 四页签，就近编辑）。 */}
+          {/* v0.5.0-beta.13.15（B5b 拓扑集成）：per-Worker 资源管理
+              （技能/MCP/频道/工具 四页签，就地编辑）。
+              v0.5.0-beta.13.16：技能/MCP 改为技能中心同款可编辑卡直接嵌入
+              （SkillCenter onlyWorker），撤「去技能中心编辑」跳转。 */}
           {adminWorker ? (
-            <WorkerResourcePanel
-              worker={adminWorker}
-              onOpenSkillCenter={onOpenSkillCenter}
-            />
+            <WorkerResourcePanel worker={adminWorker} l1={l1} />
           ) : null}
           {spawns.length
             ? spawns.map((node) => (
@@ -835,7 +831,6 @@ function TeamNode({
   sessionByName,
   l1,
   onOpenSettings,
-  onOpenSkillCenter,
 }: {
   team: WorkerTreeTeam;
   onDm?: (mxid: string) => void;
@@ -849,8 +844,6 @@ function TeamNode({
   l1?: boolean;
   /** v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳转透传。 */
   onOpenSettings?: () => void;
-  /** v0.5.0-beta.13.15（B5b）：资源治理「去技能中心编辑」跳转。 */
-  onOpenSkillCenter?: () => void;
 }) {
   const [expanded, setExpanded] = React.useState(true);
   const workerCount = team.workers.length;
@@ -906,7 +899,6 @@ function TeamNode({
               // l1=undefined → 恒「只读」Alert（装验：L1 登录仍见只读）。
               l1={l1}
               onOpenSettings={onOpenSettings}
-              onOpenSkillCenter={onOpenSkillCenter}
             />
           ))
         : null}
@@ -1437,14 +1429,9 @@ export default function WorkerManage(props: WorkerManageProps) {
     workerSessionByName,
   } = props;
   const [acting, setActing] = React.useState<string | null>(null);
-  // v0.5.0-beta.13.15（B5b）：底部折叠区受控——资源治理「去技能中心编辑」
-  // 需要程序化展开 skills-center 面板（不受控时无法从 WorkerRow 触发）。
+  // 底部折叠区受控（默认全收起）。v0.5.0-beta.13.16：技能/MCP 已并入拓扑
+  // 资源管理（就地编辑），此折叠区保留为跨 Worker 全量视图，不再被程序化展开。
   const [collapseKeys, setCollapseKeys] = React.useState<string[]>([]);
-  const openSkillCenter = React.useCallback(() => {
-    setCollapseKeys((prev) =>
-      prev.includes("skills-center") ? prev : [...prev, "skills-center"],
-    );
-  }, []);
 
   // 自动刷新（30s）：拓扑 + 管理数据。rc-tabs 保活（切走不卸载），
   // 所以用 active 门控：仅当前 tab 激活时才轮询。
@@ -1539,7 +1526,7 @@ export default function WorkerManage(props: WorkerManageProps) {
           // 不在团队管理出 tab（9/19 定案：会话属于聊天上下文，且要看完整
           // session，不是最后活动列表）。
           // v0.5.0-beta.12 ：技能中心从顶层 tab 收编（设计结论——团队级
-          // 技能/MCP 资源治理归团队管理，不独立顶层 tab）。
+          // 技能/MCP 资源管理归团队管理，不独立顶层 tab）。
           {
             key: "skills-center",
             label: tr("技能中心"),
@@ -1628,7 +1615,6 @@ export default function WorkerManage(props: WorkerManageProps) {
                 sessionByName={workerSessionByName}
                 l1={!!hasToken}
                 onOpenSettings={props.onOpenSettings}
-                onOpenSkillCenter={openSkillCenter}
               />
             ))}
           </div>

@@ -37,6 +37,8 @@
  */
 import type * as ReactNS from "react";
 
+import { SettingsIcon } from "./icons";
+
 import {
   requestJson,
   httpErrorStatus,
@@ -1164,17 +1166,36 @@ function WorkerRuntimeConfig({
   };
 
   // 折叠头（Worker 管理展开区内的可折叠段）。
+  // v0.5.0-beta.13.16（13.15 装验「运行配置的按钮做好看一点，和资源管理的
+  // 按钮做一样」）：text link → 与「资源管理」区块同款卡片式折叠头
+  // （▸/▾ + 图标 + 标题 + qwenpaw 标签 + 边框卡片）。
   if (!open) {
     return (
-      <div style={{ marginTop: 6 }}>
-        <antd.Button
-          size="small"
-          type="link"
-          style={{ padding: 0, fontSize: 12 }}
+      <div
+        style={{
+          margin: "4px 0 4px 22px",
+          border: "1px solid rgba(127,127,127,0.25)",
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 10px",
+            cursor: "pointer",
+          }}
           onClick={() => setOpen(true)}
         >
-          {tr("运行配置")}（qwenpaw）▾
-        </antd.Button>
+          <span style={{ width: 12, fontSize: 10, color: "#888" }}>▸</span>
+          <SettingsIcon size={13} />
+          <span style={{ fontWeight: 600, fontSize: 12 }}>{tr("运行配置")}</span>
+          <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10 }}>
+            qwenpaw
+          </antd.Tag>
+        </div>
       </div>
     );
   }
@@ -1193,7 +1214,7 @@ function WorkerRuntimeConfig({
   return (
     <div
       style={{
-        marginTop: 8,
+        margin: "4px 0 4px 22px",
         border: "1px solid rgba(127,127,127,0.25)",
         borderRadius: 8,
         padding: 10,
@@ -1202,6 +1223,15 @@ function WorkerRuntimeConfig({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* v0.5.0-beta.13.16：展开态补收起抓手（原展开后无法收起）。 */}
+        <span
+          style={{ width: 12, fontSize: 10, color: "#888", cursor: "pointer" }}
+          onClick={() => setOpen(false)}
+          title={tr("收起")}
+        >
+          ▾
+        </span>
+        <SettingsIcon size={13} />
         <span style={{ fontWeight: 600, fontSize: 12.5 }}>{tr("运行配置")}</span>
         <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
           qwenpaw

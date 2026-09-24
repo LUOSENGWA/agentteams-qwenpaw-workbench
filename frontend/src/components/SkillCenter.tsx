@@ -91,9 +91,25 @@ interface MatrixState {
  *   铁律（9/11 P0）：L2 路径不走 admin token——代理链在 router.py
  *   catch-all 已实现（admin token 空 → Matrix access_token）。
  */
-export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
+export default function SkillCenter({
+  l2 = false,
+  onlyWorker,
+  sections,
+}: {
+  l2?: boolean;
+  /** v0.5.0-beta.13.16（13.15 装验「技能中心和 MCP 完全和 worker 拓扑合并」）：
+   *  限定单 Worker——矩阵只渲染该 Worker 行（自动展开编辑区）、MCP 卡只
+   *  渲染该 Worker 行、隐藏页面题头。无此 prop 时行为与既有全量视图完全一致。 */
+  onlyWorker?: string;
+  /** 模块裁剪：默认全渲染（目录①+矩阵②+MCP③）；拓扑嵌入按需（如
+   *  ["matrix"] 只出可编辑技能矩阵 / ["mcp"] 只出可编辑 MCP 卡）。 */
+  sections?: ReadonlyArray<"catalog" | "matrix" | "mcp">;
+}) {
   const t = useThemeColors();
   const tr = useT();
+  const showCatalog = !sections || sections.includes("catalog");
+  const showMatrix = !sections || sections.includes("matrix");
+  const showMcp = !sections || sections.includes("mcp");
   const [st, setSt] = React.useState<MatrixState>({
     workers: [],
     loading: true,
@@ -107,7 +123,10 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
   // v0.5.0-beta.13.14：服务端基线（脏检测用——矩阵相对基线有改动才显「保存」）。
   const [baseMatrix, setBaseMatrix] = React.useState<Record<string, string[]>>({});
   // v0.5.0-beta.13.14：单 Worker 展开态（一次只展开一个，面板恒紧凑）。
-  const [expandedWorker, setExpandedWorker] = React.useState<string | null>(null);
+  // v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 默认展开该 Worker 编辑区。
+  const [expandedWorker, setExpandedWorker] = React.useState<string | null>(
+    onlyWorker ?? null,
+  );
   // v0.5.0-beta.13.15（B6 双层技能真相）：物化层（runtime /api/skills，
   // 实际能调用什么）懒加载——展开哪个 Worker 拉哪个（N+1 只在展开时发生，
   // 矩阵首屏零额外请求）。null=未加载；"loading"=拉取中；"err"=404/403
@@ -150,12 +169,19 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
     () => st.workers.filter((w) => (mcpMap[w.name] || []).length).length,
     [st.workers, mcpMap],
   );
-  const mcpVisible = React.useMemo(
-    () =>
-      mcpWithCount === 0 || showAllMcp
-        ? st.workers
-        : st.workers.filter((w) => (mcpMap[w.name] || []).length),
-    [st.workers, mcpMap, mcpWithCount, showAllMcp],
+  const mcpVisible = React.useMemo(() => {
+    // v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 只出该 Worker 行，且
+    // **无条件出**（无 MCP 时行内走「无 MCP」文案——全局「隐藏无 MCP
+    // Worker」折叠开关在嵌入态无意义，不能把目标行滤成空白卡）。
+    if (onlyWorker) return st.workers.filter((w) => w.name === onlyWorker);
+    return mcpWithCount === 0 || showAllMcp
+      ? st.workers
+      : st.workers.filter((w) => (mcpMap[w.name] || []).length);
+  }, [st.workers, mcpMap, mcpWithCount, showAllMcp, onlyWorker]);
+  // v0.5.0-beta.13.16：拓扑嵌入 = 单 Worker 视图（矩阵卡组头/其他行不出）。
+  const workersView = React.useMemo(
+    () => (onlyWorker ? st.workers.filter((w) => w.name === onlyWorker) : st.workers),
+    [st.workers, onlyWorker],
   );
 
 
@@ -325,7 +351,10 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
   });
 
   return (
-    <div style={{ display: "grid", gap: 16 }}>
+    <div style={{ display: "grid", gap: onlyWorker ? 8 : 16 }}>
+      {/* v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 页面题头不出（上下文中
+          已明示 Worker 与「技能」页签，避免重复层级）。 */}
+      {!onlyWorker ? (
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><BoltIcon size={15} /> {tr("技能中心")}</span>
         <antd.Tooltip
@@ -349,6 +378,7 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
           {tr("刷新")}
         </antd.Button>
       </div>
+      ) : null}
 
       {/* v0.5.0-beta.13.14：L2 多团队选择器（accessibleTeams >1 时；
           单团队自动选中不出选择器）。切团队 → 目录按 ?team= 重拉。 */}
@@ -367,6 +397,7 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
       ) : null}
 
       {/* ① 技能目录（#1268 已合 main，旧 Controller 404 占位） */}
+      {showCatalog ? (
       <antd.Card
         size="small"
         title={tr("① 技能目录（只读 · 上游 /api/v1/skills）")}
@@ -424,6 +455,7 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
           </div>
         )}
       </antd.Card>
+      ) : null}
 
       {/* ② Worker 技能分配矩阵（P1，立即可用）
           v0.5.0-beta.13.14（13.13 装验反馈「矩阵太占地方、不直观、不好用」）：
@@ -432,19 +464,39 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
           展开该 Worker 的完整技能勾选区（名称+来源标签+描述两行截断），
           只保存该 Worker 的技能。脏检测（矩阵 vs 服务端基线）：有改动显
           「未保存」橙标，展开区底部出 重置/保存（保存成功基线推进）。 */}
+      {showMatrix ? (
       <antd.Card
         size="small"
+        extra={
+          onlyWorker ? (
+            <antd.Button
+              size="small"
+              onClick={() => {
+                void loadWorkers();
+                void loadCatalog();
+              }}
+              loading={st.loading}
+            >
+              {tr("刷新")}
+            </antd.Button>
+          ) : undefined
+        }
         title={
           l2
             ? tr("② Worker 技能分配（L2 我的团队 · 仅 skills 可写 · PUT 合并语义）")
             : tr("② Worker 技能分配矩阵（L1 可写 · PUT 合并语义 · skills 整字段替换）")
         }
       >
-        {st.workers.length ? (
+        {workersView.length ? (
           <div style={{ display: "grid", gap: 6 }}>
-            {groupWorkersByTeam(st.workers).map((tg) => (
+            {(onlyWorker
+              ? [{ team: "", workers: workersView }]
+              : groupWorkersByTeam(st.workers)
+            ).map((tg) => (
               <div key={tg.team || "ungrouped"}>
-                {/* v0.5.0-beta.13.15（B5a）：团队分组头（组内 Worker 卡原渲染）。 */}
+                {/* v0.5.0-beta.13.15（B5a）：团队分组头（组内 Worker 卡原渲染）。
+                    v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 组头不出。 */}
+                {!onlyWorker ? (
                 <div
                   style={{
                     display: "flex",
@@ -461,6 +513,7 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
                   </span>
                   <div style={{ flex: 1, height: 1, background: t.border }} />
                 </div>
+                ) : null}
                 <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
                 {tg.workers.map((w) => {
               const assigned = matrix[w.name] || [];
@@ -765,11 +818,13 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
           />
         )}
       </antd.Card>
+      ) : null}
 
       {/* ③ MCP Servers（P1）
           v0.5.0-beta.13.14（L2 只读——l2-worker-scoped-write.md 契约：
           mcpServers 对默认 L2 关闭（网关 bearer key 注入每条条目，L2
           可控 URL 会外泄它）→ elevated capability 设计落地前只读。 */}
+      {showMcp ? (
       <antd.Card
         size="small"
         title={
@@ -815,7 +870,7 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
                 </div>
               );
             })}
-            {mcpWithCount ? (
+            {!onlyWorker && mcpWithCount ? (
               <div style={{ marginTop: 6, fontSize: 12 }}>
                 <antd.Button
                   size="small"
@@ -834,6 +889,7 @@ export default function SkillCenter({ l2 = false }: { l2?: boolean }) {
           <antd.Empty description={st.loading ? tr("加载中…") : tr("无 Worker")} />
         )}
       </antd.Card>
+      ) : null}
 
       <antd.Drawer
         title={mcpEditWorker ? tr("编辑 MCP Servers：{w}", { w: mcpEditWorker }) : ""}

@@ -71,6 +71,12 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
     }
   }, [sel, tr]);
 
+  // v0.5.0-beta.13.16（13.15 装验「点开工具的管理不应该要我再选 worker」）：
+  // 单 Worker 场景（拓扑资源管理嵌入 = workers=[w]）自动选中，无需手动选。
+  React.useEffect(() => {
+    if (!sel && workers.length === 1) setSel(workers[0].name);
+  }, [workers, sel]);
+
   React.useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -214,21 +220,30 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
-        <antd.Select
-          size="small"
-          style={{ width: 220 }}
-          value={sel || undefined}
-          onChange={(v: string) => {
-            setSel(v);
-            setMsg(null);
-            setReadOnly(false);
-          }}
-          options={workers.map((w) => ({
-            value: w.name,
-            label: `${w.name}${w.role === "leader" ? "（Leader）" : ""}`,
-          }))}
-          placeholder={tr("选择 Worker")}
-        />
+        {/* v0.5.0-beta.13.16：单 Worker（拓扑资源管理嵌入）→ 定显名字，
+            不再给只有一个选项的选择器。多 Worker 场景保持下拉。 */}
+        {workers.length === 1 ? (
+          <antd.Tag style={{ marginInlineEnd: 0, fontSize: 11.5 }}>
+            {workers[0].name}
+            {workers[0].role === "leader" ? "（Leader）" : ""}
+          </antd.Tag>
+        ) : (
+          <antd.Select
+            size="small"
+            style={{ width: 220 }}
+            value={sel || undefined}
+            onChange={(v: string) => {
+              setSel(v);
+              setMsg(null);
+              setReadOnly(false);
+            }}
+            options={workers.map((w) => ({
+              value: w.name,
+              label: `${w.name}${w.role === "leader" ? "（Leader）" : ""}`,
+            }))}
+            placeholder={tr("选择 Worker")}
+          />
+        )}
         <div style={{ flex: 1 }} />
         <antd.Button size="small" onClick={() => void load()} loading={loading}>
           {tr("刷新")}
