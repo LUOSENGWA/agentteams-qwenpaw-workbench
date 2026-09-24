@@ -44,26 +44,17 @@ function memberShortName(mxid: string, member?: TeamMember): string {
   return localpart || mxid;
 }
 
-function UnreadBadge({ room }: { room: TeamRoom }) {
-  if ((room.unread_highlight || 0) > 0) {
-    return (
-      <antd.Badge
-        count={room.unread_highlight}
-        overflowCount={99}
-        style={{ marginLeft: 8 }}
-      />
-    );
-  }
-  if ((room.unread || 0) > 0) {
-    return (
-      <antd.Badge
-        count={room.unread}
-        overflowCount={99}
-        color="#bfbfbf"
-        style={{ marginLeft: 8 }}
-      />
-    );
-  }
+/** v0.5.0-beta.13.22（13.21 装验反馈 F5「未读气泡改到卡片头像右上角」）：
+ *  原实现=名称行内灰色胶囊（占宽、挤名字）。改为返回徽章参数，由卡片
+ *  头像外层 antd.Badge 渲染（头像右上角，Element 同款）。
+ *  红=highlight（@我/提及），灰=普通未读；都 0 = null（不显徽章）。 */
+function unreadBadgeOf(
+  room: TeamRoom,
+): { count: number; color: string } | null {
+  const hl = room.unread_highlight || 0;
+  const un = room.unread || 0;
+  if (hl > 0) return { count: hl, color: "#f5222d" };
+  if (un > 0) return { count: un, color: "#bfbfbf" };
   return null;
 }
 
@@ -126,6 +117,23 @@ function GroupCard({
       style={{ borderRadius: CARD_RADIUS, cursor: "pointer" }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        {/* v0.5.0-beta.13.22（F5）：群卡片加头像（原无头像，未读气泡无处挂）——
+            头像右上角=未读徽章（红=highlight/灰=普通未读）。 */}
+        {(() => {
+          const avatar = (
+            <antd.Avatar size={32} style={{ backgroundColor: PRIMARY, flexShrink: 0 }}>
+              <UsersIcon size={16} />
+            </antd.Avatar>
+          );
+          const ub = unreadBadgeOf(room);
+          return ub ? (
+            <antd.Badge count={ub.count} overflowCount={99} color={ub.color} style={{ lineHeight: 0 }} offset={[-2, 2]}>
+              {avatar}
+            </antd.Badge>
+          ) : (
+            avatar
+          );
+        })()}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
@@ -138,7 +146,6 @@ function GroupCard({
           >
             {room.name}
             {groupRunning ? <WorkerSessionDot state="running" /> : null}
-            <UnreadBadge room={room} />
             <span
               style={{
                 fontSize: 11,
@@ -366,13 +373,26 @@ function DmCard({
         background: t.popoverBg,
       }}
     >
-      <MxcAvatar
-        url={other?.[1].avatar_url}
-        size={32}
-        style={{ backgroundColor: GREEN, flexShrink: 0 }}
-      >
-        {otherName.slice(0, 1).toUpperCase()}
-      </MxcAvatar>
+      {/* v0.5.0-beta.13.22（F5）：未读徽章挂头像右上角（原名称行内灰胶囊）。 */}
+      {(() => {
+        const avatar = (
+          <MxcAvatar
+            url={other?.[1].avatar_url}
+            size={32}
+            style={{ backgroundColor: GREEN, flexShrink: 0 }}
+          >
+            {otherName.slice(0, 1).toUpperCase()}
+          </MxcAvatar>
+        );
+        const ub = unreadBadgeOf(room);
+        return ub ? (
+          <antd.Badge count={ub.count} overflowCount={99} color={ub.color} style={{ lineHeight: 0 }} offset={[-2, 2]}>
+            {avatar}
+          </antd.Badge>
+        ) : (
+          avatar
+        );
+      })()}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -385,7 +405,6 @@ function DmCard({
         >
           {otherName}
           {sessionState ? <WorkerSessionDot state={sessionState} /> : null}
-          <UnreadBadge room={room} />
           {/* v0.5.0-beta.12 B3：收藏切换（stopPropagation 防误开房间） */}
           <span
             role="button"
@@ -794,6 +813,26 @@ export default function TeamOverview(props: TeamOverviewProps) {
       .filter((g) => g.rooms.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dms, workerRoleByMxid, user_id]);
+  // v0.5.0-beta.13.22（13.21 装验反馈 F7）：私聊角色从「列表直接分割成
+  // 4 段+组头」改为「列表下方按对象角色筛选 chips」（装验原话：「应该在
+  // 下面加个按对象角色分区显示，而不是直接在列表分割」）——默认全部=扁平
+  // 列表（不再切段），选某角色=只看该角色的私聊（仍是单一排序列表）。
+  const [dmRole, setDmRole] = React.useState<string>("all");
+  const dmRoleFiltered = React.useMemo(() => {
+    if (!dmRoleGroups || dmRole === "all") return dms;
+    return dmRoleGroups.find((g) => g.key === dmRole)?.rooms ?? [];
+  }, [dmRoleGroups, dmRole, dms]);
+  // 角色桶消失（刷新后该角色无私聊/映射失效）→ 自动回「全部」，
+  // 防筛选卡在已不存在的角色上显示空列表。
+  React.useEffect(() => {
+    if (
+      dmRole !== "all" &&
+      dmRoleGroups &&
+      !dmRoleGroups.some((g) => g.key === dmRole)
+    ) {
+      setDmRole("all");
+    }
+  }, [dmRoleGroups, dmRole]);
   const showGroups = filter === "all" || filter === "group";
   const showDms = filter === "all" || filter === "dm";
   const favRoomsForFilter =
@@ -1013,31 +1052,62 @@ export default function TeamOverview(props: TeamOverviewProps) {
                 </div>
               ) : null}
               {/* DM 私聊
-                  v0.5.0-beta.13.21（A8c）：有角色映射时按对象角色分区
-                  （组头=角色标签，组内房间卡同前）；否则扁平。 */}
-              {showDms && dms.length > 0 ? (
-                dmRoleGroups ? (
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {dmRoleGroups.map((g) => (
-                      <div key={g.key} style={{ display: "grid", gap: 8 }}>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: t.textSecondary,
-                          }}
-                        >
-                          {tr(g.label)}（{g.rooms.length}）
-                        </div>
-                        {g.rooms.map((room) => renderRoomCard(room, `role-${g.key}-`))}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {dms.map((room) => renderRoomCard(room))}
-                  </div>
-                )
+                  v0.5.0-beta.13.22（F7）：角色改为下方 chips 筛选（不再直接
+                  分割列表）；默认「全部」=扁平列表（roomSort 同序）。 */}
+              {showDms ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  {/* 角色筛选 chips（有角色映射才出；「全部」恒在） */}
+                  {dmRoleGroups ? (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {[
+                        { key: "all", label: tr("全部"), n: dms.length },
+                        ...dmRoleGroups.map((g) => ({
+                          key: g.key,
+                          label: tr(g.label),
+                          n: g.rooms.length,
+                        })),
+                      ].map((o) => {
+                        const active = dmRole === o.key;
+                        return (
+                          <button
+                            key={o.key}
+                            type="button"
+                            onClick={() => setDmRole(o.key)}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              border: `1px solid ${active ? "#FF7F16" : t.border}`,
+                              background: active ? "rgba(255,127,22,0.10)" : t.cardBg,
+                              color: active ? "#FF7F16" : t.textSecondary,
+                              borderRadius: 14,
+                              padding: "2px 12px",
+                              fontSize: 12,
+                              cursor: "pointer",
+                              lineHeight: "18px",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            {o.label}（{o.n}）
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  {dmRoleFiltered.length > 0 ? (
+                    dmRoleFiltered.map((room) => renderRoomCard(room))
+                  ) : (
+                    <antd.Empty
+                      image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={
+                        dmRole === "all"
+                          ? tr("还没有私聊房间")
+                          : tr("该角色暂无私聊")
+                      }
+                      style={{ margin: "12px 0" }}
+                    />
+                  )}
+                </div>
               ) : null}
             </>
           )}

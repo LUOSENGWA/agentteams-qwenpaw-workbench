@@ -722,14 +722,18 @@ export default function SkillCenter({
       >
         {workersView.length ? (
           <div style={{ display: "grid", gap: 6 }}>
+            {/* v0.5.0-beta.13.22（13.21 装验反馈 F1）：onlyTeam（团队配置弹窗内嵌）
+                矩阵只渲染该团队 Worker——旧分支误用 st.workers 全量=跨团队泄漏
+                （「团队技能（目录/分配矩阵/MCP）就只管这个团队的」）。 */}
             {(onlyWorker
               ? [{ team: "", workers: workersView }]
-              : groupWorkersByTeam(st.workers)
+              : groupWorkersByTeam(onlyTeam ? workersView : st.workers)
             ).map((tg) => (
               <div key={tg.team || "ungrouped"}>
                 {/* v0.5.0-beta.13.15（B5a）：团队分组头（组内 Worker 卡原渲染）。
-                    v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 组头不出。 */}
-                {!onlyWorker ? (
+                    v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 组头不出。
+                    v0.5.0-beta.13.22：团队配置嵌入（onlyTeam）→ 单团队组头冗余不出。 */}
+                {!onlyWorker && !onlyTeam ? (
                 <div
                   style={{
                     display: "flex",

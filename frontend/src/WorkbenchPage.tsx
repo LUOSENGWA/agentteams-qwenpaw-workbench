@@ -1556,16 +1556,18 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12 ：工作流页 tab 记忆（用户「点开过的 tab 加上记忆，参考大
   // tab」）——与大 tab 同一 ui-state 对象（wfView/wfTopo 字段，合并写），
   // 不新造 storage key。WorkflowBoard 改受控（view/topoRun 由此下发）。
-  const WF_VIEW_VALUES = ["list", "card", "board", "topo", "mermaid"];
+  // v0.5.0-beta.13.22（F2）：「mermaid」视图退役并入拓扑——旧持久化值
+  // wfView="mermaid"（13.21 装过 13.21 的用户）迁移到 "topo"（拓扑内可切
+  // Mermaid 样式，体验不丢）。
+  const WF_VIEW_VALUES = ["list", "card", "board", "topo"];
   const [wfMem, setWfMemState] = React.useState<{
     view: string;
     topoRun: string;
   }>(() => {
     const u = initialUi.current ?? {};
+    const savedView = u.wfView === "mermaid" ? "topo" : (u.wfView || "");
     return {
-      view: WF_VIEW_VALUES.includes(u.wfView || "")
-        ? (u.wfView as string)
-        : "list",
+      view: WF_VIEW_VALUES.includes(savedView) ? savedView : "list",
       topoRun: typeof u.wfTopo === "string" ? u.wfTopo : "",
     };
   });

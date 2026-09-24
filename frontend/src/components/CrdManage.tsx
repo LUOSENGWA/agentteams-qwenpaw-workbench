@@ -720,6 +720,10 @@ export default function CrdManage(props: CrdManageProps) {
 
   // ── 配置团队（PUT 部分更新：空字段不覆盖；成员编辑 = workerMembers 全量替换）──
   const [cfgTeam, setCfgTeam] = React.useState<TeamInfo | null>(null);
+  // v0.5.0-beta.13.22（13.21 装验反馈 F3）：收起动画——旧实现 cfgTeam 置 null
+  // 即整树卸载=弹窗瞬间消失（弹出有动画、收起没有）。cfgOpen 控制 antd 退出
+  // 过渡，afterClose 才清 cfgTeam（动画期间内容保持，不闪空）。
+  const [cfgOpen, setCfgOpen] = React.useState(false);
   const [cfg, setCfg] = React.useState({
     description: "",
     heartbeatEvery: "",
@@ -731,6 +735,7 @@ export default function CrdManage(props: CrdManageProps) {
 
   const openCfg = React.useCallback((team: TeamInfo) => {
     setCfgTeam(team);
+    setCfgOpen(true);
     setCfg({
       description: team.description || "",
       heartbeatEvery: team.heartbeatEvery || "",
@@ -873,7 +878,8 @@ export default function CrdManage(props: CrdManageProps) {
           ? tr("已保存，已更新 {n} 个 Worker 模型", { n: okCount })
           : tr("已保存"),
       );
-      setCfgTeam(null);
+      // v0.5.0-beta.13.22（F3）：走收起动画（afterClose 清 cfgTeam）。
+      setCfgOpen(false);
       onRefresh?.(true);
     } catch (e) {
       antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
@@ -2023,13 +2029,17 @@ export default function CrdManage(props: CrdManageProps) {
       {/* 配置团队（PUT 部分更新） */}
       {cfgTeam ? (
         <antd.Modal
-          open
+          open={cfgOpen}
           width={780}
           title={`${tr("配置团队")} · ${cfgTeam.name}`}
-          onCancel={() => setCfgTeam(null)}
+          // v0.5.0-beta.13.22（F3）：收起动画——onCancel 只关 cfgOpen（antd
+          // 播退出过渡），afterClose 才卸载（cfgTeam=null），动画期间内容
+          // 保持不闪空。
+          onCancel={() => setCfgOpen(false)}
+          afterClose={() => setCfgTeam(null)}
           footer={
             <antd.Space>
-              <antd.Button onClick={() => setCfgTeam(null)}>
+              <antd.Button onClick={() => setCfgOpen(false)}>
                 {tr("取消")}
               </antd.Button>
               <antd.Button
@@ -2062,16 +2072,45 @@ export default function CrdManage(props: CrdManageProps) {
               }
             />
             {/* v0.5.0-beta.13.21（「团队的技能等团队配置也要放在团队配置里面」）：
-                subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型）。 */}
+                subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型）。
+                v0.5.0-beta.13.22（13.21 装验反馈 F6）：裸 Input → 与 Worker 选模型
+                同款 AutoComplete（同数据源 modelOptions=在服∪在用模型∪网关 alias，
+                同 validateModelValue 校验态）——「来源一样」。 */}
             <FieldLabel>{tr("子代理默认模型（留空 = 继承各 Worker 主模型）")}</FieldLabel>
-            <antd.Input
+            <antd.AutoComplete
               size="small"
+              style={{ width: 320, maxWidth: "100%" }}
               placeholder={tr("子代理默认模型（如 qwen3.6:27b-fp8；留空 = 继承）")}
+              options={modelOptions as { value: string }[]}
               value={cfg.subagentModel}
-              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                setCfg({ ...cfg, subagentModel: e.target.value })
-              }
+              onChange={(v: string) => setCfg({ ...cfg, subagentModel: v })}
+              status={(() => {
+                const v = cfg.subagentModel.trim();
+                if (!v) return undefined;
+                const lv = validateModelValue(v, modelCandidates).level;
+                return lv === "error" ? "error" : lv === "warn" ? "warning" : undefined;
+              })()}
             />
+            {(() => {
+              const v = cfg.subagentModel.trim();
+              if (!v) return null;
+              const sv = validateModelValue(v, modelCandidates);
+              return sv.level === "ok" ? null : (
+                <antd.Tooltip title={modelVerdictText(tr, sv, v, modelCandidates)}>
+                  <antd.Tag color={sv.level === "error" ? "red" : "orange"} style={{ marginBottom: 4 }}>
+                    {sv.level === "error" ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                        <CloseIcon size={10} /> {tr("路径形态")}
+                      </span>
+                    ) : (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                        <WarnIcon size={10} /> {tr("未命中")}
+                      </span>
+                    )}
+                  </antd.Tag>
+                </antd.Tooltip>
+              );
+            })()}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <antd.Switch
                 size="small"

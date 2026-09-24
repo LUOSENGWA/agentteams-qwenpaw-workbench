@@ -426,7 +426,8 @@ interface GraphModel {
   outbound: Map<string, LinkRef[]>;
 }
 
-function GraphCard(props: {
+// export=UI harness 测试缝（ui-harness-1322 F4：选点持久性），非公共 API。
+export function GraphCard(props: {
   graph: { nodes: GraphNodeLike[]; edges: { source: string; target: string; target_anchor?: string | null }[] } | null;
   loading: boolean;
   error: string;
@@ -564,8 +565,19 @@ function GraphCard(props: {
     t.mode === "dark" ? GRAPH_FILE_DARK : GRAPH_FILE_LIGHT;
 
   React.useEffect(() => {
-    setSelectedId("");
     setHoverId("");
+    if (!graph) {
+      setSelectedId("");
+      return;
+    }
+    // v0.5.0-beta.13.22（13.21 装验反馈 F4「点节点看连接只闪一下箭头」）：
+    // 旧实现 graph 引用一变就清 selectedId——聚合（merged）模式的 graph
+    // prop 是每次 render 新建的对象字面量（点节点→openFile→父侧 3 次
+    // state 更新→3 次新引用）→ 高亮闪一帧即被清除。正确语义=只在选中
+    // 节点在新图中不存在时清除（切 Agent/重拉）；同图同形重渲染保持选中。
+    setSelectedId((prev) =>
+      prev && !graph.nodes.some((n) => n.id === prev) ? "" : prev,
+    );
   }, [graph]);
 
   const layout = React.useMemo(() => {
@@ -1765,6 +1777,29 @@ function RemoteKbView(props: {
 
   const agentInfo = agents.find((a) => a.name === agent);
 
+  // v0.5.0-beta.13.22（13.21 装验反馈 F4 配套）：聚合（merged）模式传给
+  // GraphCard 的 graph 对象旧实现在 JSX 里内联新建（每次 render 新引用）
+  // → 子组件 layout/agentLegend 等 useMemo 反复重算（毛球布局 O(n²) 级别），
+  // 且曾连带「点节点高亮闪一下」（见 GraphCard 内 effect 注释）。
+  // memo 化：仅当 mergedGraph/graphMode 真变才换引用。
+  const mergedGraphProp = React.useMemo(
+    () =>
+      mergedGraph
+        ? { nodes: mergedGraph.nodes, edges: mergedGraph.edges }
+        : null,
+    [mergedGraph],
+  );
+  const mergedAgentLegend = React.useMemo(
+    () =>
+      mergedGraph
+        ? (mergedGraph.agents || []).map((a, i) => ({
+            name: a,
+            color: AGENT_PALETTE[i % AGENT_PALETTE.length],
+          }))
+        : null,
+    [mergedGraph],
+  );
+
   return (
     <antd.Space direction="vertical" size={12} style={{ width: "100%" }}>
       {/* Agent 选择 + 状态行 */}
@@ -1945,23 +1980,19 @@ function RemoteKbView(props: {
         </antd.Card>
       ) : null}
 
-      {/* 图谱（v0.5.0-beta.12 ：可切团队聚合，节点按 Agent 着色） */}
+      {/* 图谱（v0.5.0-beta.12 ：可切团队聚合，节点按 Agent 着色）
+          v0.5.0-beta.13.22（F4）：merged graph/legend 用 memo 稳定引用。 */}
       <GraphCard
         graph={
-          graphMode === "merged" && mergedGraph
-            ? { nodes: mergedGraph.nodes, edges: mergedGraph.edges }
+          graphMode === "merged" && mergedGraphProp
+            ? mergedGraphProp
             : graph
         }
         loading={graphMode === "merged" ? mergedLoading : graphLoading}
         error=""
         onOpenNode={openNode}
         agentLegend={
-          graphMode === "merged"
-            ? (mergedGraph?.agents || []).map((a, i) => ({
-                name: a,
-                color: AGENT_PALETTE[i % AGENT_PALETTE.length],
-              }))
-            : null
+          graphMode === "merged" ? mergedAgentLegend : null
         }
       />
 
