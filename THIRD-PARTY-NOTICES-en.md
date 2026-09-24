@@ -20,6 +20,7 @@
 | 3d-force-graph | 1.80.0 | MIT | © 2017 Vasco Asturiano | 3D force-directed layout + orbit interaction (zoom / drag / rotate) | [vasturiano/3d-force-graph](https://github.com/vasturiano/3d-force-graph) |
 | three-spritetext | 1.10.0 | MIT | © 2018 Vasco Asturiano | 3D node text labels (SpriteText) | [vasturiano/three-spritetext](https://github.com/vasturiano/three-spritetext) |
 | fflate | 0.8.3 | MIT | © 2026 Arjun Barrett | xlsx file preview (zlib inflate, replacing a 400KB-class SheetJS dependency) | [nodeca/fflate](https://github.com/nodeca/fflate) |
+| mermaid | 12.0.0 | MIT | © 2024-2026 Mermaid contributors | Workflow Mermaid DAG view (renders the upstream `?format=mermaid` snapshot; since v0.5.0-beta.13.21) | [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid) |
 | lucide (icon path data) | 2026-08 snapshot | ISC | © lucide contributors | Four-level tool-execution-security icons (Ban / AlertTriangle / Shield / CircleCheck; SVG path data inlined, zero runtime dependency) | [lucide-icons/lucide](https://github.com/lucide-icons/lucide) |
 
 **Version alignment**: three.js / 3d-force-graph / three-spritetext are
@@ -50,9 +51,9 @@ identical to the QwenPaw 2.2 official console's `console/package.json`
 
 ### MIT License
 
-three.js / 3d-force-graph / three-spritetext / fflate are all MIT-licensed,
-with the copyright holders listed in the table above. MIT license full
-text (common to all four components):
+three.js / 3d-force-graph / three-spritetext / fflate / mermaid are all
+MIT-licensed, with the copyright holders listed in the table above. MIT
+license full text (common to all five components):
 
 ```
 The MIT License (MIT)

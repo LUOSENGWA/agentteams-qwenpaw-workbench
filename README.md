@@ -1,6 +1,6 @@
 # AgentTeams QwenPaw Workbench（AgentTeams 团队工作台）
 
-**版本 Version**：0.5.0-beta.13.20 ｜ **作者 Author**：LUOSENGWA
+**版本 Version**：0.5.0-beta.13.21 ｜ **作者 Author**：LUOSENGWA
 **依赖要求 Requirements**：QwenPaw 2.0–2.2（`qwenpaw_version: >=2.0.0, <3.0.0`，2.1+ 解锁宿主技能详情/知识图谱/重索引；2.0 下对应功能自动降级）+ AgentTeams Controller（HiClaw 集群）
 
 > 英文版: [README-en.md](README-en.md) ｜ 更新日志: [CHANGELOG.md](CHANGELOG.md)（[en](CHANGELOG-en.md)）
@@ -40,26 +40,26 @@ A team workbench for AgentTeams (HiClaw) clusters through QwenPaw: manage teams,
 **方式一：控制台界面（推荐）** / **Option 1: Console UI (recommended)**
 
 1. 打开 QwenPaw 控制台 → **设置 → 插件管理**（Settings → Plugin Manager）
-2. 点击 **安装**（Install），选择本 ZIP 文件（`agentteams-qwenpaw-workbench-v0.5.0-beta.13.20.zip`）
+2. 点击 **安装**（Install），选择本 ZIP 文件（`agentteams-qwenpaw-workbench-v0.5.0-beta.13.21.zip`）
 3. 安装完成后刷新控制台，侧边栏出现 **🏢 AgentTeams QwenPaw Workbench**
 
 **方式二：CLI** / **Option 2: CLI**
 
 ```bash
 # 从本地安装（先停 QwenPaw）/ install from local path (stop QwenPaw first)
-qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.13.20.zip
+qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.13.21.zip
 
 # 从 URL 安装（支持 ZIP）/ install from URL (ZIP supported)
-qwenpaw plugin install https://example.com/agentteams-qwenpaw-workbench-v0.5.0-beta.13.20.zip
+qwenpaw plugin install https://example.com/agentteams-qwenpaw-workbench-v0.5.0-beta.13.21.zip
 
 # 强制重新安装（覆盖升级）/ force reinstall (upgrade in place)
-qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.13.20.zip --force
+qwenpaw plugin install /path/to/agentteams-qwenpaw-workbench-v0.5.0-beta.13.21.zip --force
 ```
 
 **方式三：GitHub Release URL** / **Option 3: GitHub Release URL**
 
 ```bash
-qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases/download/v0.5.0-beta.13.20/agentteams-qwenpaw-workbench-v0.5.0-beta.13.20.zip
+qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases/download/v0.5.0-beta.13.21/agentteams-qwenpaw-workbench-v0.5.0-beta.13.21.zip
 ```
 
 （控制台「安装」弹窗同样支持粘贴 URL 安装。/ The Console install dialog also accepts a URL.）

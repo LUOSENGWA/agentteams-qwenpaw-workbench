@@ -628,6 +628,10 @@ export interface TeamOverviewProps {
   workerMxids?: Set<string>;
   /** v0.5.0-beta.13.14：房间 room_id → 该项目名列表（房间卡名称下显示）。 */
   roomProjectNames?: Record<string, string[]>;
+  /** v0.5.0-beta.13.21（A8c 侧栏角色分组）：MXID → 角色标签
+   *  （Leader/Worker/Manager）——「私聊」视图按对象角色分区显示；
+   *  无此 prop 或查不到角色时退回扁平列表（人类 DM 归「其他」）。 */
+  workerRoleByMxid?: Record<string, string>;
 }
 
 export default function TeamOverview(props: TeamOverviewProps) {
@@ -648,6 +652,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
     workerSessionByRoom,
     workerMxids,
     roomProjectNames,
+    workerRoleByMxid,
   } = props;
   const [filter, setFilter] = React.useState<"all" | "group" | "dm">("all");
   // v0.5.0-beta.12 B3：房间收藏（客户端本地 localStorage——Element 无房间级收藏协议：
@@ -759,6 +764,36 @@ export default function TeamOverview(props: TeamOverviewProps) {
   const groups = sortRooms(mainRooms.filter((r) => (r.member_count ?? 0) > 2));
   const dms = sortRooms(mainRooms.filter((r) => (r.member_count ?? 0) <= 2));
   const allByRecent = sortRooms(mainRooms);
+  // v0.5.0-beta.13.21（A8c 侧栏角色分组）：私聊视图按对象角色分区
+  // （Leader/Worker/Manager/其他，组内仍按 roomSort 序）。仅当提供了
+  // 角色映射时启用——无 L1 管理数据时自动退回扁平列表。
+  const dmOtherMxid = (r: TeamRoom): string | null => {
+    const hit = Object.entries(r.members || {}).find(([mx]) => mx !== user_id);
+    return hit ? hit[0] : null;
+  };
+  const dmRoleGroups = React.useMemo(() => {
+    if (!workerRoleByMxid) return null;
+    const order: Array<{ key: string; label: string }> = [
+      { key: "Leader", label: "Leader" },
+      { key: "Worker", label: "Worker" },
+      { key: "Manager", label: "Manager" },
+      { key: "other", label: "其他" },
+    ];
+    const buckets: Record<string, TeamRoom[]> = {
+      Leader: [],
+      Worker: [],
+      Manager: [],
+      other: [],
+    };
+    for (const r of dms) {
+      const role = workerRoleByMxid[dmOtherMxid(r) || ""] || "other";
+      (buckets[role] || buckets.other).push(r);
+    }
+    return order
+      .map((g) => ({ ...g, rooms: buckets[g.key] || [] }))
+      .filter((g) => g.rooms.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dms, workerRoleByMxid, user_id]);
   const showGroups = filter === "all" || filter === "group";
   const showDms = filter === "all" || filter === "dm";
   const favRoomsForFilter =
@@ -977,11 +1012,32 @@ export default function TeamOverview(props: TeamOverviewProps) {
                   {groups.map((room) => renderRoomCard(room))}
                 </div>
               ) : null}
-              {/* DM 私聊 */}
+              {/* DM 私聊
+                  v0.5.0-beta.13.21（A8c）：有角色映射时按对象角色分区
+                  （组头=角色标签，组内房间卡同前）；否则扁平。 */}
               {showDms && dms.length > 0 ? (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {dms.map((room) => renderRoomCard(room))}
-                </div>
+                dmRoleGroups ? (
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {dmRoleGroups.map((g) => (
+                      <div key={g.key} style={{ display: "grid", gap: 8 }}>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: t.textSecondary,
+                          }}
+                        >
+                          {tr(g.label)}（{g.rooms.length}）
+                        </div>
+                        {g.rooms.map((room) => renderRoomCard(room, `role-${g.key}-`))}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {dms.map((room) => renderRoomCard(room))}
+                  </div>
+                )
               ) : null}
             </>
           )}

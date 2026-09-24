@@ -5,6 +5,34 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.21 (2026-09-24)
+
+**Close of the 13.20 verification feedback + full remaining-inventory batch: team-management first screen ready in one shot / Element-style incremental room-list refresh / full team-config dialog (with team skills section) / worker config integrated into the topology / sidebar role grouping / composer activity track / Mermaid DAG view / delete-team undo / heartbeat status surfaced**
+
+- **Team-management first screen ready in one shot** ("at first only the topology was visible; I had to wait and click refresh to see the rest"):
+  all five structural gaps fixed — ① the mount effect now fetches admin data; ② re-fetch on the admin-token `false→true` flip (late-arriving token left the first screen empty); ③ first-visit early-return in the tab-switch effect (a persisted first open of the team tab never refreshed); ④ `fetchAdminData` made per-key fault-tolerant (a 404 on humans/managers no longer drags down workers/teams); ⑤ failures surfaced (consecutive-failure counter + warning strip, no more silent failures).
+- **Element-style room list** ("is the refresh a bit slow and clunky — look at Element"):
+  ① the backend watcher emits a new `room_list_update` SSE incremental event — deltas for room name/topic/unread/last_ts/member_count plus new-room summaries and leave events (diffed in place from the /sync event stream; no more full `/teams/sync` on every update);
+  ② the frontend **merges and re-sorts in place** (no full-table refetch); mention/approval updates no longer trigger a full room refresh (full sync only on: first sync / login / explicit refresh / accepting an invite);
+  ③ +7 incremental-diff regression tests.
+- **Unread badge moved to the top-left** (sidebar icon badge, top-right → top-left).
+- **Full team-config dialog** ("team skills and other team config should live inside team config"):
+  ① added the **subagentModel** field (team-level default model for spawned subagents; blank = inherit each Worker's primary model) + save (PUT, same semantics as heartbeatEvery);
+  ② an embedded **team skills section** = the Skill Center component in onlyTeam mode (catalog search / upload / custom create / download + per-member assignment matrix + MCP cards; saves go through the Skill Center endpoints, independent of the dialog's Save button; capped at 460px with inner scroll);
+  ③ **L1/L2 separation preserved**: L1 can manage any team; L2 users go through the Skill Center (My Team) entry — same capabilities, server-side scoped to their own team.
+- **Worker config integrated into the topology** ("workers too, all integrated into the topology"): the worker topology "Resource Management" skills tab gains the **catalog section** (search / upload / custom create / download, scoped to that Worker's team) plus the existing editable assignment matrix — one screen.
+- **Sidebar role grouping (A8c)**: the DM view groups by the counterparty's role (Leader / Worker / Manager / Other; within a group, still by time/name order); without L1 admin data it falls back to a flat list (L2 unaffected).
+- **AgentActivityTrack (A8d, task progress + HITL above the composer)**: when the active room's project is live, an inline track above the input shows the project name + status + tasks done/total + iteration progress + an amber "awaiting human input" chip + open-task chips (≤5, with status dot + assignee); clicking the track opens that project's workflow; auto-hidden when the project is terminal or unmatched. Data = the existing workflow API (zero extra requests).
+- **Mermaid DAG view (A9, fifth view)**: the workflow page gains a "Mermaid" view — renders the upstream `GET /projects/{id}/workflow?format=mermaid` snapshot directly (node color = task status, ready highlighted); mermaid 12.0.0 (MIT) is inlined into the single-file bundle (the host blob environment forbids dynamic imports, so `inlineDynamicImports` inlines everything; main bundle 2,308→7,620kB, offline-capable with zero network dependency); a 404 (Controller without the endpoint) shows an honest placeholder and does not affect the topology view.
+- **Delete-team undo (A10)**: snapshot before delete → a 6-second "Undo (recreate from snapshot)" toast after a successful delete → `createTeam` re-applies the snapshot (teamName / description / workerMembers / heartbeat / peerMentions / subagentModel). Honest semantics = **recreate, not restore** (room history / container state do not come back with the CRD; the toast says so).
+- **Heartbeat status surfaced (#1247)**: the worker detail panel shows the four heartbeat-task runtime fields (agentStatus / runningTaskCount / lastRunAt / lastFinishAt; the row hides entirely on older Controllers without the fields).
+- **MCP L2 write permission**: the upstream capability-foundation is in flight (foundation only: CRD capabilities + audit client); the consumer branches are scheduled after it merges — L2 MCP writes remain blocked for now (not a plugin-side issue).
+- **i18n**: 1,368 keys, 0 missing / 0 duplicate / 0 empty (+25)
+
+**Verification**: tsc 0 · vite single file 7,620kB (gzip 2,150kB; 0 import statements = host-blob safe) · pytest 71/71 · i18n 1,368 keys · sensitive scan 0 (source + dist decoded) · version carriers 25
+
+---
+
 ## 0.5.0-beta.13.20 (2026-09-24)
 
 **Close of the 13.19 verification feedback: per-worker skills as first-class citizens (materialized-layer fields + preload switch) / team-config entry moved to the topology (gear beside "N members") / room-message loading converged (roomHistory single authority + deep-history fix on room-open)**

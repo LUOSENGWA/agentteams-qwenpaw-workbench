@@ -16,6 +16,7 @@
 | 3d-force-graph | 1.80.0 | MIT | © 2017 Vasco Asturiano | 3D 力导向布局 + orbit 交互（缩放/拖拽/旋转） | [vasturiano/3d-force-graph](https://github.com/vasturiano/3d-force-graph) |
 | three-spritetext | 1.10.0 | MIT | © 2018 Vasco Asturiano | 3D 节点文字标注（SpriteText） | [vasturiano/three-spritetext](https://github.com/vasturiano/three-spritetext) |
 | fflate | 0.8.3 | MIT | © 2026 Arjun Barrett | xlsx 文件预览（zlib inflate 解包，替代 400KB 级 SheetJS 重依赖） | [nodeca/fflate](https://github.com/nodeca/fflate) |
+| mermaid | 12.0.0 | MIT | © 2024-2026 Mermaid contributors | 工作流 Mermaid DAG 视图（上游 `?format=mermaid` 快照直渲染；v0.5.0-beta.13.21 起） | [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid) |
 | lucide（图标路径数据） | 2026-08 快照 | ISC | © lucide contributors | 工具执行安全四档图标（Ban / AlertTriangle / Shield / CircleCheck，SVG 路径数据内联，零运行时依赖） | [lucide-icons/lucide](https://github.com/lucide-icons/lucide) |
 
 **版本对齐说明**：three.js / 3d-force-graph / three-spritetext 三件与
@@ -40,8 +41,8 @@ QwenPaw 2.2 官方控制台 `console/package.json` 完全一致（3D 知识图�
 
 ### MIT License
 
-three.js / 3d-force-graph / three-spritetext / fflate 四个组件均为
-MIT 许可，版权人分别为上表所列。MIT 许可全文（各组件通用）：
+three.js / 3d-force-graph / three-spritetext / fflate / mermaid 五个
+组件均为 MIT 许可，版权人分别为上表所列。MIT 许可全文（各组件通用）：
 
 ```
 The MIT License (MIT)
