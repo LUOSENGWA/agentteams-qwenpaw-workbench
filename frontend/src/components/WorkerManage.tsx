@@ -1,4 +1,4 @@
-import { BookmarkIcon, TeamIcon, HistoryIcon, WarnIcon, MessageIcon as ChatIcon } from "./icons";
+import { BookmarkIcon, TeamIcon, HistoryIcon, WarnIcon, MessageIcon as ChatIcon, SettingsIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -22,7 +22,7 @@ import {
   validateModelValue,
 } from "../modelUnion";
 import ApprovalControl from "./ApprovalControl";
-import CrdManage from "./CrdManage";
+import CrdManage, { type CrdManageHandle } from "./CrdManage";
 import MyScopeCard from "./MyScopeCard";
 import WorkerChannels from "./WorkerChannels";
 import WorkerTools from "./WorkerTools";
@@ -831,6 +831,7 @@ function TeamNode({
   sessionByName,
   l1,
   onOpenSettings,
+  onTeamConfig,
 }: {
   team: WorkerTreeTeam;
   onDm?: (mxid: string) => void;
@@ -844,7 +845,11 @@ function TeamNode({
   l1?: boolean;
   /** v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳转透传。 */
   onOpenSettings?: () => void;
+  /** v0.5.0-beta.13.20：「N人」右侧齿轮 → 配置团队弹窗（CrdManage 同一
+   * 入口）。未传（L1 未登录/管理数据未就绪）= 不渲染齿轮。 */
+  onTeamConfig?: (teamName: string) => void;
 }) {
+  const tr = useT();
   const [expanded, setExpanded] = React.useState(true);
   const workerCount = team.workers.length;
 
@@ -867,6 +872,34 @@ function TeamNode({
         <antd.Tag style={{ margin: "0 0 0 8px", fontSize: 11 }}>
           {workerCount} 人
         </antd.Tag>
+        {/* v0.5.0-beta.13.20：团队配置入口上移——「N人」右侧齿轮，
+            打开 CrdManage「配置团队」弹窗（名称/描述/心跳/成员模型，
+            与团队表「配置」按钮同一入口）。stopPropagation：点齿轮
+            不触发行展开/收起。 */}
+        {onTeamConfig ? (
+          <antd.Tooltip
+            title={tr("配置团队（名称 / 描述 / 心跳间隔 / 成员模型）")}
+          >
+            <span
+              role="button"
+              aria-label={tr("配置团队")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onTeamConfig(team.team_name);
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                marginLeft: 2,
+                color: "#999",
+                cursor: "pointer",
+                padding: 2,
+              }}
+            >
+              <SettingsIcon size={13} />
+            </span>
+          </antd.Tooltip>
+        ) : null}
         <antd.Tooltip title={team.room_id}>
           <span
             style={{
@@ -1478,6 +1511,19 @@ export default function WorkerManage(props: WorkerManageProps) {
   const refresh = onRefreshTree || onRefreshAdmin;
   const refreshLoading = Boolean(treeLoading) || Boolean(adminLoading);
 
+  // v0.5.0-beta.13.20：拓扑齿轮 → CrdManage「配置团队」弹窗（注册式
+  // handle——CrdManage 只渲染于 hasToken && admin，齿轮同步受同门控；
+  // 弹窗打开瞬间若 admin 已卸载，openConfig 内查无团队会 toast 不炸）。
+  const crdRef = React.useRef<CrdManageHandle | null>(null);
+  const registerCrd = React.useCallback((h: CrdManageHandle) => {
+    crdRef.current = h;
+  }, []);
+  // CrdManage 卸载（L1 退出/admin 清空）→ 清 handle，防齿轮调到
+  // 已卸载组件的 setState（React 警告 + 无效操作）。
+  React.useEffect(() => {
+    if (!(hasToken && admin)) crdRef.current = null;
+  }, [hasToken, admin]);
+
   const items =
     hasToken && admin
       ? [
@@ -1615,6 +1661,11 @@ export default function WorkerManage(props: WorkerManageProps) {
                 sessionByName={workerSessionByName}
                 l1={!!hasToken}
                 onOpenSettings={props.onOpenSettings}
+                onTeamConfig={
+                  hasToken && admin
+                    ? (name: string) => crdRef.current?.openConfig(name)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -1643,6 +1694,7 @@ export default function WorkerManage(props: WorkerManageProps) {
           admin={admin}
           onRefresh={onRefreshAdmin}
           l1TokenMode={l1TokenMode}
+          registerHandle={registerCrd}
         />
       ) : null}
       {items.length ? (

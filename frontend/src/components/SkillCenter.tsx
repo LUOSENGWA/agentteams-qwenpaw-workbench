@@ -36,6 +36,7 @@ import {
   updateWorker,
   fetchSkillCatalog,
   fetchWorkerSkills,
+  setWorkerSkillPreload,
   httpErrorStatus,
   // v0.5.0-beta.13.19（13.18 装验「技能上传呢」）：团队技能包上传
   // （POST /api/v1/skills，multipart zip；经连接器 multipart 透传）。
@@ -170,6 +171,64 @@ export default function SkillCenter({
     // matByWorker 不入 deps（cur 判断用函数式 setState 兜底竞态）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedWorker]);
+  // v0.5.0-beta.13.20（「技能不仅有团队技能，还有每 worker 技能」）：
+  // 物化层 per-skill 预加载开关——PUT /workers/{name}/skills/{skill}/preload。
+  // 语义：技能全文常驻该 Worker 每个 session 的 system prompt（QwenPaw
+  // 2.2.1+ 的 always-on 能力，有 per-session token 成本；worker 侧验证 +
+  // 持久化 skill.json + agent 热加载，无需重启）。写权限（上游
+  // worker_skills.go）：L1 任意 worker；L2 human 限自己团队（拓扑可见性
+  // 天然同域）；team leader 只读 → 403 toast。404 = worker 无此技能 /
+  // 其 qwenpaw < 2.2.1 版本门 / L2 跨团队防探测；502 = worker 不可达。
+  const [preloadBusy, setPreloadBusy] = React.useState<Record<string, boolean>>({});
+  const togglePreload = React.useCallback(
+    async (workerName: string, s: WorkerRuntimeSkill, next: boolean) => {
+      const key = `${workerName}::${s.name}`;
+      setPreloadBusy((p) => ({ ...p, [key]: true }));
+      try {
+        await setWorkerSkillPreload(workerName, s.name, next);
+        // 乐观落本地物化层（成功即生效；失败不改动、可再试）。
+        setMatByWorker((prev) => {
+          const cur = prev[workerName];
+          if (!Array.isArray(cur)) return prev;
+          return {
+            ...prev,
+            [workerName]: cur.map((x) =>
+              x.name === s.name ? { ...x, preload: next } : x,
+            ),
+          };
+        });
+        antd.message.success(
+          next
+            ? tr("已开启 {skill} 预加载（常驻 system prompt）", { skill: s.name })
+            : tr("已关闭 {skill} 预加载", { skill: s.name }),
+        );
+      } catch (e) {
+        const code = httpErrorStatus(e);
+        if (code === 403) {
+          antd.message.warning(
+            tr("无权限调整该 Worker 技能预加载（当前身份只读——团队 Leader 只读 / L2 跨团队被拒）"),
+          );
+        } else if (code === 404) {
+          antd.message.warning(
+            tr("预加载不可用（Worker 未装载该技能，或其 QwenPaw < 2.2.1 无 preload 端点）"),
+          );
+        } else if (code === 502) {
+          antd.message.warning(tr("Worker 技能服务不可达（Worker 未运行？）"));
+        } else {
+          antd.message.error(
+            e instanceof Error ? e.message : tr("预加载调整失败"),
+          );
+        }
+      } finally {
+        setPreloadBusy((p) => {
+          const n = { ...p };
+          delete n[key];
+          return n;
+        });
+      }
+    },
+    [tr],
+  );
   const [mcpMap, setMcpMap] = React.useState<Record<string, McpServerInfo[]>>({});
   const [savingRow, setSavingRow] = React.useState("");
   const [mcpEditWorker, setMcpEditWorker] = React.useState("");
@@ -795,25 +854,113 @@ export default function SkillCenter({
                               "运行时已装载（物化层——实际可调用；分配层空而这里非空 = 团队层自动物化/内置恢复/镜像自带）",
                             )}
                           </div>
-                          <div style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+                          {/* v0.5.0-beta.13.20：per-worker 技能一等公民——
+                              光杆 Tag → 逐技能行：来源 / 描述 / 启用态 /
+                              分配态 / **预加载开关**（PUT preload，worker
+                              侧热加载）。 */}
+                          <div style={{ display: "grid", gap: 4 }}>
                             {mat.map((s) => {
-                              const a = s.name;
-                              const inAssigned = assigned.includes(a);
+                              const inAssigned = assigned.includes(s.name);
+                              const busy = !!preloadBusy[`${w.name}::${s.name}`];
+                              const disabled = s.enabled === false;
                               return (
-                                <antd.Tag
-                                  key={a}
-                                  color={inAssigned ? "blue" : "cyan"}
-                                  style={{ marginInlineEnd: 0, fontSize: 10.5 }}
-                                  title={
-                                    inAssigned
-                                      ? tr("已分配 + 已物化")
-                                      : tr("仅物化（未显式分配）") +
-                                        (s.preload ? " · 预加载" : "")
-                                  }
+                                <div
+                                  key={s.name}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    padding: "3px 6px",
+                                    borderRadius: 6,
+                                    border: `1px solid ${t.border}`,
+                                    background: t.cardBg,
+                                  }}
                                 >
-                                  {a}
-                                  {inAssigned ? " ✓" : ""}
-                                </antd.Tag>
+                                  <span
+                                    title={disabled ? tr("已禁用") : tr("启用中")}
+                                    style={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: 3,
+                                      flexShrink: 0,
+                                      background: disabled ? "#bbb" : "#52c41a",
+                                    }}
+                                  />
+                                  {s.emoji ? (
+                                    <span style={{ fontSize: 12, flexShrink: 0 }}>
+                                      {s.emoji}
+                                    </span>
+                                  ) : null}
+                                  <span
+                                    style={{
+                                      fontWeight: 600,
+                                      fontSize: 11.5,
+                                      flexShrink: 0,
+                                      maxWidth: 180,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                    title={s.name}
+                                  >
+                                    {s.name}
+                                  </span>
+                                  <span
+                                    style={{
+                                      flex: 1,
+                                      minWidth: 0,
+                                      color: t.textSecondary,
+                                      fontSize: 11,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                    title={s.description || ""}
+                                  >
+                                    {s.description || ""}
+                                  </span>
+                                  {s.source ? (
+                                    <antd.Tag
+                                      style={{ marginInlineEnd: 0, fontSize: 10 }}
+                                      title={tr("物化来源（worker 实际装载渠道）")}
+                                    >
+                                      {s.source}
+                                    </antd.Tag>
+                                  ) : null}
+                                  <antd.Tag
+                                    color={inAssigned ? "blue" : "cyan"}
+                                    style={{ marginInlineEnd: 0, fontSize: 10 }}
+                                    title={
+                                      inAssigned
+                                        ? tr("已分配 + 已物化")
+                                        : tr("仅物化（未显式分配）")
+                                    }
+                                  >
+                                    {inAssigned ? tr("已分配") : tr("仅物化")}
+                                  </antd.Tag>
+                                  <antd.Tooltip
+                                    title={tr(
+                                      "预加载：技能全文常驻该 Worker 每个会话的 system prompt（有 per-session token 成本；QwenPaw ≥ 2.2.1；worker 侧热加载无需重启）",
+                                    )}
+                                  >
+                                    <span
+                                      style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
+                                    >
+                                      <span style={{ fontSize: 10.5, color: t.textSecondary }}>
+                                        {tr("预加载")}
+                                      </span>
+                                      <antd.Switch
+                                        size="small"
+                                        checked={!!s.preload}
+                                        loading={busy}
+                                        disabled={busy}
+                                        onChange={(v: boolean) =>
+                                          void togglePreload(w.name, s, v)
+                                        }
+                                      />
+                                    </span>
+                                  </antd.Tooltip>
+                                </div>
                               );
                             })}
                           </div>

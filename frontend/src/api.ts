@@ -1740,16 +1740,47 @@ export function patchWorkerTool(
 //     恢复 / 镜像·插件自带技能都不写 spec.skills → 分配层空但物化层非空
 //     = 13.14 装验「矩阵全显未分配但可正常调用」的真相。
 // 404 = Controller 未含端点（版本门）/ L2 跨团队 W8 防探测；403 = 只读身份。
+// v0.5.0-beta.13.20：物化层字段补全——上游 SkillSpec（qwenpaw skills.py）
+// 实回 {name, description, version_text, source, emoji, enabled, channels,
+// preload, tags, last_updated}；此前只取 3 字段，「每 worker 技能」在 UI
+// 上只剩光杆名字，看不出来源（builtin/custom/团队物化）与用途。
 export interface WorkerRuntimeSkill {
   name: string;
   enabled?: boolean;
   preload?: boolean;
+  description?: string;
+  version_text?: string;
+  source?: string;
+  emoji?: string;
+  tags?: string[];
+  /** 物化层技能来源——worker 实际装载渠道（builtin/custom 等）。 */
+  channels?: string[];
+  last_updated?: string;
 }
 export function fetchWorkerSkills(name: string): Promise<WorkerRuntimeSkill[]> {
   return controllerRequest(
     "GET",
     `/workers/${encodeURIComponent(name)}/skills`,
   ) as Promise<WorkerRuntimeSkill[]>;
+}
+
+// ── Worker 技能预加载策略（PUT /workers/{name}/skills/{skill}/preload）──
+// v0.5.0-beta.13.20：per-worker 技能的可写面。preload=true = 技能全文注入
+// 该 worker 每个 session 的 system prompt（常驻能力，有 per-session token
+// 成本）——qwenpaw 侧验证并持久化（skill.json）+ agent 热加载，无需重启。
+// 写权限（上游 worker_skills.go）：L1 任意 worker；L2 human 限自己团队；
+// team leader 只读（403）。404 = worker 无此技能 / 其 qwenpaw < 2.2.1
+// 无 preload 路由（版本门）/ L2 跨团队防探测；502 = worker 不可达。
+export function setWorkerSkillPreload(
+  name: string,
+  skillName: string,
+  preload: boolean,
+): Promise<{ updated: boolean; preload: boolean }> {
+  return controllerRequest(
+    "PUT",
+    `/workers/${encodeURIComponent(name)}/skills/${encodeURIComponent(skillName)}/preload`,
+    { preload },
+  ) as Promise<{ updated: boolean; preload: boolean }>;
 }
 
 // ── Worker 会话只读（#1295 等合并；给无头 QwenPaw Worker「补头」）──────

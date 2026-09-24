@@ -48,6 +48,9 @@ import {
   type WorkerTreeTeam,
   type WorkflowEvent,
 } from "./api";
+// v0.5.0-beta.13.20：群消息加载收敛——窗口游标/预取槽/在飞闸/空页走查
+// 单一权威（I1–I6 不变量见模块头注释）；本地 mergeMessagePages 退役。
+import { RoomHistory, mergeForward } from "./roomHistory";
 import RoomChat from "./components/RoomChat";
 
 import TeamOverview from "./components/TeamOverview";
@@ -1358,21 +1361,8 @@ function readStartupPref(): "last" | "home" {
  *  ≥320 + 拖柄；16:9 全屏恒过线，竖屏手机不过线）。 */
 const CHAT_SPLIT_MIN_CONTAINER_W = 800;
 
-/** v0.5.0-beta.13.10：消息页合并（升序口径）——prev 为当前已加载全量
- * （含 loadMore 前插历史），page 为最新一页（dir=b，窗口内升序）。
- * page 的缺失项只可能出现在 prev 末尾之后（房间消息只增不改序）→
- * event_id 去重追加；prev 空 = 直接取页。编辑（m.replace）由
- * fetchRoomMessages 聚合，这里不重复处理。 */
-function mergeMessagePages(
-  prev: RoomMessage[],
-  page: RoomMessage[],
-): RoomMessage[] {
-  if (prev.length === 0) return page;
-  const known = new Set(prev.map((m) => m.event_id));
-  const fresh = page.filter((m) => !known.has(m.event_id));
-  if (fresh.length === 0) return prev;
-  return [...prev, ...fresh];
-}
+// v0.5.0-beta.13.20：mergeMessagePages 退役 → roomHistory.mergeForward
+//（语义原样迁移，单一出处）。
 /** 12.16→13.10：宽窄判定基准 = **窗口宽**（window.innerWidth）。
  * v0.5.0-beta.13.8（13.7 装验「16:9 全屏被识别成竖屏→聊天单栏」）：
  * 旧判定 w>=600 且 w>=h——宽高比项在「定高内嵌容器/高分屏」下误判
@@ -1601,9 +1591,12 @@ export default function WorkbenchPage() {
   const [messages, setMessages] = React.useState<RoomMessage[]>([]);
   // messages 的 ref 镜像（pollMessages 去重用，避免闭包过期）。
   const messagesRef = React.useRef<RoomMessage[]>([]);
-  // v0.5.0-beta.13.19：当前已建立消息窗口的房间（游标归属判定——refreshMessages
-  // 只在首窗建立游标，非首窗只合并新消息不动游标，防「游标回退→空转」）。
-  const windowRoomRef = React.useRef<string>("");
+  // v0.5.0-beta.13.20：消息历史窗口状态机——收敛原 windowRoomRef /
+  // messagesEndRef / loadingMoreRef / prefetchRef 四个散落 ref（I1–I6
+  // 不变量见 roomHistory.ts 模块头；组件只持有消息数组与 React 镜像）。
+  const histRef = React.useRef<RoomHistory | null>(null);
+  if (!histRef.current) histRef.current = new RoomHistory(fetchRoomMessages);
+  const hist = histRef.current;
   React.useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -1621,12 +1614,7 @@ export default function WorkbenchPage() {
     messagesRef.current = [];
   }, [activeRoom?.room_id]);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
-  const [messagesEnd, setMessagesEnd] = React.useState(""); // 分页 token
-  // 游标 ref 镜像（refreshMessages 空依赖闭包读不到最新 messagesEnd 状态）。
-  const messagesEndRef = React.useRef("");
-  React.useEffect(() => {
-    messagesEndRef.current = messagesEnd;
-  }, [messagesEnd]);
+  const [messagesEnd, setMessagesEnd] = React.useState(""); // 分页 token（I1：hist.cursor 的 React 镜像）
   const [hasMore, setHasMore] = React.useState(false);
   const [roomError, setRoomError] = React.useState("");
   const [sending, setSending] = React.useState(false);
@@ -1710,22 +1698,12 @@ export default function WorkbenchPage() {
           if (saved) {
             setActiveRoom(saved);
             setCachedRooms(payload);
-            void (async () => {
-              try {
-                const page = await fetchRoomMessages(saved.room_id, 50);
-                setMessages(page.messages);
-                setMessagesEnd(page.end);
-                setHasMore(!!page.end);
-                setCachedMessages(saved.room_id, page);
-                prefetchNext(saved.room_id, page.end);
-                void markCurrentRead(
-                  saved.room_id,
-                  page.messages[page.messages.length - 1]?.event_id,
-                );
-              } catch {
-                /* 静默——恢复失败回到空房间，用户可返回重选 */
-              }
-            })();
+            // v0.5.0-beta.13.20：状态恢复与 openRoom 同源——旧内联取数
+            // 块是第 4 条窗口建立路径（无 I2 合并 / 无 I1 窗口游标 /
+            // 缓存被浅页覆盖：上会话翻过的深历史在恢复瞬间蒸发，游标
+            // 回退假死家族）。refreshMessages = 缓存即时显示 + 合并 +
+            // 首窗游标 + 预取起步，一条路径全语义。
+            void refreshMessages(saved);
           }
         }
       }
@@ -1833,49 +1811,57 @@ export default function WorkbenchPage() {
     setMarkingAllRead(false);
   }, [rooms]);
 
+  // ── 消息窗口同步（开房 / 状态恢复 / 静默刷新）────────────────────
+  // v0.5.0-beta.13.20 收敛：窗口游标（I1）/ 预取单槽（I3）/ 在飞闸（I5）
+  // / 空页走查（I4）全部收敛进 RoomHistory 状态机（不变量与装验溯源见
+  // roomHistory.ts 模块头）。本函数是**唯一的窗口建立路径**——13.19 的
+  // 状态恢复内联块已退役（它曾是第 4 条分叉路径：无 I2 合并 / 无 I1 窗口
+  // 游标 / 缓存被浅页覆盖 → 深历史蒸发 + 游标回退家族）。
+  //
+  // 保留的验收语义（13.10 / 13.16 / 13.18 / 13.19 逐条可溯源）：
+  //  · 缓存即时显示 + 后台拉新；
+  //  · I1 游标只在首窗建立（= 缓存 end ?? 本页 end），refresh 永不回退
+  //    浅游标（13.19 假死根因）；
+  //  · I2 合并而非替换（mergeForward——13.10「消息滚出历史」根因）；
+  //  · I3 开房即预取下一页（13.18 管道起步 → 首次上翻零等待）；
+  //  · I6 缓存 = 全量窗口 + 窗口游标（13.10/13.19）。
   const refreshMessages = React.useCallback(async (room: TeamRoom, silent = false) => {
     if (!silent) setMessagesLoading(true);
     try {
       // 缓存即时显示，后台拉新。
       const cached = getCachedMessages(room.room_id);
-      // v0.5.0-beta.13.19（13.18 装验「加载原消息加载不出来 / 可能太多请求」真根因）：
-      // **游标只在「本房间首窗」建立**。旧版每次 refresh 都把 messagesEnd 重置成
-      // 「最新 50 的 end」（浅游标），而窗口里已有更深历史（缓存恢复/已翻多页）——
-      // 之后 loadMore 拉回的页全是已加载内容：去重零新增 → 不落盘 → 无前插 →
-      // RoomChat 的 autoLoadRef 不解锁（6s 兜底）→「加载原消息」逐页空转，
-      // 每页一次多余请求 + 6s 等待，30s 看门狗直接取消。窗口游标由 loadMore
-      // 单调推进；refresh 只合并新消息、不动游标。
-      const freshWindow =
-        windowRoomRef.current !== room.room_id || messagesRef.current.length === 0;
+      // I1 判定用**调用瞬间**的已加载条数（不是 set 之后的新值）。
+      const curCount = messagesRef.current.length;
+      const fresh = hist.isFresh(room.room_id, curCount);
       if (cached) {
         setMessages(cached.messages);
-        if (freshWindow) {
+        if (fresh) {
           setMessagesEnd(cached.end);
           setHasMore(Boolean(cached.end));
         }
       }
       const page = await fetchRoomMessages(room.room_id, 50);
-      // v0.5.0-beta.13.10（13.9 装验「消息被滚出历史」真根因）：合并而非
-      // 全量替换——旧版用「最新 50 条」整体覆盖，loadMore 翻过的更早
-      // 历史瞬间蒸发（切页回来「很多没了」），覆盖瞬间的列表收缩也让
-      // 滚动位置错乱（「乱了」）。两边都升序：page=最新 50，缺失项只
-      // 可能出现在末尾 → 去重追加，滚动锚不动。
-      const merged = mergeMessagePages(messagesRef.current, page.messages);
+      // I2 合并基底 = 当前在屏全量 与 缓存窗口 的较长者：
+      //  · 切房时 room-reset effect 已把 messagesRef 归零，取缓存（否则
+      //    旧逻辑用空基底合并 → 浅页覆盖缓存深历史，13.10 语义在开房
+      //    路径上破洞——本轮修复的实存 bug）；
+      //  · 同房静默刷新时两者同长，取 ref（含 poll/send 的尾部增量）。
+      const base =
+        curCount >= (cached?.messages.length ?? 0)
+          ? messagesRef.current
+          : (cached?.messages ?? []);
+      const merged = mergeForward(base, page.messages);
       setMessages(merged);
-      // 窗口游标：首窗=本次页游标（或缓存游标）；非首窗=当前窗口既有游标
-      // （loadMore 单调推进的那个；缓存被逐出时也不回退）。
-      const windowEnd = freshWindow
-        ? cached?.end ?? page.end
-        : messagesEndRef.current || page.end;
-      if (freshWindow && !cached) {
-        setMessagesEnd(page.end);
-        setHasMore(Boolean(page.end));
-      }
-      windowRoomRef.current = room.room_id;
-      // v0.5.0-beta.13.18：开房即预取下一页（管道起步 → 首次上翻即零等待）。
-      prefetchNext(room.room_id, windowEnd);
+      // I1 窗口游标：首窗 = 缓存 end ?? 本页 end；非首窗 = 既有游标
+      // （loadOlder 单调推进的那个；缓存被逐出时也不回退）。
+      const windowEnd = hist.windowEnd(room.room_id, curCount, cached?.end, page.end);
+      hist.commit(room.room_id, windowEnd);
+      setMessagesEnd(windowEnd);
+      setHasMore(Boolean(windowEnd));
+      // I3：开房即预取下一页（管道起步 → 首次上翻即零等待）。
+      hist.prefetch(room.room_id, windowEnd);
       setRoomError(page.error === "not_found" ? "not_found" : "");
-      // 缓存存全量已加载历史（含 loadMore 前插）+ **窗口游标**（不回退）。
+      // I6：缓存存全量已加载历史（含 loadOlder 前插）+ 窗口游标（不回退）。
       setCachedMessages(room.room_id, { ...page, end: windowEnd }, merged);
       // 已读：messages 升序，末条 = 最新。
       void markCurrentRead(room.room_id, page.messages[page.messages.length - 1]?.event_id);
@@ -1886,94 +1872,44 @@ export default function WorkbenchPage() {
     }
   }, []);
 
-  // 分页：加载更早的消息（dir=b，from=end token），前插。
-  // v0.5.0-beta.13.17（13.16 装验「没有预加载」）：并发防重——滚动预载与
-  // 手动按钮可能在同一窗口双触发，同游标（messagesEnd 闭包未更新时）双拉
-  // 会重复前插同一页（known 集合是调用瞬间快照）→ 加同步 in-flight 闸；
-  // loadingMore 同步给聊天列表做顶部预载提示。
-  // v0.5.0-beta.13.18（13.17 装验「触发才加载、慢，不是跟着窗口预加载」）：
-  // **预取管线**——下一页在后台按 (房间, 游标) 预取；顶部预载触发时若已
-  // 预取 = 零等待落盘，落盘后立即预取再下一页（滚动全程管道常驻，加载
-  // 跟着窗口走而不是被触发才追）。游标+房间双键控：不匹配/切房即作废
-  // （绝不跨房取页）；预取失败静默（真正加载时报错路径不变）。
-  const loadingMoreRef = React.useRef(false);
+  // ── 分页：加载更早的消息（dir=b，from=窗口游标），前插 ──────────────
+  // v0.5.0-beta.13.20 收敛：I3 命中/兜底 + I4 空页走查收敛进
+  // hist.walkFrom；组件侧只剩 I2 前插 + I6 落盘 + I3 预取续接 + I5 闸
+  // 的 UI 镜像（loadingMore → RoomChat 顶部预载提示）。
+  // 13.16/13.17 验收语义不变：滚动预载与手动按钮同窗双触发时 I5 闸
+  // 保证同游标不双拉（重复前插同一页的根因）。
   const [loadingMore, setLoadingMore] = React.useState(false);
-  const prefetchRef = React.useRef<{
-    room: string;
-    end: string;
-    promise: Promise<RoomMessagesPage>;
-  } | null>(null);
-  const prefetchNext = React.useCallback((roomId: string, cursor: string) => {
-    if (!roomId || !cursor) return;
-    const cur = prefetchRef.current;
-    if (cur && cur.room === roomId && cur.end === cursor) return; // 同页已在预取
-    const promise = fetchRoomMessages(roomId, 50, cursor);
-    prefetchRef.current = { room: roomId, end: cursor, promise };
-    promise.catch(() => {
-      // 静默：真正需要这一页时走正常 fetch/报错路径
-      if (prefetchRef.current?.promise === promise) prefetchRef.current = null;
-    });
-  }, []);
   const loadMore = React.useCallback(async () => {
     if (!activeRoom || !messagesEnd) return;
-    if (loadingMoreRef.current) return;
-    loadingMoreRef.current = true;
+    if (hist.busy) return; // I5 在飞单发
+    hist.setBusy(true);
     setLoadingMore(true);
     try {
-      // 预取命中（同房间同游标）→ 零网络等待直接落盘；否则正常拉取。
-      // 预取若已失败 → 直拉兜底（不能把历史加载搭在早先的失败上）。
-      const pf = prefetchRef.current;
-      const hit = !!pf && pf.room === activeRoom.room_id && pf.end === messagesEnd;
-      let page: RoomMessagesPage;
-      if (hit) {
-        try {
-          page = await pf.promise;
-        } catch {
-          page = await fetchRoomMessages(activeRoom.room_id, 50, messagesEnd);
-        }
-      } else {
-        page = await fetchRoomMessages(activeRoom.room_id, 50, messagesEnd);
-      }
-      if (pf) prefetchRef.current = null; // 该游标已消费或已作废
-      // v0.5.0-beta.13.19：**游标走查**——个别页可能整页落在已加载区间
-      // （历史边界重叠等）：去重零新增时不落盘（无渲染=无前插=不闪跳），
-      // 但**立即续走下一页**（上限 8 页；游标不前进即停），把「空页 → 6s
-      // 锁 → 再触发」的假死一次走完（13.18 装验「太多请求/加载不出来」的
-      // 另一半根因）。
-      let known = new Set(messagesRef.current.map((m) => m.event_id));
-      let older = page.messages.filter((m) => !known.has(m.event_id));
-      let walkedEnd = "";
-      let walk = 0;
-      while (
-        older.length === 0 &&
-        page.end &&
-        page.end !== walkedEnd &&
-        walk < 8
-      ) {
-        walkedEnd = page.end;
-        walk += 1;
-        page = await fetchRoomMessages(activeRoom.room_id, 50, page.end);
-        known = new Set(messagesRef.current.map((m) => m.event_id));
-        older = page.messages.filter((m) => !known.has(m.event_id));
-      }
-      // v0.5.0-beta.13.10：前插历史同步进缓存——切页回来仍在
-      // （旧版缓存只存最新 50，翻过的历史必丢）。
+      // I4 空页走查 + I3 预取命中：从当前窗口游标取页；整页去重零新增
+      // → 立即续走下一页（≤WALK_CAP；游标不前进即停）——「空页 → 6s 锁
+      // → 再触发」的假死一次走完（13.19 验收）；预取命中 = 零网络等待，
+      // miss/预取失败 = 直拉兜底（13.18 验收）。
+      const known = new Set(messagesRef.current.map((m) => m.event_id));
+      const { page, older } = await hist.walkFrom(activeRoom.room_id, known);
+      // I2 前插（零新增 = 不前插 = 无渲染变化 = 不闪跳）。
       const merged = older.length
         ? [...older, ...messagesRef.current]
         : messagesRef.current;
       setMessages(merged);
-      setCachedMessages(activeRoom.room_id, { ...page, messages: merged }, merged);
+      // I1 游标沿更早方向推进 + I6 落盘全量窗口（游标不回退）。
+      hist.commit(activeRoom.room_id, page.end);
       setMessagesEnd(page.end);
       setHasMore(Boolean(page.end));
-      // 落盘后立即预取再下一页（管道常驻 → 用户滚到边界时通常已是零等待）。
-      prefetchNext(activeRoom.room_id, page.end);
+      setCachedMessages(activeRoom.room_id, { ...page, messages: merged }, merged);
+      // I3 管道常驻：落盘后立即预取再下一页（用户滚到边界时通常已零等待）。
+      hist.prefetch(activeRoom.room_id, page.end);
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("加载更早消息失败"));
     } finally {
-      loadingMoreRef.current = false;
+      hist.setBusy(false);
       setLoadingMore(false);
     }
-  }, [activeRoom, messagesEnd, prefetchNext]);
+  }, [activeRoom, messagesEnd]);
 
   // v0.5.0-beta.13.13（13.12 装验「很多信息『已滚出历史』但 Element 里
   // 信息都在，看看 Element 怎么做的」）：引用条原消息不在已加载窗口时 →
@@ -1990,10 +1926,8 @@ export default function WorkbenchPage() {
   //   ③ 终止条件：原消息进窗口（自动定位 + 高亮，jumpToEventId 复用
   //      搜索跳转链路）/ 触底（!hasMore → banner 落 /context 兜底）/
   //      用户滚离顶部（停止续拉）/ 切房（pending 作废 resolve false）。
-  const hasMoreRef = React.useRef(false);
-  React.useEffect(() => {
-    hasMoreRef.current = hasMore;
-  }, [hasMore]);
+  // v0.5.0-beta.13.20：hasMoreRef 退役（只写不读的死镜像——回填效果
+  // 直接读 hasMore state）。
   const [pendingOriginalId, setPendingOriginalId] =
     React.useState<string | null>(null);
   const pendingOrigResolveRef = React.useRef<
@@ -2076,12 +2010,8 @@ export default function WorkbenchPage() {
       );
       const fresh = page.messages.filter((m) => !known.has(m.event_id));
       if (fresh.length) {
-        setMessages((prev) => {
-          const stillFresh = fresh.filter(
-            (m) => !prev.some((p) => p.event_id === m.event_id),
-          );
-          return stillFresh.length ? [...prev, ...stillFresh] : prev;
-        });
+        // I2：与窗口路径同一合并原语（去重追加；ref 二次防御并发前插）。
+        setMessages((prev) => mergeForward(prev, fresh));
         // 已读：正在看的房间来了新消息 → 对最新一条发回执。
         void markCurrentRead(
           activeRoom.room_id,
