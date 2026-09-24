@@ -5,6 +5,27 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.20 (2026-09-24)
+
+**Close of the 13.19 verification feedback: per-worker skills as first-class citizens (materialized-layer fields + preload switch) / team-config entry moved to the topology (gear beside "N members") / room-message loading converged (roomHistory single authority + deep-history fix on room-open)**
+
+- **Per-worker skills** ("skills seem to exist per worker, not just per team"):
+  ① materialized-layer fields completed — `GET /workers/{name}/skills` returns description / source / emoji / version / tags which the UI previously ignored, leaving bare skill names;
+  ② the matrix's expanded worker view upgraded from bare tags to **per-skill rows**: enabled dot (green/gray), source tag, description (ellipsized, full on hover), assignment tag (assigned = blue / materialized-only = cyan);
+  ③ **preload switch** (per worker × per skill): `PUT /workers/{name}/skills/{skill}/preload` — the full skill text stays in that worker's system prompt for every session (QwenPaw ≥ 2.2.1; validated + persisted + **hot-reloaded** on the worker, no restart); permissions = L1 any worker / L2 own team / team leader read-only; three honest failure toasts (403 = read-only identity / 404 = version gate or missing skill / 502 = worker unreachable).
+- **Team-config entry moved up** ("move team config to the right of the team's 'N members' in the topology, add a gear icon"):
+  a ⚙ gear next to "N members" on each topology team node (rendered only for L1 with admin data) opens the "Configure team" dialog (name / description / heartbeat / member models) — **the same entry as the team table's "Configure" button** (registered handle, no second dialog copy; auto-invalidated on L1 logout).
+- **Room-message loading converged** ("the group-message loading logic still needs optimization — don't build a mess"):
+  ① five rounds of verification fixes (13.10 merge / 13.16 concurrency gate / 13.17 pinned-top relay / 13.18 prefetch pipeline / 13.19 cursor monotonicity) — window cursor / prefetch slot / in-flight gate / empty-page walk — converged into a new `roomHistory.ts` module with **numbered invariants I1–I6** (cursor monotonic / merge-not-replace / single prefetch slot double-keyed / empty-page walk ≤8 / single in-flight / persist = full window + cursor), backed by an 8-case node smoke script, all green;
+  ② **real bug fixed (room-open path)**: after a room switch the messages ref was zeroed, and the old merge used that empty base — the latest page **overwrote the deeper cached history** (the 13.10 "history survives room switches" guarantee had a hole on room-open); the base is now the longer of on-screen full list and cached window, so previously walked history survives;
+  ③ the state-restore inline block (a 4th window-establishing path: no merge / no window cursor / shallow-page cache overwrite) retired — window establishment now has a **single authority** (the refresh path); 4 scattered refs + 1 dead mirror removed;
+  ④ the chat display side (anchor keep / 0.6-viewport prefetch margin / pinned-top relay / "load original" auto-backfill) is untouched — 13.17–13.19 acceptance semantics preserved verbatim.
+- **i18n**: 1343 keys, 0 missing / 0 duplicate / 0 empty (+16)
+
+**Verified**: tsc 0 · vite 2,308.18kB · pytest 64/64 · i18n 1343 keys · roomHistory smoke 8/8 · sensitive scan 0 (incl. decoded dist) · version carriers 10 files / 25 sites
+
+---
+
 ## 0.5.0-beta.13.19 (2026-09-23)
 
 **Close of the 13.18 verification feedback: full-chain repair of "load original" (cursor regression root cause + empty-page walk + unlock-on-progress + automatic backfill after click) / Skill Center gains upload / custom create / download (version-gated)**

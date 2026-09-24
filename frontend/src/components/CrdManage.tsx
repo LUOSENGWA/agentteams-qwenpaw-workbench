@@ -56,6 +56,18 @@ export interface CrdManageProps {
   /** L1 走 controller_token（无 admin 账号密码 → 无 Higress Console 会话
    * → 网关 alias 层不可见）——为 true 且网关拉取完成仍无会话时显示提示。 */
   l1TokenMode?: boolean;
+  /** v0.5.0-beta.13.20：注册式 handle——拓扑 TeamNode「N人」右侧齿轮要
+   * 打开本组件的「配置团队」弹窗（与团队表「配置」按钮同一入口）。
+   * 用注册回调而非 forwardRef：本组件 2200+ 行，forwardRef 会把整个
+   * 函数体缩进 +2，diff 噪音远大于收益（本仓已有 refreshRef 同款
+   * 注册式镜像惯例）。 */
+  registerHandle?: (h: CrdManageHandle) => void;
+}
+
+/** v0.5.0-beta.13.20：注册式 handle 类型（WorkerManage 拓扑齿轮消费）。 */
+export interface CrdManageHandle {
+  /** 按 CR 名打开配置团队弹窗；团队未加载/不存在时 toast 提示，不静默。 */
+  openConfig: (teamName: string) => void;
 }
 
 const LEVEL_META: Record<number, { label: string; color: string }> = {
@@ -740,6 +752,24 @@ export default function CrdManage(props: CrdManageProps) {
     // v0.5.0-beta.12：网关 alias（一次性；available=false=无 Higress Console 会话，正常）
     if (!gatewayLoaded) void loadGatewayAliases();
   }, [modelOf, modelOpts, gatewayLoaded, loadGatewayAliases]);
+
+  // v0.5.0-beta.13.20：齿轮入口——拓扑 TeamNode「N人」右侧 ⚙ 点按 →
+  // 按 CR 名找到 TeamInfo → 走既有 openCfg（预填/模型候选/网关 alias
+  // 逻辑零复制）。注册式 handle：父侧只持有 ref，无渲染依赖。
+  const { registerHandle } = props;
+  React.useEffect(() => {
+    if (!registerHandle) return;
+    registerHandle({
+      openConfig: (teamName: string) => {
+        const team = teams.find((x) => x.name === teamName);
+        if (!team) {
+          antd.message.warning(tr("团队数据未加载或团队不存在——请刷新后重试"));
+          return;
+        }
+        openCfg(team);
+      },
+    });
+  }, [registerHandle, teams, openCfg, tr]);
 
   const updateCfgRow = React.useCallback(
     (i: number, patch: Partial<WorkerRow>) => {

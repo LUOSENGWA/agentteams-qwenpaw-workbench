@@ -1870,6 +1870,39 @@ const DICT: Record<string, { en: string }> = {
     en: "This Controller version does not support skill download yet (upstream endpoint pending)",
   },
   "前端 {f} · 连接器 {b}": { en: "UI {f} · connector {b}" },
+  // ── v0.5.0-beta.13.20：per-worker 技能（物化层字段补全 + preload 开关）
+  //    与拓扑「N人」右侧齿轮团队配置入口 ──
+  "预加载": { en: "Preload" },
+  "已分配": { en: "Assigned" },
+  "仅物化": { en: "Materialized only" },
+  "启用中": { en: "Enabled" },
+  "已禁用": { en: "Disabled" },
+  "物化来源（worker 实际装载渠道）": {
+    en: "Materialization source (how the worker actually loaded it)",
+  },
+  "已开启 {skill} 预加载（常驻 system prompt）": {
+    en: "Preload enabled for {skill} (resident in system prompt)",
+  },
+  "已关闭 {skill} 预加载": { en: "Preload disabled for {skill}" },
+  "预加载调整失败": { en: "Failed to update preload policy" },
+  "无权限调整该 Worker 技能预加载（当前身份只读——团队 Leader 只读 / L2 跨团队被拒）": {
+    en: "No permission to adjust this worker's skill preload (read-only identity — team leader is read-only / L2 cross-team rejected)",
+  },
+  "预加载不可用（Worker 未装载该技能，或其 QwenPaw < 2.2.1 无 preload 端点）": {
+    en: "Preload unavailable (worker has no such skill, or its QwenPaw < 2.2.1 lacks the preload endpoint)",
+  },
+  "Worker 技能服务不可达（Worker 未运行？）": {
+    en: "Worker skill service unreachable (worker not running?)",
+  },
+  "预加载：技能全文常驻该 Worker 每个会话的 system prompt（有 per-session token 成本；QwenPaw ≥ 2.2.1；worker 侧热加载无需重启）": {
+    en: "Preload: the full skill text stays in this worker's system prompt for every session (per-session token cost; QwenPaw ≥ 2.2.1; hot-reloaded on the worker, no restart)",
+  },
+  "配置团队（名称 / 描述 / 心跳间隔 / 成员模型）": {
+    en: "Configure team (name / description / heartbeat / member models)",
+  },
+  "团队数据未加载或团队不存在——请刷新后重试": {
+    en: "Team data not loaded or team missing — refresh and retry",
+  },
 };
 
 export type Lang = "zh" | "en";
