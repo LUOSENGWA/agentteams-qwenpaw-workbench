@@ -2169,7 +2169,9 @@ export default function RoomChat(props: RoomChatProps) {
       lastMsgIdRef.current = "";
       autoLoadRef.current = false;
     }
-    const firstId = visibleMessages[0]?.event_id || "";
+    // v0.5.0-beta.13.19：用**原始** messages 判前插（旧版用 visibleMessages——
+    // 整页都是被折叠/隐藏消息时首条 id 不变 → 锚不恢复、解锁失效）。
+    const firstId = messages[0]?.event_id || "";
     const prepended =
       prevFirstIdRef.current !== "" &&
       firstId !== "" &&
@@ -2183,6 +2185,13 @@ export default function RoomChat(props: RoomChatProps) {
     prevFirstIdRef.current = firstId;
   });
 
+  // v0.5.0-beta.13.19：数据推进即解锁——messages 引用变化（前插/轮询追加）
+  // 说明上一轮加载已落地 → 立刻允许下一次触碰（旧版只在「前插检测」时解锁，
+  // 空页/边界重叠会把接力锁死 6s）；6s 定时器保留为失败路径兜底。
+  React.useLayoutEffect(() => {
+    autoLoadRef.current = false;
+  }, [messages]);
+
   // v0.5.0-beta.13.17（13.16 装验「不能滚到哪加载到哪」统一）：驻顶接力——
   // 每次渲染后（每页落地 / 加载态变化 / 滚动 state 变化）重查顶部位置：
   // 仍在预载余量内且还有历史 → 续拉下一页；滚离即停（节奏=用户滚动节奏，
@@ -2193,6 +2202,14 @@ export default function RoomChat(props: RoomChatProps) {
   React.useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || !hasMore || !onLoadMore) return;
+    // v0.5.0-beta.13.19（13.18 装验「加载原消息加载不出来」）：**点引用条后
+    // 自动后翻**（Element 同款）——旧版只在用户滚近顶部时才续拉，点了「加载
+    // 原消息」但停在原处 → 只前进一页就没了。终止由父侧收口：进窗口→定位 /
+    // 触底 / 超量上限 / 切房作废 / 30s 停滞看门狗。
+    if (pendingOriginal) {
+      kickLoadMore();
+      return;
+    }
     if (nearTop(el)) kickLoadMore();
   });
 

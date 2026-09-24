@@ -37,7 +37,11 @@ import {
   fetchSkillCatalog,
   fetchWorkerSkills,
   httpErrorStatus,
+  // v0.5.0-beta.13.19（13.18 装验「技能上传呢」）：团队技能包上传
+  // （POST /api/v1/skills，multipart zip；经连接器 multipart 透传）。
+  uploadTeamSkill,
 } from "../api";
+import { strToU8, zipSync } from "fflate";
 
 /** v0.5.0-beta.13.15（B5a 矩阵按团队分类）：Worker 行按 team 分组
  * （保持原始相对序；无 team 的归「未分组」殿后）。 */
@@ -119,6 +123,15 @@ export default function SkillCenter({
   // v0.5.0-beta.13.14：L2 团队选择（accessibleTeams 单团队自动；多团队显选择器）。
   const [l2Teams, setL2Teams] = React.useState<TeamInfo[]>([]);
   const [l2Team, setL2Team] = React.useState("");
+  // v0.5.0-beta.13.19：技能包上传/自定义新建/下载（技能目录卡动作）。
+  const [upOpen, setUpOpen] = React.useState(false);
+  const [upMode, setUpMode] = React.useState<"zip" | "new">("zip");
+  const [upTeam, setUpTeam] = React.useState("");
+  const [upFile, setUpFile] = React.useState<File | null>(null);
+  const [upName, setUpName] = React.useState("");
+  const [upDesc, setUpDesc] = React.useState("");
+  const [upBody, setUpBody] = React.useState("");
+  const [upBusy, setUpBusy] = React.useState(false);
   const [matrix, setMatrix] = React.useState<Record<string, string[]>>({});
   // v0.5.0-beta.13.14：服务端基线（脏检测用——矩阵相对基线有改动才显「保存」）。
   const [baseMatrix, setBaseMatrix] = React.useState<Record<string, string[]>>({});
@@ -253,6 +266,127 @@ export default function SkillCenter({
     if (l2 && !l2Team) return;
     void loadCatalog();
   }, [loadCatalog, l2, l2Team]);
+
+  // v0.5.0-beta.13.19（13.18 装验「自定义技能和技能上传和下载呢」）：
+  // 技能包上传 / 自定义新建 / 下载（技能目录卡动作）。
+  //   上传 = 选择本地 zip → POST /api/v1/skills（scope=team+file）
+  //   新建 = 名称/描述/正文 → 前端 fflate 打包 SKILL.md → 同一端点
+  //   下载 = GET /api/v1/skills/{name}/download（上游 v1.2.4 尚无此端点 →
+  //          404 时诚实提示，端点就位即自动可用）
+  const teamChoices = React.useMemo(() => {
+    if (l2) return l2Teams.map((t) => t.name);
+    const set = new Set<string>();
+    st.workers.forEach((w) => {
+      if (w.team) set.add(w.team);
+    });
+    return Array.from(set).sort();
+  }, [l2, l2Teams, st.workers]);
+  React.useEffect(() => {
+    if (upTeam && teamChoices.includes(upTeam)) return;
+    const fallback = l2 ? l2Team || teamChoices[0] || "" : teamChoices[0] || "";
+    if (fallback) setUpTeam(fallback);
+  }, [teamChoices, l2, l2Team, upTeam]);
+  const openUpload = React.useCallback((mode: "zip" | "new") => {
+    setUpMode(mode);
+    setUpOpen(true);
+  }, []);
+  const submitUpload = React.useCallback(async () => {
+    if (!upTeam) {
+      antd.message.warning(tr("请选择目标团队"));
+      return;
+    }
+    let file: File | Blob;
+    let filename: string;
+    if (upMode === "zip") {
+      if (!upFile) {
+        antd.message.warning(tr("请选择技能 zip 包"));
+        return;
+      }
+      file = upFile;
+      filename = upFile.name;
+    } else {
+      const name = upName.trim();
+      if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)) {
+        antd.message.warning(tr("技能名需小写字母/数字/连字符（≤64）"));
+        return;
+      }
+      const md = `---\nname: ${name}\ndescription: ${upDesc.trim() || name}\n---\n\n${upBody.trim() || `# ${name}\n`}\n`;
+      const zip = zipSync({ "SKILL.md": strToU8(md) });
+      file = new Blob([zip], { type: "application/zip" });
+      filename = `${name}.zip`;
+    }
+    setUpBusy(true);
+    try {
+      const r = await uploadTeamSkill({ team: upTeam, file, filename });
+      if (!r.ok) {
+        antd.message.error(
+          r.detail || tr("上传失败（HTTP {s}）", { s: String(r.status) }),
+        );
+        return;
+      }
+      const scanNote =
+        r.scan?.status === "pass"
+          ? tr("扫描通过")
+          : r.scan?.status === "warn"
+            ? tr("扫描有警告")
+            : r.scan?.status === "skipped"
+              ? tr("扫描跳过")
+              : "";
+      antd.message.success(
+        tr("已上传 {name}（{n} 文件{scan}）", {
+          name: r.name || filename,
+          n: String(r.files ?? "-"),
+          scan: scanNote ? ` · ${scanNote}` : "",
+        }),
+      );
+      setUpOpen(false);
+      setUpFile(null);
+      setUpName("");
+      setUpDesc("");
+      setUpBody("");
+      void loadCatalog();
+      void loadWorkers();
+    } catch (e) {
+      antd.message.error(e instanceof Error ? e.message : tr("上传失败"));
+    } finally {
+      setUpBusy(false);
+    }
+  }, [upTeam, upMode, upFile, upName, upDesc, upBody, tr, loadCatalog, loadWorkers]);
+  const downloadSkill = React.useCallback(
+    async (name: string) => {
+      const host = window.QwenPaw?.host;
+      if (!host || typeof host.fetch !== "function") return;
+      // 团队层技能需带 ?team=（服务端同日录 scope 规则）；L1 全局视图不带。
+      const q = l2 && l2Team ? `?team=${encodeURIComponent(l2Team)}` : "";
+      try {
+        const resp = await host.fetch(
+          `/agentteams-proxy/controller/api/v1/skills/${encodeURIComponent(name)}/download${q}`,
+        );
+        if (resp.status === 404) {
+          antd.message.info(
+            tr("当前 Controller 版本不支持技能下载（上游端点待合并）"),
+          );
+          return;
+        }
+        if (!resp.ok) {
+          antd.message.error(`HTTP ${resp.status}`);
+          return;
+        }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${name}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+      } catch (e) {
+        antd.message.error(e instanceof Error ? e.message : tr("下载失败"));
+      }
+    },
+    [tr, l2, l2Team],
+  );
 
   // 技能列 = 目录（如可用）∪ 已分配并集（目录不可用时的降级全集）。
   const skillColumns = React.useMemo(() => {
@@ -403,14 +537,23 @@ export default function SkillCenter({
         title={tr("① 技能目录（只读 · 上游 /api/v1/skills）")}
         extra={
           st.catalog !== undefined ? (
-            <antd.Input
-              size="small"
-              style={{ width: 200 }}
-              allowClear
-              placeholder={tr("搜索名称/描述")}
-              value={catalogSearch}
-              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setCatalogSearch(e.target.value)}
-            />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <antd.Input
+                size="small"
+                style={{ width: 180 }}
+                allowClear
+                placeholder={tr("搜索名称/描述")}
+                value={catalogSearch}
+                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setCatalogSearch(e.target.value)}
+              />
+              {/* v0.5.0-beta.13.19：技能包上传 / 自定义新建（POST /api/v1/skills）。 */}
+              <antd.Button size="small" onClick={() => openUpload("zip")}>
+                {tr("上传技能（zip）")}
+              </antd.Button>
+              <antd.Button size="small" type="primary" ghost onClick={() => openUpload("new")}>
+                {tr("新建自定义技能")}
+              </antd.Button>
+            </div>
           ) : undefined
         }
       >
@@ -444,6 +587,16 @@ export default function SkillCenter({
                   {s.description || "—"}
                 </span>
                 <span style={{ flex: 1 }} />
+                {(s.source === "team" || s.source === "shared") ? (
+                  <antd.Button
+                    size="small"
+                    type="link"
+                    style={{ padding: 0, fontSize: 12 }}
+                    onClick={() => void downloadSkill(s.name)}
+                  >
+                    {tr("下载")}
+                  </antd.Button>
+                ) : null}
                 <span style={{ color: t.textSecondary, fontSize: 11 }}>
                   {tr("使用方 {n}", { n: (s.agents || []).length })}
                 </span>
@@ -890,6 +1043,71 @@ export default function SkillCenter({
         )}
       </antd.Card>
       ) : null}
+
+      {/* v0.5.0-beta.13.19：上传技能包 / 新建自定义技能（团队层写入）。 */}
+      <antd.Modal
+        open={upOpen}
+        title={upMode === "zip" ? tr("上传技能包（zip）") : tr("新建自定义技能")}
+        onCancel={() => setUpOpen(false)}
+        onOk={() => void submitUpload()}
+        confirmLoading={upBusy}
+        okText={tr("上传")}
+        cancelText={tr("取消")}
+        destroyOnClose
+      >
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12 }}>{tr("目标团队")}</span>
+            <antd.Select
+              size="small"
+              style={{ minWidth: 200 }}
+              value={upTeam || undefined}
+              onChange={(v: string) => setUpTeam(v)}
+              options={teamChoices.map((t) => ({ value: t, label: t }))}
+              placeholder={tr("选择团队")}
+            />
+          </div>
+          {upMode === "zip" ? (
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                setUpFile(e.target.files?.[0] || null)
+              }
+            />
+          ) : (
+            <>
+              <antd.Input
+                size="small"
+                placeholder={tr("技能名（小写字母/数字/连字符）")}
+                value={upName}
+                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                  setUpName(e.target.value)
+                }
+              />
+              <antd.Input
+                size="small"
+                placeholder={tr("描述（可选）")}
+                value={upDesc}
+                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                  setUpDesc(e.target.value)
+                }
+              />
+              <antd.Input.TextArea
+                rows={7}
+                placeholder={tr("SKILL.md 正文（指令内容）")}
+                value={upBody}
+                onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
+                  setUpBody(e.target.value)
+                }
+              />
+            </>
+          )}
+          <div style={{ fontSize: 11.5, color: t.textSecondary }}>
+            {tr("上传进入该团队技能层；L1 可任意团队，L2 限本团队。上传经 skillscan 扫描（截拦即报原因）。")}
+          </div>
+        </div>
+      </antd.Modal>
 
       <antd.Drawer
         title={mcpEditWorker ? tr("编辑 MCP Servers：{w}", { w: mcpEditWorker }) : ""}

@@ -3232,6 +3232,67 @@ export async function createSkill(
   })) as { created: boolean; name: string };
 }
 
+/** v0.5.0-beta.13.19（13.18 装验「技能上传呢？」）：**团队技能包上传**——
+ *  POST /api/v1/skills（multipart：scope=team + team + file=技能 zip）。
+ *  经插件代理 → 连接器（multipart 原样透传，v13.19 起）→ Controller；
+ *  上游 v1.2.4 起带 skillscan（422=内容拦截并回 findings，响应带
+ *  scan.status/skipped）。返回体：{name, scope, team, files, scan}。 */
+export async function uploadTeamSkill(opts: {
+  team: string;
+  file: File | Blob;
+  filename: string;
+}): Promise<{
+  ok: boolean;
+  status: number;
+  detail?: string;
+  name?: string;
+  files?: number;
+  scan?: { status?: string; findings?: string[] };
+}> {
+  const host = window.QwenPaw?.host;
+  if (!host || typeof host.fetch !== "function") {
+    throw new Error("宿主环境不可用（无 host.fetch）");
+  }
+  const fd = new FormData();
+  fd.append("scope", "team");
+  fd.append("team", opts.team);
+  fd.append("file", opts.file, opts.filename);
+  const resp = await host.fetch("/agentteams-proxy/controller/api/v1/skills", {
+    method: "POST",
+    body: fd,
+  });
+  const text = await resp.text();
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    /* 非 JSON（错误页等）→ 按状态码报错 */
+  }
+  const o = (data || {}) as Record<string, unknown>;
+  const detail =
+    typeof o.detail === "string"
+      ? o.detail
+      : typeof o.message === "string"
+        ? o.message
+        : undefined;
+  const scanRaw = o.scan as Record<string, unknown> | undefined;
+  return {
+    ok: resp.ok,
+    status: resp.status,
+    detail,
+    name: typeof o.name === "string" ? o.name : undefined,
+    files: typeof o.files === "number" ? o.files : undefined,
+    scan: scanRaw
+      ? {
+          status: typeof scanRaw.status === "string" ? scanRaw.status : undefined,
+          findings: Array.isArray(scanRaw.findings)
+            ? (scanRaw.findings as string[])
+            : undefined,
+        }
+      : undefined,
+  };
+}
+
 /** zip 上传（multipart；Content-Type 由 fetch 自填 boundary，勿手设）。 */
 export async function uploadSkillZip(
   file: File,

@@ -4746,12 +4746,21 @@ def build_router() -> APIRouter:
                 detail="未配置任何地址" if target == "controller" else "未配置 Matrix 地址",
             )
 
+        # v0.5.0-beta.13.19（技能中心「上传/自定义技能」）：multipart/form-data
+        # 原样透传——读原始字节 + 连同 boundary 的 Content-Type 一起转发；
+        # 旧版一律 request.json() → multipart 解析失败 body=None → 上游收
+        # 空体（技能 zip 上传必 400）。
         body = None
+        raw_body: Optional[bytes] = None
+        req_ct = request.headers.get("content-type", "")
         if request.method in ("POST", "PUT"):
-            try:
-                body = await request.json()
-            except Exception:  # noqa: BLE001
-                body = None
+            if req_ct.lower().startswith("multipart/form-data"):
+                raw_body = await request.body()
+            else:
+                try:
+                    body = await request.json()
+                except Exception:  # noqa: BLE001
+                    body = None
 
         last_error = "无可用地址"
         query_string = ""
@@ -4775,9 +4784,19 @@ def build_router() -> APIRouter:
                         async with httpx.AsyncClient(
                             timeout=_PROBE_TIMEOUT, verify=False
                         ) as client:
-                            resp = await client.request(
-                                request.method, url, json=body, headers=headers
-                            )
+                            if raw_body is not None:
+                                send_headers = dict(headers)
+                                send_headers["Content-Type"] = req_ct
+                                resp = await client.request(
+                                    request.method,
+                                    url,
+                                    content=raw_body,
+                                    headers=send_headers,
+                                )
+                            else:
+                                resp = await client.request(
+                                    request.method, url, json=body, headers=headers
+                                )
                         break
                     except (
                         httpx.ConnectError,
