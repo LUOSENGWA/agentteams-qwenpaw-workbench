@@ -5,6 +5,7 @@ const PRIMARY = "#FF7F16"; // 品牌主色
 import {
   fetchAdminData,
   fetchRoomMessages,
+  type RoomMessagesPage,
   enrichWorkflowRoomNames,
   fetchTeamsStructure,
   fetchRoomPowerInfo,
@@ -1708,6 +1709,7 @@ export default function WorkbenchPage() {
                 setMessagesEnd(page.end);
                 setHasMore(!!page.end);
                 setCachedMessages(saved.room_id, page);
+                prefetchNext(saved.room_id, page.end);
                 void markCurrentRead(
                   saved.room_id,
                   page.messages[page.messages.length - 1]?.event_id,
@@ -1843,6 +1845,8 @@ export default function WorkbenchPage() {
       setMessages(merged);
       setMessagesEnd(page.end);
       setHasMore(Boolean(page.end));
+      // v0.5.0-beta.13.18：开房即预取下一页（管道起步 → 首次上翻即零等待）。
+      prefetchNext(room.room_id, page.end);
       setRoomError(page.error === "not_found" ? "not_found" : "");
       // 缓存存全量已加载历史（含 loadMore 前插），切页回来不丢。
       setCachedMessages(room.room_id, page, merged);
@@ -1860,15 +1864,50 @@ export default function WorkbenchPage() {
   // 手动按钮可能在同一窗口双触发，同游标（messagesEnd 闭包未更新时）双拉
   // 会重复前插同一页（known 集合是调用瞬间快照）→ 加同步 in-flight 闸；
   // loadingMore 同步给聊天列表做顶部预载提示。
+  // v0.5.0-beta.13.18（13.17 装验「触发才加载、慢，不是跟着窗口预加载」）：
+  // **预取管线**——下一页在后台按 (房间, 游标) 预取；顶部预载触发时若已
+  // 预取 = 零等待落盘，落盘后立即预取再下一页（滚动全程管道常驻，加载
+  // 跟着窗口走而不是被触发才追）。游标+房间双键控：不匹配/切房即作废
+  // （绝不跨房取页）；预取失败静默（真正加载时报错路径不变）。
   const loadingMoreRef = React.useRef(false);
   const [loadingMore, setLoadingMore] = React.useState(false);
+  const prefetchRef = React.useRef<{
+    room: string;
+    end: string;
+    promise: Promise<RoomMessagesPage>;
+  } | null>(null);
+  const prefetchNext = React.useCallback((roomId: string, cursor: string) => {
+    if (!roomId || !cursor) return;
+    const cur = prefetchRef.current;
+    if (cur && cur.room === roomId && cur.end === cursor) return; // 同页已在预取
+    const promise = fetchRoomMessages(roomId, 50, cursor);
+    prefetchRef.current = { room: roomId, end: cursor, promise };
+    promise.catch(() => {
+      // 静默：真正需要这一页时走正常 fetch/报错路径
+      if (prefetchRef.current?.promise === promise) prefetchRef.current = null;
+    });
+  }, []);
   const loadMore = React.useCallback(async () => {
     if (!activeRoom || !messagesEnd) return;
     if (loadingMoreRef.current) return;
     loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
-      const page = await fetchRoomMessages(activeRoom.room_id, 50, messagesEnd);
+      // 预取命中（同房间同游标）→ 零网络等待直接落盘；否则正常拉取。
+      // 预取若已失败 → 直拉兜底（不能把历史加载搭在早先的失败上）。
+      const pf = prefetchRef.current;
+      const hit = !!pf && pf.room === activeRoom.room_id && pf.end === messagesEnd;
+      let page: RoomMessagesPage;
+      if (hit) {
+        try {
+          page = await pf.promise;
+        } catch {
+          page = await fetchRoomMessages(activeRoom.room_id, 50, messagesEnd);
+        }
+      } else {
+        page = await fetchRoomMessages(activeRoom.room_id, 50, messagesEnd);
+      }
+      if (pf) prefetchRef.current = null; // 该游标已消费或已作废
       // v0.5.0-beta.13.10：前插历史同步进缓存——切页回来仍在
       // （旧版缓存只存最新 50，翻过的历史必丢）。
       const known = new Set(messagesRef.current.map((m) => m.event_id));
@@ -1880,13 +1919,15 @@ export default function WorkbenchPage() {
       setCachedMessages(activeRoom.room_id, { ...page, messages: merged }, merged);
       setMessagesEnd(page.end);
       setHasMore(Boolean(page.end));
+      // 落盘后立即预取再下一页（管道常驻 → 用户滚到边界时通常已是零等待）。
+      prefetchNext(activeRoom.room_id, page.end);
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("加载更早消息失败"));
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [activeRoom, messagesEnd]);
+  }, [activeRoom, messagesEnd, prefetchNext]);
 
   // v0.5.0-beta.13.13（13.12 装验「很多信息『已滚出历史』但 Element 里
   // 信息都在，看看 Element 怎么做的」）：引用条原消息不在已加载窗口时 →

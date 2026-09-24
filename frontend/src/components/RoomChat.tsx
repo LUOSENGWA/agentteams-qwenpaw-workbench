@@ -1833,10 +1833,13 @@ export default function RoomChat(props: RoomChatProps) {
   const pinnedUntilRef = React.useRef(0);
   // v0.5.0-beta.13.17（13.16 装验「不能滚到哪加载到哪 / 没有预加载」）：
   // 顶部预加载余量——旧版 40px 只在贴顶瞬间触发（贴顶才拉、拉完要滚回顶
-  // 再触发一次），体感「没有预加载」。现 = 列表视口高的 25%（下限 160px）：
-  // 接近顶部即开始拉，锚恢复后继续上翻自然接力（连续分段预载）。
+  // 再触发一次），体感「没有预加载」。现 = 视口比例余量：接近顶部即开始拉，
+  // 锚恢复后继续上翻自然接力（连续分段预载）。
+  // v0.5.0-beta.13.18（13.17 装验「触发才加载、慢，不是跟着窗口预加载」）：
+  // 余量 0.25→**0.6 视口（下限 400px）**——配合父侧预取管线（下一页后台
+  // 常驻预取）：触发点提前 + 落地零等待，加载跟着窗口走而非被触发才追。
   const nearTop = React.useCallback((el: HTMLElement) => {
-    return el.scrollTop < Math.max(160, el.clientHeight * 0.25);
+    return el.scrollTop < Math.max(400, el.clientHeight * 0.6);
   }, []);
   // 触碰式拉取统一入口：同步防重（autoLoadRef）+ 6s 兜底复位（成功路径
   // 由锚 effect 的「前插检测」更快复位）。滚动/按钮/驻顶接力共用。

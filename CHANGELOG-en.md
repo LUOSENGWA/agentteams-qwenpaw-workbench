@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.18 (2026-09-23)
+
+**Close of the 13.17 verification feedback: chat history now uses a prefetch pipeline + earlier margin — loading follows the window and is ready by the time you arrive (no more "triggered-then-fetch, slow")**
+
+- **Prefetch pipeline (real fix for "auto-loading exists now, but it's slow and only loads when the 'load more' trigger fires, instead of preloading along with the window")**: ① **the next page starts prefetching as soon as a room opens** — keyed by (room + cursor), dropped on mismatch/room switch (never fetches across rooms); prefetch failures stay silent ② **after every landed page the following page is prefetched immediately** — the pipeline stays one page ahead, so when you reach the boundary the page is **already there (zero network wait)** ③ the near-top trigger point moves earlier: margin 0.25 → **0.6 of the viewport (min 400px)** ④ trigger → append share one path: a prefetch hit renders immediately with the scroll anchor preserved (no jump); **if a prefetch has already failed, that page falls back to a direct fetch** (history loading never rides on an earlier failure) ⑤ the "loading earlier messages…" state remains (most of the time you won't see it — the page is already prepared)
+- Net effect: while you scroll up, loading **follows the window** (prepared before you arrive) instead of "hit the boundary → trigger → wait a round trip → content appears"
+
+**Verification**: tsc 0 · vite build 2,286.90kB · pytest 64/64 · i18n 1312 keys, 0 missing, 0 duplicates, 0 empty · 8 version carriers
+
+---
+
 ## 0.5.0-beta.13.17 (2026-09-23)
 
 **Close of 3 feedback groups from the 13.16 verification: board height now fully measured (no more page-level scrollbar) / chat history switches to "preload when near the top + hold-at-top chaining + visible preload state + concurrency guard" / top-bar version now build-time injected (always equals the installed build)**
