@@ -5,6 +5,19 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.17 (2026-09-23)
+
+**Close of 3 feedback groups from the 13.16 verification: board height now fully measured (no more page-level scrollbar) / chat history switches to "preload when near the top + hold-at-top chaining + visible preload state + concurrency guard" / top-bar version now build-time injected (always equals the installed build)**
+
+- **Board height fully measured ("still a bit too tall, causing an overall scrollbar")**: the old code estimated the available height as `viewport - 240px` (a guess at the page chrome) — systematically too tall, so the 8 columns overflowed the container and the page scrolled. Now: available height = "measured board top → bottom of the nearest scrollable ancestor (or the viewport bottom)", divided by row count, minus the column's fixed overhead (header / padding / row gap) — the board fits its container exactly, no page-level scrollbar; hidden keep-alive tabs (0 width) skip measurement and the ResizeObserver recomputes once visible again
+- **Chat message preloading ("can't load as you scroll / no preloading")**: ① near-top margin 40px → **25% of the list viewport height (min 160px)** — loading starts before you reach the very top; ② **hold-at-top chaining**: after every render (page landed / loading state changed) the top position is re-checked and the next page is pulled while still inside the margin — shared by normal chat and the "load original" flow, stops as soon as you scroll away; ③ **preload made visible**: "loading earlier messages…" at the top; ④ **concurrency guard**: an in-flight gate on the parent (scroll preload and the manual button firing in the same window would prepend the same page twice); ⑤ reset paths: prepend detection (fast) + a 6s fallback (failure path), replacing the old fixed 4s lock
+- **Top-bar version ("the version number is wrong")**: the primary display is now **build-time injected** (vite define `__PLUGIN_VERSION__`, sourced from package.json, shipped inside the dist) — **always equal to the build you actually installed**; the old code read the backend `/health` (a backend process that didn't restart with the install would report the old version, and a failed request left the placeholder "…"). The connector runtime version is still fetched via /health but only appears in the tooltip (shows "UI x · connector y" when they differ)
+- **i18n**: 1312 keys, 0 missing, 0 empty (+3)
+
+**Verification**: tsc 0 · vite build 2,286.39kB · pytest 64/64 · i18n 1312 keys, 0 missing, 0 duplicates, 0 empty · 8 version carriers
+
+---
+
 ## 0.5.0-beta.13.16 (2026-09-23)
 
 **Close of 4 feedback groups from the 13.15 verification: third source for project ↔ room association (root cause found by diffing 76 real rooms × 35 real projects — new projects only have task rooms named `TASK：<projectId>`, which those task-room projects lacked entirely) / topology resource area UX reworked ("资源治理" renamed to "资源管理"; skills & MCP now embed the Skill Center's editable cards in place; a single worker no longer requires re-selecting the worker) / "运行配置" collapse header unified into the same card style as resource management / project board: equal-height columns, 4×2 on wide screens, 2×4 on narrow, height proportional to the viewport**
