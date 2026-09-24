@@ -1835,12 +1835,11 @@ const DICT: Record<string, { en: string }> = {
   "分配层为空但物化层非空——技能由团队层自动物化/内置恢复/镜像自带，非显式分配，属预期": {
     en: "Assignment layer is empty but the materialization layer is not — skills come from team-layer auto-materialization / builtin recovery / image bundling, not explicit assignment; expected",
   },
-  "去技能中心编辑（全量矩阵）": { en: "Edit in Skill Center (full matrix)" },
   "不可用（Controller 未含该端点或无权限）": { en: "Unavailable (Controller lacks this endpoint or this identity has no access)" },
   "未挂载 MCP Server": { en: "No MCP servers mounted" },
   "首次打开加载频道编辑器…": { en: "Loading channel editor on first open…" },
   "首次打开加载工具面板…": { en: "Loading tools panel on first open…" },
-  "资源治理（技能 / MCP / 频道 / 工具）": { en: "Resources (Skills / MCP / Channels / Tools)" },
+  "资源管理（技能 / MCP / 频道 / 工具）": { en: "Resources (Skills / MCP / Channels / Tools)" },
 };
 
 export type Lang = "zh" | "en";

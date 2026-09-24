@@ -472,20 +472,29 @@ export default function WorkerChannels(props: {
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
-        <antd.Select
-          size="small"
-          style={{ width: 220 }}
-          value={sel || undefined}
-          onChange={(v: string) => {
-            setSel(v);
-            setPersisted("");
-          }}
-          options={workers.map((w) => ({
-            value: w.name,
-            label: `${w.name}${w.role === "leader" ? "（Leader）" : ""}`,
-          }))}
-          placeholder={tr("选择 Worker")}
-        />
+        {/* v0.5.0-beta.13.16：单 Worker（拓扑资源管理嵌入）→ 定显名字，
+            不再给只有一个选项的选择器。多 Worker 场景保持下拉。 */}
+        {workers.length === 1 ? (
+          <antd.Tag style={{ marginInlineEnd: 0, fontSize: 11.5 }}>
+            {workers[0].name}
+            {workers[0].role === "leader" ? "（Leader）" : ""}
+          </antd.Tag>
+        ) : (
+          <antd.Select
+            size="small"
+            style={{ width: 220 }}
+            value={sel || undefined}
+            onChange={(v: string) => {
+              setSel(v);
+              setPersisted("");
+            }}
+            options={workers.map((w) => ({
+              value: w.name,
+              label: `${w.name}${w.role === "leader" ? "（Leader）" : ""}`,
+            }))}
+            placeholder={tr("选择 Worker")}
+          />
+        )}
         <div style={{ flex: 1 }} />
         <antd.Button size="small" onClick={() => void load()} loading={loading}>
           {tr("刷新")}
