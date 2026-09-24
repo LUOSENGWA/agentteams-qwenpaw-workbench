@@ -420,6 +420,8 @@ const DICT: Record<string, { en: string }> = {
   "人": { en: " members" },
   "全部": { en: "All" },
   "私聊": { en: "DMs" },
+  "还没有私聊房间": { en: "No DM rooms yet" },
+  "该角色暂无私聊": { en: "No DMs from this role" },
   "查看会话": { en: "View Sessions" },
   "展开全部成员": { en: "Show all members" },
   "团队房间": { en: "Team Rooms" },
@@ -1585,9 +1587,10 @@ const DICT: Record<string, { en: string }> = {
   "在跑任务": { en: "Running tasks" },
   "上次运行": { en: "Last run" },
   "上次完成": { en: "Last finished" },
-  // A9 mermaid 任务 DAG 视图。
+  // A9 mermaid 任务 DAG 视图（13.22 F2：独立视图退役，并入拓扑依赖图样式切换）。
   "Mermaid": { en: "Mermaid" },
-  "项目列表/项目卡片/看板/DAG 拓扑/Mermaid 五种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；Mermaid=上游 workflow 快照直渲染（?format=mermaid）": { en: "Five views: project list / project card / board / DAG topology / Mermaid; project card and topology are a left project list + right detail (aligned with the dashboard task board Projects area); board columns share the same source as the dashboard (workflow API); Mermaid renders the upstream workflow snapshot directly (?format=mermaid)" },
+  "DAG（交互）": { en: "DAG (interactive)" },
+  "项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图可切两样式：DAG（交互，节点点看任务）/ Mermaid（上游 workflow 快照直渲染，?format=mermaid）": { en: "Four views: project list / project card / board / topology; project card and topology are a left project list + right detail (aligned with the dashboard task board Projects area); board columns share the same source as the dashboard (workflow API); the topology dependency graph switches between two styles: DAG (interactive, click node to inspect) / Mermaid (renders the upstream workflow snapshot directly, ?format=mermaid)" },
   "Mermaid DAG（上游 workflow 快照直渲染；节点色=任务状态）": { en: "Mermaid DAG (renders the upstream workflow snapshot directly; node color = task status)" },
   "Controller 未升级到含 mermaid 端点的版本（404）——拓扑视图不受影响": { en: "Controller not upgraded to a version with the mermaid endpoint (404) — the topology view is unaffected" },
   "Mermaid 渲染失败": { en: "Mermaid rendering failed" },

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>ui-harness-13.22</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+// 宿主 mock：React/antd 实例 + 空壳 API（entry 不执行 index.tsx，直接挂组件）。
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+  },
+};
+
+// fetch mock（13.22 harness）：
+//  · mermaid 端点 → 合法 flowchart 文本（验 MermaidDagView 渲染链）
+//  · 项目事件流 → 空页（时间线折叠不炸）
+//  · 其余 → 404
+const MERMAID = [
+  "flowchart LR",
+  '  t1["任务一"] --> t2["任务二"]',
+  '  t2 --> t3["任务三"]',
+].join("\n");
+
+// F1：SkillCenter onlyTeam 团队隔离——两团队×2/1 Worker，矩阵只该出 teamA。
+const WORKERS = [
+  { name: "wA1", team: "teamA", role: "worker", phase: "running", state: "running", model: "m1", runtime: "qwenpaw", containerState: "running", matrixUserID: "@wA1:hs", roomID: "!wA1:hs", message: "", skills: ["sk1"] },
+  { name: "wA2", team: "teamA", role: "worker", phase: "running", state: "running", model: "m1", runtime: "qwenpaw", containerState: "running", matrixUserID: "@wA2:hs", roomID: "!wA2:hs", message: "", skills: [] },
+  { name: "wB1", team: "teamB", role: "worker", phase: "running", state: "running", model: "m1", runtime: "qwenpaw", containerState: "running", matrixUserID: "@wB1:hs", roomID: "!wB1:hs", message: "", skills: ["sk9"] },
+];
+const TEAMS = [
+  { name: "teamA", displayName: "Team A", workers: ["wA1", "wA2"] },
+  { name: "teamB", displayName: "Team B", workers: ["wB1"] },
+];
+
+window.fetch = async (url) => {
+  const u = String(url);
+  if (u.includes("/workers")) {
+    return { ok: true, status: 200, text: async () => JSON.stringify(WORKERS), json: async () => WORKERS };
+  }
+  if (u.includes("/teams")) {
+    return { ok: true, status: 200, text: async () => JSON.stringify(TEAMS), json: async () => TEAMS };
+  }
+  if (u.includes("/skills")) {
+    return { ok: true, status: 200, text: async () => JSON.stringify({ skills: [] }), json: async () => ({ skills: [] }) };
+  }
+  if (u.includes("format=mermaid")) {
+    return {
+      ok: true,
+      status: 200,
+      text: async () => MERMAID,
+      json: async () => ({ detail: "not json" }),
+    };
+  }
+  if (u.includes("/events")) {
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ events: [] }),
+      json: async () => ({ events: [] }),
+    };
+  }
+  return {
+    ok: false,
+    status: 404,
+    json: async () => ({ detail: "not found" }),
+    text: async () => JSON.stringify({ detail: "not found" }),
+  };
+};
+// F4：GraphCard 默认 3D 视图（localStorage 空时）→ 预置 2D 验 2D 选点链。
+localStorage.setItem("graph-view-mode", "2d");
+</script>
+<script src="/harness/bundle-1322.js"></script>
+</body>
+</html>

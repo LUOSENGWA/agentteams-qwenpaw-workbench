@@ -5,6 +5,29 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.22 (2026-09-24)
+
+**Close of the 13.21 verification feedback (7 items): team skills scoped to the team only (catalog / assignment matrix / MCP) / Mermaid merged into the topology dependency graph (fifth view retired) / team-config dialog close animation / 2D knowledge-graph selection persistence / unread badge on the room card avatar / subagent default model gets the same picker as worker models / DM role partition becomes bottom filter chips**
+
+- **Team skills section scoped to the team only** ("team skills (catalog / assignment matrix / MCP) should only cover this team"):
+  the **assignment matrix** embedded in the team-config dialog's skills section previously used the full worker list — workers from other teams leaked into this team's matrix; it now renders only the `onlyTeam` workers (catalog / upload / MCP cards were already team-scoped in 13.21; this closes the last leak in the matrix).
+- **Mermaid merged into the topology dependency graph** ("no need for a fifth view — just improve the topology's dependency graph"):
+  the 13.21 fifth view "Mermaid" is retired — the topology dependency graph gains a **graph-style switch**: DAG (interactive, click a node to inspect its task) / Mermaid (upstream `?format=mermaid` snapshot rendered directly, better looking); the choice persists locally; users who had persisted `wfView="mermaid"` are migrated to "topo" automatically (no experience loss).
+- **Team-config dialog close animation**: previously the dialog had an open animation but vanished instantly on close; closing now plays the antd exit transition (`afterClose` unmounts, so the content stays intact during the animation without flashing empty).
+- **2D knowledge-graph selection persistence** ("clicking a node to see its connections, the arrows only flash once"):
+  root cause = in merged mode the graph object passed to the graph view got a fresh reference on every render → the selection effect cleared the selected node on every re-render (the highlight flashed for one frame); it now clears **only when the selected node no longer exists in the new graph** (switching agent / re-fetching still clears it); the merged graph and legend are also memoized (the force layout no longer recomputes needlessly).
+- **Unread badge on the room card avatar top-right** ("move it to the card's top-left, or give the room card an avatar and put it on the avatar's top-right"):
+  group room cards gain an avatar, and the badge sits on the avatar's top-right (Element-style); DM card badges moved the same way; red = @-me / mention, grey = regular unread; the old grey capsule in the name row is retired (no more squeezing the name).
+- **Subagent default model = the same picker as worker models** ("same source"):
+  the plain Input became an AutoComplete — same data source (SGLang serving ∪ in-use models ∪ gateway aliases) and the same pre-save validation (path-shaped value = error, not in list = warning with hover hint), zero behavioral divergence from the worker-creation / team-config member model pickers.
+- **DM role partition becomes bottom filter chips** ("add a role-based partition display below, instead of splitting the list directly"):
+  the 13.21 implementation split the list into role segments with group headers; it is now **filter chips** above the DM list (All / Leader / Worker / Manager / Other, with counts; empty buckets hidden) — "All" (default) = one flat list (existing time/name order), picking a role = show only that role's DMs; if the selected role bucket disappears (no data after refresh) it auto-resets to "All".
+- **i18n**: 1,371 keys, 0 missing / 0 duplicate / 0 empty (+3)
+
+**Verification**: tsc 0 · vite single file 7,622kB (gzip ~2,150kB; 0 import statements = host-blob safe) · pytest 71/71 · ui-harness-1322 22/22 (F1 matrix scoping / F2 graph-style switch / F4 selection persistence across re-renders / F5 badge on avatar / F7 chip filtering) · i18n 1,371 keys · sensitive scan 0 (source + decoded dist) · version carriers 10 files
+
+---
+
 ## 0.5.0-beta.13.21 (2026-09-24)
 
 **Close of the 13.20 verification feedback + full remaining-inventory batch: team-management first screen ready in one shot / Element-style incremental room-list refresh / full team-config dialog (with team skills section) / worker config integrated into the topology / sidebar role grouping / composer activity track / Mermaid DAG view / delete-team undo / heartbeat status surfaced**

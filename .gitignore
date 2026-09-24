@@ -28,5 +28,6 @@ GITHUB-RELEASE/
 # 会话本地 TODO（coding 模式约定，不入库）
 *_TODO.md
 
-# harness 构建产物（esbuild 可复现：npx esbuild frontend/harness/entry.tsx --bundle --outfile=frontend/harness/bundle.js --jsx=transform）
+# harness 构建产物（esbuild 可复现：npx esbuild frontend/harness/entry*.tsx --bundle --outfile=frontend/harness/bundle*.js --jsx=transform）
 frontend/harness/bundle.js
+frontend/harness/bundle-1322.js
