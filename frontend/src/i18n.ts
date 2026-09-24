@@ -1844,6 +1844,31 @@ const DICT: Record<string, { en: string }> = {
   // /health 运行版本，进程未随安装重启时会滞后）。
   "插件版本 {v}": { en: "Plugin version {v}" },
   "正在加载更早的消息…": { en: "Loading earlier messages…" },
+  // v0.5.0-beta.13.19（技能中心：上传 / 自定义新建 / 下载）。
+  "上传": { en: "Upload" },
+  "新建自定义技能": { en: "New custom skill" },
+  "上传技能包（zip）": { en: "Upload skill package (zip)" },
+  "目标团队": { en: "Target team" },
+  "技能名（小写字母/数字/连字符）": {
+    en: "Skill name (lowercase letters/digits/hyphens)",
+  },
+  "SKILL.md 正文（指令内容）": { en: "SKILL.md body (instructions)" },
+  "上传进入该团队技能层；L1 可任意团队，L2 限本团队。上传经 skillscan 扫描（截拦即报原因）。": {
+    en: "Uploads land in the team skill layer; L1 may target any team, L2 is limited to their own. Uploads pass skillscan (blocked uploads report the reason).",
+  },
+  "请选择目标团队": { en: "Pick a target team" },
+  "请选择技能 zip 包": { en: "Pick a skill zip package" },
+  "技能名需小写字母/数字/连字符（≤64）": {
+    en: "Skill name must be lowercase letters/digits/hyphens (≤64)",
+  },
+  "上传失败（HTTP {s}）": { en: "Upload failed (HTTP {s})" },
+  "已上传 {name}（{n} 文件{scan}）": { en: "Uploaded {name} ({n} files{scan})" },
+  "扫描通过": { en: "scan passed" },
+  "扫描有警告": { en: "scan warned" },
+  "扫描跳过": { en: "scan skipped" },
+  "当前 Controller 版本不支持技能下载（上游端点待合并）": {
+    en: "This Controller version does not support skill download yet (upstream endpoint pending)",
+  },
   "前端 {f} · 连接器 {b}": { en: "UI {f} · connector {b}" },
 };
 

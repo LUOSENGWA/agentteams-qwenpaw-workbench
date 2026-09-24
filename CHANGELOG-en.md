@@ -5,6 +5,26 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.19 (2026-09-23)
+
+**Close of the 13.18 verification feedback: full-chain repair of "load original" (cursor regression root cause + empty-page walk + unlock-on-progress + automatic backfill after click) / Skill Center gains upload / custom create / download (version-gated)**
+
+- **"Load original no longer loads / probably too many requests" — full-chain repair (real root causes)**:
+  ① **cursor regression** (the main one): every refresh (room-open restore / post-action) reset the pagination cursor to the "latest-50 cursor" while the window still held deeper history — afterwards `loadMore` pages came back fully loaded already: zero new after dedupe → nothing committed → no prepend → the chain sat locked for 6s → **wasted page after wasted page** (one extra request each) until the 30s watchdog cancelled = "it never loads". Now the **cursor is established on the first window only**; refreshes merge new messages and never touch it (cache writes and prefetching use the window cursor too).
+  ② **empty-page walk**: a page with zero new content that still has an older cursor is followed immediately (up to 8 pages, stops if the cursor stops advancing) — a dead patch is crossed in one call.
+  ③ **unlock on progress**: the chain guard now resets whenever `messages` changes; the 6s timer is only a failure-path fallback.
+  ④ **automatic backfill after click** (Element-style): "load original" no longer depends on the scroll position — it pages backwards until the message enters the window; a >3000-net-messages cap was added (30s stall watchdog / bottom / room switch still terminate).
+  ⑤ prepend detection now uses the **raw** first message id (pages that are entirely folded/hidden no longer break the anchor restore).
+- **Skill Center: package upload / custom create / download**:
+  ① **upload (zip)**: a catalog-card action posts to `POST /api/v1/skills` (multipart) — **the connector gained raw multipart passthrough** (it previously parsed every body as JSON, so uploads reached the server empty and always 400'd); scan outcomes (pass/warn/skipped, 422 reasons) surface in the toast.
+  ② **new custom skill**: name/description/body → the frontend packs `SKILL.md` (fflate) → same endpoint; names are pre-validated against the server regex.
+  ③ **download**: a per-row action (team/shared sources, team layer adds `?team=`) calls `GET /api/v1/skills/{name}/download[?team=]`; **version-gated** — a 404 on the current Controller shows an honest "upstream endpoint pending" note. The **upstream endpoint is implemented and tested** (branch `feat/skills-download`, `go test ./...` green, PR draft in `PR/skills-download-endpoint/`) — it lights up automatically once the Controller is upgraded, no plugin change needed.
+- **i18n**: 1328 keys, 0 missing, 0 empty (+16)
+
+**Verification**: tsc 0 · vite 2,301.88kB · pytest 64/64 · i18n 1328 keys · controller `go test ./...` green · 8 version carriers
+
+---
+
 ## 0.5.0-beta.13.18 (2026-09-23)
 
 **Close of the 13.17 verification feedback: chat history now uses a prefetch pipeline + earlier margin — loading follows the window and is ready by the time you arrive (no more "triggered-then-fetch, slow")**
