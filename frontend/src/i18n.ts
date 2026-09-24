@@ -1840,6 +1840,11 @@ const DICT: Record<string, { en: string }> = {
   "首次打开加载频道编辑器…": { en: "Loading channel editor on first open…" },
   "首次打开加载工具面板…": { en: "Loading tools panel on first open…" },
   "资源管理（技能 / MCP / 频道 / 工具）": { en: "Resources (Skills / MCP / Channels / Tools)" },
+  // v0.5.0-beta.13.17：顶部版本号 tooltip（前端=构建版本恒准；连接器=
+  // /health 运行版本，进程未随安装重启时会滞后）。
+  "插件版本 {v}": { en: "Plugin version {v}" },
+  "正在加载更早的消息…": { en: "Loading earlier messages…" },
+  "前端 {f} · 连接器 {b}": { en: "UI {f} · connector {b}" },
 };
 
 export type Lang = "zh" | "en";

@@ -1061,16 +1061,35 @@ function BoardColumnsView(props: {
   });
   React.useEffect(() => {
     const compute = () => {
-      const w =
-        wrapRef.current?.clientWidth ||
-        (typeof window !== "undefined" ? window.innerWidth : 1000);
-      const cols = w >= 950 ? 4 : 2;
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      // keep-alive 隐藏 tab（0 宽）不测量——RO 会在再次可见（0→N 尺寸
+      // 变化）时重触发，届时拿到正确布局。
+      if (rect.width <= 0) return;
+      const cols = rect.width >= 950 ? 4 : 2;
       const rows = Math.ceil(BOARD_COLUMNS.length / cols);
-      const avail = Math.max(
-        420,
-        (typeof window !== "undefined" ? window.innerHeight : 900) - 240,
-      );
-      const h = Math.min(460, Math.max(200, Math.floor(avail / rows) - 18));
+      // v0.5.0-beta.13.17（13.16 装验「还是有点高导致整体滚动条」）：
+      // 可用高 = 约束底 − 看板顶，**全部实测**（旧版用 innerHeight-240 估算
+      // 页面头高，系统性偏大 → 8 列总和超出容器 → 整页滚动）。
+      // 约束底 = 最近的可滚动祖先容器底（无则视口底）。
+      let bottom =
+        (typeof window !== "undefined" ? window.innerHeight : 900) - 12;
+      let anc: HTMLElement | null = wrap.parentElement;
+      while (anc && anc !== document.body) {
+        const ov = window.getComputedStyle(anc).overflowY;
+        if ((ov === "auto" || ov === "scroll") && anc.clientHeight > 0) {
+          bottom = anc.getBoundingClientRect().bottom - 6;
+          break;
+        }
+        anc = anc.parentElement;
+      }
+      // 看板顶（视口坐标；夹 ≥64 防容器已内滚时的负值放大估算——新显 tab
+      // 时容器 scrollTop=0，测量即准）。
+      const top = Math.max(64, rect.top);
+      const avail = Math.max(320, bottom - top);
+      // 列内固定开销：头部行(~28) + 行 gap(8) + 列内边距(16)≈52；行间 gap=10。
+      const h = Math.max(150, Math.floor((avail - 10 * (rows - 1)) / rows) - 52);
       setGrid((prev) => (prev.cols === cols && prev.h === h ? prev : { cols, h }));
     };
     compute();

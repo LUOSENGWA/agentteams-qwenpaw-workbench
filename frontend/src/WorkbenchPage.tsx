@@ -1424,16 +1424,22 @@ export default function WorkbenchPage() {
   const t = useThemeColors();
   const tr = useT();
   // 插件版本：从后端 /health 读（单一真相源 = agentteams_connector/__init__.py）。
-  const [pluginVersion, setPluginVersion] = React.useState("…");
+  // v0.5.0-beta.13.17（13.16 装验「顶部版本号显示不对」）：主显示改**构建
+  // 期注入版本**（vite define __PLUGIN_VERSION__，来源 package.json）——
+  // 永远等于当前 dist 的版本，不再受后端进程未随安装重启（/health 滞后）
+  // 或请求失败（旧版恒显占位「…」）影响；连接器运行版本仍查 /health，
+  // 仅入 tooltip 对照说明。
+  const pluginVersion = __PLUGIN_VERSION__;
+  const [connectorVersion, setConnectorVersion] = React.useState("");
   React.useEffect(() => {
     let cancelled = false;
     void requestJson("/agentteams-proxy/health")
       .then((d) => {
         const v = (d as { version?: string })?.version;
-        if (!cancelled && v) setPluginVersion(v);
+        if (!cancelled && v) setConnectorVersion(v);
       })
       .catch(() => {
-        /* 后端不可达时保持占位 */
+        /* 后端不可达：tooltip 少一行对照，不影响主显示 */
       });
     return () => {
       cancelled = true;
@@ -1850,8 +1856,17 @@ export default function WorkbenchPage() {
   }, []);
 
   // 分页：加载更早的消息（dir=b，from=end token），前插。
+  // v0.5.0-beta.13.17（13.16 装验「没有预加载」）：并发防重——滚动预载与
+  // 手动按钮可能在同一窗口双触发，同游标（messagesEnd 闭包未更新时）双拉
+  // 会重复前插同一页（known 集合是调用瞬间快照）→ 加同步 in-flight 闸；
+  // loadingMore 同步给聊天列表做顶部预载提示。
+  const loadingMoreRef = React.useRef(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
   const loadMore = React.useCallback(async () => {
     if (!activeRoom || !messagesEnd) return;
+    if (loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
     try {
       const page = await fetchRoomMessages(activeRoom.room_id, 50, messagesEnd);
       // v0.5.0-beta.13.10：前插历史同步进缓存——切页回来仍在
@@ -1867,6 +1882,9 @@ export default function WorkbenchPage() {
       setHasMore(Boolean(page.end));
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("加载更早消息失败"));
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
     }
   }, [activeRoom, messagesEnd]);
 
@@ -2982,6 +3000,7 @@ export default function WorkbenchPage() {
       onNewTask={() => void 0}
       chatsTick={chatsTick}
       onLoadMore={() => void loadMore()}
+      loadingMore={loadingMore}
       onPoll={() => void pollMessages()}
       jumpToEventId={jumpToEventId}
       onJumpHandled={() => setJumpToEventId(null)}
@@ -3240,9 +3259,20 @@ export default function WorkbenchPage() {
           <antd.Typography.Title level={3} style={{ margin: 0 }}>
             AgentTeams 团队工作台
           </antd.Typography.Title>
-          <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            v{pluginVersion} —— 多团队工作台（聊天/工作流/产物/运维/管理）
-          </antd.Typography.Text>
+          <antd.Tooltip
+            title={
+              connectorVersion && connectorVersion !== pluginVersion
+                ? tr("前端 {f} · 连接器 {b}", {
+                    f: pluginVersion,
+                    b: connectorVersion,
+                  })
+                : tr("插件版本 {v}", { v: pluginVersion })
+            }
+          >
+            <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              v{pluginVersion} —— 多团队工作台（聊天/工作流/产物/运维/管理）
+            </antd.Typography.Text>
+          </antd.Tooltip>
         </div>
         <div style={{ flex: 1 }} />
         {config?.matrix?.user_id ? (

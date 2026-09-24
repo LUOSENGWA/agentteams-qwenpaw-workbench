@@ -1449,6 +1449,8 @@ export interface RoomChatProps {
   sending?: boolean;
   /** 是否还有更早的消息（分页）。 */
   hasMore?: boolean;
+  /** v0.5.0-beta.13.17：父侧「更早消息」加载中（顶部预载提示 + 防并发）。 */
+  loadingMore?: boolean;
   /** 当前登录用户 MXID（自己的消息右对齐）。 */
   user_id?: string;
   /** 是否允许发消息；false 时整个输入区替换为居中提示条（Element 同款语义）。 */
@@ -1556,6 +1558,7 @@ export default function RoomChat(props: RoomChatProps) {
     loading,
     sending,
     hasMore,
+    loadingMore = false,
     user_id,
     canSend = true,
     onSend,
@@ -1828,6 +1831,23 @@ export default function RoomChat(props: RoomChatProps) {
   // 不重弹按钮；用户主动上翻（dist≥120）即解锁。
   const atBottomRef = React.useRef(true);
   const pinnedUntilRef = React.useRef(0);
+  // v0.5.0-beta.13.17（13.16 装验「不能滚到哪加载到哪 / 没有预加载」）：
+  // 顶部预加载余量——旧版 40px 只在贴顶瞬间触发（贴顶才拉、拉完要滚回顶
+  // 再触发一次），体感「没有预加载」。现 = 列表视口高的 25%（下限 160px）：
+  // 接近顶部即开始拉，锚恢复后继续上翻自然接力（连续分段预载）。
+  const nearTop = React.useCallback((el: HTMLElement) => {
+    return el.scrollTop < Math.max(160, el.clientHeight * 0.25);
+  }, []);
+  // 触碰式拉取统一入口：同步防重（autoLoadRef）+ 6s 兜底复位（成功路径
+  // 由锚 effect 的「前插检测」更快复位）。滚动/按钮/驻顶接力共用。
+  const kickLoadMore = React.useCallback(() => {
+    if (autoLoadRef.current) return;
+    autoLoadRef.current = true;
+    window.setTimeout(() => {
+      autoLoadRef.current = false;
+    }, 6000);
+    void onLoadMore?.();
+  }, [onLoadMore]);
   const handleListScroll = React.useCallback(() => {
     const el = listRef.current;
     if (!el) return;
@@ -1842,22 +1862,9 @@ export default function RoomChat(props: RoomChatProps) {
       pinnedUntilRef.current = 0;
       setShowJumpBottom(true);
     }
-    // v0.5.0-beta.13.6：滚到顶部 40px 内自动加载更早历史（Element 式
-    // 无限滚动；保留顶部按钮作显式入口）。autoLoadRef 防重入，新数据
-    // 到位（首条 id 变化）或 4s 兜底超时后复位。
-    if (
-      el.scrollTop < 40 &&
-      hasMore &&
-      onLoadMore &&
-      !autoLoadRef.current
-    ) {
-      autoLoadRef.current = true;
-      window.setTimeout(() => {
-        autoLoadRef.current = false;
-      }, 4000);
-      void onLoadMore();
-    }
-  }, [hasMore, onLoadMore]);
+    // 接近顶部 → 预加载更早历史（Element 式无限滚动；保留顶部按钮作显式入口）。
+    if (hasMore && nearTop(el)) kickLoadMore();
+  }, [hasMore, nearTop, kickLoadMore]);
   const jumpToBottom = React.useCallback(() => {
     const el = listRef.current;
     if (!el) return;
@@ -2173,23 +2180,17 @@ export default function RoomChat(props: RoomChatProps) {
     prevFirstIdRef.current = firstId;
   });
 
-  // v0.5.0-beta.13.15（B2 Element 式「滚动到哪里就自动加载」）：加载原
-  // 消息进行中（pendingOriginal 非空）且用户停在顶部（锚恢复后 scrollTop
-  // < 80）且还有历史 → 自动续拉一页。节奏=用户滚动节奏：每页落地后重查
-  // 顶部位置，停顶就继续、滚离就停（40px 触顶触发覆盖滚动事件路径，
-  // 本 effect 覆盖「停在顶部等历史」路径）。终止由父侧收口（found →
-  // 自动定位 / 触底 / 切房 → pending 清空）。声明在锚 effect 之后：
-  // 读到的是锚恢复后的 scrollTop。
+  // v0.5.0-beta.13.17（13.16 装验「不能滚到哪加载到哪」统一）：驻顶接力——
+  // 每次渲染后（每页落地 / 加载态变化 / 滚动 state 变化）重查顶部位置：
+  // 仍在预载余量内且还有历史 → 续拉下一页；滚离即停（节奏=用户滚动节奏，
+  // 滚动事件路径由 handleListScroll 覆盖，本 effect 覆盖「驻顶等历史」路径）。
+  // 普通聊天与「加载原消息」模式共用；后者的终止仍由父侧收口（进窗口→
+  // 定位 / 触底 / 切房作废）。声明在锚 effect 之后：读到的是锚恢复后的
+  // scrollTop（前插后位置被推离顶部 → 自然暂停，用户再上翻时接力）。
   React.useLayoutEffect(() => {
     const el = listRef.current;
-    if (!el || !pendingOriginal || !hasMore || !onLoadMore) return;
-    if (el.scrollTop < 80 && !autoLoadRef.current) {
-      autoLoadRef.current = true;
-      window.setTimeout(() => {
-        autoLoadRef.current = false;
-      }, 4000);
-      void onLoadMore();
-    }
+    if (!el || !hasMore || !onLoadMore) return;
+    if (nearTop(el)) kickLoadMore();
   });
 
   // 换房间：重置置底状态 + 贴底（Element 开房间即在最新消息处）。
@@ -2771,19 +2772,20 @@ export default function RoomChat(props: RoomChatProps) {
         ) : null}
         {hasMore ? (
           <div style={{ textAlign: "center", paddingBottom: 12 }}>
-            <antd.Button
-              size="small"
-              type="link"
-              onClick={() => {
-                autoLoadRef.current = true;
-                window.setTimeout(() => {
-                  autoLoadRef.current = false;
-                }, 4000);
-                void onLoadMore?.();
-              }}
-            >
-              {tr("加载更早的消息 ↑")}
-            </antd.Button>
+            {/* v0.5.0-beta.13.17：预载中显形（自动预载与手动共用同一状态）。 */}
+            {loadingMore ? (
+              <span style={{ fontSize: 12, color: t.textSecondary }}>
+                {tr("正在加载更早的消息…")}
+              </span>
+            ) : (
+              <antd.Button
+                size="small"
+                type="link"
+                onClick={() => kickLoadMore()}
+              >
+                {tr("加载更早的消息 ↑")}
+              </antd.Button>
+            )}
           </div>
         ) : visibleMessages.length > 0 ? (
           // v0.5.0-beta.13.6：翻到头标记（Element「no more events」同款）。

@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
+import { readFileSync } from "fs";
 import { defineConfig, type Plugin } from "vite";
 
 /**
@@ -228,8 +229,22 @@ function gwProxyMiddleware(): Plugin {
   };
 }
 
+// v0.5.0-beta.13.17（13.16 装验「顶部版本号显示不对」）：版本注入 =
+// 构建期从 package.json 读入打进 bundle（`__PLUGIN_VERSION__`）——顶部
+// 显示的版本永远等于「你装进去的那个 dist 的版本」，不再依赖后端
+// /health（后端进程未随安装重启时会返回旧 connection 版本 → 显示错）。
+// 连接器运行版本仍可经 /health 拿（tooltip 次要信息）。
+const PKG_VERSION = (
+  JSON.parse(
+    readFileSync(resolve(__dirname, "package.json"), "utf8"),
+  ) as { version: string }
+).version;
+
 export default defineConfig({
   plugins: [react({ jsxRuntime: "classic" }), fullMinifyGuard(), noModuleImportsGuard(), gwProxyMiddleware()],
+  define: {
+    __PLUGIN_VERSION__: JSON.stringify(PKG_VERSION),
+  },
   build: {
     lib: {
       entry: resolve(__dirname, "src/index.tsx"),

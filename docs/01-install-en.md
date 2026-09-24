@@ -6,14 +6,14 @@
 |------|-------|
 | QwenPaw host | 2.0 – 2.2.x (plugin version gate `>=2.0.0, <3.0.0`) |
 | AgentTeams cluster | Deployed Controller + Matrix homeserver (the plugin reaches them through an in-process backend proxy; credentials live server-side, the browser stays zero-credential) |
-| Install media | The ZIP from the GitHub Releases page (`agentteams-qwenpaw-workbench-v0.5.0-beta.13.16.zip`) |
+| Install media | The ZIP from the GitHub Releases page (`agentteams-qwenpaw-workbench-v0.5.0-beta.13.17.zip`) |
 
 ## Install
 
 **Option 1: CLI (recommended)**
 
 ```
-qwenpaw plugin install agentteams-qwenpaw-workbench-v0.5.0-beta.13.16.zip
+qwenpaw plugin install agentteams-qwenpaw-workbench-v0.5.0-beta.13.17.zip
 ```
 
 **Option 2: Console**
