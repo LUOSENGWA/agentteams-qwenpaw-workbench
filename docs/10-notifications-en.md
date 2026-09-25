@@ -6,10 +6,10 @@ An aggregated inbox: room ``s, task progress, approval requests, and room invite
 
 | Type | Source | Click behavior |
 |------|--------|----------------|
-| 📣 Room `` | mentions in team rooms (primary check `m.mentions.user_ids` + body fallback) | jumps to the room and locates the message |
-| 🛡️ Approval request | Worker Tool Guard approval | jumps to the approval scene (one-click approve/deny, see [Approvals](./09-approvals-en.md)) |
-| 📊 Task progress | workflow status changes | jumps to the workflow view |
-| ✉️ Room invite | invited into a new room | jumps to the Team management invite area (single source of truth: accept/reject happens there) |
+| Room `` | mentions in team rooms (primary check `m.mentions.user_ids` + body fallback) | jumps to the room and locates the message |
+| Approval request | Worker Tool Guard approval | jumps to the approval scene (one-click approve/deny, see [Approvals](./09-approvals-en.md)) |
+| Task progress | workflow status changes | jumps to the workflow view |
+| Room invite | invited into a new room | jumps to the Team management invite area (single source of truth: accept/reject happens there) |
 
 - Notification-center cards **click straight through** (v0.5.0-beta.12)
 - The notifications tab label carries an unread badge; the home quick entry shows the "approvals & room ``s" unread count

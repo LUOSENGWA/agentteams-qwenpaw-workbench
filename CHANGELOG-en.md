@@ -23,6 +23,8 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+- **Docs emoji → plain text (post-release fix)**: UI icon emojis (🏠💬🔔🔀📦👷📚🧩🎯🔍🛠⚙✉ etc.) removed from README + docs/ in favor of plain text labels — the icon library has been fully SVG since beta.13.13 (icons.tsx, 71 icons), so doc emojis no longer matched the actual UI; CHANGELOG historical entries keep their original emoji→SVG replacement records (history, not current description)
+
 ## 0.5.0-beta.13.24 (2026-09-25)
 
 **13.23 install feedback, 6 items: team management first-load / manual refresh slowness (true root cause = dual-address cold window, full-chain fix) / tool-execution-security 502 (upstream missing /api prefix — plugin fallback + upstream fix branch) / approval level made editable ("System" tab in runtime config embeds the approval control) / unread bubble digits centered and always contained / DAG + Mermaid merged (mermaid dependency removed, −5.3MB; DAG centered + hover polish) / batch model editing in the team config dialog (Leader / Workers batches)**

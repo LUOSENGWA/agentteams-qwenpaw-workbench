@@ -13,17 +13,17 @@ A team workbench for AgentTeams (HiClaw) clusters through QwenPaw: manage teams,
 
 | Tab | Capabilities |
 |-----|--------------|
-| 🏠 Home | Teams / tasks / workers / artifacts / recent activity / cluster load overview + pending-approval cards (approve/deny via the host's native approval chain) + quick actions + host-skills entry |
-| 💬 Chat | Team room chat (direct Matrix), thread panel, member detail cards, room favorites / mute / leave / delete (Element-style), "All" single timeline (group/DM interleaved), message search, `@mentions`, in-chat workflow card live refresh (controller source, 15 s, v0.5.0-beta.12.9) |
-| 🔔 Notifications | Notification center (aggregated inbox of `@mentions` / task progress; click a card to jump to the room and locate the message) |
-| 🔀 Workflows | Four views (list / card / board / layered DAG topology); cards & topology are a project list (left, time/status/name sort) + detail (right), the DAG is top-down layered with ready-state highlight + external-dependency note; project task graph (pause / resume / replan) + current view & selected project remembered across reloads (cards/topology master-detail rework in v0.5.0-beta.12.7) |
-| 📦 Artifacts | Project artifact file tree + online preview + download |
-| 👷 Team Management | Worker hierarchy tree, approval mode (4 tool-execution security levels: strict / smart / auto / off), Team / Worker / Human CRD management + team access matrix (L1), create workers while creating teams; "Channels" sub-tab (worker channel config / enable-disable / health check / restart / QR-code auth / conflict pre-check, pending the upstream channel endpoint); "Skill Center" sections (skill catalog, pending the upstream skill endpoint / Worker × skill assignment matrix / MCP servers matrix) |
-| 📚 Knowledge Base | Remote worker KB and local memory: browse, preview, download, 2D/3D knowledge graph (click a node to open the file preview directly); 2D graph zoom/pan + cluster focus + cluster separation (v0.5.0-beta.12.9) |
-| 🎯 Host Skills | Skill management for the local QwenPaw instance (SkillPool — host skills, not worker skills) |
-| 🔍 Self-check | L0-L3 layered self-check (L0 local environment / L1 connectivity / L2 auth & API / L3 per-room live test) |
-| 🛠️ Ops | Cluster load, container logs (L1) |
-| ⚙️ Config | Controller address / credentials, Matrix login, dark theme, start-page toggle |
+| Home | Teams / tasks / workers / artifacts / recent activity / cluster load overview + pending-approval cards (approve/deny via the host's native approval chain) + quick actions + host-skills entry |
+| Chat | Team room chat (direct Matrix), thread panel, member detail cards, room favorites / mute / leave / delete (Element-style), "All" single timeline (group/DM interleaved), message search, `@mentions`, in-chat workflow card live refresh (controller source, 15 s, v0.5.0-beta.12.9) |
+| Notifications | Notification center (aggregated inbox of `@mentions` / task progress; click a card to jump to the room and locate the message) |
+| Workflows | Four views (list / card / board / layered DAG topology); cards & topology are a project list (left, time/status/name sort) + detail (right), the DAG is top-down layered with ready-state highlight + external-dependency note; project task graph (pause / resume / replan) + current view & selected project remembered across reloads (cards/topology master-detail rework in v0.5.0-beta.12.7) |
+| Artifacts | Project artifact file tree + online preview + download |
+| Team Management | Worker hierarchy tree, approval mode (4 tool-execution security levels: strict / smart / auto / off), Team / Worker / Human CRD management + team access matrix (L1), create workers while creating teams; "Channels" sub-tab (worker channel config / enable-disable / health check / restart / QR-code auth / conflict pre-check, pending the upstream channel endpoint); "Skill Center" sections (skill catalog, pending the upstream skill endpoint / Worker × skill assignment matrix / MCP servers matrix) |
+| Knowledge Base | Remote worker KB and local memory: browse, preview, download, 2D/3D knowledge graph (click a node to open the file preview directly); 2D graph zoom/pan + cluster focus + cluster separation (v0.5.0-beta.12.9) |
+| Host Skills | Skill management for the local QwenPaw instance (SkillPool — host skills, not worker skills) |
+| Self-check | L0-L3 layered self-check (L0 local environment / L1 connectivity / L2 auth & API / L3 per-room live test) |
+| Ops | Cluster load, container logs (L1) |
+| Config | Controller address / credentials, Matrix login, dark theme, start-page toggle |
 
 ## Documentation
 
@@ -37,7 +37,7 @@ Product-grade feature docs (bilingual, one page per feature): [docs/](./docs/REA
 
 1. Open the QwenPaw console → **Settings → Plugin Manager**
 2. Click **Install** and select the ZIP file (`agentteams-qwenpaw-workbench-v0.5.0-beta.14.zip`, available in [Releases](https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench/releases))
-3. Refresh the console after install — **🏢 AgentTeams QwenPaw Workbench** appears in the sidebar
+3. Refresh the console after install — **AgentTeams QwenPaw Workbench** (with the AgentTeams logo icon) appears in the sidebar
 
 **Option 2: CLI**
 
@@ -69,14 +69,14 @@ Configuration (Controller address/credentials) is kept in the plugin config and 
 
 ## Configuration
 
-Open the workbench → **⚙️ Config**:
+Open the workbench → **Config**:
 
 1. **Matrix address** (at least one required): two entries — LAN + WAN (`http://<node>:6867`); auto latency probing, auto-switch to the fastest, periodic re-probe — no manual switching
 2. **Auth mode** (choose one):
    - **L2 regular member (default)**: select "Matrix login" and enter your own Matrix account (username + password, delivered at onboarding). L2 can only read/write data within its `accessibleTeams` scope (upstream A2 auth + scope filtering)
    - **L1 admin**: paste the Controller admin token (`docker exec agentteams-controller cat /var/run/agentteams/cli-token`, one-time, remembered permanently after saving)
 3. **Controller address** (optional, only needed for the full cross-team views): the AgentTeams Controller API address; multi-address failover supported
-4. Click **Save & self-check** — the 🔍 Self-check tab verifies L0-L3 item by item (local environment / connectivity / auth & API / per-room live test)
+4. Click **Save & self-check** — the  Self-check tab verifies L0-L3 item by item (local environment / connectivity / auth & API / per-room live test)
 
 ## Uninstall
 

@@ -6,10 +6,10 @@ Execution views for team tasks/workflows. Data source: Controller projects/workf
 
 | View | Best for |
 |------|----------|
-| 📋 **Events** | the timeline — what happened in a workflow, replayed in order |
-| 🗂️ **Cards** | one card per workflow — status/phase/owner at a glance |
-| 📊 **Board** | tasks in phase columns (live counts) — team load and blockers |
-| 🌳 **Topology** | layered execution DAG (live node counts) — dispatch chains and structure |
+| **Events** | the timeline — what happened in a workflow, replayed in order |
+| **Cards** | one card per workflow — status/phase/owner at a glance |
+| **Board** | tasks in phase columns (live counts) — team load and blockers |
+| **Topology** | layered execution DAG (live node counts) — dispatch chains and structure |
 
 ### Card / Topology = master-detail (rebuilt in v0.5.0-beta.13)
 
