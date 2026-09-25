@@ -8,10 +8,10 @@ Aligned with the latest QwenPaw file management, four categories:
 
 | Category | Content |
 |----------|---------|
-| 📄 Files | regular files |
-| 🗄️ Archives | archived material |
-| 📔 Diary | diary/log entries |
-| 📚 Knowledge | accumulated knowledge (MEMORY/digest etc.) |
+| Files | regular files |
+| Archives | archived material |
+| Diary | diary/log entries |
+| Knowledge | accumulated knowledge (MEMORY/digest etc.) |
 
 - Every file carries a **source badge**: local (host workspace) or remote (team Agent workspace), with two category color palettes to tell them apart
 - Team Agents' workspaces are read through the Controller proxy (L2 limited to your team)

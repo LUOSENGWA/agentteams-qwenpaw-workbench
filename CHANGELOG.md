@@ -23,6 +23,8 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+- **文档 emoji → 纯文本（发后修）**：README + docs/ 的界面图标 emoji（🏠💬🔔🔀📦👷📚🧩🎯🔍🛠⚙✉ 等）全部移除、改纯文本标签——13.13 起图标库已全量 SVG 化（icons.tsx 71 枚），文档 emoji 与实际 UI 不符；CHANGELOG 历史条目保留 emoji→SVG 替换记录原文（那是历史陈述，不是当前描述）
+
 ## 0.5.0-beta.13.24（2026-09-25）
 
 **13.23 装验反馈 6 件：团队管理首刷/手动刷新慢（真根因=双地址冷窗口，全链修）/ 工具执行安全 502（上游缺 /api 前缀，插件回退缓解 + 上游修复支）/ 审批级别改可编辑（运行配置「系统」tab 内嵌审批控制）/ 未读气泡数字居中且永不含住外 / DAG 与 Mermaid 合并（撤 mermaid 依赖 −5.3MB，DAG 居中+hover 优化）/ 配置团队窗口批量改模型（Leader/Workers 两批）**

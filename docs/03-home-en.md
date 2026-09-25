@@ -6,7 +6,7 @@ Your whole cluster at a glance: teams, tasks, approvals, and cluster load, plus 
 
 ```
 ┌ Team collaboration overview ─────────────┐
-│  👥 Teams   📋 Task progress   🛡️ Awaiting approval │
+│  Teams     Task progress    Awaiting approval   │
 │  (L1: cluster-load card, optional)       │
 ├──────────────────────────────────────────┤
 │ [Dispatch task] [Open team chat] [Inbox] [Knowledge graph] │
@@ -17,9 +17,9 @@ Your whole cluster at a glance: teams, tasks, approvals, and cluster load, plus 
 
 | Card | Content | Data source |
 |------|---------|-------------|
-| 👥 Teams | Team/Worker count & status summary (L1 = full scope, L2 = accessible scope) | Controller + room baseline |
-| 📋 Task progress | In-progress task/workflow counts | Controller projects |
-| 🛡️ Awaiting approval | **Room-approval source = the real Worker Tool Guard queue** (not a host-inbox snapshot): desktop toast on new requests, one-click approve/deny on the card | Matrix room sync detection |
+| Teams | Team/Worker count & status summary (L1 = full scope, L2 = accessible scope) | Controller + room baseline |
+| Task progress | In-progress task/workflow counts | Controller projects |
+| Awaiting approval | **Room-approval source = the real Worker Tool Guard queue** (not a host-inbox snapshot): desktop toast on new requests, one-click approve/deny on the card | Matrix room sync detection |
 | Cluster load (optional) | SGLang/GPU load (**L1 only**; when the backend feature is off the endpoint 404s and the card simply doesn't render — no error) | Controller `/api/v1/status` (same source as the dashboard cluster-status) |
 
 ## Quick entries
