@@ -37,7 +37,12 @@ _INTERVAL_FAST = 30.0  # 切换/失败后（切网进行中）
 _INTERVAL_BASE = 120.0  # 常规
 _INTERVAL_STABLE = 300.0  # 连续稳定后的低频稳态
 _STABLE_ROUNDS = 2  # 连续 N 轮稳定才降频
-_STARTUP_DELAY = 15.0  # 启动后先等——不抢宿主启动期网络
+# v0.5.0-beta.13.24（F1 首刷 race·真根因）：15s→3s——进程重启（每次装新
+# beta）后 working cache 重置，旧版前 15s 内所有请求走配置顺序（LAN IP
+# 优先），切网窗口团队管理刷不出且手动无效（用户「要等一会」=等这 15s）。
+# 3s 仍让宿主启动期（不抢网络），首轮探测在会话开始前后即收敛 working
+# cache；请求层 failover（connect 3s）为即时兜底，两者叠加冷窗 ≤~6s。
+_STARTUP_DELAY = 3.0
 
 _task: asyncio.Task | None = None
 _stop_event = asyncio.Event()

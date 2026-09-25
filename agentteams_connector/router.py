@@ -52,6 +52,12 @@ _working_cache: Dict[str, str] = {}  # {"matrix": url, "controller": url}
 
 _PROBE_TIMEOUT = 6.0
 
+# v0.5.0-beta.13.24（F1 首刷 race·真根因）：代理超时结构化——旧版标量
+# timeout=6.0 把「建连」也算进 6s：切网窗口 LAN IP 不可达时 SYN 被丢，
+# 每个请求要卡满 6s×2 次重试才 failover 到公网地址（+12s 冷窗）。connect
+# 单独压到 3s 快速识破死地址；read 保留 6s（真实响应慢≠地址死）。
+_PROXY_TIMEOUT = httpx.Timeout(connect=3.0, read=6.0, write=10.0, pool=3.0)
+
 
 def _address_list(cfg: Dict[str, Any], kind: str) -> List[str]:
     if kind == "matrix":
@@ -1151,25 +1157,64 @@ def build_router() -> APIRouter:
                 tokens.append(ctl_token)
             if matrix_token and matrix_token not in tokens:
                 tokens.append(matrix_token)
-            with _cache_lock:
-                cached_ctl = _working_cache.get("controller")
-            controller = (
-                cached_ctl
-                if cached_ctl in controller_urls
-                else controller_urls[0]
+            # v0.5.0-beta.13.24（F1 首刷 race 三次复发·真根因）：旧版只拨单地址
+            # （working cache 或 urls[0]=LAN IP 优先）10s 超时、无 per-request
+            # failover——切网窗口 / 进程重启后 working cache 未标记（探针 15s
+            # 冷启动）内每个请求卡满超时再落 matrix 全量回退（无上限），团队
+            # 管理「一开始刷不出、手动也不行、要等一会」。改与 catch-all 代理
+            # 同语义：ordered 地址（working 优先）× token 链 failover；连接
+            # 超时 3s 快速识破死地址；成功即标记 working。
+            ctl_urls = _ordered_addresses(cfg, "controller")
+            dial_timeout = httpx.Timeout(
+                connect=3.0, read=10.0, write=10.0, pool=3.0
             )
+
+            async def _dial_workers(
+                token: str,
+            ) -> Optional["httpx.Response"]:
+                """按 ordered 地址 failover 拨 /api/v1/workers。
+
+                传输层错误 / 5xx → 下一地址；4xx（鉴权/端点语义）→ 返回该
+                响应（调用方换 token）；200/其他 → 返回并标记 working。
+                全部失败 → None。
+                """
+                last_5xx: Optional["httpx.Response"] = None
+                for url in ctl_urls:
+                    try:
+                        async with httpx.AsyncClient(
+                            timeout=dial_timeout, verify=False
+                        ) as client:
+                            r = await client.get(
+                                f"{url.rstrip('/')}/api/v1/workers",
+                                headers={
+                                    "Authorization": f"Bearer {token}"
+                                },
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "teams/structure: workers API via %s failed: %s",
+                            url,
+                            selfcheck._classify_error(exc),
+                        )
+                        continue
+                    if 400 <= r.status_code < 500:
+                        return r
+                    if r.status_code >= 500:
+                        last_5xx = r
+                        continue
+                    _mark_working("controller", url)
+                    return r
+                return last_5xx
+
             for attempt_token in tokens:
                 try:
-                    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
-                        resp = await client.get(
-                            f"{controller.rstrip('/')}/api/v1/workers",
-                            headers={"Authorization": f"Bearer {attempt_token}"},
-                        )
-                    if resp.status_code != 200:
-                        logger.info(
-                            "teams/structure: workers API %d (auth chain next)",
-                            resp.status_code,
-                        )
+                    resp = await _dial_workers(attempt_token)
+                    if resp is None or resp.status_code != 200:
+                        if resp is not None:
+                            logger.info(
+                                "teams/structure: workers API %d (auth chain next)",
+                                resp.status_code,
+                            )
                         continue
                     payload = resp.json()
                     workers = (
@@ -1214,7 +1259,7 @@ def build_router() -> APIRouter:
                         for name, ws in sorted(by_team.items())
                     ]
                     source = "controller-workers"
-                    _mark_working("controller", controller)
+                    # working 标记已在 _dial_workers 成功路径完成
                     break
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
@@ -1226,32 +1271,36 @@ def build_router() -> APIRouter:
             # Fallback (no token / workers API failed): run our own sync and
             # build the room-aggregated tree — NOT from the cache, which may
             # be empty due to the mount-time race with teams/sync.
+            # v0.5.0-beta.13.24（F1）：homeserver 也走 ordered failover（旧版
+            # 单地址 homeservers2[0]=LAN IP 优先，切网窗口 100% 失败→空树+
+            # 5s 负缓存，与 controller 侧同病灶）。30s 上限防长轮询挂死。
             matrix_cfg2 = cfg.get("matrix") or {}
             token2 = (matrix_cfg2.get("access_token") or "").strip()
-            homeservers2 = cfg.get("matrix_homeservers") or []
-            with _cache_lock:
-                cached_hs2 = _working_cache.get("matrix")
-            homeserver2 = (
-                cached_hs2
-                if cached_hs2 in homeservers2
-                else (homeservers2[0] if homeservers2 else "")
-            )
-            if homeserver2 and token2:
-                try:
-                    sync_resp = await asyncio.to_thread(
-                        matrix_client.sync,
-                        homeserver2,
-                        token2,
-                        timeout_ms=0,
-                        sync_filter=_SYNC_FILTER,
-                    )
-                    parsed = _parse_sync_rooms(sync_resp, user_id)
-                    tree = parsed["worker_tree"]
-                    source = "room-fallback"
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "teams/structure fallback sync failed: %s", exc
-                    )
+            hs_urls = _ordered_addresses(cfg, "matrix")
+            if hs_urls and token2:
+                for homeserver2 in hs_urls:
+                    try:
+                        sync_resp = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                matrix_client.sync,
+                                homeserver2,
+                                token2,
+                                timeout_ms=0,
+                                sync_filter=_SYNC_FILTER,
+                            ),
+                            timeout=30.0,
+                        )
+                        _mark_working("matrix", homeserver2)
+                        parsed = _parse_sync_rooms(sync_resp, user_id)
+                        tree = parsed["worker_tree"]
+                        source = "room-fallback"
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "teams/structure fallback sync via %s failed: %s",
+                            homeserver2,
+                            exc,
+                        )
             else:
                 tree = []
 
@@ -4782,7 +4831,7 @@ def build_router() -> APIRouter:
                     try:
                         req_started = time.time()
                         async with httpx.AsyncClient(
-                            timeout=_PROBE_TIMEOUT, verify=False
+                            timeout=_PROXY_TIMEOUT, verify=False
                         ) as client:
                             if raw_body is not None:
                                 send_headers = dict(headers)

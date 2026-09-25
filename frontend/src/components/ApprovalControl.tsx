@@ -3,6 +3,7 @@ import type * as ReactNS from "react";
 import {
   fetchApprovalList,
   fetchWorkerApproval,
+  httpErrorDetail,
   httpErrorStatus,
   setApprovalLevel,
   setWorkerApproval,
@@ -17,6 +18,20 @@ const EmptyIcon = (() => null) as unknown as ReactNS.FC<Record<string, unknown>>
 const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
   (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
 const ReloadIcon = pick("ReloadOutlined");
+
+// v0.5.0-beta.13.24（F2 502 缓解）：#1216 审批端点「不可用」判定——
+//  404 = 旧 Controller（无该端点）；
+//  502 "worker returned an unparsable running config" = 上游路径缺陷
+//  （worker_approval.go 拨号漏 /api 前缀 → Worker SPA 回退 200 HTML →
+//   解析失败；上游 fix 待合入并重建 Controller 后转正）。
+// 两者都回退旧端点（docker 直读 / PUT running-config，L1-only），不
+// 把裸 502 甩给用户。
+function approvalUpstreamGone(e: unknown): boolean {
+  const st = httpErrorStatus(e);
+  if (st === 404) return true;
+  if (st === 502) return /unparsable running config/i.test(httpErrorDetail(e));
+  return false;
+}
 
 // ──  Worker 工具执行安全（QwenPaw 原生四模式对接）────────
 // QwenPaw 设置页「工具执行安全」同款四模式（ToolExecutionLevelCard）：
@@ -188,6 +203,9 @@ function ApprovalControl({ workerName }: { workerName: string }) {
   const [readError, setReadError] = React.useState("");
   const [sel, setSel] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  // v0.5.0-beta.13.24（F2）：#1216 端点 502 上游缺陷已观测——回退 401 时
+  // 给精确提示（不是「L2 可读写」的误导文案）。
+  const [upstreamBug, setUpstreamBug] = React.useState(false);
 
   // 权限错误判定：401/403 = 凭据无效或对该 Worker 无权限。
   // #1216 已合并（上游 9/16）：L2 可读写本团队 Worker（team-scoped）；
@@ -201,17 +219,19 @@ function ApprovalControl({ workerName }: { workerName: string }) {
       setLevel(lv);
       setSel(lv);
     };
-    // #1216 主路径（L1/L2 统一，live 视图）；404=旧 Controller →
-    // 回退旧端点（docker 直读 agent.json，L1-only）。
+    // #1216 主路径（L1/L2 统一，live 视图）；404=旧 Controller /
+    // 502-unparsable=上游路径缺陷 → 回退旧端点（docker 直读 agent.json，
+    // L1-only）。
     void fetchWorkerApproval(workerName)
       .then((d) => {
         applyLevel(String(d.approval_level || "AUTO").toUpperCase());
       })
       .catch((e) => {
-        if (httpErrorStatus(e) !== 404) {
+        if (!approvalUpstreamGone(e)) {
           setReadError(e instanceof Error ? e.message : String(e));
           return;
         }
+        setUpstreamBug((p) => p || httpErrorStatus(e) === 502);
         void fetchApprovalList(workerName)
           .then((d) => {
             const it = d.items.find((x) => x.agent === workerName);
@@ -251,17 +271,34 @@ function ApprovalControl({ workerName }: { workerName: string }) {
       };
       try {
         // #1216 主路径（L1/L2 统一；live 生效，上游回读验证）。
+        let primary502 = false;
         try {
           const d = await setWorkerApproval(workerName, v);
           ok(String(d.approval_level || v).toUpperCase());
           return;
         } catch (e) {
-          if (httpErrorStatus(e) !== 404) throw e; // 403/400 等 = 透传
+          if (!approvalUpstreamGone(e)) throw e; // 403/400 等 = 透传
+          primary502 = httpErrorStatus(e) === 502;
+          if (primary502) setUpstreamBug(true);
         }
-        // 404 = 旧 Controller（无 #1216）→ 旧端点（docker PUT
-        // running-config，L1-only）。
-        const r = await setApprovalLevel(workerName, v);
-        ok(r.level);
+        // 404=旧 Controller（无 #1216）/ 502-unparsable=上游路径缺陷 →
+        // 旧端点（docker PUT running-config，L1-only）。
+        try {
+          const r = await setApprovalLevel(workerName, v);
+          ok(r.level);
+        } catch (e2) {
+          // 主路径 502（上游缺陷）且旧端点也无权/失败 → 精确提示，不甩裸错。
+          if (primary502) {
+            antd.message.error(
+              tr(
+                "设置失败：当前 Controller 审批端点有上游路径缺陷（502，修复待合入并重建）；旧端点不可用——{detail}",
+                { detail: e2 instanceof Error ? e2.message : String(e2) },
+              ),
+            );
+            return;
+          }
+          throw e2;
+        }
       } catch (e) {
         antd.message.error(
           `${tr("设置失败")}: ${e instanceof Error ? e.message : String(e)}`,
@@ -365,7 +402,9 @@ function ApprovalControl({ workerName }: { workerName: string }) {
             }}
           >
             {isPermError
-              ? tr("无权限读取（401/403）——请检查身份凭据。L2 账号可读写本团队 Worker（上游 #1216，9/16 已合并）")
+              ? (upstreamBug
+                  ? tr("审批端点有上游路径缺陷（502，修复待合入并重建 Controller）；该账号旧端点无权限——L1 账号可经旧端点读取")
+                  : tr("无权限读取（401/403）——请检查身份凭据。L2 账号可读写本团队 Worker（上游 #1216，9/16 已合并）"))
               : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={11} /> {readError}</span>}
           </div>
         ) : (
