@@ -583,7 +583,7 @@ def build_router() -> APIRouter:
 
     @router.get("/sglang/loads")
     async def sglang_loads() -> Dict[str, Any]:
-        """可选模块：集群负载（L1 专属，§5.8b 增强版）。
+        """可选模块：集群负载（L1 专属，增强版）。
 
         SGLang /v1/loads 每 DP rank 返回 num_running_reqs/num_waiting_reqs/
         token 用量/utilization（源码已查证：SC/sglang-latest

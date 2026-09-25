@@ -416,7 +416,7 @@ const DICT: Record<string, { en: string }> = {
   "上下文保留的历史消息数（history_max_length）。L1-only，本面板只读。": { en: "History messages kept in context (history_max_length). L1-only, read-only here." },
   "条回复": { en: " replies" },
   "正在输入…": { en: " is typing…" },
-  // v0.5.0-beta.12.4（A17）：Worker session 运行指示（运行中 复用既有条目）。
+  // v0.5.0-beta.12.4：Worker session 运行指示（运行中 复用既有条目）。
   "运行完成": { en: "Run completed" },
   "无任务": { en: "Idle" },
   "人": { en: " members" },
@@ -1575,7 +1575,7 @@ const DICT: Record<string, { en: string }> = {
   "Worker 运行时（Controller CR runtime）": { en: "Worker runtime (Controller CR runtime)" },
   // #1233 事件流时间线（WorkflowEventsTimeline）。
   "事件流": { en: "Event stream" },
-  // A8d AgentActivityTrack（composer 上方任务进度+HITL 内联轨）。
+  // AgentActivityTrack（composer 上方任务进度+HITL 内联轨）。
   "点击打开项目工作流": { en: "Click to open the project workflow" },
   "任务 {done}/{total}": { en: "Tasks {done}/{total}" },
   "迭代 {cur}/{max}": { en: "Iteration {cur}/{max}" },

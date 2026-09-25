@@ -144,7 +144,7 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-/* v0.5.0-beta.12.4（A17）：Worker session 运行指示呼吸动画——照搬 QwenPaw
+/* v0.5.0-beta.12.4：Worker session 运行指示呼吸动画——照搬 QwenPaw
    AgentStatusIndicator 的 statusPulse（1.2s ease-in-out，opacity 1↔0.35 +
    box-shadow 扩散）。动画挂在 class 上（非内联），reduced-motion 可关。 */
 @keyframes wbSessionPulse {

@@ -1,4 +1,4 @@
-// v0.5.0-beta.12.4（A17）：Worker session 运行指示圆点。
+// v0.5.0-beta.12.4：Worker session 运行指示圆点。
 //
 // 视觉照搬 QwenPaw console AgentStatusIndicator（实读）：8px 圆点 +
 // statusPulse 1.2s 呼吸（opacity 1↔0.35 + box-shadow 扩散）+ Tooltip +
@@ -35,7 +35,7 @@ export default function WorkerSessionDot({
 }: {
   state: WorkerSessionState;
   size?: number;
-  /** A17（9/19 定案：灯在头像角落）：absolute 挂右下 + 白描边环。 */
+  /** （9/19 定案：灯在头像角落）：absolute 挂右下 + 白描边环。 */
   corner?: boolean;
 }) {
   const tr = useT();
