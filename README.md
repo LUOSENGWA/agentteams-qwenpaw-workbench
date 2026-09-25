@@ -101,10 +101,21 @@ qwenpaw plugin uninstall agentteams-qwenpaw-workbench
 | 3D 图谱不可用 | 浏览器不支持 WebGL 时自动回退 2D 图谱 |
 | 房间看不到/进不去 | 需先被邀请（团队 scope 房间由平台自动邀请；被邀请后在「邀请」区接受） |
 
-## 许可与第三方组件 License
+## 开源致谢 Open-Source Acknowledgments
 
-本插件以 **Apache License 2.0** 开源（见仓库根目录 `LICENSE`，与上游 AgentTeams 一致）。本插件依赖的第三方组件清单（含许可与用途）见包内 `THIRD-PARTY-NOTICES.md`。
+- **包内第三方组件**（three.js / 3d-force-graph / three-spritetext / fflate / lucide，含完整许可文本）：[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) / [THIRD-PARTY-NOTICES-en.md](THIRD-PARTY-NOTICES-en.md)
+- **移植代码 / 协议对接 / 设计参考**（QwenPaw、agentteams-dashboard、AgentTeams、Element 等，逐一标注来源）：[ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) / [ACKNOWLEDGMENTS-en.md](ACKNOWLEDGMENTS-en.md)
 
-This plugin is open-sourced under the Apache License 2.0 (see `LICENSE` in the repository root). See `THIRD-PARTY-NOTICES.md` in this package for the full third-party component list with licenses.
+## 许可 License
 
-> **仓库 Repo**：[LUOSENGWA/agentteams-qwenpaw-workbench](https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench)（文档 + Release 安装包；插件注册 ID 为 `agentteams-qwenpaw-workbench`）
+本插件以 **Apache License 2.0** 开源（见仓库根目录 `LICENSE`，与上游 AgentTeams 一致）。包内第三方组件（three.js / 3d-force-graph / three-spritetext / fflate / lucide）各自携带独立许可，完整文本见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+This plugin is open-sourced under the **Apache License 2.0** (see `LICENSE` in the repository root), consistent with the upstream AgentTeams project. Bundled third-party components carry their own licenses, with full texts in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+## 更新日志 Changelog
+
+版本历史：[CHANGELOG.md](CHANGELOG.md)（中文）/ [CHANGELOG-en.md](CHANGELOG-en.md)
+
+---
+
+> **仓库 Repo**：[LUOSENGWA/agentteams-qwenpaw-workbench](https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench)（源码 + Release 安装包；插件注册 ID 为 `agentteams-qwenpaw-workbench`）
