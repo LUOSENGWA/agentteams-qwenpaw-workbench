@@ -1,6 +1,12 @@
 import { WarnIcon, InfoIcon } from "./icons";
 import type * as ReactNS from "react";
-import { fetchApprovalList, setApprovalLevel } from "../api";
+import {
+  fetchApprovalList,
+  fetchWorkerApproval,
+  httpErrorStatus,
+  setApprovalLevel,
+  setWorkerApproval,
+} from "../api";
 import { useT } from "../i18n";
 
 const host = window.QwenPaw.host;
@@ -31,6 +37,12 @@ const ReloadIcon = pick("ReloadOutlined");
 // 溢出压描述 → 自适应宽度 + nowrap）
 // v0.5.0-beta.12：⑤ 删「说明（官方）」折叠块 + 官方控制台演示截图（四档卡片
 // 选择器已含官方图标+文案，说明块重复，故去掉）
+// v0.5.0-beta.13.23：数据面统一 #1216 主路径——读/写优先走 Controller
+// 审批端点（catch-all 透传：admin token 在=L1，空=Matrix access_token
+// L2 team-scoped 可读写本团队 Worker，9/16 上游已合并）；404（旧
+// Controller）→ 回退旧端点（docker 直读/PUT running-config，L1-only）。
+// 删「上游 L2 写路径 PR 合并后自动开放」过期文案；补 OFF capability
+// 静态提示（#1273：OFF 需 approval_policy，L1 固有/L2 需显式授权）。
 
 /** 官方 lucide 图标（ISC，路径逐字取自 lucide：Ban/AlertTriangle/
  * Shield/CircleCheck）——内联 SVG 避免引入 lucide-react 依赖。 */
@@ -177,29 +189,46 @@ function ApprovalControl({ workerName }: { workerName: string }) {
   const [sel, setSel] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  // L2 权限提示判定：401/403 = 无 Controller 管理员凭据（上游 docker
-  // 代理仅 L1 放行；L2 写路径待上游合并，合并前只读提示不报错）。
+  // 权限错误判定：401/403 = 凭据无效或对该 Worker 无权限。
+  // #1216 已合并（上游 9/16）：L2 可读写本团队 Worker（team-scoped）；
+  // team leader 只读→PUT 403；OFF 需 approval_policy capability
+  // (#1273)→PUT 403 透传。404=旧 Controller（无 #1216）→回退旧端点。
   const isPermError = /401|403|forbidden|unauthorized/i.test(readError);
 
   const load = React.useCallback(() => {
     setReadError("");
-    void fetchApprovalList(workerName)
+    const applyLevel = (lv: string) => {
+      setLevel(lv);
+      setSel(lv);
+    };
+    // #1216 主路径（L1/L2 统一，live 视图）；404=旧 Controller →
+    // 回退旧端点（docker 直读 agent.json，L1-only）。
+    void fetchWorkerApproval(workerName)
       .then((d) => {
-        const it = d.items.find((x) => x.agent === workerName);
-        if (it?.approval_level) {
-          setLevel(it.approval_level);
-          setSel(it.approval_level);
-        } else if (it?.error) {
-          setReadError(it.error);
-        } else {
-          setReadError(tr("该 Worker 未读到 approval_level（容器布局差异）"));
-        }
+        applyLevel(String(d.approval_level || "AUTO").toUpperCase());
       })
-      .catch((e) =>
-        setReadError(
-          e instanceof Error ? e.message : String(e),
-        ),
-      );
+      .catch((e) => {
+        if (httpErrorStatus(e) !== 404) {
+          setReadError(e instanceof Error ? e.message : String(e));
+          return;
+        }
+        void fetchApprovalList(workerName)
+          .then((d) => {
+            const it = d.items.find((x) => x.agent === workerName);
+            if (it?.approval_level) {
+              applyLevel(it.approval_level);
+            } else if (it?.error) {
+              setReadError(it.error);
+            } else {
+              setReadError(
+                tr("该 Worker 未读到 approval_level（容器布局差异）"),
+              );
+            }
+          })
+          .catch((e2) =>
+            setReadError(e2 instanceof Error ? e2.message : String(e2)),
+          );
+      });
   }, [workerName, tr]);
 
   React.useEffect(() => {
@@ -210,16 +239,29 @@ function ApprovalControl({ workerName }: { workerName: string }) {
     async (v: string) => {
       if (!v || v === level) return;
       setBusy(true);
-      try {
-        const r = await setApprovalLevel(workerName, v);
-        setLevel(r.level);
-        setSel(r.level);
+      const ok = (lv: string) => {
+        setLevel(lv);
+        setSel(lv);
         antd.message.success(
           `${tr("「{name}」工具执行安全已设为 {lv}（live 生效）", {
             name: workerName,
-            lv: APPROVAL_LABEL[r.level] || r.level,
+            lv: APPROVAL_LABEL[lv] || lv,
           })}`,
         );
+      };
+      try {
+        // #1216 主路径（L1/L2 统一；live 生效，上游回读验证）。
+        try {
+          const d = await setWorkerApproval(workerName, v);
+          ok(String(d.approval_level || v).toUpperCase());
+          return;
+        } catch (e) {
+          if (httpErrorStatus(e) !== 404) throw e; // 403/400 等 = 透传
+        }
+        // 404 = 旧 Controller（无 #1216）→ 旧端点（docker PUT
+        // running-config，L1-only）。
+        const r = await setApprovalLevel(workerName, v);
+        ok(r.level);
       } catch (e) {
         antd.message.error(
           `${tr("设置失败")}: ${e instanceof Error ? e.message : String(e)}`,
@@ -273,6 +315,18 @@ function ApprovalControl({ workerName }: { workerName: string }) {
             />
             <div
               style={{
+                marginTop: 5,
+                color: "rgba(0,0,0,0.45)",
+                fontSize: 10.5,
+                lineHeight: 1.4,
+              }}
+            >
+              {tr(
+                "OFF（关闭审批）需 approval_policy 权限：L1 管理员固有；L2 需显式授权（上游 #1273），无权限时提交返回 403",
+              )}
+            </div>
+            <div
+              style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
@@ -311,7 +365,7 @@ function ApprovalControl({ workerName }: { workerName: string }) {
             }}
           >
             {isPermError
-              ? tr("L2 账号无权限读取（需 L1 管理员凭据；上游 L2 写路径 PR 合并后自动开放）")
+              ? tr("无权限读取（401/403）——请检查身份凭据。L2 账号可读写本团队 Worker（上游 #1216，9/16 已合并）")
               : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={11} /> {readError}</span>}
           </div>
         ) : (

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>ui-harness-13.23</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+// 宿主 mock：React/antd 实例 + 空壳 API（entry 不执行 index.tsx，直接挂组件）。
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+  },
+};
+
+// fetch mock（13.23 harness）：审批端点分 worker 名分态。
+//  · #1216 主路径 GET/PUT /agentteams-proxy/controller/api/v1/workers/{name}/approval
+//      w-a1/w-a4/w-a6 GET 200；其余 GET 404（旧 Controller）
+//      w-a4 PUT 200 echo；w-a6 PUT OFF → 403 capability detail；其余 PUT 404
+//  · 旧端点 /agentteams-proxy/approval/list?agent=
+//      w-a2 → 200（STRICT，docker 直读）；其余 401（L1-only 语义）
+//  · 旧端点 /agentteams-proxy/approval/set
+//      w-a5 → 200；其余 401
+function okJson(data) {
+  const s = JSON.stringify(data);
+  return { ok: true, status: 200, text: async () => s, json: async () => data };
+}
+function errJson(status, detail) {
+  const s = JSON.stringify({ detail });
+  return { ok: false, status, text: async () => s, json: async () => ({ detail }) };
+}
+
+window.fetch = async (url, init) => {
+  const u = String(url);
+  const m = init || {};
+  const method = String(m.method || "GET").toUpperCase();
+  let bodyObj = null;
+  if (m.body) {
+    try { bodyObj = JSON.parse(typeof m.body === "string" ? m.body : "{}"); }
+    catch { bodyObj = null; }
+  }
+
+  // #1216 主路径
+  const ap = u.match(/api\/v1\/workers\/([^/]+)\/approval/);
+  if (ap) {
+    const n = decodeURIComponent(ap[1]);
+    if (method === "GET") {
+      if (n === "w-a1") return okJson({ approval_level: "AUTO" });
+      if (n === "w-a4") return okJson({ approval_level: "AUTO" });
+      if (n === "w-a6") return okJson({ approval_level: "STRICT" });
+      return errJson(404, "endpoint not found (old controller)");
+    }
+    // PUT
+    if (n === "w-a4" && bodyObj && bodyObj.approval_level) {
+      return okJson({ approval_level: bodyObj.approval_level });
+    }
+    if (n === "w-a6" && bodyObj && bodyObj.approval_level === "OFF") {
+      return errJson(403, "setting approval_level=OFF requires the approval_policy capability (L1 admin/manager pass unconditionally; L2 must be explicitly granted)");
+    }
+    return errJson(404, "endpoint not found (old controller)");
+  }
+
+  // 旧端点 list（w-a2=STRICT 验回退读；w-a5=AUTO 验纯旧 Controller 读写链）
+  if (u.includes("/approval/list")) {
+    const agent = (u.split("agent=")[1] || "").split("&")[0];
+    const fallback = {
+      "w-a2": "STRICT",
+      "w-a5": "AUTO",
+    };
+    if (fallback[agent]) {
+      return okJson({
+        items: [{ agent, container: `agentteams-worker-${agent}`, kind: "worker", state: "running", approval_level: fallback[agent], error: "" }],
+        levels: ["STRICT", "SMART", "AUTO", "OFF"],
+        source: "docker",
+      });
+    }
+    return errJson(401, "远端团队知识库需要 Controller 管理员 token（配置页填写后刷新）");
+  }
+
+  // 旧端点 set
+  if (u.includes("/approval/set") && method === "POST") {
+    if (bodyObj && bodyObj.agent === "w-a5") {
+      return okJson({ ok: true, agent: "w-a5", level: bodyObj.level, verified: bodyObj.level, source: "docker" });
+    }
+    return errJson(401, "unauthorized");
+  }
+
+  return errJson(404, "not found");
+};
+</script>
+<script src="/harness/bundle-1323.js"></script>
+</body>
+</html>

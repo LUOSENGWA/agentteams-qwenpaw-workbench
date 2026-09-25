@@ -2462,7 +2462,7 @@ function WorkerRuntimeConfig({
                 <antd.Card size="small" title={tr("系统（只读）")} style={{ marginTop: 4 }}>
                   <CfgRow
                     label={tr("审批级别")}
-                    tip={tr("approval_level——由审批端点（#1216）管理，本面板只读（PUT 会被服务端 400 拒绝）。")}
+                    tip={tr("approval_level——由审批端点（#1216）管理，本面板只读（PUT 会被服务端 400 拒绝）。编辑入口：Worker 管理展开行 / 房间成员卡的「工具执行安全」卡")}
                   >
                     <b>{String(cfg.approval_level ?? "-")}</b>
                   </CfgRow>

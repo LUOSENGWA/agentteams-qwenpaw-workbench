@@ -5,6 +5,22 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.23（2026-09-25）
+
+**审批数据面统一到上游 #1216：L2 账号开放团队内读写 / OFF 权限（#1273）显形 / 编辑入口指引**
+
+- **「工具执行安全」读写主路径切换（#1216，上游 9/16 已合并）**：
+  审批级别读/写此前只走旧端点（docker 直读 agent.json / PUT running-config，需 L1 管理员 token，L2 恒 401）；现优先走 **Controller 审批端点**（`GET/PUT /api/v1/workers/{name}/approval`，catch-all 透传：admin token 在 = L1，空 = Matrix 凭据 = **L2 team-scoped 可读写本团队 Worker**）；旧 Controller（无 #1216）404 → 自动回退旧端点（L1-only），行为兼容。
+- **删除过期权限文案**：旧提示「L2 账号无权限读取（需 L1 管理员凭据；上游 L2 写路径 PR 合并后自动开放）」的前提已不成立（#1216 已合并）→ 改为凭据/范围问题的准确提示。
+- **OFF 权限显形（上游 #1273：approval_level=OFF 门控 approval_policy capability）**：
+  四档卡下方新增静态提示——OFF 需 approval_policy 权限（L1 管理员固有；L2 需显式授权，无权限提交返回 403，错误详情透传显示）。
+- **运行配置「系统（只读）」tab 指引**：approval_level 悬停提示补「编辑入口：Worker 管理展开行 / 房间成员卡的『工具执行安全』卡」。
+- **i18n**：1,373 键 0 缺 0 重 0 空（+3 新增、1 过期键替换）
+
+**验证**：tsc 0 · vite 单文件 7,624kB（gzip ~2,151kB；0 import 语句=宿主 blob 安全）· pytest 71/71 · ui-harness-1323 14/14（主路径读/回退读/权限文案/主路径写/回退写/OFF 403 透传/旧文案回归防）· i18n 1,373 键 · 敏感扫 0（源码+dist 解码）· 版本载体 10 文件
+
+---
+
 ## 0.5.0-beta.13.22（2026-09-24）
 
 **13.21 装验反馈收口（7 件）：团队技能团队隔离（目录/分配矩阵/MCP 只管本团队）/ Mermaid 并入拓扑依赖图（第 5 视图退役）/ 团队配置弹窗收起动画 / 2D 知识图谱选点持久 / 未读徽章挂卡片头像右上角 / 子代理默认模型同款选择框 / 私聊角色改下方筛选 chips**

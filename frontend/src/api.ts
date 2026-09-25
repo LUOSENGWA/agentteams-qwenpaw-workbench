@@ -2737,6 +2737,39 @@ export async function setApprovalLevel(
   })) as ApprovalSetResult;
 }
 
+// ── #1216 Controller 审批端点（v0.5.0-beta.13.23：L1/L2 统一主路径）────
+// 走 catch-all 透传（/agentteams-proxy/controller/api/v1/...）：admin
+// token 在 → Bearer admin token（L1）；空 → Matrix access_token（L2
+// team-scoped 可读写本团队 Worker；OFF 需 approval_policy capability
+// #1273→403 透传；team leader 只读→PUT 403；跨团队→404）。
+// 旧 Controller（< 含 #1216 版本）→ 404 = 版本门控，调用方回退旧
+// /approval/list|set（docker 直读/PUT running-config，L1-only）。
+export async function fetchWorkerApproval(
+  name: string,
+): Promise<{ approval_level: string }> {
+  return (await requestJson(
+    `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(
+      name,
+    )}/approval`,
+  )) as { approval_level: string };
+}
+
+export async function setWorkerApproval(
+  name: string,
+  level: string,
+): Promise<{ approval_level: string }> {
+  return (await requestJson(
+    `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(
+      name,
+    )}/approval`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approval_level: level }),
+    },
+  )) as { approval_level: string };
+}
+
 export async function fetchRoomPowerInfo(
   roomId: string,
   userId: string,
