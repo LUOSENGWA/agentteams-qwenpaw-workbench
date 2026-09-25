@@ -19,8 +19,9 @@
  * - 仅 spec.runtime == "qwenpaw" 生效（其余 runtime → 400）。
  * - L1 全字段（除 approval_level）；L2 = 5-tab 字段白名单，未知键拒绝
  *   不静默丢弃 → 本面板可编辑键全部在 L2 白名单内，diff 按构造 L2 安全。
- * - approval_level 由审批端点（#1216）管理——本面板只读展示，PUT 发送
- *   会被服务端 400 拒绝。
+ * - approval_level 由审批端点（#1216）管理——WRC PUT 发送会被服务端 400
+ *   拒绝；「系统」tab 内嵌 ApprovalControl 就地编辑（13.24 F3 装验定案：
+ *   不再只读展示），数据面=审批端点，与 WRC 白名单互不干扰（无双写）。
  * - loop（含 custom_modes）改动成功后服务端自动通知团队 Leader。
  * - 409 = Worker 正在执行任务/配置锁定；404 = Controller 未含该端点
  *   或 L2 越权 → 占位横幅降级。
@@ -38,6 +39,7 @@
 import type * as ReactNS from "react";
 
 import { SettingsIcon } from "./icons";
+import ApprovalControl from "./ApprovalControl";
 
 import {
   requestJson,
@@ -2457,16 +2459,16 @@ function WorkerRuntimeConfig({
             },
             {
               key: "system",
-              label: tr("系统（只读）"),
+              // v0.5.0-beta.13.24（F3·装验定案）：审批级别不再只读——内嵌
+              // 与团队管理卡同源的 ApprovalControl（四档卡选择器 + 读/写
+              // 双路径回退 + L1/L2 权限 + OFF capability 提示，零新写链路）。
+              // 数据面仍走审批端点 #1216（WRC PUT 白名单本就不含
+              // approval_level，无双写）。
+              label: tr("系统"),
               children: (
-                <antd.Card size="small" title={tr("系统（只读）")} style={{ marginTop: 4 }}>
-                  <CfgRow
-                    label={tr("审批级别")}
-                    tip={tr("approval_level——由审批端点（#1216）管理，本面板只读（PUT 会被服务端 400 拒绝）。编辑入口：Worker 管理展开行 / 房间成员卡的「工具执行安全」卡")}
-                  >
-                    <b>{String(cfg.approval_level ?? "-")}</b>
-                  </CfgRow>
-                </antd.Card>
+                <div style={{ marginTop: 4 }}>
+                  <ApprovalControl workerName={name} />
+                </div>
               ),
             },
           ]}

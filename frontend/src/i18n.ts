@@ -500,6 +500,14 @@ const DICT: Record<string, { en: string }> = {
     en: "Check teams to grant/revoke. Changes stay local until you generate the command and run it on the Controller host (reconcile takes ~5 min to move the employee between team rooms). After upstream PR P-HUMANS-PUT merges, this becomes one-click save.",
   },
   "团队成员（workerMembers）——保存 = 全量替换成员列表": { en: "Team members (workerMembers) — saving replaces the whole list" },
+  // v0.5.0-beta.13.24（F6）：团队配置窗口批量改模型（leader/workers 两批）。
+  "批量设置模型（选中值直接刷到对应角色全部成员；留空 = 不改）": { en: "Batch-set model (the selected value is painted onto all members of the matching role; blank = no change)" },
+  "Leader 批（{n} 人）": { en: "Leader batch ({n})" },
+  "Workers 批（{n} 人）": { en: "Workers batch ({n})" },
+  "批量模型（选中=刷到该批全部成员）": { en: "Batch model (select = paint onto every member of this batch)" },
+  "画笔语义：选中值立即同步到对应行的「模型」（行内仍可按人精修，覆盖刷值）；调整角色/新增行不会自动补刷——对那批重新选一次即可。": {
+    en: "Paint semantics: the selected value is applied to the matching rows' model field immediately (rows can still be fine-tuned per person, overwriting the paint); changing roles / adding rows is not repainted automatically — just select that batch again.",
+  },
   "可访问团队（决定此人被拉入哪些团队房间）": { en: "Accessible teams (decides which team rooms this person is invited to)" },
   "不选任何团队 = 清空列表": { en: "Selecting no teams = clears the list" },
   "不选任何 Worker = 清空列表": { en: "Selecting no workers = clears the list" },
@@ -1589,13 +1597,10 @@ const DICT: Record<string, { en: string }> = {
   "在跑任务": { en: "Running tasks" },
   "上次运行": { en: "Last run" },
   "上次完成": { en: "Last finished" },
-  // A9 mermaid 任务 DAG 视图（13.22 F2：独立视图退役，并入拓扑依赖图样式切换）。
-  "Mermaid": { en: "Mermaid" },
-  "DAG（交互）": { en: "DAG (interactive)" },
-  "项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图可切两样式：DAG（交互，节点点看任务）/ Mermaid（上游 workflow 快照直渲染，?format=mermaid）": { en: "Four views: project list / project card / board / topology; project card and topology are a left project list + right detail (aligned with the dashboard task board Projects area); board columns share the same source as the dashboard (workflow API); the topology dependency graph switches between two styles: DAG (interactive, click node to inspect) / Mermaid (renders the upstream workflow snapshot directly, ?format=mermaid)" },
-  "Mermaid DAG（上游 workflow 快照直渲染；节点色=任务状态）": { en: "Mermaid DAG (renders the upstream workflow snapshot directly; node color = task status)" },
-  "Controller 未升级到含 mermaid 端点的版本（404）——拓扑视图不受影响": { en: "Controller not upgraded to a version with the mermaid endpoint (404) — the topology view is unaffected" },
-  "Mermaid 渲染失败": { en: "Mermaid rendering failed" },
+  // v0.5.0-beta.13.24（F5·装验定案）：DAG/Mermaid 合并——mermaid 专属键
+  // （"Mermaid" / "DAG（交互）" / Mermaid DAG / mermaid 端点 404 / 渲染失败）
+  // 随视图退役一并清除；拓扑 tooltip 更新为单一 DAG 语义。
+  "项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）": { en: "Four views: project list / project card / board / topology; project card and topology are a left project list + right detail (aligned with the dashboard task board Projects area); board columns share the same source as the dashboard (workflow API); the topology dependency graph = DAG (interactive, click node to inspect; single view since 13.24 — the Mermaid snapshot was merged and retired)" },
   // 存量缺键补齐（CrdManage/模型设置 12.2-12.3 遗留，i18n 全量核对抓出）。
   "Higress alias 自检：{n} 条路由 / 0 个可解析 alias——精确匹配（EXACT/EQUAL）且 provider 存在的路由才会进模型下拉；若路由已配仍为 0，检查模型匹配规则是否为「精确匹配」": { en: "Higress alias self-check: {n} route(s) / 0 resolvable alias(es) — only EXACT/EQUAL routes with an existing provider reach the model dropdown; if routes exist but it is still 0, check that the model matching rule is set to exact match" },
   "Higress alias 自检：{n} 条路由 / {m} 个可解析 alias（模型下拉可见）": { en: "Higress alias self-check: {n} route(s) / {m} resolvable alias(es) (visible in the model dropdown)" },
@@ -1773,6 +1778,14 @@ const DICT: Record<string, { en: string }> = {
   "基本": { en: "Basic" },
   "LLM 重试": { en: "LLM Retry" },
   "系统（只读）": { en: "System (read-only)" },
+  // v0.5.0-beta.13.24（F2/F3 补键——i18n 全量核对抓出）：
+  "系统": { en: "System" },
+  "审批端点有上游路径缺陷（502，修复待合入并重建 Controller）；该账号旧端点无权限——L1 账号可经旧端点读取": {
+    en: "The approval endpoint has an upstream path defect (502; fix pending merge and Controller rebuild) and this account cannot use the legacy endpoint — an L1 account can read via it",
+  },
+  "设置失败：当前 Controller 审批端点有上游路径缺陷（502，修复待合入并重建）；旧端点不可用——{detail}": {
+    en: "Save failed: the Controller approval endpoint has an upstream path defect (502; fix pending merge and rebuild) and the legacy endpoint is unavailable — {detail}",
+  },
   "单次任务允许的最大 LLM 迭代轮数（max_iters）。越大越能啃硬任务，越慢越贵。": {
     en: "Max LLM iterations per task (max_iters). Higher tackles harder tasks but is slower and costlier.",
   },

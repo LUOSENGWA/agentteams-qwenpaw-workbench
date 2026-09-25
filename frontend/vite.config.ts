@@ -75,7 +75,6 @@ const THIRD_PARTY_BANNER = `/*!
  * 3d-force-graph 1.80.0   - Copyright (c) 2017 Vasco Asturiano         - MIT
  * three-spritetext 1.10.0 - Copyright (c) 2018 Vasco Asturiano         - MIT
  * fflate 0.8.3            - Copyright (c) 2026 Arjun Barrett           - MIT
- * mermaid 12.0.0          - Copyright (c) 2024-2026 Mermaid contributors - MIT
  * lucide icon path data   - Copyright (c) lucide contributors          - ISC
  * Full license texts: THIRD-PARTY-NOTICES.md (shipped with this plugin).
  */`;
@@ -260,16 +259,11 @@ export default defineConfig({
       // 保留 external：源码若误写 value import，守卫让构建显式失败
       // （而不是 rollup 静默内联第二份 React → 双实例 hooks 暗病）。
       external: ["react", "react-dom"],
-      // v0.5.0-beta.13.21（A9 mermaid）：宿主 blob-URL 执行禁一切 import
-      // 语句（单文件约束）——mermaid 内部含 lazy diagram chunk，动态
-      // 导入会拆出多文件（entry 变 import 桩 → 宿主解析失败，beta.12
-      // 事故同族）→ 全部动态导入内联进单文件 dist/index.js。
-      // 代价：主包 +~1.3MB（mermaid 全量，离线可用、零网络依赖）。
-      // 注意：inlineDynamicImports 是 rollup OUTPUT 选项（放 input 层
-      // 被 Vite 5 静默忽略 → 仍拆多文件）。
-      output: {
-        inlineDynamicImports: true,
-      },
+      // 单文件约束守卫 = noModuleImportsGuard（dist 出现任何 import 语句
+      // 即构建失败）。v0.5.0-beta.13.21（A9 mermaid）曾为内联 mermaid 的
+      // lazy diagram chunk 加 output.inlineDynamicImports；13.24 随 mermaid
+      // 整体退役（装验定案 DAG/Mermaid 合并）一并移除——源码已无运行时
+      // 动态导入，守卫仍是单文件契约的兜底。
     },
   },
 });

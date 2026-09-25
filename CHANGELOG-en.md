@@ -5,6 +5,31 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.24 (2026-09-25)
+
+**13.23 install feedback, 6 items: team management first-load / manual refresh slowness (true root cause = dual-address cold window, full-chain fix) / tool-execution-security 502 (upstream missing /api prefix — plugin fallback + upstream fix branch) / approval level made editable ("System" tab in runtime config embeds the approval control) / unread bubble digits centered and always contained / DAG + Mermaid merged (mermaid dependency removed, −5.3MB; DAG centered + hover polish) / batch model editing in the team config dialog (Leader / Workers batches)**
+
+- **Team management first load stuck + manual refresh also unresponsive, needs a wait (third recurrence — true root cause)**:
+  the connector dual-address (LAN IP preferred + public domain) cold-start window — the in-process `_working_cache` resets on every container restart (i.e. every new beta install); for the first 15 s (probe delay) all requests dial the LAN IP in config order; on non-LAN networks the LAN IP's SYN is dropped → +12.3 s per request (6 s timeout × 2 retries) before failover to the public address; `/teams/structure` had **no per-request failover** at all (single address, 10 s timeout).
+  Full-chain fix: ① the structure endpoint's controller dialing now uses a multi-address failover loop (same semantics as the catch-all proxy) and marks the working address on success ② the structure matrix fallback gets the same multi-address failover + a 30 s cap ③ all connect timeouts 6 s → 3 s (bad addresses identified fast) ④ probe delay 15 s → 3 s (convergence at session start) ⑤ frontend `refreshTree` split — structure renders the tree as soon as it arrives; spawns (per-project fan-out) merge asynchronously and never block the first frame ⑥ `requestJson` supports an AbortController timeout; structure/admin fetches are capped at 30 s.
+- **Tool-execution-security "HTTP 502: worker returned an unparsable running config" (upstream bug confirmed, fixed on both ends)**:
+  the upstream Controller's `worker_approval.go` (#1216) dials the QwenPaw upstream config **without the `/api` prefix** → hits the SPA catch-all, which returns 200 + index.html → JSON parse fails → 502 unparsable (GET and PUT both affected).
+  Plugin side: read/write fallback condition 404 → **404 ∪ 502-unparsable** (legacy endpoints stay usable, no block); L2 fallback on 401 now shows a precise hint.
+  Upstream side: new branch `fix/worker-approval-api-prefix` in `SC/AgentTeams` (2-line fix + unit test, go gates green) — the primary path becomes canonical once the controller is rebuilt (official image).
+- **Runtime-config approval level is no longer read-only (user decision)**:
+  the runtime-config card gains a "System" tab embedding the **same approval control** used by Worker management / room member cards (four-level card selector + read/write dual-path fallback + L1/L2 permission semantics + OFF capability hint — fully reused, zero new links); approval_level via the WRC PUT is rejected by the server (400), so it goes through the approval endpoints — no double-write.
+- **Unread message bubble: digits centered + always contained**:
+  the antd Badge on team-overview group / DM cards is replaced by a custom `UnreadBubble` — flex-centered on both axes, min-width 16 / height 16 / padding 0 4, `>99` shown as `99+`, 1.5 px white ring (clear contrast on card backgrounds). Any digit count renders fully visible and centered.
+- **Workflow topology DAG and Mermaid merged ("they're the same thing — no need for two")**:
+  the two views were isomorphic (the Mermaid view = an upstream `?format=mermaid` snapshot render, **non-interactive**; the DAG = a self-drawn layered SVG, **click a node to inspect**) → the Mermaid view and its dependency (the mermaid library) are removed (build **−5.3MB**, single file 7,624 → 2,332 kB), keeping the DAG, now optimized: layer rows are **horizontally centered** (were left-aligned), nodes get a **hover highlight** (bolder stroke), node size 190×40 → 200×44.
+- **Batch model editing in the team config dialog ("two batches, leader/workers; per-team, not global")**:
+  the team config dialog gains a "batch-set model" section (above the member rows): a Leader batch (team_leader rows) + a Workers batch (all other rows), each with one model picker — applying a value paints every row of that role and saves through the **existing per-row diff pipeline** (PUT /workers merge semantics, changed rows only, provider untouched, blank = no change); reset when the dialog opens.
+- **i18n**: 1,376 keys, 0 missing / 0 duplicate / 0 empty
+
+**Verification**: tsc 0 · vite single-file 2,332 kB (gzip 650 kB; 0 import statements = host-blob safe) · pytest 71/71 · ui-harness-1324 20/20 (bubble centering / zero overflow / 99+ · no Mermaid residue · centered layer rows · node hover stroke · batch paint row sync + diff tag + Workers-batch independence · System-tab four-level cards editable) · i18n 1,376 keys · sensitive scan 0 (source + decoded dist)
+
+---
+
 ## 0.5.0-beta.13.23 (2026-09-25)
 
 **Approval data plane unified on upstream #1216: L2 accounts gain team-scoped read/write / OFF permission (#1273) surfaced / edit-entry pointer**

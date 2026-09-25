@@ -759,6 +759,8 @@ export default function CrdManage(props: CrdManageProps) {
     }
     // v0.5.0-beta.12：网关 alias（一次性；available=false=无 Higress Console 会话，正常）
     if (!gatewayLoaded) void loadGatewayAliases();
+    // v0.5.0-beta.13.24（F6）：批量画笔每次开弹窗复位（不跨团队残留）。
+    setCfgBatchModel({ leader: "", workers: "" });
   }, [modelOf, modelOpts, gatewayLoaded, loadGatewayAliases]);
 
   // v0.5.0-beta.13.20：齿轮入口——拓扑 TeamNode「N人」右侧 ⚙ 点按 →
@@ -794,6 +796,35 @@ export default function CrdManage(props: CrdManageProps) {
       { name: "", role: "worker", model: "", modelOrig: "" },
     ]);
   }, []);
+
+  // v0.5.0-beta.13.24（F6·装验反馈「团队配置窗口批量改模型，leader/workers 两批」）：
+  // 批量模型画笔——两把独立画笔（Leader 批 / Workers 批）。选中值即刷到对应
+  // 角色行的 model 字段（行内仍可按人精修，行 diff/橙框/校验态全复用），
+  // 落盘走既有「保存」链（updateTeam + 逐改动行 updateWorkerModel），
+  // 零新端点。留空=不刷。只刷有名字的行（新增空行选 Worker 时自动基线）。
+  const [cfgBatchModel, setCfgBatchModel] = React.useState<{
+    leader: string;
+    workers: string;
+  }>({ leader: "", workers: "" });
+  const applyCfgBatch = React.useCallback(
+    (kind: "leader" | "workers", value: string) => {
+      setCfgRows((prev) =>
+        prev.map((r) => {
+          if (!r.name.trim()) return r;
+          const isLeader = r.role === "team_leader";
+          const target = kind === "leader" ? isLeader : !isLeader;
+          return target ? { ...r, model: value } : r;
+        }),
+      );
+    },
+    [],
+  );
+  const cfgBatchLeaderCount = cfgRows.filter(
+    (r) => r.role === "team_leader" && r.name.trim(),
+  ).length;
+  const cfgBatchWorkerCount = cfgRows.filter(
+    (r) => r.role !== "team_leader" && r.name.trim(),
+  ).length;
 
   const doCfg = React.useCallback(async () => {
     if (!cfgTeam) return;
@@ -2132,6 +2163,91 @@ export default function CrdManage(props: CrdManageProps) {
               <>
                 <div style={{ fontSize: 11, color: t.textSecondary }}>
                   {tr("团队成员（workerMembers）——保存 = 全量替换成员列表")}
+                </div>
+                {/* v0.5.0-beta.13.24（F6·装验反馈「团队配置的窗口应该增加批量改模型，
+                    leader/workers 两批」）：批量模型画笔——Leader 批 / Workers 批
+                    两把独立 AutoComplete（数据源/校验态与行内模型框完全同源：
+                    modelOptions=在服∪在用∪网关 alias，validateModelValue）。
+                    选中值即刷到对应角色行的 model（行内仍可按人精修）；留空=不刷；
+                    落盘=下方「保存」的既有 diff 链（只发改动行），零新端点。 */}
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 8,
+                    padding: 8,
+                    background: t.bg,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
+                    {tr("批量设置模型（选中值直接刷到对应角色全部成员；留空 = 不改）")}
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ fontSize: 10.5, color: t.textSecondary }}>
+                        {tr("Leader 批（{n} 人）", { n: cfgBatchLeaderCount })}
+                      </div>
+                      <antd.AutoComplete
+                        size="small"
+                        style={{ width: "100%" }}
+                        placeholder={tr("批量模型（选中=刷到该批全部成员）")}
+                        options={modelOptions as { value: string }[]}
+                        value={cfgBatchModel.leader}
+                        onChange={(v: string) => {
+                          setCfgBatchModel((p) => ({ ...p, leader: v }));
+                          applyCfgBatch("leader", v);
+                        }}
+                        status={(() => {
+                          const v = cfgBatchModel.leader.trim();
+                          if (!v) return undefined;
+                          const lv = validateModelValue(v, modelCandidates).level;
+                          return lv === "error"
+                            ? "error"
+                            : lv === "warn"
+                              ? "warning"
+                              : undefined;
+                        })()}
+                      />
+                    </div>
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ fontSize: 10.5, color: t.textSecondary }}>
+                        {tr("Workers 批（{n} 人）", { n: cfgBatchWorkerCount })}
+                      </div>
+                      <antd.AutoComplete
+                        size="small"
+                        style={{ width: "100%" }}
+                        placeholder={tr("批量模型（选中=刷到该批全部成员）")}
+                        options={modelOptions as { value: string }[]}
+                        value={cfgBatchModel.workers}
+                        onChange={(v: string) => {
+                          setCfgBatchModel((p) => ({ ...p, workers: v }));
+                          applyCfgBatch("workers", v);
+                        }}
+                        status={(() => {
+                          const v = cfgBatchModel.workers.trim();
+                          if (!v) return undefined;
+                          const lv = validateModelValue(v, modelCandidates).level;
+                          return lv === "error"
+                            ? "error"
+                            : lv === "warn"
+                              ? "warning"
+                              : undefined;
+                        })()}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: t.textSecondary }}>
+                    {tr(
+                      "画笔语义：选中值立即同步到对应行的「模型」（行内仍可按人精修，覆盖刷值）；调整角色/新增行不会自动补刷——对那批重新选一次即可。",
+                    )}
+                  </div>
                 </div>
                 {/* v0.5.0-beta.12（历史缺陷：标题位置——11.7 共享头行的「模型」悬在满宽模型框上方错位，
                     标题没有落在它的框上）：删共享头，改每行行内标签

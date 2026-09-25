@@ -23,7 +23,6 @@ import {
   type DagNodeColor,
 } from "./WorkflowDag";
 import { WorkflowEventsTimeline } from "./WorkflowEventsTimeline";
-import MermaidDagView from "./MermaidDagView";
 import { TopologyIcon } from "./icons";
 
 const host = window.QwenPaw.host;
@@ -185,17 +184,17 @@ function ProjectRail(props: {
  * ① 统计条（N 任务·M 依赖·K 外部依赖——dashboard ProjectDagView 同款）
  * ② 缩放工具条（- / 百分比 / + / 复位）——宽图不裁切、细节可读
  * ③ 节点带 subagent 执行者行 + 点击 → 任务巡检 Drawer。 */
+// v0.5.0-beta.13.24（F5·装验定案「DAG 和 mermaid 没必要分两个，只需优化
+// 这个图」）：Mermaid 视图整体退役——两图同结构（mermaid=上游
+// ?format=mermaid 快照，非交互：节点点击降级提示），自绘 DAG 保交互
+// （节点点看任务）且内联依赖撤除后主包 −5.1MB。图本身优化见
+// WorkflowDag.tsx（层行居中/hover 高亮/节点尺寸）。
 function DagTopo(props: {
   ev: WorkflowEvent;
   t: ThemeColors;
   onNodeClick?: (nodeId: string) => void;
-  /** v0.5.0-beta.13.22（F2）：依赖图样式——dag=自绘分层（节点可点）/
-   *  mermaid=上游快照直渲染。缺省 dag（组件单独使用不报错）。 */
-  graphStyle?: "dag" | "mermaid";
-  onGraphStyleChange?: (m: "dag" | "mermaid") => void;
 }) {
   const { ev, t, onNodeClick } = props;
-  const graphStyle = props.graphStyle ?? "dag";
   const tr = useT();
   const dag = React.useMemo(() => buildWorkflowDag(ev.nodes ?? []), [ev]);
   const colors = dagNodeColors(t);
@@ -234,24 +233,9 @@ function DagTopo(props: {
           {dag.externalDeps.length > 0 &&
             ` · ${dag.externalDeps.length} ${tr("外部依赖")}`}
         </span>
-        {/* v0.5.0-beta.13.22（13.21 装验反馈 F2）：图样式切换——13.21 的
-            第 5 项「Mermaid」独立视图并入此处（两图同结构，不另开 tab）。
-            DAG=可交互（节点点看任务）；Mermaid=上游快照观感更优。 */}
-        {props.onGraphStyleChange ? (
-          <antd.Segmented
-            size="small"
-            value={graphStyle}
-            onChange={(v: ReactNS.Key) =>
-              props.onGraphStyleChange?.(v as "dag" | "mermaid")
-            }
-            options={[
-              { value: "dag", label: tr("DAG（交互）") },
-              { value: "mermaid", label: tr("Mermaid") },
-            ]}
-          />
-        ) : null}
+        {/* v0.5.0-beta.13.24（F5）：DAG/Mermaid 样式切换退役——两图同结构、
+            Mermaid 非交互，保单一 DAG 视图（图本身优化见 WorkflowDag.tsx）。 */}
         <span style={{ flex: 1 }} />
-        {graphStyle === "dag" ? (
         <span
           style={{
             display: "inline-flex",
@@ -315,21 +299,15 @@ function DagTopo(props: {
             +
           </button>
         </span>
-        ) : null}
       </div>
-      {graphStyle === "mermaid" ? (
-        /* v0.5.0-beta.13.22（F2）：Mermaid 样式=上游 workflow 快照直渲染
-           （404/未部署=诚实占位；渲染失败不炸页，见 MermaidDagView）。 */
-        <MermaidDagView ev={ev} />
-      ) : (
-        <div
-          style={{
-            overflow: "auto",
-            border: `1px solid ${t.border}`,
-            borderRadius: 8,
-            padding: 10,
-          }}
-        >
+      <div
+        style={{
+          overflow: "auto",
+          border: `1px solid ${t.border}`,
+          borderRadius: 8,
+          padding: 10,
+        }}
+      >
           <WorkflowDagSvg
             dag={dag}
             nodeColors={colors}
@@ -337,8 +315,7 @@ function DagTopo(props: {
             onNodeClick={onNodeClick}
             title={`${ev.title} — ${tr("项目任务依赖图")}`}
           />
-        </div>
-      )}
+      </div>
       {dag.externalDeps.length > 0 ? (
         <div style={{ marginTop: 8, fontSize: 11, color: t.textSecondary }}>
           {tr("外部依赖（非本项目）：{list}", {
@@ -1918,28 +1895,10 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
   // 未传时回退内部 "list"（组件单独使用不报错）。
   const view: WfView = viewProp ?? "list";
   const setView = (v: WfView) => onViewChange?.(v);
-  // v0.5.0-beta.13.22（13.21 装验反馈 F2）：拓扑依赖图样式切换——
-  // dag=自绘分层 DAG（节点可点看任务详情）/ mermaid=上游 workflow 快照
-  // 直渲染（?format=mermaid，观感更优）。本地持久化 wf-topo-graph-style。
-  const [topoGraphStyle, setTopoGraphStyle] = React.useState<
-    "dag" | "mermaid"
-  >(() => {
-    try {
-      return localStorage.getItem("wf-topo-graph-style") === "mermaid"
-        ? "mermaid"
-        : "dag";
-    } catch {
-      return "dag";
-    }
-  });
-  const switchTopoGraphStyle = React.useCallback((m: "dag" | "mermaid") => {
-    setTopoGraphStyle(m);
-    try {
-      localStorage.setItem("wf-topo-graph-style", m);
-    } catch {
-      /* noop */
-    }
-  }, []);
+  // v0.5.0-beta.13.24（F5·装验定案「DAG 和 mermaid 没必要分两个」）：
+  // 拓扑依赖图样式切换退役——两图同结构、Mermaid 快照非交互，保单一
+  // DAG 视图（图本身优化见 WorkflowDag.tsx）。旧 localStorage 键
+  // wf-topo-graph-style 不再读写（残留值无害）。
   /** v0.5.0-beta.12 ：排序（用户「工作流的排序要加上时间排序」）。
    * 默认时间新→旧（与聊天列表一致）；ts 数据源=api.ts projectActivityTs
    * 多源富化（此前恒 0——上游列表端点无时间戳字段）。 */
@@ -2092,7 +2051,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
           {tr("项目")}（{events.length}）
         </span>
         <antd.Tooltip
-          title={tr("项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图可切两样式：DAG（交互，节点点看任务）/ Mermaid（上游 workflow 快照直渲染，?format=mermaid）")}
+          title={tr("项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）")}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
         </antd.Tooltip>
@@ -2128,8 +2087,8 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
             {
               value: "topo",
               // v0.5.0-beta.13.12：🌳 一棵树 → DAG 拓扑图标（表依赖拓扑）。
-              // v0.5.0-beta.13.22（F2）：13.21 加的「Mermaid」第 5 项在此退役
-              // （与依赖图同结构 → 并入拓扑内样式切换，见 DagTopo）。
+              // 13.21 加的「Mermaid」第 5 项：13.22 并入拓扑内样式切换 →
+              // 13.24（F5）整体退役（两图同结构，保单一 DAG，见 DagTopo）。
               label: (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                   <TopologyIcon size={14} /> {tr("拓扑")}
@@ -2292,7 +2251,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
         )
       ) : (
         /* master-detail：左=项目列表（含 planning 项目，诚实空态），右=
-           依赖图（DagTopo 内 DAG/Mermaid 样式切换，13.22 F2）+ 干预/中断/loop。 */
+           依赖图（DagTopo 单一 DAG 视图，13.24 F5 Mermaid 退役）+ 干预/中断/loop。 */
         <div style={{ display: "grid", gridTemplateColumns: `${railW}px 6px minmax(0, 1fr)`, gap: "12px 0", alignItems: "start" }}>
           <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
           <div
@@ -2353,8 +2312,6 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
                     onNodeClick={(nodeId) =>
                       setInspect({ runId: topoEvent.runId, taskId: nodeId })
                     }
-                    graphStyle={topoGraphStyle}
-                    onGraphStyleChange={switchTopoGraphStyle}
                   />
                 ) : (
                   <div style={{ color: t.textSecondary, fontSize: 12 }}>

@@ -188,13 +188,19 @@ export interface DagLayout {
 }
 
 /** 自上而下分层布局（与 dashboard layoutProjectDag 同算法）：
- * layer 0 在顶，同层左→右。 */
+ * layer 0 在顶，同层左→右。
+ *
+ * v0.5.0-beta.13.24（F5 图优化，装验反馈「只需优化这个图」）：
+ *  ① 层行水平居中——旧版每行从 PAD 左对齐，节点少的行贴左、
+ *     整体左重右空（与 mermaid 居中行的观感差距主因）；先扫最大行
+ *     宽，各行居中，图整体视觉重心居中。
+ *  ② 节点默认 190×40 → 200×44（文字更松，subagent 行不挤）。 */
 export function layoutProjectDag(
   dag: ProjectDag,
   options: DagLayoutOptions = {},
 ): DagLayout {
-  const W = options.nodeWidth ?? 190;
-  const H = options.nodeHeight ?? 40;
+  const W = options.nodeWidth ?? 200;
+  const H = options.nodeHeight ?? 44;
   const GX = options.gapX ?? 24;
   const GY = options.gapY ?? 64;
   const PAD = options.padding ?? 12;
@@ -207,17 +213,23 @@ export function layoutProjectDag(
   }
   const layers = Array.from(byLayer.keys()).sort((a, b) => a - b);
 
+  const rowWidths = layers.map((layer) => {
+    const nodes = byLayer.get(layer) ?? [];
+    return nodes.length * W + Math.max(0, nodes.length - 1) * GX;
+  });
+  const maxRowW = rowWidths.length > 0 ? Math.max(...rowWidths) : 0;
+
   const positions = new Map<string, { x: number; y: number }>();
   let width = 0;
   const height = layers.length > 0 ? layers.length * GY + H : H;
   layers.forEach((layer, i) => {
     const nodes = byLayer.get(layer) ?? [];
-    let x = PAD;
+    let x = PAD + (maxRowW - rowWidths[i]) / 2;
     for (const n of nodes) {
       positions.set(n.id, { x, y: i * GY + 8 });
       x += W + GX;
     }
-    width = Math.max(width, x - GX + PAD);
+    width = Math.max(width, maxRowW + 2 * PAD);
   });
   return { width, height, positions };
 }
@@ -246,8 +258,8 @@ export function WorkflowDagSvg(props: {
   const {
     dag,
     nodeColors,
-    nodeWidth = 190,
-    nodeHeight = 40,
+    nodeWidth = 200,
+    nodeHeight = 44,
     gapY = 64,
     scale = 1,
     onNodeClick,
@@ -256,6 +268,10 @@ export function WorkflowDagSvg(props: {
   const H = nodeHeight;
   const GY = gapY;
   const tr = useT();
+
+  // v0.5.0-beta.13.24（F5 图优化）：hover 高亮——旧版节点无 hover 反馈，
+  // 看不出可点；悬停加粗描边 + 阴影提示交互（仅可点模式启用）。
+  const [hoverId, setHoverId] = React.useState<string | null>(null);
 
   // 每实例唯一 marker id（同页可能渲染多个 DAG，共享 document id 会让
   // url(#...) 恒指向第一个实例——dashboard 同款注释）。
@@ -316,10 +332,17 @@ export function WorkflowDagSvg(props: {
         // ~14 个 CJK 字形在 11px 下放得进默认 190px 节点宽。
         const label = n.title.length > 14 ? `${n.title.slice(0, 14)}…` : n.title;
         const sub = n.subagent ? (n.subagent.length > 16 ? `${n.subagent.slice(0, 16)}…` : n.subagent) : null;
+        const hovered = hoverId === n.id;
         return (
           <g
             key={n.id}
             onClick={onNodeClick ? () => onNodeClick(n.id) : undefined}
+            onMouseEnter={onNodeClick ? () => setHoverId(n.id) : undefined}
+            onMouseLeave={
+              onNodeClick
+                ? () => setHoverId((prev) => (prev === n.id ? null : prev))
+                : undefined
+            }
             style={onNodeClick ? { cursor: "pointer" } : undefined}
           >
             <title>{sub ? `${n.title} — ${n.subagent}` : n.title}</title>
@@ -331,8 +354,12 @@ export function WorkflowDagSvg(props: {
               rx={7}
               fill={colors.fill}
               stroke={n.ready ? "#22d3ee" : colors.stroke}
-              strokeWidth={n.ready ? 1.8 : 1}
+              strokeWidth={hovered ? 2 : n.ready ? 1.8 : 1}
               strokeDasharray={n.ready ? "5 3" : undefined}
+              style={{
+                transition: "stroke-width .12s",
+                filter: hovered ? "drop-shadow(0 0 4px rgba(0,0,0,0.35))" : undefined,
+              }}
             />
             {n.ready ? (
               <circle cx={p.x + 10} cy={p.y + H / 2} r={3} fill="#22d3ee" />

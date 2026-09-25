@@ -5,6 +5,31 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.13.24（2026-09-25）
+
+**13.23 装验反馈 6 件：团队管理首刷/手动刷新慢（真根因=双地址冷窗口，全链修）/ 工具执行安全 502（上游缺 /api 前缀，插件回退缓解 + 上游修复支）/ 审批级别改可编辑（运行配置「系统」tab 内嵌审批控制）/ 未读气泡数字居中且永不含住外 / DAG 与 Mermaid 合并（撤 mermaid 依赖 −5.3MB，DAG 居中+hover 优化）/ 配置团队窗口批量改模型（Leader/Workers 两批）**
+
+- **团队管理首刷不出 + 手动刷新也不行，要等一会（第三次复发的真根因）**：
+  连接器双地址（LAN IP 优先 + 公网域名）冷启动窗口——进程内存 `_working_cache` 每次容器重启（即每次装新 beta）清零，前 15s 探针延迟内请求全按配置顺序拨 LAN IP；非 LAN 网络下 LAN IP 的 SYN 被丢弃 → 每请求 +12.3s（6s 超时×2 重试）才 failover 公网；`/teams/structure` 更是**无 per-request failover**（单地址 10s 超时）。
+  全链修：① structure 端点 controller 拨号改多地址 failover 循环（同 catch-all 代理语义）+ 成功即标记 working 地址 ② structure 的 matrix 回退同样多地址 failover + 30s 上限 ③ 全部 connect 超时 6s→3s（坏地址快速识破）④ 探针延迟 15s→3s（会话启动即收敛）⑤ 前端 `refreshTree` 拆分——structure 先到先渲染树，spawns（多项目扇出）异步合并不拖累首帧 ⑥ `requestJson` 支持 AbortController 超时，structure/admin 取数 30s 封顶。
+- **工具执行安全「HTTP 502: worker returned an unparsable running config」（上游 bug 定案 + 双端修）**：
+  上游 Controller `worker_approval.go`（#1216）拨 QwenPaw 上游配置**漏 `/api` 前缀** → 命中 SPA catch-all 返回 200 + index.html → JSON 解析失败 → 502 unparsable（GET/PUT 同中）。
+  插件侧：读/写回退条件 404 → **404 ∪ 502-unparsable**（旧端点继续可用，不阻塞）；L2 回退 401 时给精确提示。
+  上游侧：`SC/AgentTeams` 新支 `fix/worker-approval-api-prefix`（2 行修复 + 单测，go 门绿）——重建 Controller（官方镜像）后主路径转正。
+- **运行配置「审批级别」不再只读（装验定案）**：
+  运行配置卡新增「系统」tab，内嵌与 Worker 管理/房间成员卡**同源的审批控制**（四档卡选择器 + 读/写双路径回退 + L1/L2 权限语义 + OFF capability 提示，全复用零新链路）；approval_level 经 WRC PUT 会被服务端 400 拒绝，改走审批端点，无双写。
+- **未读消息气泡：数字居中 + 永不含住外**：
+  团队总览群卡/私聊卡的 antd Badge 替换为自绘 `UnreadBubble`——flex 双轴居中、min-width 16/height 16/内边距 0 4、`>99` 显示 `99+`、1.5px 白描边环（卡片底色上对比清晰）。任何位数数字都完整可见且居中。
+- **工作流拓扑 DAG 与 Mermaid 合并（「是差不多的东西，没必要分两个」）**：
+  两图同构（Mermaid 视图=上游 `?format=mermaid` 快照渲染，**无交互**；DAG=自绘分层 SVG，**可点节点巡检**）→ 撤 Mermaid 视图与其依赖（mermaid 库，构建 **−5.3MB**，单文件 7,624→2,332kB），保 DAG 并优化：层行**水平居中**（原左对齐）、节点 **hover 高亮**（描边加粗）、节点 190×40→200×44。
+- **配置团队窗口批量改模型（「leader/workers 两批，按团队改不是全改」）**：
+  配置团队弹窗新增「批量设置模型」区（成员行上方）：Leader 批（team_leader 行）+ Workers 批（其余行），各一个模型选择框——刷值即同步到对应角色每一行，走**既有逐行 diff 保存链路**（PUT /workers 合并语义，只发改动，provider 不动，留空=不改）；打开弹窗时重置。
+- **i18n**：1,376 键 0 缺 0 重 0 空
+
+**验证**：tsc 0 · vite 单文件 2,332kB（gzip 650kB；0 import 语句=宿主 blob 安全）· pytest 71/71 · ui-harness-1324 20/20（气泡居中/零溢出/99+ · 无 Mermaid 残留 · 层行居中 · 节点 hover 加粗 · 批量刷值行内同步+diff 标+Workers 批独立 · 系统 tab 四档卡可编辑）· i18n 1,376 键 · 敏感扫 0（源码+dist 解码）
+
+---
+
 ## 0.5.0-beta.13.23（2026-09-25）
 
 **审批数据面统一到上游 #1216：L2 账号开放团队内读写 / OFF 权限（#1273）显形 / 编辑入口指引**

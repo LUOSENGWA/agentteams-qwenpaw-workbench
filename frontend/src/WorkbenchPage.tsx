@@ -42,6 +42,7 @@ import {
   type ProbeDiag,
   type RoomMessage,
   type SelfCheckResult,
+  type SpawnNode,
   type TeamRoom,
   type InviteRoom,
   type WorkbenchConfig,
@@ -1725,34 +1726,69 @@ export default function WorkbenchPage() {
   // miss 重拉才"活"。force 语义：用户意图（手动钮/切 tab/登录/mount）
   // 一律 force=true 绕过缓存；仅 30s 后台 tick 走缓存（silent=true 且不
   // 显式 force）保护 Controller。
-  const refreshTree = React.useCallback(
-    async (silent = false, force?: boolean) => {
-      const useForce = force ?? !silent;
-      if (!silent) setSpawnLoading(true);
-      try {
-        const [payload, spawns] = await Promise.all([
-          fetchTeamsStructure(useForce),
-          fetchWorkerSpawns(),
-        ]);
-      setTreeSource(payload.source);
-      if (spawns.apiOk) {
-        const tree = payload.tree.map((team) => ({
+  // v0.5.0-beta.13.24（F1 首刷 race·前端半）：structure 与 spawn 拆分——
+  // 旧 Promise.all 让整棵树等 20 项目 spawn 扇出（冷窗每请求 +6s，最坏
+  // +2min）：团队管理「一开始刷不出、手动也不行」。现 structure 一到即
+  // 渲染树（携带旧 spawns 值防闪烁），spawn 异步合并（in-flight 闸防
+  // 30s tick 重叠双拉）；树首帧不再被 spawn 拖累。
+  const spawnsInFlightRef = React.useRef(false);
+  const loadSpawns = React.useCallback(async () => {
+    if (spawnsInFlightRef.current) return;
+    spawnsInFlightRef.current = true;
+    try {
+      const spawns = await fetchWorkerSpawns();
+      if (!spawns.apiOk) return;
+      setWorkerTree((prev) => {
+        if (!prev) return prev;
+        const tree = prev.map((team) => ({
           ...team,
           workers: team.workers.map((w) => ({
             ...w,
             spawns: spawns.byWorker[w.worker_name] || [],
           })),
         }));
-        setWorkerTree((prev) => (JSON.stringify(prev) === JSON.stringify(tree) ? prev : tree));
-      } else {
-        setWorkerTree((prev) => (JSON.stringify(prev) === JSON.stringify(payload.tree) ? prev : payload.tree));
-      }
-    } catch (e) {
-      if (!silent) message.error(e instanceof Error ? e.message : tr("获取团队结构失败"));
+        return JSON.stringify(tree) === JSON.stringify(prev) ? prev : tree;
+      });
+    } catch {
+      /* spawn 失败 = 树保持无 spawn 占位（旧语义），不炸主流程 */
     } finally {
-      if (!silent) setSpawnLoading(false);
+      spawnsInFlightRef.current = false;
     }
   }, []);
+
+  const refreshTree = React.useCallback(
+    async (silent = false, force?: boolean) => {
+      const useForce = force ?? !silent;
+      if (!silent) setSpawnLoading(true);
+      try {
+        const payload = await fetchTeamsStructure(useForce);
+        setTreeSource(payload.source);
+        // 结构先到先渲染；每 (team, worker) 携带旧 spawns（新扇出回来前
+        // spawn chip 不闪空），无旧值（新增 Worker/首载）= 空。
+        setWorkerTree((prev) => {
+          const prevByName = new Map<string, { spawns?: SpawnNode[] }>();
+          for (const t of prev || [])
+            for (const w of t.workers) prevByName.set(w.worker_name, w);
+          const tree = payload.tree.map((team) => ({
+            ...team,
+            workers: team.workers.map((w) => ({
+              ...w,
+              spawns: prevByName.get(w.worker_name)?.spawns || [],
+            })),
+          }));
+          return JSON.stringify(tree) === JSON.stringify(prev)
+            ? prev
+            : tree;
+        });
+        void loadSpawns();
+      } catch (e) {
+        if (!silent) message.error(e instanceof Error ? e.message : tr("获取团队结构失败"));
+      } finally {
+        if (!silent) setSpawnLoading(false);
+      }
+    },
+    [loadSpawns, tr],
+  );
 
   React.useEffect(() => {
     // 缓存即时显示（页面重开不空白），后台静默刷新。

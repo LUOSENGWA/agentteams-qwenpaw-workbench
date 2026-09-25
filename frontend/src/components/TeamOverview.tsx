@@ -46,8 +46,8 @@ function memberShortName(mxid: string, member?: TeamMember): string {
 
 /** v0.5.0-beta.13.22（13.21 装验反馈 F5「未读气泡改到卡片头像右上角」）：
  *  原实现=名称行内灰色胶囊（占宽、挤名字）。改为返回徽章参数，由卡片
- *  头像外层 antd.Badge 渲染（头像右上角，Element 同款）。
- *  红=highlight（@我/提及），灰=普通未读；都 0 = null（不显徽章）。 */
+ *  头像外层 UnreadBubble 渲染（头像右上角，Element 同款；13.24 F4 自绘
+ *  居中+含住）。红=highlight（@我/提及），灰=普通未读；都 0 = null。 */
 function unreadBadgeOf(
   room: TeamRoom,
 ): { count: number; color: string } | null {
@@ -56,6 +56,44 @@ function unreadBadgeOf(
   if (hl > 0) return { count: hl, color: "#f5222d" };
   if (un > 0) return { count: un, color: "#bfbfbf" };
   return null;
+}
+
+/** v0.5.0-beta.13.24（F4·装验定案：「数字应居中且不超过气泡」）：自绘
+ * 未读气泡替代 antd.Badge——antd 默认胶囊在窄字宽/自定义色下数字偏心
+ * 且 3 位数+overflowCount 时溢出气泡边缘。本组件 flex 双向居中 +
+ * min-width 16/padding 0 4（气泡随内容长宽自适应，永不溢出）+ 1.5px
+ * 白描边环（卡片底色上对比清晰，Element 同款观感）。
+ * 用法：头像外套 <div style={{position:"relative"}}>，气泡 absolute
+ * 挂右上角（top:-6/right:-6，13.21 定案的头像角标位置语义）。 */
+function UnreadBubble({ count, color }: { count: number; color: string }) {
+  const label = count > 99 ? "99+" : String(count);
+  return (
+    <span
+      style={{
+        position: "absolute",
+        top: -6,
+        right: -6,
+        minWidth: 16,
+        height: 16,
+        padding: "0 4px",
+        boxSizing: "border-box",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 8,
+        backgroundColor: color,
+        border: "1.5px solid rgba(255,255,255,0.92)",
+        fontSize: 10,
+        lineHeight: 1,
+        fontWeight: 600,
+        color: "#fff",
+        whiteSpace: "nowrap",
+        pointerEvents: "none",
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 /* v0.5.0-beta.12（A8c-b，dashboard 对齐：房间卡最后消息正文预览）。
@@ -125,13 +163,13 @@ function GroupCard({
               <UsersIcon size={16} />
             </antd.Avatar>
           );
+          // v0.5.0-beta.13.24（F4）：自绘 UnreadBubble（居中+含住+白描边环）。
           const ub = unreadBadgeOf(room);
-          return ub ? (
-            <antd.Badge count={ub.count} overflowCount={99} color={ub.color} style={{ lineHeight: 0 }} offset={[-2, 2]}>
+          return (
+            <div style={{ position: "relative", flexShrink: 0, lineHeight: 0 }}>
               {avatar}
-            </antd.Badge>
-          ) : (
-            avatar
+              {ub ? <UnreadBubble count={ub.count} color={ub.color} /> : null}
+            </div>
           );
         })()}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -384,13 +422,13 @@ function DmCard({
             {otherName.slice(0, 1).toUpperCase()}
           </MxcAvatar>
         );
+        // v0.5.0-beta.13.24（F4）：自绘 UnreadBubble（居中+含住+白描边环）。
         const ub = unreadBadgeOf(room);
-        return ub ? (
-          <antd.Badge count={ub.count} overflowCount={99} color={ub.color} style={{ lineHeight: 0 }} offset={[-2, 2]}>
+        return (
+          <div style={{ position: "relative", flexShrink: 0, lineHeight: 0 }}>
             {avatar}
-          </antd.Badge>
-        ) : (
-          avatar
+            {ub ? <UnreadBubble count={ub.count} color={ub.color} /> : null}
+          </div>
         );
       })()}
       <div style={{ flex: 1, minWidth: 0 }}>

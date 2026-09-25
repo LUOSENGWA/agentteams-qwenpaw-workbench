@@ -1,20 +1,59 @@
-/** Same-origin fetch helper: prefers host.fetch, falls back to getApiUrl. */
+/** Same-origin fetch helper: prefers host.fetch, falls back to getApiUrl.
+ *
+ * v0.5.0-beta.13.24（F1 首刷 race）：`timeoutMs` 可选超时（AbortController）
+ * ——旧版裸 fetch 无超时上限，后端冷窗（切网 failover / 探针收敛前）或
+ * Controller 抖动时请求可挂起数分钟，前端恒转圈且刷新钮被 loading 禁用
+ * （「手动也不行」）。超时抛「请求超时」错误（非 HTTP xxx 形态，调用方
+ * toast 后可手动重试）；不传 = 原行为（SSE/长轮询等端点不受影响）。 */
 export async function requestJson(
   path: string,
   init?: RequestInit,
+  timeoutMs?: number,
 ): Promise<unknown> {
   const host = window.QwenPaw.host;
-  const response = host.fetch
-    ? await host.fetch(path, init)
-    : await fetch(host.getApiUrl(path), {
-        ...init,
-        headers: {
-          ...(init?.headers || {}),
-          ...(host.getApiToken()
-            ? { Authorization: `Bearer ${host.getApiToken()}` }
-            : {}),
-        },
-      });
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let response: Response;
+  try {
+    if (timeoutMs && timeoutMs > 0) {
+      const ctrl = new AbortController();
+      timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const merged: RequestInit = { ...init, signal: ctrl.signal };
+      response = host.fetch
+        ? await host.fetch(path, merged)
+        : await fetch(host.getApiUrl(path), {
+            ...merged,
+            headers: {
+              ...(init?.headers || {}),
+              ...(host.getApiToken()
+                ? { Authorization: `Bearer ${host.getApiToken()}` }
+                : {}),
+            },
+          });
+    } else {
+      response = host.fetch
+        ? await host.fetch(path, init)
+        : await fetch(host.getApiUrl(path), {
+            ...init,
+            headers: {
+              ...(init?.headers || {}),
+              ...(host.getApiToken()
+                ? { Authorization: `Bearer ${host.getApiToken()}` }
+                : {}),
+            },
+          });
+    }
+  } catch (e) {
+    if (timer) clearTimeout(timer);
+    const aborted =
+      e instanceof DOMException && e.name === "AbortError";
+    if (aborted) {
+      throw new Error(
+        `请求超时（${Math.round((timeoutMs || 0) / 1000)}s）——网络或后端冷启动中，稍后点刷新重试`,
+      );
+    }
+    throw e;
+  }
+  if (timer) clearTimeout(timer);
   const content = await response.text();
   let payload: unknown = null;
   try {
@@ -1049,41 +1088,10 @@ export async function fetchWorkflowProjects(): Promise<{
   }
 }
 
-/** v0.5.0-beta.13.21（A9 mermaid 任务 DAG）：`GET /api/v1/projects/{id}/workflow?format=mermaid`
- *  （上游 #1230 已合 main——纯渲染同一 workflow 快照，flowchart LR + 状态
- *  classDef，标签已在上游 sanitize，可直接交给 mermaid 渲染）。
- *  返回 mermaid 源码文本；null = Controller 未含该端点（404，版本门）。 */
-export async function fetchWorkflowMermaid(
-  projectId: string,
-  teamId?: string,
-): Promise<string | null> {
-  const teamQ =
-    teamId ? `&team=${encodeURIComponent(teamId)}` : "";
-  try {
-    const host = window.QwenPaw.host;
-    const response = host.fetch
-      ? await host.fetch(
-          `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?format=mermaid${teamQ}`,
-        )
-      : await fetch(
-          host.getApiUrl(
-            `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?format=mermaid${teamQ}`,
-          ),
-          {
-            headers: host.getApiToken()
-              ? { Authorization: `Bearer ${host.getApiToken()}` }
-              : {},
-          },
-        );
-    if (response.status === 404) return null; // 版本门：端点未部署
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const text = await response.text();
-    return text && text.trim() ? text : null;
-  } catch (e) {
-    if (httpErrorStatus(e) === 404) return null;
-    throw e; // 其余错误由调用方显式 surface（不当静默空图）
-  }
-}
+// v0.5.0-beta.13.24（F5·装验定案「DAG 和 mermaid 没必要分两个」）：
+// fetchWorkflowMermaid（13.21 A9 引入）与 MermaidDagView 一并退役——
+// 两图同结构、快照非交互，自绘 DAG 保留（交互）且撤 mermaid 内联依赖
+// 主包 −5.1MB。上游 `?format=mermaid` 端点仍在（#1230），插件不再消费。
 
 /** RFC3339（controller updated_at）→ epoch ms；缺省/非法 → 0（fmtTime(0) 渲染空）。 */
 function isoToMs(v: unknown): number {
@@ -1510,8 +1518,13 @@ export interface AdminData {
 async function fetchControllerJson<T>(path: string): Promise<T> {
   // 调用方传 "/workers" 时模板拼接会产生 /api/v1//workers 双斜杠，
   // uvicorn 对双斜杠 301——strip 前导斜杠根治。
+  // v0.5.0-beta.13.24（F1）：30s 封顶（冷窗后端已 ≤~6s；超时显形可重试）。
   const clean = path.replace(/^\/+/, "");
-  return (await requestJson(`/agentteams-proxy/controller/api/v1/${clean}`)) as T;
+  return (await requestJson(
+    `/agentteams-proxy/controller/api/v1/${clean}`,
+    undefined,
+    30000,
+  )) as T;
 }
 
 /** Controller POST（wake/sleep 等生命周期操作）。 */
@@ -2083,8 +2096,12 @@ export interface WorkerTreeTeam {
 export async function fetchTeamsStructure(
   force = false,
 ): Promise<{ ok: boolean; tree: WorkerTreeTeam[]; source: string }> {
+  // v0.5.0-beta.13.24（F1）：30s 封顶——冷窗后端已 ≤~6s（connect 3s failover
+  // + 探针 3s 收敛），30s 未回 = 真故障，显形可重试优于恒转圈。
   return (await requestJson(
     `/agentteams-proxy/teams/structure${force ? "?force=true" : ""}`,
+    undefined,
+    30000,
   )) as { ok: boolean; tree: WorkerTreeTeam[]; source: string };
 }
 
