@@ -96,7 +96,7 @@ function UnreadBubble({ count, color }: { count: number; color: string }) {
   );
 }
 
-/* v0.5.0-beta.12（A8c-b，dashboard 对齐：房间卡最后消息正文预览）。
+/* v0.5.0-beta.12（dashboard 对齐：房间卡最后消息正文预览）。
    72 字截断 + 媒体标记（图片 🖼 / 文件 📎，按扩展名判定；后端 last_body
    已含 m.image/m.file 的 body=文件名）。 */
 const MEDIA_IMG_RE = /\.(png|jpe?g|gif|webp|heic|bmp|svg)$/i;
@@ -284,7 +284,7 @@ function GroupCard({
               {room.member_count} 人 {membersOpen ? "▴" : "▾"}
             </antd.Tag>
           </div>
-          {/* v0.5.0-beta.12（A8c-b）：最后消息正文预览（72 字 + 媒体标记）。 */}
+          {/* v0.5.0-beta.12：最后消息正文预览（72 字 + 媒体标记）。 */}
           {(() => {
             const p = lastBodyPreview(room.last_body);
             return p ? (
@@ -685,7 +685,7 @@ export interface TeamOverviewProps {
   workerMxids?: Set<string>;
   /** v0.5.0-beta.13.14：房间 room_id → 该项目名列表（房间卡名称下显示）。 */
   roomProjectNames?: Record<string, string[]>;
-  /** v0.5.0-beta.13.21（A8c 侧栏角色分组）：MXID → 角色标签
+  /** v0.5.0-beta.13.21（侧栏角色分组）：MXID → 角色标签
    *  （Leader/Worker/Manager）——「私聊」视图按对象角色分区显示；
    *  无此 prop 或查不到角色时退回扁平列表（人类 DM 归「其他」）。 */
   workerRoleByMxid?: Record<string, string>;
@@ -821,7 +821,7 @@ export default function TeamOverview(props: TeamOverviewProps) {
   const groups = sortRooms(mainRooms.filter((r) => (r.member_count ?? 0) > 2));
   const dms = sortRooms(mainRooms.filter((r) => (r.member_count ?? 0) <= 2));
   const allByRecent = sortRooms(mainRooms);
-  // v0.5.0-beta.13.21（A8c 侧栏角色分组）：私聊视图按对象角色分区
+  // v0.5.0-beta.13.21（侧栏角色分组）：私聊视图按对象角色分区
   // （Leader/Worker/Manager/其他，组内仍按 roomSort 序）。仅当提供了
   // 角色映射时启用——无 L1 管理数据时自动退回扁平列表。
   const dmOtherMxid = (r: TeamRoom): string | null => {

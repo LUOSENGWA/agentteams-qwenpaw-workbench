@@ -1243,8 +1243,8 @@ def build_router() -> APIRouter:
                                 "is_self": str(w.get("matrixUserID") or "") == user_id,
                                 "phase": str(w.get("phase") or ""),
                                 # v0.5.0-beta.12：roomID=Worker 个人房间
-                                # （A8a-fix 私聊直跳，Worker 容器不能接受邀请，
-                                # 新建 DM 是死路）；runtime=CR 字段（A8b 徽章，
+                                # （私聊直跳，Worker 容器不能接受邀请，
+                                # 新建 DM 是死路）；runtime=CR 字段（runtime 徽章，
                                 # 实锤：早期版本映射漏取，前端恒空）。
                                 "room_id": str(w.get("roomID") or ""),
                                 "runtime": str(w.get("runtime") or ""),

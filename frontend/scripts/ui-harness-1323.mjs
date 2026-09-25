@@ -6,7 +6,7 @@
  *  A2  #1216 404 + 旧端点 200 → 回退读成功（docker 直读）
  *  A3  #1216 404 + 旧端点 401 → 新权限文案（删过期前提回归防）
  *  A4  apply #1216 PUT 200 → 成功 toast + 级别更新
- *  A5  apply #1216 404 + 旧端点 200 → 回退写成功
+ *  apply #1216 404 + 旧端点 200 → 回退写成功
  *  A6  apply OFF #1216 403（approval_policy #1273）→ 错误透传 detail
  *
  * 运行：python3 -m http.server 8793 &  node scripts/ui-harness-1323.mjs
@@ -108,11 +108,11 @@ report(
   "",
 );
 
-// ── A5：apply #1216 404 → 旧端点回退写（SMART）─────────────────────
+// ── apply #1216 404 → 旧端点回退写（SMART）─────────────────────
 await pickCard("#a5", "智能模式");
 await page.waitForTimeout(150);
 const a5btn = page.locator("#a5 button", { hasText: "智能模式" });
-report("A5 选智能后出现「应用」按钮", (await a5btn.count()) === 1, `count=${await a5btn.count()}`);
+report("选智能后出现「应用」按钮", (await a5btn.count()) === 1, `count=${await a5btn.count()}`);
 await a5btn.first().click();
 await page.waitForFunction(
   () => document.body.innerText.includes("w-a5"),
@@ -121,7 +121,7 @@ await page.waitForFunction(
 );
 const a5 = await page.locator("#a5").innerText();
 report(
-  "A5 回退写成功（toast + 当前模式更新为智能）",
+  "回退写成功（toast + 当前模式更新为智能）",
   (await page.evaluate(() => document.body.innerText)).includes("工具执行安全已设为 智能") &&
     a5.includes("当前模式: 智能（SMART）"),
   "",

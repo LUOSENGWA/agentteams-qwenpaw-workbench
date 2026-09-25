@@ -2149,7 +2149,7 @@ export default function WorkbenchPage() {
     return map;
   }, [workerTree]);
 
-  // v0.5.0-beta.12（A8b）：room_id → Worker phase/runtime 徽章（聊天头注入）。
+  // v0.5.0-beta.12：room_id → Worker phase/runtime 徽章（聊天头注入）。
   // 数据 = Worker CR 字段：admin 数据优先（全量），tree 兜底（L2/未配 token）。
   const workerBadgeMap = React.useMemo(() => {
     const map: Record<string, { phase?: string; runtime?: string }> = {};
@@ -3194,7 +3194,7 @@ export default function WorkbenchPage() {
     return m;
   }, [rooms, workflowEvents]);
 
-  // v0.5.0-beta.13.21（A8c 侧栏角色分组）：MXID → 角色标签（Leader/
+  // v0.5.0-beta.13.21（侧栏角色分组）：MXID → 角色标签（Leader/
   // Worker/Manager）。WorkerInfo 自带 role（team_leader→Leader，余→
   // Worker）；Manager 单独归 Manager 类。无 L1 管理数据 → undefined →
   // TeamOverview 自动退回扁平列表。

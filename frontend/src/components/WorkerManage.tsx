@@ -524,7 +524,7 @@ function WorkerRow({
   const [expanded, setExpanded] = React.useState(false);
   const spawns = group.spawns || [];
   const hasRunning = spawns.some((s) => s.status === "running");
-  /* v0.5.0-beta.12（A8b）：admin 数据未加载（L2/未配 token）时回退 tree 数据
+  /* v0.5.0-beta.12：admin 数据未加载（L2/未配 token）时回退 tree 数据
      的 phase/runtime（后端 team-structure 已透传，零新请求）。 */
   const phase = adminWorker?.phase || group.phase || "";
   const rowRuntime = adminWorker?.runtime || group.runtime || "";
@@ -586,7 +586,7 @@ function WorkerRow({
         {/* v0.5.0-beta.12（用户反馈：不圈在一起——模型/运行时各一个
             标签，颜色区分，参考 dashboard RuntimeBadge）：模型=蓝、
             运行时=按运行时着色（RUNTIME_TAG_COLOR），版本=灰小字+悬停全量。
-            /A8b 数据源不变：WorkerInfo.runtime/version，未加载回退 tree
+            / 数据源不变：WorkerInfo.runtime/version，未加载回退 tree
             group.runtime。 */}
         {adminWorker?.model ? (
           <antd.Tag
@@ -1135,9 +1135,9 @@ function HumanTable({ humans }: { humans: AdminData["humans"] }) {
 /** v0.5.0-beta.12：Manager 模型选择——与 CrdManage 三入口同一候选并集
  * （SGLang 在服 ∪ 在用 ∪ 网关 alias，../modelUnion）+ 同一写前校验。
  * 写路径 = PUT /managers/{name} {model}（Controller 合并语义，provider 不动）。
- * 面板 hasToken 门控（L1 only）——L2 结构上不可达（A12 插件侧零改动）。 */
+ * 面板 hasToken 门控（L1 only）——L2 结构上不可达（插件侧零改动）。 */
 /** v0.5.0-beta.12：Manager 详情面板（表格展开行）——image/version/个人房间
-    + 私聊直跳（roomID，A8a-fix 同款逻辑）+ L1 日志（docker-logs 既有代理，
+    + 私聊直跳（roomID，同款逻辑）+ L1 日志（docker-logs 既有代理，
     零新端点）。wake/sleep = dashboard/插件两端都没有（轮 3 实锤），不做。 */
 function ManagerDetail({
   mgr,
@@ -1453,7 +1453,7 @@ export interface WorkerManageProps {
   onRefreshTree?: (silent?: boolean) => void;
   onRefreshAdmin?: (silent?: boolean) => void;
   /** 点击 Worker 的"私聊"按钮 → 优先直跳 Worker 个人房间（roomId=CR roomID），
-   * 无 roomId 才 fallback 新建 DM。v0.5.0-beta.12 A8a-fix。 */
+   * 无 roomId 才 fallback 新建 DM。v0.5.0-beta.12。 */
   onDm?: (mxid: string, roomId?: string) => void;
   /** 是否已配置 Controller 管理员 token（决定管理信息面板/三表是否可用）。 */
   hasToken?: boolean;

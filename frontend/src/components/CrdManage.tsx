@@ -940,7 +940,7 @@ export default function CrdManage(props: CrdManageProps) {
     void proceedCfg();
   }, [cfgTeam, cfg, cfgRows, workerNames, onRefresh, tr, modelCandidates]);
 
-  // v0.5.0-beta.13.21（A10 undo）：删团队前快照 → 删除成功后 6s「撤销」
+  // v0.5.0-beta.13.21（undo）：删团队前快照 → 删除成功后 6s「撤销」
   // toast → 点撤销按快照重建（createTeam 原字段回写）。诚实语义=重建
   // 非恢复：Matrix 房间历史/容器状态不随 CRD 回来（上游删除是破坏性的），
   // toast 文案明示。workerMembers 只含引用（name/role），Worker CR 本体

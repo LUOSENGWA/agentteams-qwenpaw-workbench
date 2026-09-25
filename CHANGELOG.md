@@ -105,10 +105,10 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
   ② 弹窗内嵌**团队技能节**=技能中心同款组件 onlyTeam 模式（目录搜索/上传/自定义新建/下载 + 成员分配矩阵 + MCP 卡；保存走技能中心原端点，与弹窗「保存」按钮互不干扰；高度封顶 460 内滚动）；
   ③ **L1/L2 分权保留**：L1 可管理任意团队；L2 用户走「技能中心（我的团队）」入口，同能力、服务端限本团队。
 - **Worker 配置集成拓扑（「worker 也是，都集成在拓扑里面」）**：Worker 拓扑「资源管理」技能页签补**目录节**（搜索/上传/自定义/下载，scope=该 Worker 所属团队）+ 原可编辑分配矩阵，一屏看全。
-- **侧栏角色分组（A8c）**：私聊视图按对象角色分区（Leader / Worker / Manager / 其他，组内仍按时间/名称序）；无 L1 管理数据时自动退回扁平列表（L2 无感）。
-- **AgentActivityTrack 活动轨（A8d，composer 上方任务进度 + HITL）**：当前房间匹配项目活跃时，输入框上方显内联轨——项目名+状态+任务 done/total+迭代进度+「等待人工介入」琥珀 chip+在办任务 chip（≤5，状态色点+执行者）；点轨=打开该项目工作流；项目终态/无匹配自隐。数据=既有 workflow API（零新请求）。
+- **侧栏角色分组**：私聊视图按对象角色分区（Leader / Worker / Manager / 其他，组内仍按时间/名称序）；无 L1 管理数据时自动退回扁平列表（L2 无感）。
+- **AgentActivityTrack 活动轨（composer 上方任务进度 + HITL）**：当前房间匹配项目活跃时，输入框上方显内联轨——项目名+状态+任务 done/total+迭代进度+「等待人工介入」琥珀 chip+在办任务 chip（≤5，状态色点+执行者）；点轨=打开该项目工作流；项目终态/无匹配自隐。数据=既有 workflow API（零新请求）。
 - **Mermaid DAG 视图（A9，第五视图）**：工作流页新增「Mermaid」视图——上游 `GET /projects/{id}/workflow?format=mermaid`（已合 main）快照直渲染（节点色=任务状态，ready 高亮）；mermaid 12.0.0（MIT）随包单文件内联（宿主 blob 环境禁动态 import，`inlineDynamicImports` 全内联；主包 2,308→7,620kB，离线可用零网络依赖）；Controller 未含该端点（404）诚实占位，拓扑视图不受影响。
-- **删团队撤销（A10 undo）**：删团队前快照 → 删除成功 6s「撤销（按快照重建）」toast → 按快照 `createTeam` 回写（teamName/description/workerMembers/heartbeat/peerMentions/subagentModel）。诚实语义=**重建非恢复**（房间历史/容器状态不随 CRD 回来，toast 明示）。
+- **删团队撤销（undo）**：删团队前快照 → 删除成功 6s「撤销（按快照重建）」toast → 按快照 `createTeam` 回写（teamName/description/workerMembers/heartbeat/peerMentions/subagentModel）。诚实语义=**重建非恢复**（房间历史/容器状态不随 CRD 回来，toast 明示）。
 - **#1247 心跳态显形**：Worker 详情面板补心跳任务运行态四字段（agentStatus / runningTaskCount / lastRunAt / lastFinishAt；旧版 Controller 无字段整行隐藏）。
 - **MCP L2 写权限**：上游 capability-foundation 在途（仅地基：CRD capabilities + audit client）；消费支待其合并后排期——L2 的 MCP 写目前仍阻塞（非插件侧问题）。
 - **i18n**：1368 键 0 缺 0 重 0 空（+25）
@@ -564,7 +564,7 @@ tsc 0 · check-antd 交叉通过 · vite build 绿 · pytest 46/46 · 包内三�
 - **工作流 tab 接入事件流**：任务状态转换时间线（created→running→finished/failed，上游 task-transition 事件流对接，legacy 游标兼容零回填）+ i18n 存量缺键清零
 - **工作流页头部项目计数**：页头只显「项目(num)」总数，各视图去掉冗余 per-view 计数（视图标签保留）
 - **任务巡检抽屉**：看板/卡片任务点击 → 抽屉显示任务级巡检（当前 Worker/运行时、最新产物、状态迁移时间线、耗时）
-- **A17 worker 会话状态灯（heartbeat-first）**：三态（蓝 running 呼吸/绿 done/灰 idle）显示在群聊消息发送者头像 + 宽屏分栏布局；数据源 = worker 心跳 agentStatus 权威（无 120s typing 上限）→ typing 实时回退 → 10 分钟 done→idle 衰减
+- **Worker 会话状态灯（heartbeat-first）**：三态（蓝 running 呼吸/绿 done/灰 idle）显示在群聊消息发送者头像 + 宽屏分栏布局；数据源 = worker 心跳 agentStatus 权威（无 120s typing 上限）→ typing 实时回退 → 10 分钟 done→idle 衰减
 - **聊天 /sync 事件驱动刷新**：消息刷新由 Matrix /sync 长轮询驱动（替代粗轮询），分栏宽度/折叠参数化
 - **模型网关配置 tab（只读）**：与 dashboard 同源的 AI 网关模型配置视图（Provider/AI Routes/模型映射，只读）
 
@@ -626,7 +626,7 @@ tsc 0 · check-antd 交叉通过 · vite build 绿 · pytest 46/46 · 包内三�
 
 ## 0.5.0-beta.12.4（2026-09-15）
 
-**新功能：Worker session 运行指示（A17，零后端改动）**
+**新功能：Worker session 运行指示（零后端改动）**
 - 聊天列表房间卡 / Worker 管理行 / 1:1 聊天头部三处新增 8px 状态圆点：**蓝（呼吸动画）= 运行中 / 绿 = 运行完成（近 10 分钟有活动）/ 灰 = 无任务**，悬停显示状态文案
 - 数据全部来自既有 Matrix `/sync` 载荷（typing 事件 + 房间最后消息时间 + 成员表），纯前端派生，无新端点、无新请求；60 秒自动老化（done→idle 边界翻转不依赖新消息）
 - 呼吸动画对齐 QwenPaw 控制台 `AgentStatusIndicator` 实现（1.2s 周期，opacity + 光晕扩散），`prefers-reduced-motion` 系统设置下自动关动画
