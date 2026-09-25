@@ -1,5 +1,5 @@
-// v0.5.0-beta.12.4（A17）：Worker session 运行指示——纯前端派生。
-// v0.5.0-beta.12.9（A17 升级，与 dashboard 3ad94e2 同源）：派生升级为
+// v0.5.0-beta.12.4：Worker session 运行指示——纯前端派生。
+// v0.5.0-beta.12.9（与 dashboard 3ad94e2 同源）：派生升级为
 // 心跳优先（agentStatus/runningTaskCount = 任务级真相，无时间上限），
 // typing 降为实时回退，lastFinishAt/最近消息 10min 衰减。
 // v0.5.0-beta.13.2（灯源修正，与 dashboard 9a9cc8d per-sender 同源）：
@@ -155,7 +155,7 @@ export interface WorkerSessionStates {
   byName: Record<string, WorkerSessionState>;
   /** 房间 room_id → 状态（Worker 个人房间卡 / 1:1 聊天头用）。 */
   byRoom: Record<string, WorkerSessionState>;
-  /** Worker MXID → 状态（聊天消息头像状态点用，#A17 9/18 落点）。 */
+  /** Worker MXID → 状态（聊天消息头像状态点用，9/18 落点）。 */
   byMxid: Record<string, WorkerSessionState>;
   /** 全部 Worker MXID（团队房间 running 判定用）。 */
   workerMxids: Set<string>;

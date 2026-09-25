@@ -516,7 +516,7 @@ function WorkerRow({
   l1?: boolean;
   /** v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳转透传。 */
   onOpenSettings?: () => void;
-  /** v0.5.0-beta.12.4（A17）：该 Worker 的 session 状态（typing/last_ts 派生）。
+  /** v0.5.0-beta.12.4：该 Worker 的 session 状态（typing/last_ts 派生）。
    *  与行首既有圆点（CR phase / spawn running，进程级）并存——两轴不同。 */
   sessionState?: WorkerSessionState;
 }) {
@@ -873,7 +873,7 @@ function TeamNode({
   adminByWorker: Map<string, AdminData["workers"][number]>;
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
-  /** v0.5.0-beta.12.4（A17）：worker_name → session 状态（行内圆点）。 */
+  /** v0.5.0-beta.12.4：worker_name → session 状态（行内圆点）。 */
   sessionByName?: Record<string, WorkerSessionState>;
   /** v0.5.0-beta.13.8：当前账号 L1（controller token）→ 运行配置面板的
    *  L1-only 字段（并发限流/上下文管理/shell 组/auto_title）可编辑。 */
@@ -1468,7 +1468,7 @@ export interface WorkerManageProps {
   myUserId?: string;
   /** L1 走 controller_token（无 Console 会话 → 网关 alias 层不可见提示）。 */
   l1TokenMode?: boolean;
-  /** v0.5.0-beta.12.4（A17）：worker_name → session 状态（行内圆点）。 */
+  /** v0.5.0-beta.12.4：worker_name → session 状态（行内圆点）。 */
   workerSessionByName?: Record<string, WorkerSessionState>;
   /** v0.5.0-beta.13.10（B1）：运行配置 L1 只读 Alert 的「去设置」跳转。 */
   onOpenSettings?: () => void;

@@ -655,7 +655,7 @@ function SenderAvatar({
   workerName?: string;
   /** 打开成员详情卡（含审批卡）。 */
   onDetail?: (mxid: string) => void;
-  /** A17（9/19 定案：头像角落灯）：该发送者的 session 状态——有值才显灯
+  /** （9/19 定案：头像角落灯）：该发送者的 session 状态——有值才显灯
    * （人类/未知发送者无映射 → 不显）。 */
   sessionState?: WorkerSessionState;
   /** v0.5.0-beta.13.1：打开该 Worker 的会话抽屉（完整 session，只读）。 */
@@ -760,7 +760,7 @@ function SenderAvatar({
           ) : undefined
         }
       >
-        {/* A17（9/19 定案：灯在头像角落）：relative 容器 + 角落状态灯。 */}
+        {/* （9/19 定案：灯在头像角落）：relative 容器 + 角落状态灯。 */}
         <span style={{ position: "relative", display: "inline-flex" }}>
           <MxcAvatar
             url={member?.avatar_url}
@@ -1494,7 +1494,7 @@ export interface RoomChatProps {
    * WorkbenchPage 仅在正源轨（workflowSource=controller）时传入；降级轨传空
    * （events=原始卡重解析=快照恒等，overlay 无增量且会误导 LIVE 徽标）。 */
   liveWorkflows?: WorkflowEvent[];
-  /** v0.5.0-beta.13.21（A8d AgentActivityTrack）：当前房间匹配的项目
+  /** v0.5.0-beta.13.21（AgentActivityTrack）：当前房间匹配的项目
    *  （roomMatchesProject 同源，父组件算好传入）——composer 上方任务
    *  进度 + HITL 内联轨；无匹配/项目终态时组件自身不渲染。 */
   activityProject?: WorkflowEvent | null;
@@ -1532,12 +1532,12 @@ export interface RoomChatProps {
   /** v0.5.0-beta.12（A8b）：当前房间对应 Worker 的 phase/runtime 徽章
    * （1:1 个人房间才有；数据=Worker CR 字段，零新请求）。 */
   workerBadge?: { phase?: string; runtime?: string };
-  /** v0.5.0-beta.12.4（A17）：当前房间对应 Worker 的 session 状态
+  /** v0.5.0-beta.12.4：当前房间对应 Worker 的 session 状态
    * （1:1 个人房间才有；typing/last_ts 派生，零新请求）。 */
   sessionState?: WorkerSessionState;
-  /** v0.5.0-beta.12.4（A17）：全部 Worker MXID——团队房间任一 Worker 正在输入则显蓝点。 */
+  /** v0.5.0-beta.12.4：全部 Worker MXID——团队房间任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
-  /** A17（9/18 落点定案：聊天群内）：Worker MXID → 任务状态（头像角落灯；
+  /** （9/18 落点定案：聊天群内）：Worker MXID → 任务状态（头像角落灯；
    * 心跳优先派生，人类发送者无映射 → 不显）。 */
   workerSessionByMxid?: Record<string, WorkerSessionState>;
   /** v0.5.0-beta.13.1（9/19 入口迁移）：Worker 列表——头像抽屉「查看会话」
@@ -2515,7 +2515,7 @@ export default function RoomChat(props: RoomChatProps) {
         <antd.Typography.Title level={5} style={{ margin: 0 }}>
           {room.name}
         </antd.Typography.Title>
-        {/* v0.5.0-beta.12.4（A17）：Worker session 运行指示。
+        {/* v0.5.0-beta.12.4：Worker session 运行指示。
             1:1 Worker 房间 = sessionState 三态（蓝呼吸/绿/灰）；
             团队房间无 sessionState → 仅当任一 Worker 正在输入时显蓝点。 */}
         {(() => {
@@ -2984,7 +2984,7 @@ export default function RoomChat(props: RoomChatProps) {
                             onDm={onDm}
                             workerName={memberWorkerNames?.[msg.sender]}
                             onDetail={(m) => setDetailMxid(m)}
-                            // A17（9/19 定案：灯在头像角落，不再名字旁）：
+                            // （9/19 定案：灯在头像角落，不再名字旁）：
                             // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
                             sessionState={workerSessionByMxid?.[msg.sender]}
                             onOpenChats={(w) => setChatsWorker(w)}
@@ -3435,7 +3435,7 @@ export default function RoomChat(props: RoomChatProps) {
           borderTop: `1px solid ${t.border}`,
         }}
       >
-        {/* v0.5.0-beta.13.21（A8d AgentActivityTrack）：composer 上方
+        {/* v0.5.0-beta.13.21（AgentActivityTrack）：composer 上方
             任务进度 + HITL 内联轨（数据=当前房间项目 workflow，与
             liveWorkflows 同正源，零新请求；无匹配/终态自隐）。 */}
         <AgentActivityTrack

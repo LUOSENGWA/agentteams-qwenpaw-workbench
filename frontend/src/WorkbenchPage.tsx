@@ -2172,7 +2172,7 @@ export default function WorkbenchPage() {
     return map;
   }, [adminData, workerTree]);
 
-  // v0.5.0-beta.12.4（A17）：Worker session 运行指示——统一派生（四落点共用：
+  // v0.5.0-beta.12.4：Worker session 运行指示——统一派生（四落点共用：
   // 房间卡列表 / Worker 行 / 1:1 聊天头 / 聊天主列表发送者行）。
   // v0.5.0-beta.12.9：心跳优先（adminData.workers 的 agentStatus/runningTaskCount/
   // lastFinishAt，GET /workers 既有通道零新请求；旧版 controller 无 → 降级
@@ -3095,7 +3095,7 @@ export default function WorkbenchPage() {
     </button>
   ) : null;
 
-  // v0.5.0-beta.13.21（A8d AgentActivityTrack）：房间 → 匹配项目事件
+  // v0.5.0-beta.13.21（AgentActivityTrack）：房间 → 匹配项目事件
   // （与 roomProjectNames 同匹配源 roomMatchesProject，取首个命中；
   // 活动轨只需一个项目，多项目房间以列表首个为准，工作流 tab 仍可全看）。
   const roomProjectByRoom = React.useMemo(() => {
