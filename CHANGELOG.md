@@ -5,6 +5,24 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14（2026-09-25 · 正式号）
+
+**13.2–13.24 批次合并 release（聊天 / 会话 / 团队 / Worker / 工作流 / 技能 / 知识库全面改造 + 构建瘦身 −5.3MB）**
+
+- **聊天 Element 化**：@mention 双向 Element 格式（发送 body 短名 + formatted_body matrix.to + m.mentions；接收整 MXID 与短名统一 pill——`_require_mention` 下 Worker 不再漏消息）；「加载原消息」Element 式滚顶自动续拉（链式分页无硬上限 + 锚保持 + 终止四条件）；历史预取管线（开房即后台预取下一页、命中零等待、加载提示几乎不可见）；消息跨房间修复；置底 Element 式锁定；ToolBubble 状态色 + 分区展开 + 代码块 hover 复制
+- **会话与状态灯**：会话列表卡片化（整卡点开、状态点恒显）；会话窗 /sync→SSE 事件驱动实时（4s 降兜底）；**状态灯定案三落点**（idle 灰 / running 蓝呼吸 / done 绿：群内每条消息 Worker 头像右下角 + 成员头像条 + 团队管理成员列表）
+- **团队管理**：首屏一次性就绪 + **首刷三层冷窗口根治**（structure 多地址 per-request failover + 探针 3s + connect 超时 3s + 首帧拆分——结构先到先渲染，子任务异步补齐）；房间列表 Element 化（SSE 增量，不再全量刷新）；侧栏角色筛选 chips（Leader/Worker/Manager，列表不分割）；**配置团队弹窗完整化**：subagentModel（留空=继承 Worker 主模型）+ 内嵌团队技能节（搜索/上传/新建/下载 + 分配矩阵 + MCP 卡）+ **批量设置模型（Leader / Workers 两批，单团队 scope，复用逐行 diff 保存链路）**
+- **Worker**：per-worker 技能一等公民（物化层全字段 + 预加载小开关，热加载）；**工具执行安全四档卡**（审批数据面统一到 #1216 Controller 主路径，旧 Controller 404 自动回退、502-unparsable 回退，OFF capability 显形）；**运行配置六 tab，系统 tab 审批级别可编辑**（同源四档卡）；资源管理集成拓扑（技能两层/MCP/频道/工具一站式，单 Worker 免选）；spawn 树工具/技能白名单显示（#7004 消费侧）；心跳态显形（#1247）
+- **工作流与看板**：看板 8 列等高（宽 4×2 / 窄 2×4，全实测高度）；拓扑优化（统计条 + 缩放 0.4–2.0 + 节点 subagent 行 + 点节点→任务巡检 + 左栏拖宽 220–520 持久化）；**DAG 与 Mermaid 合并为单一 DAG 视图**（层行水平居中 + 节点 hover 高亮；mermaid 依赖整体退役，单文件构建 7,624→**2,332kB**）；删团队撤销（快照重建，6s 撤销窗）
+- **技能中心**：L2 双模式（Matrix 身份 team-scoped 可写本团队技能矩阵，L1 零变化）；上传（zip multipart 透传）/ 自定义新建（SKILL.md 在线打包）/ 下载（版本门 + 上游端点）；技能两层显示（分配层 / 物化层，绿/黄/灰）
+- **知识库**：413 真根因修复（整 workspace tar 上传列取→双通道 exec find 主 + tarball 回退，180/176 文件工作区 0.16–0.22s 全 200）；符号链接跟随；两栏等高 + 树独立滚动；2D 知识图谱高亮稳定（点节点看连接不再闪断）；**项目群↔项目三源关联**（workflow 正源 ∪ `Project:` 命名 ∪ `TASK：<projectId>` 任务房）
+- **其他**：Loop 设置 QwenPaw 对齐（4 模板 + doom loop 参数 + 记忆后端可编辑）；AgentActivityTrack 任务轨（项目名 + 状态 + done/total + 等待人工介入）；未读气泡自绘（数字居中 + 99+ + 白描边环）；图标库 70 枚全 SVG 化（UI emoji 清零，6 类保留）；宽窄屏双基准（窗口 ∩ 容器实测，ResizeObserver 跟随）
+- **技术面**：群消息加载逻辑收敛进 `roomHistory.ts` 纯 TS 状态机（I1–I6 不变量成文）；UI harness 五套 25+ 例回归锚点；i18n 1,376 键中英镜像；单文件构建约束（0 import 语句，宿主 blob 安全）
+
+**Verification**: tsc 0 · vite build 单文件 2,332kB（gzip 650kB）· pytest 71/71 · i18n 1,376 键 0 缺 0 重 0 空 · ui-harness-1324 20/20 · 敏感扫 0（全包全部文本条目）
+
+---
+
 ## 0.5.0-beta.13.24（2026-09-25）
 
 **13.23 装验反馈 6 件：团队管理首刷/手动刷新慢（真根因=双地址冷窗口，全链修）/ 工具执行安全 502（上游缺 /api 前缀，插件回退缓解 + 上游修复支）/ 审批级别改可编辑（运行配置「系统」tab 内嵌审批控制）/ 未读气泡数字居中且永不含住外 / DAG 与 Mermaid 合并（撤 mermaid 依赖 −5.3MB，DAG 居中+hover 优化）/ 配置团队窗口批量改模型（Leader/Workers 两批）**
