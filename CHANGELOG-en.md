@@ -5,6 +5,22 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.13.23 (2026-09-25)
+
+**Approval data plane unified on upstream #1216: L2 accounts gain team-scoped read/write / OFF permission (#1273) surfaced / edit-entry pointer**
+
+- **Approval read/write primary path switched (upstream #1216, merged 09/16)**:
+  reading/writing the approval level previously went only through the legacy endpoints (docker archive read of agent.json / PUT running-config — L1 admin token required, L2 always got 401). It now prefers the **Controller approval endpoint** (`GET/PUT /api/v1/workers/{name}/approval`, via the catch-all proxy: admin token present = L1, absent = Matrix credential = **L2 can read/write their own team's workers, team-scoped**). On an old Controller (pre-#1216) a 404 automatically falls back to the legacy endpoints (L1-only), preserving compatibility.
+- **Stale permission copy removed**: the old hint "L2 account has no read access (L1 admin credentials required; opens automatically once the upstream L2 write-path PR merges)" no longer holds (#1216 has merged) → replaced with an accurate credential/scope message.
+- **OFF permission surfaced (upstream #1273: approval_level=OFF gated behind the approval_policy capability)**:
+  a static note under the four-mode cards — OFF requires the approval_policy permission (built-in for L1 admins; L2 needs an explicit grant; submitting without it returns 403 with the detail passed through).
+- **Runtime config "System (read-only)" tab pointer**: the approval_level tooltip now points to the editable entry ("Tool execution security" card in the Worker management expanded row / room member card).
+- **i18n**: 1,373 keys, 0 missing / 0 duplicate / 0 empty (+3 new, 1 stale key replaced)
+
+**Verification**: tsc 0 · vite single-file 7,624kB (gzip ~2,151kB; 0 import statements = host-blob safe) · pytest 71/71 · ui-harness-1323 14/14 (primary read / fallback read / permission copy / primary write / fallback write / OFF 403 pass-through / stale-copy regression guard) · i18n 1,373 keys · sensitive scan 0 (source + dist decoded) · 10 version carriers
+
+---
+
 ## 0.5.0-beta.13.22 (2026-09-24)
 
 **Close of the 13.21 verification feedback (7 items): team skills scoped to the team only (catalog / assignment matrix / MCP) / Mermaid merged into the topology dependency graph (fifth view retired) / team-config dialog close animation / 2D knowledge-graph selection persistence / unread badge on the room card avatar / subagent default model gets the same picker as worker models / DM role partition becomes bottom filter chips**
