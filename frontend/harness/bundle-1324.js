@@ -1180,7 +1180,7 @@
     "\u4E0A\u4E0B\u6587\u4FDD\u7559\u7684\u5386\u53F2\u6D88\u606F\u6570\uFF08history_max_length\uFF09\u3002L1-only\uFF0C\u672C\u9762\u677F\u53EA\u8BFB\u3002": { en: "History messages kept in context (history_max_length). L1-only, read-only here." },
     "\u6761\u56DE\u590D": { en: " replies" },
     "\u6B63\u5728\u8F93\u5165\u2026": { en: " is typing\u2026" },
-    // v0.5.0-beta.12.4（A17）：Worker session 运行指示（运行中 复用既有条目）。
+    // v0.5.0-beta.12.4：Worker session 运行指示（运行中 复用既有条目）。
     "\u8FD0\u884C\u5B8C\u6210": { en: "Run completed" },
     "\u65E0\u4EFB\u52A1": { en: "Idle" },
     "\u4EBA": { en: " members" },
@@ -2338,7 +2338,7 @@
     "Worker \u8FD0\u884C\u65F6\uFF08Controller CR runtime\uFF09": { en: "Worker runtime (Controller CR runtime)" },
     // #1233 事件流时间线（WorkflowEventsTimeline）。
     "\u4E8B\u4EF6\u6D41": { en: "Event stream" },
-    // A8d AgentActivityTrack（composer 上方任务进度+HITL 内联轨）。
+    // AgentActivityTrack（composer 上方任务进度+HITL 内联轨）。
     "\u70B9\u51FB\u6253\u5F00\u9879\u76EE\u5DE5\u4F5C\u6D41": { en: "Click to open the project workflow" },
     "\u4EFB\u52A1 {done}/{total}": { en: "Tasks {done}/{total}" },
     "\u8FED\u4EE3 {cur}/{max}": { en: "Iteration {cur}/{max}" },
@@ -2350,7 +2350,7 @@
     "\u5B50\u4EE3\u7406\u9ED8\u8BA4\u6A21\u578B\uFF08\u5982 qwen3.6:27b-fp8\uFF1B\u7559\u7A7A = \u7EE7\u627F\uFF09": { en: "Subagent default model (e.g. qwen3.6:27b-fp8; blank = inherit)" },
     "\u56E2\u961F\u6280\u80FD\uFF08\u76EE\u5F55 / \u5206\u914D\u77E9\u9635 / MCP\uFF09": { en: "Team skills (catalog / assignment matrix / MCP)" },
     "\u6280\u80FD/\u5206\u914D/MCP \u7684\u4FDD\u5B58\u72EC\u7ACB\u4E8E\u4E0A\u65B9\u300C\u4FDD\u5B58\u300D\u6309\u94AE\uFF08\u8D70\u6280\u80FD\u4E2D\u5FC3\u539F\u7AEF\u70B9\uFF09\uFF1BL2 \u7528\u6237\u7ECF\u300C\u6280\u80FD\u4E2D\u5FC3\uFF08\u6211\u7684\u56E2\u961F\uFF09\u300D\u5165\u53E3\uFF0C\u540C\u80FD\u529B\u3001\u670D\u52A1\u7AEF\u9650\u672C\u56E2\u961F\u3002": { en: "Skill/assignment/MCP saves are independent of the Save button above (they use the Skill Center endpoints); L2 users go through the Skill Center (My Team) entry \u2014 same capabilities, server-side scoped to their own team." },
-    // A10 undo（删团队快照重建）。
+    // undo（删团队快照重建）。
     "\u56E2\u961F {name} \u5DF2\u5220\u9664\uFF08\u623F\u95F4\u5386\u53F2\u4E0E\u5BB9\u5668\u72B6\u6001\u4E0D\u968F\u4E4B\u6062\u590D\uFF09": { en: "Team {name} deleted (room history and container state are not restored)" },
     "\u64A4\u9500\uFF08\u6309\u5FEB\u7167\u91CD\u5EFA\uFF09": { en: "Undo (recreate from snapshot)" },
     "\u56E2\u961F {name} \u5DF2\u6309\u5FEB\u7167\u91CD\u5EFA": { en: "Team {name} recreated from snapshot" },

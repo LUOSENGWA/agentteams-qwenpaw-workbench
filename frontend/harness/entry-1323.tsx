@@ -7,7 +7,7 @@
  *  A2  #1216 404 + 旧端点 200 → 回退读成功（docker 直读）
  *  A3  #1216 404 + 旧端点 401 → 新权限文案（橙色，删过期前提）
  *  A4  apply #1216 PUT 200 → 成功 toast + 级别更新
- *  A5  apply #1216 404 + 旧端点 200 → 回退写成功
+ *  apply #1216 404 + 旧端点 200 → 回退写成功
  *  A6  apply OFF #1216 403（approval_policy capability #1273）→ 错误透传 detail
  */
 import type * as ReactNS from "react";
@@ -45,7 +45,7 @@ function HarnessApp() {
       <Section id="a2" title="A2 #1216 404 → 旧端点回退读（STRICT）" name="w-a2" />
       <Section id="a3" title="A3 #1216 404 + 旧端点 401 → 权限文案" name="w-a3" />
       <Section id="a4" title="A4 apply 主路径（#1216 PUT 200）" name="w-a4" />
-      <Section id="a5" title="A5 apply #1216 404 → 旧端点回退写" name="w-a5" />
+      <Section id="a5" title="apply #1216 404 → 旧端点回退写" name="w-a5" />
       <Section id="a6" title="A6 apply OFF 403（approval_policy）" name="w-a6" />
     </div>
   );

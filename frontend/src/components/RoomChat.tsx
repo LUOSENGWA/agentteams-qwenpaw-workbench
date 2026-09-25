@@ -1529,7 +1529,7 @@ export interface RoomChatProps {
   memberRoles?: Record<string, string>;
   /** MXID → Worker 容器名（5.0.0-beta.3：成员卡显示审批卡用）。 */
   memberWorkerNames?: Record<string, string>;
-  /** v0.5.0-beta.12（A8b）：当前房间对应 Worker 的 phase/runtime 徽章
+  /** v0.5.0-beta.12：当前房间对应 Worker 的 phase/runtime 徽章
    * （1:1 个人房间才有；数据=Worker CR 字段，零新请求）。 */
   workerBadge?: { phase?: string; runtime?: string };
   /** v0.5.0-beta.12.4：当前房间对应 Worker 的 session 状态
@@ -2527,7 +2527,7 @@ export default function RoomChat(props: RoomChatProps) {
               : undefined);
           return eff ? <WorkerSessionDot state={eff} /> : null;
         })()}
-        {/* v0.5.0-beta.12（A8b）：1:1 Worker 房间头部双徽章（phase + runtime，
+        {/* v0.5.0-beta.12：1:1 Worker 房间头部双徽章（phase + runtime，
             数据=Worker CR 字段，WorkbenchPage 按 room_id 匹配注入）。 */}
         {workerBadge?.phase ? (
           <antd.Tag

@@ -1587,7 +1587,7 @@ const DICT: Record<string, { en: string }> = {
   "子代理默认模型（如 qwen3.6:27b-fp8；留空 = 继承）": { en: "Subagent default model (e.g. qwen3.6:27b-fp8; blank = inherit)" },
   "团队技能（目录 / 分配矩阵 / MCP）": { en: "Team skills (catalog / assignment matrix / MCP)" },
   "技能/分配/MCP 的保存独立于上方「保存」按钮（走技能中心原端点）；L2 用户经「技能中心（我的团队）」入口，同能力、服务端限本团队。": { en: "Skill/assignment/MCP saves are independent of the Save button above (they use the Skill Center endpoints); L2 users go through the Skill Center (My Team) entry — same capabilities, server-side scoped to their own team." },
-  // A10 undo（删团队快照重建）。
+  // undo（删团队快照重建）。
   "团队 {name} 已删除（房间历史与容器状态不随之恢复）": { en: "Team {name} deleted (room history and container state are not restored)" },
   "撤销（按快照重建）": { en: "Undo (recreate from snapshot)" },
   "团队 {name} 已按快照重建": { en: "Team {name} recreated from snapshot" },

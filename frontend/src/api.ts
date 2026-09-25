@@ -264,7 +264,7 @@ export async function createGatewayAiRoute(
 // ── 模型网关只读路由目录（上游 #1242，Controller 端点，token 鉴权）────
 // 与上面的 fetchGatewayAiRoutes（Higress Console 透传，需 admin 会话）不同源：
 // 本端点在 Controller 侧（/api/v1/gateway/ai-routes），只凭 controller token
-// 即可读，token 模式 L1 也能用（A13 结构性数据面）。是「路由目录」非「模型目录」：
+// 即可读，token 模式 L1 也能用（结构性数据面）。是「路由目录」非「模型目录」：
 // name=网关 /v1 入口名（非模型 ID），一条路由可服务多个模型；upstreams=上游
 // provider 及权重；allowedConsumers=被授权在该路由上的 consumer。
 export interface GatewayRouteUpstream {
@@ -2081,8 +2081,8 @@ export interface WorkerSpawnGroup {
   is_self?: boolean;
   spawns: SpawnNode[];
   phase?: string;
-  /* v0.5.0-beta.12：Worker 个人房间（Controller roomID，A8a-fix
-     私聊直跳）+ runtime（CR 字段，A8b 徽章）。room-fallback 源无此二字段。 */
+  /* v0.5.0-beta.12：Worker 个人房间（Controller roomID，
+     私聊直跳）+ runtime（CR 字段，runtime 徽章）。room-fallback 源无此二字段。 */
   room_id?: string;
   runtime?: string;
 }

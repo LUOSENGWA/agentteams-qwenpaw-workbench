@@ -5560,7 +5560,7 @@ PRE:qwen-`})),Bt.createElement("div",null,Bt.createElement("div",{style:fo},i("\
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-/* v0.5.0-beta.12.4\uFF08A17\uFF09\uFF1AWorker session \u8FD0\u884C\u6307\u793A\u547C\u5438\u52A8\u753B\u2014\u2014\u7167\u642C QwenPaw
+/* v0.5.0-beta.12.4\uFF1AWorker session \u8FD0\u884C\u6307\u793A\u547C\u5438\u52A8\u753B\u2014\u2014\u7167\u642C QwenPaw
    AgentStatusIndicator \u7684 statusPulse\uFF081.2s ease-in-out\uFF0Copacity 1\u21940.35 +
    box-shadow \u6269\u6563\uFF09\u3002\u52A8\u753B\u6302\u5728 class \u4E0A\uFF08\u975E\u5185\u8054\uFF09\uFF0Creduced-motion \u53EF\u5173\u3002 */
 @keyframes wbSessionPulse {
