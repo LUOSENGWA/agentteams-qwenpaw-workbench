@@ -3200,19 +3200,75 @@ def build_router() -> APIRouter:
         return {"agent": agent, "dir": dir,
                 "files": files_out[:300], "dirs": dirs_out[:120]}
 
+    async def _kb_agents_ctl_fallback(token: str, base: str) -> Dict[str, Any]:
+        """KB 形状兜底（Docker 通道不可用）：agent 清单=Controller workers API。
+
+        v0.5.0-beta.14.2（F1-KB-500）：/kb/agents 的 Docker 降级路径此前误调
+        _approval_list_wsf(token, base, agent)——agent 在 kb_agents 作用域
+        不存在 → NameError → 500（Docker 通道 401/403/502 即触发：切外网后
+        WAN 链路 401 首现场）。形状必须 KB {agents, count}（旧调用即便不
+        NameError 也返回 approval 形状，前端解析全废）。
+        """
+        st, data, _ = await _ctl_json("GET", f"{base}/api/v1/workers", token)
+        if st != 200:
+            raise HTTPException(
+                status_code=502, detail=f"Worker 列表获取失败（Controller {st}）"
+            )
+        workers = (data.get("workers") or []) if isinstance(data, dict) else []
+        found: Dict[str, Dict[str, Any]] = {}
+        for w in workers:
+            if not isinstance(w, dict):
+                continue
+            wn = str(w.get("name") or "")
+            if not wn:
+                continue
+            role_raw = str(w.get("role") or "worker")
+            found[wn] = {
+                "name": wn,
+                "container": f"agentteams-worker-{wn}",
+                "state": str(w.get("state") or w.get("phase") or ""),
+                "kind": "worker",
+                "team": str(w.get("team") or ""),
+                "role": (
+                    "leader" if role_raw == "team_leader"
+                    else "critic" if "critic" in wn.lower()
+                    else "worker"
+                ),
+            }
+        found["manager"] = {
+            "name": "manager",
+            "container": "agentteams-manager",
+            "state": "",
+            "kind": "manager",
+            "team": "",
+            "role": "leader",
+        }
+        agents = sorted(
+            found.values(),
+            key=lambda a: (
+                0 if a.get("role") == "leader" else 1,
+                str(a.get("team") or ""),
+                a["name"],
+            ),
+        )
+        return {"agents": agents, "count": len(agents)}
+
     @router.get("/kb/agents")
     async def kb_agents() -> Dict[str, Any]:
         """远端 Agent 清单：Docker 容器列表（agentteams-worker-* +
         agentteams-manager）+ Controller workers API 补 role/team。"""
         token, base = _kb_require_token()
-        # L2（403）/ Docker 挂（502）→ #1216 兜底（worker 走 Controller；
-        # manager L1-only）。
+        # L2（403）/ Docker 挂（502）→ KB 形状兜底（worker 走 Controller；
+        # manager L1-only 占位）。v0.5.0-beta.14.2（F1-KB-500）：旧代码误调
+        # _approval_list_wsf(token, base, agent)——本函数无 agent 变量 →
+        # NameError → 500（仅 Docker 通道降级 401/403/502 时暴露，切外网后
+        # WAN 链路 401 首现场），且 approval 列表形状 ≠ KB {agents,count}。
         try:
             st, data = await _kb_docker(token, base, "/containers/json")
         except HTTPException:
-            return await _approval_list_wsf(token, base, agent)
+            return await _kb_agents_ctl_fallback(token, base)
         if st in (401, 403, 502):
-            return await _approval_list_wsf(token, base, agent)
+            return await _kb_agents_ctl_fallback(token, base)
         if st != 200:
             raise HTTPException(
                 status_code=502, detail=f"容器列表获取失败（Docker API {st}）"
