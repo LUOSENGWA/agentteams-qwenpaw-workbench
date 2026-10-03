@@ -576,7 +576,9 @@ _HYSTERESIS_MIN_MS = 100.0
 _HYSTERESIS_RATIO = 0.3
 
 
-def _select_and_mark(kind: str, rows: List[Dict[str, Any]]) -> str:
+def _select_and_mark(
+    kind: str, rows: List[Dict[str, Any]], pinned_url: str | None = None
+) -> str:
     """v0.5.0-beta.12: 延迟排序选最优并写 working cache。返回选中的 url（无则 ""）。
 
     v0.5.0-beta.12: 排序资格 = http_ok（状态码 <400）——401/403 是「已连通但
@@ -589,6 +591,16 @@ def _select_and_mark(kind: str, rows: List[Dict[str, Any]]) -> str:
     ]
     if not ok_rows:
         return ""
+    # v0.5.0-beta.14.1: 固定档——显示层跟固定值（即使另一条更快）；固定
+    # 地址本轮不可达 → 回退最快可达（对用户诚实：显示「固定地址挂了」）。
+    # 请求层仍拨固定地址并在失败时报错——两层不混。
+    if pinned_url:
+        pinned_row = next(
+            (r for r in ok_rows if r["url"] == pinned_url), None
+        )
+        if pinned_row is not None:
+            _mark_working(kind, pinned_url)
+            return pinned_url
     best = min(ok_rows, key=lambda r: r["ms"])
     cache = _working_cache()
     current = cache.get(kind, "")
@@ -619,6 +631,8 @@ async def refresh_effective(
     外网/内网切换自动识别（延迟差异远超防抖阈值）。
     kinds: 只重排指定类型（后台循环省资源用——单地址类型跳过）。
     """
+    from . import router as router_mod  # noqa: PLC0415 - lazy 防循环依赖
+
     token = (cfg.get("controller_token") or "").strip()
     matrix_urls = (
         [u for u in (cfg.get("matrix_homeservers") or []) if u]
@@ -643,15 +657,15 @@ async def refresh_effective(
     )
     effective: Dict[str, str] = {}
     if "matrix" in kinds:
-        picked = _select_and_mark("matrix", results["matrix"])
+        picked = _select_and_mark("matrix", results["matrix"], router_mod._pinned_url(cfg, "matrix"))
         if picked:
             effective["matrix"] = picked
     if "controller" in kinds:
-        picked = _select_and_mark("controller", results["controller"])
+        picked = _select_and_mark("controller", results["controller"], router_mod._pinned_url(cfg, "controller"))
         if picked:
             effective["controller"] = picked
     if "sglang" in kinds and results.get("sglang"):
-        picked = _select_and_mark("sglang", results["sglang"])
+        picked = _select_and_mark("sglang", results["sglang"], router_mod._pinned_url(cfg, "sglang"))
         if picked:
             effective["sglang"] = picked
     return effective

@@ -140,6 +140,19 @@ const DICT: Record<string, { en: string }> = {
   "连通性测试": { en: "Connectivity test" },
   "连通性测试失败": { en: "Connectivity test failed" },
   "生效中": { en: "active" },
+  // ── v0.5.0-beta.14.1: 地址手动固定档（address_mode）+ 事件流连接态（S1-4）──
+  "地址模式（内网/外网切换策略）": { en: "Address mode (LAN/WAN switching)" },
+  "自动（默认：最快可达自动切换）": { en: "Auto (default: switch to fastest reachable)" },
+  "固定内网（失败不自动切换）": { en: "Pin LAN (no auto-failover on failure)" },
+  "固定外网（失败不自动切换）": { en: "Pin WAN (no auto-failover on failure)" },
+  "固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
+    en: "In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
+  },
+  "固定": { en: "Pinned" },
+  "事件流：已连接": { en: "Event stream: connected" },
+  "事件流：已断开——自动重连中（上次断开 {time}）": {
+    en: "Event stream: disconnected — auto-reconnecting (last down {time})",
+  },
   "详情": { en: "Detail" },
   "测试目标": { en: "Target" },
   "分步过程": { en: "Steps" },

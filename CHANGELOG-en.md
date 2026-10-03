@@ -5,6 +5,14 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.1 (2026-10-03 - sub-batch)
+
+**S1 chat-realtime trio (root-cause fix for "no self-recovery after stream death / no new messages in background tabs") + manual address pinning (address_mode)**
+
+- **Chat realtime (S1)**: all three root causes fixed: ① **SSE reconnect state machine** — no more permanent stop after the backoff caps at 60 s (self-heals on host restart / container swap / network recovery; while down, the 60 s polling fallback runs in parallel); 401/403 session expiry no longer stops permanently — keeps probing on a 60 s cycle (auto-recovers on the next connect once the host token refreshes after re-login) ② **stream watchdog** — the backend sends a ": keepalive" comment frame every 15 s; no bytes at all for 45 s (keepalive included) = TCP half-dead hang (NAT timeout / proxy idle-kill without FIN) → abort into the reconnect path ③ **visibility catch-up** — background-tab setIntervals are throttled by the browser to ≥60 s, so returning to the foreground / window focus pulls messages + room list once immediately (3 s debounce against event storms) ④ **reconnect catch-up** — the watcher /sync does not replay events missed while down, so recovering after >5 s of downtime pulls the active room's messages + the full room list immediately ⑤ **event-stream state on the settings page** — green "connected" / amber "disconnected — auto-reconnecting (last down HH:MM:SS)", S1-class issues visible at a glance
+- **Manual address pinning (address_mode)**: new three-way picker on the settings page (auto = default / pin LAN / pin WAN; list-order contract = [LAN, WAN]; saved and effective without restart). Pinned mode dials only the pinned address (the failover chain degrades to a single element); failures report an explicit "address mode = pinned LAN/WAN: no auto-failover on failure — check this link or switch back to auto" error — no silent failover. The background probe loop keeps running (connectivity test still shows the other path's latency; the pinned address gets a blue "Pinned" badge). Auto mode semantics unchanged (regression guardrail for existing behavior)
+- **Behavior change note**: the three address kinds in the `GET /config` `effective` report change from "empty cache = empty string" to "cache first, fall back to the first address on cache miss" (more honest in auto mode; pinned mode reports the pinned value)
+
 ## 0.5.0-beta.14 (2026-09-25 - official release)
 
 **Merged release of the 13.2–13.24 batch (chat / sessions / teams / workers / workflows / skills / knowledge base overhaul + build size −5.3MB)**

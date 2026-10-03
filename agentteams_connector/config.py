@@ -57,6 +57,10 @@ _DEFAULTS: Dict[str, Any] = {
         "enabled": False,
         "urls": [],  # e.g. ["http://192.168.x.x:30000", "https://你的域名:30000"]
     },
+    # v0.5.0-beta.14.1: 地址手动固定档（"auto"=自动切换[默认] /
+    # "lan"=固定内网[列表索引 0] / "wan"=固定外网[索引 1]）——固定档失败
+    # 诚实报错不 failover，探测循环照跑只供显示。
+    "address_mode": "auto",
     "matrix": {
         "user_id": "",
         "access_token": "",
@@ -89,9 +93,13 @@ def load_config() -> Dict[str, Any]:
             "console_session",
             "sglang",
             "matrix",
+            "address_mode",
         ):
             if key in raw and raw[key] is not None:
                 merged[key] = raw[key]
+        # v0.5.0-beta.14.1: 旧配置垃圾值降级 auto（不 400 不崩）。
+        if merged.get("address_mode") not in ("auto", "lan", "wan"):
+            merged["address_mode"] = "auto"
         # Legacy schema migration (v0.1.0 profiles) → auto-failover lists.
         if not merged["matrix_homeservers"] and isinstance(raw.get("profiles"), dict):
             homeservers: List[str] = []
@@ -151,6 +159,11 @@ def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
             val = patch[key].strip()
             if val and val != "***":
                 merged[key] = val
+    # v0.5.0-beta.14.1: 地址模式（无效值归 auto；空串不动）。
+    if "address_mode" in patch and isinstance(patch["address_mode"], str):
+        val = patch["address_mode"].strip()
+        if val:
+            merged["address_mode"] = val if val in ("auto", "lan", "wan") else "auto"
     if "sglang" in patch and isinstance(patch["sglang"], dict):
         existing = merged.get("sglang") or {}
         incoming = dict(patch["sglang"])
