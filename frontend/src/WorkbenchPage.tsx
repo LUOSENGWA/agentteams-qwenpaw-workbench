@@ -3103,6 +3103,22 @@ export default function WorkbenchPage() {
   // 每层 clientWidth 的 min（任何一层变窄都会拉低），再与视口宽取
   // min；ResizeObserver 观察**整条父链**（任一层变化即重测）。宿主形
   // 态无关（OS 窗口/经典页/iframe 都取到真实可见宽）。
+  // v0.5.0-beta.14.2（F2 分栏计话题面板）：RoomChat 上报话题面板占宽
+  // （inline 面板与聊天列同占空间）——打开话题时可用宽 = 实测可见宽 −
+  // 面板宽。此前判定完全不含面板：开着话题拖窄窗口，聊天区早已局促
+  // 却仍双栏，继续收窄才切（14.2 装验反馈）。
+  const threadPanelRef = React.useRef<{ open: boolean; width: number }>({
+    open: false,
+    width: 0,
+  });
+  const measureRef = React.useRef<() => void>(() => {});
+  const onThreadPanelLayout = React.useCallback(
+    (open: boolean, width: number) => {
+      threadPanelRef.current = { open, width };
+      measureRef.current();
+    },
+    [],
+  );
   React.useEffect(() => {
     const measure = () => {
       let visible = window.innerWidth;
@@ -3111,9 +3127,12 @@ export default function WorkbenchPage() {
         if (el.clientWidth < visible) visible = el.clientWidth;
         el = el.parentElement;
       }
-      setChatWideMeasured(visible >= CHAT_SPLIT_MIN_CONTAINER_W);
+      const tp = threadPanelRef.current;
+      const eff = tp.open ? visible - tp.width : visible;
+      setChatWideMeasured(eff >= CHAT_SPLIT_MIN_CONTAINER_W);
     };
     measure();
+    measureRef.current = measure;
     window.addEventListener("resize", measure);
     let ro: ResizeObserver | null = null;
     if (mainRef.current && typeof ResizeObserver !== "undefined") {
@@ -3293,6 +3312,7 @@ export default function WorkbenchPage() {
       muted={activeRoom ? mutedRooms.includes(activeRoom.room_id) : false}
       onToggleMute={() => void handleToggleMute()}
       onReact={(eventId, emoji) => void handleReact(eventId, emoji)}
+      onThreadPanelLayout={onThreadPanelLayout}
       onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
       headerPrefix={chatListToggleBtn}
       onBack={() => {
