@@ -1498,6 +1498,11 @@ export interface RoomChatProps {
    *  （roomMatchesProject 同源，父组件算好传入）——composer 上方任务
    *  进度 + HITL 内联轨；无匹配/项目终态时组件自身不渲染。 */
   activityProject?: WorkflowEvent | null;
+  /** v0.5.0-beta.14.2（F2 分栏计话题面板）：向父组件上报话题面板
+   *  占用（inline 面板吃宽；drawer 覆盖层不吃）。父组件将其计入
+   *  单/双栏判定——此前未计入：开着话题把窗口拖窄时聊天区早已
+   *  局促但判定不触发，要继续收窄才切单栏。open=false 时 width 忽略。 */
+  onThreadPanelLayout?: (open: boolean, width: number) => void;
   /** workflow 卡片干预成功 → 刷新工作流。 */
   onWorkflowIntervened?: () => void;
   /** 项目文件面板（v0.5.0-beta.12）：顶部 📁 按钮 → 抽屉。 */
@@ -1588,6 +1593,7 @@ export default function RoomChat(props: RoomChatProps) {
     onJumpHandled,
     liveWorkflows,
     activityProject,
+    onThreadPanelLayout,
     memberRoles,
     memberWorkerNames,
     workerBadge,
@@ -2479,6 +2485,15 @@ export default function RoomChat(props: RoomChatProps) {
     onReact,
     jumpToMessage,
   ]);
+
+  // v0.5.0-beta.14.2（F2）：话题面板占宽上报（打开/关闭/调宽/宽窄态变化
+  // 均触发）→ 父组件重测分栏。inline 面板（isWide）才吃宽；drawer 模式
+  // 是覆盖层不占布局宽，不上报。
+  React.useEffect(() => {
+    if (!onThreadPanelLayout) return;
+    const open = isWide && threadPanelBody !== null;
+    onThreadPanelLayout(open, open ? panelWidth : 0);
+  }, [isWide, threadPanelBody, panelWidth, onThreadPanelLayout]);
 
   return (
     <div
