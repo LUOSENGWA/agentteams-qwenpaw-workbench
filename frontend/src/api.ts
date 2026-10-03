@@ -205,6 +205,8 @@ export interface WorkbenchConfig {
   // 了但坏了 / ""=无）——file/env 时 controller_token 为空但 L1 数据面可用，
   // 前端门控以此为准。token 值本身永不离开连接器进程。
   controllerTokenSource?: string;
+  // v0.5.0-beta.14.1: 地址手动固定档（auto=自动切换[默认] / lan=固定内网 / wan=固定外网）。
+  address_mode?: "auto" | "lan" | "wan";
 }
 
 /** v0.5.0-beta.12: 网关面（Higress Console）列表响应——
@@ -373,6 +375,8 @@ export interface ConfigTestResponse {
   // v0.5.0-beta.12: SGLang 双地址——逐地址行（与 matrix/controller 同构）。
   sglang: AddressTestResult[] | null;
   effective: { matrix: string; controller: string };
+  // v0.5.0-beta.14.1: 固定档回报——三类地址各自的固定值（null=未固定）。
+  pinned?: { matrix?: string | null; controller?: string | null; sglang?: string | null };
   applied: boolean;
   switched?: { matrix: boolean; controller: boolean };
 }

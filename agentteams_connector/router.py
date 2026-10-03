@@ -69,10 +69,17 @@ def _address_list(cfg: Dict[str, Any], kind: str) -> List[str]:
 
 
 def _ordered_addresses(cfg: Dict[str, Any], kind: str) -> List[str]:
-    """Cached working address first, then the rest in configured order."""
+    """Cached working address first, then the rest in configured order.
+
+    v0.5.0-beta.14.1: 固定档（lan/wan）= 单元素链——请求层 failover 自然
+    退化为「只用固定地址」，失败诚实报错。
+    """
     urls = _address_list(cfg, kind)
     if not urls:
         return []
+    pinned = _pinned_url(cfg, kind)
+    if pinned:
+        return [pinned]
     with _cache_lock:
         cached = _working_cache.get(kind)
     if cached and cached in urls:
@@ -83,6 +90,58 @@ def _ordered_addresses(cfg: Dict[str, Any], kind: str) -> List[str]:
 def _mark_working(kind: str, url: str) -> None:
     with _cache_lock:
         _working_cache[kind] = url
+
+
+# v0.5.0-beta.14.1（address_mode 手动档）：固定内网/外网——请求只用固定
+# 地址、失败诚实报错（_pinned_note 追加到 502 detail），不静默 failover；
+# 探测循环照跑（连通性测试显示另一条路径状态）但不影响路由。列表顺序
+# 约定=[内网, 外网]（设置页内网/外网两个显式输入框同源）。
+_ADDRESS_MODES = ("auto", "lan", "wan")
+
+
+def _address_mode(cfg: Dict[str, Any]) -> str:
+    mode = str(cfg.get("address_mode") or "auto")
+    return mode if mode in _ADDRESS_MODES else "auto"
+
+
+def _pinned_url(cfg: Dict[str, Any], kind: str) -> str | None:
+    """固定档下该 kind 唯一使用的地址；auto 档或无地址 → None。"""
+    mode = _address_mode(cfg)
+    if mode == "auto":
+        return None
+    urls = _address_list(cfg, kind)
+    if not urls:
+        return None
+    idx = 0 if mode == "lan" else 1
+    return urls[idx] if len(urls) > idx else urls[0]
+
+
+def _pinned_map(cfg: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    """三类地址各自的固定值（None=未固定）——供 /config/test 回报显示。"""
+    return {k: _pinned_url(cfg, k) for k in ("matrix", "controller", "sglang")}
+
+
+def _pinned_note(cfg: Dict[str, Any]) -> str:
+    """固定档诚实报错后缀（追加到用户可见 502 detail）。"""
+    mode = _address_mode(cfg)
+    if mode == "auto":
+        return ""
+    label = "内网" if mode == "lan" else "外网"
+    return f"｜地址模式=固定{label}：失败不自动切换——请检查该链路或切回自动"
+
+
+def _pick_address(cfg: Dict[str, Any], kind: str) -> str:
+    """直拨单地址解析：固定档=固定地址；auto=working cache 优先、
+    cache miss 回退列表首个（= 现有语义，零行为变化）。"""
+    urls = _address_list(cfg, kind)
+    if not urls:
+        return ""
+    pinned = _pinned_url(cfg, kind)
+    if pinned:
+        return pinned
+    with _cache_lock:
+        cached = _working_cache.get(kind)
+    return cached if cached in urls else urls[0]
 
 
 def _count_gateway_aliases(
@@ -610,7 +669,13 @@ def build_router() -> APIRouter:
         legacy = str(sglang.get("url") or "").strip().rstrip("/")
         if legacy and legacy not in bases:
             bases.append(legacy)
-        ordered = _ordered_addresses({"sglang": {"urls": bases}}, "sglang") or bases
+        ordered = (
+            _ordered_addresses(
+                {"sglang": {"urls": bases}, "address_mode": cfg.get("address_mode")},
+                "sglang",
+            )
+            or bases
+        )
         if not ordered:
             raise HTTPException(
                 status_code=502, detail="未配置 SGLang 地址"
@@ -630,7 +695,7 @@ def build_router() -> APIRouter:
             except Exception as exc:  # noqa: BLE001 - 网络错误换下一地址
                 last_err = f"{base} {selfcheck._classify_error(exc)}"
         if payload is None:
-            raise HTTPException(status_code=502, detail=f"SGLang 全部地址失败：{last_err}")
+            raise HTTPException(status_code=502, detail=f"SGLang 全部地址失败：{last_err}{_pinned_note(cfg)}")
 
         loads = payload.get("loads") or []
         # 提取前端需要的核心字段（dp_rank 维度）。
@@ -701,7 +766,13 @@ def build_router() -> APIRouter:
         legacy = str(sglang.get("url") or "").strip().rstrip("/")
         if legacy and legacy not in bases:
             bases.append(legacy)
-        ordered = _ordered_addresses({"sglang": {"urls": bases}}, "sglang") or bases
+        ordered = (
+            _ordered_addresses(
+                {"sglang": {"urls": bases}, "address_mode": cfg.get("address_mode")},
+                "sglang",
+            )
+            or bases
+        )
         if not ordered:
             raise HTTPException(status_code=502, detail="未配置 SGLang 地址")
         last_err = "无可用地址"
@@ -723,7 +794,7 @@ def build_router() -> APIRouter:
             except Exception as exc:  # noqa: BLE001 - 网络错误换下一地址
                 last_err = f"{base} {selfcheck._classify_error(exc)}"
         raise HTTPException(
-            status_code=502, detail=f"SGLang 全部地址失败：{last_err}"
+            status_code=502, detail=f"SGLang 全部地址失败：{last_err}{_pinned_note(cfg)}"
         )
 
     @router.get("/teams/sync")
@@ -751,10 +822,7 @@ def build_router() -> APIRouter:
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
         user_id = (matrix_cfg.get("user_id") or "").strip()
-        homeservers = cfg.get("matrix_homeservers") or []
-        with _cache_lock:
-            cached_hs = _working_cache.get("matrix")
-        homeserver = cached_hs if cached_hs in homeservers else (homeservers[0] if homeservers else "")
+        homeserver = _pick_address(cfg, "matrix")
         if not homeserver:
             raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
         if not token:
@@ -773,7 +841,8 @@ def build_router() -> APIRouter:
         except Exception as exc:  # noqa: BLE001
             logger.warning("teams/sync failed: %s", exc)
             raise HTTPException(
-                status_code=502, detail=selfcheck._classify_error(exc)
+                status_code=502,
+                detail=f"{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
             ) from exc
 
         # DM 命名源：m.direct（一次小请求，随 60s 缓存摊薄）。
@@ -825,10 +894,7 @@ def build_router() -> APIRouter:
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
-        homeservers = cfg.get("matrix_homeservers") or []
-        with _cache_lock:
-            cached_hs = _working_cache.get("matrix")
-        homeserver = cached_hs if cached_hs in homeservers else (homeservers[0] if homeservers else "")
+        homeserver = _pick_address(cfg, "matrix")
         if not homeserver:
             raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
         if not token:
@@ -851,7 +917,8 @@ def build_router() -> APIRouter:
                 )
             except Exception as exc:  # noqa: BLE001
                 raise HTTPException(
-                    status_code=502, detail=selfcheck._classify_error(exc)
+                    status_code=502,
+                    detail=f"{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
                 ) from exc
             cfg_for_parse = config_mod.load_config()
             user_for_parse = (cfg_for_parse.get("matrix") or {}).get("user_id", "")
@@ -966,10 +1033,7 @@ def build_router() -> APIRouter:
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
-        homeservers = cfg.get("matrix_homeservers") or []
-        with _cache_lock:
-            cached_hs = _working_cache.get("matrix")
-        homeserver = cached_hs if cached_hs in homeservers else (homeservers[0] if homeservers else "")
+        homeserver = _pick_address(cfg, "matrix")
         if not homeserver:
             raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
         if not token:
@@ -992,7 +1056,8 @@ def build_router() -> APIRouter:
                 )
             except Exception as exc:  # noqa: BLE001
                 raise HTTPException(
-                    status_code=502, detail=selfcheck._classify_error(exc)
+                    status_code=502,
+                    detail=f"{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
                 ) from exc
             cfg_for_parse = config_mod.load_config()
             user_for_parse = (cfg_for_parse.get("matrix") or {}).get("user_id", "")
@@ -1343,11 +1408,12 @@ def build_router() -> APIRouter:
                 out["controllerTokenSource"] = ""
         except TokenValidationError:
             out["controllerTokenSource"] = "invalid"
-        with _cache_lock:
-            out["effective"] = {
-                "matrix": _working_cache.get("matrix", ""),
-                "controller": _working_cache.get("controller", ""),
-            }
+        # v0.5.0-beta.14.1: effective 走 _pick_address（固定档=固定值；auto
+        # = cache 优先、miss 回退首个——比原来「cache 空=空串」更诚实）。
+        out["effective"] = {
+            "matrix": _pick_address(cfg, "matrix"),
+            "controller": _pick_address(cfg, "controller"),
+        }
         return out
 
     @router.put("/config")
@@ -1402,11 +1468,10 @@ def build_router() -> APIRouter:
         ]
         token = (cfg.get("controller_token") or "").strip()
 
-        with _cache_lock:
-            prev = {
-                "matrix": _working_cache.get("matrix", ""),
-                "controller": _working_cache.get("controller", ""),
-            }
+        prev = {
+            "matrix": _pick_address(cfg, "matrix"),
+            "controller": _pick_address(cfg, "controller"),
+        }
         results = await selfcheck.test_addresses(
             matrix_list, ctl_list, sglang_list, token, with_diag=True
         )
@@ -1415,11 +1480,10 @@ def build_router() -> APIRouter:
         if same_lists and (matrix_list or ctl_list):
             await selfcheck.refresh_effective(cfg)
             applied = True
-        with _cache_lock:
-            effective = {
-                "matrix": _working_cache.get("matrix", ""),
-                "controller": _working_cache.get("controller", ""),
-            }
+        effective = {
+            "matrix": _pick_address(cfg, "matrix"),
+            "controller": _pick_address(cfg, "controller"),
+        }
         # v0.5.0-beta.12：测完自动切换要可见——switched 标记哪些类型换了生效地址。
         switched = {
             kind: bool(effective.get(kind) and effective[kind] != prev[kind])
@@ -1431,6 +1495,8 @@ def build_router() -> APIRouter:
             "controller": results["controller"],
             "sglang": results["sglang"],
             "effective": effective,
+            # v0.5.0-beta.14.1: 固定档回报——三类地址各自的固定值（None=未固定）。
+            "pinned": _pinned_map(cfg),
             "applied": applied,
             "switched": switched,
         }
@@ -1709,10 +1775,7 @@ def build_router() -> APIRouter:
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
         user_id = (matrix_cfg.get("user_id") or "").strip()
-        homeservers = cfg.get("matrix_homeservers") or []
-        with _cache_lock:
-            cached = _working_cache.get("matrix")
-        homeserver = cached if cached in homeservers else (homeservers[0] if homeservers else "")
+        homeserver = _pick_address(cfg, "matrix")
         if not homeserver:
             raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
         if not token:
@@ -1721,7 +1784,10 @@ def build_router() -> APIRouter:
         try:
             rooms = matrix_client.joined_rooms(homeserver, token).get("joined_rooms", [])
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail=selfcheck._classify_error(exc)) from exc
+            raise HTTPException(
+                status_code=502,
+                detail=f"{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
+            ) from exc
 
         logger.info(
             "teams/rooms: %d rooms on %s",
@@ -1823,10 +1889,7 @@ def build_router() -> APIRouter:
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
-        homeservers = cfg.get("matrix_homeservers") or []
-        with _cache_lock:
-            cached_hs = _working_cache.get("matrix")
-        homeserver = cached_hs if cached_hs in homeservers else (homeservers[0] if homeservers else "")
+        homeserver = _pick_address(cfg, "matrix")
         if not homeserver:
             raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
         if not token:
@@ -1875,7 +1938,8 @@ def build_router() -> APIRouter:
             raise
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
-                status_code=502, detail=selfcheck._classify_error(exc)
+                status_code=502,
+                detail=f"{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
             ) from exc
 
     @router.get("/docker-logs/{component}")
@@ -1958,7 +2022,9 @@ def build_router() -> APIRouter:
                 raise
             except Exception as exc:  # noqa: BLE001
                 last_error = selfcheck._classify_error(exc)
-        raise HTTPException(status_code=502, detail=f"日志拉取失败：{last_error}")
+        raise HTTPException(
+            status_code=502, detail=f"日志拉取失败：{last_error}{_pinned_note(cfg)}"
+        )
 
     @router.post("/dm")
     async def open_dm(req: DmRequest) -> Dict[str, Any]:
@@ -1969,10 +2035,7 @@ def build_router() -> APIRouter:
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
-        homeservers = cfg.get("matrix_homeservers") or []
-        with _cache_lock:
-            cached = _working_cache.get("matrix")
-        homeserver = cached if cached in homeservers else (homeservers[0] if homeservers else "")
+        homeserver = _pick_address(cfg, "matrix")
         if not homeserver:
             raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
         if not token:
@@ -1994,7 +2057,10 @@ def build_router() -> APIRouter:
         except matrix_client.MatrixError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail=selfcheck._classify_error(exc)) from exc
+            raise HTTPException(
+                status_code=502,
+                detail=f"{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
+            ) from exc
         return {"ok": True, "target": target, **result}
 
     @router.get("/matrix/member/messages")
@@ -2063,7 +2129,7 @@ def build_router() -> APIRouter:
                     last_error = selfcheck._classify_error(exc)
             if payload is None:
                 raise HTTPException(
-                    status_code=502, detail=f"messages 请求失败：{last_error}"
+                    status_code=502, detail=f"messages 请求失败：{last_error}{_pinned_note(cfg)}"
                 )
             chunk = payload.get("chunk") or []
             for ev in chunk:
@@ -2297,7 +2363,9 @@ def build_router() -> APIRouter:
             except Exception as exc:  # noqa: BLE001 - network-level, try next
                 last_error = selfcheck._classify_error(exc)
         if payload is None:
-            raise HTTPException(status_code=502, detail=f"搜索请求失败：{last_error}")
+            raise HTTPException(
+                status_code=502, detail=f"搜索请求失败：{last_error}{_pinned_note(cfg)}"
+            )
 
         room_events = (
             (payload.get("search_categories") or {}).get("room_events") or {}
@@ -2395,7 +2463,9 @@ def build_router() -> APIRouter:
             except Exception as exc:  # noqa: BLE001 - network-level, try next
                 last_error = selfcheck._classify_error(exc)
                 logger.warning("login failed (network) via %s: %s", hs, last_error)
-        raise HTTPException(status_code=502, detail=f"所有地址登录失败：{last_error}")
+        raise HTTPException(
+            status_code=502, detail=f"所有地址登录失败：{last_error}{_pinned_note(cfg)}"
+        )
 
     @router.post("/selfcheck/{level}")
     async def run_selfcheck(level: str) -> Dict[str, Any]:
@@ -2460,10 +2530,7 @@ def build_router() -> APIRouter:
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
-        homeservers = cfg.get("matrix_homeservers") or []
-        with _cache_lock:
-            cached = _working_cache.get("matrix")
-        homeserver = cached if cached in homeservers else (homeservers[0] if homeservers else "")
+        homeserver = _pick_address(cfg, "matrix")
         if not homeserver:
             raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
         if not token:
@@ -2505,7 +2572,8 @@ def build_router() -> APIRouter:
                     resp = r  # 兜底：末次响应（全失败时透传）
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
-                status_code=502, detail=f"媒体下载失败：{selfcheck._classify_error(exc)}"
+                status_code=502,
+                detail=f"媒体下载失败：{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
             ) from exc
         if resp is None or resp.status_code >= 400:
             detail = (
@@ -2574,11 +2642,7 @@ def build_router() -> APIRouter:
                 status_code=401,
                 detail="远端团队知识库需要 Controller 管理员 token（配置页填写后刷新）",
             )
-        with _cache_lock:
-            base = _working_cache.get("controller") or ""
-        if not base or base not in [u for u in (cfg.get("controller_urls") or []) if u]:
-            base = [u for u in (cfg.get("controller_urls") or []) if u]
-            base = base[0] if base else ""
+        base = _pick_address(cfg, "controller")
         if not base:
             raise HTTPException(status_code=502, detail="未配置 Controller 地址")
         return token, base.rstrip("/")
@@ -4886,7 +4950,7 @@ def build_router() -> APIRouter:
                     last_error,
                 )
         raise HTTPException(
-            status_code=502, detail=f"所有地址请求失败：{last_error}"
+            status_code=502, detail=f"所有地址请求失败：{last_error}{_pinned_note(cfg)}"
         )
 
     return router

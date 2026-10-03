@@ -185,10 +185,13 @@ function ConnRow({
   row,
   tag,
   active,
+  pinned,
 }: {
   row: AddressTestResult;
   tag: string;
   active: boolean;
+  // v0.5.0-beta.14.1: 固定档——该地址被 address_mode 钉住（与 active 徽标并行显示）。
+  pinned?: boolean;
 }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
@@ -243,6 +246,11 @@ function ConnRow({
         {active ? (
           <antd.Tag color="orange" style={{ margin: 0, flexShrink: 0 }}>
             {tr("生效中")}
+          </antd.Tag>
+        ) : null}
+        {pinned ? (
+          <antd.Tag color="blue" style={{ margin: 0, flexShrink: 0 }}>
+            {tr("固定")}
           </antd.Tag>
         ) : null}
       </div>
@@ -395,6 +403,7 @@ function SettingsTab({
   onLoginSuccess,
   chatForceWide,
   onChatForceWideChange,
+  sseState,
 }: {
   config: WorkbenchConfig | null;
   onConfigChange: () => void;
@@ -403,10 +412,14 @@ function SettingsTab({
   // 12.14：聊天分栏强制开关（忽略宽度判定）。
   chatForceWide?: boolean;
   onChatForceWideChange?: (v: boolean) => void;
+  // v0.5.0-beta.14.1 (S1-4)：事件流连接态（设置页可见——排障一眼定位 S1 类问题）。
+  sseState?: { status: "connected" | "reconnecting"; since: number };
 }) {
   const tr = useT();
   const [matrixLan, setMatrixLan] = React.useState("");
   const [matrixWan, setMatrixWan] = React.useState("");
+  // v0.5.0-beta.14.1: 地址手动固定档（auto=自动切换[默认] / lan=固定内网 / wan=固定外网）。
+  const [addressMode, setAddressMode] = React.useState<"auto" | "lan" | "wan">("auto");
   const [controllerLan, setControllerLan] = React.useState("");
   const [controllerWan, setControllerWan] = React.useState("");
   const [controllerToken, setControllerToken] = React.useState("");
@@ -509,6 +522,8 @@ function SettingsTab({
     if (!config) return;
     setMatrixLan(config.matrix_homeservers?.[0] || "");
     setMatrixWan(config.matrix_homeservers?.[1] || "");
+    // v0.5.0-beta.14.1: 地址模式回填（垃圾值后端已降级 auto）。
+    setAddressMode(config.address_mode || "auto");
     setControllerLan(config.controller_urls?.[0] || "");
     setControllerWan(config.controller_urls?.[1] || "");
     setControllerToken(config.controller_token || "");
@@ -541,6 +556,8 @@ function SettingsTab({
               v.trim(),
             ),
             controller_token: controllerToken,
+            // v0.5.0-beta.14.1: 地址模式（auto/lan/wan）——保存后不重启即生效。
+            address_mode: addressMode,
             sglang: {
               enabled: sglangEnabled,
               urls: [sglangLan, sglangWan].filter((v) => v.trim()),
@@ -669,6 +686,36 @@ function SettingsTab({
       </div>
 
       <div style={{ display: "grid", gap: 12 }}>
+        {/* v0.5.0-beta.14.1 (S1-4)：事件流连接态——「断开自动重连」从黑箱变可见。 */}
+        {sseState ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12,
+              padding: "6px 10px",
+              borderRadius: 6,
+              background: sseState.status === "connected" ? "#f6ffed" : "#fffbe6",
+              border: `1px solid ${sseState.status === "connected" ? "#b7eb8f" : "#ffe58f"}`,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: sseState.status === "connected" ? "#52c41a" : "#faad14",
+                flexShrink: 0,
+              }}
+            />
+            {sseState.status === "connected"
+              ? tr("事件流：已连接")
+              : tr("事件流：已断开——自动重连中（上次断开 {time}）", {
+                  time: new Date(sseState.since).toLocaleTimeString(),
+                })}
+          </div>
+        ) : null}
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             Matrix 地址（必填至少一个）
@@ -712,6 +759,27 @@ function SettingsTab({
           />
         </div>
 
+        {/* v0.5.0-beta.14.1: 地址手动固定档——固定档请求只用固定地址、失败
+            诚实报错不静默 failover；探测循环照跑（显示层不受影响）。 */}
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            {tr("地址模式（内网/外网切换策略）")}
+          </div>
+          <antd.Select
+            value={addressMode}
+            onChange={(v: "auto" | "lan" | "wan") => setAddressMode(v)}
+            style={{ width: "100%" }}
+            options={[
+              { value: "auto", label: tr("自动（默认：最快可达自动切换）") },
+              { value: "lan", label: tr("固定内网（失败不自动切换）") },
+              { value: "wan", label: tr("固定外网（失败不自动切换）") },
+            ]}
+          />
+          <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+            {tr("固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。")}
+          </div>
+        </div>
+
         {/* v0.5.0-beta.12: 连通性测试——逐地址测延迟，外/内网识别可视化。
             测表单当前值（可未保存）；保存成功后自动跑一次。 */}
         <div>
@@ -742,7 +810,12 @@ function SettingsTab({
                   key={`m-${r.url}`}
                   row={r}
                   tag="Matrix"
-                  active={connTest.effective.matrix === r.url}
+                  // v0.5.0-beta.14.1: 固定档——固定地址即使另一条更快也显示生效。
+                  active={
+                    connTest.effective.matrix === r.url ||
+                    connTest.pinned?.matrix === r.url
+                  }
+                  pinned={connTest.pinned?.matrix === r.url}
                 />
               ))}
               {connTest.controller.map((r) => (
@@ -750,7 +823,11 @@ function SettingsTab({
                   key={`c-${r.url}`}
                   row={r}
                   tag="Controller"
-                  active={connTest.effective.controller === r.url}
+                  active={
+                    connTest.effective.controller === r.url ||
+                    connTest.pinned?.controller === r.url
+                  }
+                  pinned={connTest.pinned?.controller === r.url}
                 />
               ))}
               {connTest.sglang
@@ -760,6 +837,7 @@ function SettingsTab({
                       row={r}
                       tag="SGLang"
                       active={false}
+                      pinned={connTest.pinned?.sglang === r.url}
                     />
                   ))
                 : null}
@@ -2211,9 +2289,22 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     pollMessagesRef.current = pollMessages;
   }, [pollMessages]);
+  // v0.5.0-beta.14.1 (S1-1)：同上 ref 镜像——SSE 重连追平要拉房间列表全量
+  // （effect deps=[]，闭包必须走 ref 取最新）。
+  const refreshRoomsRef = React.useRef<() => Promise<void>>(async () => {});
+  React.useEffect(() => {
+    refreshRoomsRef.current = refreshRooms;
+  }, [refreshRooms]);
   // v0.5.0-beta.13.21：房间列表预览/未读的 10s 节流全量刷新退役——改由
   // room_list_update 增量 SSE 就地合并（Element 式；全量 /teams/sync 降为
   // 60s 兜底 + 邀请/手动）。
+
+  // v0.5.0-beta.14.1 (S1-4)：事件流连接态（设置页可见——「断开自动重连」
+  // 从黑箱变可见，排障一眼定位 S1 类问题）。
+  const [sseState, setSseState] = React.useState<{
+    status: "connected" | "reconnecting";
+    since: number;
+  }>({ status: "reconnecting", since: Date.now() });
 
   // ── IM 式事件触发（用户反馈「30s 轮询太笨」）────────────────────
   // 后端 sync watcher：Matrix /sync 长轮询检测 @提到我 / 任务状态变化 →
@@ -2233,6 +2324,7 @@ export default function WorkbenchPage() {
     let fallback: number | null = null;
     let closed = false;
     let retryDelay = 1000;
+    let lastDownSince = 0; // v0.5.0-beta.14.1 (S1-1)：最近一次断连开始时刻（0=当前连着）
 
     const bootFallback = () => {
       if (!fallback) {
@@ -2250,7 +2342,12 @@ export default function WorkbenchPage() {
     };
 
     const connect = async () => {
+      // v0.5.0-beta.14.1 (S1-2)：watchdog 句柄 hoist 到 connect() 顶部——
+      // 清理统一走 catch 后的唯一收敛点（done/abort/网络异常全路径覆盖，
+      // 防 interval 泄漏周期性杀下一次重连）。
+      let watchdog: number | null = null;
       if (closed) return;
+      if (!lastDownSince) lastDownSince = Date.now();
       try {
         abort = new AbortController();
         const url = window.QwenPaw.host.getApiUrl
@@ -2265,21 +2362,46 @@ export default function WorkbenchPage() {
         if (token) headers.Authorization = `Bearer ${token}`;
         const res = await fetch(url, { headers, signal: abort.signal });
         if (!res.ok || !res.body) {
-          // 401（auth 未通过）等：退轮询兜底并停 SSE 重试（避免打爆日志）。
           if (res.status === 401 || res.status === 403) {
+            // v0.5.0-beta.14.1 (S1-1/H6)：会话失效不再永停——60s 周期继续探
+            // （重登后宿主 token 刷新，下次 connect 自动恢复）；轮询兜底并行。
             bootFallback();
+            setSseState({ status: "reconnecting", since: lastDownSince });
+            window.setTimeout(() => {
+              void connect();
+            }, 60000);
             return;
           }
           throw new Error(`SSE ${res.status}`);
         }
         clearFallback();
         retryDelay = 1000;
+        // v0.5.0-beta.14.1 (S1-1/H3)：重连追平——watcher /sync 不回放断连期
+        // 事件，断开 >5s 恢复时立即拉一次：活动房间消息 + 房间列表全量。
+        const downMs = lastDownSince ? Date.now() - lastDownSince : 0;
+        lastDownSince = 0;
+        setSseState({ status: "connected", since: Date.now() });
+        if (downMs > 5000) {
+          void pollMessagesRef.current();
+          void refreshRoomsRef.current();
+        }
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        // v0.5.0-beta.14.1 (S1-2)：流看门狗——后端每 15s 发 ": keepalive"
+        // 注释帧；45s（3 周期+裕量）无任何字节（含 keepalive）= TCP 半死挂
+        // （NAT 超时/代理 idle-kill 未发 FIN）→ abort 读 → 走重连路径。
+        let lastFrameAt = Date.now();
+        watchdog = window.setInterval(() => {
+          if (Date.now() - lastFrameAt > 45000) {
+            lastFrameAt = Date.now(); // 防重复触发
+            abort?.abort();
+          }
+        }, 5000);
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
+          lastFrameAt = Date.now(); // 任何字节=帧到达（data 或 keepalive 注释）
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
           buffer = lines.pop() ?? "";
@@ -2376,12 +2498,18 @@ export default function WorkbenchPage() {
       } catch {
         /* 网络抖动 → 重连 */
       }
-      // 流结束（连接被断开）→ 指数退避重连；连续失败由轮询兜底接管。
-      if (closed) return;
-      if (retryDelay >= 60000) {
-        bootFallback();
-        return;
+      // v0.5.0-beta.14.1 (S1-2)：watchdog 唯一清理收敛点——覆盖 for 循环
+      // 全部退出路径（done 正常结束 / 看门狗或卸载 abort / 网络异常）。
+      if (watchdog) {
+        window.clearInterval(watchdog);
+        watchdog = null;
       }
+      // 流结束（连接被断开）→ 指数退避重连；**退避封顶 60s 后不再永停**
+      // （v0.5.0-beta.14.1 S1-1：宿主重启/换容器/网络恢复即自愈），持续断连
+      // 时 60s 轮询兜底并行。
+      if (closed) return;
+      if (retryDelay >= 60000) bootFallback(); // 幂等
+      setSseState({ status: "reconnecting", since: lastDownSince });
       window.setTimeout(() => {
         void connect();
       }, retryDelay);
@@ -2395,6 +2523,29 @@ export default function WorkbenchPage() {
       clearFallback();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // v0.5.0-beta.14.1 (S1-3)：可见性追平——后台 tab 的 setInterval 被浏览器
+  // 节流至 ≥60s（SSE 也可能已死），回到前台/窗口聚焦时立即拉一次（3s 防抖
+  // 防事件风暴）——不等下一个 tick。
+  React.useEffect(() => {
+    let lastCatch = 0;
+    const catchUp = () => {
+      const now = Date.now();
+      if (now - lastCatch < 3000) return;
+      lastCatch = now;
+      void pollMessagesRef.current();
+      void refreshRoomsRef.current();
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") catchUp();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", catchUp);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", catchUp);
+    };
   }, []);
 
   const handleSend = React.useCallback(
@@ -3744,6 +3895,7 @@ export default function WorkbenchPage() {
                 onConfigChange={() => void refreshConfig()}
                 chatForceWide={chatForceWide}
                 onChatForceWideChange={setChatForceWidePersist}
+                sseState={sseState}
               />
             ),
           },
