@@ -2745,8 +2745,42 @@ export default function WorkbenchPage() {
                 // 增量覆盖（13.21：10s 节流全量刷新退役）。
                 const rid = String((data as { room_id?: string }).room_id || "");
                 if (rid && rid === activeRoomRef.current?.room_id) {
-                  // v0.5.0-beta.14.7：事件合并（600ms 窗口 + 在飞脏位补拉）。
-                  pollSoon();
+                  // v0.5.0-beta.14.7（T4b）：载荷直合——watcher 已附解析后的
+                  // 最小载荷（event: id/sender/ts/body/msgtype/relates_to）。
+                  // 普通文本消息直接合并（零回拉——5Mbps 链路上活跃房回拉
+                  // 的大头）；非文本/带关系（回复/编辑/附件）仍走 600ms
+                  // 事件合并兜底拉取（行为与旧版一致）。
+                  const evp = (data as {
+                    event?: {
+                      event_id?: string;
+                      sender?: string;
+                      ts?: number;
+                      body?: string;
+                      msgtype?: string;
+                      relates_to?: unknown;
+                    };
+                  }).event;
+                  const evId = String(evp?.event_id || "");
+                  if (evp && evId && evp.msgtype === "m.text" && !evp.relates_to) {
+                    const known = new Set(
+                      messagesRef.current.map((m) => m.event_id),
+                    );
+                    if (!known.has(evId)) {
+                      const incoming: RoomMessage = {
+                        event_id: evId,
+                        sender: String(evp.sender || ""),
+                        body: String(evp.body || ""),
+                        msgtype: "m.text",
+                        origin_server_ts: Number(evp.ts || Date.now()),
+                      };
+                      setMessages((prev) => mergeForward(prev, [incoming]));
+                    }
+                    // 正在看的房间来了新消息 → 回执（与 pollMessages 同款）。
+                    void markCurrentRead(rid, evId);
+                  } else {
+                    // 非文本/复杂消息：兜底拉取（14.7 前的既有行为）。
+                    pollSoon();
+                  }
                 }
                 // F1（13.11）：任意房间来消息 → 递增 chatsTick → 打开的
                 // 头像会话窗立即刷新（事件驱动主路，Element 式延迟≈0）。
