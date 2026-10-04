@@ -4940,6 +4940,14 @@ def build_router() -> APIRouter:
         import urllib.parse as _urlparse_mod
 
         encoded_path = _urlparse_mod.quote(full_path, safe="/._-~")
+        # v0.5.0-beta.14.2（F1 外网 401 真根因①②）：①4xx 不再标记 working
+        # （旧版任何 HTTP 响应都 _mark_working——一次 401 即污染 working
+        # cache，切回内网后死地址仍居首恒 401）；②GET/HEAD 遇 4xx/5xx 继续
+        # 下一地址（首个 401 地址可能是网关代理的会话门、直连控制器健康
+        # → 换地址即通）；变更类方法（POST/PUT/DELETE）遇 4xx 原样返回不
+        # 试下一地址（副作用安全：不在另一地址重放写请求）。全部失败 →
+        # 首个非 2xx 响应原样返回（上游 401 body 自带诊断），否则 502。
+        first_bad: Optional[tuple] = None
         for base in base_urls:
             url = f"{base.rstrip('/')}{encoded_path}{query_string}"
             try:
@@ -4982,15 +4990,33 @@ def build_router() -> APIRouter:
                             selfcheck._classify_error(t_exc),
                         )
                         await asyncio.sleep(0.3)
-                _mark_working(target, base)
-                elapsed_ms = int((time.time() - req_started) * 1000)
-                logger.debug(
-                    "proxy %s %s -> %d (%dms)",
-                    target,
-                    full_path,
-                    resp.status_code,
-                    elapsed_ms,
-                )
+                if resp.status_code < 400:
+                    _mark_working(target, base)
+                    elapsed_ms = int((time.time() - req_started) * 1000)
+                    logger.debug(
+                        "proxy %s %s -> %d (%dms)",
+                        target,
+                        full_path,
+                        resp.status_code,
+                        elapsed_ms,
+                    )
+                    return Response(
+                        content=resp.content,
+                        status_code=resp.status_code,
+                        media_type=resp.headers.get("content-type"),
+                    )
+                # 4xx/5xx：不标记 working，首个非 2xx 留作最终返回。
+                if first_bad is None:
+                    first_bad = (
+                        resp.status_code, resp.content,
+                        resp.headers.get("content-type"),
+                    )
+                if request.method in ("GET", "HEAD"):
+                    logger.info(
+                        "proxy %s %s via %s -> %d（换下一地址）",
+                        target, full_path, base, resp.status_code,
+                    )
+                    continue
                 return Response(
                     content=resp.content,
                     status_code=resp.status_code,
@@ -5000,11 +5026,15 @@ def build_router() -> APIRouter:
                 last_error = selfcheck._classify_error(exc)
                 logger.warning(
                     "proxy %s %s failed via %s: %s",
-                    target,
-                    full_path,
-                    base,
+                    target, full_path, base,
                     last_error,
                 )
+        if first_bad is not None:
+            return Response(
+                content=first_bad[1],
+                status_code=first_bad[0],
+                media_type=first_bad[2],
+            )
         raise HTTPException(
             status_code=502, detail=f"所有地址请求失败：{last_error}{_pinned_note(cfg)}"
         )
