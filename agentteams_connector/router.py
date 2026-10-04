@@ -1732,6 +1732,8 @@ def build_router() -> APIRouter:
         """v0.5.0-beta.12: 网关面透传（Higress Console，8001）。
 
         v0.5.0-beta.12.13：加写面（POST，「添加提供商/添加路由」P7b）；
+        v0.5.0-beta.14.4：加编辑/删除面（PUT/DELETE，与 dashboard higress
+        BFF `/api/higress/ai-{routes,providers}` 同款 Console 端点）；
         写失败时透出 Console 的 message/detail 供 UI 显示。
 
         消费密码模式持有的 Console 管理员会话（console_session）；
@@ -1757,11 +1759,24 @@ def build_router() -> APIRouter:
                         },
                         json=json_body or {},
                     )
+                elif method == "PUT":
+                    r = await client.put(
+                        f"{console_url}{path}",
+                        headers={
+                            "Cookie": session,
+                            "Content-Type": "application/json",
+                        },
+                        json=json_body or {},
+                    )
+                elif method == "DELETE":
+                    r = await client.delete(
+                        f"{console_url}{path}", headers={"Cookie": session}
+                    )
                 else:
                     r = await client.get(
                         f"{console_url}{path}", headers={"Cookie": session}
                     )
-            if r.status_code not in (200, 201):
+            if r.status_code not in (200, 201, 204):
                 out: Dict[str, Any] = {
                     "available": False,
                     "data": None,
@@ -1813,6 +1828,49 @@ def build_router() -> APIRouter:
         if not str(payload.get("name") or "").strip():
             return {"available": False, "data": None, "reason": "invalid", "detail": "name 必填"}
         return await _gateway_passthrough("/v1/ai/providers", method="POST", json_body=payload)
+
+    # ---- v0.5.0-beta.14.4：模型配置编辑/删除（Console 写面透传，与 dashboard
+    #      higress BFF `/api/higress/ai-{routes,providers}/{name}` 同款端点）----
+
+    @router.put("/gateway/ai-routes/{name}")
+    async def gateway_ai_route_update(
+        name: str, payload: Dict[str, Any] = Body(...)
+    ) -> Dict[str, Any]:
+        """网关 AI 路由编辑（Console 写面透传；名称在路径上，body 全量提交）。"""
+        if not name.strip():
+            return {"available": False, "data": None, "reason": "invalid", "detail": "路由名必填"}
+        return await _gateway_passthrough(
+            f"/v1/ai/routes/{name}", method="PUT", json_body=payload
+        )
+
+    @router.delete("/gateway/ai-routes/{name}")
+    async def gateway_ai_route_delete(name: str) -> Dict[str, Any]:
+        """网关 AI 路由删除（Console 写面透传）。"""
+        if not name.strip():
+            return {"available": False, "data": None, "reason": "invalid", "detail": "路由名必填"}
+        return await _gateway_passthrough(f"/v1/ai/routes/{name}", method="DELETE")
+
+    @router.put("/gateway/ai-providers/{name}")
+    async def gateway_ai_provider_update(
+        name: str, payload: Dict[str, Any] = Body(...)
+    ) -> Dict[str, Any]:
+        """网关 LLM Provider 编辑（Console 写面透传）。
+
+        与 dashboard serializeProviderForm(isUpdate) 同款：名称在路径上，
+        body 不含 name（tokens 留空=Console 保持现有凭据）。
+        """
+        if not name.strip():
+            return {"available": False, "data": None, "reason": "invalid", "detail": "提供商名必填"}
+        return await _gateway_passthrough(
+            f"/v1/ai/providers/{name}", method="PUT", json_body=payload
+        )
+
+    @router.delete("/gateway/ai-providers/{name}")
+    async def gateway_ai_provider_delete(name: str) -> Dict[str, Any]:
+        """网关 LLM Provider 删除（Console 写面透传）。"""
+        if not name.strip():
+            return {"available": False, "data": None, "reason": "invalid", "detail": "提供商名必填"}
+        return await _gateway_passthrough(f"/v1/ai/providers/{name}", method="DELETE")
 
     @router.get("/teams/rooms")
     # 【历史替代，勿删】实时聚合版；现役用 /teams/sync（缓存+force）。排查缓存问题时的对照端点。

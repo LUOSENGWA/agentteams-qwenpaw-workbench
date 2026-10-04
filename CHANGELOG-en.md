@@ -5,6 +5,24 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.4 (2026-10-04 - sub-release)
+
+**Follow QwenPaw's theme color (2.2.2+) / model config edit & delete (aligned with the dashboard) / graceful degradation on Controller 5xx / settings page UI cleanup**
+
+- **Follow QwenPaw's theme color (QwenPaw ≥2.2.2)**:
+  1. **No more hard-coded orange** — the plugin's antd primary color (buttons / links / selection states and all derived tokens) now reads the host's effective theme (`GET /config/theme` via the host bridge, auth auto-injected). With the host on its default theme the look is unchanged (the default accent *is* `#FF7F16`); once the host's theme color is customized, the whole plugin follows (accent / accent_hover / accent_bg / border radius all mapped).
+  2. **Dark mode follows independently** — the host's dark theme colors (`dark.accent` / `dark.accent_bg`) win in the plugin's dark mode; the "own bubble" background in chat is a tint derived from the primary color (8% alpha light / 18% dark) and follows it too.
+  3. **Zero change on older hosts** — versions without the `/config/theme` endpoint (<2.2.2) fall back silently to the built-in default, pixel-identical to before.
+- **Model config edit & delete (model gateway page, aligned with the dashboard's model management)**:
+  1. **Per-row "Edit" for AI routes / LLM providers** — under the Console data source every row gains an Edit button; the dialog pre-fills from the Console's original record (upstreams + weights + model mappings / request-model predicates / auth & allowed consumers / type/protocol/url/mappings), saved via Higress Console `PUT /v1/ai/{routes,providers}/{name}` (same endpoints and semantics as the dashboard).
+  2. **Per-row "Delete"** — Popconfirm double-check, same `DELETE` endpoints; success auto-refreshes the list.
+  3. **Credential safety (same as the dashboard)** — when editing a provider, a blank token field keeps the existing credentials (not pre-filled, so a redacted echo is never written back); the name is locked in edit mode (the name lives in the URL path; rename is not supported).
+  4. **Copy split by data source** — Console source = "create/edit/delete pass through the Console session (same endpoints as the dashboard)"; the Controller read-only catalog source shows a yellow "read-only now — enable editing/deletion after admin account verification (Console session)" (replacing the old wall-style "use Higress Console or the dashboard" note).
+- **Graceful degradation on Controller 5xx (plugin-side UX fix for the "501 in the logs" seen in WAN acceptance)**: the model gateway page and the ops gateway-catalog card no longer print raw error noise when the Controller returns 5xx (501 = no gateway backend configured / 502 = Console unreachable, etc.) — they show an actionable hint ("check the Controller's gateway backend (Higress Console reachability and credentials) and retry") instead. Root-causing the server-side 501 is tracked separately (upstream issue).
+- **Settings page UI cleanup**: the single long column is reorganized into **section cards** — "Chat Page" (split-view toggle + event-stream status) / "Access Addresses" (Matrix/Controller dual addresses + credentials + address mode + connectivity test) / "Authentication & Login" (Controller auth dual-mode + startup preferences) / "Cluster Load" (SGLang module) / "Config Migration & Diagnostics" / "Matrix Login" — each a card, with card background and border following the host theme; explanatory copy moved into i18n (bilingual); the save button gets its own row.
+
+**Verification**: tsc 0 - vite build single file ~2,354 kB (gzip ~656 kB) - pytest 113/113 - i18n 1,417 keys, 0 missing 0 dup 0 empty - secret scan 0 (source + dist)
+
 ## 0.5.0-beta.14.3 (2026-10-04 - sub-release)
 
 **WAN generic auth (plugin-side fix for the public-entry 401 root cause): per-address credential overrides (Basic gate / API-key gate) + 5-tier diagnostics + 4-tier error copy + SGLang WAN wiring**

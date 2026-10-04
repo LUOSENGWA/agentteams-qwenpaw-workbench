@@ -1,6 +1,21 @@
 import type * as ReactNS from "react";
 
+import { hostAccentForMode, useHostTheme } from "./hostTheme";
+
 const host = window.QwenPaw.host;
+
+/** hex（#rgb/#rrggbb）+ alpha → rgba() 串。非法 hex 回退现行橙。 */
+export function accentTint(accent: string, alpha: number): string {
+  const m =
+    /^#([0-9a-fA-F]{6})$/.exec(accent) ?? /^#([0-9a-fA-F]{3})$/.exec(accent);
+  if (!m) return `rgba(255,127,22,${alpha})`;
+  let h = m[1];
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 /** 主题颜色（深色模式适配）。antd 组件自身由宿主 ConfigProvider 控制；
  * 这里只管插件内联样式的硬编码颜色。 */
@@ -53,7 +68,9 @@ const DARK: ThemeColors = {
   toolBg: "rgba(255,255,255,0.06)",
 };
 
-/** 读取宿主主题（host.useTheme，插件组件内调用）。 */
+/** 读取宿主主题（host.useTheme，插件组件内调用）。
+ * 自己的气泡底（bubbleMine）= 宿主主色 tint（QwenPaw ≥2.2.2 跟随；
+ * 旧宿主/取不到 = 内置橙，行为不变）。 */
 export function useThemeColors(): ThemeColors {
   let mode: string = "light";
   try {
@@ -63,7 +80,13 @@ export function useThemeColors(): ThemeColors {
   } catch {
     mode = "light";
   }
-  return mode === "dark" ? DARK : LIGHT;
+  const dark = mode === "dark";
+  const hostT = useHostTheme();
+  const accent = hostAccentForMode(hostT, dark ? "dark" : "light");
+  return {
+    ...(dark ? DARK : LIGHT),
+    bubbleMine: accentTint(accent, dark ? 0.18 : 0.08),
+  };
 }
 
 /** 非组件上下文（事件回调等）读主题（不响应式，按需调用）。 */

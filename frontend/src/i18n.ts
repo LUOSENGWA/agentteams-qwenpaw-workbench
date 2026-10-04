@@ -142,6 +142,16 @@ const DICT: Record<string, { en: string }> = {
   "生效中": { en: "active" },
   // ── v0.5.0-beta.14.1: 地址手动固定档（address_mode）+ 事件流连接态（S1-4）──
   "地址模式（内网/外网切换策略）": { en: "Address mode (LAN/WAN switching)" },
+  // v0.5.0-beta.14.4（设置页 UI 整理：原文收编 i18n + 分节标题）
+  "内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到最快可达的一条，外网/内网切换自动识别。": { en: "LAN and WAN are two paths to the same server (LAN IP at home, public domain away) — no manual switching: the plugin re-tests all addresses every 2 minutes (latency) and keeps the fastest reachable one." },
+  "访问地址": { en: "Access Addresses" },
+  "认证与登录": { en: "Authentication & Login" },
+  "开启后首页/运维页显示各 DP rank 的排队/运行/显存负载（SGLang /v1/loads）。内网/外网是同一集群的两条访问路径，插件自动探测最快可达的一条。没有本地部署模型的用户保持关闭——零痕迹。": { en: "When enabled, the home/ops pages show per-DP-rank queue/running/memory load (SGLang /v1/loads). LAN/WAN are two paths to the same cluster — the plugin picks the fastest reachable one. Keep it off if you have no local model cluster — zero footprint." },
+  "导出配置含全部地址但不含密码/token（显示为 ***）——导入不会覆盖现有凭据。诊断包 = 脱敏配置 + 自检结果，用于排查问题时交给管理员。": { en: "Config export contains all addresses but no passwords/tokens (shown as ***) — importing never overwrites existing credentials. The diagnostic package = redacted config + self-check results, for handover to your admin when troubleshooting." },
+  "聊天页面": { en: "Chat Page" },
+  "集群负载（可选模块）": { en: "Cluster Load (optional module)" },
+  "L1 专属——只有部署了本地 SGLang 推理集群才需要开启": { en: "L1 only — enable only if you run a local SGLang inference cluster" },
+  "Matrix 登录": { en: "Matrix Login" },
   "自动（默认：最快可达自动切换）": { en: "Auto (default: switch to fastest reachable)" },
   "固定内网（失败不自动切换）": { en: "Pin LAN (no auto-failover on failure)" },
   "固定外网（失败不自动切换）": { en: "Pin WAN (no auto-failover on failure)" },
@@ -1686,6 +1696,21 @@ const DICT: Record<string, { en: string }> = {
   "已创建提供商「{n}」": { en: "Provider \u201c{n}\u201d created" },
   "已创建路由「{n}」": { en: "Route \u201c{n}\u201d created" },
   "写操作（添加提供商/添加路由）经 Console 会话透传；编辑/删除请用 Higress Console 或 dashboard 模型管理面": { en: "Create operations pass through the Console session; use Higress Console or the dashboard to edit/delete" },
+  "添加/编辑/删除经 Console 会话透传到 Higress Console（与 dashboard 模型管理面同款端点）": { en: "Create/edit/delete pass through the Console session to Higress Console (same endpoints as the dashboard model management)" },
+  "当前为只读——编辑/删除需管理员账号密码验证（Console 会话）后开放": { en: "Read-only now — enable editing/deletion after admin account verification (Console session)" },
+  "删除路由「{n}」？": { en: "Delete route \"{n}\"?" },
+  "删除提供商「{n}」？": { en: "Delete provider \"{n}\"?" },
+  "已删除路由「{n}」": { en: "Route \"{n}\" deleted" },
+  "已删除提供商「{n}」": { en: "Provider \"{n}\" deleted" },
+  "已更新路由「{n}」": { en: "Route \"{n}\" updated" },
+  "已更新提供商「{n}」": { en: "Provider \"{n}\" updated" },
+  "删除失败": { en: "Delete failed" },
+  "更新失败": { en: "Update failed" },
+  "编辑模式：名称不可修改（按原名称提交）": { en: "Edit mode: name is fixed (submitted under the original name)" },
+  "编辑提供商": { en: "Edit Provider" },
+  "编辑路由": { en: "Edit Route" },
+  "令牌（每行一个，留空=保持现有凭据）": { en: "Tokens (one per line; empty = keep current credentials)" },
+  "模型网关数据暂不可用（Controller 返回 5xx）——请检查 Controller 的网关后端配置（Higress Console 可达性与凭据），稍后重试": { en: "Model gateway data temporarily unavailable (Controller returned 5xx) — check the Controller's gateway backend (Higress Console reachability and credentials) and retry" },
 
 
   // ── v0.5.0-beta.13.1：内置工具（消费 #1255）──

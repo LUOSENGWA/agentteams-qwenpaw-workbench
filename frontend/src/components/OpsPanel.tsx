@@ -111,6 +111,13 @@ export default function OpsPanel({
         // L2 无权限——显式提示（该端点 L1-only）。
         setGatewayCatalogError(tr("仅 L1 管理员可见（Controller 路由目录，token 鉴权）"));
         setGatewayRoutes(null);
+      } else if (/HTTP 5\d{2}/.test(msg)) {
+        // 5xx（如 501=controller 网关后端未配置 / 502=Console 不可达）——
+        // 卡片内显可操作提示，不弹错误噪音。
+        setGatewayCatalogError(
+          tr("模型网关数据暂不可用（Controller 返回 5xx）——请检查 Controller 的网关后端配置（Higress Console 可达性与凭据），稍后重试"),
+        );
+        setGatewayRoutes(null);
       } else {
         if (!silent)
           antd.message.error(e instanceof Error ? e.message : tr("模型网关目录获取失败"));

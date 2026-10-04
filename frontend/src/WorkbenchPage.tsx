@@ -66,6 +66,7 @@ import MessageSearch from "./components/MessageSearch";
 import ProjectFiles from "./components/ProjectFiles";
 import NotificationCenter from "./components/NotificationCenter";
 import { useThemeColors } from "./theme";
+import { useHostThemeTokens } from "./hostTheme";
 import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
 import { useWorkerChatStatuses } from "./workerChatStatus";
@@ -529,6 +530,14 @@ function SettingsTab({
   sseState?: { status: "connected" | "reconnecting"; since: number };
 }) {
   const tr = useT();
+  // v0.5.0-beta.14.4：设置页 UI 整理——分节卡片底色跟随主题（宿主配色）。
+  const t = useThemeColors();
+  const cardBox: React.CSSProperties = {
+    border: `1px solid ${t.border}`,
+    borderRadius: 8,
+    padding: 12,
+    background: t.cardBg,
+  };
   const [matrixLan, setMatrixLan] = React.useState("");
   const [matrixWan, setMatrixWan] = React.useState("");
   // v0.5.0-beta.14.1: 地址手动固定档（auto=自动切换[默认] / lan=固定内网 / wan=固定外网）。
@@ -826,12 +835,13 @@ function SettingsTab({
 
   return (
     <div style={{ display: "grid", gap: 24, maxWidth: 720 }}>
-      <div style={{ fontSize: 12, color: "#888" }}>
-        内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），
-        无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到
-        最快可达的一条，外网/内网切换自动识别。
+      {/* v0.5.0-beta.14.4（设置页 UI 整理）：分节卡片化——「聊天页面」卡片。 */}
+      <div style={{ ...cardBox, fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
+        {tr("内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到最快可达的一条，外网/内网切换自动识别。")}
       </div>
 
+      <div style={cardBox}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>{tr("聊天页面")}</div>
       {/* 12.14：聊天分栏强制开关——宿主面板宽度判定为窄屏时的豁免。 */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <antd.Switch
@@ -845,8 +855,11 @@ function SettingsTab({
           </div>
         </div>
       </div>
+      </div>
 
-      <div style={{ display: "grid", gap: 12 }}>
+      {/* v0.5.0-beta.14.4：「访问地址」卡片。 */}
+      <div style={{ ...cardBox, display: "grid", gap: 16 }}>
+        <div style={{ fontWeight: 700 }}>{tr("访问地址")}</div>
         {/* v0.5.0-beta.14.1 (S1-4)：事件流连接态——「断开自动重连」从黑箱变可见。 */}
         {sseState ? (
           <div
@@ -1062,6 +1075,11 @@ function SettingsTab({
           ) : null}
         </div>
 
+      </div>
+
+      {/* v0.5.0-beta.14.4：「认证」卡片（Controller 认证 + 启动偏好）。 */}
+      <div style={{ ...cardBox, display: "grid", gap: 16 }}>
+        <div style={{ fontWeight: 700 }}>{tr("认证与登录")}</div>
         {/* v0.5.0-beta.12: Controller 认证双模式（用户需求）——「用 admin 的 matrix
             账号登录」或「输入 Controller 管理员 token」。无 API 可取 admin
             token（上游安全设计）；L2 需 Human level=2，level-1 走 Matrix
@@ -1317,11 +1335,15 @@ function SettingsTab({
           </div>
         </div>
         <StartupPrefRow />
+      </div>
+
+      {/* v0.5.0-beta.14.4：「集群负载」独立卡片。 */}
+      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            集群负载（可选模块）
-            <span style={{ fontWeight: 400, color: "#888", marginLeft: 8, fontSize: 12 }}>
-              L1 专属——只有部署了本地 SGLang 推理集群才需要开启
+            {tr("集群负载（可选模块）")}
+            <span style={{ fontWeight: 400, color: t.textSecondary, marginLeft: 8, fontSize: 12 }}>
+              {tr("L1 专属——只有部署了本地 SGLang 推理集群才需要开启")}
             </span>
           </div>
           <div
@@ -1369,26 +1391,24 @@ function SettingsTab({
               disabled={!sglangEnabled}
             />
           </div>
-          <div style={{ fontSize: 12, color: "#888" }}>
-            开启后首页/运维页显示各 DP rank 的排队/运行/显存负载（SGLang
-            /v1/loads）。内网/外网是同一集群的两条访问路径，插件自动探测
-            最快可达的一条。没有本地部署模型的用户保持关闭——零痕迹。
+          <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
+            {tr("开启后首页/运维页显示各 DP rank 的排队/运行/显存负载（SGLang /v1/loads）。内网/外网是同一集群的两条访问路径，插件自动探测最快可达的一条。没有本地部署模型的用户保持关闭——零痕迹。")}
           </div>
-        </div>
-        <div>
-          <antd.Button
-            type="primary"
-            loading={saving}
-            onClick={() => void save()}
-          >
-            {tr("保存配置")}
-          </antd.Button>
         </div>
       </div>
 
-      <antd.Divider />
+      <div>
+        <antd.Button
+          type="primary"
+          loading={saving}
+          onClick={() => void save()}
+        >
+          {tr("保存配置")}
+        </antd.Button>
+      </div>
 
-      <div style={{ display: "grid", gap: 12 }}>
+      {/* v0.5.0-beta.14.4：「配置迁移与诊断」卡片。 */}
+      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700 }}>{tr("配置迁移与诊断")}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <antd.Button
@@ -1417,17 +1437,15 @@ function SettingsTab({
             {tr("导出诊断包")}
           </antd.Button>
         </div>
-        <div style={{ fontSize: 12, color: "#888" }}>
-          导出配置含全部地址但不含密码/token（显示为 ***）——导入不会覆盖现有
-          凭据。诊断包 = 脱敏配置 + 自检结果，用于排查问题时交给管理员。
+        <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
+          {tr("导出配置含全部地址但不含密码/token（显示为 ***）——导入不会覆盖现有凭据。诊断包 = 脱敏配置 + 自检结果，用于排查问题时交给管理员。")}
         </div>
       </div>
 
-      <antd.Divider />
-
-      <div style={{ display: "grid", gap: 12 }}>
+      {/* v0.5.0-beta.14.4：「Matrix 登录」卡片。 */}
+      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700 }}>
-          Matrix 登录
+          {tr("Matrix 登录")}
           {config?.matrix?.user_id ? (
             <span style={{ fontWeight: 400, color: "#888", marginLeft: 8 }}>
               {tr("当前身份：")} {config.matrix.user_id}
@@ -1677,6 +1695,9 @@ function detectMentions(
 }
 export default function WorkbenchPage() {
   const t = useThemeColors();
+  // QwenPaw ≥2.2.2 配色跟随：主色 token 取自宿主生效主题（GET /config/theme，
+  // 经 host.fetch 桥）；旧宿主/取不到 = 内置橙（DEFAULT_ACCENT，行为不变）。
+  const hostTokens = useHostThemeTokens(t.mode);
   const tr = useT();
   // 插件版本：从后端 /health 读（单一真相源 = agentteams_connector/__init__.py）。
   // v0.5.0-beta.13.17（13.16 装验「顶部版本号显示不对」）：主显示改**构建
@@ -3678,7 +3699,7 @@ export default function WorkbenchPage() {
       theme={{
         algorithm:
           t.mode === "dark" ? [antd.theme.darkAlgorithm] : undefined,
-        token: { colorPrimary: "#FF7F16" },
+        token: hostTokens,
       }}
     >
     <main

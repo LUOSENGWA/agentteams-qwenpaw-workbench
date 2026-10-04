@@ -5,6 +5,24 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.4（2026-10-04 · 子批）
+
+**配色跟随 QwenPaw 主题色（2.2.2+ 新特性）/ 模型配置编辑与删除（对齐 dashboard）/ Controller 5xx 优雅降级 / 设置页 UI 整理**
+
+- **配色跟随 QwenPaw（QwenPaw ≥2.2.2）**：
+  ① **主色不再硬编码橙色**——插件 antd 主色（按钮/链接/选中态等全部 token）改从宿主生效主题读取（`GET /config/theme` 经宿主桥，自动带认证）：宿主用默认主题时表现与旧版一致（默认主色即橙 `#FF7F16`）；宿主主题色被自定义后插件整体跟随（accent / accent_hover / accent_bg / 圆角 radius 全映射）
+  ② **深色模式独立跟随**——宿主深色主题色（`dark.accent` / `dark.accent_bg`）在插件深色模式下优先生效；聊天「自己的气泡」底色 = 主色浅底派生（浅色 8% / 深色 18% 透明度），同样跟随
+  ③ **旧宿主零变化**——无 `/config/theme` 端点的旧版本（<2.2.2）静默回退内置默认，行为与旧版逐像素一致
+- **模型配置编辑/删除（模型网关配置页，对齐 dashboard 模型管理面）**：
+  ① **AI 路由 / LLM Provider 行内「编辑」**——Console 数据源下每行新增编辑按钮，弹窗按 Console 原始记录全字段预填（上游+权重+模型映射 / 请求模型匹配 / 认证与授权 consumer / 类型协议地址映射等），保存走 Higress Console `PUT /v1/ai/{routes,providers}/{name}`（与 dashboard 模型管理面同款端点与语义）
+  ② **行内「删除」**——Popconfirm 二次确认，走同款 `DELETE` 端点；删除/保存成功自动刷新
+  ③ **凭据保护（与 dashboard 同款）**——编辑提供商时令牌留空 = 保持现有凭据（不预填，避免把脱敏回显值写回）；编辑模式名称锁定（名称在 URL 路径上，不支持改名）
+  ④ **提示文案按数据源区分**——Console 源 = 「添加/编辑/删除经 Console 会话透传（与 dashboard 同款端点）」；Controller 只读目录源 = 黄色提示「当前为只读——编辑/删除需管理员账号密码验证（Console 会话）后开放」（替换旧版「请用 Higress Console 或 dashboard」的墙式文案）
+- **Controller 5xx 优雅降级（外网装验「日志 501」的插件侧体验修）**：模型网关配置页与运维页网关目录卡，Controller 返回 5xx（501=网关后端未配置 / 502=Console 不可达等）时不再显示原始错误噪音，改为可操作提示（「请检查 Controller 的网关后端配置（Higress Console 可达性与凭据），稍后重试」）。服务端 501 根因排查另行跟进（见上游 issue）
+- **设置页 UI 整理**：长单栏改**分节卡片**——「聊天页面」（分栏开关+事件流连接态）/「访问地址」（Matrix/Controller 双地址+凭据+地址模式+连通性测试）/「认证与登录」（Controller 认证双模式+启动偏好）/「集群负载」（SGLang 模块）/「配置迁移与诊断」/「Matrix 登录」各自成卡，卡片底色与边框跟随宿主主题；说明文案收编 i18n（双语）；保存按钮独立一行
+
+**Verification**: tsc 0 · vite build 单文件 ~2,354kB（gzip ~656kB）· pytest 113/113 · i18n 1,417 键 0 缺 0 重 0 空 · 敏感扫 0（源码与 dist 双查）
+
 ## 0.5.0-beta.14.3（2026-10-04 · 子批）
 
 **WAN 通用认证（外网公网入口 401 真根因的插件侧修复）：地址级覆盖凭据（Basic 门 / API key 门）+ 诊断五档 + 错误四档 + SGLang 外网接线**
