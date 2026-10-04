@@ -33,7 +33,20 @@ logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench.sync_wa
 _SYNC_FILTER = {
     "presence": {"not_types": ["*"]},
     "account_data": {"types": ["m.muted_room"]},
-    "room": {"timeline": {"limit": 10}},
+    # v0.5.0-beta.14.7（带宽）：timeline 10→2——实测初始 sync 1.4MB 中消息占
+    # ~1MB（75 房 × 10 条），而本 watcher 只取「最后 1 条消息摘要
+    # （last_ts/last_sender/last_body）+ 成员/房名差分」；多带的 8 条纯浪费
+    # （5Mbps 链路上每次初始 sync 省 ~0.9MB）。内容按需由 /messages 拉取。
+    "room": {
+        "timeline": {
+            "limit": 2,
+            # v0.5.0-beta.14.7（带宽）：types 白名单再收窄——timeline 只保留
+            # watcher 实际消费的两类（m.room.message=摘要/推送/工作流载荷、
+            # m.room.member=成员增减差分）；样本中 timeline 还混有 ~28KB
+            # room.meta 等未被消费的事件。
+            "types": ["m.room.message", "m.room.member"],
+        }
+    },
 }
 
 # ── SSE hub ────────────────────────────────────────────────────────────
@@ -841,6 +854,8 @@ async def _run() -> None:
                     and sender != me
                     and not content.get("m.new_content")
                 ):
+                    # v0.5.0-beta.14.7（带宽）：附最小载荷——文本消息可被前端直接
+                    # 合并渲染（活跃房零回拉）；非文本/复杂消息前端仍走兜底拉取。
                     await _broadcast(
                         {
                             "type": "room_message",
@@ -848,6 +863,14 @@ async def _run() -> None:
                             "event_id": eid,
                             "sender": sender,
                             "ts": int(ev.get("origin_server_ts") or 0),
+                            "event": {
+                                "event_id": eid,
+                                "sender": sender,
+                                "ts": int(ev.get("origin_server_ts") or 0),
+                                "body": str(content.get("body") or "")[:500],
+                                "msgtype": str(content.get("msgtype") or ""),
+                                "relates_to": content.get("m.relates_to"),
+                            },
                         }
                     )
                 # ① 任务状态变化：agentteams.workflow payload（基线轮跳过）。

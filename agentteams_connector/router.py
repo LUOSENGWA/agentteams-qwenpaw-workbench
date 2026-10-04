@@ -56,6 +56,12 @@ _working_cache: Dict[str, str] = {}  # {"matrix": url, "controller": url}
 # （""=全量）→ (expiry_monotonic, payload)。只存成功响应。
 _APPROVAL_LIST_TTL_SECONDS = 20.0
 _approval_list_cache: Dict[str, Any] = {}
+# v0.5.0-beta.14.7：KB tree/graph 结果短 TTL 缓存——一次图谱构建 = 逐 md 文件
+# 一次容器 archive 读（实测单容器 381 次），重复访问（切 tab/重渲染）直接命中。
+_KB_TREE_TTL_SECONDS = 30.0
+_KB_GRAPH_TTL_SECONDS = 60.0
+_kb_tree_cache: Dict[str, Any] = {}   # agent -> (expiry_monotonic, payload)
+_kb_graph_cache: Dict[str, Any] = {}
 
 _PROBE_TIMEOUT = 6.0
 
@@ -993,7 +999,8 @@ def build_router() -> APIRouter:
                 encoded = _urlparse_mod.quote(room_entry["room_id"], safe="/._-~")
                 url = (
                     f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/{encoded}/messages"
-                    "?dir=b&limit=30"
+                    "?dir=b&limit=30&filter="
+                    + _urlparse_mod.quote('{"types":["m.room.message"]}', safe="")
                 )
                 try:
                     async with GatedAsyncClient(timeout=10.0, verify=False) as client:
@@ -1139,7 +1146,8 @@ def build_router() -> APIRouter:
                         for _page in range(5):
                             url = (
                                 f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/{encoded}/messages"
-                                f"?dir=b&limit=100"
+                                f"?dir=b&limit=100&filter="
+                                + _urlparse_mod.quote('{"types":["m.room.message"]}', safe="")
                             )
                             if page_token:
                                 url += f"&from={_urlparse_mod.quote(page_token, safe='')}"
@@ -2234,7 +2242,12 @@ def build_router() -> APIRouter:
         from_token = ""
         last_error = "无可用地址"
         for page in range(max_pages):
-            params = {"dir": "b", "limit": "50"}
+            params = {
+                "dir": "b",
+                "limit": "50",
+                # v0.5.0-beta.14.7（带宽）：只要 message 事件。
+                "filter": '{"types":["m.room.message"]}',
+            }
             if from_token:
                 params["from"] = from_token
             qs = _urlparse_mod.urlencode(params)
@@ -3512,6 +3525,10 @@ def build_router() -> APIRouter:
         """知识库文件清单：工作区顶层知识文件 + memory/ 全子树（文本过滤）。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
+        # v0.5.0-beta.14.7：tree 结果短 TTL 命中（重复访问零容器读）。
+        _c = _kb_tree_cache.get(agent)
+        if _c and _c[0] > time.monotonic():
+            return _c[1]
         token, base = _kb_require_token()
         container = (
             "agentteams-manager" if agent == "manager"
@@ -3701,10 +3718,15 @@ def build_router() -> APIRouter:
         )
         keep = files[:300]
         keep_dirs = dirs[:60]
-        return {
+        _payload: Dict[str, Any] = {
             "agent": agent, "workspace": ws,
             "files": keep, "dirs": keep_dirs, "count": len(keep),
         }
+        # v0.5.0-beta.14.7：只缓存主成功路径（#1208 WSF 兜底早退不缓存）。
+        _kb_tree_cache[agent] = (
+            time.monotonic() + _KB_TREE_TTL_SECONDS, _payload
+        )
+        return _payload
 
     @router.get("/kb/{agent}/file")
     async def kb_file(agent: str, path: str = "") -> Dict[str, Any]:
@@ -3904,6 +3926,10 @@ def build_router() -> APIRouter:
         memory 文件兜底。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
+        # v0.5.0-beta.14.7：graph 结果短 TTL 命中（内部 kb_tree 亦命中树缓存）。
+        _c = _kb_graph_cache.get(agent)
+        if _c and _c[0] > time.monotonic():
+            return _c[1]
         tree = await kb_tree(agent)
         # （对齐 QwenPaw 最新版图谱模型，ReMe
         # graph_snapshot_step 同款结构）：节点 = digest 三虚拟分类根
@@ -4058,12 +4084,17 @@ def build_router() -> APIRouter:
                             "resolved": False,
                         }
                 _add_edge(p, node_id, anc)
-        return {
+        _payload: Dict[str, Any] = {
             "agent": agent,
             "nodes": list(nodes.values()),
             "edges": edges,
             "file_count": len(md_files),
         }
+        # v0.5.0-beta.14.7：graph 最终 return 前写缓存（函数唯一返回点）。
+        _kb_graph_cache[agent] = (
+            time.monotonic() + _KB_GRAPH_TTL_SECONDS, _payload
+        )
+        return _payload
 
     # ── v0.5.0-beta.12 ：团队知识库深化（跨 Worker 搜索 + 聚合图谱）──────────
 
@@ -5197,6 +5228,16 @@ def build_router() -> APIRouter:
         import urllib.parse as _urlparse_mod
 
         encoded_path = _urlparse_mod.quote(full_path, safe="/._-~")
+        # v0.5.0-beta.14.7（带宽）：/messages 默认只取 message 事件（实测
+        # 5.2KB→1KB/页，5Mbps 链路显著）；调用方显式传 filter= 时尊重其选择。
+        if (
+            target == "matrix"
+            and full_path.endswith("/messages")
+            and "/_matrix/client/v3/rooms/" in full_path
+            and "filter=" not in (request.url.query or "")
+        ):
+            _flt = _urlparse_mod.quote('{"types":["m.room.message"]}', safe="")
+            query_string += ("&" if query_string else "?") + f"filter={_flt}"
         # v0.5.0-beta.14.2（F1 外网 401 真根因①②）：①4xx 不再标记 working
         # （旧版任何 HTTP 响应都 _mark_working——一次 401 即污染 working
         # cache，切回内网后死地址仍居首恒 401）；②GET/HEAD 遇 4xx/5xx 继续

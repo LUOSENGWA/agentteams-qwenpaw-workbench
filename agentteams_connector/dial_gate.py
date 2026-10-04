@@ -62,6 +62,9 @@ _stats: Dict[str, Any] = {
     "async_inflight": 0,
     "async_peak": 0,
     "async_paths": Counter(),
+    # v0.5.0-beta.14.7：bytes 计量——计数之外再记响应字节（带宽验收对账）。
+    "async_bytes": 0,
+    "async_path_bytes": Counter(),
     "sync_total": 0,
 }
 
@@ -103,6 +106,15 @@ def _exit(kind: str) -> None:
             _stats["async_inflight"] -= 1
 
 
+def _record_bytes(path: str, n: int) -> None:
+    """v0.5.0-beta.14.7：响应字节累计（总计数 + 按路径，供 top_paths 对账）。"""
+    if not path or n <= 0:
+        return
+    with _lock:
+        _stats["async_bytes"] += n
+        _stats["async_path_bytes"][path] += n
+
+
 class GatedAsyncClient(httpx.AsyncClient):
     """httpx.AsyncClient + 全局拨号闸门 + 计数（R3/R7）。
 
@@ -115,7 +127,13 @@ class GatedAsyncClient(httpx.AsyncClient):
         async with sem:
             _enter("async", str(request.url.path))
             try:
-                return await super().send(request, **kwargs)
+                resp = await super().send(request, **kwargs)
+                # v0.5.0-beta.14.7：响应字节计量（失败/流式不记，不致命）。
+                try:
+                    _record_bytes(str(request.url.path), len(resp.content))
+                except Exception:
+                    pass
+                return resp
             finally:
                 _exit("async")
 
@@ -144,14 +162,19 @@ def should_failover_status(status: int) -> bool:
 def dial_stats() -> Dict[str, Any]:
     """计数快照（R7）：供 GET /debug/dial-stats 与测试对账。"""
     with _lock:
-        top: List[Any] = _stats["async_paths"].most_common(20)
+        # v0.5.0-beta.14.7：top 20→100（带宽排障要看全路径分布）+ 每项 bytes。
+        top: List[Any] = _stats["async_paths"].most_common(100)
         return {
             "async": {
                 "cap": _async_cap(),
                 "total": _stats["async_total"],
                 "inflight": _stats["async_inflight"],
                 "peak": _stats["async_peak"],
-                "top_paths": [{"path": p, "count": c} for p, c in top],
+                "bytes_total": _stats["async_bytes"],
+                "top_paths": [
+                    {"path": p, "count": c, "bytes": _stats["async_path_bytes"].get(p, 0)}
+                    for p, c in top
+                ],
             },
             "sync": {"cap": _sync_cap(), "total": _stats["sync_total"]},
         }
@@ -170,6 +193,8 @@ def _reset_for_tests() -> None:
                 "async_inflight": 0,
                 "async_peak": 0,
                 "async_paths": Counter(),
+                "async_bytes": 0,
+                "async_path_bytes": Counter(),
                 "sync_total": 0,
             }
         )
