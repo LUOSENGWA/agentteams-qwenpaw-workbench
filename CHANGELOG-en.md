@@ -5,6 +5,21 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.2 (2026-10-03 - sub-batch)
+
+**14.1 acceptance feedback, four items: WAN disconnect root-cause fix (proxy 4xx semantics + direct-dial address failover) / split layout accounts for the thread panel / follow-to-bottom survives DOM growth / stale approval notifications eliminated**
+
+- **WAN "controller 401, knowledge graph 500, simply unreachable" — three root causes fixed (F1)**:
+  ① **Proxy 4xx no longer poisons the working address** — the catch-all proxy previously marked *any* HTTP response (including 401) as the "working address"; a single 401 pinned a dead address at the front of the failover chain, so returning to LAN stayed 401 forever. Only success (<400) marks working now.
+  ② **Proxy GET/HEAD fail over to the next address on 4xx/5xx** — when the WAN entry is a gateway proxy (401 = session required) and the direct controller is healthy, the old code never failed over. It now tries the next address and, after all fail, returns the first non-2xx response (upstream 401 diagnostic body preserved). Mutating requests (POST/PUT/DELETE) do not replay on another address on 4xx.
+  ③ **All direct-dial call sites now use ordered address failover** — KB container channel / generic Controller JSON calls / teams-structure workers query: previously a single dial (working cache or first URL) with 4xx returned immediately, so network switches meant persistent 401 or full-timeout stalls. 200 wins; 4xx/5xx/transport errors move to the next address.
+  ④ **Latent 500 in the KB removed** — the `/kb/agents` Docker-degraded fallback called the approval fallback helper with a variable that doesn't exist in scope (NameError → 500, triggered whenever the Docker channel returned 401/403/502, first seen on the WAN path after a network switch), with a response shape that didn't match the frontend contract. Now served from the controller workers API in KB contract shape.
+- **Split layout accounts for the thread panel (F2)**: the single/dual-column decision previously ignored the thread panel's width — with a thread open, narrowing the window left the chat cramped while the decision stayed dual-column until much narrower. The open thread panel's width (280–560, live with dragging) now counts against the decision; below 800 effective width it switches to single column and recovers on close.
+- **Follow-to-bottom no longer lost (F3)**: follow previously only ran when the message count changed; when images / cards / artifacts rendered and grew the content afterwards, users at the bottom watched the viewport get pushed up. A ResizeObserver on the scroll content now follows automatically while at bottom; reading history (scrolled up) is unaffected.
+- **Stale approval notifications eliminated (F4)**: after approvals were resolved or timed out, opening the chat page still fired browser notifications for approvals that no longer existed — root cause: the "seen approvals" set lived only in the component instance, so reopening the plugin or switching rooms treated historical approvals as new. Two guards: ① the first (historical) batch of a room is registered without notifying; ② genuinely new arrivals are checked against the live pending source (realtime buffer + history scan) before notifying, with a fail-safe suppress when the check itself fails. In-chat approval cards and the notification center are unchanged.
+
+**Verification**: tsc 0 · vite build single-file ~2,337kB (gzip ~651kB) · pytest 90/90 · i18n 0 new keys · sensitive scan 0
+
 ## 0.5.0-beta.14.1 (2026-10-03 - sub-batch)
 
 **S1 chat-realtime trio (root-cause fix for "no self-recovery after stream death / no new messages in background tabs") + manual address pinning (address_mode)**
