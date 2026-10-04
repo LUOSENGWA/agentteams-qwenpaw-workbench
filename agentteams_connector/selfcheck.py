@@ -315,7 +315,22 @@ _FAKE_IP_HINTS = (
 )
 
 
+# v0.5.0-beta.14.5: 60s TTL 缓存——探测失败风暴时避免重复 getaddrinfo（阻塞）。
+_ip_hint_cache: Dict[str, Any] = {}  # url -> (expiry_monotonic, hint)
+
+
 def _resolve_ip_hint(url: str) -> str:
+    """v0.5.0-beta.14.5: 60s TTL 缓存包装（原实现 = `_resolve_ip_hint_uncached`）。"""
+    _now = time.monotonic()
+    _c = _ip_hint_cache.get(url)
+    if _c and _c[0] > _now:
+        return _c[1]
+    _hint = _resolve_ip_hint_uncached(url)
+    _ip_hint_cache[url] = (_now + 60.0, _hint)
+    return _hint
+
+
+def _resolve_ip_hint_uncached(url: str) -> str:
     """v0.5.0-beta.12: 解析 URL 主机名 → IP 列表（最多 3 个）+ 非公网地址提示。
 
     用户真机 bug 的关键诊断数据：域名解析到 fake-ip/私有段时，
@@ -623,18 +638,23 @@ async def test_addresses(
         *[_probe_with_retry(_probe_s, u, "", timeout) for u in sglang_urls]
     )
 
-    def _attach(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _attach(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         # v0.5.0-beta.12: 网络层失败时附加解析诊断（fake-ip/私有段提示）
         # v0.5.0-beta.12: with_diag 时附结构化诊断（分步+traceback+环境）
+        # v0.5.0-beta.14.5: getaddrinfo / diagnose_target 均同步阻塞——to_thread
+        # 化（DNS 慢时不再冻结事件循环）。
         out = []
         for r in rows:
             if not r.get("ok"):
-                hint = _resolve_ip_hint(r["url"])
+                hint = await asyncio.to_thread(_resolve_ip_hint, r["url"])
                 if hint:
                     r = {**r, "detail": f"{r['detail']}｜{hint}"}
             if with_diag:
                 try:
-                    r = {**r, "diag": diagnose_target(r["url"], timeout)}
+                    diag = await asyncio.to_thread(
+                        diagnose_target, r["url"], timeout
+                    )
+                    r = {**r, "diag": diag}
                 except Exception:  # noqa: BLE001 - 诊断坏了不拖垮测试
                     pass
             out.append(r)
@@ -642,16 +662,16 @@ async def test_addresses(
 
     # v0.5.0-beta.12: 列表形态（0 地址 → None，1/2 地址 → 逐地址行），_attach 统一挂诊断。
     sglang_out = (
-        _attach([{"url": u, **r} for u, r in zip(sglang_urls, sglang_rows)])
+        await _attach([{"url": u, **r} for u, r in zip(sglang_urls, sglang_rows)])
         if sglang_urls
         else None
     )
 
     return {
-        "matrix": _attach(
+        "matrix": await _attach(
             [{"url": u, **r} for u, r in zip(matrix_urls, matrix_rows)]
         ),
-        "controller": _attach(
+        "controller": await _attach(
             [
                 {"url": u, **r}
                 for u, r in zip(controller_urls, controller_rows)
@@ -1158,8 +1178,14 @@ async def _run_l3_l4(cfg: Dict[str, Any], include_artifact: bool) -> Dict[str, A
 
     # 1. Snapshot rooms + baseline sync token.
     try:
-        rooms = matrix_client.joined_rooms(homeserver, token).get("joined_rooms", [])
-        baseline = matrix_client.sync(homeserver, token, timeout_ms=0)
+        # v0.5.0-beta.14.5: 同步 matrix_client 调用全部 to_thread 化——L3/L4
+        # 的 45s 长轮询若不包线程会冻结宿主整个 app。
+        rooms = (
+            await asyncio.to_thread(matrix_client.joined_rooms, homeserver, token)
+        ).get("joined_rooms", [])
+        baseline = await asyncio.to_thread(
+            matrix_client.sync, homeserver, token, timeout_ms=0
+        )
         since = baseline.get("next_batch", "")
     except Exception as exc:  # noqa: BLE001
         return {
@@ -1187,12 +1213,15 @@ async def _run_l3_l4(cfg: Dict[str, Any], include_artifact: bool) -> Dict[str, A
             "artifact": None,
         }
         try:
-            members = matrix_client.joined_members(homeserver, token, room_id)
+            members = await asyncio.to_thread(
+                matrix_client.joined_members, homeserver, token, room_id
+            )
             entry["members"] = len(members.get("joined", {}))
         except Exception as exc:  # noqa: BLE001
             entry["members_error"] = _classify_error(exc)
         try:
-            sent = matrix_client.send_message(
+            sent = await asyncio.to_thread(
+                matrix_client.send_message,
                 homeserver,
                 token,
                 room_id,
@@ -1207,8 +1236,10 @@ async def _run_l3_l4(cfg: Dict[str, Any], include_artifact: bool) -> Dict[str, A
     # 3. One long-poll sync: collect replies in all rooms.
     wait_ms = 45000
     try:
-        sync_resp = matrix_client.sync(
-            homeserver, token, since=since, timeout_ms=wait_ms
+        # v0.5.0-beta.14.5: 45s 长轮询同步调用 to_thread 化（否则冻结整个 app）。
+        sync_resp = await asyncio.to_thread(
+            matrix_client.sync, homeserver, token,
+            since=since, timeout_ms=wait_ms,
         )
         join_events = sync_resp.get("rooms", {}).get("join", {})
         for room_id, entry in room_status.items():
@@ -1309,7 +1340,8 @@ async def run_all(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Run L0+L1+L2 and aggregate (L3/L4 are room-interactive, run on demand)."""
     l0 = run_l0()
     l1 = await run_l1(cfg)
-    l2 = run_l2(cfg)
+    # v0.5.0-beta.14.5: run_l2 内含同步 httpx（超时 10s+15s）——调用点 to_thread。
+    l2 = await asyncio.to_thread(run_l2, cfg)
     return {
         "ok": bool(l0["ok"] and l1["ok"] and l2["ok"]),
         "levels": [l0, l1, l2],
