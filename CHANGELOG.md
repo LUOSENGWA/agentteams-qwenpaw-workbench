@@ -5,6 +5,18 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.5（2026-10-04 · 子批）
+
+**性能批（P0-1 事件循环阻塞 + P0-2 串行往返 + P1-4 轮询退避 + P2-5 阻塞 DNS）——插件不再冻结宿主；慢端点提速 5–7 倍**
+
+- **P0-1 五处裸同步调用全部 to_thread 化**（"点 tab 整页冻结"根因）：`/teams/rooms` 的 `joined_rooms`、`/dm` 的 `create_dm`、`/login`、selfcheck `run_l2` 两处调用点、L3/L4 五处（含 **45s 长轮询**）——实测事件循环最大停顿 **695ms → 21–49ms**
+- **P0-2 串行往返改并发 + TTL 缓存**：`approval/list` 全量串行遍历 ~31 容器 → `asyncio.gather`（并发上限 12）+ 20s TTL 缓存（`approval_set` 三处写路径主动失效）；实测 **23.5s → 4.21s（冷扫）/ 秒回（缓存命中）**。`teams/rooms` 单房两往返（成员+房名）并发：**11.3s → 3.56s**
+- **P1-4 docker-logs 轮询退避**：连续失败 ≥3 次退避到 120s（恢复自动回 15s）；静默失败不再清屏（保留上次成功内容 + "更新于"看陈旧度）
+- **P2-5 selfcheck 阻塞 DNS 修复**：`_resolve_ip_hint` 60s TTL 缓存 + `_attach`/`diagnose_target` to_thread 化（DNS 慢不再冻结）
+- **P2-7 核查（无改动）**：user_id 反推 homeserver 陷阱=无违规（18 处全走 `_pick_address/_ordered_addresses`）
+
+**Verification**: pytest 116/116（113 基线 + 3 新护栏：并发生效/缓存命中/容错）· tsc 0 · vite build 单文件 ~2,356kB（gzip ~656kB，0 import）· i18n 1,417 键 0 缺 0 重 0 空 · 敏感扫 0 · 独立 AST 全扫「async 内直调阻塞」=0 残留 · standalone 实测（真配置 WAN、31 容器）：approval/list 4.21s/缓存 0.00s、teams/rooms 3.56s、冻结探针 21–49ms
+
 ## 0.5.0-beta.14.4（2026-10-04 · 子批）
 
 **配色跟随 QwenPaw 主题色（2.2.2+ 新特性）/ 模型配置编辑与删除（对齐 dashboard）/ Controller 5xx 优雅降级 / 设置页 UI 整理**
