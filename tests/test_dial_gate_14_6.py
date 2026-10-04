@@ -70,6 +70,20 @@ def test_gate_stats_and_top_paths(monkeypatch):
     paths = {p["path"]: p["count"] for p in stats["async"]["top_paths"]}
     assert paths.get("/api/thing0") == 3
     assert paths.get("/api/thing1") == 2
+    # v0.5.0-beta.14.7（R7.1）：字节计量。
+    assert stats["async"]["bytes_total"] > 0
+    by_path = {p["path"]: p for p in stats["async"]["top_paths"]}
+    assert by_path["/api/thing0"].get("bytes", 0) > 0
+
+
+def test_sync_filter_slim_and_typed():
+    """v0.5.0-beta.14.7：sync filter 瘦身（limit≤2）+ types 白名单。"""
+    from agentteams_connector import sync_watcher
+
+    tl = sync_watcher._SYNC_FILTER["room"]["timeline"]
+    assert tl["limit"] <= 2
+    assert "m.room.message" in tl.get("types", [])
+    assert "m.room.member" in tl.get("types", [])
 
 
 def test_no_ungated_async_client_in_connector():
