@@ -3,6 +3,7 @@ import type * as ReactNS from "react";
 import {
   downloadViaHost,
   fetchEventContext,
+  fetchRoomApprovals,
   resolveFileTarget,
   type RoomMessage,
   type TeamMember,
@@ -2139,27 +2140,65 @@ export default function RoomChat(props: RoomChatProps) {
 
   // 桌面通知：新审批消息到达 → 浏览器 Notification（宿主 2.1 无 paw.notify；
   // 集群审批接宿主通知中心需上游插件审批源 PR，本版用浏览器通知兜底）。
+  // v0.5.0-beta.14.2（F4 陈旧审批通知）：双保险——
+  // ① 挂载首批（历史消息）只登记不通知：重开插件打开聊天页不再对历史
+  //    审批（多半已批完/超时）弹浏览器通知；
+  // ② 真正新到达的审批消息，弹前查 /room-approvals pending 集（event_id
+  //    在列才弹）——已审批/已超时的即使刚进消息流也不弹；查询失败=抑制
+  //    （宁可漏弹不弹陈旧；页内审批卡 + 通知中心不受影响）。
   const seenApprovalsRef = React.useRef<Set<string>>(new Set());
+  const approvalsSeededRef = React.useRef(false);
+  const pendingCacheRef = React.useRef<{ ts: number; ids: Set<string> } | null>(null);
   React.useEffect(() => {
+    const apprs = messages.filter(
+      (m) => m.msgtype === "m.text" && m.body && parseApproval(m.body),
+    );
+    if (apprs.length === 0) return;
+    if (!approvalsSeededRef.current) {
+      // 首批 = 打开房间时已加载的历史（含旧审批）：只登记，不弹。
+      for (const m of apprs) seenApprovalsRef.current.add(m.event_id);
+      approvalsSeededRef.current = true;
+      return;
+    }
+    const fresh = apprs.filter(
+      (m) => !seenApprovalsRef.current.has(m.event_id),
+    );
+    if (fresh.length === 0) return;
+    for (const m of fresh) seenApprovalsRef.current.add(m.event_id);
     if (typeof window.Notification === "undefined") return;
     if (window.Notification.permission === "default") {
       // 静默请求一次；拒绝后不再打扰（权限面板可手动改）。
       void window.Notification.requestPermission().catch(() => undefined);
     }
     if (window.Notification.permission !== "granted") return;
-    for (const msg of messages) {
-      if (msg.msgtype !== "m.text" || !msg.body) continue;
-      if (!parseApproval(msg.body)) continue;
-      if (seenApprovalsRef.current.has(msg.event_id)) continue;
-      seenApprovalsRef.current.add(msg.event_id);
-      try {
-        new window.Notification(`🛡️ ${tr("工具调用需要审批")}`, {
-          body: (msg.body || "").replace(/\*\*/g, "").slice(0, 160),
-        });
-      } catch {
-        /* WebView 不支持时静默 */
+    void (async () => {
+      let pendingIds: Set<string> | null = null;
+      const cache = pendingCacheRef.current;
+      if (cache && Date.now() - cache.ts < 5000) {
+        pendingIds = cache.ids;
+      } else {
+        try {
+          const list = await fetchRoomApprovals(50);
+          pendingIds = new Set(
+            list.map((a) => String(a.event_id || "")).filter(Boolean),
+          );
+          pendingCacheRef.current = { ts: Date.now(), ids: pendingIds };
+        } catch {
+          pendingIds = null; // 查询失败 → 抑制（宁漏弹不弹陈旧）
+        }
       }
-    }
+      if (!pendingIds) return;
+      for (const m of fresh) {
+        if (!pendingIds.has(m.event_id)) continue;
+        try {
+          new window.Notification(`🛡️ ${tr("工具调用需要审批")}`, {
+            body: (m.body || "").replace(/\*\*/g, "").slice(0, 160),
+          });
+        } catch {
+          /* WebView 不支持时静默 */
+        }
+      }
+    })();
   }, [messages]);
 
   // 新消息到达自动滚到底部（仅当用户本来就在底部附近）；不在附近且
@@ -2264,6 +2303,10 @@ export default function RoomChat(props: RoomChatProps) {
     prevMsgLenRef.current = 0;
     atBottomRef.current = true;
     pinnedUntilRef.current = 0;
+    // v0.5.0-beta.14.2（F4）：换房重置审批通知状态（新房间首批=只登记）。
+    approvalsSeededRef.current = false;
+    seenApprovalsRef.current.clear();
+    pendingCacheRef.current = null;
     setNewMsgCount(0);
     setShowJumpBottom(false);
     requestAnimationFrame(() => {
