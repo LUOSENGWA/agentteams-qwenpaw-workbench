@@ -31,11 +31,13 @@ import {
   setRoomMuted,
   testAddresses,
   uploadMedia,
+  entryUrl,
   setCachedMessages,
   setCachedRooms,
   verifyAdmin,
   type AdminData,
   type VerifyAdminResult,
+  type AddressEntry,
   type AddressTestResult,
   type ConfigTestResponse,
   type L3RoomResult,
@@ -397,6 +399,117 @@ function StartupPrefRow() {
   );
 }
 
+// ── v0.5.0-beta.14.3: 地址覆盖凭据（公网网关 Basic 门 / API key 门）──
+// 编辑草稿（每地址一份；提交时 buildAuthEntry 组装条目，无凭据=纯 URL 串）。
+type AddrAuthDraft = {
+  type: "none" | "basic" | "bearer";
+  username: string;
+  password: string;
+  token: string;
+};
+const EMPTY_ADDR_AUTH: AddrAuthDraft = {
+  type: "none",
+  username: "",
+  password: "",
+  token: "",
+};
+/** 地址条目（string | {url, auth?}）→ 编辑草稿（字符串/无效 = none）。 */
+function entryToAuthDraft(e: AddressEntry | undefined | null): AddrAuthDraft {
+  if (e && typeof e === "object" && e.auth) {
+    const a = e.auth;
+    if (a.type === "basic")
+      return {
+        type: "basic",
+        username: a.username || "",
+        password: a.password || "",
+        token: "",
+      };
+    if (a.type === "bearer")
+      return { type: "bearer", username: "", password: "", token: a.token || "" };
+  }
+  return { ...EMPTY_ADDR_AUTH };
+}
+/** 草稿 + URL → 提交条目（凭据类型选了但字段不全 = 降级纯 URL，诚实不装）。 */
+function buildAuthEntry(url: string, d: AddrAuthDraft): AddressEntry {
+  const u = (url || "").trim();
+  if (!u) return "";
+  if (d.type === "basic" && d.username.trim() && d.password.trim())
+    return {
+      url: u,
+      auth: { type: "basic", username: d.username.trim(), password: d.password.trim() },
+    };
+  if (d.type === "bearer" && d.token.trim())
+    return { url: u, auth: { type: "bearer", token: d.token.trim() } };
+  return u;
+}
+
+/** 地址行下方的公网凭据编辑（紧凑：选择器一行；选了才展开输入行）。 */
+function AddrAuthEditor({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: AddrAuthDraft;
+  onChange: (v: AddrAuthDraft) => void;
+  disabled?: boolean;
+}) {
+  const tr = useT();
+  return (
+    <div style={{ marginLeft: 2, marginBottom: 8 }}>
+      <antd.Select
+        size="small"
+        value={value.type}
+        disabled={disabled}
+        onChange={(t: "none" | "basic" | "bearer") =>
+          onChange({ ...value, type: t })
+        }
+        style={{ width: 300, maxWidth: "100%" }}
+        options={[
+          { value: "none", label: tr("使用服务自身认证（内网默认，留空即用）") },
+          { value: "basic", label: tr("Basic 认证（公网网关 Basic 门，如 Caddy）") },
+          { value: "bearer", label: tr("API Key（Bearer，公网网关 API key 门，如 Higress）") },
+        ]}
+      />
+      {value.type === "basic" ? (
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <antd.Input
+            size="small"
+            placeholder={tr("用户名（与网关一致）")}
+            value={value.username}
+            disabled={disabled}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              onChange({ ...value, username: e.target.value })
+            }
+            style={{ width: 150 }}
+          />
+          <antd.Input.Password
+            size="small"
+            placeholder={tr("密码（与网关一致）")}
+            value={value.password}
+            disabled={disabled}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              onChange({ ...value, password: e.target.value })
+            }
+            style={{ width: 180 }}
+          />
+        </div>
+      ) : null}
+      {value.type === "bearer" ? (
+        <antd.Input
+          size="small"
+          placeholder={tr("API Key（Bearer token）")}
+          value={value.token}
+          disabled={disabled}
+          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+            onChange({ ...value, token: e.target.value })
+          }
+          style={{ marginTop: 4, width: 330, maxWidth: "100%" }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function SettingsTab({
   config,
   onConfigChange,
@@ -438,6 +551,45 @@ function SettingsTab({
   // v0.5.0-beta.12: SGLang 双地址（内网/外网）——与 matrix/controller 同构。
   const [sglangLan, setSglangLan] = React.useState("");
   const [sglangWan, setSglangWan] = React.useState("");
+  // v0.5.0-beta.14.3: 每地址公网凭据（key=<kind>:<idx>，idx 0=内网 1=外网）。
+  const [addrAuth, setAddrAuth] = React.useState<Record<string, AddrAuthDraft>>(
+    () => ({
+      "matrix:0": EMPTY_ADDR_AUTH,
+      "matrix:1": EMPTY_ADDR_AUTH,
+      "controller:0": EMPTY_ADDR_AUTH,
+      "controller:1": EMPTY_ADDR_AUTH,
+      "sglang:0": EMPTY_ADDR_AUTH,
+      "sglang:1": EMPTY_ADDR_AUTH,
+    }),
+  );
+  const setAddrAuthFor = React.useCallback(
+    (key: string, v: AddrAuthDraft) =>
+      setAddrAuth((prev) => ({ ...prev, [key]: v })),
+    [],
+  );
+  // 表单当前值 → 提交条目（URL + 可选凭据；空=空串，后端合并时丢弃）。
+  const buildAddrEntries = React.useCallback(
+    (kind: "matrix" | "controller" | "sglang"): AddressEntry[] => {
+      const urls =
+        kind === "matrix"
+          ? [matrixLan, matrixWan]
+          : kind === "controller"
+            ? [controllerLan, controllerWan]
+            : [sglangLan, sglangWan];
+      return [0, 1].map((i) =>
+        buildAuthEntry(urls[i], addrAuth[`${kind}:${i}`] || EMPTY_ADDR_AUTH),
+      );
+    },
+    [
+      matrixLan,
+      matrixWan,
+      controllerLan,
+      controllerWan,
+      sglangLan,
+      sglangWan,
+      addrAuth,
+    ],
+  );
   // v0.5.0-beta.12: Controller 认证双模式（Matrix 登录 L2 / 管理员 token L1）。
   const [ctlMode, setCtlMode] = React.useState<"matrix" | "token">("matrix");
   const [loginUser, setLoginUser] = React.useState("");
@@ -520,12 +672,21 @@ function SettingsTab({
 
   React.useEffect(() => {
     if (!config) return;
-    setMatrixLan(config.matrix_homeservers?.[0] || "");
-    setMatrixWan(config.matrix_homeservers?.[1] || "");
+    setMatrixLan(entryUrl(config.matrix_homeservers?.[0]));
+    setMatrixWan(entryUrl(config.matrix_homeservers?.[1]));
+    // v0.5.0-beta.14.3: 每地址凭据回填（密码脱敏 ***——后端合并时保持旧值）。
+    setAddrAuth({
+      "matrix:0": entryToAuthDraft(config.matrix_homeservers?.[0]),
+      "matrix:1": entryToAuthDraft(config.matrix_homeservers?.[1]),
+      "controller:0": entryToAuthDraft(config.controller_urls?.[0]),
+      "controller:1": entryToAuthDraft(config.controller_urls?.[1]),
+      "sglang:0": entryToAuthDraft(config.sglang?.urls?.[0]),
+      "sglang:1": entryToAuthDraft(config.sglang?.urls?.[1]),
+    });
     // v0.5.0-beta.14.1: 地址模式回填（垃圾值后端已降级 auto）。
     setAddressMode(config.address_mode || "auto");
-    setControllerLan(config.controller_urls?.[0] || "");
-    setControllerWan(config.controller_urls?.[1] || "");
+    setControllerLan(entryUrl(config.controller_urls?.[0]));
+    setControllerWan(entryUrl(config.controller_urls?.[1]));
     setControllerToken(config.controller_token || "");
     // v0.5.0-beta.12: admin 账号 / 网关地址回填；密码只标记「已配置」不回填。
     setAdminUsername(config.admin_username || "");
@@ -533,8 +694,8 @@ function SettingsTab({
     setAdminPassword("");
     setSglangEnabled(config.sglang?.enabled || false);
     // v0.5.0-beta.12: 双地址读取；旧配置单地址 url 回退（后端亦会迁移）。
-    setSglangLan(config.sglang?.urls?.[0] || config.sglang?.url || "");
-    setSglangWan(config.sglang?.urls?.[1] || "");
+    setSglangLan(entryUrl(config.sglang?.urls?.[0]) || config.sglang?.url || "");
+    setSglangWan(entryUrl(config.sglang?.urls?.[1]) || "");
     // 已有 token（本地配置粘贴 / 宿主 env）的用户默认落在 L1 模式。
     if (
       config.controller_token ||
@@ -551,16 +712,15 @@ function SettingsTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           config: {
-            matrix_homeservers: [matrixLan, matrixWan].filter((v) => v.trim()),
-            controller_urls: [controllerLan, controllerWan].filter((v) =>
-              v.trim(),
-            ),
+            // v0.5.0-beta.14.3: 条目 str | {url, auth?}（凭据随条目走）。
+            matrix_homeservers: buildAddrEntries("matrix"),
+            controller_urls: buildAddrEntries("controller"),
             controller_token: controllerToken,
             // v0.5.0-beta.14.1: 地址模式（auto/lan/wan）——保存后不重启即生效。
             address_mode: addressMode,
             sglang: {
               enabled: sglangEnabled,
-              urls: [sglangLan, sglangWan].filter((v) => v.trim()),
+              urls: buildAddrEntries("sglang"),
             },
           },
         }),
@@ -568,10 +728,11 @@ function SettingsTab({
       message.success(tr("配置已保存（已自动探测生效地址）"));
       onConfigChange();
       // v0.5.0-beta.12: 保存后立即连通性测试——用户当场看到两条路径的延迟与状态。
+      // v0.5.0-beta.14.3: 草稿凭据随测（未保存也能当场验证公网门）。
       void runConnTest(
-        [matrixLan, matrixWan].filter((v) => v.trim()),
-        [controllerLan, controllerWan].filter((v) => v.trim()),
-        [sglangLan, sglangWan].filter((v) => v.trim()),
+        buildAddrEntries("matrix"),
+        buildAddrEntries("controller"),
+        buildAddrEntries("sglang"),
       );
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("保存失败"));
@@ -583,7 +744,7 @@ function SettingsTab({
   // v0.5.0-beta.12: 连通性测试——测表单当前值（可未保存）；后端并行探测测延迟，
   // 列表与已配置一致时顺手按最快可达重排生效地址（applied）。
   const runConnTest = React.useCallback(
-    async (matrix?: string[], controller?: string[], sglang?: string[]) => {
+    async (matrix?: AddressEntry[], controller?: AddressEntry[], sglang?: AddressEntry[]) => {
       setTesting(true);
       try {
         const res = await testAddresses(matrix, controller, sglang);
@@ -729,12 +890,20 @@ function SettingsTab({
             }
             style={{ marginBottom: 8 }}
           />
+          <AddrAuthEditor
+            value={addrAuth["matrix:0"] || EMPTY_ADDR_AUTH}
+            onChange={(v) => setAddrAuthFor("matrix:0", v)}
+          />
           <antd.Input
             placeholder={tr("外网：https://你的域名:6867（可留空）")}
             value={matrixWan}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setMatrixWan(e.target.value)
             }
+          />
+          <AddrAuthEditor
+            value={addrAuth["matrix:1"] || EMPTY_ADDR_AUTH}
+            onChange={(v) => setAddrAuthFor("matrix:1", v)}
           />
         </div>
         <div>
@@ -750,12 +919,20 @@ function SettingsTab({
             }
             style={{ marginBottom: 8 }}
           />
+          <AddrAuthEditor
+            value={addrAuth["controller:0"] || EMPTY_ADDR_AUTH}
+            onChange={(v) => setAddrAuthFor("controller:0", v)}
+          />
           <antd.Input
             placeholder={tr("外网：https://你的域名:8090（可留空）")}
             value={controllerWan}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setControllerWan(e.target.value)
             }
+          />
+          <AddrAuthEditor
+            value={addrAuth["controller:1"] || EMPTY_ADDR_AUTH}
+            onChange={(v) => setAddrAuthFor("controller:1", v)}
           />
         </div>
 
@@ -789,11 +966,9 @@ function SettingsTab({
               loading={testing}
               onClick={() =>
                 void runConnTest(
-                  [matrixLan, matrixWan].filter((v) => v.trim()),
-                  [controllerLan, controllerWan].filter((v) => v.trim()),
-                  sglangEnabled
-                    ? [sglangLan, sglangWan].filter((v) => v.trim())
-                    : [],
+                  buildAddrEntries("matrix"),
+                  buildAddrEntries("controller"),
+                  sglangEnabled ? buildAddrEntries("sglang") : [],
                 )
               }
             >
@@ -1175,6 +1350,11 @@ function SettingsTab({
                 setSglangLan(e.target.value)
               }
             />
+            <AddrAuthEditor
+              value={addrAuth["sglang:0"] || EMPTY_ADDR_AUTH}
+              onChange={(v) => setAddrAuthFor("sglang:0", v)}
+              disabled={!sglangEnabled}
+            />
             <antd.Input
               placeholder={tr("外网：https://你的域名:30000（可留空）")}
               value={sglangWan}
@@ -1182,6 +1362,11 @@ function SettingsTab({
               onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                 setSglangWan(e.target.value)
               }
+            />
+            <AddrAuthEditor
+              value={addrAuth["sglang:1"] || EMPTY_ADDR_AUTH}
+              onChange={(v) => setAddrAuthFor("sglang:1", v)}
+              disabled={!sglangEnabled}
             />
           </div>
           <div style={{ fontSize: 12, color: "#888" }}>

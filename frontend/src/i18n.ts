@@ -149,6 +149,20 @@ const DICT: Record<string, { en: string }> = {
     en: "In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
   },
   "固定": { en: "Pinned" },
+  // ── v0.5.0-beta.14.3: 地址覆盖凭据（公网 Basic 门 / API key 门）──
+  "公网凭据（可留空）": { en: "WAN credential (optional)" },
+  "使用服务自身认证（内网默认，留空即用）": { en: "Use the service's own auth (LAN default — leave empty)" },
+  "Basic 认证（公网网关 Basic 门，如 Caddy）": { en: "Basic auth (public gateway Basic gate, e.g. Caddy)" },
+  "API Key（Bearer，公网网关 API key 门，如 Higress）": { en: "API key (Bearer; public gateway key gate, e.g. Higress)" },
+  "API Key（Bearer token）": { en: "API key (Bearer token)" },
+  "用户名（与网关一致）": { en: "Username (matching the gateway)" },
+  "密码（与网关一致）": { en: "Password (matching the gateway)" },
+  "该地址走公网入口：请填 Basic 用户名/密码或 API Key（与网关一致）": {
+    en: "This address uses the public entry: fill Basic username/password or API key (matching the gateway)",
+  },
+  "凭据只存本机 config.json，不回显、不进日志、不上传。": {
+    en: "Credential is stored only in the local config.json; never echoed, logged, or uploaded.",
+  },
   "事件流：已连接": { en: "Event stream: connected" },
   "事件流：已断开——自动重连中（上次断开 {time}）": {
     en: "Event stream: disconnected — auto-reconnecting (last down {time})",

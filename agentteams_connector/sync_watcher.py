@@ -701,8 +701,15 @@ async def _run() -> None:
                 async with httpx.AsyncClient(
                     timeout=40.0, verify=False
                 ) as client:
+                    # v0.5.0-beta.14.3: 该地址覆盖凭据（同轮 cfg，无额外读）。
                     resp = await client.get(
-                        url, headers={"Authorization": f"Bearer {token}"}
+                        url,
+                        headers=config_mod.headers_with_auth(
+                            config_mod.auth_for_url(
+                                cfg.get("matrix_homeservers"), hs
+                            ),
+                            {"Authorization": f"Bearer {token}"},
+                        ),
                     )
                 if resp.status_code >= 400:
                     # 该地址拒绝（token 失效/服务异常）→ 换下一个。

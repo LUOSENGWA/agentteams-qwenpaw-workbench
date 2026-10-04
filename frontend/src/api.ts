@@ -173,9 +173,29 @@ export async function fetchSglangModels(): Promise<string[]> {
   }
 }
 
+// v0.5.0-beta.14.3: 地址条目 = 纯 URL（服务原生认证，内网默认形态）或
+// {url, auth?}（显式覆盖凭据——公网网关 Basic 门 / API key 门）。
+export interface AddressAuth {
+  type: "basic" | "bearer";
+  username?: string;
+  password?: string;
+  token?: string;
+}
+export interface AddressEntryObj {
+  url: string;
+  auth?: AddressAuth;
+}
+export type AddressEntry = string | AddressEntryObj;
+/** 取条目的 url 字符串（统一入口，防各处手写 entry.url 漏判 string）。 */
+export function entryUrl(e: AddressEntry | undefined | null): string {
+  if (!e) return "";
+  if (typeof e === "string") return e.trim();
+  return (e.url || "").trim();
+}
+
 export interface WorkbenchConfig {
-  matrix_homeservers: string[];
-  controller_urls: string[];
+  matrix_homeservers: AddressEntry[];
+  controller_urls: AddressEntry[];
   controller_token: string;
   matrix: {
     user_id: string;
@@ -190,7 +210,7 @@ export interface WorkbenchConfig {
   sglang?: {
     enabled?: boolean;
     url?: string;
-    urls?: string[];
+    urls?: AddressEntry[];
   };
   // v0.5.0-beta.12: L1 管理员验证二选一（admin 账号密码 / controller_token）。
   // admin_password / console_session 服务端 redact 为 "***"（键存在=已配置）。
@@ -364,6 +384,11 @@ export interface AddressTestResult {
   ms: number | null;
   detail: string;
   diag?: ProbeDiag;
+  // v0.5.0-beta.14.3: 该地址实际生效的凭据类型（none/basic/bearer）+
+  // 401/403 质询分诊（basic=网关 Basic 门 / key=网关 API key 门 /
+  // token=服务层 token 被拒 / forbidden=403 / ""=其他）。
+  auth?: "none" | "basic" | "bearer";
+  challenge?: string;
 }
 
 /** v0.5.0-beta.12: 连通性测试响应。applied=true 表示生效地址已按延迟重排；
@@ -383,10 +408,11 @@ export interface ConfigTestResponse {
 
 /** v0.5.0-beta.12: 连通性测试（可传未保存的表单值；不传则测已配置地址）。 */
 export async function testAddresses(
-  matrix?: string[],
-  controller?: string[],
+  matrix?: AddressEntry[],
+  controller?: AddressEntry[],
   // v0.5.0-beta.12: SGLang 双地址（内网/外网）列表。
-  sglangUrls?: string[],
+  // v0.5.0-beta.14.3: 条目可带 auth（草稿凭据随测）。
+  sglangUrls?: AddressEntry[],
 ): Promise<ConfigTestResponse> {
   return (await requestJson("/agentteams-proxy/config/test", {
     method: "POST",

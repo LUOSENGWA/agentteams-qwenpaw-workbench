@@ -309,8 +309,10 @@ class HostApprovalBridge:
         try:
             homeservers = _ordered_addresses(cfg, "matrix")
         except Exception:  # noqa: BLE001
+            # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url。
             homeservers = [
-                str(h) for h in (cfg.get("matrix_homeservers") or [])
+                config_mod.address_url(h)
+                for h in (cfg.get("matrix_homeservers") or [])
             ]
         if not token or not homeservers:
             logger.warning(
