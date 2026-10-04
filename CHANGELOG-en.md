@@ -5,6 +5,18 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.5 (2026-10-04 - sub-release)
+
+**Performance batch (P0-1 event-loop blocking + P0-2 serial round-trips + P1-4 poll backoff + P2-5 blocking DNS) — the plugin no longer freezes the host; slow endpoints 5–7× faster**
+
+- **P0-1 all five bare blocking calls offloaded via `asyncio.to_thread`** (root cause of "opening a tab freezes the whole page"): `joined_rooms` in `/teams/rooms`, `create_dm` in `/dm`, `/login`, both `run_l2` call sites, and five sites in the L3/L4 self-check (including the **45s long-poll**) — measured event-loop stall **695ms → 21–49ms**
+- **P0-2 serial round-trips → concurrent + TTL caches**: the full `approval/list` scan (≈31 containers, serial) now runs via `asyncio.gather` (concurrency capped at 12) with a 20s TTL cache (invalidated on all three `approval_set` write paths); measured **23.5s → 4.21s (cold) / instant (cache hit)**. `teams/rooms` fetches members + room name concurrently per room: **11.3s → 3.56s**
+- **P1-4 docker-logs poll backoff**: after ≥3 consecutive failures the 15s poll backs off to 120s (auto-recovers to 15s); silent failures no longer clear the pane (last successful content is kept, with the "updated at" timestamp showing staleness)
+- **P2-5 blocking-DNS fix in selfcheck**: `_resolve_ip_hint` gains a 60s TTL cache and `_attach`/`diagnose_target` are now offloaded via `to_thread`
+- **P2-7 audit (no change)**: the "derive homeserver from user_id" trap is not present (all 18 homeserver resolutions go through `_pick_address/_ordered_addresses`)
+
+**Verification**: pytest 116/116 (113 baseline + 3 new guard tests: concurrency / cache / failure tolerance) · tsc 0 · vite build single file ~2,356 kB (gzip ~656 kB, 0 imports) · i18n 1,417 keys, 0 missing 0 dup 0 empty · secret scan 0 · independent AST sweep for "direct blocking calls inside async" = 0 remaining · standalone measurements against the real WAN config with 31 containers: approval/list 4.21s / 0.00s cached, teams/rooms 3.56s, freeze probe 21–49ms
+
 ## 0.5.0-beta.14.4 (2026-10-04 - sub-release)
 
 **Follow QwenPaw's theme color (2.2.2+) / model config edit & delete (aligned with the dashboard) / graceful degradation on Controller 5xx / settings page UI cleanup**
