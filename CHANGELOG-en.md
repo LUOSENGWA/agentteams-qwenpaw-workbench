@@ -5,6 +5,21 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.6 (2026-10-04 - sub-release)
+
+**Performance batch 2 (R1-R7 systemic fixes) — request-surface convergence / poller scheduling / dial gate / failover policy layering, guarded against regressions**
+
+- **R1 unified request cache** (`frontend/src/requestCache.ts`): TTL + in-flight dedupe (same-key concurrent calls collapse into one) + tag invalidation + LRU (cap 300) + force bypass; 15 read-mostly endpoints wired (teams/structure, admin, workflow, projects, gateway, skills, kb, sglang, artifacts, spawns); mutation paths (CRD/gateway/skills/lifecycle) invalidate by tag
+- **R2 unified poller scheduler** (`usePoller`/`createPoller` + `tabActivity` single source): **17 poll sites migrated** — only fire when their tab is active and the page is visible (stops the moment you switch away), exponential backoff on failure, catch-up on resume, anti-sync jitter; covers the ops page's 1s cluster-load and log polls (WorkerChannels keeps its previously-gated raw interval)
+- **R3 global dial gate** (`agentteams_connector/dial_gate.py`): **all 27 async dial sites go through `GatedAsyncClient`** (incl. the `_h.` alias form) + 7 sync dial sites wrapped by `sync_dial_slot` — "open every tab" concurrency no longer stacks (caps configurable: async 24 / sync 8 defaults)
+- **R4 address-failover policy layering**: only address-level/transient errors (401/403/408/429/5xx/transport) fail over; **deterministic 4xx (404/409...) no longer retried across addresses** — kills the spawns-409 class of wasted round trips
+- **R5 spawns fix**: `fetchWorkerSpawns` now passes `?team=` (disambiguates cross-team ids, no more 409) + 60s cache dedupes multiple callers
+- **R6 cadence governance**: team-tab force refresh softened to stale-first (no force within 30s); cluster-load 1s poll gated by activity+visibility with adaptive slowdown on slow responses
+- **R7 dial counters** (`GET /debug/dial-stats`): totals / in-flight / peak / top-20 paths — the reconciliation key for acceptance and troubleshooting
+- **Regression guards**: 2 static tests (no bare `httpx.AsyncClient(`, sync sites must carry the slot)
+
+**Verification**: pytest 124/124 · tsc 0 · node smokes 7+5 all green · build 2,359.90 kB (gzip 657.78 kB) · setInterval residual = 1 (pre-existing gated site) · secret scan 0 · commits `a449c2c` (backend) + `ee3d9f7` (frontend)
+
 ## 0.5.0-beta.14.5 (2026-10-04 - sub-release)
 
 **Performance batch (P0-1 event-loop blocking + P0-2 serial round-trips + P1-4 poll backoff + P2-5 blocking DNS) — the plugin no longer freezes the host; slow endpoints 5–7× faster**

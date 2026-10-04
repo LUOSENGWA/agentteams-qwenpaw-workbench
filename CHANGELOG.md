@@ -5,6 +5,21 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.6（2026-10-04 · 子批）
+
+**性能批 2（R1–R7 系统性修复）——请求面收敛 / 轮询调度 / 拨号闸门 / 失效策略分层，全链路防回退**
+
+- **R1 统一请求缓存层**（`frontend/src/requestCache.ts`）：TTL + 在飞去重（同键并发合并为一次）+ tag 失效 + LRU（300 上限）+ force 旁路；15 个只读慢变端点接线（teams/structure、admin、workflow、projects、gateway、skills、kb、sglang、artifacts、spawns）；写路径（CRD/网关/技能/生命周期）后按 tag 失效
+- **R2 轮询统一调度器**（`usePoller`/`createPoller` + `tabActivity` 单源）：**17 处轮询迁移**——仅「活跃 tab + 页面可见」时触发（切走即停）、失败指数退避、恢复即补跑、防同步抖动；含 ops 页 1s 集群负载与组件日志轮询（WorkerChannels 原有门控件保留）
+- **R3 全局拨号闸门**（`agentteams_connector/dial_gate.py`）：**27 个异步拨号点全走 `GatedAsyncClient`**（含 `_h.` 别名形态）+ 7 个同步拨号点过 `sync_dial_slot`——「点开全部 tab」的并发不再叠乘（上限可配：异步默认 24 / 同步默认 8）
+- **R4 地址失效策略分层**：仅地址相关/瞬时错误（401/403/408/429/5xx/传输）换下一地址；**确定性 4xx（404/409…）不再跨址重试**——消除 spawns 409 类白跑
+- **R5 spawns 修复**：`fetchWorkerSpawns` 带 `?team=`（跨团队歧义消歧，不再 409）+ 60s 缓存去重（多处调用合并一次）
+- **R6 频度治理**：team tab 强制刷新改 stale-first（30s 内免 force）；集群负载 1s 轮询改「可见+活跃」门控 + 慢响应自适应降频
+- **R7 拨号计数**（`GET /debug/dial-stats`）：总次数/在飞/峰值/路径 Top-20——修复验收与排障对账
+- **防回退**：2 条静态护栏测试（禁止裸 `httpx.AsyncClient(`、同步位点必须带闸门）
+
+**Verification**: pytest 124/124 · tsc 0 · node 冒烟 7+5 全绿 · build 2,359.90kB（gzip 657.78kB） · setInterval 残留=1（既有门控件） · 敏感扫 0 · 代码提交 `a449c2c`（后端）+ `ee3d9f7`（前端）
+
 ## 0.5.0-beta.14.5（2026-10-04 · 子批）
 
 **性能批（P0-1 事件循环阻塞 + P0-2 串行往返 + P1-4 轮询退避 + P2-5 阻塞 DNS）——插件不再冻结宿主；慢端点提速 5–7 倍**
