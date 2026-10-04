@@ -217,7 +217,14 @@ _DEFAULTS: Dict[str, Any] = {
 
 
 def _ensure_dir() -> None:
+    """v0.5.0-beta.14.7（安全）：目录 700（内含明文凭据的 config）。"""
+    import os as _os
+
     _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        _os.chmod(_CONFIG_DIR, 0o700)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def load_config() -> Dict[str, Any]:
@@ -227,6 +234,14 @@ def load_config() -> Dict[str, Any]:
             raw = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError):
             return json.loads(json.dumps(_DEFAULTS))
+
+        # v0.5.0-beta.14.7（安全）：存量 644 → 600 兜底（一次性收敛）。
+        try:
+            import os as _os
+
+            _os.chmod(_CONFIG_PATH, 0o600)
+        except Exception:  # noqa: BLE001
+            pass
 
         merged = json.loads(json.dumps(_DEFAULTS))
         # New schema keys
@@ -287,6 +302,14 @@ def save_config(config: Dict[str, Any]) -> None:
             encoding="utf-8",
         )
         tmp.replace(_CONFIG_PATH)
+        # v0.5.0-beta.14.7（安全）：文件含明文凭据（Basic 密码等）——收紧到
+        # 600（best-effort，失败不影响功能）。
+        try:
+            import os as _os
+
+            _os.chmod(_CONFIG_PATH, 0o600)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
