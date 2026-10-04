@@ -4,12 +4,10 @@ import type * as ReactNS from "react";
 import {
   fetchArtifacts,
   fetchRoomApprovals,
-  fetchRoomMessages,
   fetchSglangLoads,
   sendApprovalCommand,
   type Artifact,
   type RoomApproval,
-  type RoomMessage,
   type ManagerInfo,
   type TeamRoom,
   type WorkbenchConfig,
@@ -166,9 +164,6 @@ export default function HomePage(props: HomePageProps) {
   }, []);
 
   const [artifacts, setArtifacts] = React.useState<Artifact[]>([]);
-  const [lastMessages, setLastMessages] = React.useState<
-    Record<string, RoomMessage>
-  >({});
   const [sglang, setSglang] = React.useState<{
     loaded: boolean;
     ranks: { dp_rank: number; num_running_reqs: number; num_waiting_reqs: number }[];
@@ -232,30 +227,10 @@ export default function HomePage(props: HomePageProps) {
     [refreshApprovals],
   );
 
-  // 最近动态：每房间拉最后 1 条消息（rooms 通常 ≤10，成本低）。
-  React.useEffect(() => {
-    let cancelled = false;
-    if (!rooms.length) return;
-    void Promise.allSettled(
-      rooms.map(async (r) => {
-        const page = await fetchRoomMessages(r.room_id, 1);
-        const last = page.messages[0];
-        return { roomId: r.room_id, msg: last };
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      const map: Record<string, RoomMessage> = {};
-      for (const res of results) {
-        if (res.status === "fulfilled" && res.value.msg) {
-          map[res.value.roomId] = res.value.msg;
-        }
-      }
-      setLastMessages(map);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [rooms]);
+  // v0.5.0-beta.14.7：最近动态改「零拉取派生」——直接消费 rooms 自带摘要
+  // （last_sender/last_body/last_ts，由服务端 /sync timeline limit=1 与 SSE
+  // room_list_update 增量维护）。已删原「每房拉最后 1 条」effect：
+  // 其依赖整个 rooms 数组，任何增量合并都会全量重拉（实测 20+ 房 × 数秒级）。
 
   // 产物计数。
   React.useEffect(() => {
@@ -796,8 +771,8 @@ export default function HomePage(props: HomePageProps) {
               </div>
             ) : (
               roomsByActivity.slice(0, 4).map((r) => {
-                const msg = lastMessages[r.room_id];
-                const sender = msg ? memberName(r, msg.sender) : "";
+                // v0.5.0-beta.14.7：直接用自带摘要（零拉取）。
+                const sender = r.last_sender ? memberName(r, r.last_sender) : "";
                 return (
                   <div
                     key={r.room_id}
@@ -837,9 +812,9 @@ export default function HomePage(props: HomePageProps) {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {msg
-                        ? `${sender}: ${msg.body || tr("（非文本消息）")}`
-                        : tr("加载中…")}
+                      {r.last_sender || r.last_body
+                        ? `${sender}: ${r.last_body || tr("（非文本消息）")}`
+                        : tr("暂无消息")}
                     </span>
                     {/* v0.5.0-beta.12：动态行时间戳（此前最近动态无时间=无法判断新鲜度） */}
                     <span
@@ -849,7 +824,7 @@ export default function HomePage(props: HomePageProps) {
                         flexShrink: 0,
                       }}
                     >
-                      {formatChatTime(msg?.origin_server_ts || r.last_ts)}
+                      {formatChatTime(r.last_ts)}
                     </span>
                     {r.unread ? (
                       <span

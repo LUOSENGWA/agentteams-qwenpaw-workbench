@@ -2507,6 +2507,33 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     pollMessagesRef.current = pollMessages;
   }, [pollMessages]);
+
+  // v0.5.0-beta.14.7：事件合并——600ms 窗口内的多个 room_message 只拉一次；
+  // 拉取在飞时置脏位，完成后补拉一次（防丢失、防风暴；实测活跃房曾达 ~2 次/秒）。
+  const pollSoonRef = React.useRef<{
+    timer?: number;
+    dirty?: boolean;
+    inflight?: boolean;
+  }>({});
+  const pollSoon = React.useCallback(() => {
+    const s = pollSoonRef.current;
+    if (s.inflight) {
+      s.dirty = true;
+      return;
+    }
+    if (s.timer) return;
+    s.timer = window.setTimeout(() => {
+      s.timer = undefined;
+      s.inflight = true;
+      void pollMessagesRef.current().finally(() => {
+        s.inflight = false;
+        if (s.dirty) {
+          s.dirty = false;
+          pollSoon();
+        }
+      });
+    }, 600);
+  }, []);
   // v0.5.0-beta.14.1 (S1-1)：同上 ref 镜像——SSE 重连追平要拉房间列表全量
   // （effect deps=[]，闭包必须走 ref 取最新）。
   const refreshRoomsRef = React.useRef<() => Promise<void>>(async () => {});
@@ -2718,7 +2745,8 @@ export default function WorkbenchPage() {
                 // 增量覆盖（13.21：10s 节流全量刷新退役）。
                 const rid = String((data as { room_id?: string }).room_id || "");
                 if (rid && rid === activeRoomRef.current?.room_id) {
-                  void pollMessagesRef.current();
+                  // v0.5.0-beta.14.7：事件合并（600ms 窗口 + 在飞脏位补拉）。
+                  pollSoon();
                 }
                 // F1（13.11）：任意房间来消息 → 递增 chatsTick → 打开的
                 // 头像会话窗立即刷新（事件驱动主路，Element 式延迟≈0）。
