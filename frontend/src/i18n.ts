@@ -1527,16 +1527,16 @@ const DICT: Record<string, { en: string }> = {
   "频道已重启": { en: "Channel restarted" },
   "（留空=不带前缀）": { en: "(leave empty = no prefix)" },
 
-  // ── v0.5.0-beta.12：L1 二选一（admin 账号密码 / token）+ 网关 alias + 运行时 ──
-  "L1 凭据两种方式（二选一）：": { en: "Two L1 credential methods (either/or):" },
+  // ── L1 双轨（Controller token / Higress Console 账号，两块独立）+ 网关 alias + 运行时 ──
+  "两块凭据互相独立、各管一个系统（不是二选一）：": { en: "Two independent credentials, each for its own system (not an either/or):" },
   /* v0.5.0-beta.12（用户反馈：controller 与 Higress 文案混淆检查）：
      术语纠偏——「Controller 数据面」是 Higress 的平面词汇误用到 Controller 上
      （Controller 只有管理 API，没有数据面；数据面=Higress 6867）；「Console
      会话」补 Higress 前缀防与 QwenPaw console 混淆。 */
-  "① Controller 管理员 token——Controller 管理 API 全量（CRD 管理/全量视图）；部署管理员提供，粘贴一次永久记住；": { en: "① Controller admin token — full Controller admin API (CRD management / full views); provided by the deployment admin, paste once and it is remembered forever;" },
-  "② admin 账号+密码——验证身份并持有 Higress Console 会话（Higress 面模型 alias 可用）；Controller 管理 API 仍需①。": { en: "② admin account + password — verifies identity and holds a Higress Console session (Higress-side model aliases become available); the Controller admin API still needs ①." },
+  "① Controller 管理员 token——Controller 管理 API 的唯一凭证（CRD 管理/全量视图）。Controller 只认 SA token 与 Matrix token：Matrix 路径只放行 level-2/3（只读），level-1（admin）明确 401，且无任何密码登录端点——dashboard 能「admin 账密进门」同样是部署期把该 token 注入服务端 env，浏览器用户从不输入它。": { en: "① Controller admin token — the ONLY credential for the Controller admin API (CRD management / full views). The Controller accepts only SA tokens and Matrix tokens: the Matrix path admits level-2/3 (read-only) and explicitly rejects level-1 (admin) with 401, and there is no password login endpoint at all — the dashboard's \"admin account + password gets you in\" works because its deployer injected this token into the server env; browser users never type it." },
+  "② Higress 账号+密码——Higress Console 的账号（模型 alias 面，独立系统）。它恰好与 Matrix @admin 同源（部署时同一对账密注册两处），但不是 Controller 凭证、也不改变 Controller 权限。": { en: "② Higress account + password — the account of Higress Console (model-alias side, a separate system). It happens to be the same pair as the Matrix @admin account (both are seeded from the same credentials at deploy time), but it is NOT a Controller credential and does not change Controller permissions." },
   "① Controller 管理员 token": { en: "① Controller admin token" },
-  "② admin 账号+密码（Higress 面）": { en: "② Admin account + password (Higress side)" },
+  "② Higress Console 会话（模型面）——admin 账号+密码": { en: "② Higress Console session (model side) — admin account + password" },
   "admin 账号（如 admin）": { en: "admin account (e.g. admin)" },
   "admin 密码（留空=保持现有）": { en: "admin password (empty = keep existing)" },
   "验证": { en: "Verify" },
@@ -1544,8 +1544,8 @@ const DICT: Record<string, { en: string }> = {
   "admin 账号密码（Higress Console 会话已持有）": { en: "admin account + password (Higress Console session held)" },
   "管理员 token": { en: "admin token" },
   "验证失败：{err}": { en: "Verification failed: {err}" },
-  "验证通过后自动保存（与 token 二选一，密码模式不替代 token）": { en: "Credentials are saved automatically once verification passes (either/or with token; password mode does not replace the token)" },
-  "Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。L1（二选一）：① Controller 管理员 token——额外获得 CRD 管理（入职/建队/改配/删除）、全部 Worker/Team 状态视图；② admin 账号+密码——验证身份 + 持有 Higress Console 会话，模型下拉的 Higress alias 可用。token 无接口可获取（上游安全设计），由部署管理员提供——粘贴一次永久记住；密码模式不替代 token（Controller 管理 API 仍需①）。": { en: "Matrix login (L2): view your accessible teams + project actions (start/pause/artifacts) — enough for daily use. L1 (either/or): ① Controller admin token — additionally CRD management (onboarding/team create/reconfigure/delete) and full Worker/Team views; ② admin account + password — identity check + Higress Console session, enabling Higress aliases in the model dropdown. The token has no API to fetch (upstream security design) — provided by the deployment admin, paste once and it is remembered forever. Password mode does not replace the token (Controller admin API still needs ①)." },
+  "验证通过后自动保存（仅建立 Higress Console 会话；与 Controller token 无关，两者可同时配置）": { en: "Saved automatically once verification passes (establishes only the Higress Console session; independent of the Controller token — the two can be configured together)" },
+  "Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。L1 两块独立配置：① Controller 管理员 token——CRD 管理（入职/建队/改配/删除）+ 全部 Worker/Team 状态视图（Controller 唯一凭证，无接口获取——上游安全设计，部署管理员提供，粘贴一次永久记住）；② Higress 账号+密码——另建 Higress Console 会话（模型下拉 alias 层），与 ① 互不替代、可同时配置。": { en: "Matrix login (L2): view your accessible teams + project actions (start/pause/artifacts) — enough for daily use. L1 = two independent configurations: ① Controller admin token — CRD management (onboarding/team create/reconfigure/delete) + full Worker/Team views (the Controller's only credential; no API to fetch it — upstream security design — provided by the deployment admin, paste once and it is remembered forever); ② Higress account + password — opens a Higress Console session (model-dropdown alias layer); neither replaces the other and both can be configured together." },
   "Higress alias（路由可解析）": { en: "Higress alias (route resolvable)" },
   "在服+在用": { en: "Serving + in use" },
   "模型（留空=跟随集群默认；下拉=在服∪在用∪Higress alias）": { en: "Model (empty = cluster default; dropdown = serving ∪ in-use ∪ Higress alias)" },
@@ -1641,7 +1641,7 @@ const DICT: Record<string, { en: string }> = {
   // 存量缺键补齐（CrdManage/模型设置 12.2-12.3 遗留，i18n 全量核对抓出）。
   "Higress alias 自检：{n} 条路由 / 0 个可解析 alias——精确匹配（EXACT/EQUAL）且 provider 存在的路由才会进模型下拉；若路由已配仍为 0，检查模型匹配规则是否为「精确匹配」": { en: "Higress alias self-check: {n} route(s) / 0 resolvable alias(es) — only EXACT/EQUAL routes with an existing provider reach the model dropdown; if routes exist but it is still 0, check that the model matching rule is set to exact match" },
   "Higress alias 自检：{n} 条路由 / {m} 个可解析 alias（模型下拉可见）": { en: "Higress alias self-check: {n} route(s) / {m} resolvable alias(es) (visible in the model dropdown)" },
-  "L1 管理员（token / 账号密码）": { en: "L1 admin (token / account password)" },
+  "L1 管理面（token / Higress）": { en: "L1 management (token / Higress)" },
   "Leader (team_leader)": { en: "Leader (team_leader)" },
   "Manager 模型已保存（重启容器后生效）": { en: "Manager model saved (takes effect after the container restarts)" },
   "SOUL（可选，多行，worker≤150 行）": { en: "SOUL (optional, multi-line, worker ≤150 lines)" },

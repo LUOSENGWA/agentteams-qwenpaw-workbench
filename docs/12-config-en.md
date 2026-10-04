@@ -10,19 +10,19 @@ Three inputs on the Settings page: **Matrix address** (required) + **auth mode**
 
 ## Auth mode
 
-Three tiers: **L2 Matrix login** (default) / **L1 admin** (two credential methods, either/or — since v0.5.0-beta.12).
+Three tiers: **L2 Matrix login** (default) / **L1 management** (Controller token and Higress account — **two independent credentials**, since v0.5.0-beta.12).
 
 | | Matrix login (L2, default) | L1 admin |
 |---|---|---|
-| Input | Your own **Matrix account + password** (handed over at onboarding) | one of two credentials (below) |
+| Input | Your own **Matrix account + password** (handed over at onboarding) | Controller token + Higress account (two independent; both can be configured) |
 | Persistence | login session (switching accounts = switching data sources: local caches are cleared and refetched) | persisted after successful verification, **remembered permanently** |
 | Capabilities | Teams your account can access + project operations (start/pause/artifacts) + chat/approvals/notifications/knowledge base | Everything in L2 + CRD management (onboarding/team creation/reconfiguration/deletion) + full Worker/Team status + cluster load |
 
 After login the "current identity" (your Matrix mxid) is displayed.
 
-### L1 admin: two credential methods, either/or (since v0.5.0-beta.12)
+### L1 management: two independent credentials (since v0.5.0-beta.12)
 
-| | ① Controller admin token | ② admin account + password |
+| | ① Controller admin API credential (token) | ② Higress Console credential (admin account + password) |
 |---|---|---|
 | Input | **Pasted token content** (the UI provides the fetch command with one-click copy; leave empty when the env `AGENTTEAMS_CONTROLLER_TOKEN` is injected at deploy time) | admin account + admin password (+ Higress URL, required) |
 | Unlocks | **Full Controller admin API**: CRD management, full Worker/Team views, cluster load, cross-team projects/artifacts | **Higress side**: holds a Higress Console session → Higress alias candidates in the model dropdown (AI routes + providers) |
@@ -31,7 +31,7 @@ After login the "current identity" (your Matrix mxid) is displayed.
 
 > **Port map (measured)**: host 6866=Controller API (container 8090) / **6868=Higress Console (container 8001)** / 6867=Higress data plane (container 8080) / 6869=Element+console (container 8088). Plugin Controller address = `http://<LAN-IP>:6866`; Higress URL = `http://<LAN-IP>:6868`. **This port map was chosen at the node's install time (install-script prompt, default 18001) — a different deployment maps different ports, and the plugin makes no port guesses (since v0.5.0-beta.12).**
 
-> **The two credentials do not substitute for each other**: ② cannot mint a Controller data-plane credential (the controller has no token-issuance endpoint) — after password-mode verification, L1 capabilities like CRD management stay locked; only the gateway aliases appear in the model dropdown. The UI states this explicitly.
+> **The two credentials are independent, each for its own system (not an either/or)**: ① the token is the **only credential for the Controller admin API** — the Controller accepts only SA tokens and Matrix tokens (source-verified in `matrix_authenticator.go`: the Matrix path admits level-2/3 as read-only and explicitly rejects level-1 (admin) with 401 — “they should use the admin SA”), and it has **no password login endpoint**. The dashboard’s “admin account + password gets you in” is not password-derived Controller access — it works because **the deployer injects this token into the dashboard server env** (`AGENTTEAMS_AUTH_TOKEN`; browser users never type it). ② admin account + password is **Higress Console’s own account** — coincidentally the same pair as Matrix @admin (both seeded at deploy time); verification only opens a Console session → the gateway-alias side of the model dropdown; it **does not change Controller permissions**.
 
 ### Token fetch command and env injection (v0.5.0-beta.12 decision: file path removed, command kept)
 
@@ -79,7 +79,7 @@ Behavior rules:
 | Channel config writes | own team only | ✅ |
 | Skill matrix / MCP matrix writes | own team only | ✅ |
 | Cluster load (SGLang/GPU) | ❌ | ✅ |
-| Gateway aliases in model dropdown (gateway side) | ❌ | ✅ (needs ② password-mode verification) |
+| Gateway aliases in model dropdown (gateway side) | ❌ | ✅ (needs ② Higress-account verification) |
 
 ## Model gateway page (L1: browse + add provider / add route)
 
