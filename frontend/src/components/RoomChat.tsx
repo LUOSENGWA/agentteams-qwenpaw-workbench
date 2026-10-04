@@ -362,6 +362,21 @@ function ThreadPanelView({
     }
   }, [root.event_id, replies.length]);
 
+  // v0.5.0-beta.14.2（F3）：话题内 DOM 增高跟随（主列表同款：观察子节点）。
+  React.useEffect(() => {
+    const el = threadScrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+    for (const c of Array.from(el.children) as HTMLElement[]) {
+      ro.observe(c);
+    }
+    return () => ro.disconnect();
+  }, [root, replies]);
+
   // v0.5.0-beta.13.2：话题内一键置底（与主列表同款，窄面板故无徽章）。
   const [threadShowJump, setThreadShowJump] = React.useState(false);
   const handleThreadScroll = React.useCallback(() => {
@@ -1892,6 +1907,24 @@ export default function RoomChat(props: RoomChatProps) {
     setNewMsgCount(0);
     setShowJumpBottom(false);
   }, []);
+  // v0.5.0-beta.14.2（F3 底部跟随「经常不跟」）：DOM 高度变化跟随——
+  // messages 变化的 effect 只覆盖「消息数变」；图片加载/卡片/产物渲染
+  // 后撑高时不触发 → 贴底用户看着内容把视口顶离底部。Element 正源=
+  // ResizeObserver 观察**滚动内容**（滚动容器自身尺寸由 flex 定死，
+  // 观察容器不触发——必须观察其直接子节点：新行出现/行高变化都触发）。
+  React.useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      // 贴底（含点击锁定窗口：pinned 路径恒置 atBottomRef=true）→ 跟随。
+      if (!atBottomRef.current) return;
+      el.scrollTop = el.scrollHeight;
+    });
+    for (const c of Array.from(el.children) as HTMLElement[]) {
+      ro.observe(c);
+    }
+    return () => ro.disconnect();
+  }, [room, messages]);
   const t = useThemeColors();
   const tr = useT();
 
