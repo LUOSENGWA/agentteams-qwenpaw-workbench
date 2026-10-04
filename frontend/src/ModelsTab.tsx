@@ -15,6 +15,8 @@
 import type * as ReactNS from "react";
 
 import {
+  deleteGatewayAiProvider,
+  deleteGatewayAiRoute,
   fetchGatewayAiProviders,
   fetchGatewayAiRoutes,
   fetchGatewayRouteCatalog,
@@ -27,6 +29,8 @@ import { useT } from "./i18n";
 import {
   ProviderCreateModal,
   RouteCreateModal,
+  type ProviderEditSource,
+  type RouteEditSource,
 } from "./GatewayCreateModals";
 
 const host = window.QwenPaw.host;
@@ -42,6 +46,8 @@ interface RouteRow {
   /** P7b（9/19 全套抄 dashboard）：授权 consumer 与请求模型 alias 分列
    * （原先 controller 源把 allowedConsumers 填进 alias 列，语义错位）。 */
   consumers: string;
+  /** console 源的 Console 原始记录（编辑预填全字段用；controller 源无）。 */
+  rec?: RouteEditSource;
 }
 
 function routeRowOf(r: AiRouteLite): RouteRow {
@@ -90,6 +96,50 @@ export default function ModelsTab() {
   const [note, setNote] = React.useState("");
   const [providerOpen, setProviderOpen] = React.useState(false);
   const [routeOpen, setRouteOpen] = React.useState(false);
+  // v0.5.0-beta.14.4：编辑入口（Console 源才有写面）——initial=Console 原始
+  // 记录（全字段预填）；null=创建模式。
+  const [editingProvider, setEditingProvider] = React.useState<
+    ProviderEditSource | null
+  >(null);
+  const [editingRoute, setEditingRoute] = React.useState<RouteEditSource | null>(
+    null,
+  );
+
+  const openProviderModal = (rec: ProviderEditSource | null) => {
+    setEditingProvider(rec);
+    setProviderOpen(true);
+  };
+  const openRouteModal = (rec: RouteEditSource | null) => {
+    setEditingRoute(rec);
+    setRouteOpen(true);
+  };
+
+  const deleteRoute = async (name: string) => {
+    try {
+      const res = await deleteGatewayAiRoute(name);
+      if (res.available) {
+        antd.message.success(tr("已删除路由「{n}」", { n: name }));
+        void load();
+      } else {
+        antd.message.error(res.detail || res.reason || tr("删除失败"));
+      }
+    } catch (e) {
+      antd.message.error(e instanceof Error ? e.message : tr("删除失败"));
+    }
+  };
+  const deleteProvider = async (name: string) => {
+    try {
+      const res = await deleteGatewayAiProvider(name);
+      if (res.available) {
+        antd.message.success(tr("已删除提供商「{n}」", { n: name }));
+        void load();
+      } else {
+        antd.message.error(res.detail || res.reason || tr("删除失败"));
+      }
+    } catch (e) {
+      antd.message.error(e instanceof Error ? e.message : tr("删除失败"));
+    }
+  };
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -131,6 +181,13 @@ export default function ModelsTab() {
         setNote(
           tr("模型网关数据不可用——Console 会话未配置且 Controller 版本过旧（需含 #1242 路由目录端点）"),
         );
+      } else if (/HTTP 5\d{2}/.test(msg)) {
+        // 5xx（如 501=controller 网关后端未配置 / 502=Console 不可达）——
+        // 服务端问题，给可操作提示，不显原始错误噪音。
+        setSource("none");
+        setNote(
+          tr("模型网关数据暂不可用（Controller 返回 5xx）——请检查 Controller 的网关后端配置（Higress Console 可达性与凭据），稍后重试"),
+        );
       } else {
         setSource("none");
         setNote(msg);
@@ -146,7 +203,11 @@ export default function ModelsTab() {
 
   const routeRows: RouteRow[] =
     source === "console"
-      ? consoleRoutes.map(routeRowOf)
+      ? consoleRoutes.map((rec) => ({
+          ...routeRowOf(rec),
+          // console 源=Console 原始记录（runtime 全字段；lite 类型是其子集）。
+          rec: rec as unknown as RouteEditSource,
+        }))
       : (catalog?.routes || []).map((r) => ({
           name: r.name,
           upstreams: (r.upstreams || [])
@@ -176,6 +237,34 @@ export default function ModelsTab() {
       key: "aliases",
     },
     { title: tr("授权 Consumer"), dataIndex: "consumers", key: "consumers" },
+    // v0.5.0-beta.14.4：编辑/删除（仅 Console 源=有写面；controller 只读目录
+    // 无原始记录，不显入口）。
+    ...(source === "console"
+      ? [
+          {
+            title: tr("操作"),
+            key: "ops",
+            width: 140,
+            render: (_: unknown, row: RouteRow) => (
+              <span style={{ display: "flex", gap: 6 }}>
+                <antd.Button size="small" onClick={() => openRouteModal(row.rec ?? null)}>
+                  {tr("编辑")}
+                </antd.Button>
+                <antd.Popconfirm
+                  title={tr("删除路由「{n}」？", { n: row.name })}
+                  okText={tr("删除")}
+                  cancelText={tr("取消")}
+                  onConfirm={() => void deleteRoute(row.name)}
+                >
+                  <antd.Button size="small" danger>
+                    {tr("删除")}
+                  </antd.Button>
+                </antd.Popconfirm>
+              </span>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -208,23 +297,34 @@ export default function ModelsTab() {
             <antd.Button
               size="small"
               type="primary"
-              onClick={() => setProviderOpen(true)}
+              onClick={() => openProviderModal(null)}
             >
               {tr("添加提供商")}
             </antd.Button>
-            <antd.Button size="small" onClick={() => setRouteOpen(true)}>
+            <antd.Button size="small" onClick={() => openRouteModal(null)}>
               {tr("添加路由")}
             </antd.Button>
           </>
         ) : null}
       </div>
 
-      <antd.Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 14 }}
-        message={tr("写操作（添加提供商/添加路由）经 Console 会话透传；编辑/删除请用 Higress Console 或 dashboard 模型管理面")}
-      />
+      {/* v0.5.0-beta.14.4：写面提示按数据源区分（console=全功能透传；
+          controller=只读，编辑/删除需 Console 会话）。 */}
+      {source === "console" ? (
+        <antd.Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 14 }}
+          message={tr("添加/编辑/删除经 Console 会话透传到 Higress Console（与 dashboard 模型管理面同款端点）")}
+        />
+      ) : source === "controller" ? (
+        <antd.Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 14 }}
+          message={tr("当前为只读——编辑/删除需管理员账号密码验证（Console 会话）后开放")}
+        />
+      ) : null}
 
       {note ? (
         <antd.Alert
@@ -300,6 +400,32 @@ export default function ModelsTab() {
                     key: "p",
                     render: (_: unknown, p: LlmProviderLite) => providerRowName(p),
                   },
+                  {
+                    // v0.5.0-beta.14.4：编辑/删除（console 源=有写面）。
+                    title: tr("操作"),
+                    key: "ops",
+                    width: 140,
+                    render: (_: unknown, p: LlmProviderLite) => (
+                      <span style={{ display: "flex", gap: 6 }}>
+                        <antd.Button
+                          size="small"
+                          onClick={() => openProviderModal(p as unknown as ProviderEditSource)}
+                        >
+                          {tr("编辑")}
+                        </antd.Button>
+                        <antd.Popconfirm
+                          title={tr("删除提供商「{n}」？", { n: p.name })}
+                          okText={tr("删除")}
+                          cancelText={tr("取消")}
+                          onConfirm={() => void deleteProvider(p.name)}
+                        >
+                          <antd.Button size="small" danger>
+                            {tr("删除")}
+                          </antd.Button>
+                        </antd.Popconfirm>
+                      </span>
+                    ),
+                  },
                 ]}
                 dataSource={consoleProviders}
                 pagination={consoleProviders.length > 10 ? { pageSize: 10 } : false}
@@ -312,13 +438,15 @@ export default function ModelsTab() {
       <ProviderCreateModal
         open={providerOpen}
         onClose={() => setProviderOpen(false)}
-        onCreated={() => void load()}
+        onSaved={() => void load()}
+        initial={editingProvider}
       />
       <RouteCreateModal
         open={routeOpen}
         onClose={() => setRouteOpen(false)}
-        onCreated={() => void load()}
+        onSaved={() => void load()}
         providerNames={consoleProviders.map((p) => p.name)}
+        initial={editingRoute}
       />
       {/* 主题引用保留（表格外框与页面底色一致）——防 t 未用告警。 */}
       <div style={{ display: "none", background: t.bg }} />

@@ -283,6 +283,57 @@ export async function createGatewayAiRoute(
   })) as GatewayMutationResponse;
 }
 
+// ── 网关写面（14.4）：编辑/删除提供商 / 编辑/删除路由（Console 会话透传）──
+// 与 dashboard higress BFF 同款 Console 端点（/v1/ai/{providers,routes}/{name}
+// 的 PUT/DELETE）。响应信封同 GatewayMutationResponse（available=false +
+// reason/detail 供 UI 分诊；无 Console 会话 = no_console_session 降级提示）。
+
+export async function updateGatewayAiProvider(
+  name: string,
+  body: Record<string, unknown>,
+): Promise<GatewayMutationResponse> {
+  return (await requestJson(
+    `/agentteams-proxy/gateway/ai-providers/${encodeURIComponent(name)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  )) as GatewayMutationResponse;
+}
+
+export async function deleteGatewayAiProvider(
+  name: string,
+): Promise<GatewayMutationResponse> {
+  return (await requestJson(
+    `/agentteams-proxy/gateway/ai-providers/${encodeURIComponent(name)}`,
+    { method: "DELETE" },
+  )) as GatewayMutationResponse;
+}
+
+export async function updateGatewayAiRoute(
+  name: string,
+  body: Record<string, unknown>,
+): Promise<GatewayMutationResponse> {
+  return (await requestJson(
+    `/agentteams-proxy/gateway/ai-routes/${encodeURIComponent(name)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  )) as GatewayMutationResponse;
+}
+
+export async function deleteGatewayAiRoute(
+  name: string,
+): Promise<GatewayMutationResponse> {
+  return (await requestJson(
+    `/agentteams-proxy/gateway/ai-routes/${encodeURIComponent(name)}`,
+    { method: "DELETE" },
+  )) as GatewayMutationResponse;
+}
+
 // ── 模型网关只读路由目录（上游 #1242，Controller 端点，token 鉴权）────
 // 与上面的 fetchGatewayAiRoutes（Higress Console 透传，需 admin 会话）不同源：
 // 本端点在 Controller 侧（/api/v1/gateway/ai-routes），只凭 controller token

@@ -7,11 +7,18 @@
 //                modelMapping}], modelPredicates[{matchType(EQUAL|PRE),
 //                matchValue}], authConfig{enabled,allowedCredentialTypes,
 //                allowedConsumers?} }
-// 写面经连接器 /gateway/* POST 透传到 Higress Console（console_session）。
+// 写面经连接器 /gateway/* 透传到 Higress Console（console_session）。
+// v0.5.0-beta.14.4：加编辑模式（initial 预填 + PUT 原名称，与 dashboard
+// higress BFF update 语义同款——name 在路径上，body 不变名）。
 
 import type * as ReactNS from "react";
 
-import { createGatewayAiProvider, createGatewayAiRoute } from "./api";
+import {
+  createGatewayAiProvider,
+  createGatewayAiRoute,
+  updateGatewayAiProvider,
+  updateGatewayAiRoute,
+} from "./api";
 import { useT } from "./i18n";
 
 const host = window.QwenPaw.host;
@@ -69,10 +76,26 @@ function parsePredicates(text: string): { matchType: string; matchValue: string 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  /** 保存成功后的回调（创建/编辑共用——调用方刷新列表）。 */
+  onSaved: () => void;
 }
 
-export function ProviderCreateModal({ open, onClose, onCreated }: ModalProps) {
+/** 编辑预填源（Higress Console provider 记录；lite 类型之外的全字段）。 */
+export interface ProviderEditSource {
+  name: string;
+  type?: string;
+  protocol?: string;
+  tokens?: string[];
+  tokenFailoverConfig?: { enabled?: boolean; healthCheckModel?: string };
+  rawConfigs?: Record<string, unknown>;
+}
+
+export function ProviderCreateModal({
+  open,
+  onClose,
+  onSaved,
+  initial,
+}: ModalProps & { initial?: ProviderEditSource | null }) {
   const tr = useT();
   const [name, setName] = React.useState("");
   const [ptype, setPtype] = React.useState("openai");
@@ -97,6 +120,32 @@ export function ProviderCreateModal({ open, onClose, onCreated }: ModalProps) {
     setFailoverModel("");
   };
 
+  const isEdit = !!initial;
+
+  // 打开时预填（编辑）或清空（创建）；initial 身份变化（换行编辑）时重填。
+  React.useEffect(() => {
+    if (!open) return;
+    if (initial) {
+      const rc = initial.rawConfigs || {};
+      const mm = rc.modelMapping as Record<string, string> | undefined;
+      setName(initial.name);
+      setPtype(initial.type || "openai");
+      setProtocol(initial.protocol || "openai/v1");
+      // 与 dashboard models-section 同款：tokens 不预填（留空=保持现有凭据，
+      // 避免把 Console 回显的脱敏值回写成真实凭据）。
+      setTokensText("");
+      setBaseUrl(typeof rc.openaiCustomUrl === "string" ? rc.openaiCustomUrl : "");
+      setPathPrefix(typeof rc.pathPrefix === "string" ? rc.pathPrefix : "");
+      setMappingsText(mm ? Object.entries(mm).map(([k, v]) => `${k}=${v}`).join("\n") : "");
+      setFailover(!!initial.tokenFailoverConfig?.enabled);
+      setFailoverModel(initial.tokenFailoverConfig?.healthCheckModel || "");
+    } else {
+      reset();
+    }
+    // reset 为稳定逻辑（只调 state setter），不列入依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial]);
+
   const submit = async () => {
     const nm = name.trim();
     if (!nm) {
@@ -107,7 +156,7 @@ export function ProviderCreateModal({ open, onClose, onCreated }: ModalProps) {
       .split(/\r?\n/)
       .map((s) => s.trim())
       .filter(Boolean);
-    if (tokens.length === 0) {
+    if (tokens.length === 0 && !isEdit) {
       antd.message.error(tr("至少需要一个凭据"));
       return;
     }
@@ -118,7 +167,12 @@ export function ProviderCreateModal({ open, onClose, onCreated }: ModalProps) {
     }
     const mapping = parseMappings(mappingsText);
     if (Object.keys(mapping).length > 0) rawConfigs.modelMapping = mapping;
-    const body: Record<string, unknown> = { name: nm, type: ptype, protocol, tokens };
+    // 创建=全量（含 name）；编辑=与 dashboard serializeProviderForm(isUpdate)
+    // 同款——body 不含 name（名称在 URL 路径上）、tokens 留空=不提交（Console
+    // 保持现有凭据）。
+    const body: Record<string, unknown> = { type: ptype, protocol };
+    if (!isEdit) body.name = nm;
+    if (tokens.length > 0) body.tokens = tokens;
     if (failover) {
       body.tokenFailoverConfig = {
         enabled: true,
@@ -131,17 +185,23 @@ export function ProviderCreateModal({ open, onClose, onCreated }: ModalProps) {
     if (Object.keys(rawConfigs).length > 0) body.rawConfigs = rawConfigs;
     setBusy(true);
     try {
-      const res = await createGatewayAiProvider(body);
+      const res = isEdit
+        ? await updateGatewayAiProvider(initial!.name, body)
+        : await createGatewayAiProvider(body);
       if (res.available) {
-        antd.message.success(tr("已创建提供商「{n}」", { n: nm }));
+        antd.message.success(
+          isEdit
+            ? tr("已更新提供商「{n}」", { n: initial!.name })
+            : tr("已创建提供商「{n}」", { n: nm }),
+        );
         reset();
-        onCreated();
+        onSaved();
         onClose();
       } else {
-        antd.message.error(res.detail || res.reason || tr("创建失败"));
+        antd.message.error(res.detail || res.reason || (isEdit ? tr("更新失败") : tr("创建失败")));
       }
     } catch (e) {
-      antd.message.error(e instanceof Error ? e.message : tr("创建失败"));
+      antd.message.error(e instanceof Error ? e.message : (isEdit ? tr("更新失败") : tr("创建失败")));
     } finally {
       setBusy(false);
     }
@@ -149,13 +209,13 @@ export function ProviderCreateModal({ open, onClose, onCreated }: ModalProps) {
 
   return (
     <antd.Modal
-      title={tr("添加提供商")}
+      title={isEdit ? tr("编辑提供商") : tr("添加提供商")}
       open={open}
       onCancel={() => {
         if (!busy) onClose();
       }}
       onOk={() => void submit()}
-      okText={tr("创建")}
+      okText={isEdit ? tr("保存") : tr("创建")}
       cancelText={tr("取消")}
       confirmLoading={busy}
       width={560}
@@ -165,9 +225,15 @@ export function ProviderCreateModal({ open, onClose, onCreated }: ModalProps) {
           <div style={LBL}>{tr("名称")}</div>
           <antd.Input
             value={name}
+            disabled={isEdit}
             onChange={(e: { target: { value: string } }) => setName(e.target.value)}
             placeholder="deepseek-cloud"
           />
+          {isEdit ? (
+            <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>
+              {tr("编辑模式：名称不可修改（按原名称提交）")}
+            </div>
+          ) : null}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <div style={{ flex: 1 }}>
@@ -194,7 +260,9 @@ export function ProviderCreateModal({ open, onClose, onCreated }: ModalProps) {
           </div>
         </div>
         <div>
-          <div style={LBL}>{tr("令牌（每行一个）")}</div>
+          <div style={LBL}>
+            {isEdit ? tr("令牌（每行一个，留空=保持现有凭据）") : tr("令牌（每行一个）")}
+          </div>
           <antd.Input.TextArea
             rows={3}
             value={tokensText}
@@ -252,12 +320,33 @@ interface UpstreamRow {
   mapping: string;
 }
 
+/** 编辑预填源（Higress Console route 记录；lite 类型之外的全字段）。 */
+export interface RouteEditSource {
+  name: string;
+  pathPredicate?: { matchType?: string; matchValue?: string };
+  upstreams?: {
+    provider: string;
+    weight?: number;
+    modelMapping?: Record<string, string>;
+  }[];
+  modelPredicates?: { matchType: string; matchValue: string }[];
+  authConfig?: {
+    enabled?: boolean;
+    allowedCredentialTypes?: string[];
+    allowedConsumers?: string[];
+  };
+}
+
 export function RouteCreateModal({
   open,
   onClose,
-  onCreated,
+  onSaved,
   providerNames,
-}: ModalProps & { providerNames: string[] }) {
+  initial,
+}: ModalProps & {
+  providerNames: string[];
+  initial?: RouteEditSource | null;
+}) {
   const tr = useT();
   const [name, setName] = React.useState("");
   const [pathValue, setPathValue] = React.useState("/");
@@ -283,6 +372,39 @@ export function RouteCreateModal({
   const updateRow = (idx: number, patch: Partial<UpstreamRow>) => {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   };
+
+  const isEdit = !!initial;
+
+  // 打开时预填（编辑）或清空（创建）；initial 身份变化（换行编辑）时重填。
+  React.useEffect(() => {
+    if (!open) return;
+    if (initial) {
+      setName(initial.name);
+      setPathValue(initial.pathPredicate?.matchValue || "/");
+      setPredsText(
+        (initial.modelPredicates || [])
+          .map((p) => `${p.matchType === "PRE" ? "PRE" : "EQUAL"}:${p.matchValue}`)
+          .join("\n"),
+      );
+      const ups = (initial.upstreams || []).map((u) => ({
+        provider: u.provider,
+        weight: u.weight ?? 100,
+        mapping: Object.entries(u.modelMapping || {})
+          .map(([k, v]) => `${k}=${v}`)
+          .join("\n"),
+      }));
+      setRows(ups.length ? ups : [{ provider: "", weight: 100, mapping: "" }]);
+      setAuthEnabled(initial.authConfig?.enabled ?? true);
+      setKeyAuth(
+        (initial.authConfig?.allowedCredentialTypes || []).includes("key-auth"),
+      );
+      setConsumersText((initial.authConfig?.allowedConsumers || []).join("\n"));
+    } else {
+      reset();
+    }
+    // reset 为稳定逻辑（只调 state setter），不列入依赖。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial]);
 
   const submit = async () => {
     const nm = name.trim();
@@ -311,6 +433,8 @@ export function RouteCreateModal({
       .split(/\r?\n/)
       .map((s) => s.trim())
       .filter(Boolean);
+    // 创建/编辑同形状（dashboard updateRoute 发全量 CreateAiRouteRequest，
+    // name=原名称——编辑不做改名）。
     const body: Record<string, unknown> = {
       name: nm,
       pathPredicate: { matchType: "PRE", matchValue: pathValue.trim() || "/" },
@@ -328,17 +452,23 @@ export function RouteCreateModal({
     };
     setBusy(true);
     try {
-      const res = await createGatewayAiRoute(body);
+      const res = isEdit
+        ? await updateGatewayAiRoute(initial!.name, body)
+        : await createGatewayAiRoute(body);
       if (res.available) {
-        antd.message.success(tr("已创建路由「{n}」", { n: nm }));
+        antd.message.success(
+          isEdit
+            ? tr("已更新路由「{n}」", { n: initial!.name })
+            : tr("已创建路由「{n}」", { n: nm }),
+        );
         reset();
-        onCreated();
+        onSaved();
         onClose();
       } else {
-        antd.message.error(res.detail || res.reason || tr("创建失败"));
+        antd.message.error(res.detail || res.reason || (isEdit ? tr("更新失败") : tr("创建失败")));
       }
     } catch (e) {
-      antd.message.error(e instanceof Error ? e.message : tr("创建失败"));
+      antd.message.error(e instanceof Error ? e.message : (isEdit ? tr("更新失败") : tr("创建失败")));
     } finally {
       setBusy(false);
     }
@@ -348,13 +478,13 @@ export function RouteCreateModal({
 
   return (
     <antd.Modal
-      title={tr("添加路由")}
+      title={isEdit ? tr("编辑路由") : tr("添加路由")}
       open={open}
       onCancel={() => {
         if (!busy) onClose();
       }}
       onOk={() => void submit()}
-      okText={tr("创建")}
+      okText={isEdit ? tr("保存") : tr("创建")}
       cancelText={tr("取消")}
       confirmLoading={busy}
       width={640}
@@ -365,6 +495,7 @@ export function RouteCreateModal({
             <div style={LBL}>{tr("名称")}</div>
             <antd.Input
               value={name}
+              disabled={isEdit}
               onChange={(e: { target: { value: string } }) => setName(e.target.value)}
               placeholder="deepseek-route"
             />
