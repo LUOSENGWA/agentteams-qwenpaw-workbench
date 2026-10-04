@@ -1244,6 +1244,7 @@ def build_router() -> APIRouter:
                 全部失败 → None。
                 """
                 last_5xx: Optional["httpx.Response"] = None
+                first_4xx: Optional["httpx.Response"] = None
                 for url in ctl_urls:
                     try:
                         async with httpx.AsyncClient(
@@ -1263,12 +1264,20 @@ def build_router() -> APIRouter:
                         )
                         continue
                     if 400 <= r.status_code < 500:
-                        return r
+                        # v0.5.0-beta.14.2（F1）：4xx 不再立即返回——换下一
+                        # 地址（首个 401 地址可能是网关会话门，直连健康）；
+                        # 全链 4xx → 返回首个（外层 token 链拿到非 200 后
+                        # 换 token 再跑一遍地址链，语义保留）。
+                        if first_4xx is None:
+                            first_4xx = r
+                        continue
                     if r.status_code >= 500:
                         last_5xx = r
                         continue
                     _mark_working("controller", url)
                     return r
+                if first_4xx is not None:
+                    return first_4xx
                 return last_5xx
 
             for attempt_token in tokens:
@@ -2651,18 +2660,44 @@ def build_router() -> APIRouter:
         token: str, base: str, path: str, head: bool = False,
         timeout: float = 40.0,
     ) -> tuple:
-        """Controller Docker API（GET/HEAD 恒放行）。返回 (status, bytes)。"""
+        """Controller Docker API（GET/HEAD 恒放行）。返回 (status, bytes)。
+
+        v0.5.0-beta.14.2（F1 外网 401 真根因③）：单地址直拨改 ordered 地址
+        failover——旧版只拨 _pick_address 单地址：切网窗口 working cache 未
+        换 / 401 地址居首时全族端点（KB/审批/日志）恒 401 或卡满 40s 超时。
+        200 即止；4xx/5xx/传输错 → 下一地址；全败 → 返回最后一个
+        (status, bytes)（调用方按 st 走 fallback）；全超时 → 原 502 detail
+        （Docker daemon 挂诊断，实测：manager 容器 running 但 API 全超时）。
+        """
         import httpx as _h
-        url = f"{base}/docker/v1.41{path}"
-        headers = {"Authorization": f"Bearer {token}"}
-        try:
-            async with _h.AsyncClient(timeout=timeout, verify=False) as client:
-                if head:
-                    resp = await client.head(url, headers=headers)
-                    return resp.status_code, b""
-                resp = await client.get(url, headers=headers)
-                return resp.status_code, resp.content
-        except _h.TimeoutException:
+        cfg = config_mod.load_config()
+        urls = [u.rstrip("/") for u in _ordered_addresses(cfg, "controller")]
+        if not urls:
+            urls = [base.rstrip("/")]
+        last: Optional[tuple] = None
+        all_timeout = True
+        for b in urls:
+            url = f"{b}/docker/v1.41{path}"
+            headers = {"Authorization": f"Bearer {token}"}
+            try:
+                async with _h.AsyncClient(timeout=timeout, verify=False) as client:
+                    if head:
+                        resp = await client.head(url, headers=headers)
+                    else:
+                        resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    if head:
+                        return 200, b""
+                    return 200, resp.content
+                last = (resp.status_code, resp.content if not head else b"")
+                all_timeout = False
+            except _h.TimeoutException:
+                last = (502, b"timeout")
+                # all_timeout 保持 True（除非后面有非超时的失败/成功）
+            except Exception:  # noqa: BLE001 - try the next address
+                last = (502, b"error")
+                all_timeout = False
+        if all_timeout and last is not None:
             # 实测：服务器 Docker daemon 对个别容器（agentteams-manager，
             # 状态 running 但 inspect/archive 全超时）会挂——容器活着 ≠ API 可用。
             # 明确报错而非裸 500，指向服务器侧处置。
@@ -2674,6 +2709,9 @@ def build_router() -> APIRouter:
                     "处置：需管理员在服务器执行 docker restart <容器名>"
                 ),
             )
+        if last is None:
+            return 502, b""
+        return last
 
     async def _kb_exec_full(
         token: str, base: str, container: str, cmd: List[str],
@@ -4563,21 +4601,45 @@ def build_router() -> APIRouter:
     # 只读；跨团队→404（W8）；旧 Controller（未合 #1216）→404（版本门控）。
     async def _ctl_json(method: str, url: str, token: str,
                         json_body: Optional[Dict[str, Any]] = None) -> tuple:
-        """通用 Controller JSON 调用。返回 (status_code, 解析 JSON|str, 原始 text)。"""
+        """通用 Controller JSON 调用。返回 (status_code, 解析 JSON|str, 原始 text)。
+
+        v0.5.0-beta.14.2（F1 外网 401 真根因③）：单地址直拨改 ordered 地址
+        failover——同 _kb_docker：拆出 url 的 path（含 query），在 ordered
+        控制器地址上依次试；200 即止；4xx/5xx/传输错 → 下一地址；全败 →
+        返回最后一个 (status, json, text)（调用方按 st 判降级），全传输错 →
+        旧 (0, {}, "请求失败：…")。
+        """
         import httpx as _h
-        try:
-            async with _h.AsyncClient(timeout=30.0, verify=False) as client:
-                r = await client.request(
-                    method, url,
-                    json=json_body,
-                    headers={"Authorization": f"Bearer {token}"},
-                )
-        except Exception as exc:  # noqa: BLE001
-            return 0, {}, f"请求失败：{exc}"
-        try:
-            return r.status_code, r.json(), r.text
-        except Exception:  # noqa: BLE001
-            return r.status_code, {}, r.text
+        from urllib.parse import urlparse as _urlparse
+        cfg = config_mod.load_config()
+        urls = [u.rstrip("/") for u in _ordered_addresses(cfg, "controller")]
+        if not urls:
+            urls = [url.rsplit("/api/", 1)[0]]
+        p = _urlparse(url)
+        path_and_query = (p.path or "") + (f"?{p.query}" if p.query else "")
+        last: Optional[tuple] = None
+        for b in urls:
+            u = f"{b}{path_and_query}"
+            try:
+                async with _h.AsyncClient(timeout=30.0, verify=False) as client:
+                    r = await client.request(
+                        method, u,
+                        json=json_body,
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+            except Exception as exc:  # noqa: BLE001 - try the next address
+                last = (0, {}, f"请求失败：{exc}")
+                continue
+            try:
+                data = r.json()
+            except Exception:  # noqa: BLE001
+                data = {}
+            if r.status_code == 200:
+                return r.status_code, data, r.text
+            last = (r.status_code, data, r.text)
+        if last is None:
+            return 0, {}, "请求失败：无可用地址"
+        return last
 
     async def _approval_list_wsf(token: str, base: str, agent: str) -> Dict[str, Any]:
         """#1216 兜底列表（L2/docker 不可用）：worker 走 GET /api/v1/workers
