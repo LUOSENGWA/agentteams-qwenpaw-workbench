@@ -158,6 +158,10 @@ const DICT: Record<string, { en: string }> = {
   "固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
     en: "In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
   },
+  // v0.5.0-beta.14.7（设置页提示：地址模式需保存生效）
+  "修改后请点下方【保存配置】生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
+    en: "Click \"Save Configuration\" below after changes to apply. In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
+  },
   "固定": { en: "Pinned" },
   // ── v0.5.0-beta.14.3: 地址覆盖凭据（公网 Basic 门 / API key 门）──
   "公网凭据（可留空）": { en: "WAN credential (optional)" },
