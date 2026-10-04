@@ -49,6 +49,11 @@ CONTROLLER_ALLOWED_PREFIXES = ("/api/", "/healthz")
 # Per-process cache of the currently working address, keyed by target kind.
 _cache_lock = threading.Lock()
 _working_cache: Dict[str, str] = {}  # {"matrix": url, "controller": url}
+# v0.5.0-beta.14.5: approval/list 短 TTL 缓存——高频展开/切页时省一整轮容器扫
+# 描（原串行全量实测 23s@WAN）；approval_set 成功后主动失效。key=agent 参数
+# （""=全量）→ (expiry_monotonic, payload)。只存成功响应。
+_APPROVAL_LIST_TTL_SECONDS = 20.0
+_approval_list_cache: Dict[str, Any] = {}
 
 _PROBE_TIMEOUT = 6.0
 
@@ -1896,7 +1901,13 @@ def build_router() -> APIRouter:
             raise HTTPException(status_code=401, detail="未登录，请先在配置页登录")
 
         try:
-            rooms = matrix_client.joined_rooms(homeserver, token).get("joined_rooms", [])
+            # v0.5.0-beta.14.5: 同步 matrix_client 调用 to_thread 化——避免冻结
+            # 宿主事件循环（原实现直调同步 httpx，最长 20s）。
+            rooms = (
+                await asyncio.to_thread(
+                    matrix_client.joined_rooms, homeserver, token
+                )
+            ).get("joined_rooms", [])
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=502,
@@ -1919,7 +1930,9 @@ def build_router() -> APIRouter:
                 "member_count": 0,
                 "name_fallback": False,
             }
-            async with sem:
+            # v0.5.0-beta.14.5: 单房两往返（成员 + 房名）并发——原串行 2×RTT/房，
+            # 75 房叠加 WAN 实测 11.3s。best-effort 容错与日志语义不变。
+            async def _members() -> None:
                 try:
                     members = await asyncio.to_thread(
                         matrix_client.joined_members, homeserver, token, room_id
@@ -1933,6 +1946,8 @@ def build_router() -> APIRouter:
                         room_id,
                         exc,
                     )
+
+            async def _name() -> None:
                 try:
                     async with httpx.AsyncClient(timeout=4.0, verify=False) as client:
                         resp = await client.get(
@@ -1948,6 +1963,9 @@ def build_router() -> APIRouter:
                         room_id,
                         exc,
                     )
+
+            async with sem:
+                await asyncio.gather(_members(), _name())
             if not entry["name"]:
                 others = [
                     (m.get("display_name") or uid)
@@ -2168,7 +2186,10 @@ def build_router() -> APIRouter:
                 )
             target = f"@{target}:{server}"
         try:
-            result = matrix_client.create_dm(homeserver, token, target)
+            # v0.5.0-beta.14.5: to_thread（同步 httpx，最长 20s）。
+            result = await asyncio.to_thread(
+                matrix_client.create_dm, homeserver, token, target
+            )
         except matrix_client.MatrixError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except Exception as exc:  # noqa: BLE001
@@ -2542,7 +2563,10 @@ def build_router() -> APIRouter:
         last_error = "无可用地址"
         for hs in homeservers:
             try:
-                data = matrix_client.login(hs, req.user, req.password)
+                # v0.5.0-beta.14.5: to_thread（同步 httpx，最长 20s）。
+                data = await asyncio.to_thread(
+                    matrix_client.login, hs, req.user, req.password
+                )
                 _mark_working("matrix", hs)
                 merged = config_mod.update_config(
                     {
@@ -2593,7 +2617,8 @@ def build_router() -> APIRouter:
         if level == "l1":
             return await selfcheck.run_l1(cfg)
         if level == "l2":
-            return selfcheck.run_l2(cfg)
+            # v0.5.0-beta.14.5: run_l2 全同步（httpx 10s+15s）——to_thread 化。
+            return await asyncio.to_thread(selfcheck.run_l2, cfg)
         if level == "l3":
             return await selfcheck.run_l3(cfg)
         if level == "l4":
@@ -4857,6 +4882,10 @@ def build_router() -> APIRouter:
         agent.json——与 KB 同通道，零新端点依赖）。
         ?agent=xxx 过滤单个（Worker 管理展开行懒加载用，避免全量扫）。"""
         token, base = _kb_require_token()
+        # v0.5.0-beta.14.5: 20s TTL 缓存命中即返（成功响应才写；异常路径不缓存）。
+        _cached = _approval_list_cache.get(agent)
+        if _cached and _cached[0] > time.monotonic():
+            return _cached[1]
         # L2（403）/ Docker 挂（502）→ #1216 兜底（worker 走 Controller；
         # manager L1-only）。
         try:
@@ -4920,7 +4949,6 @@ def build_router() -> APIRouter:
                 item["error"] = str(exc.detail)
             return item
 
-        items: List[Dict[str, Any]] = []
         seen = set()
         if agent and not containers:
             # 指定 agent 但容器列表无匹配——明确报错而非空列表
@@ -4933,19 +4961,37 @@ def build_router() -> APIRouter:
                 }],
                 "levels": list(_APPROVAL_LEVELS),
             }
+        # v0.5.0-beta.14.5: 串行 → 并发（原 for ... await _one() 串行 ≈23s@WAN）。
+        # 先收集目标（manager/worker 去重与 agent 过滤语义与旧版一致），再
+        # asyncio.gather 并发执行；并发上限 12（对 Controller Docker API 礼貌）。
+        targets: List[tuple] = []
         for c in containers:
             name = (c.get("Names") or [""])[0].lstrip("/")
             state = c.get("State") or ""
             if name == "agentteams-manager" and "manager" not in seen:
                 seen.add("manager")
-                items.append(await _one("manager", name, "manager", state))
+                targets.append(("manager", name, "manager", state))
             elif name.startswith("agentteams-worker-"):
                 wn = name[len("agentteams-worker-"):]
                 if wn and wn not in seen:
                     seen.add(wn)
-                    items.append(await _one(wn, name, "worker", state))
+                    targets.append((wn, name, "worker", state))
+        _al_sem = asyncio.Semaphore(12)
+
+        async def _one_limited(a: str, cname: str, kind: str, state: str):
+            async with _al_sem:
+                return await _one(a, cname, kind, state)
+
+        items: List[Dict[str, Any]] = list(
+            await asyncio.gather(*(_one_limited(*t) for t in targets))
+        )
         items.sort(key=lambda x: (x["kind"] != "worker", x["agent"]))
-        return {"items": items, "levels": list(_APPROVAL_LEVELS)}
+        payload = {"items": items, "levels": list(_APPROVAL_LEVELS)}
+        _approval_list_cache[agent] = (
+            time.monotonic() + _APPROVAL_LIST_TTL_SECONDS,
+            payload,
+        )
+        return payload
 
     @router.post("/approval/set")
     async def approval_set(request: Request) -> Dict[str, Any]:
@@ -4960,6 +5006,9 @@ def build_router() -> APIRouter:
         level = str(body.get("level") or "").strip().upper()
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
+        # v0.5.0-beta.14.5: 写路径先失效缓存（防写窗口内列表缓存旧值）。
+        _approval_list_cache.pop("", None)
+        _approval_list_cache.pop(agent, None)
         if level not in _APPROVAL_LEVELS:
             raise HTTPException(
                 status_code=400,
@@ -4970,7 +5019,11 @@ def build_router() -> APIRouter:
         # Manager 无 #1216 端点 → 保持 docker exec 路径（L1 only）。
         if agent != "manager":
             if not await _kb_docker_available(token, base, container):
-                return await _approval_set_wsf(token, base, agent, level)
+                _res = await _approval_set_wsf(token, base, agent, level)
+                # v0.5.0-beta.14.5: 兜底写成功后同样失效缓存。
+                _approval_list_cache.pop("", None)
+                _approval_list_cache.pop(agent, None)
+                return _res
         port = 18799 if agent == "manager" else 8088
         ts = str(int(time.time()))
         tmp = f"/tmp/.at-appr-{ts}"
@@ -5029,6 +5082,9 @@ def build_router() -> APIRouter:
                     pass
                 break
         if out.startswith("OK"):
+            # v0.5.0-beta.14.5: 写成功后再次失效（清掉写窗口内缓存的旧值）。
+            _approval_list_cache.pop("", None)
+            _approval_list_cache.pop(agent, None)
             return {
                 "ok": True,
                 "agent": agent,
