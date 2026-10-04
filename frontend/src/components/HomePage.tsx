@@ -18,6 +18,8 @@ import {
 } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { useActiveTab } from "../tabActivity";
+import { usePoller } from "../usePoller";
 import LOGO_URL from "../lib/logo";
 import { formatChatTime } from "../util";
 
@@ -186,11 +188,20 @@ export default function HomePage(props: HomePageProps) {
     }
   }, []);
 
+  // v0.5.0-beta.14.6（R2）：home tab 轮询活跃门控（tabActivity 单源 +
+  // 页面可见；rc-tabs 保活：切走组件不卸载，必须显式门控）。
+  const homeActive = useActiveTab() === "home" && !document.hidden;
+  // 挂载首拉。
   React.useEffect(() => {
     void refreshApprovals();
-    const timer = window.setInterval(() => void refreshApprovals(), 30000);
-    return () => window.clearInterval(timer);
   }, [refreshApprovals]);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（30s，!document.hidden
+  // 由 hook 内置再 AND 一次）。
+  usePoller({
+    fn: refreshApprovals,
+    intervalMs: 30000,
+    active: homeActive,
+  });
 
   const handleApproval = React.useCallback(
     async (action: "approve" | "deny", item: RoomApproval) => {
@@ -263,24 +274,45 @@ export default function HomePage(props: HomePageProps) {
 
   // 集群负载（可选模块，仅配置开启时拉取；1s 静默轮询——用户反馈：实时刷新，
   // /v1/loads 读 SHM 快照专为高频轮询设计，1 QPS 零负担）。
+  // v0.5.0-beta.14.6（R2）：1s 旧定时器 → usePoller + 自适应间隔——
+  // 上轮耗时 >300ms（后端慢窗）→ 本轮改 5000 降频，恢复快 → 回 1000；
+  // 仅 home tab 激活 + 页面可见时跑（homeActive）。
+  const [sglangSlow, setSglangSlow] = React.useState(false);
+  const sglangEnabled = Boolean(config?.sglang?.enabled);
+  const sglangEnabledRef = React.useRef(sglangEnabled);
+  sglangEnabledRef.current = sglangEnabled;
+  const sglangAliveRef = React.useRef(true);
   React.useEffect(() => {
-    let cancelled = false;
-    if (!config?.sglang?.enabled) return;
-    const pull = () =>
-      fetchSglangLoads()
-        .then((d) => {
-          if (!cancelled) setSglang({ loaded: true, ranks: d.ranks || [] });
-        })
-        .catch(() => {
-          /* 404/网络失败 → 保持未加载 */
-        });
-    void pull();
-    const timer = window.setInterval(() => void pull(), 1000);
+    sglangAliveRef.current = true;
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      sglangAliveRef.current = false;
     };
-  }, [config?.sglang?.enabled]);
+  }, []);
+  const pullSglang = React.useCallback(async () => {
+    // 关闭后在飞请求不写状态（原 cancelled flag 语义）。
+    if (!sglangEnabledRef.current || !sglangAliveRef.current) return;
+    const t0 = Date.now();
+    try {
+      const d = await fetchSglangLoads();
+      if (!sglangAliveRef.current) return;
+      setSglang({ loaded: true, ranks: d.ranks || [] });
+      // 自适应：上轮耗时 >300ms → 慢态（同值 setState 不触发重渲）。
+      setSglangSlow(Date.now() - t0 > 300);
+    } catch {
+      /* 404/网络失败 → 保持未加载 */
+    }
+  }, []);
+  // 首拉（enabled 门走 ref 不进 deps——假→真切换由 usePoller 的 poke 覆盖，
+  // 避免同刻双发）。
+  React.useEffect(() => {
+    if (sglangEnabledRef.current) void pullSglang();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pullSglang]);
+  usePoller({
+    fn: pullSglang,
+    intervalMs: sglangSlow ? 5000 : 1000,
+    active: homeActive && sglangEnabled,
+  });
 
   const stats = workflowStats(workflowEvents);
   const wstats = workerStats(workerTree);

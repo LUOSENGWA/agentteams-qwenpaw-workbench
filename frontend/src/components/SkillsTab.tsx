@@ -13,6 +13,7 @@ import {
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import MdText from "./MdText";
+import { invalidateTags } from "../requestCache";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -76,6 +77,9 @@ function SkillsTab() {
       m.map((x) => (x.name === s.name ? { ...x, enabled: enable } : x)),
     );
     setSkillEnabled(s.name, enable)
+      // v0.5.0-beta.14.6（D3）：开关=写路径 → 成功后失效 skills 缓存
+      // （乐观更新已改屏，失效保证 60s TTL 内后续 load 读新值）。
+      .then(() => invalidateTags(["skills"]))
       .catch((e) => {
         setSkills((m) =>
           m.map((x) =>
@@ -95,6 +99,8 @@ function SkillsTab() {
       .then(() => {
         antd.message.success(tr("技能已删除"));
         setSkills((m) => m.filter((x) => x.name !== name));
+        // v0.5.0-beta.14.6（D3）：删除=写路径 → 失效 skills 缓存。
+        invalidateTags(["skills"]);
       })
       .catch((e) => {
         const msg = e instanceof Error ? e.message : String(e);
@@ -116,6 +122,9 @@ function SkillsTab() {
         if (r.conflicts && r.conflicts.length > 0) {
           antd.message.warning(tr("存在命名冲突，已按建议名导入"));
         }
+        // v0.5.0-beta.14.6（D3）：上传=写路径 → 失效 skills 缓存再拉
+        // （load(true)=silent，非 force，必须失效否则 60s TTL 读旧值）。
+        invalidateTags(["skills"]);
         void load(true);
       })
       .catch((e) => {
@@ -138,6 +147,8 @@ function SkillsTab() {
         setCreateOpen(false);
         setNewName("");
         setNewContent("");
+        // v0.5.0-beta.14.6（D3）：新建=写路径 → 失效 skills 缓存再拉。
+        invalidateTags(["skills"]);
         void load(true);
       })
       .catch((e) =>
@@ -152,6 +163,8 @@ function SkillsTab() {
     setBusy(true);
     refreshSkills()
       .then(setSkills)
+      // v0.5.0-beta.14.6（D3）：重扫=写路径（后端重建索引）→ 失效 skills 缓存。
+      .then(() => invalidateTags(["skills"]))
       .then(() => antd.message.success(tr("已重新扫描")))
       .catch((e) =>
         antd.message.error(
@@ -198,7 +211,12 @@ function SkillsTab() {
         <antd.Button
           size="small"
           icon={<RefreshIcon />}
-          onClick={() => void load()}
+          // v0.5.0-beta.14.6（D3）：手动刷新语义 → 失效 skills 缓存再拉
+          // （fetchSkills 无 force 形参，走 invalidateTags 等效）。
+          onClick={() => {
+            invalidateTags(["skills"]);
+            void load();
+          }}
           loading={loading}
         >
           {tr("刷新")}

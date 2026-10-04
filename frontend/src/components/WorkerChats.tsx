@@ -44,6 +44,7 @@ import {
 } from "../api";
 import MdText from "./MdText";
 import WorkerSessionDot from "./WorkerSessionDot";
+import { usePoller } from "../usePoller";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -626,11 +627,13 @@ function WorkerChats({
       /* 静默 */
     }
   }, []);
-  React.useEffect(() => {
-    if (!openId) return;
-    const id = window.setInterval(() => void refreshOpenChat(), 4000);
-    return () => window.clearInterval(id);
-  }, [openId, refreshOpenChat]);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（4s 开房间刷新；
+  // !openId 时不跑；!document.hidden 内置）。
+  usePoller({
+    fn: () => void refreshOpenChat(),
+    intervalMs: 4000,
+    active: !!openId,
+  });
   // SSE 事件驱动主路：refreshTick 变化（room_message 等）→ 立即刷新。
   const tickRef = React.useRef(refreshTick);
   React.useEffect(() => {

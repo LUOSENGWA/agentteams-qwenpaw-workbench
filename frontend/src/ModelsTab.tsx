@@ -32,6 +32,7 @@ import {
   type ProviderEditSource,
   type RouteEditSource,
 } from "./GatewayCreateModals";
+import { invalidateTags } from "./requestCache";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -119,7 +120,9 @@ export default function ModelsTab() {
       const res = await deleteGatewayAiRoute(name);
       if (res.available) {
         antd.message.success(tr("已删除路由「{n}」", { n: name }));
-        void load();
+        // v0.5.0-beta.14.6（D3）：删路由=写路径 → 失效 gateway 再强刷。
+        invalidateTags(["gateway"]);
+        void load(true);
       } else {
         antd.message.error(res.detail || res.reason || tr("删除失败"));
       }
@@ -132,7 +135,9 @@ export default function ModelsTab() {
       const res = await deleteGatewayAiProvider(name);
       if (res.available) {
         antd.message.success(tr("已删除提供商「{n}」", { n: name }));
-        void load();
+        // v0.5.0-beta.14.6（D3）：删提供商=写路径 → 失效 gateway 再强刷。
+        invalidateTags(["gateway"]);
+        void load(true);
       } else {
         antd.message.error(res.detail || res.reason || tr("删除失败"));
       }
@@ -141,13 +146,15 @@ export default function ModelsTab() {
     }
   };
 
-  const load = React.useCallback(async () => {
+  // v0.5.0-beta.14.6（D3）：force 形参——手动刷新/保存/删除后传 true 绕
+  // gateway 缓存读（仍写回），其余轮询/挂载走 30s TTL 缓存。
+  const load = React.useCallback(async (force = false) => {
     setLoading(true);
     setNote("");
     try {
       const [routes, providers] = await Promise.all([
-        fetchGatewayAiRoutes(),
-        fetchGatewayAiProviders(),
+        fetchGatewayAiRoutes(force),
+        fetchGatewayAiProviders(force),
       ]);
       if (routes.available && providers.available) {
         const { routesList, providersList } = extractGatewayLists(
@@ -289,7 +296,7 @@ export default function ModelsTab() {
               : tr("数据不可用")}
         </antd.Tag>
         <antd.Tag>{source === "console" ? tr("读写") : tr("只读")}</antd.Tag>
-        <antd.Button size="small" onClick={() => void load()} loading={loading}>
+        <antd.Button size="small" onClick={() => void load(true)} loading={loading}>
           {tr("刷新")}
         </antd.Button>
         {source === "console" ? (
@@ -438,13 +445,21 @@ export default function ModelsTab() {
       <ProviderCreateModal
         open={providerOpen}
         onClose={() => setProviderOpen(false)}
-        onSaved={() => void load()}
+        onSaved={() => {
+          // v0.5.0-beta.14.6（D3）：保存 provider=写路径 → 失效 gateway 再强刷。
+          invalidateTags(["gateway"]);
+          void load(true);
+        }}
         initial={editingProvider}
       />
       <RouteCreateModal
         open={routeOpen}
         onClose={() => setRouteOpen(false)}
-        onSaved={() => void load()}
+        onSaved={() => {
+          // v0.5.0-beta.14.6（D3）：保存 route=写路径 → 失效 gateway 再强刷。
+          invalidateTags(["gateway"]);
+          void load(true);
+        }}
         providerNames={consoleProviders.map((p) => p.name)}
         initial={editingRoute}
       />

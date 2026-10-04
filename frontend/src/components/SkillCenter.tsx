@@ -43,6 +43,7 @@ import {
   uploadTeamSkill,
 } from "../api";
 import { strToU8, zipSync } from "fflate";
+import { invalidateTags } from "../requestCache";
 
 /** v0.5.0-beta.13.15（B5a 矩阵按团队分类）：Worker 行按 team 分组
  * （保持原始相对序；无 team 的归「未分组」殿后）。 */
@@ -423,6 +424,10 @@ export default function SkillCenter({
       setUpName("");
       setUpDesc("");
       setUpBody("");
+      // v0.5.0-beta.14.6（D3）：技能中心安装=写路径 → 失效 skills 缓存
+      // （loadCatalog 走 fetchSkillCatalog 未入 R1 缓存，但同步失效
+      // skills/list 缓存保证宿主技能列表（SkillsTab）读新值）。
+      invalidateTags(["skills"]);
       void loadCatalog();
       void loadWorkers();
     } catch (e) {

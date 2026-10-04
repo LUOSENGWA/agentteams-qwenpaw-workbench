@@ -38,23 +38,21 @@ function SidebarApprovalIcon() {
   const [count, setCount] = hostReact.useState(0);
   const [shake, setShake] = hostReact.useState(false);
   const prevRef = hostReact.useRef(0);
-  hostReact.useEffect(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const list = await fetchRoomApprovals(30);
-        if (alive) setCount(Array.isArray(list) ? list.length : 0);
-      } catch {
-        /* 未登录/后端不可达 → 静默 0 */
-      }
-    };
-    void poll();
-    const id = window.setInterval(() => void poll(), 15000);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-    };
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s，!document.hidden
+  // 内置于 poller）——去掉 alive flag（React 18 卸载后 setState 为 no-op）。
+  const poll = hostReact.useCallback(async () => {
+    try {
+      const list = await fetchRoomApprovals(30);
+      setCount(Array.isArray(list) ? list.length : 0);
+    } catch {
+      /* 未登录/后端不可达 → 静默 0 */
+    }
   }, []);
+  // 挂载首拉（原码立即 void poll()）。
+  hostReact.useEffect(() => {
+    void poll();
+  }, [poll]);
+  usePoller({ fn: poll, intervalMs: 15000 });
   // 新增审批（0→n 或 n→n+m）触发一次震动（reduced-motion 由 CSS 关闭）。
   hostReact.useEffect(() => {
     if (count > prevRef.current) {
@@ -113,6 +111,7 @@ const SIDEBAR_ICON: ReactNS.ReactNode = hostReact
 import WorkbenchPage from "./WorkbenchPage";
 import ApprovalCard from "./components/ApprovalCard";
 import { fetchRoomApprovals } from "./api";
+import { usePoller } from "./usePoller";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
