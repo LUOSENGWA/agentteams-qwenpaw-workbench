@@ -6,6 +6,7 @@ import {
   type ProjectTransitionEvent,
 } from "../api";
 import { useT } from "../i18n";
+import { usePoller } from "../usePoller";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -143,14 +144,17 @@ export function WorkflowEventsTimeline(props: {
       .finally(() => {
         if (!stopped) setLoading(false);
       });
-    const timer = window.setInterval(() => {
-      void refresh();
-    }, 20000);
     return () => {
       stopped = true;
-      window.clearInterval(timer);
     };
-  }, [open, loadAll, refresh]);
+  }, [open, loadAll]);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（20s；active=open——
+  // 收起时停；!document.hidden 内置）。
+  usePoller({
+    fn: () => void refresh(),
+    intervalMs: 20000,
+    active: open,
+  });
 
   // 新→旧展示（API 页序=旧→新）。
   const shown = React.useMemo(() => [...events].reverse(), [events]);

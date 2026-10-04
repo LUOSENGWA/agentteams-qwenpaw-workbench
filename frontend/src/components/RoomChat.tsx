@@ -25,6 +25,8 @@ import type { WorkerInfo, WorkflowEvent } from "../api";
 import WorkerChats from "./WorkerChats";
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { useActiveTab } from "../tabActivity";
+import { usePoller } from "../usePoller";
 import {
   CheckIcon,
   CloseIcon,
@@ -2130,13 +2132,13 @@ export default function RoomChat(props: RoomChatProps) {
   // P6（9/18 ⑨）：主路已切 /sync 事件驱动（后端 sync watcher → SSE
   // room_message → WorkbenchPage 立即拉取）——本定时器降为 SSE 断连/
   // 事件丢失的保险（与后端 60s 兜底轮询同层语义）。
-  React.useEffect(() => {
-    if (!room || !onPoll) return;
-    const timer = window.setInterval(() => {
-      void onPoll();
-    }, 12000);
-    return () => window.clearInterval(timer);
-  }, [room, onPoll]);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（12s；chat tab 激活 &&
+  // 有房间 && onPoll 在场；!document.hidden 内置）。
+  usePoller({
+    fn: () => void onPoll?.(),
+    intervalMs: 12000,
+    active: useActiveTab() === "chat" && !!room && !!onPoll,
+  });
 
   // 桌面通知：新审批消息到达 → 浏览器 Notification（宿主 2.1 无 paw.notify；
   // 集群审批接宿主通知中心需上游插件审批源 PR，本版用浏览器通知兜底）。
@@ -2329,29 +2331,37 @@ export default function RoomChat(props: RoomChatProps) {
     return memberWorkerNames?.[mxid];
   }, [workerMxids, memberWorkerNames]);
   const [roomLoop, setRoomLoop] = React.useState<WorkerLoopStatus | null>(null);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s——任务书 E 表规范值；
+  // 原码实况 10000，按任务书实施并已在报告列明）。换房时清陈旧 chip +
+  // 立即拉；roomSeqRef 防旧房迟到响应（原码 dead flag 语义）。
+  const roomId = room?.room_id;
+  const roomSeqRef = React.useRef(0);
+  const roomTick = React.useCallback(() => {
+    if (!roomWorkerName || !roomId) return;
+    const seq = roomSeqRef.current;
+    const sid = `matrix:${roomId}`;
+    void fetchWorkerLoopStatusBySession(roomWorkerName, sid)
+      .then((r) => {
+        if (roomSeqRef.current !== seq) return; // 旧房迟到响应丢弃
+        // 非 idle 且有模式才显（QwenPaw：state != idle && activeMode）。
+        setRoomLoop(r && r.state !== "idle" && r.mode ? r : null);
+      })
+      .catch(() => {
+        if (roomSeqRef.current === seq) setRoomLoop(null);
+      });
+  }, [roomWorkerName, roomId]);
+  // 换房 → 清陈旧 chip + 立即拉（原码 effect 重跑时的 tick()）。
   React.useEffect(() => {
+    roomSeqRef.current += 1;
     setRoomLoop(null);
-    if (!roomWorkerName || !room) return;
-    let dead = false;
-    const sid = `matrix:${room.room_id}`;
-    const tick = () => {
-      void fetchWorkerLoopStatusBySession(roomWorkerName, sid)
-        .then((r) => {
-          if (dead) return;
-          // 非 idle 且有模式才显（QwenPaw：state != idle && activeMode）。
-          setRoomLoop(r && r.state !== "idle" && r.mode ? r : null);
-        })
-        .catch(() => {
-          if (!dead) setRoomLoop(null);
-        });
-    };
-    tick();
-    const timer = window.setInterval(tick, 10000);
-    return () => {
-      dead = true;
-      window.clearInterval(timer);
-    };
-  }, [roomWorkerName, room?.room_id]);
+    void roomTick();
+  }, [roomWorkerName, roomId, roomTick]);
+  usePoller({
+    fn: roomTick,
+    intervalMs: 15000,
+    active:
+      useActiveTab() === "chat" && !!roomWorkerName && !!roomId,
+  });
 
   if (!room) {
     return (

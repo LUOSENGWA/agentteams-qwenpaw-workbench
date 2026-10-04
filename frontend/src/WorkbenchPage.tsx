@@ -75,6 +75,10 @@ import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, Notes
 import KnowledgeBase from "./components/KnowledgeBase";
 import SkillsTab from "./components/SkillsTab";
 import ModelsTab from "./ModelsTab";
+// v0.5.0-beta.14.6（R2）：轮询统一走 usePoller/createPoller（16 处迁移之一）；
+// setActiveTab 供 tab 切换时同步活跃 tab 单源（tabActivity）。
+import { usePoller, createPoller, type Poller } from "./usePoller";
+import { setActiveTab as setActiveTabState } from "./tabActivity";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -1838,6 +1842,14 @@ export default function WorkbenchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeRoom, writeUiState],
   );
+  // v0.5.0-beta.14.6（R2）：活跃 tab 单源（tabActivity）同步——各消费方
+  // （useActiveTab：HomePage/NotificationCenter/RoomChat 轮询门）以本组件
+  // 的 tab 状态为准，直接 setState 驱动（setTabState 直改处亦覆盖）。
+  React.useEffect(() => {
+    setActiveTabState(tab);
+  }, [tab]);
+  // v0.5.0-beta.14.6（R6）：team tab 强制刷新的节流时间戳。
+  const lastTeamForceAtRef = React.useRef(0);
   // v0.5.0-beta.12 ：工作流页 tab 记忆（用户「点开过的 tab 加上记忆，参考大
   // tab」）——与大 tab 同一 ui-state 对象（wfView/wfTopo 字段，合并写），
   // 不新造 storage key。WorkflowBoard 改受控（view/topoRun 由此下发）。
@@ -2527,22 +2539,30 @@ export default function WorkbenchPage() {
   const [chatsTick, setChatsTick] = React.useState(0);
   React.useEffect(() => {
     let abort: AbortController | null = null;
-    let fallback: number | null = null;
+    // v0.5.0-beta.14.6（R2）：旧定时器 → 命令式 createPoller（60s SSE 断连
+    // 兜底；!document.hidden——后台不拉；closure 捕获首渲染 refreshRooms，
+    // 与原行为一致）。
+    let fallback: Poller | null = null;
     let closed = false;
     let retryDelay = 1000;
     let lastDownSince = 0; // v0.5.0-beta.14.1 (S1-1)：最近一次断连开始时刻（0=当前连着）
 
     const bootFallback = () => {
       if (!fallback) {
-        fallback = window.setInterval(() => {
-          void refreshRooms();
-          setNotifyTick((t) => t + 1);
-        }, 60000);
+        fallback = createPoller({
+          fn: () => {
+            void refreshRooms();
+            setNotifyTick((t) => t + 1);
+          },
+          intervalMs: 60000,
+          isActive: () => !document.hidden,
+        });
+        fallback.start();
       }
     };
     const clearFallback = () => {
       if (fallback) {
-        window.clearInterval(fallback);
+        fallback.stop();
         fallback = null;
       }
     };
@@ -2551,7 +2571,8 @@ export default function WorkbenchPage() {
       // v0.5.0-beta.14.1 (S1-2)：watchdog 句柄 hoist 到 connect() 顶部——
       // 清理统一走 catch 后的唯一收敛点（done/abort/网络异常全路径覆盖，
       // 防 interval 泄漏周期性杀下一次重连）。
-      let watchdog: number | null = null;
+      // v0.5.0-beta.14.6（R2）：number → Poller（createPoller，语义不变）。
+      let watchdog: Poller | null = null;
       if (closed) return;
       if (!lastDownSince) lastDownSince = Date.now();
       try {
@@ -2598,12 +2619,19 @@ export default function WorkbenchPage() {
         // 注释帧；45s（3 周期+裕量）无任何字节（含 keepalive）= TCP 半死挂
         // （NAT 超时/代理 idle-kill 未发 FIN）→ abort 读 → 走重连路径。
         let lastFrameAt = Date.now();
-        watchdog = window.setInterval(() => {
-          if (Date.now() - lastFrameAt > 45000) {
-            lastFrameAt = Date.now(); // 防重复触发
-            abort?.abort();
-          }
-        }, 5000);
+        // v0.5.0-beta.14.6（R2）：旧定时器 → createPoller（5s；语义不变——
+        // 45s 无帧 abort；!document.hidden——后台暂停，恢复后首 tick 即判定）。
+        watchdog = createPoller({
+          fn: () => {
+            if (Date.now() - lastFrameAt > 45000) {
+              lastFrameAt = Date.now(); // 防重复触发
+              abort?.abort();
+            }
+          },
+          intervalMs: 5000,
+          isActive: () => !document.hidden,
+        });
+        watchdog.start();
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -2706,8 +2734,9 @@ export default function WorkbenchPage() {
       }
       // v0.5.0-beta.14.1 (S1-2)：watchdog 唯一清理收敛点——覆盖 for 循环
       // 全部退出路径（done 正常结束 / 看门狗或卸载 abort / 网络异常）。
+      // v0.5.0-beta.14.6（R2）：clearInterval → poller.stop()。
       if (watchdog) {
-        window.clearInterval(watchdog);
+        watchdog.stop();
         watchdog = null;
       }
       // 流结束（连接被断开）→ 指数退避重连；**退避封顶 60s 后不再永停**
@@ -2731,7 +2760,7 @@ export default function WorkbenchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // v0.5.0-beta.14.1 (S1-3)：可见性追平——后台 tab 的 setInterval 被浏览器
+  // v0.5.0-beta.14.1 (S1-3)：可见性追平——后台 tab 的定时器被浏览器
   // 节流至 ≥60s（SSE 也可能已死），回到前台/窗口聚焦时立即拉一次（3s 防抖
   // 防事件风暴）——不等下一个 tick。
   React.useEffect(() => {
@@ -3122,11 +3151,14 @@ export default function WorkbenchPage() {
   // 且当前房间消息含 workflow 载荷时同样轮询——聊天内卡片 live overlay
   // 复用 workflowEvents 正源（controller projects/workflow 双轨）。
   const chatHasWfCards = tab === "chat" && messages.some((m) => m.workflow != null);
-  React.useEffect(() => {
-    if (tab !== "workflow" && !chatHasWfCards) return;
-    const id = window.setInterval(() => void refreshWorkflow(true), 15000);
-    return () => window.clearInterval(id);
-  }, [tab, chatHasWfCards, refreshWorkflow]);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s；active=workflow tab
+  // 或聊天含工作流卡；!document.hidden 内置）。假→真切换的立即拉由 13.13
+  // 去抖 effect + poller poke 双路覆盖，R1 在飞去重保证同刻双发合并。
+  usePoller({
+    fn: () => void refreshWorkflow(true),
+    intervalMs: 15000,
+    active: tab === "workflow" || chatHasWfCards,
+  });
 
   // v0.5.0-beta.13.13（13.12 装验「工作流一点开应先自动刷新，而不是等 15s
   // 自动刷新或手动刷新」）：切到工作流 tab（或聊天出现工作流卡）立即拉一次
@@ -3233,12 +3265,16 @@ export default function WorkbenchPage() {
       case "artifacts":
         void refreshRooms(true);
         break;
-      case "team":
-        // v0.5.0-beta.13.12：切 tab=用户意图看最新 → force（silent 防闪
-        // 页 + force 绕后端 60s 缓存）；30s 后台 tick 仍走缓存。
-        void refreshTree(true, true);
+      case "team": {
+        // v0.5.0-beta.14.6（R6）：force 改 stale-first——30s 内免 force
+        // （前端 15s TTL + 后端 60s 缓存已足够新），避免每次切 tab 全量
+        // 回源；超过 30s 才强制取最新。
+        const forceNow = Date.now() - lastTeamForceAtRef.current > 30000;
+        if (forceNow) lastTeamForceAtRef.current = Date.now();
+        void refreshTree(true, forceNow);
         void refreshAdmin(true);
         break;
+      }
       case "knowledge":
         setKnowledgeTick((n) => n + 1);
         break;
@@ -3258,12 +3294,14 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12（对齐 dashboard refetchInterval:15000）：workflow
   // 15s 自动刷新——仅 workflow tab 激活时轮询（rc-tabs 保活，切走即停），
   // 静默刷新不闪页。审计就标记的缺口（插件 WorkflowBoard 零 tick）。
-  React.useEffect(() => {
-    if (tab !== "workflow") return;
-    const id = setInterval(() => void refreshWorkflow(true), 15000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s；!document.hidden
+  // 内置）。workflow tab 下与上一 16a poller 双发为既有行为（原双 interval
+  // 同款），R1 在飞去重合并。
+  usePoller({
+    fn: () => void refreshWorkflow(true),
+    intervalMs: 15000,
+    active: tab === "workflow",
+  });
 
   // 自己的显示名：从房间成员里找 display_name，fallback MXID localpart。
   const selfDisplayName = React.useMemo(() => {

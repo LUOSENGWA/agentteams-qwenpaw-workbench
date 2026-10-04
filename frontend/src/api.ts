@@ -5,6 +5,10 @@
  * Controller 抖动时请求可挂起数分钟，前端恒转圈且刷新钮被 loading 禁用
  * （「手动也不行」）。超时抛「请求超时」错误（非 HTTP xxx 形态，调用方
  * toast 后可手动重试）；不传 = 原行为（SSE/长轮询等端点不受影响）。 */
+// v0.5.0-beta.14.6（R1）：读缓存接线——下方 15 个同源读接口经 cachedRequest
+// 走 TTL+在飞去重+标签失效+LRU（requestCache.ts）；写面（POST/DELETE）不包。
+import { cachedRequest } from "./requestCache";
+
 export async function requestJson(
   path: string,
   init?: RequestInit,
@@ -161,16 +165,20 @@ export async function fetchSglangLoads(): Promise<SglangLoads> {
 }
 
 /** 在服模型列表（SGLang /v1/models 代理；创建 Worker 模型下拉用）。
- * SGLang 模块未启用 → 404 → 返回空列表（前端降级自由输入）。 */
+ * SGLang 模块未启用 → 404 → 返回空列表（前端降级自由输入）。
+ * v0.5.0-beta.14.6（R1）：cachedRequest 包裹（sglang/models，60s）——
+ * 原高频轮询位点迁移 usePoller 后，同 key 调用经缓存合并为一次回源。 */
 export async function fetchSglangModels(): Promise<string[]> {
-  try {
-    const d = (await requestJson(
-      "/agentteams-proxy/sglang/models",
-    )) as { models?: string[] };
-    return d.models || [];
-  } catch {
-    return [];
-  }
+  return cachedRequest("sglang/models", 60000, async () => {
+    try {
+      const d = (await requestJson(
+        "/agentteams-proxy/sglang/models",
+      )) as { models?: string[] };
+      return d.models || [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 // v0.5.0-beta.14.3: 地址条目 = 纯 URL（服务原生认证，内网默认形态）或
@@ -237,18 +245,39 @@ export interface GatewayListResponse {
   reason?: string;
 }
 
-/** 网关 AI 路由列表（模型选择 alias 层：alias→route→provider 映射）。 */
-export async function fetchGatewayAiRoutes(): Promise<GatewayListResponse> {
-  return (await requestJson(
-    "/agentteams-proxy/gateway/ai-routes",
-  )) as GatewayListResponse;
+/** 网关 AI 路由列表（模型选择 alias 层：alias→route→provider 映射）。
+ * v0.5.0-beta.14.6（R1）：新增 force 形参（默认 false）+ cachedRequest 包裹
+ * （gateway/ai-routes，30s，tags ["gateway"]）；写面变更后由调用方
+ * invalidateTags(["gateway"]) + force 重取（D3）。 */
+export async function fetchGatewayAiRoutes(
+  force = false,
+): Promise<GatewayListResponse> {
+  return cachedRequest(
+    "gateway/ai-routes",
+    30000,
+    async () =>
+      (await requestJson(
+        "/agentteams-proxy/gateway/ai-routes",
+      )) as GatewayListResponse,
+    { force, tags: ["gateway"] },
+  );
 }
 
-/** 网关 LLM Provider 列表（alias 可解析性判定用）。 */
-export async function fetchGatewayAiProviders(): Promise<GatewayListResponse> {
-  return (await requestJson(
-    "/agentteams-proxy/gateway/ai-providers",
-  )) as GatewayListResponse;
+/** 网关 LLM Provider 列表（alias 可解析性判定用）。
+ * v0.5.0-beta.14.6（R1）：新增 force 形参（默认 false）+ cachedRequest 包裹
+ * （gateway/ai-providers，30s，tags ["gateway"]）。 */
+export async function fetchGatewayAiProviders(
+  force = false,
+): Promise<GatewayListResponse> {
+  return cachedRequest(
+    "gateway/ai-providers",
+    30000,
+    async () =>
+      (await requestJson(
+        "/agentteams-proxy/gateway/ai-providers",
+      )) as GatewayListResponse,
+    { force, tags: ["gateway"] },
+  );
 }
 
 // ── 网关写面（12.13 P7b）：创建提供商 / 创建路由（Console 会话透传）──
@@ -767,11 +796,15 @@ export interface Artifact {
   size: number | null;
 }
 
+/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（artifacts，30s）——已有 force
+ * 参数透传（force 同样参与在飞去重，完成后覆盖写缓存）。 */
 export async function fetchArtifacts(force = false): Promise<Artifact[]> {
-  const data = (await requestJson(
-    `/agentteams-proxy/artifacts${force ? "?force=true" : ""}`,
-  )) as { items?: Artifact[] };
-  return data.items || [];
+  return cachedRequest("artifacts", 30000, async () => {
+    const data = (await requestJson(
+      `/agentteams-proxy/artifacts${force ? "?force=true" : ""}`,
+    )) as { items?: Artifact[] };
+    return data.items || [];
+  });
 }
 
 export interface RoomMessagesPage {
@@ -1048,12 +1081,19 @@ export async function fetchProjectTransitionEvents(
   }
 }
 
+/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（workflow/events，15s）——
+ * 已有 force 参数透传（仅 force 一参且不影响结果内容 → key 固定）。 */
 export async function fetchWorkflowEvents(
   force = false,
 ): Promise<{ ok: boolean; events: WorkflowEvent[]; elapsed?: number }> {
-  return (await requestJson(
-    `/agentteams-proxy/workflow/events${force ? "?force=true" : ""}`,
-  )) as { ok: boolean; events: WorkflowEvent[]; elapsed?: number };
+  return cachedRequest(
+    "workflow/events",
+    15000,
+    async () =>
+      (await requestJson(
+        `/agentteams-proxy/workflow/events${force ? "?force=true" : ""}`,
+      )) as { ok: boolean; events: WorkflowEvent[]; elapsed?: number },
+  );
 }
 
 /** 正源项目列表（Controller /api/v1/projects，上游已合并）。
@@ -1063,40 +1103,45 @@ export async function fetchWorkflowEvents(
  * 被误判空列表（项目产物树恒空、且 o19Fail=null 连降级横幅都没有）；本文件
  * fetchWorkflowProjects/fetchWorkerSpawns 两份内联解包虽对，但三处副本
  * 迟早漂移——从此所有消费者走此函数，信封解包单一真相源。 */
+/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（projects/list，30s）——已有
+ * force 参数透传；fetchWorkflowProjects/fetchWorkerSpawns 内部无参调用命中
+ * 同一 key，多消费者合并为一次回源。 */
 export async function fetchProjectSummaries(
   force = false,
 ): Promise<Record<string, unknown>[]> {
-  const raw = (await requestJson(
-    `/agentteams-proxy/controller/api/v1/projects${force ? "?force=true" : ""}`,
-  )) as unknown;
-  const list = (Array.isArray(raw)
-    ? raw
-    : ((raw as { projects?: unknown[] })?.projects || [])) as Record<
-    string,
-    unknown
-  >[];
-  // v0.5.0-beta.12: 按 project_id 去重——Controller ListProjects 按 (team, id) 去重
-  // （project_handler.go：「two teams may hold the same id... both appear」），
-  // 同一 id 在团队目录与全局 shared/projects/ 各有一份 meta.json 时两条都返回
-  // （实测存在重复条目）。而
-  // workflow/artifact 端点只能裸 id 寻址 → 重复 id 裸调 = 409 ambiguous，
-  // 两行指向同一可寻址对象。前端每 id 留一条：优先带 team_id 的记录
-  // （它是 ?team= 寻址的有效键）。根因在数据侧重复注册（环境清理 + 上游
-  // 候选 PR，见 memory 2026-08-22 笔记）。
-  const byId = new Map<string, Record<string, unknown>>();
-  for (const p of list) {
-    const pid = String(p.project_id || "");
-    if (!pid) continue;
-    const cur = byId.get(pid);
-    if (!cur) {
-      byId.set(pid, p);
-      continue;
+  return cachedRequest("projects/list", 30000, async () => {
+    const raw = (await requestJson(
+      `/agentteams-proxy/controller/api/v1/projects${force ? "?force=true" : ""}`,
+    )) as unknown;
+    const list = (Array.isArray(raw)
+      ? raw
+      : ((raw as { projects?: unknown[] })?.projects || [])) as Record<
+      string,
+      unknown
+    >[];
+    // v0.5.0-beta.12: 按 project_id 去重——Controller ListProjects 按 (team, id) 去重
+    // （project_handler.go：「two teams may hold the same id... both appear」），
+    // 同一 id 在团队目录与全局 shared/projects/ 各有一份 meta.json 时两条都返回
+    // （实测存在重复条目）。而
+    // workflow/artifact 端点只能裸 id 寻址 → 重复 id 裸调 = 409 ambiguous，
+    // 两行指向同一可寻址对象。前端每 id 留一条：优先带 team_id 的记录
+    // （它是 ?team= 寻址的有效键）。根因在数据侧重复注册（环境清理 + 上游
+    // 候选 PR，见 memory 2026-08-22 笔记）。
+    const byId = new Map<string, Record<string, unknown>>();
+    for (const p of list) {
+      const pid = String(p.project_id || "");
+      if (!pid) continue;
+      const cur = byId.get(pid);
+      if (!cur) {
+        byId.set(pid, p);
+        continue;
+      }
+      if (!String(cur.team_id || "") && String(p.team_id || "")) {
+        byId.set(pid, p);
+      }
     }
-    if (!String(cur.team_id || "") && String(p.team_id || "")) {
-      byId.set(pid, p);
-    }
-  }
-  return Array.from(byId.values());
+    return Array.from(byId.values());
+  });
 }
 
 /** 项目 workflow 正源（Controller API，双轨 adapter 的正源侧）。
@@ -1109,13 +1154,18 @@ export async function fetchProjectSummaries(
  * 「只有 Manager 的」= 正源 401 静默回退、只剩自己已加入房间的扫描）。
  * 附带 failDetail（error 分支的真实上游错误，如 Controller 500 的
  * mc 报错）——此前真实原因被通用横幅「Controller 不可用」掩盖。
- */
-export async function fetchWorkflowProjects(): Promise<{
+ * v0.5.0-beta.14.6（R1）：外层 cachedRequest 包裹（workflow/projects，30s，
+ * 无 force 参）——整包聚合（projects/list + 逐项目 workflow）是重接口，
+ * 多调用点（workflow tab 15s 轮询、聊天 📁 面板）合并为一次回源；内部
+ * fetchProjectSummaries() 无参调用命中 projects/list 缓存。 */
+interface WorkflowProjectsResult {
   events: WorkflowEvent[];
   apiOk: boolean;
   failReason?: "auth" | "not_deployed" | "error";
   failDetail?: string;
-}> {
+}
+
+async function loadWorkflowProjectsRaw(): Promise<WorkflowProjectsResult> {
   try {
     const list = await fetchProjectSummaries();
     if (list.length === 0) return { events: [], apiOk: true };
@@ -1167,6 +1217,11 @@ export async function fetchWorkflowProjects(): Promise<{
       failDetail: detail || undefined, // 端点未部署/网络失败/5xx → 调用方降级 + 横幅暴露原因
     };
   }
+}
+
+/** v0.5.0-beta.14.6（R1）：对外缓存包装（workflow/projects，30s）。 */
+export async function fetchWorkflowProjects(): Promise<WorkflowProjectsResult> {
+  return cachedRequest("workflow/projects", 30000, loadWorkflowProjectsRaw);
 }
 
 // v0.5.0-beta.13.24（F5·装验定案「DAG 和 mermaid 没必要分两个」）：
@@ -2081,27 +2136,37 @@ export function deleteWorkerLoopCustom(
 export const deleteTeam = (name: string) =>
   controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
 
+/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（admin/data，30s，tags
+ * ["admin"]）——4 路并发取数，WorkerManage 30s 轮询与 CrdManage 失效后
+ * 重取合并为一次回源。 */
 export async function fetchAdminData(): Promise<AdminData> {
-  const [workers, teams, humans, managers] = await Promise.all([
-    fetchControllerJson<unknown>("/workers").then(normalizeList),
-    fetchControllerJson<unknown>("/teams").then(normalizeList),
-    // v0.5.0-beta.13.21（13.20 装验「首屏只显拓扑」缺口④）：humans/managers
-    // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版 Promise.all
-    // 里任一 404/超时（旧 Controller 无该端点/瞬时抖动）整体 reject → admin 面板
-    // 整体空白；workers/teams 才是 CRD 管理面板的核心数据。
-    fetchControllerJson<unknown>("/humans")
-      .then(normalizeList)
-      .catch(() => [] as unknown[]),
-    fetchControllerJson<unknown>("/managers")
-      .then(normalizeList)
-      .catch(() => [] as unknown[]),
-  ]);
-  return {
-    workers: workers as WorkerInfo[],
-    teams: teams as TeamInfo[],
-    humans: humans as HumanInfo[],
-    managers: managers as ManagerInfo[],
-  };
+  return cachedRequest(
+    "admin/data",
+    30000,
+    async () => {
+      const [workers, teams, humans, managers] = await Promise.all([
+        fetchControllerJson<unknown>("/workers").then(normalizeList),
+        fetchControllerJson<unknown>("/teams").then(normalizeList),
+        // v0.5.0-beta.13.21（13.20 装验「首屏只显拓扑」缺口④）：humans/managers
+        // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版
+        // Promise.all 里任一 404/超时（旧 Controller 无该端点/瞬时抖动）整体
+        // reject → admin 面板整体空白；workers/teams 才是 CRD 管理面板核心数据。
+        fetchControllerJson<unknown>("/humans")
+          .then(normalizeList)
+          .catch(() => [] as unknown[]),
+        fetchControllerJson<unknown>("/managers")
+          .then(normalizeList)
+          .catch(() => [] as unknown[]),
+      ]);
+      return {
+        workers: workers as WorkerInfo[],
+        teams: teams as TeamInfo[],
+        humans: humans as HumanInfo[],
+        managers: managers as ManagerInfo[],
+      };
+    },
+    { tags: ["admin"] },
+  );
 }
 
 function normalizeList(payload: unknown): unknown[] {
@@ -2120,23 +2185,32 @@ function normalizeList(payload: unknown): unknown[] {
  * 与 fetchAdminData 的区别：humans/managers 是 L1 管理面（L2 无权限或无意义）
  * → 失败置空不炸；workers/teams 是 L2 技能中心正源（Controller 按
  * accessibleTeams 自动 scope——standalone worker 隐藏，防探测）。 */
+/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（admin/l2，30s，tags
+ * ["admin"]）——L2 身份取数，与 admin/data 同标签（写失效一起清）。 */
 export async function fetchL2AdminData(): Promise<AdminData> {
-  const [workers, teams, humans, managers] = await Promise.all([
-    fetchControllerJson<unknown>("/workers").then(normalizeList),
-    fetchControllerJson<unknown>("/teams").then(normalizeList),
-    fetchControllerJson<unknown>("/humans")
-      .then(normalizeList)
-      .catch(() => [] as unknown[]),
-    fetchControllerJson<unknown>("/managers")
-      .then(normalizeList)
-      .catch(() => [] as unknown[]),
-  ]);
-  return {
-    workers: workers as WorkerInfo[],
-    teams: teams as TeamInfo[],
-    humans: humans as HumanInfo[],
-    managers: managers as ManagerInfo[],
-  };
+  return cachedRequest(
+    "admin/l2",
+    30000,
+    async () => {
+      const [workers, teams, humans, managers] = await Promise.all([
+        fetchControllerJson<unknown>("/workers").then(normalizeList),
+        fetchControllerJson<unknown>("/teams").then(normalizeList),
+        fetchControllerJson<unknown>("/humans")
+          .then(normalizeList)
+          .catch(() => [] as unknown[]),
+        fetchControllerJson<unknown>("/managers")
+          .then(normalizeList)
+          .catch(() => [] as unknown[]),
+      ]);
+      return {
+        workers: workers as WorkerInfo[],
+        teams: teams as TeamInfo[],
+        humans: humans as HumanInfo[],
+        managers: managers as ManagerInfo[],
+      };
+    },
+    { tags: ["admin"] },
+  );
 }
 
 export interface SpawnNode {
@@ -2174,22 +2248,34 @@ export interface WorkerTreeTeam {
   workers: WorkerSpawnGroup[];
 }
 
+/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（teams/structure，15s，tags
+ * ["teams"]）——已有 force 参数透传（F6 team tab 切回 30s 节流后走此缓存）；
+ * requestJson 第 3 参 30000 超时保留。 */
 export async function fetchTeamsStructure(
   force = false,
 ): Promise<{ ok: boolean; tree: WorkerTreeTeam[]; source: string }> {
-  // v0.5.0-beta.13.24（F1）：30s 封顶——冷窗后端已 ≤~6s（connect 3s failover
-  // + 探针 3s 收敛），30s 未回 = 真故障，显形可重试优于恒转圈。
-  return (await requestJson(
-    `/agentteams-proxy/teams/structure${force ? "?force=true" : ""}`,
-    undefined,
-    30000,
-  )) as { ok: boolean; tree: WorkerTreeTeam[]; source: string };
+  return cachedRequest(
+    "teams/structure",
+    15000,
+    async () => {
+      // v0.5.0-beta.13.24（F1）：30s 封顶——冷窗后端已 ≤~6s（connect 3s
+      // failover + 探针 3s 收敛），30s 未回 = 真故障，显形可重试优于恒转圈。
+      return (await requestJson(
+        `/agentteams-proxy/teams/structure${force ? "?force=true" : ""}`,
+        undefined,
+        30000,
+      )) as { ok: boolean; tree: WorkerTreeTeam[]; source: string };
+    },
+    { force, tags: ["teams"] },
+  );
 }
 
 /** spawn 正源（上游已合并）：projects list + 每项目 /spawns 聚合 →
  * 按 worker 名建 spawn 树（root_session_id 链 = 父子）。返回 apiOk=false
- * 时调用方降级为空 spawns（现状）。 */
-export async function fetchWorkerSpawns(): Promise<{
+ * 时调用方降级为空 spawns（现状）。
+ * v0.5.0-beta.14.6（R1）：外层 cachedRequest 包裹（worker/spawns，60s，
+ * tags ["spawns"]）——重复调用（组件多处唤起）合并为一次。 */
+async function loadWorkerSpawnsRaw(): Promise<{
   byWorker: Record<string, SpawnNode[]>;
   apiOk: boolean;
 }> {
@@ -2201,9 +2287,13 @@ export async function fetchWorkerSpawns(): Promise<{
       projects.slice(0, 20).map(async (proj) => {
         const pid = String(proj.project_id || "");
         if (!pid) return;
+        // v0.5.0-beta.14.6（R5）：project_id 跨团队歧义时控制器返回 409
+        // 「retry with ?team=」（project_handler.go）——带上 team_id 消歧。
+        const team = String(proj.team_id || "");
         try {
           const resp = (await requestJson(
-            `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(pid)}/spawns`,
+            `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(pid)}/spawns` +
+              (team ? `?team=${encodeURIComponent(team)}` : ""),
           )) as { workers?: { worker?: string; spawns?: Record<string, unknown>[] }[] };
           for (const w of resp.workers || []) {
             const name = String(w.worker || "");
@@ -2239,6 +2329,17 @@ export async function fetchWorkerSpawns(): Promise<{
   } catch {
     return { byWorker: {}, apiOk: false };
   }
+}
+
+/** v0.5.0-beta.14.6（R1）：对外缓存包装（worker/spawns，60s，tags
+ * ["spawns"]）——让重复调用（组件多处唤起）合并为一次。 */
+export async function fetchWorkerSpawns(): Promise<{
+  byWorker: Record<string, SpawnNode[]>;
+  apiOk: boolean;
+}> {
+  return cachedRequest("worker/spawns", 60000, loadWorkerSpawnsRaw, {
+    tags: ["spawns"],
+  });
 }
 
 /** Controller spawn 端点白名单字段 → string[]（防御：非数组/空串过滤；空=undefined 不渲染）。 */
@@ -2290,12 +2391,20 @@ export async function fetchTeamsRooms(): Promise<TeamsRoomsResponse> {
   return (await requestJson("/agentteams-proxy/teams/rooms")) as TeamsRoomsResponse;
 }
 
+/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（teams/sync，15s，tags
+ * ["teams"]）——已有 force 参数透传。 */
 export async function fetchTeamsSync(
   force = false,
 ): Promise<TeamsRoomsResponse & { elapsed?: number }> {
-  return (await requestJson(
-    `/agentteams-proxy/teams/sync${force ? "?force=true" : ""}`,
-  )) as TeamsRoomsResponse & { elapsed?: number };
+  return cachedRequest(
+    "teams/sync",
+    15000,
+    async () =>
+      (await requestJson(
+        `/agentteams-proxy/teams/sync${force ? "?force=true" : ""}`,
+      )) as TeamsRoomsResponse & { elapsed?: number },
+    { force, tags: ["teams"] },
+  );
 }
 
 // ── 模块级缓存（页面重开立即显示，后台刷新）──────────────────────────
@@ -3268,14 +3377,20 @@ async function hostJson(path: string, init?: RequestInit): Promise<unknown> {
   return data;
 }
 
-/** 宿主 agent 列表（getSelectedAgentId 运行时缺失时的 agentId 兜底源）。 */
+/** 宿主 agent 列表（getSelectedAgentId 运行时缺失时的 agentId 兜底源）。
+ * v0.5.0-beta.14.6（R1）：cachedRequest 包裹（kb/agent-ids，60s）——
+ * KnowledgeBase 等多处取数合并为一次。 */
 export async function fetchAgentIdList(): Promise<string[]> {
-  const raw = (await hostJson("/agents")) as Record<string, unknown>;
-  const agents = Array.isArray(raw.agents) ? raw.agents : [];
-  return agents.map((a) => {
-    const o = a as Record<string, unknown>;
-    return String(o.id ?? "");
-  }).filter(Boolean);
+  return cachedRequest("kb/agent-ids", 60000, async () => {
+    const raw = (await hostJson("/agents")) as Record<string, unknown>;
+    const agents = Array.isArray(raw.agents) ? raw.agents : [];
+    return agents
+      .map((a) => {
+        const o = a as Record<string, unknown>;
+        return String(o.id ?? "");
+      })
+      .filter(Boolean);
+  });
 }
 
 export async function fetchMemoryGraph(
@@ -3393,10 +3508,20 @@ export interface SkillUploadResult {
   conflicts?: { reason: string; skill_name: string; suggested_name: string }[];
 }
 
-/** 当前宿主 Agent 技能清单。 */
+/** 当前宿主 Agent 技能清单。
+ * v0.5.0-beta.14.6（R1）：cachedRequest 包裹（skills/list，60s，tags
+ * ["skills"]）——写面（开关/删除/上传/新建/重扫）变更后由调用方
+ * invalidateTags(["skills"]) 再取（D3）。 */
 export async function fetchSkills(): Promise<SkillSpec[]> {
-  const raw = await hostJson("/skills");
-  return Array.isArray(raw) ? (raw as SkillSpec[]) : [];
+  return cachedRequest(
+    "skills/list",
+    60000,
+    async () => {
+      const raw = await hostJson("/skills");
+      return Array.isArray(raw) ? (raw as SkillSpec[]) : [];
+    },
+    { tags: ["skills"] },
+  );
 }
 
 /** 强制 reconcile（目录有变动但清单未跟上时用）。 */
@@ -3608,13 +3733,16 @@ export interface KbGraphData {
   file_count: number;
 }
 
-/** 远端 Agent 清单（需 Controller token；401 = 未配置 → 调用方降级）。 */
+/** 远端 Agent 清单（需 Controller token；401 = 未配置 → 调用方降级）。
+ * v0.5.0-beta.14.6（R1）：cachedRequest 包裹（kb/agents，30s）。 */
 export async function fetchKbAgents(): Promise<KbAgent[]> {
-  const raw = (await requestJson(
-    "/agentteams-proxy/kb/agents",
-  )) as Record<string, unknown>;
-  const agents = Array.isArray(raw.agents) ? raw.agents : [];
-  return agents as KbAgent[];
+  return cachedRequest("kb/agents", 30000, async () => {
+    const raw = (await requestJson(
+      "/agentteams-proxy/kb/agents",
+    )) as Record<string, unknown>;
+    const agents = Array.isArray(raw.agents) ? raw.agents : [];
+    return agents as KbAgent[];
+  });
 }
 
 export async function fetchKbTree(agent: string): Promise<KbTree> {

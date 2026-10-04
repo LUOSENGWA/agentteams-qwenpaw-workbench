@@ -21,6 +21,7 @@
 // 失败静默保旧值（不闪灰、不报错——数据面降级回消息级启发式）。
 
 import { fetchWorkerChats } from "./api";
+import { usePoller } from "./usePoller";
 
 /** Per-Worker session 状态聚合（/chats 全量 session 归约）。 */
 export interface WorkerChatStatusAgg {
@@ -76,6 +77,10 @@ async function pollAll(
 /**
  * 轮询 hook：names（worker 名集合，随团队树变化）→ name → 聚合状态。
  * 仅 document 可见时轮询；卸载停表。React 惰性取宿主。
+ * v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（30s；!document.hidden
+ * 内置；隐藏恢复后的补跑走 poller catch-up 语义=闲置>2×间隔立即补）。
+ * out 累积表移入 ref（跨 fn 重建存活）；namesKey 变化清表（旧 effect 重建
+ * = 新表同款语义）；enabled 假→真由 usePoller 的 poke 覆盖立即拉。
  */
 export function useWorkerChatStatuses(
   names: readonly string[],
@@ -86,34 +91,36 @@ export function useWorkerChatStatuses(
     Record<string, WorkerChatStatusAgg>
   >({});
   const namesKey = names.join("\u0000");
+  // 累积表（跨 fn 重建存活；namesKey 变化时清空）。
+  const outRef = React.useRef<Record<string, WorkerChatStatusAgg>>({});
+  // enabled 快照（即时拉 effect 里读最新值，避免进 deps 与 poke 双发）。
+  const enabledRef = React.useRef(enabled);
+  enabledRef.current = enabled;
 
+  // namesKey 变化 → 清旧表（worker 集合变了，旧聚合作废）。
   React.useEffect(() => {
-    if (!enabled) return;
-    let stopped = false;
-    const out: Record<string, WorkerChatStatusAgg> = {};
-    const run = async () => {
-      if (stopped) return;
-      if (document.visibilityState === "visible") {
-        const names = namesKey ? namesKey.split("\u0000") : [];
-        await pollAll(names, out);
-        if (!stopped && Object.keys(out).length) {
-          setStatuses({ ...out });
-        }
+    outRef.current = {};
+  }, [namesKey]);
+
+  const run = React.useCallback(async () => {
+    // 仅 document 可见时发（后台零负载；poller 亦内置 !document.hidden）。
+    if (document.visibilityState === "visible") {
+      const ns = namesKey ? namesKey.split("\u0000") : [];
+      await pollAll(ns, outRef.current);
+      if (Object.keys(outRef.current).length) {
+        setStatuses({ ...outRef.current });
       }
-    };
-    void run();
-    const id = window.setInterval(() => void run(), POLL_MS);
-    const onVis = () => {
-      if (document.visibilityState === "visible") void run();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      stopped = true;
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
+    }
+  }, [namesKey]);
+
+  // 首拉 / namesKey 变化后重拉（enabled 门走 ref，刻意不进 deps——
+  // 假→真切换由 usePoller 的 poke 覆盖，避免同刻双发）。
+  React.useEffect(() => {
+    if (enabledRef.current) void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [namesKey, enabled]);
+  }, [run]);
+
+  usePoller({ fn: run, intervalMs: POLL_MS, active: enabled });
 
   return statuses;
 }

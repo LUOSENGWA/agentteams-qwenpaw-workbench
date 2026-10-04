@@ -32,6 +32,8 @@ import TruncatedId from "./TruncatedId";
 import SkillCenter from "./SkillCenter";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { createPoller, type Poller } from "../usePoller";
+import { invalidateTags } from "../requestCache";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -212,6 +214,8 @@ export default function CrdManage(props: CrdManageProps) {
       } else {
         antd.message.success(tr("入职成功"));
       }
+      // v0.5.0-beta.14.6（D3）：人 CRD 变更 → 失效 admin 缓存再刷。
+      invalidateTags(["teams", "admin"]);
       onRefresh?.(true);
     } catch (e) {
       antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
@@ -238,6 +242,8 @@ export default function CrdManage(props: CrdManageProps) {
       try {
         await deleteHuman(name);
         antd.message.success(tr("已删除"));
+        // v0.5.0-beta.14.6（D3）：人 CRD 变更 → 失效 admin 缓存再刷。
+        invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
@@ -435,12 +441,14 @@ export default function CrdManage(props: CrdManageProps) {
     deadline: number;
     done: boolean;
   } | null>(null);
-  const tCheckTimer = React.useRef<number | null>(null);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → 命令式 createPoller（5s 检查 tick，
+  // !document.hidden——后台不查；finished 时 tick 内自停逻辑保留）。
+  const tCheckPoller = React.useRef<Poller | null>(null);
 
   const stopTeamCheck = React.useCallback(() => {
-    if (tCheckTimer.current !== null) {
-      window.clearInterval(tCheckTimer.current);
-      tCheckTimer.current = null;
+    if (tCheckPoller.current !== null) {
+      tCheckPoller.current.stop();
+      tCheckPoller.current = null;
     }
   }, []);
   React.useEffect(() => stopTeamCheck, [stopTeamCheck]);
@@ -515,7 +523,12 @@ export default function CrdManage(props: CrdManageProps) {
         if (finished) stopTeamCheck();
       };
       void tick();
-      tCheckTimer.current = window.setInterval(() => void tick(), 5000);
+      tCheckPoller.current = createPoller({
+        fn: () => void tick(),
+        intervalMs: 5000,
+        isActive: () => !document.hidden,
+      });
+      tCheckPoller.current.start();
     },
     [stopTeamCheck],
   );
@@ -581,6 +594,9 @@ export default function CrdManage(props: CrdManageProps) {
           { name, role: "worker", model: nw.model.trim(), modelOrig: nw.model.trim() },
         ]);
         setNw({ name: "", runtime: "qwenpaw", model: "", soul: "", busy: false });
+        // v0.5.0-beta.14.6（D3）：Worker CRD 变更（加入团队成员）→ 失效
+        // teams/admin 缓存再刷。
+        invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
@@ -685,6 +701,9 @@ export default function CrdManage(props: CrdManageProps) {
         );
         setTForm(EMPTY_TEAM_FORM);
         setWorkerRows([{ name: "", role: "team_leader" }]);
+        // v0.5.0-beta.14.6（D3）：建队=团队结构+admin 变更 → 失效缓存再刷
+        // （否则 30s TTL 内拓扑树/管理面板读旧值）。
+        invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
@@ -911,6 +930,8 @@ export default function CrdManage(props: CrdManageProps) {
       );
       // v0.5.0-beta.13.22（F3）：走收起动画（afterClose 清 cfgTeam）。
       setCfgOpen(false);
+      // v0.5.0-beta.14.6（D3）：团队配置保存=团队结构+admin 变更 → 失效再刷。
+      invalidateTags(["teams", "admin"]);
       onRefresh?.(true);
     } catch (e) {
       antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
@@ -961,6 +982,8 @@ export default function CrdManage(props: CrdManageProps) {
           subagentModel: snap.subagentModel || undefined,
         });
         antd.message.success(tr("团队 {name} 已按快照重建", { name: snap.name }));
+        // v0.5.0-beta.14.6（D3）：撤销=按快照重建团队 → 失效再刷。
+        invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
       } catch (e) {
         antd.message.error(
@@ -998,6 +1021,8 @@ export default function CrdManage(props: CrdManageProps) {
         } else {
           antd.message.success(tr("已删除"));
         }
+        // v0.5.0-beta.14.6（D3）：删团队=团队结构+admin 变更 → 失效再刷。
+        invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));

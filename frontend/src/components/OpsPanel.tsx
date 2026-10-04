@@ -9,6 +9,8 @@ import {
 } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { usePoller } from "../usePoller";
+import { useActiveTab } from "../tabActivity";
 
 
 const host = window.QwenPaw.host;
@@ -136,12 +138,12 @@ export default function OpsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTick]);
 
+  // v0.5.0-beta.14.6（R2 补）：活跃 tab 单源（rc-tabs 保活，切走仍需显式
+  // 门控——ops 的 1s 集群负载轮询此前切走常驻）。
+  const activeTab = useActiveTab();
   const [logsUpdatedAt, setLogsUpdatedAt] = React.useState<number>(0);
-  // v0.5.0-beta.14.5（P1-4）：失败退避——docker-logs 恒 502 实测（53 次调用
-  // 34 次 502）时每 15s 白烧一请求；连续失败 ≥3 次退避到 120s（恢复自动回
-  // 15s）；静默失败不再清屏（保留上次成功内容，配合「更新于」看陈旧度）。
-  const logsFailStreakRef = React.useRef(0);
-  const [logsPollMs, setLogsPollMs] = React.useState(15000);
+  // v0.5.0-beta.14.6（R2 补）：轮询已并入 usePoller（ops tab 激活门控 +
+  // 失败退避内置：×2 至 120s 封顶、成功复位；静默失败保留上次内容）。
   // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
   const refreshLogs = React.useCallback(async (comp: string, silent = false) => {
     if (!silent) setLogsLoading(true);
@@ -151,15 +153,7 @@ export default function OpsPanel({
       )) as { lines?: LogLine[] };
       setLogs(data.lines || []);
       setLogsUpdatedAt(Date.now());
-      if (logsFailStreakRef.current > 0) {
-        logsFailStreakRef.current = 0;
-        setLogsPollMs(15000);
-      }
     } catch (e) {
-      logsFailStreakRef.current += 1;
-      if (logsFailStreakRef.current >= 3) {
-        setLogsPollMs(120000);
-      }
       if (!silent) {
         // 手动刷新失败：显式报错并清屏（用户主动动作，需明确反馈）。
         antd.message.error(e instanceof Error ? e.message : tr("日志拉取失败"));
@@ -173,14 +167,13 @@ export default function OpsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 组件日志静默轮询（15s；连续失败退避到 120s——v0.5.0-beta.14.5 P1-4）。
-  React.useEffect(() => {
-    const timer = window.setInterval(
-      () => void refreshLogs(component, true),
-      logsPollMs,
-    );
-    return () => window.clearInterval(timer);
-  }, [refreshLogs, component, logsPollMs]);
+  // v0.5.0-beta.14.6（R2 补）：组件日志轮询 → usePoller（ops tab 激活；
+  // !document.hidden 由 hook 内置；失败退避由 hook 内置）。
+  usePoller({
+    fn: () => void refreshLogs(component, true),
+    intervalMs: 15000,
+    active: activeTab === "ops",
+  });
 
   // 可选模块：集群负载（L1 专属）。未启用时后端 404 → sglangOff=true 不渲染卡片。
   const [sglang, setSglang] = React.useState<SglangLoads | null>(null);
@@ -218,12 +211,14 @@ export default function OpsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 集群负载 1s 静默轮询（用户反馈：实时刷新——/v1/loads 读 SHM 快照，
-  // 专为高频轮询设计，1 QPS 零负担）——rc-tabs 保活，切走也续。
-  React.useEffect(() => {
-    const timer = window.setInterval(() => void refreshSglang(true), 1000);
-    return () => window.clearInterval(timer);
-  }, [refreshSglang]);
+  // 集群负载 1s 静默轮询（用户反馈：实时刷新——/v1/loads 读 SHM 快照）。
+  // v0.5.0-beta.14.6（R2 补）：→ usePoller（ops tab 激活；切走即停 + 可见性
+  // 内置——原「rc-tabs 保活切走也续」的每 1s 常驻开销由此消除）。
+  usePoller({
+    fn: () => void refreshSglang(true),
+    intervalMs: 1000,
+    active: activeTab === "ops",
+  });
 
   // 切 Tab 回来时（refreshTick 变化）重取——rc-tabs 保活不会重跑挂载 effect。
   React.useEffect(() => {

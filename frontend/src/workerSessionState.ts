@@ -28,6 +28,7 @@
 // last_sender → 不会点绿任何 Worker；Worker A 发言只点绿 A。
 
 import type { TeamRoom, WorkerTreeTeam } from "./api";
+import { usePoller } from "./usePoller";
 
 export type WorkerSessionState = "running" | "done" | "idle";
 
@@ -190,10 +191,9 @@ export function useWorkerSessionStates(
 ): WorkerSessionStates {
   const React = window.QwenPaw.host.React;
   const [tick, setTick] = React.useState(0);
-  React.useEffect(() => {
-    const id = window.setInterval(() => setTick((t) => t + 1), TICK_MS);
-    return () => window.clearInterval(id);
-  }, []);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s 老化 tick，
+  // !document.hidden 内置——页面隐藏时暂停 tick）。
+  usePoller({ fn: () => setTick((t) => t + 1), intervalMs: TICK_MS });
   return React.useMemo(() => {
     const now = Date.now();
     const rs = rooms || [];

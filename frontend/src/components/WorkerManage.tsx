@@ -34,6 +34,8 @@ import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import type { WorkerSessionState } from "../workerSessionState";
+import { usePoller } from "../usePoller";
+import { invalidateTags } from "../requestCache";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -1512,15 +1514,18 @@ export default function WorkerManage(props: WorkerManageProps) {
     active,
   });
   refreshRef.current = { tree: onRefreshTree, admin: onRefreshAdmin, active };
-  React.useEffect(() => {
-    const id = window.setInterval(() => {
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（30s；active tab 门控
+  // + 体内 refreshRef 双保险；!document.hidden 内置——后台零负载）。
+  usePoller({
+    fn: () => {
       if (!refreshRef.current.active) return;
       // 静默刷新（用户反馈）：30s 自动刷不闪页——旧数据在屏，diff 无变化零重渲染
       void refreshRef.current.tree?.(true);
       void refreshRef.current.admin?.(true);
-    }, 30000);
-    return () => window.clearInterval(id);
-  }, []);
+    },
+    intervalMs: 30000,
+    active,
+  });
 
   const handleLifecycle = React.useCallback(
     async (name: string, action: "wake" | "sleep") => {
@@ -1530,6 +1535,9 @@ export default function WorkerManage(props: WorkerManageProps) {
         antd.message.success(
           action === "wake" ? tr("{name} 已唤醒", { name }) : tr("{name} 已休眠", { name }),
         );
+        // v0.5.0-beta.14.6（D3）：唤醒/休眠=Worker 运行态变更 → 失效缓存
+        // （否则 30s TTL 内 admin/拓扑读旧心跳）。
+        invalidateTags(["teams", "admin"]);
         void onRefreshAdmin?.();
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));

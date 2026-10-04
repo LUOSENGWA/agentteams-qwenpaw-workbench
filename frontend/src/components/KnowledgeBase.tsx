@@ -30,6 +30,7 @@ import Graph3D from "./Graph3D";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import MdText from "./MdText";
+import { createPoller, type Poller } from "../usePoller";
 
 const host = window.QwenPaw.host;
 // v0.5.0-beta.13.13（13.12 装验「知识文件和预览等高、知识文件 col 可滚动」）：
@@ -2213,7 +2214,15 @@ function LocalKbView(props: { refreshTick: number }) {
   // ：文件取回竞态守卫（同 RemoteKbView）。
   const fileSeqRef = React.useRef(0);
   const [reindexing, setReindexing] = React.useState(false);
-  const reindexPoll = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  // v0.5.0-beta.14.6（R2）：旧定时器 → 命令式 createPoller（5s 重建检查，
+  // !document.hidden——后台暂停；tries/停止逻辑原样保留）。
+  const reindexPoller = React.useRef<Poller | null>(null);
+  const stopReindexPoll = React.useCallback(() => {
+    if (reindexPoller.current !== null) {
+      reindexPoller.current.stop();
+      reindexPoller.current = null;
+    }
+  }, []);
 
   // agentId：宿主当前选中 agent（X-Agent-Id 同会话隔离）。
   React.useEffect(() => {
@@ -2244,9 +2253,9 @@ function LocalKbView(props: { refreshTick: number }) {
 
   React.useEffect(() => {
     return () => {
-      if (reindexPoll.current) clearInterval(reindexPoll.current);
+      stopReindexPoll();
     };
-  }, []);
+  }, [stopReindexPoll]);
 
   const loadAll = React.useCallback(
     (silent = false) => {
@@ -2365,12 +2374,12 @@ function LocalKbView(props: { refreshTick: number }) {
             );
           })
           .finally(() => {
-            if (reindexPoll.current) clearInterval(reindexPoll.current);
+            stopReindexPoll();
             let tries = 0;
-            reindexPoll.current = setInterval(() => {
+            const tick = () => {
               tries += 1;
               if (tries > 180) {
-                if (reindexPoll.current) clearInterval(reindexPoll.current);
+                stopReindexPoll();
                 setReindexing(false);
                 return;
               }
@@ -2378,17 +2387,23 @@ function LocalKbView(props: { refreshTick: number }) {
                 .then((s) => {
                   setStatus(s);
                   if (!s.runtime.reindexing) {
-                    if (reindexPoll.current) clearInterval(reindexPoll.current);
+                    stopReindexPoll();
                     setReindexing(false);
                     antd.message.success(tr("索引重建完成"));
                     void loadAll(true);
                   }
                 })
                 .catch(() => {
-                  if (reindexPoll.current) clearInterval(reindexPoll.current);
+                  stopReindexPoll();
                   setReindexing(false);
                 });
-            }, 5000);
+            };
+            reindexPoller.current = createPoller({
+              fn: tick,
+              intervalMs: 5000,
+              isActive: () => !document.hidden,
+            });
+            reindexPoller.current.start();
           });
       },
     });
