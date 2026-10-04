@@ -169,7 +169,7 @@ def client(monkeypatch):
     _FakeClient.exec_create_status = 201
 
     monkeypatch.setattr(
-        "agentteams_connector.router.httpx.AsyncClient",
+        "agentteams_connector.router.GatedAsyncClient",
         lambda *a, **k: _FakeClient(*a, **k),
     )
     app = FastAPI()

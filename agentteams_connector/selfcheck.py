@@ -32,6 +32,7 @@ import httpx
 
 from . import config as config_mod
 from . import matrix_client
+from .dial_gate import GatedAsyncClient, sync_dial_slot
 
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
 
@@ -151,7 +152,7 @@ async def _probe_matrix(
 
     def _call() -> Dict[str, Any]:
         t0 = time.monotonic()
-        with httpx.Client(
+        with sync_dial_slot(), httpx.Client(
             timeout=timeout, verify=False, trust_env=False
         ) as client:
             resp = client.get(url, headers=headers)
@@ -211,7 +212,7 @@ async def _probe_controller(
     try:
         t0 = time.monotonic()
         # v0.5.0-beta.12: trust_env=False 直连探测；401/403 = 已连通（需鉴权）
-        async with httpx.AsyncClient(
+        async with GatedAsyncClient(
             timeout=timeout, verify=False, trust_env=False
         ) as client:
             resp = await client.get(
@@ -262,7 +263,7 @@ async def _probe_sglang(
     headers = config_mod.headers_with_auth(auth, {})
     try:
         t0 = time.monotonic()
-        async with httpx.AsyncClient(
+        async with GatedAsyncClient(
             timeout=timeout, verify=False, trust_env=False
         ) as client:
             resp = await client.get(f"{url.rstrip('/')}/v1/loads", headers=headers)
@@ -1029,7 +1030,7 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
         try:
             headers = {"Authorization": f"Bearer {token}"}
             headers = config_mod.headers_with_auth(_ctl2_auth, headers)
-            with httpx.Client(timeout=10.0, verify=False) as client:
+            with sync_dial_slot(), httpx.Client(timeout=10.0, verify=False) as client:
                 resp = client.get(
                     f"{controller_url.rstrip('/')}/api/v1/projects", headers=headers
                 )
@@ -1078,7 +1079,7 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
         ctl_token = (cfg.get("controller_token") or "").strip()
         if ctl_token:
             try:
-                with httpx.Client(timeout=15.0, verify=False) as client:
+                with sync_dial_slot(), httpx.Client(timeout=15.0, verify=False) as client:
                     resp2 = client.get(
                         f"{controller_url.rstrip('/')}/api/v1/projects",
                         headers=config_mod.headers_with_auth(
@@ -1273,7 +1274,7 @@ async def _run_l3_l4(cfg: Dict[str, Any], include_artifact: bool) -> Dict[str, A
             try:
                 import httpx as _httpx
 
-                async with _httpx.AsyncClient(timeout=15.0, verify=False) as client:
+                async with GatedAsyncClient(timeout=15.0, verify=False) as client:
                     resp = await client.get(
                         f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/{room_id}/messages",
                         headers={"Authorization": f"Bearer {token}"},

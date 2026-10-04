@@ -124,7 +124,7 @@ def client(monkeypatch):
         return _FakeClient(*a, **k)
 
     monkeypatch.setattr(
-        "agentteams_connector.router.httpx.AsyncClient", fake_client_cls
+        "agentteams_connector.router.GatedAsyncClient", fake_client_cls
     )
 
     app = FastAPI()

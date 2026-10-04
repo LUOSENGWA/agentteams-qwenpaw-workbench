@@ -34,6 +34,8 @@ from pydantic import BaseModel, Field
 
 from . import __version__, config as config_mod
 from . import matrix_client, selfcheck
+# v0.5.0-beta.14.6（R3/R4/R7）：全局拨号闸门 + failover 判定 + 计数。
+from .dial_gate import GatedAsyncClient, should_failover_status
 
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
 
@@ -717,7 +719,7 @@ def build_router() -> APIRouter:
         last_err = "无可用地址"
         for base in ordered:
             try:
-                async with _httpx.AsyncClient(timeout=8.0, verify=False) as client:
+                async with GatedAsyncClient(timeout=8.0, verify=False) as client:
                     # v0.5.0-beta.14.3: WAN 地址 key 门（bearer 覆盖；无则无头）。
                     resp = await client.get(
                         f"{base}/v1/loads",
@@ -816,7 +818,7 @@ def build_router() -> APIRouter:
         last_err = "无可用地址"
         for base in ordered:
             try:
-                async with _httpx.AsyncClient(timeout=8.0, verify=False) as client:
+                async with GatedAsyncClient(timeout=8.0, verify=False) as client:
                     # v0.5.0-beta.14.3: WAN 地址 key 门（bearer 覆盖；无则无头）。
                     resp = await client.get(
                         f"{base}/v1/models",
@@ -994,7 +996,7 @@ def build_router() -> APIRouter:
                     "?dir=b&limit=30"
                 )
                 try:
-                    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+                    async with GatedAsyncClient(timeout=10.0, verify=False) as client:
                         resp = await client.get(
                             url, headers=_headers_for(cfg, "matrix", homeserver,
                                 {"Authorization": f"Bearer {token}"})
@@ -1133,7 +1135,7 @@ def build_router() -> APIRouter:
                 collected: List[Dict[str, Any]] = []
                 page_token = ""
                 try:
-                    async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
+                    async with GatedAsyncClient(timeout=15.0, verify=False) as client:
                         for _page in range(5):
                             url = (
                                 f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/{encoded}/messages"
@@ -1291,7 +1293,7 @@ def build_router() -> APIRouter:
                 first_4xx: Optional["httpx.Response"] = None
                 for url in ctl_urls:
                     try:
-                        async with httpx.AsyncClient(
+                        async with GatedAsyncClient(
                             timeout=dial_timeout, verify=False
                         ) as client:
                             r = await client.get(
@@ -1309,10 +1311,11 @@ def build_router() -> APIRouter:
                         )
                         continue
                     if 400 <= r.status_code < 500:
-                        # v0.5.0-beta.14.2（F1）：4xx 不再立即返回——换下一
-                        # 地址（首个 401 地址可能是网关会话门，直连健康）；
-                        # 全链 4xx → 返回首个（外层 token 链拿到非 200 后
-                        # 换 token 再跑一遍地址链，语义保留）。
+                        # v0.5.0-beta.14.6（R4）：仅地址相关 4xx（401/403/408/
+                        # 429）换下一地址（网关会话门）；确定性 4xx（404/409/
+                        # 400…）地址无关 → 立即返回（外层 token 链语义不变）。
+                        if not should_failover_status(r.status_code):
+                            return r
                         if first_4xx is None:
                             first_4xx = r
                         continue
@@ -1616,7 +1619,7 @@ def build_router() -> APIRouter:
                     ),
                 }
             try:
-                async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+                async with GatedAsyncClient(timeout=8.0, verify=False) as client:
                     rr = await client.post(
                         f"{console_url}/session/login",
                         json={"username": username, "password": password},
@@ -1657,7 +1660,7 @@ def build_router() -> APIRouter:
             gw_routes, gw_aliases = 0, []
             if session_cookie:
                 try:
-                    async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+                    async with GatedAsyncClient(timeout=8.0, verify=False) as client:
                         gr = await client.get(
                             f"{console_url}/v1/ai/routes",
                             headers={"Cookie": session_cookie},
@@ -1695,7 +1698,7 @@ def build_router() -> APIRouter:
             last_err = ""
             for base in cfg_ctl:
                 try:
-                    async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+                    async with GatedAsyncClient(timeout=8.0, verify=False) as client:
                         rr = await client.get(
                             f"{base}/api/v1/teams",
                             headers={"Authorization": f"Bearer {token}"},
@@ -1754,7 +1757,7 @@ def build_router() -> APIRouter:
         if not session or not console_url:
             return {"available": False, "data": None, "reason": "no_console_session"}
         try:
-            async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+            async with GatedAsyncClient(timeout=8.0, verify=False) as client:
                 if method == "POST":
                     r = await client.post(
                         f"{console_url}{path}",
@@ -1949,7 +1952,7 @@ def build_router() -> APIRouter:
 
             async def _name() -> None:
                 try:
-                    async with httpx.AsyncClient(timeout=4.0, verify=False) as client:
+                    async with GatedAsyncClient(timeout=4.0, verify=False) as client:
                         resp = await client.get(
                             f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/{room_id}/state/m.room.name",
                             headers=_headers_for(cfg, "matrix", homeserver,
@@ -2048,7 +2051,7 @@ def build_router() -> APIRouter:
             f"?filename={_up.quote(filename, safe='')}"
         )
         try:
-            async with _httpx.AsyncClient(timeout=60.0, verify=False) as client:
+            async with GatedAsyncClient(timeout=60.0, verify=False) as client:
                 resp = await client.post(
                     url,
                     content=data,
@@ -2122,7 +2125,7 @@ def build_router() -> APIRouter:
         for base in base_urls:
             target = f"{base.rstrip('/')}{encoded}{query_string}"
             try:
-                async with _httpx.AsyncClient(timeout=30.0, verify=False) as client:
+                async with GatedAsyncClient(timeout=30.0, verify=False) as client:
                     resp = await client.get(target, headers=headers)
                 if resp.status_code == 401 and not ctl_token:
                     raise HTTPException(
@@ -2242,7 +2245,7 @@ def build_router() -> APIRouter:
             payload: Optional[Dict[str, Any]] = None
             for hs in homeservers:
                 try:
-                    async with httpx.AsyncClient(
+                    async with GatedAsyncClient(
                         timeout=12.0, verify=False
                     ) as client:
                         resp = await client.get(
@@ -2475,7 +2478,7 @@ def build_router() -> APIRouter:
         matrix_body = {"search_categories": {"room_events": search_body}}
         for hs in homeservers:
             try:
-                async with httpx.AsyncClient(
+                async with GatedAsyncClient(
                     timeout=12.0, verify=False
                 ) as client:
                     resp = await client.post(
@@ -2642,7 +2645,7 @@ def build_router() -> APIRouter:
                 status_code=400, detail="仅支持 http(s) 直链代抓"
             )
         try:
-            async with httpx.AsyncClient(
+            async with GatedAsyncClient(
                 timeout=60.0, verify=False, follow_redirects=True
             ) as client:
                 resp = await client.get(url)
@@ -2694,7 +2697,7 @@ def build_router() -> APIRouter:
         attempts: List[str] = []
         resp = None
         try:
-            async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
+            async with GatedAsyncClient(timeout=60.0, verify=False) as client:
                 for url in media_paths:
                     r = await client.get(
                         url, headers=_headers_for(cfg, "matrix", base,
@@ -2817,7 +2820,7 @@ def build_router() -> APIRouter:
                 cfg, "controller", b, {"Authorization": f"Bearer {token}"}
             )
             try:
-                async with _h.AsyncClient(timeout=timeout, verify=False) as client:
+                async with GatedAsyncClient(timeout=timeout, verify=False) as client:
                     if head:
                         resp = await client.head(url, headers=headers)
                     else:
@@ -2869,7 +2872,7 @@ def build_router() -> APIRouter:
             _cfg, "controller", base, {"Authorization": f"Bearer {token}"}
         )
         try:
-            async with _h.AsyncClient(timeout=timeout, verify=False) as client:
+            async with GatedAsyncClient(timeout=timeout, verify=False) as client:
                 r1 = await client.post(
                     f"{base}/docker/v1.41/containers/{container}/exec",
                     json={
@@ -3180,7 +3183,7 @@ def build_router() -> APIRouter:
         )
         if params:
             url += "?" + _up.urlencode(params)
-        async with _h.AsyncClient(timeout=30.0, verify=False) as client:
+        async with GatedAsyncClient(timeout=30.0, verify=False) as client:
             r = await client.get(url, headers=_headers_for(config_mod.load_config(),
                                     "controller", base, {"Authorization": f"Bearer {token}"}))
         try:
@@ -3476,7 +3479,7 @@ def build_router() -> APIRouter:
         # Controller workers API 补 role/team（失败降级=只有 name）。
         try:
             import httpx as _h
-            async with _h.AsyncClient(timeout=8.0, verify=False) as client:
+            async with GatedAsyncClient(timeout=8.0, verify=False) as client:
                 resp = await client.get(
                     f"{base}/api/v1/workers",
                     headers=_headers_for(config_mod.load_config(), "controller", base,
@@ -4245,7 +4248,7 @@ def build_router() -> APIRouter:
                 return names[room_id]
             hs_base = homeserver.rstrip("/")
             try:
-                async with httpx.AsyncClient(timeout=8.0, verify=False) as c2:
+                async with GatedAsyncClient(timeout=8.0, verify=False) as c2:
                     # ① basic info（Tuwunel 实测部分房间 name=None）
                     nm = ""
                     try:
@@ -4413,7 +4416,7 @@ def build_router() -> APIRouter:
             hs_base = homeserver.rstrip("/")
             nm = ""
             try:
-                async with httpx.AsyncClient(timeout=8.0, verify=False) as c2:
+                async with GatedAsyncClient(timeout=8.0, verify=False) as c2:
                     try:
                         nresp = await c2.get(
                             f"{hs_base}/_matrix/client/v3/rooms/{rid}",
@@ -4456,7 +4459,7 @@ def build_router() -> APIRouter:
         from . import sync_watcher  # noqa: PLC0415
 
         try:
-            async with httpx.AsyncClient(timeout=20.0, verify=False) as client:
+            async with GatedAsyncClient(timeout=20.0, verify=False) as client:
                 headers = {"Authorization": f"Bearer {token}"}
                 jresp = await client.get(
                     f"{homeserver.rstrip('/')}/_matrix/client/v3/joined_rooms",
@@ -4543,7 +4546,7 @@ def build_router() -> APIRouter:
         """v0.5.0-beta.12 ：房间 @我 全量扫描（从端点拆出，10s 缓存复用）。"""
         import urllib.parse as _up
         try:
-            async with httpx.AsyncClient(
+            async with GatedAsyncClient(
                 timeout=20.0, verify=False
             ) as client:
                 headers = {"Authorization": f"Bearer {token}"}
@@ -4683,7 +4686,7 @@ def build_router() -> APIRouter:
             f"echo rc=$? >> {tmp_path}"
         )
         headers = {"Authorization": f"Bearer {token}"}
-        async with _h.AsyncClient(timeout=60.0, verify=False) as client:
+        async with GatedAsyncClient(timeout=60.0, verify=False) as client:
             r = await client.post(
                 f"{base}/docker/v1.41/containers/{container}/exec",
                 json={
@@ -4768,7 +4771,7 @@ def build_router() -> APIRouter:
         for b in urls:
             u = f"{b}{path_and_query}"
             try:
-                async with _h.AsyncClient(timeout=30.0, verify=False) as client:
+                async with GatedAsyncClient(timeout=30.0, verify=False) as client:
                     r = await client.request(
                         method, u,
                         json=json_body,
@@ -4786,6 +4789,9 @@ def build_router() -> APIRouter:
             except Exception:  # noqa: BLE001
                 data = {}
             if r.status_code == 200:
+                return r.status_code, data, r.text
+            if not should_failover_status(r.status_code):
+                # v0.5.0-beta.14.6（R4）：确定性 4xx 地址无关——立即返回。
                 return r.status_code, data, r.text
             last = (r.status_code, data, r.text)
         if last is None:
@@ -4875,6 +4881,13 @@ def build_router() -> APIRouter:
                 detail=detail or "无权限设置该级别（L2 不能设 OFF；team leader 只读）")
         raise HTTPException(status_code=st or 502,
                             detail=detail or f"设置失败（{st}）")
+
+    @router.get("/debug/dial-stats")
+    async def debug_dial_stats() -> Dict[str, Any]:
+        """拨号计数快照（R7，v0.5.0-beta.14.6）——修复验收/排障对账用。"""
+        from . import dial_gate as _dg  # noqa: PLC0415
+
+        return _dg.dial_stats()
 
     @router.get("/approval/list")
     async def approval_list(agent: str = "") -> Dict[str, Any]:
@@ -5204,7 +5217,7 @@ def build_router() -> APIRouter:
                 for attempt in (1, 2):
                     try:
                         req_started = time.time()
-                        async with httpx.AsyncClient(
+                        async with GatedAsyncClient(
                             timeout=_PROXY_TIMEOUT, verify=False
                         ) as client:
                             if raw_body is not None:
@@ -5257,7 +5270,12 @@ def build_router() -> APIRouter:
                         resp.status_code, resp.content,
                         resp.headers.get("content-type"),
                     )
-                if request.method in ("GET", "HEAD"):
+                # v0.5.0-beta.14.6（R4）：GET/HEAD 仅在地址相关/瞬时错误时换下
+                # 一地址（401/403 网关门、408/429、5xx）；确定性 4xx（400/404/
+                # 409…）地址无关 → 原样立即返回（不再跨址重试）。
+                if request.method in ("GET", "HEAD") and should_failover_status(
+                    resp.status_code
+                ):
                     logger.info(
                         "proxy %s %s via %s -> %d（换下一地址）",
                         target, full_path, base, resp.status_code,
