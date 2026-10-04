@@ -5,6 +5,19 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.7（2026-10-04/05 · 夜班批）
+
+**低带宽性能批 3 + 安全硬化 + Higress 双地址——消息零回拉 / sync 载荷 -65% / 逐路径 bytes 计量 / 凭证落盘收紧**
+
+- **消息面零回拉（T3+T4b）**：①「最近动态」改零拉取派生（直接消费服务端房间摘要 last_body/last_sender/last_ts，删除逐房全量重拉 effect——实测曾 45s +466 拨号 ≈10/s）②SSE room_message 帧携带最小载荷——**普通文本消息直接合并（活跃房零回拉）**，复杂消息保留 600ms 事件合并兜底 ③发送乐观回声（既有，保持）
+- **传输层带宽瘦身（T4）**：①sync 载荷：timeline 10→2 + types 白名单——**初始 sync 实测 1426KB → 505KB（-65%）** ②`/messages` 过滤：代理层系统注入 + 连接器内部位点——**每页 5.2KB → 1KB** ③KB tree/graph 服务端 TTL 缓存（30s/60s）——重复访问**零容器读**（单次图谱构建曾逐文件 381 次 archive 读）
+- **观测（R7.1）**：拨号计数新增 **bytes 计量**（总量 + 每路径字节，Top 100）
+- **安全（T5a）**：config.json 含明文凭据且为 644 → **落盘 600 + 目录 700**；地址模式/地址级凭据持久化回归测试入档
+- **Higress 内外网双地址（T5b）**：`gateway_admin_urls` 双址（legacy 单值迁移+镜像兼容）；verify/透传按序 failover；设置页双输入
+- **测试工程**：conftest 通用清缓存；夜测工具 `tools/plugin-selftest.py`
+
+**Verification**: pytest 135/135 · tsc 0 · node 冒烟 15 断言 · 初始 sync 实测 505KB · 45s 增量对表（14.6 闲时: +127 → 14.7: 夜测回填）
+
 ## 0.5.0-beta.14.6（2026-10-04 · 子批）
 
 **性能批 2（R1–R7 系统性修复）——请求面收敛 / 轮询调度 / 拨号闸门 / 失效策略分层，全链路防回退**

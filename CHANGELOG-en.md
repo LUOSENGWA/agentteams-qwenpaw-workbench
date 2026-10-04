@@ -5,6 +5,19 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.7 (2026-10-04/05 - night batch)
+
+**Low-bandwidth perf batch 3 + security hardening + Higress dual addresses — zero message re-fetch / sync payload -65% / per-path byte metering / credential file hardening**
+
+- **Message plane zero re-fetch (T3+T4b)**: (1) the "recent activity" card now derives from server-provided room summaries (last_body/last_sender/last_ts) - the per-room full-refetch effect is deleted (measured: 45s +466 dials ~10/s before); (2) room_message SSE frames carry a minimal payload - plain text messages merge directly (zero re-fetch in the active room); complex messages keep the 600ms coalesced fetch fallback; (3) optimistic local echo on send (pre-existing, kept).
+- **Transport bandwidth slimming (T4)**: (1) sync payload: timeline 10->2 + type allowlist - measured initial sync 1426KB -> 505KB (-65%); (2) /messages filtering at the proxy layer + internal sites - 5.2KB -> 1KB per page; (3) KB tree/graph server-side TTL caches (30s/60s) - repeat views read zero container archives (a single graph build used to do 381 archive reads file-by-file).
+- **Observability (R7.1)**: dial counters now include byte metering (total + per-path bytes, top 100).
+- **Security (T5a)**: config.json (plaintext credentials, was 644) -> 600 on save + 700 dir; persistence regression tests for address_mode and address-level credentials.
+- **Higress dual LAN/WAN addresses (T5b)**: gateway_admin_urls list (legacy migrates, mirrors urls[0]); verify/passthrough fail over in order; dual inputs in settings.
+- **Test engineering**: conftest auto-clears module-level caches; nightly tool tools/plugin-selftest.py.
+
+**Verification**: pytest 135/135 · tsc 0 · node smokes 15 asserts · initial sync measured 505KB · 45s dial-delta baseline (14.6 idle: +127 -> 14.7: filled by the nightly run)
+
 ## 0.5.0-beta.14.6 (2026-10-04 - sub-release)
 
 **Performance batch 2 (R1-R7 systemic fixes) — request-surface convergence / poller scheduling / dial gate / failover policy layering, guarded against regressions**
