@@ -5,6 +5,23 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.3 (2026-10-04 - sub-release)
+
+**WAN generic auth (plugin-side fix for the public-entry 401 root cause): per-address credential overrides (Basic gate / API-key gate) + 5-tier diagnostics + 4-tier error copy + SGLang WAN wiring**
+
+- **Per-address credential overrides (generic design; LAN stays zero-config, zero behavior change)**:
+  1. **Address entry = URL, or `{url, auth?}`** — every address row (Matrix LAN/WAN, Controller LAN/WAN, SGLang LAN/WAN) gains an optional WAN credential selector: none (default; the service's own auth) / Basic auth (public gateway Basic gate, e.g. Caddy) / API key (Bearer; public gateway key gate, e.g. Higress). LAN rows left empty stay plain URL strings, byte-compatible with the old config shape.
+  2. **First-request auth, no retry loop** — an address with a credential override sends the right Authorization (Basic base64 / Bearer) on its very first request; no dependence on a 401 challenge. Credentials live only in the local config.json: redacted echo (`***`), never logged, never shown in plaintext in the UI.
+  3. **Single-source dialing resolution** — all 20 dialing sites (proxy / /sync / workers family / KB container family / SGLang / L1-L2 selfcheck / admin verify / host bridge / Matrix user APIs) go through one address-credential-headers helper, so a new dialing site cannot miss it.
+  4. **Credential merge semantics on save** — position-based merge: blank or `***` keeps the stored value (changing the URL does not clear the credential); a plain-string entry explicitly clears it; a selected type with missing fields degrades to a plain URL (honest, no fake success).
+- **5-tier diagnostics + 4-tier error copy (spot the WAN break at a glance)**:
+  1. probes per address now carry that address's credential override (a WAN-gated address can only return 200 with its credential, so auto-rerank can actually pick it; the old no-cred probe made WAN addresses permanently 401 and never effective);
+  2. 401/403 triage by three signals: `WWW-Authenticate: Basic` = gateway Basic gate (hint: fill the WAN credential on that address) / no challenge + empty body = gateway API-key gate (hint: fill the API key) / no challenge + JSON body = service-level token rejected (check the token) / 403 = forbidden; a configured-but-rejected credential is called out explicitly.
+- **SGLang WAN wiring (Q4 in batch)**: the SGLang WAN address can carry an API-key override (e.g. `https://higress.sat...:7113` with key) — the served-model list (worker creation) and the cluster-load card work over WAN too; the LAN address stays a bare dial.
+- **Behavior change note**: `matrix_homeservers` / `controller_urls` / `sglang.urls` entries upgrade to `str | {url, auth?}` (old plain-string configs are auto-compatible, zero migration); `/config/test` accepts the same shape (draft credentials are testable before saving).
+
+**Verification**: tsc 0 - vite build single file ~2,343 kB (gzip ~653 kB) - pytest 113/113 (incl. 23 new: entry parsing / credential matching / merge semantics / redaction / challenge triage / PUT round-trip) - i18n 1,393 keys, 0 missing 0 dup 0 empty - secret scan 0 (source + dist)
+
 ## 0.5.0-beta.14.2 (2026-10-03 - sub-batch)
 
 **14.1 acceptance feedback, four items: WAN disconnect root-cause fix (proxy 4xx semantics + direct-dial address failover) / split layout accounts for the thread panel / follow-to-bottom survives DOM growth / stale approval notifications eliminated**

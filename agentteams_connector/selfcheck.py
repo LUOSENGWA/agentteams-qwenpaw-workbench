@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import logging
 import os
 import platform
@@ -29,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from . import config as config_mod
 from . import matrix_client
 
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
@@ -83,8 +85,53 @@ def _classify_error(exc: Exception) -> str:
     return f"未知错误：{exc!r}"[:160]
 
 
+def _classify_challenge(resp: "httpx.Response") -> str:
+    """v0.5.0-beta.14.3: 401/403 质询三看分诊（教训 #728）——
+    WWW-Authenticate 头 / 空 body vs JSON body / Server 头链。
+
+    返回:
+      "basic"   —— WWW-Authenticate: Basic（网关层 Basic 门，Caddy 等）
+      "key"     —— 无质询头 + 空 body（网关层 API key 门，higress 等）
+      "token"   —— 无质询头 + JSON body（服务层 token 被拒，M_ 错误等）
+      "forbidden" —— 403
+      ""        —— 其他
+    """
+    if resp.status_code == 403:
+        return "forbidden"
+    if resp.status_code != 401:
+        return ""
+    wa = str(resp.headers.get("www-authenticate") or "").strip()
+    if wa.lower().startswith("basic"):
+        return "basic"
+    body = (resp.text or "").strip()
+    if not body:
+        return "key"
+    try:
+        json.loads(body)
+        return "token"
+    except Exception:  # noqa: BLE001 - 非 JSON 的 401 正文按 key 门口径
+        return "key"
+
+
+def _challenge_hint(challenge: str, has_auth: bool) -> str:
+    """质询 → 用户可操作的提示后缀（已配对应凭据仍被拒 → 指向凭据本身）。"""
+    if challenge == "basic" and not has_auth:
+        return "｜公网入口需 Basic 认证——设置页该地址填「公网凭据」"
+    if challenge == "basic" and has_auth:
+        return "｜Basic 凭据被网关拒绝（用户名/密码不符）"
+    if challenge == "key" and not has_auth:
+        return "｜入口要求 API key——设置页该地址填「公网凭据」（API Key）"
+    if challenge == "key" and has_auth:
+        return "｜API key 被网关拒绝（key 不符）"
+    if challenge == "token":
+        return "｜token 被服务拒绝（检查该地址对应 token）"
+    if challenge == "forbidden":
+        return "｜HTTP 403 禁止（权限不足）"
+    return ""
+
+
 async def _probe_matrix(
-    homeserver: str, timeout: float = 6.0
+    homeserver: str, timeout: float = 6.0, auth: Optional[Dict[str, str]] = None
 ) -> Dict[str, Any]:
     """GET /_matrix/client/versions — protocol check, not just reachability.
 
@@ -93,16 +140,21 @@ async def _probe_matrix(
     不被本机代理环境变量扭曲）+ 连通/HTTP 双层模型：
     ok = 网络层连通（收到 HTTP 响应即连通，401/403 也算），
     http_ok = 状态码 <400（才具备当选生效地址的资格）。
+    v0.5.0-beta.14.3: auth=该地址覆盖凭据（bearer 门时探测也带，否则该
+    地址永远 401 当不上生效地址）+ 401/403 质询三看分类（challenge）。
     """
     base = homeserver.rstrip("/")
     url = f"{base}/_matrix/client/versions"
+    from . import config as config_mod  # noqa: PLC0415 - 延迟防循环
+
+    headers = config_mod.headers_with_auth(auth, {})
 
     def _call() -> Dict[str, Any]:
         t0 = time.monotonic()
         with httpx.Client(
             timeout=timeout, verify=False, trust_env=False
         ) as client:
-            resp = client.get(url)
+            resp = client.get(url, headers=headers)
         ms = int((time.monotonic() - t0) * 1000)
         if resp.status_code < 400:
             return {
@@ -113,11 +165,13 @@ async def _probe_matrix(
             }
         if resp.status_code in (401, 403):
             # 401/403 = TLS 已通、服务在响应——连通（需要鉴权），不是失败
+            challenge = _classify_challenge(resp)
             return {
                 "ok": True,
                 "http_ok": False,
                 "ms": ms,
-                "detail": f"已连通，HTTP {resp.status_code}（需要鉴权）",
+                "challenge": challenge,
+                "detail": f"已连通，HTTP {resp.status_code}（需要鉴权）{_challenge_hint(challenge, bool(auth))}",
             }
         return {
             "ok": True,
@@ -145,11 +199,15 @@ async def _probe_matrix(
 
 
 async def _probe_controller(
-    controller_url: str, token: str, timeout: float = 6.0
+    controller_url: str, token: str, timeout: float = 6.0,
+    auth: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
+    # v0.5.0-beta.14.3: 覆盖凭据优先（basic 门地址不带 Bearer——Caddy 只认
+    # Basic，Bearer 首拨必 401）；无覆盖则原生 Bearer。
     headers = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    headers = config_mod.headers_with_auth(auth, headers)
     try:
         t0 = time.monotonic()
         # v0.5.0-beta.12: trust_env=False 直连探测；401/403 = 已连通（需鉴权）
@@ -168,11 +226,14 @@ async def _probe_controller(
                 "detail": f"HTTP {resp.status_code}，JSON 正常",
             }
         if resp.status_code in (401, 403):
+            # v0.5.0-beta.14.3: 质询三看分诊（#728）——detail 附可操作提示。
+            challenge = _classify_challenge(resp)
             return {
                 "ok": True,
                 "http_ok": False,
                 "ms": ms,
-                "detail": f"已连通，HTTP {resp.status_code}（需要鉴权——检查 token 或 basic auth）",
+                "challenge": challenge,
+                "detail": f"已连通，HTTP {resp.status_code}（需要鉴权）{_challenge_hint(challenge, bool(auth))}",
             }
         return {
             "ok": True,
@@ -189,27 +250,38 @@ async def _probe_controller(
         }
 
 
-async def _probe_sglang(url: str, timeout: float = 6.0) -> Dict[str, Any]:
-    """GET /v1/loads — 轻量（~3KB JSON），顺带验证路由可用。"""
+async def _probe_sglang(
+    url: str, timeout: float = 6.0, auth: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
+    """GET /v1/loads — 轻量（~3KB JSON），顺带验证路由可用。
+
+    v0.5.0-beta.14.3: auth=覆盖凭据（WAN key 门=bearer；无则无头裸拨）。
+    """
     if not url:
         return {"ok": False, "http_ok": False, "ms": None, "detail": "未配置 SGLang 地址"}
+    headers = config_mod.headers_with_auth(auth, {})
     try:
         t0 = time.monotonic()
         async with httpx.AsyncClient(
             timeout=timeout, verify=False, trust_env=False
         ) as client:
-            resp = await client.get(f"{url.rstrip('/')}/v1/loads")
+            resp = await client.get(f"{url.rstrip('/')}/v1/loads", headers=headers)
         ms = int((time.monotonic() - t0) * 1000)
         ok = resp.status_code < 400
+        if not ok:
+            challenge = _classify_challenge(resp)
+            return {
+                "ok": resp.status_code in (401, 403),
+                "http_ok": ok,
+                "ms": None,
+                "challenge": challenge,
+                "detail": f"已连通，HTTP {resp.status_code}{_challenge_hint(challenge, bool(auth))}",
+            }
         return {
-            "ok": True if ok else resp.status_code in (401, 403),
-            "http_ok": ok,
-            "ms": ms if ok else None,
-            "detail": (
-                f"HTTP {resp.status_code}"
-                if ok
-                else f"已连通，HTTP {resp.status_code}"
-            ),
+            "ok": True,
+            "http_ok": True,
+            "ms": ms,
+            "detail": f"HTTP {resp.status_code}",
         }
     except Exception as exc:  # noqa: BLE001
         return {
@@ -500,19 +572,35 @@ async def test_addresses(
     token: str = "",
     timeout: float = 6.0,
     with_diag: bool = False,
+    auth_maps: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
 ) -> Dict[str, Any]:
     """v0.5.0-beta.12: 连通性测试——全部地址并行探测（失败重试一次），
     返回每地址 {url, ok, ms, detail}。手动测试与后台自动重排共用。
 
     v0.5.0-beta.12: with_diag=True（仅手动测试路径）时每地址附加 diag 结构化
     诊断（分步+全栈 traceback+客户端环境）——后台自动重排不传，零成本。
+    v0.5.0-beta.14.3: auth_maps={kind: {url: auth}}——该地址配了覆盖凭据时
+    探测也带（否则 WAN basic/key 门地址永远 401，自动重排选不上）；行级
+    auth 字段=该地址实际生效的凭据类型（none/basic/bearer）。
     """
+    maps = auth_maps or {}
+
+    def _am(kind: str, url: str) -> Optional[Dict[str, str]]:
+        return (maps.get(kind) or {}).get(url.rstrip("/")) or (
+            (maps.get(kind) or {}).get(url)
+        )
 
     async def _probe_m(url: str, _token: str, t: float) -> Dict[str, Any]:
-        return await _probe_matrix(url, t)
+        auth = _am("matrix", url)
+        row = await _probe_matrix(url, t, auth)
+        row["auth"] = (auth or {}).get("type") or "none"
+        return row
 
     async def _probe_c(url: str, _token: str, t: float) -> Dict[str, Any]:
-        return await _probe_controller(url, token, t)
+        auth = _am("controller", url)
+        row = await _probe_controller(url, token, t, auth)
+        row["auth"] = (auth or {}).get("type") or "none"
+        return row
 
     matrix_rows = await asyncio.gather(
         *[_probe_with_retry(_probe_m, u, "", timeout) for u in matrix_urls]
@@ -526,7 +614,10 @@ async def test_addresses(
     # v0.5.0-beta.12: SGLang 双地址（内网/外网）逐地址探测（失败重试一次，与其他类型同构）。
     # wrapper 对齐 _probe_with_retry 的 (url, token, timeout) 签名（SGLang 无鉴权）。
     async def _probe_s(url: str, _token: str, t: float) -> Dict[str, Any]:
-        return await _probe_sglang(url, t)
+        auth = _am("sglang", url)
+        row = await _probe_sglang(url, t, auth)
+        row["auth"] = (auth or {}).get("type") or "none"
+        return row
 
     sglang_rows = await asyncio.gather(
         *[_probe_with_retry(_probe_s, u, "", timeout) for u in sglang_urls]
@@ -634,26 +725,29 @@ async def refresh_effective(
     from . import router as router_mod  # noqa: PLC0415 - lazy 防循环依赖
 
     token = (cfg.get("controller_token") or "").strip()
-    matrix_urls = (
-        [u for u in (cfg.get("matrix_homeservers") or []) if u]
-        if "matrix" in kinds
-        else []
-    )
-    controller_urls = (
-        [u for u in (cfg.get("controller_urls") or []) if u]
-        if "controller" in kinds
-        else []
-    )
+
+    def _urls(raw: Any) -> List[str]:
+        # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url。
+        return [config_mod.address_url(u) for u in (raw or []) if config_mod.address_url(u)]
+
+    matrix_urls = _urls(cfg.get("matrix_homeservers")) if "matrix" in kinds else []
+    controller_urls = _urls(cfg.get("controller_urls")) if "controller" in kinds else []
     # v0.5.0-beta.12: SGLang 双地址纳入自动重排（外/内网切换自动识别，与 matrix/controller 同机制）。
     sglang_urls = (
-        [u for u in ((cfg.get("sglang") or {}).get("urls") or []) if u]
-        if "sglang" in kinds
-        else []
+        _urls((cfg.get("sglang") or {}).get("urls")) if "sglang" in kinds else []
     )
     if not matrix_urls and not controller_urls and not sglang_urls:
         return {}
+    # v0.5.0-beta.14.3: 覆盖凭据随探测下发——WAN 门地址带凭据探测才可能
+    # 200，自动重排才选得上（不带=恒 401，永远轮不上）。
+    auth_maps = {
+        "matrix": config_mod.build_auth_map(cfg.get("matrix_homeservers")),
+        "controller": config_mod.build_auth_map(cfg.get("controller_urls")),
+        "sglang": config_mod.build_auth_map((cfg.get("sglang") or {}).get("urls")),
+    }
     results = await test_addresses(
-        matrix_urls, controller_urls, sglang_urls, token, 4.0
+        matrix_urls, controller_urls, sglang_urls, token, 4.0,
+        auth_maps=auth_maps,
     )
     effective: Dict[str, str] = {}
     if "matrix" in kinds:
@@ -708,7 +802,15 @@ async def run_l1(cfg: Dict[str, Any]) -> Dict[str, Any]:
     checks: List[Dict[str, Any]] = []
     all_ok = True
 
-    homeservers = cfg.get("matrix_homeservers") or []
+    homeservers = [
+        config_mod.address_url(u)
+        for u in (cfg.get("matrix_homeservers") or [])
+        if config_mod.address_url(u)
+    ]
+    _hs_auths = {
+        u: config_mod.auth_for_url(cfg.get("matrix_homeservers"), u)
+        for u in homeservers
+    }
     if not homeservers:
         checks.append(
             {
@@ -722,7 +824,7 @@ async def run_l1(cfg: Dict[str, Any]) -> Dict[str, Any]:
     else:
         effective: Optional[str] = None
         for i, hs in enumerate(homeservers):
-            result = await _probe_matrix(hs)
+            result = await _probe_matrix(hs, 6.0, _hs_auths.get(hs))
             if result["ok"] and effective is None:
                 effective = hs
                 _mark_working("matrix", hs)
@@ -740,7 +842,15 @@ async def run_l1(cfg: Dict[str, Any]) -> Dict[str, Any]:
         if effective is None:
             all_ok = False
 
-    controller_urls = cfg.get("controller_urls") or []
+    controller_urls = [
+        config_mod.address_url(u)
+        for u in (cfg.get("controller_urls") or [])
+        if config_mod.address_url(u)
+    ]
+    _cu_auths = {
+        u: config_mod.auth_for_url(cfg.get("controller_urls"), u)
+        for u in controller_urls
+    }
     if not controller_urls:
         checks.append(
             {
@@ -753,7 +863,8 @@ async def run_l1(cfg: Dict[str, Any]) -> Dict[str, Any]:
         token = (cfg.get("controller_token") or "").strip()
         effective: Optional[str] = None
         for i, cu in enumerate(controller_urls):
-            result = await _probe_controller(cu, token)
+            # v0.5.0-beta.14.3: 该地址覆盖凭据（WAN 门）。
+            result = await _probe_controller(cu, token, 6.0, _cu_auths.get(cu))
             if result["ok"] and effective is None:
                 effective = cu
                 _mark_working("controller", cu)
@@ -785,7 +896,11 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
     with router_mod._cache_lock:
         cached = router_mod._working_cache.get("matrix")
-    homeservers = (cfg.get("matrix_homeservers") or [])
+    homeservers = [
+        config_mod.address_url(u)
+        for u in (cfg.get("matrix_homeservers") or [])
+        if config_mod.address_url(u)
+    ]
     homeserver = cached if cached in homeservers else (homeservers[0] if homeservers else "")
 
     checks: List[Dict[str, Any]] = []
@@ -873,18 +988,27 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
             }
         )
 
-    controller_urls = cfg.get("controller_urls") or []
+    controller_urls = [
+        config_mod.address_url(u)
+        for u in (cfg.get("controller_urls") or [])
+        if config_mod.address_url(u)
+    ]
     if controller_urls:
         with router_mod._cache_lock:
             cached_ctl = router_mod._working_cache.get("controller")
         controller_url = (
             cached_ctl if cached_ctl in controller_urls else controller_urls[0]
         )
+        # v0.5.0-beta.14.3: 该地址覆盖凭据（WAN 门）。
+        _ctl2_auth = config_mod.auth_for_url(
+            cfg.get("controller_urls"), controller_url
+        )
         # L2 Controller access: try Matrix-token auth (W-PR-1 composite
         # authenticator). 404 = endpoint/PR not deployed yet (distinguish
         # from 403 = permission denied).
         try:
             headers = {"Authorization": f"Bearer {token}"}
+            headers = config_mod.headers_with_auth(_ctl2_auth, headers)
             with httpx.Client(timeout=10.0, verify=False) as client:
                 resp = client.get(
                     f"{controller_url.rstrip('/')}/api/v1/projects", headers=headers
@@ -937,7 +1061,9 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
                 with httpx.Client(timeout=15.0, verify=False) as client:
                     resp2 = client.get(
                         f"{controller_url.rstrip('/')}/api/v1/projects",
-                        headers={"Authorization": f"Bearer {ctl_token}"},
+                        headers=config_mod.headers_with_auth(
+                            _ctl2_auth, {"Authorization": f"Bearer {ctl_token}"}
+                        ),
                     )
                 body2 = (resp2.text or "")[:300]
                 if resp2.status_code == 200:
@@ -1008,7 +1134,11 @@ async def _run_l3_l4(cfg: Dict[str, Any], include_artifact: bool) -> Dict[str, A
 
     with router_mod._cache_lock:
         cached = router_mod._working_cache.get("matrix")
-    homeservers = cfg.get("matrix_homeservers") or []
+    homeservers = [
+        config_mod.address_url(u)
+        for u in (cfg.get("matrix_homeservers") or [])
+        if config_mod.address_url(u)
+    ]
     homeserver = cached if cached in homeservers else (homeservers[0] if homeservers else "")
 
     if not homeserver or not token:

@@ -14,10 +14,20 @@ No manual profile switching.
 
 from __future__ import annotations
 
+import base64
 import json
 import threading
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Union
+
+# v0.5.0-beta.14.3（WAN 通用认证）：地址条目 = 字符串（服务原生认证，
+# 内网默认形态）或 {url, auth?}（显式覆盖凭据）。auth 类型：
+#   {"type": "basic",  "username": ..., "password": ...}  —— 网关 Basic 门
+#   {"type": "bearer", "token": ...}                      —— API key / 专用
+# 无 auth = 用服务自身认证（controller token / matrix token / SGLang 无）。
+# 单一出处：所有拨号点经 address_url()/auth_for_url()/headers_with_auth()
+# 解析，不各写各的（打地鼠防护——新增拨号点只调 helper）。
+AddressEntry = Union[str, Dict[str, Any]]
 
 try:  # pragma: no cover - exercised inside QwenPaw at runtime
     from qwenpaw.constant import SECRET_DIR as _SECRET_DIR
@@ -28,6 +38,143 @@ _CONFIG_DIR = Path(_SECRET_DIR) / "agentteams-qwenpaw-workbench"
 _CONFIG_PATH = _CONFIG_DIR / "config.json"
 
 _lock = threading.Lock()
+
+# ── v0.5.0-beta.14.3: 地址条目（str | {url, auth?}）解析与凭据 helper ──
+
+_AUTH_TYPES = ("basic", "bearer")
+
+
+def address_url(entry: Any) -> str:
+    """地址条目 → URL 字符串（str 原样；dict 取 .url；其他 → ""）。"""
+    if isinstance(entry, str):
+        return entry.strip()
+    if isinstance(entry, dict):
+        return str(entry.get("url") or "").strip()
+    return ""
+
+
+def _normalize_auth(raw: Any) -> Optional[Dict[str, str]]:
+    """校验并归一化 auth 块；无效/缺凭据 → None（= 用服务原生认证）。
+
+    basic 需 username+password；bearer 需 token。空串凭据视为未填。
+    """
+    if not isinstance(raw, dict):
+        return None
+    atype = str(raw.get("type") or "").strip().lower()
+    if atype == "basic":
+        u = str(raw.get("username") or "").strip()
+        p = str(raw.get("password") or "").strip()
+        if not (u and p and p != "***"):
+            return None
+        return {"type": "basic", "username": u, "password": p}
+    if atype == "bearer":
+        t = str(raw.get("token") or "").strip()
+        if not t or t == "***":
+            return None
+        return {"type": "bearer", "token": t}
+    return None
+
+
+def auth_for_url(entries: Any, url: str) -> Optional[Dict[str, str]]:
+    """该 URL 对应的覆盖凭据（无/无效 → None）。
+
+    url 匹配口径 = rstrip("/") 后精确相等（配置里的 url 可能带尾斜杠，
+    拨号点也统一 rstrip 后再查——两侧同口径防不命中）。
+    """
+    target = url.rstrip("/")
+    for entry in entries or []:
+        if address_url(entry) and address_url(entry).rstrip("/") == target:
+            return _normalize_auth((entry or {}).get("auth") if isinstance(entry, dict) else None)
+    return None
+
+
+def build_auth_map(entries: Any) -> Dict[str, Dict[str, str]]:
+    """地址条目列表 → {url(rstrip 归一): 有效 auth}（无效/无凭据的条目不进表）。"""
+    out: Dict[str, Dict[str, str]] = {}
+    for entry in entries or []:
+        u = address_url(entry)
+        if not u or not isinstance(entry, dict):
+            continue
+        auth = _normalize_auth(entry.get("auth"))
+        if auth:
+            out[u.rstrip("/")] = auth
+    return out
+
+
+def headers_with_auth(auth: Optional[Dict[str, str]], headers: Dict[str, str]) -> Dict[str, str]:
+    """应用覆盖凭据（无 auth/无效 → 原样返回 base headers）。
+
+    只动 Authorization 一个头：basic → `Basic base64(u:p)` 整体替换；
+    bearer → `Bearer <token>` 整体替换。不改写其他头。
+    """
+    if not auth:
+        return headers
+    out = dict(headers)
+    if auth.get("type") == "basic":
+        raw = f"{auth.get('username', '')}:{auth.get('password', '')}".encode("utf-8")
+        out["Authorization"] = "Basic " + base64.b64encode(raw).decode("ascii")
+    elif auth.get("type") == "bearer":
+        out["Authorization"] = f"Bearer {auth.get('token', '')}"
+    return out
+
+
+def merge_address_entries(
+    old_entries: Any, new_entries: Any
+) -> List[AddressEntry]:
+    """PUT /config 的地址列表合并（按位置配对，保留旧秘密）。
+
+    规则（与 controller_token 的 "***" 占位符语义同源）：
+    - 新条目=字符串 → 原样（显式降级：旧凭据丢弃）。
+    - 新条目=dict：
+      - auth 缺省/type=none → 字符串条目（显式清除凭据）。
+      - 凭据字段空串或 "***" → 继承旧条目同名字段（脱敏回传=保持不变）。
+      - url 为空 → 丢弃该条目（与旧 filter(v=>v.trim()) 行为一致）。
+    - 旧列表更长的尾部条目 → 丢弃（前端始终提交完整两行）。
+    """
+    merged: List[AddressEntry] = []
+    old_list = list(old_entries or [])
+    for i, entry in enumerate(new_entries or []):
+        if isinstance(entry, str):
+            u = entry.strip()
+            if u:
+                merged.append(u)
+            continue
+        if not isinstance(entry, dict):
+            continue
+        u = str(entry.get("url") or "").strip()
+        if not u:
+            continue
+        old_entry = old_list[i] if i < len(old_list) else None
+        old_auth = (
+            _normalize_auth((old_entry or {}).get("auth"))
+            if isinstance(old_entry, dict)
+            else None
+        ) or {}
+        auth_in = entry.get("auth")
+        if not isinstance(auth_in, dict) or str(auth_in.get("type") or "").strip().lower() in ("", "none"):
+            merged.append(u)
+            continue
+        atype = str(auth_in.get("type") or "").strip().lower()
+        if atype == "basic":
+            username = str(auth_in.get("username") or "").strip() or str(old_auth.get("username") or "")
+            password = str(auth_in.get("password") or "").strip()
+            if not password or password == "***":
+                password = str(old_auth.get("password") or "")
+            if username and password and password != "***":
+                merged.append({"url": u, "auth": {"type": "basic", "username": username, "password": password}})
+            else:
+                merged.append(u)
+        elif atype == "bearer":
+            token = str(auth_in.get("token") or "").strip()
+            if not token or token == "***":
+                token = str(old_auth.get("token") or "")
+            if token and token != "***":
+                merged.append({"url": u, "auth": {"type": "bearer", "token": token}})
+            else:
+                merged.append(u)
+        else:
+            merged.append(u)
+    return merged
 
 _DEFAULTS: Dict[str, Any] = {
     # Ordered address lists — first reachable wins (auto-failover).
@@ -145,9 +292,10 @@ def save_config(config: Dict[str, Any]) -> None:
 def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
     """Apply a shallow patch and persist. Returns the merged config."""
     merged = load_config()
+    # v0.5.0-beta.14.3: 地址条目 str | {url, auth?}——按位置合并（保留旧秘密）。
     for key in ("matrix_homeservers", "controller_urls"):
         if key in patch and isinstance(patch[key], list):
-            merged[key] = [v.strip() for v in patch[key] if isinstance(v, str) and v.strip()]
+            merged[key] = merge_address_entries(merged.get(key), patch[key])
     if "controller_token" in patch and isinstance(patch["controller_token"], str):
         tok = patch["controller_token"].strip()
         # "***" 是脱敏占位符（导出再导入场景）——不覆盖真实 token。
@@ -168,10 +316,12 @@ def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
         existing = merged.get("sglang") or {}
         incoming = dict(patch["sglang"])
         # v0.5.0-beta.12: 双地址列表；兼容旧前端/旧配置的单地址 "url"。
+        # v0.5.0-beta.14.3: 条目 str | {url, auth?}（同 matrix/controller 合并语义）。
         if "urls" in incoming and isinstance(incoming["urls"], list):
-            incoming["urls"] = [
-                v.strip() for v in incoming["urls"] if isinstance(v, str) and v.strip()
-            ]
+            incoming["urls"] = merge_address_entries(
+                (existing.get("urls") if isinstance(existing.get("urls"), list) else []),
+                incoming["urls"],
+            )
         if "url" in incoming:
             legacy_url = str(incoming.pop("url") or "").strip()
             if legacy_url:
@@ -193,11 +343,31 @@ def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
     return merged
 
 
+def _redact_entry_list(entries: Any) -> None:
+    """地址条目内的 auth 秘密脱敏（username 保留——非机密，前端回显）。"""
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        auth = entry.get("auth")
+        if not isinstance(auth, dict):
+            continue
+        if auth.get("password"):
+            auth["password"] = "***"
+        if auth.get("token"):
+            auth["token"] = "***"
+
+
 def redact(config: Dict[str, Any]) -> Dict[str, Any]:
     """Config safe to send back to the frontend (no secrets)."""
     out = json.loads(json.dumps(config))
     if out.get("controller_token"):
         out["controller_token"] = "***"
+    # v0.5.0-beta.14.3: 地址条目内凭据（basic password / bearer token）。
+    for key in ("matrix_homeservers", "controller_urls"):
+        _redact_entry_list(out.get(key))
+    sg = out.get("sglang")
+    if isinstance(sg, dict):
+        _redact_entry_list(sg.get("urls"))
     # L1 管理员凭据：密码与 Console 会话脱敏；用户名保留（非机密，前端回显）。
     if out.get("admin_password"):
         out["admin_password"] = "***"

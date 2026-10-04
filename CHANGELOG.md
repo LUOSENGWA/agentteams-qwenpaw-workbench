@@ -5,6 +5,21 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.3（2026-10-04 · 子批）
+
+**WAN 通用认证（外网公网入口 401 真根因的插件侧修复）：地址级覆盖凭据（Basic 门 / API key 门）+ 诊断五档 + 错误四档 + SGLang 外网接线**
+
+- **地址级覆盖凭据（通用设计，内网零配置零行为变化）**：
+  ① **地址条目 = URL 或 {url, auth?}**——设置页每条地址（Matrix 内/外、Controller 内/外、SGLang 内/外）下方新增「公网凭据」选择器：不使用（默认，服务自身认证）/ Basic 认证（公网网关 Basic 门，如 Caddy）/ API Key（Bearer，公网网关 key 门，如 Higress）。内网地址不填=纯 URL 字符串，配置形态与旧版逐字节兼容
+  ② **首拨即用，无重试环**——有覆盖凭据的地址第一次请求就带对应 Authorization（Basic base64 / Bearer），不依赖 401 质询触发（确定性）；凭据只落本机 config.json，脱敏回显（***）、不进日志、不进前端明文
+  ③ **单一出处拨号解析**——全部 20 处拨号点（代理 /sync / workers 族 / 知识库容器族 / SGLang / L1·L2 自检 / 管理员验证 / 宿主桥 / Matrix 用户态 API）统一走「地址 → 覆盖凭据 → headers」helper，新增拨号点不可能漏（打地鼠防护）
+  ④ **凭据合并语义**——保存时按位置合并：留空/脱敏 *** = 保持已存值（改 URL 不清凭据、改 URL 类型不误清）；纯字符串提交 = 显式清除；类型选了但凭据缺 = 降级纯 URL（诚实不装）
+- **诊断五档 + 错误四档（外网断连一眼定位）**：连通性测试 / 自检逐地址探测时——① 带该地址覆盖凭据探测（WAN 门地址带凭据才可能 200，自动重排才选得上，旧版不带凭据探测 → WAN 地址恒 401 永远轮不上生效）② 401/403 三看分诊：`WWW-Authenticate: Basic` = 网关 Basic 门（提示「设置页该地址填公网凭据」）/ 无质询 + 空 body = 网关 API key 门（提示填 API Key）/ 无质询 + JSON body = 服务层 token 被拒（检查 token）/ 403 = 权限不足；已配凭据仍被拒 → 直接点破「凭据不符」
+- **SGLang 外网接线（Q4 入批）**：SGLang 双地址外网入口可配 API Key 覆盖（如 `https://higress.sat...:7113` 带 key）——创建 Worker 的在服模型列表 / 首页集群负载卡外网同样可拉；内网地址无凭据裸拨不变
+- **行为变化说明**：`config.json` 的 `matrix_homeservers` / `controller_urls` / `sglang.urls` 条目升级为 `str | {url, auth?}`（旧纯字符串配置自动兼容，零迁移成本）；`/config/test` 请求条目同形态（草稿凭据未保存也能当场验证公网门）
+
+**Verification**: tsc 0 · vite build 单文件 ~2,343kB（gzip ~653kB）· pytest 113/113（含新增 23 例：条目解析/凭据匹配/合并语义/脱敏/质询分诊/PUT 全链路）· i18n 1,393 键 0 缺 0 重 0 空 · 敏感扫 0（源码与 dist 双查）
+
 ## 0.5.0-beta.14.2（2026-10-03 · 子批）
 
 **14.1 装验反馈四件：外网断连真根因修复（代理 4xx 语义 + 直拨族地址 failover）/ 分栏判定计入话题面板 / 底部跟随 DOM 增高不丢 / 陈旧审批通知不再弹**

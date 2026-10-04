@@ -34,6 +34,17 @@ def _request(
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    # v0.5.0-beta.14.3: 该地址覆盖凭据（WAN 门）——无覆盖=原生认证零变化。
+    # 低频用户态调用（whoami/房间列表/发送），每调用一次 load_config 可接受。
+    try:
+        from . import config as _config
+
+        _auth = _config.auth_for_url(
+            _config.load_config().get("matrix_homeservers"), homeserver
+        )
+        headers = _config.headers_with_auth(_auth, headers)
+    except Exception:  # noqa: BLE001 - 配置不可用回退原生认证
+        pass
     with httpx.Client(timeout=TIMEOUT, verify=False) as client:
         resp = client.request(method, url, json=json_body, headers=headers)
     if resp.status_code >= 400:

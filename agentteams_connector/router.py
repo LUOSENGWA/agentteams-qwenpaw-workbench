@@ -60,12 +60,35 @@ _PROXY_TIMEOUT = httpx.Timeout(connect=3.0, read=6.0, write=10.0, pool=3.0)
 
 
 def _address_list(cfg: Dict[str, Any], kind: str) -> List[str]:
+    # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一归一化取 url
+    #（dict 条目的 auth 由 _headers_for/auth_for_url 按 url 反查，不在此丢）。
     if kind == "matrix":
-        return [v for v in (cfg.get("matrix_homeservers") or []) if v]
-    if kind == "sglang":
+        raw = cfg.get("matrix_homeservers") or []
+    elif kind == "sglang":
         # v0.5.0-beta.12: SGLang 双地址纳入 working cache 体系（自动重排/failover）。
-        return [v for v in ((cfg.get("sglang") or {}).get("urls") or []) if v]
-    return [v for v in (cfg.get("controller_urls") or []) if v]
+        raw = (cfg.get("sglang") or {}).get("urls") or []
+    else:
+        raw = cfg.get("controller_urls") or []
+    return [config_mod.address_url(v) for v in raw if config_mod.address_url(v)]
+
+
+def _raw_addresses(cfg: Dict[str, Any], kind: str) -> List[Any]:
+    """该 kind 的原始地址条目（str | dict）——供凭据反查。"""
+    if kind == "matrix":
+        return cfg.get("matrix_homeservers") or []
+    if kind == "sglang":
+        return (cfg.get("sglang") or {}).get("urls") or []
+    return cfg.get("controller_urls") or []
+
+
+def _headers_for(
+    cfg: Dict[str, Any], kind: str, base: str, base_headers: Dict[str, str]
+) -> Dict[str, str]:
+    """v0.5.0-beta.14.3: 单一拨号凭据解析——该地址配置了覆盖凭据则替换
+    Authorization，否则原样（服务原生认证）。所有 controller/matrix/sglang
+    拨号点统一走这里（新增拨号点照抄这一行，不各写各的）。"""
+    auth = config_mod.auth_for_url(_raw_addresses(cfg, kind), base)
+    return config_mod.headers_with_auth(auth, base_headers)
 
 
 def _ordered_addresses(cfg: Dict[str, Any], kind: str) -> List[str]:
@@ -218,11 +241,15 @@ class ConfigPatch(BaseModel):
 
 
 class ConfigTestRequest(BaseModel):
-    """v0.5.0-beta.12: 连通性测试请求——传表单当前值（可未保存），空则测已配置。"""
+    """v0.5.0-beta.12: 连通性测试请求——传表单当前值（可未保存），空则测已配置。
 
-    matrix: Optional[List[str]] = None
-    controller: Optional[List[str]] = None
-    sglang: Optional[List[str]] = None  # v0.5.0-beta.12: SGLang 双地址列表
+    v0.5.0-beta.14.3: 条目 = str | {url, auth?}（草稿凭据随测——未保存的
+    公网凭据也能当场验证；旧字符串条目完全兼容）。
+    """
+
+    matrix: Optional[List[Any]] = None
+    controller: Optional[List[Any]] = None
+    sglang: Optional[List[Any]] = None  # v0.5.0-beta.12: SGLang 双地址列表
 
 
 class VerifyAdminRequest(BaseModel):
@@ -661,10 +688,11 @@ def build_router() -> APIRouter:
             )
         # v0.5.0-beta.12: 双地址（内网/外网）failover——working cache 优先（自动重排
         # 选出的最快可达），其余按配置顺序；兼容旧配置单地址 "url"。
+        # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url（auth 按 url 反查）。
         bases = [
-            u.strip().rstrip("/")
+            config_mod.address_url(u).rstrip("/")
             for u in (sglang.get("urls") or [])
-            if str(u).strip()
+            if config_mod.address_url(u)
         ]
         legacy = str(sglang.get("url") or "").strip().rstrip("/")
         if legacy and legacy not in bases:
@@ -685,7 +713,11 @@ def build_router() -> APIRouter:
         for base in ordered:
             try:
                 async with _httpx.AsyncClient(timeout=8.0, verify=False) as client:
-                    resp = await client.get(f"{base}/v1/loads")
+                    # v0.5.0-beta.14.3: WAN 地址 key 门（bearer 覆盖；无则无头）。
+                    resp = await client.get(
+                        f"{base}/v1/loads",
+                        headers=_headers_for(cfg, "sglang", base, {}),
+                    )
                 if resp.status_code != 200:
                     last_err = f"{base} HTTP {resp.status_code}"
                     continue
@@ -758,10 +790,11 @@ def build_router() -> APIRouter:
                 status_code=404,
                 detail="SGLang 模块未启用（配置页开启并填写地址）",
             )
+        # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url（auth 按 url 反查）。
         bases = [
-            u.strip().rstrip("/")
+            config_mod.address_url(u).rstrip("/")
             for u in (sglang.get("urls") or [])
-            if str(u).strip()
+            if config_mod.address_url(u)
         ]
         legacy = str(sglang.get("url") or "").strip().rstrip("/")
         if legacy and legacy not in bases:
@@ -779,7 +812,11 @@ def build_router() -> APIRouter:
         for base in ordered:
             try:
                 async with _httpx.AsyncClient(timeout=8.0, verify=False) as client:
-                    resp = await client.get(f"{base}/v1/models")
+                    # v0.5.0-beta.14.3: WAN 地址 key 门（bearer 覆盖；无则无头）。
+                    resp = await client.get(
+                        f"{base}/v1/models",
+                        headers=_headers_for(cfg, "sglang", base, {}),
+                    )
                 if resp.status_code != 200:
                     last_err = f"{base} HTTP {resp.status_code}"
                     continue
@@ -954,7 +991,8 @@ def build_router() -> APIRouter:
                 try:
                     async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
                         resp = await client.get(
-                            url, headers={"Authorization": f"Bearer {token}"}
+                            url, headers=_headers_for(cfg, "matrix", homeserver,
+                                {"Authorization": f"Bearer {token}"})
                         )
                     if resp.status_code != 200:
                         return []
@@ -1099,7 +1137,8 @@ def build_router() -> APIRouter:
                             if page_token:
                                 url += f"&from={_urlparse_mod.quote(page_token, safe='')}"
                             resp = await client.get(
-                                url, headers={"Authorization": f"Bearer {token}"}
+                                url, headers=_headers_for(cfg, "matrix", homeserver,
+                                    {"Authorization": f"Bearer {token}"})
                             )
                             if resp.status_code != 200:
                                 break
@@ -1252,9 +1291,10 @@ def build_router() -> APIRouter:
                         ) as client:
                             r = await client.get(
                                 f"{url.rstrip('/')}/api/v1/workers",
-                                headers={
-                                    "Authorization": f"Bearer {token}"
-                                },
+                                headers=_headers_for(
+                                    cfg, "controller", url,
+                                    {"Authorization": f"Bearer {token}"},
+                                ),
                             )
                     except Exception as exc:  # noqa: BLE001
                         logger.warning(
@@ -1458,23 +1498,29 @@ def build_router() -> APIRouter:
         草稿测试不动生效地址。
         """
         cfg = config_mod.load_config()
-        cfg_matrix = [u.strip() for u in (cfg.get("matrix_homeservers") or []) if u and u.strip()]
-        cfg_ctl = [u.strip() for u in (cfg.get("controller_urls") or []) if u and u.strip()]
-        matrix_list = [u.strip() for u in (patch.matrix or cfg_matrix) if u and u.strip()]
-        ctl_list = [u.strip() for u in (patch.controller or cfg_ctl) if u and u.strip()]
+        # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url 再测。
+        def _urls(entries: Any) -> List[str]:
+            return [config_mod.address_url(u) for u in (entries or []) if config_mod.address_url(u)]
+
+        cfg_matrix = _urls(cfg.get("matrix_homeservers"))
+        cfg_ctl = _urls(cfg.get("controller_urls"))
+        matrix_list = _urls(patch.matrix or cfg_matrix)
+        ctl_list = _urls(patch.controller or cfg_ctl)
         # v0.5.0-beta.12: SGLang 双地址（传草稿列表则测草稿，否则测已配置；兼容旧 "url"）。
         cfg_sg = cfg.get("sglang") or {}
-        cfg_sg_urls = [
-            str(u).strip()
-            for u in (
-                cfg_sg.get("urls")
-                or ([cfg_sg.get("url")] if cfg_sg.get("url") else [])
-            )
-            if str(u).strip()
-        ]
-        sglang_list = [
-            str(u).strip() for u in (patch.sglang or cfg_sg_urls) if str(u).strip()
-        ]
+        cfg_sg_urls = _urls(
+            cfg_sg.get("urls")
+            or ([cfg_sg.get("url")] if cfg_sg.get("url") else [])
+        )
+        sglang_list = _urls(patch.sglang or cfg_sg_urls)
+        # v0.5.0-beta.14.3: 草稿凭据随测——条目级 auth 图（未保存也能验）。
+        auth_maps = {
+            "matrix": config_mod.build_auth_map(patch.matrix if patch.matrix is not None else cfg.get("matrix_homeservers")),
+            "controller": config_mod.build_auth_map(patch.controller if patch.controller is not None else cfg.get("controller_urls")),
+            "sglang": config_mod.build_auth_map(
+                (patch.sglang if patch.sglang is not None else cfg_sg.get("urls"))
+            ),
+        }
         token = (cfg.get("controller_token") or "").strip()
 
         prev = {
@@ -1482,7 +1528,8 @@ def build_router() -> APIRouter:
             "controller": _pick_address(cfg, "controller"),
         }
         results = await selfcheck.test_addresses(
-            matrix_list, ctl_list, sglang_list, token, with_diag=True
+            matrix_list, ctl_list, sglang_list, token, with_diag=True,
+            auth_maps=auth_maps,
         )
         applied = False
         same_lists = (matrix_list == cfg_matrix) and (ctl_list == cfg_ctl)
@@ -1832,7 +1879,8 @@ def build_router() -> APIRouter:
                     async with httpx.AsyncClient(timeout=4.0, verify=False) as client:
                         resp = await client.get(
                             f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/{room_id}/state/m.room.name",
-                            headers={"Authorization": f"Bearer {token}"},
+                            headers=_headers_for(cfg, "matrix", homeserver,
+                                {"Authorization": f"Bearer {token}"}),
                         )
                     if resp.status_code == 200:
                         entry["name"] = (resp.json().get("name") or "").strip() or ""
@@ -2120,7 +2168,8 @@ def build_router() -> APIRouter:
                     ) as client:
                         resp = await client.get(
                             f"{hs.rstrip('/')}{raw_path}",
-                            headers={"Authorization": f"Bearer {token}"},
+                            headers=_headers_for(cfg, "matrix", hs,
+                                {"Authorization": f"Bearer {token}"}),
                         )
                     if resp.status_code >= 400:
                         raise matrix_client.MatrixError(
@@ -2353,7 +2402,8 @@ def build_router() -> APIRouter:
                     resp = await client.post(
                         f"{hs.rstrip('/')}/_matrix/client/v3/search",
                         json=matrix_body,
-                        headers={"Authorization": f"Bearer {token}"},
+                        headers=_headers_for(cfg, "matrix", hs,
+                                {"Authorization": f"Bearer {token}"}),
                     )
                 if resp.status_code >= 400:
                     raise matrix_client.MatrixError(
@@ -2564,7 +2614,8 @@ def build_router() -> APIRouter:
             async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
                 for url in media_paths:
                     r = await client.get(
-                        url, headers={"Authorization": f"Bearer {token}"}
+                        url, headers=_headers_for(cfg, "matrix", base,
+                            {"Authorization": f"Bearer {token}"})
                     )
                     if r.status_code < 400:
                         resp = r
@@ -2678,7 +2729,10 @@ def build_router() -> APIRouter:
         all_timeout = True
         for b in urls:
             url = f"{b}/docker/v1.41{path}"
-            headers = {"Authorization": f"Bearer {token}"}
+            # v0.5.0-beta.14.3: 该地址覆盖凭据（无则原生 Bearer）。
+            headers = _headers_for(
+                cfg, "controller", b, {"Authorization": f"Bearer {token}"}
+            )
             try:
                 async with _h.AsyncClient(timeout=timeout, verify=False) as client:
                     if head:
@@ -2726,7 +2780,11 @@ def build_router() -> APIRouter:
         与「命令成功但输出为空」（后者含 find 目标不存在：find 报错走
         stderr、stdout 为空，exec 仍 200）。"""
         import httpx as _h
-        headers = {"Authorization": f"Bearer {token}"}
+        # v0.5.0-beta.14.3: 该地址覆盖凭据（无则原生 Bearer）。
+        _cfg = config_mod.load_config()
+        headers = _headers_for(
+            _cfg, "controller", base, {"Authorization": f"Bearer {token}"}
+        )
         try:
             async with _h.AsyncClient(timeout=timeout, verify=False) as client:
                 r1 = await client.post(
@@ -3040,7 +3098,8 @@ def build_router() -> APIRouter:
         if params:
             url += "?" + _up.urlencode(params)
         async with _h.AsyncClient(timeout=30.0, verify=False) as client:
-            r = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+            r = await client.get(url, headers=_headers_for(config_mod.load_config(),
+                                    "controller", base, {"Authorization": f"Bearer {token}"}))
         try:
             return r.status_code, r.json()
         except Exception:  # noqa: BLE001
@@ -3337,7 +3396,8 @@ def build_router() -> APIRouter:
             async with _h.AsyncClient(timeout=8.0, verify=False) as client:
                 resp = await client.get(
                     f"{base}/api/v1/workers",
-                    headers={"Authorization": f"Bearer {token}"},
+                    headers=_headers_for(config_mod.load_config(), "controller", base,
+                                {"Authorization": f"Bearer {token}"}),
                 )
             if resp.status_code == 200:
                 payload = resp.json()
@@ -4108,7 +4168,8 @@ def build_router() -> APIRouter:
                     try:
                         nresp = await c2.get(
                             f"{hs_base}/_matrix/client/v3/rooms/{room_id}",
-                            headers={"Authorization": f"Bearer {token}"},
+                            headers=_headers_for(cfg, "matrix", hs_base,
+                                {"Authorization": f"Bearer {token}"}),
                         )
                         if nresp.status_code == 200:
                             nm = str((nresp.json() or {}).get("name") or "")
@@ -4120,7 +4181,8 @@ def build_router() -> APIRouter:
                             sresp = await c2.get(
                                 f"{hs_base}/_matrix/client/v3/rooms/{room_id}"
                                 "/state/m.room.name",
-                                headers={"Authorization": f"Bearer {token}"},
+                                headers=_headers_for(cfg, "matrix", hs_base,
+                                {"Authorization": f"Bearer {token}"}),
                             )
                             if sresp.status_code == 200:
                                 nm = str(
@@ -4272,7 +4334,8 @@ def build_router() -> APIRouter:
                     try:
                         nresp = await c2.get(
                             f"{hs_base}/_matrix/client/v3/rooms/{rid}",
-                            headers={"Authorization": f"Bearer {token}"},
+                            headers=_headers_for(cfg, "matrix", hs_base,
+                                {"Authorization": f"Bearer {token}"}),
                         )
                         if nresp.status_code == 200:
                             nm = str((nresp.json() or {}).get("name") or "")
@@ -4283,7 +4346,8 @@ def build_router() -> APIRouter:
                             sresp = await c2.get(
                                 f"{hs_base}/_matrix/client/v3/rooms/{rid}"
                                 "/state/m.room.name",
-                                headers={"Authorization": f"Bearer {token}"},
+                                headers=_headers_for(cfg, "matrix", hs_base,
+                                {"Authorization": f"Bearer {token}"}),
                             )
                             if sresp.status_code == 200:
                                 nm = str(
@@ -4625,7 +4689,11 @@ def build_router() -> APIRouter:
                     r = await client.request(
                         method, u,
                         json=json_body,
-                        headers={"Authorization": f"Bearer {token}"},
+                        # v0.5.0-beta.14.3: 该地址覆盖凭据（无则原生 Bearer）。
+                        headers=_headers_for(
+                            cfg, "controller", b,
+                            {"Authorization": f"Bearer {token}"},
+                        ),
                     )
             except Exception as exc:  # noqa: BLE001 - try the next address
                 last = (0, {}, f"请求失败：{exc}")
@@ -5012,6 +5080,8 @@ def build_router() -> APIRouter:
         first_bad: Optional[tuple] = None
         for base in base_urls:
             url = f"{base.rstrip('/')}{encoded_path}{query_string}"
+            # v0.5.0-beta.14.3: 该地址的覆盖凭据（basic/bearer）——无则原生认证。
+            addr_headers = _headers_for(cfg, target, base, headers)
             try:
                 # v0.5.0-beta.12：连接类错误同址重试一次（300ms 退避）——
                 # 切网瞬间/偶发抖动不应直接放弃该地址（用户「连通失败重试」）。
@@ -5024,7 +5094,7 @@ def build_router() -> APIRouter:
                             timeout=_PROXY_TIMEOUT, verify=False
                         ) as client:
                             if raw_body is not None:
-                                send_headers = dict(headers)
+                                send_headers = dict(addr_headers)
                                 send_headers["Content-Type"] = req_ct
                                 resp = await client.request(
                                     request.method,
@@ -5034,7 +5104,7 @@ def build_router() -> APIRouter:
                                 )
                             else:
                                 resp = await client.request(
-                                    request.method, url, json=body, headers=headers
+                                    request.method, url, json=body, headers=addr_headers
                                 )
                         break
                     except (
