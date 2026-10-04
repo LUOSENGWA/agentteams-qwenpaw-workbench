@@ -137,6 +137,11 @@ export default function OpsPanel({
   }, [refreshTick]);
 
   const [logsUpdatedAt, setLogsUpdatedAt] = React.useState<number>(0);
+  // v0.5.0-beta.14.5（P1-4）：失败退避——docker-logs 恒 502 实测（53 次调用
+  // 34 次 502）时每 15s 白烧一请求；连续失败 ≥3 次退避到 120s（恢复自动回
+  // 15s）；静默失败不再清屏（保留上次成功内容，配合「更新于」看陈旧度）。
+  const logsFailStreakRef = React.useRef(0);
+  const [logsPollMs, setLogsPollMs] = React.useState(15000);
   // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
   const refreshLogs = React.useCallback(async (comp: string, silent = false) => {
     if (!silent) setLogsLoading(true);
@@ -146,26 +151,36 @@ export default function OpsPanel({
       )) as { lines?: LogLine[] };
       setLogs(data.lines || []);
       setLogsUpdatedAt(Date.now());
+      if (logsFailStreakRef.current > 0) {
+        logsFailStreakRef.current = 0;
+        setLogsPollMs(15000);
+      }
     } catch (e) {
-      if (!silent)
+      logsFailStreakRef.current += 1;
+      if (logsFailStreakRef.current >= 3) {
+        setLogsPollMs(120000);
+      }
+      if (!silent) {
+        // 手动刷新失败：显式报错并清屏（用户主动动作，需明确反馈）。
         antd.message.error(e instanceof Error ? e.message : tr("日志拉取失败"));
-      setLogs([]);
+        setLogs([]);
+      }
+      // 静默失败：保留上次成功内容（不 setLogs([])）。
     } finally {
       if (!silent) setLogsLoading(false);
     }
-    // tr 每次 render 都是新函数但行为稳定（纯查表），不入 deps——否则 15s 轮询 timer 被反复重建
+    // tr 每次 render 都是新函数但行为稳定（纯查表），不入 deps——否则轮询 timer 被反复重建
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 组件日志 15s 静默轮询（用户反馈：日志「停留在 」——此前开页取一次不刷新；
-  // 容器本身无新日志时轮询也拉回同样内容，配合「N 行·更新于」提示区分两种情况）。
+  // 组件日志静默轮询（15s；连续失败退避到 120s——v0.5.0-beta.14.5 P1-4）。
   React.useEffect(() => {
     const timer = window.setInterval(
       () => void refreshLogs(component, true),
-      15000,
+      logsPollMs,
     );
     return () => window.clearInterval(timer);
-  }, [refreshLogs, component]);
+  }, [refreshLogs, component, logsPollMs]);
 
   // 可选模块：集群负载（L1 专属）。未启用时后端 404 → sglangOff=true 不渲染卡片。
   const [sglang, setSglang] = React.useState<SglangLoads | null>(null);
