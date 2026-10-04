@@ -10,19 +10,19 @@
 
 ## 认证模式
 
-三档：**L2 Matrix 登录**（默认）/ **L1 管理员**（两种凭据二选一，v0.5.0-beta.12 起）。
+三档：**L2 Matrix 登录**（默认）/ **L1 管理面**（Controller token 与 Higress 账号**两块独立凭据**，v0.5.0-beta.12 起）。
 
 | | Matrix 登录（L2，默认） | L1 管理员 |
 |---|---|---|
-| 输入 | 自己的 **Matrix 账号 + 密码**（入职时交付） | 两种凭据二选一（见下） |
+| 输入 | 自己的 **Matrix 账号 + 密码**（入职时交付） | Controller token + Higress 账号（两块独立、可同时配，见下） |
 | 持久性 | 登录会话（切账号=数据源切换，本地缓存同步清空重取） | 验证通过后持久化，**永久记住** |
 | 能力 | 本账号可访问的团队 + 项目操作（启动/暂停/产物）+ 聊天/审批/通知/知识库 | L2 全部 + CRD 管理（入职/建队/改配/删除）+ 全量 Worker/Team 状态 + 集群负载 |
 
 登录后显示「当前身份」（你的 Matrix mxid）。
 
-### L1 管理员：两种凭据二选一（v0.5.0-beta.12 起）
+### L1 管理面：两块独立凭据（v0.5.0-beta.12 起）
 
-| | ① Controller 管理员 token | ② admin 账号+密码 |
+| | ① Controller 管理 API 凭证（token） | ② Higress Console 凭证（admin 账号+密码） |
 |---|---|---|
 | 输入 | **粘贴 token 内容**（UI 提供获取命令，一键复制粘贴；部署期已注入 env `AGENTTEAMS_CONTROLLER_TOKEN` 时留空即可） | admin 账号 + admin 密码（+Higress 地址，必填） |
 | 解锁能力 | **Controller 管理 API 全量**：CRD 管理、全量 Worker/Team 状态视图、集群负载、跨团队项目/产物 | **Higress 面**：持有 Higress Console 会话 → 模型下拉的 Higress alias 候选（AI routes + providers） |
@@ -31,7 +31,7 @@
 
 > **端口全景（实测）**：宿主 6866=Controller API（容器 8090）/ **6868=Higress Console（容器 8001）** / 6867=Higress 数据面（容器 8080）/ 6869=Element+console（容器 8088）。插件 Controller 地址填 `http://<内网IP>:6866`，Higress 地址填 `http://<内网IP>:6868`。**这套端口映射是部署时自选的（安装脚本 prompt，默认 18001）——换部署就是别的端口，插件不做任何端口猜测（v0.5.0-beta.12 起）。**
 
-> **两种凭据不互相替代**：② 换不来 Controller 管理 API 凭据（controller 无 token 签发端点）——密码模式验证后 CRD 管理等 L1 能力仍锁着，只是模型下拉多了网关 alias。UI 明示「密码模式不替代 token」。
+> **两块凭据互相独立、各管一个系统（不是二选一）**：① token 是 **Controller 管理 API 的唯一凭证**——Controller 只认 SA token 与 Matrix token（源码 `matrix_authenticator.go` 实锤：Matrix 路径只放行 level-2/3 只读，level-1（admin）明确 401，注释原文 “they should use the admin SA”），**无任何密码登录端点**。dashboard 能「admin 账密进门」不是密码换来了 Controller 权限，而是**部署期把该 token 注入 dashboard 服务端 env**（`AGENTTEAMS_AUTH_TOKEN`，浏览器用户从不输入它）。② admin 账号+密码是 **Higress Console 自己的账号**——恰好与 Matrix @admin 同源（部署时同一对账密注册两处），验证通过只建立 Console 会话 → 模型下拉的网关 alias 面；**不改变 Controller 权限**。
 
 ### token 获取命令与 env 注入（v0.5.0-beta.12 设计：文件路径路已删，留命令）
 
@@ -79,7 +79,7 @@ token 无接口可获取（上游安全设计），由部署管理员线下提�
 | 频道配置写 | 限本团队 | ✅ |
 | 技能矩阵 / MCP 矩阵写 | 限本团队 | ✅ |
 | 集群负载（SGLang/GPU） | ❌ | ✅ |
-| 模型下拉网关 alias（网关面） | ❌ | ✅（需 ② 密码模式验证） |
+| 模型下拉网关 alias（网关面） | ❌ | ✅（需 ② Higress 账号验证） |
 
 ## 模型网关页（L1：浏览 + 添加提供商 / 添加路由）
 

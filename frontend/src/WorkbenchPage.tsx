@@ -547,7 +547,7 @@ function SettingsTab({
   const [controllerToken, setControllerToken] = React.useState("");
   // v0.5.0-beta.12: token 文件路径字段已删（用户反馈：「文件路径可以删掉了，
   // 留个命令就行」）——获取方式=下方命令提示 + 粘贴；env 作部署期注入兜底。
-  // v0.5.0-beta.12: L1 二选一——admin 账号+密码（Higress Console 面，验证通过才
+  // v0.5.0-beta.12: Higress Console 会话（admin 账号+密码，验证通过才
   // 由 verify-admin 持久化；普通保存不提交凭据）。密码不回填（脱敏），
   // 留空=保持已存值。
   const [adminUsername, setAdminUsername] = React.useState("");
@@ -769,7 +769,7 @@ function SettingsTab({
     [],
   );
 
-  // v0.5.0-beta.12: L1 管理员验证（二选一，验证通过才持久化凭据）。
+  // v0.5.0-beta.12: L1 验证（Controller token / Higress 账号两块独立，验证通过才持久化凭据）。
   const runVerify = React.useCallback(
     async (body: {
       admin_username?: string;
@@ -1099,18 +1099,18 @@ function SettingsTab({
             }}
             options={[
               { label: tr("Matrix 登录（L2，默认）"), value: "matrix" },
-              { label: tr("L1 管理员（token / 账号密码）"), value: "token" },
+              { label: tr("L1 管理面（token / Higress）"), value: "token" },
             ]}
           />
           {ctlMode === "token" ? (
             <div style={{ display: "grid", gap: 10 }}>
               <div style={{ fontSize: 12, color: "#888" }}>
-                {tr("L1 凭据两种方式（二选一）：")}
+                {tr("两块凭据互相独立、各管一个系统（不是二选一）：")}
                 <div>
-                  {tr("① Controller 管理员 token——Controller 管理 API 全量（CRD 管理/全量视图）；部署管理员提供，粘贴一次永久记住；")}
+                  {tr("① Controller 管理员 token——Controller 管理 API 的唯一凭证（CRD 管理/全量视图）。Controller 只认 SA token 与 Matrix token：Matrix 路径只放行 level-2/3（只读），level-1（admin）明确 401，且无任何密码登录端点——dashboard 能「admin 账密进门」同样是部署期把该 token 注入服务端 env，浏览器用户从不输入它。")}
                 </div>
                 <div>
-                  {tr("② admin 账号+密码——验证身份并持有 Higress Console 会话（Higress 面模型 alias 可用）；Controller 管理 API 仍需①。")}
+                  {tr("② Higress 账号+密码——Higress Console 的账号（模型 alias 面，独立系统）。它恰好与 Matrix @admin 同源（部署时同一对账密注册两处），但不是 Controller 凭证、也不改变 Controller 权限。")}
                 </div>
               </div>
               <div style={{ display: "grid", gap: 6 }}>
@@ -1174,7 +1174,7 @@ function SettingsTab({
               </div>
               <div style={{ display: "grid", gap: 6 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>
-                  {tr("② admin 账号+密码（Higress 面）")}
+                  {tr("② Higress Console 会话（模型面）——admin 账号+密码")}
                 </div>
                 <antd.Input
                   placeholder={tr("admin 账号（如 admin）")}
@@ -1215,7 +1215,7 @@ function SettingsTab({
                     {tr("验证")}
                   </antd.Button>
                   <span style={{ fontSize: 11.5, color: "#888", marginLeft: 8 }}>
-                    {tr("验证通过后自动保存（与 token 二选一，密码模式不替代 token）")}
+                    {tr("验证通过后自动保存（仅建立 Higress Console 会话；与 Controller token 无关，两者可同时配置）")}
                   </span>
                 </div>
               </div>
@@ -1331,7 +1331,7 @@ function SettingsTab({
             </div>
           )}
           <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>
-            {tr("Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。L1（二选一）：① Controller 管理员 token——额外获得 CRD 管理（入职/建队/改配/删除）、全部 Worker/Team 状态视图；② admin 账号+密码——验证身份 + 持有 Higress Console 会话，模型下拉的 Higress alias 可用。token 无接口可获取（上游安全设计），由部署管理员提供——粘贴一次永久记住；密码模式不替代 token（Controller 管理 API 仍需①）。")}
+            {tr("Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。L1 两块独立配置：① Controller 管理员 token——CRD 管理（入职/建队/改配/删除）+ 全部 Worker/Team 状态视图（Controller 唯一凭证，无接口获取——上游安全设计，部署管理员提供，粘贴一次永久记住）；② Higress 账号+密码——另建 Higress Console 会话（模型下拉 alias 层），与 ① 互不替代、可同时配置。")}
           </div>
         </div>
         <StartupPrefRow />
