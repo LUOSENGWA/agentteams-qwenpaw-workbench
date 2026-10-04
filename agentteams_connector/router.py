@@ -80,6 +80,12 @@ def _address_list(cfg: Dict[str, Any], kind: str) -> List[str]:
     elif kind == "sglang":
         # v0.5.0-beta.12: SGLang 双地址纳入 working cache 体系（自动重排/failover）。
         raw = (cfg.get("sglang") or {}).get("urls") or []
+    elif kind == "gateway":
+        # v0.5.0-beta.14.7: Higress Console 双地址（canonical=gateway_admin_urls，
+        # 空则回退 legacy 单值）。
+        raw = cfg.get("gateway_admin_urls") or (
+            [cfg.get("gateway_admin_url")] if cfg.get("gateway_admin_url") else []
+        )
     else:
         raw = cfg.get("controller_urls") or []
     return [config_mod.address_url(v) for v in raw if config_mod.address_url(v)]
@@ -89,6 +95,12 @@ def _raw_addresses(cfg: Dict[str, Any], kind: str) -> List[Any]:
     """该 kind 的原始地址条目（str | dict）——供凭据反查。"""
     if kind == "matrix":
         return cfg.get("matrix_homeservers") or []
+    if kind == "gateway":
+        # v0.5.0-beta.14.7: Higress Console 双地址（canonical 列表，空则回退
+        # legacy 单值）——供凭据反查（同 _address_list 的 gateway 口径）。
+        return cfg.get("gateway_admin_urls") or (
+            [cfg.get("gateway_admin_url")] if cfg.get("gateway_admin_url") else []
+        )
     if kind == "sglang":
         return (cfg.get("sglang") or {}).get("urls") or []
     return cfg.get("controller_urls") or []
@@ -284,6 +296,8 @@ class VerifyAdminRequest(BaseModel):
     # 留空 = 回退 config 已存值；config 也空 → 可操作错误（v0.5.0-beta.12：
     # Console 宿主端口部署时自选、人人不同，不做端口探测）
     gateway_admin_url: Optional[str] = None
+    # v0.5.0-beta.14.7: Higress 双地址（列表优先；单项亦可）。
+    gateway_admin_urls: Optional[List[str]] = None
 
 
 class TokenValidationError(ValueError):
@@ -1603,9 +1617,20 @@ def build_router() -> APIRouter:
             except TokenValidationError as e:
                 return {"ok": False, "error": str(e), "tokenPath": False}
             token_source = "input"
-        console_url = (
-            (body.gateway_admin_url or cfg.get("gateway_admin_url") or "").strip()
-        ).rstrip("/")
+        # v0.5.0-beta.14.7: 双地址——body 列表/单值优先，配置次之；按序尝试，
+        # 传输错误换下一地址，凭据错误立即报（地址无关）。
+        console_urls: List[str] = []
+        for u in list(body.gateway_admin_urls or []):
+            su = str(u or "").strip().rstrip("/")
+            if su and su not in console_urls:
+                console_urls.append(su)
+        if body.gateway_admin_url and str(body.gateway_admin_url).strip():
+            su = str(body.gateway_admin_url).strip().rstrip("/")
+            if su and su not in console_urls:
+                console_urls.insert(0, su)
+        if not console_urls:
+            console_urls = [u.rstrip("/") for u in _address_list(cfg, "gateway") if u]
+        console_url = console_urls[0] if console_urls else ""
 
         # --- 路径 A：admin 账号密码 → Console /session/login ---
         if username and password:
@@ -1626,19 +1651,30 @@ def build_router() -> APIRouter:
                         "填写「Higress 地址」后重试"
                     ),
                 }
-            try:
-                async with GatedAsyncClient(timeout=8.0, verify=False) as client:
-                    rr = await client.post(
-                        f"{console_url}/session/login",
-                        json={"username": username, "password": password},
-                    )
-            except Exception as exc:
+            # v0.5.0-beta.14.7: 逐地址尝试（传输错误换下一地址；凭据错误=地址
+            # 无关，立即报；会话 cookie 由 Console 后端校验、跨入口通用）。
+            rr = None
+            last_exc: Optional[Exception] = None
+            for cu in console_urls:
+                try:
+                    async with GatedAsyncClient(timeout=8.0, verify=False) as client:
+                        rr = await client.post(
+                            f"{cu}/session/login",
+                            json={"username": username, "password": password},
+                        )
+                    console_url = cu
+                    break
+                except Exception as exc:  # noqa: BLE001 - 逐地址降级
+                    last_exc = exc
+                    continue
+            if rr is None:
                 return {
                     "ok": False,
                     "error": (
-                        f"Higress 地址不可达（{console_url}："
-                        f"{exc.__class__.__name__}）。请检查端口——Console 宿主"
-                        "端口是部署时自选的（默认 18001），与 Controller 端口不同"
+                        f"Higress 地址不可达（已试 {len(console_urls)} 个："
+                        f"{last_exc.__class__.__name__ if last_exc else '未知'}）。"
+                        "请检查端口——Console 宿主端口是部署时自选的（默认 "
+                        "18001），与 Controller 端口不同"
                     ),
                 }
             if rr.status_code in (400, 401, 403):
@@ -1660,6 +1696,7 @@ def build_router() -> APIRouter:
                     "admin_username": username,
                     "admin_password": password,
                     "gateway_admin_url": console_url,
+                    "gateway_admin_urls": console_urls,
                     "console_session": session_cookie,
                 },
             )
@@ -1761,37 +1798,58 @@ def build_router() -> APIRouter:
 
         cfg = await asyncio.to_thread(cfgmod.load_config)
         session = str(cfg.get("console_session") or "")
-        console_url = str(cfg.get("gateway_admin_url") or "").strip().rstrip("/")
-        if not session or not console_url:
+        # v0.5.0-beta.14.7: Higress 双地址（canonical=gateway_admin_urls，空则
+        # 回退 legacy 单值）——按序降级。
+        gateways = _address_list(cfg, "gateway")
+        if not session or not gateways:
             return {"available": False, "data": None, "reason": "no_console_session"}
+        # v0.5.0-beta.14.7: 逐地址降级——传输错误换下一地址；拿到响应=地址可达，
+        # 状态码由下方既有逻辑处理（会话 cookie 由 Console 后端校验、跨入口通用）。
+        r = None
+        last_err = ""
+        for console_url in gateways:
+            try:
+                async with GatedAsyncClient(timeout=8.0, verify=False) as client:
+                    if method == "POST":
+                        r = await client.post(
+                            f"{console_url}{path}",
+                            headers={
+                                "Cookie": session,
+                                "Content-Type": "application/json",
+                            },
+                            json=json_body or {},
+                        )
+                    elif method == "PUT":
+                        r = await client.put(
+                            f"{console_url}{path}",
+                            headers={
+                                "Cookie": session,
+                                "Content-Type": "application/json",
+                            },
+                            json=json_body or {},
+                        )
+                    elif method == "DELETE":
+                        r = await client.delete(
+                            f"{console_url}{path}", headers={"Cookie": session}
+                        )
+                    else:
+                        r = await client.get(
+                            f"{console_url}{path}", headers={"Cookie": session}
+                        )
+                _mark_working("gateway", console_url)
+                break
+            except Exception as exc:  # noqa: BLE001 - 逐地址降级
+                r = None
+                last_err = exc.__class__.__name__
+                continue
+        if r is None:
+            return {
+                "available": False,
+                "data": None,
+                "reason": "unreachable",
+                "detail": last_err,
+            }
         try:
-            async with GatedAsyncClient(timeout=8.0, verify=False) as client:
-                if method == "POST":
-                    r = await client.post(
-                        f"{console_url}{path}",
-                        headers={
-                            "Cookie": session,
-                            "Content-Type": "application/json",
-                        },
-                        json=json_body or {},
-                    )
-                elif method == "PUT":
-                    r = await client.put(
-                        f"{console_url}{path}",
-                        headers={
-                            "Cookie": session,
-                            "Content-Type": "application/json",
-                        },
-                        json=json_body or {},
-                    )
-                elif method == "DELETE":
-                    r = await client.delete(
-                        f"{console_url}{path}", headers={"Cookie": session}
-                    )
-                else:
-                    r = await client.get(
-                        f"{console_url}{path}", headers={"Cookie": session}
-                    )
             if r.status_code not in (200, 201, 204):
                 out: Dict[str, Any] = {
                     "available": False,

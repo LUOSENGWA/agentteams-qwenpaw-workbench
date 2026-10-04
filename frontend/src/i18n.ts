@@ -1599,7 +1599,9 @@ const DICT: Record<string, { en: string }> = {
   "当前房间项目": { en: "Current room's project(s)" },
   "当前房间无直接关联项目（项目可能从 QQ 等其他通道发起，或尚未在 Controller 注册）": { en: "No projects directly linked to this room (a project may have been started from another channel such as QQ, or is not yet registered in the Controller)" },
   "下载失败，请稍后重试": { en: "Download failed, please try again later" },
-  "Higress 地址（Console 管理面，必填；宿主端口部署时自选，默认 18001）": { en: "Higress URL (Console admin plane, required; host port chosen at deploy time, default 18001)" },
+  // v0.5.0-beta.14.7: Higress 双地址（旧单值键已删——代码引用清零）。
+  "Higress 地址·内网（Console 管理面；宿主端口部署时自选，默认 18001）": { en: "Higress URL · LAN (Console admin plane; host port chosen at deploy time, default 18001)" },
+  "Higress 地址·外网（公网入口，可留空；内网不可达时自动降级）": { en: "Higress URL · WAN (public entry, optional; auto-fails over when LAN is unreachable)" },
   /* v0.5.0-beta.12：L669 此前无 en 条目（en 界面显示中文）——补条目，
      并修「模型网关都依赖它」= Controller/Higress 混淆（模型网关=Higress
      数据面，与 Controller 地址无关）。 */

@@ -225,6 +225,8 @@ export interface WorkbenchConfig {
   admin_username?: string;
   admin_password?: string;
   gateway_admin_url?: string;
+  // v0.5.0-beta.14.7: Higress 双地址（canonical；legacy 单值键=urls[0] 镜像）。
+  gateway_admin_urls?: AddressEntry[];
   console_session?: string;
   // v0.5.0-beta.12: token 文件路径（首选获取方式——连接器每次请求实时读，
   // 永不陈旧、轮换自动适应、不依赖 docker/终端）。非机密（路径非 token 值）。
@@ -418,6 +420,8 @@ export async function verifyAdmin(body: {
   admin_password?: string;
   controller_token?: string;
   gateway_admin_url?: string;
+  // v0.5.0-beta.14.7: Higress 双地址（列表优先；空框已过滤）。
+  gateway_admin_urls?: string[];
 }): Promise<VerifyAdminResult> {
   return (await requestJson("/agentteams-proxy/config/verify-admin", {
     method: "POST",

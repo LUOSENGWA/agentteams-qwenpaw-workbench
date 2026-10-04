@@ -192,6 +192,9 @@ _DEFAULTS: Dict[str, Any] = {
     # Higress Console（管理面）地址。**必填**（v0.5.0-beta.12 设计）：
     # 留空 = 验证时报可操作错误——不从 Controller 地址推导、不盲探端口
     # （宿主端口是安装时自选的，AGENTTEAMS_PORT_CONSOLE 默认 18001）。
+    # v0.5.0-beta.14.7: Higress Console 双地址（canonical；legacy 单值键保留为
+    # urls[0] 镜像，老读者兼容）。条目不限 2 个，按序降级。
+    "gateway_admin_urls": [],
     "gateway_admin_url": "",
     # Console 管理员会话 cookie（/session/login 成功后的 Set-Cookie 值，
     # 服务端自持，redact 脱敏，永不进前端可见明文）。
@@ -251,6 +254,8 @@ def load_config() -> Dict[str, Any]:
             "controller_token",
             "admin_username",
             "admin_password",
+            # v0.5.0-beta.14.7: 双地址 canonical 列表（不加则落盘值重载时被丢）。
+            "gateway_admin_urls",
             "gateway_admin_url",
             "console_session",
             "sglang",
@@ -262,6 +267,16 @@ def load_config() -> Dict[str, Any]:
         # v0.5.0-beta.14.1: 旧配置垃圾值降级 auto（不 400 不崩）。
         if merged.get("address_mode") not in ("auto", "lan", "wan"):
             merged["address_mode"] = "auto"
+        # v0.5.0-beta.14.7: gateway 双地址——legacy 单值 → 列表（空列表时）；
+        # 列表非空时 legacy 键镜像 urls[0]（老读者兼容）。
+        if not merged.get("gateway_admin_urls"):
+            legacy_gw = str(merged.get("gateway_admin_url") or "").strip()
+            if legacy_gw:
+                merged["gateway_admin_urls"] = [legacy_gw]
+        elif merged.get("gateway_admin_urls"):
+            merged["gateway_admin_url"] = (
+                address_url(merged["gateway_admin_urls"][0]) or ""
+            )
         # Legacy schema migration (v0.1.0 profiles) → auto-failover lists.
         if not merged["matrix_homeservers"] and isinstance(raw.get("profiles"), dict):
             homeservers: List[str] = []
@@ -330,6 +345,20 @@ def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
             val = patch[key].strip()
             if val and val != "***":
                 merged[key] = val
+    # v0.5.0-beta.14.7: gateway 双地址（同 matrix/controller 的位置合并语义）；
+    # legacy 单值仍可写（同步为单元素列表）。
+    if "gateway_admin_urls" in patch and isinstance(patch["gateway_admin_urls"], list):
+        merged["gateway_admin_urls"] = merge_address_entries(
+            merged.get("gateway_admin_urls"), patch["gateway_admin_urls"]
+        )
+    if (
+        "gateway_admin_url" in patch
+        and isinstance(patch["gateway_admin_url"], str)
+        and patch["gateway_admin_url"].strip()
+        and patch["gateway_admin_url"].strip() != "***"
+        and not patch.get("gateway_admin_urls")
+    ):
+        merged["gateway_admin_urls"] = [patch["gateway_admin_url"].strip()]
     # v0.5.0-beta.14.1: 地址模式（无效值归 auto；空串不动）。
     if "address_mode" in patch and isinstance(patch["address_mode"], str):
         val = patch["address_mode"].strip()
@@ -386,7 +415,8 @@ def redact(config: Dict[str, Any]) -> Dict[str, Any]:
     if out.get("controller_token"):
         out["controller_token"] = "***"
     # v0.5.0-beta.14.3: 地址条目内凭据（basic password / bearer token）。
-    for key in ("matrix_homeservers", "controller_urls"):
+    # v0.5.0-beta.14.7: gateway 双地址条目同语义（防 GET /config 泄露）。
+    for key in ("matrix_homeservers", "controller_urls", "gateway_admin_urls"):
         _redact_entry_list(out.get(key))
     sg = out.get("sglang")
     if isinstance(sg, dict):

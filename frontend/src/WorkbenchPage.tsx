@@ -556,7 +556,10 @@ function SettingsTab({
   // 留空=保持已存值。
   const [adminUsername, setAdminUsername] = React.useState("");
   const [adminPassword, setAdminPassword] = React.useState("");
+  // v0.5.0-beta.14.7: Higress 双地址——gatewayAdminUrl=内网（变量名保持省
+  // diff），gatewayWan=外网（内网不可达时自动降级）。
   const [gatewayAdminUrl, setGatewayAdminUrl] = React.useState("");
+  const [gatewayWan, setGatewayWan] = React.useState("");
   const [verifying, setVerifying] = React.useState(false);
   const [verifyRes, setVerifyRes] = React.useState<VerifyAdminResult | null>(null);
   // 可选模块：集群负载（L1 专属）
@@ -703,7 +706,11 @@ function SettingsTab({
     setControllerToken(config.controller_token || "");
     // v0.5.0-beta.12: admin 账号 / 网关地址回填；密码只标记「已配置」不回填。
     setAdminUsername(config.admin_username || "");
-    setGatewayAdminUrl(config.gateway_admin_url || "");
+    // v0.5.0-beta.14.7: Higress 双地址（内/外网），legacy 单值回退内网框。
+    setGatewayAdminUrl(
+      entryUrl(config.gateway_admin_urls?.[0]) || config.gateway_admin_url || "",
+    );
+    setGatewayWan(entryUrl(config.gateway_admin_urls?.[1]));
     setAdminPassword("");
     setSglangEnabled(config.sglang?.enabled || false);
     // v0.5.0-beta.12: 双地址读取；旧配置单地址 url 回退（后端亦会迁移）。
@@ -780,6 +787,8 @@ function SettingsTab({
       admin_password?: string;
       controller_token?: string;
       gateway_admin_url?: string;
+      // v0.5.0-beta.14.7: Higress 双地址（列表优先；空框已过滤）。
+      gateway_admin_urls?: string[];
     }) => {
       setVerifying(true);
       setVerifyRes(null);
@@ -1194,11 +1203,19 @@ function SettingsTab({
                     setAdminPassword(e.target.value)
                   }
                 />
+                {/* v0.5.0-beta.14.7: Higress 双地址（内网/外网，按序降级）。 */}
                 <antd.Input
-                  placeholder={tr("Higress 地址（Console 管理面，必填；宿主端口部署时自选，默认 18001）")}
+                  placeholder={tr("Higress 地址·内网（Console 管理面；宿主端口部署时自选，默认 18001）")}
                   value={gatewayAdminUrl}
                   onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                     setGatewayAdminUrl(e.target.value)
+                  }
+                />
+                <antd.Input
+                  placeholder={tr("Higress 地址·外网（公网入口，可留空；内网不可达时自动降级）")}
+                  value={gatewayWan}
+                  onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                    setGatewayWan(e.target.value)
                   }
                 />
                 <div>
@@ -1212,7 +1229,11 @@ function SettingsTab({
                       void runVerify({
                         admin_username: adminUsername.trim(),
                         admin_password: adminPassword.trim() || undefined,
-                        gateway_admin_url: gatewayAdminUrl.trim() || undefined,
+                        // v0.5.0-beta.14.7: 双地址（内/外网；空框过滤）。
+                        gateway_admin_urls: [
+                          gatewayAdminUrl.trim(),
+                          gatewayWan.trim(),
+                        ].filter(Boolean),
                       })
                     }
                   >
