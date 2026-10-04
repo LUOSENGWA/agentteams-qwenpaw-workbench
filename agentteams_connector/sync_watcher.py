@@ -24,6 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+from .dial_gate import GatedAsyncClient
+
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench.sync_watcher")
 
 # 精简 sync filter：只收 timeline 最新事件 + m.muted_room account data
@@ -698,7 +700,7 @@ async def _run() -> None:
                 f"{_urlparse.urlencode(params)}"
             )
             try:
-                async with httpx.AsyncClient(
+                async with GatedAsyncClient(
                     timeout=40.0, verify=False
                 ) as client:
                     # v0.5.0-beta.14.3: 该地址覆盖凭据（同轮 cfg，无额外读）。

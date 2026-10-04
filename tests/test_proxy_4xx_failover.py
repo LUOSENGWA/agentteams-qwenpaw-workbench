@@ -120,7 +120,7 @@ def p4(monkeypatch):
         return c
 
     monkeypatch.setattr(
-        "agentteams_connector.router.httpx.AsyncClient", factory
+        "agentteams_connector.router.GatedAsyncClient", factory
     )
     monkeypatch.setattr(router_mod, "_working_cache", {})
     return clients, spec
@@ -205,3 +205,42 @@ def test_kb_agents_docker_degraded_ctl_fallback(p4):
     assert names == {"w1", "manager"}
     kinds = {a["name"]: a["kind"] for a in body["agents"]}
     assert kinds == {"w1": "worker", "manager": "manager"}
+
+
+def test_proxy_get_409_no_failover(p4):
+    """R4：确定性 409 不换下一地址，原样立即返回。"""
+    clients, spec = p4
+    spec.append((LAN, _Resp(409, b'{"detail":"ambiguous"}')))
+    spec.append((WAN, _Resp(200, b'{"ok":true}')))
+    with _app() as tc:
+        r = tc.get("/controller/healthz")
+    assert r.status_code == 409
+    assert r.content == b'{"detail":"ambiguous"}'
+    urls = [u for c in clients for (_m, u) in c.records]
+    assert any(LAN in u for u in urls)
+    assert all(WAN not in u for u in urls), "409 不应换地址"
+
+
+def test_teams_structure_dial_workers_409_no_failover(p4):
+    """R4：_dial_workers 遇 409 不换地址。"""
+    clients, spec = p4
+    spec.append((f"{LAN}/api/v1/workers", _Resp(409, b"{}", None)))
+    spec.append((f"{WAN}/api/v1/workers", _Resp(200, b"", _WORKERS)))
+    with _app() as tc:
+        tc.get("/teams/structure?force=true")
+    urls = [u for c in clients for (_m, u) in c.records]
+    assert any(f"{LAN}/api/v1/workers" in u for u in urls)
+    assert all(f"{WAN}/api/v1/workers" not in u for u in urls), "409 不应换地址"
+
+
+def test_kb_agents_ctl_json_409_no_failover(p4):
+    """R4：KB fallback 的 _ctl_json 遇 409 不换地址。"""
+    clients, spec = p4
+    spec.append(("containers/json", _Resp(401, b"{}", None)))
+    spec.append((f"{LAN}/api/v1/workers", _Resp(409, b"{}", None)))
+    spec.append((f"{WAN}/api/v1/workers", _Resp(200, b"", _WORKERS)))
+    with _app() as tc:
+        tc.get("/kb/agents")
+    urls = [u for c in clients for (_m, u) in c.records]
+    assert any(f"{LAN}/api/v1/workers" in u for u in urls)
+    assert all(f"{WAN}/api/v1/workers" not in u for u in urls), "409 不应换地址"

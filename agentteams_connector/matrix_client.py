@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from .dial_gate import sync_dial_slot
+
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
 
 TIMEOUT = 20.0
@@ -45,7 +47,7 @@ def _request(
         headers = _config.headers_with_auth(_auth, headers)
     except Exception:  # noqa: BLE001 - 配置不可用回退原生认证
         pass
-    with httpx.Client(timeout=TIMEOUT, verify=False) as client:
+    with sync_dial_slot(), httpx.Client(timeout=TIMEOUT, verify=False) as client:
         resp = client.request(method, url, json=json_body, headers=headers)
     if resp.status_code >= 400:
         raise MatrixError(
@@ -157,7 +159,7 @@ def _existing_direct_room(
     )
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        with httpx.Client(timeout=TIMEOUT, verify=False) as client:
+        with sync_dial_slot(), httpx.Client(timeout=TIMEOUT, verify=False) as client:
             resp = client.get(url, headers=headers)
         if resp.status_code != 200:
             return None
@@ -186,7 +188,7 @@ def direct_rooms(
     headers = {"Authorization": f"Bearer {token}"}
     out: Dict[str, str] = {}
     try:
-        with httpx.Client(timeout=TIMEOUT, verify=False) as client:
+        with sync_dial_slot(), httpx.Client(timeout=TIMEOUT, verify=False) as client:
             resp = client.get(url, headers=headers)
         if resp.status_code != 200:
             return out
@@ -327,7 +329,7 @@ def sync(
     qs = urllib.parse.urlencode(params)
     url = f"{homeserver.rstrip('/')}/_matrix/client/v3/sync?{qs}"
     headers = {"Authorization": f"Bearer {token}"}
-    with httpx.Client(timeout=timeout_ms / 1000.0 + 10.0, verify=False) as client:
+    with sync_dial_slot(), httpx.Client(timeout=timeout_ms / 1000.0 + 10.0, verify=False) as client:
         resp = client.get(url, headers=headers)
     if resp.status_code >= 400:
         raise MatrixError(
