@@ -37,7 +37,8 @@ from . import matrix_client, selfcheck
 # v0.5.0-beta.14.10（UIPERF-T12）：KB 端点 SWR 磁盘缓存。
 from . import kb_cache
 # v0.5.0-beta.14.6（R3/R4/R7）：全局拨号闸门 + failover 判定 + 计数。
-from .dial_gate import GatedAsyncClient, should_failover_status
+# v0.5.0-beta.14.12（UIPERF-T17）：+ 后台扫描共用通道（bg_slot）。
+from .dial_gate import GatedAsyncClient, bg_slot, should_failover_status
 
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
 
@@ -204,6 +205,21 @@ def _pinned_note(cfg: Dict[str, Any]) -> str:
         return ""
     label = "内网" if mode == "lan" else "外网"
     return f"｜地址模式=固定{label}：失败不自动切换——请检查该链路或切回自动"
+
+
+async def _safe_refresh_effective(cfg: Dict[str, Any]) -> None:
+    """v0.5.0-beta.14.12（UIPERF-T17）：后台地址探测任务的错误自保。
+
+    保存请求已先行返回（PUT /config 快速路径），后台探测若抛异常没有
+    请求上下文可兜底——只记日志（避免 "Task exception was never
+    retrieved" 噪音，也不影响用户）。
+    """
+    try:
+        await selfcheck.refresh_effective(cfg)
+    except Exception:  # noqa: BLE001 - 后台任务自保
+        logger.warning(
+            "后台地址探测失败（不影响保存，effective 保持旧值）", exc_info=True
+        )
 
 
 def _pick_address(cfg: Dict[str, Any], kind: str) -> str:
@@ -747,23 +763,33 @@ def build_router() -> APIRouter:
         return {"ok": True, "plugin": "agentteams-qwenpaw-workbench", "version": __version__}
 
     @router.get("/workers-status")
-    async def workers_status() -> Dict[str, Any]:
+    async def workers_status(refresh: int = 0) -> Dict[str, Any]:
         """v0.5.0-beta.14.9（UIPERF-T9）：Worker session 状态聚合（前端一次
         拿全量；数据由 worker_status 后台 30s 扫描维护，过期时本端点触发
-        后台补扫、零等待返回上轮快照）。"""
+        后台补扫、零等待返回上轮快照）。
+
+        v0.5.0-beta.14.12（UIPERF-T17）：?refresh=1 → 无视 TTL 触发后台
+        补扫（前端手动刷新按钮用；仍 fire-and-forget 零等待返回当前快照，
+        响应字段不变）。
+        """
         from . import worker_status  # noqa: PLC0415
 
-        worker_status.ensure_fresh()
+        worker_status.ensure_fresh(force=bool(refresh))
         return worker_status.snapshot()
 
     @router.get("/projects-workflow")
-    async def projects_workflow_snapshot() -> Dict[str, Any]:
+    async def projects_workflow_snapshot(refresh: int = 0) -> Dict[str, Any]:
         """v0.5.0-beta.14.9（UIPERF-T10）：项目+工作流取数聚合（前端一次拿
         {projects, workflows} 原始件；数据由后台 30s 扫描维护，过期时本端点
-        触发后台补扫、零等待返回上轮快照）。"""
+        触发后台补扫、零等待返回上轮快照）。
+
+        v0.5.0-beta.14.12（UIPERF-T17）：?refresh=1 → 无视 TTL 触发后台
+        补扫（前端手动刷新按钮用；仍 fire-and-forget 零等待返回当前快照，
+        响应字段不变）。
+        """
         from . import projects_workflow  # noqa: PLC0415
 
-        projects_workflow.ensure_fresh()
+        projects_workflow.ensure_fresh(force=bool(refresh))
         return projects_workflow.snapshot()
 
     @router.get("/sglang/loads")
@@ -1622,7 +1648,14 @@ def build_router() -> APIRouter:
         if incoming.get("controller_token") == "***":
             incoming.pop("controller_token", None)
         prev = config_mod.load_config()
-        merged = config_mod.update_config(incoming)
+        # v0.5.0-beta.14.12（UIPERF-T17）：保存失败显性化——落盘失败（磁盘
+        # 满/权限）此前裸抛 = 500 无详情；现明确报原因（前端可显示）。
+        try:
+            merged = config_mod.update_config(incoming)
+        except Exception as exc:  # noqa: BLE001 - 落盘失败显性化
+            raise HTTPException(
+                status_code=500, detail=f"配置写入失败：{exc}"
+            )
         # v0.5.0-beta.12: 登录身份变更（同 /login 语义）→ 清聚合缓存 + 重启 sync 游标。
         # 只按 user_id 判定——普通保存配置（未换账号）不触发重启。
         if (prev.get("matrix") or {}).get("user_id") != (
@@ -1632,8 +1665,11 @@ def build_router() -> APIRouter:
             from . import sync_watcher as _sw  # noqa: PLC0415
 
             await _sw.restart("config.matrix")
-        # Addresses changed → re-probe so the effective status is honest.
-        await selfcheck.refresh_effective(merged)
+        # v0.5.0-beta.14.12（UIPERF-T17）：地址探测转后台——保存即时返回
+        # （<1s），effective 状态随后自动刷新（前端下次 GET /config 可见）。
+        # 旧行为=同步 await 全地址探测（本机实测 ~4.8s，WAN 高延迟下保存
+        # 几乎保存不了）；后台任务经 _safe_refresh_effective 错误自保。
+        asyncio.create_task(_safe_refresh_effective(merged))
         return config_mod.redact(merged)
 
     @router.post("/config/test")
@@ -3751,19 +3787,26 @@ def build_router() -> APIRouter:
 
         async def _run() -> None:
             try:
-                # v0.5.0-beta.14.11（UIPERF-T15）：变才刷——轻探针与上次
-                # 签名一致 → 只重置 60s 时钟，零深扫；不一致/探针失败 →
-                # 深扫（安全）。探针经注册表调用时解析（单测假注入）。
-                probe_fn = _KB_PROBE_HOOKS.get("probe") or _kb_probe_signature
-                probe = await probe_fn(agent)
-                if probe is not None and kb_cache.load_probe(key) == probe:
-                    kb_cache.touch(key)
-                    return
-                # agents 计算体无参（单键 agent 无关）；tree/graph 带 agent。
-                payload = (
-                    await compute() if kind == "agents" else await compute(agent)
-                )
-                _store_kb(agent, payload, kind, probe=probe)
+                # v0.5.0-beta.14.12（UIPERF-T17）：后台共用通道——执行期
+                # 持锁（与两路 sweep 共享，同一时刻至多一路后台扫描）；
+                # 前台忙让权/等锁超时 → 本轮放弃（单飞槽位由 finally
+                # 释放，下轮重试）。
+                async with bg_slot() as _bg:
+                    if not _bg:
+                        return
+                    # v0.5.0-beta.14.11（UIPERF-T15）：变才刷——轻探针与上次
+                    # 签名一致 → 只重置 60s 时钟，零深扫；不一致/探针失败 →
+                    # 深扫（安全）。探针经注册表调用时解析（单测假注入）。
+                    probe_fn = _KB_PROBE_HOOKS.get("probe") or _kb_probe_signature
+                    probe = await probe_fn(agent)
+                    if probe is not None and kb_cache.load_probe(key) == probe:
+                        kb_cache.touch(key)
+                        return
+                    # agents 计算体无参（单键 agent 无关）；tree/graph 带 agent。
+                    payload = (
+                        await compute() if kind == "agents" else await compute(agent)
+                    )
+                    _store_kb(agent, payload, kind, probe=probe)
             except Exception as exc:  # noqa: BLE001 - 后台刷新失败保旧
                 logger.debug("kb %s refresh failed for %s: %s", kind, agent, exc)
             finally:
