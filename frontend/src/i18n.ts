@@ -143,7 +143,13 @@ const DICT: Record<string, { en: string }> = {
   // ── v0.5.0-beta.14.1: 地址手动固定档（address_mode）+ 事件流连接态（S1-4）──
   "地址模式（内网/外网切换策略）": { en: "Address mode (LAN/WAN switching)" },
   // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚开关。
-  "控制台特效节能（停用上游旋转光效，降低 GPU 占用；建议开启）": { en: "Calm console effects (stop the upstream rotating glow to lower GPU usage; recommended)" },
+  // v0.5.0-beta.14.12（UIPERF-T18）：特效三档（取代旧 console_calm 开关键）。
+  "控制台特效质量": { en: "Console effects quality" },
+  "轻量（默认：动画保留，模糊半径封顶，省 GPU）": { en: "Light (default: animations kept, blur radius capped, GPU-friendly)" },
+  "关闭特效（最省电：动画与模糊全停）": { en: "Off (most power-saving: all animations and blur stopped)" },
+  "完整特效（上游原样，最费 GPU）": { en: "Full (upstream as-is, heaviest GPU)" },
+  "特效档已保存并即时生效": { en: "Effects tier saved and applied immediately" },
+  "特效档保存失败，请重试": { en: "Failed to save effects tier; please retry" },
   // v0.5.0-beta.14.7（UIPERF-P3）：Higress 地址并入地址配置区——新增分节标题键。
   "Higress Console 地址（模型管理面；内网/外网按序降级）": { en: "Higress Console addresses (model admin plane; LAN/WAN tried in order)" },
   // v0.5.0-beta.14.4（设置页 UI 整理：原文收编 i18n + 分节标题）
@@ -300,6 +306,14 @@ const DICT: Record<string, { en: string }> = {
   "团队群（{n}）": { en: "Group chat ({n})" },
   "下次打开插件时先看到哪里": { en: "What you see first when the plugin opens next time" },
   "暂无工作流事件": { en: "No workflow events" },
+  // v0.5.0-beta.14.12（UIPERF-T16b）：工作流首载状态机（冷启动空快照不渲染
+  // 空表格；3s 自动重试 ≤180s，超时留手动重试提示）。
+  "首次聚合中（自动刷新）…": {
+    en: "First aggregation in progress (auto-refreshing)…",
+  },
+  "暂无可显示的工作流；可点击右上刷新重试": {
+    en: "No workflows to show yet; click Refresh to retry",
+  },
   "循环任务": { en: "Loop tasks" },
   "已发送 {n} 个文件": { en: "{n} file(s) sent" },
   "保存": { en: "Save" },

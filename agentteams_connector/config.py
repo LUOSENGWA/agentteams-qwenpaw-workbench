@@ -198,7 +198,14 @@ _DEFAULTS: Dict[str, Any] = {
     "gateway_admin_url": "",
     # v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚——停用上游 RunningGlow
     # 旋转光环/呼吸层的动画（保留光效视觉）。默认开（省 GPU）；可关。
+    # v0.5.0-beta.14.12（UIPERF-T18）：保留为兼容键（新键 console_effects
+    # 三档取代其功能；load 迁移时以其值推导 console_effects 初值，
+    # 之后不再读写，老配置/老读者兼容）。
     "console_calm": True,
+    # v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档——
+    # "light"（默认：动画保留、模糊半径封顶 6px）/ "off"（动画与模糊全停，
+    # 等价旧 console_calm 开启）/ "full"（上游原样，零覆盖）。
+    "console_effects": "light",
     # Console 管理员会话 cookie（/session/login 成功后的 Set-Cookie 值，
     # 服务端自持，redact 脱敏，永不进前端可见明文）。
     "console_session": "",
@@ -262,6 +269,8 @@ def load_config() -> Dict[str, Any]:
             "gateway_admin_url",
             # v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（bool，落盘值须重载保留）。
             "console_calm",
+            # v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档（落盘值须重载保留）。
+            "console_effects",
             "console_session",
             "sglang",
             "matrix",
@@ -272,6 +281,15 @@ def load_config() -> Dict[str, Any]:
         # v0.5.0-beta.14.1: 旧配置垃圾值降级 auto（不 400 不崩）。
         if merged.get("address_mode") not in ("auto", "lan", "wan"):
             merged["address_mode"] = "auto"
+        # v0.5.0-beta.14.12（UIPERF-T18）：console_effects 迁移——
+        # 落盘缺省（老配置无此键）或非法值 → 按 console_calm 推导：
+        # console_calm is False（用户曾选"完整特效"语义）→ "full"，否则
+        # "light"（不 400 不崩，与 address_mode 降级先例一致）。
+        _raw_fx = raw.get("console_effects")
+        if _raw_fx is None or _raw_fx not in ("light", "off", "full"):
+            merged["console_effects"] = (
+                "full" if raw.get("console_calm") is False else "light"
+            )
         # v0.5.0-beta.14.7: gateway 双地址——legacy 单值 → 列表（空列表时）；
         # 列表非空时 legacy 键镜像 urls[0]（老读者兼容）。
         if not merged.get("gateway_admin_urls"):
@@ -376,6 +394,13 @@ def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
     # v0.5.0-beta.14.8（UIPERF-T8）：console_calm 直存（bool，非法忽略）。
     if isinstance(patch.get("console_calm"), bool):
         merged["console_calm"] = patch["console_calm"]
+    # v0.5.0-beta.14.12（UIPERF-T18）：console_effects 三档直存
+    # （非 {light, off, full} 的字符串/类型一律忽略，不 400）。
+    if (
+        isinstance(patch.get("console_effects"), str)
+        and patch["console_effects"] in ("light", "off", "full")
+    ):
+        merged["console_effects"] = patch["console_effects"]
     # v0.5.0-beta.14.1: 地址模式（无效值归 auto；空串不动）。
     if "address_mode" in patch and isinstance(patch["address_mode"], str):
         val = patch["address_mode"].strip()

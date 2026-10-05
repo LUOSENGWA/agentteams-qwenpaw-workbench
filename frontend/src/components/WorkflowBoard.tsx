@@ -13,6 +13,7 @@ import {
   replanProject,
   fetchProjectHistory,
   fetchProjectHistorySnapshot,
+  fetchWorkflowProjects,
 } from "../api";
 import ArtifactLines from "./ArtifactLines";
 import { useThemeColors, type ThemeColors } from "../theme";
@@ -1950,6 +1951,69 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   const topoRun = topoRunProp ?? "";
   const setTopoRun = (runId: string) => onTopoRunChange?.(runId);
 
+  // ── v0.5.0-beta.14.12（UIPERF-T16b）：首载状态机 ──
+  // 冷启动期 /projects-workflow 快照为空（后端首扫 1-3 分钟），旧行为渲染
+  // 空表格/「暂无工作流事件」占位（装验反馈「UI 好像烂了，要过很久或者
+  // 刷新才正常」）。现在：正源健康（source=controller）且 events 空 →
+  // 「首聚合」态：Spin + 每 3s 自动重试（非 force，30s 缓存过期后实际
+  // 穿透后端，与父级 15s 轮询经在飞去重合并），最长 180s；超时仍空 →
+  // 停自动重试，留手动重试提示（右上刷新按钮保留）。数据到达（events
+  // 非空）或正源降级（source=rooms）→ 立即退出本态恢复原渲染；已有
+  // 内容期间从不触发本态（gate 要求 events 为空，不清空已有内容）。
+  const aggGate = events.length === 0 && source === "controller";
+  const [aggPhase, setAggPhase] = React.useState<
+    "idle" | "aggregating" | "timeout"
+  >("idle");
+  const aggStartRef = React.useRef(0);
+  React.useEffect(() => {
+    if (!aggGate) {
+      if (aggPhase !== "idle") setAggPhase("idle");
+      return;
+    }
+    if (aggPhase === "idle") {
+      aggStartRef.current = Date.now();
+      setAggPhase("aggregating");
+      return;
+    }
+    if (aggPhase !== "aggregating") return; // timeout：停等手动刷新再武装
+    let timer = 0;
+    const tick = async () => {
+      if (Date.now() - aggStartRef.current >= 180000) {
+        setAggPhase("timeout");
+        return;
+      }
+      try {
+        await fetchWorkflowProjects(); // 非 force：30s 缓存 + 在飞去重
+      } catch {
+        /* 取数异常：由父级轮询/降级横幅收敛，不打断重试链 */
+      }
+      timer = window.setTimeout(tick, 3000);
+    };
+    timer = window.setTimeout(tick, 3000);
+    return () => window.clearTimeout(timer);
+  }, [aggGate, aggPhase]);
+
+  // v0.5.0-beta.14.12（UIPERF-T16b）：手动刷新必穿透——force=true 绕过
+  // 30s 缓存 + ?refresh=1 触发连接器后台补扫（T17）；结果仍空 →
+  // （重新）进入首聚合态（180s 预算重置）。随后 onRefresh 让父级同步
+  // 状态（其无参调用命中 force 刚写入的新缓存，events prop 收敛同值）。
+  const [manualRefresh, setManualRefresh] = React.useState(false);
+  const handleRefreshClick = React.useCallback(async () => {
+    setManualRefresh(true);
+    try {
+      const res = await fetchWorkflowProjects(true);
+      if (res.apiOk && res.events.length === 0) {
+        aggStartRef.current = Date.now();
+        setAggPhase("aggregating");
+      }
+    } catch {
+      /* 穿透取数异常：由父级刷新路径（message/横幅）收敛 */
+    } finally {
+      setManualRefresh(false);
+    }
+    void onRefresh?.();
+  }, [onRefresh]);
+
   // 聊天 workflow 卡片跳转：切列表视图 + 同步 topo 选中 +
   // 滚动高亮行。
   React.useEffect(() => {
@@ -2102,13 +2166,37 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             type="text"
             size="small"
             icon={<ReloadIcon />}
-            loading={loading}
-            onClick={() => onRefresh?.()}
+            // v0.5.0-beta.14.12（UIPERF-T16b）：手动刷新必穿透（force +
+            // ?refresh=1）；loading 含本地穿透请求期。
+            loading={loading || manualRefresh}
+            onClick={() => void handleRefreshClick()}
           />
         </antd.Tooltip>
       </div>
 
-      {view === "list" ? (
+      {aggGate && aggPhase === "aggregating" ? (
+        /* v0.5.0-beta.14.12（UIPERF-T16b）：首聚合态——冷启动期不渲染空
+           表格（「烂」的直接观感源），明确加载态 + 自动重试（状态机见上）。 */
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+            padding: "64px 0",
+          }}
+        >
+          <antd.Spin />
+          <span style={{ fontSize: 12.5, color: t.textSecondary }}>
+            {tr("首次聚合中（自动刷新）…")}
+          </span>
+        </div>
+      ) : aggGate && aggPhase === "timeout" ? (
+        /* 180s 仍空：停自动重试，手动重试提示（右上刷新按钮保留）。 */
+        <antd.Empty
+          description={tr("暂无可显示的工作流；可点击右上刷新重试")}
+        />
+      ) : view === "list" ? (
         events.length === 0 ? (
           <antd.Empty description={tr("暂无工作流事件——Agent 执行任务时会在这里聚合")} />
         ) : (

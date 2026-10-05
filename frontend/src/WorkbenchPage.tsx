@@ -562,8 +562,11 @@ const SettingsTab = React.memo(function SettingsTab({
   // diff），gatewayWan=外网（内网不可达时自动降级）。
   const [gatewayAdminUrl, setGatewayAdminUrl] = React.useState("");
   const [gatewayWan, setGatewayWan] = React.useState("");
-  // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（默认开；配置可关）。
-  const [consoleCalm, setConsoleCalm] = React.useState(true);
+  // v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档（默认 light；取代旧
+  // consoleCalm bool——light=动画保留+模糊封顶 / off=全停 / full=原样）。
+  const [fxMode, setFxMode] = React.useState<"light" | "off" | "full">(
+    "light",
+  );
   const [verifying, setVerifying] = React.useState(false);
   const [verifyRes, setVerifyRes] = React.useState<VerifyAdminResult | null>(null);
   // 可选模块：集群负载（L1 专属）
@@ -715,11 +718,13 @@ const SettingsTab = React.memo(function SettingsTab({
       entryUrl(config.gateway_admin_urls?.[0]) || config.gateway_admin_url || "",
     );
     setGatewayWan(entryUrl(config.gateway_admin_urls?.[1]));
-    // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚回填（缺省=开，仅旧配置
-    // 显式 false 关）+ 门控属性同步（模块级默认 "1" 可被配置覆写）。
-    setConsoleCalm(config.console_calm !== false);
-    document.documentElement.dataset.wbCalm =
-      config.console_calm === false ? "0" : "1";
+    // v0.5.0-beta.14.12（UIPERF-T18 补完）：特效三档回填（旧 console_calm
+    // bool 迁移：显式 false=full，其余=light）+ 门控属性同步（模块级已先写
+    // light，此处以配置覆写；旧 data-wb-calm 已退役）。
+    const _fxMode =
+      config.console_effects ?? (config.console_calm === false ? "full" : "light");
+    setFxMode(_fxMode);
+    document.documentElement.dataset.wbFx = _fxMode;
     setAdminPassword("");
     setSglangEnabled(config.sglang?.enabled || false);
     // v0.5.0-beta.12: 双地址读取；旧配置单地址 url 回退（后端亦会迁移）。
@@ -747,8 +752,8 @@ const SettingsTab = React.memo(function SettingsTab({
             controller_token: controllerToken,
             // v0.5.0-beta.14.1: 地址模式（auto/lan/wan）——保存后不重启即生效。
             address_mode: addressMode,
-            // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（bool 直存）。
-            console_calm: consoleCalm,
+            // v0.5.0-beta.14.12（UIPERF-T18 补完）：特效三档直存。
+            console_effects: fxMode,
             sglang: {
               enabled: sglangEnabled,
               urls: buildAddrEntries("sglang"),
@@ -1036,20 +1041,39 @@ const SettingsTab = React.memo(function SettingsTab({
           </div>
         </div>
 
-        {/* v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚——停用上游
-            RunningGlow 旋转光环/呼吸层动画（保留静态光效视觉），降低
-            GPU 占用（Linux 核显高温主因）。默认开；关闭立即恢复动画，
-            保存后持久。 */}
+        {/* v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档（light 默认；取代
+            旧 console_calm 开关）。light=动画保留+模糊半径封顶（观感保留、
+            成本降一个量级）；off=最省电（动画与模糊全停）；full=上游原样。 */}
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            {tr("控制台特效节能（停用上游旋转光效，降低 GPU 占用；建议开启）")}
+            {tr("控制台特效质量")}
           </div>
-          <antd.Switch
-            checked={consoleCalm}
-            onChange={(v: boolean) => {
-              setConsoleCalm(v);
-              document.documentElement.dataset.wbCalm = v ? "1" : "0";
+          <antd.Select
+            value={fxMode}
+            onChange={(v: "light" | "off" | "full") => {
+              setFxMode(v);
+              document.documentElement.dataset.wbFx = v;
+              // 与地址模式同款：变更即落盘（轻量 PUT）。
+              void (async () => {
+                try {
+                  await requestJson("/agentteams-proxy/config", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ config: { console_effects: v } }),
+                  });
+                  message.success(tr("特效档已保存并即时生效"));
+                  onConfigChange();
+                } catch {
+                  message.error(tr("特效档保存失败，请重试"));
+                }
+              })();
             }}
+            style={{ width: "100%" }}
+            options={[
+              { value: "light", label: tr("轻量（默认：动画保留，模糊半径封顶，省 GPU）") },
+              { value: "off", label: tr("关闭特效（最省电：动画与模糊全停）") },
+              { value: "full", label: tr("完整特效（上游原样，最费 GPU）") },
+            ]}
           />
         </div>
 

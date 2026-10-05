@@ -207,17 +207,22 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   height: 100%;
   overflow: auto;
 }
-/* v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（console_calm，默认开）——
-   上游 RunningGlow 旋转光环（437×744 conic 4s ∞，Linux 核显高温主因）与
-   呼吸层停动画，保留静态光效视觉；ambientLight 保险性静止。
-   门控属性在 <html data-wb-calm="1">（配置加载后可覆写为 "0"）。 */
-html[data-wb-calm="1"] [class*="RunningGlow-module"],
-html[data-wb-calm="1"] [class*="RunningGlow-module"] *,
-html[data-wb-calm="1"] [class*="ambientLight"] {
+/* v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档（console_effects，
+   默认 light）取代旧 console_calm bool——旧 data-wb-calm 属性删除
+   （迁移后不再写）：
+   - off   = 旧 calm 行为照搬（RunningGlow 旋转光环/呼吸层停动画，
+             console 玻璃模糊全停）——最省电；
+   - light = 动画全保留（上游观感），模糊半径封顶 6px（降重活、
+             保观感），ambientLight 环境光层降透明；
+   - full  = 零覆盖（上游原样）。
+   门控属性在 <html data-wb-fx="...">（启动先写 light，配置加载后覆写）。 */
+html[data-wb-fx="off"] [class*="RunningGlow-module"],
+html[data-wb-fx="off"] [class*="RunningGlow-module"] *,
+html[data-wb-fx="off"] [class*="ambientLight"] {
   animation: none !important;
 }
-/* v0.5.0-beta.14.11（UIPERF-T14）：calm 下停用 console 玻璃模糊（各
-   backdrop-filter 元素是核显常驻合成负担）。选择器清单 = 对运行中
+/* v0.5.0-beta.14.11（UIPERF-T14）：console 玻璃模糊选择器清单（各
+   backdrop-filter 元素是核显常驻合成负担）。清单 = 对运行中
    qwenpaw 2.2.2b4 console dist CSS 的全量扫描（36 处声明 / 17 个选择器，
    实际 blur 规则全列；已 backdrop-filter:none 的规则——dockableSidebar
    floating/mainContentLayout header/settingsPage pageHeader/popover
@@ -226,27 +231,50 @@ html[data-wb-calm="1"] [class*="ambientLight"] {
    对比深色（x-markdown 调试层 #000 75–85%、floatingCapsule #000 50%
    白字），去模糊后可读性不受损，无需回退色。排除：antd 通知堆叠
    内联 blur(10px)（仅多条通知叠加时出现，非常驻）。 */
-html[data-wb-calm="1"] [class*="stickyGroupHeader"],
-html[data-wb-calm="1"] [class*="dockableSidebar"][class*="floating"],
-html[data-wb-calm="1"] [class*="layout-right-header"],
-html[data-wb-calm="1"] .x-markdown-debug-modal-overlay,
-html[data-wb-calm="1"] .x-markdown-debug-panel,
-html[data-wb-calm="1"] [class*="index-module__header__"],
-html[data-wb-calm="1"] [class*="index-module__pageHeader__"],
-html[data-wb-calm="1"] [class*="floatingCapsule"],
-html[data-wb-calm="1"] [class*="drawerHeader"],
-html[data-wb-calm="1"] [class*="MemoryGraphView-module__legend"],
-html[data-wb-calm="1"] [class*="HubShell-module__sidebar"],
-html[data-wb-calm="1"] [class*="HubShell-module__topbar"] {
+/* off 档：玻璃模糊全停。 */
+html[data-wb-fx="off"] [class*="stickyGroupHeader"],
+html[data-wb-fx="off"] [class*="dockableSidebar"][class*="floating"],
+html[data-wb-fx="off"] [class*="layout-right-header"],
+html[data-wb-fx="off"] .x-markdown-debug-modal-overlay,
+html[data-wb-fx="off"] .x-markdown-debug-panel,
+html[data-wb-fx="off"] [class*="index-module__header__"],
+html[data-wb-fx="off"] [class*="index-module__pageHeader__"],
+html[data-wb-fx="off"] [class*="floatingCapsule"],
+html[data-wb-fx="off"] [class*="drawerHeader"],
+html[data-wb-fx="off"] [class*="MemoryGraphView-module__legend"],
+html[data-wb-fx="off"] [class*="HubShell-module__sidebar"],
+html[data-wb-fx="off"] [class*="HubShell-module__topbar"] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+/* v0.5.0-beta.14.12（UIPERF-T18）：light 档（默认）——同清单 blur 半径
+   封顶 6px（保留玻璃观感，大幅降低大半径 blur 的合成负担）。 */
+html[data-wb-fx="light"] [class*="stickyGroupHeader"],
+html[data-wb-fx="light"] [class*="dockableSidebar"][class*="floating"],
+html[data-wb-fx="light"] [class*="layout-right-header"],
+html[data-wb-fx="light"] .x-markdown-debug-modal-overlay,
+html[data-wb-fx="light"] .x-markdown-debug-panel,
+html[data-wb-fx="light"] [class*="index-module__header__"],
+html[data-wb-fx="light"] [class*="index-module__pageHeader__"],
+html[data-wb-fx="light"] [class*="floatingCapsule"],
+html[data-wb-fx="light"] [class*="drawerHeader"],
+html[data-wb-fx="light"] [class*="MemoryGraphView-module__legend"],
+html[data-wb-fx="light"] [class*="HubShell-module__sidebar"],
+html[data-wb-fx="light"] [class*="HubShell-module__topbar"] {
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+/* light 档：ambientLight 环境光层降透明（减小常驻合成面积，观感保留）。 */
+html[data-wb-fx="light"] [class*="ambientLight"] {
+  opacity: 0.55 !important;
 }
 `;
   document.head.appendChild(style);
 }
-// v0.5.0-beta.14.8（UIPERF-T8）：默认安抚态（配置加载后可覆写为 "0"）。
+// v0.5.0-beta.14.12（UIPERF-T18）：启动默认 light 档（配置加载后覆写为
+// 落盘值；旧 data-wb-calm 属性已删除，迁移后不再写）。
 if (typeof document !== "undefined") {
-  document.documentElement.dataset.wbCalm = "1";
+  document.documentElement.dataset.wbFx = "light";
 }
 
 // 宿主聊天审批卡定制渲染（Phase 4 审批流）：
