@@ -83,6 +83,27 @@ const CLICK_TAP_MAX_MOVE_PX = 5;
 const CLICK_TAP_MAX_MS = 500;
 const CLICK_DEDUP_MS = 200;
 
+// ── 物理收敛（v0.5.0-beta.14.14，UIPERF-T24）──
+// 「首访拖动卡」根因（dist 实证）：库 d3AlphaMin 默认 0 → alpha 阈值永不
+// 触发，引擎 tick 到 cooldownTicks(160) 硬停——2070 节点每 tick ~8ms
+// 物理与 orbit 交互/渲染竞争（60fps 下 ~2.7s 卡顿窗口），引擎停后即
+// 顺滑（与「过一会/切走再切回就顺了」完全吻合）。
+// 修复 = warmup 前置 + 启用 alpha 阈值：首帧后即 1-2 帧内停引擎。
+// 布局形态不变：warmup 与 live 是同一段 tick 序列（同轨迹），只改
+// 「首帧前跑多少 tick / 尾部截断点」；力参数与 dashboard 孪生保持
+// 同值（charge -50 / link 38/0.52 / decay 0.038），仅收敛时机为本
+// 组件 T24 专属。
+// 同步阻塞成本（容器 CPU 实测 d3-force-3d 同参基准）：2070 节点
+// ≈0.95s / 300 节点 ≈0.13s / 40 节点 ≈8ms——「布局计算中」遮罩下的
+// 一次性成本，换交互期零物理竞争。
+const WARMUP_TICKS_CAP = 200;
+// 自适应收敛阈值：大图 alpha 0.01 截断（该处每 tick 漂移已亚像素级，
+// 比 0.001 省 ~0.5s 主线程阻塞）；小图（≤500 节点）保留 0.001 全精度
+// ——179 tick 成本 ≤0.15s，无理由牺牲。
+const LARGE_GRAPH_NODE_THRESHOLD = 500;
+const alphaMinFor = (nodeCount: number): number =>
+  nodeCount > LARGE_GRAPH_NODE_THRESHOLD ? 0.01 : 0.001;
+
 function applyGraphZoomLimits(graph: ForceGraph3DInstance, fitDistance: number): void {
   const controls = graph.controls() as {
     minDistance: number;
@@ -252,6 +273,10 @@ function Graph3D(props: G3DGraph) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const graphRef = React.useRef<any>(null);
   const [ready, setReady] = React.useState(false);
+  // v0.5.0-beta.14.14（UIPERF-T24）：换数据（切 KB agent）= 又一次
+  // warmup 同步阻塞（大图 ~1s）——无遮罩=无解释的 UI 冻结。双 rAF 先
+  // 上屏再阻塞（直接 setState→同步阻塞会让遮罩来不及 paint）。
+  const [recomputing, setRecomputing] = React.useState(false);
   const [webglFail, setWebglFail] = React.useState(false);
   const [initError, setInitError] = React.useState("");
   const [autoRotate, setAutoRotate] = React.useState(false);
@@ -719,6 +744,13 @@ function Graph3D(props: G3DGraph) {
       // 实例类型化（tsc 对照 d.ts 验证链式调用）。
       const graph = new ForceGraph3DImpl(el, {
         controlType: "orbit",
+        // v0.5.0-beta.14.14（UIPERF-T24）：混合 GPU 机器优先独显（真机
+        // 卡顿面——核显跑 2070 节点 4 灯 MeshStandard 场景 fillrate 吃
+        // 紧）。antialias 保持（库默认 true；关掉球体边缘锯齿=可见
+        // 劣化，不偿失）。
+        rendererConfig: {
+          powerPreference: "high-performance",
+        },
       })
         .width(Math.max(1, el.clientWidth || 960))
         .height(height)
@@ -760,10 +792,19 @@ function Graph3D(props: G3DGraph) {
         .linkCurvature((l: any) => (l._bi ? 0.12 : 0))
         .enableNodeDrag(false)
         .enableNavigationControls(true)
-        // 物理参数官方原值（布局尺度 link distance 72！）。
+        // 物理——力参数与 dashboard 知识库 3D 图谱定案值同值（见下方
+        // charge/link 设置）；收敛时机 T24 重构（见 WARMUP_TICKS_CAP /
+        // alphaMinFor 注释）：同轨迹，只改首帧前/尾部截断点。
         .d3AlphaDecay(0.038)
         .d3VelocityDecay(0.3)
-        .warmupTicks(52)
+        // v0.5.0-beta.14.14（UIPERF-T24）：启用 alpha 停引擎阈值
+        // （库默认 0 = 永不触发 → tick 到 cooldownTicks 硬停，首访
+        // 2.7s 卡顿窗口根因）。
+        .d3AlphaMin(alphaMinFor(nodes.length))
+        // warmup 前置：循环内由 d3AlphaMin 阈值自动截断（大图 ~120
+        // tick / 小图 ~179 tick），200 上限仅兜底——首帧即带近收敛
+        // 布局，交互期引擎 1-2 帧内停。
+        .warmupTicks(WARMUP_TICKS_CAP)
         .cooldownTicks(160)
         .graphData({ nodes: [], links: [] })
         // 点击激活逻辑抽成共享函数——库 onNodeClick（静止点击）与
@@ -803,6 +844,19 @@ function Graph3D(props: G3DGraph) {
       const controls: any = graph.controls();
       controls.minDistance = GRAPH_ZOOM_MIN_DISTANCE_FLOOR;
       controls.maxDistance = GRAPH_ZOOM_MAX_DISTANCE_CEILING;
+      // v0.5.0-beta.14.14（UIPERF-T24）：渲染像素比封顶 1.5——库初始化
+      // 固定 min(2, devicePixelRatio)：2x/3x 真机上 1242×480 画布=
+      // 248/508 万物理像素，fillrate 为 1x 的 2.5/6.3 倍（真机 GPU
+      // 卡顿面）。1.5 封顶：2x 机省 44% 像素、3x 机省 78%；节点球/
+      // 标签在 1.5 下仍清晰（dpr2 截图对照自证）。后续 setSize 沿用
+      // 当前 pixelRatio，一次设置即持久（库仅 init 时调过一次）。
+      try {
+        graph.renderer().setPixelRatio(
+          Math.min(window.devicePixelRatio || 1, 1.5),
+        );
+      } catch {
+        /* noop */
+      }
       // v0.5.0-beta.12：相机移动（缩放/平移/旋转 tween/fit tween）→ 拾取球
       // 半径自适应（屏幕命中区恒定）。
       controls.addEventListener("change", updatePickScales);
@@ -1088,9 +1142,17 @@ function Graph3D(props: G3DGraph) {
 
   // 数据变化 → 换图 + 重新 fit（选中态清空、visual 表由
   // nodeThreeObject accessor 重建）。
+  // v0.5.0-beta.14.14（UIPERF-T24）：真实换数据时 warmup 同步阻塞
+  // （大图 ~1s）——双 rAF 先让「布局计算中」遮罩上屏再阻塞。首次
+  // 挂载 ready=false→true 重跑时 graphData 引用未变（init effect 已
+  // 灌入同一对象，库 kapsule 按引用 no-op）→ 跳过遮罩与双 rAF，
+  // 避免 2 帧遮罩闪。
+  const lastGraphDataRef = React.useRef(graphData);
   React.useEffect(() => {
     const g = graphRef.current;
     if (!g || !ready) return;
+    const isDataChange = lastGraphDataRef.current !== graphData;
+    lastGraphDataRef.current = graphData;
     setSelectedId("");
     hoverIdRef.current = "";
     nodeVisualsRef.current.clear();
@@ -1098,27 +1160,44 @@ function Graph3D(props: G3DGraph) {
     // 并恢复帧循环（库无 onEngineStart，重启路径只有此处）。
     pauseBitsRef.current.engineStopped = false;
     markGraphActivity();
-    g.graphData(graphData);
-    // 官方同款：换数据立即 fit（0ms）+ 引擎收敛后平滑 480ms 重 fit。
-    window.requestAnimationFrame(() => {
-      if (graphRef.current === g) {
-        fitGraphModel(g, graphData.nodes, 0, fitTargetRef);
-        updatePickScales();
-      }
-    });
-    let ft = 0;
-    g.onEngineStop(() => {
-      handleGraphEngineStop();
-      window.clearTimeout(ft);
-      ft = window.setTimeout(
-        () => {
-          markGraphActivity(); // 480ms 重 fit——tween 期间须保持帧
-          fitGraphModel(g, graphData.nodes, 480, fitTargetRef);
+    const loadData = () => {
+      // v0.5.0-beta.14.14（UIPERF-T24）：自适应收敛阈值须在 graphData
+      // 之前设（warmup 循环读 state.d3AlphaMin 决定截断点）。
+      g.d3AlphaMin(alphaMinFor(graphData.nodes.length));
+      g.graphData(graphData);
+      // 官方同款：换数据立即 fit（0ms）+ 引擎收敛后平滑 480ms 重 fit。
+      window.requestAnimationFrame(() => {
+        if (graphRef.current === g) {
+          fitGraphModel(g, graphData.nodes, 0, fitTargetRef);
           updatePickScales();
-        },
-        60,
-      );
-    });
+        }
+      });
+      let ft = 0;
+      g.onEngineStop(() => {
+        handleGraphEngineStop();
+        window.clearTimeout(ft);
+        ft = window.setTimeout(
+          () => {
+            markGraphActivity(); // 480ms 重 fit——tween 期间须保持帧
+            fitGraphModel(g, graphData.nodes, 480, fitTargetRef);
+            updatePickScales();
+          },
+          60,
+        );
+      });
+      setRecomputing(false);
+    };
+    if (isDataChange) {
+      setRecomputing(true);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (graphRef.current !== g) return;
+          loadData();
+        });
+      });
+    } else {
+      loadData();
+    }
   }, [
     graphData,
     ready,
@@ -1326,7 +1405,9 @@ function Graph3D(props: G3DGraph) {
           ref={containerRef}
           style={{ position: "absolute", inset: 0 }}
         />
-        {!ready ? (
+        {/* v0.5.0-beta.14.14（UIPERF-T24）：recomputing=换数据 warmup
+         * 同步阻塞期（大图 ~1s），复用同一遮罩（文案相同，零 i18n 新键）。 */}
+        {!ready || recomputing ? (
           <div
             style={{
               position: "absolute",
