@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.12 (2026-10-05 - stability & look-preserving batch)
+
+**Fast save / background yielding / workflow first-load fix / effects tiers (light default) / persistence hardening & diagnostics**
+
+- **Fast save**: PUT /config address probing moved to background - measured 4.8s -> instant; save failures now surface a 500 detail.
+- **Background yielding**: worker-status / projects-workflow / KB refresh share one background channel (single-flight + skip when foreground busy) - periodic sweeps no longer saturate the dial gate (peak had hit cap 24).
+- **Workflow first-load**: empty cold snapshot -> "first aggregation (auto-refreshing)" + 3s auto-retry (up to 180s, then manual hint); manual refresh via ?refresh=1 bypasses TTL.
+- **Effects tiers (new)**: Light (default) keeps ALL animations while capping backdrop-filter radius at 6px (~10x cheaper); Off = most power-saving (previous calm); Full = upstream untouched. Select in settings, autosaved. Verified: light = orbit running + 6px blur / off = all stopped / full = as-is.
+- **Persistence hardening**: config writes are re-read and verified (mismatch -> error); GET /config adds configPath/configSavedAt/configWritable; new /debug/tasks (asyncio task inventory for CPU-loop hunting).
+- Gates: pytest 168/168, tsc 0, build ok, i18n 1430 keys.
+
 ## 0.5.0-beta.14.11 (2026-10-05 - acceptance feedback batch 2)
 
 **Auto-save address mode / KB team-scoped agents / KB change-detection refresh / blur calm / RunningGlow regression fix**
