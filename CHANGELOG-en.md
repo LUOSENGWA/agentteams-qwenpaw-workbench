@@ -5,6 +5,15 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.13 (2026-10-05 - code-debt audit batch)
+
+**Full plugin code-debt audit + cleanup: tracking surface / client dedupe / quantified backlog**
+
+- **Tracking surface**: accidentally tracked harness build artifacts (bundle-1323/1324.js, esbuild-reproducible) untracked + ignored (ZIP ~1MB slimmer); .gitignore policy completed; root ZIP/archive/version-residue scans all clean; zero console.log/FIXME leftovers.
+- **Code**: duplicated ordered-failover logic (router._ctl_json vs worker_status._ctl_get) consolidated into a single `ctl_client.ctl_json` (old names kept as thin wrappers; zero call-site changes).
+- **Record**: state/plugin-audit-20261005.md (findings + dispositions + quantified backlog: router.py 5,892 lines/133 defs, god components, next candidates).
+- Gates: pytest 170/170, tsc 0, i18n 1430.
+
 ## 0.5.0-beta.14.12 (2026-10-05 - usability batch)
 
 **Fast save / background yielding / workflow first-load fix / effects tiers (light default) / persistence hardening + diagnostics**
