@@ -5633,6 +5633,7 @@ PRE:qwen-`})),Dt.createElement("div",null,Dt.createElement("div",{style:Mo},a("\
    \u547C\u5438\u5C42\u505C\u52A8\u753B\uFF0C\u4FDD\u7559\u9759\u6001\u5149\u6548\u89C6\u89C9\uFF1BambientLight \u4FDD\u9669\u6027\u9759\u6B62\u3002
    \u95E8\u63A7\u5C5E\u6027\u5728 <html data-wb-calm="1">\uFF08\u914D\u7F6E\u52A0\u8F7D\u540E\u53EF\u8986\u5199\u4E3A "0"\uFF09\u3002 */
 html[data-wb-calm="1"] [class*="RunningGlow-module"],
+html[data-wb-calm="1"] [class*="RunningGlow-module"] *,
 html[data-wb-calm="1"] [class*="ambientLight"] {
   animation: none !important;
 }

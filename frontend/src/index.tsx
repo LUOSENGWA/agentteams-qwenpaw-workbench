@@ -212,6 +212,7 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
    呼吸层停动画，保留静态光效视觉；ambientLight 保险性静止。
    门控属性在 <html data-wb-calm="1">（配置加载后可覆写为 "0"）。 */
 html[data-wb-calm="1"] [class*="RunningGlow-module"],
+html[data-wb-calm="1"] [class*="RunningGlow-module"] *,
 html[data-wb-calm="1"] [class*="ambientLight"] {
   animation: none !important;
 }
