@@ -515,7 +515,9 @@ function AddrAuthEditor({
   );
 }
 
-function SettingsTab({
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+const SettingsTab = React.memo(function SettingsTab({
   config,
   onConfigChange,
   onLoginSuccess,
@@ -1542,7 +1544,7 @@ function SettingsTab({
       <SkillsTab />
     </div>
   );
-}
+});
 
 /** 12.14：聊天布局客户端诊断（自检页）——分栏/滚动问题的数字现场。 */
 function ChatLayoutDiagCard({
@@ -1613,7 +1615,8 @@ function ChatLayoutDiagCard({
   );
 }
 
-function SelfCheckTab({
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo（同 SettingsTab）。
+const SelfCheckTab = React.memo(function SelfCheckTab({
   config,
   layout,
 }: {
@@ -1684,7 +1687,7 @@ function SelfCheckTab({
       </div>
     </div>
   );
-}
+});
 
 // 启动页偏好（用户反馈）：开关存 localStorage，默认"上次打开的页面"。
 const STARTUP_PREF_KEY = "agentteams-qwenpaw-workbench:startup-pref";
@@ -1893,7 +1896,9 @@ export default function WorkbenchPage() {
   );
   const setTab = React.useCallback(
     (next: string) => {
-      setTabState(next);
+      // v0.5.0-beta.14.10（UIPERF-T13）：切换=非紧急更新——重渲染不阻塞
+      // 点击反馈与输入（React 18 concurrent；memo 后渲染本身也变快）。
+      React.startTransition(() => setTabState(next));
       writeUiState(next, activeRoom?.room_id || null);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3640,7 +3645,10 @@ export default function WorkbenchPage() {
   // 「☰ 房间列表」按钮不再 absolute 浮在聊天区左上角（与 RoomChat 顶栏
   // ← 返回 键重叠）——有房间时经 headerPrefix 进 RoomChat 顶栏最左
   // （Element 汉堡位）；无房间时（占位页）仍浮在左上角（无顶栏可挂）。
-  const chatListToggleBtn = chatListHidden ? (
+  // v0.5.0-beta.14.10（UIPERF-T13）：useMemo 钉住引用（headerPrefix 传给
+  // RoomChat——普通 const 每次渲染新 JSX 元素引用会击穿 memo）。t 是每次
+  // 渲染新对象 → deps 用原语色值。
+  const chatListToggleBtn = React.useMemo(() => (chatListHidden ? (
     <button
       type="button"
       onClick={() => setChatListHiddenPersist(false)}
@@ -3658,7 +3666,9 @@ export default function WorkbenchPage() {
     >
       <MenuIcon size={14} style={{ verticalAlign: "-2px" }} /> {tr("房间列表")}
     </button>
-  ) : null;
+  ) : null),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [chatListHidden, tr, t.border, t.bg, t.text, setChatListHiddenPersist]);
 
   // v0.5.0-beta.13.21（AgentActivityTrack）：房间 → 匹配项目事件
   // （与 roomProjectNames 同匹配源 roomMatchesProject，取首个命中；
@@ -3676,16 +3686,93 @@ export default function WorkbenchPage() {
     return m;
   }, [rooms, workflowEvents]);
 
+  // v0.5.0-beta.14.10（UIPERF-T13）：Tabs items / 聊天双元素的回调 prop 稳定化
+  // ——修复前全是内联箭头（每次渲染新引用 → 面板 memo 全部击穿，memo 白包）。
+  // 数据类 props（rooms/messages/config/refreshTick 等）保持原样不动。
+  const handleHomeOpenRoom = React.useCallback(
+    (roomId: string) => {
+      setTab("chat");
+      void openRoom(roomId);
+    },
+    [setTab, openRoom],
+  );
+  const handleGotoTab = React.useCallback(
+    (tabKey: string) => setTab(tabKey),
+    [setTab],
+  );
+  const handleDmStable = React.useCallback(
+    (mxid: string, roomId?: string) => void handleDm(mxid, roomId),
+    [handleDm],
+  );
+  const openGlobalSearch = React.useCallback(() => setGlobalSearchOpen(true), []);
+  const gotoApprovals = React.useCallback(() => setTab("home"), [setTab]);
+  const gotoInvites = React.useCallback(() => {
+    setActiveRoom(null);
+    setTab("chat");
+  }, [setTab]);
+  const gotoSettings = React.useCallback(() => setTab("settings"), [setTab]);
+  const handleWfRefresh = React.useCallback(
+    () => void refreshWorkflow(),
+    [refreshWorkflow],
+  );
+  const handleWfViewChange = React.useCallback(
+    (v: WfView) => setWfMem({ view: v }),
+    [setWfMem],
+  );
+  const handleWfTopoRunChange = React.useCallback(
+    (runId: string) => setWfMem({ topoRun: runId }),
+    [setWfMem],
+  );
+  const handleWfIntervened = React.useCallback(
+    () => void refreshWorkflow(true),
+    [refreshWorkflow],
+  );
+  const handleRoomsRefresh = React.useCallback(
+    () => void refreshRooms(),
+    [refreshRooms],
+  );
+  const handleInviteSettled = React.useCallback(
+    () => void refreshRooms(true, true),
+    [refreshRooms],
+  );
+  const handleConfigChange = React.useCallback(
+    () => void refreshConfig(),
+    [refreshConfig],
+  );
+  const handleChatBack = React.useCallback(
+    () => {
+      closeChatRoom();
+      if (!chatWide) setChatListHiddenPersist(false);
+    },
+    [closeChatRoom, chatWide, setChatListHiddenPersist],
+  );
+  const handleJumpHandled = React.useCallback(() => setJumpToEventId(null), []);
+  const noopStable = React.useCallback(() => void 0, []);
+  // 内联字面量也是每次渲染新引用（[] / ?? []）→ useMemo 钉住。
+  const liveWorkflows = React.useMemo(
+    () => (workflowSource === "controller" ? workflowEvents : []),
+    [workflowSource, workflowEvents],
+  );
+  const adminWorkers = React.useMemo(() => adminData?.workers ?? [], [adminData]);
+  const selfCheckLayout = React.useMemo(
+    () => ({
+      wide: chatWide,
+      forced: chatForceWide,
+      threshold: CHAT_SPLIT_MIN_CONTAINER_W,
+    }),
+    [chatWide, chatForceWide],
+  );
+
   // P6：聊天双元素提取（宽/窄屏两分支共用一份 JSX——props 长，禁止复制）。
   const chatRoomEl = activeRoom ? (
     <RoomChat
       room={activeRoom}
       messages={messages}
-      liveWorkflows={workflowSource === "controller" ? workflowEvents : []}
+      liveWorkflows={liveWorkflows}
       loading={messagesLoading}
       sending={sending}
       hasMore={hasMore}
-      onLoadOriginal={(id) => loadOriginal(id)}
+      onLoadOriginal={loadOriginal}
       pendingOriginal={pendingOriginalId}
       user_id={config?.matrix?.user_id}
       errorNote={
@@ -3693,35 +3780,29 @@ export default function WorkbenchPage() {
           ? tr("该房间历史暂时无法加载——可能是房间已失效，也可能是权限或服务端问题。可返回聊天页换其他房间。")
           : ""
       }
-      onSend={(text, replyTo, threadRoot) =>
-        void handleSend(text, replyTo, threadRoot)
-      }
-      onSendApproval={(mxid, cmd, replyTo) =>
-        void handleSendApproval(mxid, cmd, replyTo)
-      }
-      onSendFiles={(files) => void handleSendFiles(files)}
-      onSendEdit={(eventId, body) => void handleSendEdit(eventId, body)}
-      onRedact={(eventId) => void handleRedact(eventId)}
-      onLeaveRoom={() => void handleLeaveRoom()}
-      onRenameRoom={(name) => void handleRenameRoom(name)}
+      // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 全部改用上方稳定化
+      // useCallback 引用（内联箭头每次渲染新引用会击穿 RoomChat memo）。
+      onSend={handleSend}
+      onSendApproval={handleSendApproval}
+      onSendFiles={handleSendFiles}
+      onSendEdit={handleSendEdit}
+      onRedact={handleRedact}
+      onLeaveRoom={handleLeaveRoom}
+      onRenameRoom={handleRenameRoom}
       muted={activeRoom ? mutedRooms.includes(activeRoom.room_id) : false}
-      onToggleMute={() => void handleToggleMute()}
-      onReact={(eventId, emoji) => void handleReact(eventId, emoji)}
+      onToggleMute={handleToggleMute}
+      onReact={handleReact}
       onThreadPanelLayout={onThreadPanelLayout}
-      onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
+      onDm={handleDmStable}
       headerPrefix={chatListToggleBtn}
-      onBack={() => {
-        closeChatRoom();
-        // 窄屏=微信式退出聊天（回列表页）；宽屏=关聊天回占位（列表恒显）。
-        if (!chatWide) setChatListHiddenPersist(false);
-      }}
-      onNewTask={() => void 0}
+      onBack={handleChatBack}
+      onNewTask={noopStable}
       chatsTick={chatsTick}
-      onLoadMore={() => void loadMore()}
+      onLoadMore={loadMore}
       loadingMore={loadingMore}
-      onPoll={() => void pollMessages()}
+      onPoll={pollMessages}
       jumpToEventId={jumpToEventId}
-      onJumpHandled={() => setJumpToEventId(null)}
+      onJumpHandled={handleJumpHandled}
       memberRoles={memberRoles}
       memberWorkerNames={memberWorkerNames}
       workerBadge={
@@ -3732,13 +3813,13 @@ export default function WorkbenchPage() {
       }
       workerMxids={workerSessionStates.workerMxids}
       workerSessionByMxid={workerSessionStates.byMxid}
-      workers={adminData?.workers ?? []}
+      workers={adminWorkers}
       activityProject={
         activeRoom ? roomProjectByRoom[activeRoom.room_id] ?? null : null
       }
-      onOpenProject={(runId) => handleOpenProject(runId)}
-      onWorkflowIntervened={() => void refreshWorkflow(true)}
-      onOpenProjectFiles={(room) => void openProjectFiles(room)}
+      onOpenProject={handleOpenProject}
+      onWorkflowIntervened={handleWfIntervened}
+      onOpenProjectFiles={openProjectFiles}
     />
   ) : null;
   // v0.5.0-beta.13.14（装验反馈）：房间卡项目名——与 ProjectFiles 面板
@@ -3786,12 +3867,13 @@ export default function WorkbenchPage() {
       workerMxids={workerSessionStates.workerMxids}
       roomProjectNames={roomProjectNames}
       workerRoleByMxid={workerRoleByMxid}
-      onOpenRoom={(roomId) => void openRoom(roomId)}
-      onRefresh={() => void refreshRooms()}
-      onInviteSettled={() => void refreshRooms(true, true)}
-      onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
-      onGlobalSearch={() => setGlobalSearchOpen(true)}
-      onMarkAllRead={() => void handleMarkAllRead()}
+      // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化（同 RoomChat）。
+      onOpenRoom={openRoom}
+      onRefresh={handleRoomsRefresh}
+      onInviteSettled={handleInviteSettled}
+      onDm={handleDmStable}
+      onGlobalSearch={openGlobalSearch}
+      onMarkAllRead={handleMarkAllRead}
       markingAllRead={markingAllRead}
     />
   );
@@ -4170,16 +4252,14 @@ export default function WorkbenchPage() {
                 workerTree={workerTree}
                 // 首页是 chat tab 之外：点房间必须 setTab("chat")+openRoom
                 //（与通知中心 handleGotoRoom 同模式，跳转修复）。
-                onOpenRoom={(roomId) => {
-                  setTab("chat");
-                  void openRoom(roomId);
-                }}
-                onGotoTab={(tabKey) => setTab(tabKey)}
+                // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
+                onOpenRoom={handleHomeOpenRoom}
+                onGotoTab={handleGotoTab}
                 managers={adminData?.managers}
-                onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
+                onDm={handleDmStable}
                 treeSource={treeSource}
                 inboxUnread={inboxUnread}
-                onGlobalSearch={() => setGlobalSearchOpen(true)}
+                onGlobalSearch={openGlobalSearch}
               />
             ),
           },
@@ -4206,16 +4286,14 @@ export default function WorkbenchPage() {
             children: (
               <NotificationCenter
                 onUnreadCount={setInboxUnread}
-                onGotoApprovals={() => setTab("home")}
-                onGotoRoom={(roomId) => handleGotoRoom(roomId)}
+                // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
+                onGotoApprovals={gotoApprovals}
+                onGotoRoom={handleGotoRoom}
                 refreshTick={notifyTick}
                 // v0.5.0-beta.12：邀请区数据 + 跳团队概览（邀请接受/拒绝
                 // UI 在那里；chat tab 需无激活房间才显示 TeamOverview）。
                 invites={invites}
-                onGotoInvites={() => {
-                  setActiveRoom(null);
-                  setTab("chat");
-                }}
+                onGotoInvites={gotoInvites}
               />
             ),
           },
@@ -4226,15 +4304,16 @@ export default function WorkbenchPage() {
               <WorkflowBoard
                 events={workflowEvents}
                 loading={workflowLoading}
-                onRefresh={() => void refreshWorkflow()}
+                // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
+                onRefresh={handleWfRefresh}
                 highlightRunId={selectedRunId}
                 source={workflowSource}
                 failReason={workflowFailReason}
                 failDetail={workflowFailDetail}
                 view={wfMem.view as WfView}
-                onViewChange={(v) => setWfMem({ view: v })}
+                onViewChange={handleWfViewChange}
                 topoRun={wfMem.topoRun}
-                onTopoRunChange={(runId) => setWfMem({ topoRun: runId })}
+                onTopoRunChange={handleWfTopoRunChange}
               />
             ),
           },
@@ -4258,11 +4337,14 @@ export default function WorkbenchPage() {
                 treeLoading={spawnLoading}
                 adminLoading={adminLoading}
                 adminFailCount={adminFailCount}
-                onRefreshTree={(silent) => void refreshTree(silent)} /* v0.5.0-beta.12 参数透传：`() =>` 会吃掉 30s 自动刷新的 silent */
-                onRefreshAdmin={(silent) => void refreshAdmin(silent)}
-                onDm={(mxid, roomId) => void handleDm(mxid, roomId)}
+                /* v0.5.0-beta.12 参数透传：`() =>` 会吃掉 30s 自动刷新的 silent；
+                   v0.5.0-beta.14.10（UIPERF-T13）：直接透传稳定 useCallback 原引用
+                   （签名含 silent，等价于原内联箭头）。 */
+                onRefreshTree={refreshTree}
+                onRefreshAdmin={refreshAdmin}
+                onDm={handleDmStable}
                 /* v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳配置页 */
-                onOpenSettings={() => setTab("settings")}
+                onOpenSettings={gotoSettings}
                 hasToken={hasCtlToken}
                 active={tab === "team"}
                 treeSource={treeSource}
@@ -4284,11 +4366,8 @@ export default function WorkbenchPage() {
             children: (
               <SelfCheckTab
                 config={config}
-                layout={{
-                  wide: chatWide,
-                  forced: chatForceWide,
-                  threshold: CHAT_SPLIT_MIN_CONTAINER_W,
-                }}
+                // v0.5.0-beta.14.10（UIPERF-T13）：内联对象字面量 → useMemo 稳定引用。
+                layout={selfCheckLayout}
               />
             ),
           },
@@ -4311,7 +4390,8 @@ export default function WorkbenchPage() {
               <SettingsTab
                 onLoginSuccess={onLoginSuccess}
                 config={config}
-                onConfigChange={() => void refreshConfig()}
+                // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
+                onConfigChange={handleConfigChange}
                 chatForceWide={chatForceWide}
                 onChatForceWideChange={setChatForceWidePersist}
                 sseState={sseState}

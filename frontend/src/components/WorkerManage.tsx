@@ -1482,7 +1482,7 @@ export interface WorkerManageProps {
  * （状态/团队/角色/模型/容器 + 唤醒/休眠）+ spawn 子任务树 + 检查点；
  * 底部折叠区 = 团队/用户/Manager 三表（原管理页无损下沉）。
  */
-export default function WorkerManage(props: WorkerManageProps) {
+function WorkerManage(props: WorkerManageProps) {
   const t = useThemeColors();
   const tr = useT();
   const {
@@ -1778,3 +1778,7 @@ export default function WorkerManage(props: WorkerManageProps) {
     </div>
   );
 }
+
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+export default React.memo(WorkerManage);

@@ -1875,7 +1875,7 @@ export interface WorkflowBoardProps {
  *  拓扑的依赖图优化就好」）→ mermaid 退役为拓扑视图内的图样式切换。 */
 export type WfView = "list" | "card" | "board" | "topo";
 
-export default function WorkflowBoard(props: WorkflowBoardProps) {
+function WorkflowBoard(props: WorkflowBoardProps) {
   const {
     events,
     loading,
@@ -2338,3 +2338,7 @@ export default function WorkflowBoard(props: WorkflowBoardProps) {
     </div>
   );
 }
+
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+export default React.memo(WorkflowBoard);

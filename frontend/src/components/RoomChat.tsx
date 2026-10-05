@@ -1579,7 +1579,7 @@ export interface RoomChatProps {
   pendingOriginal?: string | null;
 }
 
-export default function RoomChat(props: RoomChatProps) {
+function RoomChat(props: RoomChatProps) {
   const {
     room,
     messages,
@@ -4163,3 +4163,7 @@ export default function RoomChat(props: RoomChatProps) {
     </div>
   );
 }
+
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+export default React.memo(RoomChat);
