@@ -5,6 +5,15 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.9 (2026-10-05 - fan-out convergence batch)
+
+**Controller request fan-out governance (T9/T10): status lights 25 req/30s -> 1; project workflows 36 reqs -> 1**
+
+- **Worker status aggregation (T9)**: connector-side background 30s single-point sweep (29 workers aggregated cache + single-flight + keep-last), frontend now calls `/workers-status` only (was: per-worker /chats for all workers every 30s, duplicated per window). Measured: browser chats requests **25 -> 0**.
+- **Projects-workflow aggregation (T10)**: connector aggregate `/projects-workflow` (36 projects' workflows + project list; cache/background refresh/gate), assembly logic stays in the frontend with legacy fallback. Measured: browser per-project workflow requests **36 -> 0** (single endpoint, 1 request).
+- **Home artifacts deferral tweak**: 4s + skip when hidden.
+- (14.8 content folded in: console effects calm, 3D graph sleep, incremental scans, elegant tab switching, Higress regrouping - see below.)
+
 ## 0.5.0-beta.14.8 (2026-10-05 - performance deep-fix batch)
 
 **Measurement-driven fixes: console effects calm (GPU) / 3D graph sleep / incremental scans everywhere / elegant tab switching / Higress address regrouping**
