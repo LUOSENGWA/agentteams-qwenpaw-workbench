@@ -401,6 +401,23 @@ _room_mentions_lock = threading.Lock()
 # v0.5.0-beta.12：/room-approvals 全量扫描结果 10s 缓存（同款 bootstrap：
 # 实时增量走 sync_watcher 审批缓冲，扫描捞插件关闭期间的未决审批请求）。
 _room_approvals_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
+
+# v0.5.0-beta.14.7（T6 增量扫描）：逐房扫描态 {rid: {"ts": 已见最新消息 ts,
+# "entries": [...]}}。房间无推进（sync watcher 探针）→ 复用条目零重扫；
+# 600s 兜底全扫一次（watcher 停摆时防结果静默陈旧）。
+_room_scan_state: Dict[str, Any] = {
+    "mentions": {}, "approvals": {}, "workflow": {},
+    "full_at": {"mentions": 0.0, "approvals": 0.0, "workflow": 0.0},
+}
+_ROOM_SCAN_FULL_EVERY = 600.0
+
+
+def _scan_should_full(kind: str) -> bool:
+    return (time.time() - _room_scan_state["full_at"].get(kind, 0.0)) > _ROOM_SCAN_FULL_EVERY
+
+
+def _scan_mark_full(kind: str) -> None:
+    _room_scan_state["full_at"][kind] = time.time()
 _room_approvals_lock = threading.Lock()
 # v0.5.0-beta.13.12（13.11 装验「团队管理 tab 刷不出完整信息，手动刷新不
 # 行，要等 30s 自动刷新」真根因·后端半）：/teams/structure 60s TTL 缓存
@@ -1007,9 +1024,21 @@ def build_router() -> APIRouter:
         )  # 全量扫描：DM/小房间也有产物（长报告经 DM 交付），不再取前 20
 
         sem = asyncio.Semaphore(6)
+        st_all = _room_scan_state["workflow"]
+        full = _scan_should_full("workflow")
+        from . import sync_watcher  # noqa: PLC0415 — T6 增量探针
 
         async def _scan(room_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
             async with sem:
+                rid_w = str(room_entry.get("room_id") or "")
+                sts = st_all.get(rid_w)
+                if (
+                    not full
+                    and sts is not None
+                    and sync_watcher.room_last_ts(rid_w) <= sts.get("ts", 0)
+                ):
+                    # T6：无推进 → 复用上次事件（零 /messages 拨号）。
+                    return sts.get("entries") or []
                 encoded = _urlparse_mod.quote(room_entry["room_id"], safe="/._-~")
                 url = (
                     f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/{encoded}/messages"
@@ -1029,6 +1058,11 @@ def build_router() -> APIRouter:
                     logger.debug("workflow/events: scan failed %s: %s", room_entry["room_id"], exc)
                     return []
 
+            newest = 0
+            for ev in chunk:
+                _ev_ts = int(ev.get("origin_server_ts") or 0)
+                if _ev_ts > newest:
+                    newest = _ev_ts
             events: List[Dict[str, Any]] = []
             for ev in chunk:
                 if ev.get("type") != "m.room.message":
@@ -1058,9 +1092,15 @@ def build_router() -> APIRouter:
                         "ts": int(ev.get("origin_server_ts") or 0),
                     }
                 )
+            st_all[rid_w] = {
+                "ts": max(newest, sync_watcher.room_last_ts(rid_w)),
+                "entries": events,
+            }
             return events
 
         scanned = await asyncio.gather(*(_scan(r) for r in rooms_sorted))
+        if full:
+            _scan_mark_full("workflow")
         flat = [ev for group in scanned for ev in group]
         # Upsert by runId: latest timestamp wins (m.replace revisions).
         by_run: Dict[str, Dict[str, Any]] = {}
@@ -4542,11 +4582,11 @@ def build_router() -> APIRouter:
         token: str,
         scan_results: List[Dict[str, Any]],
     ) -> None:
-        """全量扫描：joined 房间近期消息跑审批状态机（请求入列/命令弹最早
-        一条），只留未决。时间升序执行（dir=b 返回新→旧，先 reverse）。"""
+        """审批状态机扫描（v0.5.0-beta.12 全量加入；v0.5.0-beta.14.7 T6：
+        增量——只重扫 sync 事件流显示有推进的房间，空闲零拨号；600s 兜底
+        全扫一次）。时间升序执行（dir=b 返回新→旧，先 reverse）。"""
         import urllib.parse as _up
         from . import sync_watcher  # noqa: PLC0415
-
         try:
             async with GatedAsyncClient(timeout=20.0, verify=False) as client:
                 headers = {"Authorization": f"Bearer {token}"}
@@ -4564,9 +4604,22 @@ def build_router() -> APIRouter:
                 )
                 # 最多扫 40 房 × 40 条近期消息（并发 8，局域网 <2s）。
                 sem = asyncio.Semaphore(8)
+                st_all = _room_scan_state["approvals"]
+                full = _scan_should_full("approvals")
 
                 async def scan(room_id: str) -> None:
                     async with sem:
+                        st = st_all.get(room_id)
+                        if (
+                            not full
+                            and st is not None
+                            and sync_watcher.room_last_ts(room_id)
+                            <= st.get("ts", 0)
+                        ):
+                            # T6：无推进 → 复用上次条目（零 /messages 拨号）。
+                            scan_results.extend(st.get("entries") or [])
+                            return
+                        pending: List[Dict[str, Any]] = []
                         try:
                             mresp = await client.get(
                                 f"{homeserver.rstrip('/')}"
@@ -4582,8 +4635,11 @@ def build_router() -> APIRouter:
                                 e for e in reversed(list(events))
                                 if isinstance(e, dict)
                             ]
-                            pending: List[Dict[str, Any]] = []
+                            newest = 0
                             for e in evs:
+                                _ev_ts = int(e.get("origin_server_ts") or 0)
+                                if _ev_ts > newest:
+                                    newest = _ev_ts
                                 if e.get("type") != "m.room.message":
                                     continue
                                 content = e.get("content") or {}
@@ -4617,6 +4673,13 @@ def build_router() -> APIRouter:
                                 elif sync_watcher._is_approval_command(body):
                                     if pending:
                                         pending.pop(0)
+                            st_all[room_id] = {
+                                "ts": max(
+                                    newest,
+                                    sync_watcher.room_last_ts(room_id),
+                                ),
+                                "entries": pending,
+                            }
                             scan_results.extend(pending)
                         except Exception:  # noqa: BLE001 — 单房失败不阻断
                             pass
@@ -4624,6 +4687,8 @@ def build_router() -> APIRouter:
                 await asyncio.gather(*(scan(r) for r in room_ids[:40]))
         except Exception:
             raise
+        if full:
+            _scan_mark_full("approvals")
 
     async def _scan_room_mentions(
         homeserver: str,
@@ -4632,8 +4697,11 @@ def build_router() -> APIRouter:
         localpart: str,
         scan_results: List[Dict[str, Any]],
     ) -> None:
-        """v0.5.0-beta.12 ：房间 @我 全量扫描（从端点拆出，10s 缓存复用）。"""
+        """房间 @我 扫描（v0.5.0-beta.12 全量加入；v0.5.0-beta.14.7 T6：
+        增量——只重扫 sync 事件流显示有推进的房间，空闲零拨号；600s 兜底
+        全扫一次）。"""
         import urllib.parse as _up
+        from . import sync_watcher  # noqa: PLC0415 — T6 增量探针
         try:
             async with GatedAsyncClient(
                 timeout=20.0, verify=False
@@ -4651,9 +4719,22 @@ def build_router() -> APIRouter:
                 room_ids: List[str] = (jresp.json() or {}).get("joined_rooms", [])
                 # 最多扫 40 房 × 12 条近期消息（并发 8，局域网 <2s）。
                 sem = asyncio.Semaphore(8)
+                st_all = _room_scan_state["mentions"]
+                full = _scan_should_full("mentions")
 
                 async def scan(room_id: str) -> None:
                     async with sem:
+                        st = st_all.get(room_id)
+                        if (
+                            not full
+                            and st is not None
+                            and sync_watcher.room_last_ts(room_id)
+                            <= st.get("ts", 0)
+                        ):
+                            # T6：无推进 → 复用上次条目（零 /messages 拨号）。
+                            scan_results.extend(st.get("entries") or [])
+                            return
+                        entries: List[Dict[str, Any]] = []
                         try:
                             mresp = await client.get(
                                 f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/"
@@ -4671,7 +4752,11 @@ def build_router() -> APIRouter:
                                         (ev.get("content") or {}).get("name") or ""
                                     )
                                     break
+                            newest = 0
                             for ev in data.get("chunk", []) or []:
+                                _ev_ts = int(ev.get("origin_server_ts") or 0)
+                                if _ev_ts > newest:
+                                    newest = _ev_ts
                                 et = ev.get("type")
                                 content = ev.get("content") or {}
                                 sender = ev.get("sender") or ""
@@ -4692,7 +4777,7 @@ def build_router() -> APIRouter:
                                         mentioned = True
                                 if not mentioned:
                                     continue
-                                scan_results.append(
+                                entries.append(
                                     {
                                         "room_id": room_id,
                                         "room_name": room_name,
@@ -4704,6 +4789,14 @@ def build_router() -> APIRouter:
                                                     or 0),
                                     }
                                 )
+                            st_all[room_id] = {
+                                "ts": max(
+                                    newest,
+                                    sync_watcher.room_last_ts(room_id),
+                                ),
+                                "entries": entries,
+                            }
+                            scan_results.extend(entries)
                         except Exception:  # noqa: BLE001 — 单房失败不阻断
                             pass
 
@@ -4714,6 +4807,10 @@ def build_router() -> APIRouter:
             raise
         except Exception:  # noqa: BLE001
             raise  # 调用方 catch 后仅记日志（实时缓冲不受影响）
+        if full:
+            _scan_mark_full("mentions")
+
+
 
     # ── Worker 工具执行安全（QwenPaw 原生四模式
     # approval_level 对接，L1 only）──────────────────────────────
