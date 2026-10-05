@@ -762,6 +762,26 @@ def build_router() -> APIRouter:
         """L0 probe: backend alive + plugin version."""
         return {"ok": True, "plugin": "agentteams-qwenpaw-workbench", "version": __version__}
 
+    @router.get("/debug/tasks")
+    async def debug_tasks() -> Dict[str, Any]:
+        """v0.5.0-beta.14.12（UIPERF-T19）：asyncio 任务清单（按协程名聚合）
+        ——CPU 吃满/疑似循环类问题的第一诊断（看谁在反复跑）。零副作用。"""
+        import collections as _col  # noqa: PLC0415
+
+        tasks = asyncio.all_tasks()
+        agg = _col.Counter()
+        for t in tasks:
+            try:
+                n = t.get_coro().__qualname__
+            except Exception:  # noqa: BLE001
+                n = "?"
+            agg[n] += 1
+        return {
+            "ok": True,
+            "total": len(tasks),
+            "byCoroutine": dict(agg.most_common(30)),
+        }
+
     @router.get("/workers-status")
     async def workers_status(refresh: int = 0) -> Dict[str, Any]:
         """v0.5.0-beta.14.9（UIPERF-T9）：Worker session 状态聚合（前端一次
@@ -1636,6 +1656,16 @@ def build_router() -> APIRouter:
             # v0.5.0-beta.14.7（UIPERF-P3）：effective 补 gateway（固定档同源）。
             "gateway": _pick_address(cfg, "gateway"),
         }
+        # v0.5.0-beta.14.12（UIPERF-T19）：持久化诊断——路径/挂载可见性/
+        # 上次写盘时间（帮助定位"设置不落盘"的环境问题）。
+        out["configPath"] = str(config_mod._CONFIG_PATH)
+        try:
+            _st = config_mod._CONFIG_PATH.stat()
+            out["configSavedAt"] = int(_st.st_mtime)
+            out["configWritable"] = os.access(str(config_mod._CONFIG_DIR), os.W_OK)
+        except Exception:  # noqa: BLE001
+            out["configSavedAt"] = 0
+            out["configWritable"] = False
         return out
 
     @router.put("/config")
@@ -1650,9 +1680,17 @@ def build_router() -> APIRouter:
         prev = config_mod.load_config()
         # v0.5.0-beta.14.12（UIPERF-T17）：保存失败显性化——落盘失败（磁盘
         # 满/权限）此前裸抛 = 500 无详情；现明确报原因（前端可显示）。
+        # v0.5.0-beta.14.12（UIPERF-T19）：config 写盘校验失败（写+回读
+        # 不一致/磁盘异常）统一为 IOError——分类报「配置保存失败（磁盘写入
+        # 问题）」；其余异常仍走 T17 通用兜底。
         try:
             merged = config_mod.update_config(incoming)
-        except Exception as exc:  # noqa: BLE001 - 落盘失败显性化
+        except IOError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"配置保存失败（磁盘写入问题）：{exc}",
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 - 落盘失败显性化（T17 兜底）
             raise HTTPException(
                 status_code=500, detail=f"配置写入失败：{exc}"
             )
