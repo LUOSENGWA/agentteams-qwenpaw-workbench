@@ -34,6 +34,8 @@ from pydantic import BaseModel, Field
 
 from . import __version__, config as config_mod
 from . import matrix_client, selfcheck
+# v0.5.0-beta.14.10（UIPERF-T12）：KB 端点 SWR 磁盘缓存。
+from . import kb_cache
 # v0.5.0-beta.14.6（R3/R4/R7）：全局拨号闸门 + failover 判定 + 计数。
 from .dial_gate import GatedAsyncClient, should_failover_status
 
@@ -62,6 +64,25 @@ _KB_TREE_TTL_SECONDS = 30.0
 _KB_GRAPH_TTL_SECONDS = 60.0
 _kb_tree_cache: Dict[str, Any] = {}   # agent -> (expiry_monotonic, payload)
 _kb_graph_cache: Dict[str, Any] = {}
+# v0.5.0-beta.14.10（UIPERF-T12）：/kb/agents 单键内存门（agent 无关；
+# 与 tree/graph 同款 SWR 双层门；conftest 的 *_cache 通用清空覆盖本键）。
+_KB_AGENTS_TTL_SECONDS = 60.0
+_kb_agents_cache: Dict[str, Any] = {}  # "agents" -> (expiry_monotonic, payload)
+# v0.5.0-beta.14.10（T12）：SWR 计算体注册表——build_router() 末尾（return
+# router 前）填入 tree/graph/agents 计算体与 _spawn_kb_refresh；端点冷取、
+# 后台刷新、启动预热、单测假注入统一在**调用时**读本表（T9 _ctl_get 同款
+# 唯一注入点；预热路径不依赖 HTTP 自呼）。
+_KB_PREWARM_HOOKS: Dict[str, Any] = {}
+
+
+async def _kb_prewarm_agent(agent: str) -> None:
+    """v0.5.0-beta.14.10（T12）：启动预热——后台静默补上次访问 agent 的
+    tree+graph（注册表未填 = 插件未初始化 → 静默跳过）。"""
+    refresh = _KB_PREWARM_HOOKS.get("refresh")
+    if not refresh:
+        return
+    refresh("tree", agent)
+    refresh("graph", agent)
 
 _PROBE_TIMEOUT = 6.0
 
@@ -3597,10 +3618,101 @@ def build_router() -> APIRouter:
         )
         return {"agents": agents, "count": len(agents)}
 
+    # ── v0.5.0-beta.14.10（T12）：SWR 刷新/存储助手（tree/graph/agents 共用）──
+    # 单飞：同 key 刷新任务在飞不重复起；刷新失败保旧值（磁盘缓存不覆写）。
+    # _KB_SWR_TTL = 磁盘 stale 阈值（超过 → 触发后台刷新；未超旧值也先回，
+    # SWR 语义）；内存缓存 TTL 以现有常量为准对齐（tree 30s / graph 60s /
+    # agents 60s）。
+    _kb_inflight: Dict[str, Any] = {}
+    _KB_SWR_TTL = 60.0
+
+    def _store_kb(agent: str, payload: Dict[str, Any], kind: str) -> None:
+        """SWR 内存+磁盘同点写（端点冷取与后台刷新共用）。
+
+        v0.5.0-beta.14.7 语义保留：#1208 WSF 兜底 payload（标记
+        source:"controller"，见 _kb_tree_wsf_fallback）不写任何缓存——
+        单点收口在此，后台刷新同样不会用降级值污染磁盘缓存。
+        """
+        if kind == "tree" and payload.get("source") == "controller":
+            return
+        if kind == "tree":
+            _kb_tree_cache[agent] = (
+                time.monotonic() + _KB_TREE_TTL_SECONDS, payload
+            )
+            kb_cache.save(f"tree-{agent}", payload)
+        elif kind == "graph":
+            _kb_graph_cache[agent] = (
+                time.monotonic() + _KB_GRAPH_TTL_SECONDS, payload
+            )
+            kb_cache.save(f"graph-{agent}", payload)
+        else:  # agents：agent 无关单键，不记 last-agent（仅 tree/graph
+            # 访问计「上次访问」）
+            _kb_agents_cache["agents"] = (
+                time.monotonic() + _KB_AGENTS_TTL_SECONDS, payload
+            )
+            kb_cache.save("agents", payload)
+            return
+        kb_cache.save("last-agent", {"agent": agent})
+
+    def _spawn_kb_refresh(kind: str, agent: str) -> None:
+        """SWR 后台单飞刷新（fire-and-forget；调用路径零等待）。
+
+        计算体调用时从模块级注册表 _KB_PREWARM_HOOKS 解析（单测可换假
+        计算体；T9 _ctl_get 同款唯一注入点）。
+        """
+        key = f"{kind}-{agent}" if agent else kind
+        t = _kb_inflight.get(key)
+        if t is not None and not t.done():
+            return
+        compute = _KB_PREWARM_HOOKS.get(kind)
+        if compute is None:
+            return  # 注册表未填（build_router 未完成）→ 跳过
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # pragma: no cover - 防御（T9 教训：无循环
+            # 时先查循环再建协程，避免悬挂 coroutine 警告）
+            logger.debug("kb %s refresh: no running event loop, skip", kind)
+            return
+
+        async def _run() -> None:
+            try:
+                # agents 计算体无参（单键 agent 无关）；tree/graph 带 agent。
+                payload = (
+                    await compute() if kind == "agents" else await compute(agent)
+                )
+                _store_kb(agent, payload, kind)
+            except Exception as exc:  # noqa: BLE001 - 后台刷新失败保旧
+                logger.debug("kb %s refresh failed for %s: %s", kind, agent, exc)
+            finally:
+                _kb_inflight.pop(key, None)
+        _kb_inflight[key] = loop.create_task(_run())
+
     @router.get("/kb/agents")
     async def kb_agents() -> Dict[str, Any]:
         """远端 Agent 清单：Docker 容器列表（agentteams-worker-* +
         agentteams-manager）+ Controller workers API 补 role/team。"""
+        # v0.5.0-beta.14.10（UIPERF-T12）：SWR——60s 内存门 + 磁盘门（旧值
+        # 秒回、cached/age 提示），冷取 = 原全量清单（抽为 _kb_agents_compute）。
+        _c = _kb_agents_cache.get("agents")
+        if _c and _c[0] > time.monotonic():
+            return _c[1]
+        _disk = kb_cache.load("agents")
+        if _disk is not None:
+            _ts, _payload = _disk
+            _age = time.time() - _ts
+            if _age > _KB_SWR_TTL:
+                _spawn_kb_refresh("agents", "")
+            return {**_payload, "cached": True, "age": int(_age)}
+        # 冷取经注册表取计算体（生产 = 本闭包；测试可假注入，与预热/
+        # 刷新同一注入点）。
+        _payload = await (_KB_PREWARM_HOOKS.get("agents")
+                          or _kb_agents_compute)()
+        _store_kb("", _payload, "agents")
+        return _payload
+
+    async def _kb_agents_compute() -> Dict[str, Any]:
+        # v0.5.0-beta.14.10（T12）：kb_agents 冷取计算体——原端点体逐字搬移
+        # （原体无缓存写，抽取零 diff；缓存写收口在调用点 _store_kb）。
         token, base = _kb_require_token()
         # L2（403）/ Docker 挂（502）→ KB 形状兜底（worker 走 Controller；
         # manager L1-only 占位）。v0.5.0-beta.14.2（F1-KB-500）：旧代码误调
@@ -3677,6 +3789,27 @@ def build_router() -> APIRouter:
         _c = _kb_tree_cache.get(agent)
         if _c and _c[0] > time.monotonic():
             return _c[1]
+        # v0.5.0-beta.14.10（UIPERF-T12）：SWR 磁盘缓存——有旧数据先秒回
+        # （cached/age 提示），超 TTL 触发后台单飞刷新；无则同步冷取。
+        _disk = kb_cache.load(f"tree-{agent}")
+        if _disk is not None:
+            _ts, _payload = _disk
+            _age = time.time() - _ts
+            if _age > _KB_SWR_TTL:
+                _spawn_kb_refresh("tree", agent)
+            kb_cache.save("last-agent", {"agent": agent})
+            return {**_payload, "cached": True, "age": int(_age)}
+        # 冷取经注册表取计算体（生产 = 本闭包；测试可假注入，与预热/
+        # 刷新同一注入点）。
+        _payload = await (_KB_PREWARM_HOOKS.get("tree")
+                          or _kb_tree_compute)(agent)
+        _store_kb(agent, _payload, "tree")
+        return _payload
+
+    async def _kb_tree_compute(agent: str) -> Dict[str, Any]:
+        # v0.5.0-beta.14.10（T12）：tree 冷取计算体——原端点「缓存门之后」
+        # 逐字搬移（原尾内存缓存写移至调用点 _store_kb，14.7「WSF 兜底早退
+        # 不缓存」语义在 _store_kb 入口单点保留）。
         token, base = _kb_require_token()
         container = (
             "agentteams-manager" if agent == "manager"
@@ -3870,10 +4003,6 @@ def build_router() -> APIRouter:
             "agent": agent, "workspace": ws,
             "files": keep, "dirs": keep_dirs, "count": len(keep),
         }
-        # v0.5.0-beta.14.7：只缓存主成功路径（#1208 WSF 兜底早退不缓存）。
-        _kb_tree_cache[agent] = (
-            time.monotonic() + _KB_TREE_TTL_SECONDS, _payload
-        )
         return _payload
 
     @router.get("/kb/{agent}/file")
@@ -4078,6 +4207,27 @@ def build_router() -> APIRouter:
         _c = _kb_graph_cache.get(agent)
         if _c and _c[0] > time.monotonic():
             return _c[1]
+        # v0.5.0-beta.14.10（UIPERF-T12）：SWR 磁盘缓存（与 tree 同款门；
+        # key=graph-{agent}）。
+        _disk = kb_cache.load(f"graph-{agent}")
+        if _disk is not None:
+            _ts, _payload = _disk
+            _age = time.time() - _ts
+            if _age > _KB_SWR_TTL:
+                _spawn_kb_refresh("graph", agent)
+            kb_cache.save("last-agent", {"agent": agent})
+            return {**_payload, "cached": True, "age": int(_age)}
+        # 冷取经注册表取计算体（生产 = 本闭包；测试可假注入，与预热/
+        # 刷新同一注入点）。
+        _payload = await (_KB_PREWARM_HOOKS.get("graph")
+                          or _kb_graph_compute)(agent)
+        _store_kb(agent, _payload, "graph")
+        return _payload
+
+    async def _kb_graph_compute(agent: str) -> Dict[str, Any]:
+        # v0.5.0-beta.14.10（T12）：graph 冷取计算体——原端点「缓存门之后」
+        # 逐字搬移（原尾内存缓存写移至调用点 _store_kb；内部 kb_tree 调用
+        # 走 tree 端点 = 先命中树缓存/SWR 门）。
         tree = await kb_tree(agent)
         # （对齐 QwenPaw 最新版图谱模型，ReMe
         # graph_snapshot_step 同款结构）：节点 = digest 三虚拟分类根
@@ -4238,10 +4388,6 @@ def build_router() -> APIRouter:
             "edges": edges,
             "file_count": len(md_files),
         }
-        # v0.5.0-beta.14.7：graph 最终 return 前写缓存（函数唯一返回点）。
-        _kb_graph_cache[agent] = (
-            time.monotonic() + _KB_GRAPH_TTL_SECONDS, _payload
-        )
         return _payload
 
     # ── v0.5.0-beta.12 ：团队知识库深化（跨 Worker 搜索 + 聚合图谱）──────────
@@ -5567,5 +5713,14 @@ def build_router() -> APIRouter:
         raise HTTPException(
             status_code=502, detail=f"所有地址请求失败：{last_error}{_pinned_note(cfg)}"
         )
+
+    # v0.5.0-beta.14.10（T12）：SWR 计算体 + 刷新入口注册入模块级表（端点
+    # 调用时解析 / 单测假注入 / 启动预热 _kb_prewarm_agent 均读本表）。
+    _KB_PREWARM_HOOKS.update({
+        "refresh": _spawn_kb_refresh,
+        "tree": _kb_tree_compute,
+        "graph": _kb_graph_compute,
+        "agents": _kb_agents_compute,
+    })
 
     return router

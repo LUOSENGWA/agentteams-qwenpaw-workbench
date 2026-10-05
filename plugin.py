@@ -179,6 +179,44 @@ class AgentTeamsWorkbenchPlugin:
             lambda: projects_workflow.stop(),
         )
 
+        # v0.5.0-beta.14.10（UIPERF-T12）：KB 预热——上次访问的 agent 后台
+        # 静默补 tree+graph（重启后首开知识库同样秒开）。fire-and-forget、
+        # 预热失败无碍；不依赖 HTTP 自呼（直调 router 模块 _kb_prewarm_agent
+        # → 注册表计算体，见 router.py _KB_PREWARM_HOOKS）。
+        from agentteams_connector import kb_cache
+
+        async def _kb_prewarm() -> None:
+            import asyncio as _aio
+
+            try:
+                last = await _aio.to_thread(kb_cache.load, "last-agent")
+                agent = str(((last or (0, {}))[1] or {}).get("agent") or "")
+                if not agent:
+                    return
+                from agentteams_connector.router import _kb_prewarm_agent
+
+                await _kb_prewarm_agent(agent)
+            except Exception:  # noqa: BLE001 - 预热失败无碍
+                pass
+
+        def _kb_prewarm_hook() -> None:
+            # 先查运行循环再建协程（T9 冒烟教训：无循环时裸 create_task
+            # 留下未 await 的悬挂 coroutine 警告）。
+            import asyncio as _aio
+
+            try:
+                _loop = _aio.get_running_loop()
+            except RuntimeError:
+                logger.debug("kb prewarm: no running event loop, skip")
+                return
+            _loop.create_task(_kb_prewarm())
+
+        api.register_startup_hook(
+            "agentteams-kb-prewarm",
+            _kb_prewarm_hook,
+            priority=240,
+        )
+
         api.register_slash_command(
             "selfcheck",
             _selfcheck_handler,
