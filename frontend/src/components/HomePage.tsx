@@ -232,12 +232,15 @@ export default function HomePage(props: HomePageProps) {
   // room_list_update 增量维护）。已删原「每房拉最后 1 条」effect：
   // 其依赖整个 rooms 数组，任何增量合并都会全量重拉（实测 20+ 房 × 数秒级）。
 
-  // 产物计数（v0.5.0-beta.14.7 · UIPERF B）：首屏不拉——home 激活 + 2.5s
-  // 后拉；避免整页装载窗口内触发服务端 75 房深扫（实测冷 55.9s）。
+  // 产物计数（v0.5.0-beta.14.7 · UIPERF B）：首屏不拉——home 激活 + 4s
+  // 后拉（v0.5.0-beta.14.9：2.5s→4s + 隐藏页不拉）；避免整页装载窗口内
+  // 触发服务端 75 房深扫（实测冷 55.9s）。
   React.useEffect(() => {
     if (!homeActive) return undefined;
     let cancelled = false;
     const timer = window.setTimeout(() => {
+      // v0.5.0-beta.14.9（UIPERF-T9）：延迟窗口内切走（页隐藏）不拉。
+      if (document.hidden) return;
       void fetchArtifacts()
         .then((items) => {
           if (!cancelled) setArtifacts(items);
@@ -245,7 +248,7 @@ export default function HomePage(props: HomePageProps) {
         .catch(() => {
           /* 后端不可达时保持空 */
         });
-    }, 2500);
+    }, 4000);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);

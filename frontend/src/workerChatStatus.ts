@@ -17,10 +17,13 @@
 //   done   ：心跳 lastFinishAt > per-sender 最后发言（≤10min 衰减）
 //   —— chat.updated_at **不**用于 done（user 消息也刷新它 → 假绿）。
 //
-// 轮询策略：30s tick；仅 document 可见时发（后台零负载）；并发 4 防突发；
+// 轮询策略：30s tick；仅 document 可见时发（后台零负载）；
 // 失败静默保旧值（不闪灰、不报错——数据面降级回消息级启发式）。
+// v0.5.0-beta.14.9（UIPERF-T9）：旧「逐 worker /chats 扇出（并发 4，~25 路，
+// 尾延迟 6-9s，每个浏览器窗口各打一份）」退役——改单端点 /workers-status
+// （后端连接器侧 30s 后台单点扫描 + 聚合缓存，多窗口共享），每 tick 仅 1 请求。
 
-import { fetchWorkerChats } from "./api";
+import { fetchWorkerChats, fetchWorkersStatus } from "./api";
 import { usePoller } from "./usePoller";
 
 /** Per-Worker session 状态聚合（/chats 全量 session 归约）。 */
@@ -55,24 +58,11 @@ export async function fetchWorkerChatStatusAgg(
 }
 
 const POLL_MS = 30_000;
-const CONCURRENCY = 4;
 
-async function pollAll(
-  names: readonly string[],
-  out: Record<string, WorkerChatStatusAgg>,
-): Promise<void> {
-  let i = 0;
-  const lane = async () => {
-    while (i < names.length) {
-      const name = names[i];
-      i += 1;
-      const agg = await fetchWorkerChatStatusAgg(name);
-      if (agg) out[name] = agg;
-      // 失败：保旧值（不写、不清）——数据面降级不闪灯。
-    }
-  };
-  await Promise.all(Array.from({ length: CONCURRENCY }, () => lane()));
-}
+// v0.5.0-beta.14.9（UIPERF-T9）退役说明：旧 pollAll 逐 worker 扇出
+// （并发 4，~25 路，尾延迟 6-9s，每窗口各打一份）已替换为单端点
+// /workers-status（后端后台单点扫描 + 聚合缓存）。fetchWorkerChatStatusAgg
+// 保留（export 契约不变，供其他调用方）。
 
 /**
  * 轮询 hook：names（worker 名集合，随团队树变化）→ name → 聚合状态。
@@ -102,15 +92,35 @@ export function useWorkerChatStatuses(
     outRef.current = {};
   }, [namesKey]);
 
+  // v0.5.0-beta.14.9（UIPERF-T9）：单端点拉取——每 tick 仅 1 个
+  // /workers-status 请求（后端聚合表已含逐 worker 保旧值，映射为同旧形状
+  // 合并进累积表）；请求失败/形状不符 → 保留旧值（不闪灯、不报错——与旧
+  // 语义一致）。
   const run = React.useCallback(async () => {
     // 仅 document 可见时发（后台零负载；poller 亦内置 !document.hidden）。
-    if (document.visibilityState === "visible") {
-      const ns = namesKey ? namesKey.split("\u0000") : [];
-      await pollAll(ns, outRef.current);
-      if (Object.keys(outRef.current).length) {
-        setStatuses({ ...outRef.current });
+    if (document.visibilityState !== "visible") return;
+    let res: Awaited<ReturnType<typeof fetchWorkersStatus>> | null = null;
+    try {
+      res = await fetchWorkersStatus();
+    } catch {
+      return; // 失败保旧值（不闪灯、不报错——与旧语义一致）。
+    }
+    if (!res || !res.workers || typeof res.workers !== "object") return; // 形状不符保旧值
+    let changed = false;
+    for (const [name, agg] of Object.entries(res.workers)) {
+      if (agg && typeof agg === "object") {
+        outRef.current[name] = {
+          running: Boolean(agg.running),
+          lastUpdated:
+            typeof agg.lastUpdated === "number" &&
+            Number.isFinite(agg.lastUpdated)
+              ? agg.lastUpdated
+              : 0,
+        };
+        changed = true;
       }
     }
+    if (changed) setStatuses({ ...outRef.current });
   }, [namesKey]);
 
   // 首拉 / namesKey 变化后重拉（enabled 门走 ref，刻意不进 deps——

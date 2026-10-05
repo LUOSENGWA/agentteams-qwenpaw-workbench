@@ -1174,6 +1174,45 @@ interface WorkflowProjectsResult {
 }
 
 async function loadWorkflowProjectsRaw(): Promise<WorkflowProjectsResult> {
+  // v0.5.0-beta.14.9（UIPERF-T10）：改走连接器聚合（1 请求）；装配仍在本地。
+  // 聚合端点异常（网络/未部署）→ 回退旧直连路径（loadWorkflowProjectsLegacy）。
+  try {
+    const snap = await fetchProjectsWorkflow();
+    // 上游 /projects 的非 200（401/403/404/5xx）→ 与前版本一致的横幅分类。
+    if (snap.projectsStatus && snap.projectsStatus !== 200) {
+      if (snap.projectsStatus === 401 || snap.projectsStatus === 403)
+        return { events: [], apiOk: false, failReason: "auth" };
+      if (snap.projectsStatus === 404)
+        return { events: [], apiOk: false, failReason: "not_deployed" };
+      return {
+        events: [],
+        apiOk: false,
+        failReason: "error",
+        failDetail: snap.projectsError || undefined,
+      };
+    }
+    const list = snap.projects;
+    if (!Array.isArray(list) || list.length === 0)
+      return { events: [], apiOk: true };
+    const mapped = list.slice(0, 100).map((proj) => {
+      const pid = String(proj.project_id || "");
+      if (!pid) return null;
+      const wf = snap.workflows[pid];
+      if (!wf || typeof wf !== "object") return null; // 单项目失败不拖垮
+      return mapProjectWorkflow(proj, wf);
+    });
+    return {
+      events: mapped.filter((e): e is WorkflowEvent => e !== null),
+      apiOk: true,
+    };
+  } catch {
+    return loadWorkflowProjectsLegacy();
+  }
+}
+
+/** v0.5.0-beta.14.9（UIPERF-T10）：旧逐项目直连实现原样保留，仅作兜底
+ * （聚合端点异常——网络/未部署——时走这里）。 */
+async function loadWorkflowProjectsLegacy(): Promise<WorkflowProjectsResult> {
   try {
     const list = await fetchProjectSummaries();
     if (list.length === 0) return { events: [], apiOk: true };
@@ -1230,6 +1269,22 @@ async function loadWorkflowProjectsRaw(): Promise<WorkflowProjectsResult> {
 /** v0.5.0-beta.14.6（R1）：对外缓存包装（workflow/projects，30s）。 */
 export async function fetchWorkflowProjects(): Promise<WorkflowProjectsResult> {
   return cachedRequest("workflow/projects", 30000, loadWorkflowProjectsRaw);
+}
+
+/** v0.5.0-beta.14.9（UIPERF-T10）：项目+工作流取数聚合（连接器侧缓存/
+ * 后台刷；前端 1 请求取原始件，装配仍在本地）。 */
+export async function fetchProjectsWorkflow(): Promise<{
+  projects: Record<string, unknown>[];
+  workflows: Record<string, Record<string, unknown>>;
+  projectsStatus: number;
+  projectsError: string;
+}> {
+  return (await requestJson("/agentteams-proxy/projects-workflow")) as {
+    projects: Record<string, unknown>[];
+    workflows: Record<string, Record<string, unknown>>;
+    projectsStatus: number;
+    projectsError: string;
+  };
 }
 
 // v0.5.0-beta.13.24（F5·装验定案「DAG 和 mermaid 没必要分两个」）：
@@ -2032,6 +2087,21 @@ export function fetchWorkerChatStatus(
     "GET",
     `/workers/${encodeURIComponent(name)}/chats/${encodeURIComponent(chatId)}/status`,
   ) as Promise<{ status: string }>;
+}
+/** v0.5.0-beta.14.9（UIPERF-T9）：Worker 状态聚合响应——后端 30s 后台单点
+ * 扫描 + 聚合缓存（多窗口共享）；scanAt=最近成功扫描时刻（epoch 秒），
+ * scanning=后台补扫进行中（本次响应为上轮快照）。 */
+export interface WorkersStatusResponse {
+  workers: Record<string, { running: boolean; lastUpdated: number }>;
+  scanAt: number;
+  scanning: boolean;
+}
+/** v0.5.0-beta.14.9（UIPERF-T9）：Worker 状态聚合（单端点；旧逐 worker
+ * /chats 扇出退役）。 */
+export function fetchWorkersStatus(): Promise<WorkersStatusResponse> {
+  return requestJson(
+    "/agentteams-proxy/workers-status",
+  ) as Promise<WorkersStatusResponse>;
 }
 
 // ── Worker loop 模式（上游 #1231 端点族，pinned qwenpaw loops router 契约）──
