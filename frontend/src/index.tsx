@@ -207,8 +207,23 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   height: 100%;
   overflow: auto;
 }
+/* v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（console_calm，默认开）——
+   上游 RunningGlow 旋转光环（437×744 conic 4s ∞，Linux 核显高温主因）与
+   呼吸层停动画，保留静态光效视觉；ambientLight 保险性静止。
+   门控属性在 <html data-wb-calm="1">（配置加载后可覆写为 "0"）。 */
+html[data-wb-calm="1"] [class*="RunningGlow-module"],
+html[data-wb-calm="1"] [class*="RunningGlow-module"] * {
+  animation: none !important;
+}
+html[data-wb-calm="1"] [class*="ambientLight"] {
+  animation: none !important;
+}
 `;
   document.head.appendChild(style);
+}
+// v0.5.0-beta.14.8（UIPERF-T8）：默认安抚态（配置加载后可覆写为 "0"）。
+if (typeof document !== "undefined") {
+  document.documentElement.dataset.wbCalm = "1";
 }
 
 // 宿主聊天审批卡定制渲染（Phase 4 审批流）：

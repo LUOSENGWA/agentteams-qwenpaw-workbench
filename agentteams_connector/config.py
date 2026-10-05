@@ -196,6 +196,9 @@ _DEFAULTS: Dict[str, Any] = {
     # urls[0] 镜像，老读者兼容）。条目不限 2 个，按序降级。
     "gateway_admin_urls": [],
     "gateway_admin_url": "",
+    # v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚——停用上游 RunningGlow
+    # 旋转光环/呼吸层的动画（保留光效视觉）。默认开（省 GPU）；可关。
+    "console_calm": True,
     # Console 管理员会话 cookie（/session/login 成功后的 Set-Cookie 值，
     # 服务端自持，redact 脱敏，永不进前端可见明文）。
     "console_session": "",
@@ -257,6 +260,8 @@ def load_config() -> Dict[str, Any]:
             # v0.5.0-beta.14.7: 双地址 canonical 列表（不加则落盘值重载时被丢）。
             "gateway_admin_urls",
             "gateway_admin_url",
+            # v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（bool，落盘值须重载保留）。
+            "console_calm",
             "console_session",
             "sglang",
             "matrix",
@@ -359,6 +364,9 @@ def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
         and not patch.get("gateway_admin_urls")
     ):
         merged["gateway_admin_urls"] = [patch["gateway_admin_url"].strip()]
+    # v0.5.0-beta.14.8（UIPERF-T8）：console_calm 直存（bool，非法忽略）。
+    if isinstance(patch.get("console_calm"), bool):
+        merged["console_calm"] = patch["console_calm"]
     # v0.5.0-beta.14.1: 地址模式（无效值归 auto；空串不动）。
     if "address_mode" in patch and isinstance(patch["address_mode"], str):
         val = patch["address_mode"].strip()
