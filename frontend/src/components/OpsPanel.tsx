@@ -696,7 +696,9 @@ export default function OpsPanel({
           ) : visibleLogs.length === 0 ? (
             <div style={{ color: "#8b949e" }}>{tr("（无日志行）")}</div>
           ) : (
-            visibleLogs.map((l, i) => (
+            /* v0.5.0-beta.14.10（装验反馈）：最新在最上——展示倒序（不
+               改动状态数组本身；过滤/计数语义不变）。 */
+            [...visibleLogs].reverse().map((l, i) => (
               <div key={i} style={{ color: l.level === "error" ? "#ff7b72" : "#c9d1d9" }}>
                 {l.timestamp ? (
                   <span style={{ color: "#8b949e" }}>
