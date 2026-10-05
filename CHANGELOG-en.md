@@ -5,48 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
-## 0.5.0-beta.14.12 (2026-10-05 - stability & look-preserving batch)
+## 0.5.0-beta.14.12 (2026-10-05 - usability batch)
 
-**Fast save / background yielding / workflow first-load fix / effects tiers (light default) / persistence hardening & diagnostics**
+**Fast save / background yielding / workflow first-load fix / effects tiers (light default) / persistence hardening + diagnostics**
 
-- **Fast save**: PUT /config address probing moved to background - measured 4.8s -> instant; save failures now surface a 500 detail.
-- **Background yielding**: worker-status / projects-workflow / KB refresh share one background channel (single-flight + skip when foreground busy) - periodic sweeps no longer saturate the dial gate (peak had hit cap 24).
-- **Workflow first-load**: empty cold snapshot -> "first aggregation (auto-refreshing)" + 3s auto-retry (up to 180s, then manual hint); manual refresh via ?refresh=1 bypasses TTL.
-- **Effects tiers (new)**: Light (default) keeps ALL animations while capping backdrop-filter radius at 6px (~10x cheaper); Off = most power-saving (previous calm); Full = upstream untouched. Select in settings, autosaved. Verified: light = orbit running + 6px blur / off = all stopped / full = as-is.
-- **Persistence hardening**: config writes are re-read and verified (mismatch -> error); GET /config adds configPath/configSavedAt/configWritable; new /debug/tasks (asyncio task inventory for CPU-loop hunting).
+- **Save speedup**: PUT /config no longer runs address probing synchronously - measured 4829ms -> sub-second; save errors surface with detail; connectivity test keeps real probe time but no longer blocks saves.
+- **Background yielding (bg_slot)**: worker-status / projects-workflow / KB refreshes share one background channel (single-flight + yield when foreground busy + 90s timeout) - periodic sweeps no longer saturate the dial gate (peak=cap=24 observed) and queue foreground ops.
+- **Workflow first-load state machine**: empty cold snapshot -> "first aggregation in progress (auto-refreshing)" + 3s auto-retry (<=180s), manual refresh passes ?refresh=1 to bypass TTL.
+- **Console effects tiers (new, light default)**: light = keep animations (orbit keeps spinning) + cap glass blur radius at 6px (cost scales ~r2, ~10x cheaper) + pin ambient static; off = stop everything (most power-saving); full = upstream as-is. Dropdown in settings, saved on change.
+- **Persistence hardening + diagnostics**: config write is re-read and verified (mismatch raises); GET /config gains configPath/configSavedAt/configWritable; /debug/tasks dumps asyncio task inventory for CPU-loop hunting.
+- Also: fixed a half-migrated CSS attribute path from the parallel workstream (fxMode refill/save completed).
 - Gates: pytest 168/168, tsc 0, build ok, i18n 1430 keys.
-
-## 0.5.0-beta.14.12 (2026-10-05 - stability & polish batch)
-
-**Fast saves / background yielding / workflow first-load fix / effects quality tiers (light default) / persistence hardening**
-
-- **Fast save (T17)**: PUT /config now returns immediately (address probing moved to a background task; measured 4.8s -> instant); save failures surface as explicit 500 detail; /config carries configPath/configSavedAt/configWritable diagnostics.
-- **Background yielding (T17)**: worker-status / projects-workflow / KB refreshes share one background channel (single-flight + skip while foreground busy) - periodic sweeps no longer saturate the dial gate (peak 24 hit before) and queue foreground ops like saves.
-- **Workflow first-load (T18+T16b)**: while the cold snapshot is empty the board shows "First aggregation in progress (auto-refreshing)..." with a 3s auto-retry (180s cap) instead of a broken/empty table; manual refresh bypasses the 30s cache via ?refresh=1.
-- **Effects quality tiers (T18)**: Full / **Light (default: animations kept, backdrop blur radius capped at 6px ~ order-of-magnitude cheaper)** / Off (all stopped); settings dropdown.
-- **Persistence hardening (T19)**: config write is read-back verified (mismatch raises a surfaced error); GET /config adds persistence diagnostics; /debug/tasks (asyncio task inventory) for CPU-loop hunting.
-- Gates: pytest 168/168, tsc/build/i18n clean.
-
-## 0.5.0-beta.14.12 (2026-10-05 - stability & polish batch)
-
-**Save 220x faster / background yielding / workflow first-load fix / effects tiers (light default) / persistence hardening & diagnostics**
-
-- **Save speed**: PUT /config now defers address probing to background - measured **4829ms -> 22ms**; save failures surface with details.
-- **Background yielding**: worker-status / projects-workflow / KB refreshes share one background channel (single-flight + skip when foreground busy) so periodic sweeps no longer saturate the dial gate.
-- **Workflow first load**: empty-snapshot state shows 'first aggregation (auto-refreshing)' with 3s retries (<=180s); manual refresh bypasses the 30s cache via ?refresh=1.
-- **Console effects tiers**: full / **light (default: animations kept, backdrop blur radius capped at 6px ~= 10x cheaper)** / off (most power-saving); auto-saved on change.
-- **Persistence hardening**: config writes are re-read and verified (mismatch = visible error); GET /config exposes configPath/configSavedAt/configWritable; /debug/tasks lists asyncio tasks for CPU-loop hunting.
-- Gates: pytest 168/168, tsc 0, i18n 1430 keys.
-
-## 0.5.0-beta.14.12 (2026-10-05 - acceptance feedback batch 3)
-
-**Save 48x faster / effects tiers (keep look, cut load) / background yield / persistence diagnostics / workflow first-load**
-
-- **Save speed**: PUT /config no longer blocks on full address probing (background) - measured **4829ms -> 100ms**.
-- **Effects tiers (console_effects, default light)**: light = animations KEPT (the orbit still spins) + backdrop blur radius capped at 6px (~an order of magnitude cheaper) + ambient pinned; off = all stopped; full = upstream as-is. Verified live: light shows orbit running + all blur at 6px; off freezes everything.
-- **Background yield**: the three background sweeps share one channel (yield when foreground busy, single-flight, 90s give-up) - fixes periodic fan-out saturating the dial gate (peak had hit cap 24) queueing foreground ops.
-- **Persistence hardening + diagnostics**: config write is read-back verified (mismatch -> explicit error); GET /config adds configPath/configSavedAt/configWritable; new /debug/tasks (asyncio inventory) for CPU-loop hunting.
-- **Workflow first-load**: empty snapshot shows "first aggregation (auto-refreshing)" + 3s retry (<=180s) + manual refresh via ?refresh=1.
 
 ## 0.5.0-beta.14.11 (2026-10-05 - acceptance feedback batch 2)
 
