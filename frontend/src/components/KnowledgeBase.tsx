@@ -1507,21 +1507,47 @@ function RemoteKbView(props: {
     Record<string, boolean>
   >({});
 
+  // v0.5.0-beta.14.11（装验反馈）：Agent 选项按所选「聚合团队」收敛
+  //（团队记忆=sysdev-team 时不再列全量 worker）；"全部团队"=全量。
+  const teamWorkerNames = React.useMemo(() => {
+    const t = kbTeams.find((x) => x.team_name === kbTeam);
+    return t ? (t.workers || []).map((w) => w.worker_name).filter(Boolean) : [];
+  }, [kbTeams, kbTeam]);
+  const scopedAgents = React.useMemo(
+    () =>
+      kbTeam && teamWorkerNames.length
+        ? agents.filter((a) => teamWorkerNames.includes(a.name))
+        : agents,
+    [agents, kbTeam, teamWorkerNames],
+  );
+
   // 默认选第一个 leader（无则首个 worker）。
   // v0.5.0-beta.12：优先恢复记忆的 Worker（仍在列表中才用，失效回退默认）。
+  // v0.5.0-beta.14.11（装验反馈）：校验范围改用 scopedAgents（kbTeam 非空时
+  // 已收敛到所选团队），语义不变——记忆优先，失效回退 leader/首个。
   React.useEffect(() => {
-    if (!agent && agents.length > 0) {
+    if (!agent && scopedAgents.length > 0) {
       const saved = kbStateRef.current.agent;
       const savedOk = saved
-        ? agents.find((a) => a.name === saved)
+        ? scopedAgents.find((a) => a.name === saved)
         : undefined;
       const lead =
         savedOk ||
-        agents.find((a) => a.role === "leader") ||
-        agents[0];
+        scopedAgents.find((a) => a.role === "leader") ||
+        scopedAgents[0];
       setAgent(lead.name);
     }
-  }, [agents, agent]);
+  }, [scopedAgents, agent]);
+
+  // v0.5.0-beta.14.11（装验反馈）：团队切换后当前 Agent 不在范围内 → 收敛到
+  // 该团队 leader（无则首个）；记忆值若在范围内则保留（现有恢复逻辑已保证）。
+  React.useEffect(() => {
+    if (!kbTeam || scopedAgents.length === 0) return;
+    if (scopedAgents.some((a) => a.name === agent)) return;
+    const lead =
+      scopedAgents.find((a) => a.role === "leader") || scopedAgents[0];
+    if (lead && lead.name !== agent) setAgent(lead.name);
+  }, [kbTeam, scopedAgents, agent]);
 
   // v0.5.0-beta.12：记忆持久化（worker/团队/图谱模式三态）。
   React.useEffect(() => {
@@ -1826,7 +1852,8 @@ function RemoteKbView(props: {
             value={agent || undefined}
             placeholder={tr("选择 Agent")}
             onChange={(v: string) => setAgent(v)}
-            options={agentSelectOptions(agents, tr)}
+            // v0.5.0-beta.14.11（装验反馈）：选项按所选团队收敛。
+            options={agentSelectOptions(scopedAgents, tr)}
           />
           {agentInfo ? (
             <>

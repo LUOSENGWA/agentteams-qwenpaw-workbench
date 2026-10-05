@@ -162,10 +162,13 @@ const DICT: Record<string, { en: string }> = {
   "固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
     en: "In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
   },
-  // v0.5.0-beta.14.7（设置页提示：地址模式需保存生效）
-  "修改后请点下方【保存配置】生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
-    en: "Click \"Save Configuration\" below after changes to apply. In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
+  // v0.5.0-beta.14.11（装验反馈）：地址模式变更即自动落盘——替换 14.7 的
+  // 「需点保存生效」提示串，并新增保存成功/失败两条 toast 串。
+  "切换即自动保存并生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
+    en: "Switching auto-saves and takes effect immediately. In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
   },
+  "地址模式已保存并即时生效": { en: "Address mode saved and applied" },
+  "地址模式保存失败，请重试": { en: "Failed to save address mode; please retry" },
   "固定": { en: "Pinned" },
   // ── v0.5.0-beta.14.3: 地址覆盖凭据（公网 Basic 门 / API key 门）──
   "公网凭据（可留空）": { en: "WAN credential (optional)" },

@@ -1006,7 +1006,24 @@ const SettingsTab = React.memo(function SettingsTab({
           </div>
           <antd.Select
             value={addressMode}
-            onChange={(v: "auto" | "lan" | "wan") => setAddressMode(v)}
+            onChange={(v: "auto" | "lan" | "wan") => {
+              setAddressMode(v);
+              // v0.5.0-beta.14.11（装验反馈）：模式变更即落盘——修复「改了但
+              // 未点保存 → 重开跳回自动」。轻量 PUT，仅 address_mode 一键。
+              void (async () => {
+                try {
+                  await requestJson("/agentteams-proxy/config", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ config: { address_mode: v } }),
+                  });
+                  message.success(tr("地址模式已保存并即时生效"));
+                  onConfigChange();
+                } catch {
+                  message.error(tr("地址模式保存失败，请重试"));
+                }
+              })();
+            }}
             style={{ width: "100%" }}
             options={[
               { value: "auto", label: tr("自动（默认：最快可达自动切换）") },
@@ -1015,7 +1032,7 @@ const SettingsTab = React.memo(function SettingsTab({
             ]}
           />
           <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
-            {tr("修改后请点下方【保存配置】生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。")}
+            {tr("切换即自动保存并生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。")}
           </div>
         </div>
 
