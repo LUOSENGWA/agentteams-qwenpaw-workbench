@@ -5,6 +5,18 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.13（2026-10-05 · 屎山治理批）
+
+**插件全量屎山体检 + 治理：追踪面收敛 / 客户端去重 / 量化留档**
+
+- **追踪面**：误追踪的 harness 构建产物（bundle-1323/1324.js，可 esbuild 复现）已 untrack + 忽略（ZIP −~1MB）；
+  `.gitignore` 策略补齐；根 ZIP/归档/版本残留扫描全净；零 `console.log/FIXME` 残留。
+- **代码面**：`router._ctl_json` 与 `worker_status._ctl_get` 双份「ordered failover」合并为
+  **`ctl_client.ctl_json` 单实现**（两处旧名保留薄包装——注入点/调用点零改动）。
+- **留档**：`state/plugin-audit-20261005.md`（发现清单 + 处置 + 存量债量化：router.py 5,892 行/133 def、
+  god 组件、下轮候选）。
+- 门：pytest **170/170** · tsc 0 · i18n 1430。
+
 ## 0.5.0-beta.14.12（2026-10-05 · 可用性批）
 
 **保存提速 / 后台让权 / 工作流首载修复 / 特效三档（轻量默认）/ 持久化硬化与诊断**
