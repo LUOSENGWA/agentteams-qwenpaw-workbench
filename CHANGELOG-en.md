@@ -16,6 +16,38 @@ Version history of agentteams-qwenpaw-workbench.
 - **Persistence hardening**: config writes are re-read and verified (mismatch -> error); GET /config adds configPath/configSavedAt/configWritable; new /debug/tasks (asyncio task inventory for CPU-loop hunting).
 - Gates: pytest 168/168, tsc 0, build ok, i18n 1430 keys.
 
+## 0.5.0-beta.14.12 (2026-10-05 - stability & polish batch)
+
+**Fast saves / background yielding / workflow first-load fix / effects quality tiers (light default) / persistence hardening**
+
+- **Fast save (T17)**: PUT /config now returns immediately (address probing moved to a background task; measured 4.8s -> instant); save failures surface as explicit 500 detail; /config carries configPath/configSavedAt/configWritable diagnostics.
+- **Background yielding (T17)**: worker-status / projects-workflow / KB refreshes share one background channel (single-flight + skip while foreground busy) - periodic sweeps no longer saturate the dial gate (peak 24 hit before) and queue foreground ops like saves.
+- **Workflow first-load (T18+T16b)**: while the cold snapshot is empty the board shows "First aggregation in progress (auto-refreshing)..." with a 3s auto-retry (180s cap) instead of a broken/empty table; manual refresh bypasses the 30s cache via ?refresh=1.
+- **Effects quality tiers (T18)**: Full / **Light (default: animations kept, backdrop blur radius capped at 6px ~ order-of-magnitude cheaper)** / Off (all stopped); settings dropdown.
+- **Persistence hardening (T19)**: config write is read-back verified (mismatch raises a surfaced error); GET /config adds persistence diagnostics; /debug/tasks (asyncio task inventory) for CPU-loop hunting.
+- Gates: pytest 168/168, tsc/build/i18n clean.
+
+## 0.5.0-beta.14.12 (2026-10-05 - stability & polish batch)
+
+**Save 220x faster / background yielding / workflow first-load fix / effects tiers (light default) / persistence hardening & diagnostics**
+
+- **Save speed**: PUT /config now defers address probing to background - measured **4829ms -> 22ms**; save failures surface with details.
+- **Background yielding**: worker-status / projects-workflow / KB refreshes share one background channel (single-flight + skip when foreground busy) so periodic sweeps no longer saturate the dial gate.
+- **Workflow first load**: empty-snapshot state shows 'first aggregation (auto-refreshing)' with 3s retries (<=180s); manual refresh bypasses the 30s cache via ?refresh=1.
+- **Console effects tiers**: full / **light (default: animations kept, backdrop blur radius capped at 6px ~= 10x cheaper)** / off (most power-saving); auto-saved on change.
+- **Persistence hardening**: config writes are re-read and verified (mismatch = visible error); GET /config exposes configPath/configSavedAt/configWritable; /debug/tasks lists asyncio tasks for CPU-loop hunting.
+- Gates: pytest 168/168, tsc 0, i18n 1430 keys.
+
+## 0.5.0-beta.14.12 (2026-10-05 - acceptance feedback batch 3)
+
+**Save 48x faster / effects tiers (keep look, cut load) / background yield / persistence diagnostics / workflow first-load**
+
+- **Save speed**: PUT /config no longer blocks on full address probing (background) - measured **4829ms -> 100ms**.
+- **Effects tiers (console_effects, default light)**: light = animations KEPT (the orbit still spins) + backdrop blur radius capped at 6px (~an order of magnitude cheaper) + ambient pinned; off = all stopped; full = upstream as-is. Verified live: light shows orbit running + all blur at 6px; off freezes everything.
+- **Background yield**: the three background sweeps share one channel (yield when foreground busy, single-flight, 90s give-up) - fixes periodic fan-out saturating the dial gate (peak had hit cap 24) queueing foreground ops.
+- **Persistence hardening + diagnostics**: config write is read-back verified (mismatch -> explicit error); GET /config adds configPath/configSavedAt/configWritable; new /debug/tasks (asyncio inventory) for CPU-loop hunting.
+- **Workflow first-load**: empty snapshot shows "first aggregation (auto-refreshing)" + 3s retry (<=180s) + manual refresh via ?refresh=1.
+
 ## 0.5.0-beta.14.11 (2026-10-05 - acceptance feedback batch 2)
 
 **Auto-save address mode / KB team-scoped agents / KB change-detection refresh / blur calm / RunningGlow regression fix**
