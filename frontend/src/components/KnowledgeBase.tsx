@@ -2627,7 +2627,7 @@ function LocalKbView(props: { refreshTick: number }) {
  * Controller Docker API 只读直读 Worker 容器工作区，需 Controller token）。
  * 降级视图 = 本机宿主 Agent（无 token / L2 用户）。
  */
-export default function KnowledgeBase(props: { refreshTick?: number }) {
+function KnowledgeBase(props: { refreshTick?: number }) {
   const { refreshTick = 0 } = props;
   const tr = useT();
   const [mode, setMode] = React.useState<"remote" | "local">("local");
@@ -3004,3 +3004,7 @@ function RefreshIcon() {
   if (!I) return null;
   return <I />;
 }
+
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+export default React.memo(KnowledgeBase);

@@ -51,7 +51,7 @@ function formatWhen(ts: number): string {
  * 30s 轮询 + 未读/全部筛选 + 全部已读 + 单条删除 + 待审批入口。
  * refreshTick（SSE 事件驱动，用户反馈 IM 式触发）：变化时立即刷新，
  * 无需等轮询周期。 */
-export default function NotificationCenter(props: {
+function NotificationCenter(props: {
   onUnreadCount?: (count: number) => void;
   onGotoApprovals?: () => void;
   /** 带 room_id 的通知 → 跳房间；
@@ -737,3 +737,7 @@ export default function NotificationCenter(props: {
     </div>
   );
 }
+
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+export default React.memo(NotificationCenter);

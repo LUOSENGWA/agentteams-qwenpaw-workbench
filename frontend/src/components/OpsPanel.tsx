@@ -54,7 +54,7 @@ const COMPONENTS = [
   { value: "minio", label: "MinIO（控制器内）" },
 ];
 
-export default function OpsPanel({
+function OpsPanel({
   refreshTick = 0,
 }: {
   refreshTick?: number;
@@ -714,3 +714,7 @@ export default function OpsPanel({
     </div>
   );
 }
+
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+export default React.memo(OpsPanel);

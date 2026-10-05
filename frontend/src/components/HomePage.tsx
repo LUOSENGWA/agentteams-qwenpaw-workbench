@@ -107,7 +107,7 @@ function workerStats(tree: WorkerTreeTeam[]): {
 }
 
 /** 首页 = 全局总览（用户反馈：进门先看卡片，团队/群聊才是第二个 tab）。 */
-export default function HomePage(props: HomePageProps) {
+function HomePage(props: HomePageProps) {
   const {
     rooms,
     config,
@@ -1058,3 +1058,7 @@ export default function HomePage(props: HomePageProps) {
     </div>
   );
 }
+
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+export default React.memo(HomePage);

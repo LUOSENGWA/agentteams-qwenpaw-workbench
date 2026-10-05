@@ -218,7 +218,7 @@ export interface ArtifactsProps {
   onBack?: () => void;
 }
 
-export default function Artifacts(props: ArtifactsProps) {
+function Artifacts(props: ArtifactsProps) {
   const t = useThemeColors();
   const tr = useT();
   const { rooms = [], onBack } = props;
@@ -1043,3 +1043,7 @@ export default function Artifacts(props: ArtifactsProps) {
     </div>
   );
 }
+
+// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
+export default React.memo(Artifacts);
