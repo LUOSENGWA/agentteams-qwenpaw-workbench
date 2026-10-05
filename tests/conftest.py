@@ -10,6 +10,18 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _isolate_kb_disk_cache(tmp_path, monkeypatch):
+    """v0.5.0-beta.14.10（T12）：KB SWR 磁盘缓存目录重定向到本测 tmp——
+    冷取/后台刷新路径会写盘，不隔离则真实 secret 目录被测试假数据
+    （如 agent=big 的假 tree）污染，且可能被真实前端当 stale 值秒回。
+    个别测试可再 monkeypatch _CACHE_DIR 覆盖（LIFO 后设生效）。"""
+    from agentteams_connector import kb_cache
+
+    monkeypatch.setattr(kb_cache, "_CACHE_DIR", tmp_path / "kb-cache")
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _clear_module_caches():
     try:
         from agentteams_connector import router as router_mod
