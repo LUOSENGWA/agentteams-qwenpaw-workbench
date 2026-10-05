@@ -518,6 +518,35 @@ export async function testAddresses(
   })) as ConfigTestResponse;
 }
 
+/** v0.5.0-beta.14.14（UIPERF-T23）：完整配置导出（含明文凭据）——用户自己的
+ * 备份用途（换环境/装包后 10 秒还原）。返回落盘同形的完整配置对象，原文
+ * JSON 化即可复制保存；与 GET /config 的脱敏输出（展示面）区分。
+ * 注意：返回含凭据——只可保存到可信位置。 */
+export async function exportFullConfig(): Promise<Record<string, unknown>> {
+  return (await requestJson(
+    "/agentteams-proxy/config/export",
+  )) as Record<string, unknown>;
+}
+
+/** v0.5.0-beta.14.14（UIPERF-T23）：完整配置导入（覆盖式恢复）。
+ * 后端流程：schema 校验（失败 400 可读错误）→ 自动备份当前配置 → 原子覆盖。
+ * restart: "none"=已 live 生效（Matrix 身份变更已自动重启同步）/
+ * "page"=建议刷新 workbench 页面确认生效。 */
+export interface ConfigImportResult {
+  ok: boolean;
+  restart: "none" | "page";
+  config: WorkbenchConfig;
+}
+export async function importFullConfig(
+  config: unknown,
+): Promise<ConfigImportResult> {
+  return (await requestJson("/agentteams-proxy/config/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  })) as ConfigImportResult;
+}
+
 // ── Team data (page shells render these; adapters fill them) ───────────
 
 export interface TeamMember {

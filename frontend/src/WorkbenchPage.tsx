@@ -32,6 +32,8 @@ import {
   testAddresses,
   uploadMedia,
   entryUrl,
+  exportFullConfig,
+  importFullConfig,
   setCachedMessages,
   setCachedRooms,
   verifyAdmin,
@@ -91,6 +93,8 @@ const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
 const DownloadIcon = pick("DownloadOutlined");
 const UploadIcon = pick("UploadOutlined");
 const FileZipOutlined = pick("FileZipOutlined");
+// v0.5.0-beta.14.14（UIPERF-T23）：备份与恢复——导出弹窗复制按钮。
+const CopyIcon = pick("CopyOutlined");
 
 function StatusIcon({ ok }: { ok: boolean }) {
   return (
@@ -623,6 +627,13 @@ const SettingsTab = React.memo(function SettingsTab({
   const [connTest, setConnTest] = React.useState<ConfigTestResponse | null>(null);
   const [testing, setTesting] = React.useState(false);
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
+  // v0.5.0-beta.14.14（UIPERF-T23）：备份与恢复（含凭据完整配置）——导出=弹窗
+  // 全文本（复制按钮）；导入=粘贴+确认（后端校验+先自动备份当前态+覆盖）。
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [exportText, setExportText] = React.useState("");
+  const [importOpen, setImportOpen] = React.useState(false);
+  const [importText, setImportText] = React.useState("");
+  const [importing, setImporting] = React.useState(false);
 
   const downloadJson = React.useCallback(
     (filename: string, data: unknown) => {
@@ -673,6 +684,77 @@ const SettingsTab = React.memo(function SettingsTab({
     },
     [onConfigChange],
   );
+
+  // v0.5.0-beta.14.14（UIPERF-T23）：完整配置导出（含凭据）→ 弹窗全文本。
+  const exportFull = React.useCallback(async () => {
+    try {
+      const cfg = await exportFullConfig();
+      setExportText(JSON.stringify(cfg, null, 2));
+      setExportOpen(true);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : tr("导出失败"));
+    }
+  }, [tr]);
+
+  // 复制兜底：navigator.clipboard 不可用（宿主 webview 差异）→ execCommand。
+  const copyText = React.useCallback(
+    (text: string) => {
+      const done = () => message.success(tr("已复制到剪贴板"));
+      const fail = () => message.error(tr("复制失败——请手动全选复制"));
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(done, fail);
+        return;
+      }
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        if (document.execCommand("copy")) done();
+        else fail();
+      } catch {
+        fail();
+      } finally {
+        document.body.removeChild(ta);
+      }
+    },
+    [tr],
+  );
+
+  // v0.5.0-beta.14.14（UIPERF-T23）：完整配置导入——粘贴 JSON → 后端校验 +
+  // 自动备份当前配置 + 覆盖（失败 400 可读错误经 message 透出）。
+  const doImportFull = React.useCallback(async () => {
+    const text = importText.trim();
+    if (!text) {
+      message.warning(tr("请先粘贴配置 JSON"));
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      message.error(tr("导入失败（JSON 格式错误？）"));
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await importFullConfig(parsed);
+      message.success(
+        res.restart === "none"
+          ? tr("配置已导入（同步已自动重启）")
+          : tr("配置已导入（建议刷新页面确认生效）"),
+      );
+      setImportOpen(false);
+      setImportText("");
+      onConfigChange();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : tr("导入失败"));
+    } finally {
+      setImporting(false);
+    }
+  }, [importText, tr, onConfigChange]);
 
   const exportDiagnostic = React.useCallback(async () => {
     try {
@@ -1545,6 +1627,82 @@ const SettingsTab = React.memo(function SettingsTab({
           {tr("导出配置含全部地址但不含密码/token（显示为 ***）——导入不会覆盖现有凭据。诊断包 = 脱敏配置 + 自检结果，用于排查问题时交给管理员。")}
         </div>
       </div>
+
+      {/* v0.5.0-beta.14.14（UIPERF-T23）：「备份与恢复」卡片——含凭据完整
+          配置（用户自己还原用；与上方脱敏导出/导入=交管理员排查 区分）。 */}
+      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
+        <div style={{ fontWeight: 700 }}>{tr("备份与恢复")}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <antd.Button
+            icon={<DownloadIcon />}
+            onClick={() => void exportFull()}
+          >
+            {tr("导出配置（含凭据）")}
+          </antd.Button>
+          <antd.Button
+            icon={<UploadIcon />}
+            onClick={() => setImportOpen(true)}
+          >
+            {tr("导入配置（含凭据）")}
+          </antd.Button>
+        </div>
+        <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
+          {tr("导出含密码/token 的完整配置 JSON，存到安全位置；换环境/重装插件后粘贴回来导入即快速还原，不必重填。导入前会先自动备份当前配置。注意：此导出含明文凭据，勿粘贴到公开渠道。")}
+        </div>
+      </div>
+
+      <antd.Modal
+        title={tr("导出配置（含凭据）")}
+        open={exportOpen}
+        onCancel={() => setExportOpen(false)}
+        width={720}
+        footer={[
+          <antd.Button
+            key="copy"
+            type="primary"
+            icon={<CopyIcon />}
+            onClick={() => copyText(exportText)}
+          >
+            {tr("复制")}
+          </antd.Button>,
+          <antd.Button key="close" onClick={() => setExportOpen(false)}>
+            {tr("关闭")}
+          </antd.Button>,
+        ]}
+      >
+        <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 8 }}>
+          {tr("以下为含明文凭据的完整配置——请只保存到可信位置。")}
+        </div>
+        <antd.Input.TextArea
+          value={exportText}
+          readOnly
+          autoSize={{ minRows: 10, maxRows: 24 }}
+          style={{ fontFamily: "monospace", fontSize: 12 }}
+        />
+      </antd.Modal>
+      <antd.Modal
+        title={tr("导入配置（含凭据）")}
+        open={importOpen}
+        onCancel={() => setImportOpen(false)}
+        onOk={() => void doImportFull()}
+        confirmLoading={importing}
+        okText={tr("导入")}
+        cancelText={tr("取消")}
+        width={720}
+      >
+        <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 8 }}>
+          {tr("粘贴「导出配置（含凭据）」得到的 JSON 全文。导入会校验并先自动备份当前配置，再覆盖。")}
+        </div>
+        <antd.Input.TextArea
+          value={importText}
+          onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
+            setImportText(e.target.value)
+          }
+          autoSize={{ minRows: 10, maxRows: 24 }}
+          placeholder={`{\n  "matrix_homeservers": []\n}`}
+          style={{ fontFamily: "monospace", fontSize: 12 }}
+        />
+      </antd.Modal>
 
       {/* v0.5.0-beta.14.4：「Matrix 登录」卡片。 */}
       <div style={{ ...cardBox, display: "grid", gap: 12 }}>
