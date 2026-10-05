@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.11 (2026-10-05 - acceptance feedback batch 2)
+
+**Auto-save address mode / KB team-scoped agents / KB change-detection refresh / blur calm / RunningGlow regression fix**
+
+- **Address mode auto-save**: switching Auto/Fixed-LAN/Fixed-WAN persists immediately (previously save-button-only - users saw it revert to auto). Verified: UI switch -> config = wan without pressing save.
+- **KB conditional revalidation**: the 60s background refresh now runs a cheap probe first (directory entry metadata only, no file reads) - unchanged signature = clock reset only (zero deep scan); changed = deep scan. Steady state = refresh-only-when-changed.
+- **KB team scoping**: with an aggregate team selected, the agent dropdown lists only that team's workers; out-of-scope current agent collapses to the team's leader/first.
+- **Console blur calm (extended)**: 17 backdrop-filter glass layers (sticky group header, floating sidebar, headers...) disabled in calm mode - measured console blur elements 17+ -> 0.
+- **Regression fix**: T14's calm-block rewrite dropped the ' *' descendant selector (the orbit animation lives on a classless span); restored, animations back to 0 per page.
+- Gates: pytest 155/155, tsc 0, i18n 1423 keys.
+
 ## 0.5.0-beta.14.10 (2026-10-05 - acceptance feedback batch)
 
 **Five fixes: credential memory / KB instant open (SWR) / newest-first logs / tab jank (memo+transition) / calm confirmed**
