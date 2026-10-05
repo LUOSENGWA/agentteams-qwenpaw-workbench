@@ -2034,6 +2034,28 @@ const DICT: Record<string, { en: string }> = {
   "团队数据未加载或团队不存在——请刷新后重试": {
     en: "Team data not loaded or team missing — refresh and retry",
   },
+  // ── v0.5.0-beta.14.14（UIPERF-T23）：备份与恢复（含凭据完整配置导出/导入）──
+  "备份与恢复": { en: "Backup & Restore" },
+  "导出配置（含凭据）": { en: "Export config (with credentials)" },
+  "导入配置（含凭据）": { en: "Import config (with credentials)" },
+  "导出含密码/token 的完整配置 JSON，存到安全位置；换环境/重装插件后粘贴回来导入即快速还原，不必重填。导入前会先自动备份当前配置。注意：此导出含明文凭据，勿粘贴到公开渠道。": {
+    en: "Exports the full config JSON including passwords/tokens — keep it in secure storage. After switching environments or reinstalling the plugin, paste it back and import to restore in seconds, no re-entry. Import auto-backs up the current config first. Note: this export contains plaintext credentials — never paste it into public channels.",
+  },
+  "以下为含明文凭据的完整配置——请只保存到可信位置。": {
+    en: "The config below contains plaintext credentials — keep it in trusted storage only.",
+  },
+  "已复制到剪贴板": { en: "Copied to clipboard" },
+  "请先粘贴配置 JSON": { en: "Paste the config JSON first" },
+  "配置已导入（同步已自动重启）": {
+    en: "Config imported (sync restarted automatically)",
+  },
+  "配置已导入（建议刷新页面确认生效）": {
+    en: "Config imported (refresh the page to confirm it took effect)",
+  },
+  "粘贴「导出配置（含凭据）」得到的 JSON 全文。导入会校验并先自动备份当前配置，再覆盖。": {
+    en: "Paste the full JSON from 'Export config (with credentials)'. Import validates it and auto-backs up the current config before overwriting.",
+  },
+  "导入": { en: "Import" },
 };
 
 export type Lang = "zh" | "en";
