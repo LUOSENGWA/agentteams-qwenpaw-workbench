@@ -317,19 +317,28 @@ def save_config(config: Dict[str, Any]) -> None:
     with _lock:
         _ensure_dir()
         tmp = _CONFIG_PATH.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(config, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tmp.replace(_CONFIG_PATH)
-        # v0.5.0-beta.14.7（安全）：文件含明文凭据（Basic 密码等）——收紧到
-        # 600（best-effort，失败不影响功能）。
         try:
-            import os as _os
+            tmp.write_text(
+                json.dumps(config, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            tmp.replace(_CONFIG_PATH)
+            # v0.5.0-beta.14.7（安全）：文件含明文凭据（Basic 密码等）——收紧到
+            # 600（best-effort，失败不影响功能）。
+            try:
+                import os as _os
 
-            _os.chmod(_CONFIG_PATH, 0o600)
-        except Exception:  # noqa: BLE001
-            pass
+                _os.chmod(_CONFIG_PATH, 0o600)
+            except Exception:  # noqa: BLE001
+                pass
+            # v0.5.0-beta.14.12（UIPERF-T19）：写后回读验证（小文件，成本可忽略）
+            # ——「保存成功」必须以磁盘实况为准，读回不一致直接抛错（由端点
+            # 转 500 详情）。
+            _back = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+            if _back != config:
+                raise IOError("配置写盘校验不一致（磁盘内容与内存态不同）")
+        except Exception as exc:  # noqa: BLE001
+            raise IOError(f"配置写入失败：{exc}") from exc
 
 
 def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
