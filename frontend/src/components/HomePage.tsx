@@ -232,20 +232,25 @@ export default function HomePage(props: HomePageProps) {
   // room_list_update 增量维护）。已删原「每房拉最后 1 条」effect：
   // 其依赖整个 rooms 数组，任何增量合并都会全量重拉（实测 20+ 房 × 数秒级）。
 
-  // 产物计数。
+  // 产物计数（v0.5.0-beta.14.7 · UIPERF B）：首屏不拉——home 激活 + 2.5s
+  // 后拉；避免整页装载窗口内触发服务端 75 房深扫（实测冷 55.9s）。
   React.useEffect(() => {
+    if (!homeActive) return undefined;
     let cancelled = false;
-    void fetchArtifacts()
-      .then((items) => {
-        if (!cancelled) setArtifacts(items);
-      })
-      .catch(() => {
-        /* 后端不可达时保持空 */
-      });
+    const timer = window.setTimeout(() => {
+      void fetchArtifacts()
+        .then((items) => {
+          if (!cancelled) setArtifacts(items);
+        })
+        .catch(() => {
+          /* 后端不可达时保持空 */
+        });
+    }, 2500);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, []);
+  }, [homeActive]);
 
   // 集群负载（可选模块，仅配置开启时拉取；1s 静默轮询——用户反馈：实时刷新，
   // /v1/loads 读 SHM 快照专为高频轮询设计，1 QPS 零负担）。
