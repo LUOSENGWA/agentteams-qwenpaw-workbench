@@ -33,6 +33,7 @@ from urllib.parse import quote as _quote
 from . import config as config_mod
 from . import router as router_mod
 from . import worker_status
+from .dial_gate import bg_slot
 
 logger = logging.getLogger(
     "qwenpaw.plugins.agentteams_qwenpaw_workbench.projects_workflow"
@@ -70,11 +71,12 @@ def snapshot() -> Dict[str, Any]:
     }
 
 
-def ensure_fresh() -> None:
-    """过期且未扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
+def ensure_fresh(force: bool = False) -> None:
+    """过期（或 force=True 无视 TTL，v0.5.0-beta.14.12 手动刷新用）且未
+    扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
     if _snap["scanning"]:
         return
-    if time.time() - _snap["scan_at"] < _TTL:
+    if not force and time.time() - _snap["scan_at"] < _TTL:
         return
     try:
         loop = asyncio.get_running_loop()
@@ -88,6 +90,27 @@ def ensure_fresh() -> None:
 
 
 async def _sweep() -> None:
+    """单飞门 + 后台共用通道（v0.5.0-beta.14.12，UIPERF-T17）。
+
+    前台忙（拨号 inflight > 12）让权、等共用锁超 90s 放弃本轮（下一
+    tick 重试）；扫描体持共用锁——同一时刻至多一路后台扫描在跑
+    （与 worker_status / KB 刷新共享，防齐发打满闸门抢前台）。
+    """
+    if _snap["scanning"]:
+        return  # 单飞：扫描中不重入
+    _snap["scanning"] = True
+    try:
+        async with bg_slot() as _bg:
+            if not _bg:
+                return  # 让权/放弃 → 本轮不动（保旧值，下一 tick 重试）
+            await _do_sweep()
+    except Exception:  # noqa: BLE001 - 后台循环不得因单轮异常死掉
+        logger.warning("projects_workflow sweep failed", exc_info=True)
+    finally:
+        _snap["scanning"] = False
+
+
+async def _do_sweep() -> None:
     """一轮：/projects（去重）→ 逐项目 /workflow?includeTasks=true → 快照。
 
     - 名单/枚举失败：projects_status 记录、projects 保旧、scan_at 照常
@@ -96,115 +119,107 @@ async def _sweep() -> None:
       跳过）。
     - teamQ 规则与前端真源一致：proj.team_id 非空 → "&team=<urlencode>"。
     """
-    if _snap["scanning"]:
-        return  # 单飞：扫描中不重入
-    _snap["scanning"] = True
+    cfg = config_mod.load_config()
     try:
-        cfg = config_mod.load_config()
-        try:
-            token, _src = router_mod._resolve_controller_token(cfg)
-        except Exception:  # noqa: BLE001 - token 内容非法 → 本轮不拨
-            logger.info(
-                "projects_workflow sweep: controller token 解析失败，跳过本轮"
-            )
-            return
-        if not token:
-            return  # 无 token → 不拨号（保旧表）
-
-        base_urls = router_mod._ordered_addresses(cfg, "controller")
-        if not base_urls:
-            return  # 未配置 controller → 保旧表
-        base = base_urls[0].rstrip("/")
-
-        # 1) 项目名单（信封 {projects:[...], total} 兼容裸数组；失败记
-        #    状态 + 保旧 + scan_at 照常推进）。
-        st, data, text = await worker_status._ctl_get(
-            f"{base}/api/v1/projects", token
+        token, _src = router_mod._resolve_controller_token(cfg)
+    except Exception:  # noqa: BLE001 - token 内容非法 → 本轮不拨
+        logger.info(
+            "projects_workflow sweep: controller token 解析失败，跳过本轮"
         )
-        if st != 200:
-            logger.info(
-                "projects_workflow sweep: 项目名单获取失败（%s），保留旧值", st
-            )
-            _snap["projects_status"] = int(st)
-            _snap["projects_error"] = str(text or "")
-            _snap["scan_at"] = time.time()
-            return
+        return
+    if not token:
+        return  # 无 token → 不拨号（保旧表）
 
-        raw_list = (
-            data
-            if isinstance(data, list)
-            else (data.get("projects", []) if isinstance(data, dict) else [])
+    base_urls = router_mod._ordered_addresses(cfg, "controller")
+    if not base_urls:
+        return  # 未配置 controller → 保旧表
+    base = base_urls[0].rstrip("/")
+
+    # 1) 项目名单（信封 {projects:[...], total} 兼容裸数组；失败记
+    #    状态 + 保旧 + scan_at 照常推进）。
+    st, data, text = await worker_status._ctl_get(
+        f"{base}/api/v1/projects", token
+    )
+    if st != 200:
+        logger.info(
+            "projects_workflow sweep: 项目名单获取失败（%s），保留旧值", st
         )
-        # 去重与前端 fetchProjectSummaries 逐行对齐：同一 project_id
-        # 留一条，优先带 team_id 的记录（它是 ?team= 寻址的有效键）。
-        by_id: Dict[str, Any] = {}
-        for p in raw_list:
-            if not isinstance(p, dict):
-                continue
-            pid = str(p.get("project_id") or "")
-            if not pid:
-                continue
-            cur = by_id.get(pid)
-            if cur is None:
-                by_id[pid] = p
-            elif not str(cur.get("team_id") or "") and str(p.get("team_id") or ""):
-                by_id[pid] = p
-        projects = list(by_id.values())[:_MAX_PROJECTS]
-        if not projects:
-            # 空名单不轻信（端点异常可能返回空 → 会清掉全部工作流）；
-            # 保旧表，scan_at 照常推进（T9 空名单同款语义）。
-            logger.info("projects_workflow sweep: 项目名单为空，保留旧值")
-            _snap["projects_status"] = 200
-            _snap["projects_error"] = ""
-            _snap["scan_at"] = time.time()
-            return
+        _snap["projects_status"] = int(st)
+        _snap["projects_error"] = str(text or "")
+        _snap["scan_at"] = time.time()
+        return
 
-        # 2) 逐项目 /workflow（并发 4）。
-        sem = asyncio.Semaphore(_CONCURRENCY)
-
-        async def _one(proj: Dict[str, Any]) -> tuple:
-            pid = str(proj.get("project_id") or "")
-            team = proj.get("team_id")
-            # teamQ 规则与前端真源一致：仅非空字符串 team_id 带 &team=
-            # （独立项目 team_id 为空 → 不带参数）。
-            team_q = (
-                f"&team={_quote(team, safe='')}"
-                if isinstance(team, str) and team
-                else ""
-            )
-            url = (
-                f"{base}/api/v1/projects/{_quote(pid, safe='')}/workflow"
-                f"?includeTasks=true{team_q}"
-            )
-            async with sem:
-                try:
-                    return await worker_status._ctl_get(url, token)
-                except Exception:  # noqa: BLE001 - 单项目失败不影响同轮其他
-                    return (0, {}, "")
-
-        results = await asyncio.gather(*[_one(p) for p in projects])
-
-        # 3) 组装新表：成功覆盖、失败保旧、消失项目随新名单清。
-        new_workflows: Dict[str, Any] = {}
-        for proj, res in zip(projects, results):
-            pid = str(proj.get("project_id") or "")
-            wst, wdata, _wtext = res
-            if wst == 200 and isinstance(wdata, dict):
-                new_workflows[pid] = wdata
-            else:
-                old = _snap["workflows"].get(pid)
-                if old is not None:
-                    new_workflows[pid] = old
-                # 无旧值 → 不落（前端 mapProjectWorkflow 跳过该 pid）
-        _snap["projects"] = projects
-        _snap["workflows"] = new_workflows
+    raw_list = (
+        data
+        if isinstance(data, list)
+        else (data.get("projects", []) if isinstance(data, dict) else [])
+    )
+    # 去重与前端 fetchProjectSummaries 逐行对齐：同一 project_id
+    # 留一条，优先带 team_id 的记录（它是 ?team= 寻址的有效键）。
+    by_id: Dict[str, Any] = {}
+    for p in raw_list:
+        if not isinstance(p, dict):
+            continue
+        pid = str(p.get("project_id") or "")
+        if not pid:
+            continue
+        cur = by_id.get(pid)
+        if cur is None:
+            by_id[pid] = p
+        elif not str(cur.get("team_id") or "") and str(p.get("team_id") or ""):
+            by_id[pid] = p
+    projects = list(by_id.values())[:_MAX_PROJECTS]
+    if not projects:
+        # 空名单不轻信（端点异常可能返回空 → 会清掉全部工作流）；
+        # 保旧表，scan_at 照常推进（T9 空名单同款语义）。
+        logger.info("projects_workflow sweep: 项目名单为空，保留旧值")
         _snap["projects_status"] = 200
         _snap["projects_error"] = ""
         _snap["scan_at"] = time.time()
-    except Exception:  # noqa: BLE001 - 后台循环不得因单轮异常死掉
-        logger.warning("projects_workflow sweep failed", exc_info=True)
-    finally:
-        _snap["scanning"] = False
+        return
+
+    # 2) 逐项目 /workflow（并发 4）。
+    sem = asyncio.Semaphore(_CONCURRENCY)
+
+    async def _one(proj: Dict[str, Any]) -> tuple:
+        pid = str(proj.get("project_id") or "")
+        team = proj.get("team_id")
+        # teamQ 规则与前端真源一致：仅非空字符串 team_id 带 &team=
+        # （独立项目 team_id 为空 → 不带参数）。
+        team_q = (
+            f"&team={_quote(team, safe='')}"
+            if isinstance(team, str) and team
+            else ""
+        )
+        url = (
+            f"{base}/api/v1/projects/{_quote(pid, safe='')}/workflow"
+            f"?includeTasks=true{team_q}"
+        )
+        async with sem:
+            try:
+                return await worker_status._ctl_get(url, token)
+            except Exception:  # noqa: BLE001 - 单项目失败不影响同轮其他
+                return (0, {}, "")
+
+    results = await asyncio.gather(*[_one(p) for p in projects])
+
+    # 3) 组装新表：成功覆盖、失败保旧、消失项目随新名单清。
+    new_workflows: Dict[str, Any] = {}
+    for proj, res in zip(projects, results):
+        pid = str(proj.get("project_id") or "")
+        wst, wdata, _wtext = res
+        if wst == 200 and isinstance(wdata, dict):
+            new_workflows[pid] = wdata
+        else:
+            old = _snap["workflows"].get(pid)
+            if old is not None:
+                new_workflows[pid] = old
+            # 无旧值 → 不落（前端 mapProjectWorkflow 跳过该 pid）
+    _snap["projects"] = projects
+    _snap["workflows"] = new_workflows
+    _snap["projects_status"] = 200
+    _snap["projects_error"] = ""
+    _snap["scan_at"] = time.time()
 
 
 async def _run() -> None:

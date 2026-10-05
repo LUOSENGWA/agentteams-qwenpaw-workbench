@@ -180,13 +180,67 @@ def dial_stats() -> Dict[str, Any]:
         }
 
 
+# v0.5.0-beta.14.12（UIPERF-T17）：后台任务共用通道锁——同一时刻至多一路
+# 后台扫描在跑（worker_status / projects_workflow / KB 刷新三类轮转），
+# 避免周期性齐发打满闸门（dial-stats 实测 peak=cap=24）抢前台（保存/
+# 测试/切页排队）。
+_BG_LOCK: Optional[asyncio.Lock] = None
+_BG_LOCK_LOOP: Optional[asyncio.AbstractEventLoop] = None
+_BG_LOCK_TIMEOUT = 90.0  # 等锁超时（秒）——超过则本轮放弃（防堆积）
+_BG_YIELD_THRESHOLD = 12  # 前台负载让权线：async inflight 超过则本轮跳过
+
+
+def bg_lock() -> asyncio.Lock:
+    """后台通道锁（惰性创建、按事件循环重建，与 _async_sem 同款——
+    测试逐 loop 重建，生产单 loop 稳定）。"""
+    global _BG_LOCK, _BG_LOCK_LOOP
+    loop = asyncio.get_running_loop()
+    if _BG_LOCK is None or _BG_LOCK_LOOP is not loop:
+        _BG_LOCK = asyncio.Lock()
+        _BG_LOCK_LOOP = loop
+    return _BG_LOCK
+
+
+@contextlib.asynccontextmanager
+async def bg_slot(
+    timeout: float = _BG_LOCK_TIMEOUT,
+    yield_threshold: int = _BG_YIELD_THRESHOLD,
+) -> Iterator[bool]:
+    """v0.5.0-beta.14.12（UIPERF-T17）：后台扫描共用通道（让权 + 单飞）。
+
+    - 让权：async inflight > yield_threshold（前台忙）→ yield False，
+      本轮跳过（下一周期再来）；
+    - 单飞：等共用锁，超过 timeout → yield False，本轮放弃（防堆积）；
+    - 执行期持锁：同一时刻至多一路后台扫描在跑。
+
+    调用方：``async with bg_slot() as ok: if not ok: return ...``。
+    仅「触发」路径（ensure_fresh 的即时性判断）不经过本通道——只有
+    扫描体互斥，触发仍即时。
+    """
+    if dial_stats()["async"]["inflight"] > yield_threshold:
+        yield False
+        return
+    lock = bg_lock()
+    try:
+        await asyncio.wait_for(lock.acquire(), timeout=timeout)
+    except (asyncio.TimeoutError, TimeoutError):
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        lock.release()
+
+
 def _reset_for_tests() -> None:
-    """仅测试用：清空信号量与计数（每个测试独立起步）。"""
-    global _async_sem, _async_sem_loop, _sync_sem
+    """仅测试用：清空信号量、后台通道锁与计数（每个测试独立起步）。"""
+    global _async_sem, _async_sem_loop, _sync_sem, _BG_LOCK, _BG_LOCK_LOOP
     with _lock:
         _async_sem = None
         _async_sem_loop = None
         _sync_sem = None
+        _BG_LOCK = None
+        _BG_LOCK_LOOP = None
         _stats.update(
             {
                 "async_total": 0,

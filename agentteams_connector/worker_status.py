@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 
 from . import config as config_mod
 from . import router as router_mod
-from .dial_gate import GatedAsyncClient, should_failover_status
+from .dial_gate import GatedAsyncClient, bg_slot, should_failover_status
 
 logger = logging.getLogger(
     "qwenpaw.plugins.agentteams_qwenpaw_workbench.worker_status"
@@ -56,11 +56,12 @@ def snapshot() -> Dict[str, Any]:
     }
 
 
-def ensure_fresh() -> None:
-    """过期且未扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
+def ensure_fresh(force: bool = False) -> None:
+    """过期（或 force=True 无视 TTL，v0.5.0-beta.14.12 手动刷新用）且未
+    扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
     if _agg["scanning"]:
         return
-    if time.time() - _agg["scan_at"] < _TTL:
+    if not force and time.time() - _agg["scan_at"] < _TTL:
         return
     try:
         loop = asyncio.get_running_loop()
@@ -138,101 +139,114 @@ def _ts_ms(value: Any) -> int:
 
 
 async def _sweep() -> None:
+    """单飞门 + 后台共用通道（v0.5.0-beta.14.12，UIPERF-T17）。
+
+    前台忙（拨号 inflight > 12）让权、等共用锁超 90s 放弃本轮（下一
+    tick 重试）；扫描体持共用锁——同一时刻至多一路后台扫描在跑
+    （与 projects_workflow / KB 刷新共享，防齐发打满闸门抢前台）。
+    """
+    if _agg["scanning"]:
+        return  # 单飞：扫描中不重入
+    _agg["scanning"] = True
+    try:
+        async with bg_slot() as _bg:
+            if not _bg:
+                return  # 让权/放弃 → 本轮不动（保旧值，下一 tick 重试）
+            await _do_sweep()
+    except Exception:  # noqa: BLE001 - 后台循环不得因单轮异常死掉
+        logger.warning("worker_status sweep failed", exc_info=True)
+    finally:
+        _agg["scanning"] = False
+
+
+async def _do_sweep() -> None:
     """一轮全扫：名单（60s 缓存）→ 逐 worker /chats（并发 4）→ 归约。
 
     保旧语义：单 worker 失败 → 该 worker 保旧值（无旧值则本轮缺省）；
     名单级失败（token/网络/空名单）→ 整表不动。新 worker 成功即进，
     消失的 worker（不在本轮名单）随新表清掉。
     """
-    if _agg["scanning"]:
-        return  # 单飞：扫描中不重入
-    _agg["scanning"] = True
+    cfg = config_mod.load_config()
     try:
-        cfg = config_mod.load_config()
-        try:
-            token, _src = router_mod._resolve_controller_token(cfg)
-        except Exception:  # noqa: BLE001 - token 内容非法 → 本轮不拨
-            logger.info("worker_status sweep: controller token 解析失败，跳过本轮")
-            return
-        if not token:
-            return  # 无 token → 不拨号（保旧表）
+        token, _src = router_mod._resolve_controller_token(cfg)
+    except Exception:  # noqa: BLE001 - token 内容非法 → 本轮不拨
+        logger.info("worker_status sweep: controller token 解析失败，跳过本轮")
+        return
+    if not token:
+        return  # 无 token → 不拨号（保旧表）
 
-        base_urls = router_mod._ordered_addresses(cfg, "controller")
-        if not base_urls:
-            return  # 未配置 controller → 保旧表
-        base = base_urls[0].rstrip("/")
+    base_urls = router_mod._ordered_addresses(cfg, "controller")
+    if not base_urls:
+        return  # 未配置 controller → 保旧表
+    base = base_urls[0].rstrip("/")
 
-        # 1) 名单：60s 缓存未过期且非空 → 直接用。
-        names: List[str]
-        if time.time() - _names_cache["ts"] < _NAMES_TTL and _names_cache["names"]:
-            names = list(_names_cache["names"])
-        else:
-            st, data, _text = await _ctl_get(f"{base}/api/v1/workers", token)
-            if st != 200:
-                logger.info(
-                    "worker_status sweep: 名单获取失败（%s），保留旧值", st
-                )
-                return
-            payload = (
-                data
-                if isinstance(data, list)
-                else (data.get("workers", []) if isinstance(data, dict) else [])
+    # 1) 名单：60s 缓存未过期且非空 → 直接用。
+    names: List[str]
+    if time.time() - _names_cache["ts"] < _NAMES_TTL and _names_cache["names"]:
+        names = list(_names_cache["names"])
+    else:
+        st, data, _text = await _ctl_get(f"{base}/api/v1/workers", token)
+        if st != 200:
+            logger.info(
+                "worker_status sweep: 名单获取失败（%s），保留旧值", st
             )
-            names = []
-            for w in payload:
-                if isinstance(w, dict):
-                    n = str(w.get("name") or "")
-                    if n:
-                        names.append(n)
-            if not names:
-                # 空名单不轻信（端点异常可能返回空 → 会清掉全部灯）；保旧表。
-                logger.info("worker_status sweep: 名单为空，保留旧值")
-                return
-            _names_cache["names"] = names
-            _names_cache["ts"] = time.time()
+            return
+        payload = (
+            data
+            if isinstance(data, list)
+            else (data.get("workers", []) if isinstance(data, dict) else [])
+        )
+        names = []
+        for w in payload:
+            if isinstance(w, dict):
+                n = str(w.get("name") or "")
+                if n:
+                    names.append(n)
+        if not names:
+            # 空名单不轻信（端点异常可能返回空 → 会清掉全部灯）；保旧表。
+            logger.info("worker_status sweep: 名单为空，保留旧值")
+            return
+        _names_cache["names"] = names
+        _names_cache["ts"] = time.time()
 
-        # 2) 逐 worker（并发 4）拉 /chats 归约。
-        sem = asyncio.Semaphore(_CONCURRENCY)
+    # 2) 逐 worker（并发 4）拉 /chats 归约。
+    sem = asyncio.Semaphore(_CONCURRENCY)
 
-        async def _one(name: str) -> Optional[Dict[str, Any]]:
-            async with sem:
-                try:
-                    st, data, _t = await _ctl_get(
-                        f"{base}/api/v1/workers/{name}/chats", token
-                    )
-                except Exception:  # noqa: BLE001 - 单 worker 失败不影响同轮其他
-                    return None
-            if st != 200 or not isinstance(data, list):
-                return None  # 该 worker 保旧值（不下发空）
-            running = False
-            last_updated = 0
-            for c in data:
-                if not isinstance(c, dict):
-                    continue
-                if c.get("status") == "running":
-                    running = True
-                ts = _ts_ms(c.get("updated_at"))
-                if ts > last_updated:
-                    last_updated = ts
-            return {"running": running, "lastUpdated": last_updated}
+    async def _one(name: str) -> Optional[Dict[str, Any]]:
+        async with sem:
+            try:
+                st, data, _t = await _ctl_get(
+                    f"{base}/api/v1/workers/{name}/chats", token
+                )
+            except Exception:  # noqa: BLE001 - 单 worker 失败不影响同轮其他
+                return None
+        if st != 200 or not isinstance(data, list):
+            return None  # 该 worker 保旧值（不下发空）
+        running = False
+        last_updated = 0
+        for c in data:
+            if not isinstance(c, dict):
+                continue
+            if c.get("status") == "running":
+                running = True
+            ts = _ts_ms(c.get("updated_at"))
+            if ts > last_updated:
+                last_updated = ts
+        return {"running": running, "lastUpdated": last_updated}
 
-        aggs = await asyncio.gather(*[_one(n) for n in names])
+    aggs = await asyncio.gather(*[_one(n) for n in names])
 
-        # 3) 组装新表：成功覆盖、失败保旧、消失清除。
-        new_workers: Dict[str, Any] = {}
-        for name, agg in zip(names, aggs):
-            if agg is not None:
-                new_workers[name] = agg
-            else:
-                old = _agg["workers"].get(name)
-                if old is not None:
-                    new_workers[name] = old
-        _agg["workers"] = new_workers
-        _agg["scan_at"] = time.time()
-    except Exception:  # noqa: BLE001 - 后台循环不得因单轮异常死掉
-        logger.warning("worker_status sweep failed", exc_info=True)
-    finally:
-        _agg["scanning"] = False
+    # 3) 组装新表：成功覆盖、失败保旧、消失清除。
+    new_workers: Dict[str, Any] = {}
+    for name, agg in zip(names, aggs):
+        if agg is not None:
+            new_workers[name] = agg
+        else:
+            old = _agg["workers"].get(name)
+            if old is not None:
+                new_workers[name] = old
+    _agg["workers"] = new_workers
+    _agg["scan_at"] = time.time()
 
 
 async def _run() -> None:
