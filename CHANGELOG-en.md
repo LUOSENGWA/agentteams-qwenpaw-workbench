@@ -9,6 +9,8 @@ Version history of agentteams-qwenpaw-workbench.
 
 **Full plugin code-debt audit + cleanup: tracking surface / client dedupe / quantified backlog**
 
+- **KB switch-away jank root-fix (T21)**: 3D graph freeze-on-leave/resume-on-show + resume-race fix (revisit first frame 1.2-2s -> 128-438ms); team polling gated by activeRef; 6 refresh setStates in startTransition. Measured: KB->home max frame gap 66.7->16.8ms flat; leave GL draws 2983->0/s; switch CPU busy 71%->29%; workflow ghost-band root-caused + 2 style fixes.
+
 - **Tracking surface**: accidentally tracked harness build artifacts (bundle-1323/1324.js, esbuild-reproducible) untracked + ignored (ZIP ~1MB slimmer); .gitignore policy completed; root ZIP/archive/version-residue scans all clean; zero console.log/FIXME leftovers.
 - **Code**: duplicated ordered-failover logic (router._ctl_json vs worker_status._ctl_get) consolidated into a single `ctl_client.ctl_json` (old names kept as thin wrappers; zero call-site changes).
 - **Record**: state/plugin-audit-20261005.md (findings + dispositions + quantified backlog: router.py 5,892 lines/133 defs, god components, next candidates).

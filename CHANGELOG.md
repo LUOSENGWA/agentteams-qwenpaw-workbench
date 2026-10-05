@@ -9,6 +9,8 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 **插件全量屎山体检 + 治理：追踪面收敛 / 客户端去重 / 量化留档**
 
+- **知识库切出卡顿根治（T21）**：3D 图「切走即停、显示即恢复」+ 修复恢复竞态（回访首帧 1.2-2s → 128-438ms）；团队页轮询加激活门控；6 处刷新 setState 进 startTransition。实测：KB→首页帧断 **66.7→16.8ms 恒定**、切走 GL 绘制 **2983→0/s**、切换窗 CPU 忙占比 71%→29%；工作流「双影」归因+两处样式修复。
+
 - **追踪面**：误追踪的 harness 构建产物（bundle-1323/1324.js，可 esbuild 复现）已 untrack + 忽略（ZIP −~1MB）；
   `.gitignore` 策略补齐；根 ZIP/归档/版本残留扫描全净；零 `console.log/FIXME` 残留。
 - **代码面**：`router._ctl_json` 与 `worker_status._ctl_get` 双份「ordered failover」合并为
