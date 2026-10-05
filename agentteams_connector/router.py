@@ -414,6 +414,9 @@ _ROOM_SCAN_FULL_EVERY = 600.0
 # v0.5.0-beta.14.7（T6b）：房间名模块级缓存——mentions 轮询遇未命名房
 # 不再每请求逐行重解析（曾致单次响应 8.9s：每行 ≥2 次 HTTP 兜底）。
 _room_name_cache: Dict[str, str] = {}
+# 负缓存：解析为空的房间（DM 无 name 态）600s 内不再重试——此前每请求
+# 逐行重放 basic+state 两次解析（实测 7 房 ×2 拨号 ×~400ms ≈ 6.6s/请求）。
+_room_name_neg: Dict[str, float] = {}
 
 
 def _scan_should_full(kind: str) -> bool:
@@ -4383,6 +4386,8 @@ def build_router() -> APIRouter:
             if _cached:
                 names[room_id] = _cached
                 return _cached
+            if _room_name_neg.get(room_id, 0.0) > time.time():
+                return ""
             hs_base = homeserver.rstrip("/")
             try:
                 async with GatedAsyncClient(timeout=8.0, verify=False) as c2:
@@ -4420,6 +4425,8 @@ def build_router() -> APIRouter:
                             _room_name_cache[room_id] = nm
             except Exception:  # noqa: BLE001 — 取名失败不阻断
                 pass
+            if not names.get(room_id):
+                _room_name_neg[room_id] = time.time() + 600.0
             return names.get(room_id, "")
 
         results: List[Dict[str, Any]] = []
@@ -4556,6 +4563,8 @@ def build_router() -> APIRouter:
             if _cached:
                 names[rid] = _cached
                 continue
+            if _room_name_neg.get(rid, 0.0) > time.time():
+                continue
             hs_base = homeserver.rstrip("/")
             nm = ""
             try:
@@ -4590,6 +4599,8 @@ def build_router() -> APIRouter:
             if nm:
                 names[rid] = nm
                 _room_name_cache[rid] = nm
+            else:
+                _room_name_neg[rid] = time.time() + 600.0
         return names
 
     async def _scan_room_approvals(
