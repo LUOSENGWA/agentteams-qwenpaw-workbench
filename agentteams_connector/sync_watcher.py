@@ -55,6 +55,14 @@ _task: Optional[asyncio.Task] = None
 _stop_event = asyncio.Event()
 # 事件去重：sync 重连可能重放，按 event_id 去重。
 _recent_ids: deque = deque(maxlen=2000)
+# v0.5.0-beta.14.7（T6 增量扫描）：逐房最新消息 ts——扫描跳过判据的
+# 变更探针。每轮 /sync 事件就地更新（数据本就在手），空闲期零额外请求。
+_room_last_ts: Dict[str, int] = {}
+
+
+def room_last_ts(room_id: str) -> int:
+    """该房最近一条消息 ts（0=本进程未见活动，扫描侧按『有变化』保守处理）。"""
+    return _room_last_ts.get(room_id, 0)
 _since: Optional[str] = None
 _first_sync_done = False
 _consecutive_failures = 0  # v0.5.0-beta.12: 连续 /sync 失败计数（token 失效/切账号自愈用）
@@ -842,6 +850,10 @@ async def _run() -> None:
                 content = ev.get("content") or {}
                 if not isinstance(content, dict):
                     continue
+                # v0.5.0-beta.14.7（T6）：记录该房最新消息 ts（增量扫描探针）。
+                _ts0 = int(ev.get("origin_server_ts") or 0)
+                if _ts0 and _ts0 > _room_last_ts.get(room_id, 0):
+                    _room_last_ts[room_id] = _ts0
                 # ⑤ 房间消息 SSE 触发（P6：12s 轮询 → /sync 事件驱动主路，
                 # IM 式）。载荷只带触发元数据不带正文——内容源 = 前端收到后
                 # 拉该房间最新消息（复用 pollMessages，附件/工作流/媒体渲染
