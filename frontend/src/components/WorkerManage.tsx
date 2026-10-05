@@ -1459,8 +1459,12 @@ export interface WorkerManageProps {
   onDm?: (mxid: string, roomId?: string) => void;
   /** 是否已配置 Controller 管理员 token（决定管理信息面板/三表是否可用）。 */
   hasToken?: boolean;
-  /** 当前 tab 是否激活（rc-tabs 保活：不激活时自动刷新跳过）。 */
-  active?: boolean;
+  /** 当前 tab 是否激活（rc-tabs 保活：不激活时自动刷新跳过）。
+   * v0.5.0-beta.14.13（UIPERF-T21）：boolean prop 每次切 tab 翻转 →
+   * 本组件（1784 行、全树行渲染）整树重渲，落进切换帧（实测
+   * 无 fetch 的 →团队 切换帧 61ms）。改传稳定 ref——prop 引用不变，
+   * React.memo 命中零重渲；tick 时读 ref 当前值门控。 */
+  activeRef?: { current: boolean };
   /**
    * 团队结构数据来源（v0.5.0-beta.12）："controller-workers"=正源；
    * "room-fallback"=Controller 未接入的房间聚合（群聊冒充团队——警示横幅）。
@@ -1495,7 +1499,7 @@ function WorkerManage(props: WorkerManageProps) {
     onRefreshAdmin,
     onDm,
     hasToken,
-    active = true,
+    activeRef,
     treeSource = "",
     myUserId = "",
     l1TokenMode,
@@ -1507,24 +1511,27 @@ function WorkerManage(props: WorkerManageProps) {
   const [collapseKeys, setCollapseKeys] = React.useState<string[]>([]);
 
   // 自动刷新（30s）：拓扑 + 管理数据。rc-tabs 保活（切走不卸载），
-  // 所以用 active 门控：仅当前 tab 激活时才轮询。
+  // 所以用 tab 激活门控：仅当前 tab 激活时才轮询。
+  // v0.5.0-beta.14.13（UIPERF-T21）：门控走稳定 ref（activeRef）——
+  // tick 时读当前值，tab 翻转不再触发本组件重渲（memo 零重渲）。
   const refreshRef = React.useRef({
     tree: onRefreshTree,
     admin: onRefreshAdmin,
-    active,
   });
-  refreshRef.current = { tree: onRefreshTree, admin: onRefreshAdmin, active };
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（30s；active tab 门控
-  // + 体内 refreshRef 双保险；!document.hidden 内置——后台零负载）。
+  refreshRef.current = { tree: onRefreshTree, admin: onRefreshAdmin };
+  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（30s；tab 门控在 fn 内
+  // 读 activeRef 双保险；!document.hidden 内置——后台零负载）。
+  // 不传 active：poller 常 tick（inactive tab 时 fn 内 no-op，零负载）；
+  // 切回 team 的即时刷新由「点 Tab 即刷新」effect 覆盖（refreshTree+
+  // refreshAdmin force 路径），不依赖 poller poke。
   usePoller({
     fn: () => {
-      if (!refreshRef.current.active) return;
+      if (activeRef && !activeRef.current) return;
       // 静默刷新（用户反馈）：30s 自动刷不闪页——旧数据在屏，diff 无变化零重渲染
       void refreshRef.current.tree?.(true);
       void refreshRef.current.admin?.(true);
     },
     intervalMs: 30000,
-    active,
   });
 
   const handleLifecycle = React.useCallback(
