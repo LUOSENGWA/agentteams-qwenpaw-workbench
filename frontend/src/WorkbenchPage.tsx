@@ -560,6 +560,8 @@ function SettingsTab({
   // diff），gatewayWan=外网（内网不可达时自动降级）。
   const [gatewayAdminUrl, setGatewayAdminUrl] = React.useState("");
   const [gatewayWan, setGatewayWan] = React.useState("");
+  // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（默认开；配置可关）。
+  const [consoleCalm, setConsoleCalm] = React.useState(true);
   const [verifying, setVerifying] = React.useState(false);
   const [verifyRes, setVerifyRes] = React.useState<VerifyAdminResult | null>(null);
   // 可选模块：集群负载（L1 专属）
@@ -711,6 +713,11 @@ function SettingsTab({
       entryUrl(config.gateway_admin_urls?.[0]) || config.gateway_admin_url || "",
     );
     setGatewayWan(entryUrl(config.gateway_admin_urls?.[1]));
+    // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚回填（缺省=开，仅旧配置
+    // 显式 false 关）+ 门控属性同步（模块级默认 "1" 可被配置覆写）。
+    setConsoleCalm(config.console_calm !== false);
+    document.documentElement.dataset.wbCalm =
+      config.console_calm === false ? "0" : "1";
     setAdminPassword("");
     setSglangEnabled(config.sglang?.enabled || false);
     // v0.5.0-beta.12: 双地址读取；旧配置单地址 url 回退（后端亦会迁移）。
@@ -738,6 +745,8 @@ function SettingsTab({
             controller_token: controllerToken,
             // v0.5.0-beta.14.1: 地址模式（auto/lan/wan）——保存后不重启即生效。
             address_mode: addressMode,
+            // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（bool 直存）。
+            console_calm: consoleCalm,
             sglang: {
               enabled: sglangEnabled,
               urls: buildAddrEntries("sglang"),
@@ -1006,6 +1015,23 @@ function SettingsTab({
           <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
             {tr("修改后请点下方【保存配置】生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。")}
           </div>
+        </div>
+
+        {/* v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚——停用上游
+            RunningGlow 旋转光环/呼吸层动画（保留静态光效视觉），降低
+            GPU 占用（Linux 核显高温主因）。默认开；关闭立即恢复动画，
+            保存后持久。 */}
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            {tr("控制台特效节能（停用上游旋转光效，降低 GPU 占用；建议开启）")}
+          </div>
+          <antd.Switch
+            checked={consoleCalm}
+            onChange={(v: boolean) => {
+              setConsoleCalm(v);
+              document.documentElement.dataset.wbCalm = v ? "1" : "0";
+            }}
+          />
         </div>
 
         {/* v0.5.0-beta.12: 连通性测试——逐地址测延迟，外/内网识别可视化。
@@ -1879,6 +1905,30 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     setActiveTabState(tab);
   }, [tab]);
+  // v0.5.0-beta.14.8（UIPERF-T7）：切页轻过渡（transform/opacity，仅 WAAPI）——
+  // 170ms 淡入 + 4px 上浮，reduced-motion 守卫；不加 key 重挂（keep-alive
+  // 面板的状态/滚动位置不受影响），动画结束 transform 自动还原。
+  const paneRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const el = paneRef.current;
+    if (!el) return;
+    try {
+      if (
+        window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      )
+        return;
+      el.animate(
+        [
+          { opacity: 0.55, transform: "translateY(4px)" },
+          { opacity: 1, transform: "none" },
+        ],
+        { duration: 170, easing: "cubic-bezier(0.2,0.8,0.2,1)" },
+      );
+    } catch {
+      /* noop */
+    }
+  }, [tab]);
   // v0.5.0-beta.14.6（R6）：team tab 强制刷新的节流时间戳。
   const lastTeamForceAtRef = React.useRef(0);
   // v0.5.0-beta.12 ：工作流页 tab 记忆（用户「点开过的 tab 加上记忆，参考大
@@ -1937,11 +1987,19 @@ export default function WorkbenchPage() {
   // 再把混合体写进新房缓存（切回再「没了」）。Element 口径：timeline
   // 状态是 per-room 的——room_id 变化即归零，再拉/再恢复该房自己的缓存。
   React.useEffect(() => {
-    setMessages([]);
-    setMessagesEnd("");
-    setHasMore(false);
+    // v0.5.0-beta.14.8（UIPERF-T7）：切房有缓存则先恢复缓存（即时显示，
+    // 不闪空态/「正在加载消息…」——旧逻辑归零后 1 帧内屏上无数据即闪
+    // loading 文案）；无缓存照旧归零。I1 首窗重建仍在 refreshMessages
+    // （缓存 end ?? 本页 end），I2 合并基底取缓存/在屏较长者——语义不变
+    // （并消除一个潜在边界：旧房在屏条数 ≥ 新房缓存长度时，旧逻辑用空
+    // 基底合并丢深历史）。
+    const roomId = activeRoom?.room_id;
+    const cached = roomId ? getCachedMessages(roomId) : undefined;
+    setMessages(cached ? cached.messages : []);
+    setMessagesEnd(cached ? (cached.end || "") : "");
+    setHasMore(Boolean(cached?.end));
     setRoomError("");
-    messagesRef.current = [];
+    messagesRef.current = cached ? cached.messages : [];
   }, [activeRoom?.room_id]);
   const [messagesLoading, setMessagesLoading] = React.useState(false);
   const [messagesEnd, setMessagesEnd] = React.useState(""); // 分页 token（I1：hist.cursor 的 React 镜像）
@@ -4074,7 +4132,11 @@ export default function WorkbenchPage() {
       </div>
 
       {/* 内容区：flex 1 + 内部滚动——头部与 tab 栏固定，只有这里滚 */}
+      {/* v0.5.0-beta.14.8（UIPERF-T7）：切页轻过渡目标（paneRef）——
+          内容区最外层容器 div（antd.Tabs 的直接包裹层，keep-alive
+          面板不重挂，只对该层做一次 170ms 淡入上浮）。 */}
       <div
+        ref={paneRef}
         style={{
           flex: "1 1 auto",
           minHeight: 0,

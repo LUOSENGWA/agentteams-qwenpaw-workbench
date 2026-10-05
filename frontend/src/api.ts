@@ -229,6 +229,8 @@ export interface WorkbenchConfig {
   gateway_admin_url?: string;
   // v0.5.0-beta.14.7: Higress 双地址（canonical；legacy 单值键=urls[0] 镜像）。
   gateway_admin_urls?: AddressEntry[];
+  // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（默认开；false=启用动画）。
+  console_calm?: boolean;
   console_session?: string;
   // v0.5.0-beta.12: token 文件路径（首选获取方式——连接器每次请求实时读，
   // 永不陈旧、轮换自动适应、不依赖 docker/终端）。非机密（路径非 token 值）。

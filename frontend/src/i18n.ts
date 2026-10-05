@@ -142,6 +142,8 @@ const DICT: Record<string, { en: string }> = {
   "生效中": { en: "active" },
   // ── v0.5.0-beta.14.1: 地址手动固定档（address_mode）+ 事件流连接态（S1-4）──
   "地址模式（内网/外网切换策略）": { en: "Address mode (LAN/WAN switching)" },
+  // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚开关。
+  "控制台特效节能（停用上游旋转光效，降低 GPU 占用；建议开启）": { en: "Calm console effects (stop the upstream rotating glow to lower GPU usage; recommended)" },
   // v0.5.0-beta.14.7（UIPERF-P3）：Higress 地址并入地址配置区——新增分节标题键。
   "Higress Console 地址（模型管理面；内网/外网按序降级）": { en: "Higress Console addresses (model admin plane; LAN/WAN tried in order)" },
   // v0.5.0-beta.14.4（设置页 UI 整理：原文收编 i18n + 分节标题）
