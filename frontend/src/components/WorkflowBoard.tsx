@@ -2235,6 +2235,11 @@ function WorkflowBoard(props: WorkflowBoardProps) {
                 title: tr("协调者"),
                 dataIndex: "coordinator",
                 width: 130,
+                // v0.5.0-beta.14.13（UIPERF-T21 附带项）：协调者为原始
+                // matrix ID（未富化名字）时长 ID 换行撑高行（40→61px）
+                // → 首屏底缘半裁行视觉「双影/糊」。ellipsis 截断 +
+                // antd 自动 title 悬停见全文（不丢信息）。
+                ellipsis: true,
                 render: (v: string) => (v || "").split(":")[0].replace(/^@/, ""),
               },
               {
@@ -2261,9 +2266,23 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               {
                 title: tr("操作"),
                 key: "actions",
-                width: 150,
+                // v0.5.0-beta.14.13（UIPERF-T21 附带项）：3 个操作按钮
+                // （暂停/完成/重规划 ≈205px）在 150px 列内换行 → 行高
+                // 40/65px 混杂 → 首屏底缘半裁行两行按钮各切一半，
+                // 视觉「双影/糊」（DOM 实证无 transform/克隆/opacity，
+                // 非渲染层双影）。加宽 + nowrap 单行 → 行高统一 40px。
+                width: 225,
                 render: (_: unknown, ev: WorkflowEvent) => (
-                  <InterventionActions ev={ev} onDone={() => onRefresh?.()} />
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "nowrap",
+                      gap: 4,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <InterventionActions ev={ev} onDone={() => onRefresh?.()} />
+                  </div>
                 ),
               },
             ]}
