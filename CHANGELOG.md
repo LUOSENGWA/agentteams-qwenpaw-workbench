@@ -5,6 +5,16 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.10（2026-10-05 · 装验反馈批）
+
+**五反馈修复：地址凭据记忆 / KB 秒开（SWR）/ 组件日志倒序 / Tab 卡顿（memo+过渡）/ calm 生效确认**
+
+- **地址凭据记忆**：配置回填此前只恢复 URL——basic/bearer 选择与账号密码丢失（被要求"再选一次再重填"）；现用 `entryToAuthDraft` 全量回填（密码以 *** 掩码回显，保存=保持不变）。
+- **KB 秒开（SWR）**：冷读容器 3-17s → 磁盘持久缓存 + stale-while-revalidate：实测 **8ms 秒回**（cached/age 标记）+ 后台单飞刷新 + 启动预热上次 agent；重启/换页同样秒开。
+- **组件日志**：最新在最上。
+- **Tab 卡顿**：全仓面板 `React.memo`（此前零 memo，任何更新全量 reconcile 36K 行）+ 切换 `startTransition`（实测基线帧断 183-200ms 的目标收口）。
+- **控制台特效节能**：用户确认有效（保留）。
+
 ## 0.5.0-beta.14.9（2026-10-05 · 扇出收敛批）
 
 **controller 请求扇出治理（T9/T10）：状态灯 25 路/30s → 1 路；项目工作流 36 路 → 1 路**

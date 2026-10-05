@@ -5,6 +5,16 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.10 (2026-10-05 - acceptance feedback batch)
+
+**Five fixes: credential memory / KB instant open (SWR) / newest-first logs / tab jank (memo+transition) / calm confirmed**
+
+- **Address credential memory**: config refill only restored URLs before - basic/bearer selection and credentials were lost (user had to re-select + re-enter). Now refilled via `entryToAuthDraft` (password echoed as *** masked; save = keep existing).
+- **KB instant open (SWR)**: cold container reads took 3-17s -> persistent disk cache + stale-while-revalidate: measured **8ms instant serve** (cached/age flags) + background single-flight refresh + startup prewarm of the last agent; survives restarts.
+- **Component logs**: newest first.
+- **Tab jank**: panel-level `React.memo` (previously zero memo anywhere; every update reconciled 36K lines) + `startTransition` on switches (baseline stalls 183-200ms addressed; chat switch max 183->50ms).
+- **Console calm**: user confirmed effective (kept).
+
 ## 0.5.0-beta.14.9 (2026-10-05 - fan-out convergence batch)
 
 **Controller request fan-out governance (T9/T10): status lights 25 req/30s -> 1; project workflows 36 reqs -> 1**
