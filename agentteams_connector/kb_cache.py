@@ -74,3 +74,50 @@ def save(key: str, payload: Any) -> None:
         os.replace(tmp, p)
     except Exception:  # noqa: BLE001 - 缓存不佳不影响主流程
         pass
+
+
+# ── v0.5.0-beta.14.11（UIPERF-T15）：轻探针（变更检测）扩展 ─────────────────
+# probe 存 {safe_key}.probe（纯文本，独立于 payload json）：探针刷新不碰
+# payload、深扫落盘不碰 probe，两侧互不重写。
+
+
+def _probe_file_for(key: str) -> Path:
+    """key → 探针签名文件路径（特殊字符过滤同缓存文件）。"""
+    return Path(_CACHE_DIR) / f"{_KEY_RE.sub('_', str(key))}.probe"
+
+
+def save_probe(key: str, probe: str) -> None:
+    """写探针签名（原子 tmp+rename）；写失败静默（同 save 风格）。"""
+    try:
+        p = _probe_file_for(key)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(str(probe), encoding="utf-8")
+        os.replace(tmp, p)
+    except Exception:  # noqa: BLE001 - 探针不佳不影响主流程
+        pass
+
+
+def load_probe(key: str) -> Optional[str]:
+    """读探针签名；缺失/读失败 → None（调用方退回深扫，安全）。"""
+    try:
+        return _probe_file_for(key).read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001 - 探针不佳不影响主流程
+        return None
+
+
+def touch(key: str) -> None:
+    """把缓存的 ts 更新为现在（刷新检查通过后重置 60s 时钟）。
+
+    v0.5.0-beta.14.11（UIPERF-T15）：读-改-写只更新 ts，payload/probe
+    原样不动；键缺失/损坏时静默（同 save 风格，不影响主流程）。"""
+    try:
+        p = _file_for(key)
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        raw["ts"] = time.time()
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(json.dumps(raw, ensure_ascii=False),
+                       encoding="utf-8")
+        os.replace(tmp, p)
+    except Exception:  # noqa: BLE001 - 探针不佳不影响主流程
+        pass

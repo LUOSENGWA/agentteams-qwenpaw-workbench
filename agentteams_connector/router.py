@@ -74,6 +74,12 @@ _kb_agents_cache: Dict[str, Any] = {}  # "agents" -> (expiry_monotonic, payload)
 # 唯一注入点；预热路径不依赖 HTTP 自呼）。
 _KB_PREWARM_HOOKS: Dict[str, Any] = {}
 
+# v0.5.0-beta.14.11（T15）：轻探针唯一注入点——build_router() 末尾填生产
+# 探针闭包；单测换假探针（返回固定签名 / None）。探针是 build_router 闭包
+# 不可直接 monkeypatch，注册表 + 调用时读取与 _KB_PREWARM_HOOKS 同款
+# （T9 _ctl_get 模式）。
+_KB_PROBE_HOOKS: Dict[str, Any] = {}
+
 
 async def _kb_prewarm_agent(agent: str) -> None:
     """v0.5.0-beta.14.10（T12）：启动预热——后台静默补上次访问 agent 的
@@ -3626,12 +3632,76 @@ def build_router() -> APIRouter:
     _kb_inflight: Dict[str, Any] = {}
     _KB_SWR_TTL = 60.0
 
-    def _store_kb(agent: str, payload: Dict[str, Any], kind: str) -> None:
+    # ── v0.5.0-beta.14.11（T15）：轻探针（变更检测——变才刷）──────────
+    # 刷新门前先跑轻探针：只列条目元数据（name/mtime/size，绝不读文件
+    # 内容）。签名一致 → 只重置 60s 时钟（零深扫）；不一致/失败 → 深扫
+    # （安全）。目录集 = tree 同款数据源（ws 顶层 + memory/ + digest/）。
+    # 列取复用 tree 计算体同款双通道（find 主=零下载 + tar 兜底，参考其
+    # 状态码/降级处理）——纯 archive 在大工作区（实测 180MB）必 413，
+    # 探针将恒 None、优化失效，故以 tree 实际通道为准。
+    async def _kb_probe_signature(agent: str) -> Optional[str]:
+        """v0.5.0-beta.14.11（UIPERF-T15）：KB 轻探针——只列工作区顶层 +
+        memory/ + digest/ 的条目元数据（name/mtime/size），不读文件内容。
+        签名=排序后的 sha1；任何失败 → None（调用方退回深扫，安全）。
+        复用 tree 计算体里同款 archive 列目录通道（参考其状态码/降级处理）。
+        """
+        if not _KB_AGENT_RE.match(agent):
+            return None  # 与端点同款正则（agents 刷新 agent="" → 无探针）
+        try:
+            token, base = _kb_require_token()
+        except HTTPException:
+            return None
+        container = (
+            "agentteams-manager" if agent == "manager"
+            else f"agentteams-worker-{agent}"
+        )
+        # 预探可用性沿用 _kb_docker_available（与 tree 同款）；失败 → None。
+        if not await _kb_docker_available(token, base, container):
+            return None
+        try:
+            ws = await _kb_workspace(token, base, agent)
+        except HTTPException:
+            return None
+        parts: List[str] = []
+        for sub in ("ws", "memory", "digest"):
+            target = ws if sub == "ws" else f"{ws}/{sub}"
+            maxdepth = 1 if sub == "ws" else None
+            entries = None
+            try:
+                entries = await _kb_find_list(
+                    token, base, container, target, maxdepth=maxdepth)
+                if entries is None:  # find 通道挂 → tar 兜底（tree 同款）
+                    entries = await _kb_tar_list(
+                        token, base, container, target,
+                        maxdepth=maxdepth, include_dirs=True)
+            except Exception:  # noqa: BLE001 - 通道异常（413/502/连接错）
+                # 一律按探针失败处理（退回深扫，安全）。
+                entries = None
+            if entries is None:
+                if sub == "digest":
+                    entries = []  # digest 缺失不报错（tree 同款 continue）
+                else:
+                    return None  # ws 顶层 / memory 不可用 → 深扫（安全）
+            for e in entries:
+                parts.append(
+                    f"{sub}/{e['rel']}|{e['type']}|{e['size']}|{e['mtime']}"
+                )
+        import hashlib as _hashlib
+        return _hashlib.sha1(
+            "\n".join(sorted(parts)).encode("utf-8")
+        ).hexdigest()
+
+    def _store_kb(agent: str, payload: Dict[str, Any], kind: str,
+                  probe: Optional[str] = None) -> None:
         """SWR 内存+磁盘同点写（端点冷取与后台刷新共用）。
 
         v0.5.0-beta.14.7 语义保留：#1208 WSF 兜底 payload（标记
         source:"controller"，见 _kb_tree_wsf_fallback）不写任何缓存——
         单点收口在此，后台刷新同样不会用降级值污染磁盘缓存。
+
+        v0.5.0-beta.14.11（UIPERF-T15）：probe = 本次深扫时的轻探针签名；
+        非 None 时一并落盘（下轮刷新门「变才刷」的比对基准）。端点冷取
+        路径不跑探针（传 None）→ 不记，由下轮后台刷新的深扫补记。
         """
         if kind == "tree" and payload.get("source") == "controller":
             return
@@ -3653,6 +3723,11 @@ def build_router() -> APIRouter:
             kb_cache.save("agents", payload)
             return
         kb_cache.save("last-agent", {"agent": agent})
+        # v0.5.0-beta.14.11（UIPERF-T15）：记本次深扫的轻探针签名（端点
+        # 冷取不跑探针 → probe=None 不记，下轮后台刷新补记）。agents 支
+        # 已早退且 agent="" 探针恒 None → 天然不记。
+        if probe is not None:
+            kb_cache.save_probe(f"{kind}-{agent}", probe)
 
     def _spawn_kb_refresh(kind: str, agent: str) -> None:
         """SWR 后台单飞刷新（fire-and-forget；调用路径零等待）。
@@ -3676,11 +3751,19 @@ def build_router() -> APIRouter:
 
         async def _run() -> None:
             try:
+                # v0.5.0-beta.14.11（UIPERF-T15）：变才刷——轻探针与上次
+                # 签名一致 → 只重置 60s 时钟，零深扫；不一致/探针失败 →
+                # 深扫（安全）。探针经注册表调用时解析（单测假注入）。
+                probe_fn = _KB_PROBE_HOOKS.get("probe") or _kb_probe_signature
+                probe = await probe_fn(agent)
+                if probe is not None and kb_cache.load_probe(key) == probe:
+                    kb_cache.touch(key)
+                    return
                 # agents 计算体无参（单键 agent 无关）；tree/graph 带 agent。
                 payload = (
                     await compute() if kind == "agents" else await compute(agent)
                 )
-                _store_kb(agent, payload, kind)
+                _store_kb(agent, payload, kind, probe=probe)
             except Exception as exc:  # noqa: BLE001 - 后台刷新失败保旧
                 logger.debug("kb %s refresh failed for %s: %s", kind, agent, exc)
             finally:
@@ -5722,5 +5805,7 @@ def build_router() -> APIRouter:
         "graph": _kb_graph_compute,
         "agents": _kb_agents_compute,
     })
+    # v0.5.0-beta.14.11（T15）：轻探针注册（SWR 刷新门变更检测用）。
+    _KB_PROBE_HOOKS.update({"probe": _kb_probe_signature})
 
     return router
