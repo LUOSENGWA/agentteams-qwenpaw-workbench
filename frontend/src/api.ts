@@ -230,7 +230,12 @@ export interface WorkbenchConfig {
   // v0.5.0-beta.14.7: Higress 双地址（canonical；legacy 单值键=urls[0] 镜像）。
   gateway_admin_urls?: AddressEntry[];
   // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（默认开；false=启用动画）。
+  // v0.5.0-beta.14.12（UIPERF-T18）：保留为兼容键（console_effects 三档取代；
+  // 后端 load 迁移时以其值推导初值，前端只读不写）。
   console_calm?: boolean;
+  // v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档
+  // （light=动画保留+模糊封顶[默认] / off=动画与模糊全停 / full=上游原样）。
+  console_effects?: "light" | "off" | "full";
   console_session?: string;
   // v0.5.0-beta.12: token 文件路径（首选获取方式——连接器每次请求实时读，
   // 永不陈旧、轮换自动适应、不依赖 docker/终端）。非机密（路径非 token 值）。
@@ -1162,10 +1167,13 @@ export async function fetchProjectSummaries(
  * 「只有 Manager 的」= 正源 401 静默回退、只剩自己已加入房间的扫描）。
  * 附带 failDetail（error 分支的真实上游错误，如 Controller 500 的
  * mc 报错）——此前真实原因被通用横幅「Controller 不可用」掩盖。
- * v0.5.0-beta.14.6（R1）：外层 cachedRequest 包裹（workflow/projects，30s，
- * 无 force 参）——整包聚合（projects/list + 逐项目 workflow）是重接口，
- * 多调用点（workflow tab 15s 轮询、聊天 📁 面板）合并为一次回源；内部
- * fetchProjectSummaries() 无参调用命中 projects/list 缓存。 */
+ * v0.5.0-beta.14.6（R1）：外层 cachedRequest 包裹（workflow/projects，30s）
+ * ——整包聚合（projects/list + 逐项目 workflow）是重接口，多调用点（workflow
+ * tab 15s 轮询、聊天 📁 面板）合并为一次回源；内部 fetchProjectSummaries()
+ * 无参调用命中 projects/list 缓存。
+ * v0.5.0-beta.14.12（UIPERF-T16b）：force=true → 绕过 30s 读缓存（cachedRequest
+ * opts.force）+ 端点带 ?refresh=1（连接器无视 TTL 触发后台补扫，T17）——
+ * 手动刷新必穿透；无参调用行为不变（既有调用者兼容）。 */
 interface WorkflowProjectsResult {
   events: WorkflowEvent[];
   apiOk: boolean;
@@ -1173,11 +1181,15 @@ interface WorkflowProjectsResult {
   failDetail?: string;
 }
 
-async function loadWorkflowProjectsRaw(): Promise<WorkflowProjectsResult> {
+async function loadWorkflowProjectsRaw(
+  force = false,
+): Promise<WorkflowProjectsResult> {
   // v0.5.0-beta.14.9（UIPERF-T10）：改走连接器聚合（1 请求）；装配仍在本地。
   // 聚合端点异常（网络/未部署）→ 回退旧直连路径（loadWorkflowProjectsLegacy）。
+  // v0.5.0-beta.14.12（UIPERF-T16b）：force → 端点带 ?refresh=1（连接器触发
+  // 后台补扫，T17）；仅手动刷新路径使用。
   try {
-    const snap = await fetchProjectsWorkflow();
+    const snap = await fetchProjectsWorkflow(force);
     // 上游 /projects 的非 200（401/403/404/5xx）→ 与前版本一致的横幅分类。
     if (snap.projectsStatus && snap.projectsStatus !== 200) {
       if (snap.projectsStatus === 401 || snap.projectsStatus === 403)
@@ -1266,20 +1278,36 @@ async function loadWorkflowProjectsLegacy(): Promise<WorkflowProjectsResult> {
   }
 }
 
-/** v0.5.0-beta.14.6（R1）：对外缓存包装（workflow/projects，30s）。 */
-export async function fetchWorkflowProjects(): Promise<WorkflowProjectsResult> {
-  return cachedRequest("workflow/projects", 30000, loadWorkflowProjectsRaw);
+/** v0.5.0-beta.14.6（R1）：对外缓存包装（workflow/projects，30s）。
+ *  v0.5.0-beta.14.12（UIPERF-T16b）：force=true → opts.force 绕过 30s 读缓存
+ *  （手动刷新必穿透）+ fetcher 带 ?refresh=1 触发连接器后台补扫（T17）；
+ *  无参调用 = 原行为（30s 缓存 + 在飞去重，调用者不变）。 */
+export async function fetchWorkflowProjects(
+  force = false,
+): Promise<WorkflowProjectsResult> {
+  return cachedRequest(
+    "workflow/projects",
+    30000,
+    () => loadWorkflowProjectsRaw(force),
+    { force },
+  );
 }
 
 /** v0.5.0-beta.14.9（UIPERF-T10）：项目+工作流取数聚合（连接器侧缓存/
- * 后台刷；前端 1 请求取原始件，装配仍在本地）。 */
-export async function fetchProjectsWorkflow(): Promise<{
+ * 后台刷；前端 1 请求取原始件，装配仍在本地）。
+ * v0.5.0-beta.14.12（UIPERF-T16b/T17）：force=true → 带 ?refresh=1，
+ * 连接器无视 TTL 触发后台补扫（仍零等待返回当前快照，响应字段不变）。 */
+export async function fetchProjectsWorkflow(
+  force = false,
+): Promise<{
   projects: Record<string, unknown>[];
   workflows: Record<string, Record<string, unknown>>;
   projectsStatus: number;
   projectsError: string;
 }> {
-  return (await requestJson("/agentteams-proxy/projects-workflow")) as {
+  return (await requestJson(
+    `/agentteams-proxy/projects-workflow${force ? "?refresh=1" : ""}`,
+  )) as {
     projects: Record<string, unknown>[];
     workflows: Record<string, Record<string, unknown>>;
     projectsStatus: number;
