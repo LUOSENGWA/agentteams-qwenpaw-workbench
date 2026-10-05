@@ -212,11 +212,33 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
    呼吸层停动画，保留静态光效视觉；ambientLight 保险性静止。
    门控属性在 <html data-wb-calm="1">（配置加载后可覆写为 "0"）。 */
 html[data-wb-calm="1"] [class*="RunningGlow-module"],
-html[data-wb-calm="1"] [class*="RunningGlow-module"] * {
-  animation: none !important;
-}
 html[data-wb-calm="1"] [class*="ambientLight"] {
   animation: none !important;
+}
+/* v0.5.0-beta.14.11（UIPERF-T14）：calm 下停用 console 玻璃模糊（各
+   backdrop-filter 元素是核显常驻合成负担）。选择器清单 = 对运行中
+   qwenpaw 2.2.2b4 console dist CSS 的全量扫描（36 处声明 / 17 个选择器，
+   实际 blur 规则全列；已 backdrop-filter:none 的规则——dockableSidebar
+   floating/mainContentLayout header/settingsPage pageHeader/popover
+   级联终值等——不重复列，仅保留任务指定的两条幂等防回归）。各元素
+   背景均为 88–96% 不透明（--app-glass/--sidebar-sticky-bg 等）或高
+   对比深色（x-markdown 调试层 #000 75–85%、floatingCapsule #000 50%
+   白字），去模糊后可读性不受损，无需回退色。排除：antd 通知堆叠
+   内联 blur(10px)（仅多条通知叠加时出现，非常驻）。 */
+html[data-wb-calm="1"] [class*="stickyGroupHeader"],
+html[data-wb-calm="1"] [class*="dockableSidebar"][class*="floating"],
+html[data-wb-calm="1"] [class*="layout-right-header"],
+html[data-wb-calm="1"] .x-markdown-debug-modal-overlay,
+html[data-wb-calm="1"] .x-markdown-debug-panel,
+html[data-wb-calm="1"] [class*="index-module__header__"],
+html[data-wb-calm="1"] [class*="index-module__pageHeader__"],
+html[data-wb-calm="1"] [class*="floatingCapsule"],
+html[data-wb-calm="1"] [class*="drawerHeader"],
+html[data-wb-calm="1"] [class*="MemoryGraphView-module__legend"],
+html[data-wb-calm="1"] [class*="HubShell-module__sidebar"],
+html[data-wb-calm="1"] [class*="HubShell-module__topbar"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 `;
   document.head.appendChild(style);
