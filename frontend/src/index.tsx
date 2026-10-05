@@ -110,7 +110,7 @@ const SIDEBAR_ICON: ReactNS.ReactNode = hostReact
 
 import WorkbenchPage from "./WorkbenchPage";
 import ApprovalCard from "./components/ApprovalCard";
-import { fetchRoomApprovals } from "./api";
+import { fetchRoomApprovals, requestJson } from "./api";
 import { usePoller } from "./usePoller";
 
 const host = window.QwenPaw.host;
@@ -275,6 +275,53 @@ html[data-wb-fx="light"] [class*="ambientLight"] {
 // 落盘值；旧 data-wb-calm 属性已删除，迁移后不再写）。
 if (typeof document !== "undefined") {
   document.documentElement.dataset.wbFx = "light";
+}
+
+// v0.5.0-beta.14.14（UIPERF-T22）：特效档位跨页生效。T18 的配置驱动覆写只
+// 写在 WorkbenchPage 的配置回填里（工作台挂载才执行），其余页面（/chat、
+// /plugin/*、设置……）永远停在模块级 light 默认。这里补全局同步：插件前端
+// 启动即 GET /config，把 console_effects 写到 html[data-wb-fx]（取数失败
+// 保持 light 默认）；window focus / visibilitychange 轻量复读（3s 节流 +
+// 在飞去重，防多窗改档不同步）。与 WorkbenchPage 自身的回填/实时切换写同
+// 值、互不干扰（其逻辑原样保留）。CSS 门控（[data-wb-fx]）本就是全页
+// 选择器，无需改动。
+const WB_FX_VALUES: readonly string[] = ["off", "light", "full"];
+
+function applyWbFxFromConfig(cfg: unknown): void {
+  const c =
+    cfg && typeof cfg === "object" ? (cfg as Record<string, unknown>) : {};
+  // 与 WorkbenchPage 回填同款兜底/迁移规则：新键 console_effects 优先，
+  // 旧键 console_calm bool 仅 false→full（后端 load 已迁移，此为双保险）。
+  const fx = c.console_effects ?? (c.console_calm === false ? "full" : "light");
+  if (typeof fx === "string" && WB_FX_VALUES.includes(fx)) {
+    document.documentElement.dataset.wbFx = fx;
+  }
+}
+
+let _wbFxSyncPending: Promise<void> | null = null;
+let _wbFxSyncAt = 0;
+function syncWbFx(): Promise<void> {
+  const now = Date.now();
+  if (now - _wbFxSyncAt < 3000) return _wbFxSyncPending ?? Promise.resolve();
+  _wbFxSyncAt = now;
+  _wbFxSyncPending = requestJson("/agentteams-proxy/config")
+    .then((cfg) => applyWbFxFromConfig(cfg))
+    .catch(() => {
+      /* 后端不可达/未登录 → 保持 light 默认（上方已写） */
+    })
+    .finally(() => {
+      _wbFxSyncPending = null;
+    });
+  return _wbFxSyncPending;
+}
+
+if (typeof window !== "undefined") {
+  void syncWbFx();
+  const onWbFxReread = (): void => {
+    if (document.visibilityState === "visible") void syncWbFx();
+  };
+  window.addEventListener("focus", onWbFxReread);
+  document.addEventListener("visibilitychange", onWbFxReread);
 }
 
 // 宿主聊天审批卡定制渲染（Phase 4 审批流）：
