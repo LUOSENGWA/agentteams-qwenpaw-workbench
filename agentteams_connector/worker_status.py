@@ -27,7 +27,9 @@ from typing import Any, Dict, List, Optional
 
 from . import config as config_mod
 from . import router as router_mod
-from .dial_gate import GatedAsyncClient, bg_slot, should_failover_status
+# v0.5.0-beta.14.13（T20）：GatedAsyncClient/should_failover_status 随
+# _ctl_get 实现体迁入 ctl_client，本模块仅剩 bg_slot（后台共用通道）。
+from .dial_gate import bg_slot
 
 logger = logging.getLogger(
     "qwenpaw.plugins.agentteams_qwenpaw_workbench.worker_status"
@@ -75,53 +77,13 @@ def ensure_fresh(force: bool = False) -> None:
 
 
 async def _ctl_get(url: str, token: str) -> tuple:
-    """通用 Controller JSON GET——本模块唯一取数注入点（测试 monkeypatch 本
-    函数，不碰真实网络）。
+    """薄包装 → ctl_client.ctl_json("GET", …)（v0.5.0-beta.14.13 去重）。
 
-    ordered 地址 failover 与 router._ctl_json 同款（v0.5.0-beta.14.2 F1）：
-    拆出 url 的 path（含 query），在 ordered 控制器地址上依次试；200 即止；
-    地址级 4xx/5xx/传输错 → 下一地址；确定性 4xx 立即返回；全败 → 返回最后
-    一个 (status, json, text)（调用方按 status 判降级）。
+    保持本名 = projects_workflow 与测试的既有取数注入点（测试 monkeypatch
+    本函数，不碰真实网络；签名与语义不变）。
     """
-    from urllib.parse import urlparse as _urlparse
-
-    cfg = config_mod.load_config()
-    urls = [u.rstrip("/") for u in router_mod._ordered_addresses(cfg, "controller")]
-    if not urls:
-        urls = [url.rsplit("/api/", 1)[0]]
-    p = _urlparse(url)
-    path_and_query = (p.path or "") + (f"?{p.query}" if p.query else "")
-    last: Optional[tuple] = None
-    for base in urls:
-        u = f"{base}{path_and_query}"
-        try:
-            async with GatedAsyncClient(timeout=30.0, verify=False) as client:
-                r = await client.request(
-                    "GET",
-                    u,
-                    headers=router_mod._headers_for(
-                        cfg,
-                        "controller",
-                        base,
-                        {"Authorization": f"Bearer {token}"},
-                    ),
-                )
-        except Exception as exc:  # noqa: BLE001 - 传输错换下一地址
-            last = (0, {}, f"请求失败：{exc}")
-            continue
-        try:
-            data = r.json()
-        except Exception:  # noqa: BLE001
-            data = {}
-        if r.status_code == 200:
-            return r.status_code, data, r.text
-        if not should_failover_status(r.status_code):
-            # v0.5.0-beta.14.6（R4）：确定性 4xx 地址无关——立即返回。
-            return r.status_code, data, r.text
-        last = (r.status_code, data, r.text)
-    if last is None:
-        return 0, {}, "请求失败：无可用地址"
-    return last
+    from . import ctl_client  # noqa: PLC0415
+    return await ctl_client.ctl_json("GET", url, token)
 
 
 def _ts_ms(value: Any) -> int:
