@@ -294,3 +294,21 @@ def test_gateway_passthrough_failover(gw_router):
     assert urls.index(f"{WAN_GW}/v1/ai/routes") > urls.index(
         f"{LAN_GW}/v1/ai/routes"
     )
+
+
+# ── UIPERF-P3：固定档覆盖 gateway ─────────────────────────────────────
+def test_gateway_pinned_by_address_mode() -> None:
+    from agentteams_connector import router as router_mod
+
+    base = {
+        "gateway_admin_urls": ["http://lan.higress:6868", "https://wan.example.com"],
+        "matrix_homeservers": [],
+        "controller_urls": [],
+        "sglang": {"enabled": False, "urls": []},
+    }
+    assert router_mod._pinned_url({**base, "address_mode": "lan"}, "gateway") == "http://lan.higress:6868"
+    assert router_mod._pinned_url({**base, "address_mode": "wan"}, "gateway") == "https://wan.example.com"
+    assert router_mod._pinned_url({**base, "address_mode": "auto"}, "gateway") is None
+    # 单址时 lan/wan 均回退首址（与 _pinned_url 既有语义一致）。
+    one = {**base, "gateway_admin_urls": ["http://only:6868"]}
+    assert router_mod._pinned_url({**one, "address_mode": "wan"}, "gateway") == "http://only:6868"

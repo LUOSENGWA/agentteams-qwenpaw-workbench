@@ -165,8 +165,9 @@ def _pinned_url(cfg: Dict[str, Any], kind: str) -> str | None:
 
 
 def _pinned_map(cfg: Dict[str, Any]) -> Dict[str, Optional[str]]:
-    """三类地址各自的固定值（None=未固定）——供 /config/test 回报显示。"""
-    return {k: _pinned_url(cfg, k) for k in ("matrix", "controller", "sglang")}
+    """四类地址各自的固定值（None=未固定）——供 /config/test 回报显示。"""
+    # v0.5.0-beta.14.7（UIPERF-P3）：固定档映射补 gateway（语义经 _pinned_url 通用）。
+    return {k: _pinned_url(cfg, k) for k in ("matrix", "controller", "sglang", "gateway")}
 
 
 def _pinned_note(cfg: Dict[str, Any]) -> str:
@@ -1559,6 +1560,8 @@ def build_router() -> APIRouter:
         out["effective"] = {
             "matrix": _pick_address(cfg, "matrix"),
             "controller": _pick_address(cfg, "controller"),
+            # v0.5.0-beta.14.7（UIPERF-P3）：effective 补 gateway（固定档同源）。
+            "gateway": _pick_address(cfg, "gateway"),
         }
         return out
 

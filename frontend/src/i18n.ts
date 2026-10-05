@@ -142,6 +142,8 @@ const DICT: Record<string, { en: string }> = {
   "生效中": { en: "active" },
   // ── v0.5.0-beta.14.1: 地址手动固定档（address_mode）+ 事件流连接态（S1-4）──
   "地址模式（内网/外网切换策略）": { en: "Address mode (LAN/WAN switching)" },
+  // v0.5.0-beta.14.7（UIPERF-P3）：Higress 地址并入地址配置区——新增分节标题键。
+  "Higress Console 地址（模型管理面；内网/外网按序降级）": { en: "Higress Console addresses (model admin plane; LAN/WAN tried in order)" },
   // v0.5.0-beta.14.4（设置页 UI 整理：原文收编 i18n + 分节标题）
   "内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到最快可达的一条，外网/内网切换自动识别。": { en: "LAN and WAN are two paths to the same server (LAN IP at home, public domain away) — no manual switching: the plugin re-tests all addresses every 2 minutes (latency) and keeps the fastest reachable one." },
   "访问地址": { en: "Access Addresses" },

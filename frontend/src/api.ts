@@ -213,6 +213,8 @@ export interface WorkbenchConfig {
   effective?: {
     matrix: string;
     controller: string;
+    // v0.5.0-beta.14.7（UIPERF-P3）：/config effective 补 gateway（地址模式固定档同源）。
+    gateway?: string;
   };
   // v0.5.0-beta.12: SGLang 双地址（内网/外网）；旧单地址 url 由后端自动迁移。
   sglang?: {

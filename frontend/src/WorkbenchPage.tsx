@@ -962,6 +962,31 @@ function SettingsTab({
           />
         </div>
 
+        {/* v0.5.0-beta.14.7（UIPERF-P3）：Higress 地址并入地址配置区（与
+            Matrix/Controller/SGLang 同处），内网/外网按序降级、受地址模式
+            固定档控制。 */}
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            {tr("Higress Console 地址（模型管理面；内网/外网按序降级）")}
+            <EffectiveBadge url={config?.effective?.gateway} label={tr("当前")} />
+          </div>
+          <antd.Input
+            placeholder={tr("Higress 地址·内网（Console 管理面；宿主端口部署时自选，默认 18001）")}
+            value={gatewayAdminUrl}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setGatewayAdminUrl(e.target.value)
+            }
+            style={{ marginBottom: 8 }}
+          />
+          <antd.Input
+            placeholder={tr("Higress 地址·外网（公网入口，可留空；内网不可达时自动降级）")}
+            value={gatewayWan}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setGatewayWan(e.target.value)
+            }
+          />
+        </div>
+
         {/* v0.5.0-beta.14.1: 地址手动固定档——固定档请求只用固定地址、失败
             诚实报错不静默 failover；探测循环照跑（显示层不受影响）。 */}
         <div>
@@ -1201,21 +1226,6 @@ function SettingsTab({
                   value={adminPassword}
                   onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                     setAdminPassword(e.target.value)
-                  }
-                />
-                {/* v0.5.0-beta.14.7: Higress 双地址（内网/外网，按序降级）。 */}
-                <antd.Input
-                  placeholder={tr("Higress 地址·内网（Console 管理面；宿主端口部署时自选，默认 18001）")}
-                  value={gatewayAdminUrl}
-                  onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                    setGatewayAdminUrl(e.target.value)
-                  }
-                />
-                <antd.Input
-                  placeholder={tr("Higress 地址·外网（公网入口，可留空；内网不可达时自动降级）")}
-                  value={gatewayWan}
-                  onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                    setGatewayWan(e.target.value)
                   }
                 />
                 <div>

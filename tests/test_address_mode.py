@@ -118,12 +118,20 @@ def test_pinned_note() -> None:
 
 
 def test_pinned_map() -> None:
+    # v0.5.0-beta.14.7（UIPERF-P3）：固定档映射扩为四类（补 gateway）——
+    # 本测试 _cfg 未配 gateway 地址，故 gateway 固定值 None。
     m = router_mod._pinned_map(_cfg("lan"))
-    assert m == {"matrix": LAN, "controller": CTL_LAN, "sglang": SG_LAN}
+    assert m == {
+        "matrix": LAN,
+        "controller": CTL_LAN,
+        "sglang": SG_LAN,
+        "gateway": None,
+    }
     m = router_mod._pinned_map(_cfg("wan"))
     assert m["matrix"] == WAN and m["controller"] == CTL_WAN and m["sglang"] == SG_WAN
+    assert m["gateway"] is None
     m = router_mod._pinned_map(_cfg("auto"))
-    assert m == {"matrix": None, "controller": None, "sglang": None}
+    assert m == {"matrix": None, "controller": None, "sglang": None, "gateway": None}
 
 
 def test_pick_address_auto_cache_first() -> None:
