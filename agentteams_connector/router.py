@@ -406,8 +406,8 @@ _room_approvals_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 # "entries": [...]}}。房间无推进（sync watcher 探针）→ 复用条目零重扫；
 # 600s 兜底全扫一次（watcher 停摆时防结果静默陈旧）。
 _room_scan_state: Dict[str, Any] = {
-    "mentions": {}, "approvals": {}, "workflow": {},
-    "full_at": {"mentions": 0.0, "approvals": 0.0, "workflow": 0.0},
+    "mentions": {}, "approvals": {}, "workflow": {}, "artifacts": {},
+    "full_at": {"mentions": 0.0, "approvals": 0.0, "workflow": 0.0, "artifacts": 0.0},
 }
 _ROOM_SCAN_FULL_EVERY = 600.0
 
@@ -1194,9 +1194,21 @@ def build_router() -> APIRouter:
         )  # 全量扫描：DM/小房间也有产物（长报告经 DM 交付），不再取前 20
 
         sem = asyncio.Semaphore(6)
+        st_all = _room_scan_state["artifacts"]
+        full = _scan_should_full("artifacts")
+        from . import sync_watcher  # noqa: PLC0415 — T6 增量探针
 
         async def _scan(room_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
             async with sem:
+                rid_a = str(room_entry.get("room_id") or "")
+                sts = st_all.get(rid_a)
+                if (
+                    not full
+                    and sts is not None
+                    and sync_watcher.room_last_ts(rid_a) <= sts.get("ts", 0)
+                ):
+                    # T6 增量：无推进 → 复用上次产物条目（零拨号）。
+                    return sts.get("entries") or []
                 encoded = _urlparse_mod.quote(room_entry["room_id"], safe="/._-~")
                 # 产物是稀疏事件（文档埋在大量对话里）：分页深扫最多 5 页 ×100 条。
                 # dir=b + end token 向更早翻页（聊天室分页同款，Tuwunel 已验证支持）。
@@ -1278,9 +1290,17 @@ def build_router() -> APIRouter:
                         "size": info.get("size") if isinstance(info.get("size"), (int, float)) else None,
                     }
                 )
+            # T6 增量：落逐房扫描态（无产物房 ts 兜 0，探针 0 ≤ 0 恒复用）。
+            _newest = max((int(it.get("ts") or 0) for it in items), default=0)
+            st_all[rid_a] = {
+                "ts": max(_newest, sync_watcher.room_last_ts(rid_a)),
+                "entries": items,
+            }
             return items
 
         scanned = await asyncio.gather(*(_scan(r) for r in rooms_sorted))
+        if full:
+            _scan_mark_full("artifacts")
         flat = [it for group in scanned for it in group]
         flat.sort(key=lambda e: e["ts"], reverse=True)
         elapsed = round(time_mod.time() - now, 1)
