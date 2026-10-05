@@ -2095,7 +2095,10 @@ export default function WorkbenchPage() {
   const refreshConfig = React.useCallback(async () => {
     try {
       const payload = await requestJson("/agentteams-proxy/config");
-      setConfig(payload as WorkbenchConfig);
+      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition——
+      // 切 tab 触发的多路 fetch 响应波（home 4 路 / team 2 路）落地渲染
+      // 是可中断的低优先工作，不再整体压进切换后的第一帧。
+      React.startTransition(() => setConfig(payload as WorkbenchConfig));
     } catch {
       /* backend unreachable — selfcheck will surface it */
     }
@@ -2109,18 +2112,22 @@ export default function WorkbenchPage() {
     if (!silent) setRoomsLoading(true);
     try {
       const payload = await fetchTeamsSync(force);
-      // diff 跳过：数据无变化 → 返回原引用 → React 跳过重渲染（零闪）
-      setRooms((prev) => (JSON.stringify(prev) === JSON.stringify(payload.rooms) ? prev : payload.rooms));
-      const nextInvites = payload.invites || [];
-      setInvites((prev) => (JSON.stringify(prev) === JSON.stringify(nextInvites) ? prev : nextInvites));
-      const nextMuted = payload.muted_rooms || [];
-      setMutedRooms((prev) => (JSON.stringify(prev) === JSON.stringify(nextMuted) ? prev : nextMuted));
-      setCachedRooms(payload);
-      setActiveRoom((current) =>
-        current
-          ? payload.rooms.find((r) => r.room_id === current.room_id) || current
-          : null,
-      );
+      // diff 跳过：数据无变化 → 返回原引用 → React 跳过重渲染（零闪）。
+      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition
+      // （可中断——切换帧不再被整波落地渲染压满）。
+      React.startTransition(() => {
+        setRooms((prev) => (JSON.stringify(prev) === JSON.stringify(payload.rooms) ? prev : payload.rooms));
+        const nextInvites = payload.invites || [];
+        setInvites((prev) => (JSON.stringify(prev) === JSON.stringify(nextInvites) ? prev : nextInvites));
+        const nextMuted = payload.muted_rooms || [];
+        setMutedRooms((prev) => (JSON.stringify(prev) === JSON.stringify(nextMuted) ? prev : nextMuted));
+        setCachedRooms(payload);
+        setActiveRoom((current) =>
+          current
+            ? payload.rooms.find((r) => r.room_id === current.room_id) || current
+            : null,
+        );
+      });
       // 状态记忆恢复：首次加载完成后自动打开上次房间。
       if (!restoredRoomRef.current) {
         restoredRoomRef.current = true;
@@ -2130,8 +2137,10 @@ export default function WorkbenchPage() {
             (r) => r.room_id === savedRoomId,
           );
           if (saved) {
-            setActiveRoom(saved);
-            setCachedRooms(payload);
+            React.startTransition(() => {
+              setActiveRoom(saved);
+              setCachedRooms(payload);
+            });
             // v0.5.0-beta.13.20：状态恢复与 openRoom 同源——旧内联取数
             // 块是第 4 条窗口建立路径（无 I2 合并 / 无 I1 窗口游标 /
             // 缓存被浅页覆盖：上会话翻过的深历史在恢复瞬间蒸发，游标
@@ -2169,16 +2178,19 @@ export default function WorkbenchPage() {
     try {
       const spawns = await fetchWorkerSpawns();
       if (!spawns.apiOk) return;
-      setWorkerTree((prev) => {
-        if (!prev) return prev;
-        const tree = prev.map((team) => ({
-          ...team,
-          workers: team.workers.map((w) => ({
-            ...w,
-            spawns: spawns.byWorker[w.worker_name] || [],
-          })),
-        }));
-        return JSON.stringify(tree) === JSON.stringify(prev) ? prev : tree;
+      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition。
+      React.startTransition(() => {
+        setWorkerTree((prev) => {
+          if (!prev) return prev;
+          const tree = prev.map((team) => ({
+            ...team,
+            workers: team.workers.map((w) => ({
+              ...w,
+              spawns: spawns.byWorker[w.worker_name] || [],
+            })),
+          }));
+          return JSON.stringify(tree) === JSON.stringify(prev) ? prev : tree;
+        });
       });
     } catch {
       /* spawn 失败 = 树保持无 spawn 占位（旧语义），不炸主流程 */
@@ -2193,23 +2205,26 @@ export default function WorkbenchPage() {
       if (!silent) setSpawnLoading(true);
       try {
         const payload = await fetchTeamsStructure(useForce);
-        setTreeSource(payload.source);
-        // 结构先到先渲染；每 (team, worker) 携带旧 spawns（新扇出回来前
-        // spawn chip 不闪空），无旧值（新增 Worker/首载）= 空。
-        setWorkerTree((prev) => {
-          const prevByName = new Map<string, { spawns?: SpawnNode[] }>();
-          for (const t of prev || [])
-            for (const w of t.workers) prevByName.set(w.worker_name, w);
-          const tree = payload.tree.map((team) => ({
-            ...team,
-            workers: team.workers.map((w) => ({
-              ...w,
-              spawns: prevByName.get(w.worker_name)?.spawns || [],
-            })),
-          }));
-          return JSON.stringify(tree) === JSON.stringify(prev)
-            ? prev
-            : tree;
+        // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition。
+        React.startTransition(() => {
+          setTreeSource(payload.source);
+          // 结构先到先渲染；每 (team, worker) 携带旧 spawns（新扇出回来前
+          // spawn chip 不闪空），无旧值（新增 Worker/首载）= 空。
+          setWorkerTree((prev) => {
+            const prevByName = new Map<string, { spawns?: SpawnNode[] }>();
+            for (const t of prev || [])
+              for (const w of t.workers) prevByName.set(w.worker_name, w);
+            const tree = payload.tree.map((team) => ({
+              ...team,
+              workers: team.workers.map((w) => ({
+                ...w,
+                spawns: prevByName.get(w.worker_name)?.spawns || [],
+              })),
+            }));
+            return JSON.stringify(tree) === JSON.stringify(prev)
+              ? prev
+              : tree;
+          });
         });
         void loadSpawns();
       } catch (e) {
@@ -3316,22 +3331,29 @@ export default function WorkbenchPage() {
     try {
       const { events, apiOk, failReason, failDetail } =
         await fetchWorkflowProjects();
+      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition。
       if (apiOk) {
         const enriched = enrichWorkflowRoomNames(events);
-        setWorkflowEvents((prev) =>
-          JSON.stringify(prev) === JSON.stringify(enriched) ? prev : enriched
-        );
-        setWorkflowSource("controller");
-        setWorkflowFailDetail("");
+        React.startTransition(() => {
+          setWorkflowEvents((prev) =>
+            JSON.stringify(prev) === JSON.stringify(enriched) ? prev : enriched
+          );
+          setWorkflowSource("controller");
+          setWorkflowFailDetail("");
+        });
       } else {
         // v0.5.0-beta.12: 记录降级原因——横幅提示「只看已加入房间的项目」+
         // 可操作指引（此前静默降级，正源 401 时用户以为数据就是这样）。
         // 同时记录真实错误 detail（5xx 上游故障不再被通用文案掩盖）。
-        setWorkflowSource("rooms");
-        setWorkflowFailReason(failReason || "error");
-        setWorkflowFailDetail(failDetail || "");
+        React.startTransition(() => {
+          setWorkflowSource("rooms");
+          setWorkflowFailReason(failReason || "error");
+          setWorkflowFailDetail(failDetail || "");
+        });
         const payload = await fetchWorkflowEvents();
-        setWorkflowEvents((prev) => (JSON.stringify(prev) === JSON.stringify(payload.events) ? prev : payload.events));
+        React.startTransition(() => {
+          setWorkflowEvents((prev) => (JSON.stringify(prev) === JSON.stringify(payload.events) ? prev : payload.events));
+        });
       }
     } catch (e) {
       if (!silent) message.error(e instanceof Error ? e.message : tr("获取工作流失败"));
@@ -3387,8 +3409,11 @@ export default function WorkbenchPage() {
     if (!silent) setAdminLoading(true);
     try {
       const data = await fetchAdminData();
-      setAdminFailCount(0);
-      setAdminData((prev) => (prev && JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
+      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition。
+      React.startTransition(() => {
+        setAdminFailCount(0);
+        setAdminData((prev) => (prev && JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
+      });
     } catch (e) {
       setAdminFailCount((n) => n + 1);
       if (!silent) message.error(e instanceof Error ? e.message : tr("获取管理视图失败"));
@@ -3437,6 +3462,13 @@ export default function WorkbenchPage() {
   // 旧版 prev==="" 早退 = 持久化首开 team tab 时 admin 取数零触发（首屏只显拓扑
   // 的真根因之二；hasCtlToken 翻转 effect 兜底 token 就绪，本处兜底首访意图）。
   const prevTabRef = React.useRef("");
+  // v0.5.0-beta.14.13（UIPERF-T21）：team tab 激活态稳定 ref——
+  // WorkerManage 的 30s 轮询门控读此 ref（tick 时取当前值）。
+  // boolean prop `active={tab === "team"}` 每次切 tab 翻转 → 整树
+  // 重渲落进切换帧（实测无 fetch 的 →团队 切换帧 61ms）；ref 身份
+  // 恒定 → React.memo(WorkerManage) 命中，切 tab 零重渲。
+  const teamActiveRef = React.useRef(false);
+  teamActiveRef.current = tab === "team";
   React.useEffect(() => {
     const prev = prevTabRef.current;
     prevTabRef.current = tab;
@@ -4387,7 +4419,7 @@ export default function WorkbenchPage() {
                 /* v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳配置页 */
                 onOpenSettings={gotoSettings}
                 hasToken={hasCtlToken}
-                active={tab === "team"}
+                activeRef={teamActiveRef}
                 treeSource={treeSource}
                 workerSessionByName={workerSessionStates.byName}
                 myUserId={config?.matrix?.user_id || ""}

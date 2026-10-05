@@ -331,6 +331,96 @@ function Graph3D(props: G3DGraph) {
     [],
   );
 
+  // v0.5.0-beta.14.13（UIPERF-T21）：渲染循环双位暂停状态机。
+  // vis = 既有可见性门控（T14.7 D1，切 tab/隐藏即停）；
+  // idle = 稳态自动暂停——引擎已停 + 无相机 tween + 无指针交互时场景
+  // 完全静态，但 3d-force-graph 循环仍 60fps 全场景 drawArrays
+  // （实测 KB 驻留 2184–2944 draws/s）→ 持续垃圾 → V8 GC 常开
+  // （实测驻留 6s 主线程 71% (program)）→ 切走瞬间分配波触发大 GC
+  // → KB→其他 100–150ms 顿帧。稳态暂停后驻留 0 draws/s（与既有
+  // 「切走即停」同机制，仅延后触发点从「切走」提前到「引擎收敛后 800ms」）。
+  // 库无 onEngineStart（1.80.0 dist 实证）——引擎重启只由 graphData
+  // 变更触发（数据 effect 显式复位 engineStopped），初始引擎从建图
+  // 起即在转（engineStopped=false），两条路径均被覆盖。
+  // re-pause 延时须 > 最长相机 tween（onEngineStop 后 60ms+480ms 重 fit /
+  // 「适配视图」650ms），否则 tween 中途停帧相机停在半途。
+  const GRAPH_IDLE_REPAUSE_MS = 800;
+  const pauseBitsRef = React.useRef({
+    vis: false,
+    idle: false,
+    physicallyPaused: false,
+    engineStopped: false,
+    rePauseTimer: 0 as number,
+  });
+
+  const applyGraphPause = React.useCallback(() => {
+    const s = pauseBitsRef.current;
+    const g = graphRef.current;
+    if (!g) return;
+    const want = s.vis || s.idle;
+    if (want === s.physicallyPaused) return;
+    s.physicallyPaused = want;
+    try {
+      if (want) g.pauseAnimation();
+      else g.resumeAnimation();
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  // 容器真实可见性（原挂载 effect 闭包版上提——RO/定时器共用）。
+  const graphVisible = React.useCallback((): boolean => {
+    const el = containerRef.current;
+    if (document.hidden) return false;
+    if (!el) return false;
+    try {
+      if (!el.getClientRects().length) return false;
+      if (getComputedStyle(el).visibility === "hidden") return false;
+      if (el.clientWidth === 0 || el.clientHeight === 0) return false;
+    } catch {
+      return true;
+    }
+    return true;
+  }, []);
+
+  const scheduleGraphIdlePause = React.useCallback(() => {
+    const s = pauseBitsRef.current;
+    if (s.rePauseTimer) window.clearTimeout(s.rePauseTimer);
+    s.rePauseTimer = window.setTimeout(() => {
+      s.rePauseTimer = 0;
+      const st = pauseBitsRef.current;
+      if (st.engineStopped && !st.vis && graphVisible()) {
+        st.idle = true;
+        applyGraphPause();
+      }
+    }, GRAPH_IDLE_REPAUSE_MS);
+  }, [applyGraphPause, graphVisible]);
+
+  // 活动标记：恢复（若 idle 暂停中）+ 重排 re-pause 计时器。
+  // 触发点：controls change（orbit/zoom/pan/autoRotate/tween 收尾）、
+  // 指针进入/移动/按下 canvas（hover raycast 在库帧循环内执行，
+  // 停帧即停摆——活动必须恢复帧循环）、节点/背景点击（选中视觉）、
+  // RO 尺寸变化（resize+fit）、graphData 变更（引擎重启）。
+  const markGraphActivity = React.useCallback(() => {
+    const s = pauseBitsRef.current;
+    if (s.idle) {
+      s.idle = false;
+      applyGraphPause();
+    }
+    if (s.rePauseTimer) {
+      window.clearTimeout(s.rePauseTimer);
+      s.rePauseTimer = 0;
+    }
+    if (s.engineStopped) scheduleGraphIdlePause();
+  }, [applyGraphPause, scheduleGraphIdlePause]);
+
+  // onEngineStop 共享入口（挂载/数据两处注册的回调都先过这里）。
+  const handleGraphEngineStop = React.useCallback(() => {
+    const s = pauseBitsRef.current;
+    s.engineStopped = true;
+    if (!s.vis) scheduleGraphIdlePause();
+  }, [scheduleGraphIdlePause]);
+
   // QwenPaw 同款 palette——官方从宿主 CSS 变量读，这里用其
   // 回退值映射（active #d9650b / muted #c7bfb8 / root #ff7f16 /
   // label 浅底桃边——原值照抄，深色按同色温推导）。
@@ -679,6 +769,7 @@ function Graph3D(props: G3DGraph) {
         // 点击激活逻辑抽成共享函数——库 onNodeClick（静止点击）与
         // 自持点击层（被吞点击补位）走同一出口，行为完全一致。
         .onNodeClick((n: any) => {
+          markGraphActivity(); // 选中视觉变更需帧；稳态暂停中点击须先恢复
           libClickRef.current = {
             id: n.id,
             t: performance.now(),
@@ -697,6 +788,7 @@ function Graph3D(props: G3DGraph) {
           el.style.cursor = next ? "pointer" : "default";
         })
         .onBackgroundClick(() => {
+          markGraphActivity(); // 取消选中的视觉变更需帧
           setSelectedId("");
           onSelect?.("");
         });
@@ -771,10 +863,12 @@ function Graph3D(props: G3DGraph) {
       });
       graph.onEngineStop(() => {
         if (cancelled) return;
+        handleGraphEngineStop(); // 引擎收敛 → 800ms 无活动后稳态暂停
         window.clearTimeout(fitTimer);
         fitTimer = window.setTimeout(
           () => {
             if (!cancelled) {
+              markGraphActivity(); // 60ms 后 480ms 重 fit——tween 期间须保持帧
               fitGraphModel(
                 graph,
                 graphData.nodes,
@@ -792,34 +886,35 @@ function Graph3D(props: G3DGraph) {
 
       // v0.5.0-beta.14.7（UIPERF D1）：可见性门控——3d-force-graph 渲染循环
       // 与物理冷却无关，挂载后即 60fps 永续（实测切走后仍 2340 draw calls/s）。
-      // 容器不可见（rc-tabs 保活切走/收起）或页面隐藏 → pauseAnimation。
-      let animPaused = false;
-      const setAnimPaused = (p: boolean) => {
-        const g = graphRef.current;
-        if (!g || p === animPaused) return;
-        animPaused = p;
-        try {
-          if (p) g.pauseAnimation();
-          else g.resumeAnimation();
-        } catch {
-          /* noop */
+      // 容器不可见（rc-tabs 保活切走/收起）或页面隐藏 → vis 位暂停。
+      // v0.5.0-beta.14.13（UIPERF-T21）：vis 位并入双位状态机
+      // （pauseBitsRef）——idle 位（稳态自动暂停）见组件级状态机注释。
+      const setVisPaused = (p: boolean) => {
+        const s = pauseBitsRef.current;
+        const becameVisible = !p && s.vis;
+        s.vis = p;
+        if (becameVisible) {
+          // 切回可见 = 用户活动：清 idle 位立即恢复（对齐 T14.7「显示即
+          // 恢复」语义，保 KB 回访 ≤1.3s 不依赖 RO 时序；回访后若引擎
+          // 已收敛，800ms 再进 idle 暂停）。注意 visTimer 2s 轮询在
+          // 稳态可见时 p 恒 false 且 s.vis 已 false → 不走此分支，
+          // 不会周期性唤醒已暂停的图。
+          markGraphActivity();
         }
+        // 物理状态无条件同步（幂等，want===pp 时直接返回）——
+        // RO 常先于 IO 触发（实测回访 37.9ms vs 45.0ms）：RO→
+        // markGraphActivity 先清 idle（此刻 vis 位尚 true，want 仍
+        // true，不恢复）；随后 IO→setVisPaused(false) 的
+        // becameVisible 分支只走 markGraphActivity，而 idle 已 false
+        // → 不碰 physicallyPaused → 死锁（实测回访首帧拖到 visTimer
+        // 2s 轮询才恢复，1196–2080ms）。补此调用：vis/idle 全 false
+        // → want false → 立即 resume。
+        applyGraphPause();
       };
-      const graphVisible = (): boolean => {
-        if (document.hidden) return false;
-        try {
-          if (!el.getClientRects().length) return false;
-          if (getComputedStyle(el).visibility === "hidden") return false;
-          if (el.clientWidth === 0 || el.clientHeight === 0) return false;
-        } catch {
-          return true;
-        }
-        return true;
-      };
-      const syncAnimState = () => setAnimPaused(!graphVisible());
+      const syncAnimState = () => setVisPaused(!graphVisible());
       const io = new IntersectionObserver(
         (entries) => {
-          if (!entries.some((e) => e.isIntersecting)) setAnimPaused(true);
+          if (!entries.some((e) => e.isIntersecting)) setVisPaused(true);
           else syncAnimState();
         },
         { threshold: 0 },
@@ -830,10 +925,25 @@ function Graph3D(props: G3DGraph) {
       const visTimer = window.setInterval(syncAnimState, 2000);
       syncAnimState();
 
+      // 相机活动（orbit/zoom/pan/autoRotate/fit tween 收尾）→ 恢复 + 重排。
+      const onControlsChange = () => markGraphActivity();
+      controls.addEventListener("change", onControlsChange);
+      // 指针进入/移动 canvas：hover raycast 在库帧循环内执行，停帧即停摆
+      // ——指针一进来必须恢复帧循环（移动持续重排 re-pause）。
+      const onPointerOver = () => markGraphActivity();
+      el.addEventListener("pointerenter", onPointerOver);
+      el.addEventListener("pointermove", onPointerOver);
+
       // resize → 官方 resizeAndFit：改尺寸 + 220ms 重 fit
       // （有选中态不重 fit——官方同款保护选中视角）。
+      // v0.5.0-beta.14.13（UIPERF-T21）：隐藏容器（display:none →
+      // rect 0）跳过 resize——旧式 `b.width || 960` 会在切走瞬间把
+      // 1242x480 缓冲重分配成 960x480（实测），切回再改回 → 双份
+      // WebGL 缓冲 churn 落进切换帧。恢复可见时 RO 以真实尺寸触发。
       let resizeFrame = 0;
       const ro = new ResizeObserver(() => {
+        if (!graphVisible()) return;
+        markGraphActivity();
         const b = el.getBoundingClientRect();
         graph.width(Math.max(1, Math.round(b.width || 960)));
         graph.height(height);
@@ -863,6 +973,7 @@ function Graph3D(props: G3DGraph) {
         | null = null;
       const onSelfPointerDown = (ev: PointerEvent) => {
         if (ev.button !== 0) return;
+        markGraphActivity(); // 按下 = 交互开始（拖拽旋转/长按）
         pressInfo = {
           x: ev.clientX,
           y: ev.clientY,
@@ -919,16 +1030,28 @@ function Graph3D(props: G3DGraph) {
         cancelled = true;
         window.clearTimeout(fitTimer);
         window.cancelAnimationFrame(resizeFrame);
+        const pb = pauseBitsRef.current;
+        if (pb.rePauseTimer) {
+          window.clearTimeout(pb.rePauseTimer);
+          pb.rePauseTimer = 0;
+        }
+        pb.idle = false;
         ro.disconnect();
         io.disconnect();
         document.removeEventListener("visibilitychange", syncAnimState);
         window.clearInterval(visTimer);
         el.removeEventListener("pointerdown", onSelfPointerDown);
         el.removeEventListener("pointerup", onSelfPointerUp);
+        el.removeEventListener("pointerenter", onPointerOver);
+        el.removeEventListener("pointermove", onPointerOver);
         try {
           (graph.controls?.() as any)?.removeEventListener?.(
             "change",
             updatePickScales,
+          );
+          (graph.controls?.() as any)?.removeEventListener?.(
+            "change",
+            onControlsChange,
           );
         } catch {
           /* noop */
@@ -971,6 +1094,10 @@ function Graph3D(props: G3DGraph) {
     setSelectedId("");
     hoverIdRef.current = "";
     nodeVisualsRef.current.clear();
+    // v0.5.0-beta.14.13（UIPERF-T21）：换数据 = 引擎重启——复位收敛态
+    // 并恢复帧循环（库无 onEngineStart，重启路径只有此处）。
+    pauseBitsRef.current.engineStopped = false;
+    markGraphActivity();
     g.graphData(graphData);
     // 官方同款：换数据立即 fit（0ms）+ 引擎收敛后平滑 480ms 重 fit。
     window.requestAnimationFrame(() => {
@@ -981,16 +1108,24 @@ function Graph3D(props: G3DGraph) {
     });
     let ft = 0;
     g.onEngineStop(() => {
+      handleGraphEngineStop();
       window.clearTimeout(ft);
       ft = window.setTimeout(
         () => {
+          markGraphActivity(); // 480ms 重 fit——tween 期间须保持帧
           fitGraphModel(g, graphData.nodes, 480, fitTargetRef);
           updatePickScales();
         },
         60,
       );
     });
-  }, [graphData, ready, updatePickScales]);
+  }, [
+    graphData,
+    ready,
+    updatePickScales,
+    markGraphActivity,
+    handleGraphEngineStop,
+  ]);
 
   // 选中态 → **直接操作 material**——QwenPaw applyGraphVisualState
   // 逐行同构（nodeOpacity 不支持 accessor，隐形根因；
@@ -1048,19 +1183,21 @@ function Graph3D(props: G3DGraph) {
   React.useEffect(() => {
     const g = graphRef.current;
     if (!g) return;
+    if (autoRotate) markGraphActivity(); // 稳态暂停中开启须先恢复帧循环
     try {
       const controls = g.controls?.();
       if (controls) controls.autoRotate = Boolean(autoRotate);
     } catch {
       /* noop */
     }
-  }, [autoRotate, ready]);
+  }, [autoRotate, ready, markGraphActivity]);
 
   // 缩放 = cameraPosition 相对 controls.target 位移（zoom() 未代理，
   // 历史缺陷修复）。factor<1 放大，>1 缩小。
   const zoomBy = (factor: number) => {
     const g = graphRef.current;
     if (!g) return;
+    markGraphActivity(); // 240ms zoom tween——tween 期间须保持帧
     try {
       const cam = g.camera?.();
       const controls = g.controls?.();
@@ -1145,7 +1282,10 @@ function Graph3D(props: G3DGraph) {
           size="small"
           onClick={() => {
             const g = graphRef.current;
-            if (g) fitGraphModel(g, graphData.nodes, 650);
+            if (g) {
+              markGraphActivity(); // 650ms fit tween——tween 期间须保持帧
+              fitGraphModel(g, graphData.nodes, 650);
+            }
           }}
           disabled={!ready}
         >
