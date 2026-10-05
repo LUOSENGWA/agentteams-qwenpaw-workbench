@@ -5,6 +5,8 @@ Mounted by the plugin host under ``/api`` + prefix ``/agentteams-proxy``.
 Frontend plugin fetches these same-origin endpoints (no CORS):
 
 - ``GET/PUT /agentteams-proxy/config``      user config (secrets redacted)
+- ``GET     /agentteams-proxy/config/export``  full config backup (with credentials, user's own restore)
+- ``POST    /agentteams-proxy/config/import``  full config restore (validate → backup → overwrite)
 - ``POST    /agentteams-proxy/login``       Matrix m.login.password
 - ``POST    /agentteams-proxy/selfcheck/{level}``  L0/L1/L2/all
 - ``GET     /agentteams-proxy/health``      backend liveness + version
@@ -342,6 +344,97 @@ class VerifyAdminRequest(BaseModel):
     gateway_admin_url: Optional[str] = None
     # v0.5.0-beta.14.7: Higress 双地址（列表优先；单项亦可）。
     gateway_admin_urls: Optional[List[str]] = None
+
+
+# ── v0.5.0-beta.14.14（UIPERF-T23）：/config/import schema 级校验 ──────────
+
+# 已知顶层键 → 期望类型（None 值与 load_config 同语义=缺省，跳过；
+# 未知键放行——老导出在新版导入的前向兼容）。
+_CONFIG_KEY_TYPES: Dict[str, type] = {
+    "matrix_homeservers": list,
+    "controller_urls": list,
+    "gateway_admin_urls": list,
+    "controller_token": str,
+    "admin_username": str,
+    "admin_password": str,
+    "gateway_admin_url": str,
+    "console_session": str,
+    "address_mode": str,
+    "console_effects": str,
+    "console_calm": bool,
+    "sglang": dict,
+    "matrix": dict,
+}
+
+# 顶层明文凭据字段（值为 "***" = 误贴了脱敏导出——直接拒，防占位符覆盖真实
+# 凭据；地址条目级 auth 的占位符由下方 _redacted_entry_errors 覆盖）。
+_SECRET_FIELDS_TOP = ("controller_token", "admin_password", "console_session")
+
+_ADDRESS_ENTRY_LISTS = ("matrix_homeservers", "controller_urls", "gateway_admin_urls")
+
+
+def _redacted_entry_errors(entries: Any, where: str) -> List[str]:
+    """地址条目列表内的 auth.password/auth.token = "***" → 错误位置列表。"""
+    bad: List[str] = []
+    if not isinstance(entries, list):
+        return bad
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        auth = entry.get("auth")
+        if not isinstance(auth, dict):
+            continue
+        for f in ("password", "token"):
+            if auth.get(f) == "***":
+                bad.append(f"{where}[{i}].auth.{f}")
+    return bad
+
+
+def _find_redacted_placeholders(data: Dict[str, Any]) -> List[str]:
+    """检测 "***" 脱敏占位符（误贴脱敏导出？）。
+
+    导入是全量覆盖（无 PUT 的「***=保持旧值」合并语义）——占位符落盘会把
+    真实凭据顶成 "***"，故直接拒绝并提示用「导出配置（含凭据）」。
+    """
+    bad: List[str] = []
+    for key in _SECRET_FIELDS_TOP:
+        if isinstance(data.get(key), str) and data[key] == "***":
+            bad.append(key)
+    matrix = data.get("matrix")
+    if isinstance(matrix, dict) and matrix.get("access_token") == "***":
+        bad.append("matrix.access_token")
+    for key in _ADDRESS_ENTRY_LISTS:
+        bad.extend(_redacted_entry_errors(data.get(key), key))
+    sg = data.get("sglang")
+    if isinstance(sg, dict):
+        bad.extend(_redacted_entry_errors(sg.get("urls"), "sglang.urls"))
+    return bad
+
+
+def _validate_config_shape(data: Dict[str, Any]) -> List[str]:
+    """schema 级校验（顶层 dict + 关键键类型 + 至少一个已知键 + 无脱敏占位符）。
+
+    返回错误列表（空 = 通过）；端点拼成可读 400 detail。
+    """
+    errors: List[str] = []
+    for key, expected in _CONFIG_KEY_TYPES.items():
+        if key not in data:
+            continue
+        val = data[key]
+        if val is None:
+            continue
+        if not isinstance(val, expected):
+            errors.append(f"{key} 应为 {expected.__name__}，实际 {type(val).__name__}")
+    if not any(key in data for key in _CONFIG_KEY_TYPES):
+        errors.append(
+            "未识别任何配置键（顶层应是配置对象本身——即「导出配置（含凭据）」的原文，不是包裹结构）"
+        )
+    red = _find_redacted_placeholders(data)
+    if red:
+        errors.append(
+            "检测到脱敏占位符 \"***\"（" + ", ".join(red[:5]) + "）——误贴了脱敏导出？请改用「导出配置（含凭据）」"
+        )
+    return errors
 
 
 class TokenValidationError(ValueError):
@@ -1709,6 +1802,89 @@ def build_router() -> APIRouter:
         # 几乎保存不了）；后台任务经 _safe_refresh_effective 错误自保。
         asyncio.create_task(_safe_refresh_effective(merged))
         return config_mod.redact(merged)
+
+    # ── v0.5.0-beta.14.14（UIPERF-T23）：完整配置备份/恢复 ─────────────────
+    # 安全边界：同源本地、面向用户自己的备份用途（换环境/装包后一键还原）。
+    # GET /config 保持脱敏不动（前端展示面）；export/import 是独立通道——
+    # 导出返回含明文凭据的完整配置，导入校验 → 备份当前态 → 覆盖。
+
+    @router.get("/config/export")
+    async def config_export() -> Dict[str, Any]:
+        """v0.5.0-beta.14.14（UIPERF-T23）：完整配置导出（含明文凭据）。
+
+        同源本地、面向用户自己的备份用途——输出即落盘同形的完整配置对象，
+        原样复制保存；换环境/装包/配置丢失后贴回 /config/import 即还原。
+        """
+        return config_mod.load_config()
+
+    @router.post("/config/import")
+    async def config_import(request: Request) -> Dict[str, Any]:
+        """v0.5.0-beta.14.14（UIPERF-T23）：完整配置导入（覆盖式恢复）。
+
+        同源本地、面向用户自己的备份用途（与 GET /config/export 一对）。
+        流程：① schema 级校验（顶层 dict + 关键键类型 + 无脱敏占位符，
+        失败 400 可读错误、零落盘）→ ② 先自动备份当前配置（config.bak.json，
+        备份失败即中止不覆盖）→ ③ 原子覆盖（save_config 内置写后回读验证，
+        备份保持为覆盖前恢复点）→ ④ 身份变更自动重启同步（同 PUT /config）。
+
+        返回 restart: "none"=已 live 生效（同步自动重启）/ "page"=建议刷新
+        workbench 页面确认生效。
+        """
+        try:
+            data = await request.json()
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="导入失败：请求体不是合法 JSON")
+        # 容错：接受 {"config": {...}} 包裹（与 PUT /config 同形；正常配置无
+        # 顶层 "config" 键，仅在包裹结构独占 body 时拆包，不误伤裸配置）。
+        if (
+            isinstance(data, dict)
+            and set(data.keys()) == {"config"}
+            and isinstance(data.get("config"), dict)
+        ):
+            data = data["config"]
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=400, detail="导入失败：配置顶层必须是 JSON 对象")
+        errors = _validate_config_shape(data)
+        if errors:
+            raise HTTPException(
+                status_code=400,
+                detail="导入失败：" + "；".join(errors),
+            )
+        prev = config_mod.load_config()
+        try:
+            config_mod.write_backup(prev)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500,
+                detail=f"导入中止：当前配置备份失败（未覆盖任何内容）：{exc}",
+            ) from exc
+        try:
+            # refresh_backup=False：备份保持覆盖前状态（用户回滚点）。
+            config_mod.save_config(data, refresh_backup=False)
+        except IOError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"配置导入失败（磁盘写入问题）：{exc}",
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"配置导入失败：{exc}") from exc
+        # 身份变更 → 同 PUT /config 语义（清缓存 + 自动重启同步游标）。
+        restart = "page"
+        if (prev.get("matrix") or {}).get("user_id") != (
+            (data.get("matrix") or {}).get("user_id")
+        ):
+            invalidate_data_caches("config.import")
+            from . import sync_watcher as _sw  # noqa: PLC0415
+
+            await _sw.restart("config.import")
+            restart = "none"
+        # 生效地址探测转后台（同 PUT /config——effective 随后自动刷新）。
+        asyncio.create_task(_safe_refresh_effective(config_mod.load_config()))
+        return {
+            "ok": True,
+            "restart": restart,
+            "config": config_mod.redact(config_mod.load_config()),
+        }
 
     @router.post("/config/test")
     async def config_test(patch: ConfigTestRequest) -> Dict[str, Any]:

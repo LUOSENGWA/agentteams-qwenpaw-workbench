@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -38,6 +39,8 @@ _CONFIG_DIR = Path(_SECRET_DIR) / "agentteams-qwenpaw-workbench"
 _CONFIG_PATH = _CONFIG_DIR / "config.json"
 
 _lock = threading.Lock()
+
+logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
 
 # ── v0.5.0-beta.14.3: 地址条目（str | {url, auth?}）解析与凭据 helper ──
 
@@ -240,13 +243,101 @@ def _ensure_dir() -> None:
         pass
 
 
+def _config_bak_path() -> Path:
+    """v0.5.0-beta.14.14（UIPERF-T23）：备份文件路径——从 _CONFIG_PATH 派生
+    （config.json 旁的 config.bak.json；测试 monkeypatch 主文件路径时自动
+    跟随，零额外注入点）。"""
+    return _CONFIG_PATH.with_name("config.bak.json")
+
+
+def _atomic_write_config(path: Path, data: Dict[str, Any]) -> None:
+    """原子落盘（tmp + os.replace + chmod 600）——保存与备份恢复共用。
+
+    失败抛 IOError（调用方定语义：save → 报错给端点；恢复 → 放弃回退默认）。
+    """
+    import os as _os
+
+    _ensure_dir()
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        tmp.replace(path)
+        # v0.5.0-beta.14.7（安全）：文件含明文凭据（Basic 密码等）——收紧到
+        # 600（best-effort，失败不影响功能）。
+        try:
+            _os.chmod(path, 0o600)
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception as exc:  # noqa: BLE001
+        raise IOError(f"配置写入失败：{exc}") from exc
+
+
+def write_backup(snapshot: Dict[str, Any]) -> None:
+    """v0.5.0-beta.14.14（UIPERF-T23）：原子写 config.bak.json 快照。
+
+    失败抛 IOError——调用方决定：save 路径仅告警（主文件已验证落盘，不
+    拖累保存）；导入路径 = 中止不覆盖（「先备份再覆盖」安全契约）。
+    """
+    _atomic_write_config(_config_bak_path(), snapshot)
+
+
+def _restore_from_backup() -> Optional[Dict[str, Any]]:
+    """v0.5.0-beta.14.14（UIPERF-T23）：自愈——主配置缺失/损坏 → 从
+    config.bak.json 恢复（原子写回主文件 + 日志明示）。
+
+    无备份/备份损坏/写回失败 → None（调用方回默认值，不崩）。
+    """
+    bak = _config_bak_path()
+    try:
+        data = json.loads(bak.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        logger.warning(
+            "config self-heal: backup %s unavailable (%s: %s) — falling back to defaults",
+            bak,
+            type(exc).__name__,
+            exc,
+        )
+        return None
+    if not isinstance(data, dict):
+        logger.warning(
+            "config self-heal: backup %s is not a JSON object — falling back to defaults",
+            bak,
+        )
+        return None
+    try:
+        _atomic_write_config(_CONFIG_PATH, data)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "config self-heal: restore write failed: %s — falling back to defaults",
+            exc,
+        )
+        return None
+    logger.warning(
+        "config self-heal: main config missing or corrupt — restored from %s",
+        bak,
+    )
+    return data
+
+
 def load_config() -> Dict[str, Any]:
     """Load the config, merging with defaults for missing keys."""
     with _lock:
         try:
             raw = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
-            return json.loads(json.dumps(_DEFAULTS))
+            if not isinstance(raw, dict):
+                raise ValueError("top-level JSON must be an object")
+        except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
+            # v0.5.0-beta.14.14（UIPERF-T23）：自愈——主文件缺失/损坏
+            # （含顶层非对象）→ 自动从备份恢复（日志明示）；无可用备份
+            # → 默认值（不崩）。
+            restored = _restore_from_backup()
+            if restored is not None:
+                raw = restored
+            else:
+                return json.loads(json.dumps(_DEFAULTS))
 
         # v0.5.0-beta.14.7（安全）：存量 644 → 600 兜底（一次性收敛）。
         try:
@@ -330,25 +421,18 @@ def load_config() -> Dict[str, Any]:
         return merged
 
 
-def save_config(config: Dict[str, Any]) -> None:
-    """Persist the full config (caller is responsible for shape)."""
-    with _lock:
-        _ensure_dir()
-        tmp = _CONFIG_PATH.with_suffix(".json.tmp")
-        try:
-            tmp.write_text(
-                json.dumps(config, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            tmp.replace(_CONFIG_PATH)
-            # v0.5.0-beta.14.7（安全）：文件含明文凭据（Basic 密码等）——收紧到
-            # 600（best-effort，失败不影响功能）。
-            try:
-                import os as _os
+def save_config(config: Dict[str, Any], refresh_backup: bool = True) -> None:
+    """Persist the full config (caller is responsible for shape).
 
-                _os.chmod(_CONFIG_PATH, 0o600)
-            except Exception:  # noqa: BLE001
-                pass
+    v0.5.0-beta.14.14（UIPERF-T23）：成功保存后自动原子刷新 config.bak.json
+    ——下次加载主文件丢失/损坏时从中自愈（见 load_config/_restore_from_backup）。
+    备份失败仅告警（主文件已验证落盘，不拖累保存）；refresh_backup=False 供
+    导入路径（导入前先手工备份覆盖前状态，覆盖后备份保持为恢复点，不被新值
+    顶掉）。
+    """
+    with _lock:
+        try:
+            _atomic_write_config(_CONFIG_PATH, config)
             # v0.5.0-beta.14.12（UIPERF-T19）：写后回读验证（小文件，成本可忽略）
             # ——「保存成功」必须以磁盘实况为准，读回不一致直接抛错（由端点
             # 转 500 详情）。
@@ -357,6 +441,14 @@ def save_config(config: Dict[str, Any]) -> None:
                 raise IOError("配置写盘校验不一致（磁盘内容与内存态不同）")
         except Exception as exc:  # noqa: BLE001
             raise IOError(f"配置写入失败：{exc}") from exc
+        if refresh_backup:
+            try:
+                write_backup(config)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "config backup refresh failed (main config saved OK): %s",
+                    exc,
+                )
 
 
 def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
