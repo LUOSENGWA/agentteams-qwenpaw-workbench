@@ -719,6 +719,26 @@ def build_router() -> APIRouter:
         """L0 probe: backend alive + plugin version."""
         return {"ok": True, "plugin": "agentteams-qwenpaw-workbench", "version": __version__}
 
+    @router.get("/workers-status")
+    async def workers_status() -> Dict[str, Any]:
+        """v0.5.0-beta.14.9（UIPERF-T9）：Worker session 状态聚合（前端一次
+        拿全量；数据由 worker_status 后台 30s 扫描维护，过期时本端点触发
+        后台补扫、零等待返回上轮快照）。"""
+        from . import worker_status  # noqa: PLC0415
+
+        worker_status.ensure_fresh()
+        return worker_status.snapshot()
+
+    @router.get("/projects-workflow")
+    async def projects_workflow_snapshot() -> Dict[str, Any]:
+        """v0.5.0-beta.14.9（UIPERF-T10）：项目+工作流取数聚合（前端一次拿
+        {projects, workflows} 原始件；数据由后台 30s 扫描维护，过期时本端点
+        触发后台补扫、零等待返回上轮快照）。"""
+        from . import projects_workflow  # noqa: PLC0415
+
+        projects_workflow.ensure_fresh()
+        return projects_workflow.snapshot()
+
     @router.get("/sglang/loads")
     async def sglang_loads() -> Dict[str, Any]:
         """可选模块：集群负载（L1 专属，增强版）。

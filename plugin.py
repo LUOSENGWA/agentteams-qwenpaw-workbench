@@ -150,6 +150,35 @@ class AgentTeamsWorkbenchPlugin:
             lambda: address_probe.stop(),
         )
 
+        # v0.5.0-beta.14.9（UIPERF-T9）：Worker 状态聚合扫描（前端状态灯的
+        # 扇出收敛——连接器侧单点扫描 + /workers-status 单端点）。
+        from agentteams_connector import worker_status
+
+        api.register_startup_hook(
+            "agentteams-worker-status",
+            lambda: worker_status.start(),
+            priority=220,
+        )
+        api.register_shutdown_hook(
+            "agentteams-worker-status",
+            lambda: worker_status.stop(),
+        )
+
+        # v0.5.0-beta.14.9（UIPERF-T10）：项目+工作流取数聚合扫描（工作流
+        # 列表逐项目 36 路 /workflow 扇出收敛——连接器侧单点扫描 +
+        # /projects-workflow 单端点）。
+        from agentteams_connector import projects_workflow
+
+        api.register_startup_hook(
+            "agentteams-projects-workflow",
+            lambda: projects_workflow.start(),
+            priority=230,
+        )
+        api.register_shutdown_hook(
+            "agentteams-projects-workflow",
+            lambda: projects_workflow.stop(),
+        )
+
         api.register_slash_command(
             "selfcheck",
             _selfcheck_handler,
