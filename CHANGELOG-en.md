@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.8 (2026-10-05 - performance deep-fix batch)
+
+**Measurement-driven fixes: console effects calm (GPU) / 3D graph sleep / incremental scans everywhere / elegant tab switching / Higress address regrouping**
+
+- **Console effects calm (new setting, default on)**: the upstream RunningGlow ring (437x744 conic-gradient spinning 4s forever - sampled continuous rotation) and breathe layer are frozen into static visuals; toggleable in settings. Measured: persistent animations per console page **2 -> 0**.
+- **3D knowledge graph sleep**: rendering paused when hidden/switched away (`pauseAnimation` gated by IntersectionObserver + visibility), measured hidden draw calls **2340 -> 0/s**, auto-resume on return.
+- **Full scans -> incremental**: mentions/approvals/workflow/artifacts scans now skip rooms with no sync-probe advance (600s full-pass fallback); artifacts cold ~37s -> **incremental 3.9s (-95%)**; home artifacts card fetch deferred.
+- **Elegant tab switching**: light pane transition (transform/opacity only, 170ms); no skeleton flash on revisits; KB switch **~2.1s -> ~1.2s**.
+- **Higress address regrouping**: dual Console addresses live in the address section (with Matrix/Controller/SGLang); fixed LAN/WAN address mode now covers Higress.
+- Also includes the full 14.7 line (credential file perms 600, initial sync -65%, zero message re-fetch, name caches - see below).
+
 ## 0.5.0-beta.14.7 (2026-10-04/05 - night batch)
 
 **Low-bandwidth perf batch 3 + security hardening + Higress dual addresses — zero message re-fetch / sync payload -65% / per-path byte metering / credential file hardening**
