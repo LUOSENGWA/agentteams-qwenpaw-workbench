@@ -790,6 +790,46 @@ function Graph3D(props: G3DGraph) {
       graphRef.current = graph;
       setReady(true);
 
+      // v0.5.0-beta.14.7（UIPERF D1）：可见性门控——3d-force-graph 渲染循环
+      // 与物理冷却无关，挂载后即 60fps 永续（实测切走后仍 2340 draw calls/s）。
+      // 容器不可见（rc-tabs 保活切走/收起）或页面隐藏 → pauseAnimation。
+      let animPaused = false;
+      const setAnimPaused = (p: boolean) => {
+        const g = graphRef.current;
+        if (!g || p === animPaused) return;
+        animPaused = p;
+        try {
+          if (p) g.pauseAnimation();
+          else g.resumeAnimation();
+        } catch {
+          /* noop */
+        }
+      };
+      const graphVisible = (): boolean => {
+        if (document.hidden) return false;
+        try {
+          if (!el.getClientRects().length) return false;
+          if (getComputedStyle(el).visibility === "hidden") return false;
+          if (el.clientWidth === 0 || el.clientHeight === 0) return false;
+        } catch {
+          return true;
+        }
+        return true;
+      };
+      const syncAnimState = () => setAnimPaused(!graphVisible());
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((e) => e.isIntersecting)) setAnimPaused(true);
+          else syncAnimState();
+        },
+        { threshold: 0 },
+      );
+      io.observe(el);
+      document.addEventListener("visibilitychange", syncAnimState);
+      // 兜底复查：visibility:hidden / display 变化未必触发 IO。
+      const visTimer = window.setInterval(syncAnimState, 2000);
+      syncAnimState();
+
       // resize → 官方 resizeAndFit：改尺寸 + 220ms 重 fit
       // （有选中态不重 fit——官方同款保护选中视角）。
       let resizeFrame = 0;
@@ -880,6 +920,9 @@ function Graph3D(props: G3DGraph) {
         window.clearTimeout(fitTimer);
         window.cancelAnimationFrame(resizeFrame);
         ro.disconnect();
+        io.disconnect();
+        document.removeEventListener("visibilitychange", syncAnimState);
+        window.clearInterval(visTimer);
         el.removeEventListener("pointerdown", onSelfPointerDown);
         el.removeEventListener("pointerup", onSelfPointerUp);
         try {
