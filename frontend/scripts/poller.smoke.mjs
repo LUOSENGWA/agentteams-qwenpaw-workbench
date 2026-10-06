@@ -168,5 +168,33 @@ const { createPoller } = await import(path.join(tmp, "usePoller.mjs"));
   console.log("P5 catch-up ✓");
 }
 
+// 6. UIPERF-T25 minPokeMs：刚跑过（< minPokeMs）→ poke 跳过；超窗 → 恢复。
+//    intervalMs=800 保证首 tick（t=800）不干扰测试窗（累计 ≈490ms）。
+{
+  let calls = 0;
+  const p = createPoller({
+    fn: () => {
+      calls++;
+    },
+    intervalMs: 800,
+    isActive: () => true,
+    jitterRatio: 0,
+    minPokeMs: 400,
+  });
+  p.start();
+  p.poke(); // lastTickAt=0 → 必跑
+  await sleep(30);
+  assert.strictEqual(calls, 1, "P6 首次 poke：执行");
+  p.poke(); // 距上次 < 400ms → 节流跳过
+  await sleep(30);
+  assert.strictEqual(calls, 1, "P6 minPokeMs 窗口内：poke 跳过");
+  await sleep(450); // 累计 ≈480ms > 400ms（仍 < 500ms 首 tick）
+  p.poke(); // 超窗 → 恢复执行
+  await sleep(20);
+  assert.strictEqual(calls, 2, "P6 超出 minPokeMs：poke 恢复");
+  p.stop();
+  console.log("P6 minPokeMs 节流 ✓");
+}
+
 rmSync(tmp, { recursive: true, force: true });
-console.log("\npoller 冒烟全绿（5 断言）");
+console.log("\npoller 冒烟全绿（6 断言）");

@@ -16,7 +16,7 @@ import {
 } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { useActiveTab } from "../tabActivity";
+import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import LOGO_URL from "../lib/logo";
 import { formatChatTime } from "../util";
@@ -185,7 +185,9 @@ function HomePage(props: HomePageProps) {
 
   // v0.5.0-beta.14.6（R2）：home tab 轮询活跃门控（tabActivity 单源 +
   // 页面可见；rc-tabs 保活：切走组件不卸载，必须显式门控）。
-  const homeActive = useActiveTab() === "home" && !document.hidden;
+  // v0.5.0-beta.14.14（UIPERF-T25）：字符串快照 → 布尔快照（useTabActive）
+  // ——非 home tab 的互切不再触发本面板重渲（连点 Tab CPU 成本）。
+  const homeActive = useTabActive("home") && !document.hidden;
   // 挂载首拉。
   React.useEffect(() => {
     void refreshApprovals();

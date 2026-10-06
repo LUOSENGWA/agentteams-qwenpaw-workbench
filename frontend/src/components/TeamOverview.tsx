@@ -691,7 +691,7 @@ export interface TeamOverviewProps {
   workerRoleByMxid?: Record<string, string>;
 }
 
-export default function TeamOverview(props: TeamOverviewProps) {
+function TeamOverview(props: TeamOverviewProps) {
   const t = useThemeColors();
   const tr = useT();
   const {
@@ -1154,3 +1154,10 @@ export default function TeamOverview(props: TeamOverviewProps) {
     </div>
   );
 }
+
+// v0.5.0-beta.14.14（UIPERF-T25）：memo 化——rc-tabs 保活下本组件首访后
+// 常驻挂载，WorkbenchPage 每次重渲（SSE 帧/数据波/tab 切换）此前都会
+// 无差别重渲它（房间列表卡片族）。props 已稳定化（rooms/invites 保引用
+// T21、workerSessionStates 保引用 T26、roomProjectNames/workerRoleByMxid
+// useMemo、回调 useCallback T13）→ 值未变时 bail out。
+export default React.memo(TeamOverview);

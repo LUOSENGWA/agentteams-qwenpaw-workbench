@@ -36,3 +36,23 @@ export function useActiveTab(): string {
   );
   return React.useSyncExternalStore(sub, getActiveTab, getActiveTab);
 }
+
+/**
+ * v0.5.0-beta.14.14（UIPERF-T25）：布尔快照订阅——仅当「指定 tab 是否激活」
+ * 翻转（边界穿越）时该组件才重渲。useActiveTab 返回字符串快照，每次切 tab
+ * 所有订阅组件都重渲（rc-tabs 保活下 ≥4 面板每次点击全量重渲——连点 Tab
+ * CPU 高企的固定成本之一）；布尔快照只在进入/离开本 tab 时变化。
+ * 用法：`active: useTabActive("ops")`（等价旧 `useActiveTab()==="ops"`，
+ * 但非本 tab 的切换不再触发重渲）。
+ */
+export function useTabActive(tab: string): boolean {
+  const sub = React.useCallback(
+    (cb: () => void) => {
+      listeners.add(cb);
+      return () => listeners.delete(cb);
+    },
+    [],
+  );
+  const getSnap = React.useCallback(() => currentTab === tab, [tab]);
+  return React.useSyncExternalStore(sub, getSnap, getSnap);
+}

@@ -162,6 +162,23 @@ export interface WorkerSessionStates {
   workerMxids: Set<string>;
 }
 
+/** 值相等比较（键集 + 逐值）——引用稳定化用。 */
+function sameStateRecords(
+  a: Record<string, WorkerSessionState>,
+  b: Record<string, WorkerSessionState>,
+): boolean {
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  for (const k of ka) if (a[k] !== b[k]) return false;
+  return true;
+}
+
+function sameMxidSets(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const m of a) if (!b.has(m)) return false;
+  return true;
+}
+
 /**
  * 统一派生 hook：三落点共用一份状态（卡片列表 / Worker 行 / 房间头 / 消息头像）。
  * 15s tick 驱动 done→idle 老化。纯派生，无网络请求。
@@ -194,6 +211,11 @@ export function useWorkerSessionStates(
   // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s 老化 tick，
   // !document.hidden 内置——页面隐藏时暂停 tick）。
   usePoller({ fn: () => setTick((t) => t + 1), intervalMs: TICK_MS });
+  // v0.5.0-beta.14.14（UIPERF-T26）：15s tick 每轮产出**新引用**（byName/
+  // byRoom/byMxid/workerMxids 全新对象）→ 下游 memo（RoomChat 等）每 15s
+  // 被击穿一次——即使三态值一个都没变（空闲也全量重渲染）。值未变时复用
+  // 上轮对象引用，值翻转才换新。
+  const prevRef = React.useRef<WorkerSessionStates | null>(null);
   return React.useMemo(() => {
     const now = Date.now();
     const rs = rooms || [];
@@ -228,6 +250,23 @@ export function useWorkerSessionStates(
         if (w.room_id) byRoom[w.room_id] = st;
       }
     }
-    return { byName, byRoom, byMxid, workerMxids: collectWorkerMxids(workerTree) };
+    const next: WorkerSessionStates = {
+      byName,
+      byRoom,
+      byMxid,
+      workerMxids: collectWorkerMxids(workerTree),
+    };
+    const prev = prevRef.current;
+    if (
+      prev &&
+      sameStateRecords(prev.byName, next.byName) &&
+      sameStateRecords(prev.byRoom, next.byRoom) &&
+      sameStateRecords(prev.byMxid, next.byMxid) &&
+      sameMxidSets(prev.workerMxids, next.workerMxids)
+    ) {
+      return prev; // 值未变 → 复用引用，不击穿下游 memo
+    }
+    prevRef.current = next;
+    return next;
   }, [rooms, workerTree, workers, chatStatuses, tick]);
 }

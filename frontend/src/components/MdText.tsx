@@ -51,8 +51,10 @@ function MentionPill({
   );
 }
 
-/** 行内格式：`code` / **bold** / *italic* / @mention（整 MXID pill + 短名）/ 裸 URL。 */
-function InlineMd({
+/** 行内格式：`code` / **bold** / *italic* / @mention（整 MXID pill + 短名）/ 裸 URL。
+ * v0.5.0-beta.14.14（UIPERF-T26）：memo——blocks 缓存命中时（已完成消息）
+ * 父行重渲染不再重跑逐 token 正则 + 节点重建（流式期成本点 C6）。 */
+const InlineMd = React.memo(function InlineMd({
   text,
   onMentionClick,
 }: {
@@ -125,7 +127,7 @@ function InlineMd({
   }
   if (last < text.length) nodes.push(text.slice(last));
   return <>{nodes}</>;
-}
+});
 
 /** 复制按钮（代码块用）。 */
 function CopyButton({ text }: { text: string }) {
@@ -337,8 +339,10 @@ export interface MdTextProps {
   onMentionClick?: (name: string) => void;
 }
 
-/** 零依赖 markdown 渲染：代码块/标题/列表/引用 + 行内格式 + @高亮 + 长文折叠。 */
-export default function MdText({
+/** 零依赖 markdown 渲染：代码块/标题/列表/引用 + 行内格式 + @高亮 + 长文折叠。
+ * v0.5.0-beta.14.14（UIPERF-T26）：memo——text 未变的行（流式期间已完成的
+ * 历史消息）父行重渲染时整体跳过（parseBlocks + 块 JSX + InlineMd 全不跑）。 */
+export default React.memo(function MdText({
   text,
   maxLength = 800,
   onMentionClick,
@@ -481,4 +485,4 @@ export default function MdText({
       ) : null}
     </div>
   );
-}
+});

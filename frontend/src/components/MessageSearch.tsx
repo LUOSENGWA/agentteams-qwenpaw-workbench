@@ -217,7 +217,7 @@ export interface MessageSearchProps {
 }
 
 /** 消息搜索面板（+  群名搜索）：Drawer，房间内/跨房间。 */
-export default function MessageSearch(props: MessageSearchProps) {
+function MessageSearch(props: MessageSearchProps) {
   const {
     open,
     onClose,
@@ -599,3 +599,9 @@ export default function MessageSearch(props: MessageSearchProps) {
     </antd.Drawer>
   );
 }
+
+// v0.5.0-beta.14.14（UIPERF-T25）：memo 化——本组件常驻渲染于 WorkbenchPage
+// 根（全局搜索 Drawer），此前每次重渲都进组件体（hooks + useMemo）。
+// 调用方 props 已稳定化（rooms 保引用 T21 + 回调 useCallback T25）→ 关闭
+// 态下 bail out。
+export default React.memo(MessageSearch);
