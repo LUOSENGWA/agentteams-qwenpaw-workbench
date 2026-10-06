@@ -321,6 +321,7 @@ class ConfigTestRequest(BaseModel):
     matrix: Optional[List[Any]] = None
     controller: Optional[List[Any]] = None
     sglang: Optional[List[Any]] = None  # v0.5.0-beta.12: SGLang 双地址列表
+    gateway: Optional[List[Any]] = None  # v0.5.0-beta.14.17: Higress 双地址列表
 
 
 class VerifyAdminRequest(BaseModel):
@@ -1910,12 +1911,19 @@ def build_router() -> APIRouter:
             or ([cfg_sg.get("url")] if cfg_sg.get("url") else [])
         )
         sglang_list = _urls(patch.sglang or cfg_sg_urls)
+        # v0.5.0-beta.14.17: Higress 双地址（传草稿列表则测草稿，否则测已配置）。
+        cfg_gw_urls = _urls(cfg.get("gateway_admin_urls"))
+        gateway_list = _urls(patch.gateway or cfg_gw_urls)
         # v0.5.0-beta.14.3: 草稿凭据随测——条目级 auth 图（未保存也能验）。
         auth_maps = {
             "matrix": config_mod.build_auth_map(patch.matrix if patch.matrix is not None else cfg.get("matrix_homeservers")),
             "controller": config_mod.build_auth_map(patch.controller if patch.controller is not None else cfg.get("controller_urls")),
             "sglang": config_mod.build_auth_map(
                 (patch.sglang if patch.sglang is not None else cfg_sg.get("urls"))
+            ),
+            # v0.5.0-beta.14.17: Higress 覆盖凭据（同口径）。
+            "gateway": config_mod.build_auth_map(
+                (patch.gateway if patch.gateway is not None else cfg.get("gateway_admin_urls"))
             ),
         }
         token = (cfg.get("controller_token") or "").strip()
@@ -1927,6 +1935,11 @@ def build_router() -> APIRouter:
         results = await selfcheck.test_addresses(
             matrix_list, ctl_list, sglang_list, token, with_diag=True,
             auth_maps=auth_maps,
+            gateway_urls=gateway_list,
+            # v0.5.0-beta.14.17: 会话三态——已配置且持有会话才探会话有效性。
+            gateway_session_cookie=str(
+                cfg.get("console_session") or ""
+            ).strip(),
         )
         applied = False
         same_lists = (matrix_list == cfg_matrix) and (ctl_list == cfg_ctl)
@@ -1947,6 +1960,8 @@ def build_router() -> APIRouter:
             "matrix": results["matrix"],
             "controller": results["controller"],
             "sglang": results["sglang"],
+            # v0.5.0-beta.14.17: Higress 探测行（诊断面；未配置=空列表）。
+            "gateway": results.get("gateway", []),
             "effective": effective,
             # v0.5.0-beta.14.1: 固定档回报——三类地址各自的固定值（None=未固定）。
             "pinned": _pinned_map(cfg),

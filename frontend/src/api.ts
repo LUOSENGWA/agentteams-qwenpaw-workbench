@@ -492,9 +492,16 @@ export interface ConfigTestResponse {
   controller: AddressTestResult[];
   // v0.5.0-beta.12: SGLang 双地址——逐地址行（与 matrix/controller 同构）。
   sglang: AddressTestResult[] | null;
+  // v0.5.0-beta.14.17: Higress 探测行（诊断面；未配置=空数组）。
+  gateway?: AddressTestResult[];
   effective: { matrix: string; controller: string };
-  // v0.5.0-beta.14.1: 固定档回报——三类地址各自的固定值（null=未固定）。
-  pinned?: { matrix?: string | null; controller?: string | null; sglang?: string | null };
+  // v0.5.0-beta.14.1: 固定档回报——四类地址各自的固定值（null=未固定）。
+  pinned?: {
+    matrix?: string | null;
+    controller?: string | null;
+    sglang?: string | null;
+    gateway?: string | null;
+  };
   applied: boolean;
   switched?: { matrix: boolean; controller: boolean };
 }
@@ -506,6 +513,8 @@ export async function testAddresses(
   // v0.5.0-beta.12: SGLang 双地址（内网/外网）列表。
   // v0.5.0-beta.14.3: 条目可带 auth（草稿凭据随测）。
   sglangUrls?: AddressEntry[],
+  // v0.5.0-beta.14.17: Higress 双地址（内网/外网）列表（诊断面）。
+  gatewayUrls?: AddressEntry[],
 ): Promise<ConfigTestResponse> {
   return (await requestJson("/agentteams-proxy/config/test", {
     method: "POST",
@@ -514,6 +523,7 @@ export async function testAddresses(
       matrix: matrix?.length ? matrix : undefined,
       controller: controller?.length ? controller : undefined,
       sglang: sglangUrls?.length ? sglangUrls : undefined,
+      gateway: gatewayUrls?.length ? gatewayUrls : undefined,
     }),
   })) as ConfigTestResponse;
 }
