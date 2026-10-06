@@ -5,6 +5,48 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.16 (2026-10-06 - acceptance round 4 + deep audit · six fixes)
+
+**Config-memory root fix / settings cleanup / L2 gating / faster connectivity test / poller bug fix / god-file slimming**
+
+- **Config memory root-caused (acceptance F1)**: "address mode / credentials
+  not remembered" had two root causes, both fixed — (1) the first GET /config
+  failure was silently swallowed with zero retry (hit during the plugin
+  reload window or WAN flaps) → now 3 backoff retries (1.5/4/10s) + a
+  in-progress lock; (2) the first load (null→payload) landed via a low-priority
+  transition that high-priority update waves could starve, so React state was
+  never filled → first load now commits at high priority, transitions stay for
+  silent refreshes. Config load state is now three-valued
+  (loading/ready/failed) with a visible banner (incl. "showing defaults —
+  don't save as-is, it would overwrite" + retry) and the save button disabled
+  until config is ready. E2E: real values backfilled; saving without changes
+  no longer overwrites disk values.
+- **Host-agent skills block removed from Settings (F2)**: the SkillsTab
+  component (468 lines) and its 16 i18n keys are gone; persisted "skills"
+  tab state migrates to Home. The SkillCenter team skill pool is unaffected.
+- **L1-only sections hidden in L2 login mode (F3)**: the Higress Console
+  address card and the SGLang "cluster load" card (previously marked
+  L1-only in comments but always rendered) are now gated on login mode;
+  L2 hides them, saved values persist.
+- **Connectivity test sped up (F4)**: the three address classes
+  (matrix/controller/sglang) ran as three serial awaits (each eating full
+  timeout+retry ≈12.5s on WAN, ≈37.5s total) → now fully parallel
+  (total = slowest single address, ≈8.3s); default timeout 6→4s. Per-address
+  semantics/credentials/retries unchanged; 3 regression tests.
+- **usePoller catch-up inactive gate (deep-audit real bug)**: when the window
+  was hidden and the user switched tabs in the meantime, a visibility-restore
+  catch-up could still fire a redundant fetch on the now-inactive poller.
+  onVisibility now checks isActive first (inactive pollers only resume the
+  scheduling chain, never run fn) + smoke assertion P7.
+- **God-file slimming step 1 (deep audit)**: SettingsTab extracted from
+  WorkbenchPage.tsx into its own module (4813→3200 lines; the 1430-line body
+  block is byte-identical to the parent commit); 57 verifiably orphaned i18n
+  DICT keys dropped (full-tree literal-occurrence method; dynamic tr
+  scenarios all preserved). Pure structural change, zero behavior change.
+- **Full self-install verification**: 11 tabs walked green (no UI errors);
+  45s dial delta **+47** (vs 14.6 peak baseline +466/45s, −90%);
+  responsiveness n=89 median 5ms / max 20ms; config file 600; pytest 183/183.
+
 ## 0.5.0-beta.14.15 (2026-10-06 - full self-verification + second debt audit · two fixes)
 
 **PawApp entry dead-link fix / dead-code cleanup / full ZIP self-install verification**
