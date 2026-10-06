@@ -4,19 +4,19 @@
  * 场景：真实 React + antd（node_modules UMD）挂载 WorkerRuntimeConfig 两实例
  * （#hrc = L2 只读 / #hrc1 = L1 可编辑）+ fetch mock（验证实盘结构 RC）。
  *
- * 断言（13.7 装验「六项都做进去了吗 + 模板抄 QwenPaw + 词元/令牌术语」）：
+ * 断言（13.7 「六项都做进去了吗 + 模板抄 QwenPaw + 词元/令牌术语」）：
  * ① 七 tab 全在（ReAct 智能体/智能体 Loop 设置/LLM 自动重试/LLM 并发限流/
- *    上下文管理/长期记忆/系统只读）
+ * 上下文管理/长期记忆/系统只读）
  * ② L2：ReAct tab shell 组只读；并发限流 tab 出 L1-only 警示 + 控件 disabled
  * ③ L1：ReAct tab shell 超时 InputNumber=60 / 可执行文件=/bin/sh / 自动标题 on
  * ④ L1：并发限流 5 值 2/30/5/1/60；上下文管理 backend=light、divisor=4
  * ⑤ L1：长期记忆 backend=remelight、dream cron=0 23 * * *
  * ⑥ Loop tab：Loop 模板区（4 模板 tag）→ 质量优先 → 4 gate 勾选 →
- *    「按模板创建自定义模式」弹窗 → 管道预览 4 tag
+ * 「按模板创建自定义模式」弹窗 → 管道预览 4 tag
  * ⑦ 术语：Goal 节「词元预算」+ Mission 节「每个 Story 最大重试次数」
  * ⑧ 无 pageerror
  *
- * 运行：python3 -m http.server 8791 &  node scripts/ui-harness-138.mjs
+ * 运行：python3 -m http.server 8791 & node scripts/ui-harness-138.mjs
  */
 import { chromium } from "playwright-core";
 

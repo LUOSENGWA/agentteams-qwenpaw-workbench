@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.10（UIPERF-T12）：KB 端点 SWR 持久缓存单测。
+"""v0.5.0-beta.14.10：KB 端点 SWR 持久缓存单测。
 
 背景（实测）：冷读容器 tree 最慢 13.8s、graph 同级、/kb/agents 3.3s 且无
 缓存（每次全量）；命中缓存 = 4-5ms。修法 = stale-while-revalidate + 磁盘
@@ -8,15 +8,15 @@
 覆盖（4 例）：
 
 1. ``kb_cache`` 往返：save/load 一致（ts 新鲜）；key 特殊字符过滤；
-   缺失/损坏/形状异常 → None。
+ 缺失/损坏/形状异常 → None。
 2. tree 端点 SWR：seed 磁盘缓存（旧 ts=now-120s）→ 请求秒回
-   ``cached=True`` + 原 payload + ``age≈120``，且超 TTL 触发后台单飞
-   刷新（注册表换假 compute → 等待完成 → 磁盘被新值更新、last-agent
-   落记）。
+ ``cached=True`` + 原 payload + ``age≈120``，且超 TTL 触发后台单飞
+ 刷新（注册表换假 compute → 等待完成 → 磁盘被新值更新、last-agent
+ 落记）。
 3. 冷路径落盘：无磁盘缓存 + 假 compute → 响应正常（无 cached 标记）且
-   ``kb_cache.load("tree-<agent>")`` 非空 + 内存缓存同值。
+ ``kb_cache.load("tree-<agent>")`` 非空 + 内存缓存同值。
 4. agents 同款：seed "agents" 旧值 → ``cached=True`` + 原 payload +
-   刷新更新磁盘；agents 路径不记 last-agent。
+ 刷新更新磁盘；agents 路径不记 last-agent。
 
 隔离纪律：磁盘目录由 conftest autouse fixture 重定向到本测 tmp（不碰
 真实 secret 目录）；计算体经模块级注册表 ``_KB_PREWARM_HOOKS`` 换假
@@ -43,7 +43,7 @@ from agentteams_connector import router as router_mod
 class _FakeCompute:
     """假计算体：记录调用次数、set 事件（供等待完成）、返回固定 payload。
 
-    兼容两种签名：tree/graph 带 agent 参数；agents 无参。"""
+ 兼容两种签名：tree/graph 带 agent 参数；agents 无参。"""
 
     def __init__(self, payload: dict) -> None:
         self.payload = payload
@@ -59,9 +59,9 @@ class _FakeCompute:
 def _wait_disk(key: str, older_than: float, timeout: float = 5.0):
     """轮询等磁盘缓存出现新值（ts > older_than）。
 
-    后台刷新是 fire-and-forget 任务（portal 循环在 with 块内持续运转），
-    假 compute 毫秒级完成；轮询等 ts 更新避免「事件已 set 但 _store_kb
-    尚未写盘」的竞态。超时返回最后一次读（None=未更新）。"""
+ 后台刷新是 fire-and-forget 任务（portal 循环在 with 块内持续运转），
+ 假 compute 毫秒级完成；轮询等 ts 更新避免「事件已 set 但 _store_kb
+ 尚未写盘」的竞态。超时返回最后一次读（None=未更新）。"""
     deadline = time.time() + timeout
     while True:
         hit = kb_cache.load(key)
@@ -134,7 +134,7 @@ def test_kb_cache_roundtrip_and_corrupt():
 
 def test_tree_swr_stale_hit_and_refresh(client, monkeypatch):
     """seed 旧磁盘缓存（ts=now-120s > TTL 60s）→ 请求秒回旧值
-    （cached/age 标记）+ 触发后台刷新 → 磁盘被新值更新。"""
+ （cached/age 标记）+ 触发后台刷新 → 磁盘被新值更新。"""
     tc = client
     seed = {
         "agent": "big", "workspace": "/fake/ws",
@@ -176,7 +176,7 @@ def test_tree_swr_stale_hit_and_refresh(client, monkeypatch):
 
 def test_tree_cold_path_persists(client, monkeypatch):
     """无磁盘缓存 + 假 compute → 响应正常（无 SWR 标记）且磁盘/内存
-    缓存同值落位（重启/换页后秒开的前提）。"""
+ 缓存同值落位（重启/换页后秒开的前提）。"""
     tc = client
     fresh = {
         "agent": "big", "workspace": "/fake/ws", "files": [],
@@ -207,7 +207,7 @@ def test_tree_cold_path_persists(client, monkeypatch):
 
 def test_agents_swr_stale_hit_and_refresh(client, monkeypatch):
     """seed "agents" 旧值（ts=now-120s）→ cached=True + 原 payload +
-    后台刷新更新磁盘；agents 路径不记 last-agent。"""
+ 后台刷新更新磁盘；agents 路径不记 last-agent。"""
     tc = client
     seed = {
         "agents": [{"name": "w1", "container": "agentteams-worker-w1",

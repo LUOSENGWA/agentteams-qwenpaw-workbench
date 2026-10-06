@@ -38,7 +38,7 @@ import {
   fetchWorkerSkills,
   setWorkerSkillPreload,
   httpErrorStatus,
-  // v0.5.0-beta.13.19（13.18 用户反馈「技能上传呢」）：团队技能包上传
+  // v0.5.0-beta.13.19（13.18 技能上传呢）：团队技能包上传
   // （POST /api/v1/skills，multipart zip；经连接器 multipart 透传）。
   uploadTeamSkill,
 } from "../api";
@@ -84,18 +84,18 @@ interface MatrixState {
 }
 
 /**
- * v0.5.0-beta.13.14（L2 双模式——调研 P0 定案 + 上游设计文档
+ * v0.5.0-beta.13.14（L2 双模式——调研 P0 + 上游设计文档
  * docs/design/l2-worker-scoped-write.md（#1274 已合）+ team-skills.md +
  * skill-catalog-api.md 已合 main）：
- *   l2=true → Matrix 身份（无 admin token）：
- *     ① 目录 = GET /skills?team=<本团队>（Controller 按 accessibleTeams
- *        scope；cross-team → 404 反探测）；
- *     ② 矩阵 = L2 scoped workers（standalone 隐藏）+ PUT {skills} 可写
- *        （白名单唯一字段；remoteSkills/mcpServers 400 待 elevated
- *        capability 设计）；
- *     ③ MCP = 只读（写权限同上待设计）。
+ * l2=true → Matrix 身份（无 admin token）：
+ * ① 目录 = GET /skills?team=<本团队>（Controller 按 accessibleTeams
+ * scope；cross-team → 404 反探测）；
+ * ② 矩阵 = L2 scoped workers（standalone 隐藏）+ PUT {skills} 可写
+ * （白名单唯一字段；remoteSkills/mcpServers 400 待 elevated
+ * capability 设计）；
+ * ③ MCP = 只读（写权限同上待设计）。
  * 铁律（P0）：L2 路径不走 admin token——代理链在 router.py
- *   catch-all 已实现（admin token 空 → Matrix access_token）。
+ * catch-all 已实现（admin token 空 → Matrix access_token）。
  */
 export default function SkillCenter({
   l2 = false,
@@ -104,18 +104,18 @@ export default function SkillCenter({
   sections,
 }: {
   l2?: boolean;
-  /** v0.5.0-beta.13.16（13.15 用户反馈「技能中心和 MCP 完全和 worker 拓扑合并」）：
-   *  限定单 Worker——矩阵只渲染该 Worker 行（自动展开编辑区）、MCP 卡只
-   *  渲染该 Worker 行、隐藏页面题头。无此 prop 时行为与既有全量视图完全一致。 */
+  /** v0.5.0-beta.13.16（13.15 技能中心和 MCP 完全和 worker 拓扑合并）：
+ * 限定单 Worker——矩阵只渲染该 Worker 行（自动展开编辑区）、MCP 卡只
+ * 渲染该 Worker 行、隐藏页面题头。无此 prop 时行为与既有全量视图完全一致。 */
   onlyWorker?: string;
-  /** v0.5.0-beta.13.21（13.20 用户反馈「团队的技能等团队配置要放在团队配置里，
-   *  和技能中心一样的搜索/上传/自定义，worker 也是」）：限定单团队——
-   *  目录按 ?team= 取（L1 任意团队/L2 本团队）、矩阵/MCP 只渲染该团队
-   *  Worker、上传 scope 固定该团队（选择器隐藏）。团队配置弹窗（齿轮）
-   *  嵌入用；与 onlyWorker 可组合。 */
+  /** v0.5.0-beta.13.21（13.20 「团队的技能等团队配置要放在团队配置里，
+ * 和技能中心一样的搜索/上传/自定义，worker 也是」）：限定单团队——
+ * 目录按 ?team= 取（L1 任意团队/L2 本团队）、矩阵/MCP 只渲染该团队
+ * Worker、上传 scope 固定该团队（选择器隐藏）。团队配置弹窗（齿轮）
+ * 嵌入用；与 onlyWorker 可组合。 */
   onlyTeam?: string;
   /** 模块裁剪：默认全渲染（目录①+矩阵②+MCP③）；拓扑嵌入按需（如
-   *  ["matrix"] 只出可编辑技能矩阵 / ["mcp"] 只出可编辑 MCP 卡）。 */
+ * ["matrix"] 只出可编辑技能矩阵 / ["mcp"] 只出可编辑 MCP 卡）。 */
   sections?: ReadonlyArray<"catalog" | "matrix" | "mcp">;
 }) {
   const t = useThemeColors();
@@ -243,7 +243,7 @@ export default function SkillCenter({
   const [mcpDraft, setMcpDraft] = React.useState<McpServerInfo[]>([]);
   const [mcpSaving, setMcpSaving] = React.useState(false);
   const [catalogSearch, setCatalogSearch] = React.useState("");
-  // v0.5.0-beta.12  防刷屏（用户报告「技能中心刷屏」）：MCP 空行默认收起。
+  // v0.5.0-beta.12 防刷屏（用户报告「技能中心刷屏」）：MCP 空行默认收起。
   const [showAllMcp, setShowAllMcp] = React.useState(false);
   const mcpWithCount = React.useMemo(
     () => st.workers.filter((w) => (mcpMap[w.name] || []).length).length,
@@ -345,12 +345,12 @@ export default function SkillCenter({
     void loadCatalog();
   }, [loadCatalog, l2, l2Team, onlyTeam]);
 
-  // v0.5.0-beta.13.19（13.18 用户反馈「自定义技能和技能上传和下载呢」）：
+  // v0.5.0-beta.13.19（13.18 自定义技能和技能上传和下载呢）：
   // 技能包上传 / 自定义新建 / 下载（技能目录卡动作）。
-  //   上传 = 选择本地 zip → POST /api/v1/skills（scope=team+file）
-  //   新建 = 名称/描述/正文 → 前端 fflate 打包 SKILL.md → 同一端点
-  //   下载 = GET /api/v1/skills/{name}/download（上游 v1.2.4 尚无此端点 →
-  //          404 时诚实提示，端点就位即自动可用）
+  // 上传 = 选择本地 zip → POST /api/v1/skills（scope=team+file）
+  // 新建 = 名称/描述/正文 → 前端 fflate 打包 SKILL.md → 同一端点
+  // 下载 = GET /api/v1/skills/{name}/download（上游 v1.2.4 尚无此端点 →
+  // 404 时诚实提示，端点就位即自动可用）
   const teamChoices = React.useMemo(() => {
     // v0.5.0-beta.13.21：onlyTeam 固定上传 scope（选择器隐藏）。
     if (onlyTeam) return [onlyTeam];
@@ -424,8 +424,8 @@ export default function SkillCenter({
       setUpName("");
       setUpDesc("");
       setUpBody("");
-      // v0.5.0-beta.14.6（D3）：技能中心安装=写路径 → 失效 skills 缓存
-      // （loadCatalog 走 fetchSkillCatalog 未入 R1 缓存，但同步失效
+      // v0.5.0-beta.14.6：技能中心安装=写路径 → 失效 skills 缓存
+      // （loadCatalog 走 fetchSkillCatalog 未入 缓存，但同步失效
       // skills/list 缓存保证技能目录读新值）。
       invalidateTags(["skills"]);
       void loadCatalog();
@@ -571,7 +571,7 @@ export default function SkillCenter({
   return (
     <div style={{ display: "grid", gap: onlyWorker ? 8 : 16 }}>
       {/* v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 页面题头不出（上下文中
-          已明示 Worker 与「技能」页签，避免重复层级）。 */}
+ 已明示 Worker 与「技能」页签，避免重复层级）。 */}
       {!onlyWorker ? (
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><BoltIcon size={15} /> {tr("技能中心")}</span>
@@ -599,8 +599,8 @@ export default function SkillCenter({
       ) : null}
 
       {/* v0.5.0-beta.13.14：L2 多团队选择器（accessibleTeams >1 时；
-          单团队自动选中不出选择器）。切团队 → 目录按 ?team= 重拉。
-          v0.5.0-beta.13.21：onlyTeam 嵌入态不出选择器（团队已由入口固定）。 */}
+ 单团队自动选中不出选择器）。切团队 → 目录按 ?team= 重拉。
+ v0.5.0-beta.13.21：onlyTeam 嵌入态不出选择器（团队已由入口固定）。 */}
       {l2 && !onlyTeam && l2Teams.length > 1 ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("团队")}</span>
@@ -696,12 +696,12 @@ export default function SkillCenter({
       ) : null}
 
       {/* ② Worker 技能分配矩阵（P1，立即可用）
-          v0.5.0-beta.13.14（13.13 用户反馈「矩阵太占地方、不直观、不好用」）：
-          宽表（行=Worker × 列=技能 checkbox，技能 10+ 即横向溢出）→ 按
-          Worker 紧凑行：默认收起只显已分配技能标签（最多 3 + N）；点行
-          展开该 Worker 的完整技能勾选区（名称+来源标签+描述两行截断），
-          只保存该 Worker 的技能。脏检测（矩阵 vs 服务端基线）：有改动显
-          「未保存」橙标，展开区底部出 重置/保存（保存成功基线推进）。 */}
+ v0.5.0-beta.13.14（13.13 矩阵太占地方、不直观、不好用）：
+ 宽表（行=Worker × 列=技能 checkbox，技能 10+ 即横向溢出）→ 按
+ Worker 紧凑行：默认收起只显已分配技能标签（最多 3 + N）；点行
+ 展开该 Worker 的完整技能勾选区（名称+来源标签+描述两行截断），
+ 只保存该 Worker 的技能。脏检测（矩阵 vs 服务端基线）：有改动显
+ 「未保存」橙标，展开区底部出 重置/保存（保存成功基线推进）。 */}
       {showMatrix ? (
       <antd.Card
         size="small"
@@ -727,17 +727,17 @@ export default function SkillCenter({
       >
         {workersView.length ? (
           <div style={{ display: "grid", gap: 6 }}>
-            {/* v0.5.0-beta.13.22（13.21 用户反馈 F1）：onlyTeam（团队配置弹窗内嵌）
-                矩阵只渲染该团队 Worker——旧分支误用 st.workers 全量=跨团队泄漏
-                （「团队技能（目录/分配矩阵/MCP）就只管这个团队的」）。 */}
+            {/* v0.5.0-beta.13.22（13.21）：onlyTeam（团队配置弹窗内嵌）
+ 矩阵只渲染该团队 Worker——旧分支误用 st.workers 全量=跨团队泄漏
+ （「团队技能（目录/分配矩阵/MCP）就只管这个团队的」）。 */}
             {(onlyWorker
               ? [{ team: "", workers: workersView }]
               : groupWorkersByTeam(onlyTeam ? workersView : st.workers)
             ).map((tg) => (
               <div key={tg.team || "ungrouped"}>
-                {/* v0.5.0-beta.13.15（B5a）：团队分组头（组内 Worker 卡原渲染）。
-                    v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 组头不出。
-                    v0.5.0-beta.13.22：团队配置嵌入（onlyTeam）→ 单团队组头冗余不出。 */}
+                {/* v0.5.0-beta.13.15：团队分组头（组内 Worker 卡原渲染）。
+ v0.5.0-beta.13.16：拓扑嵌入（onlyWorker）→ 组头不出。
+ v0.5.0-beta.13.22：团队配置嵌入（onlyTeam）→ 单团队组头冗余不出。 */}
                 {!onlyWorker && !onlyTeam ? (
                 <div
                   style={{
@@ -807,7 +807,7 @@ export default function SkillCenter({
                           </antd.Tag>
                         ))
                       ) : Array.isArray(mat) && mat.length ? (
-                        // v0.5.0-beta.13.15（B6）：分配层空但物化层非空——
+                        // v0.5.0-beta.13.15：分配层空但物化层非空——
                         // 「未分配但可调用」的可视化真相（团队层自动物化/
                         // builtin 恢复/镜像自带不写 spec.skills）。
                         <antd.Tooltip
@@ -857,8 +857,8 @@ export default function SkillCenter({
                         background: t.popoverBg,
                       }}
                     >
-                      {/* v0.5.0-beta.13.15（B6）：物化层明细（runtime 实际
-                          装载，懒加载首展即拉；404/403 版本/权限门占位）。 */}
+                      {/* v0.5.0-beta.13.15：物化层明细（runtime 实际
+ 装载，懒加载首展即拉；404/403 版本/权限门占位）。 */}
                       {mat === "loading" ? (
                         <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 8 }}>
                           {tr("运行时技能加载中…")}
@@ -885,9 +885,9 @@ export default function SkillCenter({
                             )}
                           </div>
                           {/* v0.5.0-beta.13.20：per-worker 技能一等公民——
-                              光杆 Tag → 逐技能行：来源 / 描述 / 启用态 /
-                              分配态 / **预加载开关**（PUT preload，worker
-                              侧热加载）。 */}
+ 光杆 Tag → 逐技能行：来源 / 描述 / 启用态 /
+ 分配态 / **预加载开关**（PUT preload，worker
+ 侧热加载）。 */}
                           <div style={{ display: "grid", gap: 4 }}>
                             {mat.map((s) => {
                               const inAssigned = assigned.includes(s.name);
@@ -1151,9 +1151,9 @@ export default function SkillCenter({
       ) : null}
 
       {/* ③ MCP Servers（P1）
-          v0.5.0-beta.13.14（L2 只读——l2-worker-scoped-write.md 契约：
-          mcpServers 对默认 L2 关闭（网关 bearer key 注入每条条目，L2
-          可控 URL 会外泄它）→ elevated capability 设计落地前只读。 */}
+ v0.5.0-beta.13.14（L2 只读——l2-worker-scoped-write.md 契约：
+ mcpServers 对默认 L2 关闭（网关 bearer key 注入每条条目，L2
+ 可控 URL 会外泄它）→ elevated capability 设计落地前只读。 */}
       {showMcp ? (
       <antd.Card
         size="small"

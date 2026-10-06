@@ -17,7 +17,7 @@
 | three-spritetext | 1.10.0 | MIT | © 2018 Vasco Asturiano | 3D 节点文字标注（SpriteText） | [vasturiano/three-spritetext](https://github.com/vasturiano/three-spritetext) |
 | fflate | 0.8.3 | MIT | © 2026 Arjun Barrett | xlsx 文件预览（zlib inflate 解包，替代 400KB 级 SheetJS 重依赖） | [nodeca/fflate](https://github.com/nodeca/fflate) |
 
-<!-- mermaid（12.0.0，MIT，13.21 A9 引入）v0.5.0-beta.13.24 随「DAG/Mermaid
+<!-- mermaid（12.0.0，MIT，13.21  引入）v0.5.0-beta.13.24 随「DAG/Mermaid
 合并」退役移除——两图同结构、快照非交互，保自绘 DAG（交互）且主包 −5.1MB。 -->
 | lucide（图标路径数据） | 2026-08 快照 | ISC | © lucide contributors | 工具执行安全四档图标（Ban / AlertTriangle / Shield / CircleCheck，SVG 路径数据内联，零运行时依赖） | [lucide-icons/lucide](https://github.com/lucide-icons/lucide) |
 

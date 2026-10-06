@@ -48,9 +48,9 @@ export interface PreviewFile {
   /** 下载/预览地址（mxc 已转 media 代理 URL，或正源产物 URL，或 http 直链）。 */
   url: string;
   /** v0.5.0-beta.12: 裸插件 API 路径（mxc 媒体代理 / 正源产物）——fetch 必须走
-   * host.fetch（带鉴权）；缺省时 url 直接 fetch（http 直链）。
-   * v0.5.0-beta.12 ：http 直链也带（/media/proxy?url= 服务端代抓，
-   * 绕浏览器 CORS）。 */
+ * host.fetch（带鉴权）；缺省时 url 直接 fetch（http 直链）。
+ * v0.5.0-beta.12 ：http 直链也带（media/proxy?url= 服务端代抓，
+ * 绕浏览器 CORS）。 */
   apiPath?: string;
   mimeType?: string;
   /** 字节数，用于预览大小守卫。 */
@@ -58,7 +58,7 @@ export interface PreviewFile {
   /** 正源产物 URL 带后端注入的鉴权——图片必须 fetch blob 而非 img 直链。 */
   needsFetch?: boolean;
   /** v0.5.0-beta.12 ：原始 url 值（mxc/直链/畸形地址原样）——错误态展示
-   * 证据，「预览不行」不再是无从查起。 */
+ * 证据，「预览不行」不再是无从查起。 */
   rawUrl?: string;
 }
 
@@ -226,7 +226,7 @@ export function FilePreview({
       void (async () => {
         try {
           // v0.5.0-beta.12: 插件路径走 host.fetch（带鉴权）；裸路径落 SPA 兜底取回
-          // index.html 壳 = 「内容是网页」真根因。
+          // index.html 壳 = 「内容是网页」根因。
           const resp = await fetchWithFallback();
           // v0.5.0-beta.12: 502/404 守卫——代理失败时的错误 JSON 体不再当正文渲染。
           const text = await resp.text();
@@ -425,8 +425,8 @@ export function FilePreview({
         md ? (
           <div style={{ maxHeight: "60vh", overflow: "auto" }}>
             {/* v0.5.0-beta.12: 预览弹窗全文渲染——聊天气泡默认 800 字折叠是聊天
-                场景防刷屏，预览场景要完整看长报告（用户「RAW 没修好」
-                的观感来源之一：长文被截到 400 字 + 展开按钮）。 */}
+ 场景防刷屏，预览场景要完整看长报告（用户「RAW 没修好」
+ 的观感来源之一：长文被截到 400 字 + 展开按钮）。 */}
             <MdText text={state.text} maxLength={Number.MAX_SAFE_INTEGER} />
           </div>
         ) : (

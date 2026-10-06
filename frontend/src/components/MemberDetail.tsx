@@ -46,9 +46,9 @@ export interface MemberDetailProps {
   /** 角色（领/工/审/成员）：从 Worker 树推断，未知时不显示。 */
   role?: string;
   /**
-   * Worker 容器名（Worker 树正源映射）：提供时显示「工具执行安全」
-   * 审批卡（5.0.0-beta.3：聊天房间页也可改审批模式）。人类成员无此映射。
-   */
+ * Worker 容器名（Worker 树正源映射）：提供时显示「工具执行安全」
+ * 审批卡（5.0.0-beta.3：聊天房间页也可改审批模式）。人类成员无此映射。
+ */
   workerName?: string;
   /** 所在房间（最近消息扫描范围）。 */
   roomId?: string;

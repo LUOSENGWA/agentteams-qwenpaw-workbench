@@ -4,13 +4,13 @@
 覆盖 plan 件 4 的三组护栏：
 
 - **verify-admin 两路径**：admin 账号密码 → Console /session/login（成功持
-  会话 / 失败 / 不可达）；Controller token → GET /api/v1/teams（无尾斜杠，
-  v0.5.0-beta.12：Gin 对 /teams/ 返 404；成功 / 无效）；凭据全空 → 「二选一」错误。
+ 会话 / 失败 / 不可达）；Controller token → GET /api/v1/teams（无尾斜杠，
+ v0.5.0-beta.12：Gin 对 /teams/ 返 404；成功 / 无效）；凭据全空 → 「二选一」错误。
 - **网关地址必填（v0.5.0-beta.12）**：Console 宿主端口部署时自选（安装脚本
-  AGENTTEAMS_PORT_CONSOLE，默认 18001，人人不同）→ 8001/6868 探测已移除；
-  gateway_admin_url 留空 → 可操作错误（不再盲探）。
+ AGENTTEAMS_PORT_CONSOLE，默认 18001，人人不同）→ 8001/6868 探测已移除；
+ gateway_admin_url 留空 → 可操作错误（不再盲探）。
 - **脱敏**：redact() 对 admin_password / console_session 打 ***，
-  admin_username 保留（非机密，前端回显）。
+ admin_username 保留（非机密，前端回显）。
 
 httpx.AsyncClient 与 config 模块均以假对象 monkeypatch——单测不依赖真实
 Console/Controller 网络，也不碰真实配置文件。
@@ -223,7 +223,7 @@ def test_verify_admin_password_success(client):
 
 def test_verify_admin_password_selfcheck_degraded(client):
     """v0.5.0-beta.12：自检 GET 失败（404/异常）不挡验证主流程——
-    ok 仍 True，gateway_routes=0/aliases=[]（降级计数）。"""
+ ok 仍 True，gateway_routes=0/aliases=[]（降级计数）。"""
     tc, state = client
     state["data"]["gateway_admin_url"] = "http://10.0.0.1:6868"
     _FakeClient.post_spec["/session/login"] = _FakeResponse(
@@ -535,7 +535,7 @@ def test_verify_admin_token_non_ascii_rejected(client):
 
 def test_verify_admin_password_no_blind_probe(client):
     """v0.5.0-beta.12：网关地址留空时**不得发起任何探测请求**（端口人人不同，
-    8001/6868 盲探已移除）——直接报可操作错误。"""
+ 8001/6868 盲探已移除）——直接报可操作错误。"""
     tc, _ = client
 
     async def _forbid_post(self, url, json=None, **k):

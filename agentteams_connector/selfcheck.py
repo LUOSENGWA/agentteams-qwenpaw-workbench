@@ -2,11 +2,11 @@
 """Layered connectivity self-check (L0-L2 for the skeleton release).
 
 L0 local environment: plugin backend alive + QwenPaw version.
-L1 connectivity:     every configured Matrix/Controller address, with error
-                     classification (DNS vs refused vs TLS vs timeout) and
-                     the effective (working) address highlighted.
-L2 auth/API:         Matrix whoami + joined_rooms (and optional Controller
-                     project listing when a token is available).
+L1 connectivity: every configured Matrix/Controller address, with error
+ classification (DNS vs refused vs TLS vs timeout) and
+ the effective (working) address highlighted.
+L2 auth/API: Matrix whoami + joined_rooms (and optional Controller
+ project listing when a token is available).
 
 L3 (per-room permission + ping message) and L4 (end-to-end) land after the
 skeleton passes real-machine validation.
@@ -52,9 +52,9 @@ def _mark_working(kind: str, url: str) -> None:
 def _classify_error(exc: Exception) -> str:
     """Map transport errors to a fixable hint (e.g., domain unreachable).
 
-    v0.5.0-beta.12: 三层语义修正（用户真机 bug）——「TLS 证书错误」只允许用于
-    证书**校验**失败；握手被中断（EOF/alert）≠ 证书错误，是另一类问题。
-    """
+ v0.5.0-beta.12: 三层语义修正（用户真机 bug）——「TLS 证书错误」只允许用于
+ 证书**校验**失败；握手被中断（EOF/alert）≠ 证书错误，是另一类问题。
+ """
     if isinstance(exc, httpx.ConnectTimeout):
         return "连接超时（网络慢或地址不可达）"
     if isinstance(exc, httpx.ReadTimeout):
@@ -88,15 +88,15 @@ def _classify_error(exc: Exception) -> str:
 
 def _classify_challenge(resp: "httpx.Response") -> str:
     """v0.5.0-beta.14.3: 401/403 质询三看分诊（教训 #728）——
-    WWW-Authenticate 头 / 空 body vs JSON body / Server 头链。
+ WWW-Authenticate 头 / 空 body vs JSON body / Server 头链。
 
-    返回:
-      "basic"   —— WWW-Authenticate: Basic（网关层 Basic 门，Caddy 等）
-      "key"     —— 无质询头 + 空 body（网关层 API key 门，higress 等）
-      "token"   —— 无质询头 + JSON body（服务层 token 被拒，M_ 错误等）
-      "forbidden" —— 403
-      ""        —— 其他
-    """
+ 返回:
+ "basic" —— WWW-Authenticate: Basic（网关层 Basic 门，Caddy 等）
+ "key" —— 无质询头 + 空 body（网关层 API key 门，higress 等）
+ "token" —— 无质询头 + JSON body（服务层 token 被拒，M_ 错误等）
+ "forbidden" —— 403
+ "" —— 其他
+ """
     if resp.status_code == 403:
         return "forbidden"
     if resp.status_code != 401:
@@ -136,14 +136,14 @@ async def _probe_matrix(
 ) -> Dict[str, Any]:
     """GET /_matrix/client/versions — protocol check, not just reachability.
 
-    v0.5.0-beta.12: 带延迟测量（ms）——外/内网自动识别靠延迟排序。
-    v0.5.0-beta.12: 直连语义（trust_env=False——探测=测「插件直连该地址」，
-    不被本机代理环境变量扭曲）+ 连通/HTTP 双层模型：
-    ok = 网络层连通（收到 HTTP 响应即连通，401/403 也算），
-    http_ok = 状态码 <400（才具备当选生效地址的资格）。
-    v0.5.0-beta.14.3: auth=该地址覆盖凭据（bearer 门时探测也带，否则该
-    地址永远 401 当不上生效地址）+ 401/403 质询三看分类（challenge）。
-    """
+ v0.5.0-beta.12: 带延迟测量（ms）——外/内网自动识别靠延迟排序。
+ v0.5.0-beta.12: 直连语义（trust_env=False——探测=测「插件直连该地址」，
+ 不被本机代理环境变量扭曲）+ 连通/HTTP 双层模型：
+ ok = 网络层连通（收到 HTTP 响应即连通，401/403 也算），
+ http_ok = 状态码 <400（才具备当选生效地址的资格）。
+ v0.5.0-beta.14.3: auth=该地址覆盖凭据（bearer 门时探测也带，否则该
+ 地址永远 401 当不上生效地址）+ 401/403 质询三看分类（challenge）。
+ """
     base = homeserver.rstrip("/")
     url = f"{base}/_matrix/client/versions"
     from . import config as config_mod  # noqa: PLC0415 - 延迟防循环
@@ -256,8 +256,8 @@ async def _probe_sglang(
 ) -> Dict[str, Any]:
     """GET /v1/loads — 轻量（~3KB JSON），顺带验证路由可用。
 
-    v0.5.0-beta.14.3: auth=覆盖凭据（WAN key 门=bearer；无则无头裸拨）。
-    """
+ v0.5.0-beta.14.3: auth=覆盖凭据（WAN key 门=bearer；无则无头裸拨）。
+ """
     if not url:
         return {"ok": False, "http_ok": False, "ms": None, "detail": "未配置 SGLang 地址"}
     headers = config_mod.headers_with_auth(auth, {})
@@ -301,11 +301,11 @@ async def _probe_gateway(
 ) -> Dict[str, Any]:
     """v0.5.0-beta.14.17: Higress Console 探测——可达性 + 会话三态。
 
-    ① GET /（Console 页面入口）——可达性主判据。
-    ② 持有 console_session 时 GET /v1/ai/routes（带 Cookie，与 verify-admin
-    自检同路径）：200=会话有效 / 401|403=会话已过期 / 404=该版本无此端点
-    （只报可达，不臆断会话态）。会话自检失败不拖可达判定（只记 detail）。
-    """
+ ① GET /（Console 页面入口）——可达性主判据。
+ ② 持有 console_session 时 GET /v1/ai/routes（带 Cookie，与 verify-admin
+ 自检同路径）：200=会话有效 / 401|403=会话已过期 / 404=该版本无此端点
+ （只报可达，不臆断会话态）。会话自检失败不拖可达判定（只记 detail）。
+ """
     if not url:
         return {"ok": False, "http_ok": False, "ms": None, "detail": "未配置 Higress 地址"}
     headers = config_mod.headers_with_auth(auth, {})
@@ -317,7 +317,7 @@ async def _probe_gateway(
             resp = await client.get(f"{url.rstrip('/')}/", headers=headers)
         ms = int((time.monotonic() - t0) * 1000)
         if resp.status_code >= 500:
-            # v0.5.0-beta.14.18（14.17 用户反馈「填 7113 外网地址为什么 503」）：
+            # v0.5.0-beta.14.18（14.17 填 7113 外网地址为什么 503）：
             # 外网 console 地址多为隧道（frp/云转发）暴露——503 = 隧道活着但
             # 后端 Console 服务暂不可用（重启/断流）。点破方向，不甩锅插件。
             return {
@@ -357,13 +357,13 @@ async def _probe_with_retry(
     probe, url: str, token: str, timeout: float
 ) -> Dict[str, Any]:
     """v0.5.0-beta.12：探测失败重试一次（v0.5.0-beta.14.16：300ms 后）——
-    切网瞬间的瞬断不应被判 ❌ 或触发误切换（用户「连通失败重试」）。
-    两次都败才记失败。v0.5.0-beta.12: 已连通（ok=True，含 401）不重试——
-    只重试网络层失败。"""
+ 切网瞬间的瞬断不应被判 ❌ 或触发误切换（用户「连通失败重试」）。
+ 两次都败才记失败。v0.5.0-beta.12: 已连通（ok=True，含 401）不重试——
+ 只重试网络层失败。"""
     result = await probe(url, token, timeout)
     if result.get("ok"):
         return result
-    await asyncio.sleep(0.3)  # v0.5.0-beta.14.16（F4）：0.5→0.3s（重试间隔收紧）
+    await asyncio.sleep(0.3)  # v0.5.0-beta.14.16：0.5→0.3s（重试间隔收紧）
     return await probe(url, token, timeout)
 
 
@@ -395,10 +395,10 @@ def _resolve_ip_hint(url: str) -> str:
 def _resolve_ip_hint_uncached(url: str) -> str:
     """v0.5.0-beta.12: 解析 URL 主机名 → IP 列表（最多 3 个）+ 非公网地址提示。
 
-    用户真机 bug 的关键诊断数据：域名解析到 fake-ip/私有段时，
-    错误表面是 TLS 失败，根因在本机 DNS/代理——把解析结果摆出来，
-    一眼定位。返回 "" 表示无异常（纯公网）。
-    """
+ 用户真机 bug 的关键诊断数据：域名解析到 fake-ip/私有段时，
+ 错误表面是 TLS 失败，根因在本机 DNS/代理——把解析结果摆出来，
+ 一眼定位。返回 "" 表示无异常（纯公网）。
+ """
     try:
         host = urllib.parse.urlsplit(url).hostname or ""
         if not host:
@@ -442,9 +442,9 @@ def _resolve_ip_hint_uncached(url: str) -> str:
 def _client_env() -> Dict[str, Any]:
     """v0.5.0-beta.12: 客户端环境（TLS 指纹定位锚点）——代理密码打码。
 
-    DPI 按 SNI+TLS 栈指纹拦截时，Python/OpenSSL 版本就是定位锚点：
-    新栈客户端同地址全绿 + 旧栈红 = 秒级定性。
-    """
+ DPI 按 SNI+TLS 栈指纹拦截时，Python/OpenSSL 版本就是定位锚点：
+ 新栈客户端同地址全绿 + 旧栈红 = 秒级定性。
+ """
     proxies: Dict[str, str] = {}
     for k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY",
               "no_proxy", "NO_PROXY"):
@@ -464,11 +464,11 @@ def _client_env() -> Dict[str, Any]:
 def _failing_process_identity() -> str:
     """v0.5.0-beta.12: 失败进程身份块（issue #7298 维护者要求，Check 2）。
 
-    在失败 TLS 握手**之前**捕获执行身份（哪个解释器/哪个进程在跑
-    selfcheck），附加到失败步骤的 detail 里——与 WinError 10054 在
-    同一次运行、同一份输出中出现。每个字段单独守卫：身份捕获本身
-    绝不能弄坏探测（Win 上 os.getppid 在 3.13 前不可用等）。
-    """
+ 在失败 TLS 握手**之前**捕获执行身份（哪个解释器/哪个进程在跑
+ selfcheck），附加到失败步骤的 detail 里——与 WinError 10054 在
+ 同一次运行、同一份输出中出现。每个字段单独守卫：身份捕获本身
+ 绝不能弄坏探测（Win 上 os.getppid 在 3.13 前不可用等）。
+ """
     import shutil
     import sys
 
@@ -507,11 +507,11 @@ def _failing_process_identity() -> str:
 def diagnose_target(url: str, timeout: float = 6.0) -> Dict[str, Any]:
     """v0.5.0-beta.12: 单地址分步诊断（独立连接，失败即停）。
 
-    步骤：DNS 解析（含 IP）→ TCP 连接 → TLS 握手（协议版本+密码套件）
-    → HTTP 请求（method+URL）→ 响应（状态码行）。
-    返回 {target, steps:[{name,ok,ms,detail}], error:{message,traceback}|null,
-    env, ts}。任何异常都不外抛——诊断本身坏了只降级（diag 缺省）。
-    """
+ 步骤：DNS 解析（含 IP）→ TCP 连接 → TLS 握手（协议版本+密码套件）
+ → HTTP 请求（method+URL）→ 响应（状态码行）。
+ 返回 {target, steps:[{name,ok,ms,detail}], error:{message,traceback}|null,
+ env, ts}。任何异常都不外抛——诊断本身坏了只降级（diag 缺省）。
+ """
     parsed = urllib.parse.urlsplit(url)
     scheme = parsed.scheme or "http"
     host = parsed.hostname or ""
@@ -647,23 +647,23 @@ async def test_addresses(
     controller_urls: List[str],
     sglang_urls: List[str],
     token: str = "",
-    timeout: float = 4.0,  # v0.5.0-beta.14.16（F4）：6→4s（死地址上限收紧，可达地址 <1s 不受影响）
+    timeout: float = 4.0,  # v0.5.0-beta.14.16：6→4s（死地址上限收紧，可达地址 <1s 不受影响）
     with_diag: bool = False,
     auth_maps: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
     gateway_urls: Optional[List[str]] = None,
     gateway_session_cookie: str = "",
 ) -> Dict[str, Any]:
     """v0.5.0-beta.12: 连通性测试——全部地址并行探测（失败重试一次），
-    返回每地址 {url, ok, ms, detail}。手动测试与后台自动重排共用。
+ 返回每地址 {url, ok, ms, detail}。手动测试与后台自动重排共用。
 
-    v0.5.0-beta.12: with_diag=True（仅手动测试路径）时每地址附加 diag 结构化
-    诊断（分步+全栈 traceback+客户端环境）——后台自动重排不传，零成本。
-    v0.5.0-beta.14.3: auth_maps={kind: {url: auth}}——该地址配了覆盖凭据时
-    探测也带（否则 WAN basic/key 门地址永远 401，自动重排选不上）；行级
-    auth 字段=该地址实际生效的凭据类型（none/basic/bearer）。
-    v0.5.0-beta.14.17: gateway_urls——Higress Console 探测（可达性+会话三态，
-    诊断面：不参与自动重排；后台 refresh 不传=零额外开销）。
-    """
+ v0.5.0-beta.12: with_diag=True（仅手动测试路径）时每地址附加 diag 结构化
+ 诊断（分步+全栈 traceback+客户端环境）——后台自动重排不传，零成本。
+ v0.5.0-beta.14.3: auth_maps={kind: {url: auth}}——该地址配了覆盖凭据时
+ 探测也带（否则 WAN basic/key 门地址永远 401，自动重排选不上）；行级
+ auth 字段=该地址实际生效的凭据类型（none/basic/bearer）。
+ v0.5.0-beta.14.17: gateway_urls——Higress Console 探测（可达性+会话三态，
+ 诊断面：不参与自动重排；后台 refresh 不传=零额外开销）。
+ """
     maps = auth_maps or {}
 
     def _am(kind: str, url: str) -> Optional[Dict[str, str]]:
@@ -701,10 +701,10 @@ async def test_addresses(
         row["auth"] = (auth or {}).get("type") or "none"
         return row
 
-    # v0.5.0-beta.14.16（F4 连通性提速）：四类地址（matrix/controller/sglang/gateway）
+    # v0.5.0-beta.14.16（连通性提速）：四类地址（matrix/controller/sglang/gateway）
     # 原来三段串行 await gather——WAN 上每类都含一个不可达内网地址吃满
-    # (timeout+重试+timeout)=12.5s，三段相加≈37.5s（用户反馈「连通性测试很慢」
-    # 真根因）。改为各段嵌套进同一个外层 gather=全并行：总时长=最慢单地址，
+    # (timeout+重试+timeout)=12.5s，三段相加≈37.5s（连通性测试很慢
+    # 根因）。改为各段嵌套进同一个外层 gather=全并行：总时长=最慢单地址，
     # 37.5s→8.3s（配合下方 timeout 4s）。逐地址语义/重试/凭据完全不变。
     # v0.5.0-beta.14.17: gateway 段并入（未配置=空列表，gather 零任务）。
     matrix_rows, controller_rows, sglang_rows, gateway_rows = await asyncio.gather(
@@ -783,9 +783,9 @@ def _select_and_mark(
 ) -> str:
     """v0.5.0-beta.12: 延迟排序选最优并写 working cache。返回选中的 url（无则 ""）。
 
-    v0.5.0-beta.12: 排序资格 = http_ok（状态码 <400）——401/403 是「已连通但
-    未鉴权」，当选生效地址会让真实请求吃 401，不能入选。
-    """
+ v0.5.0-beta.12: 排序资格 = http_ok（状态码 <400）——401/403 是「已连通但
+ 未鉴权」，当选生效地址会让真实请求吃 401，不能入选。
+ """
     ok_rows = [
         r
         for r in rows
@@ -828,11 +828,11 @@ async def refresh_effective(
 ) -> Dict[str, str]:
     """v0.5.0-beta.12: 并行探测地址（测延迟），按「最快可达」更新 working cache。
 
-    旧逻辑=按配置顺序取第一个可达（顺序即优先级，不测延迟、不重排）——
-    切网后旧地址仍可达时会一直用慢路径。现在：后台自适应周期自动重排，
-    外网/内网切换自动识别（延迟差异远超防抖阈值）。
-    kinds: 只重排指定类型（后台循环省资源用——单地址类型跳过）。
-    """
+ 旧逻辑=按配置顺序取第一个可达（顺序即优先级，不测延迟、不重排）——
+ 切网后旧地址仍可达时会一直用慢路径。现在：后台自适应周期自动重排，
+ 外网/内网切换自动识别（延迟差异远超防抖阈值）。
+ kinds: 只重排指定类型（后台循环省资源用——单地址类型跳过）。
+ """
     from . import router as router_mod  # noqa: PLC0415 - lazy 防循环依赖
 
     token = (cfg.get("controller_token") or "").strip()
@@ -1233,10 +1233,10 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
 async def _run_l3_l4(cfg: Dict[str, Any], include_artifact: bool) -> Dict[str, Any]:
     """L3 room permission/message round-trip; L4 = L3 + artifact check.
 
-    One ping burst across all joined rooms, then a single long-poll /sync
-    (with the pre-ping ``since``) collects replies for every room in one
-    wait window — no per-room serial waiting.
-    """
+ One ping burst across all joined rooms, then a single long-poll /sync
+ (with the pre-ping ``since``) collects replies for every room in one
+ wait window — no per-room serial waiting.
+ """
     matrix_cfg = cfg.get("matrix") or {}
     token = (matrix_cfg.get("access_token") or "").strip()
     user_id = (matrix_cfg.get("user_id") or "").strip()

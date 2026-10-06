@@ -2,14 +2,14 @@
  * ui-harness-1323.mjs — v0.5.0-beta.13.23 UI 实证（playwright-core + chromium）
  *
  * 覆盖 13.23 审批数据面统一 #1216（ApprovalControl 六实例分态）：
- *  A1  #1216 GET 200 → 四档卡 + OFF capability 提示行 + 当前模式 Tag
- *  A2  #1216 404 + 旧端点 200 → 回退读成功（docker 直读）
- *  A3  #1216 404 + 旧端点 401 → 新权限文案（删过期前提回归防）
- *  A4  apply #1216 PUT 200 → 成功 toast + 级别更新
- *  apply #1216 404 + 旧端点 200 → 回退写成功
- *  A6  apply OFF #1216 403（approval_policy #1273）→ 错误透传 detail
+ * #1216 GET 200 → 四档卡 + OFF capability 提示行 + 当前模式 Tag
+ * #1216 404 + 旧端点 200 → 回退读成功（docker 直读）
+ * #1216 404 + 旧端点 401 → 新权限文案（删过期前提回归防）
+ * apply #1216 PUT 200 → 成功 toast + 级别更新
+ * apply #1216 404 + 旧端点 200 → 回退写成功
+ * apply OFF #1216 403（approval_policy #1273）→ 错误透传 detail
  *
- * 运行：python3 -m http.server 8793 &  node scripts/ui-harness-1323.mjs
+ * 运行：python3 -m http.server 8793 & node scripts/ui-harness-1323.mjs
  */
 import { chromium } from "playwright-core";
 
@@ -62,7 +62,7 @@ await page.waitForFunction(
   { timeout: 15000 },
 );
 
-// ── A1：四档卡 + OFF 提示行 + 当前模式 ───────────────────────────────
+// ── ：四档卡 + OFF 提示行 + 当前模式 ───────────────────────────────
 const a1 = await page.locator("#a1").innerText();
 report(
   "A1 四档卡齐（严格/智能/自动/关闭模式）",
@@ -76,11 +76,11 @@ report(
 );
 report("A1 当前模式=自动（AUTO）（#1216 主路径）", a1.includes("当前模式: 自动（AUTO）"), "");
 
-// ── A2：404 回退读（旧端点 docker 直读 STRICT）──────────────────────
+// ── ：404 回退读（旧端点 docker 直读 STRICT）──────────────────────
 const a2 = await page.locator("#a2").innerText();
 report("A2 回退读成功=严格（STRICT）（#1216 404 → 旧端点）", a2.includes("当前模式: 严格（STRICT）"), "");
 
-// ── A3：新权限文案（404+401）＋ 旧过期文案回归防 ────────────────────
+// ── ：新权限文案（404+401）＋ 旧过期文案回归防 ────────────────────
 const a3 = await page.locator("#a3").innerText();
 report(
   "A3 新权限文案（无权限读取 401/403 + L2 可读写本团队）",
@@ -89,7 +89,7 @@ report(
 );
 report("A3 旧过期文案已删（「上游 L2 写路径 PR 合并后自动开放」）", !a3.includes("自动开放"), "");
 
-// ── A4：apply 主路径（#1216 PUT 200 → STRICT）──────────────────────
+// ── ：apply 主路径（#1216 PUT 200 → STRICT）──────────────────────
 await pickCard("#a4", "严格模式");
 await page.waitForTimeout(150);
 const a4btn = page.locator("#a4 button", { hasText: "严格模式" });
@@ -127,7 +127,7 @@ report(
   "",
 );
 
-// ── A6：apply OFF → #1216 403（capability）→ 错误透传 ──────────────
+// ── ：apply OFF → #1216 403（capability）→ 错误透传 ──────────────
 await pickCard("#a6", "关闭模式");
 await page.waitForTimeout(150);
 const a6btn = page.locator("#a6 button", { hasText: "关闭模式" });

@@ -2,13 +2,13 @@
  * harness/entry-1324.tsx — v0.5.0-beta.13.24 UI 实证入口（不进 dist，
  * esbuild 独立打包成 harness/bundle-1324.js，playwright 驱动断言）。
  *
- * 覆盖 13.24 六件装验反馈的 UI 面：
- *  A1  F4 未读气泡：数字居中 + 永不含住外（87 全显 / 12345 → 99+）
- *  A2  F5 DAG/Mermaid 合并：拓扑单一 DAG 视图（无 Mermaid 切换件）+
- *      层行居中布局 + 节点 hover 高亮（stroke 加粗）
- *  A3  F6 团队配置批量改模型：弹窗内 Leader 批 / Workers 批双画笔，
- *      刷值 → 行内模型框同步 + 「模型已改动」diff 标
- *  A4  F3 运行配置「系统」tab：审批级别内嵌 ApprovalControl（非只读）
+ * 覆盖 13.24 六件反馈的 UI 面：
+ * 未读气泡：数字居中 + 永不含住外（87 全显 / 12345 → 99+）
+ * DAG/Mermaid 合并：拓扑单一 DAG 视图（无 Mermaid 切换件）+
+ * 层行居中布局 + 节点 hover 高亮（stroke 加粗）
+ * 团队配置批量改模型：弹窗内 Leader 批 / Workers 批双画笔，
+ * 刷值 → 行内模型框同步 + 「模型已改动」diff 标
+ * 运行配置「系统」tab：审批级别内嵌 ApprovalControl（非只读）
  */
 import type * as ReactNS from "react";
 const host = window.QwenPaw.host;
@@ -22,7 +22,7 @@ import CrdManage from "../src/components/CrdManage";
 import WorkerRuntimeConfig from "../src/components/WorkerRuntimeConfig";
 import type { AdminData, TeamRoom, WorkflowEvent } from "../src/api";
 
-// ── A1 fixture：两群一 DM，未读 87 / 12345 / 1 ──────────────────────
+// ── fixture：两群一 DM，未读 87 / 12345 / 1 ──────────────────────
 const rooms: TeamRoom[] = [
   {
     room_id: "!a1-87:matrix.local",
@@ -53,7 +53,7 @@ const rooms: TeamRoom[] = [
   },
 ] as unknown as TeamRoom[];
 
-// ── A2 fixture：3 层 DAG（0 → 1,2 → 3）────────────────────────────
+// ── fixture：3 层 DAG（0 → 1,2 → 3）────────────────────────────
 const wfEvent: WorkflowEvent = {
   runId: "run-a2",
   title: "harness 项目",
@@ -67,7 +67,7 @@ const wfEvent: WorkflowEvent = {
   ],
 } as unknown as WorkflowEvent;
 
-// ── A3 fixture：团队 team-a（leader + 2 workers）────────────────────
+// ── fixture：团队 team-a（leader + 2 workers）────────────────────
 const admin = {
   workers: [
     { name: "a-lead", phase: "Running", state: "Running", model: "model-old", runtime: "qwenpaw", containerState: "running", matrixUserID: "@a-lead:matrix.local", roomID: "!r:matrix.local", team: "team-a", role: "team_leader" },
@@ -101,7 +101,7 @@ const admin = {
 function HarnessApp() {
   const [handle, setHandle] = React.useState<{ openConfig: (n: string) => void } | null>(null);
   // 弹窗由 harness 点击 #a3-open-config 触发（auto-open 的 ant-modal 遮罩
-  // 会盖住 A1/A2 区，干扰其几何断言）。
+  // 会盖住 / 区，干扰其几何断言）。
 
   return (
     <div style={{ padding: 12, maxWidth: 860 }}>
@@ -125,7 +125,7 @@ function HarnessApp() {
 
       <section id="a3" style={{ border: "1px solid #ccc", padding: 8, marginBottom: 12 }}>
         <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>
-          A3 F6 批量改模型{" "}
+          批量改模型{" "}
           <button
             id="a3-open-config"
             type="button"

@@ -4,13 +4,13 @@
 覆盖（5 例）：
 - test_gateway_migration: legacy 单值 → load_config() 提升为列表 + legacy 键镜像一致。
 - test_gateway_update_merge: update_config 双地址（含 Basic 凭据）回读顺序/凭据
-  保留（空密码 = 继承旧值，与 controller_urls 同语义）。
+ 保留（空密码 = 继承旧值，与 controller_urls 同语义）。
 - test_gateway_list_order: _address_list(cfg, "gateway") 顺序 == 配置序
-  （dict 条目取 url；legacy 单值回退）。
+ （dict 条目取 url；legacy 单值回退）。
 - test_verify_admin_dual_failover: 地址1 连接异常 → 地址2 /session/login 201
-  → ok:true；update_config 收到 gateway_admin_urls 两项（拦截断言）。
+ → ok:true；update_config 收到 gateway_admin_urls 两项（拦截断言）。
 - test_gateway_passthrough_failover: 地址1 抛异常 → 地址2 200 →
-  available:true；两个地址都被尝试（顺序断言）。
+ available:true；两个地址都被尝试（顺序断言）。
 
 隔离：monkeypatch config 模块 _CONFIG_PATH（tmp_path，同
 test_config_persistence_14_7 风格）+ router GatedAsyncClient（FakeClient，
@@ -65,7 +65,7 @@ def test_gateway_update_merge(tmp_config):
                     "url": "https://wan.example:18001",
                     "auth": {
                         "type": "basic",
-                        "username": "luo",
+                        "username": "testuser",
                         "password": "secret123",
                     },
                 },
@@ -89,7 +89,7 @@ def test_gateway_update_merge(tmp_config):
                     "url": "https://wan.example:18001",
                     "auth": {
                         "type": "basic",
-                        "username": "luo",
+                        "username": "testuser",
                         "password": "",
                     },
                 },
@@ -154,8 +154,8 @@ RAISE = object()  # spec 值哨兵：模拟连接层失败（地址不可达）
 class _GWC:
     """GatedAsyncClient 替身：spec = [(url 子串, _Resp | RAISE)]，插入序首中。
 
-    records = [(method, url)] 供断言调用顺序/地址。
-    """
+ records = [(method, url)] 供断言调用顺序/地址。
+ """
 
     def __init__(self, spec: list) -> None:
         self.spec = spec
@@ -236,7 +236,7 @@ def _app():
 
 def test_verify_admin_dual_failover(gw_router):
     """地址1 连接异常 → 地址2 /session/login 201 → ok:true；
-    update_config 收到 gateway_admin_urls 两项（拦截断言）。"""
+ update_config 收到 gateway_admin_urls 两项（拦截断言）。"""
     _state, update_calls, clients, spec = gw_router
     spec.append((LAN_GW, RAISE))
     spec.append(
@@ -296,7 +296,7 @@ def test_gateway_passthrough_failover(gw_router):
     )
 
 
-# ── UIPERF-P3：固定档覆盖 gateway ─────────────────────────────────────
+# ── ：固定档覆盖 gateway ─────────────────────────────────────
 def test_gateway_pinned_by_address_mode() -> None:
     from agentteams_connector import router as router_mod
 

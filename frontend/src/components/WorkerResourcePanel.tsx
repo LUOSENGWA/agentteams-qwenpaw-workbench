@@ -2,20 +2,20 @@
  * ⚙️ 资源管理（v0.5.0-beta.13.15 B5b 集成 / 13.16 合并重构）。
  *
  * 位置：团队拓扑 Worker 行展开区（WorkerManage → WorkerRow）。
- * 用户反馈（13.14）：「技能中心和频道和 MCP 和工具集成到团队拓扑」；
- * 13.15 用户反馈再收口：「技能中心和 MCP 完全和 worker 拓扑合并 + 做好 UI/UX
+ * （13.14）：「技能中心和频道和 MCP 和工具集成到团队拓扑」；
+ * 13.15 ：「技能中心和 MCP 完全和 worker 拓扑合并 + 做好 UI/UX
  * + 点开工具不应再选 Worker」——四维全部就地可管理，不再跳页。
  *
  * 四页签（全部复用既有组件/编辑链路，不裸重写）：
- *  ① 技能 = <SkillCenter onlyWorker onlyTeam sections=[catalog,matrix]>：
- *     目录（搜索/上传/自定义/下载，团队 scope）+ 技能中心的可编辑
- *     矩阵（分配 + 物化双层语义原样继承；保存走同一 updateWorker 链路）。
- *  ② MCP = <SkillCenter onlyWorker sections=[mcp]>：MCP 卡（L1 就地编辑
- *     mcpServers；L2 只读=上游契约）。
- *  ③ 频道 = 嵌入 <WorkerChannels workers={[w]}>（单 Worker 自动选中且
- *     选择器隐去；版本门/二维码/冲突检查全继承）。
- *  ④ 工具 = 嵌入 <WorkerTools workers={[w]}>（#1255 版本门同款；单 Worker
- *     自动选中且选择器隐去）。
+ * ① 技能 = <SkillCenter onlyWorker onlyTeam sections=[catalog,matrix]>：
+ * 目录（搜索/上传/自定义/下载，团队 scope）+ 技能中心的可编辑
+ * 矩阵（分配 + 物化双层语义原样继承；保存走同一 updateWorker 链路）。
+ * ② MCP = <SkillCenter onlyWorker sections=[mcp]>：MCP 卡（L1 就地编辑
+ * mcpServers；L2 只读=上游契约）。
+ * ③ 频道 = 嵌入 <WorkerChannels workers={[w]}>（单 Worker 自动选中且
+ * 选择器隐去；版本门/二维码/冲突检查全继承）。
+ * ④ 工具 = 嵌入 <WorkerTools workers={[w]}>（#1255 版本门同款；单 Worker
+ * 自动选中且选择器隐去）。
  */
 import { BoltIcon, PlugIcon, WrenchIcon, NotesIcon } from "./icons";
 import type * as ReactNS from "react";
@@ -37,7 +37,7 @@ export default function WorkerResourcePanel({
 }: {
   worker: WorkerInfo;
   /** L1（Controller admin token）→ 技能/MCP 卡可写；L2 = 只读（MCP 写权限
-   *  另待上游 elevated capability 设计，技能 skills 在 L2 白名单内可写）。 */
+ * 另待上游 elevated capability 设计，技能 skills 在 L2 白名单内可写）。 */
   l1?: boolean;
 }) {
   const t = useThemeColors();
@@ -55,7 +55,7 @@ export default function WorkerResourcePanel({
   const items = [
     {
       key: "skills",
-      // v0.5.0-beta.13.16（13.15 用户反馈「技能中心和 MCP 完全和 worker 拓扑
+      // v0.5.0-beta.13.16（13.15 「技能中心和 MCP 完全和 worker 拓扑
       // 合并」）：只读概览 + 跳转链接 → 直接嵌入技能中心的可编辑矩阵
       // （SkillCenter onlyWorker+sections——同一组件、同一保存链路，就地编辑）。
       label: (
@@ -64,7 +64,7 @@ export default function WorkerResourcePanel({
         </span>
       ),
       children: (
-        // v0.5.0-beta.13.21（13.20 用户反馈「worker 也是，和技能中心一样的搜索/
+        // v0.5.0-beta.13.21（13.20 「worker 也是，和技能中心一样的搜索/
         // 上传/自定义等，都集成在拓扑里面」）：技能节=目录（搜索/上传/自定义/
         // 下载，scope=该 Worker 所属团队）+ 可编辑分配矩阵（preload 等）。
         <SkillCenter

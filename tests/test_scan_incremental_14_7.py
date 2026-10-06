@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """T6 增量扫描（v0.5.0-beta.14.7）单测。
 
-覆盖三处扫描（/room-mentions、/room-approvals、/workflow/events）的
+覆盖三处扫描（room-mentions、/room-approvals、/workflow/events）的
 「无推进零重扫 / 推进只重扫该房 / 600s 兜底全扫」语义：
 
 - 首扫（state 未建）= 全量；

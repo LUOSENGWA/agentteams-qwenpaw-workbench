@@ -5,15 +5,15 @@
 宿主 QwenPaw 收件箱审批体系，让用户不必进 Element/房间翻找：
 
 1. **注入**：sync_watcher 检出 Worker 审批请求 → 宿主
-   ``ApprovalService.create_pending_summary(source_type="agentteams")``
-   建收件箱审批记录。宿主 2.1+ 内建行为自动生效：收件箱导航抖动
-   （inboxShake）、红点、审批条目、标题闪烁——零前端依赖。
+ ``ApprovalService.create_pending_summary(source_type="agentteams")``
+ 建收件箱审批记录。宿主 2.1+ 内建行为自动生效：收件箱导航抖动
+ （inboxShake）、红点、审批条目、标题闪烁——零前端依赖。
 2. **决议**：用户批准/拒绝（宿主自定义审批卡 POST /approval/approve|deny，
-   或默认卡聊天命令、HTTP API、超时 GC 自动拒绝）殊途同归——宿主把决议
-   写进 ``pending.future``。注入时挂 ``add_done_callback`` **单回调**
-   捕获（零轮询、零 monkey-patch）→ 发对应 Matrix 命令回房间。
-   命令带三重 @Worker（m.mentions + matrix.to + 正文 @localpart）——
-   无 @ 不进 Worker 消费队列（_require_mention）。
+ 或默认卡聊天命令、HTTP API、超时 GC 自动拒绝）殊途同归——宿主把决议
+ 写进 ``pending.future``。注入时挂 ``add_done_callback`` **单回调**
+ 捕获（零轮询、零 monkey-patch）→ 发对应 Matrix 命令回房间。
+ 命令带三重 @Worker（m.mentions + matrix.to + 正文 @localpart）——
+ 无 @ 不进 Worker 消费队列（_require_mention）。
 
 会话绑定：记录挂在合成 root session ``agentteams`` 下。抖动/红点/审批
 条目均不过滤 session（宿主 /console/push-messages 无参=全量）；收件箱
@@ -47,8 +47,8 @@ INJECT_TIMEOUT_SECONDS = 1800  # 宿主侧自动拒绝时限（Worker 工具可�
 class HostApprovalBridge:
     """Worker 工具审批 → 宿主收件箱审批记录的桥。
 
-    单进程 asyncio 单线程模型——所有方法在同一事件循环，无需锁。
-    """
+ 单进程 asyncio 单线程模型——所有方法在同一事件循环，无需锁。
+ """
 
     def __init__(self) -> None:
         self._by_request: Dict[str, Dict[str, Any]] = {}
@@ -79,13 +79,13 @@ class HostApprovalBridge:
 
     def init(self) -> None:
         """plugin register 时调用：早探测一次（结果缓存，失败不重试——
-        宿主能力在进程生命周期内不变）。"""
+ 宿主能力在进程生命周期内不变）。"""
         self.available()
 
     # ── 注入：房间审批条目 → 宿主收件箱审批记录 ──────────────
     async def inject(self, item: Dict[str, Any]) -> Optional[str]:
         """item: {room_id, event_id, sender, body, approve_cmd, deny_cmd, ts}。
-        返回宿主 request_id（注入失败/跳过 → None，静默降级）。"""
+ 返回宿主 request_id（注入失败/跳过 → None，静默降级）。"""
         room_id = str(item.get("room_id") or "")
         if not self.available() or not room_id:
             return None
@@ -204,15 +204,15 @@ class HostApprovalBridge:
     ) -> None:
         """watcher 在房间检出 /approval 命令时调用。
 
-        防陈旧的 deny 补发：用户从插件卡（或房间直接）批准/拒绝后，
-        宿主记录若不立即消解，会挂到 30 分钟超时 → 桥补发一条陈旧的
-        反向命令。这里精确匹配（命令是审批消息的 thread reply，
-        reply-to/线程根 = 审批 event_id）标记 sent + resolve 宿主记录；
-        决议回调随后看到 sent=True 跳过 Matrix 发送。
+ 防陈旧的 deny 补发：用户从插件卡（或房间直接）批准/拒绝后，
+ 宿主记录若不立即消解，会挂到 30 分钟超时 → 桥补发一条陈旧的
+ 反向命令。这里精确匹配（命令是审批消息的 thread reply，
+ reply-to/线程根 = 审批 event_id）标记 sent + resolve 宿主记录；
+ 决议回调随后看到 sent=True 跳过 Matrix 发送。
 
-        匹配不到（reply 链缺失 + 房间有多条 pending）→ 不动，保持旧
-        行为（30 分钟超时兜底），宁可不消也不错消。
-        """
+ 匹配不到（reply 链缺失 + 房间有多条 pending）→ 不动，保持旧
+ 行为（30 分钟超时兜底），宁可不消也不错消。
+ """
         rid = self._by_event.pop(event_id, None) if event_id else None
         if (not rid or rid not in self._by_request) and room_id:
             cands = [

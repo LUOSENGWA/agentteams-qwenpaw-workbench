@@ -1,15 +1,15 @@
 /**
- * AgentActivityTrack（v0.5.0-beta.13.21，用户反馈「侧栏角色分组/活动轨/
+ * AgentActivityTrack（v0.5.0-beta.13.21，「侧栏角色分组/活动轨/
  * mermaid/undo」批）：聊天 composer 上方的「当前房间项目任务进度 + HITL」
  * 内联轨。数据面=既有 workflow API（零后端）：父组件把当前房间匹配的
  * WorkflowEvent（roomMatchesProject 同源）传进来，本组件纯渲染。
  *
  * 显示语义（纯前端渲染、零后端）：
- *  - 房间无关联项目 / 项目已终态（completed/cancelled）→ 不渲染（不占位）；
- *  - 活跃项目 → 一行头（项目名 + 状态 + 任务 done/total + 迭代 + HITL 中断
- *    琥珀 chip）+ 一行在办任务 chip（≤5，超出 +N；全完成显「N 已完成」）；
- *  - 点轨任意处 → onOpenProject(runId)（切工作流 tab 开该项目，与房间卡/
- *    工作流卡同一入口语义）。
+ * - 房间无关联项目 / 项目已终态（completed/cancelled）→ 不渲染（不占位）；
+ * - 活跃项目 → 一行头（项目名 + 状态 + 任务 done/total + 迭代 + HITL 中断
+ * 琥珀 chip）+ 一行在办任务 chip（≤5，超出 +N；全完成显「N 已完成」）；
+ * - 点轨任意处 → onOpenProject(runId)（切工作流 tab 开该项目，与房间卡/
+ * 工作流卡同一入口语义）。
  *
  * 状态色与 WorkflowBoard 同词汇（task-transitions.json：planned/prepared/
  * assigned/in_progress/submitted/completed/revision/blocked/cancelled；

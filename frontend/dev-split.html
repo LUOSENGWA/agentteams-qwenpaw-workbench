@@ -29,17 +29,17 @@
     let matches = m.matches;
     if (minM) matches = 1400 >= parseFloat(minM[1]);
     else if (maxM) matches = 1400 <= parseFloat(maxM[1]);
-    return { ...m, matches, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false };
+    return { ...m, matches, addEventListener:  => {}, removeEventListener:  => {}, addListener:  => {}, removeListener:  => {}, dispatchEvent:  => false };
   };
 
   window.QwenPaw = {
     host: {
       React,
       antd: antdNs.default ?? antdNs,
-      useTheme: () => "light",
-      useLocale: () => "zh-CN",
+      useTheme:  => "light",
+      useLocale:  => "zh-CN",
       getApiUrl: (p) => p,
-      getApiToken: () => "",
+      getApiToken:  => "",
       fetch: async (path, init) => fetch("/gw-proxy/" + path, init),
     },
   };

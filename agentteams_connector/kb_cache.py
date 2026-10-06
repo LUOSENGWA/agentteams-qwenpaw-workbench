@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.10（UIPERF-T12）：KB 端点 SWR 磁盘缓存。
+"""v0.5.0-beta.14.10：KB 端点 SWR 磁盘缓存。
 
 背景（实测）：冷读容器 tree 最慢 13.8s、graph 同级、/kb/agents 3.3s 且
 无缓存（每次全量）；命中缓存 = 4-5ms。冷开知识库长时间空转 → 体感「记忆
@@ -76,7 +76,7 @@ def save(key: str, payload: Any) -> None:
         pass
 
 
-# ── v0.5.0-beta.14.11（UIPERF-T15）：轻探针（变更检测）扩展 ─────────────────
+# ── v0.5.0-beta.14.11：轻探针（变更检测）扩展 ─────────────────
 # probe 存 {safe_key}.probe（纯文本，独立于 payload json）：探针刷新不碰
 # payload、深扫落盘不碰 probe，两侧互不重写。
 
@@ -109,8 +109,8 @@ def load_probe(key: str) -> Optional[str]:
 def touch(key: str) -> None:
     """把缓存的 ts 更新为现在（刷新检查通过后重置 60s 时钟）。
 
-    v0.5.0-beta.14.11（UIPERF-T15）：读-改-写只更新 ts，payload/probe
-    原样不动；键缺失/损坏时静默（同 save 风格，不影响主流程）。"""
+ v0.5.0-beta.14.11：读-改-写只更新 ts，payload/probe
+ 原样不动；键缺失/损坏时静默（同 save 风格，不影响主流程）。"""
     try:
         p = _file_for(key)
         raw = json.loads(p.read_text(encoding="utf-8"))

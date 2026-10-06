@@ -1,16 +1,16 @@
-// v0.5.0-beta.12.9（P7，用户反馈「插件要加上和 dashboard 一样的模型
+// v0.5.0-beta.12.9（P7，「插件要加上和 dashboard 一样的模型
 // 配置页面」）：模型网关配置页（插件版，只读 v1）。
 //
-// 数据面双源（与 dashboard A2「controller-first 只读降级」同语义）：
-//   ① Higress Console 会话可用 → fetchGatewayAiRoutes/AiProviders 透传读
-//      （alias 层完整：路由 predicate + 上游 modelMapping + providers）
-//   ② 无会话 → fetchGatewayRouteCatalog（controller #1242 只读路由目录，
-//      controller token 鉴权，L1-only）
-//   ③ 旧 controller（404）→ 目录节隐藏 + 原因说明（版本门控，零报错）
+// 数据面双源（与 dashboard 「controller-first 只读降级」同语义）：
+// ① Higress Console 会话可用 → fetchGatewayAiRoutes/AiProviders 透传读
+// （alias 层完整：路由 predicate + 上游 modelMapping + providers）
+// ② 无会话 → fetchGatewayRouteCatalog（controller #1242 只读路由目录，
+// controller token 鉴权，L1-only）
+// ③ 旧 controller（404）→ 目录节隐藏 + 原因说明（版本门控，零报错）
 //
 // v1 只读：路由/提供商编辑（Console 写面透传）不在本版——写面依赖后端代理
-// 白名单扩展，另排（P7b 待拍板）。页面价值 = 无 dashboard 时看模型网关
-// 实况 + Console 会话失效时的只读兜底（与 dashboard models-section A2 同）。
+// 白名单扩展，另排（P7b 待）。页面价值 = 无 dashboard 时看模型网关
+// 实况 + Console 会话失效时的只读兜底（与 dashboard models-section 同）。
 
 import type * as ReactNS from "react";
 
@@ -45,7 +45,7 @@ interface RouteRow {
   upstreams: string;
   aliases: string;
  /** P7b（全套抄 dashboard）：授权 consumer 与请求模型 alias 分列
-   * （原先 controller 源把 allowedConsumers 填进 alias 列，语义错位）。 */
+ * （原先 controller 源把 allowedConsumers 填进 alias 列，语义错位）。 */
   consumers: string;
   /** console 源的 Console 原始记录（编辑预填全字段用；controller 源无）。 */
   rec?: RouteEditSource;
@@ -55,7 +55,7 @@ function routeRowOf(r: AiRouteLite): RouteRow {
   const ups = (r.upstreams || [])
     .map((u) => (u.weight != null ? `${u.provider}（${u.weight}%）` : u.provider))
     .join("、");
- // 用户反馈（P7）：preds 原先是 join("、") 后的字符串，下面
+ // （P7）：preds 原先是 join("、") 后的字符串，下面
   // [...preds] spread 字符串 = 逐字符拆开（"d、e、p、s、k、-"）。
   // 拆成 predsArr（数组）+ 显示串两段，spread 用数组。
   const predsArr = (r.modelPredicates || []).map(
@@ -120,7 +120,7 @@ function ModelsTab() {
       const res = await deleteGatewayAiRoute(name);
       if (res.available) {
         antd.message.success(tr("已删除路由「{n}」", { n: name }));
-        // v0.5.0-beta.14.6（D3）：删路由=写路径 → 失效 gateway 再强刷。
+        // v0.5.0-beta.14.6：删路由=写路径 → 失效 gateway 再强刷。
         invalidateTags(["gateway"]);
         void load(true);
       } else {
@@ -135,7 +135,7 @@ function ModelsTab() {
       const res = await deleteGatewayAiProvider(name);
       if (res.available) {
         antd.message.success(tr("已删除提供商「{n}」", { n: name }));
-        // v0.5.0-beta.14.6（D3）：删提供商=写路径 → 失效 gateway 再强刷。
+        // v0.5.0-beta.14.6：删提供商=写路径 → 失效 gateway 再强刷。
         invalidateTags(["gateway"]);
         void load(true);
       } else {
@@ -146,7 +146,7 @@ function ModelsTab() {
     }
   };
 
-  // v0.5.0-beta.14.6（D3）：force 形参——手动刷新/保存/删除后传 true 绕
+  // v0.5.0-beta.14.6：force 形参——手动刷新/保存/删除后传 true 绕
   // gateway 缓存读（仍写回），其余轮询/挂载走 30s TTL 缓存。
   const load = React.useCallback(async (force = false) => {
     setLoading(true);
@@ -316,7 +316,7 @@ function ModelsTab() {
       </div>
 
       {/* v0.5.0-beta.14.4：写面提示按数据源区分（console=全功能透传；
-          controller=只读，编辑/删除需 Console 会话）。 */}
+ controller=只读，编辑/删除需 Console 会话）。 */}
       {source === "console" ? (
         <antd.Alert
           type="info"
@@ -364,8 +364,8 @@ function ModelsTab() {
           {source === "console" ? (
             <>
  {/* P7b（全套抄 dashboard）：可请求模型（alias）全集——
-                  路由 predicate/mapping 去重聚合，即 Worker 模型下拉的
-                  「网关 alias」分组内容（dashboard 模型页同信息）。 */}
+ 路由 predicate/mapping 去重聚合，即 Worker 模型下拉的
+ 「网关 alias」分组内容（dashboard 模型页同信息）。 */}
               {(() => {
                 const all = [...new Set(routeRows.flatMap((r) =>
                   r.aliases
@@ -446,7 +446,7 @@ function ModelsTab() {
         open={providerOpen}
         onClose={() => setProviderOpen(false)}
         onSaved={() => {
-          // v0.5.0-beta.14.6（D3）：保存 provider=写路径 → 失效 gateway 再强刷。
+          // v0.5.0-beta.14.6：保存 provider=写路径 → 失效 gateway 再强刷。
           invalidateTags(["gateway"]);
           void load(true);
         }}
@@ -456,7 +456,7 @@ function ModelsTab() {
         open={routeOpen}
         onClose={() => setRouteOpen(false)}
         onSaved={() => {
-          // v0.5.0-beta.14.6（D3）：保存 route=写路径 → 失效 gateway 再强刷。
+          // v0.5.0-beta.14.6：保存 route=写路径 → 失效 gateway 再强刷。
           invalidateTags(["gateway"]);
           void load(true);
         }}
@@ -469,6 +469,6 @@ function ModelsTab() {
   );
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(ModelsTab);

@@ -12,7 +12,7 @@ const React: typeof ReactNS = window.QwenPaw.host.React;
  * 裸插件路径会落进 SPA 兜底（index.html 壳），指向解析后的 /api 路径会 401。
  * 唯一安全路径：先经 host.fetch（自动带鉴权）取 blob，再挂 objectURL。
  *
- * v0.5.0-beta.14.17（T181 审计 #29 P2）：模块级缓存 + in-flight 去重
+ * v0.5.0-beta.14.17：模块级缓存 + in-flight 去重
  * （与 useAvatar 同模式）。旧版每个组件实例各自 fetch、卸载即
  * revokeObjectURL——切房/滚动重挂时同一条媒体的 blob 被反复重拉
  * （dial-stats /media 端点每 remount +1）。媒体 objectURL 页面生命周期

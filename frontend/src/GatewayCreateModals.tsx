@@ -1,12 +1,12 @@
-// 12.13 P7b「添加提供商 / 添加路由」（用户反馈）：插件模型页写面。
+// 12.13 P7b「添加提供商 / 添加路由」：插件模型页写面。
 // 字段形状与 dashboard models-section 的 serializeProviderForm /
 // serializeRouteForm 对齐：
-//   provider → { name, type, protocol, tokens[], tokenFailoverConfig?,
-//                rawConfigs{openaiCustomUrl?, pathPrefix?, modelMapping?} }
-//   route    → { name, pathPredicate(PRE), upstreams[{provider,weight,
-//                modelMapping}], modelPredicates[{matchType(EQUAL|PRE),
-//                matchValue}], authConfig{enabled,allowedCredentialTypes,
-//                allowedConsumers?} }
+// provider → { name, type, protocol, tokens[], tokenFailoverConfig?,
+// rawConfigs{openaiCustomUrl?, pathPrefix?, modelMapping?} }
+// route → { name, pathPredicate(PRE), upstreams[{provider,weight,
+// modelMapping}], modelPredicates[{matchType(EQUAL|PRE),
+// matchValue}], authConfig{enabled,allowedCredentialTypes,
+// allowedConsumers?} }
 // 写面经连接器 /gateway/* 透传到 Higress Console（console_session）。
 // v0.5.0-beta.14.4：加编辑模式（initial 预填 + PUT 原名称，与 dashboard
 // higress BFF update 语义同款——name 在路径上，body 不变名）。

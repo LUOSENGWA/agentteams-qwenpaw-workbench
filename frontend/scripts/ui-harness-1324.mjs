@@ -1,16 +1,16 @@
 /**
  * ui-harness-1324.mjs — v0.5.0-beta.13.24 UI 实证（playwright + 本地 http.server）。
  *
- * 覆盖 13.24 六件装验反馈的 UI 面：
- *   A1  F4 未读气泡：数字居中 + 永不含住外（87 全显 / 12345 → 99+ / 1 全显）
- *   A2  F5 DAG/Mermaid 合并：拓扑视图单一 DAG（无 Mermaid 切换件），
- *       层行居中布局，节点 hover 描边加粗
- *   A3  F6 团队配置批量改模型：「批量设置模型」区 + Leader/Workers 双画笔，
- *       刷值 → 对应角色行模型框同步 + 「模型已改动」diff 标
- *   A4  F3 运行配置「系统」tab：审批级别内嵌 ApprovalControl（可编辑）
+ * 覆盖 13.24 六件反馈的 UI 面：
+ * 未读气泡：数字居中 + 永不含住外（87 全显 / 12345 → 99+ / 1 全显）
+ * DAG/Mermaid 合并：拓扑视图单一 DAG（无 Mermaid 切换件），
+ * 层行居中布局，节点 hover 描边加粗
+ * 团队配置批量改模型：「批量设置模型」区 + Leader/Workers 双画笔，
+ * 刷值 → 对应角色行模型框同步 + 「模型已改动」diff 标
+ * 运行配置「系统」tab：审批级别内嵌 ApprovalControl（可编辑）
  *
  * 运行：
- *   cd frontend && node scripts/ui-harness-1324.mjs
+ * cd frontend && node scripts/ui-harness-1324.mjs
  */
 import http from "node:http";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
@@ -81,7 +81,7 @@ try {
   await page.goto(base + "harness/page-1324.html", { waitUntil: "networkidle" });
   await page.waitForTimeout(800);
 
-  // ── A1：F4 未读气泡 ─────────────────────────────────────────────
+  // ── ： 未读气泡 ─────────────────────────────────────────────
   const a1 = page.locator("#a1");
   await a1.waitFor({ timeout: 8000 });
   const bubble87 = a1.getByText("87", { exact: true }).first();
@@ -91,8 +91,8 @@ try {
   assert("A1 未读 12345 → 99+ 截断", (await bubble99.count()) > 0, "99+ 未找到");
   assert("A1 未读 1 全显", (await bubble1.count()) > 0, "1 未找到");
   // 几何：气泡=单个 flex span（UnreadBubble）——
-  //  ① 含住：scrollWidth/scrollHeight ≤ clientWidth/clientHeight（零溢出）
-  //  ② 居中：Range 实测文字盒 vs span 盒，水平/垂直偏差 <2px
+  // ① 含住：scrollWidth/scrollHeight ≤ clientWidth/clientHeight（零溢出）
+  // ② 居中：Range 实测文字盒 vs span 盒，水平/垂直偏差 <2px
   const bubble87span = await page.evaluate(() => {
     const span = [...document.querySelectorAll("#a1 span")].find(
       (s) => s.textContent === "87" && s.style.position === "absolute",
@@ -124,7 +124,7 @@ try {
     bubble87span ? `dx=${bubble87span.cx.toFixed(2)} dy=${bubble87span.cy.toFixed(2)}` : "气泡 span 未找到",
   );
 
-  // ── A2：F5 DAG 单一视图 + 居中 + hover ─────────────────────────
+  // ── ： DAG 单一视图 + 居中 + hover ─────────────────────────
   const a2 = page.locator("#a2");
   await a2.waitFor({ timeout: 8000 });
   // DAG/Mermaid 样式切换件退役——断言无任何 Segmented 选项含 DAG/Mermaid
@@ -190,7 +190,7 @@ try {
     `before=${swBefore} after=${swAfter}`,
   );
 
-  // ── A3：F6 批量改模型（antd Modal 传送门在 body 下，作用域用 .ant-modal）
+  // ── ： 批量改模型（antd Modal 传送门在 body 下，作用域用 .ant-modal）
   const a3 = page.locator("#a3");
   await a3.waitFor({ timeout: 8000 });
   await a3.locator("#a3-open-config").click();
@@ -241,13 +241,13 @@ try {
     oldModelInputs >= 2,
     `model-old input=${oldModelInputs}`,
   );
-  // 关弹窗：先 Esc 关 AutoComplete 下拉，再 Esc 关 Modal（遮罩不挡 A4）
+  // 关弹窗：先 Esc 关 AutoComplete 下拉，再 Esc 关 Modal（遮罩不挡）
   await page.keyboard.press("Escape");
   await page.waitForTimeout(300);
   await page.keyboard.press("Escape");
   await page.waitForTimeout(600);
 
-  // ── A4：F3 运行配置「系统」tab 审批可编辑 ─────────────────────
+  // ── ： 运行配置「系统」tab 审批可编辑 ─────────────────────
   const a4 = page.locator("#a4");
   await a4.waitFor({ timeout: 8000 });
   // 点「运行配置」展开（页面深处，真点击命中检查易被视口/覆盖卡死 →

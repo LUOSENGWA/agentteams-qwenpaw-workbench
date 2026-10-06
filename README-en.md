@@ -73,7 +73,7 @@ Open the workbench → **Config**:
 
 1. **Matrix address** (at least one required): two entries — LAN + WAN (`http://<node>:6867`); auto latency probing, auto-switch to the fastest, periodic re-probe — no manual switching
 2. **Auth mode** (choose one):
-   - **L2 regular member (default)**: select "Matrix login" and enter your own Matrix account (username + password, delivered at onboarding). L2 can only read/write data within its `accessibleTeams` scope (upstream A2 auth + scope filtering)
+   - **L2 regular member (default)**: select "Matrix login" and enter your own Matrix account (username + password, delivered at onboarding). L2 can only read/write data within its `accessibleTeams` scope (upstream  auth + scope filtering)
    - **L1 admin**: paste the Controller admin token (`docker exec agentteams-controller cat /var/run/agentteams/cli-token`, one-time, remembered permanently after saving)
 3. **Controller address** (optional, only needed for the full cross-team views): the AgentTeams Controller API address; multi-address failover supported
 4. Click **Save & self-check** — the  Self-check tab verifies L0-L3 item by item (local environment / connectivity / auth & API / per-room live test)

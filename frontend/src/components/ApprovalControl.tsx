@@ -19,11 +19,11 @@ const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
   (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
 const ReloadIcon = pick("ReloadOutlined");
 
-// v0.5.0-beta.13.24（F2 502 缓解）：#1216 审批端点「不可用」判定——
-//  404 = 旧 Controller（无该端点）；
-//  502 "worker returned an unparsable running config" = 上游路径缺陷
-//  （worker_approval.go 拨号漏 /api 前缀 → Worker SPA 回退 200 HTML →
-//   解析失败；上游 fix 待合入并重建 Controller 后转正）。
+// v0.5.0-beta.13.24（502 缓解）：#1216 审批端点「不可用」判定——
+// 404 = 旧 Controller（无该端点）；
+// 502 "worker returned an unparsable running config" = 上游路径缺陷
+// （worker_approval.go 拨号漏 /api 前缀 → Worker SPA 回退 200 HTML →
+// 解析失败；上游 fix 待合入并重建 Controller 后转正）。
 // 两者都回退旧端点（docker 直读 / PUT running-config，L1-only），不
 // 把裸 502 甩给用户。
 function approvalUpstreamGone(e: unknown): boolean {
@@ -33,7 +33,7 @@ function approvalUpstreamGone(e: unknown): boolean {
   return false;
 }
 
-// ──  Worker 工具执行安全（QwenPaw 原生四模式对接）────────
+// ── Worker 工具执行安全（QwenPaw 原生四模式对接）────────
 // QwenPaw 设置页「工具执行安全」同款四模式（ToolExecutionLevelCard）：
 // 关闭 OFF / 自动 AUTO / 智能 SMART / 严格 STRICT。
 // 数据源：容器 agent.json（archive 直读，与远端 KB 同通道）；
@@ -203,7 +203,7 @@ function ApprovalControl({ workerName }: { workerName: string }) {
   const [readError, setReadError] = React.useState("");
   const [sel, setSel] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
-  // v0.5.0-beta.13.24（F2）：#1216 端点 502 上游缺陷已观测——回退 401 时
+  // v0.5.0-beta.13.24：#1216 端点 502 上游缺陷已观测——回退 401 时
   // 给精确提示（不是「L2 可读写」的误导文案）。
   const [upstreamBug, setUpstreamBug] = React.useState(false);
 

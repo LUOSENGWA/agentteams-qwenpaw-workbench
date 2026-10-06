@@ -1,15 +1,15 @@
 /**
  * ui-harness-1322.mjs — v0.5.0-beta.13.22 UI 实证（playwright-core + chromium）
  *
- * 覆盖 13.21 装验反馈 7 件中的 3 个高风险交互件：
- *  F2  WorkflowBoard 拓扑：第 5 项「Mermaid」视图退役 → 依赖图内
- *      DAG（交互）/Mermaid 样式切换（视图 tab 只剩 4 项）。
- *  F5  TeamOverview 房间卡：未读徽章挂卡片头像右上角（群卡新带头像），
- *      名称行内不再内联胶囊。
- *  F7  私聊角色：列表不再直接分割成段 → 列表上方筛选 chips
- *      （全部/Leader/Worker/Manager，空桶不显），选中=单一过滤列表。
+ * 覆盖 13.21 反馈 7 件中的 3 个高风险交互件：
+ * WorkflowBoard 拓扑：第 5 项「Mermaid」视图退役 → 依赖图内
+ * DAG（交互）/Mermaid 样式切换（视图 tab 只剩 4 项）。
+ * TeamOverview 房间卡：未读徽章挂卡片头像右上角（群卡新带头像），
+ * 名称行内不再内联胶囊。
+ * 私聊角色：列表不再直接分割成段 → 列表上方筛选 chips
+ * （全部/Leader/Worker/Manager，空桶不显），选中=单一过滤列表。
  *
- * 运行：python3 -m http.server 8792 &  node scripts/ui-harness-1322.mjs
+ * 运行：python3 -m http.server 8792 & node scripts/ui-harness-1322.mjs
  */
 import { chromium } from "playwright-core";
 
@@ -27,7 +27,7 @@ await page.goto("http://127.0.0.1:8792/harness/page-1322.html", { waitUntil: "lo
 await page.waitForSelector("#to .ant-card", { timeout: 15000 });
 await page.waitForTimeout(500);
 
-// ── F2：拓扑依赖图样式切换 ───────────────────────────────────────────
+// ── ：拓扑依赖图样式切换 ───────────────────────────────────────────
 const segs = page.locator("#wf .ant-segmented");
 report(
   "F2 两个 Segmented（视图 tab + 图样式）",
@@ -77,7 +77,7 @@ await page.waitForFunction(
 );
 report("F2 切回 DAG → 可交互依赖图恢复（节点可点）", true);
 
-// ── F5：未读徽章挂卡片头像右上角 ─────────────────────────────────────
+// ── ：未读徽章挂卡片头像右上角 ─────────────────────────────────────
 // 注：房间徽章=包裹头像的徽章（提及区段头计数徽章不含头像，天然排除）；
 // DmCard 根是普通 div（非 antd.Card），GroupCard 才是 antd.Card。
 const badges = page.locator("#to .ant-badge:has(.ant-avatar)");
@@ -122,7 +122,7 @@ const g1card = page.locator("#to .ant-card", { hasText: "团队群A" });
 const g1avatars = await g1card.locator(".ant-avatar").count();
 report("F5 群卡带头像（主头像+成员叠层）", g1avatars >= 2, `avatars=${g1avatars}`);
 
-// ── F7：私聊角色筛选 chips ──────────────────────────────────────────
+// ── ：私聊角色筛选 chips ──────────────────────────────────────────
 await page.locator('#to .ant-segmented-item:has-text("私聊")').click();
 await page.waitForTimeout(300);
 const chips = page.locator("#to button", { hasText: "（" });
@@ -177,7 +177,7 @@ report(
   `count=${await countRoomRows()}`,
 );
 
-// ── F1：onlyTeam 矩阵只渲染该团队 Worker（不跨团队泄漏）─────────────
+// ── ：onlyTeam 矩阵只渲染该团队 Worker（不跨团队泄漏）─────────────
 await page.waitForFunction(
   () => {
     const f1 = document.querySelector("#f1");
@@ -198,7 +198,7 @@ report(
   "",
 );
 
-// ── F4：2D 图谱点选后高亮跨重渲染持久（graph 引用每 300ms 换新）────
+// ── ：2D 图谱点选后高亮跨重渲染持久（graph 引用每 300ms 换新）────
 await page.waitForFunction(
   () => {
     const texts = [...document.querySelectorAll("#f4 svg text")];

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Matrix /sync 长轮询事件监听（IM 式触发，替代前端 30s 轮询）。
 
-用户反馈：「30s 轮询是不是太笨了，不能像 IM 那样通过什么触发」——
+「30s 轮询是不是太笨了，不能像 IM 那样通过什么触发」——
 Matrix /sync 本身就是 IM 事件流（Element 同款长轮询）。本模块在插件后端
 起一个常驻 /sync 循环：长连接挂 30s 等事件，事件到达立即解析（延迟≈0）。
 
@@ -29,7 +29,7 @@ from .dial_gate import GatedAsyncClient
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench.sync_watcher")
 
 # 精简 sync filter：只收 timeline 最新事件 + m.muted_room account data
-# （v0.5.0-beta.12  房间静音——Element 同款状态源，此处是通知引擎侧的消费点）。
+# （v0.5.0-beta.12 房间静音——Element 同款状态源，此处是通知引擎侧的消费点）。
 _SYNC_FILTER = {
     "presence": {"not_types": ["*"]},
     "account_data": {"types": ["m.muted_room"]},
@@ -71,10 +71,10 @@ _consecutive_failures = 0  # v0.5.0-beta.12: 连续 /sync 失败计数（token �
 def reset_state() -> None:
     """v0.5.0-beta.12: 账号切换 → 丢弃旧账号的 sync 游标。
 
-    since（next_batch）只对产生它的账号有效——切账号后拿旧 since 请求
-    新账号的 /sync 会一直 401，循环空转（@提到我/任务状态通知全断）。
-    账号切换（/login、config.matrix 身份变更）必须调用。
-    """
+ since（next_batch）只对产生它的账号有效——切账号后拿旧 since 请求
+ 新账号的 /sync 会一直 401，循环空转（@提到我/任务状态通知全断）。
+ 账号切换（login、config.matrix 身份变更）必须调用。
+ """
     global _since, _first_sync_done, _consecutive_failures
     _since = None
     _first_sync_done = False
@@ -152,8 +152,8 @@ def get_approval_buffer(limit: int = 30) -> List[Dict[str, Any]]:
 def parse_approval_request(body: str):
     """识别 Worker 审批请求消息（前端 RoomChat parseApproval 同款判据）。
 
-    返回 (kind, approve_cmd, deny_cmd)；非审批请求 → None。
-    """
+ 返回 (kind, approve_cmd, deny_cmd)；非审批请求 → None。
+ """
     if "🛡️" in body and "Approval Required" in body:
         return ("approval", "/approval approve", "/approval deny")
     if "⏳" in body and "Waiting for approval" in body:
@@ -164,11 +164,11 @@ def parse_approval_request(body: str):
 def _approval_command_body(body: str) -> str:
     """剥掉审批命令的 @Worker 前缀，返回纯命令部分。
 
-    插件审批卡发的命令是 ``@worker1 /approval approve``（无 @ 不进
-    Worker 消费队列，必须带前缀）；历史/手工命令可能是裸 ``/approval
-    approve``。两种形态都要识别——否则房间侧决议传导（宿主桥消解 +
-    缓冲清理）对插件卡路径完全失效（v0.5.0-beta.12 修复）。
-    """
+ 插件审批卡发的命令是 ``@worker1 /approval approve``（无 @ 不进
+ Worker 消费队列，必须带前缀）；历史/手工命令可能是裸 ``/approval
+ approve``。两种形态都要识别——否则房间侧决议传导（宿主桥消解 +
+ 缓冲清理）对插件卡路径完全失效（v0.5.0-beta.12 修复）。
+ """
     b = (body or "").strip()
     if b.startswith("@") and " " in b:
         b = b.split(" ", 1)[1].strip()
@@ -184,7 +184,7 @@ def _is_approval_command(body: str) -> bool:
 
 def _approval_command_kind(body: str) -> str:
     """'approve' | 'deny'——审批命令方向（房间侧决议传导宿主桥用）。
-    仅在 _is_approval_command 为 True 时调用。"""
+ 仅在 _is_approval_command 为 True 时调用。"""
     b = _approval_command_body(body)
     if b.startswith("/approval deny"):
         return "deny"
@@ -418,10 +418,10 @@ async def _resolve_approval(
     approved: bool = True,
 ) -> None:
     """v0.5.0-beta.12：审批已解决（该房间出现 /approval 命令）→
-    移除未决项 + SSE 通知前端刷新。
-    v0.5.0-beta.12：优先按 reply 链精确匹配删除（命令 thread reply →
-    审批 event_id），并把房间侧决议通知宿主桥——宿主收件箱记录立即
-    消解，防 30 分钟超时兜底补发陈旧反向命令。"""
+ 移除未决项 + SSE 通知前端刷新。
+ v0.5.0-beta.12：优先按 reply 链精确匹配删除（命令 thread reply →
+ 审批 event_id），并把房间侧决议通知宿主桥——宿主收件箱记录立即
+ 消解，防 30 分钟超时兜底补发陈旧反向命令。"""
     removed = None
     targets = {e for e in (reply_to, thread_root) if e}
     if targets:
@@ -459,7 +459,7 @@ async def _notify_invite(
     ts: int = 0,
 ) -> None:
     """v0.5.0-beta.12：新房间邀请 → 收件箱（桌面 toast）+ SSE。
-    接受/拒绝 UI 在团队概览（chat tab）邀请区，单一事实源。"""
+ 接受/拒绝 UI 在团队概览（chat tab）邀请区，单一事实源。"""
     if _is_muted(room_id):
         return
     local = inviter.split(":", 1)[0].lstrip("@") if inviter else ""
@@ -511,7 +511,7 @@ async def _notify_task_status(
 
 def _track_workflow(wf: Dict[str, Any], room_id: str) -> None:
     """跟踪 agentteams.workflow 状态：项目级 + steps 任务级。
-    同步调用（轻量内存操作），通知经 asyncio 队列由 _run 驱动。"""
+ 同步调用（轻量内存操作），通知经 asyncio 队列由 _run 驱动。"""
     run_id = str(wf.get("runId") or wf.get("run_id") or "")
     project = str(wf.get("title") or wf.get("name") or run_id or "未命名任务")
     project_status = str(wf.get("status") or "")
@@ -555,18 +555,18 @@ def build_room_list_diff(
     payload: Dict[str, Any], baseline: bool
 ) -> "Tuple[List[Dict[str, Any]], List[str]]":
     """v0.5.0-beta.13.21（房间列表 Element 化）：从一轮 /sync payload 收集
-    各 join 房间元数据增量 diff——(diff_items, left_room_ids)。
+ 各 join 房间元数据增量 diff——(diff_items, left_room_ids)。
 
-    纯函数（除维护模块级基线 ``_room_meta``，账号切换 reset_state 清空）：
-      - baseline 轮：首轮全量 /sync 带全部房间 state → 只建基线（name/member
-        count），不产 diff（前端首载走全量 /teams/sync，不依赖增量）。
-      - 基线后新房间：新房间 /sync 带全 state → 建 summary（name/member_count
-        /last_ts/last_sender/last_body），diff 项带 ``new=True``，前端插入。
-      - 已有房间：m.room.name 变更 / m.room.member join-leave 增减 /
-        timeline 最大 ts（最后活动）/ unread_notifications / m.typing，
-        有变更才产项（变更字段最小化载荷）。
-      - leave 段：房间退出 join → 从基线移除并进 left（前端从列表移除）。
-    """
+ 纯函数（除维护模块级基线 ``_room_meta``，账号切换 reset_state 清空）：
+ - baseline 轮：首轮全量 /sync 带全部房间 state → 只建基线（name/member
+ count），不产 diff（前端首载走全量 /teams/sync，不依赖增量）。
+ - 基线后新房间：新房间 /sync 带全 state → 建 summary（name/member_count
+ /last_ts/last_sender/last_body），diff 项带 ``new=True``，前端插入。
+ - 已有房间：m.room.name 变更 / m.room.member join-leave 增减 /
+ timeline 最大 ts（最后活动）/ unread_notifications / m.typing，
+ 有变更才产项（变更字段最小化载荷）。
+ - leave 段：房间退出 join → 从基线移除并进 left（前端从列表移除）。
+ """
     room_diff: List[Dict[str, Any]] = []
     room_left: List[str] = []
     rooms = (payload.get("rooms") or {}).get("join") or {}
@@ -663,7 +663,7 @@ def build_room_list_diff(
         if last_ts:
             item["last_ts"] = last_ts
             changed = True
-        # 未读（/sync 增量响应为有新事件的房间带 unread_notifications）。
+        # 未读（sync 增量响应为有新事件的房间带 unread_notifications）。
         un = rdata.get("unread_notifications")
         if isinstance(un, dict):
             if "notification_count" in un:
@@ -691,7 +691,7 @@ def build_room_list_diff(
 
 async def _run() -> None:
     """常驻 /sync 循环：长连接（timeout=30s）等事件，到达即处理。
-    多 homeserver failover：working 地址优先，逐个尝试，失败换下一个。"""
+ 多 homeserver failover：working 地址优先，逐个尝试，失败换下一个。"""
     global _since, _first_sync_done, _consecutive_failures
     from . import config as config_mod
     from .router import _mark_working, _ordered_addresses  # noqa: PLC0415
@@ -752,7 +752,7 @@ async def _run() -> None:
 
         if not synced:
             # v0.5.0-beta.12: 自愈——连续失败（token 失效/账号切换/服务重启）达到阈值
-            # → 重置游标重建基线，不等人工重启（/login 已显式 restart，这里
+            # → 重置游标重建基线，不等人工重启（login 已显式 restart，这里
             # 兜底 Matrix 侧 token 过期等边缘场景）。
             _consecutive_failures += 1
             if _consecutive_failures >= 4 and _since:
@@ -787,7 +787,7 @@ async def _run() -> None:
             # 首轮（since 为空）邀请只建基线集合不通知——防止插件启动把
             # 存量邀请轰炸成 toast。
             # v0.5.0-beta.12 ：首轮 timeline 仍走审批请求/命令检测——
-            # 插件停机/重装重启窗口内到达的审批消息还挂着未处理（用户反馈
+            # 插件停机/重装重启窗口内到达的审批消息还挂着未处理（
             # 「通知没有」：旧逻辑整轮 continue=离线审批永远漏检，RoomChat
             # 12s 轮询能看到卡片但 toast/缓冲/首页卡全空）。@我仍抑制
             # （旧 @ 记录轰炸问题不变），workflow 跟踪跳过（旧事件只产噪音）。
@@ -821,14 +821,14 @@ async def _run() -> None:
             )
 
         rooms = (payload.get("rooms") or {}).get("join") or {}
-        # ⑥ v0.5.0-beta.13.21（房间列表 Element 化，用户反馈「刷新慢有点笨，看看
-        #    Element」）：Element 的 room list 从不全量重拉——/sync 增量事件就地
-        #    合并（新房间插入/元数据更新/未读计数/离开移除）。此前插件每次房间
-        #    列表更新=全量 /teams/sync=一次带全房间 state 的 Matrix 全量 /sync
-        #    （76 房间时明显迟钝）。现 watcher 每轮 /sync 收集各 join 房间元数据
-        #    diff（名字/成员数/未读/最后活动/typing + 新房间 summary + leave），
-        #    批量广播 room_list_update SSE → 前端就地合并重排，全量 /teams/sync
-        #    降为 60s 兜底+邀请/手动。
+        # ⑥ v0.5.0-beta.13.21（房间列表 Element 化，「刷新慢有点笨，看看
+        # Element」）：Element 的 room list 从不全量重拉——/sync 增量事件就地
+        # 合并（新房间插入/元数据更新/未读计数/离开移除）。此前插件每次房间
+        # 列表更新=全量 /teams/sync=一次带全房间 state 的 Matrix 全量 /sync
+        # （76 房间时明显迟钝）。现 watcher 每轮 /sync 收集各 join 房间元数据
+        # diff（名字/成员数/未读/最后活动/typing + 新房间 summary + leave），
+        # 批量广播 room_list_update SSE → 前端就地合并重排，全量 /teams/sync
+        # 降为 60s 兜底+邀请/手动。
         room_diff, room_left = build_room_list_diff(payload, baseline)
         if room_diff or room_left:
             await _broadcast(

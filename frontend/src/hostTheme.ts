@@ -1,9 +1,9 @@
 // QwenPaw ≥2.2.2 宿主主题跟随（插件配色跟随宿主 Console 主题色）。
 //
 // 宿主接口（qwenpaw 2.2.2 源码实证，app/routers/config.py）：
-//   GET /config/theme → 稀疏 ThemeConfig
-//   { accent?, accent_hover?, accent_bg?, radius?, dark?{accent?,accent_bg?,surface?} }
-//   返回 {} = 宿主使用内置默认（2.2.x 默认 accent = #FF7F16）。
+// GET /config/theme → 稀疏 ThemeConfig
+// { accent?, accent_hover?, accent_bg?, radius?, dark?{accent?,accent_bg?,surface?} }
+// 返回 {} = 宿主使用内置默认（2.2.x 默认 accent = #FF7F16）。
 // 桥 = window.QwenPaw.host.fetch（自动注 Authorization/X-Agent-Id，同源）。
 // 旧宿主（<2.2.2 无 /config/theme）→ 404/异常 → null → DEFAULT_ACCENT（= 现行硬编码色，行为不变）。
 
@@ -58,25 +58,25 @@ export function hostAccentBgForMode(
   return safeHex(v) ? v : undefined;
 }
 
-// v0.5.0-beta.14.18（定案）：插件主题**与宿主对齐 = 页面加载读一次，
+// v0.5.0-beta.14.18：插件主题**与宿主对齐 = 页面加载读一次，
 // 不跟随、不轮询**。
 // 背景：宿主改主题色在部分实例/版本上是刷新页面才生效（不实时应用），
 // 插件若做实时跟随会先于宿主变色，造成插件/宿主颜色失配（比不跟随更糟）。
 //
 // 场景矩阵（为什么不做实时跟随）：
-//   宿主实时改色（含 #7741 previewTheme 链的新版，v2.2.2-beta.1+）：
-//     跟随 → 同步 ✓
-//   宿主仅刷新生效（旧版宿主 / 部分实例）：
-//     跟随 → 插件先于宿主变色 → 插件蓝宿主橙 → **失配（比不跟随更糟）**
+// 宿主实时改色（含 #7741 previewTheme 链的新版，v2.2.2-beta.1+）：
+// 跟随 → 同步 ✓
+// 宿主仅刷新生效（旧版宿主 / 部分实例）：
+// 跟随 → 插件先于宿主变色 → 插件蓝宿主橙 → **失配（比不跟随更糟）**
 //
 // 对齐机制：
-//   - fetchHostTheme()：页面生命周期内读一次（单飞 + 模块缓存）；
-//   - 主题对齐的主力 = **CSS 变量**（本批 accent 全面变量化）：宿主刷新时
-//     App.tsx 把生效主题写 :root 变量（--app-accent 等，2.2.2b4 源码实证），
-//     插件页面随之重挂载，var(--app-accent, #FF7F16) 自动继承新色——
-//     零 JS 重渲染、零轮询；
-//   - useHostTheme()：antd token 消费方，diff 门控 setState（旧宿主/取不到
-//     = null → 消费方回退 DEFAULT_ACCENT，与 CSS 变量 fallback 同源同值）。
+// - fetchHostTheme()：页面生命周期内读一次（单飞 + 模块缓存）；
+// - 主题对齐的主力 = **CSS 变量**（本批 accent 全面变量化）：宿主刷新时
+// App.tsx 把生效主题写 :root 变量（--app-accent 等，2.2.2b4 源码实证），
+// 插件页面随之重挂载，var(--app-accent, #FF7F16) 自动继承新色——
+// 零 JS 重渲染、零轮询；
+// - useHostTheme()：antd token 消费方，diff 门控 setState（旧宿主/取不到
+// = null → 消费方回退 DEFAULT_ACCENT，与 CSS 变量 fallback 同源同值）。
 
 let _themePromise: Promise<HostTheme | null> | null = null;
 
@@ -102,7 +102,7 @@ export function fetchHostTheme(): Promise<HostTheme | null> {
 const React: typeof ReactNS = host.React;
 
 /** 读宿主主题（组件内）。旧宿主/取不到 = null（消费方各自回退）。
- *  页面加载读一次（与宿主「刷新才更新」行为对齐，14.18 定案）。 */
+ * 页面加载读一次（与宿主「刷新才更新」行为对齐，14.18）。 */
 export function useHostTheme(): HostTheme | null {
   const [theme, setTheme] = React.useState<HostTheme | null>(null);
   React.useEffect(() => {

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.9（UIPERF-T10）：projects-workflow 取数聚合器。
+"""v0.5.0-beta.14.9：projects-workflow 取数聚合器。
 
 背景：前端装载/每 30s 对全部项目逐个打
 GET /api/v1/projects/{id}/workflow?includeTasks=true（实测 36 路并发，
@@ -10,16 +10,16 @@ mapProjectWorkflow 等）仍在前端（零移植漂移）。
 设计（完全照 worker_status（T9）的任务生命周期/快照/单飞模式）：
 
 - tick 30s；sweep: GET /api/v1/projects（信封/裸数组兼容 + 按 project_id
-  去重，与前端 fetchProjectSummaries 逐行对齐）→ 逐项目
-  /workflow?includeTasks=true（teamQ 规则与前端真源一致）→ 快照。
+ 去重，与前端 fetchProjectSummaries 逐行对齐）→ 逐项目
+ /workflow?includeTasks=true（teamQ 规则与前端真源一致）→ 快照。
 - 名单/枚举失败：projects_status 记录（供前端横幅分类）、projects 保旧、
-  scan_at 照常推进（避免 ensure_fresh 每次都重打）；workflows 保旧。
+ scan_at 照常推进（避免 ensure_fresh 每次都重打）；workflows 保旧。
 - 单项目失败：该 pid 保旧值（无旧值则不落 → 前端 mapProjectWorkflow
-  跳过）。
+ 跳过）。
 - 取数复用 worker_status._ctl_get（本模块唯一取数注入点，测试 monkeypatch
-  它；ordered failover + GatedAsyncClient 全局闸门与 T9 一致行为）。
+ 它；ordered failover + GatedAsyncClient 全局闸门与 T9 一致行为）。
 - 扫描并发 4（Semaphore）；单飞：扫描中不重入；ensure_fresh
-  fire-and-forget（端点路径零等待）；stop 优雅退出。
+ fire-and-forget（端点路径零等待）；stop 优雅退出。
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def snapshot() -> Dict[str, Any]:
 
 def ensure_fresh(force: bool = False) -> None:
     """过期（或 force=True 无视 TTL，v0.5.0-beta.14.12 手动刷新用）且未
-    扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
+ 扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
     if _snap["scanning"]:
         return
     if not force and time.time() - _snap["scan_at"] < _TTL:
@@ -90,12 +90,12 @@ def ensure_fresh(force: bool = False) -> None:
 
 
 async def _sweep() -> None:
-    """单飞门 + 后台共用通道（v0.5.0-beta.14.12，UIPERF-T17）。
+    """单飞门 + 后台共用通道（v0.5.0-beta.14.12，）。
 
-    前台忙（拨号 inflight > 12）让权、等共用锁超 90s 放弃本轮（下一
-    tick 重试）；扫描体持共用锁——同一时刻至多一路后台扫描在跑
-    （与 worker_status / KB 刷新共享，防齐发打满闸门抢前台）。
-    """
+ 前台忙（拨号 inflight > 12）让权、等共用锁超 90s 放弃本轮（下一
+ tick 重试）；扫描体持共用锁——同一时刻至多一路后台扫描在跑
+ （与 worker_status / KB 刷新共享，防齐发打满闸门抢前台）。
+ """
     if _snap["scanning"]:
         return  # 单飞：扫描中不重入
     _snap["scanning"] = True
@@ -113,12 +113,12 @@ async def _sweep() -> None:
 async def _do_sweep() -> None:
     """一轮：/projects（去重）→ 逐项目 /workflow?includeTasks=true → 快照。
 
-    - 名单/枚举失败：projects_status 记录、projects 保旧、scan_at 照常
-      推进（避免 ensure_fresh 每次都重打）；workflows 保旧。
-    - 单项目失败：该 pid 保旧值（无旧值则不落 → 前端 mapProjectWorkflow
-      跳过）。
-    - teamQ 规则与前端真源一致：proj.team_id 非空 → "&team=<urlencode>"。
-    """
+ - 名单/枚举失败：projects_status 记录、projects 保旧、scan_at 照常
+ 推进（避免 ensure_fresh 每次都重打）；workflows 保旧。
+ - 单项目失败：该 pid 保旧值（无旧值则不落 → 前端 mapProjectWorkflow
+ 跳过）。
+ - teamQ 规则与前端真源一致：proj.team_id 非空 → "&team=<urlencode>"。
+ """
     cfg = config_mod.load_config()
     try:
         token, _src = router_mod._resolve_controller_token(cfg)
@@ -136,7 +136,7 @@ async def _do_sweep() -> None:
     base = base_urls[0].rstrip("/")
 
     # 1) 项目名单（信封 {projects:[...], total} 兼容裸数组；失败记
-    #    状态 + 保旧 + scan_at 照常推进）。
+    # 状态 + 保旧 + scan_at 照常推进）。
     st, data, text = await worker_status._ctl_get(
         f"{base}/api/v1/projects", token
     )

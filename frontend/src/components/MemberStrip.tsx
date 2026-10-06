@@ -1,9 +1,9 @@
-// v0.5.0-beta.13.1（定案：插件模仿 dashboard 成员列表）：
+// v0.5.0-beta.13.1（插件模仿 dashboard 成员列表）：
 // 房间标题栏右侧的成员头像条。
-//   · Worker 头像右下角带会话状态灯（同消息头像的 WorkerSessionDot corner 变体）；
-//   · 成员多时收起为 +N——点击展开全部，再点收起（窄屏由标题栏 flexWrap
-//     自然落到标题栏下面，两条位置都成立）；
-//   · 点头像 = 打开成员面板（既有 Drawer，全量成员 + @ 提及 + 详情）。
+// · Worker 头像右下角带会话状态灯（同消息头像的 WorkerSessionDot corner 变体）；
+// · 成员多时收起为 +N——点击展开全部，再点收起（窄屏由标题栏 flexWrap
+// 自然落到标题栏下面，两条位置都成立）；
+// · 点头像 = 打开成员面板（既有 Drawer，全量成员 + @ 提及 + 详情）。
 // 数据零新增请求：room.members（既有 /sync）+ workerSessionByMxid（既有派生）。
 
 import type * as ReactNS from "react";
@@ -86,7 +86,7 @@ export default function MemberStrip({
               <MxcAvatar
                 url={member?.avatar_url}
                 size={24}
-                style={{ backgroundColor: "var(--app-accent, #FF7F16)", fontSize: 11, flexShrink: 0 }}
+ style={{ backgroundColor: "var(--app-accent, #FF7F16)", fontSize: 11, flexShrink: 0 }}
               >
                 {name.slice(0, 1).toUpperCase()}
               </MxcAvatar>

@@ -3,9 +3,9 @@
  *
  * 位置：「👷 团队管理」tab 内的子节（与频道接入同款，不独立顶层 tab）。
  * 数据面：Controller 内置工具端点（#1255 已合 main）——
- *   GET   /workers/{name}/tools
- *   PATCH /workers/{name}/tools/{tool}（声明式 {enabled}/{asyncExecution}）
- * 走既有通用 Controller 代理（/api/ 白名单，后端零新端点）。
+ * GET /workers/{name}/tools
+ * PATCH /workers/{name}/tools/{tool}（声明式 {enabled}/{asyncExecution}）
+ * 走既有通用 Controller 代理（api/ 白名单，后端零新端点）。
  *
  * 版本门：Controller < 含 #1255 的版本 → 端点 404 → 整节占位说明
  *（与频道接入/L2 冲突检查版本门同模式）。
@@ -71,7 +71,7 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
     }
   }, [sel, tr]);
 
-  // v0.5.0-beta.13.16（13.15 用户反馈「点开工具的管理不应该要我再选 worker」）：
+  // v0.5.0-beta.13.16（13.15 点开工具的管理不应该要我再选 worker）：
   // 单 Worker 场景（拓扑资源管理嵌入 = workers=[w]）自动选中，无需手动选。
   React.useEffect(() => {
     if (!sel && workers.length === 1) setSel(workers[0].name);
@@ -221,7 +221,7 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
         {/* v0.5.0-beta.13.16：单 Worker（拓扑资源管理嵌入）→ 定显名字，
-            不再给只有一个选项的选择器。多 Worker 场景保持下拉。 */}
+ 不再给只有一个选项的选择器。多 Worker 场景保持下拉。 */}
         {workers.length === 1 ? (
           <antd.Tag style={{ marginInlineEnd: 0, fontSize: 11.5 }}>
             {workers[0].name}

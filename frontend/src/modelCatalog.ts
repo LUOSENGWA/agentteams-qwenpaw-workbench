@@ -3,9 +3,9 @@
 // 语义对照（dashboard 同源，已对 AgentTeams v1.2.0 generator.go 校验）：
 // - configured = 经现有 Higress AI route + provider 可解析的请求模型 alias；
 // - builtin = 官方内置 alias（16 个），选择后仍需对应路由映射才能真正转发；
-// - 自由输入走通配路由（保留  写前校验：拒路径/URL/空格）。
+// - 自由输入走通配路由（保留 写前校验：拒路径/URL/空格）。
 //
-// 数据源 = 插件 Higress 面代理（/gateway/ai-routes + /gateway/ai-providers，消费
+// 数据源 = 插件 Higress 面代理（gateway/ai-routes + /gateway/ai-providers，消费
 // admin 密码模式持有的 Console 会话）；无会话/不可达 → available=false →
 // 调用方隐藏 alias 层（SGLang 在服列表 + Worker 现值 + 自由输入不受影响）。
 
@@ -19,7 +19,7 @@ export interface AiRouteLite {
   }[];
   modelPredicates?: { matchType: string; matchValue: string }[];
  /** P7b：路由授权 consumer 列表（Higress Console 透传；
-   *  目录源 GatewayRouteInfo 同源字段）。 */
+ * 目录源 GatewayRouteInfo 同源字段）。 */
   allowedConsumers?: string[];
 }
 

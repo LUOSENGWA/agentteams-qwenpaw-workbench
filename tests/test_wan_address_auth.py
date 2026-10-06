@@ -66,10 +66,10 @@ def test_auth_for_url_miss_or_invalid():
 
 def test_headers_with_auth_basic_b64():
     h = config_mod.headers_with_auth(
-        {"type": "basic", "username": "luo", "password": "secret"},
+        {"type": "basic", "username": "testuser", "password": "secret"},
         {"X-Keep": "1"},
     )
-    expect = "Basic " + base64.b64encode(b"luo:secret").decode("ascii")
+    expect = "Basic " + base64.b64encode(b"testuser:secret").decode("ascii")
     assert h["Authorization"] == expect
     assert h["X-Keep"] == "1"
 

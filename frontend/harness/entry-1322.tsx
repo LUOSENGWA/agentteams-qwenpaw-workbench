@@ -2,12 +2,12 @@
  * harness/entry-1322.tsx — v0.5.0-beta.13.22 UI 实证入口（不进 dist，
  * esbuild 独立打包成 harness/bundle-1322.js，playwright 驱动断言）。
  *
- * 覆盖 13.21 装验反馈 7 件中的 3 个高风险交互件：
- *  F2  工作流拓扑：第 5 项「Mermaid」视图退役 → 拓扑依赖图内 DAG/Mermaid
- *      样式切换（WorkflowBoard）。
- *  F5  房间卡未读徽章：从名称行内胶囊移到卡片头像右上角（TeamOverview，
- *      群卡新带头像）。
- *  F7  私聊角色：从列表直接分割改为列表下方筛选 chips（TeamOverview）。
+ * 覆盖 13.21 反馈 7 件中的 3 个高风险交互件：
+ * 工作流拓扑：第 5 项「Mermaid」视图退役 → 拓扑依赖图内 DAG/Mermaid
+ * 样式切换（WorkflowBoard）。
+ * 房间卡未读徽章：从名称行内胶囊移到卡片头像右上角（TeamOverview，
+ * 群卡新带头像）。
+ * 私聊角色：从列表直接分割改为列表下方筛选 chips（TeamOverview）。
  */
 import type * as ReactNS from "react";
 const host = window.QwenPaw.host;
@@ -18,7 +18,7 @@ import TeamOverview from "../src/components/TeamOverview";
 import SkillCenter from "../src/components/SkillCenter";
 import { GraphCard } from "../src/components/KnowledgeBase";
 
-/* ── F1：onlyTeam 矩阵团队隔离 ──────────────────────────────────────── */
+/* ── ：onlyTeam 矩阵团队隔离 ──────────────────────────────────────── */
 function F1Section() {
   return (
     <section id="f1" style={{ border: "1px solid #ccc", padding: 8 }}>
@@ -27,9 +27,9 @@ function F1Section() {
   );
 }
 
-/* ── F4：2D 图谱点选持久性（复现聚合模式旧父组件：graph 每次 render
- *     新对象引用 + 300ms 强制重渲染；旧 effect 会在下一次重渲染清
- *     selectedId=「箭头闪一下」）──────────────────────────────────── */
+/* ── ：2D 图谱点选持久性（复现聚合模式旧父组件：graph 每次 render
+ * 新对象引用 + 300ms 强制重渲染；旧 effect 会在下一次重渲染清
+ * selectedId=「箭头闪一下」）──────────────────────────────────── */
 function F4Section() {
   const [tick, setTick] = React.useState(0);
   React.useEffect(() => {
@@ -61,7 +61,7 @@ function F4Section() {
 
 const now = 1761100000000;
 
-/* ── F2：拓扑视图 + 图样式切换 ───────────────────────────────────────── */
+/* ── ：拓扑视图 + 图样式切换 ───────────────────────────────────────── */
 const EVENTS = [
   {
     runId: "run1",
@@ -80,7 +80,7 @@ const EVENTS = [
   },
 ] as never[];
 
-/* ── F5/F7：房间卡（2 群 + 3 私聊，未读/高亮/角色映射齐全）──────────── */
+/* ── /：房间卡（2 群 + 3 私聊，未读/高亮/角色映射齐全）──────────── */
 const ME = "@me:hs";
 const ROOMS = [
   {
@@ -125,7 +125,7 @@ const ROOMS = [
   },
   {
     // 注：unread_highlight>0 的房间会被 Element 式「提及」区置顶摘出主列表
-    // （mainRooms 剔除 isMention）——d3 保持普通未读，专供 F7 角色桶覆盖。
+    // （mainRooms 剔除 isMention）——d3 保持普通未读，专供 角色桶覆盖。
     room_id: "!d3:hs",
     name: "manager1",
     member_count: 2,

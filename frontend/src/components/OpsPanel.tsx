@@ -33,8 +33,8 @@ interface LogLine {
 }
 
 /** Docker 日志时间戳（UTC ISO，如 2026-08-14T03:22:11.123Z）→ 本地 MM-DD HH:MM:SS。
-    此前 slice(11,19) 显示 UTC 裸时分秒（比本地慢 8 小时且无日期）——用户反馈
-    「日志时间看不清是哪天」，加日期+转本地。解析失败回退原 slice。 */
+ 此前 slice(11,19) 显示 UTC 裸时分秒（比本地慢 8 小时且无日期）——
+ 「日志时间看不清是哪天」，加日期+转本地。解析失败回退原 slice。 */
 function fmtLogTime(ts: string): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return ts.slice(11, 19);
@@ -87,13 +87,13 @@ function OpsPanel({
   // v0.5.0-beta.14.18：模型网关路由目录卡已移除（重复视图——模型页
   // ModelsTab 已有「模型网关配置」功能超集），关联 state/fetch 一并清理。
 
-  // v0.5.0-beta.14.6（R2 补）：活跃 tab 单源（rc-tabs 保活，切走仍需显式
+  // v0.5.0-beta.14.6（补）：活跃 tab 单源（rc-tabs 保活，切走仍需显式
   // 门控——ops 的 1s 集群负载轮询此前切走常驻）。
-  // v0.5.0-beta.14.14（UIPERF-T25）：布尔快照——非 ops tab 互切不再重渲
+  // v0.5.0-beta.14.14：布尔快照——非 ops tab 互切不再重渲
   // 本面板（连点 Tab 固定成本）。
   const opsActive = useTabActive("ops");
   const [logsUpdatedAt, setLogsUpdatedAt] = React.useState<number>(0);
-  // v0.5.0-beta.14.6（R2 补）：轮询已并入 usePoller（ops tab 激活门控 +
+  // v0.5.0-beta.14.6（补）：轮询已并入 usePoller（ops tab 激活门控 +
   // 失败退避内置：×2 至 120s 封顶、成功复位；静默失败保留上次内容）。
   // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
   const refreshLogs = React.useCallback(async (comp: string, silent = false) => {
@@ -118,7 +118,7 @@ function OpsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // v0.5.0-beta.14.6（R2 补）：组件日志轮询 → usePoller（ops tab 激活；
+  // v0.5.0-beta.14.6（补）：组件日志轮询 → usePoller（ops tab 激活；
   // !document.hidden 由 hook 内置；失败退避由 hook 内置）。
   usePoller({
     fn: () => void refreshLogs(component, true),
@@ -139,7 +139,7 @@ function OpsPanel({
     try {
       const data = await fetchSglangLoads();
       setSglang(data);
-      setSglangLocalAt(Date.now()); // 本地到达时间——用户反馈 问「高延迟」：
+      setSglangLocalAt(Date.now()); // 本地到达时间—— 问「高延迟」：
       // 此前显示服务器端时间戳，本地与服务器时钟漂移会显得滞后
       setSglangOff(false);
       setSglangError("");
@@ -162,10 +162,10 @@ function OpsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 集群负载静默轮询（/v1/loads 读 SHM 快照）。
-  // v0.5.0-beta.14.6（R2 补）：→ usePoller（ops tab 激活；切走即停 + 可见性
+  // 集群负载静默轮询（v1/loads 读 SHM 快照）。
+  // v0.5.0-beta.14.6（补）：→ usePoller（ops tab 激活；切走即停 + 可见性
   // 内置——原「rc-tabs 保活切走也续」的每 1s 常驻开销由此消除）。
-  // v0.5.0-beta.14.17（T181 审计 P0-1）：1s→5s（与 HomePage 同批——/v1/loads
+  // v0.5.0-beta.14.17（审计）：1s→5s（与 HomePage 同批——/v1/loads
   // 是前端最大可控频次，两页同屏时原 2×1/s 叠加；5s 对负载曲线仍够"活"）。
   usePoller({
     fn: () => void refreshSglang(true),
@@ -190,9 +190,9 @@ function OpsPanel({
   // v0.5.0-beta.14.18：旧版展示改「最新在上」(14.10) 但跟随逻辑留了
   // scrollTop=scrollHeight（滚到最底=最旧）——语义打架，轮询把用户视口拽走。
   // 现按业界标准（kubectl/docker --follow/Grafana logs 同款语义，适配最新在上）：
-  //   ① 跟随 = 顶部跟随（autoScroll 时 scrollTop=0，最新行永远贴顶可见）；
-  //   ② 用户向下翻（看旧日志，>60px）→ 自动暂停跟随（不打断阅读）；
-  //   ③ 暂停且不在顶 → 浮动「↑ 回到最新」钮 → 点击 = 回顶 + 恢复跟随。
+  // ① 跟随 = 顶部跟随（autoScroll 时 scrollTop=0，最新行永远贴顶可见）；
+  // ② 用户向下翻（看旧日志，>60px）→ 自动暂停跟随（不打断阅读）；
+  // ③ 暂停且不在顶 → 浮动「↑ 回到最新」钮 → 点击 = 回顶 + 恢复跟随。
   const [awayFromTop, setAwayFromTop] = React.useState(false);
   const onLogScroll = React.useCallback(() => {
     const el = logBoxRef.current;
@@ -226,8 +226,8 @@ function OpsPanel({
   return (
     <div style={{ display: "grid", gap: 16 }}>
       {/* v0.5.0-beta.12（设计）：多运行时卡从运维页移除——静态 runtime
-          清单硬编码不全 + 位置错。运行时管理归团队管理：每个 Worker/Manager 卡
-          直接显示自己的 runtime·version（Worker 卡 / Manager 表本轮加列）。 */}
+ 清单硬编码不全 + 位置错。运行时管理归团队管理：每个 Worker/Manager 卡
+ 直接显示自己的 runtime·version（Worker 卡 / Manager 表本轮加列）。 */}
       {/* 集群状态 */}
       <div>
         <div
@@ -305,10 +305,10 @@ function OpsPanel({
         )}
       </div>
 
-      {/* v0.5.0-beta.14.18（14.17 用户反馈「运维页面不需要放模型网关路由，
-          把模型页面做好就可以」）：路由目录卡整块移除——模型页（ModelsTab）
-          已有同款「模型网关配置」（提供商/路由/alias 表，功能超集），运维页
-          重复视图删除。 */}
+ {/* v0.5.0-beta.14.18（14.17 「运维页面不需要放模型网关路由，
+ 把模型页面做好就可以」）：路由目录卡整块移除——模型页（ModelsTab）
+ 已有同款「模型网关配置」（提供商/路由/alias 表，功能超集），运维页
+ 重复视图删除。 */}
 
       {/* 集群负载（可选模块，L1 专属——未启用时后端 404，不渲染） */}
       {!sglangOff ? (
@@ -436,7 +436,7 @@ function OpsPanel({
                         </div>
                       )}
                       {/* KV 池占用率 = token_usage（上面 KV used/pool 的百分比）——
-                          用户真机问「54% 是什么的 54%」：进度条无标签，补 "KV" 前缀 */}
+ 用户真机问「54% 是什么的 54%」：进度条无标签，补 "KV" 前缀 */}
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span
                           style={{
@@ -575,8 +575,8 @@ function OpsPanel({
           ) : visibleLogs.length === 0 ? (
             <div style={{ color: "#8b949e" }}>{tr("（无日志行）")}</div>
           ) : (
-            /* v0.5.0-beta.14.10（用户反馈）：最新在最上——展示倒序（不
-               改动状态数组本身；过滤/计数语义不变）。 */
+ /* v0.5.0-beta.14.10：最新在最上——展示倒序（不
+ 改动状态数组本身；过滤/计数语义不变）。 */
             [...visibleLogs].reverse().map((l, i) => (
               <div key={i} style={{ color: l.level === "error" ? "#ff7b72" : "#c9d1d9" }}>
                 {l.timestamp ? (
@@ -590,7 +590,7 @@ function OpsPanel({
           )}
           </div>
           {/* 暂停跟随且用户在翻旧日志 → 浮动「回到最新」钮（业界日志跟随
-              标准件；点击=回顶+恢复跟随）。 */}
+ 标准件；点击=回顶+恢复跟随）。 */}
           {!autoScroll && awayFromTop ? (
             <antd.Button
               size="small"
@@ -613,6 +613,6 @@ function OpsPanel({
   );
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(OpsPanel);

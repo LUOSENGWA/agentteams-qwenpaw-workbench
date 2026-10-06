@@ -8,7 +8,7 @@ const host = window.QwenPaw.host;
 export function accentTint(accent: string, alpha: number): string {
   const m =
     /^#([0-9a-fA-F]{6})$/.exec(accent) ?? /^#([0-9a-fA-F]{3})$/.exec(accent);
-  if (!m) return `color-mix(in srgb, var(--app-accent, #FF7F16) ${(alpha * 100).toFixed(1)}%, transparent)`;
+ if (!m) return `color-mix(in srgb, var(--app-accent, #FF7F16) ${(alpha * 100).toFixed(1)}%, transparent)`;
   let h = m[1];
   if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
   const r = parseInt(h.slice(0, 2), 16);
@@ -48,7 +48,7 @@ const LIGHT: ThemeColors = {
   textSecondary: "#888",
   border: "rgba(0,0,0,0.08)",
   bubbleOther: "rgba(0,0,0,0.04)",
-  bubbleMine: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
+ bubbleMine: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
   hoverBg: "rgba(0,0,0,0.03)",
   popoverBg: "#ffffff",
   toolBg: "rgba(0,0,0,0.03)",
@@ -62,7 +62,7 @@ const DARK: ThemeColors = {
   textSecondary: "#8c8c8c",
   border: "rgba(255,255,255,0.12)",
   bubbleOther: "rgba(255,255,255,0.08)",
-  bubbleMine: "color-mix(in srgb, var(--app-accent, #FF7F16) 18%, transparent)",
+ bubbleMine: "color-mix(in srgb, var(--app-accent, #FF7F16) 18%, transparent)",
   hoverBg: "rgba(255,255,255,0.06)",
   popoverBg: "#2a2a2a",
   toolBg: "rgba(255,255,255,0.06)",

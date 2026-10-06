@@ -23,11 +23,11 @@ from typing import Any, Dict, List, Optional, Union
 
 # v0.5.0-beta.14.3（WAN 通用认证）：地址条目 = 字符串（服务原生认证，
 # 内网默认形态）或 {url, auth?}（显式覆盖凭据）。auth 类型：
-#   {"type": "basic",  "username": ..., "password": ...}  —— 网关 Basic 门
-#   {"type": "bearer", "token": ...}                      —— API key / 专用
+# {"type": "basic", "username": ..., "password": ...} —— 网关 Basic 门
+# {"type": "bearer", "token": ...} —— API key / 专用
 # 无 auth = 用服务自身认证（controller token / matrix token / SGLang 无）。
 # 单一出处：所有拨号点经 address_url()/auth_for_url()/headers_with_auth()
-# 解析，不各写各的（打地鼠防护——新增拨号点只调 helper）。
+# 解析，不各写各的（逐个修补防护——新增拨号点只调 helper）。
 AddressEntry = Union[str, Dict[str, Any]]
 
 try:  # pragma: no cover - exercised inside QwenPaw at runtime
@@ -59,8 +59,8 @@ def address_url(entry: Any) -> str:
 def _normalize_auth(raw: Any) -> Optional[Dict[str, str]]:
     """校验并归一化 auth 块；无效/缺凭据 → None（= 用服务原生认证）。
 
-    basic 需 username+password；bearer 需 token。空串凭据视为未填。
-    """
+ basic 需 username+password；bearer 需 token。空串凭据视为未填。
+ """
     if not isinstance(raw, dict):
         return None
     atype = str(raw.get("type") or "").strip().lower()
@@ -81,9 +81,9 @@ def _normalize_auth(raw: Any) -> Optional[Dict[str, str]]:
 def auth_for_url(entries: Any, url: str) -> Optional[Dict[str, str]]:
     """该 URL 对应的覆盖凭据（无/无效 → None）。
 
-    url 匹配口径 = rstrip("/") 后精确相等（配置里的 url 可能带尾斜杠，
-    拨号点也统一 rstrip 后再查——两侧同口径防不命中）。
-    """
+ url 匹配口径 = rstrip("/") 后精确相等（配置里的 url 可能带尾斜杠，
+ 拨号点也统一 rstrip 后再查——两侧同口径防不命中）。
+ """
     target = url.rstrip("/")
     for entry in entries or []:
         if address_url(entry) and address_url(entry).rstrip("/") == target:
@@ -107,9 +107,9 @@ def build_auth_map(entries: Any) -> Dict[str, Dict[str, str]]:
 def headers_with_auth(auth: Optional[Dict[str, str]], headers: Dict[str, str]) -> Dict[str, str]:
     """应用覆盖凭据（无 auth/无效 → 原样返回 base headers）。
 
-    只动 Authorization 一个头：basic → `Basic base64(u:p)` 整体替换；
-    bearer → `Bearer <token>` 整体替换。不改写其他头。
-    """
+ 只动 Authorization 一个头：basic → `Basic base64(u:p)` 整体替换；
+ bearer → `Bearer <token>` 整体替换。不改写其他头。
+ """
     if not auth:
         return headers
     out = dict(headers)
@@ -126,14 +126,14 @@ def merge_address_entries(
 ) -> List[AddressEntry]:
     """PUT /config 的地址列表合并（按位置配对，保留旧秘密）。
 
-    规则（与 controller_token 的 "***" 占位符语义同源）：
-    - 新条目=字符串 → 原样（显式降级：旧凭据丢弃）。
-    - 新条目=dict：
-      - auth 缺省/type=none → 字符串条目（显式清除凭据）。
-      - 凭据字段空串或 "***" → 继承旧条目同名字段（脱敏回传=保持不变）。
-      - url 为空 → 丢弃该条目（与旧 filter(v=>v.trim()) 行为一致）。
-    - 旧列表更长的尾部条目 → 丢弃（前端始终提交完整两行）。
-    """
+ 规则（与 controller_token 的 "***" 占位符语义同源）：
+ - 新条目=字符串 → 原样（显式降级：旧凭据丢弃）。
+ - 新条目=dict：
+ - auth 缺省/type=none → 字符串条目（显式清除凭据）。
+ - 凭据字段空串或 "***" → 继承旧条目同名字段（脱敏回传=保持不变）。
+ - url 为空 → 丢弃该条目（与旧 filter(v=>v.trim()) 行为一致）。
+ - 旧列表更长的尾部条目 → 丢弃（前端始终提交完整两行）。
+ """
     merged: List[AddressEntry] = []
     old_list = list(old_entries or [])
     for i, entry in enumerate(new_entries or []):
@@ -199,17 +199,17 @@ _DEFAULTS: Dict[str, Any] = {
     # urls[0] 镜像，老读者兼容）。条目不限 2 个，按序降级。
     "gateway_admin_urls": [],
     "gateway_admin_url": "",
-    # v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚——停用上游 RunningGlow
+    # v0.5.0-beta.14.8：控制台特效安抚——停用上游 RunningGlow
     # 旋转光环/呼吸层的动画（保留光效视觉）。默认开（省 GPU）；可关。
-    # v0.5.0-beta.14.12（UIPERF-T18）：保留为兼容键（新键 console_effects
+    # v0.5.0-beta.14.12：保留为兼容键（新键 console_effects
     # 三档取代其功能；load 迁移时以其值推导 console_effects 初值，
     # 之后不再读写，老配置/老读者兼容）。
     "console_calm": True,
-    # v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档——
+    # v0.5.0-beta.14.12：控制台特效三档——
     # "light"（默认：动画保留、模糊半径封顶 6px）/ "off"（动画与模糊全停，
     # 等价旧 console_calm 开启）/ "full"（上游原样，零覆盖）。
     "console_effects": "light",
-    # Console 管理员会话 cookie（/session/login 成功后的 Set-Cookie 值，
+    # Console 管理员会话 cookie（session/login 成功后的 Set-Cookie 值，
     # 服务端自持，redact 脱敏，永不进前端可见明文）。
     "console_session": "",
     # 可选模块：集群负载监控（L1 专属——不是每个部署都有本地 SGLang）。
@@ -244,17 +244,17 @@ def _ensure_dir() -> None:
 
 
 def _config_bak_path() -> Path:
-    """v0.5.0-beta.14.14（UIPERF-T23）：备份文件路径——从 _CONFIG_PATH 派生
-    （config.json 旁的 config.bak.json；测试 monkeypatch 主文件路径时自动
-    跟随，零额外注入点）。"""
+    """v0.5.0-beta.14.14：备份文件路径——从 _CONFIG_PATH 派生
+ （config.json 旁的 config.bak.json；测试 monkeypatch 主文件路径时自动
+ 跟随，零额外注入点）。"""
     return _CONFIG_PATH.with_name("config.bak.json")
 
 
 def _atomic_write_config(path: Path, data: Dict[str, Any]) -> None:
     """原子落盘（tmp + os.replace + chmod 600）——保存与备份恢复共用。
 
-    失败抛 IOError（调用方定语义：save → 报错给端点；恢复 → 放弃回退默认）。
-    """
+ 失败抛 IOError（调用方定语义：save → 报错给端点；恢复 → 放弃回退默认）。
+ """
     import os as _os
 
     _ensure_dir()
@@ -276,20 +276,20 @@ def _atomic_write_config(path: Path, data: Dict[str, Any]) -> None:
 
 
 def write_backup(snapshot: Dict[str, Any]) -> None:
-    """v0.5.0-beta.14.14（UIPERF-T23）：原子写 config.bak.json 快照。
+    """v0.5.0-beta.14.14：原子写 config.bak.json 快照。
 
-    失败抛 IOError——调用方决定：save 路径仅告警（主文件已验证落盘，不
-    拖累保存）；导入路径 = 中止不覆盖（「先备份再覆盖」安全契约）。
-    """
+ 失败抛 IOError——调用方决定：save 路径仅告警（主文件已验证落盘，不
+ 拖累保存）；导入路径 = 中止不覆盖（「先备份再覆盖」安全契约）。
+ """
     _atomic_write_config(_config_bak_path(), snapshot)
 
 
 def _restore_from_backup() -> Optional[Dict[str, Any]]:
-    """v0.5.0-beta.14.14（UIPERF-T23）：自愈——主配置缺失/损坏 → 从
-    config.bak.json 恢复（原子写回主文件 + 日志明示）。
+    """v0.5.0-beta.14.14：自愈——主配置缺失/损坏 → 从
+ config.bak.json 恢复（原子写回主文件 + 日志明示）。
 
-    无备份/备份损坏/写回失败 → None（调用方回默认值，不崩）。
-    """
+ 无备份/备份损坏/写回失败 → None（调用方回默认值，不崩）。
+ """
     bak = _config_bak_path()
     try:
         data = json.loads(bak.read_text(encoding="utf-8"))
@@ -330,7 +330,7 @@ def load_config() -> Dict[str, Any]:
             if not isinstance(raw, dict):
                 raise ValueError("top-level JSON must be an object")
         except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
-            # v0.5.0-beta.14.14（UIPERF-T23）：自愈——主文件缺失/损坏
+            # v0.5.0-beta.14.14：自愈——主文件缺失/损坏
             # （含顶层非对象）→ 自动从备份恢复（日志明示）；无可用备份
             # → 默认值（不崩）。
             restored = _restore_from_backup()
@@ -358,9 +358,9 @@ def load_config() -> Dict[str, Any]:
             # v0.5.0-beta.14.7: 双地址 canonical 列表（不加则落盘值重载时被丢）。
             "gateway_admin_urls",
             "gateway_admin_url",
-            # v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（bool，落盘值须重载保留）。
+            # v0.5.0-beta.14.8：控制台特效安抚（bool，落盘值须重载保留）。
             "console_calm",
-            # v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档（落盘值须重载保留）。
+            # v0.5.0-beta.14.12：控制台特效三档（落盘值须重载保留）。
             "console_effects",
             "console_session",
             "sglang",
@@ -372,7 +372,7 @@ def load_config() -> Dict[str, Any]:
         # v0.5.0-beta.14.1: 旧配置垃圾值降级 auto（不 400 不崩）。
         if merged.get("address_mode") not in ("auto", "lan", "wan"):
             merged["address_mode"] = "auto"
-        # v0.5.0-beta.14.12（UIPERF-T18）：console_effects 迁移——
+        # v0.5.0-beta.14.12：console_effects 迁移——
         # 落盘缺省（老配置无此键）或非法值 → 按 console_calm 推导：
         # console_calm is False（用户曾选"完整特效"语义）→ "full"，否则
         # "light"（不 400 不崩，与 address_mode 降级先例一致）。
@@ -424,16 +424,16 @@ def load_config() -> Dict[str, Any]:
 def save_config(config: Dict[str, Any], refresh_backup: bool = True) -> None:
     """Persist the full config (caller is responsible for shape).
 
-    v0.5.0-beta.14.14（UIPERF-T23）：成功保存后自动原子刷新 config.bak.json
-    ——下次加载主文件丢失/损坏时从中自愈（见 load_config/_restore_from_backup）。
-    备份失败仅告警（主文件已验证落盘，不拖累保存）；refresh_backup=False 供
-    导入路径（导入前先手工备份覆盖前状态，覆盖后备份保持为恢复点，不被新值
-    顶掉）。
-    """
+ v0.5.0-beta.14.14：成功保存后自动原子刷新 config.bak.json
+ ——下次加载主文件丢失/损坏时从中自愈（见 load_config/_restore_from_backup）。
+ 备份失败仅告警（主文件已验证落盘，不拖累保存）；refresh_backup=False 供
+ 导入路径（导入前先手工备份覆盖前状态，覆盖后备份保持为恢复点，不被新值
+ 顶掉）。
+ """
     with _lock:
         try:
             _atomic_write_config(_CONFIG_PATH, config)
-            # v0.5.0-beta.14.12（UIPERF-T19）：写后回读验证（小文件，成本可忽略）
+            # v0.5.0-beta.14.12：写后回读验证（小文件，成本可忽略）
             # ——「保存成功」必须以磁盘实况为准，读回不一致直接抛错（由端点
             # 转 500 详情）。
             _back = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -483,10 +483,10 @@ def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
         and not patch.get("gateway_admin_urls")
     ):
         merged["gateway_admin_urls"] = [patch["gateway_admin_url"].strip()]
-    # v0.5.0-beta.14.8（UIPERF-T8）：console_calm 直存（bool，非法忽略）。
+    # v0.5.0-beta.14.8：console_calm 直存（bool，非法忽略）。
     if isinstance(patch.get("console_calm"), bool):
         merged["console_calm"] = patch["console_calm"]
-    # v0.5.0-beta.14.12（UIPERF-T18）：console_effects 三档直存
+    # v0.5.0-beta.14.12：console_effects 三档直存
     # （非 {light, off, full} 的字符串/类型一律忽略，不 400）。
     if (
         isinstance(patch.get("console_effects"), str)

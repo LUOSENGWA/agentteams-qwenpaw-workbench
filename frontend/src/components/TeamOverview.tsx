@@ -30,7 +30,7 @@ const ReloadIcon = pick("ReloadOutlined");
 const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
 const GREEN = "#52c41a"; // 状态绿（DM 标签）
 const FAV_KEY = "agentteams-qwenpaw-workbench:favorites";
-// v0.5.0-beta.13.12（13.11 用户反馈「房间列表排序感觉可以优化」）：排序偏好
+// v0.5.0-beta.13.12（13.11 房间列表排序感觉可以优化）：排序偏好
 // 客户端本地持久化（与收藏同一思路——Element 房间排序存客户端本地）。
 const SORT_KEY = "agentteams-qwenpaw-workbench:room-sort";
 const CARD_RADIUS = 10; // 卡片圆角
@@ -44,10 +44,10 @@ function memberShortName(mxid: string, member?: TeamMember): string {
   return localpart || mxid;
 }
 
-/** v0.5.0-beta.13.22（13.21 用户反馈 F5「未读气泡改到卡片头像右上角」）：
- *  原实现=名称行内灰色胶囊（占宽、挤名字）。改为返回徽章参数，由卡片
- *  头像外层 UnreadBubble 渲染（头像右上角，Element 同款；13.24 F4 自绘
- *  居中+含住）。红=highlight（@我/提及），灰=普通未读；都 0 = null。 */
+/** v0.5.0-beta.13.22（13.21 「未读气泡改到卡片头像右上角」）：
+ * 原实现=名称行内灰色胶囊（占宽、挤名字）。改为返回徽章参数，由卡片
+ * 头像外层 UnreadBubble 渲染（头像右上角，Element 同款；13.24 自绘
+ * 居中+含住）。红=highlight（@我/提及），灰=普通未读；都 0 = null。 */
 function unreadBadgeOf(
   room: TeamRoom,
 ): { count: number; color: string } | null {
@@ -58,13 +58,13 @@ function unreadBadgeOf(
   return null;
 }
 
-/** v0.5.0-beta.13.24（F4·用户反馈定案：「数字应居中且不超过气泡」）：自绘
+/** v0.5.0-beta.13.24（·：「数字应居中且不超过气泡」）：自绘
  * 未读气泡替代 antd.Badge——antd 默认胶囊在窄字宽/自定义色下数字偏心
  * 且 3 位数+overflowCount 时溢出气泡边缘。本组件 flex 双向居中 +
  * min-width 16/padding 0 4（气泡随内容长宽自适应，永不溢出）+ 1.5px
  * 白描边环（卡片底色上对比清晰，Element 同款观感）。
  * 用法：头像外套 <div style={{position:"relative"}}>，气泡 absolute
- * 挂右上角（top:-6/right:-6，13.21 定案的头像角标位置语义）。 */
+ * 挂右上角（top:-6/right:-6，13.21 的头像角标位置语义）。 */
 function UnreadBubble({ count, color }: { count: number; color: string }) {
   const label = count > 99 ? "99+" : String(count);
   return (
@@ -97,8 +97,8 @@ function UnreadBubble({ count, color }: { count: number; color: string }) {
 }
 
 /* v0.5.0-beta.12（dashboard 对齐：房间卡最后消息正文预览）。
-   72 字截断 + 媒体标记（图片 🖼 / 文件 📎，按扩展名判定；后端 last_body
-   已含 m.image/m.file 的 body=文件名）。 */
+ 72 字截断 + 媒体标记（图片 🖼 / 文件 📎，按扩展名判定；后端 last_body
+ 已含 m.image/m.file 的 body=文件名）。 */
 const MEDIA_IMG_RE = /\.(png|jpe?g|gif|webp|heic|bmp|svg)$/i;
 const MEDIA_FILE_RE =
   /\.(pdf|docx?|xlsx?|pptx?|zip|tar|gz|7z|rar|mp4|mov|mkv|avi|mp3|wav|m4a|csv|json|log|txt)$/i;
@@ -140,7 +140,7 @@ function GroupCard({
   const t = useThemeColors();
   const tr = useT();
   const memberEntries = Object.entries(room.members || {}).slice(0, 3);
- // 用户反馈（P8b）：成员列表默认隐藏（成员多的房间 chips 占卡高度，
+ // （P8b）：成员列表默认隐藏（成员多的房间 chips 占卡高度，
   // 房间列又长又密），点「N 人」tag 展开/收起。
   const [membersOpen, setMembersOpen] = React.useState(false);
   // 团队群只表达 running（Worker 正在打字）；不显 done/idle
@@ -155,15 +155,15 @@ function GroupCard({
       style={{ borderRadius: CARD_RADIUS, cursor: "pointer" }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        {/* v0.5.0-beta.13.22（F5）：群卡片加头像（原无头像，未读气泡无处挂）——
-            头像右上角=未读徽章（红=highlight/灰=普通未读）。 */}
+ {/* v0.5.0-beta.13.22：群卡片加头像（原无头像，未读气泡无处挂）——
+ 头像右上角=未读徽章（红=highlight/灰=普通未读）。 */}
         {(() => {
           const avatar = (
             <antd.Avatar size={32} style={{ backgroundColor: PRIMARY, flexShrink: 0 }}>
               <UsersIcon size={16} />
             </antd.Avatar>
           );
-          // v0.5.0-beta.13.24（F4）：自绘 UnreadBubble（居中+含住+白描边环）。
+          // v0.5.0-beta.13.24：自绘 UnreadBubble（居中+含住+白描边环）。
           const ub = unreadBadgeOf(room);
           return (
             <div style={{ position: "relative", flexShrink: 0, lineHeight: 0 }}>
@@ -251,8 +251,8 @@ function GroupCard({
               </antd.Dropdown>
             </span>
           </div>
-          {/* v0.5.0-beta.13.14（用户反馈）：房间名下面显示项目名
-              （数据=Controller 工作流事件 room_id→title；无项目不占行）。 */}
+          {/* v0.5.0-beta.13.14：房间名下面显示项目名
+ （数据=Controller 工作流事件 room_id→title；无项目不占行）。 */}
           {projectTitles && projectTitles.length ? (
             <div
               style={{
@@ -305,7 +305,7 @@ function GroupCard({
             ) : null;
           })()}
           {/* 成员 chips：点击成员 → DM（任务发起入口）。
-              P8b：默认隐藏（membersOpen 才渲染），点「N 人」tag 展开。 */}
+ P8b：默认隐藏（membersOpen 才渲染），点「N 人」tag 展开。 */}
           {onDm && membersOpen ? (
             <div
               style={{
@@ -411,7 +411,7 @@ function DmCard({
         background: t.popoverBg,
       }}
     >
-      {/* v0.5.0-beta.13.22（F5）：未读徽章挂头像右上角（原名称行内灰胶囊）。 */}
+ {/* v0.5.0-beta.13.22：未读徽章挂头像右上角（原名称行内灰胶囊）。 */}
       {(() => {
         const avatar = (
           <MxcAvatar
@@ -422,7 +422,7 @@ function DmCard({
             {otherName.slice(0, 1).toUpperCase()}
           </MxcAvatar>
         );
-        // v0.5.0-beta.13.24（F4）：自绘 UnreadBubble（居中+含住+白描边环）。
+        // v0.5.0-beta.13.24：自绘 UnreadBubble（居中+含住+白描边环）。
         const ub = unreadBadgeOf(room);
         return (
           <div style={{ position: "relative", flexShrink: 0, lineHeight: 0 }}>
@@ -686,8 +686,8 @@ export interface TeamOverviewProps {
   /** v0.5.0-beta.13.14：房间 room_id → 该项目名列表（房间卡名称下显示）。 */
   roomProjectNames?: Record<string, string[]>;
   /** v0.5.0-beta.13.21（侧栏角色分组）：MXID → 角色标签
-   *  （Leader/Worker/Manager）——「私聊」视图按对象角色分区显示；
-   *  无此 prop 或查不到角色时退回扁平列表（人类 DM 归「其他」）。 */
+ * （Leader/Worker/Manager）——「私聊」视图按对象角色分区显示；
+ * 无此 prop 或查不到角色时退回扁平列表（人类 DM 归「其他」）。 */
   workerRoleByMxid?: Record<string, string>;
 }
 
@@ -851,8 +851,8 @@ function TeamOverview(props: TeamOverviewProps) {
       .filter((g) => g.rooms.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dms, workerRoleByMxid, user_id]);
-  // v0.5.0-beta.13.22（13.21 用户反馈 F7）：私聊角色从「列表直接分割成
-  // 4 段+组头」改为「列表下方按对象角色筛选 chips」（用户反馈原话：「应该在
+  // v0.5.0-beta.13.22（13.21）：私聊角色从「列表直接分割成
+  // 4 段+组头」改为「列表下方按对象角色筛选 chips」（原话：「应该在
   // 下面加个按对象角色分区显示，而不是直接在列表分割」）——默认全部=扁平
   // 列表（不再切段），选某角色=只看该角色的私聊（仍是单一排序列表）。
   const [dmRole, setDmRole] = React.useState<string>("all");
@@ -1033,7 +1033,7 @@ function TeamOverview(props: TeamOverviewProps) {
       ) : (
         <div style={{ display: "grid", gap: 16 }}>
           {/* 邀请区（v0.5.0-beta.12 ：Element 同款接受/拒绝；置顶显示，
-              不受群/私聊过滤影响——待办动作优先于已加入房间） */}
+ 不受群/私聊过滤影响——待办动作优先于已加入房间） */}
           {invites && invites.length > 0 ? (
             <InviteSection
               invites={invites}
@@ -1041,7 +1041,7 @@ function TeamOverview(props: TeamOverviewProps) {
             />
           ) : null}
           {/* v0.5.0-beta.13.12（Element X 提及区）：@我/高亮未读置顶分区，
-              主列表剔除（isMention 已在 mainRooms 过滤）。无高亮整体隐藏。 */}
+ 主列表剔除（isMention 已在 mainRooms 过滤）。无高亮整体隐藏。 */}
           {mentionRoomsForFilter.length > 0 ? (
             <div style={{ display: "grid", gap: 8 }}>
               <div
@@ -1074,7 +1074,7 @@ function TeamOverview(props: TeamOverviewProps) {
             </div>
           ) : null}
           {/* 「全部」= Element 式单一排序混合列表（群/DM 交错，按 roomSort）。
-              群/DM 过滤 = 分区展示（各自内部同序）。 */}
+ 群/DM 过滤 = 分区展示（各自内部同序）。 */}
           {filter === "all" ? (
             allByRecent.length > 0 ? (
               <div style={{ display: "grid", gap: 12 }}>
@@ -1090,8 +1090,8 @@ function TeamOverview(props: TeamOverviewProps) {
                 </div>
               ) : null}
               {/* DM 私聊
-                  v0.5.0-beta.13.22（F7）：角色改为下方 chips 筛选（不再直接
-                  分割列表）；默认「全部」=扁平列表（roomSort 同序）。 */}
+ v0.5.0-beta.13.22：角色改为下方 chips 筛选（不再直接
+ 分割列表）；默认「全部」=扁平列表（roomSort 同序）。 */}
               {showDms ? (
                 <div style={{ display: "grid", gap: 8 }}>
                   {/* 角色筛选 chips（有角色映射才出；「全部」恒在） */}
@@ -1115,9 +1115,9 @@ function TeamOverview(props: TeamOverviewProps) {
                               display: "inline-flex",
                               alignItems: "center",
                               gap: 4,
-                              border: `1px solid ${active ? "var(--app-accent, #FF7F16)" : t.border}`,
-                              background: active ? "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)" : t.cardBg,
-                              color: active ? "var(--app-accent, #FF7F16)" : t.textSecondary,
+ border: `1px solid ${active ? "var(--app-accent, #FF7F16)" : t.border}`,
+ background: active ? "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)" : t.cardBg,
+ color: active ? "var(--app-accent, #FF7F16)" : t.textSecondary,
                               borderRadius: 14,
                               padding: "2px 12px",
                               fontSize: 12,
@@ -1155,9 +1155,9 @@ function TeamOverview(props: TeamOverviewProps) {
   );
 }
 
-// v0.5.0-beta.14.14（UIPERF-T25）：memo 化——rc-tabs 保活下本组件首访后
+// v0.5.0-beta.14.14：memo 化——rc-tabs 保活下本组件首访后
 // 常驻挂载，WorkbenchPage 每次重渲（SSE 帧/数据波/tab 切换）此前都会
 // 无差别重渲它（房间列表卡片族）。props 已稳定化（rooms/invites 保引用
-// T21、workerSessionStates 保引用 T26、roomProjectNames/workerRoleByMxid
-// useMemo、回调 useCallback T13）→ 值未变时 bail out。
+// 、workerSessionStates 保引用 、roomProjectNames/workerRoleByMxid
+// useMemo、回调 useCallback）→ 值未变时 bail out。
 export default React.memo(TeamOverview);

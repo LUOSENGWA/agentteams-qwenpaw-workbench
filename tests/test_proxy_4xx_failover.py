@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""代理 4xx failover + 直拨族 failover 回归（v0.5.0-beta.14.2，F1）。
+"""代理 4xx failover + 直拨族 failover 回归（v0.5.0-beta.14.2，）。
 
-问题真根因（14.2 用户反馈「切外网 controller 401、知识图谱 500、连不上」）：
+问题根因（14.2 切外网 controller 401、知识图谱 500、连不上）：
 1. catch-all 代理对**任何** HTTP 响应都 _mark_working（含 401）→ 一次 401
-   污染 working cache → 切回内网死地址仍居首恒 401；
+ 污染 working cache → 切回内网死地址仍居首恒 401；
 2. 代理 GET/HEAD 遇 4xx 立即原样返回，不试下一地址（外网入口=网关会话门、
-   直连健康时永不 failover）；
+ 直连健康时永不 failover）；
 3. 直拨族（_kb_docker / _ctl_json / _dial_workers）单地址直拨、4xx 立即
-   返回 → 切网窗口恒 401 或卡满超时。
+ 返回 → 切网窗口恒 401 或卡满超时。
 
 护栏（5 例）：
 - proxy GET：地址1 401 → 地址2 200 → 最终 200，working 标地址2。
@@ -15,7 +15,7 @@
 - proxy POST：地址1 401 → 立即 401，不试地址2（写请求不重放）。
 - teams/structure：_dial_workers 地址1 401 → 地址2 200 → 采用地址2 数据。
 - /kb/agents：Docker 通道全 401 → fallback → _ctl_json 地址1 401 →
-  地址2 200 → KB 形状 {agents, count}（w1 + manager）。
+ 地址2 200 → KB 形状 {agents, count}（w1 + manager）。
 """
 from __future__ import annotations
 
@@ -56,8 +56,8 @@ class _Resp:
 class _P4Client:
     """httpx.AsyncClient 替身：spec = [(url 子串, _Resp)]，按插入序首中。
 
-    records = [(method, url)] 供断言调用顺序/地址。
-    """
+ records = [(method, url)] 供断言调用顺序/地址。
+ """
 
     def __init__(self, spec: list) -> None:
         self.spec = spec
@@ -208,7 +208,7 @@ def test_kb_agents_docker_degraded_ctl_fallback(p4):
 
 
 def test_proxy_get_409_no_failover(p4):
-    """R4：确定性 409 不换下一地址，原样立即返回。"""
+    """：确定性 409 不换下一地址，原样立即返回。"""
     clients, spec = p4
     spec.append((LAN, _Resp(409, b'{"detail":"ambiguous"}')))
     spec.append((WAN, _Resp(200, b'{"ok":true}')))
@@ -222,7 +222,7 @@ def test_proxy_get_409_no_failover(p4):
 
 
 def test_teams_structure_dial_workers_409_no_failover(p4):
-    """R4：_dial_workers 遇 409 不换地址。"""
+    """：_dial_workers 遇 409 不换地址。"""
     clients, spec = p4
     spec.append((f"{LAN}/api/v1/workers", _Resp(409, b"{}", None)))
     spec.append((f"{WAN}/api/v1/workers", _Resp(200, b"", _WORKERS)))
@@ -234,7 +234,7 @@ def test_teams_structure_dial_workers_409_no_failover(p4):
 
 
 def test_kb_agents_ctl_json_409_no_failover(p4):
-    """R4：KB fallback 的 _ctl_json 遇 409 不换地址。"""
+    """：KB fallback 的 _ctl_json 遇 409 不换地址。"""
     clients, spec = p4
     spec.append(("containers/json", _Resp(401, b"{}", None)))
     spec.append((f"{LAN}/api/v1/workers", _Resp(409, b"{}", None)))

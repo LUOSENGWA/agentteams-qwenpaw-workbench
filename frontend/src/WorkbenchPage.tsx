@@ -77,7 +77,7 @@ import WorkerManage from "./components/WorkerManage";
 import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, RefreshIcon, MenuIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon, FolderIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import ModelsTab from "./ModelsTab";
-// v0.5.0-beta.14.6（R2）：轮询统一走 usePoller/createPoller（16 处迁移之一）；
+// v0.5.0-beta.14.6：轮询统一走 usePoller/createPoller（16 处迁移之一）；
 // setActiveTab 供 tab 切换时同步活跃 tab 单源（tabActivity）。
 import { usePoller, createPoller, type Poller } from "./usePoller";
 import { setActiveTab as setActiveTabState } from "./tabActivity";
@@ -273,7 +273,7 @@ function ChatLayoutDiagCard({
   );
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo（同 SettingsTab）。
+// v0.5.0-beta.14.10：面板级 memo（同 SettingsTab）。
 const SelfCheckTab = React.memo(function SelfCheckTab({
   config,
   layout,
@@ -348,25 +348,25 @@ const SelfCheckTab = React.memo(function SelfCheckTab({
 });
 
 /** 12.14：聊天分栏最小容器宽——1024→600（宿主内嵌面板/窄窗场景
- *  1024 下判定窄屏、用户反馈多轮复报「无分栏」；600 以下=手机竖屏语义）。
- *  12.16：宽窄判定「长宽比优先」——竖屏（高>宽）一律单列，横屏且 ≥600 才分栏。 */
+ * 1024 下判定窄屏、曾报告「无分栏」；600 以下=手机竖屏语义）。
+ * 12.16：宽窄判定「长宽比优先」——竖屏（高>宽）一律单列，横屏且 ≥600 才分栏。 */
 /** 聊天分栏最小容器宽（13.8：600→800——双栏可用性下限：列表 160 + 聊天
- *  ≥320 + 拖柄；16:9 全屏恒过线，竖屏手机不过线）。 */
+ * ≥320 + 拖柄；16:9 全屏恒过线，竖屏手机不过线）。 */
 const CHAT_SPLIT_MIN_CONTAINER_W = 800;
 
 // v0.5.0-beta.13.20：mergeMessagePages 退役 → roomHistory.mergeForward
 //（语义原样迁移，单一出处）。
 /** 12.16→13.10：宽窄判定基准 = **窗口宽**（window.innerWidth）。
- * v0.5.0-beta.13.8（13.7 用户反馈「16:9 全屏被识别成竖屏→聊天单栏」）：
+ * v0.5.0-beta.13.8（13.7 16:9 全屏被识别成竖屏→聊天单栏）：
  * 旧判定 w>=600 且 w>=h——宽高比项在「定高内嵌容器/高分屏」下误判
  * （容器高度随内容或视口变化，宽 ≥ 高不成立→单栏）。改纯宽度阈值。
- * v0.5.0-beta.13.10（13.9 用户反馈「窄屏行为识别不了，框拖到最窄也不行；
+ * v0.5.0-beta.13.10（13.9 「窄屏行为识别不了，框拖到最窄也不行；
  * 窗口横向拉满就行；上一版横向全屏被识别成竖屏」）：容器测量被宿主
  * 左右留空（面板 padding/导航）压窄 → 窗口横向拉满时容器仍 <800 被误判
  * 窄屏；且宿主窗口最小宽 + 留空使「拖最窄」永远过不了阈值（窄屏行为
- * 识别不了）。定案（用户反馈）：以**窗口**横向宽为准——横向拉满=分栏，真窄
+ * 识别不了）。以**窗口**横向宽为准——横向拉满=分栏，真窄
  * 窗口（<800）=单栏；窄内嵌面板逃生口=「强制分栏」开关 + ⟨ 收起列表。 */
-/** 13.11（13.10 用户反馈「宽窄屏没修，只需容器能横向铺满」）：宽窄双基准——
+/** 13.11（13.10 宽窄屏没修，只需容器能横向铺满）：宽窄双基准——
  * win = 浏览器/webview 窗口宽，cont = 插件容器实测宽（宿主可能只给
  * 半窗/带留白）。**min(win, cont) ≥ 800 才分栏**：窗口满宽时容器随宿主
  * 铺满（主容器 width:100%）→ 分栏；宿主给窄容器或真窄窗口 → 聊天页
@@ -376,7 +376,7 @@ function isWideLayout(win: number, cont: number): boolean {
   return Math.min(win, cont) >= CHAT_SPLIT_MIN_CONTAINER_W;
 }
 
-// ── @mention 发送侧（F4 — Element 三件套，用户反馈「我点击的 @mention 不是正确格式」）──
+// ── @mention 发送侧（— Element 三件套，我点击的 @mention 不是正确格式）──
 // 此前发送只有裸 body 文本（短 @name）：无 m.mentions 三元组 → 收端不通知/不高亮；
 // 无 formatted_body → 标准客户端不认。Element 口径：body 保留人类可读短名，
 // formatted_body 用 matrix.to 链接，`m.mentions.user_ids` 三元组负责通知
@@ -385,7 +385,7 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 /** 从文本提取被 @ 的房间成员（localpart 精确 / displayname 精确，与 @ 弹层同口径；
- *  词边界防 @sys 误中 @sys-dev）。 */
+ * 词边界防 @sys 误中 @sys-dev）。 */
 function detectMentions(
   text: string,
   members?: Record<string, { display_name?: string }>,
@@ -411,9 +411,9 @@ export default function WorkbenchPage() {
   const hostTokens = useHostThemeTokens(t.mode);
   const tr = useT();
   // 插件版本：从后端 /health 读（单一真相源 = agentteams_connector/__init__.py）。
-  // v0.5.0-beta.13.17（13.16 用户反馈「顶部版本号显示不对」）：主显示改**构建
+  // v0.5.0-beta.13.17（13.16 顶部版本号显示不对）：主显示改**构建
   // 期注入版本**（vite define __PLUGIN_VERSION__，来源 package.json）——
-  // 永远等于当前 dist 的版本，不再受后端进程未随安装重启（/health 滞后）
+  // 永远等于当前 dist 的版本，不再受后端进程未随安装重启（health 滞后）
   // 或请求失败（旧版恒显占位「…」）影响；连接器运行版本仍查 /health，
   // 仅入 tooltip 对照说明。
   const pluginVersion = __PLUGIN_VERSION__;
@@ -433,17 +433,17 @@ export default function WorkbenchPage() {
     };
   }, []);
   const [config, setConfig] = React.useState<WorkbenchConfig | null>(null);
-  // v0.5.0-beta.14.16（F1）：config 稳定镜像 ref——refreshConfig（deps=[]）
+ // v0.5.0-beta.14.16：config 稳定镜像 ref——refreshConfig（deps=[]）
   // 读它判断首载/静默刷新，避免把 config 放进 useCallback deps（引用变化
   // 连锁重建下游全部回调）。
   const configRef = React.useRef<WorkbenchConfig | null>(null);
   configRef.current = config;
-  // v0.5.0-beta.14.16（F1）：config 加载态——设置页「加载中/失败+重试」横幅
+ // v0.5.0-beta.14.16：config 加载态——设置页「加载中/失败+重试」横幅
   // + 保存钮禁用（防默认态覆盖真数据）的数据源。
   const [configLoadState, setConfigLoadState] = React.useState<
     "loading" | "ready" | "failed"
   >("loading");
-  // ── 状态记忆（用户反馈）：重开插件恢复上次 tab + 房间 + 话题 + 面板宽度 ──
+ // ── 状态记忆：重开插件恢复上次 tab + 房间 + 话题 + 面板宽度 ──
   // v0.5.0-beta.12: tab key 随名字归位（房间 team→chat、管理 spawn→team）——
   // storage key 升 v2 区分新旧格式：否则新版写入的 "team"（管理）会被
   // 旧迁移表误判成 "chat"（房间）。旧 key 只读一次做迁移，迁完即删。
@@ -459,7 +459,7 @@ export default function WorkbenchPage() {
   // "team"=旧房间语义，v2 里 "team"=团队管理现行 key，不能共表）。
   const UI_TAB_MIGRATION_V2: Record<string, string> = {
     "skill-center": "team",
-    // v0.5.0-beta.14.16（F2）：skills 区块已从配置页移除 → 旧持久化 tab
+    // v0.5.0-beta.14.16：skills 区块已从配置页移除 → 旧持久化 tab
     // 落地首页（不再落设置页——该页已无技能区，落家最自然）。
     skills: "home",
   };
@@ -555,7 +555,7 @@ export default function WorkbenchPage() {
   );
   const setTab = React.useCallback(
     (next: string) => {
-      // v0.5.0-beta.14.10（UIPERF-T13）：切换=非紧急更新——重渲染不阻塞
+ // v0.5.0-beta.14.10：切换=非紧急更新——重渲染不阻塞
       // 点击反馈与输入（React 18 concurrent；memo 后渲染本身也变快）。
       React.startTransition(() => setTabState(next));
       writeUiState(next, activeRoom?.room_id || null);
@@ -563,14 +563,14 @@ export default function WorkbenchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeRoom, writeUiState],
   );
-  // v0.5.0-beta.14.6（R2）：活跃 tab 单源（tabActivity）同步——各消费方
+ // v0.5.0-beta.14.6：活跃 tab 单源（tabActivity）同步——各消费方
   // （useTabActive 布尔快照：HomePage/NotificationCenter/OpsPanel/RoomChat
-  // 轮询门；v0.5.0-beta.14.14 UIPERF-T25 从 useActiveTab 字符串快照切换）
+ // 轮询门；v0.5.0-beta.14.14 从 useActiveTab 字符串快照切换）
   // 以本组件的 tab 状态为准，直接 setState 驱动（setTabState 直改处亦覆盖）。
   React.useEffect(() => {
     setActiveTabState(tab);
   }, [tab]);
-  // v0.5.0-beta.14.8（UIPERF-T7）：切页轻过渡（transform/opacity，仅 WAAPI）——
+ // v0.5.0-beta.14.8：切页轻过渡（transform/opacity，仅 WAAPI）——
   // 170ms 淡入 + 4px 上浮，reduced-motion 守卫；不加 key 重挂（keep-alive
   // 面板的状态/滚动位置不受影响），动画结束 transform 自动还原。
   const paneRef = React.useRef<HTMLDivElement | null>(null);
@@ -594,12 +594,12 @@ export default function WorkbenchPage() {
       /* noop */
     }
   }, [tab]);
-  // v0.5.0-beta.14.6（R6）：team tab 强制刷新的节流时间戳。
+  // v0.5.0-beta.14.6：team tab 强制刷新的节流时间戳。
   const lastTeamForceAtRef = React.useRef(0);
   // v0.5.0-beta.12 ：工作流页 tab 记忆（用户「点开过的 tab 加上记忆，参考大
   // tab」）——与大 tab 同一 ui-state 对象（wfView/wfTopo 字段，合并写），
   // 不新造 storage key。WorkflowBoard 改受控（view/topoRun 由此下发）。
-  // v0.5.0-beta.13.22（F2）：「mermaid」视图退役并入拓扑——旧持久化值
+  // v0.5.0-beta.13.22：「mermaid」视图退役并入拓扑——旧持久化值
   // wfView="mermaid"（13.21 装过 13.21 的用户）迁移到 "topo"（拓扑内可切
   // Mermaid 样式，体验不丢）。
   const WF_VIEW_VALUES = ["list", "card", "board", "topo"];
@@ -629,7 +629,7 @@ export default function WorkbenchPage() {
   // Team tab state
   const [rooms, setRooms] = React.useState<TeamRoom[]>([]);
   const [roomsLoading, setRoomsLoading] = React.useState(false);
-  /** v0.5.0-beta.12 ：待接受邀请（/sync rooms.invite 段；接受/拒绝后 force 重同步）。 */
+  /** v0.5.0-beta.12 ：待接受邀请（sync rooms.invite 段；接受/拒绝后 force 重同步）。 */
   const [invites, setInvites] = React.useState<InviteRoom[]>([]);
   /** v0.5.0-beta.12 ：已静音房间（m.muted_room account data 聚合）。 */
   const [mutedRooms, setMutedRooms] = React.useState<string[]>([]);
@@ -645,14 +645,14 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
-  // v0.5.0-beta.13.11（F2 真根因——13.10 用户反馈「消息滚出历史」仍未修）：
+  // v0.5.0-beta.13.11（根因——13.10 消息滚出历史仍未修）：
   // 换房间时消息状态必须整体重置。此前 messagesRef/messagesEnd 残留**上
   // 一个房间**的数据 → refreshMessages 的 mergeMessagePages(旧房全量,
   // 新房最新页) 把两房消息混进同一窗口（「乱了」），setCachedMessages
   // 再把混合体写进新房缓存（切回再「没了」）。Element 口径：timeline
   // 状态是 per-room 的——room_id 变化即归零，再拉/再恢复该房自己的缓存。
   React.useEffect(() => {
-    // v0.5.0-beta.14.8（UIPERF-T7）：切房有缓存则先恢复缓存（即时显示，
+    // v0.5.0-beta.14.8：切房有缓存则先恢复缓存（即时显示，
     // 不闪空态/「正在加载消息…」——旧逻辑归零后 1 帧内屏上无数据即闪
     // loading 文案）；无缓存照旧归零。I1 首窗重建仍在 refreshMessages
     // （缓存 end ?? 本页 end），I2 合并基底取缓存/在屏较长者——语义不变
@@ -711,15 +711,15 @@ export default function WorkbenchPage() {
   const [adminData, setAdminData] = React.useState<AdminData | null>(null);
   const [adminLoading, setAdminLoading] = React.useState(false);
 
-  // v0.5.0-beta.14.16（F1 配置记忆根治）：进行锁——退避重试链最长 15.5s，
+  // v0.5.0-beta.14.16（配置记忆根治）：进行锁——退避重试链最长 15.5s，
   // 期间 poller / 切 tab / 手动重试的重入直接丢弃（避免并发链互踩 loadState）。
   const configFetchingRef = React.useRef(false);
   const refreshConfig = React.useCallback(async () => {
     if (configFetchingRef.current) return;
     configFetchingRef.current = true;
     try {
-      // v0.5.0-beta.14.16（F1 配置记忆根治）：失败重试 3 次（1.5/4/10s 退避）。
-      // 真根因（用户反馈「地址模式/凭据没有记忆」）：插件安装重载窗口 /
+      // v0.5.0-beta.14.16（配置记忆根治）：失败重试 3 次（1.5/4/10s 退避）。
+      // 根因（地址模式/凭据没有记忆）：插件安装重载窗口 /
       // WAN 抖动时首个 GET /config 失败被静默吞掉 → config=null 贯穿页面
       // 生命周期 → 设置页全默认态 → 用户以为「没记住」重填。回环（保存→落盘→
       // 重载→回填）本身完好（debug 插桩+回环实验实锤）。重试覆盖重载窗口
@@ -736,7 +736,7 @@ export default function WorkbenchPage() {
             );
           }
           // 首载（null→payload）走高优先立即落地——保证设置页首帧即回填；
-          // 静默刷新（已有 config）仍走 transition（UIPERF-T21：切 tab 数据波
+          // 静默刷新（已有 config）仍走 transition（切 tab 数据波
           // 是可中断低优先工作，不压切换帧）。
           if (configRef.current === null) {
             setConfig(payload as WorkbenchConfig);
@@ -765,7 +765,7 @@ export default function WorkbenchPage() {
   }, []);
 
   const refreshRooms = React.useCallback(async (silent = false, force = false) => {
-    // 静默刷新（用户反馈：自动/切换刷新不闪页）——保留旧数据在屏，新数据到达才换；
+    // 静默刷新（自动/切换刷新不闪页）——保留旧数据在屏，新数据到达才换；
     // 仅手动刷新/首载显示 loading 骨架。
     // v0.5.0-beta.12 ：force=绕过 60s 服务端缓存（邀请接受/拒绝后立即重同步，
     // 否则缓存期邀请区/房间列表不更新）。
@@ -773,7 +773,7 @@ export default function WorkbenchPage() {
     try {
       const payload = await fetchTeamsSync(force);
       // diff 跳过：数据无变化 → 返回原引用 → React 跳过重渲染（零闪）。
-      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition
+      // v0.5.0-beta.14.13：数据波 setState 转 transition
       // （可中断——切换帧不再被整波落地渲染压满）。
       React.startTransition(() => {
         setRooms((prev) => (JSON.stringify(prev) === JSON.stringify(payload.rooms) ? prev : payload.rooms));
@@ -819,14 +819,14 @@ export default function WorkbenchPage() {
 
   // Worker 树数据源 = 真实团队结构（Team/Worker CRD）+ spawn 正源填充
   // （端点已合并；apiOk=false → spawns 保持空，UI 显示占位文案）。
-  // v0.5.0-beta.13.12（13.11 用户反馈「团队管理 tab 刷不出完整信息，手动刷新
-  // 也不行，要等 30s 自动刷新」真根因）：后端 /teams/structure 有 60s TTL
+  // v0.5.0-beta.13.12（13.11 「团队管理 tab 刷不出完整信息，手动刷新
+  // 也不行，要等 30s 自动刷新」根因）：后端 /teams/structure 有 60s TTL
   // 缓存，且**首次失败/空树也写缓存（负缓存）**——token 未就绪时首拉得
   // 空树，之后 60s 内所有手动刷新都命中空缓存；30s tick 恰在 TTL 过期后
   // miss 重拉才"活"。force 语义：用户意图（手动钮/切 tab/登录/mount）
   // 一律 force=true 绕过缓存；仅 30s 后台 tick 走缓存（silent=true 且不
   // 显式 force）保护 Controller。
-  // v0.5.0-beta.13.24（F1 首刷 race·前端半）：structure 与 spawn 拆分——
+  // v0.5.0-beta.13.24（首刷 race·前端半）：structure 与 spawn 拆分——
   // 旧 Promise.all 让整棵树等 20 项目 spawn 扇出（冷窗每请求 +6s，最坏
   // +2min）：团队管理「一开始刷不出、手动也不行」。现 structure 一到即
   // 渲染树（携带旧 spawns 值防闪烁），spawn 异步合并（in-flight 闸防
@@ -838,7 +838,7 @@ export default function WorkbenchPage() {
     try {
       const spawns = await fetchWorkerSpawns();
       if (!spawns.apiOk) return;
-      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition。
+      // v0.5.0-beta.14.13：数据波 setState 转 transition。
       React.startTransition(() => {
         setWorkerTree((prev) => {
           if (!prev) return prev;
@@ -865,7 +865,7 @@ export default function WorkbenchPage() {
       if (!silent) setSpawnLoading(true);
       try {
         const payload = await fetchTeamsStructure(useForce);
-        // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition。
+ // v0.5.0-beta.14.13：数据波 setState 转 transition。
         React.startTransition(() => {
           setTreeSource(payload.source);
           // 结构先到先渲染；每 (team, worker) 携带旧 spawns（新扇出回来前
@@ -957,18 +957,18 @@ export default function WorkbenchPage() {
 
   // ── 消息窗口同步（开房 / 状态恢复 / 静默刷新）────────────────────
   // v0.5.0-beta.13.20 收敛：窗口游标（I1）/ 预取单槽（I3）/ 在飞闸（I5）
-  // / 空页走查（I4）全部收敛进 RoomHistory 状态机（不变量与用户反馈溯源见
+ // / 空页走查（I4）全部收敛进 RoomHistory 状态机（不变量与溯源见
   // roomHistory.ts 模块头）。本函数是**唯一的窗口建立路径**——13.19 的
   // 状态恢复内联块已退役（它曾是第 4 条分叉路径：无 I2 合并 / 无 I1 窗口
   // 游标 / 缓存被浅页覆盖 → 深历史蒸发 + 游标回退家族）。
   //
   // 保留的验收语义（13.10 / 13.16 / 13.18 / 13.19 逐条可溯源）：
-  //  · 缓存即时显示 + 后台拉新；
-  //  · I1 游标只在首窗建立（= 缓存 end ?? 本页 end），refresh 永不回退
-  //    浅游标（13.19 假死根因）；
-  //  · I2 合并而非替换（mergeForward——13.10「消息滚出历史」根因）；
-  //  · I3 开房即预取下一页（13.18 管道起步 → 首次上翻零等待）；
-  //  · I6 缓存 = 全量窗口 + 窗口游标（13.10/13.19）。
+  // · 缓存即时显示 + 后台拉新；
+  // · I1 游标只在首窗建立（= 缓存 end ?? 本页 end），refresh 永不回退
+  // 浅游标（13.19 假死根因）；
+  // · I2 合并而非替换（mergeForward——13.10「消息滚出历史」根因）；
+  // · I3 开房即预取下一页（13.18 管道起步 → 首次上翻零等待）；
+  // · I6 缓存 = 全量窗口 + 窗口游标（13.10/13.19）。
   const refreshMessages = React.useCallback(async (room: TeamRoom, silent = false) => {
     if (!silent) setMessagesLoading(true);
     try {
@@ -986,10 +986,10 @@ export default function WorkbenchPage() {
       }
       const page = await fetchRoomMessages(room.room_id, 50);
       // I2 合并基底 = 当前在屏全量 与 缓存窗口 的较长者：
-      //  · 切房时 room-reset effect 已把 messagesRef 归零，取缓存（否则
-      //    旧逻辑用空基底合并 → 浅页覆盖缓存深历史，13.10 语义在开房
-      //    路径上破洞——本轮修复的实存 bug）；
-      //  · 同房静默刷新时两者同长，取 ref（含 poll/send 的尾部增量）。
+      // · 切房时 room-reset effect 已把 messagesRef 归零，取缓存（否则
+      // 旧逻辑用空基底合并 → 浅页覆盖缓存深历史，13.10 语义在开房
+      // 路径上破洞——本轮修复的实存 bug）；
+      // · 同房静默刷新时两者同长，取 ref（含 poll/send 的尾部增量）。
       const base =
         curCount >= (cached?.messages.length ?? 0)
           ? messagesRef.current
@@ -1055,21 +1055,21 @@ export default function WorkbenchPage() {
     }
   }, [activeRoom, messagesEnd]);
 
-  // v0.5.0-beta.13.13（13.12 用户反馈「很多信息『已滚出历史』但 Element 里
+ // v0.5.0-beta.13.13（13.12 「很多信息『已滚出历史』但 Element 里
   // 信息都在，看看 Element 怎么做的」）：引用条原消息不在已加载窗口时 →
   // 点「加载原消息」→ backfill 到原消息进窗口（不标死『滚出历史』）。
-  // v0.5.0-beta.13.15（B2 Element 式滚动化，13.14 用户反馈「加载原消息能不能
+ // v0.5.0-beta.13.15（B2 Element 式滚动化，13.14 「加载原消息能不能
   // 滚动到哪里就自动加载，参考 Element」）：旧版 = 点一下后台 burst 连拉
   // （500 页护栏内一口气拉完，用户看不见进度、API 突发）。新版 =
   // 滚动驱动的分页节奏：
-  //   ① 点「加载原消息」→ set pending + kickstart 一页（用户未必在顶部，
-  //      40px 触发不可依赖）；
-  //   ② 之后 RoomChat 侧滚动到哪加载到哪：40px 触顶自动触发（既有）+
-  //      停在顶部时每次前插后自动续一页（新增 effect）——页面按用户
-  //      滚动节奏逐页前进，锚保持视口稳定（13.6 锚机制）；
-  //   ③ 终止条件：原消息进窗口（自动定位 + 高亮，jumpToEventId 复用
-  //      搜索跳转链路）/ 触底（!hasMore → banner 落 /context 兜底）/
-  //      用户滚离顶部（停止续拉）/ 切房（pending 作废 resolve false）。
+  // ① 点「加载原消息」→ set pending + kickstart 一页（用户未必在顶部，
+  // 40px 触发不可依赖）；
+  // ② 之后 RoomChat 侧滚动到哪加载到哪：40px 触顶自动触发（既有）+
+  // 停在顶部时每次前插后自动续一页（新增 effect）——页面按用户
+  // 滚动节奏逐页前进，锚保持视口稳定（13.6 锚机制）；
+  // ③ 终止条件：原消息进窗口（自动定位 + 高亮，jumpToEventId 复用
+  // 搜索跳转链路）/ 触底（!hasMore → banner 落 /context 兜底）/
+  // 用户滚离顶部（停止续拉）/ 切房（pending 作废 resolve false）。
   // v0.5.0-beta.13.20：hasMoreRef 退役（只写不读的死镜像——回填效果
   // 直接读 hasMore state）。
   const [pendingOriginalId, setPendingOriginalId] =
@@ -1099,7 +1099,7 @@ export default function WorkbenchPage() {
     // 切房/关房 → 作废进行中的加载（cancelled：banner 回 idle，不标 notfound）。
     if (pendingOrigIdRef.current) settlePendingOriginal("cancelled");
   }, [activeRoom?.room_id, settlePendingOriginal]);
-  // 收口：原消息进窗口 → 自动定位 + 高亮；触底仍无 → 交给 banner 兜底。
+ // 原消息进窗口 → 自动定位 + 高亮；触底仍无 → 交给 banner 兜底。
   React.useEffect(() => {
     if (!pendingOriginalId) return;
     if (messagesRef.current.some((m) => m.event_id === pendingOriginalId)) {
@@ -1172,7 +1172,7 @@ export default function WorkbenchPage() {
       const room = rooms.find((r) => r.room_id === roomId);
       if (!room) return false;
       setActiveRoom(room);
-      // 开房间必落 chat tab（用户反馈：首页最近动态点行不跳转——
+      // 开房间必落 chat tab（首页最近动态点行不跳转——
       // 此前 writeUiState(tab=home) + 调用方漏 setTab → 房间开了但停在首页）。
       writeUiState("chat", room.room_id);
       void refreshMessages(room);
@@ -1195,7 +1195,7 @@ export default function WorkbenchPage() {
 
   // 通知中心「去房间」：@提到你 等通知带 room_id → 切聊天 tab + 打开房间
   //（跳转修复：此前通知条目只有展开/已读，没有任何跳转）。
-  // ：eventId 可选 → 跳房间并定位到该条消息（房间通知 @你 跳转）。
+  // eventId 可选 → 跳房间并定位到该条消息（房间通知 @你 跳转）。
   const handleGotoRoom = React.useCallback(
     (roomId: string, eventId?: string) => {
       setTab("chat");
@@ -1283,7 +1283,7 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12.9：心跳优先（adminData.workers 的 agentStatus/runningTaskCount/
   // lastFinishAt，GET /workers 既有通道零新请求；旧版 controller 无 → 降级
   // typing+last_ts），60s 老化。
-  // v0.5.0-beta.13.8（13.7 用户反馈「状态灯不准确」）：session 级正源轮询——
+ // v0.5.0-beta.13.8（13.7 状态灯不准确）：session 级正源轮询——
   // /chats per-session status（idle|running，qwenpaw app 自维护）。
   // v1.2.4 GET /workers 无心跳字段，消息级启发式在「任务执行中未发言」时
   // 恒灰；chat.running 优先于 typing，修掉该盲区。30s tick、仅可见时、
@@ -1307,7 +1307,7 @@ export default function WorkbenchPage() {
   // 通知未读计数（通知 tab badge）。
   const [inboxUnread, setInboxUnread] = React.useState(0);
 
- // P6（用户反馈 ⑨「自动刷新有点蠢，即时信息」）：/sync 事件驱动主路。
+ // P6（⑨「自动刷新有点蠢，即时信息」）：/sync 事件驱动主路。
   // ref 镜像——SSE effect deps 为空（一次连接），闭包必须走 ref 取最新。
   const activeRoomRef = React.useRef<TeamRoom | null>(null);
   React.useEffect(() => {
@@ -1361,7 +1361,7 @@ export default function WorkbenchPage() {
     since: number;
   }>({ status: "reconnecting", since: Date.now() });
 
-  // ── IM 式事件触发（用户反馈「30s 轮询太笨」）────────────────────
+ // ── IM 式事件触发（30s 轮询太笨）────────────────────
   // 后端 sync watcher：Matrix /sync 长轮询检测 @提到我 / 任务状态变化 →
   // 写宿主收件箱 + SSE 广播（GET /agentteams-proxy/events）。前端订阅：
   // 收到 mention → 刷新房间 + 通知 tab；task_status → 刷新工作流。
@@ -1371,12 +1371,12 @@ export default function WorkbenchPage() {
   const [notifyTick, setNotifyTick] = React.useState(0);
   const [opsTick, setOpsTick] = React.useState(0);
   const [knowledgeTick, setKnowledgeTick] = React.useState(0);
-  // v0.5.0-beta.13.11（F1 会话窗 Element 化）：任意房间来消息 → 递增 →
+ // v0.5.0-beta.13.11（会话窗 Element 化）：任意房间来消息 → 递增 →
   // WorkerChats 打开的会话窗立即刷新（事件驱动主路；4s 轮询降兜底）。
   const [chatsTick, setChatsTick] = React.useState(0);
   React.useEffect(() => {
     let abort: AbortController | null = null;
-    // v0.5.0-beta.14.6（R2）：旧定时器 → 命令式 createPoller（60s SSE 断连
+ // v0.5.0-beta.14.6：旧定时器 → 命令式 createPoller（60s SSE 断连
     // 兜底；!document.hidden——后台不拉；closure 捕获首渲染 refreshRooms，
     // 与原行为一致）。
     let fallback: Poller | null = null;
@@ -1408,7 +1408,7 @@ export default function WorkbenchPage() {
       // v0.5.0-beta.14.1 (S1-2)：watchdog 句柄 hoist 到 connect() 顶部——
       // 清理统一走 catch 后的唯一收敛点（done/abort/网络异常全路径覆盖，
       // 防 interval 泄漏周期性杀下一次重连）。
-      // v0.5.0-beta.14.6（R2）：number → Poller（createPoller，语义不变）。
+ // v0.5.0-beta.14.6：number → Poller（createPoller，语义不变）。
       let watchdog: Poller | null = null;
       if (closed) return;
       if (!lastDownSince) lastDownSince = Date.now();
@@ -1456,7 +1456,7 @@ export default function WorkbenchPage() {
         // 注释帧；45s（3 周期+裕量）无任何字节（含 keepalive）= TCP 半死挂
         // （NAT 超时/代理 idle-kill 未发 FIN）→ abort 读 → 走重连路径。
         let lastFrameAt = Date.now();
-        // v0.5.0-beta.14.6（R2）：旧定时器 → createPoller（5s；语义不变——
+ // v0.5.0-beta.14.6：旧定时器 → createPoller（5s；语义不变——
         // 45s 无帧 abort；!document.hidden——后台暂停，恢复后首 tick 即判定）。
         watchdog = createPoller({
           fn: () => {
@@ -1504,7 +1504,7 @@ export default function WorkbenchPage() {
                 // v0.5.0-beta.13.21（Element 式房间列表）：watcher 每轮 /sync
                 // 的元数据增量 diff——就地合并（更新/插入新房间/移除 leave），
                 // 不做全量 /teams/sync（那是一次带全房间 state 的 Matrix 全量
-                // /sync，房间列表「慢而笨」的真根因）。
+ // /sync，房间列表「慢而笨」的根因）。
                 const upd = ((data as { rooms?: TeamRoom[] }).rooms || []) as Array<
                   Partial<TeamRoom> & { room_id: string; new?: boolean }
                 >;
@@ -1592,7 +1592,7 @@ export default function WorkbenchPage() {
                     pollSoon();
                   }
                 }
-                // F1（13.11）：任意房间来消息 → 递增 chatsTick → 打开的
+ // （13.11）：任意房间来消息 → 递增 chatsTick → 打开的
                 // 头像会话窗立即刷新（事件驱动主路，Element 式延迟≈0）。
                 setChatsTick((v) => v + 1);
               }
@@ -1606,7 +1606,7 @@ export default function WorkbenchPage() {
       }
       // v0.5.0-beta.14.1 (S1-2)：watchdog 唯一清理收敛点——覆盖 for 循环
       // 全部退出路径（done 正常结束 / 看门狗或卸载 abort / 网络异常）。
-      // v0.5.0-beta.14.6（R2）：clearInterval → poller.stop()。
+ // v0.5.0-beta.14.6：clearInterval → poller.stop()。
       if (watchdog) {
         watchdog.stop();
         watchdog = null;
@@ -1683,7 +1683,7 @@ export default function WorkbenchPage() {
       setMessages((prev) => [...prev, pendingMsg]);
       setSending(true);
       try {
-        // F4：@mention 三件套（body 短名不变；formatted_body=matrix.to
+ // @mention 三件套（body 短名不变；formatted_body=matrix.to
         // 链接；m.mentions 三元组负责通知——Element 同款，api.ts 内构造）。
         const detected = detectMentions(text, activeRoom.members);
         const mentionList = detected.map((mxid) => ({
@@ -1823,8 +1823,8 @@ export default function WorkbenchPage() {
   }, [activeRoom, refreshRooms]);
 
   /** 房间重命名（m.room.name state 事件）。
-   * 团队房间权限表普遍为 null（平台侧已知问题）→ 403 时展示
-   * fetchRoomPowerInfo 诊断 + 修复指引，而非裸错误。 */
+ * 团队房间权限表普遍为 null（平台侧已知问题）→ 403 时展示
+ * fetchRoomPowerInfo 诊断 + 修复指引，而非裸错误。 */
   const handleRenameRoom = React.useCallback(
     async (name: string) => {
       if (!activeRoom) return;
@@ -1879,7 +1879,7 @@ export default function WorkbenchPage() {
   );
 
   /** 房间静音切换（m.muted_room account data；通知引擎 sync_watcher
-   * 同数据源消费——静音房间不再触发 @/任务状态通知）。 */
+ * 同数据源消费——静音房间不再触发 @/任务状态通知）。 */
   const handleToggleMute = React.useCallback(async () => {
     if (!activeRoom) return;
     const userId = config?.matrix?.user_id;
@@ -1906,7 +1906,7 @@ export default function WorkbenchPage() {
   // Phase 2: DM entry — click a member → create-or-reuse DM → open room.
   const handleDm = React.useCallback(
     async (mxid: string, roomId?: string) => {
-      // v0.5.0-beta.12（用户反馈）：Worker 个人房间（CR roomID）
+      // v0.5.0-beta.12：Worker 个人房间（CR roomID）
       // 直跳——Worker 容器无法接受 Matrix 邀请，新建 DM 房间 Worker 进不来
       // （房间建了、消息发不出去）= 死路。room_id 存在且房间在列表 → 直跳；
       // 房间不在列表（已退房/数据未同步）→ fallthrough 走 openDm 兜底。
@@ -1991,7 +1991,7 @@ export default function WorkbenchPage() {
     try {
       const { events, apiOk, failReason, failDetail } =
         await fetchWorkflowProjects();
-      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition。
+      // v0.5.0-beta.14.13：数据波 setState 转 transition。
       if (apiOk) {
         const enriched = enrichWorkflowRoomNames(events);
         React.startTransition(() => {
@@ -2022,24 +2022,24 @@ export default function WorkbenchPage() {
     }
   }, []);
 
-  // v0.5.0-beta.12.5（P1-7）：工作流 tab 自动刷新（15s，仅可见期活跃）——
+  // v0.5.0-beta.12.5：工作流 tab 自动刷新（15s，仅可见期活跃）——
   // 对齐 dashboard 15s 轮询（useProjectWorkflow refetchInterval:15000）。
   // 此前插件只在挂载/手动刷新/登录时拉取，任务推进时看板不自动更新
-  // （P1-7 半链接缺口）。切走 tab 立即停（cleanup 清 interval）。
- // 第 11 轮（用户反馈「聊天工作流卡片 live 刷新要，两边都要」）：聊天 tab 激活
+  // （半链接缺口）。切走 tab 立即停（cleanup 清 interval）。
+ // 第 11 轮（聊天工作流卡片 live 刷新要，两边都要）：聊天 tab 激活
   // 且当前房间消息含 workflow 载荷时同样轮询——聊天内卡片 live overlay
   // 复用 workflowEvents 正源（controller projects/workflow 双轨）。
   const chatHasWfCards = tab === "chat" && messages.some((m) => m.workflow != null);
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s；active=workflow tab
+  // v0.5.0-beta.14.6：旧定时器 → usePoller（15s；active=workflow tab
   // 或聊天含工作流卡；!document.hidden 内置）。假→真切换的立即拉由 13.13
-  // 去抖 effect + poller poke 双路覆盖，R1 在飞去重保证同刻双发合并。
+  // 去抖 effect + poller poke 双路覆盖， 在飞去重保证同刻双发合并。
   usePoller({
     fn: () => void refreshWorkflow(true),
     intervalMs: 15000,
     active: tab === "workflow" || chatHasWfCards,
   });
 
-  // v0.5.0-beta.13.13（13.12 用户反馈「工作流一点开应先自动刷新，而不是等 15s
+  // v0.5.0-beta.13.13（13.12 「工作流一点开应先自动刷新，而不是等 15s
   // 自动刷新或手动刷新」）：切到工作流 tab（或聊天出现工作流卡）立即拉一次
   // 正源——此前只有 15s interval + 手动/登录时拉，tab 切回时看到的是最长
   // 15s 前的数据。2s 去抖防止快速切 tab 连环拉取。
@@ -2059,7 +2059,7 @@ export default function WorkbenchPage() {
     config?.controller_token || config?.controllerTokenSource === "env",
   );
 
-  // v0.5.0-beta.13.21（13.20 用户反馈「一开始只能看见拓扑，CRD 管理要点刷新才出」）：
+  // v0.5.0-beta.13.21（13.20 一开始只能看见拓扑，CRD 管理要点刷新才出）：
   // admin 取数连续失败计数——静默失败不再无感空面板，累计后在面板显 Alert+重试。
   const [adminFailCount, setAdminFailCount] = React.useState(0);
 
@@ -2069,7 +2069,7 @@ export default function WorkbenchPage() {
     if (!silent) setAdminLoading(true);
     try {
       const data = await fetchAdminData();
-      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition。
+      // v0.5.0-beta.14.13：数据波 setState 转 transition。
       React.startTransition(() => {
         setAdminFailCount(0);
         setAdminData((prev) => (prev && JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
@@ -2085,7 +2085,7 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.13.21（同批缺口②）：hasCtlToken false→true 翻转（config 异步就绪/
   // env 注入晚于挂载）触发首次 admin 取数。此前该翻转无任何重触发——token 未就绪
   // 窗口内所有 admin 取数被 `if (!hasCtlToken) return` 短路，token 就绪后 admin
-  // 面板恒空，直到用户手动点刷新（首屏只显拓扑的真根因之一）。
+  // 面板恒空，直到用户手动点刷新（首屏只显拓扑的根因之一）。
   const adminArmedRef = React.useRef(false);
   React.useEffect(() => {
     if (!hasCtlToken) {
@@ -2100,7 +2100,7 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12: 账号切换（登录成功）= 数据源全切——清本地旧账号数据 + 全量重取。
   // 与后端联动：/login 已同步清 60s 聚合缓存（rooms/workflow/artifacts/
   // structure）+ 重置 sync 游标；前端本地状态不清的话，切完账号屏幕还挂着
-  // 上一个账号的房间/树/管理数据，要等下一轮静默刷新（用户反馈 真机反馈：
+  // 上一个账号的房间/树/管理数据，要等下一轮静默刷新（真机反馈：
   // 「点刷新看起来是刷新了，但团队管理和产物没有刷新」）。
   const onLoginSuccess = React.useCallback(() => {
     setRooms([]);
@@ -2120,9 +2120,9 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.13.21（同批缺口③）：首次运行（prev===""，=挂载/恢复的初始 tab，
   // tab 是持久化的——上次停在「团队管理」则首开即 team）也触发该 tab 的数据刷新。
   // 旧版 prev==="" 早退 = 持久化首开 team tab 时 admin 取数零触发（首屏只显拓扑
-  // 的真根因之二；hasCtlToken 翻转 effect 兜底 token 就绪，本处兜底首访意图）。
+  // 的根因之二；hasCtlToken 翻转 effect 兜底 token 就绪，本处兜底首访意图）。
   const prevTabRef = React.useRef("");
-  // v0.5.0-beta.14.13（UIPERF-T21）：team tab 激活态稳定 ref——
+  // v0.5.0-beta.14.13：team tab 激活态稳定 ref——
   // WorkerManage 的 30s 轮询门控读此 ref（tick 时取当前值）。
   // boolean prop `active={tab === "team"}` 每次切 tab 翻转 → 整树
   // 重渲落进切换帧（实测无 fetch 的 →团队 切换帧 61ms）；ref 身份
@@ -2135,7 +2135,7 @@ export default function WorkbenchPage() {
     if (prev === tab) return;
     switch (tab) {
       case "home":
-        // 静默刷新（用户反馈：切 tab/自动刷新不闪页——rc-tabs 保活有旧数据在屏）
+        // 静默刷新（切 tab/自动刷新不闪页——rc-tabs 保活有旧数据在屏）
         void refreshRooms(true);
         void refreshConfig();
         void refreshWorkflow(true);
@@ -2155,7 +2155,7 @@ export default function WorkbenchPage() {
         void refreshRooms(true);
         break;
       case "team": {
-        // v0.5.0-beta.14.6（R6）：force 改 stale-first——30s 内免 force
+        // v0.5.0-beta.14.6：force 改 stale-first——30s 内免 force
         // （前端 15s TTL + 后端 60s 缓存已足够新），避免每次切 tab 全量
         // 回源；超过 30s 才强制取最新。
         const forceNow = Date.now() - lastTeamForceAtRef.current > 30000;
@@ -2183,9 +2183,9 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12（对齐 dashboard refetchInterval:15000）：workflow
   // 15s 自动刷新——仅 workflow tab 激活时轮询（rc-tabs 保活，切走即停），
   // 静默刷新不闪页。审计就标记的缺口（插件 WorkflowBoard 零 tick）。
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s；!document.hidden
+  // v0.5.0-beta.14.6：旧定时器 → usePoller（15s；!document.hidden
   // 内置）。workflow tab 下与上一 16a poller 双发为既有行为（原双 interval
-  // 同款），R1 在飞去重合并。
+  // 同款）， 在飞去重合并。
   usePoller({
     fn: () => void refreshWorkflow(true),
     intervalMs: 15000,
@@ -2203,7 +2203,7 @@ export default function WorkbenchPage() {
     return "";
   }, [config?.matrix?.user_id, rooms]);
 
- // ── P6 聊天 tab（用户反馈 ⑤）：宽屏 Element 式分栏 / 窄屏微信式单屏 ──
+ // ── P6 聊天 tab：宽屏 Element 式分栏 / 窄屏微信式单屏 ──
   // 宽屏：左房间/DM 列表（宽度可拖 220-560，持久化）+ 右聊天（未选房间显占位）。
   // 窄屏（<1024px，竖屏/手机）：保持微信移动版语义——列表页点击进全屏聊天，
   // 左上角 ← 返回退出（RoomChat onBack 既有按钮）。列表可隐藏（宽屏）。
@@ -2222,24 +2222,24 @@ export default function WorkbenchPage() {
     },
     [mergeUiState],
   );
-  // 12.13→13.10：判定基准=**窗口宽**（13.9 用户反馈定案：容器测量被宿主
+  // 12.13→13.10：判定基准=**窗口宽**（13.9 ：容器测量被宿主
   // 左右留空压窄→横向全屏误判窄屏；宿主最小窗宽又使拖窄永远不触发
   // 单栏）。窗口 resize 跟随；强制开关优先。
   const mainRef = React.useRef<HTMLDivElement | null>(null);
-  // v0.5.0-beta.13.12（13.11 用户反馈「聊天页自动单栏没做到」真根因）：
+  // v0.5.0-beta.13.12（13.11 聊天页自动单栏没做到根因）：
   // 13.11 的 cont = mainRef.clientWidth 只量插件自己的 <main>——它
   // width:100% 跟随**直接父级**，而宿主的真实约束层（Desktop OS 窗
   // 口 frame / 内嵌面板 / 侧栏容器）在更上层祖先：窗口拖窄时若约束
   // 层是 transform/scale 或非父链布局，main 的 clientWidth 可能不跟
-  // 宿主走（用户反馈「疑似按聊天窗宽判断」——实测基准确实离宿主约束
+  // 宿主走（疑似按聊天窗宽判断——实测基准确实离宿主约束
   // 层太远）。改 Element 式「实际可见宽」：从 main 沿父链到 body 取
   // 每层 clientWidth 的 min（任何一层变窄都会拉低），再与视口宽取
   // min；ResizeObserver 观察**整条父链**（任一层变化即重测）。宿主形
   // 态无关（OS 窗口/经典页/iframe 都取到真实可见宽）。
-  // v0.5.0-beta.14.2（F2 分栏计话题面板）：RoomChat 上报话题面板占宽
+  // v0.5.0-beta.14.2（分栏计话题面板）：RoomChat 上报话题面板占宽
   // （inline 面板与聊天列同占空间）——打开话题时可用宽 = 实测可见宽 −
   // 面板宽。此前判定完全不含面板：开着话题拖窄窗口，聊天区早已局促
-  // 却仍双栏，继续收窄才切（14.2 用户反馈）。
+  // 却仍双栏，继续收窄才切（14.2）。
   const threadPanelRef = React.useRef<{ open: boolean; width: number }>({
     open: false,
     width: 0,
@@ -2283,7 +2283,7 @@ export default function WorkbenchPage() {
       ro?.disconnect();
     };
   }, []);
- // v0.5.0-beta.13.4（第二轮反馈·滚动真根因重构）：shell 高度改为
+ // v0.5.0-beta.13.4（第二轮反馈·滚动根因重构）：shell 高度改为
   // 容器相对（Element 模型）——12.x 起用 calc(100vh-64px) 经验值，但宿主
   // 是 Desktop OS 窗口（OsAppHost .content：flex:1 + overflow:auto 定高
   // 容器，可拖拽任意大小，100vh=浏览器视口≠窗口内容高）：窗口小于屏幕时
@@ -2291,7 +2291,7 @@ export default function WorkbenchPage() {
   // 实测优先，三级判定：
   // ① iframe 宿主（PawApps iframe 模式）→ iframe 视口=全部可用区；
   // ② 父容器定高且小于视口（OS 窗口 .content / 任何定高内嵌容器）→ 用父
-  //    容器 clientHeight（窗口拖拽/宿主重排时 ResizeObserver 跟随）；
+  // 容器 clientHeight（窗口拖拽/宿主重排时 ResizeObserver 跟随）；
   // ③ 父容器不定高（经典页面挂载）→ 回退 calc(100vh - 64px) 旧经验值。
   const [shellH, setShellH] = React.useState<number | null>(null);
   React.useEffect(() => {
@@ -2374,11 +2374,11 @@ export default function WorkbenchPage() {
     [chatSplitW, mergeUiState],
   );
 
-  // v0.5.0-beta.13.6（用户反馈：房间列表按钮与返回按钮重叠）：
+ // v0.5.0-beta.13.6（房间列表按钮与返回按钮重叠）：
   // 「☰ 房间列表」按钮不再 absolute 浮在聊天区左上角（与 RoomChat 顶栏
   // ← 返回 键重叠）——有房间时经 headerPrefix 进 RoomChat 顶栏最左
   // （Element 汉堡位）；无房间时（占位页）仍浮在左上角（无顶栏可挂）。
-  // v0.5.0-beta.14.10（UIPERF-T13）：useMemo 钉住引用（headerPrefix 传给
+ // v0.5.0-beta.14.10：useMemo 钉住引用（headerPrefix 传给
   // RoomChat——普通 const 每次渲染新 JSX 元素引用会击穿 memo）。t 是每次
   // 渲染新对象 → deps 用原语色值。
   const chatListToggleBtn = React.useMemo(() => (chatListHidden ? (
@@ -2419,7 +2419,7 @@ export default function WorkbenchPage() {
     return m;
   }, [rooms, workflowEvents]);
 
-  // v0.5.0-beta.14.10（UIPERF-T13）：Tabs items / 聊天双元素的回调 prop 稳定化
+ // v0.5.0-beta.14.10：Tabs items / 聊天双元素的回调 prop 稳定化
   // ——修复前全是内联箭头（每次渲染新引用 → 面板 memo 全部击穿，memo 白包）。
   // 数据类 props（rooms/messages/config/refreshTick 等）保持原样不动。
   const handleHomeOpenRoom = React.useCallback(
@@ -2438,7 +2438,7 @@ export default function WorkbenchPage() {
     [handleDm],
   );
   const openGlobalSearch = React.useCallback(() => setGlobalSearchOpen(true), []);
-  // v0.5.0-beta.14.14（UIPERF-T25）：MessageSearch props 稳定化（内联箭头
+ // v0.5.0-beta.14.14：MessageSearch props 稳定化（内联箭头
   // 每次渲染新引用 → memo 击穿，每次点击/数据波都重渲组件体）。
   const handleGlobalSearchClose = React.useCallback(
     () => setGlobalSearchOpen(false),
@@ -2485,13 +2485,13 @@ export default function WorkbenchPage() {
     () => void refreshConfig(),
     [refreshConfig],
   );
-  // v0.5.0-beta.14.16（F1）：设置页「重试」按钮——置回 loading 再走
+ // v0.5.0-beta.14.16：设置页「重试」按钮——置回 loading 再走
   // refreshConfig（内部含 3 次退避重试）。
   const handleConfigRetry = React.useCallback(() => {
     setConfigLoadState("loading");
     void refreshConfig();
   }, [refreshConfig]);
-  // v0.5.0-beta.14.16（F1）：周期兜底——settings tab 激活且 config 未就绪时
+ // v0.5.0-beta.14.16：周期兜底——settings tab 激活且 config 未就绪时
   // 每 5s 重取（refreshConfig 自带退避重试，此处只是「第二次机会」的定时器；
   // 就绪即停，零空转）。覆盖「首 GET 撞上插件重载窗口 + 用户不切 tab 不操作」
  // 的静默失败路径（「没有记忆」事故链）。
@@ -2541,7 +2541,7 @@ export default function WorkbenchPage() {
           ? tr("该房间历史暂时无法加载——可能是房间已失效，也可能是权限或服务端问题。可返回聊天页换其他房间。")
           : ""
       }
-      // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 全部改用上方稳定化
+ // v0.5.0-beta.14.10：回调 prop 全部改用上方稳定化
       // useCallback 引用（内联箭头每次渲染新引用会击穿 RoomChat memo）。
       onSend={handleSend}
       onSendApproval={handleSendApproval}
@@ -2583,11 +2583,11 @@ export default function WorkbenchPage() {
       onOpenProjectFiles={openProjectFiles}
     />
   ) : null;
-  // v0.5.0-beta.13.14（用户反馈）：房间卡项目名——与 ProjectFiles 面板
-  // 同一正源数据。v0.5.0-beta.13.15（B4）：匹配改 roomMatchesProject
+ // v0.5.0-beta.13.14：房间卡项目名——与 ProjectFiles 面板
+  // 同一正源数据。v0.5.0-beta.13.15：匹配改 roomMatchesProject
   // 双源（source_room_id 严格匹配 ∪ 标准项目群命名 `Project: <项目名>`）
   // ——旧版只按 ev.room_id 建索引，标准项目群（source_room_id 指向发起
-  // 房间）卡片恒无项目名（13.14 用户反馈）。
+ // 房间）卡片恒无项目名（13.14）。
   const roomProjectNames = React.useMemo(() => {
     const m: Record<string, string[]> = {};
     for (const room of rooms) {
@@ -2628,7 +2628,7 @@ export default function WorkbenchPage() {
       workerMxids={workerSessionStates.workerMxids}
       roomProjectNames={roomProjectNames}
       workerRoleByMxid={workerRoleByMxid}
-      // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化（同 RoomChat）。
+ // v0.5.0-beta.14.10：回调 prop 稳定化（同 RoomChat）。
       onOpenRoom={openRoom}
       onRefresh={handleRoomsRefresh}
       onInviteSettled={handleInviteSettled}
@@ -2648,7 +2648,7 @@ export default function WorkbenchPage() {
               width: chatSplitW,
               flexShrink: 0,
               minWidth: 0,
- // 用户反馈（P8a）：房间列表独立滚动（原先 overflow:hidden
+ // （P8a）：房间列表独立滚动（原先 overflow:hidden
               // 直接裁掉底部房间，列表无法滚动）；overscroll-contain 防
               // 滚动链传播到页面。
               overflowY: "auto",
@@ -2744,7 +2744,7 @@ export default function WorkbenchPage() {
         // 宿主 header 56px + 8px 边距，见宿主 layouts/index.module.less
         // .sider）。12.x 的纯 vh 经验值在 OS 窗口小于屏幕时溢出 → 整页滚。
         height: shellH != null ? `${shellH}px` : "calc(100vh - 64px)",
-        // v0.5.0-beta.13.8（13.7 用户反馈「左右留空太多，插件宽度应自适应」）：
+ // v0.5.0-beta.13.8（13.7 左右留空太多，插件宽度应自适应）：
         // 去掉 1160 硬上限——16:9 全屏两侧各 ~380px 留空。全宽自适应：
         // 内容随窗口伸缩（表格/网格自行 minmax(0,1fr) 收放）。
         width: "100%",
@@ -2756,12 +2756,12 @@ export default function WorkbenchPage() {
         overflow: "hidden",
       }}
     >
-      {/* 竖屏窄视口优化（用户反馈：团队管理竖屏用有点宽）——inline style
-          无媒体查询能力，scoped CSS 注入；700px 断点=竖屏手机/窄窗。 */}
+ {/* 竖屏窄视口优化（团队管理竖屏用有点宽）——inline style
+ 无媒体查询能力，scoped CSS 注入；700px 断点=竖屏手机/窄窗。 */}
       <style>{`
         /* 宽元素防撑链（全视口，v0.5.0-beta.12）：flex/grid 项默认 min-width:auto，
-           不可收缩内容（长 Tag/长占位符）会把 Col→Row→容器撑宽 → min-width:0
-           断链：内容自行换行/内滚，容器恒宽、顶屏刚刚好。 */
+ 不可收缩内容（长 Tag/长占位符）会把 Col→Row→容器撑宽 → min-width:0
+ 断链：内容自行换行/内滚，容器恒宽、顶屏刚刚好。 */
         .wb-main .ant-row,
         .wb-main .ant-row .ant-col,
         .wb-main .ant-card,
@@ -2771,28 +2771,28 @@ export default function WorkbenchPage() {
         .wb-main .qwenpaw-card,
         .wb-main .qwenpaw-card-body { min-width: 0; max-width: 100%; }
         /* v0.5.0-beta.12：行内 Select 默认 min-width:auto=内容宽（长占位符撑行）
-           → 强制可收缩（内容自行裁剪），断「创建团队卡溢出」最后一条链。 */
+ → 强制可收缩（内容自行裁剪），断「创建团队卡溢出」最后一条链。 */
         .wb-main .ant-select,
         .wb-main .qwenpaw-select { min-width: 0; }
- /* 用户反馈（P8a）：聊天分栏左右独立滚动——antd Tabs 内部
-           content 链默认无高度（auto 跟随内容）→ 分栏容器 height:100%
-           塌陷、房间列表撑高被 wb-main overflow:hidden 裁掉。锁定
-           content holder/content/tabpane 高度链（chatWide 分栏专用；
-           其他 tab 内容自身有高度约束；12.11 起 tabpane 加 overflow-y:auto
-           回退滚动、内容区容器 flex 化——整链真正接通）。 */
-        /* 12.15 真机复现（真实宿主实测）：QwenPaw 宿主是自家前缀的 antd 分支
-           （qwenpaw-tabs-*，无 .ant-tabs-*）——上面整条链在真宿主从未命中
-           （左栏被撑到 8193px、整页滚动 4 轮复报的确证根因）。双前缀双写。 */
+ /* （P8a）：聊天分栏左右独立滚动——antd Tabs 内部
+ content 链默认无高度（auto 跟随内容）→ 分栏容器 height:100%
+ 塌陷、房间列表撑高被 wb-main overflow:hidden 裁掉。锁定
+ content holder/content/tabpane 高度链（chatWide 分栏专用；
+ 其他 tab 内容自身有高度约束；12.11 起 tabpane 加 overflow-y:auto
+ 回退滚动、内容区容器 flex 化——整链真正接通）。 */
+        /* 12.15 真机复现（宿主实测）：QwenPaw 宿主是自家前缀的 antd 分支
+ （qwenpaw-tabs-*，无 .ant-tabs-*）——上面整条链在真宿主从未命中
+ （左栏被撑到 8193px、整页滚动 4 轮复报的确证根因）。双前缀双写。 */
         .wb-main .ant-tabs-content-holder,
         .wb-main .qwenpaw-tabs-content-holder { flex: 1; min-height: 0; }
         .wb-main .ant-tabs-content,
         .wb-main .qwenpaw-tabs-content { height: 100%; }
         .wb-main .ant-tabs-tabpane-active,
         .wb-main .qwenpaw-tabs-tabpane-active { height: 100%; min-height: 0; overflow-y: auto; }
-        /* v0.5.0-beta.12（390px 审计真根因）：antd 断点最小档 xs=576px——
-           390px 手机低于一切断点，Col 无任何断点样式 → 基础 width:100%
-           + flex-shrink 把「员工入职/创建团队」两卡挤成 50/50（各 174px，
-           内容需 330+ → 整条溢出链的源头）。<576px 强制单列通宽。 */
+        /* v0.5.0-beta.12（390px 审计根因）：antd 断点最小档 xs=576px——
+ 390px 手机低于一切断点，Col 无任何断点样式 → 基础 width:100%
+ + flex-shrink 把「员工入职/创建团队」两卡挤成 50/50（各 174px，
+ 内容需 330+ → 整条溢出链的源头）。<576px 强制单列通宽。 */
         @media (max-width: 575px) {
           .wb-main .ant-row > .ant-col,
           .wb-main .qwenpaw-row > .qwenpaw-col {
@@ -2801,13 +2801,13 @@ export default function WorkbenchPage() {
           }
         }
         /* v0.5.0-beta.12（390px 实测审计实锤）：无列模板的 display:grid
-           单 auto 列宽=max-min-content（创建团队表单被撑到 490px>390 视口）
-           → minmax(0,1fr) 锁轨道=容器宽、item 可收缩。内联
-           gridTemplateColumns 的网格不受影响（inline 优先级更高）。 */
+ 单 auto 列宽=max-min-content（创建团队表单被撑到 490px>390 视口）
+ → minmax(0,1fr) 锁轨道=容器宽、item 可收缩。内联
+ gridTemplateColumns 的网格不受影响（inline 优先级更高）。 */
         .wb-main [style*="display:grid"],
         .wb-main [style*="display: grid"] { grid-template-columns: minmax(0, 1fr); }
         /* 卡片标题：flex item min-width:auto 撑宽（"员工入职（Human CRD）"
-           166>136 溢出）→ 允许收缩换行。 */
+ 166>136 溢出）→ 允许收缩换行。 */
         .wb-main .ant-card-head-title { min-width: 0; }
         @media (max-width: 700px) {
           .wb-main { padding: 8px 10px 12px !important; gap: 8px !important; }
@@ -2866,13 +2866,13 @@ export default function WorkbenchPage() {
                 cursor: "pointer",
                 padding: "4px 10px",
                 borderRadius: 20,
-                background: "color-mix(in srgb, var(--app-accent, #FF7F16) 6%, transparent)",
+ background: "color-mix(in srgb, var(--app-accent, #FF7F16) 6%, transparent)",
               }}
               onClick={() => setTab("settings")}
             >
               <antd.Avatar
                 size="small"
-                style={{ backgroundColor: "var(--app-accent, #FF7F16)", fontSize: 13 }}
+ style={{ backgroundColor: "var(--app-accent, #FF7F16)", fontSize: 13 }}
               >
                 {(selfDisplayName || config.matrix.user_id.split(":")[0].replace(/^@/, "")).slice(0, 1).toUpperCase()}
               </antd.Avatar>
@@ -2889,8 +2889,8 @@ export default function WorkbenchPage() {
         )}
       </header>
 
-      {/* 自定义 tab 栏（用户反馈：布局自控——antd Tabs 内部 DOM 不可控，
-          高度链断导致头部不固定。自写 tab bar + 内容容器 flex 布局） */}
+ {/* 自定义 tab 栏（布局自控——antd Tabs 内部 DOM 不可控，
+ 高度链断导致头部不固定。自写 tab bar + 内容容器 flex 布局） */}
       <div
         style={{
           flex: "0 0 auto",
@@ -2975,21 +2975,21 @@ export default function WorkbenchPage() {
       </div>
 
       {/* 内容区：flex 1 + 内部滚动——头部与 tab 栏固定，只有这里滚 */}
-      {/* v0.5.0-beta.14.8（UIPERF-T7）：切页轻过渡目标（paneRef）——
-          内容区最外层容器 div（antd.Tabs 的直接包裹层，keep-alive
-          面板不重挂，只对该层做一次 170ms 淡入上浮）。 */}
+ {/* v0.5.0-beta.14.8：切页轻过渡目标（paneRef）——
+ 内容区最外层容器 div（antd.Tabs 的直接包裹层，keep-alive
+ 面板不重挂，只对该层做一次 170ms 淡入上浮）。 */}
       <div
         ref={paneRef}
         style={{
           flex: "1 1 auto",
           minHeight: 0,
           /* v0.5.0-beta.12.11（P8a 真修复·最后一跳）：本容器必须 flex 化——
-             否则 Tabs 的 flex:1 空转 → content-holder 的 flex:1 整链塌陷，
-             分栏左右仍不能独立滚动（12.10 只锁了 CSS 链，漏了这里）。 */
+ 否则 Tabs 的 flex:1 空转 → content-holder 的 flex:1 整链塌陷，
+ 分栏左右仍不能独立滚动（12.10 只锁了 CSS 链，漏了这里）。 */
           display: "flex",
           flexDirection: "column",
-          /* v0.5.0-beta.12（用户反馈第二轮：容器过宽）：overflowX 锁死——宽叶子不撑出横向滚动，容器恒=视口宽；
-             配合 scoped CSS min-width:0 断 flex/grid 撑宽链。 */
+          /* v0.5.0-beta.12（第二轮：容器过宽）：overflowX 锁死——宽叶子不撑出横向滚动，容器恒=视口宽；
+ 配合 scoped CSS min-width:0 断 flex/grid 撑宽链。 */
           overflowY: "auto",
           overflowX: "hidden",
           maxWidth: "100%",
@@ -3013,7 +3013,7 @@ export default function WorkbenchPage() {
                 workerTree={workerTree}
                 // 首页是 chat tab 之外：点房间必须 setTab("chat")+openRoom
                 //（与通知中心 handleGotoRoom 同模式，跳转修复）。
-                // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
+                // v0.5.0-beta.14.10：回调 prop 稳定化引用。
                 onOpenRoom={handleHomeOpenRoom}
                 onGotoTab={handleGotoTab}
                 managers={adminData?.managers}
@@ -3047,7 +3047,7 @@ export default function WorkbenchPage() {
             children: (
               <NotificationCenter
                 onUnreadCount={setInboxUnread}
-                // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
+                // v0.5.0-beta.14.10：回调 prop 稳定化引用。
                 onGotoApprovals={gotoApprovals}
                 onGotoRoom={handleGotoRoom}
                 refreshTick={notifyTick}
@@ -3065,7 +3065,7 @@ export default function WorkbenchPage() {
               <WorkflowBoard
                 events={workflowEvents}
                 loading={workflowLoading}
-                // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
+                // v0.5.0-beta.14.10：回调 prop 稳定化引用。
                 onRefresh={handleWfRefresh}
                 highlightRunId={selectedRunId}
                 source={workflowSource}
@@ -3098,13 +3098,13 @@ export default function WorkbenchPage() {
                 treeLoading={spawnLoading}
                 adminLoading={adminLoading}
                 adminFailCount={adminFailCount}
-                /* v0.5.0-beta.12 参数透传：`() =>` 会吃掉 30s 自动刷新的 silent；
-                   v0.5.0-beta.14.10（UIPERF-T13）：直接透传稳定 useCallback 原引用
-                   （签名含 silent，等价于原内联箭头）。 */
+                /* v0.5.0-beta.12 参数透传：` =>` 会吃掉 30s 自动刷新的 silent；
+ v0.5.0-beta.14.10：直接透传稳定 useCallback 原引用
+ （签名含 silent，等价于原内联箭头）。 */
                 onRefreshTree={refreshTree}
                 onRefreshAdmin={refreshAdmin}
                 onDm={handleDmStable}
-                /* v0.5.0-beta.13.10（B1）：L1 只读 Alert「去设置」跳配置页 */
+                /* v0.5.0-beta.13.10：L1 只读 Alert「去设置」跳配置页 */
                 onOpenSettings={gotoSettings}
                 hasToken={hasCtlToken}
                 activeRef={teamActiveRef}
@@ -3127,7 +3127,7 @@ export default function WorkbenchPage() {
             children: (
               <SelfCheckTab
                 config={config}
-                // v0.5.0-beta.14.10（UIPERF-T13）：内联对象字面量 → useMemo 稳定引用。
+                // v0.5.0-beta.14.10：内联对象字面量 → useMemo 稳定引用。
                 layout={selfCheckLayout}
               />
             ),
@@ -3153,7 +3153,7 @@ export default function WorkbenchPage() {
                 config={config}
                 configLoadState={configLoadState}
                 onRetryConfig={handleConfigRetry}
-                // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
+                // v0.5.0-beta.14.10：回调 prop 稳定化引用。
                 onConfigChange={handleConfigChange}
                 chatForceWide={chatForceWide}
                 onChatForceWideChange={setChatForceWidePersist}
@@ -3165,18 +3165,18 @@ export default function WorkbenchPage() {
       />
       </div>
       {/* 跨房间消息搜索：点击结果 → 打开房间 + 定位事件；
-          ：群名搜索（微信式）→ 点击直达房间 */}
+ ：群名搜索（微信式）→ 点击直达房间 */}
       <MessageSearch
         open={globalSearchOpen}
-        // v0.5.0-beta.14.14（UIPERF-T25）：props 全稳定引用（memo bail out）。
+        // v0.5.0-beta.14.14：props 全稳定引用（memo bail out）。
         onClose={handleGlobalSearchClose}
         onOpenRoom={handleGlobalSearchOpenRoom}
         rooms={rooms}
         onOpenRoomOnly={handleGlobalSearchOpenRoomOnly}
       />
       {/* 项目文件面板（产物端点 版：任务结果/任务书/交付物） */}
-      {/* v0.5.0-beta.13.14（用户反馈）：项目文件 Drawer 标题带文件夹 SVG；
-          面板内不再重复「项目文件」标题行。 */}
+ {/* v0.5.0-beta.13.14：项目文件 Drawer 标题带文件夹 SVG；
+ 面板内不再重复「项目文件」标题行。 */}
       <antd.Drawer
         title={
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>

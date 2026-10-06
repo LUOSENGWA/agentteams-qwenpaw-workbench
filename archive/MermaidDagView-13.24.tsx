@@ -1,15 +1,15 @@
 /**
- * A9 Mermaid 任务 DAG 视图（v0.5.0-beta.13.21，装验反馈「侧栏角色分组/活动轨/
+ * Mermaid 任务 DAG 视图（v0.5.0-beta.13.21，反馈「侧栏角色分组/活动轨/
  * mermaid/undo」批）。数据面=上游 `GET /api/v1/projects/{id}/workflow?format=mermaid`
  * （#1230 已合 main：纯渲染同一 workflow 快照，flowchart LR + 状态 classDef；
  * 节点标签/任务 ID 已在上游 sanitize，直接交给 mermaid 渲染）。
  *
  * 实现要点：
- *  - mermaid 库 ~2.6MB → `import("mermaid")` 动态导入（独立 chunk，只有
- *    首次打开 mermaid 视图才下载；vite build 不涨主包）；
- *  - 404 = Controller 未含该端点（版本门）→ 诚实占位，不当错误；
- *  - 渲染失败（理论不会，上游已消毒）→ 错误显形，不静默空图；
- *  - 主题跟随 app（light=neutral / dark=dark）。
+ * - mermaid 库 ~2.6MB → `import("mermaid")` 动态导入（独立 chunk，只有
+ * 首次打开 mermaid 视图才下载；vite build 不涨主包）；
+ * - 404 = Controller 未含该端点（版本门）→ 诚实占位，不当错误；
+ * - 渲染失败（理论不会，上游已消毒）→ 错误显形，不静默空图；
+ * - 主题跟随 app（light=neutral / dark=dark）。
  */
 import type * as ReactNS from "react";
 

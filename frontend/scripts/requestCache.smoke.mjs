@@ -1,4 +1,4 @@
-// v0.5.0-beta.14.6（R1）：requestCache 语义冒烟（node 直跑，跑法照
+// v0.5.0-beta.14.6：requestCache 语义冒烟（node 直跑，跑法照
 // scripts/roomHistory.smoke.mjs——esbuild buildSync 到临时目录 + import）。
 // 用法：node scripts/requestCache.smoke.mjs
 import { buildSync } from "esbuild";

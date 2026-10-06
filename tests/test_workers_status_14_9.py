@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.9（UIPERF-T9）Worker 状态聚合器单测。
+"""v0.5.0-beta.14.9Worker 状态聚合器单测。
 
 覆盖 worker_status 的对外钉死语义：
 
 1. ``snapshot()`` 初始形状（workers={} / scanning=False / scanAt=0，零副作用）；
 2. sweep 成功路径：名单 2 worker（其一 chats 含 running/updated_at）→
-   ``_agg["workers"]`` 归约正确；另一 worker 取数抛异常 → 不下发其值
-   （保旧语义，旧值原样保留）；
+ ``_agg["workers"]`` 归约正确；另一 worker 取数抛异常 → 不下发其值
+ （保旧语义，旧值原样保留）；
 3. ``ensure_fresh`` 在 TTL 内（scan_at 新鲜）不触发扫描 → scanning 保持
-   False、零取数调用。
+ False、零取数调用。
 
 取数函数以 monkeypatch 假 ``worker_status._ctl_get`` 注入（模块内唯一
 取数注入点）；asyncio 直跑 ``_sweep``（不依赖 tick 循环）；断言直接看
@@ -92,7 +92,7 @@ def test_snapshot_initial_shape():
 
 def test_sweep_reduce_and_keep_old(monkeypatch):
     """2) sweep 成功：w1 归约正确（running + max updated_at）；w2 取数
-    抛异常 → 保旧值（预置旧值原样保留，不被空值覆盖/清除）。"""
+ 抛异常 → 保旧值（预置旧值原样保留，不被空值覆盖/清除）。"""
     fake = _FakeCtlGet()
     monkeypatch.setattr(ws, "_ctl_get", fake)
     ws._agg["workers"]["w2"] = {"running": False, "lastUpdated": 111}  # 旧值
@@ -125,7 +125,7 @@ def test_sweep_reduce_and_keep_old(monkeypatch):
 
 def test_ensure_fresh_within_ttl_no_sweep(monkeypatch):
     """3) TTL 内（scan_at 新鲜）→ ensure_fresh 不触发：scanning 保持
-    False、零取数调用。"""
+ False、零取数调用。"""
     fake = _FakeCtlGet()
     monkeypatch.setattr(ws, "_ctl_get", fake)
     ws._agg["scan_at"] = time.time()  # 新鲜

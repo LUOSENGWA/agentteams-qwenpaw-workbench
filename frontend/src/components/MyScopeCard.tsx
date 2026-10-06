@@ -7,8 +7,8 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 
 /**
- * v0.5.0-beta.12（G5②/D4「我的团队/我的权限」员工视角只读视图）：
- * 当前登录账号能看到什么、被授权了什么——F2 产品化的员工侧半边
+ * v0.5.0-beta.12（「我的团队/我的权限」员工视角只读视图）：
+ * 当前登录账号能看到什么、被授权了什么—— 产品化的员工侧半边
  * （L1 侧的「团队访问配置矩阵」是管理员半边，v0.5.0-beta.12）。
  *
  * 数据源（全部现有端点，零新后端）：
@@ -17,7 +17,7 @@ import { useT } from "../i18n";
  * level/accessibleTeams/accessibleWorkers 直读。
  * - L2（Matrix 登录，无 token）：可见团队 = Controller 按本账号
  * accessibleTeams 过滤后的团队列表（调研实锤：L2 读路径自动过滤）。
- * 写操作一律不在本卡（等上游  PR——员工自助写路径刻意未开放）。
+ * 写操作一律不在本卡（等上游 PR——员工自助写路径刻意未开放）。
  */
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;

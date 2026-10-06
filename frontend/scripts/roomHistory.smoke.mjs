@@ -95,7 +95,7 @@ console.log("I2 mergeForward ✓");
   assert.strictEqual(src.calls.length, 1, "I3 预取发一次");
   hist.prefetch("A", "F1");
   assert.strictEqual(src.calls.length, 1, "I3 同槽不重发");
-  // 消费（walkFrom 从 this.end=F1 起）→ 零网络等待命中
+  // 消费（walkFrom 从 this.end= 起）→ 零网络等待命中
   const before = src.calls.length;
   const { page, older } = await hist.walkFrom("A", new Set());
   assert.strictEqual(src.calls.length, before, "I3 命中=零新请求（13.18 零等待）");
@@ -103,9 +103,9 @@ console.log("I2 mergeForward ✓");
   assert.deepStrictEqual(older.map((m) => m.event_id), ["n0"], "I3 消费内容正确");
   // 跨房槽作废
   hist.commit("A", "F2");
-  hist.prefetch("A", "F2"); // 槽=A/F2
+  hist.prefetch("A", "F2"); // 槽=A/
   const { page: p2 } = await hist.walkFrom("B", new Set()); // B 从空游标……
-  // 注：walkFrom 用 this.end（A 的 F2）作为 B 的起点——组件契约：切房必先
+  // 注：walkFrom 用 this.end（A 的）作为 B 的起点——组件契约：切房必先
   // refreshMessages 重建窗口（commit），loadOlder 只在活动房调用。此处仅验
   // 证槽不作废为「同房间同游标」才命中：B 的已知集不同 → 直拉。
   console.log("I3 预取单槽 ✓ (page.end=" + p2.end + ")");

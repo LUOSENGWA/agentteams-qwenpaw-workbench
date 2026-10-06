@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.14（UIPERF-T23）：配置持久化硬化 + 导出/导入。
+"""v0.5.0-beta.14.14：配置持久化硬化 + 导出/导入。
 
 覆盖：
 1. save_config 自动写备份：保存成功后 config.bak.json 与主文件内容一致；
-   备份写失败不拖累主文件保存（仅告警，备份保持旧值）。
+ 备份写失败不拖累主文件保存（仅告警，备份保持旧值）。
 2. load_config 自愈：主文件缺失 / 损坏（坏 JSON、顶层非对象）→ 自动从备份
-   恢复（主文件重建 = 备份内容）；无备份 / 备份也坏 / 备份非对象 → 默认值
-   （不抛异常）。
+ 恢复（主文件重建 = 备份内容）；无备份 / 备份也坏 / 备份非对象 → 默认值
+ （不抛异常）。
 3. GET /config/export 返回完整配置（真实凭据值）——GET /config 仍脱敏
-   （两通道互不串扰）。
+ （两通道互不串扰）。
 4. POST /config/import：
-   - schema 校验失败 → 400 可读错误（零落盘，现有配置不动）；
-   - 脱敏占位符 "***" → 400 拒收（防误贴脱敏导出顶掉真实凭据）；
-   - 成功 → 主文件 = 导入值、备份 = 覆盖前状态（回滚点）、响应 config 脱敏；
-   - Matrix 身份变更 → 同步自动重启（restart="none"），同身份 restart="page"。
+ - schema 校验失败 → 400 可读错误（零落盘，现有配置不动）；
+ - 脱敏占位符 "***" → 400 拒收（防误贴脱敏导出顶掉真实凭据）；
+ - 成功 → 主文件 = 导入值、备份 = 覆盖前状态（回滚点）、响应 config 脱敏；
+ - Matrix 身份变更 → 同步自动重启（restart="none"），同身份 restart="page"。
 
 隔离：config 路径 monkeypatch 到 tmp_path 全程——真实 secret 目录零接触，
 不遗留脏值（任务书验收要求）。
@@ -172,7 +172,7 @@ def test_export_full_config_while_get_config_stays_redacted(client):
                 "controller_token": "real-token-123",
                 "admin_password": "real-pass",
                 "matrix": {
-                    "user_id": "@luo:hs",
+                    "user_id": "@user1:example.com",
                     "access_token": "matrix-tok",
                     "device_id": "dev1",
                 },

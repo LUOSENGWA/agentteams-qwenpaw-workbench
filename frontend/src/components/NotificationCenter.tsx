@@ -46,21 +46,21 @@ function formatWhen(ts: number): string {
   return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hh}:${mm}`;
 }
 
-/** 通知中心（）：宿主 /console/inbox 事件流聚合。
+/** 通知中心：宿主 /console/inbox 事件流聚合。
  * 与 OS 通知/MenuBar 铃铛同一事件源（useOsNotifyPoller 同款端点）。
  * 30s 轮询 + 未读/全部筛选 + 全部已读 + 单条删除 + 待审批入口。
- * refreshTick（SSE 事件驱动，用户反馈 IM 式触发）：变化时立即刷新，
+ * refreshTick（SSE 事件驱动， IM 式触发）：变化时立即刷新，
  * 无需等轮询周期。 */
 function NotificationCenter(props: {
   onUnreadCount?: (count: number) => void;
   onGotoApprovals?: () => void;
   /** 带 room_id 的通知 → 跳房间；
-   * ：eventId 可选 → 跳房间并定位到该消息。 */
+ * eventId 可选 → 跳房间并定位到该消息。 */
   onGotoRoom?: (roomId: string, eventId?: string) => void;
   refreshTick?: number;
-  /** v0.5.0-beta.12（邀请主动通知）：待接受邀请（/sync rooms.invite 段，
-   * WorkbenchPage 已随 /teams/sync 持有）——此处只做入口卡，接受/拒绝
-   * UI 留在团队概览（单一事实源，Tuwunel /join 修复不重复实现）。 */
+  /** v0.5.0-beta.12（邀请主动通知）：待接受邀请（sync rooms.invite 段，
+ * WorkbenchPage 已随 /teams/sync 持有）——此处只做入口卡，接受/拒绝
+ * UI 留在团队概览（单一事实源，Tuwunel /join 修复不重复实现）。 */
   invites?: InviteRoom[];
   /** 跳团队概览处理邀请（chat tab + 无激活房间 → 邀请区可见）。 */
   onGotoInvites?: () => void;
@@ -69,7 +69,7 @@ function NotificationCenter(props: {
     props;
   const t = useThemeColors();
   const tr = useT();
-  // ：房间通知（团队房间 @提到我，Matrix 侧——宿主 inbox 事件
+  // 房间通知（团队房间 @提到我，Matrix 侧——宿主 inbox 事件
   // 无 room_id 是「点击不跳转」的根因；真·团队通知在这里）。
   const [mentions, setMentions] = React.useState<RoomMention[]>([]);
   const [mentionsLoading, setMentionsLoading] = React.useState(true);
@@ -85,7 +85,7 @@ function NotificationCenter(props: {
   // v0.5.0-beta.12（审批主动通知）：房间级 Worker Tool Guard 审批请求——
   // 与上面「宿主待审批」（本机 QwenPaw 原生队列）不同源：Worker 的受控
   // 工具调用在 Matrix 房间发「🛡️ Approval Required」，不带 @人类，
-  // 旧逻辑零提示（用户反馈：「只能在聊天群看见，并 @相关 worker」）。
+ // 旧逻辑零提示（「只能在聊天群看见，并 @相关 worker」）。
   const [approvals, setApprovals] = React.useState<RoomApproval[]>([]);
   const [approvalsError, setApprovalsError] = React.useState("");
   const [approvalActing, setApprovalActing] = React.useState<string | null>(null);
@@ -101,9 +101,9 @@ function NotificationCenter(props: {
   }, []);
 
   /** 一键批准/拒绝：向房间发带 @Worker 的审批命令（RoomChat 审批卡同款
-   * 语义）。v0.5.0-beta.12 ：此前裸发命令（无 @）——群房间
-   * _require_mention=True 时 Worker 不消费；sender 缺失（异常数据）时
-   * 降级为无 @ 命令（比不发强，DM 房间本就不需要 mention）。 */
+ * 语义）。v0.5.0-beta.12 ：此前裸发命令（无 @）——群房间
+ * _require_mention=True 时 Worker 不消费；sender 缺失（异常数据）时
+ * 降级为无 @ 命令（比不发强，DM 房间本就不需要 mention）。 */
   const doApproval = React.useCallback(
     async (a: RoomApproval, action: "approve" | "deny") => {
       const key = a.event_id || a.room_id;
@@ -119,8 +119,8 @@ function NotificationCenter(props: {
           action === "approve" ? tr("已发送批准命令（Worker 继续执行）") : tr("已发送拒绝命令"),
         );
         setApprovals((prev) => prev.filter((x) => (x.event_id || x.room_id) !== key));
-        // v0.5.0-beta.13.11（13.10 用户反馈「点了批准，通知面板还见未批准卡片」
-        // 真根因）：后端 sync watcher 收到审批命令消息后才 _resolve_approval
+        // v0.5.0-beta.13.11（13.10 点了批准，通知面板还见未批准卡片
+        // 根因）：后端 sync watcher 收到审批命令消息后才 _resolve_approval
         // 清缓冲（异步，≈1-2s）——乐观删除后 30s 轮询若在 resolve 窗口前
         // 拉取，未清项被拉回=卡片"复活"。修法=发送成功后立即重拉 + 3s
         // 再拉（覆盖后端 resolve 异步窗口），状态与后端缓冲强制对齐。
@@ -169,11 +169,11 @@ function NotificationCenter(props: {
   }, [unreadOnly, onUnreadCount, loadMentions, loadApprovals]);
 
   // 30s 轮询（含未读计数 → tab badge）。
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（30s）。任务书条件写作
+  // v0.5.0-beta.14.6：旧定时器 → usePoller（30s）。任务书条件写作
   // `open && !document.hidden`，但本组件 props 无 open（实况核对）——本组件
   // 即 inbox tab 内容，useTabActive("inbox") 为等价门控（rc-tabs 保活：
   // 切走组件不卸载）。
-  // v0.5.0-beta.14.14（UIPERF-T25）：布尔快照——非 inbox tab 互切不再重渲。
+  // v0.5.0-beta.14.14：布尔快照——非 inbox tab 互切不再重渲。
   const inboxActive = useTabActive("inbox") && !document.hidden;
   // 挂载首拉（load 身份变化——如 unreadOnly 翻转——同样重拉，原码同款）。
   React.useEffect(() => {
@@ -192,7 +192,7 @@ function NotificationCenter(props: {
 
   // 待审批计数（顶部入口条，跳首页审批卡）= 房间审批源（load() 30s 轮询
   // 已含 loadApprovals）。v0.5.0-beta.12 ：弃用宿主 push-messages
-  // 队列（远程 Worker 审批在该进程内，本机队列恒 0——用户反馈「首页没有」）。
+  // 队列（远程 Worker 审批在该进程内，本机队列恒 0——首页没有）。
 
   const markAll = async () => {
     setMarking(true);
@@ -269,8 +269,8 @@ function NotificationCenter(props: {
         <div
           onClick={onGotoApprovals}
           style={{
-            border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 40%, transparent)",
-            background: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
+ border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 40%, transparent)",
+ background: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
             borderRadius: 10,
             padding: "10px 14px",
             cursor: "pointer",
@@ -294,8 +294,8 @@ function NotificationCenter(props: {
       ) : null}
 
       {/* v0.5.0-beta.12（邀请主动通知）：新邀请卡片 → 跳团队概览处理。
-          OS toast/铃铛由后端 sync_watcher 写宿主收件箱（本区是面板内入口，
-          防 toast 漏看——用户反馈：「邀请有时候收不到，要去 Element 点」）。 */}
+ OS toast/铃铛由后端 sync_watcher 写宿主收件箱（本区是面板内入口，
+ 防 toast 漏看——「邀请有时候收不到，要去 Element 点」）。 */}
       {invites && invites.length > 0 ? (
         <div>
           <div
@@ -349,8 +349,8 @@ function NotificationCenter(props: {
       ) : null}
 
       {/* v0.5.0-beta.12（审批主动通知）：房间级 Worker Tool Guard 审批请求
-          ——OS toast 由 sync_watcher 推宿主收件箱，此处可一键批准/拒绝
-          （向房间发 /approval 命令，RoomChat 审批卡同款语义）。 */}
+ ——OS toast 由 sync_watcher 推宿主收件箱，此处可一键批准/拒绝
+ （向房间发 /approval 命令，RoomChat 审批卡同款语义）。 */}
       <div>
         <div
           style={{
@@ -612,7 +612,7 @@ function NotificationCenter(props: {
                 }}
                 onClick={() => {
                   if (!ev.read) void markOne(ev);
-                  // ：卡片点击即跳转——带 room_id 的通知直接跳对应房间
+                  // 卡片点击即跳转——带 room_id 的通知直接跳对应房间
                   //（此前只有右下角「去房间」小按钮能跳，卡片点击仅展开+已读，
                   // 用户真机反馈「通知点击要能跳转」）。无 room_id 保持展开切换。
                   if (evRoomId) {
@@ -739,6 +739,6 @@ function NotificationCenter(props: {
   );
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(NotificationCenter);

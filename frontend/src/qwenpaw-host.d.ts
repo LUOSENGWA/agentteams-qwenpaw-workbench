@@ -12,9 +12,9 @@
  *
  * ─────────────────────────────────────────────────────────────────────────
  * Three verbs cover every chat customization intent:
- * set(pluginId, partial)  → shallow-merge specific option fields
- * render(pluginId, node)  → whole-section replacement (welcome / leftHeader)
- * add(pluginId, item)     → append to additive lists
+ * set(pluginId, partial) → shallow-merge specific option fields
+ * render(pluginId, node) → whole-section replacement (welcome / leftHeader)
+ * add(pluginId, item) → append to additive lists
  * ─────────────────────────────────────────────────────────────────────────
  */
 import type React from "react";
@@ -190,10 +190,10 @@ export interface QwenPawChatNamespace {
   };
   response: {
     /**
-     * Configure the default assistant identity shown by the response card.
-     * This intentionally reuses welcome.avatar/nick because the default
-     * ResponseCard reads those fields.
-     */
+ * Configure the default assistant identity shown by the response card.
+ * This intentionally reuses welcome.avatar/nick because the default
+ * ResponseCard reads those fields.
+ */
     set(
       pluginId: string,
       partial: Partial<{
@@ -304,10 +304,10 @@ export interface QwenPawWindowNamespace {
     renderers: Record<string, React.FC<Record<string, unknown>>>,
   ): void;
   /**
-   * Console-wide extension namespaces (hostExternals.ts runtime extensions —
-   * not part of the stable d.ts contract, but present in 2.1 consoles).
-   * Minimal local typing for the workbench's sidebar entry.
-   */
+ * Console-wide extension namespaces (hostExternals.ts runtime extensions —
+ * not part of the stable d.ts contract, but present in 2.1 consoles).
+ * Minimal local typing for the workbench's sidebar entry.
+ */
   menu?: {
     add(pluginId: string, item: unknown): unknown;
     remove(targetId: string): void;

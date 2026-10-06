@@ -77,7 +77,7 @@ To upgrade: in the Console, **remove the old version first**, then install the n
 
 1. **Matrix 地址**（必填至少一个）：内网 + 外网两个入口（`http://<node>:6867`）——自动测延迟、切最快、定期重测，无需手动切换
 2. **认证模式**（二选一）：
-   - **L2 普通成员（默认）**：选「Matrix 登录」，填自己的 Matrix 账号（用户名 + 密码，入职时交付）。L2 仅能读写自己 `accessibleTeams` 范围内的数据（上游 A2 认证 + 范围过滤）
+   - **L2 普通成员（默认）**：选「Matrix 登录」，填自己的 Matrix 账号（用户名 + 密码，入职时交付）。L2 仅能读写自己 `accessibleTeams` 范围内的数据（上游  认证 + 范围过滤）
    - **L1 管理员**：粘贴 Controller admin token（`docker exec agentteams-controller cat /var/run/agentteams/cli-token`，一次性，保存后永久记住）
 3. **Controller 地址**（可选，全量团队视图才需要）：AgentTeams Controller 的 API 地址，支持多地址故障转移
 4. 点 **保存并自检**—— 自检 tab 会逐项验证 L0-L3（本地环境/连通性/认证与 API/房间实测）

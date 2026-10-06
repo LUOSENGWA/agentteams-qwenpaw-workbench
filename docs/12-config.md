@@ -52,13 +52,13 @@ token 无接口可获取（上游安全设计），由部署管理员线下提�
 - env 值**不落盘**（config 保持空）；粘贴值存插件后端本机配置（仅本机，见上）——token 轮换（controller 重签）后粘贴值需按获取命令重新获取再粘贴
 - **token 值永不离开 QwenPaw 进程**：浏览器/前端只看到 `controllerTokenSource: "config"|"env"|"invalid"|""` 来源标记（v0.5.0-beta.12 起 `file`/`file_unreadable` 不复存在）
 
-> **安全设计（为什么不用密码换 token）**：Controller 无任何 token 签发端点（上游安全设计，非缺陷）——浏览器侧密码→token 兑换在架构上不存在；能做的安全等价物只有「部署期注入」（dashboard F1g 设计 B 同款）。密码仍只解锁网关面（Higress Console），token（无论 config 还是 env）解锁 Controller 管理 API，两者并存。
+> **安全设计（为什么不用密码换 token）**：Controller 无任何 token 签发端点（上游安全设计，非缺陷）——浏览器侧密码→token 兑换在架构上不存在；能做的安全等价物只有「部署期注入」（与 dashboard 的设计决策同款）。密码仍只解锁网关面（Higress Console），token（无论 config 还是 env）解锁 Controller 管理 API，两者并存。
 
 > **level 2 注意**：Controller 的 Matrix 认证只接受**权限等级 2 的 Human 账号**——level 1 的 admin 账号会 401。L2 模式 401 时：改用 L1 token 模式，或让部署管理员把该 Human 改为 level 2（自检页「权限自检」可见当前账号等级）。
 
 ## Controller 地址（实际部署必填）
 
-**L1 与几乎所有管理能力都依赖它**：L1 token 验证、CRD 管理（建队/建 Worker/改配/删）、模型网关地址推导、全量团队视图（跨团队项目/产物总览、集群负载）。不填只有 L2 房间侧功能（聊天/审批/附件扫描）可用——实际部署两个地址都填（用户反馈确认）。
+**L1 与几乎所有管理能力都依赖它**：L1 token 验证、CRD 管理（建队/建 Worker/改配/删）、模型网关地址推导、全量团队视图（跨团队项目/产物总览、集群负载）。不填只有 L2 房间侧功能（聊天/审批/附件扫描）可用——实际部署两个地址都填（确认）。
 
 - 可填多个地址（主备 / 内外网多入口）
 - 保存时**逐个测延迟**（失败重试一次），识别外网/内网，**自动切到最快**

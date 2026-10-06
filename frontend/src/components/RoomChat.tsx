@@ -91,7 +91,7 @@ function toolNameOf(body: string): string {
 
 /** 引用回复折叠条（Element 同款：左竖色条 + 16px 小头像 + 着色名字 + 单行预览；
  * 点击滚动定位原消息并高亮闪烁，不再内联展开副本）。
- *  v0.5.0-beta.13.13（13.12 用户反馈「很多信息『已滚出历史』但 Element 里信息
+ * v0.5.0-beta.13.13（13.12 「很多信息『已滚出历史』但 Element 里信息
  * 都在」）：原消息不在已加载窗口时不再标死「已滚出历史」——对齐 Element
  * 按需加载语义：显示可点的「加载原消息」→ 链式向前分页把原消息拉进时间线
  * （onLoadOriginal）；加载成功引用条自动转为正常态（可点定位）；到底仍无 →
@@ -111,7 +111,7 @@ function ReplyBanner({
   onLoadOriginal?: (
     eventId: string,
   ) => Promise<"found" | "exhausted" | "cancelled">;
-  /** v0.5.0-beta.13.15（B2）：该引用条正是正在滚动回填的目标。 */
+  /** v0.5.0-beta.13.15：该引用条正是正在滚动回填的目标。 */
   pendingOriginal?: string | null;
 }) {
   const t = useThemeColors();
@@ -241,9 +241,9 @@ function ReplyBanner({
   );
 }
 
-/** v0.5.0-beta.14.14（UIPERF-T26）：memo——props：msg/room 稳定引用；
- *  messages（visibleMessages）每数据变才新；onJump=handleSearchJump
- *  （useCallback，直接传不再包内联箭头）；onLoadOriginal 父侧稳定。 */
+/** v0.5.0-beta.14.14：memo——props：msg/room 稳定引用；
+ * messages（visibleMessages）每数据变才新；onJump=handleSearchJump
+ * （useCallback，直接传不再包内联箭头）；onLoadOriginal 父侧稳定。 */
 const ReplyBannerMemo = React.memo(ReplyBanner);
 
 /** 常用快捷表情（Element 同款交互：hover 消息 → 快捷反应）。 */
@@ -258,7 +258,7 @@ const EMOJI_PANEL = [
 ];
 
 /** 表情反应 chips（emoji + 计数，点击追加同款反应）。
- * v0.5.0-beta.14.14（UIPERF-T26）：eventId 提为 prop + 父侧传稳定双参
+ * v0.5.0-beta.14.14：eventId 提为 prop + 父侧传稳定双参
  * 回调（(eventId, emoji)）+ memo——此前父侧每次渲染为每行内联闭包
  * （捕获 event_id），memo 无法生效。 */
 const ReactionChips = React.memo(function ReactionChips({
@@ -296,7 +296,7 @@ const ReactionChips = React.memo(function ReactionChips({
   );
 });
 
-/** v0.5.0-beta.13.11（F6「话题 emoji 改成消息旗气泡 SVG」）：话题图标
+/** v0.5.0-beta.13.11（「话题 emoji 改成消息旗气泡 SVG」）：话题图标
  * = 消息气泡 + 小旗（currentColor 跟随文字色，替换全 🧵 emoji）。 */
 function ThreadIcon({ size = 13 }: { size?: number }) {
   return (
@@ -375,7 +375,7 @@ function ThreadPanelView({
     }
   }, [root.event_id, replies.length]);
 
-  // v0.5.0-beta.14.2（F3）：话题内 DOM 增高跟随（主列表同款：观察子节点）。
+  // v0.5.0-beta.14.2：话题内 DOM 增高跟随（主列表同款：观察子节点）。
   React.useEffect(() => {
     const el = threadScrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -685,8 +685,8 @@ function SenderAvatar({
   workerName?: string;
   /** 打开成员详情卡（含审批卡）。 */
   onDetail?: (mxid: string) => void;
- /** （定案：头像角落灯）：该发送者的 session 状态——有值才显灯
-   * （人类/未知发送者无映射 → 不显）。 */
+ /** （头像角落灯）：该发送者的 session 状态——有值才显灯
+ * （人类/未知发送者无映射 → 不显）。 */
   sessionState?: WorkerSessionState;
   /** v0.5.0-beta.13.1：打开该 Worker 的会话抽屉（完整 session，只读）。 */
   onOpenChats?: (workerName: string) => void;
@@ -790,7 +790,7 @@ function SenderAvatar({
           ) : undefined
         }
       >
- {/* （定案：灯在头像角落）：relative 容器 + 角落状态灯。 */}
+ {/* （灯在头像角落）：relative 容器 + 角落状态灯。 */}
         <span style={{ position: "relative", display: "inline-flex" }}>
           <MxcAvatar
             url={member?.avatar_url}
@@ -817,25 +817,25 @@ function SenderAvatar({
   );
 }
 
-/** v0.5.0-beta.14.14（UIPERF-T26）：memo——每行一个 antd.Dropdown +
- *  antd.Popover（重组件）。props 全稳定：mxid/myUserId/workerName
- *  字符串；room 每房稳定；onMention=insertMention（useCallback）；
- *  onDm 父侧稳定（T13）；onDetail/onOpenChats 本组件 useCallback；
- *  sessionState 随 workerSessionByMxid（T26 值稳定化）才变。 */
+/** v0.5.0-beta.14.14：memo——每行一个 antd.Dropdown +
+ * antd.Popover（重组件）。props 全稳定：mxid/myUserId/workerName
+ * 字符串；room 每房稳定；onMention=insertMention（useCallback）；
+ * onDm 父侧稳定；onDetail/onOpenChats 本组件 useCallback；
+ * sessionState 随 workerSessionByMxid（值稳定化）才变。 */
 const SenderAvatarMemo = React.memo(SenderAvatar);
 
 /** 工具消息：默认折叠一行（工具名 + 预览），点击展开全文（QwenPaw 聊天页同款）。 */
-/** v0.5.0-beta.13.7（13.6 用户反馈「看看 QwenPaw 怎么渲染消息」）：对齐 QwenPaw
- *  ResponseTool 卡——状态识别（🔧 调用中 / ✅ 成功 / ❌ 失败，名称着色）+
- *  展开后分区展示（调用=参数区 / 输出=结果区，失败红色调），替代 13.6 的
- *  无状态行 + 整段 RAW pre。Matrix 工具消息格式（bridge 口径）：
- *  调用 `🔧 **name**` + args；输出 `✅ **name**:` + 结果；失败 `❌ **name**:`。 */
+/** v0.5.0-beta.13.7（13.6 看看 QwenPaw 怎么渲染消息）：对齐 QwenPaw
+ * ResponseTool 卡——状态识别（🔧 调用中 / ✅ 成功 / ❌ 失败，名称着色）+
+ * 展开后分区展示（调用=参数区 / 输出=结果区，失败红色调），替代 13.6 的
+ * 无状态行 + 整段 RAW pre。Matrix 工具消息格式（bridge 口径）：
+ * 调用 `🔧 **name**` + args；输出 `✅ **name**:` + 结果；失败 `❌ **name**:`。 */
 function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
   const t = useThemeColors();
   const tr = useT();
   const [open, setOpen] = React.useState(false);
   const body = msg.body || "";
-  // v0.5.0-beta.14.14（UIPERF-T26）：body 派生缓存（C7）——流式期父行重渲染
+  // v0.5.0-beta.14.14：body 派生缓存——流式期父行重渲染
   // 不再重跑 split/join/replace 串处理（工具输出 body 可达数百行）。
   const derived = React.useMemo(() => {
     const firstLine = body.split("\n")[0] || tr("工具调用");
@@ -1057,7 +1057,7 @@ function parseApproval(
   return null;
 }
 
-/** v0.5.0-beta.14.14（UIPERF-T26）：loop 状态语义相等（C5b 引用稳定化用）——
+/** v0.5.0-beta.14.14：loop 状态语义相等（引用稳定化用）——
  * 15s 轮询每轮拿到全新对象，state+mode 未变时须保留旧引用避免击穿 memo。 */
 function sameLoopStatus(
   a: WorkerLoopStatus | null,
@@ -1101,14 +1101,14 @@ function MessageBody({
   /** 项目文件面板（v0.5.0-beta.12）：顶部 📁 按钮 → 抽屉。 */
   onOpenProjectFiles?: (room: TeamRoom) => void;
   /** v0.5.0-beta.12.8（第 11 轮）：该卡片 runId 对应的 live 工作流事件
-   * （controller 正源，15s 轮询）→ 卡片状态/步骤/Worker 实时 overlay。 */
+ * （controller 正源，15s 轮询）→ 卡片状态/步骤/Worker 实时 overlay。 */
   live?: WorkflowEvent | null;
 }) {
   const tr = useT();
   const t = useThemeColors();
   // v0.5.0-beta.12: 文件地址统一解析（m.image/m.file 共用）——mxc → 媒体代理
   // apiPath（fetch 必须走 host.fetch 带鉴权；裸插件路径落 SPA 兜底返回
-  // index.html 壳 = 「内容是网页」真根因）。fileSrc 供 img src /
+  // index.html 壳 = 「内容是网页」根因）。fileSrc 供 img src /
   // a href（裸导航带不了鉴权头，只能 objectURL）。
   const fileTarget = React.useMemo(
     () => (msg.url ? resolveFileTarget(msg.url) : { url: "" }),
@@ -1274,7 +1274,7 @@ function MessageBody({
   if (msg.msgtype === "m.file" && msg.url) {
     // v0.5.0-beta.12: fileTarget（mxc→媒体代理 apiPath+解析 URL，http 直链→原样）；
     // 预览/下载走 host 鉴权链，不再裸路径。
-    // v0.5.0-beta.12 : 直链也带 apiPath（/media/proxy 服务端代抓绕 CORS）
+    // v0.5.0-beta.12 : 直链也带 apiPath（media/proxy 服务端代抓绕 CORS）
     // → 下载统一走 host.fetch blob（跨域 a[download] 会变导航）。
     const url = fileTarget.url;
     // v0.5.0-beta.12 : 尺寸取自 msg.size（映射补的 content.info.size——
@@ -1294,7 +1294,7 @@ function MessageBody({
         }}
       >
         {/* v0.5.0-beta.12 : Element 风格文件卡——彩色图标块 + 名称 +
-            尺寸·类型 + 右侧操作（此前是平铺 icon，观感弱于 Element）。 */}
+ 尺寸·类型 + 右侧操作（此前是平铺 icon，观感弱于 Element）。 */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
@@ -1330,9 +1330,9 @@ function MessageBody({
             ) : null}
           </div>
           {/* v0.5.0-beta.12: 插件路径走 host.fetch blob 下载（带鉴权）；
-              v0.5.0-beta.12 : 直链经代抓同样有 apiPath → 全类型统一
-              host 链（跨域 a[download] 会变导航）。url 为空时不渲染
-              href（href="" 点击会重载当前页面）。 */}
+ v0.5.0-beta.12 : 直链经代抓同样有 apiPath → 全类型统一
+ host 链（跨域 a[download] 会变导航）。url 为空时不渲染
+ href（href="" 点击会重载当前页面）。 */}
           <antd.Button
             type="text"
             size="small"
@@ -1376,7 +1376,7 @@ function MessageBody({
           />
         </div>
         {/* 产物验收（Phase 4 交付闭环）：Agent 交付的 m.file 消息
-            带验收按钮——接受发确认，修改意见弹输入。 */}
+ 带验收按钮——接受发确认，修改意见弹输入。 */}
         {!mine && onDeliverable ? (
           accepted ? (
             <div style={{ fontSize: 12, color: "#52c41a" }}>
@@ -1456,7 +1456,7 @@ function MessageBody({
   if (isToolMessage(msg.body || "")) {
     return <ToolBubble msg={msg} mine={mine} />;
   }
-  // v0.5.0-beta.13.8（13.7 用户反馈「应该加上聊天气泡」，QwenPaw console
+  // v0.5.0-beta.13.8（13.7 应该加上聊天气泡，QwenPaw console
   // 口径：user 右对齐橙调气泡 / 对方左对齐中性气泡）：13.6 的扁平无框
   // 时间线改回气泡——常态背景 bubbleMine（右，橙调）/bubbleOther（左，
   // 中性），圆角 10（己方右上角 3 做尾），hover 行背景仍由外层提供。
@@ -1477,7 +1477,7 @@ function MessageBody({
     >
       <MdText text={msg.body || ""} />
       {/* v0.5.0-beta.12 ：「已编辑」标记（Element 同款；m.replace 聚合在
-          fetchRoomMessages——替换事件不独立显示，正文写回原消息）。 */}
+ fetchRoomMessages——替换事件不独立显示，正文写回原消息）。 */}
       {msg.edited ? (
         <span
           style={{
@@ -1494,14 +1494,14 @@ function MessageBody({
   );
 }
 
-/** v0.5.0-beta.14.14（UIPERF-T26）：memo——mergeForward 对未变消息保持
- *  对象引用（append-only 合并），流式期间历史行的 msg 引用不变 → memo
- *  跳过整棵子树（MdText/审批卡/工作流卡/文件预览全不重渲染）；只有新行
- *  与数据真变的行才渲染。props 全为稳定引用：mergeForward 保 msg 身份；
- *  mine 布尔；onApprovalAction/onDeliverable 本组件 useCallback（依赖
- *  T13 稳定的父回调 + 记忆化 tr）；approvalResolved 取值稳定；
- *  onOpenProject/onWorkflowIntervened 父侧稳定；live 随 liveWorkflows
- *  （15s 轮询）才变。 */
+/** v0.5.0-beta.14.14：memo——mergeForward 对未变消息保持
+ * 对象引用（append-only 合并），流式期间历史行的 msg 引用不变 → memo
+ * 跳过整棵子树（MdText/审批卡/工作流卡/文件预览全不重渲染）；只有新行
+ * 与数据真变的行才渲染。props 全为稳定引用：mergeForward 保 msg 身份；
+ * mine 布尔；onApprovalAction/onDeliverable 本组件 useCallback（依赖
+ * 稳定的父回调 + 记忆化 tr）；approvalResolved 取值稳定；
+ * onOpenProject/onWorkflowIntervened 父侧稳定；live 随 liveWorkflows
+ * （15s 轮询）才变。 */
 const MessageBodyMemo = React.memo(MessageBody);
 
 export interface RoomChatProps {
@@ -1518,7 +1518,7 @@ export interface RoomChatProps {
   /** 是否允许发消息；false 时整个输入区替换为居中提示条（Element 同款语义）。 */
   canSend?: boolean;
   /** 发送文本消息；replyTo 非空时作为引用回复发送；threadRoot 非空时
-   * 作为线程回复（m.thread）发送到该线程。 */
+ * 作为线程回复（m.thread）发送到该线程。 */
   onSend?: (
     text: string,
     replyTo?: { event_id: string; sender: string; body: string },
@@ -1527,8 +1527,8 @@ export interface RoomChatProps {
   /** 发送文件/图片（上传 → m.file/m.image 消息）。 */
   onSendFiles?: (files: File[]) => Promise<void> | void;
   /** v0.5.0-beta.12 ：审批命令带 @Worker（sendApprovalCommand）。
-   * 群房间无 mention 的命令 Worker 收不到（QwenPaw _require_mention），
-   * 审批卡按钮改走此路径而非裸 onSend 文本。 */
+ * 群房间无 mention 的命令 Worker 收不到（QwenPaw _require_mention），
+ * 审批卡按钮改走此路径而非裸 onSend 文本。 */
   onSendApproval?: (
     targetMxid: string,
     cmd: string,
@@ -1541,7 +1541,7 @@ export interface RoomChatProps {
   /** v0.5.0-beta.12 ：退出房间（顶部 ⋯ 菜单）。 */
   onLeaveRoom?: () => Promise<void> | void;
   /** 房间重命名（顶部 ⋯ 菜单；Element 同款能力，
-   * 权限不足时展示诊断——团队房间权限表普遍 null 为平台侧已知问题）。 */
+ * 权限不足时展示诊断——团队房间权限表普遍 null 为平台侧已知问题）。 */
   onRenameRoom?: (name: string) => void;
   /** v0.5.0-beta.12 ：房间静音状态 + 切换（m.muted_room account data）。 */
   muted?: boolean;
@@ -1551,18 +1551,18 @@ export interface RoomChatProps {
   /** workflow 卡片点击 → 工作流 tab 选中该项目。 */
   onOpenProject?: (runId: string) => void;
   /** v0.5.0-beta.12.8（第 11 轮）：live 工作流事件（controller 正源，15s 轮询）——
-   * 聊天内 workflow 卡片按 runId 匹配做 live overlay（状态/步骤/Worker 实时）。
-   * WorkbenchPage 仅在正源轨（workflowSource=controller）时传入；降级轨传空
-   * （events=原始卡重解析=快照恒等，overlay 无增量且会误导 LIVE 徽标）。 */
+ * 聊天内 workflow 卡片按 runId 匹配做 live overlay（状态/步骤/Worker 实时）。
+ * WorkbenchPage 仅在正源轨（workflowSource=controller）时传入；降级轨传空
+ * （events=原始卡重解析=快照恒等，overlay 无增量且会误导 LIVE 徽标）。 */
   liveWorkflows?: WorkflowEvent[];
   /** v0.5.0-beta.13.21（AgentActivityTrack）：当前房间匹配的项目
-   *  （roomMatchesProject 同源，父组件算好传入）——composer 上方任务
-   *  进度 + HITL 内联轨；无匹配/项目终态时组件自身不渲染。 */
+ * （roomMatchesProject 同源，父组件算好传入）——composer 上方任务
+ * 进度 + HITL 内联轨；无匹配/项目终态时组件自身不渲染。 */
   activityProject?: WorkflowEvent | null;
-  /** v0.5.0-beta.14.2（F2 分栏计话题面板）：向父组件上报话题面板
-   *  占用（inline 面板吃宽；drawer 覆盖层不吃）。父组件将其计入
-   *  单/双栏判定——此前未计入：开着话题把窗口拖窄时聊天区早已
-   *  局促但判定不触发，要继续收窄才切单栏。open=false 时 width 忽略。 */
+  /** v0.5.0-beta.14.2（分栏计话题面板）：向父组件上报话题面板
+ * 占用（inline 面板吃宽；drawer 覆盖层不吃）。父组件将其计入
+ * 单/双栏判定——此前未计入：开着话题把窗口拖窄时聊天区早已
+ * 局促但判定不触发，要继续收窄才切单栏。open=false 时 width 忽略。 */
   onThreadPanelLayout?: (open: boolean, width: number) => void;
   /** workflow 卡片干预成功 → 刷新工作流。 */
   onWorkflowIntervened?: () => void;
@@ -1571,13 +1571,13 @@ export interface RoomChatProps {
   /** 打开/创建与成员的私聊（头像右键菜单）。 */
   onDm?: (mxid: string, roomId?: string) => void;
   onBack?: () => void;
-  /** v0.5.0-beta.13.6（用户反馈：房间列表按钮与返回按钮重叠）：顶栏最左
-   * 前置节点（Element 汉堡位）——WorkbenchPage 宽屏收起列表时把
-   * 「☰ 房间列表」按钮传进来，不再 absolute 浮在聊天区左上角压住返回键。 */
+ /** v0.5.0-beta.13.6（房间列表按钮与返回按钮重叠）：顶栏最左
+ * 前置节点（Element 汉堡位）——WorkbenchPage 宽屏收起列表时把
+ * 「☰ 房间列表」按钮传进来，不再 absolute 浮在聊天区左上角压住返回键。 */
   headerPrefix?: ReactNS.ReactNode;
-  /** v0.5.0-beta.13.11（F1 会话窗 Element 化）：SSE room_message 递增的
-   * tick——头像会话窗（WorkerChats fixedWorker）打开时，任意房间来消息
-   * 即触发其立即刷新（事件驱动主路，替代纯 4s 轮询）。 */
+  /** v0.5.0-beta.13.11（会话窗 Element 化）：SSE room_message 递增的
+ * tick——头像会话窗（WorkerChats fixedWorker）打开时，任意房间来消息
+ * 即触发其立即刷新（事件驱动主路，替代纯 4s 轮询）。 */
   chatsTick?: number;
   /** DM 房间显示"发起任务"按钮（Phase 2 任务向导入口，〇）。 */
   onNewTask?: () => void;
@@ -1588,7 +1588,7 @@ export interface RoomChatProps {
   /** 房间异常提示（如 404 僵尸房间），非空显示警示条。 */
   errorNote?: string;
   /** 跨房间搜索跳转：变化时尝试定位该事件（已加载则滚动+高亮）。
-   * 定位完成后父组件应清除（onJumpHandled），避免重复触发。 */
+ * 定位完成后父组件应清除（onJumpHandled），避免重复触发。 */
   jumpToEventId?: string | null;
   onJumpHandled?: () => void;
   /** 成员角色表（成员详情卡）：MXID → 领/工/审/unknown。 */
@@ -1596,29 +1596,29 @@ export interface RoomChatProps {
   /** MXID → Worker 容器名（5.0.0-beta.3：成员卡显示审批卡用）。 */
   memberWorkerNames?: Record<string, string>;
   /** v0.5.0-beta.12：当前房间对应 Worker 的 phase/runtime 徽章
-   * （1:1 个人房间才有；数据=Worker CR 字段，零新请求）。 */
+ * （1:1 个人房间才有；数据=Worker CR 字段，零新请求）。 */
   workerBadge?: { phase?: string; runtime?: string };
   /** v0.5.0-beta.12.4：当前房间对应 Worker 的 session 状态
-   * （1:1 个人房间才有；typing/last_ts 派生，零新请求）。 */
+ * （1:1 个人房间才有；typing/last_ts 派生，零新请求）。 */
   sessionState?: WorkerSessionState;
   /** v0.5.0-beta.12.4：全部 Worker MXID——团队房间任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
- /** （落点定案：聊天群内）：Worker MXID → 任务状态（头像角落灯；
-   * 心跳优先派生，人类发送者无映射 → 不显）。 */
+ /** （落点：聊天群内）：Worker MXID → 任务状态（头像角落灯；
+ * 心跳优先派生，人类发送者无映射 → 不显）。 */
   workerSessionByMxid?: Record<string, WorkerSessionState>;
  /** v0.5.0-beta.13.1（入口迁移）：Worker 列表——头像抽屉「查看会话」
-   * （WorkerChats fixedWorker 模式）的数据源。 */
+ * （WorkerChats fixedWorker 模式）的数据源。 */
   workers?: WorkerInfo[];
   /** v0.5.0-beta.13.13（Element 同款按需加载）：引用条「加载原消息」——
-   * 链式向前分页把原消息拉进时间线；返回是否找到（找不到由 UI 落
-   * /context 定位区兜底）。
-   * v0.5.0-beta.13.15（B2 滚动化）：调用后只 kickstart 一页，其余页由
-   * 滚动驱动（触顶 40px 触发 + 停顶自动续拉，见下方 useLayoutEffect）。 */
+ * 链式向前分页把原消息拉进时间线；返回是否找到（找不到由 UI 落
+ * /context 定位区兜底）。
+ * v0.5.0-beta.13.15（B2 滚动化）：调用后只 kickstart 一页，其余页由
+ * 滚动驱动（触顶 40px 触发 + 停顶自动续拉，见下方 useLayoutEffect）。 */
   onLoadOriginal?: (
     eventId: string,
   ) => Promise<"found" | "exhausted" | "cancelled">;
-  /** v0.5.0-beta.13.15（B2）：正在回填的原消息 event_id（引用条显示
-   * 「正在加载原消息…」；非空时停在顶部会自动续拉分页）。 */
+  /** v0.5.0-beta.13.15：正在回填的原消息 event_id（引用条显示
+ * 「正在加载原消息…」；非空时停在顶部会自动续拉分页）。 */
   pendingOriginal?: string | null;
 }
 
@@ -1760,7 +1760,7 @@ function RoomChat(props: RoomChatProps) {
   const [mentionIndex, setMentionIndex] = React.useState(0);
   // 未读线：打开房间时最新消息 ts，此后的新消息显示在线下方。
   const [readTs, setReadTs] = React.useState(0);
-  // 消息搜索面板（）。
+  // 消息搜索面板。
   const [searchOpen, setSearchOpen] = React.useState(false);
   // 成员详情卡：选中成员的 MXID，null=关闭。
   const [detailMxid, setDetailMxid] = React.useState<string | null>(null);
@@ -1894,8 +1894,8 @@ function RoomChat(props: RoomChatProps) {
   const [showJumpBottom, setShowJumpBottom] = React.useState(false);
   const [newMsgCount, setNewMsgCount] = React.useState(0);
   const prevMsgLenRef = React.useRef(0);
-  // v0.5.0-beta.13.12（13.11 用户反馈「置底按钮点了不置底，像滚动位置记忆问题」
-  // 真根因）：旧模型 nearBottom 在**每次 effect 运行时现算**——点 ↓ 触发
+ // v0.5.0-beta.13.12（13.11 置底按钮点了不置底，像滚动位置记忆问题
+ // 根因）：旧模型 nearBottom 在**每次 effect 运行时现算**——点 ↓ 触发
   // smooth 滚动（数百 ms）期间，新消息到达的 effect 跑在滚动中途
   // （nearBottom=false）→ 按钮重新出现 + 计数清零前又被加 1 → 用户感知
   // 「点了没用」。QwenPaw/Element 正源模型 = **显式 isAtBottom 状态 +
@@ -1904,7 +1904,7 @@ function RoomChat(props: RoomChatProps) {
   // 不重弹按钮；用户主动上翻（dist≥120）即解锁。
   const atBottomRef = React.useRef(true);
   const pinnedUntilRef = React.useRef(0);
-  // v0.5.0-beta.14.14（UIPERF-T26）：置底跟随 rAF 门——流式期间同一帧内
+ // v0.5.0-beta.14.14：置底跟随 rAF 门——流式期间同一帧内
   // 新消息 effect + ResizeObserver 可各触发多次（N 条新消息 + M 个子节点
   // 高度变化），旧版每次同步 `el.scrollTop = el.scrollHeight`（读
   // scrollHeight 时布局脏 → 强制同步 reflow，每帧最多 N+M 次）。现收敛为
@@ -1920,11 +1920,11 @@ function RoomChat(props: RoomChatProps) {
       el.scrollTop = el.scrollHeight;
     });
   }, []);
-  // v0.5.0-beta.13.17（13.16 用户反馈「不能滚到哪加载到哪 / 没有预加载」）：
+ // v0.5.0-beta.13.17（13.16 不能滚到哪加载到哪 / 没有预加载）：
   // 顶部预加载余量——旧版 40px 只在贴顶瞬间触发（贴顶才拉、拉完要滚回顶
   // 再触发一次），体感「没有预加载」。现 = 视口比例余量：接近顶部即开始拉，
   // 锚恢复后继续上翻自然接力（连续分段预载）。
-  // v0.5.0-beta.13.18（13.17 用户反馈「触发才加载、慢，不是跟着窗口预加载」）：
+ // v0.5.0-beta.13.18（13.17 触发才加载、慢，不是跟着窗口预加载）：
   // 余量 0.25→**0.6 视口（下限 400px）**——配合父侧预取管线（下一页后台
   // 常驻预取）：触发点提前 + 落地零等待，加载跟着窗口走而非被触发才追。
   const nearTop = React.useCallback((el: HTMLElement) => {
@@ -1969,7 +1969,7 @@ function RoomChat(props: RoomChatProps) {
     setNewMsgCount(0);
     setShowJumpBottom(false);
   }, []);
-  // v0.5.0-beta.14.2（F3 底部跟随「经常不跟」）：DOM 高度变化跟随——
+ // v0.5.0-beta.14.2（底部跟随「经常不跟」）：DOM 高度变化跟随——
   // messages 变化的 effect 只覆盖「消息数变」；图片加载/卡片/产物渲染
   // 后撑高时不触发 → 贴底用户看着内容把视口顶离底部。Element 正源=
   // ResizeObserver 观察**滚动内容**（滚动容器自身尺寸由 flex 定死，
@@ -1979,7 +1979,7 @@ function RoomChat(props: RoomChatProps) {
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       // 贴底（含点击锁定窗口：pinned 路径恒置 atBottomRef=true）→ 跟随。
-      // v0.5.0-beta.14.14（UIPERF-T26）：rAF 门——同帧多个子节点高度变化
+ // v0.5.0-beta.14.14：rAF 门——同帧多个子节点高度变化
       // 合并为每帧一次 scrollTop 写入（旧版每回调一次同步写 = 每回调一次
       // 强制 reflow；流式 DOM 持续增高时是主线程卡顿主要来源）。
       if (!atBottomRef.current) return;
@@ -2001,7 +2001,7 @@ function RoomChat(props: RoomChatProps) {
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     el.style.transition = "background 0.4s";
-    el.style.background = "color-mix(in srgb, var(--app-accent, #FF7F16) 18%, transparent)";
+ el.style.background = "color-mix(in srgb, var(--app-accent, #FF7F16) 18%, transparent)";
     window.setTimeout(() => {
       el.style.background = "transparent";
     }, 1800);
@@ -2191,30 +2191,30 @@ function RoomChat(props: RoomChatProps) {
   );
 
   // 兜底轮询：每 12s 拉一次新消息（仅在有房间时）。
- // P6（⑨）：主路已切 /sync 事件驱动（后端 sync watcher → SSE
+ // P6：主路已切 /sync 事件驱动（后端 sync watcher → SSE
   // room_message → WorkbenchPage 立即拉取）——本定时器降为 SSE 断连/
   // 事件丢失的保险（与后端 60s 兜底轮询同层语义）。
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（12s；chat tab 激活 &&
+ // v0.5.0-beta.14.6：旧定时器 → usePoller（12s；chat tab 激活 &&
   // 有房间 && onPoll 在场；!document.hidden 内置）。
   usePoller({
     fn: () => void onPoll?.(),
     intervalMs: 12000,
-    // v0.5.0-beta.14.14（UIPERF-T25）：布尔快照（非 chat 互切不重渲）。
+ // v0.5.0-beta.14.14：布尔快照（非 chat 互切不重渲）。
     active: useTabActive("chat") && !!room && !!onPoll,
   });
 
   // 桌面通知：新审批消息到达 → 浏览器 Notification（宿主 2.1 无 paw.notify；
   // 集群审批接宿主通知中心需上游插件审批源 PR，本版用浏览器通知兜底）。
-  // v0.5.0-beta.14.2（F4 陈旧审批通知）：双保险——
+ // v0.5.0-beta.14.2（陈旧审批通知）：双保险——
   // ① 挂载首批（历史消息）只登记不通知：重开插件打开聊天页不再对历史
-  //    审批（多半已批完/超时）弹浏览器通知；
+  // 审批（多半已批完/超时）弹浏览器通知；
   // ② 真正新到达的审批消息，弹前查 /room-approvals pending 集（event_id
-  //    在列才弹）——已审批/已超时的即使刚进消息流也不弹；查询失败=抑制
-  //    （宁可漏弹不弹陈旧；页内审批卡 + 通知中心不受影响）。
+  // 在列才弹）——已审批/已超时的即使刚进消息流也不弹；查询失败=抑制
+  // （宁可漏弹不弹陈旧；页内审批卡 + 通知中心不受影响）。
   const seenApprovalsRef = React.useRef<Set<string>>(new Set());
   const approvalsSeededRef = React.useRef(false);
   const pendingCacheRef = React.useRef<{ ts: number; ids: Set<string> } | null>(null);
-  // v0.5.0-beta.14.14（UIPERF-T26）：approval 解析缓存（event_id→boolean）——
+ // v0.5.0-beta.14.14：approval 解析缓存（event_id→boolean）——
   // 每次 messages 变化旧代码对**全部**消息重跑 parseApproval 正则（消息体
   // 可达数百行），流式期 O(n) 次白扫。Matrix 消息不可变（编辑走 m.replace
   // 新事件，不改旧 event_id 的 body），event_id 键安全；换房间时随
@@ -2299,7 +2299,7 @@ function RoomChat(props: RoomChatProps) {
     const pinned = Date.now() < pinnedUntilRef.current;
     if (atBottomRef.current || pinned) {
       atBottomRef.current = true;
-      // v0.5.0-beta.14.14（UIPERF-T26）：rAF 门（与 RO 同门）——同帧多条
+ // v0.5.0-beta.14.14：rAF 门（与 RO 同门）——同帧多条
       // 新消息只写一次 scrollTop，不再每条一次强制 reflow。
       scheduleFollow();
       setNewMsgCount(0);
@@ -2313,7 +2313,7 @@ function RoomChat(props: RoomChatProps) {
     }
   }, [messages, user_id, scheduleFollow]);
 
-  // v0.5.0-beta.13.6（「历史滚动没修」真根因·实证 harness 定位）：
+ // v0.5.0-beta.13.6（「历史滚动没修」根因·实证 harness 定位）：
   // loadMore 前插更早消息时保持滚动锚——旧版前插 50 条后视口被顶到
   // 最顶部，用户看到「历史滚不动/跳走」。检测=首条消息 id 变化（前插
   // 特征），锚=前插前记录的 (scrollTop, scrollHeight)；恢复式：
@@ -2348,7 +2348,7 @@ function RoomChat(props: RoomChatProps) {
     }
     if (el) scrollAnchorRef.current = { top: el.scrollTop, height: el.scrollHeight };
     prevFirstIdRef.current = firstId;
-    // v0.5.0-beta.14.14（UIPERF-T26）：deps 化——锚快照只在「数据变 /
+ // v0.5.0-beta.14.14：deps 化——锚快照只在「数据变 /
     // 换房」时才有意义（前插恢复读的就是上一次数据变更后的快照）；此前
     // 无 deps 每次渲染都读 scrollTop/scrollHeight（hover 等非数据渲染
     // 也强制布局读）。换房即使 messages 暂未更新也会经 room_id 触发
@@ -2362,26 +2362,26 @@ function RoomChat(props: RoomChatProps) {
     autoLoadRef.current = false;
   }, [messages]);
 
-  // v0.5.0-beta.13.17（13.16 用户反馈「不能滚到哪加载到哪」统一）：驻顶接力——
+ // v0.5.0-beta.13.17（13.16 不能滚到哪加载到哪统一）：驻顶接力——
   // 每次渲染后（每页落地 / 加载态变化 / 滚动 state 变化）重查顶部位置：
   // 仍在预载余量内且还有历史 → 续拉下一页；滚离即停（节奏=用户滚动节奏，
   // 滚动事件路径由 handleListScroll 覆盖，本 effect 覆盖「驻顶等历史」路径）。
-  // 普通聊天与「加载原消息」模式共用；后者的终止仍由父侧收口（进窗口→
+ // 普通聊天与「加载原消息」模式共用；后者的终止仍由父侧（进窗口→
   // 定位 / 触底 / 切房作废）。声明在锚 effect 之后：读到的是锚恢复后的
   // scrollTop（前插后位置被推离顶部 → 自然暂停，用户再上翻时接力）。
   React.useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || !hasMore || !onLoadMore) return;
-    // v0.5.0-beta.13.19（13.18 用户反馈「加载原消息加载不出来」）：**点引用条后
+ // v0.5.0-beta.13.19（13.18 加载原消息加载不出来）：**点引用条后
     // 自动后翻**（Element 同款）——旧版只在用户滚近顶部时才续拉，点了「加载
-    // 原消息」但停在原处 → 只前进一页就没了。终止由父侧收口：进窗口→定位 /
+ // 原消息」但停在原处 → 只前进一页就没了。终止由父侧：进窗口→定位 /
     // 触底 / 超量上限 / 切房作废 / 30s 停滞看门狗。
     if (pendingOriginal) {
       kickLoadMore();
       return;
     }
     if (nearTop(el)) kickLoadMore();
-    // v0.5.0-beta.14.14（UIPERF-T26）：deps 化——续拉的判据只依赖
+ // v0.5.0-beta.14.14：deps 化——续拉的判据只依赖
     // 「页落地（messages）/ 待回填目标 / 可载性」，hover 等非数据渲染
     // 不再重复读布局；滚动路径仍由 handleListScroll 覆盖（kickLoadMore
     // 内有 autoLoadRef 防重）。
@@ -2393,10 +2393,10 @@ function RoomChat(props: RoomChatProps) {
     prevMsgLenRef.current = 0;
     atBottomRef.current = true;
     pinnedUntilRef.current = 0;
-    // v0.5.0-beta.14.2（F4）：换房重置审批通知状态（新房间首批=只登记）。
+ // v0.5.0-beta.14.2：换房重置审批通知状态（新房间首批=只登记）。
     approvalsSeededRef.current = false;
     seenApprovalsRef.current.clear();
-    // v0.5.0-beta.14.14（UIPERF-T26）：审批解析缓存随房间清（防跨房残留）。
+ // v0.5.0-beta.14.14：审批解析缓存随房间清（防跨房残留）。
     approvalParseCacheRef.current.clear();
     pendingCacheRef.current = null;
     setNewMsgCount(0);
@@ -2407,21 +2407,21 @@ function RoomChat(props: RoomChatProps) {
     });
   }, [room?.room_id]);
 
-  // ── v0.5.0-beta.13.6（会话级 loop 状态显示位置定案）─────────────
- // 用户反馈：「会话级 loop 状态你需要查清楚应该在哪里显示」——
+ // ── v0.5.0-beta.13.6（会话级 loop 状态显示位置）─────────────
+ // 「会话级 loop 状态你需要查清楚应该在哪里显示」——
   // 正源=QwenPaw console 前端（LoopModeSelector，chat composer 内
   // 输入工具条）：idle 显所选模式；非 idle 换激活模式指示（图标+模式名
   // +状态词+Tooltip）。插件侧同位落地：1:1 Worker 房间输入区行左侧
   // chip，10s 轮询 /loops/status?session_id=matrix:{room_id}（matrix
   // channel resolve_session_id 实锤：房间会话 session_id=matrix:{room_id}）。
-  // 404 = 旧 runtime 无路由 → 恒不显（版本无关门，同 A2 门）。
+  // 404 = 旧 runtime 无路由 → 恒不显（版本无关门，同 门）。
   const roomWorkerName = React.useMemo(() => {
     if (!workerMxids || workerMxids.size !== 1) return undefined;
     const [mxid] = workerMxids;
     return memberWorkerNames?.[mxid];
   }, [workerMxids, memberWorkerNames]);
   const [roomLoop, setRoomLoop] = React.useState<WorkerLoopStatus | null>(null);
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s——任务书 E 表规范值；
+ // v0.5.0-beta.14.6：旧定时器 → usePoller（15s——任务书 E 表规范值；
   // 原码实况 10000，按任务书实施并已在报告列明）。换房时清陈旧 chip +
   // 立即拉；roomSeqRef 防旧房迟到响应（原码 dead flag 语义）。
   const roomId = room?.room_id;
@@ -2435,7 +2435,7 @@ function RoomChat(props: RoomChatProps) {
         if (roomSeqRef.current !== seq) return; // 旧房迟到响应丢弃
         // 非 idle 且有模式才显（QwenPaw：state != idle && activeMode）。
         const next = r && r.state !== "idle" && r.mode ? r : null;
-        // v0.5.0-beta.14.14（UIPERF-T26）：值未变 → 复用旧引用（C5b）——
+ // v0.5.0-beta.14.14：值未变 → 复用旧引用——
         // 15s 轮询每次拿**新对象**，直接 setRoomLoop 每 15s 击穿一次
         // RoomChat memo；state+mode 语义相等则保留 prev。
         setRoomLoop((prev) => (sameLoopStatus(prev, next) ? prev : next));
@@ -2453,7 +2453,7 @@ function RoomChat(props: RoomChatProps) {
   usePoller({
     fn: roomTick,
     intervalMs: 15000,
-    // v0.5.0-beta.14.14（UIPERF-T25）：布尔快照（非 chat 互切不重渲）。
+ // v0.5.0-beta.14.14：布尔快照（非 chat 互切不重渲）。
     active:
       useTabActive("chat") && !!roomWorkerName && !!roomId,
   });
@@ -2471,7 +2471,7 @@ function RoomChat(props: RoomChatProps) {
     ([mxid]) => mxid !== myUserId,
   );
   // 过滤空消息体且无附件的行（Tuwunel 历史里偶有无 body 的 m.text 事件）。
-  // v0.5.0-beta.14.14（UIPERF-T26）：memo——此前每次渲染（含 hover /
+ // v0.5.0-beta.14.14：memo——此前每次渲染（含 hover /
   // chatsTick 等非数据渲染）都重建数组 → threadGroups useMemo 缓存恒被
   // 击穿（O(n²) 每渲染重跑）。messages 未变则复用引用。
   const visibleMessages = React.useMemo(
@@ -2491,7 +2491,7 @@ function RoomChat(props: RoomChatProps) {
   const threadGroups = React.useMemo(() => {
     const tops: RoomMessage[] = [];
     const repliesOf = new Map<string, RoomMessage[]>();
-    // v0.5.0-beta.14.14（UIPERF-T26）：O(n²) `.some` → O(n) 建 Set + O(1)
+ // v0.5.0-beta.14.14：O(n²) `.some` → O(n) 建 Set + O(1)
     // 查询（语义等价：target 在窗口内即归线程）。n=300 时单次渲染从
     // ~9×10⁴ 比较降到 O(n)。
     const idSet = new Set(visibleMessages.map((m) => m.event_id));
@@ -2517,7 +2517,7 @@ function RoomChat(props: RoomChatProps) {
     return threadGroups.repliesOf.get(activeThread) || [];
   }, [activeThread, threadGroups]);
 
-  // v0.5.0-beta.14.14（UIPERF-T26）：useCallback——行内 SenderAvatar
+ // v0.5.0-beta.14.14：useCallback——行内 SenderAvatar
   // memo 依赖其引用稳定（普通函数每渲染新引用 → memo 全击穿）。
   const insertMention = React.useCallback(
     (mxid: string) => {
@@ -2530,7 +2530,7 @@ function RoomChat(props: RoomChatProps) {
     },
     [room],
   );
-  // v0.5.0-beta.14.14（UIPERF-T26）：头像行两个内联闭包 → 稳定引用
+ // v0.5.0-beta.14.14：头像行两个内联闭包 → 稳定引用
   // （SenderAvatar memo 的另一半）。
   const openDetailMxid = React.useCallback(
     (m: string) => setDetailMxid(m),
@@ -2690,7 +2690,7 @@ function RoomChat(props: RoomChatProps) {
     jumpToMessage,
   ]);
 
-  // v0.5.0-beta.14.2（F2）：话题面板占宽上报（打开/关闭/调宽/宽窄态变化
+ // v0.5.0-beta.14.2：话题面板占宽上报（打开/关闭/调宽/宽窄态变化
   // 均触发）→ 父组件重测分栏。inline 面板（isWide）才吃宽；drawer 模式
   // 是覆盖层不占布局宽，不上报。
   React.useEffect(() => {
@@ -2704,7 +2704,7 @@ function RoomChat(props: RoomChatProps) {
       style={{
         display: "flex",
         flexDirection: "column",
-        // v0.5.0-beta.13.4（滚动真根因重构）：撑满容器（Element 模型）——
+ // v0.5.0-beta.13.4（滚动根因重构）：撑满容器（Element 模型）——
         // 父链已全程定高：wb-main(shellH 实测) → 内容区 flex:1 min-0 →
         // Tabs/content-holder/content → tabpane-active(height:100% min-0)
         // → 分栏行 height:100% → 右栏 flex:1 min-0（窄屏模式 RoomChat 直挂
@@ -2735,8 +2735,8 @@ function RoomChat(props: RoomChatProps) {
           {room.name}
         </antd.Typography.Title>
         {/* v0.5.0-beta.12.4：Worker session 运行指示。
-            1:1 Worker 房间 = sessionState 三态（蓝呼吸/绿/灰）；
-            团队房间无 sessionState → 仅当任一 Worker 正在输入时显蓝点。 */}
+ 1:1 Worker 房间 = sessionState 三态（蓝呼吸/绿/灰）；
+ 团队房间无 sessionState → 仅当任一 Worker 正在输入时显蓝点。 */}
         {(() => {
           const eff: WorkerSessionState | undefined =
             sessionState ??
@@ -2747,7 +2747,7 @@ function RoomChat(props: RoomChatProps) {
           return eff ? <WorkerSessionDot state={eff} /> : null;
         })()}
         {/* v0.5.0-beta.12：1:1 Worker 房间头部双徽章（phase + runtime，
-            数据=Worker CR 字段，WorkbenchPage 按 room_id 匹配注入）。 */}
+ 数据=Worker CR 字段，WorkbenchPage 按 room_id 匹配注入）。 */}
         {workerBadge?.phase ? (
           <antd.Tag
             color={
@@ -2825,10 +2825,10 @@ function RoomChat(props: RoomChatProps) {
           {tr("搜索")}
         </button>
         {/* v0.5.0-beta.12 ：房间操作（Element 同款能力：静音 + 退出房间）。
-            静音=m.muted_room account data（跨客户端状态源；插件通知引擎
-            sync_watcher 同数据源消费，静音房间不再触发 @/任务通知）。
-            退出=POST /rooms/{id}/leave——scope 房间会被 Controller 调和器
-            重新邀请（确认文案提示）。 */}
+ 静音=m.muted_room account data（跨客户端状态源；插件通知引擎
+ sync_watcher 同数据源消费，静音房间不再触发 @/任务通知）。
+ 退出=POST /rooms/{id}/leave——scope 房间会被 Controller 调和器
+ 重新邀请（确认文案提示）。 */}
         {onToggleMute || onLeaveRoom ? (
           <antd.Dropdown
             trigger={["click"]}
@@ -2898,8 +2898,8 @@ function RoomChat(props: RoomChatProps) {
           title={tr("隐藏/显示 Agent 工具调用消息（read_file 等）")}
         />
         <div style={{ flex: 1 }} />
- {/* 定案（模仿 dashboard 成员列表）：标题栏右侧成员头像条——
-            Worker 角落状态灯 + 多出来 +N 点击展开；窄屏换行到标题栏下面。 */}
+ {/* （模仿 dashboard 成员列表）：标题栏右侧成员头像条——
+ Worker 角落状态灯 + 多出来 +N 点击展开；窄屏换行到标题栏下面。 */}
         <MemberStrip
           room={room}
           workerSessionByMxid={workerSessionByMxid}
@@ -2939,12 +2939,12 @@ function RoomChat(props: RoomChatProps) {
           }}
         >
           {/* 消息流（v0.5.0-beta.13.2：relative wrapper = 一键置底按钮锚点）。
-              v0.5.0-beta.13.3：minHeight: 0 是 flex 高度链必配项（教训 #615：
-              高度链沿链验证到容器属性）——overflow 可见的中间层 flex 子项
-              自动最小高度 = 内容最小高度（子列表的 overflow:auto 钳制不会
-              穿透传递），缺它 wrapper 被 300 条消息撑到 7500+px、列表失去
- 独立滚动 → 滚轮冒泡成整页滚动 + 旧消息滚出视野（用户反馈回归，
-              浏览器 A/B 实测证实；话题面板 wrapper 本就带此值）。 */}
+ v0.5.0-beta.13.3：minHeight: 0 是 flex 高度链必配项（教训 #615：
+ 高度链沿链验证到容器属性）——overflow 可见的中间层 flex 子项
+ 自动最小高度 = 内容最小高度（子列表的 overflow:auto 钳制不会
+ 穿透传递），缺它 wrapper 被 300 条消息撑到 7500+px、列表失去
+ 独立滚动 → 滚轮冒泡成整页滚动 + 旧消息滚出视野（回归，
+ 浏览器 A/B 实测证实；话题面板 wrapper 本就带此值）。 */}
           <div
             style={{
               position: "relative",
@@ -3107,7 +3107,7 @@ function RoomChat(props: RoomChatProps) {
                     </div>
                   ) : null}
                   {/* v0.5.0-beta.13.6：日期分隔 Element 同款居中胶囊
-                      （旧 antd.Divider 通栏线太散，与扁平消息行不搭）。 */}
+ （旧 antd.Divider 通栏线太散，与扁平消息行不搭）。 */}
                   {sep ? (
                     <div
                       style={{
@@ -3203,7 +3203,7 @@ function RoomChat(props: RoomChatProps) {
                             onDm={onDm}
                             workerName={memberWorkerNames?.[msg.sender]}
                             onDetail={openDetailMxid}
- // （定案：灯在头像角落，不再名字旁）：
+ // （灯在头像角落，不再名字旁）：
                             // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
                             sessionState={workerSessionByMxid?.[msg.sender]}
                             onOpenChats={openChatsWorker}
@@ -3244,7 +3244,7 @@ function RoomChat(props: RoomChatProps) {
                           messages={visibleMessages}
                           // handleSearchJump（而非 jumpToMessage）：原消息不在
                           // 已加载窗口时自动拉 /context 定位区，不再静默无反应。
-                          // v0.5.0-beta.14.14（UIPERF-T26）：直接传稳定引用
+                          // v0.5.0-beta.14.14：直接传稳定引用
                           // （useCallback），不再每渲染包一层内联箭头。
                           onJump={handleSearchJump}
                           onLoadOriginal={onLoadOriginal}
@@ -3291,8 +3291,8 @@ function RoomChat(props: RoomChatProps) {
                           onReact={onReact}
                         />
                         {/* hover 操作条：只在消息内容行 hover 显示（头像/名字行不触发）。
-                            工具条放在本 div 内（DOM 后代）：鼠标移到工具条上不触发
-                            onMouseLeave，消除"闪一下"；absolute 相对行 div 定位。 */}
+ 工具条放在本 div 内（DOM 后代）：鼠标移到工具条上不触发
+ onMouseLeave，消除"闪一下"；absolute 相对行 div 定位。 */}
                         {hoveredId === msg.event_id && !msg.pending && !msg.failed ? (
                         <div
                           style={{
@@ -3358,8 +3358,8 @@ function RoomChat(props: RoomChatProps) {
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><TodoIcon size={12} /> {tr("复制")}</span>
                             </antd.Button>
                             {/* v0.5.0-beta.12 ：编辑/撤回自己的消息（Element 同款；
-                                Matrix 事件不可变——编辑=m.replace 标注替换，
-                                撤回=redaction 红条，他人仅见「已撤回」）。 */}
+ Matrix 事件不可变——编辑=m.replace 标注替换，
+ 撤回=redaction 红条，他人仅见「已撤回」）。 */}
                             {mine && !msg.redacted ? (
                               <>
                                 <antd.Button
@@ -3406,7 +3406,7 @@ function RoomChat(props: RoomChatProps) {
                     </div>
                   </div>
                   {/* 线程摘要（Element ThreadSummary 同款：N 条回复 + 最后回复头像/名字/内容预览，
-                      常显缩进；点击在右侧面板/抽屉打开线程） */}
+ 常显缩进；点击在右侧面板/抽屉打开线程） */}
                   {replies.length > 0 ? (
                     <div style={{ marginLeft: mine ? 0 : 44, marginTop: 3 }}>
                       <div
@@ -3498,7 +3498,7 @@ function RoomChat(props: RoomChatProps) {
       </div>
         {showJumpBottom ? (
           /* 一键置底（Element 同款）：悬浮右下，上翻时出现；
-             「N 条新消息」徽章=不在底部期间到达的非本人消息数。 */
+ 「N 条新消息」徽章=不在底部期间到达的非本人消息数。 */
           <div
             style={{
               position: "absolute",
@@ -3550,7 +3550,7 @@ function RoomChat(props: RoomChatProps) {
           </div>
 
       {/* 搜索跳转定位区（修复）：目标事件不在已加载窗口时，展示
-          /context 前后文片段 + 高亮目标 + 关闭；点击结果后滚动至此。 */}
+ /context 前后文片段 + 高亮目标 + 关闭；点击结果后滚动至此。 */}
       {jumpContext ? (
         <div
           ref={jumpContextRef}
@@ -3656,8 +3656,8 @@ function RoomChat(props: RoomChatProps) {
         }}
       >
         {/* v0.5.0-beta.13.21（AgentActivityTrack）：composer 上方
-            任务进度 + HITL 内联轨（数据=当前房间项目 workflow，与
-            liveWorkflows 同正源，零新请求；无匹配/终态自隐）。 */}
+ 任务进度 + HITL 内联轨（数据=当前房间项目 workflow，与
+ liveWorkflows 同正源，零新请求；无匹配/终态自隐）。 */}
         <AgentActivityTrack
           project={activityProject ?? null}
           onOpenProject={onOpenProject}
@@ -3697,8 +3697,8 @@ function RoomChat(props: RoomChatProps) {
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
-              border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 40%, transparent)",
+ background: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
+ border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 40%, transparent)",
               borderRadius: 8,
               padding: "6px 10px",
               fontSize: 13,
@@ -3865,9 +3865,9 @@ function RoomChat(props: RoomChatProps) {
             </div>
           </div>
           {/* v0.5.0-beta.13.6：操作行移进圆角容器（Element：与输入框同
-              块）——loop 状态 chip 居左（QwenPaw LoopModeSelector 同位），
-              表情/附件/发送居右。chip 仅 1:1 Worker 房间且 Worker 有激活
-              loop 时出现（轮询 10s；404 旧 runtime 恒不显）。 */}
+ 块）——loop 状态 chip 居左（QwenPaw LoopModeSelector 同位），
+ 表情/附件/发送居右。chip 仅 1:1 Worker 房间且 Worker 有激活
+ loop 时出现（轮询 10s；404 旧 runtime 恒不显）。 */}
           <div
             style={{
               display: "flex",
@@ -4052,7 +4052,7 @@ function RoomChat(props: RoomChatProps) {
                 cursor: "col-resize",
                 zIndex: 6,
                 background: dragging
-                  ? "color-mix(in srgb, var(--app-accent, #FF7F16) 35%, transparent)"
+ ? "color-mix(in srgb, var(--app-accent, #FF7F16) 35%, transparent)"
                   : "transparent",
                 transition: "background 0.15s",
                 borderLeft: `1px solid ${t.border}`,
@@ -4190,7 +4190,7 @@ function RoomChat(props: RoomChatProps) {
         </div>
       </antd.Drawer>
 
-      {/*  重命名房间（Element 同款）+ 权限诊断 */}
+      {/* 重命名房间（Element 同款）+ 权限诊断 */}
       <antd.Modal
         title={tr("重命名房间")}
         open={renameOpen}
@@ -4262,7 +4262,7 @@ function RoomChat(props: RoomChatProps) {
       ) : null}
 
  {/* v0.5.0-beta.13.1（入口迁移）：头像 → Worker 会话抽屉（只读，
-          #1295 端点 + 版本门；内容=会话列表 → agent 上下文完整 session）。 */}
+ #1295 端点 + 版本门；内容=会话列表 → agent 上下文完整 session）。 */}
       {chatsWorker ? (
         // v0.5.0-beta.13.4：QwenPaw 会话口径五列表需要更宽（560→620）。
         <antd.Drawer
@@ -4283,6 +4283,6 @@ function RoomChat(props: RoomChatProps) {
   );
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(RoomChat);

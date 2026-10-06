@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.13（UIPERF-T20·屎山治理）ctl_client 单一实现单测。
+"""v0.5.0-beta.14.13（·屎山治理）ctl_client 单一实现单测。
 
 去重目标：「ordered 地址 failover」此前在 router._ctl_json（超集闭包）与
 worker_status._ctl_get（GET 版）双实现，现唯一实现在 ctl_client.ctl_json；
@@ -8,10 +8,10 @@ worker_status._ctl_get（GET 版）双实现，现唯一实现在 ctl_client.ctl
 覆盖：
 
 1. ``worker_status._ctl_get`` 委派——monkeypatch ``ctl_client.ctl_json``
-   （计数 + 返回哨兵）→ 调 ``_ctl_get(url, token)`` → 断言收到
-   ("GET", url, token)、无 body，且原样返回哨兵；
+ （计数 + 返回哨兵）→ 调 ``_ctl_get(url, token)`` → 断言收到
+ ("GET", url, token)、无 body，且原样返回哨兵；
 2. router 的 ``_ctl_json`` 闭包已退化为薄包装——源码级断言包装体委派
-   ``ctl_client.ctl_json``、无旧 failover 实现体残留（防回归为双实现）。
+ ``ctl_client.ctl_json``、无旧 failover 实现体残留（防回归为双实现）。
 
 failover 语义回归由既有套件覆盖（168 全绿）：既有测试经 _ctl_get /
 _KB_PREWARM_HOOKS 注入点打桩，不依赖旧实现体存在。不碰真实网络。

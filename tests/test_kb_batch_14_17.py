@@ -8,18 +8,18 @@ graph N 次逐文件读 + merged N×全量 graph），不是容器侧扫描。�
 收敛：
 
 K1 files-batch：graph 冷读 N 次逐文件往返 → 单次 exec 分帧批读
-   （``===FRAME:<size>:<path>`` + 恰好 size 字节；内容含 ``===FRAME:``
-   字样不串帧；≤200 路径；1.8MB 预算 → truncated；敏感 → missing；
-   通道挂 → 502，调用方 graph compute 区分并回退逐文件）。
+ （``===FRAME:<size>:<path>`` + 恰好 size 字节；内容含 ``===FRAME:``
+ 字样不串帧；≤200 路径；1.8MB 预算 → truncated；敏感 → missing；
+ 通道挂 → 502，调用方 graph compute 区分并回退逐文件）。
 K2 tree 合并探测：3 find + 6 档案 stat → 1 exec（``###SECTION:`` 标记；
-   无收尾标记 / 通道挂 → 原双通道 fallback，输出逐字段一致）。
+ 无收尾标记 / 通道挂 → 原双通道 fallback，输出逐字段一致）。
 K3 merged 缓存：/kb/graph/merged 30s 内存 + 磁盘 SWR（键
-   ``merged-<sorted(agents) 逗号连>``；冷算抽 kb_graph_merged_compute，
-   供端点与后台单飞复用）。
+ ``merged-<sorted(agents) 逗号连>``；冷算抽 kb_graph_merged_compute，
+ 供端点与后台单飞复用）。
 K5 file 缓存：/kb/{agent}/file 30s 内存 + 磁盘 SWR（键
-   ``file-<agent>-<path>``；只缓存文本类返回——415 二进制 / 413 超限
-   HTTPException 终止天然不缓存；WSF 兜底 source:"controller" 在
-   _store_kb 单点收口不缓存，14.7 不变式）。
+ ``file-<agent>-<path>``；只缓存文本类返回——415 二进制 / 413 超限
+ HTTPException 终止天然不缓存；WSF 兜底 source:"controller" 在
+ _store_kb 单点收口不缓存，14.7 不变式）。
 
 隔离纪律：磁盘缓存目录由 conftest autouse fixture 重定向到本测 tmp
 （不碰真实 secret 目录）；Docker 通道全换假 GatedAsyncClient（与
@@ -56,7 +56,7 @@ def _frame(payload: bytes, stream: int = 1) -> bytes:
 
 def _tar(root: str, members: dict) -> bytes:
     """构造 Docker archive 形态 tar：root=所请求路径 basename 前缀。
-    members={相对路径: 字节|None(目录)}；rel="" → 单文件档案（full=root）。"""
+ members={相对路径: 字节|None(目录)}；rel="" → 单文件档案（full=root）。"""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tf:
         for rel, payload in members.items():
@@ -156,8 +156,8 @@ class _FakeCompute:
 def _seed_disk(key: str, ts: float, payload: dict) -> None:
     """直接向隔离磁盘目录 seed 一条旧缓存（绕过 save 的时间戳）。
 
-    注意：必须经 ``kb_cache._file_for`` 落路径——merged 键含逗号
-    （a1,a2），_file_for 会把特殊字符替换为 _（与 load/save 同源）。"""
+ 注意：必须经 ``kb_cache._file_for`` 落路径——merged 键含逗号
+ （a1,a2），_file_for 会把特殊字符替换为 _（与 load/save 同源）。"""
     p = kb_cache._file_for(key)
     p.write_text(json.dumps({"ts": ts, "payload": payload}),
                  encoding="utf-8")
@@ -165,8 +165,8 @@ def _seed_disk(key: str, ts: float, payload: dict) -> None:
 
 def _wait_disk(key: str, older_than: float, timeout: float = 5.0):
     """轮询等磁盘缓存出现新值（ts > older_than）。后台刷新是
-    fire-and-forget 任务（portal 循环在 with 块内持续运转），轮询等
-    ts 更新避免「事件已 set 但 _store_kb 尚未写盘」的竞态。"""
+ fire-and-forget 任务（portal 循环在 with 块内持续运转），轮询等
+ ts 更新避免「事件已 set 但 _store_kb 尚未写盘」的竞态。"""
     deadline = time.time() + timeout
     while True:
         hit = kb_cache.load(key)
@@ -180,7 +180,7 @@ def _wait_disk(key: str, older_than: float, timeout: float = 5.0):
 @pytest.fixture
 def client(monkeypatch):
     """TestClient（with 上下文 = portal 循环跨请求存活）+ 最小配置 +
-    假 GatedAsyncClient（Docker 通道零真实拨号）。"""
+ 假 GatedAsyncClient（Docker 通道零真实拨号）。"""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -245,7 +245,7 @@ BATCH_OUT = (
 
 def test_files_batch_framing_missing_and_limits(client):
     """分帧正确（对抗内容不串帧）/ 缺失进 missing / .. 与绝对路径拒绝 /
-    敏感进 missing / 超 200 截断 / 全敏感不发 exec。"""
+ 敏感进 missing / 超 200 截断 / 全敏感不发 exec。"""
     tc = client
     _FakeClient.head_spec = {f"archive?path={WS}": 200}
     _FakeClient.exec_spec = [("budget = 1887436", BATCH_OUT)]
@@ -356,7 +356,7 @@ def _exec_find_spec():
 
 def test_tree_merged_probe_single_exec_no_archive(client):
     """合并探测成功：1 exec（3 find + 6 档案 stat 段）、零 archive
-    GET（④ stat 段替代 6 次单文件探测）、输出四分类正确。"""
+ GET（④ stat 段替代 6 次单文件探测）、输出四分类正确。"""
     tc = client
     _FakeClient.head_spec = {f"archive?path={WS}": 200}
     _FakeClient.exec_spec = [("###SECTION:end", MERGED_OUT)]
@@ -380,8 +380,8 @@ def test_tree_merged_probe_single_exec_no_archive(client):
 
 def test_tree_merged_probe_fallback_equivalence(client):
     """合并探测无收尾标记（模拟 sh 缺失 / find 中途挂）→ 原双通道
-    fallback 整段照跑：输出与合并模式逐字段一致（同一 EXPECTED_* 常量）；
-    ④ 档案单文件 archive 探测恢复（5 缺失 404，既有行为）。"""
+ fallback 整段照跑：输出与合并模式逐字段一致（同一 EXPECTED_* 常量）；
+ ④ 档案单文件 archive 探测恢复（5 缺失 404，既有行为）。"""
     tc = client
     _FakeClient.head_spec = {f"archive?path={WS}": 200}
     _FakeClient.exec_spec = _exec_find_spec()
@@ -399,7 +399,7 @@ def test_tree_merged_probe_fallback_equivalence(client):
 
 def test_tree_merged_probe_exec_down_tar_fallback(client):
     """/exec 500（通道挂）→ 合并/主通道全 None → tar 兜底整段照跑：
-    顶层只返一层、子树全递归（与 13.9 双通道护栏同语义）。"""
+ 顶层只返一层、子树全递归（与 13.9 双通道护栏同语义）。"""
     tc = client
     _FakeClient.exec_create_status = 500
     # 工作区解析仍走 HEAD 探测（与 exec 通道独立）——须给 200。
@@ -440,8 +440,8 @@ def test_tree_merged_probe_exec_down_tar_fallback(client):
 
 def test_merged_cache_swr_single_flight(client, monkeypatch):
     """merged 端点 SWR：冷算一次（计算体只跑一次）→ 内存命中不重算 →
-    磁盘 fresh 命中（cached/age，不刷新）→ 磁盘 stale 秒回旧值 +
-    后台单飞刷新（磁盘更新为新值）。键 = sorted(agents) 逗号连。"""
+ 磁盘 fresh 命中（cached/age，不刷新）→ 磁盘 stale 秒回旧值 +
+ 后台单飞刷新（磁盘更新为新值）。键 = sorted(agents) 逗号连。"""
     tc = client
     payload = {
         "nodes": [
@@ -503,7 +503,7 @@ def test_merged_cache_swr_single_flight(client, monkeypatch):
 
 def test_file_cache_text_hit_binary_not_cached(client):
     """file 端点 SWR（manager agent，免 WSF 兜底分支）：文本类二次命中
-    不重读（archive GET 计数不变）；二进制 415 分支不缓存（二次仍重读）。"""
+ 不重读（archive GET 计数不变）；二进制 415 分支不缓存（二次仍重读）。"""
     tc = client
     text_content = b"# Agents\nhello kb\n"
     bin_content = b"\x00\x01\xff\xfe"  # 非法 UTF-8 → 415

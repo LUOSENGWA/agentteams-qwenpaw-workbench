@@ -32,15 +32,15 @@ def _team_lines(parsed: Dict[str, Any], limit: int = 8) -> str:
 async def agentteams_qwenpaw_workbench_status(scope: str = "overview") -> str:
     """查询当前登录用户的 AgentTeams 团队状态（零 LLM 部署下为人工/agent 通用查询口）。
 
-    数据 = Matrix /sync 会话快照（与工作台「团队管理」同源，60s 缓存之外的直连查询）。
+ 数据 = Matrix /sync 会话快照（与工作台「团队管理」同源，60s 缓存之外的直连查询）。
 
-    Args:
-        scope: ``"overview"``（默认，团队/房间/Worker 摘要）| ``"rooms"``
-            （全部房间含未读与最后消息）| ``"teams"``（Worker 树明细）。
+ Args:
+ scope: ``"overview"``（默认，团队/房间/Worker 摘要）| ``"rooms"``
+ （全部房间含未读与最后消息）| ``"teams"``（Worker 树明细）。
 
-    Returns:
-        纯文本摘要（供 agent 直接引用；失败时返回带原因的错误文本）。
-    """
+ Returns:
+ 纯文本摘要（供 agent 直接引用；失败时返回带原因的错误文本）。
+ """
     from agentteams_connector import config as config_mod
     from agentteams_connector import matrix_client, router as router_mod
 

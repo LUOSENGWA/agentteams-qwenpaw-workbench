@@ -143,15 +143,15 @@ const DICT: Record<string, { en: string }> = {
   "生效中": { en: "active" },
   // ── v0.5.0-beta.14.1: 地址手动固定档（address_mode）+ 事件流连接态（S1-4）──
   "地址模式（内网/外网切换策略）": { en: "Address mode (LAN/WAN switching)" },
-  // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚开关。
-  // v0.5.0-beta.14.12（UIPERF-T18）：特效三档（取代旧 console_calm 开关键）。
+ // v0.5.0-beta.14.8：控制台特效安抚开关。
+ // v0.5.0-beta.14.12：特效三档（取代旧 console_calm 开关键）。
   "控制台特效质量": { en: "Console effects quality" },
   "轻量（默认：动画保留，模糊半径封顶，省 GPU）": { en: "Light (default: animations kept, blur radius capped, GPU-friendly)" },
   "关闭特效（最省电：动画与模糊全停）": { en: "Off (most power-saving: all animations and blur stopped)" },
   "完整特效（上游原样，最费 GPU）": { en: "Full (upstream as-is, heaviest GPU)" },
   "特效档已保存并即时生效": { en: "Effects tier saved and applied immediately" },
   "特效档保存失败，请重试": { en: "Failed to save effects tier; please retry" },
-  // v0.5.0-beta.14.7（UIPERF-P3）：Higress 地址并入地址配置区——新增分节标题键。
+ // v0.5.0-beta.14.7：Higress 地址并入地址配置区——新增分节标题键。
   "Higress Console 地址（模型管理面；内网/外网按序降级）": { en: "Higress Console addresses (model admin plane; LAN/WAN tried in order)" },
   // v0.5.0-beta.14.4（设置页 UI 整理：原文收编 i18n + 分节标题）
   "内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到最快可达的一条，外网/内网切换自动识别。": { en: "LAN and WAN are two paths to the same server (LAN IP at home, public domain away) — no manual switching: the plugin re-tests all addresses every 2 minutes (latency) and keeps the fastest reachable one." },
@@ -169,7 +169,7 @@ const DICT: Record<string, { en: string }> = {
   "固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
     en: "In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
   },
-  // v0.5.0-beta.14.11（用户反馈）：地址模式变更即自动落盘——替换 14.7 的
+ // v0.5.0-beta.14.11：地址模式变更即自动落盘——替换 14.7 的
   // 「需点保存生效」提示串，并新增保存成功/失败两条 toast 串。
   "切换即自动保存并生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
     en: "Switching auto-saves and takes effect immediately. In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
@@ -178,14 +178,14 @@ const DICT: Record<string, { en: string }> = {
   "地址模式保存失败，请重试": { en: "Failed to save address mode; please retry" },
   "固定": { en: "Pinned" },
   // ── v0.5.0-beta.14.3: 地址覆盖凭据（公网 Basic 门 / API key 门）──
-  // v0.5.0-beta.14.17（C1）：「none」label 加清除语义（旧版 label 已退役）。
+  // v0.5.0-beta.14.17：「none」label 加清除语义（旧版 label 已退役）。
   "使用服务自身认证（内网默认，留空即用；选此项=清除该地址已存凭据）": { en: "Use the service's own auth (LAN default — leave empty; picking this clears saved credentials for this address)" },
   "Basic 认证（公网网关 Basic 门，如 Caddy）": { en: "Basic auth (public gateway Basic gate, e.g. Caddy)" },
   "API Key（Bearer，公网网关 API key 门，如 Higress）": { en: "API key (Bearer; public gateway key gate, e.g. Higress)" },
   "API Key（Bearer token）": { en: "API key (Bearer token)" },
   "用户名（与网关一致）": { en: "Username (matching the gateway)" },
   "密码（与网关一致）": { en: "Password (matching the gateway)" },
-  // ── v0.5.0-beta.14.17（C1 凭据记忆重做）：空框=保持不变 占位 + 状态总览 ──
+  // ── v0.5.0-beta.14.17（凭据记忆重做）：空框=保持不变 占位 + 状态总览 ──
   "密码（已保存 · 留空保持不变）": { en: "Password (saved — leave blank to keep)" },
   "API Key（已保存 · 留空保持不变）": { en: "API key (saved — leave blank to keep)" },
   "Controller token": { en: "Controller token" },
@@ -318,7 +318,7 @@ const DICT: Record<string, { en: string }> = {
   "团队群（{n}）": { en: "Group chat ({n})" },
   "下次打开插件时先看到哪里": { en: "What you see first when the plugin opens next time" },
   "暂无工作流事件": { en: "No workflow events" },
-  // v0.5.0-beta.14.12（UIPERF-T16b）：工作流首载状态机（冷启动空快照不渲染
+  // v0.5.0-beta.14.12（b）：工作流首载状态机（冷启动空快照不渲染
   // 空表格；3s 自动重试 ≤180s，超时留手动重试提示）。
   "首次聚合中（自动刷新）…": {
     en: "First aggregation in progress (auto-refreshing)…",
@@ -365,7 +365,7 @@ const DICT: Record<string, { en: string }> = {
   "Rubric 提示词": { en: "Rubric prompt" },
   "最大干预次数": { en: "Max interventions" },
   "Goal 模式 · 内置参数": { en: "Goal mode · built-in params" },
-  // v0.5.0-beta.13.8（13.7 用户反馈「token 要分清词元/令牌」）：LLM 的 token =
+  // v0.5.0-beta.13.8（13.7 token 要分清词元/令牌）：LLM 的 token =
   // 「词元」（计量单位）；「令牌」仅用于认证凭据（CLI/admin token）语境。
   "词元预算": { en: "Token budget" },
   "Mission 模式 · 内置参数": { en: "Mission mode · built-in params" },
@@ -564,7 +564,7 @@ const DICT: Record<string, { en: string }> = {
     en: "Check teams to grant/revoke. Changes stay local until you generate the command and run it on the Controller host (reconcile takes ~5 min to move the employee between team rooms). After upstream PR P-HUMANS-PUT merges, this becomes one-click save.",
   },
   "团队成员（workerMembers）——保存 = 全量替换成员列表": { en: "Team members (workerMembers) — saving replaces the whole list" },
-  // v0.5.0-beta.13.24（F6）：团队配置窗口批量改模型（leader/workers 两批）。
+  // v0.5.0-beta.13.24：团队配置窗口批量改模型（leader/workers 两批）。
   "批量设置模型（选中值直接刷到对应角色全部成员；留空 = 不改）": { en: "Batch-set model (the selected value is painted onto all members of the matching role; blank = no change)" },
   "Leader 批（{n} 人）": { en: "Leader batch ({n})" },
   "Workers 批（{n} 人）": { en: "Workers batch ({n})" },
@@ -585,7 +585,7 @@ const DICT: Record<string, { en: string }> = {
     en: "Paste the server /var/run/agentteams/cli-token file content (one-time, remembered after saving)",
   },
   "Matrix 登录（L2，默认）": { en: "Matrix login (L2, default)" },
-  // ── v0.5.0-beta.14.18（14.17 用户反馈批：认证语义拆分）──
+  // ── v0.5.0-beta.14.18（14.17 批：认证语义拆分）──
   "① Controller 认证（管理面：CRD/全量视图/日志）": {
     en: "① Controller auth (admin plane: CRD / full view / logs)",
   },
@@ -1545,10 +1545,10 @@ const DICT: Record<string, { en: string }> = {
 
   // ── L1 双轨（Controller token / Higress Console 账号，两块独立）+ 网关 alias + 运行时 ──
   "两块凭据互相独立、各管一个系统（不是二选一）：": { en: "Two independent credentials, each for its own system (not an either/or):" },
-  /* v0.5.0-beta.12（用户反馈：controller 与 Higress 文案混淆检查）：
-     术语纠偏——「Controller 数据面」是 Higress 的平面词汇误用到 Controller 上
-     （Controller 只有管理 API，没有数据面；数据面=Higress 6867）；「Console
-     会话」补 Higress 前缀防与 QwenPaw console 混淆。 */
+  /* v0.5.0-beta.12（controller 与 Higress 文案混淆检查）：
+ 术语纠偏——「Controller 数据面」是 Higress 的平面词汇误用到 Controller 上
+ （Controller 只有管理 API，没有数据面；数据面=Higress 6867）；「Console
+ 会话」补 Higress 前缀防与 QwenPaw console 混淆。 */
   "① Controller 管理员 token——Controller 管理 API 的唯一凭证（CRD 管理/全量视图）。Controller 只认 SA token 与 Matrix token：Matrix 路径只放行 level-2/3（只读），level-1（admin）明确 401，且无任何密码登录端点——dashboard 能「admin 账密进门」同样是部署期把该 token 注入服务端 env，浏览器用户从不输入它。": { en: "① Controller admin token — the ONLY credential for the Controller admin API (CRD management / full views). The Controller accepts only SA tokens and Matrix tokens: the Matrix path admits level-2/3 (read-only) and explicitly rejects level-1 (admin) with 401, and there is no password login endpoint at all — the dashboard's \"admin account + password gets you in\" works because its deployer injected this token into the server env; browser users never type it." },
   "② Higress 账号+密码——Higress Console 的账号（模型 alias 面，独立系统）。它恰好与 Matrix @admin 同源（部署时同一对账密注册两处），但不是 Controller 凭证、也不改变 Controller 权限。": { en: "② Higress account + password — the account of Higress Console (model-alias side, a separate system). It happens to be the same pair as the Matrix @admin account (both are seeded from the same credentials at deploy time), but it is NOT a Controller credential and does not change Controller permissions." },
   "① Controller 管理员 token": { en: "① Controller admin token" },
@@ -1571,15 +1571,15 @@ const DICT: Record<string, { en: string }> = {
   "运行时": { en: "Runtime" },
   "说明": { en: "Description" },
   // ── v0.5.0-beta.12（token 文件 / 网关探测 / 运行时徽章 /）──
-  // v0.5.0-beta.12: token 文件路径删除（用户反馈：保留命令形式）——
+  // v0.5.0-beta.12: token 文件路径删除（保留命令形式）——
   // 获取命令 + 粘贴 + env。
   "获取命令（在 Controller 宿主机执行，复制输出粘贴到下方）：": { en: "Fetch command (run on the Controller host, copy the output and paste it below):" },
   "非 docker 部署：部署期给 QwenPaw 进程注入环境变量 AGENTTEAMS_CONTROLLER_TOKEN（注入值优先于粘贴值需重贴才覆盖）。": { en: "Non-docker deployments: inject the AGENTTEAMS_CONTROLLER_TOKEN env var into the QwenPaw process at deploy time (pasted values take precedence over env)." },
   "粘贴 token 内容（见上方获取命令；部署期注入 env 时留空即可）": { en: "Paste the token content (see the fetch command above; leave empty when env-injected)" },
   "当前使用 QwenPaw 宿主环境变量 AGENTTEAMS_CONTROLLER_TOKEN（手动粘贴的值优先。）": { en: "Using the QwenPaw host env var AGENTTEAMS_CONTROLLER_TOKEN (a manually pasted value takes precedence.)" },
   "token 内容含非法字符（复制时混入不可见字符）——重新复制纯 ASCII 内容，或改用 env 注入。": { en: "Token contains invalid characters (invisible chars mixed in when copying) — re-copy pure ASCII content, or use env injection." },
-  /* v0.5.0-beta.13.13：用户反馈六件新增键（工作流中断横幅任务定位 /
-     引用条按需加载 / 项目文件面板重构 / 下载反馈）。 */
+  /* v0.5.0-beta.13.13：六件新增键（工作流中断横幅任务定位 /
+ 引用条按需加载 / 项目文件面板重构 / 下载反馈）。 */
   "任务 {n}": { en: "Task {n}" },
   "正在加载…": { en: "Loading…" },
   "加载原消息": { en: "Load original message" },
@@ -1594,11 +1594,11 @@ const DICT: Record<string, { en: string }> = {
   "Higress 地址·内网（Console 管理面；宿主端口部署时自选，默认 18001）": { en: "Higress URL · LAN (Console admin plane; host port chosen at deploy time, default 18001)" },
   "Higress 地址·外网（公网入口，可留空；内网不可达时自动降级）": { en: "Higress URL · WAN (public entry, optional; auto-fails over when LAN is unreachable)" },
   /* v0.5.0-beta.12：L669 此前无 en 条目（en 界面显示中文）——补条目，
-     并修「模型网关都依赖它」= Controller/Higress 混淆（模型网关=Higress
-     数据面，与 Controller 地址无关）。 */
+ 并修「模型网关都依赖它」= Controller/Higress 混淆（模型网关=Higress
+ 数据面，与 Controller 地址无关）。 */
   "Controller 地址（L1/CRD 管理/Worker/Team 状态依赖；不填仅房间侧功能）": { en: "Controller URL (L1 / CRD management / Worker & Team status depend on it; without it only room-side features)" },
-  "token 模式无 Higress Console 会话——Higress alias 层当前不可见。配置 admin 账号密码后，「Higress alias（路由可解析）」与「Higress 内置 alias」分组将出现在模型下拉中；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。": { en: "Token mode has no Higress Console session — the Higress alias layer is currently hidden. After configuring the admin account + password, the 'Higress alias (route resolvable)' and 'Higress built-in alias' groups will appear in the model dropdown; or wait for the P1-3 upstream PR (controller_token directly to Higress Console) to merge." },
-  "token 模式无 Higress Console 会话——「Higress alias」分组当前不可见。配置 admin 账号密码后可读；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。": { en: "Token mode has no Higress Console session — the 'Higress alias' group is currently hidden. Configure the admin account + password to enable it; or wait for the P1-3 upstream PR (controller_token directly to Higress Console) to merge." },
+  "token 模式无 Higress Console 会话——Higress alias 层当前不可见。配置 admin 账号密码后，「Higress alias（路由可解析）」与「Higress 内置 alias」分组将出现在模型下拉中；或等待上游支持 controller_token 直连 Higress Console 的 PR 合入。": { en: "Token mode has no Higress Console session — the Higress alias layer is currently hidden. After configuring the admin account + password, the 'Higress alias (route resolvable)' and 'Higress built-in alias' groups will appear in the model dropdown; or wait for the upcoming upstream PR (controller_token directly to Higress Console) to merge." },
+  "token 模式无 Higress Console 会话——「Higress alias」分组当前不可见。配置 admin 账号密码后可读；或等待上游支持 controller_token 直连 Higress Console 的 PR 合入。": { en: "Token mode has no Higress Console session — the 'Higress alias' group is currently hidden. Configure the admin account + password to enable it; or wait for the upcoming upstream PR (controller_token directly to Higress Console) to merge." },
   "已打开 {target} 的个人房间": { en: "Opened {target}'s personal room" },
   "个人房间打开失败（{e}），回退新建 DM": { en: "Failed to open the personal room ({e}); falling back to a new DM" },
   "镜像": { en: "Image" },
@@ -1616,7 +1616,7 @@ const DICT: Record<string, { en: string }> = {
   "等待人工介入（{n}）": { en: "Awaiting human input ({n})" },
   "+{n} 更多": { en: "+{n} more" },
   "全部任务已完成（{n}）": { en: "All tasks completed ({n})" },
-  // 团队配置弹窗完整化（13.20 用户反馈「团队的技能等团队配置也要放在团队配置里面」）。
+  // 团队配置弹窗完整化（13.20 团队的技能等团队配置也要放在团队配置里面）。
   "子代理默认模型（留空 = 继承各 Worker 主模型）": { en: "Subagent default model (blank = inherit each Worker's primary model)" },
   "子代理默认模型（如 qwen3.6:27b-fp8；留空 = 继承）": { en: "Subagent default model (e.g. qwen3.6:27b-fp8; blank = inherit)" },
   "团队技能（目录 / 分配矩阵 / MCP）": { en: "Team skills (catalog / assignment matrix / MCP)" },
@@ -1631,7 +1631,7 @@ const DICT: Record<string, { en: string }> = {
   "在跑任务": { en: "Running tasks" },
   "上次运行": { en: "Last run" },
   "上次完成": { en: "Last finished" },
-  // v0.5.0-beta.13.24（F5·用户反馈定案）：DAG/Mermaid 合并——mermaid 专属键
+  // v0.5.0-beta.13.24（·）：DAG/Mermaid 合并——mermaid 专属键
   // （"Mermaid" / "DAG（交互）" / Mermaid DAG / mermaid 端点 404 / 渲染失败）
   // 随视图退役一并清除；拓扑 tooltip 更新为单一 DAG 语义。
   "项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）": { en: "Four views: project list / project card / board / topology; project card and topology are a left project list + right detail (aligned with the dashboard task board Projects area); board columns share the same source as the dashboard (workflow API); the topology dependency graph = DAG (interactive, click node to inspect; single view since 13.24 — the Mermaid snapshot was merged and retired)" },
@@ -1735,7 +1735,7 @@ const DICT: Record<string, { en: string }> = {
   "当前账号在此 Worker 的可见范围内没有活跃会话（L2 仅自己所在房间）": {
     en: "No active sessions visible to this account for this worker (L2 is limited to your own rooms)",
   },
-  // v0.5.0-beta.13.4（A2 运行配置面板词条）
+  // v0.5.0-beta.13.4（运行配置面板词条）
   "运行配置": { en: "Runtime config" },
   "运行配置不可用": { en: "Runtime config unavailable" },
   "该 Worker 不支持运行配置": { en: "This worker does not support runtime config" },
@@ -1818,7 +1818,7 @@ const DICT: Record<string, { en: string }> = {
   "等待输入": { en: "Awaiting input" },
   "Worker 正在执行激活 loop": { en: "Worker is running an active loop" },
   "基本": { en: "Basic" },
-  // v0.5.0-beta.13.24（F2/F3 补键——i18n 全量核对抓出）：
+  // v0.5.0-beta.13.24（补键——i18n 全量核对抓出）：
   "系统": { en: "System" },
   "审批端点有上游路径缺陷（502，修复待合入并重建 Controller）；该账号旧端点无权限——L1 账号可经旧端点读取": {
     en: "The approval endpoint has an upstream path defect (502; fix pending merge and Controller rebuild) and this account cannot use the legacy endpoint — an L1 account can read via it",
@@ -1865,7 +1865,7 @@ const DICT: Record<string, { en: string }> = {
   "adbpg_memory_config——记忆参数高风险，仅展示不开放编辑。": {
     en: "adbpg_memory_config - high-risk memory params; display only, not editable.",
   },
-  // ── v0.5.0-beta.13.10（13.9 用户反馈 12 件收口）──
+  // ── v0.5.0-beta.13.10（13.9 12 件）──
   "L1-only 字段——当前账号没有 Controller 管理 token：L1 账号/密码登录只建立网关 Console 会话（与 Controller token 是两套凭证），无 token 时 L1 字段不可写（PUT 403）。获取 token 与配置方法见「设置」页。": {
     en: "L1-only fields — the current account has no Controller admin token: L1 account/password login only creates the gateway Console session (a different credential from the Controller token); without the token, L1 fields are read-only (PUT 403). See the Settings page for how to obtain and configure the token.",
   },
@@ -1888,7 +1888,7 @@ const DICT: Record<string, { en: string }> = {
   "L1 账号密码登录只带 Higress Console 会话（网关面），不含 Controller 管理 token（CRD/数据面）。请在 设置 → ① Controller 管理员 token 字段粘贴（部署宿主机取法：docker exec agentteams-controller cat /var/run/agentteams/cli-token）。": {
     en: "L1 account/password login only holds a Higress Console session (gateway side), not the Controller admin token (CRD / data plane). Paste the Controller admin token in Settings → ① Controller admin token (obtain on the deployment host: docker exec agentteams-controller cat /var/run/agentteams/cli-token).",
   },
-  /* v0.5.0-beta.13.11（F1/F4/F5/F6/F7 新增键） */
+  /* v0.5.0-beta.13.11（/// 新增键） */
   "复制失败": { en: "Copy failed" },
   "最后活动 ↓": { en: "Last activity ↓" },
   "创建 ↓": { en: "Created ↓" },
@@ -1957,7 +1957,7 @@ const DICT: Record<string, { en: string }> = {
   },
   "前端 {f} · 连接器 {b}": { en: "UI {f} · connector {b}" },
   // ── v0.5.0-beta.13.20：per-worker 技能（物化层字段补全 + preload 开关）
-  //    与拓扑「N人」右侧齿轮团队配置入口 ──
+  // 与拓扑「N人」右侧齿轮团队配置入口 ──
   "预加载": { en: "Preload" },
   "已分配": { en: "Assigned" },
   "仅物化": { en: "Materialized only" },
@@ -1989,7 +1989,7 @@ const DICT: Record<string, { en: string }> = {
   "团队数据未加载或团队不存在——请刷新后重试": {
     en: "Team data not loaded or team missing — refresh and retry",
   },
-  // ── v0.5.0-beta.14.14（UIPERF-T23）：备份与恢复（含凭据完整配置导出/导入）──
+  // ── v0.5.0-beta.14.14：备份与恢复（含凭据完整配置导出/导入）──
   "备份与恢复": { en: "Backup & Restore" },
   "导出配置（含凭据）": { en: "Export config (with credentials)" },
   "导入配置（含凭据）": { en: "Import config (with credentials)" },
@@ -2029,7 +2029,7 @@ export function useLang(): Lang {
 }
 
 /** 翻译函数（hooks 版）。t("发送") → "Send"（en 模式）。
- * ：必须记忆化（useMemo）——原实现每次 render 返回新函数，
+ * 必须记忆化（useMemo）——原实现每次 render 返回新函数，
  * 组件里 `useCallback(fn, [tr])` + `useEffect([...load])` 会无限循环
  * fetch（用户报告：技能中心「一直刷 worker 名字」= 该循环 + 目录接口
  * 404 每轮重复；全库仅 SkillCenter 踩中此模式）。

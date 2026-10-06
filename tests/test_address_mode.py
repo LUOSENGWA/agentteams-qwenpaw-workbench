@@ -1,26 +1,26 @@
 # -*- coding: utf-8 -*-
 """address_mode（手动固定内网/外网）回归测试（v0.5.0-beta.14.1）。
 
-语义（用户定案 2026-09-30，14.1 同批落地）：
+语义（用户 2026-09-30，14.1 同批落地）：
 
 - ``address_mode ∈ {"auto","lan","wan"}``（默认 auto=现状：后台探测自动重排
-  + 请求层 failover）。
+ + 请求层 failover）。
 - 固定档（lan/wan）：请求**只用固定地址**，失败**诚实报错**（502 detail 追加
-  「固定档不自动切换」提示），**不静默 failover**；后台探测循环照跑（连通性
-  测试可见另一条路径状态），但不再影响路由。
+ 「固定档不自动切换」提示），**不静默 failover**；后台探测循环照跑（连通性
+ 测试可见另一条路径状态），但不再影响路由。
 - 列表顺序约定 = [内网, 外网]（设置页内网/外网两个显式输入框同源，
-  见 WorkbenchPage 配置区）。lan=索引 0；wan=索引 1。
+ 见 WorkbenchPage 配置区）。lan=索引 0；wan=索引 1。
 - 固定索引不存在（如只配了内网却固定外网）→ 回退到唯一/首个地址
-  （没有可切的东西，仍诚实报错语义）。
+ （没有可切的东西，仍诚实报错语义）。
 - 旧配置垃圾值（非三选一）一律降级 auto——不 400、不崩。
 
 护栏（防打回）：
 
 - auto 模式**现有语义零变化**：working cache 优先、miss 回退首个、
-  failover 链完整（cache-first + 全列表）。
+ failover 链完整（cache-first + 全列表）。
 - 探测/显示层：固定地址当选（即使另一条更快）；固定地址本轮不可达时
-  显示层回退最快可达（对用户诚实：显示「固定地址挂了」），但请求层
-  仍拨固定地址并在失败时报错——两层不混。
+ 显示层回退最快可达（对用户诚实：显示「固定地址挂了」），但请求层
+ 仍拨固定地址并在失败时报错——两层不混。
 """
 from __future__ import annotations
 
@@ -118,7 +118,7 @@ def test_pinned_note() -> None:
 
 
 def test_pinned_map() -> None:
-    # v0.5.0-beta.14.7（UIPERF-P3）：固定档映射扩为四类（补 gateway）——
+    # v0.5.0-beta.14.7：固定档映射扩为四类（补 gateway）——
     # 本测试 _cfg 未配 gateway 地址，故 gateway 固定值 None。
     m = router_mod._pinned_map(_cfg("lan"))
     assert m == {

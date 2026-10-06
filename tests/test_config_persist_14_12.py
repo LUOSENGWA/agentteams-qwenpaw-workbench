@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.12（UIPERF-T19）：持久化硬化 + 诊断端点。
+"""v0.5.0-beta.14.12：持久化硬化 + 诊断端点。
 
 覆盖：
 1. update_config 写验证（save_config 写后回读）：
-   - 正常写盘 → 磁盘内容 = 内存合并态（往返一致）；
-   - 回读不一致（monkeypatch 配置文件对象的 read_text 返回异值——
-     最小注入点，模拟磁盘写异常/并发破坏）→ 抛 IOError。
+ - 正常写盘 → 磁盘内容 = 内存合并态（往返一致）；
+ - 回读不一致（monkeypatch 配置文件对象的 read_text 返回异值——
+ 最小注入点，模拟磁盘写异常/并发破坏）→ 抛 IOError。
 2. PUT /config 错误路径分类：
-   - update_config 抛 IOError → 500 且 detail 含「配置保存失败（磁盘写入
-     问题）」；
-   - 非 IO 异常（T17 兜底分支）→ 仍 500 且 detail 含「配置写入失败」、
-     不命中磁盘分类措辞（两分支互不串扰）。
+ - update_config 抛 IOError → 500 且 detail 含「配置保存失败（磁盘写入
+ 问题）」；
+ - 非 IO 异常（兜底分支）→ 仍 500 且 detail 含「配置写入失败」、
+ 不命中磁盘分类措辞（两分支互不串扰）。
 3. GET /config 含持久化诊断三字段 configPath/configSavedAt/configWritable，
-   类型正确（tmp 路径隔离，沿用现有 config 测试的 tmp_path 模式）。
+ 类型正确（tmp 路径隔离，沿用现有 config 测试的 tmp_path 模式）。
 4. GET /debug/tasks → 200 且含 total/byCoroutine（聚合计数 = total，
-   零副作用）。
+ 零副作用）。
 
 隔离：config 模块重定向 tmp_path；后台探测 monkeypatch 假 no-op，不碰
 真实 secret 目录与真实网络。
@@ -97,7 +97,7 @@ def test_update_config_readback_mismatch_raises_ioerror(tmp_config, monkeypatch)
 
 def test_put_config_ioerror_reports_disk_write_issue(client, monkeypatch):
     """IOError（写盘校验失败/磁盘异常）→ 500 + detail 含「配置保存失败
-    （磁盘写入问题）」。"""
+ （磁盘写入问题）」。"""
     tc = client
 
     def boom(patch):
@@ -113,8 +113,8 @@ def test_put_config_ioerror_reports_disk_write_issue(client, monkeypatch):
 
 
 def test_put_config_non_io_error_keeps_t17_generic_500(client, monkeypatch):
-    """非 IO 异常 → 仍走 T17 通用兜底分支（「配置写入失败」），不命中
-    磁盘写入分类措辞。"""
+    """非 IO 异常 → 仍走 通用兜底分支（「配置写入失败」），不命中
+ 磁盘写入分类措辞。"""
     tc = client
 
     def boom(patch):

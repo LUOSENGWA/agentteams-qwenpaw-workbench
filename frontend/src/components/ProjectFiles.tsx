@@ -59,9 +59,9 @@ function statusColor(status: string): string {
 }
 
 /** 单项目文件拉取（includeTasks → tasks_detail 声明的 result/spec/deliverables）。
- *  v0.5.0-beta.13.13：带 &team= 限定——同一 project_id 跨团队重名时
- *  Controller 回 409（fetchWorkflowProjects 同款处理），此前本面板不传
- *  team → 重名项目 409 被静默吞掉 → 「读取不到」的另一条根因。 */
+ * v0.5.0-beta.13.13：带 &team= 限定——同一 project_id 跨团队重名时
+ * Controller 回 409（fetchWorkflowProjects 同款处理），此前本面板不传
+ * team → 重名项目 409 被静默吞掉 → 「读取不到」的另一条根因。 */
 async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
   const teamQ =
     typeof ev.team_id === "string" && ev.team_id
@@ -107,22 +107,22 @@ async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
  * artifact）。故第一版 = 产物端点 任务文件（workflow tasks_detail 声明的
  * result/spec/deliverables），房间级共享空间待上游文件 API PR。
  *
- * v0.5.0-beta.13.13（13.12 用户反馈「聊天群的项目文件读取不到」）匹配模型重构：
+ * v0.5.0-beta.13.13（13.12 聊天群的项目文件读取不到）匹配模型重构：
  * 旧版只认 `ev.room_id === 当前房间 room_id` 严格相等——项目从 QQ/其他通道
  * 发起时 source_room_id 为 `qq:...` 等非 Matrix 房间 ID（实盘项目
  * 2026-09-23 实证），任何 Matrix 房间里开 📁 都空面板。新版：
- *   ① 当前房间项目（严格匹配）→ 自动加载文件；
- *   ② 其他项目（不匹配但已注册）→ 折叠列表懒加载（点开才拉）；
- *   ③ 每项目拉取失败显形（旧版静默 continue = 黑盒）+ 刷新按钮全量重拉
- *  已加载项目。
- * v0.5.0-beta.13.14（13.13 用户反馈定案）：面板只显示当前房间项目（「其他
+ * ① 当前房间项目（严格匹配）→ 自动加载文件；
+ * ② 其他项目（不匹配但已注册）→ 折叠列表懒加载（点开才拉）；
+ * ③ 每项目拉取失败显形（旧版静默 continue = 黑盒）+ 刷新按钮全量重拉
+ * 已加载项目。
+ * v0.5.0-beta.13.14（13.13）：面板只显示当前房间项目（「其他
  * 项目」折叠区移除——聊天上下文只讲本群）；标题行去冗余（Drawer 标题
  * 已带文件夹 SVG +「项目文件」）；文件行主点击=弹窗预览（同产物 tab
  * FilePreview，不再触发下载跳外部应用）+ 独立下载按钮。
- * v0.5.0-beta.13.15（B3 真根因修）：关联判定改 roomMatchesProject 双源
+ * v0.5.0-beta.13.15（B3 根因修）：关联判定改 roomMatchesProject 双源
  * （source_room_id 严格匹配 ∪ 标准项目群命名 `Project: <项目名>`）——
  * 旧严格相等在「项目从 QQ/DM 发起」时 source_room_id≠项目群 ID，
- * 标准项目群也 miss（13.14 用户反馈空面板）。 */
+ * 标准项目群也 miss（13.14 空面板）。 */
 export default function ProjectFiles(props: {
   room: TeamRoom | null;
   workflowEvents: WorkflowEvent[];
@@ -133,10 +133,10 @@ export default function ProjectFiles(props: {
   const tr = useT();
 
   // v0.5.0-beta.13.14：只显示当前房间项目（13.13 的「其他项目」折叠区
-  // 按用户反馈定案移除——聊天上下文只讲本群）。
-  // v0.5.0-beta.13.15（B3）：匹配改 roomMatchesProject 双源判定——
+  // 按移除——聊天上下文只讲本群）。
+  // v0.5.0-beta.13.15：匹配改 roomMatchesProject 双源判定——
   // source_room_id 严格相等只覆盖「发起房间=当前房间」；标准项目群
-  // （名 `Project: <项目名>`）按命名关联（真根因：project_room_id 不
+  // （名 `Project: <项目名>`）按命名关联（根因：project_room_id 不
   // 走 API，见 api.ts roomMatchesProject 头注）。
   const roomProjects = React.useMemo(
     () =>
@@ -297,9 +297,9 @@ export default function ProjectFiles(props: {
                       }}
                     >
                       {kindTag(f.kind)}
-                      {/* v0.5.0-beta.13.14（用户反馈）：主点击=弹窗预览
-                          （同产物 tab FilePreview，不再触发下载→外部应用
-                          打开）；下载=独立按钮（blob 下载带鉴权）。 */}
+ {/* v0.5.0-beta.13.14：主点击=弹窗预览
+ （同产物 tab FilePreview，不再触发下载→外部应用
+ 打开）；下载=独立按钮（blob 下载带鉴权）。 */}
                       <span
                         role="button"
                         style={{
@@ -345,7 +345,7 @@ export default function ProjectFiles(props: {
   return (
     <div style={{ display: "grid", gap: 10, padding: 12 }}>
       {/* v0.5.0-beta.13.14：标题行只留房间标签+操作（Drawer 标题已带
-          文件夹 SVG +「项目文件」，这里不再重复）。 */}
+ 文件夹 SVG +「项目文件」，这里不再重复）。 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <antd.Tag style={{ fontSize: 10.5 }}>{room?.name || ""}</antd.Tag>
         <div style={{ flex: 1 }} />

@@ -1,25 +1,25 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.12（UIPERF-T17）：保存提速 + 闸门让权 + 快照参数。
+"""v0.5.0-beta.14.12：保存提速 + 闸门让权 + 快照参数。
 
 覆盖三组对外钉死语义：
 
 1. PUT /config 快速路径：
-   - 保存即时返回（<1s）——探测转后台（假 refresh_effective 睡 2s；
-     回归旧同步 await 行为 → 请求 ~2s，被耗时断言抓住）；
-   - 后台探测任务真实执行（保存返回后假探测完成并记录，非被吞掉）；
-   - 保存失败显性化：update_config 抛 OSError → 500 且 detail 含原因
-     （此前裸抛 = 500 无详情）。
+ - 保存即时返回（<1s）——探测转后台（假 refresh_effective 睡 2s；
+ 回归旧同步 await 行为 → 请求 ~2s，被耗时断言抓住）；
+ - 后台探测任务真实执行（保存返回后假探测完成并记录，非被吞掉）；
+ - 保存失败显性化：update_config 抛 OSError → 500 且 detail 含原因
+ （此前裸抛 = 500 无详情）。
 2. bg_slot 后台共用通道（dial_gate）：
-   - 多路假后台扫描并发 → 实际串行（并发峰值 = 1）；
-   - 前台负载高（async inflight=13 > 12）→ 让权 False，本轮跳过；
-   - 锁被另一路扫描持占 → 等锁超时放弃本轮（False）；释放后正常
-     获取（True）。
+ - 多路假后台扫描并发 → 实际串行（并发峰值 = 1）；
+ - 前台负载高（async inflight=13 > 12）→ 让权 False，本轮跳过；
+ - 锁被另一路扫描持占 → 等锁超时放弃本轮（False）；释放后正常
+ 获取（True）。
 3. ?refresh=1 快照参数：
-   - /workers-status 与 /projects-workflow 无参 → ensure_fresh(force=False)
-     （TTL 门保留）；refresh=1 → ensure_fresh(force=True)（无视 TTL）；
-     响应字段形状不变（仍是快照）；
-   - ensure_fresh(force=True) 直接语义：TTL 内普通调用不扫、force 触发
-     一轮（假取数注入）。
+ - /workers-status 与 /projects-workflow 无参 → ensure_fresh(force=False)
+ （TTL 门保留）；refresh=1 → ensure_fresh(force=True)（无视 TTL）；
+ 响应字段形状不变（仍是快照）；
+ - ensure_fresh(force=True) 直接语义：TTL 内普通调用不扫、force 触发
+ 一轮（假取数注入）。
 
 隔离：config 模块重定向 tmp_path；探测/取数全部 monkeypatch 假注入，
 不碰真实网络与真实 secret 目录。
@@ -43,9 +43,9 @@ from agentteams_connector.router import build_router
 def client(monkeypatch, tmp_path):
     """TestClient + 真实 config（重定向 tmp）+ 慢速假探测（2s）。
 
-    with 块保持 portal 存活：保存请求返回后，后台探测任务可在块内
-    自然跑完（不留悬挂 task，也证明「探测在保存返回之后执行」）。
-    """
+ with 块保持 portal 存活：保存请求返回后，后台探测任务可在块内
+ 自然跑完（不留悬挂 task，也证明「探测在保存返回之后执行」）。
+ """
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -76,10 +76,10 @@ def client(monkeypatch, tmp_path):
 def test_put_config_fast_return_probe_background(client):
     """1a) 保存即时返回（<1s）；探测在后台执行且真实跑完。
 
-    回归旧行为（同步 await refresh_effective）→ 请求 ~2s，被
-    elapsed < 1.0 抓住；probe["done"] 证明后台任务被创建并执行
-    （fire-and-forget 不是被吞掉）。
-    """
+ 回归旧行为（同步 await refresh_effective）→ 请求 ~2s，被
+ elapsed < 1.0 抓住；probe["done"] 证明后台任务被创建并执行
+ （fire-and-forget 不是被吞掉）。
+ """
     tc, probe = client
     with tc:
         t0 = time.monotonic()
@@ -104,12 +104,12 @@ def test_put_config_fast_return_probe_background(client):
 
 def test_put_config_write_failure_500_with_detail(client, monkeypatch):
     """1b) 保存失败显性化：落盘失败 → 500 + detail 含原因（非裸抛
-    500 无详情）。
+ 500 无详情）。
 
-    v0.5.0-beta.14.12（UIPERF-T19）：OSError（=IOError）现归入「磁盘写入
-    问题」分类分支——措辞由「配置写入失败」细化为「配置保存失败（磁盘写
-    入问题）」，此处钉新措辞。
-    """
+ v0.5.0-beta.14.12：OSError（=IOError）现归入「磁盘写入
+ 问题」分类分支——措辞由「配置写入失败」细化为「配置保存失败（磁盘写
+ 入问题）」，此处钉新措辞。
+ """
     tc, _ = client
 
     def boom(patch):
@@ -166,7 +166,7 @@ def test_bg_slot_yields_when_foreground_busy():
 
 def test_bg_slot_gives_up_on_wait_timeout():
     """2c) 锁被另一路扫描持占 → 等锁超时（0.2s）放弃本轮（False）；
-    释放后正常获取（True）。"""
+ 释放后正常获取（True）。"""
     dg._reset_for_tests()
     out: list[bool] = []
 
@@ -190,7 +190,7 @@ def test_bg_slot_gives_up_on_wait_timeout():
 
 def test_endpoints_refresh_param_forces_fresh(client, monkeypatch):
     """3a) ?refresh=1：两端点传 force=True（无视 TTL）；无参 force=False
-    （TTL 门保留）。响应字段形状不变（仍是快照）。"""
+ （TTL 门保留）。响应字段形状不变（仍是快照）。"""
     tc, _ = client
     calls: dict[str, bool] = {}
 
@@ -227,7 +227,7 @@ def test_endpoints_refresh_param_forces_fresh(client, monkeypatch):
 
 def test_ensure_fresh_force_bypasses_ttl(monkeypatch):
     """3b) ensure_fresh force 直接语义：TTL 内普通调用不扫；force=True
-    触发一轮（假取数注入；单飞门与通道正常收拢）。"""
+ 触发一轮（假取数注入；单飞门与通道正常收拢）。"""
     calls: list[str] = []
 
     async def fake_get(url, token):

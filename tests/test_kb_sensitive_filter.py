@@ -11,7 +11,7 @@
 本文件护栏：
 
 - 敏感路径直读 → 404「文件不存在」（不泄露存在性，W8 反探测同款），
-  且**不发起任何 docker 调用**（guard 在数据通道之前）。
+ 且**不发起任何 docker 调用**（guard 在数据通道之前）。
 - 非敏感路径（MEMORY.md）→ guard 不触发，继续走数据通道（docker 调用发生）。
 """
 from __future__ import annotations
