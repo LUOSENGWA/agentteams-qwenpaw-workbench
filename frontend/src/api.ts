@@ -2558,7 +2558,16 @@ export function setCachedRooms(data: TeamsRoomsResponse): void {
 export function getCachedMessages(
   roomId: string,
 ): { messages: RoomMessage[]; end: string } | null {
-  return messagesCache.get(roomId) ?? null;
+  // v0.5.0-beta.14.17（T181 审计 B 面 P2）：读命中刷新 LRU 次序。
+  // 旧版逐出取「首个插入键」（Map 插入序≈FIFO），长期使用的热房会因
+  // 「插入早」被逐、而偶访的冷房因「插入新」常驻——与 LRU 语义相反。
+  // 命中即 delete+re-set 移到末尾（最近使用），逐出改逐队首（最久未用）。
+  const hit = messagesCache.get(roomId);
+  if (hit) {
+    messagesCache.delete(roomId);
+    messagesCache.set(roomId, hit);
+  }
+  return hit ?? null;
 }
 
 export function setCachedMessages(
@@ -2567,14 +2576,16 @@ export function setCachedMessages(
   /** 当前 UI 全量消息（含 loadMore 前插历史）——缺省=只存本页。 */
   fullList?: RoomMessage[],
 ): void {
+  // 写亦按 LRU：已存在先删再设（移到末尾=最近使用），避免沿用旧插入位。
+  messagesCache.delete(roomId);
   messagesCache.set(roomId, {
     messages: fullList && fullList.length > 0 ? fullList : page.messages,
     end: page.end,
   });
-  // 上限 20 个房间，防内存膨胀
+  // 上限 20 个房间，防内存膨胀（逐最久未用=队首）
   if (messagesCache.size > 20) {
-    const first = messagesCache.keys().next().value;
-    if (first) messagesCache.delete(first);
+    const lru = messagesCache.keys().next().value;
+    if (lru) messagesCache.delete(lru);
   }
 }
 

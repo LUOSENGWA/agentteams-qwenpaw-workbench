@@ -262,7 +262,6 @@ function HomePage(props: HomePageProps) {
   // v0.5.0-beta.14.6（R2）：1s 旧定时器 → usePoller + 自适应间隔——
   // 上轮耗时 >300ms（后端慢窗）→ 本轮改 5000 降频，恢复快 → 回 1000；
   // 仅 home tab 激活 + 页面可见时跑（homeActive）。
-  const [sglangSlow, setSglangSlow] = React.useState(false);
   const sglangEnabled = Boolean(config?.sglang?.enabled);
   const sglangEnabledRef = React.useRef(sglangEnabled);
   sglangEnabledRef.current = sglangEnabled;
@@ -276,13 +275,10 @@ function HomePage(props: HomePageProps) {
   const pullSglang = React.useCallback(async () => {
     // 关闭后在飞请求不写状态（原 cancelled flag 语义）。
     if (!sglangEnabledRef.current || !sglangAliveRef.current) return;
-    const t0 = Date.now();
     try {
       const d = await fetchSglangLoads();
       if (!sglangAliveRef.current) return;
       setSglang({ loaded: true, ranks: d.ranks || [] });
-      // 自适应：上轮耗时 >300ms → 慢态（同值 setState 不触发重渲）。
-      setSglangSlow(Date.now() - t0 > 300);
     } catch {
       /* 404/网络失败 → 保持未加载 */
     }
@@ -293,9 +289,13 @@ function HomePage(props: HomePageProps) {
     if (sglangEnabledRef.current) void pullSglang();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pullSglang]);
+  // v0.5.0-beta.14.17（T181 审计 P0-1）：快档 1s→5s。/v1/loads 是前端最大
+  // 可控频次（1s 轮询×1.2KB/次，45s 稳态 ≈13/45s 的主项）；负载仪表 5s
+  // 刷新仍属"活"感，与慢档合并为恒定 5s（快慢档区分取消——差异消失后
+  // 保留分支是死逻辑）。后端 1s 单飞缓存由后端批补（T180 解锁 router.py 后）。
   usePoller({
     fn: pullSglang,
-    intervalMs: sglangSlow ? 5000 : 1000,
+    intervalMs: 5000,
     active: homeActive && sglangEnabled,
   });
 
