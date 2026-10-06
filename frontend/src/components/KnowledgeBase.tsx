@@ -2673,7 +2673,25 @@ function KnowledgeBase(props: { refreshTick?: number }) {
         const ok = list.length > 0;
         setRemoteAvailable(ok);
         setMode(ok ? "remote" : "local");
-        if (!ok) setProbeError("no-agents");
+        if (!ok) {
+          setProbeError("no-agents");
+          return;
+        }
+        // v0.5.0-beta.14.18（罗总「知识库加载还是慢」实测定案）：probe 成功后
+        // 后台预热默认 agent 的 tree+graph。真冷路径实测（罗总生产实例，
+        // 外网 5M）：tree 冷算 ≈3.4-3.7s（单次 docker exec 往返的物理成本，
+        // 架构层不可再压）、graph ≈0.9s、温缓存 13-18ms。首帧可见时若恰好
+        // 撞上冷算 = 用户等 3.7s；预热后首帧请求命中 SWR（盘+30s 内存）。
+        // fire-and-forget：目标 = 首个 agent（无记忆回退值）+ 记忆 agent；
+        // 失败静默（= 退回现状，下次访问冷算），绝不阻塞首帧。
+        const remembered = loadKbState().agent;
+        const targets = Array.from(
+          new Set([list[0]?.name, remembered].filter((x): x is string => !!x)),
+        ).slice(0, 2);
+        for (const a of targets) {
+          void fetchKbTree(a).catch(() => {});
+          void fetchKbGraph(a).catch(() => {});
+        }
       })
       .catch((e) => {
         setRemoteAvailable(false);
