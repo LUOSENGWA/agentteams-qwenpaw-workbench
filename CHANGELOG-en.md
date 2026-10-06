@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.14 (2026-10-06 - acceptance feedback batch 3 · five fixes)
+
+**Cross-page effects tier / config backup+export-import / KB first-visit drag smooth / tab-click marginal CPU -83% / streaming render memo**
+
+- **Effects tier now applies on ALL console pages (T22)**: the tier sync previously lived only in the workbench page - other pages stayed 'light' (effects ran even with config=off) - the true root cause of "the control has no effect". Plugin boot now fetches config and applies globally (measured: off = 0 animations / 0 blur on /chat and plugin pages; light keeps animations + 6px blur).
+- **Config backup + self-heal + export/import (T23)**: atomic config.bak.json on save; auto-restore when primary is missing/corrupt; settings now has Backup & Restore - export the full config incl. credentials (copy), import to restore (auto-backups first, rejects masked exports). Export once, never re-enter again.
+- **KB first-visit drag jank root-fix (T24)**: dist-level cause = the force engine ticks for 160 FRAMES after data load (~2.7s where physics competes with drag in-frame) - the exact "laggy at first, smooth later" mechanism. Fix = pre-settle before first frame (warmup + alphaMin tuning): engine-stop 3390->875ms, drag-window physics 0.7->0.00; T21 pause/resume semantics intact.
+- **Tab-click marginal CPU -83% (T25)**: useTabActive boolean snapshots x4 panels (no full re-render on other-tab switches) + minPokeMs poke throttle + 2 panel memos. Measured marginal 259->45ms/click (heavy sequence); remaining ~50% baseline isolated to the host app (upstream topic).
+- **Streaming render memo (T26)**: MdText/InlineMd memo, workerSessionState value-equality, RoomChat subcomponent memo - completed rows skip re-parse during streaming.
+- Gates: tsc 0, build, pytest 180/180, i18n 1442 keys clean.
+
 ## 0.5.0-beta.14.13 (2026-10-05 - code-debt audit batch)
 
 **Full plugin code-debt audit + cleanup: tracking surface / client dedupe / quantified backlog**
