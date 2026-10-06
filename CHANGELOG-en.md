@@ -5,6 +5,28 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.15 (2026-10-06 - full self-verification + second debt audit · two fixes)
+
+**PawApp entry dead-link fix / dead-code cleanup / full ZIP self-install verification**
+
+- **PawApp entry dead-link fixed**: the web console's PawApp loader gates on `plugin_type`
+  (`expectedType="app"`); this plugin's manifest carries `meta.tools` -> type inferred as
+  TOOL -> opening `/apps/agentteams-qwenpaw-workbench` directly fails with "PawApp frontend
+  plugin not found" (reproduced on 2.2.2b4, retry ineffective). `meta.pawapp.entry_page` now
+  points at the mode-agnostic `/plugin/agentteams-qwenpaw-workbench` route; the `/apps/` route
+  is kept for the desktop PawApp host. Entry docs in index.tsx note the divergence.
+- **Dead-code cleanup (second audit)**: removed zero-reference export `fetchWorkerLoopStatus`
+  (chat_id variant - consumer moved to `fetchWorkerLoopStatusBySession` since v13.6);
+  `sendInboxNotify` re-verified as intentionally kept (comment says "reserved, do not delete" -
+  future notification trigger entry point).
+- **Full 14.14 self-install self-test (fresh install from ZIP, QwenPaw001)**: all 11 tabs
+  walked green (home/chat/notify/workflow/artifacts/teams/KB/selfcheck/ops/models/config, no
+  console errors); 45s dial delta steady-state +15 / with UI open +42 (criterion <50, headroom
+  = worker-chats avatar-dot 30s poll + sync); response max 16ms; KB SWR cache 6ms hit;
+  aggregate endpoints serving 29 workers / 36 projects; persistence readback + 600 perms +
+  zero plugin ERRORs in install window; pytest 180/180; installed dist byte-identical to repo.
+- Gates: tsc 0 · build ✓ · pytest 180/180 · i18n 1442 keys, 0 missing / 0 dup.
+
 ## 0.5.0-beta.14.14 (2026-10-06 - acceptance feedback batch 3 · five fixes)
 
 **Cross-page effects tier / config backup+export-import / KB first-visit drag smooth / tab-click marginal CPU -83% / streaming render memo**
