@@ -1332,7 +1332,7 @@ export function ManagerTable({
             marginBottom: 8,
           }}
         >
- <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 5 }}><WarnIcon size={13} style={{ marginTop: 2, flexShrink: 0 }} /> {tr("token 模式无 Higress Console 会话——「Higress alias」分组当前不可见。配置 admin 账号密码后可读；或等待 上游 PR（controller_token 直连 Higress Console）合入。")}</span>
+ <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 5 }}><WarnIcon size={13} style={{ marginTop: 2, flexShrink: 0 }} /> {tr("token 模式无 Higress Console 会话——「Higress alias」分组当前不可见。配置 admin 账号密码后可读；或等待上游支持 controller_token 直连 Higress Console 的 PR 合入。")}</span>
         </div>
       ) : null}
       <antd.Table

@@ -68,6 +68,7 @@ import SettingsTab, { readStartupPref } from "./components/SettingsTab";
 import MessageSearch from "./components/MessageSearch";
 import ProjectFiles from "./components/ProjectFiles";
 import NotificationCenter from "./components/NotificationCenter";
+import WorkerChats from "./components/WorkerChats";
 import { useThemeColors } from "./theme";
 import { useHostThemeTokens } from "./hostTheme";
 import { useT } from "./i18n";
@@ -1373,7 +1374,14 @@ export default function WorkbenchPage() {
   const [knowledgeTick, setKnowledgeTick] = React.useState(0);
  // v0.5.0-beta.13.11（会话窗 Element 化）：任意房间来消息 → 递增 →
   // WorkerChats 打开的会话窗立即刷新（事件驱动主路；4s 轮询降兜底）。
+  // tick 只喂 WorkerChats 抽屉（兄弟视图）——不进 RoomChat props，
+  // 避免每条消息击穿 4200 行聊天组件的 memo 整树重渲。
   const [chatsTick, setChatsTick] = React.useState(0);
+  const [chatsWorker, setChatsWorker] = React.useState<string | null>(null);
+  const handleOpenWorkerChats = React.useCallback(
+    (w: string) => setChatsWorker(w),
+    [],
+  );
   React.useEffect(() => {
     let abort: AbortController | null = null;
  // v0.5.0-beta.14.6：旧定时器 → 命令式 createPoller（60s SSE 断连
@@ -2025,14 +2033,9 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12.5：工作流 tab 自动刷新（15s，仅可见期活跃）——
   // 对齐 dashboard 15s 轮询（useProjectWorkflow refetchInterval:15000）。
   // 此前插件只在挂载/手动刷新/登录时拉取，任务推进时看板不自动更新
-  // （半链接缺口）。切走 tab 立即停（cleanup 清 interval）。
- // 第 11 轮（聊天工作流卡片 live 刷新要，两边都要）：聊天 tab 激活
-  // 且当前房间消息含 workflow 载荷时同样轮询——聊天内卡片 live overlay
-  // 复用 workflowEvents 正源（controller projects/workflow 双轨）。
+  // 仅 workflow tab 激活或聊天消息含工作流卡片时轮询（聊天内卡片
+  // live overlay 复用 workflowEvents 正源）；页面隐藏即停（内置）。
   const chatHasWfCards = tab === "chat" && messages.some((m) => m.workflow != null);
-  // v0.5.0-beta.14.6：旧定时器 → usePoller（15s；active=workflow tab
-  // 或聊天含工作流卡；!document.hidden 内置）。假→真切换的立即拉由 13.13
-  // 去抖 effect + poller poke 双路覆盖， 在飞去重保证同刻双发合并。
   usePoller({
     fn: () => void refreshWorkflow(true),
     intervalMs: 15000,
@@ -2179,18 +2182,6 @@ export default function WorkbenchPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
-
-  // v0.5.0-beta.12（对齐 dashboard refetchInterval:15000）：workflow
-  // 15s 自动刷新——仅 workflow tab 激活时轮询（rc-tabs 保活，切走即停），
-  // 静默刷新不闪页。审计就标记的缺口（插件 WorkflowBoard 零 tick）。
-  // v0.5.0-beta.14.6：旧定时器 → usePoller（15s；!document.hidden
-  // 内置）。workflow tab 下与上一 16a poller 双发为既有行为（原双 interval
-  // 同款）， 在飞去重合并。
-  usePoller({
-    fn: () => void refreshWorkflow(true),
-    intervalMs: 15000,
-    active: tab === "workflow",
-  });
 
   // 自己的显示名：从房间成员里找 display_name，fallback MXID localpart。
   const selfDisplayName = React.useMemo(() => {
@@ -2558,7 +2549,7 @@ export default function WorkbenchPage() {
       headerPrefix={chatListToggleBtn}
       onBack={handleChatBack}
       onNewTask={noopStable}
-      chatsTick={chatsTick}
+      onOpenWorkerChats={handleOpenWorkerChats}
       onLoadMore={loadMore}
       loadingMore={loadingMore}
       onPoll={pollMessages}
@@ -3194,6 +3185,26 @@ export default function WorkbenchPage() {
           onClose={() => setProjectFilesRoom(null)}
         />
       </antd.Drawer>
+      {/* 头像 → Worker 会话抽屉（只读，#1295 端点 + 版本门；内容=会话列表
+          → agent 上下文完整 session）。兄弟视图：SSE tick 只刷新此抽屉，
+          不重渲聊天整树；切离 chat tab 即随门控消失（与挂载于聊天区时
+          的卸载语义一致）。 */}
+      {tab === "chat" && chatsWorker ? (
+        // QwenPaw 会话口径五列表需要更宽（560→620）。
+        <antd.Drawer
+          open
+          onClose={() => setChatsWorker(null)}
+          width={620}
+          title={`${chatsWorker} — ${tr("会话")}`}
+          styles={{ body: { padding: 14, background: t.bg } }}
+        >
+          <WorkerChats
+            workers={adminWorkers}
+            fixedWorker={chatsWorker}
+            refreshTick={chatsTick}
+          />
+        </antd.Drawer>
+      ) : null}
     </main>
     </antd.ConfigProvider>
   );
