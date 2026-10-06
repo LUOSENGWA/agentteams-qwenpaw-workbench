@@ -340,8 +340,11 @@ function HomePage(props: HomePageProps) {
         minWidth: 140,
         cursor: "pointer",
         borderRadius: CARD_RADIUS,
-        background: "#FFF3E8",
-        border: "1px solid #FFD9B3",
+        // v0.5.0-beta.14.18：accent 品牌浅底卡——底/边/字从主色派生
+        // （原 #FFF3E8/#FFD9B3/#c2410c/#9a3412 是 accent 的固定橙衍生，
+        // 宿主换主色时这层不跟）。color-mix 保证任意主色下的浅底/边。
+        background: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, white)",
+        border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 28%, white)",
         padding: "12px 14px",
         transition: "box-shadow .2s",
       }}
@@ -358,13 +361,20 @@ function HomePage(props: HomePageProps) {
         style={{
           fontSize: 13,
           fontWeight: 700,
-          color: "#c2410c",
+          color: "var(--app-accent, #c2410c)",
           marginTop: 4,
         }}
       >
         {label}
       </div>
-      <div style={{ fontSize: 10.5, color: "#9a3412", marginTop: 2 }}>
+      <div
+        style={{
+          fontSize: 10.5,
+          // 深档描述色 = 主色 70% + 深棕（任意主色下保持足够深、可读）
+          color: "color-mix(in srgb, var(--app-accent, #9a3412) 70%, #3a2410)",
+          marginTop: 2,
+        }}
+      >
         {desc}
       </div>
     </div>
