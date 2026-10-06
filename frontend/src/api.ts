@@ -2182,20 +2182,6 @@ export interface WorkerLoopStatus {
   state: string; // idle | running | awaiting_user
   mode?: WorkerLoopModeInfo | null;
 }
-/** GET /workers/{name}/loops/status?chat_id=&session_id=——单会话的激活 loop。
- * 无参恒 idle；404 = 旧 runtime 无该路由（UI 隐藏）。 */
-export function fetchWorkerLoopStatus(
-  name: string,
-  chatId: string,
-  sessionId?: string,
-): Promise<WorkerLoopStatus> {
-  const q = new URLSearchParams({ chat_id: chatId });
-  if (sessionId) q.set("session_id", sessionId);
-  return controllerRequest(
-    "GET",
-    `/workers/${encodeURIComponent(name)}/loops/status?${q.toString()}`,
-  ) as Promise<WorkerLoopStatus>;
-}
 /** GET /workers/{name}/loops/status?session_id=——仅按 session 查激活 loop。
  * v0.5.0-beta.13.6：聊天页 composer 消费点（QwenPaw 前端 LoopModeSelector
  * 同位）——1:1 Worker 房间 session_id = `matrix:{room_id}`（qwenpaw matrix

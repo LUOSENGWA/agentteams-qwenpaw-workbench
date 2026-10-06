@@ -4,8 +4,14 @@
  * Two routes, one component:
  * - /apps/agentteams-qwenpaw-workbench (PawApp, via registerRoutes) → App Center +
  * desktop Dock window. /apps/ routes intentionally get NO sidebar menu.
+ *   ⚠ v0.5.0-beta.14.15：web console 的 PawApp 加载器按 plugin_type 门控
+ *   （expectedType="app"），本插件 manifest 有 meta.tools → 推断 TOOL →
+ *   web 端直接打开 /apps/ 会报 "PawApp frontend plugin not found"（实测
+ *   2.2.2b4）。入口统一走 /plugin/（见下）；/apps/ 仅 desktop PawApp
+ *   宿主场景保留。plugin.json meta.pawapp.entry_page 已指 /plugin/。
  * - /plugin/agentteams-qwenpaw-workbench (plain route, via route.add) → sidebar click
- * renders the page inline in the content area (no App shell).
+ * renders the page inline in the content area (no App shell)。全模式可用
+ * （web console 侧栏「团队工作台」+ meta.pawapp.entry_page 默认入口）。
  *
  * Note: registerRoutes would synthesize a "Plugins" group header for any
  * non-/apps/ path — route.add avoids that (no empty group left behind). We
