@@ -213,12 +213,14 @@ function OpsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 集群负载 1s 静默轮询（用户反馈：实时刷新——/v1/loads 读 SHM 快照）。
+  // 集群负载静默轮询（/v1/loads 读 SHM 快照）。
   // v0.5.0-beta.14.6（R2 补）：→ usePoller（ops tab 激活；切走即停 + 可见性
   // 内置——原「rc-tabs 保活切走也续」的每 1s 常驻开销由此消除）。
+  // v0.5.0-beta.14.17（T181 审计 P0-1）：1s→5s（与 HomePage 同批——/v1/loads
+  // 是前端最大可控频次，两页同屏时原 2×1/s 叠加；5s 对负载曲线仍够"活"）。
   usePoller({
     fn: () => void refreshSglang(true),
-    intervalMs: 1000,
+    intervalMs: 5000,
     active: opsActive,
   });
 
