@@ -10,7 +10,7 @@ import {
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { usePoller } from "../usePoller";
-import { useActiveTab } from "../tabActivity";
+import { useTabActive } from "../tabActivity";
 
 
 const host = window.QwenPaw.host;
@@ -140,7 +140,9 @@ function OpsPanel({
 
   // v0.5.0-beta.14.6（R2 补）：活跃 tab 单源（rc-tabs 保活，切走仍需显式
   // 门控——ops 的 1s 集群负载轮询此前切走常驻）。
-  const activeTab = useActiveTab();
+  // v0.5.0-beta.14.14（UIPERF-T25）：布尔快照——非 ops tab 互切不再重渲
+  // 本面板（连点 Tab 固定成本）。
+  const opsActive = useTabActive("ops");
   const [logsUpdatedAt, setLogsUpdatedAt] = React.useState<number>(0);
   // v0.5.0-beta.14.6（R2 补）：轮询已并入 usePoller（ops tab 激活门控 +
   // 失败退避内置：×2 至 120s 封顶、成功复位；静默失败保留上次内容）。
@@ -172,7 +174,7 @@ function OpsPanel({
   usePoller({
     fn: () => void refreshLogs(component, true),
     intervalMs: 15000,
-    active: activeTab === "ops",
+    active: opsActive,
   });
 
   // 可选模块：集群负载（L1 专属）。未启用时后端 404 → sglangOff=true 不渲染卡片。
@@ -217,7 +219,7 @@ function OpsPanel({
   usePoller({
     fn: () => void refreshSglang(true),
     intervalMs: 1000,
-    active: activeTab === "ops",
+    active: opsActive,
   });
 
   // 切 Tab 回来时（refreshTick 变化）重取——rc-tabs 保活不会重跑挂载 effect。

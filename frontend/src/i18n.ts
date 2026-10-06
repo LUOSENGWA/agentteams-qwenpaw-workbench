@@ -613,6 +613,7 @@ const DICT: Record<string, { en: string }> = {
   "导出诊断包": { en: "Export diagnostics" },
   "配置迁移与诊断": { en: "Config & diagnostics" },
   "配置已导入": { en: "Config imported" },
+  "导入失败": { en: "Import failed" },
   "导入失败（JSON 格式错误？）": { en: "Import failed (invalid JSON?)" },
   "团队产物": { en: "Team Artifacts" },
   "房间附件": { en: "Room Attachments" },

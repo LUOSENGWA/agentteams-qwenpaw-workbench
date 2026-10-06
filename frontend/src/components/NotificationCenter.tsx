@@ -16,7 +16,7 @@ import {
 import { senderShort } from "./MessageSearch";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { useActiveTab } from "../tabActivity";
+import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 
 const host = window.QwenPaw.host;
@@ -171,9 +171,10 @@ function NotificationCenter(props: {
   // 30s 轮询（含未读计数 → tab badge）。
   // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（30s）。任务书条件写作
   // `open && !document.hidden`，但本组件 props 无 open（实况核对）——本组件
-  // 即 inbox tab 内容，useActiveTab()==="inbox" 为等价门控（rc-tabs 保活：
+  // 即 inbox tab 内容，useTabActive("inbox") 为等价门控（rc-tabs 保活：
   // 切走组件不卸载）。
-  const inboxActive = useActiveTab() === "inbox" && !document.hidden;
+  // v0.5.0-beta.14.14（UIPERF-T25）：布尔快照——非 inbox tab 互切不再重渲。
+  const inboxActive = useTabActive("inbox") && !document.hidden;
   // 挂载首拉（load 身份变化——如 unreadOnly 翻转——同样重拉，原码同款）。
   React.useEffect(() => {
     void load();

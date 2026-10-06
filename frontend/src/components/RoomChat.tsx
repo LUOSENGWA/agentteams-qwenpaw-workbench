@@ -25,7 +25,7 @@ import type { WorkerInfo, WorkflowEvent } from "../api";
 import WorkerChats from "./WorkerChats";
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { useActiveTab } from "../tabActivity";
+import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import {
   CheckIcon,
@@ -241,6 +241,11 @@ function ReplyBanner({
   );
 }
 
+/** v0.5.0-beta.14.14（UIPERF-T26）：memo——props：msg/room 稳定引用；
+ *  messages（visibleMessages）每数据变才新；onJump=handleSearchJump
+ *  （useCallback，直接传不再包内联箭头）；onLoadOriginal 父侧稳定。 */
+const ReplyBannerMemo = React.memo(ReplyBanner);
+
 /** 常用快捷表情（Element 同款交互：hover 消息 → 快捷反应）。 */
 const QUICK_REACTIONS = ["👍", "❤️", "😄", "🎉", "👀", "✅"];
 
@@ -252,13 +257,18 @@ const EMOJI_PANEL = [
   "🔧", "📋", "📄", "📊", "🐛", "🤝", "👏", "☕", "🌙", "😴",
 ];
 
-/** 表情反应 chips（emoji + 计数，点击追加同款反应）。 */
-function ReactionChips({
+/** 表情反应 chips（emoji + 计数，点击追加同款反应）。
+ * v0.5.0-beta.14.14（UIPERF-T26）：eventId 提为 prop + 父侧传稳定双参
+ * 回调（(eventId, emoji)）+ memo——此前父侧每次渲染为每行内联闭包
+ * （捕获 event_id），memo 无法生效。 */
+const ReactionChips = React.memo(function ReactionChips({
   reactions,
+  eventId,
   onReact,
 }: {
   reactions?: Record<string, number>;
-  onReact?: (emoji: string) => void;
+  eventId: string;
+  onReact?: (eventId: string, emoji: string) => void;
 }) {
   if (!reactions || Object.keys(reactions).length === 0) return null;
   return (
@@ -266,7 +276,7 @@ function ReactionChips({
       {Object.entries(reactions).map(([emoji, count]) => (
         <span
           key={emoji}
-          onClick={onReact ? () => onReact(emoji) : undefined}
+          onClick={onReact ? () => onReact(eventId, emoji) : undefined}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -284,7 +294,7 @@ function ReactionChips({
       ))}
     </div>
   );
-}
+});
 
 /** v0.5.0-beta.13.11（F6「话题 emoji 改成消息旗气泡 SVG」）：话题图标
  * = 消息气泡 + 小旗（currentColor 跟随文字色，替换全 🧵 emoji）。 */
@@ -526,7 +536,8 @@ function ThreadPanelView({
           {onReact ? (
             <ReactionChips
               reactions={root.reactions}
-              onReact={(emoji) => void onReact(root.event_id, emoji)}
+              eventId={root.event_id}
+              onReact={(id, emoji) => void onReact(id, emoji)}
             />
           ) : null}
         </div>
@@ -592,7 +603,8 @@ function ThreadPanelView({
                   {onReact ? (
                     <ReactionChips
                       reactions={r.reactions}
-                      onReact={(emoji) => void onReact(r.event_id, emoji)}
+                      eventId={r.event_id}
+                      onReact={(id, emoji) => void onReact(id, emoji)}
                     />
                   ) : null}
                 </div>
@@ -805,6 +817,13 @@ function SenderAvatar({
   );
 }
 
+/** v0.5.0-beta.14.14（UIPERF-T26）：memo——每行一个 antd.Dropdown +
+ *  antd.Popover（重组件）。props 全稳定：mxid/myUserId/workerName
+ *  字符串；room 每房稳定；onMention=insertMention（useCallback）；
+ *  onDm 父侧稳定（T13）；onDetail/onOpenChats 本组件 useCallback；
+ *  sessionState 随 workerSessionByMxid（T26 值稳定化）才变。 */
+const SenderAvatarMemo = React.memo(SenderAvatar);
+
 /** 工具消息：默认折叠一行（工具名 + 预览），点击展开全文（QwenPaw 聊天页同款）。 */
 /** v0.5.0-beta.13.7（13.6 装验「看看 QwenPaw 怎么渲染消息」）：对齐 QwenPaw
  *  ResponseTool 卡——状态识别（🔧 调用中 / ✅ 成功 / ❌ 失败，名称着色）+
@@ -816,14 +835,28 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
   const body = msg.body || "";
-  const firstLine = body.split("\n")[0] || tr("工具调用");
-  const name = toolNameOf(body);
-  const head = firstLine.trimStart();
-  const status: "call" | "ok" | "fail" = head.startsWith("✅")
-    ? "ok"
-    : head.startsWith("❌")
-      ? "fail"
-      : "call";
+  // v0.5.0-beta.14.14（UIPERF-T26）：body 派生缓存（C7）——流式期父行重渲染
+  // 不再重跑 split/join/replace 串处理（工具输出 body 可达数百行）。
+  const derived = React.useMemo(() => {
+    const firstLine = body.split("\n")[0] || tr("工具调用");
+    const head = firstLine.trimStart();
+    const status: "call" | "ok" | "fail" = head.startsWith("✅")
+      ? "ok"
+      : head.startsWith("❌")
+        ? "fail"
+        : "call";
+    // 预览：第一行后的内容前 80 字符（输出消息的实质内容）。
+    const rest = body
+      .split("\n")
+      .slice(1)
+      .join(" ")
+      .replace(/```/g, "")
+      .trim()
+      .slice(0, 80);
+    const detail = body.split("\n").slice(1).join("\n").trim();
+    return { firstLine, name: toolNameOf(body), head, status, rest, detail };
+  }, [body, tr]);
+  const { firstLine, name, head, status, rest, detail } = derived;
   const statusIcon = status === "ok" ? (
     <CheckIcon size={12} style={{ color: "#30a46c" }} />
   ) : status === "fail" ? (
@@ -833,19 +866,6 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
   );
   const nameColor =
     status === "fail" ? "#e5484d" : status === "ok" ? "#30a46c" : t.textSecondary;
-  // 预览：第一行后的内容前 80 字符（输出消息的实质内容）。
-  const rest = body
-    .split("\n")
-    .slice(1)
-    .join(" ")
-    .replace(/```/g, "")
-    .trim()
-    .slice(0, 80);
-  const detail = body
-    .split("\n")
-    .slice(1)
-    .join("\n")
-    .trim();
   return (
     <div
       onClick={() => setOpen((v) => !v)}
@@ -1035,6 +1055,19 @@ function parseApproval(
     return { approveCmd: "/approve", denyCmd: "拒绝" };
   }
   return null;
+}
+
+/** v0.5.0-beta.14.14（UIPERF-T26）：loop 状态语义相等（C5b 引用稳定化用）——
+ * 15s 轮询每轮拿到全新对象，state+mode 未变时须保留旧引用避免击穿 memo。 */
+function sameLoopStatus(
+  a: WorkerLoopStatus | null,
+  b: WorkerLoopStatus | null,
+): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.state === b.state &&
+    JSON.stringify(a.mode ?? null) === JSON.stringify(b.mode ?? null)
+  );
 }
 
 /** 消息气泡主体：文本 / 图片 / 文件 / 审批卡片 / 其他。 */
@@ -1461,6 +1494,16 @@ function MessageBody({
   );
 }
 
+/** v0.5.0-beta.14.14（UIPERF-T26）：memo——mergeForward 对未变消息保持
+ *  对象引用（append-only 合并），流式期间历史行的 msg 引用不变 → memo
+ *  跳过整棵子树（MdText/审批卡/工作流卡/文件预览全不重渲染）；只有新行
+ *  与数据真变的行才渲染。props 全为稳定引用：mergeForward 保 msg 身份；
+ *  mine 布尔；onApprovalAction/onDeliverable 本组件 useCallback（依赖
+ *  T13 稳定的父回调 + 记忆化 tr）；approvalResolved 取值稳定；
+ *  onOpenProject/onWorkflowIntervened 父侧稳定；live 随 liveWorkflows
+ *  （15s 轮询）才变。 */
+const MessageBodyMemo = React.memo(MessageBody);
+
 export interface RoomChatProps {
   room: TeamRoom | null;
   messages: RoomMessage[];
@@ -1861,6 +1904,22 @@ function RoomChat(props: RoomChatProps) {
   // 不重弹按钮；用户主动上翻（dist≥120）即解锁。
   const atBottomRef = React.useRef(true);
   const pinnedUntilRef = React.useRef(0);
+  // v0.5.0-beta.14.14（UIPERF-T26）：置底跟随 rAF 门——流式期间同一帧内
+  // 新消息 effect + ResizeObserver 可各触发多次（N 条新消息 + M 个子节点
+  // 高度变化），旧版每次同步 `el.scrollTop = el.scrollHeight`（读
+  // scrollHeight 时布局脏 → 强制同步 reflow，每帧最多 N+M 次）。现收敛为
+  // 每帧至多一次写入；已贴底（delta<2px）直接跳过写入。
+  const followRafRef = React.useRef(0);
+  const scheduleFollow = React.useCallback(() => {
+    if (followRafRef.current) return;
+    followRafRef.current = requestAnimationFrame(() => {
+      followRafRef.current = 0;
+      const el = listRef.current;
+      if (!el || !atBottomRef.current) return;
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 2) return;
+      el.scrollTop = el.scrollHeight;
+    });
+  }, []);
   // v0.5.0-beta.13.17（13.16 装验「不能滚到哪加载到哪 / 没有预加载」）：
   // 顶部预加载余量——旧版 40px 只在贴顶瞬间触发（贴顶才拉、拉完要滚回顶
   // 再触发一次），体感「没有预加载」。现 = 视口比例余量：接近顶部即开始拉，
@@ -1920,14 +1979,17 @@ function RoomChat(props: RoomChatProps) {
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
       // 贴底（含点击锁定窗口：pinned 路径恒置 atBottomRef=true）→ 跟随。
+      // v0.5.0-beta.14.14（UIPERF-T26）：rAF 门——同帧多个子节点高度变化
+      // 合并为每帧一次 scrollTop 写入（旧版每回调一次同步写 = 每回调一次
+      // 强制 reflow；流式 DOM 持续增高时是主线程卡顿主要来源）。
       if (!atBottomRef.current) return;
-      el.scrollTop = el.scrollHeight;
+      scheduleFollow();
     });
     for (const c of Array.from(el.children) as HTMLElement[]) {
       ro.observe(c);
     }
     return () => ro.disconnect();
-  }, [room, messages]);
+  }, [room, messages, scheduleFollow]);
   const t = useThemeColors();
   const tr = useT();
 
@@ -2137,7 +2199,8 @@ function RoomChat(props: RoomChatProps) {
   usePoller({
     fn: () => void onPoll?.(),
     intervalMs: 12000,
-    active: useActiveTab() === "chat" && !!room && !!onPoll,
+    // v0.5.0-beta.14.14（UIPERF-T25）：布尔快照（非 chat 互切不重渲）。
+    active: useTabActive("chat") && !!room && !!onPoll,
   });
 
   // 桌面通知：新审批消息到达 → 浏览器 Notification（宿主 2.1 无 paw.notify；
@@ -2151,10 +2214,24 @@ function RoomChat(props: RoomChatProps) {
   const seenApprovalsRef = React.useRef<Set<string>>(new Set());
   const approvalsSeededRef = React.useRef(false);
   const pendingCacheRef = React.useRef<{ ts: number; ids: Set<string> } | null>(null);
+  // v0.5.0-beta.14.14（UIPERF-T26）：approval 解析缓存（event_id→boolean）——
+  // 每次 messages 变化旧代码对**全部**消息重跑 parseApproval 正则（消息体
+  // 可达数百行），流式期 O(n) 次白扫。Matrix 消息不可变（编辑走 m.replace
+  // 新事件，不改旧 event_id 的 body），event_id 键安全；换房间时随
+  // seenApprovalsRef 一起清。
+  const approvalParseCacheRef = React.useRef(new Map<string, boolean>());
   React.useEffect(() => {
-    const apprs = messages.filter(
-      (m) => m.msgtype === "m.text" && m.body && parseApproval(m.body),
-    );
+    // event_id 级缓存：只对新落地的消息跑正则（v0.5.0-beta.14.14）。
+    const parseCache = approvalParseCacheRef.current;
+    const apprs = messages.filter((m) => {
+      if (m.msgtype !== "m.text" || !m.body) return false;
+      let hit = parseCache.get(m.event_id);
+      if (hit === undefined) {
+        hit = !!parseApproval(m.body);
+        parseCache.set(m.event_id, hit);
+      }
+      return hit;
+    });
     if (apprs.length === 0) return;
     if (!approvalsSeededRef.current) {
       // 首批 = 打开房间时已加载的历史（含旧审批）：只登记，不弹。
@@ -2222,7 +2299,9 @@ function RoomChat(props: RoomChatProps) {
     const pinned = Date.now() < pinnedUntilRef.current;
     if (atBottomRef.current || pinned) {
       atBottomRef.current = true;
-      el.scrollTop = el.scrollHeight;
+      // v0.5.0-beta.14.14（UIPERF-T26）：rAF 门（与 RO 同门）——同帧多条
+      // 新消息只写一次 scrollTop，不再每条一次强制 reflow。
+      scheduleFollow();
       setNewMsgCount(0);
       setShowJumpBottom(false);
       return;
@@ -2232,7 +2311,7 @@ function RoomChat(props: RoomChatProps) {
       setNewMsgCount((c) => c + 1);
       setShowJumpBottom(true);
     }
-  }, [messages, user_id]);
+  }, [messages, user_id, scheduleFollow]);
 
   // v0.5.0-beta.13.6（「历史滚动没修」真根因·实证 harness 定位）：
   // loadMore 前插更早消息时保持滚动锚——旧版前插 50 条后视口被顶到
@@ -2269,7 +2348,12 @@ function RoomChat(props: RoomChatProps) {
     }
     if (el) scrollAnchorRef.current = { top: el.scrollTop, height: el.scrollHeight };
     prevFirstIdRef.current = firstId;
-  });
+    // v0.5.0-beta.14.14（UIPERF-T26）：deps 化——锚快照只在「数据变 /
+    // 换房」时才有意义（前插恢复读的就是上一次数据变更后的快照）；此前
+    // 无 deps 每次渲染都读 scrollTop/scrollHeight（hover 等非数据渲染
+    // 也强制布局读）。换房即使 messages 暂未更新也会经 room_id 触发
+    // 清锚分支，语义不变。
+  }, [messages, room?.room_id]);
 
   // v0.5.0-beta.13.19：数据推进即解锁——messages 引用变化（前插/轮询追加）
   // 说明上一轮加载已落地 → 立刻允许下一次触碰（旧版只在「前插检测」时解锁，
@@ -2297,7 +2381,11 @@ function RoomChat(props: RoomChatProps) {
       return;
     }
     if (nearTop(el)) kickLoadMore();
-  });
+    // v0.5.0-beta.14.14（UIPERF-T26）：deps 化——续拉的判据只依赖
+    // 「页落地（messages）/ 待回填目标 / 可载性」，hover 等非数据渲染
+    // 不再重复读布局；滚动路径仍由 handleListScroll 覆盖（kickLoadMore
+    // 内有 autoLoadRef 防重）。
+  }, [messages, pendingOriginal, hasMore, onLoadMore, nearTop, kickLoadMore]);
 
   // 换房间：重置置底状态 + 贴底（Element 开房间即在最新消息处）。
   // v0.5.0-beta.13.12：一并重置 atBottom/pinned（换房贴底后视为在底部）。
@@ -2308,6 +2396,8 @@ function RoomChat(props: RoomChatProps) {
     // v0.5.0-beta.14.2（F4）：换房重置审批通知状态（新房间首批=只登记）。
     approvalsSeededRef.current = false;
     seenApprovalsRef.current.clear();
+    // v0.5.0-beta.14.14（UIPERF-T26）：审批解析缓存随房间清（防跨房残留）。
+    approvalParseCacheRef.current.clear();
     pendingCacheRef.current = null;
     setNewMsgCount(0);
     setShowJumpBottom(false);
@@ -2344,7 +2434,11 @@ function RoomChat(props: RoomChatProps) {
       .then((r) => {
         if (roomSeqRef.current !== seq) return; // 旧房迟到响应丢弃
         // 非 idle 且有模式才显（QwenPaw：state != idle && activeMode）。
-        setRoomLoop(r && r.state !== "idle" && r.mode ? r : null);
+        const next = r && r.state !== "idle" && r.mode ? r : null;
+        // v0.5.0-beta.14.14（UIPERF-T26）：值未变 → 复用旧引用（C5b）——
+        // 15s 轮询每次拿**新对象**，直接 setRoomLoop 每 15s 击穿一次
+        // RoomChat memo；state+mode 语义相等则保留 prev。
+        setRoomLoop((prev) => (sameLoopStatus(prev, next) ? prev : next));
       })
       .catch(() => {
         if (roomSeqRef.current === seq) setRoomLoop(null);
@@ -2359,8 +2453,9 @@ function RoomChat(props: RoomChatProps) {
   usePoller({
     fn: roomTick,
     intervalMs: 15000,
+    // v0.5.0-beta.14.14（UIPERF-T25）：布尔快照（非 chat 互切不重渲）。
     active:
-      useActiveTab() === "chat" && !!roomWorkerName && !!roomId,
+      useTabActive("chat") && !!roomWorkerName && !!roomId,
   });
 
   if (!room) {
@@ -2376,25 +2471,33 @@ function RoomChat(props: RoomChatProps) {
     ([mxid]) => mxid !== myUserId,
   );
   // 过滤空消息体且无附件的行（Tuwunel 历史里偶有无 body 的 m.text 事件）。
-  const visibleMessages = messages.filter((m) => {
-    if (!(m.body || m.url) && m.msgtype === "m.text") return false;
-    if (hideTools && m.msgtype === "m.text" && isToolMessage(m.body || "")) {
-      return false;
-    }
-    return true;
-  });
+  // v0.5.0-beta.14.14（UIPERF-T26）：memo——此前每次渲染（含 hover /
+  // chatsTick 等非数据渲染）都重建数组 → threadGroups useMemo 缓存恒被
+  // 击穿（O(n²) 每渲染重跑）。messages 未变则复用引用。
+  const visibleMessages = React.useMemo(
+    () =>
+      messages.filter((m) => {
+        if (!(m.body || m.url) && m.msgtype === "m.text") return false;
+        if (hideTools && m.msgtype === "m.text" && isToolMessage(m.body || "")) {
+          return false;
+        }
+        return true;
+      }),
+    [messages, hideTools],
+  );
 
   // 线程分组（Element/Discord 式）：回复消息归入被回复消息的线程，
   // 不再顶层重复显示——"谁的哪条消息回复谁的"一目了然。
   const threadGroups = React.useMemo(() => {
     const tops: RoomMessage[] = [];
     const repliesOf = new Map<string, RoomMessage[]>();
+    // v0.5.0-beta.14.14（UIPERF-T26）：O(n²) `.some` → O(n) 建 Set + O(1)
+    // 查询（语义等价：target 在窗口内即归线程）。n=300 时单次渲染从
+    // ~9×10⁴ 比较降到 O(n)。
+    const idSet = new Set(visibleMessages.map((m) => m.event_id));
     for (const m of visibleMessages) {
       const targetId = m.reply?.event_id || "";
-      if (
-        targetId &&
-        visibleMessages.some((x) => x.event_id === targetId)
-      ) {
+      if (targetId && idSet.has(targetId)) {
         if (!repliesOf.has(targetId)) repliesOf.set(targetId, []);
         repliesOf.get(targetId)!.push(m);
       } else {
@@ -2414,14 +2517,29 @@ function RoomChat(props: RoomChatProps) {
     return threadGroups.repliesOf.get(activeThread) || [];
   }, [activeThread, threadGroups]);
 
-  const insertMention = (mxid: string) => {
-    const member = room.members?.[mxid];
-    const name =
-      member?.display_name?.trim() ||
-      (mxid.split(":")[0] || mxid).replace(/^@/, "");
-    setDraft((d) => (d ? `${d}@${name} ` : `@${name} `));
-    setMentionQuery(null);
-  };
+  // v0.5.0-beta.14.14（UIPERF-T26）：useCallback——行内 SenderAvatar
+  // memo 依赖其引用稳定（普通函数每渲染新引用 → memo 全击穿）。
+  const insertMention = React.useCallback(
+    (mxid: string) => {
+      const member = room.members?.[mxid];
+      const name =
+        member?.display_name?.trim() ||
+        (mxid.split(":")[0] || mxid).replace(/^@/, "");
+      setDraft((d) => (d ? `${d}@${name} ` : `@${name} `));
+      setMentionQuery(null);
+    },
+    [room],
+  );
+  // v0.5.0-beta.14.14（UIPERF-T26）：头像行两个内联闭包 → 稳定引用
+  // （SenderAvatar memo 的另一半）。
+  const openDetailMxid = React.useCallback(
+    (m: string) => setDetailMxid(m),
+    [],
+  );
+  const openChatsWorker = React.useCallback(
+    (w: string) => setChatsWorker(w),
+    [],
+  );
 
   // ── @mention 输入弹层（Element 同款交互：@ 触发 / 子串匹配 / ↑↓ Enter Esc）──
   const mentionCandidates = React.useMemo(() => {
@@ -3077,18 +3195,18 @@ function RoomChat(props: RoomChatProps) {
                             gap: 6,
                           }}
                         >
-                          <SenderAvatar
+                          <SenderAvatarMemo
                             mxid={msg.sender}
                             room={room}
                             myUserId={myUserId}
                             onMention={insertMention}
                             onDm={onDm}
                             workerName={memberWorkerNames?.[msg.sender]}
-                            onDetail={(m) => setDetailMxid(m)}
+                            onDetail={openDetailMxid}
                             // （9/19 定案：灯在头像角落，不再名字旁）：
                             // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
                             sessionState={workerSessionByMxid?.[msg.sender]}
-                            onOpenChats={(w) => setChatsWorker(w)}
+                            onOpenChats={openChatsWorker}
                           />
                           {senderShortName(msg.sender, room)}
                           <span
@@ -3120,13 +3238,15 @@ function RoomChat(props: RoomChatProps) {
                         </div>
                       )}
                       {msg.reply?.event_id ? (
-                        <ReplyBanner
+                        <ReplyBannerMemo
                           msg={msg}
                           room={room}
                           messages={visibleMessages}
                           // handleSearchJump（而非 jumpToMessage）：原消息不在
                           // 已加载窗口时自动拉 /context 定位区，不再静默无反应。
-                          onJump={(eventId) => void handleSearchJump(eventId)}
+                          // v0.5.0-beta.14.14（UIPERF-T26）：直接传稳定引用
+                          // （useCallback），不再每渲染包一层内联箭头。
+                          onJump={handleSearchJump}
                           onLoadOriginal={onLoadOriginal}
                         />
                       ) : null}
@@ -3150,7 +3270,7 @@ function RoomChat(props: RoomChatProps) {
                         }}
                       >
                         <BubbleBoundary fallback={msg.body || ""}>
-                          <MessageBody
+                          <MessageBodyMemo
                             msg={msg}
                             mine={mine}
                             onApprovalAction={handleApprovalAction}
@@ -3167,9 +3287,8 @@ function RoomChat(props: RoomChatProps) {
                         </BubbleBoundary>
                         <ReactionChips
                           reactions={msg.reactions}
-                          onReact={
-                            onReact ? (emoji) => void onReact(msg.event_id, emoji) : undefined
-                          }
+                          eventId={msg.event_id}
+                          onReact={onReact}
                         />
                         {/* hover 操作条：只在消息内容行 hover 显示（头像/名字行不触发）。
                             工具条放在本 div 内（DOM 后代）：鼠标移到工具条上不触发

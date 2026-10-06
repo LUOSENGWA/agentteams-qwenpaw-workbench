@@ -2104,8 +2104,9 @@ export default function WorkbenchPage() {
     [activeRoom, writeUiState],
   );
   // v0.5.0-beta.14.6（R2）：活跃 tab 单源（tabActivity）同步——各消费方
-  // （useActiveTab：HomePage/NotificationCenter/RoomChat 轮询门）以本组件
-  // 的 tab 状态为准，直接 setState 驱动（setTabState 直改处亦覆盖）。
+  // （useTabActive 布尔快照：HomePage/NotificationCenter/OpsPanel/RoomChat
+  // 轮询门；v0.5.0-beta.14.14 UIPERF-T25 从 useActiveTab 字符串快照切换）
+  // 以本组件的 tab 状态为准，直接 setState 驱动（setTabState 直改处亦覆盖）。
   React.useEffect(() => {
     setActiveTabState(tab);
   }, [tab]);
@@ -3936,6 +3937,19 @@ export default function WorkbenchPage() {
     [handleDm],
   );
   const openGlobalSearch = React.useCallback(() => setGlobalSearchOpen(true), []);
+  // v0.5.0-beta.14.14（UIPERF-T25）：MessageSearch props 稳定化（内联箭头
+  // 每次渲染新引用 → memo 击穿，每次点击/数据波都重渲组件体）。
+  const handleGlobalSearchClose = React.useCallback(
+    () => setGlobalSearchOpen(false),
+    [],
+  );
+  const handleGlobalSearchOpenRoomOnly = React.useCallback(
+    (roomId: string) => {
+      setTab("chat");
+      openRoom(roomId);
+    },
+    [setTab, openRoom],
+  );
   const gotoApprovals = React.useCallback(() => setTab("home"), [setTab]);
   const gotoInvites = React.useCallback(() => {
     setActiveRoom(null);
@@ -4636,15 +4650,11 @@ export default function WorkbenchPage() {
           ：群名搜索（微信式）→ 点击直达房间 */}
       <MessageSearch
         open={globalSearchOpen}
-        onClose={() => setGlobalSearchOpen(false)}
-        onOpenRoom={(roomId, eventId) =>
-          handleGlobalSearchOpenRoom(roomId, eventId)
-        }
+        // v0.5.0-beta.14.14（UIPERF-T25）：props 全稳定引用（memo bail out）。
+        onClose={handleGlobalSearchClose}
+        onOpenRoom={handleGlobalSearchOpenRoom}
         rooms={rooms}
-        onOpenRoomOnly={(roomId) => {
-          setTab("chat");
-          openRoom(roomId);
-        }}
+        onOpenRoomOnly={handleGlobalSearchOpenRoomOnly}
       />
       {/* 项目文件面板（产物端点 版：任务结果/任务书/交付物） */}
       {/* v0.5.0-beta.13.14（装验反馈）：项目文件 Drawer 标题带文件夹 SVG；

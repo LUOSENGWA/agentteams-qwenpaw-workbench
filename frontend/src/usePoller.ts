@@ -29,6 +29,13 @@ export interface PollerOptions {
   backoffMaxMs?: number;
   /** 默认 0.1；每轮间隔 ±jitter 抖动防同步 */
   jitterRatio?: number;
+  /**
+   * v0.5.0-beta.14.14（UIPERF-T25）：poke 节流——距上次真实执行 fn 不足
+   * 该间隔时跳过 poke（数据还新鲜，切回 tab 不重复拉）。默认 intervalMs/2
+   * （由 usePoller 包装传入；数据新鲜度保证 ≤ 一个轮询周期，语义不变）。
+   * 0/undefined = 旧行为（每次假→真必 poke）。
+   */
+  minPokeMs?: number;
 }
 
 export interface Poller {
@@ -148,6 +155,9 @@ export function createPoller(opts: PollerOptions): Poller {
     /** 立即执行并重置节拍（供「切回 tab 立即刷新」用）；不满足条件则不动。 */
     poke(): void {
       if (stopped || inFlight || !opts.isActive()) return;
+      // UIPERF-T25：数据还新鲜（半个周期内跑过）→ 跳过，避免连点重复重拉。
+      const minPokeMs = opts.minPokeMs;
+      if (minPokeMs && lastTickAt > 0 && Date.now() - lastTickAt < minPokeMs) return;
       void runFn().then(() => {
         if (!stopped) schedule(nextDelay());
       });
@@ -168,8 +178,11 @@ export function usePoller(pollerOpts: {
   active?: boolean;
   catchUpMs?: number;
   backoffMaxMs?: number;
+  /** UIPERF-T25：默认 intervalMs/2（数据新鲜则跳过 poke）。 */
+  minPokeMs?: number;
 }): void {
   const { intervalMs, catchUpMs, backoffMaxMs } = pollerOpts;
+  const minPokeMs = pollerOpts.minPokeMs ?? intervalMs / 2;
   const activeRequested = pollerOpts.active !== false; // 默认 true
 
   // fn 用 ref 持有（每次渲染刷新），poller 闭包永远调最新版。
@@ -189,6 +202,7 @@ export function usePoller(pollerOpts: {
       isActive: () => activeRef.current && !document.hidden,
       catchUpMs,
       backoffMaxMs,
+      minPokeMs,
     });
     pollerRef.current = p;
     p.start();
@@ -196,7 +210,7 @@ export function usePoller(pollerOpts: {
       p.stop();
       pollerRef.current = null;
     };
-  }, [intervalMs, catchUpMs, backoffMaxMs]);
+  }, [intervalMs, catchUpMs, backoffMaxMs, minPokeMs]);
 
   // active 假→真 → poke()（立即补跑一次，替代「切回 tab 再等一个间隔」）。
   const prevActiveRef = React.useRef(activeRef.current);
