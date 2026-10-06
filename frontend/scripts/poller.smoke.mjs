@@ -196,5 +196,43 @@ const { createPoller } = await import(path.join(tmp, "usePoller.mjs"));
   console.log("P6 minPokeMs 节流 ✓");
 }
 
+// 7. v0.5.0-beta.14.16（深度体检）：失活 poller 的可见性恢复不补跑。
+//    场景：settings 轮询（active=tab==='settings'）；用户隐藏窗口后切到
+//    chat tab（active 假），再恢复可见——旧行为 catch-up 多打一发，
+//    修后 isActive=false → 只恢复调度链、不执行 fn。
+{
+  let calls = 0;
+  let active = true;
+  const p = createPoller({
+    fn: () => {
+      calls++;
+    },
+    intervalMs: 20,
+    isActive: () => active,
+    catchUpMs: 50,
+    jitterRatio: 0,
+  });
+  p.start();
+  await sleep(60); // 活跃期跑若干 tick
+  const beforeHide = calls;
+  assert.ok(beforeHide >= 1, "P7 初始有 tick");
+  // 隐藏 → 停摆；停摆期间切走 tab（失活）
+  globalThis.document.hidden = true;
+  fireVisibility();
+  active = false;
+  await sleep(80); // 闲置 > catchUpMs(50)
+  // 恢复可见（poller 已失活）→ 不应补跑
+  globalThis.document.hidden = false;
+  fireVisibility();
+  await sleep(40);
+  assert.strictEqual(calls, beforeHide, "P7 失活下可见恢复：不补跑");
+  // 调度链应已恢复：转回活跃后 tick 正常执行（poke 或自然 tick）
+  active = true;
+  await sleep(60);
+  assert.ok(calls > beforeHide, "P7 转回活跃：调度链正常");
+  p.stop();
+  console.log("P7 失活可见性恢复不补跑 ✓");
+}
+
 rmSync(tmp, { recursive: true, force: true });
-console.log("\npoller 冒烟全绿（6 断言）");
+console.log("\npoller 冒烟全绿（7 断言）");
