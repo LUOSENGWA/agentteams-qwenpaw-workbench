@@ -9,7 +9,7 @@ const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 
-const PRIMARY = "#FF7F16";
+const PRIMARY = "var(--app-accent, #FF7F16)";
 
 const ROLE_LABEL: Record<string, string> = {
   leader: "领",

@@ -232,7 +232,7 @@ export function WorkflowEventsTimeline(props: {
                   </span>
                   <span
                     style={{
-                      color: "#FF7F16",
+                      color: "var(--app-accent, #FF7F16)",
                       fontWeight: 600,
                       whiteSpace: "nowrap",
                     }}

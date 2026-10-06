@@ -27,7 +27,7 @@ const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
 const ReloadIcon = pick("ReloadOutlined");
 
 // ── UI 常量（与 WorkbenchPage 视觉一致）──────────────────────────────
-const PRIMARY = "#FF7F16"; // 品牌主色
+const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
 const GREEN = "#52c41a"; // 状态绿（DM 标签）
 const FAV_KEY = "agentteams-qwenpaw-workbench:favorites";
 // v0.5.0-beta.13.12（13.11 装验「房间列表排序感觉可以优化」）：排序偏好
@@ -585,8 +585,8 @@ function InviteSection(props: {
         gap: 8,
         padding: 12,
         borderRadius: CARD_RADIUS,
-        border: `1px solid rgba(255,127,22,0.4)`,
-        background: "rgba(255,127,22,0.05)",
+        border: `1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 40%, transparent)`,
+        background: "color-mix(in srgb, var(--app-accent, #FF7F16) 5%, transparent)",
       }}
     >
       <div style={{ fontWeight: 600, fontSize: 13 }}>
@@ -1007,9 +1007,9 @@ function TeamOverview(props: TeamOverviewProps) {
             }}
             onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLElement;
-              el.style.borderColor = "#FF7F16";
-              el.style.color = "#FF7F16";
-              el.style.background = "rgba(255,127,22,0.08)";
+              el.style.borderColor = "var(--app-accent, #FF7F16)";
+              el.style.color = "var(--app-accent, #FF7F16)";
+              el.style.background = "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)";
               el.style.transform = "translateY(-1px)";
             }}
             onMouseLeave={(e) => {
@@ -1048,7 +1048,7 @@ function TeamOverview(props: TeamOverviewProps) {
                 style={{
                   fontSize: 12,
                   fontWeight: 700,
-                  color: "#FF7F16",
+                  color: "var(--app-accent, #FF7F16)",
                 }}
               >
                 @ {tr("提及（{n}）", { n: mentionRoomsForFilter.length })}
@@ -1115,9 +1115,9 @@ function TeamOverview(props: TeamOverviewProps) {
                               display: "inline-flex",
                               alignItems: "center",
                               gap: 4,
-                              border: `1px solid ${active ? "#FF7F16" : t.border}`,
-                              background: active ? "rgba(255,127,22,0.10)" : t.cardBg,
-                              color: active ? "#FF7F16" : t.textSecondary,
+                              border: `1px solid ${active ? "var(--app-accent, #FF7F16)" : t.border}`,
+                              background: active ? "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)" : t.cardBg,
+                              color: active ? "var(--app-accent, #FF7F16)" : t.textSecondary,
                               borderRadius: 14,
                               padding: "2px 12px",
                               fontSize: 12,

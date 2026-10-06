@@ -1,6 +1,6 @@
 import type * as ReactNS from "react";
 
-const PRIMARY = "#FF7F16"; // 品牌主色
+const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
 
 import {
   fetchAdminData,
@@ -2866,13 +2866,13 @@ export default function WorkbenchPage() {
                 cursor: "pointer",
                 padding: "4px 10px",
                 borderRadius: 20,
-                background: "rgba(255,127,22,0.06)",
+                background: "color-mix(in srgb, var(--app-accent, #FF7F16) 6%, transparent)",
               }}
               onClick={() => setTab("settings")}
             >
               <antd.Avatar
                 size="small"
-                style={{ backgroundColor: "#FF7F16", fontSize: 13 }}
+                style={{ backgroundColor: "var(--app-accent, #FF7F16)", fontSize: 13 }}
               >
                 {(selfDisplayName || config.matrix.user_id.split(":")[0].replace(/^@/, "")).slice(0, 1).toUpperCase()}
               </antd.Avatar>
@@ -3039,7 +3039,7 @@ export default function WorkbenchPage() {
                     count={inboxUnread}
                     overflowCount={99}
                     size="small"
-                    style={{ marginLeft: 6, backgroundColor: "#FF7F16" }}
+                    style={{ marginLeft: 6, backgroundColor: "var(--app-accent, #FF7F16)" }}
                   />
                 ) : null}
               </span>
