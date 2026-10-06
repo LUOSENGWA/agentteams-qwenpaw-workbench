@@ -5,6 +5,36 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.17 (2026-10-06 - credential memory + Higress conn-test + KB cold-start root fix + low-bandwidth perf batch 4)
+
+**Per-system credential memory / Higress connectivity coverage / knowledge-base cold load root fix (cold: -64% to -78% measured) / T181 full-audit perf landing (steady-state dial-down, 45s baseline <50)**
+
+- **Credential memory redone (C1 — acceptance: "after typing the Higress account, the controller basic auth asks again")**: root-caused at source level — (1) the masked `***` literal was echoed into the password field, so typing without clearing concatenated over the real credential; (2) the backfill effect depended on the config reference, so any validate/save/login config refresh wiped the unsaved form draft; (3) controller_token had the same literal-echo issue. Now: **empty field = keep unchanged** (secret fields are never pre-filled; a `***` placeholder is sent and the backend merge inherits the stored value; placeholder hint "saved — leave empty to keep"), **explicit clear = switch type back to "service auth"** (the old "type chosen but password empty = plain URL" silently wiped stored credentials — retired), **backfill frozen** (initialized once on first load / account switch; later config reference changes never reset the form). New six-system credential status overview card (Matrix login / controller token / controller address credentials / Higress console session / Higress address credentials / SGLang address credentials — green/gray at a glance). Zero backend changes (existing merge semantics already self-consistent; browser-verified that main save does not clobber auth).
+- **Connectivity test covers Higress (C2 — acceptance: "the connectivity test should also test Higress")**: `_probe_gateway` checks reachability (GET /) + **session tri-state** (GET /v1/ai/routes: 200 = valid / 401|403 = expired, re-auth needed / 404 = not supported by this version). The four address classes (matrix/controller/sglang/**gateway**) now run fully parallel at the same level — total = slowest single address. Frontend: Higress row (detail = session state even when ok) + **both Higress dual addresses get credential editors** (the four address classes are credential-isomorphic; used when the public entry sits behind a Basic/key gate, persisted on save). Diagnostics semantics: not part of auto-reorder (the effective Higress address is selected by verify); background refresh without it = zero extra cost.
+- **Knowledge-base cold load root-fixed (K batch — acceptance: "can the knowledge base load faster")**: true root cause (measured): cold tree 13.8-15.1s / graph 12.1s / merged 40.7s — driven by **HTTP round-trip count** (not bandwidth; KB data is local, payloads are KB-scale): graph compute read each md file individually (N requests), tree used 4-10 probes, merged had no cache.
+  - **K1 batch read**: `GET /kb/{agent}/files-batch` — one exec, framed bulk read (`===FRAME:<size>:<path>` deterministic boundaries; embedded marker strings in content cannot desync the framing)
+  - **K2 tree merged probe**: top/memory/digest + six profile files in one exec (`###SECTION:` segments); the original dual-channel logic is kept verbatim as the channel-down fallback
+  - **K3 merged cache**: 30s TTL + single-flight (key = agent set)
+  - **K5 file cache**: 30s TTL (text; the binary branch is never cached to prevent amplification)
+  - **Cold measured** (deploy, kb-cache cleared, first call): tree 13.8-15.1s → **4.9-5.2s (-64%)**, graph 12.1s → **2.64s (-78%)**; second call tree 5.8ms (disk cache) / graph 11.5ms / merged 8.3ms (memory hit — K3 proven)
+- **Low-bandwidth perf batch 4 (P batch — T181 read-only full audit landing, whack-a-mole-proof edition)**: after the T181 audit (15 findings across endpoint caching / component rendering / 45s dial budget / dead code), every item was re-verified before coding — 2 of 3 P0s were downgraded/re-judged on evidence (see the re-judgment table); everything landed below has a proven root cause:
+  - **/v1/loads polling 1s → 5s** (HomePage + OpsPanel, fast/slow tiers merged): the largest controllable frontend frequency (120 calls/36min → ~30); a 5s refresh still reads as "live" for a load gauge
+  - **approvals/@ bootstrap scan cache 10s → 30s** (`_BOOTSTRAP_SCAN_TTL`): 10s TTL vs 15s polling = a guaranteed miss (full-room scan every poll); 30s = half hit (steady-state full-room scans 4.5 → ~1.5 /45s). **Zero real-time cost** — new approvals/@ go through the sync_watcher event buffer (zero latency); the TTL only governs how often history from the plugin-down window is re-harvested
+  - **messagesCache FIFO → true LRU**: read-hit refreshes recency, so hot rooms are no longer evicted for "inserted early" (13.10 full-history semantics untouched)
+  - **media objectURL module-level cache + de-dup** (same pattern as avatars): room switches / scroll remounts no longer re-fetch each blob (cap 300; beyond that fetch-but-don't-cache)
+  - **member messages page cap 10 → 5**: limit ≤ 20 scattered beyond 500 events = the member is effectively silent; saves the worst case of 5 x ~250KB upstream dials
+  - **i18n gate codified** (`scripts/i18n-gate.mjs`): 0 missing / 0 duplicate, with a lookbehind to exclude `setStr`-suffix false positives (previously hand-rolled inline every release)
+  - Audit re-judgment table (T181 verdict vs verified final — the anti-whack-a-mole evidence): P0-3 "member/messages payload not slimmed" → **re-judged: the response is already projected** (event_id/sender/body[:600]/ts), the 27.3MB is upstream /messages paging (user-triggered, non-steady); only the page cap landed. P0-1 "backend 1s single-flight cache" → **downgraded, not done**: with the frontend at 5s, the concurrent cold-fetch scenario is largely gone, single-flight benefit ≈ 0. Long-room list "P1 rendering (no virtualization)" → **P2 deferred**: measured 30 pages (~550-1550 messages) snapshot 1.2 → 1.8s, linear with no knee; real usage ceiling ≈ 1000 messages; virtualization would collide with the loadMore-anchoring / nearBottom / thread-expansion minefield (five regression rounds in 13.14-13.19). Dead code "fetchTeamsRooms / sendInboxNotify" → **kept, zero deletions**: both carry explicit do-not-delete/pre-embedded code annotations (troubleshooting tooling / artifact-notification placeholder), which outrank audit "candidate" labels.
+
+## Verification
+
+- pytest **194/194** (188 existing + 6 new KBBATCH) / tsc 0 / i18n 1378 keys 0 missing 0 duplicate (codified gate)
+- 45s dial baseline +47 (criterion <50 passed; 14.6 acceptance was +127)
+- secret scan 0
+- KB cold comparison table: filled in (tree -64% / graph -78% / merged ms-level on memory hit)
+
+---
+
 ## 0.5.0-beta.14.16 (2026-10-06 - acceptance round 4 + deep audit · six fixes)
 
 **Config-memory root fix / settings cleanup / L2 gating / faster connectivity test / poller bug fix / god-file slimming**
