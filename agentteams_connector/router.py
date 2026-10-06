@@ -71,6 +71,14 @@ _kb_graph_cache: Dict[str, Any] = {}
 # 与 tree/graph 同款 SWR 双层门；conftest 的 *_cache 通用清空覆盖本键）。
 _KB_AGENTS_TTL_SECONDS = 60.0
 _kb_agents_cache: Dict[str, Any] = {}  # "agents" -> (expiry_monotonic, payload)
+# v0.5.0-beta.14.17（KBBATCH-K3/K5）：聚合图谱 + 单文件 30s 内存门——
+# merged 冷算 = 8 agent ×（tree+批量读）实测 40.7s，file 重复点开重拉
+# 全文；与 tree/graph/agents 同款 SWR 双层门（conftest *_cache 通用清空
+# 自动覆盖）。key：merged-<sorted(agents) 逗号连> / file-<agent>-<path>。
+_KB_MERGED_TTL_SECONDS = 30.0
+_KB_FILE_TTL_SECONDS = 30.0
+_kb_merged_cache: Dict[str, Any] = {}  # csv -> (expiry_monotonic, payload)
+_kb_file_cache: Dict[str, Any] = {}    # "file-<agent>-<path>" -> (expiry, payload)
 # v0.5.0-beta.14.10（T12）：SWR 计算体注册表——build_router() 末尾（return
 # router 前）填入 tree/graph/agents 计算体与 _spawn_kb_refresh；端点冷取、
 # 后台刷新、启动预热、单测假注入统一在**调用时**读本表（T9 _ctl_get 同款
@@ -3446,25 +3454,10 @@ def build_router() -> APIRouter:
     # 失败语义：find 返 None=传输失败（切 tar）；tar 返 None=路径不存在
     # （404）；tar 超限→413（仅兜底路径可触达）。
 
-    async def _kb_find_list(
-        token: str, base: str, container: str, target: str,
-        maxdepth: Optional[int] = None,
-    ) -> Optional[List[Dict[str, Any]]]:
-        """主通道：exec find 列目录（零下载）。
-        返回 [{type,size,mtime,rel}]（rel 相对 target，顶层条目=裸名）；
-        通道失败 → None（调用方切 tar 兜底）；目标不存在/空目录 → 空列表
-        （find 报错走 stderr、stdout 空——调用方必要时以 HEAD 探针区分
-        空目录与不存在）。
-        v0.5.0-beta.13.10：-H 跟随**命令行参数**层的符号链接（worker
-        工作区 shared → teams/.../shared 团队目录符号链接——kb_ls 展开
-        符号链接目录需要；条目内深层符号链接仍不跟随，防环）。"""
-        cmd = ["find", "-H", target]
-        if maxdepth is not None:
-            cmd += ["-maxdepth", str(maxdepth)]
-        cmd += ["-printf", "%y %s %T@ %P\n"]
-        out = await _kb_exec_full(token, base, container, cmd, timeout=90.0)
-        if out is None:
-            return None
+    def _kb_parse_find_lines(out: str) -> List[Dict[str, Any]]:
+        """find -printf '%y %s %T@ %P' 行解析（_kb_find_list 主通道与
+        v0.5.0-beta.14.17 KBBATCH-K2 合并探测共用——同一解析=同一语义：
+        rel 空/绝对路径行跳过，size/mtime 解析失败归 0）。"""
         entries: List[Dict[str, Any]] = []
         for ln in out.splitlines():
             parts = ln.split(" ", 3)
@@ -3485,6 +3478,27 @@ def build_router() -> APIRouter:
             entries.append({"type": typ, "size": size,
                             "mtime": mtime, "rel": rel})
         return entries
+
+    async def _kb_find_list(
+        token: str, base: str, container: str, target: str,
+        maxdepth: Optional[int] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """主通道：exec find 列目录（零下载）。
+        返回 [{type,size,mtime,rel}]（rel 相对 target，顶层条目=裸名）；
+        通道失败 → None（调用方切 tar 兜底）；目标不存在/空目录 → 空列表
+        （find 报错走 stderr、stdout 空——调用方必要时以 HEAD 探针区分
+        空目录与不存在）。
+        v0.5.0-beta.13.10：-H 跟随**命令行参数**层的符号链接（worker
+        工作区 shared → teams/.../shared 团队目录符号链接——kb_ls 展开
+        符号链接目录需要；条目内深层符号链接仍不跟随，防环）。"""
+        cmd = ["find", "-H", target]
+        if maxdepth is not None:
+            cmd += ["-maxdepth", str(maxdepth)]
+        cmd += ["-printf", "%y %s %T@ %P\n"]
+        out = await _kb_exec_full(token, base, container, cmd, timeout=90.0)
+        if out is None:
+            return None
+        return _kb_parse_find_lines(out)
 
     async def _kb_tar_list(
         token: str, base: str, container: str, target: str,
@@ -3551,6 +3565,240 @@ def build_router() -> APIRouter:
                                 "mtime": int(m.mtime),
                                 "rel": "/".join(rel_parts)})
         return entries
+
+    # ── v0.5.0-beta.14.17（KBBATCH-K2）：tree 合并探测 ─────────────────
+    # 冷时 tree = ws 探测 + 可用性探测 + 顶层 find + memory find + digest
+    # find + 六档案逐个 archive 兜底（4-10 次 HTTP 往返）。合并探测把
+    # 三个 find 与六档案 stat 收进**一次** exec（sh -c 分段脚本，
+    # ###SECTION: 标记切分——find -printf 行首恒为 f/d/l 等单字符，
+    # # 开头行不可能来自 find 输出，切分确定性安全）。成功判据=输出含
+    # 收尾标记 ###SECTION:end（sh 缺失→exec 非 200→None；find 缺失/
+    # 中途挂→无 end 标记→按失败处理）；失败（None/无 end）→ 调用方走
+    # 原双通道逻辑整段（回退语义保留，见 _kb_tree_compute）。
+    _KB_PROFILE_FILES = (
+        "MEMORY.md", "SOUL.md", "AGENTS.md", "PROFILE.md",
+        "HEARTBEAT.md", "BOOTSTRAP.md",
+    )
+    _KB_TREE_MERGED_SCRIPT = (
+        "echo '###SECTION:top';"
+        "find -H {ws} -maxdepth 1 -printf '%y %s %T@ %P\\n' 2>/dev/null;"
+        "echo '###SECTION:memory';"
+        "find -H {ws}/memory -printf '%y %s %T@ %P\\n' 2>/dev/null;"
+        "echo '###SECTION:digest';"
+        "find -H {ws}/digest -printf '%y %s %T@ %P\\n' 2>/dev/null;"
+        "echo '###SECTION:profile';"
+        "for f in MEMORY.md SOUL.md AGENTS.md PROFILE.md HEARTBEAT.md"
+        " BOOTSTRAP.md; do"
+        " [ -e {ws}/$f ] && stat -c '%n %s %Y' {ws}/$f;"
+        "done 2>/dev/null;"
+        "echo '###SECTION:end'"
+    )
+
+    def _kb_split_sections(out: str) -> Dict[str, str]:
+        """###SECTION:<name> 标记切分 → {name: 段内容(\\n 连行)}。
+        标记行本身不入段；未知标记（未来扩展）同样收集。"""
+        sections: Dict[str, str] = {}
+        cur: Optional[str] = None
+        for ln in out.splitlines():
+            if ln.startswith("###SECTION:"):
+                cur = ln[len("###SECTION:"):].strip()
+                sections.setdefault(cur, "")
+                continue
+            if cur is None:
+                continue
+            sections[cur] = f"{sections[cur]}\n{ln}" if sections[cur] else ln
+        return sections
+
+    def _kb_parse_profile_lines(out: str) -> List[Dict[str, Any]]:
+        """六档案 stat 段行解析：`<完整路径> <size> <mtime>`（stat -c
+        '%n %s %Y'；%n=固定六文件名、无空格，rsplit 安全）。返回
+        [{path(裸名),name,size,mtime}]——与旧 ④ archive 兜底的
+        _add_entries 输出字段一致（category/openable 由调用点补齐）。"""
+        entries: List[Dict[str, Any]] = []
+        for ln in out.splitlines():
+            parts = ln.rsplit(" ", 2)
+            if len(parts) != 3:
+                continue
+            full, size_s, mtime_s = parts
+            name = full.rsplit("/", 1)[-1]
+            if name not in _KB_PROFILE_FILES:
+                continue
+            try:
+                size = int(float(size_s))
+            except ValueError:
+                size = 0
+            try:
+                mtime = int(float(mtime_s))
+            except ValueError:
+                mtime = 0
+            entries.append({"path": name, "name": name,
+                            "size": size, "mtime": mtime})
+        return entries
+
+    async def _kb_tree_merged_probe(
+        token: str, base: str, container: str, ws: str,
+    ) -> Optional[Dict[str, str]]:
+        """K2 合并探测（1 exec）：成功 → {top,memory,digest,profile}
+        四段原文；通道挂（None）/ 无收尾标记（脚本中途挂）→ None
+        （调用方走原双通道 fallback 整段）。timeout=90 与原 find 主通道
+        一致（三段 find 串行最坏 ≤3×90 的旧上界，合并后单窗口）。"""
+        script = _KB_TREE_MERGED_SCRIPT.format(ws=ws)
+        out = await _kb_exec_full(
+            token, base, container, ["sh", "-c", script], timeout=90.0,
+        )
+        if out is None or "###SECTION:end" not in out:
+            return None
+        return _kb_split_sections(out)
+
+    # ── v0.5.0-beta.14.17（KBBATCH-K1）：批量读（单次 exec 分帧）────────
+    # graph 冷取 = N 次逐文件 kb_file 往返（N=md 数，数十~上百）。批量读
+    # 把 N 次往返收进**单次** exec：容器内 python3 逐文件读，输出确定性
+    # 分帧 `===FRAME:<size>:<path>` + **恰好 size 字节**内容（帧边界由
+    # size 决定，内容含 ===FRAME: 字样也不串帧），总内容 ≤1.8MB（2MB
+    # 传输上限内留帧头余量），超限 `===TRUNC`。通道挂（None）→ 调用方
+    # 区分并回退旧逐文件路径。
+    #
+    # 声明偏离（任务书 §二 K1 字面为 sh -c stat+cat 两段）：传输层
+    # _kb_exec_full 以 utf-8/replace 解码帧——二进制帧直穿会因多字节
+    # 截断/替换符使 size 与实际字节失配、必然串帧。改为容器内
+    # decode(errors="ignore") 保证有效 UTF-8、size=重编码后字节长度，
+    # 帧边界字节精确（语义等价 stat+cat，仍单次 exec）。
+    _KB_BATCH_BUDGET = 1887436  # 1.8MB 内容预算（2MB 传输上限内）
+    _KB_BATCH_MAX_PATHS = 200
+    _KB_BATCH_READ_SCRIPT = r'''import os, sys
+ws = sys.argv[1]
+paths = sys.argv[2:]
+budget = 1887436
+out = []
+for p in paths:
+    if not p or "\n" in p or "\r" in p:
+        continue
+    full = os.path.normpath(os.path.join(ws, p))
+    if full == ws or not full.startswith(ws + os.sep):
+        out.append("===MISSING:" + p)
+        continue
+    try:
+        st = os.stat(full)
+    except OSError:
+        out.append("===MISSING:" + p)
+        continue
+    if st.st_size > budget:
+        out.append("===TRUNC")
+        break
+    budget -= st.st_size
+    try:
+        with open(full, "rb") as f:
+            data = f.read()
+    except OSError:
+        out.append("===MISSING:" + p)
+        continue
+    text = data.decode("utf-8", "ignore")
+    enc = text.encode("utf-8")
+    if enc:
+        out.append("===FRAME:%d:%s" % (len(enc), p))
+        out.append(text)
+    else:
+        out.append("===FRAME:0:" + p)
+out.append("===END")
+sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
+'''
+
+    def _kb_take_bytes(s: str, pos: int, nbytes: int):
+        """从 s[pos:] 恰好消费 nbytes 字节（UTF-8 宽度感知：per-char
+        <0x80→1 / <0x800→2 / <0x110000→3 / 其余→4），返回 (消费串,
+        新 pos)。内容恒为有效 UTF-8（容器内 decode ignore）→ 恰在字符
+        边界停。"""
+        chars: List[str] = []
+        i = pos
+        n = len(s)
+        used = 0
+        while i < n and used < nbytes:
+            cp = ord(s[i])
+            if cp < 0x80:
+                w = 1
+            elif cp < 0x800:
+                w = 2
+            elif cp < 0x110000:
+                w = 3
+            else:
+                w = 4
+            chars.append(s[i])
+            used += w
+            i += 1
+        return "".join(chars), i
+
+    _kb_batch_marker_re = re.compile(
+        r"\n(?====FRAME:|===MISSING:|===TRUNC|===END)"
+    )
+
+    def _kb_parse_batch(text: Optional[str]) -> Optional[Dict[str, Any]]:
+        """批量读分帧输出 → {files, missing, truncated}；text=None
+        （通道挂）→ None（调用方区分并回退）。帧边界由 size 决定
+        （恰好消费 size 字节）→ 内容内嵌 ===FRAME: 不当帧头（不串帧）；
+        异常失步 → 正则重同步到下一标记行。"""
+        if text is None:
+            return None
+        files: Dict[str, str] = {}
+        missing: List[str] = []
+        truncated = False
+        i = 0
+        n = len(text)
+        while i < n:
+            line_end = text.find("\n", i)
+            if line_end == -1:
+                line_end = n
+            line = text[i:line_end]
+            i = line_end + 1
+            if line.startswith("===FRAME:"):
+                rest = line[len("===FRAME:"):]
+                m = rest.find(":")
+                if m == -1:
+                    continue
+                try:
+                    size = int(rest[:m])
+                except ValueError:
+                    continue
+                pth = rest[m + 1:]
+                if size == 0:
+                    files.setdefault(pth, "")
+                    continue
+                taken, i = _kb_take_bytes(text, i, size)
+                files[pth] = taken
+                if i < n and text[i] == "\n":
+                    i += 1
+                else:
+                    # 失步（正常不可达）：重同步到下一标记行
+                    mm = _kb_batch_marker_re.search(text, i)
+                    if mm is None:
+                        break
+                    i = mm.start() + 1
+            elif line.startswith("===MISSING:"):
+                missing.append(line[len("===MISSING:"):])
+            elif line == "===TRUNC":
+                truncated = True
+                break
+            elif line == "===END":
+                break
+        return {"files": files, "missing": missing,
+                "truncated": truncated}
+
+    async def _kb_files_batch_read(
+        token: str, base: str, container: str, ws: str,
+        paths: List[str],
+    ) -> Optional[Dict[str, Any]]:
+        """单次 exec 批量读（K1）。paths 已校验（相对路径、非敏感、
+        ≤200）。通道挂 → None（调用方区分并回退旧逐文件路径）。"""
+        paths = paths[:_KB_BATCH_MAX_PATHS]
+        if not paths:
+            return {"files": {}, "missing": [], "truncated": False}
+        out = await _kb_exec_full(
+            token, base, container,
+            ["python3", "-c", _KB_BATCH_READ_SCRIPT, ws, *paths],
+            timeout=60.0,
+        )
+        if out is None:
+            return None
+        return _kb_parse_batch(out)
 
     async def _kb_workspace(token: str, base: str, agent: str) -> str:
         """探测 Agent 工作区路径（5min 缓存）。无则 404。"""
@@ -3970,6 +4218,10 @@ def build_router() -> APIRouter:
         """
         if kind == "tree" and payload.get("source") == "controller":
             return
+        # v0.5.0-beta.14.17（KBBATCH-K5）：file 的 WSF 兜底 payload 同样
+        # 不缓存（14.7 不变式扩展到 file 支）。
+        if kind == "file" and payload.get("source") == "controller":
+            return
         if kind == "tree":
             _kb_tree_cache[agent] = (
                 time.monotonic() + _KB_TREE_TTL_SECONDS, payload
@@ -3980,6 +4232,19 @@ def build_router() -> APIRouter:
                 time.monotonic() + _KB_GRAPH_TTL_SECONDS, payload
             )
             kb_cache.save(f"graph-{agent}", payload)
+        elif kind == "merged":  # v0.5.0-beta.14.17（KBBATCH-K3）：键=csv
+            _kb_merged_cache[agent] = (
+                time.monotonic() + _KB_MERGED_TTL_SECONDS, payload
+            )
+            kb_cache.save(f"merged-{agent}", payload)
+            return  # 不记 last-agent / 探针（csv 非 agent 名）
+        elif kind == "file":  # v0.5.0-beta.14.17（KBBATCH-K5）：键=agent/path
+            _a, _, _p = agent.partition("/")
+            _kb_file_cache[f"file-{_a}-{_p}"] = (
+                time.monotonic() + _KB_FILE_TTL_SECONDS, payload
+            )
+            kb_cache.save(f"file-{_a}-{_p}", payload)
+            return  # 不记 last-agent / 探针
         else:  # agents：agent 无关单键，不记 last-agent（仅 tree/graph
             # 访问计「上次访问」）
             _kb_agents_cache["agents"] = (
@@ -4180,13 +4445,10 @@ def build_router() -> APIRouter:
         import urllib.parse as _up
         # （用户要求对齐 QwenPaw 最新版文件管理）：四分类——
         # 档案 = 6 个默认 workspace markdown（QwenPaw console
-        # defaultWorkspaceMarkdown 同款清单）；日记 = memory/**（daily
-        # section）；知识库 = digest/**（digest section）；
+        # defaultWorkspaceMarkdown 同款清单，_KB_PROFILE_FILES——
+        # v0.5.0-beta.14.17 K2 合并探测 stat 段共用）；日记 = memory/**
+        # （daily section）；知识库 = digest/**（digest section）；
         # 文件 = 其余顶层文件 + 顶层目录（只列不展开，文本可点开）。
-        _PROFILE_FILES = {
-            "AGENTS.md", "SOUL.md", "PROFILE.md", "MEMORY.md",
-            "HEARTBEAT.md", "BOOTSTRAP.md",
-        }
         files: List[Dict[str, Any]] = []
         dirs: List[Dict[str, Any]] = []
         seen: set = set()
@@ -4217,12 +4479,38 @@ def build_router() -> APIRouter:
         # v0.5.0-beta.13.9 双通道：exec find 主（零下载，manager/worker 统一）
         # + tar 兜底（小工作区精确解析）。旧 worker 支整树 tar 在大工作区
         # （实测 180MB）必 413；旧 manager 支 exec-only 无兜底——同批收口。
-        entries = await _kb_find_list(token, base, container, ws, maxdepth=1)
+        # v0.5.0-beta.14.17（KBBATCH-K2）：先试合并探测（1 exec = 顶层 +
+        # memory + digest 三个 find + 六档案 stat 段）；通道挂（None）/
+        # 无收尾标记 → 下方原双通道逻辑整段照跑（原代码保留为 fallback
+        # 路径，输出逐字段一致——共用同一下方构建代码与 _kb_parse_find_lines）。
+        _mem_entries = _dig_entries = None
+        _profile_entries: Optional[List[Dict[str, Any]]] = None
+        entries: Optional[List[Dict[str, Any]]] = None
+        _merged = await _kb_tree_merged_probe(token, base, container, ws)
+        if _merged is not None:
+            entries = _kb_parse_find_lines(_merged.get("top", ""))
+            _mem_entries = _kb_parse_find_lines(_merged.get("memory", ""))
+            _dig_entries = _kb_parse_find_lines(_merged.get("digest", ""))
+            _profile_entries = _kb_parse_profile_lines(
+                _merged.get("profile", ""))
         if entries is None:
-            entries = await _kb_tar_list(
-                token, base, container, ws,
-                maxdepth=1, include_dirs=True,
-            )
+            entries = await _kb_find_list(token, base, container, ws,
+                                          maxdepth=1)
+            if entries is None:
+                entries = await _kb_tar_list(
+                    token, base, container, ws,
+                    maxdepth=1, include_dirs=True,
+                )
+            _mem_entries = await _kb_find_list(
+                token, base, container, f"{ws}/memory")
+            if _mem_entries is None:
+                _mem_entries = await _kb_tar_list(
+                    token, base, container, f"{ws}/memory")
+            _dig_entries = await _kb_find_list(
+                token, base, container, f"{ws}/digest")
+            if _dig_entries is None:
+                _dig_entries = await _kb_tar_list(
+                    token, base, container, f"{ws}/digest")
         _text_ok = (".md", ".txt", ".yaml", ".yml", ".json")
         _symlink_names: List[str] = []
         for e in (entries or []):
@@ -4262,7 +4550,7 @@ def build_router() -> APIRouter:
                 files.append(
                     {"path": name, "name": name,
                      "size": e["size"], "mtime": e["mtime"],
-                     "category": "profile" if name in _PROFILE_FILES
+                     "category": "profile" if name in _KB_PROFILE_FILES
                     else "file",
                     "openable": name.lower().endswith(_text_ok)}
                 )
@@ -4296,19 +4584,17 @@ def build_router() -> APIRouter:
                 for _f in files:
                     _f.pop("_pending_resolve", None)
 
-        # ②③ 日记（memory/**）+ 知识库（digest/**）：双通道（旧版整子树
-        # 先 tar 后查大小，长期运行 agent 子树过 20MB 即 413，与 ① 同批真根因修）。
-        for sub, cat in (("memory", "daily"), ("digest", "digest")):
-            sub_target = f"{ws}/{sub}"
-            entries = await _kb_find_list(token, base, container, sub_target)
-            if entries is None:
-                entries = await _kb_tar_list(token, base, container, sub_target)
-            if not entries:
-                continue
-            for e in entries:
+        # ②③ 日记（memory/**）+ 知识库（digest/**）：构建体与 ① 共用——
+        # 条目源 = K2 合并探测段（_mem_entries/_dig_entries）或 fallback
+        # 分支上方的原双通道取数（v0.5.0-beta.13.9 真根因修保留）。
+        for _sub, _cat, _src in (
+            ("memory", "daily", _mem_entries),
+            ("digest", "digest", _dig_entries),
+        ):
+            for e in (_src or []):
                 if e["type"] not in ("f", "l"):
                     continue  # ②③ 子树只列文件（目录不单独成条目）
-                rel = f"{sub}/{e['rel']}"
+                rel = f"{_sub}/{e['rel']}"
                 nm = e["rel"].rsplit("/", 1)[-1]
                 if (
                     _kb_is_sensitive(nm, rel)
@@ -4322,24 +4608,37 @@ def build_router() -> APIRouter:
                 # 与 ① 顶层同口径，列表=实盘目录的诚实镜像。
                 files.append(
                     {"path": rel, "name": nm, "size": e["size"],
-                     "mtime": e["mtime"], "category": cat,
+                     "mtime": e["mtime"], "category": _cat,
                      "openable": e["type"] == "f"
                      and nm.lower().endswith(_text_ok)}
                 )
 
-        # ④ 兼容旧逻辑：单独抓 6 档案文件中未随顶层 tar 出现者（布局差异兜底）
-        for sub in ("MEMORY.md", "SOUL.md", "AGENTS.md", "PROFILE.md",
-                    "HEARTBEAT.md", "BOOTSTRAP.md"):
-            if sub in seen:
-                continue
-            st, data = await _kb_docker(
-                token, base,
-                f"/containers/{container}/archive?path={_up.quote(ws + '/' + sub)}",
-                timeout=60.0,
-            )
-            if st not in (200, 304) or not data:
-                continue
-            await _add_entries(data, sub, "profile")
+        # ④ 兼容旧逻辑：单独抓 6 档案文件中未随顶层 tar 出现者（布局差异兜底）。
+        # K2 合并探测路径：stat 段已提供 存在+size/mtime（与 ④ tar 语义等价，
+        # 任务书 §二 K2）→ 直接落 stat 条目，免 6 次逐文件 archive。
+        if _profile_entries is None:
+            for sub in ("MEMORY.md", "SOUL.md", "AGENTS.md", "PROFILE.md",
+                        "HEARTBEAT.md", "BOOTSTRAP.md"):
+                if sub in seen:
+                    continue
+                st, data = await _kb_docker(
+                    token, base,
+                    f"/containers/{container}/archive?path={_up.quote(ws + '/' + sub)}",
+                    timeout=60.0,
+                )
+                if st not in (200, 304) or not data:
+                    continue
+                await _add_entries(data, sub, "profile")
+        else:
+            for e in _profile_entries:
+                if e["path"] in seen:
+                    continue
+                seen.add(e["path"])
+                files.append(
+                    {"path": e["path"], "name": e["name"], "size": e["size"],
+                     "mtime": e["mtime"], "category": "profile",
+                     "openable": True}
+                )
 
         # v0.5.0-beta.13.10：不再按文本扩展名整体过滤——每条自带 openable
         # 标记（前端据此决定可否点开），列表=实盘目录诚实镜像（非文本
@@ -4360,16 +4659,11 @@ def build_router() -> APIRouter:
         }
         return _payload
 
-    @router.get("/kb/{agent}/file")
-    async def kb_file(agent: str, path: str = "") -> Dict[str, Any]:
-        """读单个知识库文件（tar 解包 → UTF-8 文本；二进制/超限拒）。"""
-        if not _KB_AGENT_RE.match(agent):
-            raise HTTPException(status_code=400, detail="非法 agent 名")
-        if not path or path.startswith("/") or ".." in path.split("/"):
-            raise HTTPException(status_code=400, detail="非法文件路径")
-        if _kb_is_sensitive(path.rsplit("/", 1)[-1], path):
-            # 404 而非 403：不泄露敏感文件存在性（dashboard 同款过滤）
-            raise HTTPException(status_code=404, detail=f"文件不存在：{path}")
+    async def _kb_file_compute(agent: str, path: str) -> Dict[str, Any]:
+        # v0.5.0-beta.14.17（KBBATCH-K5）：kb_file 冷取计算体——原端点体
+        # （校验之后）逐字搬移；缓存写收口在调用点 _store_kb。只缓存
+        # 文本类返回（{"path","size","content"}）；415 二进制 / 413 超限
+        # 均以 HTTPException 终止、不达 _store_kb，天然不缓存。
         token, base = _kb_require_token()
         container = (
             "agentteams-manager" if agent == "manager"
@@ -4421,6 +4715,100 @@ def build_router() -> APIRouter:
         except UnicodeDecodeError:
             raise HTTPException(status_code=415, detail="二进制文件，无法在线预览")
         return {"path": path, "size": size, "content": text}
+
+    async def _kb_file_compute_wrapped(key: str) -> Dict[str, Any]:
+        # K5 单飞注册表统一签名（key="agent/path"，_spawn_kb_refresh 单飞
+        # 槽位同名）。
+        a, _, p = key.partition("/")
+        return await _kb_file_compute(a, p)
+
+    @router.get("/kb/{agent}/file")
+    async def kb_file(agent: str, path: str = "") -> Dict[str, Any]:
+        """读单个知识库文件（tar 解包 → UTF-8 文本；二进制/超限拒）。"""
+        if not _KB_AGENT_RE.match(agent):
+            raise HTTPException(status_code=400, detail="非法 agent 名")
+        if not path or path.startswith("/") or ".." in path.split("/"):
+            raise HTTPException(status_code=400, detail="非法文件路径")
+        if _kb_is_sensitive(path.rsplit("/", 1)[-1], path):
+            # 404 而非 403：不泄露敏感文件存在性（dashboard 同款过滤）
+            raise HTTPException(status_code=404, detail=f"文件不存在：{path}")
+        # v0.5.0-beta.14.17（KBBATCH-K5）：SWR 30s 内存+磁盘门（与
+        # tree/graph 同款），键 file-<agent>-<path>。只缓存文本类返回
+        # （{"path","size","content"} 形态）；415 二进制/413 超限以
+        # HTTPException 终止不达 _store_kb；WSF 兜底（source:"controller"）
+        # 在 _store_kb 单点收口不缓存（14.7 不变式）。
+        _fkey = f"file-{agent}-{path}"
+        _c = _kb_file_cache.get(_fkey)
+        if _c and _c[0] > time.monotonic():
+            return _c[1]
+        _disk = kb_cache.load(_fkey)
+        if _disk is not None:
+            _ts, _payload = _disk
+            _age = time.time() - _ts
+            if _age > _KB_SWR_TTL:
+                _spawn_kb_refresh("file", f"{agent}/{path}")
+            return {**_payload, "cached": True, "age": int(_age)}
+        _payload = await (_KB_PREWARM_HOOKS.get("file")
+                          or _kb_file_compute_wrapped)(f"{agent}/{path}")
+        _store_kb(f"{agent}/{path}", _payload, "file")
+        return _payload
+
+    @router.get("/kb/{agent}/files-batch")
+    async def kb_files_batch(agent: str, paths: str = "") -> Dict[str, Any]:
+        """批量读（K1）：paths=逗号分隔相对路径（≤200），单次 exec
+        分帧批读。返回 {agent, files, missing, truncated, cached:false}。
+        敏感路径 → missing（不读不报错，与 tree 过滤口径一致）；非法
+        路径（绝对/.. /控制字符）静默跳过；通道挂 → 502（调用方 graph
+        compute 区分并回退逐文件）。本端点结果不缓存（K1 定位=冷时
+        graph compute 的内部批读通道，前端不直调）。"""
+        if not _KB_AGENT_RE.match(agent):
+            raise HTTPException(status_code=400, detail="非法 agent 名")
+        input_missing: List[str] = []
+        want: List[str] = []
+        seen_p: set = set()
+        for seg in paths.split(","):
+            p = seg.strip()
+            if not p:
+                continue
+            # 绝对路径 / .. / 控制字符（含 \n \r \t \x00——行协议安全）
+            # → 静默跳过（不入 files 也不入 missing）
+            if (p.startswith("/") or ".." in p.split("/")
+                    or any(c in p for c in ("\n", "\r", "\t", "\x00"))):
+                continue
+            while p.startswith("./"):
+                p = p[2:]
+            if not p or p in seen_p:
+                continue
+            seen_p.add(p)
+            if _kb_is_sensitive(p.rsplit("/", 1)[-1], p):
+                input_missing.append(p)  # 敏感 → missing（不读）
+                continue
+            want.append(p)
+        want = want[:_KB_BATCH_MAX_PATHS]
+        if not want:
+            # 空请求 / 全部敏感或非法 → 直接返回（不发 exec）
+            return {"agent": agent, "files": {},
+                    "missing": input_missing,
+                    "truncated": False, "cached": False}
+        token, base = _kb_require_token()
+        container = (
+            "agentteams-manager" if agent == "manager"
+            else f"agentteams-worker-{agent}"
+        )
+        if not await _kb_docker_available(token, base, container):
+            raise HTTPException(status_code=409, detail="Docker 通道不可用")
+        ws = await _kb_workspace(token, base, agent)
+        result = await _kb_files_batch_read(token, base, container, ws, want)
+        if result is None:
+            raise HTTPException(
+                status_code=502, detail="批量读通道失败，请重试")
+        return {
+            "agent": agent,
+            "files": result["files"],
+            "missing": input_missing + result["missing"],
+            "truncated": result["truncated"],
+            "cached": False,
+        }
 
     @router.get("/kb/{agent}/ls")
     async def kb_ls(agent: str, dir: str = "") -> Dict[str, Any]:
@@ -4670,18 +5058,42 @@ def build_router() -> APIRouter:
             for p in existing:
                 if p.startswith("memory/") and p.count("/") == 1:
                     _add_edge("MEMORY.md", p)
-        # 并发 8 拉文件（150 文件串行 ~7s → 并发 ~1s）。
-        sem = asyncio.Semaphore(8)
+        # v0.5.0-beta.14.17（KBBATCH-K1 接线）：N 个 md 冷拉——先试 K1
+        # 批量读（N 次往返 → 单次 exec 分帧读；仅 docker 正常 tree 可用，
+        # WSF 兜底 tree 无真实工作区路径）；通道挂（None）/ 截断 / 任何
+        # 异常 → 下方旧并发 8 逐文件路径（原代码逐字保留为 fallback）。
+        # 截断也回退：1.8MB 预算盖不住总量时部分内容会降级图谱
+        # （漏边/漏摘要），不完整宁慢勿错（与现行为逐字段一致）。
+        fetched: Optional[List[str]] = None
+        if md_files and tree.get("source") != "controller":
+            try:
+                _btok, _bbase = _kb_require_token()
+                _bcontainer = (
+                    "agentteams-manager" if agent == "manager"
+                    else f"agentteams-worker-{agent}"
+                )
+                _bws = str(tree.get("workspace") or "")
+                if _bws and _bws != "(controller #1208)":
+                    _batch = await _kb_files_batch_read(
+                        _btok, _bbase, _bcontainer, _bws, md_files)
+                    if _batch is not None and not _batch["truncated"]:
+                        _bf = _batch["files"]
+                        fetched = [_bf.get(p, "") for p in md_files]
+            except Exception:  # noqa: BLE001 - 批量失败一律回退逐文件
+                fetched = None
+        if fetched is None:
+            # 并发 8 拉文件（150 文件串行 ~7s → 并发 ~1s）。
+            sem = asyncio.Semaphore(8)
 
-        async def _fetch_text(p: str) -> str:
-            async with sem:
-                try:
-                    fdata = await kb_file(agent, p)
-                except Exception:  # noqa: BLE001
-                    return ""
-                return fdata["content"]
+            async def _fetch_text(p: str) -> str:
+                async with sem:
+                    try:
+                        fdata = await kb_file(agent, p)
+                    except Exception:  # noqa: BLE001
+                        return ""
+                    return fdata["content"]
 
-        fetched = await asyncio.gather(*(_fetch_text(p) for p in md_files))
+            fetched = await asyncio.gather(*(_fetch_text(p) for p in md_files))
         for p, text in zip(md_files, fetched):
             if not text:
                 continue
@@ -4833,21 +5245,11 @@ def build_router() -> APIRouter:
             "agents": sorted(done_agents),
         }
 
-    @router.get("/kb/graph/merged")
-    async def kb_graph_merged(agents: str = "") -> Dict[str, Any]:
-        """v0.5.0-beta.12 ：团队聚合图谱——多 Agent 图谱合并（节点 id=
-        agent::path，前端按 agent 着色；边保留在原 Agent 内）。
-        agents=逗号分隔（缺省=全部，上限 8）；节点 400 / 边 800 上限。"""
-        token, base = _kb_require_token()
-        if agents.strip():
-            agent_list = [
-                a.strip() for a in agents.split(",") if a.strip()
-            ][:8]
-            agent_list = [a for a in agent_list if _KB_AGENT_RE.match(a)]
-        else:
-            agent_list = (await _kb_all_agents(token, base))[:8]
-        if not agent_list:
-            return {"nodes": [], "edges": [], "agents": []}
+    async def kb_graph_merged_compute(agent_list: List[str]) -> Dict[str, Any]:
+        # v0.5.0-beta.14.17（KBBATCH-K3）：kb_graph_merged 冷取计算体——
+        # 原端点体（agent 解析之后）逐字搬移；供单飞刷新复用
+        # （_spawn_kb_refresh "merged"）。逐 agent 走 kb_graph 端点（自带
+        # 其 tree/graph 缓存门）→ 合并本身不重复付单 agent 冷取成本。
         sem = asyncio.Semaphore(4)
 
         async def one(a: str) -> Optional[Dict[str, Any]]:
@@ -4888,6 +5290,47 @@ def build_router() -> APIRouter:
             "edges": edges[:800],
             "agents": ok_agents,
         }
+
+    async def _kb_merged_compute_wrapped(csv: str) -> Dict[str, Any]:
+        # K3 单飞注册表统一签名（key = sorted(agents) 逗号连 csv，
+        # _spawn_kb_refresh 单飞槽位同名）。
+        return await kb_graph_merged_compute(
+            [a for a in csv.split(",") if a])
+
+    @router.get("/kb/graph/merged")
+    async def kb_graph_merged(agents: str = "") -> Dict[str, Any]:
+        """v0.5.0-beta.12 ：团队聚合图谱——多 Agent 图谱合并（节点 id=
+        agent::path，前端按 agent 着色；边保留在原 Agent 内）。
+        agents=逗号分隔（缺省=全部，上限 8）；节点 400 / 边 800 上限。
+        v0.5.0-beta.14.17（KBBATCH-K3）：SWR 30s 内存+磁盘门（与
+        tree/graph 同款），键 merged-<sorted(agents) 逗号连>；冷算 = 多
+        Agent 图谱合并（抽 kb_graph_merged_compute，供单飞复用）。"""
+        token, base = _kb_require_token()
+        if agents.strip():
+            agent_list = [
+                a.strip() for a in agents.split(",") if a.strip()
+            ][:8]
+            agent_list = [a for a in agent_list if _KB_AGENT_RE.match(a)]
+        else:
+            agent_list = (await _kb_all_agents(token, base))[:8]
+        if not agent_list:
+            return {"nodes": [], "edges": [], "agents": []}
+        csv = ",".join(sorted(agent_list))
+        # v0.5.0-beta.14.17（KBBATCH-K3）：SWR 门（与 tree/graph 同款）。
+        _c = _kb_merged_cache.get(csv)
+        if _c and _c[0] > time.monotonic():
+            return _c[1]
+        _disk = kb_cache.load(f"merged-{csv}")
+        if _disk is not None:
+            _ts, _payload = _disk
+            _age = time.time() - _ts
+            if _age > _KB_SWR_TTL:
+                _spawn_kb_refresh("merged", csv)
+            return {**_payload, "cached": True, "age": int(_age)}
+        _payload = await (_KB_PREWARM_HOOKS.get("merged")
+                          or _kb_merged_compute_wrapped)(csv)
+        _store_kb(csv, _payload, "merged")
+        return _payload
 
     # ── 房间通知（通知中心点击跳转=团队房间的 @提到我，
     # 宿主 inbox 事件无 room_id 是「点了不跳」的根因）──────────────
@@ -6033,6 +6476,10 @@ def build_router() -> APIRouter:
         "tree": _kb_tree_compute,
         "graph": _kb_graph_compute,
         "agents": _kb_agents_compute,
+        # v0.5.0-beta.14.17（KBBATCH-K3/K5）：merged/file 冷取计算体注册
+        # （单飞刷新与端点冷取同一注入点；签名=key 字符串）。
+        "merged": _kb_merged_compute_wrapped,
+        "file": _kb_file_compute_wrapped,
     })
     # v0.5.0-beta.14.11（T15）：轻探针注册（SWR 刷新门变更检测用）。
     _KB_PROBE_HOOKS.update({"probe": _kb_probe_signature})
