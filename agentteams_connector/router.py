@@ -544,8 +544,13 @@ _artifacts_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 # 事件缓冲，扫描只做历史 bootstrap——前端按 SSE mention 事件刷新非轮询）。
 _room_mentions_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 _room_mentions_lock = threading.Lock()
-# v0.5.0-beta.12：/room-approvals 全量扫描结果 10s 缓存（同款 bootstrap：
+# v0.5.0-beta.12：/room-approvals 全量扫描结果缓存（同款 bootstrap：
 # 实时增量走 sync_watcher 审批缓冲，扫描捞插件关闭期间的未决审批请求）。
+# v0.5.0-beta.14.17（T181 审计 C 面）：10s→30s。10s TTL vs 15s 轮询=每轮
+# 必 miss（全房扫描≈每 15s 一次）；30s=半数命中。新审批/新 @ 的实时性
+# 由 sync_watcher 事件缓冲承担（零延迟，与 TTL 无关）——TTL 只影响
+# 「插件关闭期间」历史捞回的刷新粒度，+20s 无产品感知。
+_BOOTSTRAP_SCAN_TTL = 30.0
 _room_approvals_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 
 # v0.5.0-beta.14.7（T6 增量扫描）：逐房扫描态 {rid: {"ts": 已见最新消息 ts,
@@ -2683,7 +2688,10 @@ def build_router() -> APIRouter:
             raise HTTPException(status_code=401, detail="未登录，请先在配置页登录")
 
         limit = max(1, min(int(limit), 20))
-        max_pages = max(1, min(int(maxPages), 10))
+        # v0.5.0-beta.14.17（T181 审计 #22）：上限 10→5 页。limit≤20 条
+        # 散在 500+ 条之外=该成员在此房近乎沉默，抽屉价值低；5 页
+        # （250 条）覆盖正常场景，省最坏 5×~250KB 上游拨号。
+        max_pages = max(1, min(int(maxPages), 5))
         import urllib.parse as _urlparse_mod
 
         found: List[Dict[str, Any]] = []
@@ -5428,7 +5436,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                 seen_eids.add(m["event_id"])
         # ② 全量扫描历史（10s 缓存；缓存命中时零 HTTP）
         with _room_mentions_lock:
-            scan_fresh = (time.time() - _room_mentions_cache["ts"]) < 10.0
+            scan_fresh = (time.time() - _room_mentions_cache["ts"]) < _BOOTSTRAP_SCAN_TTL
             scan_results = _room_mentions_cache["data"] if scan_fresh else None
         if scan_results is None:
             scan_results = []
@@ -5498,7 +5506,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                 seen_eids.add(a["event_id"])
         # ② 全量扫描历史（10s 缓存；缓存命中时零 HTTP）。
         with _room_approvals_lock:
-            scan_fresh = (time.time() - _room_approvals_cache["ts"]) < 10.0
+            scan_fresh = (time.time() - _room_approvals_cache["ts"]) < _BOOTSTRAP_SCAN_TTL
             scan_results = (
                 _room_approvals_cache["data"] if scan_fresh else None
             )
