@@ -2586,8 +2586,16 @@ def build_router() -> APIRouter:
         for base in base_urls:
             target = f"{base.rstrip('/')}{encoded}{query_string}"
             try:
+                # v0.5.0-beta.14.18（14.17 装验「运行日志 HTTP 502: Docker API
+                # 401」真根因）：该端点漏在 14.3 的 _headers_for 覆盖凭据修复面
+                # 外——外网固定档（address_mode=wan）经公网网关时只发 Bearer，
+                # 网关 Basic 门拒收 → 401 → 本端点转 502。其余 15+ 拨号点早已
+                # 逐地址走 _headers_for（该地址配了覆盖凭据则替换 Authorization，
+                # 未配则原样 Bearer）；此处补上，全族一致。
                 async with GatedAsyncClient(timeout=30.0, verify=False) as client:
-                    resp = await client.get(target, headers=headers)
+                    resp = await client.get(
+                        target, headers=_headers_for(cfg, "controller", base, headers)
+                    )
                 if resp.status_code == 401 and not ctl_token:
                     raise HTTPException(
                         status_code=401,
@@ -5610,7 +5618,13 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         from . import sync_watcher  # noqa: PLC0415
         try:
             async with GatedAsyncClient(timeout=20.0, verify=False) as client:
-                headers = {"Authorization": f"Bearer {token}"}
+                # v0.5.0-beta.14.18：与全族一致走 _headers_for（该 matrix 地址
+                # 若配了覆盖凭据则替换，未配则原样 Bearer）——防公网 matrix
+                # 网关 Basic 门场景 401（与 docker_logs 同族缺口）。
+                headers = _headers_for(
+                    config_mod.load_config(), "matrix", homeserver,
+                    {"Authorization": f"Bearer {token}"},
+                )
                 jresp = await client.get(
                     f"{homeserver.rstrip('/')}/_matrix/client/v3/joined_rooms",
                     headers=headers,
@@ -5892,7 +5906,12 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
             f"base64 -d | /opt/venv/qwenpaw/bin/python > {tmp_path} 2>&1; "
             f"echo rc=$? >> {tmp_path}"
         )
-        headers = {"Authorization": f"Bearer {token}"}
+        # v0.5.0-beta.14.18：与全族一致走 _headers_for（controller 地址覆盖
+        # 凭据替换，未配则原样 Bearer）——外网审批 exec 同族 401 缺口。
+        headers = _headers_for(
+            config_mod.load_config(), "controller", base,
+            {"Authorization": f"Bearer {token}"},
+        )
         async with GatedAsyncClient(timeout=60.0, verify=False) as client:
             r = await client.post(
                 f"{base}/docker/v1.41/containers/{container}/exec",

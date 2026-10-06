@@ -317,11 +317,18 @@ async def _probe_gateway(
             resp = await client.get(f"{url.rstrip('/')}/", headers=headers)
         ms = int((time.monotonic() - t0) * 1000)
         if resp.status_code >= 500:
+            # v0.5.0-beta.14.18（14.17 装验「填 7113 外网地址为什么 503」）：
+            # 外网 console 地址多为隧道（frp/云转发）暴露——503 = 隧道活着但
+            # 后端 Console 服务暂不可用（重启/断流）。点破方向，不甩锅插件。
             return {
                 "ok": True,
                 "http_ok": False,
                 "ms": ms,
-                "detail": f"已连通，HTTP {resp.status_code}（Console 服务端错误）",
+                "detail": (
+                    f"已连通，HTTP {resp.status_code}（Console 服务暂不可用）"
+                    "——该外网地址若为隧道/端口转发，隧道或后端可能瞬断；"
+                    "内网环境建议地址模式改 auto/内网（内网直连不经隧道）"
+                ),
             }
         detail = f"已连通，HTTP {resp.status_code}"
         if session_cookie:
