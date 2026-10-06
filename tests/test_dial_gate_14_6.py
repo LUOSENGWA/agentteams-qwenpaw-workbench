@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""拨号闸门/计数/R4 判定（v0.5.0-beta.14.6，R3/R4/R7）。"""
+"""拨号闸门/计数/ 判定（v0.5.0-beta.14.6，//）。"""
 from __future__ import annotations
 
 import asyncio
@@ -70,7 +70,7 @@ def test_gate_stats_and_top_paths(monkeypatch):
     paths = {p["path"]: p["count"] for p in stats["async"]["top_paths"]}
     assert paths.get("/api/thing0") == 3
     assert paths.get("/api/thing1") == 2
-    # v0.5.0-beta.14.7（R7.1）：字节计量。
+    # v0.5.0-beta.14.7（.1）：字节计量。
     assert stats["async"]["bytes_total"] > 0
     by_path = {p["path"]: p for p in stats["async"]["top_paths"]}
     assert by_path["/api/thing0"].get("bytes", 0) > 0
@@ -87,7 +87,7 @@ def test_sync_filter_slim_and_typed():
 
 
 def test_no_ungated_async_client_in_connector():
-    """静态护栏（R3）：connector 源码不允许残留裸 httpx.AsyncClient(。"""
+    """静态护栏：connector 源码不允许残留裸 httpx.AsyncClient(。"""
     root = pathlib.Path(__file__).resolve().parent.parent / "agentteams_connector"
     offenders = []
     for f in sorted(root.glob("*.py")):
@@ -98,7 +98,7 @@ def test_no_ungated_async_client_in_connector():
         ):
             if line.strip().startswith("#"):
                 continue
-            # v0.5.0-beta.14.6（主控收编 QC 建议）：捕一切别名形态
+            # v0.5.0-beta.14.6（采纳审查建议）：捕一切别名形态
             # （httpx.AsyncClient / _h.AsyncClient / _httpx.AsyncClient），
             # 仅放行 GatedAsyncClient(。
             if ".AsyncClient(" in line and "GatedAsyncClient(" not in line:
@@ -107,7 +107,7 @@ def test_no_ungated_async_client_in_connector():
 
 
 def test_sync_sites_all_gated():
-    """静态护栏（R3）：connector 内 httpx.Client( 行必须带 sync_dial_slot。"""
+    """静态护栏：connector 内 httpx.Client( 行必须带 sync_dial_slot。"""
     root = pathlib.Path(__file__).resolve().parent.parent / "agentteams_connector"
     offenders = []
     for f in sorted(root.glob("*.py")):

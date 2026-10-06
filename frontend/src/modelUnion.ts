@@ -34,7 +34,7 @@ export type ModelVerdict = {
   reason?: "list" | "nocands";
 };
 
-/** 路径/URL/带空格形态 = 模型名不可能是的（/models 历史缺陷硬规则，恒生效）。 */
+/** 路径/URL/带空格形态 = 模型名不可能是的（models 历史缺陷硬规则，恒生效）。 */
 export function isPathLikeModel(v: string): boolean {
   return v.startsWith("/") || v.includes("://") || /\s/.test(v);
 }

@@ -4,16 +4,16 @@
  * 场景：真实 React + antd（node_modules UMD）挂载四个目标组件 + fetch mock
  * （QwenPaw 消息 JSON 结构正源：type/role/content[{text}|{data.data.name/...}]）。
  *
- * 断言（13.6 装验四修对应）：
+ * 断言（13.6 四修对应）：
  * ① 会话列表：长名省略 + 点击展开显 session_id（再点收起）
  * ② 会话详情：QwenPaw result-only 折叠——「3 步」pill 收起无子行、点开懒渲染、
- *    轮尾最终文本 markdown 直显、轮 2（无最终文本）全折叠
+ * 轮尾最终文本 markdown 直显、轮 2（无最终文本）全折叠
  * ③ 运行配置：基本 tab 无滑杆、迭代门 InputNumber=80、重复保护窗口=4（window_size）、
- *    改值→保存按钮点亮（diff 生效）
+ * 改值→保存按钮点亮（diff 生效）
  * ④ 聊天渲染：ToolBubble 状态色（❌ 红）+ 展开分区（参数/错误）、
- *    CodeBlock 复制钮 hover 才现
+ * CodeBlock 复制钮 hover 才现
  *
- * 运行：python3 -m http.server 8765 &  node scripts/ui-harness-137.mjs
+ * 运行：python3 -m http.server 8765 & node scripts/ui-harness-137.mjs
  */
 import { chromium } from "playwright-core";
 
@@ -90,7 +90,7 @@ await iterRowCell.waitFor({ timeout: 3000 });
 const iterRowText = await iterRowCell.locator("xpath=..").innerText();
 report("③ 基本 tab 最大迭代只读=80", iterRowText.includes("80"), iterRowText.replace(/\n/g, " ").slice(0, 40));
 // Agent Loop tab：gate 编辑器
-// 13.8：tab 改名「Agent Loop」→「智能体 Loop 设置」（六 tab 补齐定案）。
+// 13.8：tab 改名「Agent Loop」→「智能体 Loop 设置」（六 tab 补齐）。
 await page.locator("#hrc .ant-tabs-tab").getByText("智能体 Loop 设置", { exact: true }).click();
 await page.waitForTimeout(300);
 const gatePipeline = page.locator("#hrc").getByText("Default 模式 · gate 管道", { exact: true });

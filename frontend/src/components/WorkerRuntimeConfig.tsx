@@ -1,30 +1,30 @@
 /**
- * WorkerRuntimeConfig.tsx — A2：Worker 运行配置（消费上游 #1231 端点族）。
+ * WorkerRuntimeConfig.tsx — ：Worker 运行配置（消费上游 #1231 端点族）。
  *
- * 顺序铁律「插件 A2 先做先验证，dashboard 后对齐」——插件侧本轮落地，
+ * 顺序铁律「插件 先做先验证，dashboard 后对齐」——插件侧本轮落地，
  * dashboard B5（#103）为镜像语义。
  *
  * 契约（上游 pinned qwenpaw running-config + loops router 实读 +
  * 验证实盘 v1.2.4 实盘 GET 交叉验证；#13.5 按 pr-body 字段清单全量对账）：
  * - GET/PUT /api/v1/workers/{name}/runtime-config = 5-tab 运行配置
- *   （max_iters / loop / llm_retry_enabled / llm_max_retries /
- *   llm_backoff_base / llm_backoff_cap / memory_manager_backend /
- *   reme_light_memory_config / adbpg_memory_config）；PUT = read-merge-
- *   write，只发改动顶层键，未带键不动，空 body = no-op。
+ * （max_iters / loop / llm_retry_enabled / llm_max_retries /
+ * llm_backoff_base / llm_backoff_cap / memory_manager_backend /
+ * reme_light_memory_config / adbpg_memory_config）；PUT = read-merge-
+ * write，只发改动顶层键，未带键不动，空 body = no-op。
  * - GET /loops = 模式目录（builtin/custom/plugin 三源）。
  * - GET /loops/status = 单会话激活 loop（chat_id/session_id 二参，
- *   消费点=WorkerChats 会话详情头，非本面板）。
+ * 消费点=WorkerChats 会话详情头，非本面板）。
  * - GET/POST/PUT/DELETE /loops/custom[/{id}] = 自定义 loop CRUD
- *   （PUT 整块替换，body.id 必须等于路径 id；409 重名 / 422 管道校验）。
+ * （PUT 整块替换，body.id 必须等于路径 id；409 重名 / 422 管道校验）。
  * - 仅 spec.runtime == "qwenpaw" 生效（其余 runtime → 400）。
  * - L1 全字段（除 approval_level）；L2 = 5-tab 字段白名单，未知键拒绝
- *   不静默丢弃 → 本面板可编辑键全部在 L2 白名单内，diff 按构造 L2 安全。
+ * 不静默丢弃 → 本面板可编辑键全部在 L2 白名单内，diff 按构造 L2 安全。
  * - approval_level 由审批端点（#1216）管理——WRC PUT 发送会被服务端 400
- *   拒绝；「系统」tab 内嵌 ApprovalControl 就地编辑（13.24 F3 用户反馈定案：
- *   不再只读展示），数据面=审批端点，与 WRC 白名单互不干扰（无双写）。
+ * 拒绝；「系统」tab 内嵌 ApprovalControl 就地编辑（13.24 ：
+ * 不再只读展示），数据面=审批端点，与 WRC 白名单互不干扰（无双写）。
  * - loop（含 custom_modes）改动成功后服务端自动通知团队 Leader。
  * - 409 = Worker 正在执行任务/配置锁定；404 = Controller 未含该端点
- *   或 L2 越权 → 占位横幅降级。
+ * 或 L2 越权 → 占位横幅降级。
  *
  * ⚠️ 字段名勘误（交叉验证发现）：dashboard B5（#103）spec 用的
  * max_input_tokens / compaction_threshold / loop_config 与 pinned 契约
@@ -77,14 +77,14 @@ function isPosNum(s: string): boolean {
 }
 
 /**
- * v0.5.0-beta.13.7 Loop 全 gate 模型（13.6 用户反馈「Loop 设置抄 QwenPaw 没抄完」
+ * v0.5.0-beta.13.7 Loop 全 gate 模型（13.6 Loop 设置抄 QwenPaw 没抄完
  * 正源 = qwenpaw/config/config.py LoopConfig 数据模型 + QwenPaw console
  * AgentLoopCard 控件逐一对账）：
  * - 迭代上限在 **Agent Loop → Default → iteration 门**（QwenPaw
- *   IterationSection：enable Switch + **InputNumber** min=1 max=500——
- *   QwenPaw 配置面**没有滑杆**，13.6 的 Slider 是插件自创，废弃）；
+ * IterationSection：enable Switch + **InputNumber** min=1 max=500——
+ * QwenPaw 配置面**没有滑杆**，13.6 的 Slider 是插件自创，废弃）；
  * - doom_loop 键名 = **window_size**（13.6 parseLoop 误读 `window`，
- *   恒 null，速览 tag 缺值）；
+ * 恒 null，速览 tag 缺值）；
  * - rubric/goal/mission 参数 13.6 完全未做，本轮补齐。
  */
 interface DoomStageV {
@@ -157,7 +157,7 @@ const SOURCE_COLOR: Record<string, string> = {
 
 
 /** QwenPaw console Form.Item 行等价物（label + ⓘ tooltip 左 / 控件右，
- *  垂直堆叠行——Agent Config 页的呈现语言）。 */
+ * 垂直堆叠行——Agent Config 页的呈现语言）。 */
 function CfgRow({
   label,
   tip,
@@ -209,7 +209,7 @@ function CfgRow({
 }
 
 /** QwenPaw AgentLoopCard gate 卡（LockedGateCard 同款语义：Switch 启停 +
- *  点开参数区；未启用时收起无参数）。 */
+ * 点开参数区；未启用时收起无参数）。 */
 function GateSection({
   title,
   tip,
@@ -283,18 +283,18 @@ function GateParam({
 }
 
 /** v0.5.0-beta.13.8 六 tab 补齐——新字段组草稿（key=字段路径，
- *  null/undefined=未改动；buildDiff 时与当前值比对决定是否入 diff）。 */
+ * null/undefined=未改动；buildDiff 时与当前值比对决定是否入 diff）。 */
 type EditVal = string | boolean | null;
 type EditMap = Record<string, EditVal>;
 
-/** v0.5.0-beta.13.8（13.7 用户反馈「QwenPaw 有模板的，你可以抄过来——别忘
- *  开源项目的礼仪」）：Loop 模板 + gate 定义移植自 QwenPaw console
- *  AgentLoopCard.tsx（agentscope-ai/QwenPaw，开源项目）。礼仪处理：
- *  ① 模板名/gate 定义/默认值逐值保留原作者设计 ② 代码注释保留出处 ③
- *  插件 THIRD-PARTY-NOTICES/README 登记（收口时同步）。
- *  上游源：SC/QwenPaw/console/src/pages/Agent/Config/components/AgentLoopCard.tsx
- *  （GATE_DEFINITIONS L716-814 / TEMPLATES L1418 / makeGate L428 /
- *  buildCustomLoopMode L445，@c8eb9fd2 实读）。 */
+/** v0.5.0-beta.13.8（13.7 「QwenPaw 有模板的，你可以抄过来——别忘
+ * 开源项目的礼仪」）：Loop 模板 + gate 定义移植自 QwenPaw console
+ * AgentLoopCard.tsx（agentscope-ai/QwenPaw，开源项目）。礼仪处理：
+ * ① 模板名/gate 定义/默认值逐值保留原作者设计 ② 代码注释保留出处 ③
+ * 插件 THIRD-PARTY-NOTICES/README 登记（时同步）。
+ * 上游源：SC/QwenPaw/console/src/pages/Agent/Config/components/AgentLoopCard.tsx
+ * （GATE_DEFINITIONS L716-814 / TEMPLATES L1418 / makeGate L428 /
+ * buildCustomLoopMode L445，@c8eb9fd2 实读）。 */
 type LoopGateType =
   | "iteration"
   | "doom_loop"
@@ -382,11 +382,11 @@ function WorkerRuntimeConfig({
 }: {
   name: string;
   /** 当前账号 L1（controller token）——L1-only 字段（并发限流/上下文管理/
-   *  shell 组/auto_title）可编辑；L2 只读（PUT 非 L2 白名单键被服务端 403）。 */
+ * shell 组/auto_title）可编辑；L2 只读（PUT 非 L2 白名单键被服务端 403）。 */
   l1?: boolean;
   /** v0.5.0-beta.13.10（B1：L1 登录仍见「只读」Alert）：跳「设置」页
-   *  配 Controller token 的入口（L1 账号密码登录只落 Higress Console
-   *  会话 ≠ Controller 管理 token——两套凭证，Alert 给明确指引）。 */
+ * 配 Controller token 的入口（L1 账号密码登录只落 Higress Console
+ * 会话 ≠ Controller 管理 token——两套凭证，Alert 给明确指引）。 */
   onOpenSettings?: () => void;
 }) {
   const tr = useT();
@@ -397,7 +397,7 @@ function WorkerRuntimeConfig({
   const [gateMsg, setGateMsg] = React.useState("");
 
   // 编辑值（null = 未改动）。
-  // v0.5.0-beta.13.7（13.6 用户反馈「基本 tab 的拖动条有问题，QwenPaw 是输入
+  // v0.5.0-beta.13.7（13.6 「基本 tab 的拖动条有问题，QwenPaw 是输入
   // 数字的」）：maxIters Slider 废弃——QwenPaw 正源配置面**无滑杆**，迭代
   // 上限 = Agent Loop → Default → iteration 门（enable Switch + InputNumber
   // 1..500）；保存时按 useAgentConfig L183-185 语义镜像 legacy max_iters。
@@ -422,7 +422,7 @@ function WorkerRuntimeConfig({
   const [maxRetries, setMaxRetries] = React.useState<string | null>(null);
   const [backoffBase, setBackoffBase] = React.useState<string | null>(null);
   const [backoffCap, setBackoffCap] = React.useState<string | null>(null);
-  // v0.5.0-beta.13.8（13.7 用户反馈「ReAct 智能体/LLM 并发限流/上下文管理/
+  // v0.5.0-beta.13.8（13.7 「ReAct 智能体/LLM 并发限流/上下文管理/
   // 长期记忆 都做进去了吗——接口实盘全在」）：六 tab 补齐的新字段组。
   // ReAct 智能体（shell_*/auto_title，L1）+ LLM 并发限流（5 键，L1）+
   // 上下文管理（light_context_config 嵌套，L1）+ 长期记忆（reme，L2 白名单）。
@@ -547,8 +547,8 @@ function WorkerRuntimeConfig({
   };
 
   /** gate 编辑合并进当前 loop 对象（PUT loop=整块替换语义，必须发完整合并
-   *  对象）。值域全部按 qwenpaw LoopConfig 数据模型校验（GE/LE 逐条对账）。
-   *  返回 [merged, changed, invalidMsg]。 */
+ * 对象）。值域全部按 qwenpaw LoopConfig 数据模型校验（GE/LE 逐条对账）。
+ * 返回 [merged, changed, invalidMsg]。 */
   const mergeLoopGates = (): {
     merged: Rc;
     changed: boolean;
@@ -717,7 +717,7 @@ function WorkerRuntimeConfig({
   };
 
   /** 字段级 diff——只发改动的顶层键（read-merge-write 契约）。
-   *  返回 [diff, invalidMsg]。 */
+ * 返回 [diff, invalidMsg]。 */
   const buildDiff = (): { diff: Rc; invalid: string } => {
     const diff: Rc = {};
     if (!cfg) return { diff, invalid: "" };
@@ -838,13 +838,13 @@ function WorkerRuntimeConfig({
       // 上下文管理（L1-only）：context_manager_backend + light_context_config
       // 嵌套合并（read-merge-write：未改键保持现值，PUT 整块回写）。
       // 实盘结构（验证实盘 v1.2.4 GET 全字段）：
-      //   light_context_config{strategy, dialog_path, token_count_estimate_divisor,
-      //     context_compact_config{enabled, compact_threshold_ratio, reserve_threshold_ratio},
-      //     tool_result_pruning_config{enabled, pruning_recent_n,
-      //       pruning_old_msg_max_bytes, pruning_recent_msg_max_bytes,
-      //       offload_retention_days, tool_results_cache,
-      //       exempt_file_extensions[], exempt_tool_names[]},
-      //     scroll_config{...}}
+      // light_context_config{strategy, dialog_path, token_count_estimate_divisor,
+      // context_compact_config{enabled, compact_threshold_ratio, reserve_threshold_ratio},
+      // tool_result_pruning_config{enabled, pruning_recent_n,
+      // pruning_old_msg_max_bytes, pruning_recent_msg_max_bytes,
+      // offload_retention_days, tool_results_cache,
+      // exempt_file_extensions[], exempt_tool_names[]},
+      // scroll_config{...}}
       const cb = ctxEdits.context_manager_backend;
       if (cb !== null && cb !== undefined) {
         const v = String(cb).trim();
@@ -1091,7 +1091,7 @@ function WorkerRuntimeConfig({
   };
 
   /** v0.5.0-beta.13.8：模板创建自定义 loop 模式（QwenPaw buildCustomLoopMode
-   *  同语义：模板 gate 序列 → makeGate（id=`${type}-${nonce}` + 默认参数））。 */
+ * 同语义：模板 gate 序列 → makeGate（id=`${type}-${nonce}` + 默认参数））。 */
   const createViaTemplate = async () => {
     const nm = tmplName.trim();
     if (!nm) {
@@ -1168,7 +1168,7 @@ function WorkerRuntimeConfig({
   };
 
   // 折叠头（Worker 管理展开区内的可折叠段）。
-  // v0.5.0-beta.13.16（13.15 用户反馈「运行配置的按钮做好看一点，和资源管理的
+  // v0.5.0-beta.13.16（13.15 「运行配置的按钮做好看一点，和资源管理的
   // 按钮做一样」）：text link → 与「资源管理」区块同款卡片式折叠头
   // （▸/▾ + 图标 + 标题 + qwenpaw 标签 + 边框卡片）。
   if (!open) {
@@ -1284,11 +1284,11 @@ function WorkerRuntimeConfig({
         />
       ) : null}
 
-      {/* v0.5.0-beta.13.6（用户反馈「太简陋太不直观」）：按 QwenPaw console
-          Agent Config 页正源重构呈现——Tabs 分域 + 每域 Card + 表单项行
-          （label + tooltip 左 / 控件右）+ 滑杆带数值显示。旧版把所有字段
-          挤进一行 flex-wrap：窄容器换行错乱、语义分组不可见。
-          数据范围不变（L2 白名单键 + diff 只发改动键），只改呈现层。 */}
+ {/* v0.5.0-beta.13.6（太简陋太不直观）：按 QwenPaw console
+ Agent Config 页正源重构呈现——Tabs 分域 + 每域 Card + 表单项行
+ （label + tooltip 左 / 控件右）+ 滑杆带数值显示。旧版把所有字段
+ 挤进一行 flex-wrap：窄容器换行错乱、语义分组不可见。
+ 数据范围不变（L2 白名单键 + diff 只发改动键），只改呈现层。 */}
       {cfg && !gate ? (
         <antd.Tabs
           size="small"
@@ -1299,10 +1299,10 @@ function WorkerRuntimeConfig({
               children: (
                 <antd.Card size="small" title={tr("ReAct 智能体")} style={{ marginTop: 4 }}>
                   {/* v0.5.0-beta.13.8 六 tab 补齐：按 QwenPaw ReactAgentCard
-                      行序对齐（语言/时区/项目目录/代码能力 = QwenPaw 本机
-                      字段，Controller running-config 不暴露，不做）。
-                      13.8：shell 组与 auto_title 在 L1 下可编辑（接口实盘
-                      全在，L2 白名单外 → L2 只读）。 */}
+ 行序对齐（语言/时区/项目目录/代码能力 = QwenPaw 本机
+ 字段，Controller running-config 不暴露，不做）。
+ 13.8：shell 组与 auto_title 在 L1 下可编辑（接口实盘
+ 全在，L2 白名单外 → L2 只读）。 */}
                   <CfgRow
                     label={tr("最大迭代")}
                     tip={tr("单次任务最大 LLM 迭代轮数。唯一编辑入口在 智能体 Loop 设置 → iteration 门（与 QwenPaw console 一致）；此处只读展示。")}
@@ -1398,20 +1398,20 @@ function WorkerRuntimeConfig({
               label: tr("智能体 Loop 设置"),
               children: (
                 <antd.Card size="small" title={tr("智能体 Loop 设置")} style={{ marginTop: 4 }}>
-                  {/* v0.5.0-beta.13.7（13.6 用户反馈「Loop 设置抄 QwenPaw 没抄
-                      完」）：按 QwenPaw AgentLoopCard 补齐——Default 模式 gate
-                      管道（iteration/doom_loop/rubric）+ Goal/Mission 内置
-                      参数，全部 InputNumber（QwenPaw 配置面无滑杆）；13.6
-                      tag 速览废弃（goal/mission 数据模型无 enabled 字段，
-                      tag 恒 off 误导）；整块 JSON 保留为高级兜底。值域逐条
-                      对账 qwenpaw LoopConfig（iteration 1..500 / doom
-                      window≥2 / threshold 0..1 / stages after≥1 / rubric
-                      1..10 / goal 1..500 / mission 1..100·retry 0..10）。 */}
-                  {/* v0.5.0-beta.13.8（13.7 用户反馈「QwenPaw 有模板的，你可以抄
-                      过来——别忘了开源项目的礼仪」）：Loop 模板——QwenPaw
-                      AgentLoopCard 的「Loop 模板」区移植（出处/署名见文件
-                      顶部 LOOP_TEMPLATES 注释；模板/gate 默认值逐值保留
-                      原设计，属 QwenPaw 上游，插件仅做呈现与调用）。 */}
+                  {/* v0.5.0-beta.13.7（13.6 「Loop 设置抄 QwenPaw 没抄
+ 完」）：按 QwenPaw AgentLoopCard 补齐——Default 模式 gate
+ 管道（iteration/doom_loop/rubric）+ Goal/Mission 内置
+ 参数，全部 InputNumber（QwenPaw 配置面无滑杆）；13.6
+ tag 速览废弃（goal/mission 数据模型无 enabled 字段，
+ tag 恒 off 误导）；整块 JSON 保留为高级兜底。值域逐条
+ 对账 qwenpaw LoopConfig（iteration 1..500 / doom
+ window≥2 / threshold 0..1 / stages after≥1 / rubric
+ 1..10 / goal 1..500 / mission 1..100·retry 0..10）。 */}
+                  {/* v0.5.0-beta.13.8（13.7 「QwenPaw 有模板的，你可以抄
+ 过来——别忘了开源项目的礼仪」）：Loop 模板——QwenPaw
+ AgentLoopCard 的「Loop 模板」区移植（出处/署名见文件
+ 顶部 LOOP_TEMPLATES 注释；模板/gate 默认值逐值保留
+ 原设计，属 QwenPaw 上游，插件仅做呈现与调用）。 */}
                   <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid rgba(127,127,127,0.15)" }}>
                     <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>
                       {tr("Loop 模板")}
@@ -1457,7 +1457,7 @@ function WorkerRuntimeConfig({
                             }
                           >
                             {/* id 与标题同 span：harness exact 断言按整串匹配，
-                                不与下方 GateSection 标题（纯中文）撞名。 */}
+ 不与下方 GateSection 标题（纯中文）撞名。 */}
                             <span style={{ fontSize: 11.5 }}>
                               {LOOP_GATE_DEFS[g].title}
                               <span style={{ fontSize: 10.5, color: "rgba(0,0,0,0.35)", marginLeft: 4 }}>{g}</span>
@@ -1847,7 +1847,7 @@ function WorkerRuntimeConfig({
                     </div>
                   ) : null}
 
-                  {/* Loop 模式节：目录（GET /loops）+ 自定义 CRUD（/loops/custom）。 */}
+                  {/* Loop 模式节：目录（GET /loops）+ 自定义 CRUD（loops/custom）。 */}
                   <div
                     style={{
                       borderTop: "1px dashed rgba(127,127,127,0.25)",
@@ -2459,7 +2459,7 @@ function WorkerRuntimeConfig({
             },
             {
               key: "system",
-              // v0.5.0-beta.13.24（F3·用户反馈定案）：审批级别不再只读——内嵌
+              // v0.5.0-beta.13.24（·）：审批级别不再只读——内嵌
               // 与团队管理卡同源的 ApprovalControl（四档卡选择器 + 读/写
               // 双路径回退 + L1/L2 权限 + OFF capability 提示，零新写链路）。
               // 数据面仍走审批端点 #1216（WRC PUT 白名单本就不含

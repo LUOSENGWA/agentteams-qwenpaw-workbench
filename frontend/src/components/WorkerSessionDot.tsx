@@ -2,8 +2,8 @@
 //
 // 视觉照搬 QwenPaw console AgentStatusIndicator（实读）：8px 圆点 +
 // statusPulse 1.2s 呼吸（opacity 1↔0.35 + box-shadow 扩散）+ Tooltip +
-// prefers-reduced-motion 降级关动画。色板按产品定案：
-//   蓝 #3b82f6 = 运行中（呼吸）/ 绿 #52c41a = 运行完成（常亮）/ 灰 = 无任务（常亮）
+// prefers-reduced-motion 降级关动画。色板按产品：
+// 蓝 #3b82f6 = 运行中（呼吸）/ 绿 #52c41a = 运行完成（常亮）/ 灰 = 无任务（常亮）
 // 呼吸动画走 CSS class（wb-session-dot.running）而非内联 animation——
 // 内联样式无法被 @media (prefers-reduced-motion) 覆盖，class 可以。
 
@@ -35,7 +35,7 @@ export default function WorkerSessionDot({
 }: {
   state: WorkerSessionState;
   size?: number;
- /** （定案：灯在头像角落）：absolute 挂右下 + 白描边环。 */
+ /** （灯在头像角落）：absolute 挂右下 + 白描边环。 */
   corner?: boolean;
 }) {
   const tr = useT();

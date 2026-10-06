@@ -4,11 +4,11 @@
 Registered capabilities (v0.5.0-beta.12):
 
 - ``register_http_router`` → ``/agentteams-proxy/*`` (config/login/连通性/
-  selfcheck L0-L4/Matrix 代理/Controller 透传/workflow-events/teams-sync/
-  房间 SSE/DM/上传/通知/sglang-loads)
+ selfcheck L0-L4/Matrix 代理/Controller 透传/workflow-events/teams-sync/
+ 房间 SSE/DM/上传/通知/sglang-loads)
 - ``register_slash_command("selfcheck")`` → run L0-L2 from the chat input
 - ``register_tool("agentteams_qwenpaw_workbench_status")`` → agent 工具：查询当前
-  登录用户的团队/房间/Worker 树状态（overview|rooms|teams；默认关闭）
+ 登录用户的团队/房间/Worker 树状态（overview|rooms|teams；默认关闭）
 
 The frontend entry (``dist/index.js``) renders the workbench page at
 ``/apps/agentteams-qwenpaw-workbench``.
@@ -116,8 +116,8 @@ class AgentTeamsWorkbenchPlugin:
             tool_type="network",
         )
 
-        # IM 式事件触发（用户反馈「30s 轮询太笨」）：后台 /sync 长轮询
-        # 循环，@提到我 → 写宿主收件箱 + SSE 推前端（/events）。
+        # IM 式事件触发（30s 轮询太笨）：后台 /sync 长轮询
+        # 循环，@提到我 → 写宿主收件箱 + SSE 推前端（events）。
         api.register_startup_hook(
             "agentteams-sync-watcher",
             lambda: sync_watcher.start(),
@@ -150,7 +150,7 @@ class AgentTeamsWorkbenchPlugin:
             lambda: address_probe.stop(),
         )
 
-        # v0.5.0-beta.14.9（UIPERF-T9）：Worker 状态聚合扫描（前端状态灯的
+        # v0.5.0-beta.14.9：Worker 状态聚合扫描（前端状态灯的
         # 扇出收敛——连接器侧单点扫描 + /workers-status 单端点）。
         from agentteams_connector import worker_status
 
@@ -164,7 +164,7 @@ class AgentTeamsWorkbenchPlugin:
             lambda: worker_status.stop(),
         )
 
-        # v0.5.0-beta.14.9（UIPERF-T10）：项目+工作流取数聚合扫描（工作流
+        # v0.5.0-beta.14.9：项目+工作流取数聚合扫描（工作流
         # 列表逐项目 36 路 /workflow 扇出收敛——连接器侧单点扫描 +
         # /projects-workflow 单端点）。
         from agentteams_connector import projects_workflow
@@ -179,7 +179,7 @@ class AgentTeamsWorkbenchPlugin:
             lambda: projects_workflow.stop(),
         )
 
-        # v0.5.0-beta.14.10（UIPERF-T12）：KB 预热——上次访问的 agent 后台
+        # v0.5.0-beta.14.10：KB 预热——上次访问的 agent 后台
         # 静默补 tree+graph（重启后首开知识库同样秒开）。fire-and-forget、
         # 预热失败无碍；不依赖 HTTP 自呼（直调 router 模块 _kb_prewarm_agent
         # → 注册表计算体，见 router.py _KB_PREWARM_HOOKS）。

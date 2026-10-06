@@ -21,7 +21,7 @@
 | three-spritetext | 1.10.0 | MIT | © 2018 Vasco Asturiano | 3D node text labels (SpriteText) | [vasturiano/three-spritetext](https://github.com/vasturiano/three-spritetext) |
 | fflate | 0.8.3 | MIT | © 2026 Arjun Barrett | xlsx file preview (zlib inflate, replacing a 400KB-class SheetJS dependency) | [nodeca/fflate](https://github.com/nodeca/fflate) |
 
-<!-- mermaid (12.0.0, MIT, added for 13.21 A9) removed in v0.5.0-beta.13.24
+<!-- mermaid (12.0.0, MIT, added for 13.21 ) removed in v0.5.0-beta.13.24
 with the DAG/Mermaid merge — same structure as the self-drawn DAG but
 non-interactive; keeping the interactive DAG drops the main bundle by 5.1MB. -->
 | lucide (icon path data) | 2026-08 snapshot | ISC | © lucide contributors | Four-level tool-execution-security icons (Ban / AlertTriangle / Shield / CircleCheck; SVG path data inlined, zero runtime dependency) | [lucide-icons/lucide](https://github.com/lucide-icons/lucide) |

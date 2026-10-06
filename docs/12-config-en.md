@@ -52,7 +52,7 @@ Behavior rules:
 - Env values are **never persisted** (config stays empty); the pasted value is stored in the connector's local config (local machine only, see above) — after token rotation (controller re-signs), re-fetch via the command and paste again
 - **The token value never leaves the QwenPaw process**: the browser/frontend only ever sees the `controllerTokenSource: "config"|"env"|"invalid"|""` source marker (since v0.5.0-beta.12, `file`/`file_unreadable` no longer exist)
 
-> **Security decision (why not password→token minting)**: the Controller has no token-issuance endpoint of any kind (upstream security design, not a defect) — a browser-side password→token exchange does not exist architecturally. The only safe equivalent is "injection at deploy time" (dashboard F1g decision B). The password still unlocks the gateway side (Higress Console) only; the token (config or env) unlocks the Controller admin API; both coexist.
+> **Security decision (why not password→token minting)**: the Controller has no token-issuance endpoint of any kind (upstream security design, not a defect) — a browser-side password→token exchange does not exist architecturally. The only safe equivalent is "injection at deploy time" (same design decision as the dashboard). The password still unlocks the gateway side (Higress Console) only; the token (config or env) unlocks the Controller admin API; both coexist.
 
 > **Level-2 note**: the Controller's Matrix auth only accepts **level-2 Human accounts** — level-1 admin accounts get 401. If L2 mode 401s: use L1 token mode, or ask the deployment admin to change that Human to level 2 (the "permission self-check" on the Self-check page shows your current level).
 

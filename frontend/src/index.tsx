@@ -4,11 +4,11 @@
  * Two routes, one component:
  * - /apps/agentteams-qwenpaw-workbench (PawApp, via registerRoutes) → App Center +
  * desktop Dock window. /apps/ routes intentionally get NO sidebar menu.
- *   ⚠ v0.5.0-beta.14.15：web console 的 PawApp 加载器按 plugin_type 门控
- *   （expectedType="app"），本插件 manifest 有 meta.tools → 推断 TOOL →
- *   web 端直接打开 /apps/ 会报 "PawApp frontend plugin not found"（实测
- *   2.2.2b4）。入口统一走 /plugin/（见下）；/apps/ 仅 desktop PawApp
- *   宿主场景保留。plugin.json meta.pawapp.entry_page 已指 /plugin/。
+ * ⚠ v0.5.0-beta.14.15：web console 的 PawApp 加载器按 plugin_type 门控
+ * （expectedType="app"），本插件 manifest 有 meta.tools → 推断 TOOL →
+ * web 端直接打开 /apps/ 会报 "PawApp frontend plugin not found"（实测
+ * 2.2.2b4）。入口统一走 /plugin/（见下）；/apps/ 仅 desktop PawApp
+ * 宿主场景保留。plugin.json meta.pawapp.entry_page 已指 /plugin/。
  * - /plugin/agentteams-qwenpaw-workbench (plain route, via route.add) → sidebar click
  * renders the page inline in the content area (no App shell)。全模式可用
  * （web console 侧栏「团队工作台」+ meta.pawapp.entry_page 默认入口）。
@@ -20,7 +20,7 @@
 import type * as ReactNS from "react";
 import LOGO_URL from "./lib/logo";
 
-// v0.5.0-beta.12.2（用户反馈：去掉占位 emoji，直接用 AgentTeams logo）——
+// v0.5.0-beta.12.2（去掉占位 emoji，直接用 AgentTeams logo）——
 // 宿主 menu.add/registerRoutes 的 icon 接受 ReactNode（console types.ts
 // 「ReactNode for custom」）：传 AgentTeams logo（?inline data URI）的
 // <img> 元素；宿主 React 缺失的极端场景降级回 emoji。
@@ -35,7 +35,7 @@ const LOGO_ICON: ReactNS.ReactNode = hostReact
     })
   : "🏢";
 
-// v0.5.0-beta.13.11（F5 QwenPaw 同款 Tab 震动）：侧栏 logo 待审批徽标——
+// v0.5.0-beta.13.11（QwenPaw 同款 Tab 震动）：侧栏 logo 待审批徽标——
 // 轮询 /room-approvals（与通知中心同源），出现待审批即红点计数 + 图标
 // 晃一次（wbTabShake）。宿主侧栏 icon 接受 ReactNode（console types.ts
 // 「ReactNode for custom」）；宿主 React 缺失时降级回静态 LOGO_ICON。
@@ -44,7 +44,7 @@ function SidebarApprovalIcon() {
   const [count, setCount] = hostReact.useState(0);
   const [shake, setShake] = hostReact.useState(false);
   const prevRef = hostReact.useRef(0);
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s，!document.hidden
+  // v0.5.0-beta.14.6：旧定时器 → usePoller（15s，!document.hidden
   // 内置于 poller）——去掉 alive flag（React 18 卸载后 setState 为 no-op）。
   const poll = hostReact.useCallback(async () => {
     try {
@@ -90,7 +90,7 @@ function SidebarApprovalIcon() {
             style: {
               position: "absolute",
               top: -5,
-              left: -7, // v0.5.0-beta.13.21：未读气泡左上角（用户反馈）
+ left: -7, // v0.5.0-beta.13.21：未读气泡左上角
               minWidth: 13,
               height: 13,
               lineHeight: "13px",
@@ -150,8 +150,8 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   to { opacity: 1; transform: translateY(0); }
 }
 /* v0.5.0-beta.12.4：Worker session 运行指示呼吸动画——照搬 QwenPaw
-   AgentStatusIndicator 的 statusPulse（1.2s ease-in-out，opacity 1↔0.35 +
-   box-shadow 扩散）。动画挂在 class 上（非内联），reduced-motion 可关。 */
+ AgentStatusIndicator 的 statusPulse（1.2s ease-in-out，opacity 1↔0.35 +
+ box-shadow 扩散）。动画挂在 class 上（非内联），reduced-motion 可关。 */
 @keyframes wbSessionPulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(59,130,246,0.5); }
   50% { opacity: 0.35; box-shadow: 0 0 0 4px rgba(59,130,246,0); }
@@ -160,7 +160,7 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }
 /* v0.5.0-beta.12.8（第 11 轮）：聊天工作流卡 LIVE 徽标脉冲点（绿，节奏同
-   wbSessionPulse 1.2s）。 */
+ wbSessionPulse 1.2s）。 */
 @keyframes wbLivePulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
   50% { opacity: 0.4; box-shadow: 0 0 0 4px rgba(16,185,129,0); }
@@ -169,12 +169,12 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   animation: wbLivePulse 1.2s ease-in-out infinite;
 }
 /* v0.5.0-beta.13.6：聊天输入区 loop 状态 chip 呼吸点（复用 wbSessionPulse
-   蓝色节奏；awaiting_user 为静态琥珀点，不挂动画）。 */
+ 蓝色节奏；awaiting_user 为静态琥珀点，不挂动画）。 */
 .wb-loop-dot.running {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }
-/* v0.5.0-beta.13.11（F5 QwenPaw 同款 Tab 震动）：有待审批时侧栏 logo
-   晃一次（bell shake，1.2s）；持续待批挂红点计数（静态，不循环晃）。 */
+/* v0.5.0-beta.13.11（QwenPaw 同款 Tab 震动）：有待审批时侧栏 logo
+ 晃一次（bell shake，1.2s）；持续待批挂红点计数（静态，不循环晃）。 */
 @keyframes wbTabShake {
   0%, 100% { transform: rotate(0); }
   15% { transform: rotate(-14deg); }
@@ -189,11 +189,11 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   .wb-loop-dot.running { animation: none; }
   .wb-tab-shake { animation: none !important; }
 }
-/* 页面布局（用户反馈「上下边界固定撑满屏幕，参考控制台」）：
-   main 撑满（height 100% + minHeight 兜底）+ flex column；header 固定；
-   tab 内容区 tabpane 层滚动——nav 固定不动，聊天室输入区固定在
-   tabpane 底部。注意：content-holder 用 overflow hidden（不是 auto），
-   滚动只在 tabpane 层，避免双重滚动条。 */
+/* 页面布局（上下边界固定撑满屏幕，参考控制台）：
+ main 撑满（height 100% + minHeight 兜底）+ flex column；header 固定；
+ tab 内容区 tabpane 层滚动——nav 固定不动，聊天室输入区固定在
+ tabpane 底部。注意：content-holder 用 overflow hidden（不是 auto），
+ 滚动只在 tabpane 层，避免双重滚动条。 */
 .wb-main { height: 100%; }
 .wb-main-tabs.ant-tabs {
   flex: 1 1 auto;
@@ -213,30 +213,30 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   height: 100%;
   overflow: auto;
 }
-/* v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档（console_effects，
-   默认 light）取代旧 console_calm bool——旧 data-wb-calm 属性删除
-   （迁移后不再写）：
-   - off   = 旧 calm 行为照搬（RunningGlow 旋转光环/呼吸层停动画，
-             console 玻璃模糊全停）——最省电；
-   - light = 动画全保留（上游观感），模糊半径封顶 6px（降重活、
-             保观感），ambientLight 环境光层降透明；
-   - full  = 零覆盖（上游原样）。
-   门控属性在 <html data-wb-fx="...">（启动先写 light，配置加载后覆写）。 */
+/* v0.5.0-beta.14.12：控制台特效三档（console_effects，
+ 默认 light）取代旧 console_calm bool——旧 data-wb-calm 属性删除
+ （迁移后不再写）：
+ - off = 旧 calm 行为照搬（RunningGlow 旋转光环/呼吸层停动画，
+ console 玻璃模糊全停）——最省电；
+ - light = 动画全保留（上游观感），模糊半径封顶 6px（降重活、
+ 保观感），ambientLight 环境光层降透明；
+ - full = 零覆盖（上游原样）。
+ 门控属性在 <html data-wb-fx="...">（启动先写 light，配置加载后覆写）。 */
 html[data-wb-fx="off"] [class*="RunningGlow-module"],
 html[data-wb-fx="off"] [class*="RunningGlow-module"] *,
 html[data-wb-fx="off"] [class*="ambientLight"] {
   animation: none !important;
 }
-/* v0.5.0-beta.14.11（UIPERF-T14）：console 玻璃模糊选择器清单（各
-   backdrop-filter 元素是核显常驻合成负担）。清单 = 对运行中
-   qwenpaw 2.2.2b4 console dist CSS 的全量扫描（36 处声明 / 17 个选择器，
-   实际 blur 规则全列；已 backdrop-filter:none 的规则——dockableSidebar
-   floating/mainContentLayout header/settingsPage pageHeader/popover
-   级联终值等——不重复列，仅保留任务指定的两条幂等防回归）。各元素
-   背景均为 88–96% 不透明（--app-glass/--sidebar-sticky-bg 等）或高
-   对比深色（x-markdown 调试层 #000 75–85%、floatingCapsule #000 50%
-   白字），去模糊后可读性不受损，无需回退色。排除：antd 通知堆叠
-   内联 blur(10px)（仅多条通知叠加时出现，非常驻）。 */
+/* v0.5.0-beta.14.11：console 玻璃模糊选择器清单（各
+ backdrop-filter 元素是核显常驻合成负担）。清单 = 对运行中
+ qwenpaw 2.2.2b4 console dist CSS 的全量扫描（36 处声明 / 17 个选择器，
+ 实际 blur 规则全列；已 backdrop-filter:none 的规则——dockableSidebar
+ floating/mainContentLayout header/settingsPage pageHeader/popover
+ 级联终值等——不重复列，仅保留任务指定的两条幂等防回归）。各元素
+ 背景均为 88–96% 不透明（--app-glass/--sidebar-sticky-bg 等）或高
+ 对比深色（x-markdown 调试层 #000 75–85%、floatingCapsule #000 50%
+ 白字），去模糊后可读性不受损，无需回退色。排除：antd 通知堆叠
+ 内联 blur(10px)（仅多条通知叠加时出现，非常驻）。 */
 /* off 档：玻璃模糊全停。 */
 html[data-wb-fx="off"] [class*="stickyGroupHeader"],
 html[data-wb-fx="off"] [class*="dockableSidebar"][class*="floating"],
@@ -253,8 +253,8 @@ html[data-wb-fx="off"] [class*="HubShell-module__topbar"] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-/* v0.5.0-beta.14.12（UIPERF-T18）：light 档（默认）——同清单 blur 半径
-   封顶 6px（保留玻璃观感，大幅降低大半径 blur 的合成负担）。 */
+/* v0.5.0-beta.14.12：light 档（默认）——同清单 blur 半径
+ 封顶 6px（保留玻璃观感，大幅降低大半径 blur 的合成负担）。 */
 html[data-wb-fx="light"] [class*="stickyGroupHeader"],
 html[data-wb-fx="light"] [class*="dockableSidebar"][class*="floating"],
 html[data-wb-fx="light"] [class*="layout-right-header"],
@@ -277,14 +277,14 @@ html[data-wb-fx="light"] [class*="ambientLight"] {
 `;
   document.head.appendChild(style);
 }
-// v0.5.0-beta.14.12（UIPERF-T18）：启动默认 light 档（配置加载后覆写为
+// v0.5.0-beta.14.12：启动默认 light 档（配置加载后覆写为
 // 落盘值；旧 data-wb-calm 属性已删除，迁移后不再写）。
 if (typeof document !== "undefined") {
   document.documentElement.dataset.wbFx = "light";
 }
 
-// v0.5.0-beta.14.14（UIPERF-T22）：特效档位跨页生效。T18 的配置驱动覆写只
-// 写在 WorkbenchPage 的配置回填里（工作台挂载才执行），其余页面（/chat、
+// v0.5.0-beta.14.14：特效档位跨页生效。 的配置驱动覆写只
+// 写在 WorkbenchPage 的配置回填里（工作台挂载才执行），其余页面（chat、
 // /plugin/*、设置……）永远停在模块级 light 默认。这里补全局同步：插件前端
 // 启动即 GET /config，把 console_effects 写到 html[data-wb-fx]（取数失败
 // 保持 light 默认）；window focus / visibilitychange 轻量复读（3s 节流 +

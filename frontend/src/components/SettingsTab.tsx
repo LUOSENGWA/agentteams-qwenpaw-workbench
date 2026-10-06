@@ -30,7 +30,7 @@ const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
 const DownloadIcon = pick("DownloadOutlined");
 const UploadIcon = pick("UploadOutlined");
 const FileZipOutlined = pick("FileZipOutlined");
-// v0.5.0-beta.14.14（UIPERF-T23）：备份与恢复——导出弹窗复制按钮。
+// v0.5.0-beta.14.14：备份与恢复——导出弹窗复制按钮。
 const CopyIcon = pick("CopyOutlined");
 
 function EffectiveBadge({ url, label }: { url?: string; label: string }) {
@@ -53,7 +53,7 @@ function EffectiveBadge({ url, label }: { url?: string; label: string }) {
 }
 
 /** v0.5.0-beta.12: 连通性测试结构化诊断展开区——外网 DPI 定位锚点。
-    分步过程（✓/✗+ms）/ 完整原始异常（等宽全栈）/ 客户端环境（TLS 栈指纹，等宽）。 */
+ 分步过程（✓/✗+ms）/ 完整原始异常（等宽全栈）/ 客户端环境（TLS 栈指纹，等宽）。 */
 function ConnDiagPanel({ diag }: { diag: ProbeDiag }) {
   const tr = useT();
   const mono: React.CSSProperties = {
@@ -119,14 +119,14 @@ function ConnDiagPanel({ diag }: { diag: ProbeDiag }) {
 }
 
 /** v0.5.0-beta.12: 连通性测试单行——✅ 延迟 / ❌ 错误原因，生效地址带「生效中」标。
-    v0.5.0-beta.12: 三态——✅ 连通可用（绿）/ ⚠️ 已连通但需鉴权或异常状态（橙）/ ❌ 网络层失败（红）。
-    v0.5.0-beta.12: 点击展开结构化诊断（分步+全栈 traceback+客户端环境）；折叠态=现状一句话摘要。 */
+ v0.5.0-beta.12: 三态——✅ 连通可用（绿）/ ⚠️ 已连通但需鉴权或异常状态（橙）/ ❌ 网络层失败（红）。
+ v0.5.0-beta.12: 点击展开结构化诊断（分步+全栈 traceback+客户端环境）；折叠态=现状一句话摘要。 */
 function ConnRow({
   row,
   tag,
   active,
   pinned,
-  // v0.5.0-beta.14.17（C2）：Higress 会话三态在 detail 里——ok 时也强制显示
+  // v0.5.0-beta.14.17：Higress 会话三态在 detail 里——ok 时也强制显示
   // detail（而非仅 ms）。
   showDetail,
 }: {
@@ -207,7 +207,7 @@ function ConnRow({
   );
 }
 
-// 启动页偏好（用户反馈）：开关存 localStorage，默认"上次打开的页面"。
+// 启动页偏好：开关存 localStorage，默认"上次打开的页面"。
 const STARTUP_PREF_KEY = "agentteams-qwenpaw-workbench:startup-pref";
 export function readStartupPref(): "last" | "home" {
   try {
@@ -217,7 +217,7 @@ export function readStartupPref(): "last" | "home" {
     return "last";
   }
 }
-/** 启动页偏好行：上次打开的页面（默认）/ 首页（用户反馈）。 */
+/** 启动页偏好行：上次打开的页面（默认）/ 首页。 */
 
 function StartupPrefRow() {
   const tr = useT();
@@ -253,7 +253,7 @@ function StartupPrefRow() {
 
 // ── v0.5.0-beta.14.3: 地址覆盖凭据（公网网关 Basic 门 / API key 门）──
 // 编辑草稿（每地址一份；提交时 buildAuthEntry 组装条目，无凭据=纯 URL 串）。
-// v0.5.0-beta.14.17（C1 凭据记忆重做）：stored=「该类型原有已保存凭据」。
+// v0.5.0-beta.14.17（凭据记忆重做）：stored=「该类型原有已保存凭据」。
 // 输入框协议：秘密字段**永不预填脱敏字面量**（*** 回显进框 = 用户不清空直接
 // 输入 → 拼接串覆盖真凭据；状态也不透明）。空框 = 保持不变，提交时按 stored
 // 语义发 *** 占位（后端 merge 继承旧值）；显式清除=把类型切回「服务自身认证」。
@@ -272,7 +272,7 @@ const EMPTY_ADDR_AUTH: AddrAuthDraft = {
   stored: false,
 };
 /** 地址条目（string | {url, auth?}）→ 编辑草稿（字符串/无效 = none）。
- *  v0.5.0-beta.14.17（C1）：脱敏值 *** 不进输入框（存 stored 标记）。 */
+ * v0.5.0-beta.14.17：脱敏值 *** 不进输入框（存 stored 标记）。 */
 function entryToAuthDraft(e: AddressEntry | undefined | null): AddrAuthDraft {
   if (e && typeof e === "object" && e.auth) {
     const a = e.auth;
@@ -296,10 +296,10 @@ function entryToAuthDraft(e: AddressEntry | undefined | null): AddrAuthDraft {
   return { ...EMPTY_ADDR_AUTH };
 }
 /** 草稿 + URL → 提交条目。
- *  v0.5.0-beta.14.17（C1）：秘密字段空 = 保持不变（stored → 发 *** 占位让后端
- *  继承；非 stored 且字段不全 = 降级纯 URL，诚实不装）。显式清除=类型切 none
- *  （=纯 URL 条目，后端按显式清除处理）——旧「选了类型但密码空=纯 URL」会把
- *  已保存凭据误清除，已废。 */
+ * v0.5.0-beta.14.17：秘密字段空 = 保持不变（stored → 发 *** 占位让后端
+ * 继承；非 stored 且字段不全 = 降级纯 URL，诚实不装）。显式清除=类型切 none
+ * （=纯 URL 条目，后端按显式清除处理）——旧「选了类型但密码空=纯 URL」会把
+ * 已保存凭据误清除，已废。 */
 function buildAuthEntry(url: string, d: AddrAuthDraft): AddressEntry {
   const u = (url || "").trim();
   if (!u) return "";
@@ -341,7 +341,7 @@ function AddrAuthEditor({
         size="small"
         value={value.type}
         disabled={disabled}
-        // v0.5.0-beta.14.17（C1）：换类型=新类型无已存凭据（stored 清零，
+        // v0.5.0-beta.14.17：换类型=新类型无已存凭据（stored 清零，
         // 防把 A 类型的 stored 标记误带到 B 类型触发 *** 继承）。
         onChange={(t: "none" | "basic" | "bearer") =>
           onChange({ ...value, type: t, stored: false })
@@ -365,8 +365,8 @@ function AddrAuthEditor({
             }
             style={{ width: 150 }}
           />
-          {/* v0.5.0-beta.14.17（C1）：已存密码不回显字面量——空框+占位提示
-              「已保存·留空保持不变」，消除拼接覆盖真密码的路径。 */}
+          {/* v0.5.0-beta.14.17：已存密码不回显字面量——空框+占位提示
+ 「已保存·留空保持不变」，消除拼接覆盖真密码的路径。 */}
           <antd.Input.Password
             size="small"
             placeholder={tr(
@@ -399,7 +399,7 @@ function AddrAuthEditor({
   );
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 const SettingsTab = React.memo(function SettingsTab({
   config,
@@ -412,7 +412,7 @@ const SettingsTab = React.memo(function SettingsTab({
   sseState,
 }: {
   config: WorkbenchConfig | null;
-  // v0.5.0-beta.14.16（F1）：config 加载态（加载中横幅 / 失败+重试 / 保存钮门控）。
+  // v0.5.0-beta.14.16：config 加载态（加载中横幅 / 失败+重试 / 保存钮门控）。
   configLoadState: "loading" | "ready" | "failed";
   onRetryConfig: () => void;
   onConfigChange: () => void;
@@ -440,7 +440,7 @@ const SettingsTab = React.memo(function SettingsTab({
   const [controllerLan, setControllerLan] = React.useState("");
   const [controllerWan, setControllerWan] = React.useState("");
   const [controllerToken, setControllerToken] = React.useState("");
-  // v0.5.0-beta.12: token 文件路径字段已删（用户反馈：「文件路径可以删掉了，
+  // v0.5.0-beta.12: token 文件路径字段已删（「文件路径可以删掉了，
   // 留个命令就行」）——获取方式=下方命令提示 + 粘贴；env 作部署期注入兜底。
   // v0.5.0-beta.12: Higress Console 会话（admin 账号+密码，验证通过才
   // 由 verify-admin 持久化；普通保存不提交凭据）。密码不回填（脱敏），
@@ -451,7 +451,7 @@ const SettingsTab = React.memo(function SettingsTab({
   // diff），gatewayWan=外网（内网不可达时自动降级）。
   const [gatewayAdminUrl, setGatewayAdminUrl] = React.useState("");
   const [gatewayWan, setGatewayWan] = React.useState("");
-  // v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档（默认 light；取代旧
+  // v0.5.0-beta.14.12：控制台特效三档（默认 light；取代旧
   // consoleCalm bool——light=动画保留+模糊封顶 / off=全停 / full=原样）。
   const [fxMode, setFxMode] = React.useState<"light" | "off" | "full">(
     "light",
@@ -480,7 +480,7 @@ const SettingsTab = React.memo(function SettingsTab({
     [],
   );
   // 表单当前值 → 提交条目（URL + 可选凭据；空=空串，后端合并时丢弃）。
-  // v0.5.0-beta.14.17（C2）：gateway 族（Higress 双地址，同构）。
+  // v0.5.0-beta.14.17：gateway 族（Higress 双地址，同构）。
   const buildAddrEntries = React.useCallback(
     (kind: "matrix" | "controller" | "sglang" | "gateway"): AddressEntry[] => {
       const urls =
@@ -517,7 +517,7 @@ const SettingsTab = React.memo(function SettingsTab({
   const [connTest, setConnTest] = React.useState<ConfigTestResponse | null>(null);
   const [testing, setTesting] = React.useState(false);
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
-  // v0.5.0-beta.14.14（UIPERF-T23）：备份与恢复（含凭据完整配置）——导出=弹窗
+  // v0.5.0-beta.14.14：备份与恢复（含凭据完整配置）——导出=弹窗
   // 全文本（复制按钮）；导入=粘贴+确认（后端校验+先自动备份当前态+覆盖）。
   const [exportOpen, setExportOpen] = React.useState(false);
   const [exportText, setExportText] = React.useState("");
@@ -575,7 +575,7 @@ const SettingsTab = React.memo(function SettingsTab({
     [onConfigChange],
   );
 
-  // v0.5.0-beta.14.14（UIPERF-T23）：完整配置导出（含凭据）→ 弹窗全文本。
+  // v0.5.0-beta.14.14：完整配置导出（含凭据）→ 弹窗全文本。
   const exportFull = React.useCallback(async () => {
     try {
       const cfg = await exportFullConfig();
@@ -613,7 +613,7 @@ const SettingsTab = React.memo(function SettingsTab({
     [tr],
   );
 
-  // v0.5.0-beta.14.14（UIPERF-T23）：完整配置导入——粘贴 JSON → 后端校验 +
+  // v0.5.0-beta.14.14：完整配置导入——粘贴 JSON → 后端校验 +
   // 自动备份当前配置 + 覆盖（失败 400 可读错误经 message 透出）。
   const doImportFull = React.useCallback(async () => {
     const text = importText.trim();
@@ -665,11 +665,11 @@ const SettingsTab = React.memo(function SettingsTab({
     }
   }, [downloadJson]);
 
-  // v0.5.0-beta.14.17（C1 凭据记忆重做）：回填 effect 冻结——首载（或换账号）
+  // v0.5.0-beta.14.17（凭据记忆重做）：回填 effect 冻结——首载（或换账号）
   // 后初始化一次，之后 config 引用变化（保存/验证/登录都触发 onConfigChange
   // → 主组件 re-GET → 新对象）不再重置表单草稿。此前用户未保存的凭据编辑
   // （如填了 Higress 密码、改了控制器 basic 密码）会被任意一次验证/保存
-  // 引发的 config 刷新整体冲掉（用户反馈「输完 Higress 账号密码，控制器的
+  // 引发的 config 刷新整体冲掉（「输完 Higress 账号密码，控制器的
   // basic 认证又要重新输入」）。换账号=doLogin→onLoginSuccess 清数据+重挂载，
   // 新实例自然重新初始化；user_id 变化兜底（同实例热切账号场景）。
   const backfillKeyRef = React.useRef<string>("");
@@ -684,7 +684,7 @@ const SettingsTab = React.memo(function SettingsTab({
     backfillKeyRef.current = key;
     setMatrixLan(entryUrl(config.matrix_homeservers?.[0]));
     setMatrixWan(entryUrl(config.matrix_homeservers?.[1]));
-    // v0.5.0-beta.14.3: 每地址凭据回填（v0.5.0-beta.14.17（C1）：脱敏 *** 不进
+    // v0.5.0-beta.14.3: 每地址凭据回填（v0.5.0-beta.14.17：脱敏 *** 不进
     // 输入框，存 stored 标记——空框=保持不变）。
     setAddrAuth({
       "matrix:0": entryToAuthDraft(config.matrix_homeservers?.[0]),
@@ -693,7 +693,7 @@ const SettingsTab = React.memo(function SettingsTab({
       "controller:1": entryToAuthDraft(config.controller_urls?.[1]),
       "sglang:0": entryToAuthDraft(config.sglang?.urls?.[0]),
       "sglang:1": entryToAuthDraft(config.sglang?.urls?.[1]),
-      // v0.5.0-beta.14.17（C2）：Higress 双地址凭据（四地址族同构）。
+      // v0.5.0-beta.14.17：Higress 双地址凭据（四地址族同构）。
       "gateway:0": entryToAuthDraft(config.gateway_admin_urls?.[0]),
       "gateway:1": entryToAuthDraft(config.gateway_admin_urls?.[1]),
     });
@@ -701,7 +701,7 @@ const SettingsTab = React.memo(function SettingsTab({
     setAddressMode(config.address_mode || "auto");
     setControllerLan(entryUrl(config.controller_urls?.[0]));
     setControllerWan(entryUrl(config.controller_urls?.[1]));
-    // v0.5.0-beta.14.17（C1）：token 脱敏 *** 不进输入框（同密码协议：空框=
+    // v0.5.0-beta.14.17：token 脱敏 *** 不进输入框（同密码协议：空框=
     // 保持不变；此前字面量回显 + 不清空直接输入 = 拼接串覆盖真 token）。
     setControllerToken(
       config.controller_token && config.controller_token !== "***"
@@ -715,7 +715,7 @@ const SettingsTab = React.memo(function SettingsTab({
       entryUrl(config.gateway_admin_urls?.[0]) || config.gateway_admin_url || "",
     );
     setGatewayWan(entryUrl(config.gateway_admin_urls?.[1]));
-    // v0.5.0-beta.14.12（UIPERF-T18 补完）：特效三档回填（旧 console_calm
+    // v0.5.0-beta.14.12（补完）：特效三档回填（旧 console_calm
     // bool 迁移：显式 false=full，其余=light）+ 门控属性同步（模块级已先写
     // light，此处以配置覆写；旧 data-wb-calm 已退役）。
     const _fxMode =
@@ -746,18 +746,18 @@ const SettingsTab = React.memo(function SettingsTab({
             // v0.5.0-beta.14.3: 条目 str | {url, auth?}（凭据随条目走）。
             matrix_homeservers: buildAddrEntries("matrix"),
             controller_urls: buildAddrEntries("controller"),
-            // v0.5.0-beta.14.17（C1）：token 空=不覆盖已存（后端字段合并保留
+            // v0.5.0-beta.14.17：token 空=不覆盖已存（后端字段合并保留
             // 旧值；空串/脱敏 *** 都不落盘）——此前回显 *** 字面量+拼接=覆盖。
             controller_token: controllerToken || undefined,
             // v0.5.0-beta.14.1: 地址模式（auto/lan/wan）——保存后不重启即生效。
             address_mode: addressMode,
-            // v0.5.0-beta.14.12（UIPERF-T18 补完）：特效三档直存。
+            // v0.5.0-beta.14.12（补完）：特效三档直存。
             console_effects: fxMode,
             sglang: {
               enabled: sglangEnabled,
               urls: buildAddrEntries("sglang"),
             },
-            // v0.5.0-beta.14.17（C2）：Higress 双地址（凭据随条目，四族同构）。
+            // v0.5.0-beta.14.17：Higress 双地址（凭据随条目，四族同构）。
             gateway_admin_urls: buildAddrEntries("gateway"),
           },
         }),
@@ -766,7 +766,7 @@ const SettingsTab = React.memo(function SettingsTab({
       onConfigChange();
       // v0.5.0-beta.12: 保存后立即连通性测试——用户当场看到两条路径的延迟与状态。
       // v0.5.0-beta.14.3: 草稿凭据随测（未保存也能当场验证公网门）。
-      // v0.5.0-beta.14.17（C2）：gateway=Higress 探测（诊断面）。
+      // v0.5.0-beta.14.17：gateway=Higress 探测（诊断面）。
       void runConnTest(
         buildAddrEntries("matrix"),
         buildAddrEntries("controller"),
@@ -782,7 +782,7 @@ const SettingsTab = React.memo(function SettingsTab({
 
   // v0.5.0-beta.12: 连通性测试——测表单当前值（可未保存）；后端并行探测测延迟，
   // 列表与已配置一致时顺手按最快可达重排生效地址（applied）。
-  // v0.5.0-beta.14.17（C2）：gateway=Higress 探测（可达性+会话三态，诊断面）。
+  // v0.5.0-beta.14.17：gateway=Higress 探测（可达性+会话三态，诊断面）。
   const runConnTest = React.useCallback(
     async (
       matrix?: AddressEntry[],
@@ -862,7 +862,7 @@ const SettingsTab = React.memo(function SettingsTab({
       onConfigChange();
       // v0.5.0-beta.12: 切账号 = 数据源切换。后端 /login 已同步清 60s 聚合缓存 +
       // 重置 sync 游标；前端本地旧账号的房间/树/管理数据必须清掉并重取，
-      // 否则切完账号屏幕还挂着上一个账号的内容（用户反馈 真机反馈）。
+      // 否则切完账号屏幕还挂着上一个账号的内容（真机反馈）。
       onLoginSuccess?.();
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("登录失败"));
@@ -873,7 +873,7 @@ const SettingsTab = React.memo(function SettingsTab({
 
   return (
     <div style={{ display: "grid", gap: 24, maxWidth: 720 }}>
-      {/* v0.5.0-beta.14.16（F1）：config 加载态横幅——加载中/失败必须显式。
+      {/* v0.5.0-beta.14.16：config 加载态横幅——加载中/失败必须显式。
  静默吞错会让用户把默认态当成已保存值（「没有记忆」事故根因）。 */}
       {config === null && (
         <div
@@ -942,8 +942,8 @@ const SettingsTab = React.memo(function SettingsTab({
       {/* v0.5.0-beta.14.4：「访问地址」卡片。 */}
       <div style={{ ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("访问地址")}</div>
-        {/* v0.5.0-beta.14.17（C1）：凭据记忆状态总览——每个系统凭据是否已保存
-            一眼可见（用户反馈「每个账号密码的认证都要分开」的可视化收口）。 */}
+        {/* v0.5.0-beta.14.17：凭据记忆状态总览——每个系统凭据是否已保存
+ 一眼可见（每个账号密码的认证都要分开的可视化）。 */}
         {config ? (
           <div
             style={{
@@ -985,7 +985,7 @@ const SettingsTab = React.memo(function SettingsTab({
               <span
                 key={label}
                 style={{ display: "flex", alignItems: "center", gap: 6 }}
-                // v0.5.0-beta.14.18（14.17 用户反馈「SGLang 要什么凭据？」）：
+                // v0.5.0-beta.14.18（14.17 SGLang 要什么凭据？）：
                 // 悬停说明——SGLang 是本地推理服务，自身无认证；只有访问
                 // 地址后面套了网关 Basic 门才需要，默认留空。
                 title={label.includes("SGLang")
@@ -1095,11 +1095,11 @@ const SettingsTab = React.memo(function SettingsTab({
           />
         </div>
 
-        {/* v0.5.0-beta.14.7（UIPERF-P3）：Higress 地址并入地址配置区（与
-            Matrix/Controller/SGLang 同处），内网/外网按序降级、受地址模式
-            固定档控制。
-            v0.5.0-beta.14.16（F3）：Higress=模型管理面=L1 专属 → L2 模式
-            隐藏（用户反馈「如果是 L2 登录，该隐藏的就隐藏」）。 */}
+ {/* v0.5.0-beta.14.7：Higress 地址并入地址配置区（与
+ Matrix/Controller/SGLang 同处），内网/外网按序降级、受地址模式
+ 固定档控制。
+ v0.5.0-beta.14.16：Higress=模型管理面=L1 专属 → L2 模式
+ 隐藏（如果是 L2 登录，该隐藏的就隐藏）。 */}
         {ctlMode === "token" && (
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
@@ -1114,8 +1114,8 @@ const SettingsTab = React.memo(function SettingsTab({
             }
             style={{ marginBottom: 8 }}
           />
-          {/* v0.5.0-beta.14.17（C2）：Higress 内网地址覆盖凭据（四族同构；
-              公网入口挂 Basic/key 门时用）。 */}
+          {/* v0.5.0-beta.14.17：Higress 内网地址覆盖凭据（四族同构；
+ 公网入口挂 Basic/key 门时用）。 */}
           <AddrAuthEditor
             value={addrAuth["gateway:0"] || EMPTY_ADDR_AUTH}
             onChange={(v) => setAddrAuthFor("gateway:0", v)}
@@ -1136,7 +1136,7 @@ const SettingsTab = React.memo(function SettingsTab({
         )}
 
         {/* v0.5.0-beta.14.1: 地址手动固定档——固定档请求只用固定地址、失败
-            诚实报错不静默 failover；探测循环照跑（显示层不受影响）。 */}
+ 诚实报错不静默 failover；探测循环照跑（显示层不受影响）。 */}
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("地址模式（内网/外网切换策略）")}
@@ -1145,7 +1145,7 @@ const SettingsTab = React.memo(function SettingsTab({
             value={addressMode}
             onChange={(v: "auto" | "lan" | "wan") => {
               setAddressMode(v);
-              // v0.5.0-beta.14.11（用户反馈）：模式变更即落盘——修复「改了但
+              // v0.5.0-beta.14.11：模式变更即落盘——修复「改了但
               // 未点保存 → 重开跳回自动」。轻量 PUT，仅 address_mode 一键。
               void (async () => {
                 try {
@@ -1173,9 +1173,9 @@ const SettingsTab = React.memo(function SettingsTab({
           </div>
         </div>
 
-        {/* v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档（light 默认；取代
-            旧 console_calm 开关）。light=动画保留+模糊半径封顶（观感保留、
-            成本降一个量级）；off=最省电（动画与模糊全停）；full=上游原样。 */}
+        {/* v0.5.0-beta.14.12：控制台特效三档（light 默认；取代
+ 旧 console_calm 开关）。light=动画保留+模糊半径封顶（观感保留、
+ 成本降一个量级）；off=最省电（动画与模糊全停）；full=上游原样。 */}
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("控制台特效质量")}
@@ -1210,7 +1210,7 @@ const SettingsTab = React.memo(function SettingsTab({
         </div>
 
         {/* v0.5.0-beta.12: 连通性测试——逐地址测延迟，外/内网识别可视化。
-            测表单当前值（可未保存）；保存成功后自动跑一次。 */}
+ 测表单当前值（可未保存）；保存成功后自动跑一次。 */}
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <antd.Button
@@ -1221,7 +1221,7 @@ const SettingsTab = React.memo(function SettingsTab({
                   buildAddrEntries("matrix"),
                   buildAddrEntries("controller"),
                   sglangEnabled ? buildAddrEntries("sglang") : [],
-                  // v0.5.0-beta.14.17（C2）：Higress 双地址（内网框非空才测）。
+                  // v0.5.0-beta.14.17：Higress 双地址（内网框非空才测）。
                   gatewayAdminUrl.trim() || gatewayWan.trim()
                     ? buildAddrEntries("gateway")
                     : [],
@@ -1272,7 +1272,7 @@ const SettingsTab = React.memo(function SettingsTab({
                     />
                   ))
                 : null}
-              {/* v0.5.0-beta.14.17（C2）：Higress 探测行（诊断面；含会话三态）。 */}
+              {/* v0.5.0-beta.14.17：Higress 探测行（诊断面；含会话三态）。 */}
               {connTest.gateway?.length
                 ? connTest.gateway.map((r) => (
                     <ConnRow
@@ -1337,9 +1337,9 @@ const SettingsTab = React.memo(function SettingsTab({
       <div style={{ ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("认证与登录")}</div>
         {/* v0.5.0-beta.12: Controller 认证双模式（用户需求）——「用 admin 的 matrix
-            账号登录」或「输入 Controller 管理员 token」。无 API 可取 admin
-            token（上游安全设计）；L2 需 Human level=2，level-1 走 Matrix
-            登录会被 Controller 401（权限自检有对应提示）。 */}
+ 账号登录」或「输入 Controller 管理员 token」。无 API 可取 admin
+ token（上游安全设计）；L2 需 Human level=2，level-1 走 Matrix
+ 登录会被 Controller 401（权限自检有对应提示）。 */}
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("Controller 认证（可选）")}
@@ -1358,18 +1358,18 @@ const SettingsTab = React.memo(function SettingsTab({
               { label: tr("L1 管理面（token / Higress）"), value: "token" },
             ]}
           />
-          {/* v0.5.0-beta.14.18（14.17 用户反馈「Matrix 登录和认证/登录卡片
-              是不是重复或者冲突」）：一行点破两者关系——Matrix 登录是
-              AgentTeams 消息系统的账号（=上方 Matrix 地址区同一账号），
-              与 QwenPaw 页面自身的登录无关。 */}
+          {/* v0.5.0-beta.14.18（14.17 「Matrix 登录和认证/登录卡片
+ 是不是重复或者冲突」）：一行点破两者关系——Matrix 登录是
+ AgentTeams 消息系统的账号（=上方 Matrix 地址区同一账号），
+ 与 QwenPaw 页面自身的登录无关。 */}
           <div style={{ fontSize: 11.5, color: "#888", marginBottom: 10, lineHeight: 1.6 }}>
             {tr("「Matrix 登录」= AgentTeams 消息系统账号（与上方 Matrix 地址同一账号，L2 只读）；与 QwenPaw 页面自身的登录是两回事，不冲突。")}
           </div>
           {ctlMode === "token" ? (
             <div style={{ display: "grid", gap: 14 }}>
-              {/* v0.5.0-beta.14.18（14.17 用户反馈「Higress 的认证和 controller
-                  token 认证应该分开吧」）：两块凭据拆成视觉上独立的两块——
-                  各带系统归属行，不再是「一套认证里的两个字段」。 */}
+              {/* v0.5.0-beta.14.18（14.17 「Higress 的认证和 controller
+ token 认证应该分开吧」）：两块凭据拆成视觉上独立的两块——
+ 各带系统归属行，不再是「一套认证里的两个字段」。 */}
               <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: "rgba(0,0,0,0.025)", borderRadius: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>
                   {tr("① Controller 认证（管理面：CRD/全量视图/日志）")}
@@ -1377,8 +1377,8 @@ const SettingsTab = React.memo(function SettingsTab({
                 <div style={{ fontSize: 11.5, color: "#888", lineHeight: 1.6 }}>
                   {tr("Controller 只认 SA token 与 Matrix token（Matrix 路径只放行 L2/L3 只读，L1 明确 401，无密码登录端点）——admin 能力只能来自管理员 token。")}
                 </div>
-                {/* v0.5.0-beta.12（用户反馈：「controller token 的文件路径可以
-                    删掉了，留个命令就行」）：文件路径字段删除，留获取命令。 */}
+                {/* v0.5.0-beta.12（「controller token 的文件路径可以
+ 删掉了，留个命令就行」）：文件路径字段删除，留获取命令。 */}
                 <div style={{ fontSize: 11, color: "#888", lineHeight: 1.6 }}>
                   {tr("获取命令（在 Controller 宿主机执行，复制输出粘贴到下方）：")}
                   <code
@@ -1493,8 +1493,8 @@ const SettingsTab = React.memo(function SettingsTab({
                 </div>
               ) : null}
               {/* v0.5.0-beta.12：验证成功常驻回报——alias 层自检
-                  （用户反馈实报「还是看不见」= 静默平铺无锚点；验证即诊断，
-                  0 alias 时直接列出路由数与原因方向，不用再猜）。 */}
+ （实报「还是看不见」= 静默平铺无锚点；验证即诊断，
+ 0 alias 时直接列出路由数与原因方向，不用再猜）。 */}
               {verifyRes && verifyRes.ok && verifyRes.gateway_routes !== undefined ? (
                 <div
                   style={{
@@ -1532,11 +1532,11 @@ const SettingsTab = React.memo(function SettingsTab({
                   )}
                 </div>
               ) : null}
-              {/* v0.5.0-beta.13.10（F8：L1 路径 A 成功后明示「还需 Controller
-                  token」）——路径 A（账号+密码）只建立 Higress Console 会话
-                  （模型下拉 alias 面）；Worker 运行配置 L1 字段 / CRD 管理
-                  需要 Controller 管理员 token（另一套凭证，无签发端点）。
-                  密码验证通过且 token 未配 → 常驻指引（取法命令 + 回贴入口）。 */}
+              {/* v0.5.0-beta.13.10（L1 路径 A 成功后明示「还需 Controller
+ token」）——路径 A（账号+密码）只建立 Higress Console 会话
+ （模型下拉 alias 面）；Worker 运行配置 L1 字段 / CRD 管理
+ 需要 Controller 管理员 token（另一套凭证，无签发端点）。
+ 密码验证通过且 token 未配 → 常驻指引（取法命令 + 回贴入口）。 */}
               {verifyRes &&
               verifyRes.ok &&
               verifyRes.mode === "password" &&
@@ -1598,9 +1598,9 @@ const SettingsTab = React.memo(function SettingsTab({
       </div>
 
       {/* v0.5.0-beta.14.4：「集群负载」独立卡片。
-          v0.5.0-beta.14.16（F3）：部署者专属模块（L2 用户无 SGLang 集群）
-          → L2 模式隐藏（用户反馈「该隐藏的就隐藏」；切 L1 模式仍可配置，
-          值已持久化不丢）。 */}
+ v0.5.0-beta.14.16：部署者专属模块（L2 用户无 SGLang 集群）
+ → L2 模式隐藏（该隐藏的就隐藏；切 L1 模式仍可配置，
+ 值已持久化不丢）。 */}
       {ctlMode === "token" && (
       <div style={{ ...cardBox, display: "grid", gap: 12 }}>
         <div>
@@ -1626,7 +1626,7 @@ const SettingsTab = React.memo(function SettingsTab({
             />
           </div>
           {/* v0.5.0-beta.12: SGLang 双地址（内网/外网）——与 Matrix/Controller 同款：
-              两条路径同一集群，后台自动测延迟切最快，无需手动切换。 */}
+ 两条路径同一集群，后台自动测延迟切最快，无需手动切换。 */}
           <div style={{ display: "grid", gap: 8 }}>
             <antd.Input
               placeholder={tr("内网：http://192.168.x.x:30000")}
@@ -1666,7 +1666,7 @@ const SettingsTab = React.memo(function SettingsTab({
         <antd.Button
           type="primary"
           loading={saving}
-          // v0.5.0-beta.14.16（F1）：config 未就绪时禁用保存——默认态保存
+          // v0.5.0-beta.14.16：config 未就绪时禁用保存——默认态保存
  // 会用 UI 空值覆盖已保存的地址/模式（「没有记忆」事故放大点）。
           disabled={config === null}
           onClick={() => void save()}
@@ -1710,8 +1710,8 @@ const SettingsTab = React.memo(function SettingsTab({
         </div>
       </div>
 
-      {/* v0.5.0-beta.14.14（UIPERF-T23）：「备份与恢复」卡片——含凭据完整
-          配置（用户自己还原用；与上方脱敏导出/导入=交管理员排查 区分）。 */}
+ {/* v0.5.0-beta.14.14：「备份与恢复」卡片——含凭据完整
+ 配置（用户自己还原用；与上方脱敏导出/导入=交管理员排查 区分）。 */}
       <div style={{ ...cardBox, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700 }}>{tr("备份与恢复")}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1820,10 +1820,10 @@ const SettingsTab = React.memo(function SettingsTab({
           </antd.Button>
         </div>
       </div>
-      {/* v0.5.0-beta.14.16（F2）：宿主 Agent 技能管理区块移除（用户反馈：
-          「配置页的 QwenPaw 宿主 Agent 技能不需要了」）——SkillsTab 组件
-          已删（死代码零残留）；宿主技能系统本体是 QwenPaw 核心功能，
-          不受影响（SkillCenter 团队技能池保留）。 */}
+ {/* v0.5.0-beta.14.16：宿主 Agent 技能管理区块移除（
+ 「配置页的 QwenPaw 宿主 Agent 技能不需要了」）——SkillsTab 组件
+ 已删（死代码零残留）；宿主技能系统本体是 QwenPaw 核心功能，
+ 不受影响（SkillCenter 团队技能池保留）。 */}
     </div>
   );
 });

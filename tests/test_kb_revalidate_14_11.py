@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.11（UIPERF-T15）：KB 刷新轻探针（变更检测——变才刷）单测。
+"""v0.5.0-beta.14.11：KB 刷新轻探针（变更检测——变才刷）单测。
 
-背景：60s 过期后 T12 必跑一次深扫（容器多目录递归读，3-17s）。改为
+背景：60s 过期后 必跑一次深扫（容器多目录递归读，3-17s）。改为
 conditional revalidation：刷新门前先跑轻探针（只列条目元数据
 name/mtime/size，不读文件内容）；签名与上次一致 → 只重置 60s 时钟
 （零深扫），不一致/探针失败 → 深扫（安全）。
@@ -9,13 +9,13 @@ name/mtime/size，不读文件内容）；签名与上次一致 → 只重置 60
 覆盖（3 例）：
 
 1. probe/touch 往返：save_probe/load_probe 一致；touch 后 load 的 ts
-   更新且 payload 原样、probe 不动；缺失键 touch 静默。
+ 更新且 payload 原样、probe 不动；缺失键 touch 静默。
 2. 刷新门-未变：预置 probe="S1" + 旧磁盘缓存（ts=now-120s）→ 端点
-   stale 秒回并触发刷新；假探针返回 "S1"（一致）→ compute 未被调用、
-   磁盘 ts 被 touch、payload 与 probe 原样。
+ stale 秒回并触发刷新；假探针返回 "S1"（一致）→ compute 未被调用、
+ 磁盘 ts 被 touch、payload 与 probe 原样。
 3. 刷新门-已变/探针失败：probe 返回 "S2"（≠ 预置 "S1"）→ compute 被
-   调用、磁盘更新新值且 save_probe 记录 "S2"；probe 返回 None（失败）
-   → compute 同样被调用（退回深扫，安全）且旧签名保留。
+ 调用、磁盘更新新值且 save_probe 记录 "S2"；probe 返回 None（失败）
+ → compute 同样被调用（退回深扫，安全）且旧签名保留。
 
 隔离纪律：磁盘目录由 conftest autouse fixture 重定向到本测 tmp（不碰
 真实 secret 目录）；计算体/探针经模块级注册表（_KB_PREWARM_HOOKS /
@@ -65,9 +65,9 @@ def _fake_probe(sig):
 def _wait_disk(key: str, older_than: float, timeout: float = 5.0):
     """轮询等磁盘缓存 ts 更新（> older_than）。
 
-    后台刷新是 fire-and-forget 任务（portal 循环在 with 块内持续运转）；
-    「未变」路径的时钟重置（kb_cache.touch）同样表现为 ts 更新，同一
-    轮询可等。超时返回最后一次读（None=未更新）。"""
+ 后台刷新是 fire-and-forget 任务（portal 循环在 with 块内持续运转）；
+ 「未变」路径的时钟重置（kb_cache.touch）同样表现为 ts 更新，同一
+ 轮询可等。超时返回最后一次读（None=未更新）。"""
     deadline = time.time() + timeout
     while True:
         hit = kb_cache.load(key)
@@ -125,7 +125,7 @@ def _seed_tree() -> tuple:
 
 def test_probe_touch_roundtrip():
     """save_probe/load_probe 往返一致；touch 只更新 ts，payload/probe
-    原样不动；缺失键 touch 静默（不抛）。"""
+ 原样不动；缺失键 touch 静默（不抛）。"""
     old_ts = time.time() - 100
     payload = {"agent": "w1", "files": [{"path": "a.md", "size": 1}]}
     p = pathlib.Path(kb_cache.cache_dir()) / "tree-w1.json"
@@ -155,7 +155,7 @@ def test_probe_touch_roundtrip():
 
 def test_refresh_gate_unchanged_no_deep_scan(client, monkeypatch):
     """预置 probe="S1" + stale 缓存 → 端点 stale 秒回并触发刷新；假探针
-    返回 "S1"（一致）→ compute 未被调用、ts 被 touch、payload/probe 原样。"""
+ 返回 "S1"（一致）→ compute 未被调用、ts 被 touch、payload/probe 原样。"""
     tc = client
     seed, old_ts = _seed_tree()
 
@@ -185,8 +185,8 @@ def test_refresh_gate_unchanged_no_deep_scan(client, monkeypatch):
 
 def test_refresh_gate_changed_or_probe_failure(client, monkeypatch):
     """已变：probe "S2" ≠ 预置 "S1" → compute 被调、磁盘更新新值且
-    save_probe 记录 "S2"。探针失败：probe None → compute 同样被调（安全
-    深扫）且旧签名保留（下轮再比）。"""
+ save_probe 记录 "S2"。探针失败：probe None → compute 同样被调（安全
+ 深扫）且旧签名保留（下轮再比）。"""
     tc = client
     seed, old_ts = _seed_tree()
 

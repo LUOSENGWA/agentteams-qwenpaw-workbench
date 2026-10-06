@@ -106,7 +106,7 @@ function workerStats(tree: WorkerTreeTeam[]): {
   return { leaders, workers, critics };
 }
 
-/** 首页 = 全局总览（用户反馈：进门先看卡片，团队/群聊才是第二个 tab）。 */
+/** 首页 = 全局总览（进门先看卡片，团队/群聊才是第二个 tab）。 */
 function HomePage(props: HomePageProps) {
   const {
     rooms,
@@ -170,7 +170,7 @@ function HomePage(props: HomePageProps) {
   }>({ loaded: false, ranks: [] });
   // 待审批（房间审批源：/room-approvals=Worker Tool Guard 真实队列，
   // 30s 轮询）。v0.5.0-beta.12 ：弃用宿主 push-messages——集群
-  // Worker 的审批发生在 Worker 所在进程，本机队列恒 0（用户反馈「首页没有」）。
+ // Worker 的审批发生在 Worker 所在进程，本机队列恒 0（首页没有）。
   const [approvals, setApprovals] = React.useState<RoomApproval[]>([]);
   const [approvalBusy, setApprovalBusy] = React.useState<string>("");
 
@@ -183,16 +183,16 @@ function HomePage(props: HomePageProps) {
     }
   }, []);
 
-  // v0.5.0-beta.14.6（R2）：home tab 轮询活跃门控（tabActivity 单源 +
+  // v0.5.0-beta.14.6：home tab 轮询活跃门控（tabActivity 单源 +
   // 页面可见；rc-tabs 保活：切走组件不卸载，必须显式门控）。
-  // v0.5.0-beta.14.14（UIPERF-T25）：字符串快照 → 布尔快照（useTabActive）
+  // v0.5.0-beta.14.14：字符串快照 → 布尔快照（useTabActive）
   // ——非 home tab 的互切不再触发本面板重渲（连点 Tab CPU 成本）。
   const homeActive = useTabActive("home") && !document.hidden;
   // 挂载首拉。
   React.useEffect(() => {
     void refreshApprovals();
   }, [refreshApprovals]);
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（30s，!document.hidden
+  // v0.5.0-beta.14.6：旧定时器 → usePoller（30s，!document.hidden
   // 由 hook 内置再 AND 一次）。
   usePoller({
     fn: refreshApprovals,
@@ -234,14 +234,14 @@ function HomePage(props: HomePageProps) {
   // room_list_update 增量维护）。已删原「每房拉最后 1 条」effect：
   // 其依赖整个 rooms 数组，任何增量合并都会全量重拉（实测 20+ 房 × 数秒级）。
 
-  // 产物计数（v0.5.0-beta.14.7 · UIPERF B）：首屏不拉——home 激活 + 4s
+  // 产物计数（v0.5.0-beta.14.7 ·）：首屏不拉——home 激活 + 4s
   // 后拉（v0.5.0-beta.14.9：2.5s→4s + 隐藏页不拉）；避免整页装载窗口内
   // 触发服务端 75 房深扫（实测冷 55.9s）。
   React.useEffect(() => {
     if (!homeActive) return undefined;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      // v0.5.0-beta.14.9（UIPERF-T9）：延迟窗口内切走（页隐藏）不拉。
+      // v0.5.0-beta.14.9：延迟窗口内切走（页隐藏）不拉。
       if (document.hidden) return;
       void fetchArtifacts()
         .then((items) => {
@@ -257,9 +257,9 @@ function HomePage(props: HomePageProps) {
     };
   }, [homeActive]);
 
-  // 集群负载（可选模块，仅配置开启时拉取；1s 静默轮询——用户反馈：实时刷新，
+ // 集群负载（可选模块，仅配置开启时拉取；1s 静默轮询——实时刷新，
   // /v1/loads 读 SHM 快照专为高频轮询设计，1 QPS 零负担）。
-  // v0.5.0-beta.14.6（R2）：1s 旧定时器 → usePoller + 自适应间隔——
+ // v0.5.0-beta.14.6：1s 旧定时器 → usePoller + 自适应间隔——
   // 上轮耗时 >300ms（后端慢窗）→ 本轮改 5000 降频，恢复快 → 回 1000；
   // 仅 home tab 激活 + 页面可见时跑（homeActive）。
   const sglangEnabled = Boolean(config?.sglang?.enabled);
@@ -289,10 +289,10 @@ function HomePage(props: HomePageProps) {
     if (sglangEnabledRef.current) void pullSglang();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pullSglang]);
-  // v0.5.0-beta.14.17（T181 审计 P0-1）：快档 1s→5s。/v1/loads 是前端最大
+  // v0.5.0-beta.14.17（审计）：快档 1s→5s。/v1/loads 是前端最大
   // 可控频次（1s 轮询×1.2KB/次，45s 稳态 ≈13/45s 的主项）；负载仪表 5s
   // 刷新仍属"活"感，与慢档合并为恒定 5s（快慢档区分取消——差异消失后
-  // 保留分支是死逻辑）。后端 1s 单飞缓存由后端批补（T180 解锁 router.py 后）。
+  // 保留分支是死逻辑）。后端 1s 单飞缓存由后端批补（解锁 router.py 后）。
   usePoller({
     fn: pullSglang,
     intervalMs: 5000,
@@ -414,7 +414,7 @@ function HomePage(props: HomePageProps) {
             {tr("AgentTeams 工作台")}
           </div>
           {/* v0.5.0-beta.12：身份行——当前账号 + Controller 视图级别（多账号/双模式
-              时一眼看清看的是谁的数据；L2 只看到授权团队，L1 全量）。 */}
+ 时一眼看清看的是谁的数据；L2 只看到授权团队，L1 全量）。 */}
           <div style={{ fontSize: 11, color: t.textSecondary }}>
             {config?.matrix?.user_id ? (
               <>
@@ -632,7 +632,7 @@ function HomePage(props: HomePageProps) {
       </antd.Row>
 
       {/* 审批卡（房间审批源 /room-approvals=Worker Tool Guard 真实队列，
-          30s 轮询；v0.5.0-beta.12  弃宿主 push-messages 死源） */}
+ 30s 轮询；v0.5.0-beta.12 弃宿主 push-messages 死源） */}
       <antd.Row gutter={[12, 12]}>
         <antd.Col span={24}>
           <antd.Card style={cardStyle} styles={{ body: cardBody }}>
@@ -1071,6 +1071,6 @@ function HomePage(props: HomePageProps) {
   );
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(HomePage);

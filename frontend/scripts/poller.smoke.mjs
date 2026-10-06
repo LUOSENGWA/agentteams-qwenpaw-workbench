@@ -1,4 +1,4 @@
-// v0.5.0-beta.14.6（R2）：createPoller 语义冒烟（node 直跑，跑法照
+// v0.5.0-beta.14.6：createPoller 语义冒烟（node 直跑，跑法照
 // scripts/roomHistory.smoke.mjs——esbuild buildSync 到临时目录 + import）。
 // 15-30ms 级真实定时器 + 容差断言（非精确时刻）。
 //
@@ -168,8 +168,8 @@ const { createPoller } = await import(path.join(tmp, "usePoller.mjs"));
   console.log("P5 catch-up ✓");
 }
 
-// 6. UIPERF-T25 minPokeMs：刚跑过（< minPokeMs）→ poke 跳过；超窗 → 恢复。
-//    intervalMs=800 保证首 tick（t=800）不干扰测试窗（累计 ≈490ms）。
+// 6. minPokeMs：刚跑过（< minPokeMs）→ poke 跳过；超窗 → 恢复。
+// intervalMs=800 保证首 tick（t=800）不干扰测试窗（累计 ≈490ms）。
 {
   let calls = 0;
   const p = createPoller({
@@ -197,9 +197,9 @@ const { createPoller } = await import(path.join(tmp, "usePoller.mjs"));
 }
 
 // 7. v0.5.0-beta.14.16（深度体检）：失活 poller 的可见性恢复不补跑。
-//    场景：settings 轮询（active=tab==='settings'）；用户隐藏窗口后切到
-//    chat tab（active 假），再恢复可见——旧行为 catch-up 多打一发，
-//    修后 isActive=false → 只恢复调度链、不执行 fn。
+// 场景：settings 轮询（active=tab==='settings'）；用户隐藏窗口后切到
+// chat tab（active 假），再恢复可见——旧行为 catch-up 多打一发，
+// 修后 isActive=false → 只恢复调度链、不执行 fn。
 {
   let calls = 0;
   let active = true;

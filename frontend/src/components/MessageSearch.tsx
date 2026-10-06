@@ -96,7 +96,7 @@ function highlightParts(
       <mark
         key={key++}
         style={{
-          background: "color-mix(in srgb, var(--app-accent, #FF7F16) 22%, transparent)",
+ background: "color-mix(in srgb, var(--app-accent, #FF7F16) 22%, transparent)",
           color: "inherit",
           borderRadius: 3,
           padding: "0 1px",
@@ -216,7 +216,7 @@ export interface MessageSearchProps {
   onOpenRoomOnly?: (roomId: string) => void;
 }
 
-/** 消息搜索面板（+  群名搜索）：Drawer，房间内/跨房间。 */
+/** 消息搜索面板（+ 群名搜索）：Drawer，房间内/跨房间。 */
 function MessageSearch(props: MessageSearchProps) {
   const {
     open,
@@ -600,8 +600,8 @@ function MessageSearch(props: MessageSearchProps) {
   );
 }
 
-// v0.5.0-beta.14.14（UIPERF-T25）：memo 化——本组件常驻渲染于 WorkbenchPage
+// v0.5.0-beta.14.14：memo 化——本组件常驻渲染于 WorkbenchPage
 // 根（全局搜索 Drawer），此前每次重渲都进组件体（hooks + useMemo）。
-// 调用方 props 已稳定化（rooms 保引用 T21 + 回调 useCallback T25）→ 关闭
+// 调用方 props 已稳定化（rooms 保引用 + 回调 useCallback）→ 关闭
 // 态下 bail out。
 export default React.memo(MessageSearch);

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""/approval/list 性能护栏（v0.5.0-beta.14.5，P0-1/P0-2）。
+"""/approval/list 性能护栏（v0.5.0-beta.14.5，/）。
 
 背景：``approval_list`` 旧实现串行遍历全部容器（31 容器 WAN 实测 ≈23s），
 且无缓存——每次展开/切页都重扫一遍。beta.14.5 把遍历改为并发
@@ -9,9 +9,9 @@
 
 - **P1 并发生效**：31 容器 × 0.05s 墙钟 < 1.0s（串行需 ≥1.5s）。
 - **P2 缓存命中 + set 失效**：TTL 内第二次 list 零新增 archive 调用；
-  清缓存 + 一次成功 set（wsf 兜底）后，再 list 重新扫描。
+ 清缓存 + 一次成功 set（wsf 兜底）后，再 list 重新扫描。
 - **P3 容错不回归**：31 容器中 1 个 archive 500 → 该项 error 非空、
-  其余正常、整体 200。
+ 其余正常、整体 200。
 
 风格参照 ``tests/test_kb_approval_fallback.py``（monkeypatch
 ``cfgmod.load_config`` + fake ``router.httpx.AsyncClient`` + TestClient）。
@@ -71,8 +71,8 @@ class _Resp:
 class _PerfClient:
     """AsyncClient fake：archive GET 带固定延迟 + 调用计数。
 
-    url 子串 → _Resp；dict 顺序 = 匹配优先级（更具体的键放前面）。
-    """
+ url 子串 → _Resp；dict 顺序 = 匹配优先级（更具体的键放前面）。
+ """
 
     instances: list[["_PerfClient"]] = []
     get_spec: dict = {}

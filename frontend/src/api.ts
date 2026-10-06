@@ -1,11 +1,11 @@
 /** Same-origin fetch helper: prefers host.fetch, falls back to getApiUrl.
  *
- * v0.5.0-beta.13.24（F1 首刷 race）：`timeoutMs` 可选超时（AbortController）
+ * v0.5.0-beta.13.24（首刷 race）：`timeoutMs` 可选超时（AbortController）
  * ——旧版裸 fetch 无超时上限，后端冷窗（切网 failover / 探针收敛前）或
  * Controller 抖动时请求可挂起数分钟，前端恒转圈且刷新钮被 loading 禁用
  * （「手动也不行」）。超时抛「请求超时」错误（非 HTTP xxx 形态，调用方
  * toast 后可手动重试）；不传 = 原行为（SSE/长轮询等端点不受影响）。 */
-// v0.5.0-beta.14.6（R1）：读缓存接线——下方 15 个同源读接口经 cachedRequest
+// v0.5.0-beta.14.6：读缓存接线——下方 15 个同源读接口经 cachedRequest
 // 走 TTL+在飞去重+标签失效+LRU（requestCache.ts）；写面（POST/DELETE）不包。
 import { cachedRequest } from "./requestCache";
 
@@ -166,7 +166,7 @@ export async function fetchSglangLoads(): Promise<SglangLoads> {
 
 /** 在服模型列表（SGLang /v1/models 代理；创建 Worker 模型下拉用）。
  * SGLang 模块未启用 → 404 → 返回空列表（前端降级自由输入）。
- * v0.5.0-beta.14.6（R1）：cachedRequest 包裹（sglang/models，60s）——
+ * v0.5.0-beta.14.6：cachedRequest 包裹（sglang/models，60s）——
  * 原高频轮询位点迁移 usePoller 后，同 key 调用经缓存合并为一次回源。 */
 export async function fetchSglangModels(): Promise<string[]> {
   return cachedRequest("sglang/models", 60000, async () => {
@@ -213,7 +213,7 @@ export interface WorkbenchConfig {
   effective?: {
     matrix: string;
     controller: string;
-    // v0.5.0-beta.14.7（UIPERF-P3）：/config effective 补 gateway（地址模式固定档同源）。
+ // v0.5.0-beta.14.7：/config effective 补 gateway（地址模式固定档同源）。
     gateway?: string;
   };
   // v0.5.0-beta.12: SGLang 双地址（内网/外网）；旧单地址 url 由后端自动迁移。
@@ -229,11 +229,11 @@ export interface WorkbenchConfig {
   gateway_admin_url?: string;
   // v0.5.0-beta.14.7: Higress 双地址（canonical；legacy 单值键=urls[0] 镜像）。
   gateway_admin_urls?: AddressEntry[];
-  // v0.5.0-beta.14.8（UIPERF-T8）：控制台特效安抚（默认开；false=启用动画）。
-  // v0.5.0-beta.14.12（UIPERF-T18）：保留为兼容键（console_effects 三档取代；
+ // v0.5.0-beta.14.8：控制台特效安抚（默认开；false=启用动画）。
+ // v0.5.0-beta.14.12：保留为兼容键（console_effects 三档取代；
   // 后端 load 迁移时以其值推导初值，前端只读不写）。
   console_calm?: boolean;
-  // v0.5.0-beta.14.12（UIPERF-T18）：控制台特效三档
+ // v0.5.0-beta.14.12：控制台特效三档
   // （light=动画保留+模糊封顶[默认] / off=动画与模糊全停 / full=上游原样）。
   console_effects?: "light" | "off" | "full";
   console_session?: string;
@@ -257,9 +257,9 @@ export interface GatewayListResponse {
 }
 
 /** 网关 AI 路由列表（模型选择 alias 层：alias→route→provider 映射）。
- * v0.5.0-beta.14.6（R1）：新增 force 形参（默认 false）+ cachedRequest 包裹
+ * v0.5.0-beta.14.6：新增 force 形参（默认 false）+ cachedRequest 包裹
  * （gateway/ai-routes，30s，tags ["gateway"]）；写面变更后由调用方
- * invalidateTags(["gateway"]) + force 重取（D3）。 */
+ * invalidateTags(["gateway"]) + force 重取。 */
 export async function fetchGatewayAiRoutes(
   force = false,
 ): Promise<GatewayListResponse> {
@@ -275,7 +275,7 @@ export async function fetchGatewayAiRoutes(
 }
 
 /** 网关 LLM Provider 列表（alias 可解析性判定用）。
- * v0.5.0-beta.14.6（R1）：新增 force 形参（默认 false）+ cachedRequest 包裹
+ * v0.5.0-beta.14.6：新增 force 形参（默认 false）+ cachedRequest 包裹
  * （gateway/ai-providers，30s，tags ["gateway"]）。 */
 export async function fetchGatewayAiProviders(
   force = false,
@@ -324,7 +324,7 @@ export async function createGatewayAiRoute(
 }
 
 // ── 网关写面（14.4）：编辑/删除提供商 / 编辑/删除路由（Console 会话透传）──
-// 与 dashboard higress BFF 同款 Console 端点（/v1/ai/{providers,routes}/{name}
+// 与 dashboard higress BFF 同款 Console 端点（v1/ai/{providers,routes}/{name}
 // 的 PUT/DELETE）。响应信封同 GatewayMutationResponse（available=false +
 // reason/detail 供 UI 分诊；无 Console 会话 = no_console_session 降级提示）。
 
@@ -376,7 +376,7 @@ export async function deleteGatewayAiRoute(
 
 // ── 模型网关只读路由目录（上游 #1242，Controller 端点，token 鉴权）────
 // 与上面的 fetchGatewayAiRoutes（Higress Console 透传，需 admin 会话）不同源：
-// 本端点在 Controller 侧（/api/v1/gateway/ai-routes），只凭 controller token
+// 本端点在 Controller 侧（api/v1/gateway/ai-routes），只凭 controller token
 // 即可读，token 模式 L1 也能用（结构性数据面）。是「路由目录」非「模型目录」：
 // name=网关 /v1 入口名（非模型 ID），一条路由可服务多个模型；upstreams=上游
 // provider 及权重；allowedConsumers=被授权在该路由上的 consumer。
@@ -397,7 +397,7 @@ export interface GatewayRouteCatalog {
 }
 
 /** 模型网关只读路由目录（#1242；Controller 端点，controller token 鉴权，
- *  L1-only——L2 调用返 403，调用方需处理权限提示）。 */
+ * L1-only——L2 调用返 403，调用方需处理权限提示）。 */
 export async function fetchGatewayRouteCatalog(): Promise<GatewayRouteCatalog> {
   return (await requestJson(
     "/agentteams-proxy/controller/api/v1/gateway/ai-routes",
@@ -413,7 +413,7 @@ export interface VerifyAdminResult {
   console?: string;
   has_console_session?: boolean;
   /** v0.5.0-beta.12：验证成功时的 alias 层自检（Console 会话立即拉
-   * /v1/ai/routes + /v1/ai/providers 计数；自检失败降级为 0/[]）。 */
+ * /v1/ai/routes + /v1/ai/providers 计数；自检失败降级为 0/[]）。 */
   gateway_routes?: number;
   gateway_aliases?: string[];
   // v0.5.0-beta.12: token 模式来源（input/config/env）+ 来源说明消息。
@@ -440,7 +440,7 @@ export async function verifyAdmin(body: {
 }
 
 /** v0.5.0-beta.12: 连通性测试结构化诊断（点击展开详情）——
-    外网 DPI 问题定位锚点：TLS 栈指纹（Python/OpenSSL 版本）+ 分步耗时 + 全栈 traceback。 */
+ 外网 DPI 问题定位锚点：TLS 栈指纹（Python/OpenSSL 版本）+ 分步耗时 + 全栈 traceback。 */
 export interface ProbeDiagStep {
   name: string;
   ok: boolean;
@@ -467,9 +467,9 @@ export interface ProbeDiag {
 }
 
 /** v0.5.0-beta.12: 连通性测试结果——单地址。ms=null 表示不可达。
-    v0.5.0-beta.12: ok=网络层连通（收到 HTTP 响应即连通，401/403 也算）；
-    http_ok=状态码 <400（未鉴权/异常状态时 false，不参与生效地址竞选）。
-    v0.5.0-beta.12: diag=点击展开的结构化诊断（仅手动测试路径带）。 */
+ v0.5.0-beta.12: ok=网络层连通（收到 HTTP 响应即连通，401/403 也算）；
+ http_ok=状态码 <400（未鉴权/异常状态时 false，不参与生效地址竞选）。
+ v0.5.0-beta.12: diag=点击展开的结构化诊断（仅手动测试路径带）。 */
 export interface AddressTestResult {
   url: string;
   ok: boolean;
@@ -485,7 +485,7 @@ export interface AddressTestResult {
 }
 
 /** v0.5.0-beta.12: 连通性测试响应。applied=true 表示生效地址已按延迟重排；
-    switched 标记本次测试后哪些类型的生效地址变了（测完自动切换可见）。 */
+ switched 标记本次测试后哪些类型的生效地址变了（测完自动切换可见）。 */
 export interface ConfigTestResponse {
   ok: boolean;
   matrix: AddressTestResult[];
@@ -528,7 +528,7 @@ export async function testAddresses(
   })) as ConfigTestResponse;
 }
 
-/** v0.5.0-beta.14.14（UIPERF-T23）：完整配置导出（含明文凭据）——用户自己的
+/** v0.5.0-beta.14.14：完整配置导出（含明文凭据）——用户自己的
  * 备份用途（换环境/装包后 10 秒还原）。返回落盘同形的完整配置对象，原文
  * JSON 化即可复制保存；与 GET /config 的脱敏输出（展示面）区分。
  * 注意：返回含凭据——只可保存到可信位置。 */
@@ -538,7 +538,7 @@ export async function exportFullConfig(): Promise<Record<string, unknown>> {
   )) as Record<string, unknown>;
 }
 
-/** v0.5.0-beta.14.14（UIPERF-T23）：完整配置导入（覆盖式恢复）。
+/** v0.5.0-beta.14.14：完整配置导入（覆盖式恢复）。
  * 后端流程：schema 校验（失败 400 可读错误）→ 自动备份当前配置 → 原子覆盖。
  * restart: "none"=已 live 生效（Matrix 身份变更已自动重启同步）/
  * "page"=建议刷新 workbench 页面确认生效。 */
@@ -581,11 +581,11 @@ export interface TeamRoom {
   /** 最后一条消息正文摘要（m.room.message 才有，≤120 字）。 */
   last_body?: string;
   /** 最后一条消息的发送者 MXID（v0.5.0-beta.13.2：per-sender 灯源，
-   *  session 灯 done 回退只认 Worker 自己的消息，用户消息不再点绿整个房间）。 */
+ * session 灯 done 回退只认 Worker 自己的消息，用户消息不再点绿整个房间）。 */
   last_sender?: string;
 }
 
-/** 邀请房间（/sync rooms.invite 段，v0.5.0-beta.12 ——此前插件完全不可见）。 */
+/** 邀请房间（sync rooms.invite 段，v0.5.0-beta.12 ——此前插件完全不可见）。 */
 export interface InviteRoom {
   room_id: string;
   name: string;
@@ -640,7 +640,7 @@ export interface RoomMessage {
   mimetype?: string;
   filename?: string;
   /** v0.5.0-beta.12 ：m.file/m.image 字节数（content.info.size）——文件卡
-   * 尺寸显示 + FilePreview 大小守卫（此前映射漏带 info，尺寸恒空）。 */
+ * 尺寸显示 + FilePreview 大小守卫（此前映射漏带 info，尺寸恒空）。 */
   size?: number;
   /** 乐观回显标记：本地插入尚未被服务器确认。 */
   pending?: boolean;
@@ -660,7 +660,7 @@ export interface RoomMessage {
   /** 表情反应聚合（m.reaction m.annotation）：emoji → 计数。 */
   reactions?: Record<string, number>;
   /** 聊天内 workflow 卡片载荷（content.agentteams.workflow 自定义字段，
-   * ；结构与 sync_watcher _track_workflow 消费同一事件）。 */
+ * ；结构与 sync_watcher _track_workflow 消费同一事件）。 */
   workflow?: WorkflowCardPayload | null;
 }
 
@@ -770,7 +770,7 @@ export function resolveFileTarget(
   if (/^https?:\/\//i.test(s)) {
     // v0.5.0-beta.12 ：直链常跨域（Worker 发内网 http 地址，浏览器 fetch
     // 被 CORS 拦、a[download] 跨域变导航）→ 附服务端代抓路径
-    // （/media/proxy?url=，后端与文件服务器同网段可达）；url 保留给
+    // （media/proxy?url=，后端与文件服务器同网段可达）；url 保留给
     // 「新窗口打开原链接」兜底（顶层导航不受 CORS 限制）。
     return {
       url: s,
@@ -808,10 +808,10 @@ export async function downloadViaHost(
     a.click();
     a.remove();
     window.setTimeout(() => URL.revokeObjectURL(obj), 5000);
-    // v0.5.0-beta.13.6（用户反馈「下载不知道下载到哪里去」）：成功 toast
+    // v0.5.0-beta.13.6（下载不知道下载到哪里去）：成功 toast
     // 显形去向——浏览器默认下载目录 + 文件名。单一落点（6 个调用方全
     // 覆盖），不逐处改。
-    // v0.5.0-beta.13.13（13.12 用户反馈：桌面版还是不知道下到哪——宿主桥只有
+    // v0.5.0-beta.13.13（13.12 桌面版还是不知道下到哪——宿主桥只有
     // getApiUrl/getApiToken/fetch，无文件 API，web 内容无法拿实际落盘路径）：
     // Electron 桌面版单独明示——下载到操作系统默认「下载」文件夹（Windows:
     // C:\Users\<用户名>\Downloads；macOS: ~/Downloads），QwenPaw 桌面版不
@@ -848,7 +848,7 @@ export interface Artifact {
   size: number | null;
 }
 
-/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（artifacts，30s）——已有 force
+/** v0.5.0-beta.14.6：cachedRequest 包裹（artifacts，30s）——已有 force
  * 参数透传（force 同样参与在飞去重，完成后覆盖写缓存）。 */
 export async function fetchArtifacts(force = false): Promise<Artifact[]> {
   return cachedRequest("artifacts", 30000, async () => {
@@ -899,7 +899,7 @@ export async function searchMessages(
   })) as SearchPage;
 }
 
-/** 单事件上下文（/context）：前后各 limit 条 + 目标事件。 */
+/** 单事件上下文（context）：前后各 limit 条 + 目标事件。 */
 export interface EventContextPage {
   events_before: RoomMessage[];
   event: RoomMessage | null;
@@ -1045,7 +1045,7 @@ export interface WorkflowEvent {
   /** 树状拓扑：DAG nodes（id/subagent/task/dependsOn）。 */
   nodes?: WorkflowNode[];
   /** 计划类型（workflowResponse.plan_type：dag/loop/""；replan 仅 dag）。
-   * v0.5.0-beta.12  声明（此前运行时已透传、类型未写——replan 门控需要）。 */
+ * v0.5.0-beta.12 声明（此前运行时已透传、类型未写——replan 门控需要）。 */
   plan_type?: string;
   /** 人工干预中断（paused 项目在此暴露 resume 动作）。 */
   interrupts?: WorkflowInterrupt[];
@@ -1073,10 +1073,10 @@ export interface WorkflowEvent {
   sender: string;
   ts: number;
   /** 团队 id（正源列表条目 team_id；跨团队重名项目寻址 /events /history
-   * 等裸 id 端点时 ?team= 的必填键——不带 = 409 ambiguous，同 workflow 契约）。 */
+ * 等裸 id 端点时 ?team= 的必填键——不带 = 409 ambiguous，同 workflow 契约）。 */
   team_id?: string;
   /** 任务级明细（正源 tasks_detail，#1230 巡检数据面；steps 的强类型副本——
-   * steps 保留 unknown[] 兼容既有消费方（卡片降级轨），新代码用 taskDetails）。 */
+ * steps 保留 unknown[] 兼容既有消费方（卡片降级轨），新代码用 taskDetails）。 */
   taskDetails?: TaskDetail[];
 }
 
@@ -1133,7 +1133,7 @@ export async function fetchProjectTransitionEvents(
   }
 }
 
-/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（workflow/events，15s）——
+/** v0.5.0-beta.14.6：cachedRequest 包裹（workflow/events，15s）——
  * 已有 force 参数透传（仅 force 一参且不影响结果内容 → key 固定）。 */
 export async function fetchWorkflowEvents(
   force = false,
@@ -1155,7 +1155,7 @@ export async function fetchWorkflowEvents(
  * 被误判空列表（项目产物树恒空、且 o19Fail=null 连降级横幅都没有）；本文件
  * fetchWorkflowProjects/fetchWorkerSpawns 两份内联解包虽对，但三处副本
  * 迟早漂移——从此所有消费者走此函数，信封解包单一真相源。 */
-/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（projects/list，30s）——已有
+/** v0.5.0-beta.14.6：cachedRequest 包裹（projects/list，30s）——已有
  * force 参数透传；fetchWorkflowProjects/fetchWorkerSpawns 内部无参调用命中
  * 同一 key，多消费者合并为一次回源。 */
 export async function fetchProjectSummaries(
@@ -1206,12 +1206,12 @@ export async function fetchProjectSummaries(
  * 「只有 Manager 的」= 正源 401 静默回退、只剩自己已加入房间的扫描）。
  * 附带 failDetail（error 分支的真实上游错误，如 Controller 500 的
  * mc 报错）——此前真实原因被通用横幅「Controller 不可用」掩盖。
- * v0.5.0-beta.14.6（R1）：外层 cachedRequest 包裹（workflow/projects，30s）
+ * v0.5.0-beta.14.6：外层 cachedRequest 包裹（workflow/projects，30s）
  * ——整包聚合（projects/list + 逐项目 workflow）是重接口，多调用点（workflow
  * tab 15s 轮询、聊天 📁 面板）合并为一次回源；内部 fetchProjectSummaries()
  * 无参调用命中 projects/list 缓存。
- * v0.5.0-beta.14.12（UIPERF-T16b）：force=true → 绕过 30s 读缓存（cachedRequest
- * opts.force）+ 端点带 ?refresh=1（连接器无视 TTL 触发后台补扫，T17）——
+ * v0.5.0-beta.14.12（b）：force=true → 绕过 30s 读缓存（cachedRequest
+ * opts.force）+ 端点带 ?refresh=1（连接器无视 TTL 触发后台补扫，）——
  * 手动刷新必穿透；无参调用行为不变（既有调用者兼容）。 */
 interface WorkflowProjectsResult {
   events: WorkflowEvent[];
@@ -1223,10 +1223,10 @@ interface WorkflowProjectsResult {
 async function loadWorkflowProjectsRaw(
   force = false,
 ): Promise<WorkflowProjectsResult> {
-  // v0.5.0-beta.14.9（UIPERF-T10）：改走连接器聚合（1 请求）；装配仍在本地。
+  // v0.5.0-beta.14.9：改走连接器聚合（1 请求）；装配仍在本地。
   // 聚合端点异常（网络/未部署）→ 回退旧直连路径（loadWorkflowProjectsLegacy）。
-  // v0.5.0-beta.14.12（UIPERF-T16b）：force → 端点带 ?refresh=1（连接器触发
-  // 后台补扫，T17）；仅手动刷新路径使用。
+  // v0.5.0-beta.14.12（b）：force → 端点带 ?refresh=1（连接器触发
+  // 后台补扫，）；仅手动刷新路径使用。
   try {
     const snap = await fetchProjectsWorkflow(force);
     // 上游 /projects 的非 200（401/403/404/5xx）→ 与前版本一致的横幅分类。
@@ -1261,13 +1261,13 @@ async function loadWorkflowProjectsRaw(
   }
 }
 
-/** v0.5.0-beta.14.9（UIPERF-T10）：旧逐项目直连实现原样保留，仅作兜底
+/** v0.5.0-beta.14.9：旧逐项目直连实现原样保留，仅作兜底
  * （聚合端点异常——网络/未部署——时走这里）。 */
 async function loadWorkflowProjectsLegacy(): Promise<WorkflowProjectsResult> {
   try {
     const list = await fetchProjectSummaries();
     if (list.length === 0) return { events: [], apiOk: true };
-    // v0.5.0-beta.13.13（13.12 用户反馈「聊天群的项目文件读取不到」真根因之一）：
+    // v0.5.0-beta.13.13（13.12 聊天群的项目文件读取不到根因之一）：
     // 旧版 slice(0, 20) 只拉前 20 个项目的工作流，而列表端点无排序参数
     // （实盘 2026-09-23 = 45 个项目，字母序前 20 全是老项目）→ 新房间绑定的
     // 项目整体缺席 workflowEvents → 聊天 📁 面板与 live overlay 全空。
@@ -1317,10 +1317,10 @@ async function loadWorkflowProjectsLegacy(): Promise<WorkflowProjectsResult> {
   }
 }
 
-/** v0.5.0-beta.14.6（R1）：对外缓存包装（workflow/projects，30s）。
- *  v0.5.0-beta.14.12（UIPERF-T16b）：force=true → opts.force 绕过 30s 读缓存
- *  （手动刷新必穿透）+ fetcher 带 ?refresh=1 触发连接器后台补扫（T17）；
- *  无参调用 = 原行为（30s 缓存 + 在飞去重，调用者不变）。 */
+/** v0.5.0-beta.14.6：对外缓存包装（workflow/projects，30s）。
+ * v0.5.0-beta.14.12（b）：force=true → opts.force 绕过 30s 读缓存
+ * （手动刷新必穿透）+ fetcher 带 ?refresh=1 触发连接器后台补扫；
+ * 无参调用 = 原行为（30s 缓存 + 在飞去重，调用者不变）。 */
 export async function fetchWorkflowProjects(
   force = false,
 ): Promise<WorkflowProjectsResult> {
@@ -1332,9 +1332,9 @@ export async function fetchWorkflowProjects(
   );
 }
 
-/** v0.5.0-beta.14.9（UIPERF-T10）：项目+工作流取数聚合（连接器侧缓存/
+/** v0.5.0-beta.14.9：项目+工作流取数聚合（连接器侧缓存/
  * 后台刷；前端 1 请求取原始件，装配仍在本地）。
- * v0.5.0-beta.14.12（UIPERF-T16b/T17）：force=true → 带 ?refresh=1，
+ * v0.5.0-beta.14.12（b/）：force=true → 带 ?refresh=1，
  * 连接器无视 TTL 触发后台补扫（仍零等待返回当前快照，响应字段不变）。 */
 export async function fetchProjectsWorkflow(
   force = false,
@@ -1354,8 +1354,8 @@ export async function fetchProjectsWorkflow(
   };
 }
 
-// v0.5.0-beta.13.24（F5·用户反馈定案「DAG 和 mermaid 没必要分两个」）：
-// fetchWorkflowMermaid（13.21 A9 引入）与 MermaidDagView 一并退役——
+// v0.5.0-beta.13.24（·「DAG 和 mermaid 没必要分两个」）：
+// fetchWorkflowMermaid（13.21 引入）与 MermaidDagView 一并退役——
 // 两图同结构、快照非交互，自绘 DAG 保留（交互）且撤 mermaid 内联依赖
 // 主包 −5.1MB。上游 `?format=mermaid` 端点仍在（#1230），插件不再消费。
 
@@ -1366,23 +1366,23 @@ function isoToMs(v: unknown): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-/** v0.5.0-beta.13.15/13.16（B3 关联判定——两轮真根因收口）：项目↔房间。
- *  实盘根因（源码 + 部署真值双证）：
- *  ① 项目群真 ID 写在 meta.json 的 `project_room_id`，Controller 的 Go
- *     projectMeta 结构体只挑 source_room_id 透传 → API 从不暴露项目群 ID；
- *  ② workflow.room_id（= meta.source_room_id）只是「发起房间」——QQ 发起
- *     为 `qq:...`、DM 发起为 DM 房间 → 与项目群 room_id 严格相等恒 miss；
- *  ③ 13.15 只补了 `Project: <title>` 名称源，但**新项目（按 create_task_room 约定建的）根本
- *     没有 `Project:` 房**——teamharness MCP create_task_room 建的**任务房
- *     命名 `TASK：<projectId>`**（server.py L245/L249 契约；实盘 76 房间
- *     对表：6 个 TASK 房全部漏配）→ 13.16 补第三源。
- *  三源判定（任一命中即关联）：
- *  ① source_room_id 严格匹配（`matrix:` 前缀归一后比较）；
- *  ② 旧约定项目房：房间名/话题 = `Project: <项目名>`（create-project.sh，
- *     引号容错——兼容手工改名/带引号变体）；
- *  ③ 新约定任务房：房间名 = `TASK：<projectId>`（全/半角冒号容错）→ 与
- *     `ev.runId`（= project_id）精确相等——房间名内嵌项目 ID，直连正源。
- *  上游若日后暴露 project_room_id（待提 PR），本函数优先其为准源。 */
+/** v0.5.0-beta.13.15/13.16（B3 关联判定——两轮根因）：项目↔房间。
+ * 实盘根因（源码 + 部署真值双证）：
+ * ① 项目群真 ID 写在 meta.json 的 `project_room_id`，Controller 的 Go
+ * projectMeta 结构体只挑 source_room_id 透传 → API 从不暴露项目群 ID；
+ * ② workflow.room_id（= meta.source_room_id）只是「发起房间」——QQ 发起
+ * 为 `qq:...`、DM 发起为 DM 房间 → 与项目群 room_id 严格相等恒 miss；
+ * ③ 13.15 只补了 `Project: <title>` 名称源，但**新项目（按 create_task_room 约定建的）根本
+ * 没有 `Project:` 房**——teamharness MCP create_task_room 建的**任务房
+ * 命名 `TASK：<projectId>`**（server.py L245/L249 契约；实盘 76 房间
+ * 对表：6 个 TASK 房全部漏配）→ 13.16 补第三源。
+ * 三源判定（任一命中即关联）：
+ * ① source_room_id 严格匹配（`matrix:` 前缀归一后比较）；
+ * ② 旧约定项目房：房间名/话题 = `Project: <项目名>`（create-project.sh，
+ * 引号容错——兼容手工改名/带引号变体）；
+ * ③ 新约定任务房：房间名 = `TASK：<projectId>`（全/半角冒号容错）→ 与
+ * `ev.runId`（= project_id）精确相等——房间名内嵌项目 ID，直连正源。
+ * 上游若日后暴露 project_room_id（待提 PR），本函数优先其为准源。 */
 export function roomMatchesProject(
   roomId: string,
   roomName: string | undefined,
@@ -1403,9 +1403,9 @@ export function roomMatchesProject(
     // ② 旧约定：项目房命名 `Project: <标题>`（create-project.sh 建）。
     if (title && s === `Project: ${title}`.trim()) return true;
     // ③ 新约定：任务房命名 `TASK：<projectId>`（teamharness create_task_room，
-    //    server.py「Project task rooms are named TASK：<projectId>」；全角/半角
-    //    冒号容错）——房间名内嵌项目 ID = 直连正源（13.15 用户反馈实盘
-    //    证明新项目只有任务房、无 `Project:` 房）。
+    // server.py「Project task rooms are named TASK：<projectId>」；全角/半角
+    // 冒号容错）——房间名内嵌项目 ID = 直连正源（13.15 实盘
+    // 证明新项目只有任务房、无 `Project:` 房）。
     const m = /^TASK[:：]\s*(.+)$/.exec(s);
     if (m) {
       const pid = stripQ(m[1]);
@@ -1704,17 +1704,17 @@ export interface WorkerInfo {
   message: string;
   version?: string;
   /**
-   * v0.5.0-beta.12（读路径）：Worker 已装载的 skill 名列表
-   * （WorkerResponse.skills = spec.skills，nacos:// 远端条目含源前缀）。
-   * 通用代理透传 Controller 完整响应，字段运行时已存在，此前未声明。
-   */
+ * v0.5.0-beta.12（读路径）：Worker 已装载的 skill 名列表
+ * （WorkerResponse.skills = spec.skills，nacos:// 远端条目含源前缀）。
+ * 通用代理透传 Controller 完整响应，字段运行时已存在，此前未声明。
+ */
   skills?: string[];
   /** v0.5.0-beta.12：Worker 挂载的 MCP server（name/url/transport）。 */
   mcpServers?: McpServerInfo[];
   /** v0.5.0-beta.12.9（心跳数据面）：Worker 心跳 agent 状态字段
-   * （controller WorkerResponse 顶层平铺透传，worker-agent-status 契约——
-   * 任务级真相，取代 typing 2min 硬上限假熄灭；旧版 controller 无 → 派生
-   * 优雅降级 typing+last_ts，同 dashboard 3ad94e2 语义）。 */
+ * （controller WorkerResponse 顶层平铺透传，worker-agent-status 契约——
+ * 任务级真相，取代 typing 2min 硬上限假熄灭；旧版 controller 无 → 派生
+ * 优雅降级 typing+last_ts，同 dashboard 3ad94e2 语义）。 */
   agentStatus?: string;
   runningTaskCount?: number;
   lastRunAt?: string;
@@ -1784,7 +1784,7 @@ export interface AdminData {
 async function fetchControllerJson<T>(path: string): Promise<T> {
   // 调用方传 "/workers" 时模板拼接会产生 /api/v1//workers 双斜杠，
   // uvicorn 对双斜杠 301——strip 前导斜杠根治。
-  // v0.5.0-beta.13.24（F1）：30s 封顶（冷窗后端已 ≤~6s；超时显形可重试）。
+  // v0.5.0-beta.13.24：30s 封顶（冷窗后端已 ≤~6s；超时显形可重试）。
   const clean = path.replace(/^\/+/, "");
   return (await requestJson(
     `/agentteams-proxy/controller/api/v1/${clean}`,
@@ -1858,7 +1858,7 @@ export const updateManagerModel = (name: string, model: string) =>
  * source = builtin | shared | plugin（team 层=团队技能，team-skills.md）。
  * L1（admin）：builtin + shared（deployment 全局）。
  * L2：必须带 ?team=<本团队>（上游 W8 反探测——cross-team/unknown → 404）
- *   → builtin + teams/<t>/skills/（team-skills.md 契约）。
+ * → builtin + teams/<t>/skills/（team-skills.md 契约）。
  * 上游合并前 Controller 404 → 目录节显示占位（抛错由 UI 捕获）。 */
 export interface SkillCatalogItem {
   name: string;
@@ -2048,14 +2048,14 @@ export function patchWorkerTool(
 }
 
 // ── Worker 运行时技能（物化层；GET /workers/{name}/skills 代理 worker
-//    qwenpaw app /api/skills，controller worker_skills.go）──────────────
+// qwenpaw app /api/skills，controller worker_skills.go）──────────────
 // v0.5.0-beta.13.15（B6 双层技能真相）：
-//   分配层 = WorkerResponse.skills（spec.skills，CRD 显式分配，PUT /workers
-//     {skills} 写入）——「管理员声明给了什么」。
-//   物化层 = 本端点（worker 容器内实际装载，runtime 自报）——「实际能调用
-//     什么」。二者可背离：团队层技能 materialize-at-assign（#1238）/ builtin
-//     恢复 / 镜像·插件自带技能都不写 spec.skills → 分配层空但物化层非空
-//     = 13.14 用户反馈「矩阵全显未分配但可正常调用」的真相。
+// 分配层 = WorkerResponse.skills（spec.skills，CRD 显式分配，PUT /workers
+// {skills} 写入）——「管理员声明给了什么」。
+// 物化层 = 本端点（worker 容器内实际装载，runtime 自报）——「实际能调用
+// 什么」。二者可背离：团队层技能 materialize-at-assign（#1238）/ builtin
+// 恢复 / 镜像·插件自带技能都不写 spec.skills → 分配层空但物化层非空
+// = 13.14 矩阵全显未分配但可正常调用的真相。
 // 404 = Controller 未含端点（版本门）/ L2 跨团队 W8 防探测；403 = 只读身份。
 // v0.5.0-beta.13.20：物化层字段补全——上游 SkillSpec（qwenpaw skills.py）
 // 实回 {name, description, version_text, source, emoji, enabled, channels,
@@ -2115,7 +2115,7 @@ export interface WorkerChatSpec {
   archived?: boolean;
   source?: string;
   /** qwenpaw ChatSpec.status（app/chats/models.py:136）："idle" | "running"
-   * ——qwenpaw app 自维护的 per-session 会话状态（13.8 状态灯正源）。 */
+ * ——qwenpaw app 自维护的 per-session 会话状态（13.8 状态灯正源）。 */
   status?: string;
 }
 export interface WorkerChatMessage {
@@ -2155,7 +2155,7 @@ export function fetchWorkerChatStatus(
     `/workers/${encodeURIComponent(name)}/chats/${encodeURIComponent(chatId)}/status`,
   ) as Promise<{ status: string }>;
 }
-/** v0.5.0-beta.14.9（UIPERF-T9）：Worker 状态聚合响应——后端 30s 后台单点
+/** v0.5.0-beta.14.9：Worker 状态聚合响应——后端 30s 后台单点
  * 扫描 + 聚合缓存（多窗口共享）；scanAt=最近成功扫描时刻（epoch 秒），
  * scanning=后台补扫进行中（本次响应为上轮快照）。 */
 export interface WorkersStatusResponse {
@@ -2163,7 +2163,7 @@ export interface WorkersStatusResponse {
   scanAt: number;
   scanning: boolean;
 }
-/** v0.5.0-beta.14.9（UIPERF-T9）：Worker 状态聚合（单端点；旧逐 worker
+/** v0.5.0-beta.14.9：Worker 状态聚合（单端点；旧逐 worker
  * /chats 扇出退役）。 */
 export function fetchWorkersStatus(): Promise<WorkersStatusResponse> {
   return requestJson(
@@ -2267,7 +2267,7 @@ export function deleteWorkerLoopCustom(
 export const deleteTeam = (name: string) =>
   controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
 
-/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（admin/data，30s，tags
+/** v0.5.0-beta.14.6：cachedRequest 包裹（admin/data，30s，tags
  * ["admin"]）——4 路并发取数，WorkerManage 30s 轮询与 CrdManage 失效后
  * 重取合并为一次回源。 */
 export async function fetchAdminData(): Promise<AdminData> {
@@ -2278,7 +2278,7 @@ export async function fetchAdminData(): Promise<AdminData> {
       const [workers, teams, humans, managers] = await Promise.all([
         fetchControllerJson<unknown>("/workers").then(normalizeList),
         fetchControllerJson<unknown>("/teams").then(normalizeList),
-        // v0.5.0-beta.13.21（13.20 用户反馈「首屏只显拓扑」缺口④）：humans/managers
+        // v0.5.0-beta.13.21（13.20 首屏只显拓扑缺口④）：humans/managers
         // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版
         // Promise.all 里任一 404/超时（旧 Controller 无该端点/瞬时抖动）整体
         // reject → admin 面板整体空白；workers/teams 才是 CRD 管理面板核心数据。
@@ -2312,11 +2312,11 @@ function normalizeList(payload: unknown): unknown[] {
 }
 
 /** v0.5.0-beta.13.14（L2 双模式，调研 P0 + 上游 l2-worker-scoped-write.md
- *  / team-skills.md 已合 main）：L2 身份（Matrix token，无 admin token）取数。
+ * / team-skills.md 已合 main）：L2 身份（Matrix token，无 admin token）取数。
  * 与 fetchAdminData 的区别：humans/managers 是 L1 管理面（L2 无权限或无意义）
  * → 失败置空不炸；workers/teams 是 L2 技能中心正源（Controller 按
  * accessibleTeams 自动 scope——standalone worker 隐藏，防探测）。 */
-/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（admin/l2，30s，tags
+/** v0.5.0-beta.14.6：cachedRequest 包裹（admin/l2，30s，tags
  * ["admin"]）——L2 身份取数，与 admin/data 同标签（写失效一起清）。 */
 export async function fetchL2AdminData(): Promise<AdminData> {
   return cachedRequest(
@@ -2354,8 +2354,8 @@ export interface SpawnNode {
   /** 正源：父 spawn 的 session_id（root_session_id），用于建树后不展示。 */
   rootSessionId?: string;
   /* spawn 工具/技能白名单——QwenPaw #7004 持久化（meta.subagent_allowed_tools/
-     subagent_skills）经 Controller spawn 端点透传（需上游 main 64a77b5f+，v1.2.3 tag 未含）；仅当派发时
-     受限且 Worker 运行 QwenPaw 2.1+ 时出现，2.0.1 恒无（不渲染）。 */
+ subagent_skills）经 Controller spawn 端点透传（需上游 main 64a77b5f+，v1.2.3 tag 未含）；仅当派发时
+ 受限且 Worker 运行 QwenPaw 2.1+ 时出现，2.0.1 恒无（不渲染）。 */
   allowedTools?: string[];
   skills?: string[];
 }
@@ -2368,7 +2368,7 @@ export interface WorkerSpawnGroup {
   spawns: SpawnNode[];
   phase?: string;
   /* v0.5.0-beta.12：Worker 个人房间（Controller roomID，
-     私聊直跳）+ runtime（CR 字段，runtime 徽章）。room-fallback 源无此二字段。 */
+ 私聊直跳）+ runtime（CR 字段，runtime 徽章）。room-fallback 源无此二字段。 */
   room_id?: string;
   runtime?: string;
 }
@@ -2379,8 +2379,8 @@ export interface WorkerTreeTeam {
   workers: WorkerSpawnGroup[];
 }
 
-/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（teams/structure，15s，tags
- * ["teams"]）——已有 force 参数透传（F6 team tab 切回 30s 节流后走此缓存）；
+/** v0.5.0-beta.14.6：cachedRequest 包裹（teams/structure，15s，tags
+ * ["teams"]）——已有 force 参数透传（team tab 切回 30s 节流后走此缓存）；
  * requestJson 第 3 参 30000 超时保留。 */
 export async function fetchTeamsStructure(
   force = false,
@@ -2389,7 +2389,7 @@ export async function fetchTeamsStructure(
     "teams/structure",
     15000,
     async () => {
-      // v0.5.0-beta.13.24（F1）：30s 封顶——冷窗后端已 ≤~6s（connect 3s
+      // v0.5.0-beta.13.24：30s 封顶——冷窗后端已 ≤~6s（connect 3s
       // failover + 探针 3s 收敛），30s 未回 = 真故障，显形可重试优于恒转圈。
       return (await requestJson(
         `/agentteams-proxy/teams/structure${force ? "?force=true" : ""}`,
@@ -2404,7 +2404,7 @@ export async function fetchTeamsStructure(
 /** spawn 正源（上游已合并）：projects list + 每项目 /spawns 聚合 →
  * 按 worker 名建 spawn 树（root_session_id 链 = 父子）。返回 apiOk=false
  * 时调用方降级为空 spawns（现状）。
- * v0.5.0-beta.14.6（R1）：外层 cachedRequest 包裹（worker/spawns，60s，
+ * v0.5.0-beta.14.6：外层 cachedRequest 包裹（worker/spawns，60s，
  * tags ["spawns"]）——重复调用（组件多处唤起）合并为一次。 */
 async function loadWorkerSpawnsRaw(): Promise<{
   byWorker: Record<string, SpawnNode[]>;
@@ -2418,7 +2418,7 @@ async function loadWorkerSpawnsRaw(): Promise<{
       projects.slice(0, 20).map(async (proj) => {
         const pid = String(proj.project_id || "");
         if (!pid) return;
-        // v0.5.0-beta.14.6（R5）：project_id 跨团队歧义时控制器返回 409
+        // v0.5.0-beta.14.6：project_id 跨团队歧义时控制器返回 409
         // 「retry with ?team=」（project_handler.go）——带上 team_id 消歧。
         const team = String(proj.team_id || "");
         try {
@@ -2462,7 +2462,7 @@ async function loadWorkerSpawnsRaw(): Promise<{
   }
 }
 
-/** v0.5.0-beta.14.6（R1）：对外缓存包装（worker/spawns，60s，tags
+/** v0.5.0-beta.14.6：对外缓存包装（worker/spawns，60s，tags
  * ["spawns"]）——让重复调用（组件多处唤起）合并为一次。 */
 export async function fetchWorkerSpawns(): Promise<{
   byWorker: Record<string, SpawnNode[]>;
@@ -2522,7 +2522,7 @@ export async function fetchTeamsRooms(): Promise<TeamsRoomsResponse> {
   return (await requestJson("/agentteams-proxy/teams/rooms")) as TeamsRoomsResponse;
 }
 
-/** v0.5.0-beta.14.6（R1）：cachedRequest 包裹（teams/sync，15s，tags
+/** v0.5.0-beta.14.6：cachedRequest 包裹（teams/sync，15s，tags
  * ["teams"]）——已有 force 参数透传。 */
 export async function fetchTeamsSync(
   force = false,
@@ -2541,7 +2541,7 @@ export async function fetchTeamsSync(
 // ── 模块级缓存（页面重开立即显示，后台刷新）──────────────────────────
 // 离开 tab 组件卸载后数据仍在；重新打开先用缓存渲染再后台拉新。
 let roomsCache: TeamsRoomsResponse | null = null;
-// v0.5.0-beta.13.10（13.9 用户反馈「消息被滚出历史」真根因）：缓存从「最新
+// v0.5.0-beta.13.10（13.9 消息被滚出历史根因）：缓存从「最新
 // 50 条页」升级为「全量已加载历史」（含 loadMore 前插的更早消息）——
 // 旧版切页/切房间回来 refresh 用最新 50 全量替换，翻过的历史全丢
 // （「很多没了」「乱了」）。
@@ -2558,7 +2558,7 @@ export function setCachedRooms(data: TeamsRoomsResponse): void {
 export function getCachedMessages(
   roomId: string,
 ): { messages: RoomMessage[]; end: string } | null {
-  // v0.5.0-beta.14.17（T181 审计 B 面 P2）：读命中刷新 LRU 次序。
+  // v0.5.0-beta.14.17（审计 B 面 P2）：读命中刷新 LRU 次序。
   // 旧版逐出取「首个插入键」（Map 插入序≈FIFO），长期使用的热房会因
   // 「插入早」被逐、而偶访的冷房因「插入新」常驻——与 LRU 语义相反。
   // 命中即 delete+re-set 移到末尾（最近使用），逐出改逐队首（最久未用）。
@@ -2730,7 +2730,7 @@ export async function fetchRoomMessages(
   }
   // v0.5.0-beta.12: 显式按时间升序——此前顺序完全依赖 Matrix /messages chunk 的
   // 原始返回序，话题面板（replies 是 visibleMessages 子集）出现"从上到下
-  // 不是从旧到新"（用户反馈 反馈）。JS sort 稳定：同 ts 保持 chunk 相对序。
+  // 不是从旧到新"（反馈）。JS sort 稳定：同 ts 保持 chunk 相对序。
   messages.sort((a, b) => a.origin_server_ts - b.origin_server_ts);
   return {
     messages,
@@ -2822,7 +2822,7 @@ export async function sendRoomFile(
   )) as { event_id: string };
 }
 
-/** v0.5.0-beta.13.10（13.9 用户反馈「@mention 是单纯字符串」真根因）：
+/** v0.5.0-beta.13.10（13.9 @mention 是单纯字符串根因）：
  * composer 记录的 mention 目标——发送时构造 Element 同款三重标记
  * （m.mentions 结构化 + formatted_body matrix.to 链接 + body 纯文本
  * @localpart），缺任何一层都可能被群房间 _require_mention 静默丢弃
@@ -2904,7 +2904,7 @@ export async function sendRoomMessage(
   )) as { event_id: string };
 }
 
-/** v0.5.0-beta.12 ：审批命令带 @Worker（用户反馈 真机反馈：无 @ 的
+/** v0.5.0-beta.12 ：审批命令带 @Worker（真机反馈：无 @ 的
  * `/approval approve` 群内没反应）。QwenPaw Matrix 通道群房间
  * _require_mention 默认 True——无 mention 消息只进历史缓冲不进消费队列，
  * Worker 根本看不到裸命令。按 Element 三重惯例发：m.mentions（结构化，
@@ -3043,7 +3043,7 @@ export interface RoomPowerInfo {
   canRename: boolean;
 }
 
-// ──  Worker 工具执行安全（QwenPaw 原生 approval_level 四模式）────
+// ── Worker 工具执行安全（QwenPaw 原生 approval_level 四模式）────
 export interface ApprovalItem {
   agent: string;
   container: string;
@@ -3087,7 +3087,7 @@ export async function setApprovalLevel(
 }
 
 // ── #1216 Controller 审批端点（v0.5.0-beta.13.23：L1/L2 统一主路径）────
-// 走 catch-all 透传（/agentteams-proxy/controller/api/v1/...）：admin
+// 走 catch-all 透传（agentteams-proxy/controller/api/v1/...）：admin
 // token 在 → Bearer admin token（L1）；空 → Matrix access_token（L2
 // team-scoped 可读写本团队 Worker；OFF 需 approval_policy capability
 // #1273→403 透传；team leader 只读→PUT 403；跨团队→404）。
@@ -3172,7 +3172,7 @@ export async function setRoomMuted(
 // v0.5.0-beta.12 ：原「宿主审批队列」段（PendingApproval /
 // fetchPendingApprovals / sendApprovalAction，GET /console/push-messages）
 // 已删除——集群 Worker 的 Tool Guard 审批发生在 Worker 所在进程，本机宿主队列
-// 恒 0（查证 + 用户反馈 真机「首页没有」实锤）。房间审批源 =
+// 恒 0（查证 + 真机「首页没有」实锤）。房间审批源 =
 // GET /room-approvals（下方 RoomApproval/fetchRoomApprovals）+ 批准/拒绝
 // 走 sendApprovalCommand（带 @Worker 的房间命令）。
 
@@ -3253,7 +3253,7 @@ export async function sendInboxNotify(opts: {
   }
 }
 
-// ── 成员详情：某成员在房间内的最近消息（/messages 翻页过滤）───
+// ── 成员详情：某成员在房间内的最近消息（messages 翻页过滤）───
 
 export interface MemberMessage {
   event_id: string;
@@ -3438,11 +3438,11 @@ export async function fetchWorkerCheckpointStatus(
 // 「知识库」= ReMe 长期记忆（memory/ 每日卡 + digest/ personal·procedure·wiki
 // + wikilink 图谱），「知识图谱」= 记忆卡 wikilink 引用网络（非实体-关系 KG）。
 // 全部走 host.fetch（自动注入 Authorization + X-Agent-Id），不新增插件路由：
-// GET  /agents/{id}/memory/graph          图谱快照（2.1.0+ API）
-// GET  /agents/{id}/memory/status         运行时状态（2.1.0+）
-// POST /agents/{id}/memory/reindex        重建索引（2.1.0+，可耗时数分钟）
-// GET  /workspace/memory?section=         文件列表（copaw 时代既有）
-// GET  /workspace/memory/{path}?section=  文件内容
+// GET /agents/{id}/memory/graph 图谱快照（2.1.0+ API）
+// GET /agents/{id}/memory/status 运行时状态（2.1.0+）
+// POST /agents/{id}/memory/reindex 重建索引（2.1.0+，可耗时数分钟）
+// GET /workspace/memory?section= 文件列表（copaw 时代既有）
+// GET /workspace/memory/{path}?section= 文件内容
 // 宿主 <2.1 时 graph/status/reindex 404 → 组件降级（文件浏览仍可用）。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -3520,7 +3520,7 @@ async function hostJson(path: string, init?: RequestInit): Promise<unknown> {
 }
 
 /** 宿主 agent 列表（getSelectedAgentId 运行时缺失时的 agentId 兜底源）。
- * v0.5.0-beta.14.6（R1）：cachedRequest 包裹（kb/agent-ids，60s）——
+ * v0.5.0-beta.14.6：cachedRequest 包裹（kb/agent-ids，60s）——
  * KnowledgeBase 等多处取数合并为一次。 */
 export async function fetchAgentIdList(): Promise<string[]> {
   return cachedRequest("kb/agent-ids", 60000, async () => {
@@ -3613,17 +3613,17 @@ export async function loadMemoryFile(
   return String(raw.content ?? "");
 }
 
-// ──  技能管理（QwenPaw 宿主 Agent，host.fetch 零新后端）──
+// ── 技能管理（QwenPaw 宿主 Agent，host.fetch 零新后端）──
 // 复刻宿主 SkillPool 核心面（参考 QwenPaw Settings/SkillPool），契约源
 // src/qwenpaw/app/routers/skills.py（2.1.0+）：
-// GET  /skills                  SkillSpec[]（X-Agent-Id 由 host.fetch 注入）
-// POST /skills/refresh          强制 reconcile 后返回 SkillSpec[]
-// GET  /skills/{name}           SkillDetail（+content/config/installed_from）
-// POST /skills/{name}/enable    {enabled: true}
-// POST /skills/{name}/disable   {disabled: true}
-// DELETE /skills/{name}         {deleted: true}（仅已禁用，409=先禁用）
-// POST /skills                  {name, content, config?, enable?} 新建
-// POST /skills/upload           multipart zip（enable/target_name 参数）
+// GET /skills SkillSpec[]（X-Agent-Id 由 host.fetch 注入）
+// POST /skills/refresh 强制 reconcile 后返回 SkillSpec[]
+// GET /skills/{name} SkillDetail（+content/config/installed_from）
+// POST /skills/{name}/enable {enabled: true}
+// POST /skills/{name}/disable {disabled: true}
+// DELETE /skills/{name} {deleted: true}（仅已禁用，409=先禁用）
+// POST /skills {name, content, config?, enable?} 新建
+// POST /skills/upload multipart zip（enable/target_name 参数）
 // 范围=当前宿主 Agent（本机助手），非远端 Worker——远端 Worker 技能
 // 只读展示在 Worker 管理 tab），团队侧上传/应用待上游合并。
 export interface SkillSpec {
@@ -3651,9 +3651,9 @@ export interface SkillUploadResult {
 }
 
 /** 当前宿主 Agent 技能清单。
- * v0.5.0-beta.14.6（R1）：cachedRequest 包裹（skills/list，60s，tags
+ * v0.5.0-beta.14.6：cachedRequest 包裹（skills/list，60s，tags
  * ["skills"]）——写面（开关/删除/上传/新建/重扫）变更后由调用方
- * invalidateTags(["skills"]) 再取（D3）。 */
+ * invalidateTags(["skills"]) 再取。 */
 export async function fetchSkills(): Promise<SkillSpec[]> {
   return cachedRequest(
     "skills/list",
@@ -3707,11 +3707,11 @@ export async function createSkill(
   })) as { created: boolean; name: string };
 }
 
-/** v0.5.0-beta.13.19（13.18 用户反馈「技能上传呢？」）：**团队技能包上传**——
- *  POST /api/v1/skills（multipart：scope=team + team + file=技能 zip）。
- *  经插件代理 → 连接器（multipart 原样透传，v13.19 起）→ Controller；
- *  上游 v1.2.4 起带 skillscan（422=内容拦截并回 findings，响应带
- *  scan.status/skipped）。返回体：{name, scope, team, files, scan}。 */
+/** v0.5.0-beta.13.19（13.18 技能上传呢？）：**团队技能包上传**——
+ * POST /api/v1/skills（multipart：scope=team + team + file=技能 zip）。
+ * 经插件代理 → 连接器（multipart 原样透传，v13.19 起）→ Controller；
+ * 上游 v1.2.4 起带 skillscan（422=内容拦截并回 findings，响应带
+ * scan.status/skipped）。返回体：{name, scope, team, files, scan}。 */
 export async function uploadTeamSkill(opts: {
   team: string;
   file: File | Blob;
@@ -3806,7 +3806,7 @@ export async function uploadSkillZip(
 }
 
 // ── 远端团队知识库（用户定位）────────────────────────
-// 数据通道：插件后端 → Controller Docker API 代理（/docker/v1.41/
+// 数据通道：插件后端 → Controller Docker API 代理（docker/v1.41/
 // containers/{worker}/archive?path=...，GET 只读恒放行）→ 读 Worker
 // 容器内 .qwenpaw/workspaces/default（MEMORY.md + memory/ + SOUL.md）。
 // 需要 Controller admin token（L1）；无 token → 401 → 组件降级本地。
@@ -3827,10 +3827,10 @@ export interface KbFileItem {
   size: number;
   mtime: number;
   /** 四分类（对齐 QwenPaw 文件管理）：
-   * profile=档案 / daily=日记 / digest=知识库 / file=文件 */
+ * profile=档案 / daily=日记 / digest=知识库 / file=文件 */
   category?: string;
   /** v0.5.0-beta.13.10：false=非文本/符号链接文件——列出但不可点开
-   * （工作区目录诚实镜像；缺省=true 兼容旧响应）。 */
+ * （工作区目录诚实镜像；缺省=true 兼容旧响应）。 */
   openable?: boolean;
   /** v0.5.0-beta.13.10：符号链接文件（目标=文件/断链）。 */
   symlink?: boolean;
@@ -3876,7 +3876,7 @@ export interface KbGraphData {
 }
 
 /** 远端 Agent 清单（需 Controller token；401 = 未配置 → 调用方降级）。
- * v0.5.0-beta.14.6（R1）：cachedRequest 包裹（kb/agents，30s）。 */
+ * v0.5.0-beta.14.6：cachedRequest 包裹（kb/agents，30s）。 */
 export async function fetchKbAgents(): Promise<KbAgent[]> {
   return cachedRequest("kb/agents", 30000, async () => {
     const raw = (await requestJson(

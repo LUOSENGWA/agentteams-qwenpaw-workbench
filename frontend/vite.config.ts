@@ -29,7 +29,7 @@ function noModuleImportsGuard(): Plugin {
       if (!chunk || typeof chunk.code !== "string") return;
       const src = chunk.code;
       // 语句边界（行首/;/{}/后）的 import 语句 = 违规。双正则覆盖：
-      // ① 副作用导入 import"..."  ② 值导入 import X from "..."（含 minify 无空格形态）。
+      // ① 副作用导入 import"..." ② 值导入 import X from "..."（含 minify 无空格形态）。
       // 只认语句位置 → 字符串字面量如 r.set("from", n) 不误报（v0.5.0-beta.12 产物验证过）。
       // 重写：旧 value 正则 [^;{}]*? 跨不了命名导入的花括号，minify 后
       // `import{useMemo}from"react"` 直接漏网（早期版本把宿主炸掉的正是这条）。
@@ -71,11 +71,11 @@ function noModuleImportsGuard(): Plugin {
  */
 const THIRD_PARTY_BANNER = `/*!
  * Bundled third-party components (source inlined into this file):
- * three.js 0.185.1        - Copyright (c) 2010-2026 three.js authors   - MIT
- * 3d-force-graph 1.80.0   - Copyright (c) 2017 Vasco Asturiano         - MIT
- * three-spritetext 1.10.0 - Copyright (c) 2018 Vasco Asturiano         - MIT
- * fflate 0.8.3            - Copyright (c) 2026 Arjun Barrett           - MIT
- * lucide icon path data   - Copyright (c) lucide contributors          - ISC
+ * three.js 0.185.1 - Copyright (c) 2010-2026 three.js authors - MIT
+ * 3d-force-graph 1.80.0 - Copyright (c) 2017 Vasco Asturiano - MIT
+ * three-spritetext 1.10.0 - Copyright (c) 2018 Vasco Asturiano - MIT
+ * fflate 0.8.3 - Copyright (c) 2026 Arjun Barrett - MIT
+ * lucide icon path data - Copyright (c) lucide contributors - ISC
  * Full license texts: THIRD-PARTY-NOTICES.md (shipped with this plugin).
  */`;
 
@@ -229,7 +229,7 @@ function gwProxyMiddleware(): Plugin {
   };
 }
 
-// v0.5.0-beta.13.17（13.16 装验「顶部版本号显示不对」）：版本注入 =
+// v0.5.0-beta.13.17（13.16 「顶部版本号显示不对」）：版本注入 =
 // 构建期从 package.json 读入打进 bundle（`__PLUGIN_VERSION__`）——顶部
 // 显示的版本永远等于「你装进去的那个 dist 的版本」，不再依赖后端
 // /health（后端进程未随安装重启时会返回旧 connection 版本 → 显示错）。
@@ -260,9 +260,9 @@ export default defineConfig({
       // （而不是 rollup 静默内联第二份 React → 双实例 hooks 暗病）。
       external: ["react", "react-dom"],
       // 单文件约束守卫 = noModuleImportsGuard（dist 出现任何 import 语句
-      // 即构建失败）。v0.5.0-beta.13.21（A9 mermaid）曾为内联 mermaid 的
+      // 即构建失败）。v0.5.0-beta.13.21（mermaid）曾为内联 mermaid 的
       // lazy diagram chunk 加 output.inlineDynamicImports；13.24 随 mermaid
-      // 整体退役（装验定案 DAG/Mermaid 合并）一并移除——源码已无运行时
+      // 整体退役（DAG/Mermaid 合并）一并移除——源码已无运行时
       // 动态导入，守卫仍是单文件契约的兜底。
     },
   },

@@ -101,7 +101,7 @@ interface ProjectMeta {
  * v0.5.0-beta.12: 项目时间戳（排序/树标题共用）。上游 ListProjects 的
  * projectSummary 目前不含时间戳字段（v1.2.3 实测全无 created_at/
  * updated_at；meta.json 有 UpdatedAt string 未映射进列表——上游候选
- * PR 已记）。v0.5.0-beta.12  起走 api.ts projectActivityTs 多源：
+ * PR 已记）。v0.5.0-beta.12 起走 api.ts projectActivityTs 多源：
  * 真实字段（列表/workflow 详情，上游补字段后自动生效）→ 项目房间
  * 最后消息（roomsCache 零额外请求）→ project_id 内嵌日期近似 → 0。
  */
@@ -366,7 +366,7 @@ function Artifacts(props: ArtifactsProps) {
     if (teamFilter !== "all") {
       list = list.filter((p) => p.team_id === teamFilter);
     }
-    // 时间键见模块级 projectTs()（v0.5.0-beta.12  起多源：真实字段 →
+    // 时间键见模块级 projectTs()（v0.5.0-beta.12 起多源：真实字段 →
     // 项目房间最后消息 → id 内嵌日期近似；此前列表端点无时间戳字段
     // 且 id 无日期时全 0，用户「显示不了时间」）。
     const tsOf = (p: ProjectSummary) =>
@@ -484,7 +484,7 @@ function Artifacts(props: ArtifactsProps) {
           <div style={{ lineHeight: 1.35, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
               {/* v0.5.0-beta.12: antd Tooltip 显全名（原生 title 在树节点里不生效）；
-                  名称 ≠ project_id 时 tooltip 附带 id（id 是寻址键，排障要用）。 */}
+ 名称 ≠ project_id 时 tooltip 附带 id（id 是寻址键，排障要用）。 */}
               <antd.Tooltip
                 title={
                   (p.title || p.name) && p.project_id !== dispName
@@ -664,7 +664,7 @@ function Artifacts(props: ArtifactsProps) {
       if (f.mxcUrl) {
         // v0.5.0-beta.12: resolveFileTarget——mxc→媒体代理（apiPath + getApiUrl 解析）。
         // 裸 /agentteams-proxy/... 路径落 SPA 兜底取回 index.html 壳
-        //（历史缺陷「内容是网页」真根因）。
+        //（历史缺陷「内容是网页」根因）。
         const t = resolveFileTarget(f.mxcUrl);
         if (!t.url) {
           antd.message.error(
@@ -744,7 +744,7 @@ function Artifacts(props: ArtifactsProps) {
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {/* v0.5.0-beta.12: 正源降级横幅——「新接口的产物还没扫描到」可视化：
-          Controller 项目产物（产物端点）不可用时只剩房间附件扫描。 */}
+ Controller 项目产物（产物端点）不可用时只剩房间附件扫描。 */}
       {o19Fail ? (
         <div
           style={{
@@ -831,8 +831,8 @@ function Artifacts(props: ArtifactsProps) {
       </div>
 
       {/* v0.5.0-beta.12 ：左右分栏独立滚动（用户「产物页面左右两栏要做成分开滚动」）。
-          容器定高（RoomChat 同款 calc 经验值 100vh-230 再减工具栏行 ~48）+
-          两栏各自 overflow auto——此前整页滚动，树和表一起滚、排序控件滚出视野。 */}
+ 容器定高（RoomChat 同款 calc 经验值 100vh-230 再减工具栏行 ~48）+
+ 两栏各自 overflow auto——此前整页滚动，树和表一起滚、排序控件滚出视野。 */}
       <div
         style={{
           display: "flex",
@@ -842,11 +842,11 @@ function Artifacts(props: ArtifactsProps) {
         }}
       >
         {/* 左栏：产物树（项目 → 任务 → 文件；附件 → 类型 → 来源）。
-            v0.5.0-beta.12: overflow hidden 硬裁剪——长节点标题（房间附件的来源=房间名）
-            之前溢出 260px 伸进右栏区，右栏 Table 后绘覆盖其上 = 用户所见
-            「房间附件宽度不一样，右边栏挡住房间产物左边栏」。
-            v0.5.0-beta.12: 宽度可拖拽 200–480px（默认 260，持久化）——房间名长，宽度用户自定。
-            v0.5.0-beta.12 : 树自身垂直滚动（不再随整页滚）。 */}
+ v0.5.0-beta.12: overflow hidden 硬裁剪——长节点标题（房间附件的来源=房间名）
+ 之前溢出 260px 伸进右栏区，右栏 Table 后绘覆盖其上 = 用户所见
+ 「房间附件宽度不一样，右边栏挡住房间产物左边栏」。
+ v0.5.0-beta.12: 宽度可拖拽 200–480px（默认 260，持久化）——房间名长，宽度用户自定。
+ v0.5.0-beta.12 : 树自身垂直滚动（不再随整页滚）。 */}
         <div
           ref={treeColRef}
           style={{
@@ -1044,6 +1044,6 @@ function Artifacts(props: ArtifactsProps) {
   );
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(Artifacts);

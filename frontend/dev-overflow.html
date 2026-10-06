@@ -76,11 +76,11 @@
     return {
       ...m,
       matches,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
+      addEventListener:  => {},
+      removeEventListener:  => {},
+      addListener:  => {},
+      removeListener:  => {},
+      dispatchEvent:  => false,
     };
   };
 
@@ -88,8 +88,8 @@
     host: {
       React,
       antd: antdNs.default ?? antdNs,
-      useTheme: () => "light",
-      useLocale: () => "zh-CN",
+      useTheme:  => "light",
+      useLocale:  => "zh-CN",
       // 审计 shim（11.13b）：gateway 路径 → 真实部署后端（活数据）；
       // 其余 → /gw-proxy fixture。UI 级验证=真实 11.13 前端代码 × 活数据。
       fetch: async (path, init) => {
@@ -165,13 +165,13 @@
       React.createElement("div", { className: "wb-content" },
         React.createElement(CrdManage, {
           admin: { workers, teams, humans, managers },
-          onRefresh: () => {},
+          onRefresh:  => {},
           l1TokenMode: false,
         }),
         React.createElement(ManagerTable, {
           managers,
           usedModels: managers.map((m) => m.model || ""),
-          onRefreshAdmin: () => {},
+          onRefreshAdmin:  => {},
           l1TokenMode: true,
         }),
       ),
@@ -179,7 +179,7 @@
   );
 
   // ── gateway 提取验证（v0.5.0-beta.12）：复跑 hook 同款提取，渲染到 DOM ──
-  setTimeout(async () => {
+  setTimeout(async  => {
     const mod = await import("./src/modelUnion");
     const {
       fetchGatewayAiRoutes,
@@ -214,7 +214,7 @@
       );
       const { buildModelSelectionOptions } = await import("./src/modelCatalog");
       const aliasOpts = buildModelSelectionOptions(routesList, providersList);
-      const sglang = await fetchSglangModels().catch(() => []);
+      const sglang = await fetchSglangModels().catch( => []);
       out.textContent =
         `GW routes.data=${JSON.stringify(routes.data).slice(0, 200)}\n` +
         `routesList=${routesList.length} providersList=${providersList.length}\n` +
@@ -226,7 +226,7 @@
   }, 100);
 
   // ── 溢出扫描：渲染结果到页面（SDK 无 evaluate，靠 snapshot 读）──
-  setTimeout(() => {
+  setTimeout( => {
     const vp = document.getElementById("audit-viewport");
     const content = vp.querySelector(".wb-content");
     const contentRight = content ? content.getBoundingClientRect().right : Infinity;

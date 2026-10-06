@@ -3,26 +3,26 @@
 // 心跳优先（agentStatus/runningTaskCount = 任务级真相，无时间上限），
 // typing 降为实时回退，lastFinishAt/最近消息 10min 衰减。
 // v0.5.0-beta.13.2（灯源修正，与 dashboard 9a9cc8d per-sender 同源）：
-//   done 回退从「房间级 last_ts」改为「per-sender」——只认该 Worker 自己
-//   发的最后一条消息（/teams/sync 的 last_sender）。此前用户自己发消息也
-//   会点绿房间里所有 Worker（房间 last_ts 刷新）→「灯一直绿」。
-//   心跳字段在场时（controller ≥#1247）done 只由 lastFinishAt 驱动，
-//   per-sender 回退根本不触发；缺字段时（旧 controller/worker 未报心跳）
-//   回退=「该 Worker 刚发过言」（≤10min），不再被人类消息误触。
+// done 回退从「房间级 last_ts」改为「per-sender」——只认该 Worker 自己
+// 发的最后一条消息（teams/sync 的 last_sender）。此前用户自己发消息也
+// 会点绿房间里所有 Worker（房间 last_ts 刷新）→「灯一直绿」。
+// 心跳字段在场时（controller ≥#1247）done 只由 lastFinishAt 驱动，
+// per-sender 回退根本不触发；缺字段时（旧 controller/worker 未报心跳）
+// 回退=「该 Worker 刚发过言」（≤10min），不再被人类消息误触。
 //
 // 数据源（全部既有通道，零新增请求）：
-//   WorkerInfo 心跳字段  —— GET /workers（fetchAdminData 已拉）agent 状态
-//   TeamRoom.typing      —— m.typing 事件（25s 续期，2min 硬上限——仅回退位）
-//   TeamRoom.last_sender —— 房间最后一条消息的发送者 MXID（beta.13.2 新增）
-//   TeamRoom.last_ts     —— 该条消息的时间戳（/sync timeline limit=1）
-//   TeamRoom.members     —— 房间成员 MXID 表
+// WorkerInfo 心跳字段 —— GET /workers（fetchAdminData 已拉）agent 状态
+// TeamRoom.typing —— m.typing 事件（25s 续期，2min 硬上限——仅回退位）
+// TeamRoom.last_sender —— 房间最后一条消息的发送者 MXID（beta.13.2 新增）
+// TeamRoom.last_ts —— 该条消息的时间戳（sync timeline limit=1）
+// TeamRoom.members —— 房间成员 MXID 表
 //
 // 状态机（定稿 + 心跳升级 + 13.2 per-sender，色板：蓝=运行中（呼吸）/绿=运行完成/灰=无任务）：
-//   running = agentStatus "running" / runningTaskCount>0（任务级，无上限）
-//           或该 Worker 的 MXID 在任一房间 typing[] 内（实时回退）
-//   done    = lastFinishAt 距今 ≤ 10min（任务级）
-//           或（无心跳字段时）该 Worker 自己最后一条消息距今 ≤ 10min
-//   idle    = 其余
+// running = agentStatus "running" / runningTaskCount>0（任务级，无上限）
+// 或该 Worker 的 MXID 在任一房间 typing[] 内（实时回退）
+// done = lastFinishAt 距今 ≤ 10min（任务级）
+// 或（无心跳字段时）该 Worker 自己最后一条消息距今 ≤ 10min
+// idle = 其余
 //
 // 团队房间语义自动收敛：per-sender 后，人类消息只更新人类自己的
 // last_sender → 不会点绿任何 Worker；Worker A 发言只点绿 A。
@@ -35,15 +35,15 @@ export type WorkerSessionState = "running" | "done" | "idle";
 /** done 窗口：最后活动距今 ≤10min 视为「刚完成」。 */
 export const DONE_WINDOW_MS = 10 * 60 * 1000;
 /** 老化 tick：15s 重派生一次（done→idle 边界翻转不依赖新消息；
- *  beta.13.2 从 60s 收紧，对齐 dashboard useSessionTick 方向，纯派生零成本）。 */
+ * beta.13.2 从 60s 收紧，对齐 dashboard useSessionTick 方向，纯派生零成本）。 */
 const TICK_MS = 15 * 1000;
 
 /** 派生所需的最小房间形状（TeamRoom 满足；测试可传瘦对象）。 */
 export interface SessionRoomLike {
   typing?: string[];
   last_ts?: number;
-  /** v0.5.0-beta.13.2：最后一条消息的发送者 MXID（/teams/sync 线格式
-   *  snake_case，与 last_ts 同族；TeamRoom 同名字段）。 */
+  /** v0.5.0-beta.13.2：最后一条消息的发送者 MXID（teams/sync 线格式
+ * snake_case，与 last_ts 同族；TeamRoom 同名字段）。 */
   last_sender?: string;
   members?: Record<string, unknown>;
 }
@@ -59,19 +59,19 @@ export interface WorkerHeartbeatInfo {
 /**
  * Per-Worker 三态派生（v2 心跳优先，与 dashboard worker-session-state.ts
  * 逐句同源——单一事实源语义，两端独立维护但逻辑锁定一致）：
- *   1) 任务级真相（心跳，无时间上限）
- *   2) 实时 typing（回退）
- *   3) 最近完成（lastFinishAt 或最后活动，10min 衰减）
+ * 1) 任务级真相（心跳，无时间上限）
+ * 2) 实时 typing（回退）
+ * 3) 最近完成（lastFinishAt 或最后活动，10min 衰减）
  */
 export function deriveWorkerSessionState(opts: {
   heartbeat?: WorkerHeartbeatInfo | null;
   isTyping: boolean;
-  /** v0.5.0-beta.13.8：session 级正源（/chats 任一 session status=running，
-   *  qwenpaw app 自维护）——优先级：心跳（若有）> chat.running > typing。
-   *  任务执行中但 Worker 未发言时（无 typing/消息）也正确显示蓝。 */
+  /** v0.5.0-beta.13.8：session 级正源（chats 任一 session status=running，
+ * qwenpaw app 自维护）——优先级：心跳（若有）> chat.running > typing。
+ * 任务执行中但 Worker 未发言时（无 typing/消息）也正确显示蓝。 */
   chatRunning?: boolean;
   /** v0.5.0-beta.13.2：该 Worker 自己最后一条消息的 epoch ms（0/undefined = 无）。
-   *  房间级活动（他人消息）不得传入——那是 roomWorkerState 的语义。 */
+ * 房间级活动（他人消息）不得传入——那是 roomWorkerState 的语义。 */
   lastActivityTs?: number;
   now?: number;
 }): WorkerSessionState {
@@ -97,7 +97,7 @@ export function deriveWorkerSessionState(opts: {
 }
 
 /** Per-Worker 三态：按 Worker MXID 跨全部房间派生（心跳优先，v2；
- *  v0.5.0-beta.13.8 加 session 级 chatRunning 正源）。 */
+ * v0.5.0-beta.13.8 加 session 级 chatRunning 正源）。 */
 export function workerSessionState(
   mxid: string | undefined,
   rooms: readonly SessionRoomLike[],
@@ -127,8 +127,8 @@ export function workerSessionState(
 }
 
 /** 房间级活动指示（房间头/房间卡专用，非 per-Worker 语义）：
- *  任一 Worker 正在该房间 typing → running；否则按房间最后活动（任何
- *  发送者）→ done。**per-Worker 灯一律走 workerSessionState（per-sender）。** */
+ * 任一 Worker 正在该房间 typing → running；否则按房间最后活动（任何
+ * 发送者）→ done。**per-Worker 灯一律走 workerSessionState（per-sender）。** */
 export function roomWorkerState(
   room: SessionRoomLike,
   workerMxids: ReadonlySet<string>,
@@ -203,15 +203,15 @@ export function useWorkerSessionStates(
       }[]
     | null,
   /** v0.5.0-beta.13.8：worker_name → session 级聚合（useWorkerChatStatuses；
-   *  未传 = 旧行为，消息级启发式兜底）。 */
+ * 未传 = 旧行为，消息级启发式兜底）。 */
   chatStatuses?: Record<string, { running: boolean; lastUpdated: number }>,
 ): WorkerSessionStates {
   const React = window.QwenPaw.host.React;
   const [tick, setTick] = React.useState(0);
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（15s 老化 tick，
+  // v0.5.0-beta.14.6：旧定时器 → usePoller（15s 老化 tick，
   // !document.hidden 内置——页面隐藏时暂停 tick）。
   usePoller({ fn: () => setTick((t) => t + 1), intervalMs: TICK_MS });
-  // v0.5.0-beta.14.14（UIPERF-T26）：15s tick 每轮产出**新引用**（byName/
+  // v0.5.0-beta.14.14：15s tick 每轮产出**新引用**（byName/
   // byRoom/byMxid/workerMxids 全新对象）→ 下游 memo（RoomChat 等）每 15s
   // 被击穿一次——即使三态值一个都没变（空闲也全量重渲染）。值未变时复用
   // 上轮对象引用，值翻转才换新。
@@ -241,7 +241,7 @@ export function useWorkerSessionStates(
         const hb =
           hbByName.get(w.worker_name) ??
           (w.mxid ? hbByMxid.get(w.mxid) : undefined);
-        // v0.5.0-beta.13.8：session 级正源（/chats 任一 running）进 running
+        // v0.5.0-beta.13.8：session 级正源（chats 任一 running）进 running
         // 判定，优先级 心跳 > chat.running > typing（见 derive）。
         const chatRunning = chatStatuses?.[w.worker_name]?.running;
         const st = workerSessionState(w.mxid, rs, hb, now, chatRunning);

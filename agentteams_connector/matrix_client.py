@@ -105,9 +105,9 @@ def send_message(
 ) -> Dict[str, Any]:
     """Send an m.room.message event. Returns {event_id}.
 
-    v0.5.0-beta.12 ``content`` 传完整结构化事件 content（带
-    m.mentions/formatted_body 的 @mention 消息用）；None → 纯文本。
-    """
+ v0.5.0-beta.12 ``content`` 传完整结构化事件 content（带
+ m.mentions/formatted_body 的 @mention 消息用）；None → 纯文本。
+ """
     import time
     import uuid
 
@@ -126,10 +126,10 @@ def send_message(
 def create_dm(homeserver: str, token: str, mxid: str) -> Dict[str, Any]:
     """Create (or reuse) a trusted-private DM room with *mxid*.
 
-    Reuses an existing direct room from m.direct account data when present;
-    otherwise POST /createRoom with preset=trusted_private_chat + invite.
-    Returns {room_id, created}.
-    """
+ Reuses an existing direct room from m.direct account data when present;
+ otherwise POST /createRoom with preset=trusted_private_chat + invite.
+ Returns {room_id, created}.
+ """
     existing = _existing_direct_room(homeserver, token, mxid)
     if existing:
         return {"room_id": existing, "created": False}
@@ -175,10 +175,10 @@ def direct_rooms(
 ) -> Dict[str, str]:
     """m.direct 账号数据 → {room_id: 对方 mxid}（倒排）。
 
-    DM 房间名权威来源（Element 同款）：新 DM 对方未 accept invite 时
-    members 只有自己，无名字可取——m.direct 记录的是"这个房间是跟谁
-    私聊"，不依赖对方是否已加入。best-effort：失败返回 {}。
-    """
+ DM 房间名权威来源（Element 同款）：新 DM 对方未 accept invite 时
+ members 只有自己，无名字可取——m.direct 记录的是"这个房间是跟谁
+ 私聊"，不依赖对方是否已加入。best-effort：失败返回 {}。
+ """
     import urllib.parse
 
     url = (
@@ -211,11 +211,11 @@ def search(
 ) -> Dict[str, Any]:
     """POST /_matrix/client/v3/search — 全文检索历史消息（room_events）。
 
-    Tuwunel（conduwuit 系）要求 search_categories.room_events.filter 字段
-    必填（缺 → M_BAD_JSON "missing field 'filter'"）——传 {} 即搜全部可见
-    房间；房间内搜索传 {"rooms": [room_id]}。group_by room_id 让跨房间
-    结果按房间聚合，include_profile 附带发送者资料。分页走 next_batch。
-    """
+ Tuwunel（conduwuit 系）要求 search_categories.room_events.filter 字段
+ 必填（缺 → M_BAD_JSON "missing field 'filter'"）——传 {} 即搜全部可见
+ 房间；房间内搜索传 {"rooms": [room_id]}。group_by room_id 让跨房间
+ 结果按房间聚合，include_profile 附带发送者资料。分页走 next_batch。
+ """
     search_body: Dict[str, Any] = {
         "search_term": term,
         "filter": {"rooms": [room_id]} if room_id else {},
@@ -238,9 +238,9 @@ def search(
 def latest_event_id(homeserver: str, token: str, room_id: str) -> str:
     """房间最新消息 event_id（GET /messages?dir=b&limit=1）。
 
-    已读回执的落点：m.read 指向具体事件，m.fully_read 指向读线位置。
-    空房间 / 无可见历史时返回 ""。
-    """
+ 已读回执的落点：m.read 指向具体事件，m.fully_read 指向读线位置。
+ 空房间 / 无可见历史时返回 ""。
+ """
     import urllib.parse
 
     encoded_room = urllib.parse.quote(room_id, safe="")
@@ -266,9 +266,9 @@ def send_read_receipt(
 ) -> None:
     """m.read 回执（event 级，Element 侧显示「已读给你」）。
 
-    POST /receipt/m.read/{eventId}，无 body。协议与 dashboard
-    src/app/api/matrix/rooms/[roomId]/receipt/route.ts 对齐（交叉验证）。
-    """
+ POST /receipt/m.read/{eventId}，无 body。协议与 dashboard
+ src/app/api/matrix/rooms/[roomId]/receipt/route.ts 对齐（交叉验证）。
+ """
     import urllib.parse
 
     encoded_room = urllib.parse.quote(room_id, safe="")
@@ -290,10 +290,10 @@ def set_fully_read(
 ) -> None:
     """m.fully_read 读线（房间级，清 Element 侧未读 badge 的关键）。
 
-    PUT /user/{userId}/rooms/{roomId}/account_data/m.fully_read，
-    body {"event_id": ...}。协议与 dashboard read-marker route 对齐
-    （交叉验证）。
-    """
+ PUT /user/{userId}/rooms/{roomId}/account_data/m.fully_read，
+ body {"event_id": ...}。协议与 dashboard read-marker route 对齐
+ （交叉验证）。
+ """
     import urllib.parse
 
     encoded_user = urllib.parse.quote(user_id, safe="")
@@ -316,7 +316,7 @@ def sync(
     sync_filter: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Long-poll /sync. Returns the raw sync response (may contain
-    rooms.join.<room_id>.timeline.events)."""
+ rooms.join.<room_id>.timeline.events)."""
     params = {"timeout": str(timeout_ms)}
     if since:
         params["since"] = since

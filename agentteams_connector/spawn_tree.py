@@ -26,10 +26,10 @@ _SESSION_ID_RE = re.compile(
 def normalize_room_session_id(raw: str) -> Optional[str]:
     """Normalize a Matrix room id / Worker session id to a canonical room id.
 
-    Accepts: bare room id (``!abc:server``), ``matrix:`` prefixed session id
-    (``matrix:!abc:server``), case variants. Returns the lowercased room id
-    or None for invalid input.
-    """
+ Accepts: bare room id (``!abc:server``), ``matrix:`` prefixed session id
+ (``matrix:!abc:server``), case variants. Returns the lowercased room id
+ or None for invalid input.
+ """
     if not isinstance(raw, str):
         return None
     raw = raw.strip()
@@ -52,8 +52,8 @@ def room_id_to_session_id(room_id: str) -> Optional[str]:
 def infer_worker_role(display_name: str, mxid: str) -> str:
     """Best-effort role badge from a team member name (第一版无 Controller teams API).
 
-    Returns one of ``leader`` / ``worker`` / ``critic`` / ``unknown``.
-    """
+ Returns one of ``leader`` / ``worker`` / ``critic`` / ``unknown``.
+ """
     name = (display_name or mxid or "").lower()
     if re.search(r"lead|leader|coordinator", name):
         return "leader"
@@ -67,10 +67,10 @@ def infer_worker_role(display_name: str, mxid: str) -> str:
 def build_worker_groups(members: dict, user_id: str) -> list:
     """Worker-dimension groups from Matrix joined_members.
 
-    ``members``: {mxid: {display_name, avatar_url}} from joined_members.
-    Returns [{"worker_name", "mxid", "role", "is_self", "spawns": []}].
-    Spawns stay empty until the spawn endpoint merges (adapter swaps the data source).
-    """
+ ``members``: {mxid: {display_name, avatar_url}} from joined_members.
+ Returns [{"worker_name", "mxid", "role", "is_self", "spawns": []}].
+ Spawns stay empty until the spawn endpoint merges (adapter swaps the data source).
+ """
     groups = []
     for mxid, profile in members.items():
         display_name = (
