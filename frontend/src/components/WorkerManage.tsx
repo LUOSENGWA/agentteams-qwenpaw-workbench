@@ -49,7 +49,7 @@ const WakeIcon = pick("CaretRightOutlined");
 const SleepIcon = pick("PauseOutlined");
 const MessageIcon = pick("MessageOutlined");
 
-const PRIMARY = "#FF7F16";
+const PRIMARY = "var(--app-accent, #FF7F16)";
 
 // 存 key 不用 tr：模块级常量不能调 hook；组件内 useT 后 tr(ROLE_BADGE[role])。
 const ROLE_BADGE: Record<WorkerSpawnGroup["role"], string> = {
@@ -626,7 +626,7 @@ function WorkerRow({
           <antd.Badge
             count={spawns.length}
             size="small"
-            style={{ backgroundColor: "#FF7F16", marginLeft: 8 }}
+            style={{ backgroundColor: "var(--app-accent, #FF7F16)", marginLeft: 8 }}
           />
         ) : null}
         {onDm && !group.is_self ? (
@@ -830,7 +830,7 @@ function CheckpointCard({ workerName }: { workerName: string }) {
                       {fmtTime(n.timestamp_ms)}
                     </span>
                     {n.is_head ? (
-                      <span style={{ color: "#FF7F16", marginLeft: 6 }}>●</span>
+                      <span style={{ color: "var(--app-accent, #FF7F16)", marginLeft: 6 }}>●</span>
                     ) : null}
                   </div>
                   {n.query ? (

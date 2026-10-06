@@ -906,8 +906,8 @@ function WorkerChats({
                         <div
                           style={{
                             maxWidth: "86%",
-                            background: "rgba(255,127,22,0.14)",
-                            border: "1px solid rgba(255,127,22,0.35)",
+                            background: "color-mix(in srgb, var(--app-accent, #FF7F16) 14%, transparent)",
+                            border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 35%, transparent)",
                             borderRadius: "10px 2px 10px 10px",
                             padding: "6px 10px",
                             fontSize: 12.5,
@@ -943,7 +943,7 @@ function WorkerChats({
                       </div>
                       {/* v0.5.0-beta.13.11（F8 QwenPaw 化：HostBubbles 同款
                           Avatar 分侧——user 右 / assistant 左）。 */}
-                      <antd.Avatar size="small" style={{ background: "#ff7f16", flexShrink: 0 }}>
+                      <antd.Avatar size="small" style={{ background: "var(--app-accent, #FF7F16)", flexShrink: 0 }}>
                         <UserIcon size={12} style={{ color: "#fff" }} />
                       </antd.Avatar>
                     </div>

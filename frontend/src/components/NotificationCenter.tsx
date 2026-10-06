@@ -23,7 +23,7 @@ const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 
-const PRIMARY = "#FF7F16";
+const PRIMARY = "var(--app-accent, #FF7F16)";
 
 const SEV_COLOR: Record<string, string> = {
   CRITICAL: "#f5222d",
@@ -269,8 +269,8 @@ function NotificationCenter(props: {
         <div
           onClick={onGotoApprovals}
           style={{
-            border: "1px solid rgba(255,127,22,0.4)",
-            background: "rgba(255,127,22,0.08)",
+            border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 40%, transparent)",
+            background: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
             borderRadius: 10,
             padding: "10px 14px",
             cursor: "pointer",
@@ -321,10 +321,10 @@ function NotificationCenter(props: {
                 onClick={() => onGotoInvites?.()}
                 title={tr("点击处理邀请")}
                 style={{
-                  border: "1px solid rgba(255,127,22,0.4)",
+                  border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 40%, transparent)",
                   borderRadius: 10,
                   padding: "8px 12px",
-                  background: "rgba(255,127,22,0.08)",
+                  background: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
                   cursor: "pointer",
                 }}
               >

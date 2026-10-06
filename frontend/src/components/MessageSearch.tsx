@@ -16,7 +16,7 @@ const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 
-const PRIMARY = "#FF7F16";
+const PRIMARY = "var(--app-accent, #FF7F16)";
 
 /** sender MXID → 短名（@alice:example.org → alice）。 */
 export function senderShort(sender: string): string {
@@ -96,7 +96,7 @@ function highlightParts(
       <mark
         key={key++}
         style={{
-          background: "rgba(255,127,22,0.22)",
+          background: "color-mix(in srgb, var(--app-accent, #FF7F16) 22%, transparent)",
           color: "inherit",
           borderRadius: 3,
           padding: "0 1px",
@@ -138,7 +138,7 @@ function ContextPreview(props: {
           marginBottom: 4,
           fontSize: 12.5,
           background: isTarget
-            ? "rgba(255,127,22,0.10)"
+            ? "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)"
             : t.bubbleOther,
           border: isTarget ? `1px solid ${PRIMARY}` : "1px solid transparent",
           wordBreak: "break-word",
