@@ -317,7 +317,7 @@ async def _probe_gateway(
             resp = await client.get(f"{url.rstrip('/')}/", headers=headers)
         ms = int((time.monotonic() - t0) * 1000)
         if resp.status_code >= 500:
-            # v0.5.0-beta.14.18（14.17 装验「填 7113 外网地址为什么 503」）：
+            # v0.5.0-beta.14.18（14.17 用户反馈「填 7113 外网地址为什么 503」）：
             # 外网 console 地址多为隧道（frp/云转发）暴露——503 = 隧道活着但
             # 后端 Console 服务暂不可用（重启/断流）。点破方向，不甩锅插件。
             return {
@@ -703,7 +703,7 @@ async def test_addresses(
 
     # v0.5.0-beta.14.16（F4 连通性提速）：四类地址（matrix/controller/sglang/gateway）
     # 原来三段串行 await gather——WAN 上每类都含一个不可达内网地址吃满
-    # (timeout+重试+timeout)=12.5s，三段相加≈37.5s（10/6 用户装验反馈「连通性测试很慢」
+    # (timeout+重试+timeout)=12.5s，三段相加≈37.5s（用户反馈「连通性测试很慢」
     # 真根因）。改为各段嵌套进同一个外层 gather=全并行：总时长=最慢单地址，
     # 37.5s→8.3s（配合下方 timeout 4s）。逐地址语义/重试/凭据完全不变。
     # v0.5.0-beta.14.17: gateway 段并入（未配置=空列表，gather 零任务）。

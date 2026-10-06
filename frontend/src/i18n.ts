@@ -58,7 +58,7 @@ const DICT: Record<string, { en: string }> = {
   "应用": { en: "Apply" },
   "该 Worker 未读到 approval_level（容器布局差异）": { en: "Could not read approval_level for this worker (container layout difference)" },
   "QwenPaw 原生「工具执行安全」四模式（设置页同款）": { en: "QwenPaw native tool execution security — four modes (same as the settings page)" },
-  "无权限读取（401/403）——请检查身份凭据。L2 账号可读写本团队 Worker（上游 #1216，9/16 已合并）": { en: "No read permission (401/403) — check your identity credentials. L2 accounts can read/write their team's Workers (upstream #1216, merged 09/16)" },
+ "无权限读取（401/403）——请检查身份凭据。L2 账号可读写本团队 Worker（上游 #1216，已合并）": { en: "No read permission (401/403) — check your identity credentials. L2 accounts can read/write their team's Workers (upstream #1216, merged)" },
   "OFF（关闭审批）需 approval_policy 权限：L1 管理员固有；L2 需显式授权（上游 #1273），无权限时提交返回 403": { en: "OFF (disable approvals) requires the approval_policy permission: built-in for L1 admins; L2 needs an explicit grant (upstream #1273); submitting without it returns 403" },
   "配置工具调用的审批策略，控制智能体执行工具时的安全级别": { en: "Configure tool call approval policy to control the security level when agents execute tools" },
   "严格模式": { en: "Strict Mode" },
@@ -169,7 +169,7 @@ const DICT: Record<string, { en: string }> = {
   "固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
     en: "In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
   },
-  // v0.5.0-beta.14.11（装验反馈）：地址模式变更即自动落盘——替换 14.7 的
+  // v0.5.0-beta.14.11（用户反馈）：地址模式变更即自动落盘——替换 14.7 的
   // 「需点保存生效」提示串，并新增保存成功/失败两条 toast 串。
   "切换即自动保存并生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
     en: "Switching auto-saves and takes effect immediately. In pinned mode the background probe keeps running (connectivity test still shows the other path), but requests no longer auto-switch; failures report an explicit error.",
@@ -365,7 +365,7 @@ const DICT: Record<string, { en: string }> = {
   "Rubric 提示词": { en: "Rubric prompt" },
   "最大干预次数": { en: "Max interventions" },
   "Goal 模式 · 内置参数": { en: "Goal mode · built-in params" },
-  // v0.5.0-beta.13.8（13.7 装验「token 要分清词元/令牌」）：LLM 的 token =
+  // v0.5.0-beta.13.8（13.7 用户反馈「token 要分清词元/令牌」）：LLM 的 token =
   // 「词元」（计量单位）；「令牌」仅用于认证凭据（CLI/admin token）语境。
   "词元预算": { en: "Token budget" },
   "Mission 模式 · 内置参数": { en: "Mission mode · built-in params" },
@@ -585,7 +585,7 @@ const DICT: Record<string, { en: string }> = {
     en: "Paste the server /var/run/agentteams/cli-token file content (one-time, remembered after saving)",
   },
   "Matrix 登录（L2，默认）": { en: "Matrix login (L2, default)" },
-  // ── v0.5.0-beta.14.18（14.17 装验反馈批：认证语义拆分）──
+  // ── v0.5.0-beta.14.18（14.17 用户反馈批：认证语义拆分）──
   "① Controller 认证（管理面：CRD/全量视图/日志）": {
     en: "① Controller auth (admin plane: CRD / full view / logs)",
   },
@@ -675,6 +675,7 @@ const DICT: Record<string, { en: string }> = {
   "组件日志": { en: "Component logs" },
   "自动滚动": { en: "Auto-scroll" },
   "暂停": { en: "Pause" },
+  "↑ 回到最新": { en: "↑ Back to latest" },
   "恢复": { en: "Resume" },
   "暂停项目": { en: "Pause project" },
   "确认暂停": { en: "Confirm pause" },
@@ -789,7 +790,7 @@ const DICT: Record<string, { en: string }> = {
   "上游提供商（权重）": { en: "Upstream provider (weight)" },
   "授权 Consumer": { en: "Allowed consumers" },
   "请求模型（alias）": { en: "Request model (alias)" },
-  // P7b（9/19 装验反馈）：alias 全集聚合块 + 目录源标注
+  // P7b：alias 全集聚合块 + 目录源标注
   "可请求模型（alias 全集，{n}）": { en: "Requestable models (alias union, {n})" },
   "—（目录源无 alias 数据）": { en: "— (catalog source has no alias data)" },
   "LLM Provider（{n}）": { en: "LLM providers ({n})" },
@@ -808,7 +809,7 @@ const DICT: Record<string, { en: string }> = {
   "外部依赖（非本项目）：{list}": { en: "External dep(s) (outside this project): {list}" },
   "项目任务依赖图": { en: "Project task dependency graph" },
   "依赖已满足（就绪，待开始）": { en: "Ready (dependencies satisfied)" },
-  // P2（9/19 装验反馈）：拓扑详情三区（dashboard WorkflowDetail 同语义）
+  // P2：拓扑详情三区（dashboard WorkflowDetail 同语义）
   "任务分布": { en: "Task distribution" },
   "任务详情（{n}）": { en: "Task details ({n})" },
   "节点（{n}）": { en: "Nodes ({n})" },
@@ -845,7 +846,7 @@ const DICT: Record<string, { en: string }> = {
   },
   "刷新日志": { en: "Refresh logs" },
   "成员": { en: "Members" },
-  // P8b（9/19 装验反馈）：房间卡成员列表折叠
+  // P8b：房间卡成员列表折叠
   "隐藏成员": { en: "Hide members" },
   "显示成员": { en: "Show members" },
   "@ 提及": { en: "@ Mention" },
@@ -1577,7 +1578,7 @@ const DICT: Record<string, { en: string }> = {
   "粘贴 token 内容（见上方获取命令；部署期注入 env 时留空即可）": { en: "Paste the token content (see the fetch command above; leave empty when env-injected)" },
   "当前使用 QwenPaw 宿主环境变量 AGENTTEAMS_CONTROLLER_TOKEN（手动粘贴的值优先。）": { en: "Using the QwenPaw host env var AGENTTEAMS_CONTROLLER_TOKEN (a manually pasted value takes precedence.)" },
   "token 内容含非法字符（复制时混入不可见字符）——重新复制纯 ASCII 内容，或改用 env 注入。": { en: "Token contains invalid characters (invisible chars mixed in when copying) — re-copy pure ASCII content, or use env injection." },
-  /* v0.5.0-beta.13.13：装验反馈六件新增键（工作流中断横幅任务定位 /
+  /* v0.5.0-beta.13.13：用户反馈六件新增键（工作流中断横幅任务定位 /
      引用条按需加载 / 项目文件面板重构 / 下载反馈）。 */
   "任务 {n}": { en: "Task {n}" },
   "正在加载…": { en: "Loading…" },
@@ -1615,7 +1616,7 @@ const DICT: Record<string, { en: string }> = {
   "等待人工介入（{n}）": { en: "Awaiting human input ({n})" },
   "+{n} 更多": { en: "+{n} more" },
   "全部任务已完成（{n}）": { en: "All tasks completed ({n})" },
-  // 团队配置弹窗完整化（13.20 装验「团队的技能等团队配置也要放在团队配置里面」）。
+  // 团队配置弹窗完整化（13.20 用户反馈「团队的技能等团队配置也要放在团队配置里面」）。
   "子代理默认模型（留空 = 继承各 Worker 主模型）": { en: "Subagent default model (blank = inherit each Worker's primary model)" },
   "子代理默认模型（如 qwen3.6:27b-fp8；留空 = 继承）": { en: "Subagent default model (e.g. qwen3.6:27b-fp8; blank = inherit)" },
   "团队技能（目录 / 分配矩阵 / MCP）": { en: "Team skills (catalog / assignment matrix / MCP)" },
@@ -1630,7 +1631,7 @@ const DICT: Record<string, { en: string }> = {
   "在跑任务": { en: "Running tasks" },
   "上次运行": { en: "Last run" },
   "上次完成": { en: "Last finished" },
-  // v0.5.0-beta.13.24（F5·装验定案）：DAG/Mermaid 合并——mermaid 专属键
+  // v0.5.0-beta.13.24（F5·用户反馈定案）：DAG/Mermaid 合并——mermaid 专属键
   // （"Mermaid" / "DAG（交互）" / Mermaid DAG / mermaid 端点 404 / 渲染失败）
   // 随视图退役一并清除；拓扑 tooltip 更新为单一 DAG 语义。
   "项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）": { en: "Four views: project list / project card / board / topology; project card and topology are a left project list + right detail (aligned with the dashboard task board Projects area); board columns share the same source as the dashboard (workflow API); the topology dependency graph = DAG (interactive, click node to inspect; single view since 13.24 — the Mermaid snapshot was merged and retired)" },
@@ -1864,7 +1865,7 @@ const DICT: Record<string, { en: string }> = {
   "adbpg_memory_config——记忆参数高风险，仅展示不开放编辑。": {
     en: "adbpg_memory_config - high-risk memory params; display only, not editable.",
   },
-  // ── v0.5.0-beta.13.10（13.9 装验 12 件收口）──
+  // ── v0.5.0-beta.13.10（13.9 用户反馈 12 件收口）──
   "L1-only 字段——当前账号没有 Controller 管理 token：L1 账号/密码登录只建立网关 Console 会话（与 Controller token 是两套凭证），无 token 时 L1 字段不可写（PUT 403）。获取 token 与配置方法见「设置」页。": {
     en: "L1-only fields — the current account has no Controller admin token: L1 account/password login only creates the gateway Console session (a different credential from the Controller token); without the token, L1 fields are read-only (PUT 403). See the Settings page for how to obtain and configure the token.",
   },

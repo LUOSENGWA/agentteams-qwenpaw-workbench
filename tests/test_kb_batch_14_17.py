@@ -2,7 +2,7 @@
 """v0.5.0-beta.14.17（KBBATCH）：KB 冷读批读 / tree 合并探测 / merged 缓存 /
 file 缓存单测（任务书 §二 测试 4 项）。
 
-背景（实测 9/30）：冷读 tree 13.8s / graph 12.1s / merged 40.7s——根因是
+背景（实测）：冷读 tree 13.8s / graph 12.1s / merged 40.7s——根因是
 HTTP 往返次数（顶层 find + 两子树 find + 6 次档案单文件 archive 探测 +
 graph N 次逐文件读 + merged N×全量 graph），不是容器侧扫描。本任务四处
 收敛：

@@ -187,9 +187,31 @@ function OpsPanel({
     [logs, levelFilter],
   );
 
+  // v0.5.0-beta.14.18：旧版展示改「最新在上」(14.10) 但跟随逻辑留了
+  // scrollTop=scrollHeight（滚到最底=最旧）——语义打架，轮询把用户视口拽走。
+  // 现按业界标准（kubectl/docker --follow/Grafana logs 同款语义，适配最新在上）：
+  //   ① 跟随 = 顶部跟随（autoScroll 时 scrollTop=0，最新行永远贴顶可见）；
+  //   ② 用户向下翻（看旧日志，>60px）→ 自动暂停跟随（不打断阅读）；
+  //   ③ 暂停且不在顶 → 浮动「↑ 回到最新」钮 → 点击 = 回顶 + 恢复跟随。
+  const [awayFromTop, setAwayFromTop] = React.useState(false);
+  const onLogScroll = React.useCallback(() => {
+    const el = logBoxRef.current;
+    if (!el) return;
+    const away = el.scrollTop > 60;
+    setAwayFromTop(away);
+    if (away) setAutoScroll(false); // 翻旧日志 = 自动暂停跟随（不打断阅读）
+  }, []);
+  const jumpToLatest = React.useCallback(() => {
+    const el = logBoxRef.current;
+    if (el) el.scrollTop = 0;
+    setAwayFromTop(false);
+    setAutoScroll(true);
+  }, []);
   React.useEffect(() => {
-    if (autoScroll && logBoxRef.current) {
-      logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
+    const el = logBoxRef.current;
+    if (autoScroll && el) {
+      el.scrollTop = 0;
+      setAwayFromTop(false);
     }
   }, [visibleLogs, autoScroll]);
 
@@ -283,7 +305,7 @@ function OpsPanel({
         )}
       </div>
 
-      {/* v0.5.0-beta.14.18（14.17 装验反馈「运维页面不需要放模型网关路由，
+      {/* v0.5.0-beta.14.18（14.17 用户反馈「运维页面不需要放模型网关路由，
           把模型页面做好就可以」）：路由目录卡整块移除——模型页（ModelsTab）
           已有同款「模型网关配置」（提供商/路由/alias 表，功能超集），运维页
           重复视图删除。 */}
@@ -533,25 +555,27 @@ function OpsPanel({
             />
           </antd.Tooltip>
         </div>
-        <div
-          ref={logBoxRef}
-          style={{
-            height: 420,
-            overflowY: "auto",
-            borderRadius: 8,
-            background: "#0d1117",
-            padding: 10,
-            fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
-            fontSize: 12,
-            lineHeight: 1.6,
-          }}
-        >
+        <div style={{ position: "relative" }}>
+          <div
+            ref={logBoxRef}
+            onScroll={onLogScroll}
+            style={{
+              height: 420,
+              overflowY: "auto",
+              borderRadius: 8,
+              background: "#0d1117",
+              padding: 10,
+              fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+              fontSize: 12,
+              lineHeight: 1.6,
+            }}
+          >
           {logsLoading && visibleLogs.length === 0 ? (
             <div style={{ color: "#8b949e" }}>{tr("加载日志中…")}</div>
           ) : visibleLogs.length === 0 ? (
             <div style={{ color: "#8b949e" }}>{tr("（无日志行）")}</div>
           ) : (
-            /* v0.5.0-beta.14.10（装验反馈）：最新在最上——展示倒序（不
+            /* v0.5.0-beta.14.10（用户反馈）：最新在最上——展示倒序（不
                改动状态数组本身；过滤/计数语义不变）。 */
             [...visibleLogs].reverse().map((l, i) => (
               <div key={i} style={{ color: l.level === "error" ? "#ff7b72" : "#c9d1d9" }}>
@@ -564,6 +588,25 @@ function OpsPanel({
               </div>
             ))
           )}
+          </div>
+          {/* 暂停跟随且用户在翻旧日志 → 浮动「回到最新」钮（业界日志跟随
+              标准件；点击=回顶+恢复跟随）。 */}
+          {!autoScroll && awayFromTop ? (
+            <antd.Button
+              size="small"
+              type="primary"
+              style={{
+                position: "absolute",
+                top: 14,
+                right: 14,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+                zIndex: 1,
+              }}
+              onClick={jumpToLatest}
+            >
+              {tr("↑ 回到最新")}
+            </antd.Button>
+          ) : null}
         </div>
       </div>
     </div>

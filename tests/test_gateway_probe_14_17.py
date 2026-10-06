@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Higress 连通性探测 + 凭据记忆重做回归（v0.5.0-beta.14.17 / C2）。
 
-罗总 10/6 反馈「连通性测试也要测试 Higress」「每个账号密码的认证都要分开」。
+用户反馈「连通性测试也要测试 Higress」「每个账号密码的认证都要分开」。
 C2 修复：``test_addresses`` 增加 ``gateway_urls`` 段（Higress Console 可达性
 + 会话三态：有效/过期/该版本不支持），与 matrix/controller/sglang 同层
 全并行（诊断面——不参与自动重排，后台 refresh 不传=零开销）。

@@ -38,7 +38,7 @@ import {
   fetchWorkerSkills,
   setWorkerSkillPreload,
   httpErrorStatus,
-  // v0.5.0-beta.13.19（13.18 装验「技能上传呢」）：团队技能包上传
+  // v0.5.0-beta.13.19（13.18 用户反馈「技能上传呢」）：团队技能包上传
   // （POST /api/v1/skills，multipart zip；经连接器 multipart 透传）。
   uploadTeamSkill,
 } from "../api";
@@ -84,7 +84,7 @@ interface MatrixState {
 }
 
 /**
- * v0.5.0-beta.13.14（L2 双模式——9/11 调研 P0 定案 + 上游设计文档
+ * v0.5.0-beta.13.14（L2 双模式——调研 P0 定案 + 上游设计文档
  * docs/design/l2-worker-scoped-write.md（#1274 已合）+ team-skills.md +
  * skill-catalog-api.md 已合 main）：
  *   l2=true → Matrix 身份（无 admin token）：
@@ -94,7 +94,7 @@ interface MatrixState {
  *        （白名单唯一字段；remoteSkills/mcpServers 400 待 elevated
  *        capability 设计）；
  *     ③ MCP = 只读（写权限同上待设计）。
- *   铁律（9/11 P0）：L2 路径不走 admin token——代理链在 router.py
+ * 铁律（P0）：L2 路径不走 admin token——代理链在 router.py
  *   catch-all 已实现（admin token 空 → Matrix access_token）。
  */
 export default function SkillCenter({
@@ -104,11 +104,11 @@ export default function SkillCenter({
   sections,
 }: {
   l2?: boolean;
-  /** v0.5.0-beta.13.16（13.15 装验「技能中心和 MCP 完全和 worker 拓扑合并」）：
+  /** v0.5.0-beta.13.16（13.15 用户反馈「技能中心和 MCP 完全和 worker 拓扑合并」）：
    *  限定单 Worker——矩阵只渲染该 Worker 行（自动展开编辑区）、MCP 卡只
    *  渲染该 Worker 行、隐藏页面题头。无此 prop 时行为与既有全量视图完全一致。 */
   onlyWorker?: string;
-  /** v0.5.0-beta.13.21（13.20 装验「团队的技能等团队配置要放在团队配置里，
+  /** v0.5.0-beta.13.21（13.20 用户反馈「团队的技能等团队配置要放在团队配置里，
    *  和技能中心一样的搜索/上传/自定义，worker 也是」）：限定单团队——
    *  目录按 ?team= 取（L1 任意团队/L2 本团队）、矩阵/MCP 只渲染该团队
    *  Worker、上传 scope 固定该团队（选择器隐藏）。团队配置弹窗（齿轮）
@@ -345,7 +345,7 @@ export default function SkillCenter({
     void loadCatalog();
   }, [loadCatalog, l2, l2Team, onlyTeam]);
 
-  // v0.5.0-beta.13.19（13.18 装验「自定义技能和技能上传和下载呢」）：
+  // v0.5.0-beta.13.19（13.18 用户反馈「自定义技能和技能上传和下载呢」）：
   // 技能包上传 / 自定义新建 / 下载（技能目录卡动作）。
   //   上传 = 选择本地 zip → POST /api/v1/skills（scope=team+file）
   //   新建 = 名称/描述/正文 → 前端 fflate 打包 SKILL.md → 同一端点
@@ -696,7 +696,7 @@ export default function SkillCenter({
       ) : null}
 
       {/* ② Worker 技能分配矩阵（P1，立即可用）
-          v0.5.0-beta.13.14（13.13 装验反馈「矩阵太占地方、不直观、不好用」）：
+          v0.5.0-beta.13.14（13.13 用户反馈「矩阵太占地方、不直观、不好用」）：
           宽表（行=Worker × 列=技能 checkbox，技能 10+ 即横向溢出）→ 按
           Worker 紧凑行：默认收起只显已分配技能标签（最多 3 + N）；点行
           展开该 Worker 的完整技能勾选区（名称+来源标签+描述两行截断），
@@ -727,7 +727,7 @@ export default function SkillCenter({
       >
         {workersView.length ? (
           <div style={{ display: "grid", gap: 6 }}>
-            {/* v0.5.0-beta.13.22（13.21 装验反馈 F1）：onlyTeam（团队配置弹窗内嵌）
+            {/* v0.5.0-beta.13.22（13.21 用户反馈 F1）：onlyTeam（团队配置弹窗内嵌）
                 矩阵只渲染该团队 Worker——旧分支误用 st.workers 全量=跨团队泄漏
                 （「团队技能（目录/分配矩阵/MCP）就只管这个团队的」）。 */}
             {(onlyWorker

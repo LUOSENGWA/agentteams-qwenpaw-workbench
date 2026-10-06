@@ -66,8 +66,8 @@ _WORKERS = {
             "name": "team-a-lead",
             "team": "team-a",
             "role": "team_leader",
-            "matrixUserID": "@lead:matrix-local.hiclaw.io:6867",
-            "roomID": "!leadroom:matrix-local.hiclaw.io",
+            "matrixUserID": "@lead:matrix.example.test:6867",
+            "roomID": "!leadroom:matrix.example.test",
             "runtime": "qwenpaw",
             "phase": "Running",
         },
@@ -75,8 +75,8 @@ _WORKERS = {
             "name": "harmony-dev",
             "team": "team-a",
             "role": "worker",
-            "matrixUserID": "@harmony:matrix-local.hiclaw.io:6867",
-            "roomID": "!harmonyroom:matrix-local.hiclaw.io",
+            "matrixUserID": "@harmony:matrix.example.test:6867",
+            "roomID": "!harmonyroom:matrix.example.test",
             "runtime": "qwenpaw",
             "phase": "Running",
         },
@@ -137,7 +137,7 @@ def test_teams_structure_with_controller_token(client):
     assert by_name["harmony-dev"]["role"] == "worker"
     # 基础字段：runtime/room_id 必须从 CR 带出（实锤此前恒空）
     assert by_name["harmony-dev"]["runtime"] == "qwenpaw"
-    assert by_name["harmony-dev"]["room_id"] == "!harmonyroom:matrix-local.hiclaw.io"
+    assert by_name["harmony-dev"]["room_id"] == "!harmonyroom:matrix.example.test"
 
 
 def test_teams_structure_no_controller_graceful(client):
@@ -166,7 +166,7 @@ def test_token_or_none_invalid_content_no_raise():
 
 
 # ── v0.5.0-beta.13.12：/teams/structure 缓存 TTL 正负分离回归 ──────────
-# 13.11 装验「团队管理 tab 刷不出完整信息，手动刷新也不行，要等 30s 自动
+# 13.11 用户反馈「团队管理 tab 刷不出完整信息，手动刷新也不行，要等 30s 自动
 # 刷新」后端半真根因：首次失败/空树结果被正缓存 60s（负缓存），锁死后续
 # 手动刷新。修法：成功（controller-workers 且非空）= 60s；降级/空树 = 5s。
 # 本文件护栏：两条 TTL 分支 + force 旁路 + 负缓存快速过期语义。

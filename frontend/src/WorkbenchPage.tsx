@@ -348,7 +348,7 @@ const SelfCheckTab = React.memo(function SelfCheckTab({
 });
 
 /** 12.14：聊天分栏最小容器宽——1024→600（宿主内嵌面板/窄窗场景
- *  1024 下判定窄屏、装验多轮复报「无分栏」；600 以下=手机竖屏语义）。
+ *  1024 下判定窄屏、用户反馈多轮复报「无分栏」；600 以下=手机竖屏语义）。
  *  12.16：宽窄判定「长宽比优先」——竖屏（高>宽）一律单列，横屏且 ≥600 才分栏。 */
 /** 聊天分栏最小容器宽（13.8：600→800——双栏可用性下限：列表 160 + 聊天
  *  ≥320 + 拖柄；16:9 全屏恒过线，竖屏手机不过线）。 */
@@ -357,16 +357,16 @@ const CHAT_SPLIT_MIN_CONTAINER_W = 800;
 // v0.5.0-beta.13.20：mergeMessagePages 退役 → roomHistory.mergeForward
 //（语义原样迁移，单一出处）。
 /** 12.16→13.10：宽窄判定基准 = **窗口宽**（window.innerWidth）。
- * v0.5.0-beta.13.8（13.7 装验「16:9 全屏被识别成竖屏→聊天单栏」）：
+ * v0.5.0-beta.13.8（13.7 用户反馈「16:9 全屏被识别成竖屏→聊天单栏」）：
  * 旧判定 w>=600 且 w>=h——宽高比项在「定高内嵌容器/高分屏」下误判
  * （容器高度随内容或视口变化，宽 ≥ 高不成立→单栏）。改纯宽度阈值。
- * v0.5.0-beta.13.10（13.9 装验「窄屏行为识别不了，框拖到最窄也不行；
+ * v0.5.0-beta.13.10（13.9 用户反馈「窄屏行为识别不了，框拖到最窄也不行；
  * 窗口横向拉满就行；上一版横向全屏被识别成竖屏」）：容器测量被宿主
  * 左右留空（面板 padding/导航）压窄 → 窗口横向拉满时容器仍 <800 被误判
  * 窄屏；且宿主窗口最小宽 + 留空使「拖最窄」永远过不了阈值（窄屏行为
- * 识别不了）。定案（装验反馈）：以**窗口**横向宽为准——横向拉满=分栏，真窄
+ * 识别不了）。定案（用户反馈）：以**窗口**横向宽为准——横向拉满=分栏，真窄
  * 窗口（<800）=单栏；窄内嵌面板逃生口=「强制分栏」开关 + ⟨ 收起列表。 */
-/** 13.11（13.10 装验「宽窄屏没修，只需容器能横向铺满」）：宽窄双基准——
+/** 13.11（13.10 用户反馈「宽窄屏没修，只需容器能横向铺满」）：宽窄双基准——
  * win = 浏览器/webview 窗口宽，cont = 插件容器实测宽（宿主可能只给
  * 半窗/带留白）。**min(win, cont) ≥ 800 才分栏**：窗口满宽时容器随宿主
  * 铺满（主容器 width:100%）→ 分栏；宿主给窄容器或真窄窗口 → 聊天页
@@ -376,7 +376,7 @@ function isWideLayout(win: number, cont: number): boolean {
   return Math.min(win, cont) >= CHAT_SPLIT_MIN_CONTAINER_W;
 }
 
-// ── @mention 发送侧（F4 — Element 三件套，装验反馈「我点击的 @mention 不是正确格式」）──
+// ── @mention 发送侧（F4 — Element 三件套，用户反馈「我点击的 @mention 不是正确格式」）──
 // 此前发送只有裸 body 文本（短 @name）：无 m.mentions 三元组 → 收端不通知/不高亮；
 // 无 formatted_body → 标准客户端不认。Element 口径：body 保留人类可读短名，
 // formatted_body 用 matrix.to 链接，`m.mentions.user_ids` 三元组负责通知
@@ -411,7 +411,7 @@ export default function WorkbenchPage() {
   const hostTokens = useHostThemeTokens(t.mode);
   const tr = useT();
   // 插件版本：从后端 /health 读（单一真相源 = agentteams_connector/__init__.py）。
-  // v0.5.0-beta.13.17（13.16 装验「顶部版本号显示不对」）：主显示改**构建
+  // v0.5.0-beta.13.17（13.16 用户反馈「顶部版本号显示不对」）：主显示改**构建
   // 期注入版本**（vite define __PLUGIN_VERSION__，来源 package.json）——
   // 永远等于当前 dist 的版本，不再受后端进程未随安装重启（/health 滞后）
   // 或请求失败（旧版恒显占位「…」）影响；连接器运行版本仍查 /health，
@@ -645,7 +645,7 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
-  // v0.5.0-beta.13.11（F2 真根因——13.10 装验「消息滚出历史」仍未修）：
+  // v0.5.0-beta.13.11（F2 真根因——13.10 用户反馈「消息滚出历史」仍未修）：
   // 换房间时消息状态必须整体重置。此前 messagesRef/messagesEnd 残留**上
   // 一个房间**的数据 → refreshMessages 的 mergeMessagePages(旧房全量,
   // 新房最新页) 把两房消息混进同一窗口（「乱了」），setCachedMessages
@@ -719,7 +719,7 @@ export default function WorkbenchPage() {
     configFetchingRef.current = true;
     try {
       // v0.5.0-beta.14.16（F1 配置记忆根治）：失败重试 3 次（1.5/4/10s 退避）。
-      // 真根因（10/6 用户装验反馈「地址模式/凭据没有记忆」）：插件安装重载窗口 /
+      // 真根因（用户反馈「地址模式/凭据没有记忆」）：插件安装重载窗口 /
       // WAN 抖动时首个 GET /config 失败被静默吞掉 → config=null 贯穿页面
       // 生命周期 → 设置页全默认态 → 用户以为「没记住」重填。回环（保存→落盘→
       // 重载→回填）本身完好（debug 插桩+回环实验实锤）。重试覆盖重载窗口
@@ -819,7 +819,7 @@ export default function WorkbenchPage() {
 
   // Worker 树数据源 = 真实团队结构（Team/Worker CRD）+ spawn 正源填充
   // （端点已合并；apiOk=false → spawns 保持空，UI 显示占位文案）。
-  // v0.5.0-beta.13.12（13.11 装验「团队管理 tab 刷不出完整信息，手动刷新
+  // v0.5.0-beta.13.12（13.11 用户反馈「团队管理 tab 刷不出完整信息，手动刷新
   // 也不行，要等 30s 自动刷新」真根因）：后端 /teams/structure 有 60s TTL
   // 缓存，且**首次失败/空树也写缓存（负缓存）**——token 未就绪时首拉得
   // 空树，之后 60s 内所有手动刷新都命中空缓存；30s tick 恰在 TTL 过期后
@@ -957,7 +957,7 @@ export default function WorkbenchPage() {
 
   // ── 消息窗口同步（开房 / 状态恢复 / 静默刷新）────────────────────
   // v0.5.0-beta.13.20 收敛：窗口游标（I1）/ 预取单槽（I3）/ 在飞闸（I5）
-  // / 空页走查（I4）全部收敛进 RoomHistory 状态机（不变量与装验溯源见
+  // / 空页走查（I4）全部收敛进 RoomHistory 状态机（不变量与用户反馈溯源见
   // roomHistory.ts 模块头）。本函数是**唯一的窗口建立路径**——13.19 的
   // 状态恢复内联块已退役（它曾是第 4 条分叉路径：无 I2 合并 / 无 I1 窗口
   // 游标 / 缓存被浅页覆盖 → 深历史蒸发 + 游标回退家族）。
@@ -1055,10 +1055,10 @@ export default function WorkbenchPage() {
     }
   }, [activeRoom, messagesEnd]);
 
-  // v0.5.0-beta.13.13（13.12 装验「很多信息『已滚出历史』但 Element 里
+  // v0.5.0-beta.13.13（13.12 用户反馈「很多信息『已滚出历史』但 Element 里
   // 信息都在，看看 Element 怎么做的」）：引用条原消息不在已加载窗口时 →
   // 点「加载原消息」→ backfill 到原消息进窗口（不标死『滚出历史』）。
-  // v0.5.0-beta.13.15（B2 Element 式滚动化，13.14 装验「加载原消息能不能
+  // v0.5.0-beta.13.15（B2 Element 式滚动化，13.14 用户反馈「加载原消息能不能
   // 滚动到哪里就自动加载，参考 Element」）：旧版 = 点一下后台 burst 连拉
   // （500 页护栏内一口气拉完，用户看不见进度、API 突发）。新版 =
   // 滚动驱动的分页节奏：
@@ -1283,7 +1283,7 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.12.9：心跳优先（adminData.workers 的 agentStatus/runningTaskCount/
   // lastFinishAt，GET /workers 既有通道零新请求；旧版 controller 无 → 降级
   // typing+last_ts），60s 老化。
-  // v0.5.0-beta.13.8（13.7 装验「状态灯不准确」）：session 级正源轮询——
+  // v0.5.0-beta.13.8（13.7 用户反馈「状态灯不准确」）：session 级正源轮询——
   // /chats per-session status（idle|running，qwenpaw app 自维护）。
   // v1.2.4 GET /workers 无心跳字段，消息级启发式在「任务执行中未发言」时
   // 恒灰；chat.running 优先于 typing，修掉该盲区。30s tick、仅可见时、
@@ -1307,7 +1307,7 @@ export default function WorkbenchPage() {
   // 通知未读计数（通知 tab badge）。
   const [inboxUnread, setInboxUnread] = React.useState(0);
 
-  // P6（装验 9/18 ⑨「自动刷新有点蠢，即时信息」）：/sync 事件驱动主路。
+ // P6（用户反馈 ⑨「自动刷新有点蠢，即时信息」）：/sync 事件驱动主路。
   // ref 镜像——SSE effect deps 为空（一次连接），闭包必须走 ref 取最新。
   const activeRoomRef = React.useRef<TeamRoom | null>(null);
   React.useEffect(() => {
@@ -2026,7 +2026,7 @@ export default function WorkbenchPage() {
   // 对齐 dashboard 15s 轮询（useProjectWorkflow refetchInterval:15000）。
   // 此前插件只在挂载/手动刷新/登录时拉取，任务推进时看板不自动更新
   // （P1-7 半链接缺口）。切走 tab 立即停（cleanup 清 interval）。
-  // 第 11 轮（装验反馈 9/18「聊天工作流卡片 live 刷新要，两边都要」）：聊天 tab 激活
+ // 第 11 轮（用户反馈「聊天工作流卡片 live 刷新要，两边都要」）：聊天 tab 激活
   // 且当前房间消息含 workflow 载荷时同样轮询——聊天内卡片 live overlay
   // 复用 workflowEvents 正源（controller projects/workflow 双轨）。
   const chatHasWfCards = tab === "chat" && messages.some((m) => m.workflow != null);
@@ -2039,7 +2039,7 @@ export default function WorkbenchPage() {
     active: tab === "workflow" || chatHasWfCards,
   });
 
-  // v0.5.0-beta.13.13（13.12 装验「工作流一点开应先自动刷新，而不是等 15s
+  // v0.5.0-beta.13.13（13.12 用户反馈「工作流一点开应先自动刷新，而不是等 15s
   // 自动刷新或手动刷新」）：切到工作流 tab（或聊天出现工作流卡）立即拉一次
   // 正源——此前只有 15s interval + 手动/登录时拉，tab 切回时看到的是最长
   // 15s 前的数据。2s 去抖防止快速切 tab 连环拉取。
@@ -2059,7 +2059,7 @@ export default function WorkbenchPage() {
     config?.controller_token || config?.controllerTokenSource === "env",
   );
 
-  // v0.5.0-beta.13.21（13.20 装验「一开始只能看见拓扑，CRD 管理要点刷新才出」）：
+  // v0.5.0-beta.13.21（13.20 用户反馈「一开始只能看见拓扑，CRD 管理要点刷新才出」）：
   // admin 取数连续失败计数——静默失败不再无感空面板，累计后在面板显 Alert+重试。
   const [adminFailCount, setAdminFailCount] = React.useState(0);
 
@@ -2203,7 +2203,7 @@ export default function WorkbenchPage() {
     return "";
   }, [config?.matrix?.user_id, rooms]);
 
-  // ── P6 聊天 tab（装验 9/18 ⑤）：宽屏 Element 式分栏 / 窄屏微信式单屏 ──
+ // ── P6 聊天 tab（用户反馈 ⑤）：宽屏 Element 式分栏 / 窄屏微信式单屏 ──
   // 宽屏：左房间/DM 列表（宽度可拖 220-560，持久化）+ 右聊天（未选房间显占位）。
   // 窄屏（<1024px，竖屏/手机）：保持微信移动版语义——列表页点击进全屏聊天，
   // 左上角 ← 返回退出（RoomChat onBack 既有按钮）。列表可隐藏（宽屏）。
@@ -2222,16 +2222,16 @@ export default function WorkbenchPage() {
     },
     [mergeUiState],
   );
-  // 12.13→13.10：判定基准=**窗口宽**（13.9 装验定案：容器测量被宿主
+  // 12.13→13.10：判定基准=**窗口宽**（13.9 用户反馈定案：容器测量被宿主
   // 左右留空压窄→横向全屏误判窄屏；宿主最小窗宽又使拖窄永远不触发
   // 单栏）。窗口 resize 跟随；强制开关优先。
   const mainRef = React.useRef<HTMLDivElement | null>(null);
-  // v0.5.0-beta.13.12（13.11 装验「聊天页自动单栏没做到」真根因）：
+  // v0.5.0-beta.13.12（13.11 用户反馈「聊天页自动单栏没做到」真根因）：
   // 13.11 的 cont = mainRef.clientWidth 只量插件自己的 <main>——它
   // width:100% 跟随**直接父级**，而宿主的真实约束层（Desktop OS 窗
   // 口 frame / 内嵌面板 / 侧栏容器）在更上层祖先：窗口拖窄时若约束
   // 层是 transform/scale 或非父链布局，main 的 clientWidth 可能不跟
-  // 宿主走（装验反馈「疑似按聊天窗宽判断」——实测基准确实离宿主约束
+  // 宿主走（用户反馈「疑似按聊天窗宽判断」——实测基准确实离宿主约束
   // 层太远）。改 Element 式「实际可见宽」：从 main 沿父链到 body 取
   // 每层 clientWidth 的 min（任何一层变窄都会拉低），再与视口宽取
   // min；ResizeObserver 观察**整条父链**（任一层变化即重测）。宿主形
@@ -2239,7 +2239,7 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.14.2（F2 分栏计话题面板）：RoomChat 上报话题面板占宽
   // （inline 面板与聊天列同占空间）——打开话题时可用宽 = 实测可见宽 −
   // 面板宽。此前判定完全不含面板：开着话题拖窄窗口，聊天区早已局促
-  // 却仍双栏，继续收窄才切（14.2 装验反馈）。
+  // 却仍双栏，继续收窄才切（14.2 用户反馈）。
   const threadPanelRef = React.useRef<{ open: boolean; width: number }>({
     open: false,
     width: 0,
@@ -2283,7 +2283,7 @@ export default function WorkbenchPage() {
       ro?.disconnect();
     };
   }, []);
-  // v0.5.0-beta.13.4（9/22 第二轮反馈·滚动真根因重构）：shell 高度改为
+ // v0.5.0-beta.13.4（第二轮反馈·滚动真根因重构）：shell 高度改为
   // 容器相对（Element 模型）——12.x 起用 calc(100vh-64px) 经验值，但宿主
   // 是 Desktop OS 窗口（OsAppHost .content：flex:1 + overflow:auto 定高
   // 容器，可拖拽任意大小，100vh=浏览器视口≠窗口内容高）：窗口小于屏幕时
@@ -2374,7 +2374,7 @@ export default function WorkbenchPage() {
     [chatSplitW, mergeUiState],
   );
 
-  // v0.5.0-beta.13.6（装验反馈：房间列表按钮与返回按钮重叠）：
+  // v0.5.0-beta.13.6（用户反馈：房间列表按钮与返回按钮重叠）：
   // 「☰ 房间列表」按钮不再 absolute 浮在聊天区左上角（与 RoomChat 顶栏
   // ← 返回 键重叠）——有房间时经 headerPrefix 进 RoomChat 顶栏最左
   // （Element 汉堡位）；无房间时（占位页）仍浮在左上角（无顶栏可挂）。
@@ -2494,7 +2494,7 @@ export default function WorkbenchPage() {
   // v0.5.0-beta.14.16（F1）：周期兜底——settings tab 激活且 config 未就绪时
   // 每 5s 重取（refreshConfig 自带退避重试，此处只是「第二次机会」的定时器；
   // 就绪即停，零空转）。覆盖「首 GET 撞上插件重载窗口 + 用户不切 tab 不操作」
-  // 的静默失败路径（10/6「没有记忆」事故链）。
+ // 的静默失败路径（「没有记忆」事故链）。
   usePoller({
     fn: () => void refreshConfig(),
     intervalMs: 5000,
@@ -2583,11 +2583,11 @@ export default function WorkbenchPage() {
       onOpenProjectFiles={openProjectFiles}
     />
   ) : null;
-  // v0.5.0-beta.13.14（装验反馈）：房间卡项目名——与 ProjectFiles 面板
+  // v0.5.0-beta.13.14（用户反馈）：房间卡项目名——与 ProjectFiles 面板
   // 同一正源数据。v0.5.0-beta.13.15（B4）：匹配改 roomMatchesProject
   // 双源（source_room_id 严格匹配 ∪ 标准项目群命名 `Project: <项目名>`）
   // ——旧版只按 ev.room_id 建索引，标准项目群（source_room_id 指向发起
-  // 房间）卡片恒无项目名（13.14 装验反馈）。
+  // 房间）卡片恒无项目名（13.14 用户反馈）。
   const roomProjectNames = React.useMemo(() => {
     const m: Record<string, string[]> = {};
     for (const room of rooms) {
@@ -2648,7 +2648,7 @@ export default function WorkbenchPage() {
               width: chatSplitW,
               flexShrink: 0,
               minWidth: 0,
-              // 装验反馈 9/19（P8a）：房间列表独立滚动（原先 overflow:hidden
+ // 用户反馈（P8a）：房间列表独立滚动（原先 overflow:hidden
               // 直接裁掉底部房间，列表无法滚动）；overscroll-contain 防
               // 滚动链传播到页面。
               overflowY: "auto",
@@ -2744,7 +2744,7 @@ export default function WorkbenchPage() {
         // 宿主 header 56px + 8px 边距，见宿主 layouts/index.module.less
         // .sider）。12.x 的纯 vh 经验值在 OS 窗口小于屏幕时溢出 → 整页滚。
         height: shellH != null ? `${shellH}px` : "calc(100vh - 64px)",
-        // v0.5.0-beta.13.8（13.7 装验「左右留空太多，插件宽度应自适应」）：
+        // v0.5.0-beta.13.8（13.7 用户反馈「左右留空太多，插件宽度应自适应」）：
         // 去掉 1160 硬上限——16:9 全屏两侧各 ~380px 留空。全宽自适应：
         // 内容随窗口伸缩（表格/网格自行 minmax(0,1fr) 收放）。
         width: "100%",
@@ -2774,7 +2774,7 @@ export default function WorkbenchPage() {
            → 强制可收缩（内容自行裁剪），断「创建团队卡溢出」最后一条链。 */
         .wb-main .ant-select,
         .wb-main .qwenpaw-select { min-width: 0; }
-        /* 装验反馈 9/19（P8a）：聊天分栏左右独立滚动——antd Tabs 内部
+ /* 用户反馈（P8a）：聊天分栏左右独立滚动——antd Tabs 内部
            content 链默认无高度（auto 跟随内容）→ 分栏容器 height:100%
            塌陷、房间列表撑高被 wb-main overflow:hidden 裁掉。锁定
            content holder/content/tabpane 高度链（chatWide 分栏专用；
@@ -3175,7 +3175,7 @@ export default function WorkbenchPage() {
         onOpenRoomOnly={handleGlobalSearchOpenRoomOnly}
       />
       {/* 项目文件面板（产物端点 版：任务结果/任务书/交付物） */}
-      {/* v0.5.0-beta.13.14（装验反馈）：项目文件 Drawer 标题带文件夹 SVG；
+      {/* v0.5.0-beta.13.14（用户反馈）：项目文件 Drawer 标题带文件夹 SVG；
           面板内不再重复「项目文件」标题行。 */}
       <antd.Drawer
         title={

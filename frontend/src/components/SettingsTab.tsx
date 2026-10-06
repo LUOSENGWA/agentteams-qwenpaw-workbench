@@ -669,7 +669,7 @@ const SettingsTab = React.memo(function SettingsTab({
   // 后初始化一次，之后 config 引用变化（保存/验证/登录都触发 onConfigChange
   // → 主组件 re-GET → 新对象）不再重置表单草稿。此前用户未保存的凭据编辑
   // （如填了 Higress 密码、改了控制器 basic 密码）会被任意一次验证/保存
-  // 引发的 config 刷新整体冲掉（装验反馈「输完 Higress 账号密码，控制器的
+  // 引发的 config 刷新整体冲掉（用户反馈「输完 Higress 账号密码，控制器的
   // basic 认证又要重新输入」）。换账号=doLogin→onLoginSuccess 清数据+重挂载，
   // 新实例自然重新初始化；user_id 变化兜底（同实例热切账号场景）。
   const backfillKeyRef = React.useRef<string>("");
@@ -874,7 +874,7 @@ const SettingsTab = React.memo(function SettingsTab({
   return (
     <div style={{ display: "grid", gap: 24, maxWidth: 720 }}>
       {/* v0.5.0-beta.14.16（F1）：config 加载态横幅——加载中/失败必须显式。
-          静默吞错会让用户把默认态当成已保存值（10/6「没有记忆」事故根因）。 */}
+ 静默吞错会让用户把默认态当成已保存值（「没有记忆」事故根因）。 */}
       {config === null && (
         <div
           style={{
@@ -943,7 +943,7 @@ const SettingsTab = React.memo(function SettingsTab({
       <div style={{ ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("访问地址")}</div>
         {/* v0.5.0-beta.14.17（C1）：凭据记忆状态总览——每个系统凭据是否已保存
-            一眼可见（装验反馈「每个账号密码的认证都要分开」的可视化收口）。 */}
+            一眼可见（用户反馈「每个账号密码的认证都要分开」的可视化收口）。 */}
         {config ? (
           <div
             style={{
@@ -985,7 +985,7 @@ const SettingsTab = React.memo(function SettingsTab({
               <span
                 key={label}
                 style={{ display: "flex", alignItems: "center", gap: 6 }}
-                // v0.5.0-beta.14.18（14.17 装验反馈「SGLang 要什么凭据？」）：
+                // v0.5.0-beta.14.18（14.17 用户反馈「SGLang 要什么凭据？」）：
                 // 悬停说明——SGLang 是本地推理服务，自身无认证；只有访问
                 // 地址后面套了网关 Basic 门才需要，默认留空。
                 title={label.includes("SGLang")
@@ -1099,7 +1099,7 @@ const SettingsTab = React.memo(function SettingsTab({
             Matrix/Controller/SGLang 同处），内网/外网按序降级、受地址模式
             固定档控制。
             v0.5.0-beta.14.16（F3）：Higress=模型管理面=L1 专属 → L2 模式
-            隐藏（10/6 用户装验反馈「如果是 L2 登录，该隐藏的就隐藏」）。 */}
+            隐藏（用户反馈「如果是 L2 登录，该隐藏的就隐藏」）。 */}
         {ctlMode === "token" && (
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
@@ -1145,7 +1145,7 @@ const SettingsTab = React.memo(function SettingsTab({
             value={addressMode}
             onChange={(v: "auto" | "lan" | "wan") => {
               setAddressMode(v);
-              // v0.5.0-beta.14.11（装验反馈）：模式变更即落盘——修复「改了但
+              // v0.5.0-beta.14.11（用户反馈）：模式变更即落盘——修复「改了但
               // 未点保存 → 重开跳回自动」。轻量 PUT，仅 address_mode 一键。
               void (async () => {
                 try {
@@ -1358,7 +1358,7 @@ const SettingsTab = React.memo(function SettingsTab({
               { label: tr("L1 管理面（token / Higress）"), value: "token" },
             ]}
           />
-          {/* v0.5.0-beta.14.18（14.17 装验反馈「Matrix 登录和认证/登录卡片
+          {/* v0.5.0-beta.14.18（14.17 用户反馈「Matrix 登录和认证/登录卡片
               是不是重复或者冲突」）：一行点破两者关系——Matrix 登录是
               AgentTeams 消息系统的账号（=上方 Matrix 地址区同一账号），
               与 QwenPaw 页面自身的登录无关。 */}
@@ -1367,7 +1367,7 @@ const SettingsTab = React.memo(function SettingsTab({
           </div>
           {ctlMode === "token" ? (
             <div style={{ display: "grid", gap: 14 }}>
-              {/* v0.5.0-beta.14.18（14.17 装验反馈「Higress 的认证和 controller
+              {/* v0.5.0-beta.14.18（14.17 用户反馈「Higress 的认证和 controller
                   token 认证应该分开吧」）：两块凭据拆成视觉上独立的两块——
                   各带系统归属行，不再是「一套认证里的两个字段」。 */}
               <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: "rgba(0,0,0,0.025)", borderRadius: 8 }}>
@@ -1599,7 +1599,7 @@ const SettingsTab = React.memo(function SettingsTab({
 
       {/* v0.5.0-beta.14.4：「集群负载」独立卡片。
           v0.5.0-beta.14.16（F3）：部署者专属模块（L2 用户无 SGLang 集群）
-          → L2 模式隐藏（10/6 用户装验反馈「该隐藏的就隐藏」；切 L1 模式仍可配置，
+          → L2 模式隐藏（用户反馈「该隐藏的就隐藏」；切 L1 模式仍可配置，
           值已持久化不丢）。 */}
       {ctlMode === "token" && (
       <div style={{ ...cardBox, display: "grid", gap: 12 }}>
@@ -1667,7 +1667,7 @@ const SettingsTab = React.memo(function SettingsTab({
           type="primary"
           loading={saving}
           // v0.5.0-beta.14.16（F1）：config 未就绪时禁用保存——默认态保存
-          // 会用 UI 空值覆盖已保存的地址/模式（10/6「没有记忆」事故放大点）。
+ // 会用 UI 空值覆盖已保存的地址/模式（「没有记忆」事故放大点）。
           disabled={config === null}
           onClick={() => void save()}
         >
@@ -1820,7 +1820,7 @@ const SettingsTab = React.memo(function SettingsTab({
           </antd.Button>
         </div>
       </div>
-      {/* v0.5.0-beta.14.16（F2）：宿主 Agent 技能管理区块移除（10/6 用户装验反馈：
+      {/* v0.5.0-beta.14.16（F2）：宿主 Agent 技能管理区块移除（用户反馈：
           「配置页的 QwenPaw 宿主 Agent 技能不需要了」）——SkillsTab 组件
           已删（死代码零残留）；宿主技能系统本体是 QwenPaw 核心功能，
           不受影响（SkillCenter 团队技能池保留）。 */}

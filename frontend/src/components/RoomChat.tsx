@@ -91,7 +91,7 @@ function toolNameOf(body: string): string {
 
 /** 引用回复折叠条（Element 同款：左竖色条 + 16px 小头像 + 着色名字 + 单行预览；
  * 点击滚动定位原消息并高亮闪烁，不再内联展开副本）。
- *  v0.5.0-beta.13.13（13.12 装验「很多信息『已滚出历史』但 Element 里信息
+ *  v0.5.0-beta.13.13（13.12 用户反馈「很多信息『已滚出历史』但 Element 里信息
  * 都在」）：原消息不在已加载窗口时不再标死「已滚出历史」——对齐 Element
  * 按需加载语义：显示可点的「加载原消息」→ 链式向前分页把原消息拉进时间线
  * （onLoadOriginal）；加载成功引用条自动转为正常态（可点定位）；到底仍无 →
@@ -685,7 +685,7 @@ function SenderAvatar({
   workerName?: string;
   /** 打开成员详情卡（含审批卡）。 */
   onDetail?: (mxid: string) => void;
-  /** （9/19 定案：头像角落灯）：该发送者的 session 状态——有值才显灯
+ /** （定案：头像角落灯）：该发送者的 session 状态——有值才显灯
    * （人类/未知发送者无映射 → 不显）。 */
   sessionState?: WorkerSessionState;
   /** v0.5.0-beta.13.1：打开该 Worker 的会话抽屉（完整 session，只读）。 */
@@ -790,7 +790,7 @@ function SenderAvatar({
           ) : undefined
         }
       >
-        {/* （9/19 定案：灯在头像角落）：relative 容器 + 角落状态灯。 */}
+ {/* （定案：灯在头像角落）：relative 容器 + 角落状态灯。 */}
         <span style={{ position: "relative", display: "inline-flex" }}>
           <MxcAvatar
             url={member?.avatar_url}
@@ -825,7 +825,7 @@ function SenderAvatar({
 const SenderAvatarMemo = React.memo(SenderAvatar);
 
 /** 工具消息：默认折叠一行（工具名 + 预览），点击展开全文（QwenPaw 聊天页同款）。 */
-/** v0.5.0-beta.13.7（13.6 装验「看看 QwenPaw 怎么渲染消息」）：对齐 QwenPaw
+/** v0.5.0-beta.13.7（13.6 用户反馈「看看 QwenPaw 怎么渲染消息」）：对齐 QwenPaw
  *  ResponseTool 卡——状态识别（🔧 调用中 / ✅ 成功 / ❌ 失败，名称着色）+
  *  展开后分区展示（调用=参数区 / 输出=结果区，失败红色调），替代 13.6 的
  *  无状态行 + 整段 RAW pre。Matrix 工具消息格式（bridge 口径）：
@@ -1456,7 +1456,7 @@ function MessageBody({
   if (isToolMessage(msg.body || "")) {
     return <ToolBubble msg={msg} mine={mine} />;
   }
-  // v0.5.0-beta.13.8（13.7 装验「应该加上聊天气泡」，QwenPaw console
+  // v0.5.0-beta.13.8（13.7 用户反馈「应该加上聊天气泡」，QwenPaw console
   // 口径：user 右对齐橙调气泡 / 对方左对齐中性气泡）：13.6 的扁平无框
   // 时间线改回气泡——常态背景 bubbleMine（右，橙调）/bubbleOther（左，
   // 中性），圆角 10（己方右上角 3 做尾），hover 行背景仍由外层提供。
@@ -1571,7 +1571,7 @@ export interface RoomChatProps {
   /** 打开/创建与成员的私聊（头像右键菜单）。 */
   onDm?: (mxid: string, roomId?: string) => void;
   onBack?: () => void;
-  /** v0.5.0-beta.13.6（装验反馈：房间列表按钮与返回按钮重叠）：顶栏最左
+  /** v0.5.0-beta.13.6（用户反馈：房间列表按钮与返回按钮重叠）：顶栏最左
    * 前置节点（Element 汉堡位）——WorkbenchPage 宽屏收起列表时把
    * 「☰ 房间列表」按钮传进来，不再 absolute 浮在聊天区左上角压住返回键。 */
   headerPrefix?: ReactNS.ReactNode;
@@ -1603,10 +1603,10 @@ export interface RoomChatProps {
   sessionState?: WorkerSessionState;
   /** v0.5.0-beta.12.4：全部 Worker MXID——团队房间任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
-  /** （9/18 落点定案：聊天群内）：Worker MXID → 任务状态（头像角落灯；
+ /** （落点定案：聊天群内）：Worker MXID → 任务状态（头像角落灯；
    * 心跳优先派生，人类发送者无映射 → 不显）。 */
   workerSessionByMxid?: Record<string, WorkerSessionState>;
-  /** v0.5.0-beta.13.1（9/19 入口迁移）：Worker 列表——头像抽屉「查看会话」
+ /** v0.5.0-beta.13.1（入口迁移）：Worker 列表——头像抽屉「查看会话」
    * （WorkerChats fixedWorker 模式）的数据源。 */
   workers?: WorkerInfo[];
   /** v0.5.0-beta.13.13（Element 同款按需加载）：引用条「加载原消息」——
@@ -1668,7 +1668,7 @@ function RoomChat(props: RoomChatProps) {
     onLoadOriginal,
     pendingOriginal,
   } = props;
-  // v0.5.0-beta.13.1（9/19 入口迁移）：头像点击 → Worker 会话抽屉（只读，
+ // v0.5.0-beta.13.1（入口迁移）：头像点击 → Worker 会话抽屉（只读，
   // #1295 端点；404 版本门占位）。团队管理不再挂会话 tab。
   const [chatsWorker, setChatsWorker] = React.useState<string | null>(null);
   // v0.5.0-beta.12.8（第 11 轮）：runId → live 工作流事件（controller 正源
@@ -1894,7 +1894,7 @@ function RoomChat(props: RoomChatProps) {
   const [showJumpBottom, setShowJumpBottom] = React.useState(false);
   const [newMsgCount, setNewMsgCount] = React.useState(0);
   const prevMsgLenRef = React.useRef(0);
-  // v0.5.0-beta.13.12（13.11 装验「置底按钮点了不置底，像滚动位置记忆问题」
+  // v0.5.0-beta.13.12（13.11 用户反馈「置底按钮点了不置底，像滚动位置记忆问题」
   // 真根因）：旧模型 nearBottom 在**每次 effect 运行时现算**——点 ↓ 触发
   // smooth 滚动（数百 ms）期间，新消息到达的 effect 跑在滚动中途
   // （nearBottom=false）→ 按钮重新出现 + 计数清零前又被加 1 → 用户感知
@@ -1920,11 +1920,11 @@ function RoomChat(props: RoomChatProps) {
       el.scrollTop = el.scrollHeight;
     });
   }, []);
-  // v0.5.0-beta.13.17（13.16 装验「不能滚到哪加载到哪 / 没有预加载」）：
+  // v0.5.0-beta.13.17（13.16 用户反馈「不能滚到哪加载到哪 / 没有预加载」）：
   // 顶部预加载余量——旧版 40px 只在贴顶瞬间触发（贴顶才拉、拉完要滚回顶
   // 再触发一次），体感「没有预加载」。现 = 视口比例余量：接近顶部即开始拉，
   // 锚恢复后继续上翻自然接力（连续分段预载）。
-  // v0.5.0-beta.13.18（13.17 装验「触发才加载、慢，不是跟着窗口预加载」）：
+  // v0.5.0-beta.13.18（13.17 用户反馈「触发才加载、慢，不是跟着窗口预加载」）：
   // 余量 0.25→**0.6 视口（下限 400px）**——配合父侧预取管线（下一页后台
   // 常驻预取）：触发点提前 + 落地零等待，加载跟着窗口走而非被触发才追。
   const nearTop = React.useCallback((el: HTMLElement) => {
@@ -2191,7 +2191,7 @@ function RoomChat(props: RoomChatProps) {
   );
 
   // 兜底轮询：每 12s 拉一次新消息（仅在有房间时）。
-  // P6（9/18 ⑨）：主路已切 /sync 事件驱动（后端 sync watcher → SSE
+ // P6（⑨）：主路已切 /sync 事件驱动（后端 sync watcher → SSE
   // room_message → WorkbenchPage 立即拉取）——本定时器降为 SSE 断连/
   // 事件丢失的保险（与后端 60s 兜底轮询同层语义）。
   // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（12s；chat tab 激活 &&
@@ -2362,7 +2362,7 @@ function RoomChat(props: RoomChatProps) {
     autoLoadRef.current = false;
   }, [messages]);
 
-  // v0.5.0-beta.13.17（13.16 装验「不能滚到哪加载到哪」统一）：驻顶接力——
+  // v0.5.0-beta.13.17（13.16 用户反馈「不能滚到哪加载到哪」统一）：驻顶接力——
   // 每次渲染后（每页落地 / 加载态变化 / 滚动 state 变化）重查顶部位置：
   // 仍在预载余量内且还有历史 → 续拉下一页；滚离即停（节奏=用户滚动节奏，
   // 滚动事件路径由 handleListScroll 覆盖，本 effect 覆盖「驻顶等历史」路径）。
@@ -2372,7 +2372,7 @@ function RoomChat(props: RoomChatProps) {
   React.useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || !hasMore || !onLoadMore) return;
-    // v0.5.0-beta.13.19（13.18 装验「加载原消息加载不出来」）：**点引用条后
+    // v0.5.0-beta.13.19（13.18 用户反馈「加载原消息加载不出来」）：**点引用条后
     // 自动后翻**（Element 同款）——旧版只在用户滚近顶部时才续拉，点了「加载
     // 原消息」但停在原处 → 只前进一页就没了。终止由父侧收口：进窗口→定位 /
     // 触底 / 超量上限 / 切房作废 / 30s 停滞看门狗。
@@ -2408,7 +2408,7 @@ function RoomChat(props: RoomChatProps) {
   }, [room?.room_id]);
 
   // ── v0.5.0-beta.13.6（会话级 loop 状态显示位置定案）─────────────
-  // 9/22 装验：「会话级 loop 状态你需要查清楚应该在哪里显示」——
+ // 用户反馈：「会话级 loop 状态你需要查清楚应该在哪里显示」——
   // 正源=QwenPaw console 前端（LoopModeSelector，chat composer 内
   // 输入工具条）：idle 显所选模式；非 idle 换激活模式指示（图标+模式名
   // +状态词+Tooltip）。插件侧同位落地：1:1 Worker 房间输入区行左侧
@@ -2898,7 +2898,7 @@ function RoomChat(props: RoomChatProps) {
           title={tr("隐藏/显示 Agent 工具调用消息（read_file 等）")}
         />
         <div style={{ flex: 1 }} />
-        {/* 9/19 定案（模仿 dashboard 成员列表）：标题栏右侧成员头像条——
+ {/* 定案（模仿 dashboard 成员列表）：标题栏右侧成员头像条——
             Worker 角落状态灯 + 多出来 +N 点击展开；窄屏换行到标题栏下面。 */}
         <MemberStrip
           room={room}
@@ -2943,7 +2943,7 @@ function RoomChat(props: RoomChatProps) {
               高度链沿链验证到容器属性）——overflow 可见的中间层 flex 子项
               自动最小高度 = 内容最小高度（子列表的 overflow:auto 钳制不会
               穿透传递），缺它 wrapper 被 300 条消息撑到 7500+px、列表失去
-              独立滚动 → 滚轮冒泡成整页滚动 + 旧消息滚出视野（9/22 装验回归，
+ 独立滚动 → 滚轮冒泡成整页滚动 + 旧消息滚出视野（用户反馈回归，
               浏览器 A/B 实测证实；话题面板 wrapper 本就带此值）。 */}
           <div
             style={{
@@ -3203,7 +3203,7 @@ function RoomChat(props: RoomChatProps) {
                             onDm={onDm}
                             workerName={memberWorkerNames?.[msg.sender]}
                             onDetail={openDetailMxid}
-                            // （9/19 定案：灯在头像角落，不再名字旁）：
+ // （定案：灯在头像角落，不再名字旁）：
                             // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
                             sessionState={workerSessionByMxid?.[msg.sender]}
                             onOpenChats={openChatsWorker}
@@ -4122,7 +4122,7 @@ function RoomChat(props: RoomChatProps) {
                   background: t.hoverBg,
                 }}
               >
-                {/* 9/19：成员列表头像角落状态灯（与消息头像同款；Worker 才有映射）。 */}
+ {/*：成员列表头像角落状态灯（与消息头像同款；Worker 才有映射）。 */}
                 <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
                   <MxcAvatar
                     url={member?.avatar_url}
@@ -4261,7 +4261,7 @@ function RoomChat(props: RoomChatProps) {
         />
       ) : null}
 
-      {/* v0.5.0-beta.13.1（9/19 入口迁移）：头像 → Worker 会话抽屉（只读，
+ {/* v0.5.0-beta.13.1（入口迁移）：头像 → Worker 会话抽屉（只读，
           #1295 端点 + 版本门；内容=会话列表 → agent 上下文完整 session）。 */}
       {chatsWorker ? (
         // v0.5.0-beta.13.4：QwenPaw 会话口径五列表需要更宽（560→620）。

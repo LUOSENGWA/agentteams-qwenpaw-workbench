@@ -808,10 +808,10 @@ export async function downloadViaHost(
     a.click();
     a.remove();
     window.setTimeout(() => URL.revokeObjectURL(obj), 5000);
-    // v0.5.0-beta.13.6（装验反馈「下载不知道下载到哪里去」）：成功 toast
+    // v0.5.0-beta.13.6（用户反馈「下载不知道下载到哪里去」）：成功 toast
     // 显形去向——浏览器默认下载目录 + 文件名。单一落点（6 个调用方全
     // 覆盖），不逐处改。
-    // v0.5.0-beta.13.13（13.12 装验：桌面版还是不知道下到哪——宿主桥只有
+    // v0.5.0-beta.13.13（13.12 用户反馈：桌面版还是不知道下到哪——宿主桥只有
     // getApiUrl/getApiToken/fetch，无文件 API，web 内容无法拿实际落盘路径）：
     // Electron 桌面版单独明示——下载到操作系统默认「下载」文件夹（Windows:
     // C:\Users\<用户名>\Downloads；macOS: ~/Downloads），QwenPaw 桌面版不
@@ -1267,7 +1267,7 @@ async function loadWorkflowProjectsLegacy(): Promise<WorkflowProjectsResult> {
   try {
     const list = await fetchProjectSummaries();
     if (list.length === 0) return { events: [], apiOk: true };
-    // v0.5.0-beta.13.13（13.12 装验「聊天群的项目文件读取不到」真根因之一）：
+    // v0.5.0-beta.13.13（13.12 用户反馈「聊天群的项目文件读取不到」真根因之一）：
     // 旧版 slice(0, 20) 只拉前 20 个项目的工作流，而列表端点无排序参数
     // （实盘 2026-09-23 = 45 个项目，字母序前 20 全是老项目）→ 新房间绑定的
     // 项目整体缺席 workflowEvents → 聊天 📁 面板与 live overlay 全空。
@@ -1354,7 +1354,7 @@ export async function fetchProjectsWorkflow(
   };
 }
 
-// v0.5.0-beta.13.24（F5·装验定案「DAG 和 mermaid 没必要分两个」）：
+// v0.5.0-beta.13.24（F5·用户反馈定案「DAG 和 mermaid 没必要分两个」）：
 // fetchWorkflowMermaid（13.21 A9 引入）与 MermaidDagView 一并退役——
 // 两图同结构、快照非交互，自绘 DAG 保留（交互）且撤 mermaid 内联依赖
 // 主包 −5.1MB。上游 `?format=mermaid` 端点仍在（#1230），插件不再消费。
@@ -1404,7 +1404,7 @@ export function roomMatchesProject(
     if (title && s === `Project: ${title}`.trim()) return true;
     // ③ 新约定：任务房命名 `TASK：<projectId>`（teamharness create_task_room，
     //    server.py「Project task rooms are named TASK：<projectId>」；全角/半角
-    //    冒号容错）——房间名内嵌项目 ID = 直连正源（13.15 装验实盘
+    //    冒号容错）——房间名内嵌项目 ID = 直连正源（13.15 用户反馈实盘
     //    证明新项目只有任务房、无 `Project:` 房）。
     const m = /^TASK[:：]\s*(.+)$/.exec(s);
     if (m) {
@@ -2055,7 +2055,7 @@ export function patchWorkerTool(
 //   物化层 = 本端点（worker 容器内实际装载，runtime 自报）——「实际能调用
 //     什么」。二者可背离：团队层技能 materialize-at-assign（#1238）/ builtin
 //     恢复 / 镜像·插件自带技能都不写 spec.skills → 分配层空但物化层非空
-//     = 13.14 装验「矩阵全显未分配但可正常调用」的真相。
+//     = 13.14 用户反馈「矩阵全显未分配但可正常调用」的真相。
 // 404 = Controller 未含端点（版本门）/ L2 跨团队 W8 防探测；403 = 只读身份。
 // v0.5.0-beta.13.20：物化层字段补全——上游 SkillSpec（qwenpaw skills.py）
 // 实回 {name, description, version_text, source, emoji, enabled, channels,
@@ -2278,7 +2278,7 @@ export async function fetchAdminData(): Promise<AdminData> {
       const [workers, teams, humans, managers] = await Promise.all([
         fetchControllerJson<unknown>("/workers").then(normalizeList),
         fetchControllerJson<unknown>("/teams").then(normalizeList),
-        // v0.5.0-beta.13.21（13.20 装验「首屏只显拓扑」缺口④）：humans/managers
+        // v0.5.0-beta.13.21（13.20 用户反馈「首屏只显拓扑」缺口④）：humans/managers
         // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版
         // Promise.all 里任一 404/超时（旧 Controller 无该端点/瞬时抖动）整体
         // reject → admin 面板整体空白；workers/teams 才是 CRD 管理面板核心数据。
@@ -2311,7 +2311,7 @@ function normalizeList(payload: unknown): unknown[] {
   return [];
 }
 
-/** v0.5.0-beta.13.14（L2 双模式，9/11 调研 P0 + 上游 l2-worker-scoped-write.md
+/** v0.5.0-beta.13.14（L2 双模式，调研 P0 + 上游 l2-worker-scoped-write.md
  *  / team-skills.md 已合 main）：L2 身份（Matrix token，无 admin token）取数。
  * 与 fetchAdminData 的区别：humans/managers 是 L1 管理面（L2 无权限或无意义）
  * → 失败置空不炸；workers/teams 是 L2 技能中心正源（Controller 按
@@ -2541,7 +2541,7 @@ export async function fetchTeamsSync(
 // ── 模块级缓存（页面重开立即显示，后台刷新）──────────────────────────
 // 离开 tab 组件卸载后数据仍在；重新打开先用缓存渲染再后台拉新。
 let roomsCache: TeamsRoomsResponse | null = null;
-// v0.5.0-beta.13.10（13.9 装验「消息被滚出历史」真根因）：缓存从「最新
+// v0.5.0-beta.13.10（13.9 用户反馈「消息被滚出历史」真根因）：缓存从「最新
 // 50 条页」升级为「全量已加载历史」（含 loadMore 前插的更早消息）——
 // 旧版切页/切房间回来 refresh 用最新 50 全量替换，翻过的历史全丢
 // （「很多没了」「乱了」）。
@@ -2822,7 +2822,7 @@ export async function sendRoomFile(
   )) as { event_id: string };
 }
 
-/** v0.5.0-beta.13.10（13.9 装验「@mention 是单纯字符串」真根因）：
+/** v0.5.0-beta.13.10（13.9 用户反馈「@mention 是单纯字符串」真根因）：
  * composer 记录的 mention 目标——发送时构造 Element 同款三重标记
  * （m.mentions 结构化 + formatted_body matrix.to 链接 + body 纯文本
  * @localpart），缺任何一层都可能被群房间 _require_mention 静默丢弃
@@ -3707,7 +3707,7 @@ export async function createSkill(
   })) as { created: boolean; name: string };
 }
 
-/** v0.5.0-beta.13.19（13.18 装验「技能上传呢？」）：**团队技能包上传**——
+/** v0.5.0-beta.13.19（13.18 用户反馈「技能上传呢？」）：**团队技能包上传**——
  *  POST /api/v1/skills（multipart：scope=team + team + file=技能 zip）。
  *  经插件代理 → 连接器（multipart 原样透传，v13.19 起）→ Controller；
  *  上游 v1.2.4 起带 skillscan（422=内容拦截并回 findings，响应带

@@ -821,7 +821,7 @@ async def _run() -> None:
             )
 
         rooms = (payload.get("rooms") or {}).get("join") or {}
-        # ⑥ v0.5.0-beta.13.21（房间列表 Element 化，装验反馈「刷新慢有点笨，看看
+        # ⑥ v0.5.0-beta.13.21（房间列表 Element 化，用户反馈「刷新慢有点笨，看看
         #    Element」）：Element 的 room list 从不全量重拉——/sync 增量事件就地
         #    合并（新房间插入/元数据更新/未读计数/离开移除）。此前插件每次房间
         #    列表更新=全量 /teams/sync=一次带全房间 state 的 Matrix 全量 /sync

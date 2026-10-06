@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """代理 4xx failover + 直拨族 failover 回归（v0.5.0-beta.14.2，F1）。
 
-问题真根因（14.2 装验「切外网 controller 401、知识图谱 500、连不上」）：
+问题真根因（14.2 用户反馈「切外网 controller 401、知识图谱 500、连不上」）：
 1. catch-all 代理对**任何** HTTP 响应都 _mark_working（含 401）→ 一次 401
    污染 working cache → 切回内网死地址仍居首恒 401；
 2. 代理 GET/HEAD 遇 4xx 立即原样返回，不试下一地址（外网入口=网关会话门、

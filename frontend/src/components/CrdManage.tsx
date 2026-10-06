@@ -174,7 +174,7 @@ export default function CrdManage(props: CrdManageProps) {
     </div>
   );
   const { admin, onRefresh, l1TokenMode } = props;
-  // v0.5.0-beta.13（装验 9/19）：三卡同排 + 可折叠。
+ // v0.5.0-beta.13（用户反馈）：三卡同排 + 可折叠。
   const [crdCardsOpen, setCrdCardsOpen] = React.useState(true);
   const { humans, teams, workers } = admin;
 
@@ -739,7 +739,7 @@ export default function CrdManage(props: CrdManageProps) {
 
   // ── 配置团队（PUT 部分更新：空字段不覆盖；成员编辑 = workerMembers 全量替换）──
   const [cfgTeam, setCfgTeam] = React.useState<TeamInfo | null>(null);
-  // v0.5.0-beta.13.22（13.21 装验反馈 F3）：收起动画——旧实现 cfgTeam 置 null
+  // v0.5.0-beta.13.22（13.21 用户反馈 F3）：收起动画——旧实现 cfgTeam 置 null
   // 即整树卸载=弹窗瞬间消失（弹出有动画、收起没有）。cfgOpen 控制 antd 退出
   // 过渡，afterClose 才清 cfgTeam（动画期间内容保持，不闪空）。
   const [cfgOpen, setCfgOpen] = React.useState(false);
@@ -816,7 +816,7 @@ export default function CrdManage(props: CrdManageProps) {
     ]);
   }, []);
 
-  // v0.5.0-beta.13.24（F6·装验反馈「团队配置窗口批量改模型，leader/workers 两批」）：
+  // v0.5.0-beta.13.24（F6·用户反馈「团队配置窗口批量改模型，leader/workers 两批」）：
   // 批量模型画笔——两把独立画笔（Leader 批 / Workers 批）。选中值即刷到对应
   // 角色行的 model 字段（行内仍可按人精修，行 diff/橙框/校验态全复用），
   // 落盘走既有「保存」链（updateTeam + 逐改动行 updateWorkerModel），
@@ -1367,7 +1367,7 @@ export default function CrdManage(props: CrdManageProps) {
             <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 5 }}><WarnIcon size={12} style={{ marginTop: 2, flexShrink: 0 }} /> {tr("token 模式无 Higress Console 会话——Higress alias 层当前不可见。配置 admin 账号密码后，「Higress alias（路由可解析）」与「Higress 内置 alias」分组将出现在模型下拉中；或等待 P1-3 上游 PR（controller_token 直连 Higress Console）合入。")}</span>
           </div>
         ) : null}
-        {/* v0.5.0-beta.13（装验 9/19）：三张快捷操作卡同排（lg=8×3）+
+ {/* v0.5.0-beta.13（用户反馈）：三张快捷操作卡同排（lg=8×3）+
             可折叠——此前 员工入职/创建团队 各占半行、新建 Worker 单占半行。 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: crdCardsOpen ? 6 : 0 }}>
           <antd.Button
@@ -2129,7 +2129,7 @@ export default function CrdManage(props: CrdManageProps) {
             />
             {/* v0.5.0-beta.13.21（「团队的技能等团队配置也要放在团队配置里面」）：
                 subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型）。
-                v0.5.0-beta.13.22（13.21 装验反馈 F6）：裸 Input → 与 Worker 选模型
+                v0.5.0-beta.13.22（13.21 用户反馈 F6）：裸 Input → 与 Worker 选模型
                 同款 AutoComplete（同数据源 modelOptions=在服∪在用模型∪网关 alias，
                 同 validateModelValue 校验态）——「来源一样」。 */}
             <FieldLabel>{tr("子代理默认模型（留空 = 继承各 Worker 主模型）")}</FieldLabel>
@@ -2189,7 +2189,7 @@ export default function CrdManage(props: CrdManageProps) {
                 <div style={{ fontSize: 11, color: t.textSecondary }}>
                   {tr("团队成员（workerMembers）——保存 = 全量替换成员列表")}
                 </div>
-                {/* v0.5.0-beta.13.24（F6·装验反馈「团队配置的窗口应该增加批量改模型，
+                {/* v0.5.0-beta.13.24（F6·用户反馈「团队配置的窗口应该增加批量改模型，
                     leader/workers 两批」）：批量模型画笔——Leader 批 / Workers 批
                     两把独立 AutoComplete（数据源/校验态与行内模型框完全同源：
                     modelOptions=在服∪在用∪网关 alias，validateModelValue）。
@@ -2408,7 +2408,7 @@ export default function CrdManage(props: CrdManageProps) {
                 </antd.Button>
               </>
             ) : null}
-            {/* v0.5.0-beta.13.21（13.20 装验「团队的技能等团队配置也要放在团队
+            {/* v0.5.0-beta.13.21（13.20 用户反馈「团队的技能等团队配置也要放在团队
                 配置里面，和技能中心一样的搜索/上传/自定义等」）：团队技能节=
                 SkillCenter 同款组件 onlyTeam 模式内嵌（目录搜索/上传/自定义/
                 下载 + 成员分配矩阵 + MCP 卡；保存走原技能中心端点链，本弹窗

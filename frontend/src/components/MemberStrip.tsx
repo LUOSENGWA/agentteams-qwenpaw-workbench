@@ -1,4 +1,4 @@
-// v0.5.0-beta.13.1（9/19 定案：插件模仿 dashboard 成员列表）：
+// v0.5.0-beta.13.1（定案：插件模仿 dashboard 成员列表）：
 // 房间标题栏右侧的成员头像条。
 //   · Worker 头像右下角带会话状态灯（同消息头像的 WorkerSessionDot corner 变体）；
 //   · 成员多时收起为 +N——点击展开全部，再点收起（窄屏由标题栏 flexWrap

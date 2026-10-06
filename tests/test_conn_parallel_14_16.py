@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """连通性测试并行化回归（v0.5.0-beta.14.16 / F4）。
 
-罗总 10/6 反馈「连通性测试很慢」。真根因：``test_addresses`` 里三类地址
+用户反馈「连通性测试很慢」。真根因：``test_addresses`` 里三类地址
 （matrix / controller / sglang）原先是**三段串行** ``await asyncio.gather``，
 每段内部才并行。WAN 上每类都含一个不可达的内网地址吃满
 ``(timeout + 重试间隔 + timeout)``，三段相加≈3×12.5s=37.5s。
