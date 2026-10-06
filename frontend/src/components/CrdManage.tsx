@@ -1729,7 +1729,7 @@ export default function CrdManage(props: CrdManageProps) {
             {tCheck ? (
               <div
                 style={{
-                  border: `1px solid ${tCheck.done ? t.border : "rgba(255,127,22,0.45)"}`,
+                  border: `1px solid ${tCheck.done ? t.border : "color-mix(in srgb, var(--app-accent, #FF7F16) 45%, transparent)"}`,
                   borderRadius: 10,
                   padding: 10,
                   background: t.cardBg,

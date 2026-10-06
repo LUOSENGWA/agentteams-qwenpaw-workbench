@@ -86,7 +86,7 @@ export default function MemberStrip({
               <MxcAvatar
                 url={member?.avatar_url}
                 size={24}
-                style={{ backgroundColor: "#ff7f16", fontSize: 11, flexShrink: 0 }}
+                style={{ backgroundColor: "var(--app-accent, #FF7F16)", fontSize: 11, flexShrink: 0 }}
               >
                 {name.slice(0, 1).toUpperCase()}
               </MxcAvatar>

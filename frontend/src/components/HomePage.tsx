@@ -25,7 +25,7 @@ const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 
-const PRIMARY = "#FF7F16";
+const PRIMARY = "var(--app-accent, #FF7F16)";
 const CARD_RADIUS = 10;
 
 interface HomePageProps {
@@ -347,7 +347,7 @@ function HomePage(props: HomePageProps) {
       }}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLElement).style.boxShadow =
-          "0 2px 8px rgba(255,127,22,.25)";
+          "0 2px 8px color-mix(in srgb, var(--app-accent, #FF7F16) 25%, transparent)";
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLElement).style.boxShadow = "none";
@@ -1013,7 +1013,7 @@ function HomePage(props: HomePageProps) {
                     alignItems: "center",
                     gap: 10,
                     border: `1px solid ${sel ? PRIMARY : t.border}`,
-                    background: sel ? `${PRIMARY}14` : "transparent",
+                    background: sel ? `color-mix(in srgb, ${PRIMARY} 8%, transparent)` : "transparent",
                     borderRadius: 8,
                     padding: "10px 12px",
                     cursor: "pointer",

@@ -34,7 +34,7 @@ const FileIcon = pick("FileOutlined");
 const CodeIcon = pick("CodeOutlined");
 const DataIcon = pick("DatabaseOutlined");
 
-const PRIMARY = "#FF7F16";
+const PRIMARY = "var(--app-accent, #FF7F16)";
 
 // ── 正源类型（端点已合并；Controller 升级后自动生效）──
 // v0.5.0-beta.12: 字段 1:1 对齐 Go projectSummary（v0.5.0-beta.12 核对 6 字段；本次补
@@ -748,8 +748,8 @@ function Artifacts(props: ArtifactsProps) {
       {o19Fail ? (
         <div
           style={{
-            background: `${PRIMARY}14`,
-            border: `1px solid ${PRIMARY}55`,
+            background: `color-mix(in srgb, ${PRIMARY} 8%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${PRIMARY} 33%, transparent)`,
             borderRadius: 8,
             padding: "8px 12px",
             fontSize: 12,

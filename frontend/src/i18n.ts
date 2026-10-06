@@ -13,7 +13,9 @@ const DICT: Record<string, { en: string }> = {
   // ── 远端团队知识库 / 群名搜索 / 通知跳转 / 首页快捷）──
   "远端团队知识库": { en: "Remote team KB" },
   "本机宿主 Agent": { en: "Local host agent" },
-  "读自己团队 Leader/Worker 的远端知识库（只读）": { en: "Read your team leaders'/workers' remote KB (read-only)" },
+  "读集群 Worker 的远端知识库（只读；管理员见全部团队，L2 见自己团队）": {
+    en: "Read workers' remote KB across the cluster (read-only; admin sees all teams, L2 sees own team)",
+  },
   "读本机 QwenPaw Agent 的记忆库": { en: "Read this machine's QwenPaw agent memory" },
   "重新检测": { en: "Re-detect" },
   "远端团队知识库不可用，当前为本机宿主知识库": { en: "Remote team KB unavailable; showing local host KB" },
@@ -190,7 +192,10 @@ const DICT: Record<string, { en: string }> = {
   "Controller 地址凭据": { en: "Controller address credential" },
   "Higress 账号（Console 会话）": { en: "Higress account (Console session)" },
   "Higress 地址凭据": { en: "Higress address credential" },
-  "SGLang 地址凭据": { en: "SGLang address credential" },
+  "SGLang 地址凭据（通常不需要）": { en: "SGLang address credential (usually not needed)" },
+  "SGLang 通常不需要凭据（本地推理服务自身无认证）——仅当访问地址经公网网关 Basic 门时填写，默认留空。": {
+    en: "SGLang usually needs no credential (a local inference service has no auth of its own) — fill only when the address is behind a public gateway Basic door; leave empty by default.",
+  },
   "该地址走公网入口：请填 Basic 用户名/密码或 API Key（与网关一致）": {
     en: "This address uses the public entry: fill Basic username/password or API key (matching the gateway)",
   },
@@ -580,6 +585,22 @@ const DICT: Record<string, { en: string }> = {
     en: "Paste the server /var/run/agentteams/cli-token file content (one-time, remembered after saving)",
   },
   "Matrix 登录（L2，默认）": { en: "Matrix login (L2, default)" },
+  // ── v0.5.0-beta.14.18（14.17 装验反馈批：认证语义拆分）──
+  "① Controller 认证（管理面：CRD/全量视图/日志）": {
+    en: "① Controller auth (admin plane: CRD / full view / logs)",
+  },
+  "Controller 只认 SA token 与 Matrix token（Matrix 路径只放行 L2/L3 只读，L1 明确 401，无密码登录端点）——admin 能力只能来自管理员 token。": {
+    en: "Controller only accepts SA tokens and Matrix tokens (the Matrix path allows L2/L3 read-only; L1 explicitly 401s; there is no password login endpoint) — admin capability can only come from the admin token.",
+  },
+  "② Higress Console 认证（模型面：alias/提供商/路由）——独立系统": {
+    en: "② Higress Console auth (model plane: alias / providers / routes) — separate system",
+  },
+  "Higress Console 自己的账号体系（admin 账号+密码），与 Controller 认证互不相关、可各自独立配置。": {
+    en: "Higress Console has its own account system (admin username + password), unrelated to Controller auth — each can be configured independently.",
+  },
+  "「Matrix 登录」= AgentTeams 消息系统账号（与上方 Matrix 地址同一账号，L2 只读）；与 QwenPaw 页面自身的登录是两回事，不冲突。": {
+    en: "“Matrix login” is the AgentTeams messaging-system account (the same account as the Matrix address above, L2 read-only) — it is a different thing from the QwenPaw page login itself; they do not conflict.",
+  },
   "使用当前登录的 Matrix 账号，无需 token。注意：Controller 的 Matrix 认证只接受权限等级 2（level 2）的 Human 账号——level 1 的 admin 账号会 401，请改用管理员 token 模式，或让部署管理员把该 Human 改为 level 2（权限自检可见当前账号等级）。": {
     en: "Uses the logged-in Matrix account, no token needed. Note: the Controller's Matrix auth only accepts Human accounts with permissionLevel=2 — a level-1 admin account gets 401. Use admin-token mode, or ask the deploy admin to set that Human to level 2 (the permission self-check shows the current level).",
   },

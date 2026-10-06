@@ -35,7 +35,7 @@ const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
   (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
 const ReloadIcon = pick("ReloadOutlined");
 
-const PRIMARY = "#FF7F16";
+const PRIMARY = "var(--app-accent, #FF7F16)";
 const STATUS_COLOR: Record<string, string> = {
   running: "#1677ff",
   in_progress: "#1677ff",
@@ -2084,8 +2084,8 @@ function WorkflowBoard(props: WorkflowBoardProps) {
       {source === "rooms" ? (
         <div
           style={{
-            background: `${PRIMARY}14`,
-            border: `1px solid ${PRIMARY}55`,
+            background: `color-mix(in srgb, ${PRIMARY} 8%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${PRIMARY} 33%, transparent)`,
             borderRadius: 8,
             padding: "8px 12px",
             fontSize: 12,
@@ -2212,7 +2212,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               "data-run-id": ev.runId,
               style:
                 ev.runId === highlightRunId
-                  ? { outline: "2px solid #FF7F16", outlineOffset: -2, borderRadius: 6 }
+                  ? { outline: "2px solid var(--app-accent, #FF7F16)", outlineOffset: -2, borderRadius: 6 }
                   : undefined,
             })}
             columns={[

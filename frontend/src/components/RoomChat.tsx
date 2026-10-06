@@ -67,7 +67,7 @@ const ReplyOutlined = icon("ReplyOutlined");
 const PaperClipOutlined = icon("PaperClipOutlined");
 
 // ── UI 常量（与 WorkbenchPage 视觉一致）──────────────────────────────
-const PRIMARY = "#FF7F16"; // 品牌主色
+const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
 // 自己的消息气泡浅橙背景：改用主题（useThemeColors().bubbleMine）
 const CARD_RADIUS = 10;
 
@@ -283,8 +283,8 @@ const ReactionChips = React.memo(function ReactionChips({
             gap: 3,
             padding: "1px 8px",
             borderRadius: 10,
-            background: "rgba(255,127,22,0.1)",
-            border: "1px solid rgba(255,127,22,0.35)",
+            background: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 35%, transparent)",
             fontSize: 12,
             cursor: onReact ? "pointer" : "default",
           }}
@@ -1258,7 +1258,7 @@ function MessageBody({
             borderRadius: 8,
             objectFit: "cover",
             cursor: "pointer",
-            border: mine ? "1px solid rgba(255,127,22,0.25)" : "1px solid rgba(0,0,0,0.06)",
+            border: mine ? "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 25%, transparent)" : "1px solid rgba(0,0,0,0.06)",
           }}
           onClick={() => thumb && window.open(thumb, "_blank")}
         />
@@ -1301,7 +1301,7 @@ function MessageBody({
               width: 40,
               height: 40,
               borderRadius: 8,
-              background: "rgba(255,127,22,0.10)",
+              background: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
               display: "grid",
               placeItems: "center",
               flexShrink: 0,
@@ -1471,7 +1471,7 @@ function MessageBody({
         borderRadius: mine ? "10px 3px 10px 10px" : "3px 10px 10px 10px",
         background: mine ? t.bubbleMine : t.bubbleOther,
         border: mine
-          ? "1px solid rgba(255,127,22,0.25)"
+          ? "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 25%, transparent)"
           : `1px solid ${t.border}`,
       }}
     >
@@ -2001,7 +2001,7 @@ function RoomChat(props: RoomChatProps) {
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     el.style.transition = "background 0.4s";
-    el.style.background = "rgba(255,127,22,0.18)";
+    el.style.background = "color-mix(in srgb, var(--app-accent, #FF7F16) 18%, transparent)";
     window.setTimeout(() => {
       el.style.background = "transparent";
     }, 1800);
@@ -2809,7 +2809,7 @@ function RoomChat(props: RoomChatProps) {
             (e.currentTarget as HTMLElement).style.borderColor = PRIMARY;
             (e.currentTarget as HTMLElement).style.color = PRIMARY;
             (e.currentTarget as HTMLElement).style.background =
-              "rgba(255,127,22,0.08)";
+              "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)";
             (e.currentTarget as HTMLElement).style.transform =
               "translateY(-1px)";
           }}
@@ -2966,7 +2966,7 @@ function RoomChat(props: RoomChatProps) {
           minHeight: 300,
           minWidth: 0,
           // v0.5.0-beta.12 ：拖拽文件高亮（Element 同款 drop zone）。
-          outline: dragOver && onSendFiles ? "2px dashed rgba(255,127,22,0.6)" : "none",
+          outline: dragOver && onSendFiles ? "2px dashed color-mix(in srgb, var(--app-accent, #FF7F16) 60%, transparent)" : "none",
           outlineOffset: -4,
         }}
         onDragOver={
@@ -3413,7 +3413,7 @@ function RoomChat(props: RoomChatProps) {
                         onClick={() => setActiveThread(msg.event_id)}
                         onMouseEnter={(e) => {
                           (e.currentTarget as HTMLElement).style.background =
-                            "rgba(255,127,22,0.10)";
+                            "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)";
                         }}
                         onMouseLeave={(e) => {
                           (e.currentTarget as HTMLElement).style.background =
@@ -3558,7 +3558,7 @@ function RoomChat(props: RoomChatProps) {
             border: `1px solid ${PRIMARY}`,
             borderRadius: 10,
             padding: "8px 10px",
-            background: "rgba(255,127,22,0.05)",
+            background: "color-mix(in srgb, var(--app-accent, #FF7F16) 5%, transparent)",
             marginBottom: 8,
             animation: "wbJumpIn 0.3s ease-out",
           }}
@@ -3596,7 +3596,7 @@ function RoomChat(props: RoomChatProps) {
                   borderRadius: 8,
                   marginBottom: 4,
                   fontSize: 12.5,
-                  background: isTarget ? "rgba(255,127,22,0.12)" : t.bubbleOther,
+                  background: isTarget ? "color-mix(in srgb, var(--app-accent, #FF7F16) 12%, transparent)" : t.bubbleOther,
                   border: isTarget
                     ? `1px solid ${PRIMARY}`
                     : "1px solid transparent",
@@ -3697,8 +3697,8 @@ function RoomChat(props: RoomChatProps) {
               display: "flex",
               alignItems: "center",
               gap: 8,
-              background: "rgba(255,127,22,0.08)",
-              border: "1px solid rgba(255,127,22,0.4)",
+              background: "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 40%, transparent)",
               borderRadius: 8,
               padding: "6px 10px",
               fontSize: 13,
@@ -3803,7 +3803,7 @@ function RoomChat(props: RoomChatProps) {
                         borderRadius: 6,
                         cursor: "pointer",
                         background:
-                          i === mentionIndex ? "rgba(255,127,22,0.1)" : "transparent",
+                          i === mentionIndex ? "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)" : "transparent",
                       }}
                     >
                       <antd.Avatar
@@ -4052,7 +4052,7 @@ function RoomChat(props: RoomChatProps) {
                 cursor: "col-resize",
                 zIndex: 6,
                 background: dragging
-                  ? "rgba(255,127,22,0.35)"
+                  ? "color-mix(in srgb, var(--app-accent, #FF7F16) 35%, transparent)"
                   : "transparent",
                 transition: "background 0.15s",
                 borderLeft: `1px solid ${t.border}`,
