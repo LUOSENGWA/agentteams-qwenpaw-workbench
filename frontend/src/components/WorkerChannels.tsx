@@ -126,7 +126,7 @@ function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
   }
   // v0.5.0-beta.13.15（B10 sender 隔离开关）：agentteams_matrix 的
   // share_session_in_group 旧版 Controller 下发的频道配置可能不带该字段
-  // （9/5 语义定案后才进 payload）→ 缺省行注入 false（=按发送者隔离，
+ // （语义定案后才进 payload）→ 缺省行注入 false（=按发送者隔离，
   // 上游 AGENTTEAMS_MATRIX_SHARE_SESSION 默认 false 同款）。旧 runtime
   // 忽略未知键（无害）；升级后该值即生效。
   if (
@@ -148,8 +148,8 @@ const FIELD_LABELS: Record<string, { zh: string; en: string }> = {
 };
 const FIELD_TIPS: Record<string, { zh: string; en: string }> = {
   share_session_in_group: {
-    zh: "群聊会话语义（#7001，AgentTeams 9/5 默认定案=隔离）：开=群内所有成员共享一个会话（旧 room-wide 行为，多人上下文互相污染）；关=每个发送者独立会话（默认，防共享上下文爆炸）。保存即时热生效；worker 重新 reconcile 时 Controller 可能按部署默认（AGENTTEAMS_MATRIX_SHARE_SESSION 环境变量）再归一。",
-    en: "Group session semantics (#7001; AgentTeams 9/5 decision: default isolated): ON = all group members share one session (legacy room-wide; contexts cross-pollinate); OFF = per-sender isolated sessions (default). Hot-applied on save; the Controller may re-normalize to the deployment default (AGENTTEAMS_MATRIX_SHARE_SESSION) on the next worker reconcile.",
+ zh: "群聊会话语义（#7001，AgentTeams 默认定案=隔离）：开=群内所有成员共享一个会话（旧 room-wide 行为，多人上下文互相污染）；关=每个发送者独立会话（默认，防共享上下文爆炸）。保存即时热生效；worker 重新 reconcile 时 Controller 可能按部署默认（AGENTTEAMS_MATRIX_SHARE_SESSION 环境变量）再归一。",
+ en: "Group session semantics (#7001; AgentTeams decision: default isolated): ON = all group members share one session (legacy room-wide; contexts cross-pollinate); OFF = per-sender isolated sessions (default). Hot-applied on save; the Controller may re-normalize to the deployment default (AGENTTEAMS_MATRIX_SHARE_SESSION) on the next worker reconcile.",
   },
 };
 

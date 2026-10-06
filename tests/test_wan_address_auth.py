@@ -187,7 +187,7 @@ def test_challenge_basic_gate():
 
 
 def test_challenge_key_gate_empty_body():
-    # 10/4 higress 实锤形态：无质询头 + 空 body
+ # higress 实锤形态：无质询头 + 空 body
     r = _FakeResp(401, {}, "")
     assert _classify_challenge(r) == "key"
 

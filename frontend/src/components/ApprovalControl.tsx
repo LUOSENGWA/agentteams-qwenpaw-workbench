@@ -54,7 +54,7 @@ function approvalUpstreamGone(e: unknown): boolean {
 // 选择器已含官方图标+文案，说明块重复，故去掉）
 // v0.5.0-beta.13.23：数据面统一 #1216 主路径——读/写优先走 Controller
 // 审批端点（catch-all 透传：admin token 在=L1，空=Matrix access_token
-// L2 team-scoped 可读写本团队 Worker，9/16 上游已合并）；404（旧
+// L2 team-scoped 可读写本团队 Worker，上游已合并）；404（旧
 // Controller）→ 回退旧端点（docker 直读/PUT running-config，L1-only）。
 // 删「上游 L2 写路径 PR 合并后自动开放」过期文案；补 OFF capability
 // 静态提示（#1273：OFF 需 approval_policy，L1 固有/L2 需显式授权）。
@@ -208,7 +208,7 @@ function ApprovalControl({ workerName }: { workerName: string }) {
   const [upstreamBug, setUpstreamBug] = React.useState(false);
 
   // 权限错误判定：401/403 = 凭据无效或对该 Worker 无权限。
-  // #1216 已合并（上游 9/16）：L2 可读写本团队 Worker（team-scoped）；
+ // #1216 已合并（上游）：L2 可读写本团队 Worker（team-scoped）；
   // team leader 只读→PUT 403；OFF 需 approval_policy capability
   // (#1273)→PUT 403 透传。404=旧 Controller（无 #1216）→回退旧端点。
   const isPermError = /401|403|forbidden|unauthorized/i.test(readError);
@@ -404,7 +404,7 @@ function ApprovalControl({ workerName }: { workerName: string }) {
             {isPermError
               ? (upstreamBug
                   ? tr("审批端点有上游路径缺陷（502，修复待合入并重建 Controller）；该账号旧端点无权限——L1 账号可经旧端点读取")
-                  : tr("无权限读取（401/403）——请检查身份凭据。L2 账号可读写本团队 Worker（上游 #1216，9/16 已合并）"))
+ : tr("无权限读取（401/403）——请检查身份凭据。L2 账号可读写本团队 Worker（上游 #1216，已合并）"))
               : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><WarnIcon size={11} /> {readError}</span>}
           </div>
         ) : (
