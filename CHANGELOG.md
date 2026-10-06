@@ -5,6 +5,26 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.15（2026-10-06 · 全量自验 + 屎山体检批 · 两修）
+
+**PawApp 入口死链修 / 死代码清扫 / 全量自装自测验证**
+
+- **PawApp 入口死链修复**：web console 的 PawApp 加载器按 `plugin_type` 门控
+  （`expectedType="app"`），本插件 manifest 含 `meta.tools` → 类型推断为 TOOL →
+  直接打开 `/apps/agentteams-qwenpaw-workbench` 报 "PawApp frontend plugin not found"
+  （2.2.2b4 实测复现，重试无效）。`meta.pawapp.entry_page` 改为指向全模式可用的
+  `/plugin/agentteams-qwenpaw-workbench` 路由；`/apps/` 路由保留给 desktop PawApp
+  宿主场景。index.tsx 入口文档同步标注该行为差异。
+- **死代码清扫（二体检）**：删 `api.ts` 零引用导出 `fetchWorkerLoopStatus`
+  （chat_id 变体——v13.6 起消费点已切 `fetchWorkerLoopStatusBySession`）；
+  `sendInboxNotify` 经复查为**有意保留**（注释明示「预埋，勿删」，未来通知触发点入口）不删。
+- **14.14 全量自装自测（ZIP 全新安装，QwenPaw001）**：11 tab 走查全绿（首页/聊天/通知/
+  工作流/产物/团队管理/知识库/自检/运维/模型/配置，无 console error）；45s 拨号增量
+  稳态 +15 / UI 开启 +42（判据 <50 ✓，余量=worker-chats 头像灯 30s 轮询 + sync）；
+  响应 max 16ms；KB SWR 缓存 6ms 命中；聚合端点 29 workers/36 projects 出数；
+  持久化回读 + 600 权限 + 安装窗零插件 ERROR；pytest 180/180；已装 dist 与仓内逐字节一致。
+- 门：tsc 0 · build ✓ · pytest 180/180 · i18n 1442 键 0缺0重。
+
 ## 0.5.0-beta.14.14（2026-10-06 · 装验反馈批 3 · 五修）
 
 **特效跨页生效 / 配置备份导出导入 / KB 首访拖动顺滑 / 连点 Tab CPU −83% / 流式渲染 memo**
