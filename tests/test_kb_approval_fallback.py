@@ -9,14 +9,14 @@
 L1-only）：
 
 - **B1 KB tree 兜底**：docker ``/containers/{w}/json`` 返 403（L2）→ 切
-  ``#1208 /workspace-files``（memory/digest/MEMORY.md 三分类），source=controller。
+ ``#1208 /workspace-files``（memory/digest/MEMORY.md 三分类），source=controller。
 - **B1 KB file 兜底**：docker 403 + path 在 #1208 allowlist → #1208 file-content。
 - **B1 非 allowlist 不兜底**：AGENTS.md（档案，#1208 不覆盖）+ docker 403 →
-  走 docker 路径 → 404（不泄露、不误走 controller）。
+ 走 docker 路径 → 404（不泄露、不误走 controller）。
 - **B2 approval list 兜底**：docker ``/containers/json`` 403 → #1216
-  ``GET /api/v1/workers`` + 逐个 ``GET /workers/{w}/approval``；manager 标 L1-only。
+ ``GET /api/v1/workers`` + 逐个 ``GET /workers/{w}/approval``；manager 标 L1-only。
 - **B2 approval set 兜底**：docker ``/json`` 403 → #1216 ``PUT /workers/{w}/approval``，
-  回读 verified；L2 设 OFF → 403 透传。
+ 回读 verified；L2 设 OFF → 403 透传。
 """
 from __future__ import annotations
 
@@ -207,7 +207,7 @@ def test_kb_file_non_allowlist_no_fallback(client):
 def test_approval_list_l2_fallback_to_1216(client):
     """docker /containers/json 403 → #1216 列表（worker+approval，manager L1-only）。"""
     tc, _ = client
-    # 注意：dict 顺序=匹配优先级，更具体的键必须在前（/api/v1/workers 是
+    # 注意：dict 顺序=匹配优先级，更具体的键必须在前（api/v1/workers 是
     # /api/v1/workers/alpha/approval 的子串）。
     _FakeClient.get_spec = {
         # docker 容器列表 → 403（L2）

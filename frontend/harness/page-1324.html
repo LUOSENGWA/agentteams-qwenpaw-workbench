@@ -17,17 +17,17 @@ window.QwenPaw = {
     React: window.React,
     antd: window.antd,
     getApiUrl: (p) => p,
-    getApiToken: () => "",
+    getApiToken:  => "",
   },
 };
 
 function okJson(data) {
   const s = JSON.stringify(data);
-  return { ok: true, status: 200, text: async () => s, json: async () => data };
+  return { ok: true, status: 200, text: async  => s, json: async  => data };
 }
 function errJson(status, detail) {
   const s = JSON.stringify({ detail });
-  return { ok: false, status, text: async () => s, json: async () => ({ detail }) };
+  return { ok: false, status, text: async  => s, json: async  => ({ detail }) };
 }
 
 window.fetch = async (url, init) => {
@@ -40,7 +40,7 @@ window.fetch = async (url, init) => {
     catch { bodyObj = null; }
   }
 
-  // A4 F3：WRC 内嵌 ApprovalControl 走 #1216 主路径（w-f3 = AUTO 200）
+  //  ：WRC 内嵌 ApprovalControl 走 #1216 主路径（w-f3 = AUTO 200）
   const ap = u.match(/api\/v1\/workers\/([^/]+)\/approval/);
   if (ap) {
     const n = decodeURIComponent(ap[1]);
@@ -51,7 +51,7 @@ window.fetch = async (url, init) => {
     return errJson(404, "endpoint not found (old controller)");
   }
 
-  // A4 F3：WRC runtime-config（w-f3 = 200 最小配置 → tab 渲染）
+  //  ：WRC runtime-config（w-f3 = 200 最小配置 → tab 渲染）
   if (u.includes("/workers/w-f3/runtime-config")) {
     return okJson({
       model: { name: "qwen3.6-27b-fp8" },
@@ -62,7 +62,7 @@ window.fetch = async (url, init) => {
   // WRC loops 目录（空）
   if (u.includes("/workers/w-f3/loops")) return okJson({ modes: [] });
 
-  // A3 F6：CrdManage openCfg 的模型候选（sglang 在服模型）
+  //  ：CrdManage openCfg 的模型候选（sglang 在服模型）
   if (u.includes("/sglang/models")) {
     return okJson({ models: ["model-new-a", "model-new-b"] });
   }

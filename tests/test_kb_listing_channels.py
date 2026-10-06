@@ -1,30 +1,30 @@
 # -*- coding: utf-8 -*-
-"""KB 目录列取双通道回归测试（v0.5.0-beta.13.9 真根因修）。
+"""KB 目录列取双通道回归测试（v0.5.0-beta.13.9 根因修）。
 
 背景（真机反馈）：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
 kb_tree 顶层（worker 支）/ memory / digest 子树全走「先整目录递归 tar
 下载完、下载完才查大小」→ 413「工作区顶层超过 20MB，无法列取」。
 
-真根因修 = 列取路径不再依赖整树下载：
-- 主通道  _kb_find_list：exec find（零下载，manager live 大工作区生产
-  已验证的链路）；
-- 兜底    _kb_tar_list ：Docker archive tar（小工作区保留旧精确解析 +
-  413 守卫，仅主通道失败时可达）。
+根因修 = 列取路径不再依赖整树下载：
+- 主通道 _kb_find_list：exec find（零下载，manager live 大工作区生产
+ 已验证的链路）；
+- 兜底 _kb_tar_list ：Docker archive tar（小工作区保留旧精确解析 +
+ 413 守卫，仅主通道失败时可达）。
 
 本文件护栏：
 
 - **大工作区无 413 且零下载**：180MB 级工作区顶层 + 30MB 单文件 → 200，
-  且不发任何 archive GET（主通道零下载实证）。
+ 且不发任何 archive GET（主通道零下载实证）。
 - **mtime 真值**：find %T@ 落地（旧 manager 支 mtime=0）。
 - **敏感过滤/隐藏项/②③ 专属分类**：顶层目录不含 memory/digest、
-  credentials.yaml 不入列、隐藏项不入列（旧语义保持）。
+ credentials.yaml 不入列、隐藏项不入列（旧语义保持）。
 - **exec 挂 → tar 兜底**：/exec 500 → 切 archive，小工作区精确解析
-  （深度过滤：顶层列取只返一层）。
+ （深度过滤：顶层列取只返一层）。
 - **兜底超限 413 守卫保留**：exec 挂 + tar >20MB → 413（兜底路径
-  才可达，主通道正常时永不触达）。
+ 才可达，主通道正常时永不触达）。
 - **kb_ls 懒加载**：一级条目 + 目录可继续展开；零下载。
 - **kb_ls 目录不存在 404**：exec 空输出 + HEAD 404 → 404（不误报
-  502）；空目录 HEAD 200 → 200 空清单（旧版误 404 的改善）。
+ 502）；空目录 HEAD 200 → 200 空清单（旧版误 404 的改善）。
 - **kb_ls exec 挂 + tar 404 → 404**（通道失败与路径不存在区分）。
 """
 from __future__ import annotations
@@ -65,7 +65,7 @@ def _frame(payload: bytes, stream: int = 1) -> bytes:
 
 def _tar(root: str, members: dict) -> bytes:
     """构造 Docker archive 形态 tar：root=所请求路径 basename 前缀。
-    members={相对路径: 字节|None(目录)}。"""
+ members={相对路径: 字节|None(目录)}。"""
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tf:
         for rel, payload in members.items():
@@ -184,8 +184,8 @@ def _archive_gets() -> list:
 
 def _dir_archive_gets() -> list:
     """目录级 archive GET（整树/整子树下载）——修复目标面。
-    ④ 档案兜底的单文件 archive GET（≤5 次、文件天然小）是既有行为，
-    不在断言面内。"""
+ ④ 档案兜底的单文件 archive GET（≤5 次、文件天然小）是既有行为，
+ 不在断言面内。"""
     return [u for u in _archive_gets()
             if u.endswith(f"archive?path={WS}")
             or u.endswith(f"archive?path={WS}/memory")
@@ -220,7 +220,7 @@ def test_tree_large_workspace_exec_primary_zero_download(client):
     body = r.json()
     files = {f["path"]: f for f in body["files"]}
     # 200 = 核心（旧版整树 tar 到 20MB 就 413，连一个文件都拿不到）。
-    # v0.5.0-beta.13.10（13.9 用户反馈「知识库不全」真根因②）：非文本文件
+    # v0.5.0-beta.13.10（13.9 知识库不全根因②）：非文本文件
     # 全量列出 + openable=False（旧断言「bigfile.bin 不入列」已废弃）。
     assert files["bigfile.bin"]["openable"] is False
     assert "AGENTS.md" in files
@@ -375,10 +375,10 @@ def test_ls_exec_down_tar_404_is_404(client):
     assert "目录不存在" in r.text
 
 
-# ── v0.5.0-beta.13.10：符号链接列全（13.9 用户反馈「知识库不全」真根因①）──
+# ── v0.5.0-beta.13.10：符号链接列全（13.9 知识库不全根因①）──
 def test_tree_symlink_dir_and_file(client):
     """shared→目录（python3 解析 D）入 dirs + symlink 标记；
-    note-link→文件（解析 F）入 files openable=False。"""
+ note-link→文件（解析 F）入 files openable=False。"""
     tc, _ = client
     _FakeClient.exec_spec = [
         (f"find -H {WS}/memory", MEM_FIND),
@@ -400,7 +400,7 @@ def test_tree_symlink_dir_and_file(client):
 
 def test_ls_symlink_dir_expandable(client):
     """kb_ls：符号链接目录入 dirs（symlink 标记）——前端展开走
-    find -H（跟随起始链接）。"""
+ find -H（跟随起始链接）。"""
     tc, _ = client
     _FakeClient.exec_spec = [
         (f"find -H {WS} -maxdepth 1", TOP_FIND_LINKS),
@@ -417,7 +417,7 @@ def test_ls_symlink_dir_expandable(client):
 
 def test_tree_symlink_resolve_exec_down_degrades(client):
     """python3 解析 exec 挂（500）→ 符号链接保持文件条目（openable
-    False），不 500 不吞目录。"""
+ False），不 500 不吞目录。"""
     tc, _ = client
     _FakeClient.exec_spec = [
         (f"find -H {WS}/memory", MEM_FIND),

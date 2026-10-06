@@ -4,13 +4,13 @@
 回归护栏（此前版本发现的正确性缺陷）：
 
 - **插件卡路径**：用户从插件审批卡批准/拒绝 → 命令直接发房间 →
-  watcher 检出 → ``note_room_resolved`` 必须立即消解宿主记录。
-  否则宿主记录挂到 30 分钟超时 → 桥补发一条**陈旧的 deny** 回房间。
+ watcher 检出 → ``note_room_resolved`` 必须立即消解宿主记录。
+ 否则宿主记录挂到 30 分钟超时 → 桥补发一条**陈旧的 deny** 回房间。
 - **宿主卡路径**：用户从宿主收件箱卡批准 → 决议回调必须发 Matrix
-  命令回房间（带三重 @Worker）——这是正常路径，不能被房间侧逻辑误伤。
+ 命令回房间（带三重 @Worker）——这是正常路径，不能被房间侧逻辑误伤。
 
 宿主 ``qwenpaw.app.approvals`` / ``qwenpaw.security.tool_guard.approval``
-以假模块注入 sys.modules（单测不依赖真实宿主服务）。
+以假模块注入 sys.modules（单测不依赖宿主服务）。
 """
 from __future__ import annotations
 

@@ -5,9 +5,9 @@
  * overflow:auto）= 520px 高，浏览器视口 900px（窗口小于屏幕——真机常态）。
  *
  * 旧链（12.x–13.3）：wb-main = calc(100vh-64px)、RoomChat = calc(100vh-230px)
- *   + min-height:420px → 预期：窗口内容 scrollHeight > clientHeight（整页滚）。
+ * + min-height:420px → 预期：窗口内容 scrollHeight > clientHeight（整页滚）。
  * 新链（13.4）：wb-main = 父容器 clientHeight（实测注入 520px）、
- *   RoomChat = height:100% → 预期：窗口内容 0 溢出、列表内滚、输入区贴底可见。
+ * RoomChat = height:100% → 预期：窗口内容 0 溢出、列表内滚、输入区贴底可见。
  *
  * 运行：node scripts/window-shell-harness.mjs
  */

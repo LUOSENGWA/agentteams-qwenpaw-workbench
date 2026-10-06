@@ -7,25 +7,25 @@
  *
  * 位置：群内 Worker 头像点击 → 抽屉（RoomChat）。
  * 数据面：Controller 会话端点（#1295，room 级 L2 参与边界）——
- *   GET /workers/{name}/chats[/{id}[/status]]
+ * GET /workers/{name}/chats[/{id}[/status]]
  * 走既有通用 Controller 代理（后端零新端点）。
  *
- * v0.5.0-beta.13.4 口径（用户反馈：「查看会话的窗口参考 QwenPaw，
+ * v0.5.0-beta.13.4 口径（「查看会话的窗口参考 QwenPaw，
  * 因为这是 QwenPaw 的原始输出」）——逐条对齐 QwenPaw console
  * Control/Sessions 页（session 数据模型=QwenPaw ChatSpec 同构）：
  * - 列表：Active/Archived 双 tab（带计数）+ QwenPaw 同语义列
- *   （Name/Channel 彩色 Tag/UserID/UpdatedAt 可排序默认倒序；
- *   SessionID 与 CreatedAt 移入详情头——抽屉 560px 宽度适配）；
- *   Channel 色板逐值抄 QwenPaw constants/channel.ts CHANNEL_COLORS。
+ * （Name/Channel 彩色 Tag/UserID/UpdatedAt 可排序默认倒序；
+ * SessionID 与 CreatedAt 移入详情头——抽屉 560px 宽度适配）；
+ * Channel 色板逐值抄 QwenPaw constants/channel.ts CHANNEL_COLORS。
  * - 详情：QwenPaw /chat/{id} 会话口径——user 右气泡、assistant 左
- *   markdown（插件 MdText 同款零依赖渲染）、工具块紧凑标签、system
- *   居中；元信息行 = QwenPaw session 卡 meta（ID/User/Created/Updated）。
+ * markdown（插件 MdText 同款零依赖渲染）、工具块紧凑标签、system
+ * 居中；元信息行 = QwenPaw session 卡 meta（ID/User/Created/Updated）。
  *
- * 纪律（#1293 数据敏感性定案，不变）：
+ * 纪律（#1293 数据敏感性，不变）：
  * - detail = **agent 上下文**——可能含压缩历史/未发送工具调用输出，
- *   与实发房间消息不同，详情头部恒显蓝色标注。
+ * 与实发房间消息不同，详情头部恒显蓝色标注。
  * - L2 只见自己所在 Matrix 房间的会话（服务端强制）；越权统一 404
- *   （W8 不可探测）→ 整节占位说明，不渲染空列表。
+ * （W8 不可探测）→ 整节占位说明，不渲染空列表。
  * - /status 仅 QwenPaw ≥2.2.1：旧 runtime 404 → 隐藏状态灯（版本无关门）。
  * - 只读：无发送/编辑面。
  */
@@ -51,7 +51,7 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 /** 通道短名（13.8「会话列表拥挤依旧」：agentteams_matrix 全名 Tag 挤爆 64px
- *  列——短名 + Tooltip 全名；未知值原样回退）。 */
+ * 列——短名 + Tooltip 全名；未知值原样回退）。 */
 const CHANNEL_LABELS: Record<string, string> = {
   agentteams_matrix: "Matrix",
   matrix: "Matrix",
@@ -69,7 +69,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 /** QwenPaw console constants/channel.ts CHANNEL_COLORS 逐值抄录
- *  （会话通道色板与 QwenPaw 原生会话页一致）。 */
+ * （会话通道色板与 QwenPaw 原生会话页一致）。 */
 const CHANNEL_COLORS: Record<string, string> = {
   imessage: "geekblue",
   discord: "blue",
@@ -90,7 +90,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 };
 
 /** QwenPaw Control/Sessions formatTime 同款：无时区后缀按 UTC 归一化，
- *  zh-CN 数字日期格式。 */
+ * zh-CN 数字日期格式。 */
 function formatTime(ts?: string | number | null): string {
   if (ts === null || ts === undefined || ts === "") return "-";
   let normalized = ts;
@@ -113,23 +113,23 @@ function formatTime(ts?: string | number | null): string {
 }
 
 /**
- * v0.5.0-beta.13.7 消息结构化模型（「模仿 QwenPaw 会话消息折叠和渲染」定案）——
+ * v0.5.0-beta.13.7 消息结构化模型（「模仿 QwenPaw 会话消息折叠和渲染」）——
  * 正源逐条核过：
  * - QwenPaw console HostBubbles.renderResponseMessage：tool-like 类型走
- *   ResponseTool 卡，REASONING 走 ResponseReasoning，HEARTBEAT → null（不渲染），
- *   ERROR 恒可见（result-only 下错误也不折叠）；
+ * ResponseTool 卡，REASONING 走 ResponseReasoning，HEARTBEAT → null（不渲染），
+ * ERROR 恒可见（result-only 下错误也不折叠）；
  * - messageDisplay.ts result-only（默认偏好 result-collapsed 的完成态）：
- *   一个回答只显示**最后一条文本**，其前所有过程消息折叠成「N steps」手风琴
- *   （LazyAccordion destroyOnClose——收起时子内容完全不渲染，本组件同款懒渲染）；
+ * 一个回答只显示**最后一条文本**，其前所有过程消息折叠成「N steps」手风琴
+ * （LazyAccordion destroyOnClose——收起时子内容完全不渲染，本组件同款懒渲染）；
  * - 消息 JSON 结构（qwenpaw/schemas.py + chats/utils.py）：
- *   {type, role, content: [{type:"text",text} | {type:"data",data:{call_id,
- *   name, arguments|output, state?}} | {type:"image",image_url} | {type:"file"}]
- *   | string, status, metadata}。
+ * {type, role, content: [{type:"text",text} | {type:"data",data:{call_id,
+ * name, arguments|output, state?}} | {type:"image",image_url} | {type:"file"}]
+ * | string, status, metadata}。
  * 13.6 旧版读 `b.name`（顶层）取工具名——实际在 `b.data.name`，恒 undefined，
- * 工具块全部退化 RAW JSON.stringify 输出（用户反馈所见「没模仿 QwenPaw」的真根因）。
+ * 工具块全部退化 RAW JSON.stringify 输出（所见「没模仿 QwenPaw」的根因）。
  */
 /** QwenPaw console responseMessageTypes.ts TOOL_LIKE 集合 + qwenpaw
- *  MessageType 的 mcp_tool_call 族（双源并集，大小写归一小写比较）。 */
+ * MessageType 的 mcp_tool_call 族（双源并集，大小写归一小写比较）。 */
 const TOOL_LIKE_TYPES = new Set([
   "plugin_call",
   "plugin_call_output",
@@ -162,7 +162,7 @@ interface Extracted {
 }
 
 /** 工具 data 块 → step part。data = {call_id, name, arguments} 调用 /
- *  {call_id, name, output, state?} 输出（agentscope_msg_to_message 实锤）。 */
+ * {call_id, name, output, state?} 输出（agentscope_msg_to_message 实锤）。 */
 function dataPart(d: Record<string, unknown>): MsgPart {
   const name =
     typeof d.name === "string" && d.name
@@ -265,9 +265,9 @@ function extractMsg(m: WorkerChatMessage): Extracted {
 }
 
 /** 消息分类（v0.5.0-beta.13.10 QwenPaw 对话框语义）：
- *  user→用户气泡 / error→恒可见红线 / system→居中提示 /
- *  assistant 有文本→asst（**每条独立气泡**）/ 其余→step（折叠 pill）/
- *  heartbeat、progress→skip（QwenPaw renderResponseMessage 对两者均不渲染）。 */
+ * user→用户气泡 / error→恒可见红线 / system→居中提示 /
+ * assistant 有文本→asst（**每条独立气泡**）/ 其余→step（折叠 pill）/
+ * heartbeat、progress→skip（QwenPaw renderResponseMessage 对两者均不渲染）。 */
 type MsgKind = "user" | "error" | "system" | "asst" | "step" | "skip";
 function msgKind(e: Extracted): MsgKind {
   if (e.type === "heartbeat" || e.type === "progress") return "skip";
@@ -283,9 +283,9 @@ function msgKind(e: Extracted): MsgKind {
 }
 
 /** 会话转录分组（v0.5.0-beta.13.10）：user/error/system 消息切段；
- *  每条带文本的 assistant 消息独立成气泡（QwenPaw 对话框口径）；
- *  连续的 tool/thinking/无文本 assistant 消息收进 steps pill（收起时
- *  不渲染子内容，点开懒渲染）。 */
+ * 每条带文本的 assistant 消息独立成气泡（QwenPaw 对话框口径）；
+ * 连续的 tool/thinking/无文本 assistant 消息收进 steps pill（收起时
+ * 不渲染子内容，点开懒渲染）。 */
 type DetailItem =
   | { k: "user" | "asst" | "error" | "system"; i: number; e: Extracted }
   | { k: "steps"; items: { i: number; e: Extracted }[] };
@@ -301,7 +301,7 @@ function groupTurns(msgs: WorkerChatMessage[]): DetailItem[] {
     const e = extractMsg(msgs[i]);
     const k = msgKind(e);
     if (k === "skip") continue;
-    // v0.5.0-beta.13.10（13.9 用户反馈「太多消息被收进回复里」）：旧版每轮
+    // v0.5.0-beta.13.10（13.9 太多消息被收进回复里）：旧版每轮
     // 只把**最后一条** assistant 文本提升为气泡、中间全部文本吞进 steps
     // （长会话几乎只剩工具行）。改 QwenPaw 对话框口径：**每条带文本的
     // assistant 消息 = 独立气泡**；仅 tool/thinking/无文本消息折叠成
@@ -415,7 +415,7 @@ function StepLine({
 }
 
 /** 步骤折叠（QwenPaw LazyAccordion 同款语义：收起 = 子内容完全不渲染，
- *  懒加载；完成态默认收起——getCollapsedGroupStatus 的 stepsCompleted 形态）。 */
+ * 懒加载；完成态默认收起——getCollapsedGroupStatus 的 stepsCompleted 形态）。 */
 function StepsCollapse({
   items,
   tr,
@@ -424,7 +424,7 @@ function StepsCollapse({
   tr: (k: string, v?: Record<string, string | number>) => string;
 }) {
   const [open, setOpen] = React.useState(false);
-  // v0.5.0-beta.13.8（13.7 用户反馈「折叠可以做得更像 QwenPaw」）：inline pill
+  // v0.5.0-beta.13.8（13.7 折叠可以做得更像 QwenPaw）：inline pill
   // 改 QwenPaw LazyAccordion 同款**整行头**——图标 + 文案 + 计数 + 右对齐
   // 旋转 chevron，整行可点，浅底圆角行（@agentscope-ai/chat Accordion
   // group header 同构；收起=子内容不渲染的懒语义保持）。
@@ -484,7 +484,7 @@ function StepsCollapse({
 /**
  * v0.5.0-beta.13.1（入口迁移）：`fixedWorker` = 头像抽屉模式——
  * 锁定单个 Worker（跳过选择器）。
- * v0.5.0-beta.13.11（13.10 用户反馈 E1 定案「卡片化是会话列表」）：列表
+ * v0.5.0-beta.13.11（13.10 E1 「卡片化是会话列表」）：列表
  * antd.Table → 卡片列表（参照 dashboard worker-chats-panel 口径：整卡
  * 点击进详情、全名/全 session_id 换行不裁切、窄容器不挤压）；
  * `refreshTick` = SSE room_message 事件驱动刷新（Element 式主路——
@@ -538,7 +538,7 @@ function WorkerChats({
       } else if (st === 401 || st === 502) {
         // v0.5.0-beta.13.10：凭证缺失（L1 账号密码登录不带 Controller
         // token / L2 无数据面 / controller 不可达）→ 明确指引，不笼统
-        // 「加载失败」（13.9 用户反馈「经常显示无worker」的根因面之一）。
+        // 「加载失败」（13.9 经常显示无worker的根因面之一）。
         setGate("notoken");
         setChats([]);
       } else if (st === 403) {
@@ -572,7 +572,7 @@ function WorkerChats({
     nearBottomRef.current = true;
     // 状态灯与详情并发拉取；404 = 旧 runtime，隐藏灯
     // （会话级 loop 状态显示点迁至聊天页输入区——RoomChat composer chip，
- // 定案，本视图不再查 /loops/status。）
+ // ，本视图不再查 /loops/status。）
     void fetchWorkerChatStatus(sel, chatId)
       .then((r) => setStatus(r?.status === "running" ? "running" : "idle"))
       .catch(() => setStatus(""));
@@ -589,8 +589,8 @@ function WorkerChats({
     }
   };
 
-  // v0.5.0-beta.13.10（13.9 用户反馈「会话窗能不能实时更新」）→
-  // v0.5.0-beta.13.11（13.10 用户反馈「4s 一轮有点蠢，参考 Element」）：
+  // v0.5.0-beta.13.10（13.9 会话窗能不能实时更新）→
+  // v0.5.0-beta.13.11（13.10 4s 一轮有点蠢，参考 Element）：
   // 实时主路 = **事件驱动**（Element /sync 同款语义）——后端 sync watcher
   // 收到房间消息 → SSE room_message → WorkbenchPage 递增 refreshTick →
   // 下方 effect 立即拉详情/状态（延迟≈网络 RTT，非周期轮询）；4s 轮询
@@ -627,7 +627,7 @@ function WorkerChats({
       /* 静默 */
     }
   }, []);
-  // v0.5.0-beta.14.6（R2）：旧定时器 → usePoller（4s 开房间刷新；
+  // v0.5.0-beta.14.6：旧定时器 → usePoller（4s 开房间刷新；
   // !openId 时不跑；!document.hidden 内置）。
   usePoller({
     fn: () => void refreshOpenChat(),
@@ -665,8 +665,8 @@ function WorkerChats({
   // 阈值逻辑移除，ref 保留（hook 顺序 + 列表容器锚点）。
   const cwrapRef = React.useRef<HTMLDivElement | null>(null);
 
-  // v0.5.0-beta.13.10（13.9 用户反馈「从点开会话之后，经常显示无worker」
-  // 真根因）：workers 列表来自 adminData（需要 Controller token）——
+  // v0.5.0-beta.13.10（13.9 从点开会话之后，经常显示无worker
+  // 根因）：workers 列表来自 adminData（需要 Controller token）——
   // L1 账号密码登录只带 Higress Console 会话、不带 Controller token 时
   // adminData=null → workers=[] → 旧门恒「无 Worker」。fixedWorker 模式
   // （头像抽屉锁定单 Worker）不依赖列表，直接按名拉取，门只看列表
@@ -744,7 +744,7 @@ function WorkerChats({
     ? chats.find((c) => c.id === openId)
     : undefined;
 
-  // v0.5.0-beta.13.11（F8 QwenPaw 化：ResponseActions 同款复制——气泡
+  // v0.5.0-beta.13.11（QwenPaw 化：ResponseActions 同款复制——气泡
   // hover 显 ⧉，复制该条全部文本部分）。
   const copyParts = React.useCallback(
     async (parts: MsgPart[]) => {
@@ -769,7 +769,7 @@ function WorkerChats({
   if (openId) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0 }}>
-        {/* v0.5.0-beta.13.11（F8 QwenPaw 化）：气泡 hover 复制钮样式。 */}
+        {/* v0.5.0-beta.13.11（QwenPaw 化）：气泡 hover 复制钮样式。 */}
         <style>{`
           .wb-chat-bubble .wb-copy {
             position: absolute;
@@ -801,11 +801,11 @@ function WorkerChats({
           <span style={{ fontWeight: 600, fontSize: 13.5 }}>
             {openChatSpec?.name || openId.slice(0, 12)}
           </span>
-          {/* v0.5.0-beta.13.10（13.9 用户反馈「蓝点能不能改成 QwenPaw 同款
-              灯」）：状态 Tag（蓝 tag/灰 tag）→ WorkerSessionDot——
-              QwenPaw console AgentStatusIndicator 同款呼吸灯（组件
-              既有：8px 圆点 + 1.2s 呼吸 + Tooltip + reduced-motion
-              降级），与成员头像角落灯同一正源。 */}
+ {/* v0.5.0-beta.13.10（13.9 「蓝点能不能改成 QwenPaw 同款
+ 灯」）：状态 Tag（蓝 tag/灰 tag）→ WorkerSessionDot——
+ QwenPaw console AgentStatusIndicator 同款呼吸灯（组件
+ 既有：8px 圆点 + 1.2s 呼吸 + Tooltip + reduced-motion
+ 降级），与成员头像角落灯同一正源。 */}
           {status === "running" || status === "idle" ? (
             <span style={{ display: "inline-flex", alignItems: "center" }}>
               <WorkerSessionDot state={status} />
@@ -814,9 +814,9 @@ function WorkerChats({
               </span>
             </span>
           ) : null}
-          {/* v0.5.0-beta.13.6：会话级 loop 标签撤出——显示位置定案=聊天页
-              输入区（QwenPaw console LoopModeSelector 正源），唯一落点，
-              不双显。running/idle 灯保留（会话状态，非 loop）。 */}
+          {/* v0.5.0-beta.13.6：会话级 loop 标签撤出——显示位置=聊天页
+ 输入区（QwenPaw console LoopModeSelector 正源），唯一落点，
+ 不双显。running/idle 灯保留（会话状态，非 loop）。 */}
           {openChatSpec?.channel ? (
             <antd.Tag
               color={CHANNEL_COLORS[openChatSpec.channel] || "default"}
@@ -873,21 +873,21 @@ function WorkerChats({
               background: "rgba(127,127,127,0.05)",
             }}
           >
-            {/* v0.5.0-beta.13.6（「会话页面依旧不能滚动」真根因·浏览器 harness
-                实证）：13.5 的 display:grid + alignContent:"end" 在内容超容器
-                时顶部溢出进入不可滚动区（scrollTop 恒 0，实测 scrollH==clientH）
-                ——上半截会话永远看不了。改普通块级流 + 既有 JS 滚底
-                （scrollTop=scrollHeight，实测 scrollable=true）。 */}
+ {/* v0.5.0-beta.13.6（「会话页面依旧不能滚动」根因·浏览器 harness
+ 实证）：13.5 的 display:grid + alignContent:"end" 在内容超容器
+ 时顶部溢出进入不可滚动区（scrollTop 恒 0，实测 scrollH==clientH）
+ ——上半截会话永远看不了。改普通块级流 + 既有 JS 滚底
+ （scrollTop=scrollHeight，实测 scrollable=true）。 */}
             {detailLoading ? (
               <antd.Spin size="small" />
             ) : msgs.length === 0 ? (
               <antd.Alert type="info" showIcon message={tr("该会话暂无消息")} />
             ) : (
-              /* v0.5.0-beta.13.7（13.6 用户反馈「要模仿 QwenPaw 的会话消息折叠和
-                 渲染」）：QwenPaw result-only 轮分组——每轮只显示最后一条文本
-                 （assistant 气泡），中间工具/思考步收进「N 步」pill（懒渲染，
-                 点开才渲染子行）；user 右气泡 / error 红线恒可见 / system 居中。
-                 旧版逐条平铺 + tool 块 RAW JSON 输出，全部替换。 */
+              /* v0.5.0-beta.13.7（13.6 「要模仿 QwenPaw 的会话消息折叠和
+ 渲染」）：QwenPaw result-only 轮分组——每轮只显示最后一条文本
+ （assistant 气泡），中间工具/思考步收进「N 步」pill（懒渲染，
+ 点开才渲染子行）；user 右气泡 / error 红线恒可见 / system 居中。
+ 旧版逐条平铺 + tool 块 RAW JSON 输出，全部替换。 */
               groupTurns(msgs).map((it) => {
                 if (it.k === "steps") {
                   return (
@@ -941,8 +941,8 @@ function WorkerChats({
                           ⧉
                         </span>
                       </div>
-                      {/* v0.5.0-beta.13.11（F8 QwenPaw 化：HostBubbles 同款
-                          Avatar 分侧——user 右 / assistant 左）。 */}
+                      {/* v0.5.0-beta.13.11（QwenPaw 化：HostBubbles 同款
+ Avatar 分侧——user 右 / assistant 左）。 */}
                       <antd.Avatar size="small" style={{ background: "var(--app-accent, #FF7F16)", flexShrink: 0 }}>
                         <UserIcon size={12} style={{ color: "#fff" }} />
                       </antd.Avatar>
@@ -994,7 +994,7 @@ function WorkerChats({
                     className="wb-chat-bubble"
                     style={{ display: "flex", justifyContent: "flex-start", alignItems: "flex-start", gap: 6, marginBottom: 8 }}
                   >
-                    {/* v0.5.0-beta.13.11（F8 QwenPaw 化）：assistant 左 Avatar。 */}
+                    {/* v0.5.0-beta.13.11（QwenPaw 化）：assistant 左 Avatar。 */}
                     <antd.Avatar size="small" style={{ background: "#1677ff", flexShrink: 0 }}>
                       <RobotIcon size={12} style={{ color: "#fff" }} />
                     </antd.Avatar>
@@ -1052,15 +1052,15 @@ function WorkerChats({
   }
 
   // ── 列表视图（QwenPaw Control/Sessions 同语义列）────────────────
-  // v0.5.0-beta.13.8（13.7 用户反馈「会话列表拥挤依旧，自适应宽度，查看按钮
+ // v0.5.0-beta.13.8（13.7 「会话列表拥挤依旧，自适应宽度，查看按钮
   // 不被挤压」）：① 通道列 64→56 + 短名（agentteams_matrix 全名 Tag 是
   // 挤爆主因）+ <640px 容器整列隐藏（宽度让给会话列）② 查看列 48→44
   // + 按钮 nowrap + padding 收窄，任何容器宽恒整词可见 ③ 会话列 =
   // 唯一弹性列（min 120）+ 每会话 status 点（running 蓝呼吸，/chats
   // 自带字段，零新请求）。
-  // v0.5.0-beta.13.11（13.10 用户反馈 E1 定案「卡片化是会话列表」）：
+ // v0.5.0-beta.13.11（13.10 E1 「卡片化是会话列表」）：
   // antd.Table → 卡片列表——Table fixed 布局在窄容器被挤压（查看列
-  // 裁切，13.8 已三次压列宽打地鼠）。卡片口径参照 dashboard
+ // 裁切，13.8 已三次压列宽逐个修补）。卡片口径参照 dashboard
   // worker-chats-panel：整卡可点进详情、全名/全 session_id 换行
   // 不裁切、窄容器抗挤压；Table sorter 能力保留为排序下拉。
   const emptyText =
@@ -1135,7 +1135,7 @@ function WorkerChats({
           <div style={{ display: "grid", gap: 8 }}>
             {list.map((c) => {
               const full = c.name || c.id.slice(0, 10);
-              // v0.5.0-beta.13.12（13.11 用户反馈「状态点没看见」）：此前灯只在
+ // v0.5.0-beta.13.12（13.11 状态点没看见）：此前灯只在
               // running 时渲染（idle/done 无点）——盘上会话多为 idle → 恒不见。
               // 改恒显 WorkerSessionDot（与详情头/成员头像角灯同一正源：
               // idle 灰常亮 / running 蓝呼吸，含 Tooltip；/chats 的

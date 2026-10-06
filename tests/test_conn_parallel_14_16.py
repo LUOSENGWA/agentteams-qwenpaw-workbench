@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
-"""连通性测试并行化回归（v0.5.0-beta.14.16 / F4）。
+"""连通性测试并行化回归（v0.5.0-beta.14.16 /）。
 
-用户反馈「连通性测试很慢」。真根因：``test_addresses`` 里三类地址
+连通性测试很慢。根因：``test_addresses`` 里三类地址
 （matrix / controller / sglang）原先是**三段串行** ``await asyncio.gather``，
 每段内部才并行。WAN 上每类都含一个不可达的内网地址吃满
 ``(timeout + 重试间隔 + timeout)``，三段相加≈3×12.5s=37.5s。
 
-F4 修复：三段 ``gather`` 嵌套进同一个外层 ``asyncio.gather`` = 全并行，
+ 修复：三段 ``gather`` 嵌套进同一个外层 ``asyncio.gather`` = 全并行，
 总时长 = 最慢单地址。本测试锁住该不变式：三类地址各一个、每个探测耗时
 ≈T，则总耗时 ≈T（而非 3T）。
 
 护栏：
 - 只测并行结构，不碰逐地址语义（ok/ms/auth/重试）——那些由既有测试覆盖。
 - 用 ``asyncio.sleep(T)`` 模拟探测延迟，monkeypatch 三个底层 probe，
-  不发起真实网络。
+ 不发起真实网络。
 - 同步驱动（``asyncio.run``）——本仓测试不依赖 pytest-asyncio（与既有
-  test_dial_gate_14_6 / test_perf_save_bg_14_12 同款）。
+ test_dial_gate_14_6 / test_perf_save_bg_14_12 同款）。
 """
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ def test_empty_category_does_not_break_gather(monkeypatch) -> None:
 
 
 def test_default_timeout_is_4s() -> None:
-    """test_addresses 的 timeout 默认值 = 4.0s（F4 从 6.0 收紧，防回退）。"""
+    """test_addresses 的 timeout 默认值 = 4.0s（从 6.0 收紧，防回退）。"""
     import inspect
 
     sig = inspect.signature(selfcheck.test_addresses)

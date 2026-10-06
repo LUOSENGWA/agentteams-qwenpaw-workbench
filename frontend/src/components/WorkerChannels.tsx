@@ -4,11 +4,11 @@
  * 位置：「👷 团队管理」tab 内的子节（设计决策：不独立成 tab）。
  * 数据面：Controller 的频道代理端点（#1219/#1269 已合 main；
  * Controller < 合并版本（如 v1.2.3 验证实盘）→ 404 兜底）——
- * GET  /workers/{name}/channels[|/types|/schemas]
+ * GET /workers/{name}/channels[|/types|/schemas]
  * GET/PUT /workers/{name}/channels/{ch}
- * GET  .../{ch}/health | /qrcode | /qrcode/status
+ * GET .../{ch}/health | /qrcode | /qrcode/status
  * POST .../{ch}/restart | /conflict-check
- * 走既有通用 Controller 代理（/api/ 白名单，后端零新端点）。
+ * 走既有通用 Controller 代理（api/ 白名单，后端零新端点）。
  *
  * 版本门：Controller < 合并频道端点的版本（v1.2.3 及更早验证实盘）
  * → 端点 404 → 整节显示占位说明（不炸 tab，与 L2 冲突检查版本门同模式）。
@@ -126,7 +126,7 @@ function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
   }
   // v0.5.0-beta.13.15（B10 sender 隔离开关）：agentteams_matrix 的
   // share_session_in_group 旧版 Controller 下发的频道配置可能不带该字段
- // （语义定案后才进 payload）→ 缺省行注入 false（=按发送者隔离，
+ // （语义后才进 payload）→ 缺省行注入 false（=按发送者隔离，
   // 上游 AGENTTEAMS_MATRIX_SHARE_SESSION 默认 false 同款）。旧 runtime
   // 忽略未知键（无害）；升级后该值即生效。
   if (
@@ -138,8 +138,8 @@ function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
   return rows;
 }
 
-/** v0.5.0-beta.13.15（B10）：已知频道字段专属标签（通用编辑器默认裸键名
- *  显示——布尔开关必须有语义化名字，否则用户不敢动）。 */
+/** v0.5.0-beta.13.15：已知频道字段专属标签（通用编辑器默认裸键名
+ * 显示——布尔开关必须有语义化名字，否则用户不敢动）。 */
 const FIELD_LABELS: Record<string, { zh: string; en: string }> = {
   share_session_in_group: {
     zh: "群会话共享（关=按发送者隔离，默认）",
@@ -148,7 +148,7 @@ const FIELD_LABELS: Record<string, { zh: string; en: string }> = {
 };
 const FIELD_TIPS: Record<string, { zh: string; en: string }> = {
   share_session_in_group: {
- zh: "群聊会话语义（#7001，AgentTeams 默认定案=隔离）：开=群内所有成员共享一个会话（旧 room-wide 行为，多人上下文互相污染）；关=每个发送者独立会话（默认，防共享上下文爆炸）。保存即时热生效；worker 重新 reconcile 时 Controller 可能按部署默认（AGENTTEAMS_MATRIX_SHARE_SESSION 环境变量）再归一。",
+ zh: "群聊会话语义（#7001，AgentTeams 默认行为=隔离）：开=群内所有成员共享一个会话（旧 room-wide 行为，多人上下文互相污染）；关=每个发送者独立会话（默认，防共享上下文爆炸）。保存即时热生效；worker 重新 reconcile 时 Controller 可能按部署默认（AGENTTEAMS_MATRIX_SHARE_SESSION 环境变量）再归一。",
  en: "Group session semantics (#7001; AgentTeams decision: default isolated): ON = all group members share one session (legacy room-wide; contexts cross-pollinate); OFF = per-sender isolated sessions (default). Hot-applied on save; the Controller may re-normalize to the deployment default (AGENTTEAMS_MATRIX_SHARE_SESSION) on the next worker reconcile.",
   },
 };
@@ -473,7 +473,7 @@ export default function WorkerChannels(props: {
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
         {/* v0.5.0-beta.13.16：单 Worker（拓扑资源管理嵌入）→ 定显名字，
-            不再给只有一个选项的选择器。多 Worker 场景保持下拉。 */}
+ 不再给只有一个选项的选择器。多 Worker 场景保持下拉。 */}
         {workers.length === 1 ? (
           <antd.Tag style={{ marginInlineEnd: 0, fontSize: 11.5 }}>
             {workers[0].name}
@@ -611,7 +611,7 @@ export default function WorkerChannels(props: {
                   <div key={`${r.key}-${idx}`} style={{ display: "grid", gap: 2 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {(() => {
-                        // v0.5.0-beta.13.15（B10）：语义化标签 + 悬停说明。
+                        // v0.5.0-beta.13.15：语义化标签 + 悬停说明。
                         const lbl =
                           f?.label || FIELD_LABELS[r.key]?.[lang] || r.key;
                         const tip = FIELD_TIPS[r.key]?.[lang];

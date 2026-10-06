@@ -83,7 +83,7 @@ const CLICK_TAP_MAX_MOVE_PX = 5;
 const CLICK_TAP_MAX_MS = 500;
 const CLICK_DEDUP_MS = 200;
 
-// ── 物理收敛（v0.5.0-beta.14.14，UIPERF-T24）──
+// ── 物理收敛（v0.5.0-beta.14.14，）──
 // 「首访拖动卡」根因（dist 实证）：库 d3AlphaMin 默认 0 → alpha 阈值永不
 // 触发，引擎 tick 到 cooldownTicks(160) 硬停——2070 节点每 tick ~8ms
 // 物理与 orbit 交互/渲染竞争（60fps 下 ~2.7s 卡顿窗口），引擎停后即
@@ -92,7 +92,7 @@ const CLICK_DEDUP_MS = 200;
 // 布局形态不变：warmup 与 live 是同一段 tick 序列（同轨迹），只改
 // 「首帧前跑多少 tick / 尾部截断点」；力参数与 dashboard 孪生保持
 // 同值（charge -50 / link 38/0.52 / decay 0.038），仅收敛时机为本
-// 组件 T24 专属。
+// 组件 专属。
 // 同步阻塞成本（容器 CPU 实测 d3-force-3d 同参基准）：2070 节点
 // ≈0.95s / 300 节点 ≈0.13s / 40 节点 ≈8ms——「布局计算中」遮罩下的
 // 一次性成本，换交互期零物理竞争。
@@ -273,7 +273,7 @@ function Graph3D(props: G3DGraph) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const graphRef = React.useRef<any>(null);
   const [ready, setReady] = React.useState(false);
-  // v0.5.0-beta.14.14（UIPERF-T24）：换数据（切 KB agent）= 又一次
+  // v0.5.0-beta.14.14：换数据（切 KB agent）= 又一次
   // warmup 同步阻塞（大图 ~1s）——无遮罩=无解释的 UI 冻结。双 rAF 先
   // 上屏再阻塞（直接 setState→同步阻塞会让遮罩来不及 paint）。
   const [recomputing, setRecomputing] = React.useState(false);
@@ -356,8 +356,8 @@ function Graph3D(props: G3DGraph) {
     [],
   );
 
-  // v0.5.0-beta.14.13（UIPERF-T21）：渲染循环双位暂停状态机。
-  // vis = 既有可见性门控（T14.7 D1，切 tab/隐藏即停）；
+  // v0.5.0-beta.14.13：渲染循环双位暂停状态机。
+  // vis = 既有可见性门控（.7 ，切 tab/隐藏即停）；
   // idle = 稳态自动暂停——引擎已停 + 无相机 tween + 无指针交互时场景
   // 完全静态，但 3d-force-graph 循环仍 60fps 全场景 drawArrays
   // （实测 KB 驻留 2184–2944 draws/s）→ 持续垃圾 → V8 GC 常开
@@ -550,7 +550,7 @@ function Graph3D(props: G3DGraph) {
     );
     obj.add(core);
 
-    // 拾取放大球（引入，v0.5.0-beta.12 改自适应——用户反馈「命中区还是太小」）。
+ // 拾取放大球（引入，v0.5.0-beta.12 改自适应——命中区还是太小）。
     // 可见球半径只有 2.55–4.8 世界单位（link distance 72），而团队合并
     // 图谱（100+ 节点）fit 后 viewRadius 大，节点屏幕占比远小于官方
     // 单 agent 记忆图谱（10–40 节点）——同半径不同图规模=屏幕尺寸不同。
@@ -610,7 +610,7 @@ function Graph3D(props: G3DGraph) {
     glow.visible = false;
     obj.add(glow);
 
-    // 标签——与 dashboard 知识库 3D 同标准：全节点标注（验收定案「每个点都有
+ // 标签——与 dashboard 知识库 3D 同标准：全节点标注（验收「每个点都有
     // 标题」；旧官方条件 count<=42 || root || deg>=4 废弃，双端对齐）。
     // SpriteText(text, textHeight世界单位, color)；fontSize=76 是
     // 画布分辨率（清晰度），不是字号（混淆了两者）。
@@ -737,14 +737,14 @@ function Graph3D(props: G3DGraph) {
         setSelectedId(next);
         onSelect?.(next);
         // v0.5.0-beta.12 ：点文件节点直接开预览（2D 同款）。改为
-        // 「点选+面板按钮」后用户反馈「点没反应」——再选中才开，再次点击仅取消选中。
+ // 「点选+面板按钮」后点没反应——再选中才开，再次点击仅取消选中。
         if (next) stateRef.current.onOpenNode(n);
       };
 
       // 实例类型化（tsc 对照 d.ts 验证链式调用）。
       const graph = new ForceGraph3DImpl(el, {
         controlType: "orbit",
-        // v0.5.0-beta.14.14（UIPERF-T24）：混合 GPU 机器优先独显（真机
+ // v0.5.0-beta.14.14：混合 GPU 机器优先独显（真机
         // 卡顿面——核显跑 2070 节点 4 灯 MeshStandard 场景 fillrate 吃
         // 紧）。antialias 保持（库默认 true；关掉球体边缘锯齿=可见
         // 劣化，不偿失）。
@@ -792,12 +792,12 @@ function Graph3D(props: G3DGraph) {
         .linkCurvature((l: any) => (l._bi ? 0.12 : 0))
         .enableNodeDrag(false)
         .enableNavigationControls(true)
-        // 物理——力参数与 dashboard 知识库 3D 图谱定案值同值（见下方
-        // charge/link 设置）；收敛时机 T24 重构（见 WARMUP_TICKS_CAP /
+ // 物理——力参数与 dashboard 知识库 3D 图谱定值同值（见下方
+ // charge/link 设置）；收敛时机 重构（见 WARMUP_TICKS_CAP /
         // alphaMinFor 注释）：同轨迹，只改首帧前/尾部截断点。
         .d3AlphaDecay(0.038)
         .d3VelocityDecay(0.3)
-        // v0.5.0-beta.14.14（UIPERF-T24）：启用 alpha 停引擎阈值
+ // v0.5.0-beta.14.14：启用 alpha 停引擎阈值
         // （库默认 0 = 永不触发 → tick 到 cooldownTicks 硬停，首访
         // 2.7s 卡顿窗口根因）。
         .d3AlphaMin(alphaMinFor(nodes.length))
@@ -844,7 +844,7 @@ function Graph3D(props: G3DGraph) {
       const controls: any = graph.controls();
       controls.minDistance = GRAPH_ZOOM_MIN_DISTANCE_FLOOR;
       controls.maxDistance = GRAPH_ZOOM_MAX_DISTANCE_CEILING;
-      // v0.5.0-beta.14.14（UIPERF-T24）：渲染像素比封顶 1.5——库初始化
+ // v0.5.0-beta.14.14：渲染像素比封顶 1.5——库初始化
       // 固定 min(2, devicePixelRatio)：2x/3x 真机上 1242×480 画布=
       // 248/508 万物理像素，fillrate 为 1x 的 2.5/6.3 倍（真机 GPU
       // 卡顿面）。1.5 封顶：2x 机省 44% 像素、3x 机省 78%；节点球/
@@ -892,7 +892,7 @@ function Graph3D(props: G3DGraph) {
       graph.renderer().toneMappingExposure = p.isDark
         ? 1.1
         : 0.98;
-      // 物理力——收紧值与 dashboard 知识库 3D 图谱定案值同款（双端同值）：
+      // 物理力——收紧值与 dashboard 知识库 3D 图谱定值同款（双端同值）：
       // charge -50 / 距离 38 / 强度 0.52（两轮收紧终值；原官方 -108/72/0.46
       // 与 -60/44/0.5 均废弃；不设 collide 同官方）。
       graph.d3Force("charge")?.strength?.(-50);
@@ -938,17 +938,17 @@ function Graph3D(props: G3DGraph) {
       graphRef.current = graph;
       setReady(true);
 
-      // v0.5.0-beta.14.7（UIPERF D1）：可见性门控——3d-force-graph 渲染循环
+      // v0.5.0-beta.14.7：可见性门控——3d-force-graph 渲染循环
       // 与物理冷却无关，挂载后即 60fps 永续（实测切走后仍 2340 draw calls/s）。
       // 容器不可见（rc-tabs 保活切走/收起）或页面隐藏 → vis 位暂停。
-      // v0.5.0-beta.14.13（UIPERF-T21）：vis 位并入双位状态机
+      // v0.5.0-beta.14.13：vis 位并入双位状态机
       // （pauseBitsRef）——idle 位（稳态自动暂停）见组件级状态机注释。
       const setVisPaused = (p: boolean) => {
         const s = pauseBitsRef.current;
         const becameVisible = !p && s.vis;
         s.vis = p;
         if (becameVisible) {
-          // 切回可见 = 用户活动：清 idle 位立即恢复（对齐 T14.7「显示即
+          // 切回可见 = 用户活动：清 idle 位立即恢复（对齐 .7「显示即
           // 恢复」语义，保 KB 回访 ≤1.3s 不依赖 RO 时序；回访后若引擎
           // 已收敛，800ms 再进 idle 暂停）。注意 visTimer 2s 轮询在
           // 稳态可见时 p 恒 false 且 s.vis 已 false → 不走此分支，
@@ -990,7 +990,7 @@ function Graph3D(props: G3DGraph) {
 
       // resize → 官方 resizeAndFit：改尺寸 + 220ms 重 fit
       // （有选中态不重 fit——官方同款保护选中视角）。
-      // v0.5.0-beta.14.13（UIPERF-T21）：隐藏容器（display:none →
+      // v0.5.0-beta.14.13：隐藏容器（display:none →
       // rect 0）跳过 resize——旧式 `b.width || 960` 会在切走瞬间把
       // 1242x480 缓冲重分配成 960x480（实测），切回再改回 → 双份
       // WebGL 缓冲 churn 落进切换帧。恢复可见时 RO 以真实尺寸触发。
@@ -1142,7 +1142,7 @@ function Graph3D(props: G3DGraph) {
 
   // 数据变化 → 换图 + 重新 fit（选中态清空、visual 表由
   // nodeThreeObject accessor 重建）。
-  // v0.5.0-beta.14.14（UIPERF-T24）：真实换数据时 warmup 同步阻塞
+  // v0.5.0-beta.14.14：真实换数据时 warmup 同步阻塞
   // （大图 ~1s）——双 rAF 先让「布局计算中」遮罩上屏再阻塞。首次
   // 挂载 ready=false→true 重跑时 graphData 引用未变（init effect 已
   // 灌入同一对象，库 kapsule 按引用 no-op）→ 跳过遮罩与双 rAF，
@@ -1156,12 +1156,12 @@ function Graph3D(props: G3DGraph) {
     setSelectedId("");
     hoverIdRef.current = "";
     nodeVisualsRef.current.clear();
-    // v0.5.0-beta.14.13（UIPERF-T21）：换数据 = 引擎重启——复位收敛态
+    // v0.5.0-beta.14.13：换数据 = 引擎重启——复位收敛态
     // 并恢复帧循环（库无 onEngineStart，重启路径只有此处）。
     pauseBitsRef.current.engineStopped = false;
     markGraphActivity();
     const loadData = () => {
-      // v0.5.0-beta.14.14（UIPERF-T24）：自适应收敛阈值须在 graphData
+      // v0.5.0-beta.14.14：自适应收敛阈值须在 graphData
       // 之前设（warmup 循环读 state.d3AlphaMin 决定截断点）。
       g.d3AlphaMin(alphaMinFor(graphData.nodes.length));
       g.graphData(graphData);
@@ -1405,8 +1405,8 @@ function Graph3D(props: G3DGraph) {
           ref={containerRef}
           style={{ position: "absolute", inset: 0 }}
         />
-        {/* v0.5.0-beta.14.14（UIPERF-T24）：recomputing=换数据 warmup
-         * 同步阻塞期（大图 ~1s），复用同一遮罩（文案相同，零 i18n 新键）。 */}
+ {/* v0.5.0-beta.14.14：recomputing=换数据 warmup
+ * 同步阻塞期（大图 ~1s），复用同一遮罩（文案相同，零 i18n 新键）。 */}
         {!ready || recomputing ? (
           <div
             style={{

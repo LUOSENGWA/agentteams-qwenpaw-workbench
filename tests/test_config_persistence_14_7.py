@@ -66,7 +66,7 @@ def _wan_patch(password: str):
             "http://10.0.0.1:6866",
             {
                 "url": "https://wan.example:7113",
-                "auth": {"type": "basic", "username": "luo", "password": password},
+                "auth": {"type": "basic", "username": "testuser", "password": password},
             },
         ]
     }

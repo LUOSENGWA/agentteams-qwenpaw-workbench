@@ -4,13 +4,13 @@
 Mounted by the plugin host under ``/api`` + prefix ``/agentteams-proxy``.
 Frontend plugin fetches these same-origin endpoints (no CORS):
 
-- ``GET/PUT /agentteams-proxy/config``      user config (secrets redacted)
-- ``GET     /agentteams-proxy/config/export``  full config backup (with credentials, user's own restore)
-- ``POST    /agentteams-proxy/config/import``  full config restore (validate → backup → overwrite)
-- ``POST    /agentteams-proxy/login``       Matrix m.login.password
-- ``POST    /agentteams-proxy/selfcheck/{level}``  L0/L1/L2/all
-- ``GET     /agentteams-proxy/health``      backend liveness + version
-- ``{METHOD}/{agentteams-proxy}/{matrix|controller}/{path}``  forwarded
+- ``GET/PUT /agentteams-proxy/config`` user config (secrets redacted)
+- ``GET /agentteams-proxy/config/export`` full config backup (with credentials, user's own restore)
+- ``POST /agentteams-proxy/config/import`` full config restore (validate → backup → overwrite)
+- ``POST /agentteams-proxy/login`` Matrix m.login.password
+- ``POST /agentteams-proxy/selfcheck/{level}`` L0/L1/L2/all
+- ``GET /agentteams-proxy/health`` backend liveness + version
+- ``{METHOD}/{agentteams-proxy}/{matrix|controller}/{path}`` forwarded
 
 Auto-failover: addresses are ordered lists (LAN first, WAN second). Every
 request tries the cached working address first and falls back to the next
@@ -36,10 +36,10 @@ from pydantic import BaseModel, Field
 
 from . import __version__, config as config_mod
 from . import matrix_client, selfcheck
-# v0.5.0-beta.14.10（UIPERF-T12）：KB 端点 SWR 磁盘缓存。
+# v0.5.0-beta.14.10：KB 端点 SWR 磁盘缓存。
 from . import kb_cache
-# v0.5.0-beta.14.6（R3/R4/R7）：全局拨号闸门 + failover 判定 + 计数。
-# v0.5.0-beta.14.12（UIPERF-T17）：+ 后台扫描共用通道（bg_slot）。
+# v0.5.0-beta.14.6：全局拨号闸门 + failover 判定 + 计数。
+# v0.5.0-beta.14.12：+ 后台扫描共用通道（bg_slot）。
 from .dial_gate import GatedAsyncClient, bg_slot, should_failover_status
 
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
@@ -67,7 +67,7 @@ _KB_TREE_TTL_SECONDS = 30.0
 _KB_GRAPH_TTL_SECONDS = 60.0
 _kb_tree_cache: Dict[str, Any] = {}   # agent -> (expiry_monotonic, payload)
 _kb_graph_cache: Dict[str, Any] = {}
-# v0.5.0-beta.14.10（UIPERF-T12）：/kb/agents 单键内存门（agent 无关；
+# v0.5.0-beta.14.10：/kb/agents 单键内存门（agent 无关；
 # 与 tree/graph 同款 SWR 双层门；conftest 的 *_cache 通用清空覆盖本键）。
 _KB_AGENTS_TTL_SECONDS = 60.0
 _kb_agents_cache: Dict[str, Any] = {}  # "agents" -> (expiry_monotonic, payload)
@@ -79,13 +79,13 @@ _KB_MERGED_TTL_SECONDS = 30.0
 _KB_FILE_TTL_SECONDS = 30.0
 _kb_merged_cache: Dict[str, Any] = {}  # csv -> (expiry_monotonic, payload)
 _kb_file_cache: Dict[str, Any] = {}    # "file-<agent>-<path>" -> (expiry, payload)
-# v0.5.0-beta.14.10（T12）：SWR 计算体注册表——build_router() 末尾（return
+# v0.5.0-beta.14.10：SWR 计算体注册表——build_router() 末尾（return
 # router 前）填入 tree/graph/agents 计算体与 _spawn_kb_refresh；端点冷取、
 # 后台刷新、启动预热、单测假注入统一在**调用时**读本表（T9 _ctl_get 同款
 # 唯一注入点；预热路径不依赖 HTTP 自呼）。
 _KB_PREWARM_HOOKS: Dict[str, Any] = {}
 
-# v0.5.0-beta.14.11（T15）：轻探针唯一注入点——build_router() 末尾填生产
+# v0.5.0-beta.14.11：轻探针唯一注入点——build_router() 末尾填生产
 # 探针闭包；单测换假探针（返回固定签名 / None）。探针是 build_router 闭包
 # 不可直接 monkeypatch，注册表 + 调用时读取与 _KB_PREWARM_HOOKS 同款
 # （T9 _ctl_get 模式）。
@@ -93,8 +93,8 @@ _KB_PROBE_HOOKS: Dict[str, Any] = {}
 
 
 async def _kb_prewarm_agent(agent: str) -> None:
-    """v0.5.0-beta.14.10（T12）：启动预热——后台静默补上次访问 agent 的
-    tree+graph（注册表未填 = 插件未初始化 → 静默跳过）。"""
+    """v0.5.0-beta.14.10：启动预热——后台静默补上次访问 agent 的
+ tree+graph（注册表未填 = 插件未初始化 → 静默跳过）。"""
     refresh = _KB_PREWARM_HOOKS.get("refresh")
     if not refresh:
         return
@@ -103,7 +103,7 @@ async def _kb_prewarm_agent(agent: str) -> None:
 
 _PROBE_TIMEOUT = 6.0
 
-# v0.5.0-beta.13.24（F1 首刷 race·真根因）：代理超时结构化——旧版标量
+# v0.5.0-beta.13.24（首刷 race·根因）：代理超时结构化——旧版标量
 # timeout=6.0 把「建连」也算进 6s：切网窗口 LAN IP 不可达时 SYN 被丢，
 # 每个请求要卡满 6s×2 次重试才 failover 到公网地址（+12s 冷窗）。connect
 # 单独压到 3s 快速识破死地址；read 保留 6s（真实响应慢≠地址死）。
@@ -148,8 +148,8 @@ def _headers_for(
     cfg: Dict[str, Any], kind: str, base: str, base_headers: Dict[str, str]
 ) -> Dict[str, str]:
     """v0.5.0-beta.14.3: 单一拨号凭据解析——该地址配置了覆盖凭据则替换
-    Authorization，否则原样（服务原生认证）。所有 controller/matrix/sglang
-    拨号点统一走这里（新增拨号点照抄这一行，不各写各的）。"""
+ Authorization，否则原样（服务原生认证）。所有 controller/matrix/sglang
+ 拨号点统一走这里（新增拨号点照抄这一行，不各写各的）。"""
     auth = config_mod.auth_for_url(_raw_addresses(cfg, kind), base)
     return config_mod.headers_with_auth(auth, base_headers)
 
@@ -157,9 +157,9 @@ def _headers_for(
 def _ordered_addresses(cfg: Dict[str, Any], kind: str) -> List[str]:
     """Cached working address first, then the rest in configured order.
 
-    v0.5.0-beta.14.1: 固定档（lan/wan）= 单元素链——请求层 failover 自然
-    退化为「只用固定地址」，失败诚实报错。
-    """
+ v0.5.0-beta.14.1: 固定档（lan/wan）= 单元素链——请求层 failover 自然
+ 退化为「只用固定地址」，失败诚实报错。
+ """
     urls = _address_list(cfg, kind)
     if not urls:
         return []
@@ -204,7 +204,7 @@ def _pinned_url(cfg: Dict[str, Any], kind: str) -> str | None:
 
 def _pinned_map(cfg: Dict[str, Any]) -> Dict[str, Optional[str]]:
     """四类地址各自的固定值（None=未固定）——供 /config/test 回报显示。"""
-    # v0.5.0-beta.14.7（UIPERF-P3）：固定档映射补 gateway（语义经 _pinned_url 通用）。
+    # v0.5.0-beta.14.7：固定档映射补 gateway（语义经 _pinned_url 通用）。
     return {k: _pinned_url(cfg, k) for k in ("matrix", "controller", "sglang", "gateway")}
 
 
@@ -218,12 +218,12 @@ def _pinned_note(cfg: Dict[str, Any]) -> str:
 
 
 async def _safe_refresh_effective(cfg: Dict[str, Any]) -> None:
-    """v0.5.0-beta.14.12（UIPERF-T17）：后台地址探测任务的错误自保。
+    """v0.5.0-beta.14.12：后台地址探测任务的错误自保。
 
-    保存请求已先行返回（PUT /config 快速路径），后台探测若抛异常没有
-    请求上下文可兜底——只记日志（避免 "Task exception was never
-    retrieved" 噪音，也不影响用户）。
-    """
+ 保存请求已先行返回（PUT /config 快速路径），后台探测若抛异常没有
+ 请求上下文可兜底——只记日志（避免 "Task exception was never
+ retrieved" 噪音，也不影响用户）。
+ """
     try:
         await selfcheck.refresh_effective(cfg)
     except Exception:  # noqa: BLE001 - 后台任务自保
@@ -234,7 +234,7 @@ async def _safe_refresh_effective(cfg: Dict[str, Any]) -> None:
 
 def _pick_address(cfg: Dict[str, Any], kind: str) -> str:
     """直拨单地址解析：固定档=固定地址；auto=working cache 优先、
-    cache miss 回退列表首个（= 现有语义，零行为变化）。"""
+ cache miss 回退列表首个（= 现有语义，零行为变化）。"""
     urls = _address_list(cfg, kind)
     if not urls:
         return ""
@@ -251,12 +251,12 @@ def _count_gateway_aliases(
 ) -> tuple[int, list[str]]:
     """v0.5.0-beta.12：验证回报——网关 alias 层自检计数。
 
-    解包语义与前端 unwrapHigress 严格一致（Console {code,data} 信封 →
-    裸数组 / data.routes / data.providers），谓词只认 EXACT/EQUAL 精确匹配
-    且 upstream provider 存在（=可解析下界；modelMapping 派生别名另路，
-    此处不重复计）。历史缺陷「还是看不见」= 静默平铺无诊断锚点，
-    验证响应直接带回数字与 alias 名，秒定位断点。
-    """
+ 解包语义与前端 unwrapHigress 严格一致（Console {code,data} 信封 →
+ 裸数组 / data.routes / data.providers），谓词只认 EXACT/EQUAL 精确匹配
+ 且 upstream provider 存在（=可解析下界；modelMapping 派生别名另路，
+ 此处不重复计）。历史缺陷「还是看不见」= 静默平铺无诊断锚点，
+ 验证响应直接带回数字与 alias 名，秒定位断点。
+ """
     def _list(body: object, key: str) -> list:
         d = body.get("data") if isinstance(body, dict) and "data" in body else body
         if isinstance(d, list):
@@ -322,9 +322,9 @@ class ConfigPatch(BaseModel):
 class ConfigTestRequest(BaseModel):
     """v0.5.0-beta.12: 连通性测试请求——传表单当前值（可未保存），空则测已配置。
 
-    v0.5.0-beta.14.3: 条目 = str | {url, auth?}（草稿凭据随测——未保存的
-    公网凭据也能当场验证；旧字符串条目完全兼容）。
-    """
+ v0.5.0-beta.14.3: 条目 = str | {url, auth?}（草稿凭据随测——未保存的
+ 公网凭据也能当场验证；旧字符串条目完全兼容）。
+ """
 
     matrix: Optional[List[Any]] = None
     controller: Optional[List[Any]] = None
@@ -335,15 +335,15 @@ class ConfigTestRequest(BaseModel):
 class VerifyAdminRequest(BaseModel):
     """v0.5.0-beta.12: L1 管理员验证二选一（同 dashboard 语义，仅 L1 使用）。
 
-    两条路径（互斥，优先密码）：
-    - admin_username + admin_password → POST {gateway}/session/login
-      （Console 单操作员登录；成功 → 持有 Console 管理员会话，
-      供网关面 AI routes/providers 消费 = 模型选择 alias 层数据源）。
-    - controller_token → GET {controller}/api/v1/teams Bearer（v0.5.0-beta.12：
-      去尾斜杠——Controller 的 Gin 对 /api/v1/teams/ 返回 404，与 
-      dashboard f1f2 同款坑；无斜杠才进鉴权门，401=token 无效）
-      （现状 L1 全量 Controller 管理 API 凭据，语义不变）。
-    """
+ 两条路径（互斥，优先密码）：
+ - admin_username + admin_password → POST {gateway}/session/login
+ （Console 单操作员登录；成功 → 持有 Console 管理员会话，
+ 供网关面 AI routes/providers 消费 = 模型选择 alias 层数据源）。
+ - controller_token → GET {controller}/api/v1/teams Bearer（v0.5.0-beta.12：
+ 去尾斜杠——Controller 的 Gin 对 /api/v1/teams/ 返回 404，与
+ dashboard f1f2 同款坑；无斜杠才进鉴权门，401=token 无效）
+ （现状 L1 全量 Controller 管理 API 凭据，语义不变）。
+ """
 
     admin_username: Optional[str] = None
     admin_password: Optional[str] = None  # "***" = 用已存值（脱敏占位符语义）
@@ -355,7 +355,7 @@ class VerifyAdminRequest(BaseModel):
     gateway_admin_urls: Optional[List[str]] = None
 
 
-# ── v0.5.0-beta.14.14（UIPERF-T23）：/config/import schema 级校验 ──────────
+# ── v0.5.0-beta.14.14：/config/import schema 级校验 ──────────
 
 # 已知顶层键 → 期望类型（None 值与 load_config 同语义=缺省，跳过；
 # 未知键放行——老导出在新版导入的前向兼容）。
@@ -402,9 +402,9 @@ def _redacted_entry_errors(entries: Any, where: str) -> List[str]:
 def _find_redacted_placeholders(data: Dict[str, Any]) -> List[str]:
     """检测 "***" 脱敏占位符（误贴脱敏导出？）。
 
-    导入是全量覆盖（无 PUT 的「***=保持旧值」合并语义）——占位符落盘会把
-    真实凭据顶成 "***"，故直接拒绝并提示用「导出配置（含凭据）」。
-    """
+ 导入是全量覆盖（无 PUT 的「***=保持旧值」合并语义）——占位符落盘会把
+ 真实凭据顶成 "***"，故直接拒绝并提示用「导出配置（含凭据）」。
+ """
     bad: List[str] = []
     for key in _SECRET_FIELDS_TOP:
         if isinstance(data.get(key), str) and data[key] == "***":
@@ -423,8 +423,8 @@ def _find_redacted_placeholders(data: Dict[str, Any]) -> List[str]:
 def _validate_config_shape(data: Dict[str, Any]) -> List[str]:
     """schema 级校验（顶层 dict + 关键键类型 + 至少一个已知键 + 无脱敏占位符）。
 
-    返回错误列表（空 = 通过）；端点拼成可读 400 detail。
-    """
+ 返回错误列表（空 = 通过）；端点拼成可读 400 detail。
+ """
     errors: List[str] = []
     for key, expected in _CONFIG_KEY_TYPES.items():
         if key not in data:
@@ -449,15 +449,15 @@ def _validate_config_shape(data: Dict[str, Any]) -> List[str]:
 class TokenValidationError(ValueError):
     """token 内容不合法（含非 ASCII 等）——无法进入 HTTP header。
 
-     历史缺陷「填了 admin token 也提示无效（UnicodeEncodeError）」：终端复制的
-    token 混入 BOM/不可见字符时，httpx 在 header 编码层裸抛 UnicodeEncodeError
-    对用户不透明。解析时先校验清洗，失败报明确错误（问题字符定位），不裸抛。
-    """
+ 历史缺陷「填了 admin token 也提示无效（UnicodeEncodeError）」：终端复制的
+ token 混入 BOM/不可见字符时，httpx 在 header 编码层裸抛 UnicodeEncodeError
+ 对用户不透明。解析时先校验清洗，失败报明确错误（问题字符定位），不裸抛。
+ """
 
 
 def _sanitize_token(raw: str) -> str:
     """token 内容归一：去 BOM/全部空白（含行尾 \\n、复制混入），校验 latin-1
-    可编码（HTTP header 约束）。空内容返回 ""；非法内容抛 TokenValidationError。"""
+ 可编码（HTTP header 约束）。空内容返回 ""；非法内容抛 TokenValidationError。"""
     t = str(raw or "").strip().lstrip("\ufeff")
     t = re.sub(r"\s+", "", t)
     if not t:
@@ -475,20 +475,20 @@ def _sanitize_token(raw: str) -> str:
 
 
 def _resolve_controller_token(cfg: Dict[str, Any]) -> tuple:
-    """Controller admin token 解析（v0.5.0-beta.12 设计，用户反馈：「controller
-    token 的文件路径可以删掉了，留个命令就行」——token 文件路径删除，获取
-    方式=UI 留获取命令（docker exec agentteams-controller cat
-    /var/run/agentteams/cli-token）+ 粘贴；非 docker 部署=部署期注入 env）。
+    """Controller admin token 解析（v0.5.0-beta.12 设计，「controller
+ token 的文件路径可以删掉了，留个命令就行」——token 文件路径删除，获取
+ 方式=UI 留获取命令（docker exec agentteams-controller cat
+ /var/run/agentteams/cli-token）+ 粘贴；非 docker 部署=部署期注入 env）。
 
-    解析优先级：
-    1. ``controller_token``（手动粘贴）——快照值，轮换后需重贴；
-    2. env ``AGENTTEAMS_CONTROLLER_TOKEN``（非 docker / 部署期注入）。
+ 解析优先级：
+ 1. ``controller_token``（手动粘贴）——快照值，轮换后需重贴；
+ 2. env ``AGENTTEAMS_CONTROLLER_TOKEN``（非 docker / 部署期注入）。
 
-    安全设计不变：token 值永不离开连接器进程（前端只见来源标记）；不引入任何
-    凭据兑换（controller 无 token 签发端点，上游安全设计保持）。
-    返回 (token, source)；source ∈ {"", "config", "env"}。
-    token 内容非法 → 抛 TokenValidationError（调用方报明确错误，不裸抛）。
-    """
+ 安全设计不变：token 值永不离开连接器进程（前端只见来源标记）；不引入任何
+ 凭据兑换（controller 无 token 签发端点，上游安全设计保持）。
+ 返回 (token, source)；source ∈ {"", "config", "env"}。
+ token 内容非法 → 抛 TokenValidationError（调用方报明确错误，不裸抛）。
+ """
     t = _sanitize_token(str(cfg.get("controller_token") or ""))
     if t and t != "***":
         return t, "config"
@@ -501,13 +501,13 @@ def _resolve_controller_token(cfg: Dict[str, Any]) -> tuple:
 def _token_or_none(cfg: Dict[str, Any]) -> Optional[str]:
     """Controller admin token（或 None）——Controller 管理 API 端点内部用。
 
-    v0.5.0-beta.12 修复（历史缺陷：团队管理页 HTTP 500）：此函数此前
-    被 3 个端点调用（/teams/structure、/docker-logs/{component}、/approval/set）
-    但**从未定义**（旧版重构遗留的悬挂引用）→ 每次请求 NameError →
-    500。现实现为 _resolve_controller_token 的薄封装：解析失败/无 token →
-    None（端点优雅降级到 matrix/fallback 路径），token 内容非法 → None
-    （校验错误由 /config 的 tokenPath 字段向用户显式报告，管理 API 不裸抛）。
-    """
+ v0.5.0-beta.12 修复（历史缺陷：团队管理页 HTTP 500）：此函数此前
+ 被 3 个端点调用（teams/structure、/docker-logs/{component}、/approval/set）
+ 但**从未定义**（旧版重构遗留的悬挂引用）→ 每次请求 NameError →
+ 500。现实现为 _resolve_controller_token 的薄封装：解析失败/无 token →
+ None（端点优雅降级到 matrix/fallback 路径），token 内容非法 → None
+ （校验错误由 /config 的 tokenPath 字段向用户显式报告，管理 API 不裸抛）。
+ """
     try:
         tok, _src = _resolve_controller_token(cfg)
     except TokenValidationError:
@@ -516,14 +516,14 @@ def _token_or_none(cfg: Dict[str, Any]) -> Optional[str]:
 
 
 class NotifyRequest(BaseModel):
-    """插件 → 宿主收件箱通知（用户反馈：插件通知接到 QwenPaw 收件箱）。
+    """插件 → 宿主收件箱通知（插件通知接到 QwenPaw 收件箱）。
 
-    插件后端跑在宿主进程内，直接 import qwenpaw.app.inbox_store.append_event
-    （无对外 HTTP 写入端点，内部函数通道）。os_notify=true 时映射宿主
-    OS 通知白名单 source_type（PUSH_MESSAGE_SOURCES: cron/heartbeat/memory/
-    skill_autoupdate）→ 桌面 toast + 铃铛计数；false 用自定义 source_type
-    只进收件箱（插件通知 tab + 宿主 NotificationCenter 可见，不打扰）。
-    """
+ 插件后端跑在宿主进程内，直接 import qwenpaw.app.inbox_store.append_event
+ （无对外 HTTP 写入端点，内部函数通道）。os_notify=true 时映射宿主
+ OS 通知白名单 source_type（PUSH_MESSAGE_SOURCES: cron/heartbeat/memory/
+ skill_autoupdate）→ 桌面 toast + 铃铛计数；false 用自定义 source_type
+ 只进收件箱（插件通知 tab + 宿主 NotificationCenter 可见，不打扰）。
+ """
 
     title: str = Field(min_length=1, max_length=120)
     body: str = Field(default="", max_length=2000)
@@ -546,7 +546,7 @@ _room_mentions_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 _room_mentions_lock = threading.Lock()
 # v0.5.0-beta.12：/room-approvals 全量扫描结果缓存（同款 bootstrap：
 # 实时增量走 sync_watcher 审批缓冲，扫描捞插件关闭期间的未决审批请求）。
-# v0.5.0-beta.14.17（T181 审计 C 面）：10s→30s。10s TTL vs 15s 轮询=每轮
+# v0.5.0-beta.14.17（审计 C 面）：10s→30s。10s TTL vs 15s 轮询=每轮
 # 必 miss（全房扫描≈每 15s 一次）；30s=半数命中。新审批/新 @ 的实时性
 # 由 sync_watcher 事件缓冲承担（零延迟，与 TTL 无关）——TTL 只影响
 # 「插件关闭期间」历史捞回的刷新粒度，+20s 无产品感知。
@@ -577,8 +577,8 @@ def _scan_should_full(kind: str) -> bool:
 def _scan_mark_full(kind: str) -> None:
     _room_scan_state["full_at"][kind] = time.time()
 _room_approvals_lock = threading.Lock()
-# v0.5.0-beta.13.12（13.11 用户反馈「团队管理 tab 刷不出完整信息，手动刷新不
-# 行，要等 30s 自动刷新」真根因·后端半）：/teams/structure 60s TTL 缓存
+# v0.5.0-beta.13.12（13.11 「团队管理 tab 刷不出完整信息，手动刷新不
+# 行，要等 30s 自动刷新」根因·后端半）：/teams/structure 60s TTL 缓存
 # 此前把**首次失败/空树结果也缓存 60s（负缓存）**——token 未就绪时首拉
 # 得空树（source=room-fallback 或 []），之后 60s 内手动刷新（force=true
 # 可绕过，但旧前端不传 force）全部命中空缓存；30s tick 恰在 TTL 过期后
@@ -596,11 +596,11 @@ _structure_cache: Dict[str, Any] = {
 def invalidate_data_caches(reason: str = "") -> None:
     """v0.5.0-beta.12: 账号切换 → 清空全部聚合数据缓存。
 
-    rooms/workflow/artifacts/structure 四份缓存都是按登录账号返回的数据
-    （同一端点不同账号内容不同），但 TTL key 是全局单例——切账号后手动刷新
-    命中的仍是旧账号缓存（用户可见症状），自动刷新要等 TTL 恰好过期才刷新。
-    /login 成功与 config.matrix 身份变更时调用（读路径均持 _rooms_cache_lock）。
-    """
+ rooms/workflow/artifacts/structure 四份缓存都是按登录账号返回的数据
+ （同一端点不同账号内容不同），但 TTL key 是全局单例——切账号后手动刷新
+ 命中的仍是旧账号缓存（用户可见症状），自动刷新要等 TTL 恰好过期才刷新。
+ /login 成功与 config.matrix 身份变更时调用（读路径均持 _rooms_cache_lock）。
+ """
     with _rooms_cache_lock:
         for c in (
             _rooms_cache,
@@ -637,13 +637,13 @@ def _parse_sync_rooms(
 ) -> Dict[str, Any]:
     """Parse /sync rooms.join into room list + worker TREE (one shot).
 
-    Worker tree shape (design): team room → its Workers (领/工/审)
-    → each Worker's spawn tree (spawns stay empty until the spawn endpoint merges).
-    DM rooms (<=2 members) are excluded from the tree.
+ Worker tree shape (design): team room → its Workers (领/工/审)
+ → each Worker's spawn tree (spawns stay empty until the spawn endpoint merges).
+ DM rooms (<=2 members) are excluded from the tree.
 
-    dm_peers: m.direct 倒排 {room_id: 对方 mxid}——新 DM 对方未接受邀请时
-    成员列表只有自己，房间名靠它取对方名（Element 同款命名源）。
-    """
+ dm_peers: m.direct 倒排 {room_id: 对方 mxid}——新 DM 对方未接受邀请时
+ 成员列表只有自己，房间名靠它取对方名（Element 同款命名源）。
+ """
     from . import spawn_tree as spawn_tree_mod
 
     join = (sync_resp.get("rooms") or {}).get("join") or {}
@@ -819,8 +819,8 @@ def _parse_sync_rooms(
 def _parse_docker_stream(data: bytes, component: str) -> List[Dict[str, Any]]:
     """解析 docker logs 二进制流（8 字节头：type+padding+size BE + payload）。
 
-    dashboard `parseDockerLogs` 同款逻辑；时间戳 RFC3339 前缀行。
-    """
+ dashboard `parseDockerLogs` 同款逻辑；时间戳 RFC3339 前缀行。
+ """
     import re as _re
 
     lines: List[Dict[str, Any]] = []
@@ -871,8 +871,8 @@ def build_router() -> APIRouter:
 
     @router.get("/debug/tasks")
     async def debug_tasks() -> Dict[str, Any]:
-        """v0.5.0-beta.14.12（UIPERF-T19）：asyncio 任务清单（按协程名聚合）
-        ——CPU 吃满/疑似循环类问题的第一诊断（看谁在反复跑）。零副作用。"""
+        """v0.5.0-beta.14.12：asyncio 任务清单（按协程名聚合）
+ ——CPU 吃满/疑似循环类问题的第一诊断（看谁在反复跑）。零副作用。"""
         import collections as _col  # noqa: PLC0415
 
         tasks = asyncio.all_tasks()
@@ -891,14 +891,14 @@ def build_router() -> APIRouter:
 
     @router.get("/workers-status")
     async def workers_status(refresh: int = 0) -> Dict[str, Any]:
-        """v0.5.0-beta.14.9（UIPERF-T9）：Worker session 状态聚合（前端一次
-        拿全量；数据由 worker_status 后台 30s 扫描维护，过期时本端点触发
-        后台补扫、零等待返回上轮快照）。
+        """v0.5.0-beta.14.9：Worker session 状态聚合（前端一次
+ 拿全量；数据由 worker_status 后台 30s 扫描维护，过期时本端点触发
+ 后台补扫、零等待返回上轮快照）。
 
-        v0.5.0-beta.14.12（UIPERF-T17）：?refresh=1 → 无视 TTL 触发后台
-        补扫（前端手动刷新按钮用；仍 fire-and-forget 零等待返回当前快照，
-        响应字段不变）。
-        """
+ v0.5.0-beta.14.12：?refresh=1 → 无视 TTL 触发后台
+ 补扫（前端手动刷新按钮用；仍 fire-and-forget 零等待返回当前快照，
+ 响应字段不变）。
+ """
         from . import worker_status  # noqa: PLC0415
 
         worker_status.ensure_fresh(force=bool(refresh))
@@ -906,14 +906,14 @@ def build_router() -> APIRouter:
 
     @router.get("/projects-workflow")
     async def projects_workflow_snapshot(refresh: int = 0) -> Dict[str, Any]:
-        """v0.5.0-beta.14.9（UIPERF-T10）：项目+工作流取数聚合（前端一次拿
-        {projects, workflows} 原始件；数据由后台 30s 扫描维护，过期时本端点
-        触发后台补扫、零等待返回上轮快照）。
+        """v0.5.0-beta.14.9：项目+工作流取数聚合（前端一次拿
+ {projects, workflows} 原始件；数据由后台 30s 扫描维护，过期时本端点
+ 触发后台补扫、零等待返回上轮快照）。
 
-        v0.5.0-beta.14.12（UIPERF-T17）：?refresh=1 → 无视 TTL 触发后台
-        补扫（前端手动刷新按钮用；仍 fire-and-forget 零等待返回当前快照，
-        响应字段不变）。
-        """
+ v0.5.0-beta.14.12：?refresh=1 → 无视 TTL 触发后台
+ 补扫（前端手动刷新按钮用；仍 fire-and-forget 零等待返回当前快照，
+ 响应字段不变）。
+ """
         from . import projects_workflow  # noqa: PLC0415
 
         projects_workflow.ensure_fresh(force=bool(refresh))
@@ -923,12 +923,12 @@ def build_router() -> APIRouter:
     async def sglang_loads() -> Dict[str, Any]:
         """可选模块：集群负载（L1 专属，增强版）。
 
-        SGLang /v1/loads 每 DP rank 返回 num_running_reqs/num_waiting_reqs/
-        token 用量/utilization（源码已查证：SC/sglang-latest
-        entrypoints/v1_loads.py + managers/load_snapshot.py LoadSnapshot）。
-        未启用（config.sglang.enabled=false）→ 404 = 模块不存在语义，前端
-        不渲染卡片。启用后代理 SGLang 地址，解析核心字段返回。
-        """
+ SGLang /v1/loads 每 DP rank 返回 num_running_reqs/num_waiting_reqs/
+ token 用量/utilization（源码已查证：SC/sglang-latest
+ entrypoints/v1_loads.py + managers/load_snapshot.py LoadSnapshot）。
+ 未启用（config.sglang.enabled=false）→ 404 = 模块不存在语义，前端
+ 不渲染卡片。启用后代理 SGLang 地址，解析核心字段返回。
+ """
         import httpx as _httpx
 
         cfg = config_mod.load_config()
@@ -1029,10 +1029,10 @@ def build_router() -> APIRouter:
     async def sglang_models() -> Dict[str, Any]:
         """模型列表：代理 SGLang OpenAI 兼容 /v1/models（创建 Worker 表单用）。
 
-        历史缺陷：插件创建 Worker 无模型候选（model 自由文本，留空=controller
-        默认）→ 拉真实在服模型列表供选择。与 /sglang/loads 同款
-        enabled 门 + 双地址 failover；404=模块未启用（前端降级自由输入）。
-        """
+ 历史缺陷：插件创建 Worker 无模型候选（model 自由文本，留空=controller
+ 默认）→ 拉真实在服模型列表供选择。与 /sglang/loads 同款
+ enabled 门 + 双地址 failover；404=模块未启用（前端降级自由输入）。
+ """
         import httpx as _httpx
 
         cfg = config_mod.load_config()
@@ -1089,7 +1089,7 @@ def build_router() -> APIRouter:
     @router.get("/teams/sync")
     async def teams_sync(force: bool = False) -> Dict[str, Any]:
         """One-shot /sync aggregation (dashboard 同款做法): rooms + members
-        + Worker groups in a single Matrix request, cached 60s."""
+ + Worker groups in a single Matrix request, cached 60s."""
         import asyncio
         import time as time_mod
 
@@ -1166,12 +1166,12 @@ def build_router() -> APIRouter:
     async def workflow_events(force: bool = False) -> Dict[str, Any]:
         """Aggregate structured workflow events from recent room messages.
 
-        AgentTeams workers publish ``agentteams.workflow`` payloads on
-        m.room.message events (✅ upstream workerflow/mcp/server.py L753:
-        runId/status/title/summary/coordinator/subagents/steps; revisions via
-        m.replace + m.new_content). This is the zero-PR data source for the
-        WorkflowBoard (dashboard parses the same events).
-        """
+ AgentTeams workers publish ``agentteams.workflow`` payloads on
+ m.room.message events (✅ upstream workerflow/mcp/server.py L753:
+ runId/status/title/summary/coordinator/subagents/steps; revisions via
+ m.replace + m.new_content). This is the zero-PR data source for the
+ WorkflowBoard (dashboard parses the same events).
+ """
         import asyncio
         import time as time_mod
 
@@ -1333,9 +1333,9 @@ def build_router() -> APIRouter:
     async def artifacts(force: bool = False) -> Dict[str, Any]:
         """跨房间产物聚合：m.file/m.image 事件（产物页数据源，务实版）。
 
-        与 workflow/events 同构：sync 缓存复用 → 20 大房间 → /messages 拉
-        最近 30 条 → 过滤文件/图片消息 → 按时间倒序，60s 缓存。
-        """
+ 与 workflow/events 同构：sync 缓存复用 → 20 大房间 → /messages 拉
+ 最近 30 条 → 过滤文件/图片消息 → 按时间倒序，60s 缓存。
+ """
         import asyncio
         import time as time_mod
 
@@ -1520,11 +1520,11 @@ def build_router() -> APIRouter:
     async def teams_structure(force: bool = False) -> Dict[str, Any]:
         """真实团队结构（按 Team/Worker CRD 列树，非房间聚合）。
 
-        Data source: Controller GET /api/v1/workers (needs controller_token)
-        → group by team field → role from worker CRD (team_leader/worker,
-        critic inferred from name). Without a token / on failure, falls back
-        to the room-aggregated tree.
-        """
+ Data source: Controller GET /api/v1/workers (needs controller_token)
+ → group by team field → role from worker CRD (team_leader/worker,
+ critic inferred from name). Without a token / on failure, falls back
+ to the room-aggregated tree.
+ """
         import asyncio
         import time as time_mod
 
@@ -1558,7 +1558,7 @@ def build_router() -> APIRouter:
                 tokens.append(ctl_token)
             if matrix_token and matrix_token not in tokens:
                 tokens.append(matrix_token)
-            # v0.5.0-beta.13.24（F1 首刷 race 三次复发·真根因）：旧版只拨单地址
+            # v0.5.0-beta.13.24（首刷 race 三次复发·根因）：旧版只拨单地址
             # （working cache 或 urls[0]=LAN IP 优先）10s 超时、无 per-request
             # failover——切网窗口 / 进程重启后 working cache 未标记（探针 15s
             # 冷启动）内每个请求卡满超时再落 matrix 全量回退（无上限），团队
@@ -1575,10 +1575,10 @@ def build_router() -> APIRouter:
             ) -> Optional["httpx.Response"]:
                 """按 ordered 地址 failover 拨 /api/v1/workers。
 
-                传输层错误 / 5xx → 下一地址；4xx（鉴权/端点语义）→ 返回该
-                响应（调用方换 token）；200/其他 → 返回并标记 working。
-                全部失败 → None。
-                """
+ 传输层错误 / 5xx → 下一地址；4xx（鉴权/端点语义）→ 返回该
+ 响应（调用方换 token）；200/其他 → 返回并标记 working。
+ 全部失败 → None。
+ """
                 last_5xx: Optional["httpx.Response"] = None
                 first_4xx: Optional["httpx.Response"] = None
                 for url in ctl_urls:
@@ -1601,7 +1601,7 @@ def build_router() -> APIRouter:
                         )
                         continue
                     if 400 <= r.status_code < 500:
-                        # v0.5.0-beta.14.6（R4）：仅地址相关 4xx（401/403/408/
+                        # v0.5.0-beta.14.6：仅地址相关 4xx（401/403/408/
                         # 429）换下一地址（网关会话门）；确定性 4xx（404/409/
                         # 400…）地址无关 → 立即返回（外层 token 链语义不变）。
                         if not should_failover_status(r.status_code):
@@ -1683,7 +1683,7 @@ def build_router() -> APIRouter:
             # Fallback (no token / workers API failed): run our own sync and
             # build the room-aggregated tree — NOT from the cache, which may
             # be empty due to the mount-time race with teams/sync.
-            # v0.5.0-beta.13.24（F1）：homeserver 也走 ordered failover（旧版
+            # v0.5.0-beta.13.24：homeserver 也走 ordered failover（旧版
             # 单地址 homeservers2[0]=LAN IP 优先，切网窗口 100% 失败→空树+
             # 5s 负缓存，与 controller 侧同病灶）。30s 上限防长轮询挂死。
             matrix_cfg2 = cfg.get("matrix") or {}
@@ -1760,10 +1760,10 @@ def build_router() -> APIRouter:
         out["effective"] = {
             "matrix": _pick_address(cfg, "matrix"),
             "controller": _pick_address(cfg, "controller"),
-            # v0.5.0-beta.14.7（UIPERF-P3）：effective 补 gateway（固定档同源）。
+            # v0.5.0-beta.14.7：effective 补 gateway（固定档同源）。
             "gateway": _pick_address(cfg, "gateway"),
         }
-        # v0.5.0-beta.14.12（UIPERF-T19）：持久化诊断——路径/挂载可见性/
+        # v0.5.0-beta.14.12：持久化诊断——路径/挂载可见性/
         # 上次写盘时间（帮助定位"设置不落盘"的环境问题）。
         out["configPath"] = str(config_mod._CONFIG_PATH)
         try:
@@ -1785,11 +1785,11 @@ def build_router() -> APIRouter:
         if incoming.get("controller_token") == "***":
             incoming.pop("controller_token", None)
         prev = config_mod.load_config()
-        # v0.5.0-beta.14.12（UIPERF-T17）：保存失败显性化——落盘失败（磁盘
+        # v0.5.0-beta.14.12：保存失败显性化——落盘失败（磁盘
         # 满/权限）此前裸抛 = 500 无详情；现明确报原因（前端可显示）。
-        # v0.5.0-beta.14.12（UIPERF-T19）：config 写盘校验失败（写+回读
+        # v0.5.0-beta.14.12：config 写盘校验失败（写+回读
         # 不一致/磁盘异常）统一为 IOError——分类报「配置保存失败（磁盘写入
-        # 问题）」；其余异常仍走 T17 通用兜底。
+        # 问题）」；其余异常仍走 通用兜底。
         try:
             merged = config_mod.update_config(incoming)
         except IOError as exc:
@@ -1797,7 +1797,7 @@ def build_router() -> APIRouter:
                 status_code=500,
                 detail=f"配置保存失败（磁盘写入问题）：{exc}",
             ) from exc
-        except Exception as exc:  # noqa: BLE001 - 落盘失败显性化（T17 兜底）
+        except Exception as exc:  # noqa: BLE001 - 落盘失败显性化（兜底）
             raise HTTPException(
                 status_code=500, detail=f"配置写入失败：{exc}"
             )
@@ -1810,40 +1810,40 @@ def build_router() -> APIRouter:
             from . import sync_watcher as _sw  # noqa: PLC0415
 
             await _sw.restart("config.matrix")
-        # v0.5.0-beta.14.12（UIPERF-T17）：地址探测转后台——保存即时返回
+        # v0.5.0-beta.14.12：地址探测转后台——保存即时返回
         # （<1s），effective 状态随后自动刷新（前端下次 GET /config 可见）。
         # 旧行为=同步 await 全地址探测（本机实测 ~4.8s，WAN 高延迟下保存
         # 几乎保存不了）；后台任务经 _safe_refresh_effective 错误自保。
         asyncio.create_task(_safe_refresh_effective(merged))
         return config_mod.redact(merged)
 
-    # ── v0.5.0-beta.14.14（UIPERF-T23）：完整配置备份/恢复 ─────────────────
+    # ── v0.5.0-beta.14.14：完整配置备份/恢复 ─────────────────
     # 安全边界：同源本地、面向用户自己的备份用途（换环境/装包后一键还原）。
     # GET /config 保持脱敏不动（前端展示面）；export/import 是独立通道——
     # 导出返回含明文凭据的完整配置，导入校验 → 备份当前态 → 覆盖。
 
     @router.get("/config/export")
     async def config_export() -> Dict[str, Any]:
-        """v0.5.0-beta.14.14（UIPERF-T23）：完整配置导出（含明文凭据）。
+        """v0.5.0-beta.14.14：完整配置导出（含明文凭据）。
 
-        同源本地、面向用户自己的备份用途——输出即落盘同形的完整配置对象，
-        原样复制保存；换环境/装包/配置丢失后贴回 /config/import 即还原。
-        """
+ 同源本地、面向用户自己的备份用途——输出即落盘同形的完整配置对象，
+ 原样复制保存；换环境/装包/配置丢失后贴回 /config/import 即还原。
+ """
         return config_mod.load_config()
 
     @router.post("/config/import")
     async def config_import(request: Request) -> Dict[str, Any]:
-        """v0.5.0-beta.14.14（UIPERF-T23）：完整配置导入（覆盖式恢复）。
+        """v0.5.0-beta.14.14：完整配置导入（覆盖式恢复）。
 
-        同源本地、面向用户自己的备份用途（与 GET /config/export 一对）。
-        流程：① schema 级校验（顶层 dict + 关键键类型 + 无脱敏占位符，
-        失败 400 可读错误、零落盘）→ ② 先自动备份当前配置（config.bak.json，
-        备份失败即中止不覆盖）→ ③ 原子覆盖（save_config 内置写后回读验证，
-        备份保持为覆盖前恢复点）→ ④ 身份变更自动重启同步（同 PUT /config）。
+ 同源本地、面向用户自己的备份用途（与 GET /config/export 一对）。
+ 流程：① schema 级校验（顶层 dict + 关键键类型 + 无脱敏占位符，
+ 失败 400 可读错误、零落盘）→ ② 先自动备份当前配置（config.bak.json，
+ 备份失败即中止不覆盖）→ ③ 原子覆盖（save_config 内置写后回读验证，
+ 备份保持为覆盖前恢复点）→ ④ 身份变更自动重启同步（同 PUT /config）。
 
-        返回 restart: "none"=已 live 生效（同步自动重启）/ "page"=建议刷新
-        workbench 页面确认生效。
-        """
+ 返回 restart: "none"=已 live 生效（同步自动重启）/ "page"=建议刷新
+ workbench 页面确认生效。
+ """
         try:
             data = await request.json()
         except Exception:  # noqa: BLE001
@@ -1904,10 +1904,10 @@ def build_router() -> APIRouter:
     async def config_test(patch: ConfigTestRequest) -> Dict[str, Any]:
         """v0.5.0-beta.12: 连通性测试——逐地址测延迟，返回 {url, ok, ms, detail}。
 
-        可传未保存的表单值（测试草稿地址）；不传则测已配置列表。
-        仅当传入列表与已配置一致时才更新 working cache（applied=true）——
-        草稿测试不动生效地址。
-        """
+ 可传未保存的表单值（测试草稿地址）；不传则测已配置列表。
+ 仅当传入列表与已配置一致时才更新 working cache（applied=true）——
+ 草稿测试不动生效地址。
+ """
         cfg = config_mod.load_config()
         # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url 再测。
         def _urls(entries: Any) -> List[str]:
@@ -1986,11 +1986,11 @@ def build_router() -> APIRouter:
     async def verify_admin(body: VerifyAdminRequest) -> Dict[str, Any]:
         """v0.5.0-beta.12: L1 管理员验证（admin 账号密码 或 Controller token 二选一）。
 
-        密码路径换不来 Controller 管理 API 凭据（controller 无 token 签发端点，
-        A2 不收 level-1 matrix token）——成功只授予 Console 会话（网关面）；
-        Controller 管理 API 仍需 controller_token（UI 明示，与 dashboard
-        「密码→env SA」的差异源于插件零凭据终端无服务端 SA）。
-        """
+ 密码路径换不来 Controller 管理 API 凭据（controller 无 token 签发端点，
+ 不收 level-1 matrix token）——成功只授予 Console 会话（网关面）；
+ Controller 管理 API 仍需 controller_token（UI 明示，与 dashboard
+ 「密码→env SA」的差异源于插件零凭据终端无服务端 SA）。
+ """
         from . import config as cfgmod
 
         cfg = await asyncio.to_thread(cfgmod.load_config)
@@ -2029,7 +2029,7 @@ def build_router() -> APIRouter:
 
         # --- 路径 A：admin 账号密码 → Console /session/login ---
         if username and password:
-            # Higress 地址（v0.5.0-beta.12 设计，用户反馈：「同主机 8001/6868
+            # Higress 地址（v0.5.0-beta.12 设计，「同主机 8001/6868
             # 顺序探测行不通，每个人映射的端口都不一样」）：Higress Console 与
             # Controller 同容器不同端口（源码实锤：install 脚本
             # `docker exec agentteams-controller curl 127.0.0.1:8001`），但宿主
@@ -2179,16 +2179,16 @@ def build_router() -> APIRouter:
     ) -> Dict[str, Any]:
         """v0.5.0-beta.12: 网关面透传（Higress Console，8001）。
 
-        v0.5.0-beta.12.13：加写面（POST，「添加提供商/添加路由」P7b）；
-        v0.5.0-beta.14.4：加编辑/删除面（PUT/DELETE，与 dashboard higress
-        BFF `/api/higress/ai-{routes,providers}` 同款 Console 端点）；
-        写失败时透出 Console 的 message/detail 供 UI 显示。
+ v0.5.0-beta.12.13：加写面（POST，「添加提供商/添加路由」P7b）；
+ v0.5.0-beta.14.4：加编辑/删除面（PUT/DELETE，与 dashboard higress
+ BFF `/api/higress/ai-{routes,providers}` 同款 Console 端点）；
+ 写失败时透出 Console 的 message/detail 供 UI 显示。
 
-        消费密码模式持有的 Console 管理员会话（console_session）；
-        无会话/不可达 → available=false（前端优雅降级：模型选择器
-        alias 层隐藏，SGLang 列表+Worker 现值+自由输入不受影响）。
-        原始 JSON 直出，形状由前端解析（与 dashboard higress-api 同义）。
-        """
+ 消费密码模式持有的 Console 管理员会话（console_session）；
+ 无会话/不可达 → available=false（前端优雅降级：模型选择器
+ alias 层隐藏，SGLang 列表+Worker 现值+自由输入不受影响）。
+ 原始 JSON 直出，形状由前端解析（与 dashboard higress-api 同义）。
+ """
         from . import config as cfgmod
 
         cfg = await asyncio.to_thread(cfgmod.load_config)
@@ -2299,7 +2299,7 @@ def build_router() -> APIRouter:
         return await _gateway_passthrough("/v1/ai/providers", method="POST", json_body=payload)
 
     # ---- v0.5.0-beta.14.4：模型配置编辑/删除（Console 写面透传，与 dashboard
-    #      higress BFF `/api/higress/ai-{routes,providers}/{name}` 同款端点）----
+    # higress BFF `/api/higress/ai-{routes,providers}/{name}` 同款端点）----
 
     @router.put("/gateway/ai-routes/{name}")
     async def gateway_ai_route_update(
@@ -2325,9 +2325,9 @@ def build_router() -> APIRouter:
     ) -> Dict[str, Any]:
         """网关 LLM Provider 编辑（Console 写面透传）。
 
-        与 dashboard serializeProviderForm(isUpdate) 同款：名称在路径上，
-        body 不含 name（tokens 留空=Console 保持现有凭据）。
-        """
+ 与 dashboard serializeProviderForm(isUpdate) 同款：名称在路径上，
+ body 不含 name（tokens 留空=Console 保持现有凭据）。
+ """
         if not name.strip():
             return {"available": False, "data": None, "reason": "invalid", "detail": "提供商名必填"}
         return await _gateway_passthrough(
@@ -2346,10 +2346,10 @@ def build_router() -> APIRouter:
     async def teams_rooms() -> Dict[str, Any]:
         """Aggregated room list: joined_rooms + name + members per room.
 
-        Concurrent with a semaphore (58 rooms serial ≈ minutes → concurrent
-        ≈ seconds). Falls back to a DM-style name when a room has no
-        m.room.name. Uses the cached working homeserver.
-        """
+ Concurrent with a semaphore (58 rooms serial ≈ minutes → concurrent
+ ≈ seconds). Falls back to a DM-style name when a room has no
+ m.room.name. Uses the cached working homeserver.
+ """
         import asyncio
         import time as time_mod
 
@@ -2478,8 +2478,8 @@ def build_router() -> APIRouter:
     async def matrix_upload(request: Request) -> Dict[str, Any]:
         """文件上传：multipart form → Matrix media upload → 返回 content_uri。
 
-        用户向房间发文件/图片的反向交付通道（先上传拿 mxc，再发 m.file/m.image）。
-        """
+ 用户向房间发文件/图片的反向交付通道（先上传拿 mxc，再发 m.file/m.image）。
+ """
         import httpx as _httpx
         import urllib.parse as _up
 
@@ -2543,10 +2543,10 @@ def build_router() -> APIRouter:
     async def docker_logs(component: str, tail: int = 300) -> Dict[str, Any]:
         """组件日志：经 Controller Docker API 反向代理拉容器日志并解析。
 
-        上游：Controller /docker/v1.41/containers/{name}/logs（http.go L145
-        Docker API 代理）。docker 流 = 8 字节头（type+size）+ payload，
-        在此解析成行列表（dashboard 同款 parseDockerLogs 逻辑）。
-        """
+ 上游：Controller /docker/v1.41/containers/{name}/logs（http.go L145
+ Docker API 代理）。docker 流 = 8 字节头（type+size）+ payload，
+ 在此解析成行列表（dashboard 同款 parseDockerLogs 逻辑）。
+ """
         import httpx as _httpx
 
         cfg = config_mod.load_config()
@@ -2586,8 +2586,8 @@ def build_router() -> APIRouter:
         for base in base_urls:
             target = f"{base.rstrip('/')}{encoded}{query_string}"
             try:
-                # v0.5.0-beta.14.18（14.17 用户反馈「运行日志 HTTP 502: Docker API
-                # 401」真根因）：该端点漏在 14.3 的 _headers_for 覆盖凭据修复面
+                # v0.5.0-beta.14.18（14.17 「运行日志 HTTP 502: Docker API
+                # 401」根因）：该端点漏在 14.3 的 _headers_for 覆盖凭据修复面
                 # 外——外网固定档（address_mode=wan）经公网网关时只发 Bearer，
                 # 网关 Basic 门拒收 → 401 → 本端点转 502。其余 15+ 拨号点早已
                 # 逐地址走 _headers_for（该地址配了覆盖凭据则替换 Authorization，
@@ -2635,8 +2635,8 @@ def build_router() -> APIRouter:
     async def open_dm(req: DmRequest) -> Dict[str, Any]:
         """Open (create-or-reuse) a DM room with a team member.
 
-        Body: {user: target MXID or bare localpart}.
-        """
+ Body: {user: target MXID or bare localpart}.
+ """
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
@@ -2680,12 +2680,12 @@ def build_router() -> APIRouter:
     ) -> Dict[str, Any]:
         """成员最近消息（成员详情卡）：/messages 翻页按 sender 过滤。
 
-        Matrix /search 的 filter.senders 虽有效（实测 Tuwunel），但
-        search_term 必须命中正文（AND 语义）——无法表达"该成员全部最近
-        消息"。改用 /messages dir=b 逐页扫（每页 50，最多 maxPages 页），
-        收集该 sender 的 m.room.message 直到 limit 条。语义准确且复用
-        已验证的 messages 端点。
-        """
+ Matrix /search 的 filter.senders 虽有效（实测 Tuwunel），但
+ search_term 必须命中正文（AND 语义）——无法表达"该成员全部最近
+ 消息"。改用 /messages dir=b 逐页扫（每页 50，最多 maxPages 页），
+ 收集该 sender 的 m.room.message 直到 limit 条。语义准确且复用
+ 已验证的 messages 端点。
+ """
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
@@ -2696,7 +2696,7 @@ def build_router() -> APIRouter:
             raise HTTPException(status_code=401, detail="未登录，请先在配置页登录")
 
         limit = max(1, min(int(limit), 20))
-        # v0.5.0-beta.14.17（T181 审计 #22）：上限 10→5 页。limit≤20 条
+        # v0.5.0-beta.14.17：上限 10→5 页。limit≤20 条
         # 散在 500+ 条之外=该成员在此房近乎沉默，抽屉价值低；5 页
         # （250 条）覆盖正常场景，省最坏 5×~250KB 上游拨号。
         max_pages = max(1, min(int(maxPages), 5))
@@ -2782,9 +2782,9 @@ def build_router() -> APIRouter:
     async def events_stream() -> Any:
         """SSE 事件流（IM 式触发）：sync watcher 检测到 @提到我 时推送。
 
-        前端 EventSource 订阅（无 Authorization header——宿主 auth 启用
-        时需 allow_no_auth_hosts 或回退轮询）。心跳 comment 每 15s 保活。
-        """
+ 前端 EventSource 订阅（无 Authorization header——宿主 auth 启用
+ 时需 allow_no_auth_hosts 或回退轮询）。心跳 comment 每 15s 保活。
+ """
         import asyncio as _asyncio
 
         from . import sync_watcher
@@ -2817,10 +2817,10 @@ def build_router() -> APIRouter:
     async def notify(req: NotifyRequest) -> Dict[str, Any]:
         """写入宿主收件箱（inbox_store.append_event 内部通道）。
 
-        宿主 OS 通知轮询器只认白名单 source_type（console/src/utils/
-        inboxEvents.ts PUSH_MESSAGE_SOURCES）；非 QwenPaw 宿主环境（无
-        inbox_store）→ 501，前端静默降级。
-        """
+ 宿主 OS 通知轮询器只认白名单 source_type（console/src/utils/
+ inboxEvents.ts PUSH_MESSAGE_SOURCES）；非 QwenPaw 宿主环境（无
+ inbox_store）→ 501，前端静默降级。
+ """
         try:
             from qwenpaw.app.inbox_store import append_event
         except ImportError:
@@ -2860,16 +2860,16 @@ def build_router() -> APIRouter:
     async def matrix_mark_read(req: MarkReadRequest) -> Dict[str, Any]:
         """已读回执双写（m.read + m.fully_read）。
 
-        协议与 dashboard 对齐（交叉验证基准）：
-        - m.read:      POST /receipt/m.read/{eventId}（event 级）
-        - m.fully_read: PUT  /user/{uid}/rooms/{rid}/account_data/m.fully_read
-                        body {"event_id"}（房间级读线，清 Element 未读）
+ 协议与 dashboard 对齐（交叉验证基准）：
+ - m.read: POST /receipt/m.read/{eventId}（event 级）
+ - m.fully_read: PUT /user/{uid}/rooms/{rid}/account_data/m.fully_read
+ body {"event_id"}（房间级读线，清 Element 未读）
 
-        两种模式：
-        - 单房间：room_id（+ 可选 event_id，缺省取房间最新消息）。
-        - 批量：room_ids（一键全部已读）——逐房间取最新消息后双写，
-          空房间/无历史跳过。best-effort：单房间失败不拖垮其余。
-        """
+ 两种模式：
+ - 单房间：room_id（+ 可选 event_id，缺省取房间最新消息）。
+ - 批量：room_ids（一键全部已读）——逐房间取最新消息后双写，
+ 空房间/无历史跳过。best-effort：单房间失败不拖垮其余。
+ """
         from . import matrix_client as _mc
 
         cfg = config_mod.load_config()
@@ -2900,7 +2900,7 @@ def build_router() -> APIRouter:
         errors: List[str] = []
         for rid, eid in targets:
             try:
-                # 同步 httpx 走线程池——不阻塞 event loop（/matrix/search
+                # 同步 httpx 走线程池——不阻塞 event loop（matrix/search
                 # 同类问题，搜索慢主因）。
                 event_id = eid or await _asyncio.to_thread(
                     _mc.latest_event_id, hs, token, rid
@@ -2924,11 +2924,11 @@ def build_router() -> APIRouter:
     async def matrix_search(req: SearchRequest) -> Dict[str, Any]:
         """Matrix /search 全文检索（消息搜索）。
 
-        Tuwunel 已验证支持（实测：filter 必填、中文/分页/group_by
-        全可用）。房间内搜索传 roomId 过滤；跨房间不传。房间名从 /sync
-        聚合缓存映射；缓存未就绪时 fallback 房间 ID 截断名。结果按时间
-        倒序，nextBatch 透传分页。
-        """
+ Tuwunel 已验证支持（实测：filter 必填、中文/分页/group_by
+ 全可用）。房间内搜索传 roomId 过滤；跨房间不传。房间名从 /sync
+ 聚合缓存映射；缓存未就绪时 fallback 房间 ID 截断名。结果按时间
+ 倒序，nextBatch 透传分页。
+ """
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
@@ -2941,7 +2941,7 @@ def build_router() -> APIRouter:
         last_error = "无可用地址"
         payload: Optional[Dict[str, Any]] = None
         # 异步直连：同步 httpx 会阻塞 FastAPI event loop（搜索慢的主因，
-        # 用户反馈"搜索再快一点"），改用 AsyncClient + 手组 body。
+        # "搜索再快一点"），改用 AsyncClient + 手组 body。
         search_body: Dict[str, Any] = {
             "search_term": req.term.strip(),
             "filter": {"rooms": [req.roomId]} if req.roomId else {},
@@ -3111,12 +3111,12 @@ def build_router() -> APIRouter:
     async def proxy_direct_url(url: str) -> Response:
         """Server-side fetch of a direct http(s) file URL (v0.5.0-beta.12 ).
 
-        Worker m.file 事件的 url 除 mxc:// 外也可能是直链（内网 MinIO/
-        本地 http 服务等）。浏览器 fetch 跨域会被 CORS 拦、<img>/a[download]
-        跨域下载变导航——后端与服务器同网段可达，代抓后经宿主鉴权链
-        （host.fetch）回流前端，预览/下载/图片缩略图统一走此路径。
-        仅放行 http/https（file:// 等本地协议不进代理）。
-        """
+ Worker m.file 事件的 url 除 mxc:// 外也可能是直链（内网 MinIO/
+ 本地 http 服务等）。浏览器 fetch 跨域会被 CORS 拦、<img>/a[download]
+ 跨域下载变导航——后端与服务器同网段可达，代抓后经宿主鉴权链
+ （host.fetch）回流前端，预览/下载/图片缩略图统一走此路径。
+ 仅放行 http/https（file:// 等本地协议不进代理）。
+ """
         if not url.startswith(("http://", "https://")):
             raise HTTPException(
                 status_code=400, detail="仅支持 http(s) 直链代抓"
@@ -3146,9 +3146,9 @@ def build_router() -> APIRouter:
     async def download_media(server: str, media_id: str) -> Response:
         """Download Matrix media (mxc://server/mediaId) via the homeserver.
 
-        RoomChat files/images use this endpoint — browser auth-free download
-        of m.file/m.image attachments with the stored Matrix token.
-        """
+ RoomChat files/images use this endpoint — browser auth-free download
+ of m.file/m.image attachments with the stored Matrix token.
+ """
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
@@ -3160,7 +3160,7 @@ def build_router() -> APIRouter:
         import urllib.parse as _urlparse_mod
 
         encoded_media = _urlparse_mod.quote(media_id, safe="/._-~")
-        # ：双路径回退——Tuwunel 媒体路由在不同构建间有漂移：
+        # 双路径回退——Tuwunel 媒体路由在不同构建间有漂移：
         # 旧版 /_matrix/media/v3/* 与新版 /_matrix/client/v1/media/*
         # 内网实锤（真实 mxc 带 token）两条都 200；外网构建无法
         # 从开发容器验证（DPI 拦截 TLS）。先旧版后新版，4xx 回退另一条；
@@ -3219,7 +3219,7 @@ def build_router() -> APIRouter:
 
     # ── 远端团队知识库（用户定位：知识库=自己团队的
     # Leader/Worker 知识库，不是宿主本地）────────────────────────────
-    # 数据通道：Controller Docker API 反向代理（/docker/v1.41/...，
+    # 数据通道：Controller Docker API 反向代理（docker/v1.41/...，
     # 上游 internal/proxy/proxy.go——GET/HEAD 只读恒放行）→
     # GET /containers/{name}/archive?path=...（tar）读 Worker 容器内文件。
     # 零服务器侧改动、零新端点、零新凭据（复用 Controller admin token，L1）。
@@ -3276,13 +3276,13 @@ def build_router() -> APIRouter:
     ) -> tuple:
         """Controller Docker API（GET/HEAD 恒放行）。返回 (status, bytes)。
 
-        v0.5.0-beta.14.2（F1 外网 401 真根因③）：单地址直拨改 ordered 地址
-        failover——旧版只拨 _pick_address 单地址：切网窗口 working cache 未
-        换 / 401 地址居首时全族端点（KB/审批/日志）恒 401 或卡满 40s 超时。
-        200 即止；4xx/5xx/传输错 → 下一地址；全败 → 返回最后一个
-        (status, bytes)（调用方按 st 走 fallback）；全超时 → 原 502 detail
-        （Docker daemon 挂诊断，实测：manager 容器 running 但 API 全超时）。
-        """
+ v0.5.0-beta.14.2（外网 401 根因③）：单地址直拨改 ordered 地址
+ failover——旧版只拨 _pick_address 单地址：切网窗口 working cache 未
+ 换 / 401 地址居首时全族端点（KB/审批/日志）恒 401 或卡满 40s 超时。
+ 200 即止；4xx/5xx/传输错 → 下一地址；全败 → 返回最后一个
+ (status, bytes)（调用方按 st 走 fallback）；全超时 → 原 502 detail
+ （Docker daemon 挂诊断，实测：manager 容器 running 但 API 全超时）。
+ """
         import httpx as _h
         cfg = config_mod.load_config()
         urls = [u.rstrip("/") for u in _ordered_addresses(cfg, "controller")]
@@ -3335,13 +3335,13 @@ def build_router() -> APIRouter:
         timeout: float = 40.0,
     ) -> Optional[str]:
         """ Controller 代理 docker exec（只读 find/ls 用途）。
-        manager live 大工作区超 20MB tar 上限时的轻量列取。
-        实测：POST /exec → 201，POST /exec/{id}/start → 多路复用帧
-        （8 字节头：stream+3×0+4B big-endian len + payload）。
-        输出上限 2MB（find -maxdepth 1 行式清单足够）。
-        传输失败（超时/非 200/缺 Id）→ None——调用方需区分「通道挂」
-        与「命令成功但输出为空」（后者含 find 目标不存在：find 报错走
-        stderr、stdout 为空，exec 仍 200）。"""
+ manager live 大工作区超 20MB tar 上限时的轻量列取。
+ 实测：POST /exec → 201，POST /exec/{id}/start → 多路复用帧
+ （8 字节头：stream+3×0+4B big-endian len + payload）。
+ 输出上限 2MB（find -maxdepth 1 行式清单足够）。
+ 传输失败（超时/非 200/缺 Id）→ None——调用方需区分「通道挂」
+ 与「命令成功但输出为空」（后者含 find 目标不存在：find 报错走
+ stderr、stdout 为空，exec 仍 200）。"""
         import httpx as _h
         # v0.5.0-beta.14.3: 该地址覆盖凭据（无则原生 Bearer）。
         _cfg = config_mod.load_config()
@@ -3396,7 +3396,7 @@ def build_router() -> APIRouter:
 
     def _kb_tar_entries(data: bytes) -> List[Dict[str, Any]]:
         """Docker archive tar → 相对条目列表。目录请求时顶层条目名=
-        所请求目录/文件自身，剥离后得相对路径。"""
+ 所请求目录/文件自身，剥离后得相对路径。"""
         import io as _io
         import tarfile as _tf
         raw: List[Dict[str, Any]] = []
@@ -3457,23 +3457,23 @@ def build_router() -> APIRouter:
                 )
         return out
 
-    # ── KB 目录列取双通道（v0.5.0-beta.13.9 真根因修）────────────────
+    # ── KB 目录列取双通道（v0.5.0-beta.13.9 根因修）────────────────
  # 真机反馈：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
     # kb_tree 顶层（worker 支）/ memory / digest 子树全走「先整目录递归
     # tar 下载完、下载完才查大小」→ 413「工作区顶层超过 20MB，无法列取」
     # （manager 顶层早前已单独切 exec find，worker 支漏改=同类没扫全）。
-    # 真根因 = 列取路径不再依赖整树下载：
-    #   主通道 _kb_find_list —— exec find（零下载，manager live 大工作区
-    #       生产已验证的链路；实测 125 条目 ~100ms）；
-    #   兜底 _kb_tar_list  —— Docker archive tar（小工作区保留旧精确解析
-    #       + 413 守卫，仅主通道失败时可达）。
+    # 根因 = 列取路径不再依赖整树下载：
+    # 主通道 _kb_find_list —— exec find（零下载，manager live 大工作区
+    # 生产已验证的链路；实测 125 条目 ~100ms）；
+    # 兜底 _kb_tar_list —— Docker archive tar（小工作区保留旧精确解析
+    # + 413 守卫，仅主通道失败时可达）。
     # 失败语义：find 返 None=传输失败（切 tar）；tar 返 None=路径不存在
     # （404）；tar 超限→413（仅兜底路径可触达）。
 
     def _kb_parse_find_lines(out: str) -> List[Dict[str, Any]]:
         """find -printf '%y %s %T@ %P' 行解析（_kb_find_list 主通道与
-        v0.5.0-beta.14.17 KBBATCH-K2 合并探测共用——同一解析=同一语义：
-        rel 空/绝对路径行跳过，size/mtime 解析失败归 0）。"""
+ v0.5.0-beta.14.17 KBBATCH-K2 合并探测共用——同一解析=同一语义：
+ rel 空/绝对路径行跳过，size/mtime 解析失败归 0）。"""
         entries: List[Dict[str, Any]] = []
         for ln in out.splitlines():
             parts = ln.split(" ", 3)
@@ -3500,13 +3500,13 @@ def build_router() -> APIRouter:
         maxdepth: Optional[int] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """主通道：exec find 列目录（零下载）。
-        返回 [{type,size,mtime,rel}]（rel 相对 target，顶层条目=裸名）；
-        通道失败 → None（调用方切 tar 兜底）；目标不存在/空目录 → 空列表
-        （find 报错走 stderr、stdout 空——调用方必要时以 HEAD 探针区分
-        空目录与不存在）。
-        v0.5.0-beta.13.10：-H 跟随**命令行参数**层的符号链接（worker
-        工作区 shared → teams/.../shared 团队目录符号链接——kb_ls 展开
-        符号链接目录需要；条目内深层符号链接仍不跟随，防环）。"""
+ 返回 [{type,size,mtime,rel}]（rel 相对 target，顶层条目=裸名）；
+ 通道失败 → None（调用方切 tar 兜底）；目标不存在/空目录 → 空列表
+ （find 报错走 stderr、stdout 空——调用方必要时以 HEAD 探针区分
+ 空目录与不存在）。
+ v0.5.0-beta.13.10：-H 跟随**命令行参数**层的符号链接（worker
+ 工作区 shared → teams/.../shared 团队目录符号链接——kb_ls 展开
+ 符号链接目录需要；条目内深层符号链接仍不跟随，防环）。"""
         cmd = ["find", "-H", target]
         if maxdepth is not None:
             cmd += ["-maxdepth", str(maxdepth)]
@@ -3522,11 +3522,11 @@ def build_router() -> APIRouter:
         include_dirs: bool = False,
     ) -> Optional[List[Dict[str, Any]]]:
         """兜底通道：Docker archive tar 列目录（递归 tar，只解析到指定层）。
-        返回 [{type,size,mtime,rel}]；路径不存在 → None；tar 超
-        _KB_MAX_TAR → 413；其余非 200/304 → 502。
-        maxdepth=1 + include_dirs=True → 一级文件+目录（tree 顶层/kb_ls）；
-        maxdepth=None → 全层文件（tree memory/digest 子树，旧
-        _kb_tar_entries 语义）。"""
+ 返回 [{type,size,mtime,rel}]；路径不存在 → None；tar 超
+ _KB_MAX_TAR → 413；其余非 200/304 → 502。
+ maxdepth=1 + include_dirs=True → 一级文件+目录（tree 顶层/kb_ls）；
+ maxdepth=None → 全层文件（tree memory/digest 子树，旧
+ _kb_tar_entries 语义）。"""
         import io as _io
         import tarfile as _tf
         import urllib.parse as _up
@@ -3612,7 +3612,7 @@ def build_router() -> APIRouter:
 
     def _kb_split_sections(out: str) -> Dict[str, str]:
         """###SECTION:<name> 标记切分 → {name: 段内容(\\n 连行)}。
-        标记行本身不入段；未知标记（未来扩展）同样收集。"""
+ 标记行本身不入段；未知标记（未来扩展）同样收集。"""
         sections: Dict[str, str] = {}
         cur: Optional[str] = None
         for ln in out.splitlines():
@@ -3627,9 +3627,9 @@ def build_router() -> APIRouter:
 
     def _kb_parse_profile_lines(out: str) -> List[Dict[str, Any]]:
         """六档案 stat 段行解析：`<完整路径> <size> <mtime>`（stat -c
-        '%n %s %Y'；%n=固定六文件名、无空格，rsplit 安全）。返回
-        [{path(裸名),name,size,mtime}]——与旧 ④ archive 兜底的
-        _add_entries 输出字段一致（category/openable 由调用点补齐）。"""
+ '%n %s %Y'；%n=固定六文件名、无空格，rsplit 安全）。返回
+ [{path(裸名),name,size,mtime}]——与旧 ④ archive 兜底的
+ _add_entries 输出字段一致（category/openable 由调用点补齐）。"""
         entries: List[Dict[str, Any]] = []
         for ln in out.splitlines():
             parts = ln.rsplit(" ", 2)
@@ -3655,9 +3655,9 @@ def build_router() -> APIRouter:
         token: str, base: str, container: str, ws: str,
     ) -> Optional[Dict[str, str]]:
         """K2 合并探测（1 exec）：成功 → {top,memory,digest,profile}
-        四段原文；通道挂（None）/ 无收尾标记（脚本中途挂）→ None
-        （调用方走原双通道 fallback 整段）。timeout=90 与原 find 主通道
-        一致（三段 find 串行最坏 ≤3×90 的旧上界，合并后单窗口）。"""
+ 四段原文；通道挂（None）/ 无收尾标记（脚本中途挂）→ None
+ （调用方走原双通道 fallback 整段）。timeout=90 与原 find 主通道
+ 一致（三段 find 串行最坏 ≤3×90 的旧上界，合并后单窗口）。"""
         script = _KB_TREE_MERGED_SCRIPT.format(ws=ws)
         out = await _kb_exec_full(
             token, base, container, ["sh", "-c", script], timeout=90.0,
@@ -3687,43 +3687,43 @@ paths = sys.argv[2:]
 budget = 1887436
 out = []
 for p in paths:
-    if not p or "\n" in p or "\r" in p:
-        continue
-    full = os.path.normpath(os.path.join(ws, p))
-    if full == ws or not full.startswith(ws + os.sep):
-        out.append("===MISSING:" + p)
-        continue
-    try:
-        st = os.stat(full)
-    except OSError:
-        out.append("===MISSING:" + p)
-        continue
-    if st.st_size > budget:
-        out.append("===TRUNC")
-        break
-    budget -= st.st_size
-    try:
-        with open(full, "rb") as f:
-            data = f.read()
-    except OSError:
-        out.append("===MISSING:" + p)
-        continue
-    text = data.decode("utf-8", "ignore")
-    enc = text.encode("utf-8")
-    if enc:
-        out.append("===FRAME:%d:%s" % (len(enc), p))
-        out.append(text)
-    else:
-        out.append("===FRAME:0:" + p)
+ if not p or "\n" in p or "\r" in p:
+ continue
+ full = os.path.normpath(os.path.join(ws, p))
+ if full == ws or not full.startswith(ws + os.sep):
+ out.append("===MISSING:" + p)
+ continue
+ try:
+ st = os.stat(full)
+ except OSError:
+ out.append("===MISSING:" + p)
+ continue
+ if st.st_size > budget:
+ out.append("===TRUNC")
+ break
+ budget -= st.st_size
+ try:
+ with open(full, "rb") as f:
+ data = f.read()
+ except OSError:
+ out.append("===MISSING:" + p)
+ continue
+ text = data.decode("utf-8", "ignore")
+ enc = text.encode("utf-8")
+ if enc:
+ out.append("===FRAME:%d:%s" % (len(enc), p))
+ out.append(text)
+ else:
+ out.append("===FRAME:0:" + p)
 out.append("===END")
 sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 '''
 
     def _kb_take_bytes(s: str, pos: int, nbytes: int):
         """从 s[pos:] 恰好消费 nbytes 字节（UTF-8 宽度感知：per-char
-        <0x80→1 / <0x800→2 / <0x110000→3 / 其余→4），返回 (消费串,
-        新 pos)。内容恒为有效 UTF-8（容器内 decode ignore）→ 恰在字符
-        边界停。"""
+ <0x80→1 / <0x800→2 / <0x110000→3 / 其余→4），返回 (消费串,
+ 新 pos)。内容恒为有效 UTF-8（容器内 decode ignore）→ 恰在字符
+ 边界停。"""
         chars: List[str] = []
         i = pos
         n = len(s)
@@ -3749,9 +3749,9 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
     def _kb_parse_batch(text: Optional[str]) -> Optional[Dict[str, Any]]:
         """批量读分帧输出 → {files, missing, truncated}；text=None
-        （通道挂）→ None（调用方区分并回退）。帧边界由 size 决定
-        （恰好消费 size 字节）→ 内容内嵌 ===FRAME: 不当帧头（不串帧）；
-        异常失步 → 正则重同步到下一标记行。"""
+ （通道挂）→ None（调用方区分并回退）。帧边界由 size 决定
+ （恰好消费 size 字节）→ 内容内嵌 ===FRAME: 不当帧头（不串帧）；
+ 异常失步 → 正则重同步到下一标记行。"""
         if text is None:
             return None
         files: Dict[str, str] = {}
@@ -3803,7 +3803,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         paths: List[str],
     ) -> Optional[Dict[str, Any]]:
         """单次 exec 批量读（K1）。paths 已校验（相对路径、非敏感、
-        ≤200）。通道挂 → None（调用方区分并回退旧逐文件路径）。"""
+ ≤200）。通道挂 → None（调用方区分并回退旧逐文件路径）。"""
         paths = paths[:_KB_BATCH_MAX_PATHS]
         if not paths:
             return {"files": {}, "missing": [], "truncated": False}
@@ -3820,9 +3820,9 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         """探测 Agent 工作区路径（5min 缓存）。无则 404。"""
         now = time.time()
         hit = _kb_ws_cache.get(agent)
-        # ：TTL 5min→30min。工作区路径由容器挂载决定、实际不变；
+        # TTL 5min→30min。工作区路径由容器挂载决定、实际不变；
         # 5min 一到期就重付「inspect + 3×HEAD 探测 + archive」4 次串行 Docker
-        # API 往返（经 Controller 代理），用户反馈 图谱「点好多次才打开」的
+        # API 往返（经 Controller 代理）， 图谱「点好多次才打开」的
         # 后端侧贡献项之一。
         if hit and now - hit["ts"] < 1800:
             return hit["ws"]
@@ -3855,7 +3855,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                 "/root/manager-workspace/.qwenpaw/workspaces/default",
             ) + candidates
         import urllib.parse as _up
-        # ：候选路径探测并行（原串行——4 个候选最坏 4×40s 超时；
+        # 候选路径探测并行（原串行——4 个候选最坏 4×40s 超时；
         # 并行后最坏 1×40s）。结果按候选优先级取第一个命中。
         import asyncio as _aio
         async def _probe(cand: str) -> int:
@@ -3891,7 +3891,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     async def _wsf_get(token: str, base: str, agent: str, sub: str,
                        params: Optional[Dict[str, str]]) -> tuple:
         """GET /api/v1/workers/{agent}/workspace-files/{sub}?params。
-        返回 (status_code, 解析后 JSON dict|bytes)。"""
+ 返回 (status_code, 解析后 JSON dict|bytes)。"""
         import httpx as _h
         import urllib.parse as _up
         url = (
@@ -3922,7 +3922,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     async def _wsf_tree_files(token: str, base: str, agent: str,
                               root_dir: str) -> List[Dict[str, Any]]:
         """#1208 tree：递归列 root_dir（memory/digest）下文件，带界。
-        返回 [{path(工作区相对),name,size,mtime}]。path 形如 memory/2026-08-29.md。"""
+ 返回 [{path(工作区相对),name,size,mtime}]。path 形如 memory/2026-08-29.md。"""
         out: List[Dict[str, Any]] = []
 
         async def _walk(dir_path: str, depth: int) -> None:
@@ -3964,7 +3964,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     async def _wsf_read_file(token: str, base: str, agent: str,
                              path: str) -> Optional[tuple]:
         """#1208 file-content：分块读到 eof（≤_KB_WSF_MAX_READ）。
-        成功→(size, text)；不存在/非文本/超限→None。"""
+ 成功→(size, text)；不存在/非文本/超限→None。"""
         offset = 0
         chunks: List[str] = []
         total = 0
@@ -3985,9 +3985,9 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
     async def _kb_tree_wsf_fallback(token: str, base: str, agent: str) -> Dict[str, Any]:
         """#1208 兜底树（L2 / Docker 不可用，worker only）：三分类=
-        memory/**（日记）+ digest/**（知识库）+ MEMORY.md（档案）。
-        非 MEMORY.md 的档案文件 + 文件分类不在 #1208 allowlist → 不渲染
-        （L1-only 数据，前端按 dirs=[] 优雅降级）。"""
+ memory/**（日记）+ digest/**（知识库）+ MEMORY.md（档案）。
+ 非 MEMORY.md 的档案文件 + 文件分类不在 #1208 allowlist → 不渲染
+ （L1-only 数据，前端按 dirs=[] 优雅降级）。"""
         files: List[Dict[str, Any]] = []
         for e in await _wsf_tree_files(token, base, agent, "memory"):
             files.append({**e, "category": "daily"})
@@ -4047,8 +4047,8 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     async def _kb_ls_wsf_fallback(token: str, base: str, agent: str,
                                   dir: str) -> Dict[str, Any]:
         """#1208 兜底懒加载（L2/docker 不可用，worker only）。
-        dir=""→顶层（memory/ + digest/ + MEMORY.md）；dir 在 memory/**|digest/**
-        内→该层 tree；其它目录（协议文档等）→404（不在 #1208 allowlist）。"""
+ dir=""→顶层（memory/ + digest/ + MEMORY.md）；dir 在 memory/**|digest/**
+ 内→该层 tree；其它目录（协议文档等）→404（不在 #1208 allowlist）。"""
         text_ok = (".md", ".txt", ".yaml", ".yml", ".json")
         if dir == "":
             dirs_out: List[Dict[str, Any]] = []
@@ -4103,12 +4103,12 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     async def _kb_agents_ctl_fallback(token: str, base: str) -> Dict[str, Any]:
         """KB 形状兜底（Docker 通道不可用）：agent 清单=Controller workers API。
 
-        v0.5.0-beta.14.2（F1-KB-500）：/kb/agents 的 Docker 降级路径此前误调
-        _approval_list_wsf(token, base, agent)——agent 在 kb_agents 作用域
-        不存在 → NameError → 500（Docker 通道 401/403/502 即触发：切外网后
-        WAN 链路 401 首现场）。形状必须 KB {agents, count}（旧调用即便不
-        NameError 也返回 approval 形状，前端解析全废）。
-        """
+ v0.5.0-beta.14.2（-KB-500）：/kb/agents 的 Docker 降级路径此前误调
+ _approval_list_wsf(token, base, agent)——agent 在 kb_agents 作用域
+ 不存在 → NameError → 500（Docker 通道 401/403/502 即触发：切外网后
+ WAN 链路 401 首现）。形状必须 KB {agents, count}（旧调用即便不
+ NameError 也返回 approval 形状，前端解析全废）。
+ """
         st, data, _ = await _ctl_json("GET", f"{base}/api/v1/workers", token)
         if st != 200:
             raise HTTPException(
@@ -4153,7 +4153,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         )
         return {"agents": agents, "count": len(agents)}
 
-    # ── v0.5.0-beta.14.10（T12）：SWR 刷新/存储助手（tree/graph/agents 共用）──
+    # ── v0.5.0-beta.14.10：SWR 刷新/存储助手（tree/graph/agents 共用）──
     # 单飞：同 key 刷新任务在飞不重复起；刷新失败保旧值（磁盘缓存不覆写）。
     # _KB_SWR_TTL = 磁盘 stale 阈值（超过 → 触发后台刷新；未超旧值也先回，
     # SWR 语义）；内存缓存 TTL 以现有常量为准对齐（tree 30s / graph 60s /
@@ -4161,7 +4161,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     _kb_inflight: Dict[str, Any] = {}
     _KB_SWR_TTL = 60.0
 
-    # ── v0.5.0-beta.14.11（T15）：轻探针（变更检测——变才刷）──────────
+    # ── v0.5.0-beta.14.11：轻探针（变更检测——变才刷）──────────
     # 刷新门前先跑轻探针：只列条目元数据（name/mtime/size，绝不读文件
     # 内容）。签名一致 → 只重置 60s 时钟（零深扫）；不一致/失败 → 深扫
     # （安全）。目录集 = tree 同款数据源（ws 顶层 + memory/ + digest/）。
@@ -4169,11 +4169,11 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     # 状态码/降级处理）——纯 archive 在大工作区（实测 180MB）必 413，
     # 探针将恒 None、优化失效，故以 tree 实际通道为准。
     async def _kb_probe_signature(agent: str) -> Optional[str]:
-        """v0.5.0-beta.14.11（UIPERF-T15）：KB 轻探针——只列工作区顶层 +
-        memory/ + digest/ 的条目元数据（name/mtime/size），不读文件内容。
-        签名=排序后的 sha1；任何失败 → None（调用方退回深扫，安全）。
-        复用 tree 计算体里同款 archive 列目录通道（参考其状态码/降级处理）。
-        """
+        """v0.5.0-beta.14.11：KB 轻探针——只列工作区顶层 +
+ memory/ + digest/ 的条目元数据（name/mtime/size），不读文件内容。
+ 签名=排序后的 sha1；任何失败 → None（调用方退回深扫，安全）。
+ 复用 tree 计算体里同款 archive 列目录通道（参考其状态码/降级处理）。
+ """
         if not _KB_AGENT_RE.match(agent):
             return None  # 与端点同款正则（agents 刷新 agent="" → 无探针）
         try:
@@ -4224,14 +4224,14 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                   probe: Optional[str] = None) -> None:
         """SWR 内存+磁盘同点写（端点冷取与后台刷新共用）。
 
-        v0.5.0-beta.14.7 语义保留：#1208 WSF 兜底 payload（标记
-        source:"controller"，见 _kb_tree_wsf_fallback）不写任何缓存——
-        单点收口在此，后台刷新同样不会用降级值污染磁盘缓存。
+ v0.5.0-beta.14.7 语义保留：#1208 WSF 兜底 payload（标记
+ source:"controller"，见 _kb_tree_wsf_fallback）不写任何缓存——
+ 单点收口在此，后台刷新同样不会用降级值污染磁盘缓存。
 
-        v0.5.0-beta.14.11（UIPERF-T15）：probe = 本次深扫时的轻探针签名；
-        非 None 时一并落盘（下轮刷新门「变才刷」的比对基准）。端点冷取
-        路径不跑探针（传 None）→ 不记，由下轮后台刷新的深扫补记。
-        """
+ v0.5.0-beta.14.11：probe = 本次深扫时的轻探针签名；
+ 非 None 时一并落盘（下轮刷新门「变才刷」的比对基准）。端点冷取
+ 路径不跑探针（传 None）→ 不记，由下轮后台刷新的深扫补记。
+ """
         if kind == "tree" and payload.get("source") == "controller":
             return
         # v0.5.0-beta.14.17（KBBATCH-K5）：file 的 WSF 兜底 payload 同样
@@ -4269,7 +4269,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
             kb_cache.save("agents", payload)
             return
         kb_cache.save("last-agent", {"agent": agent})
-        # v0.5.0-beta.14.11（UIPERF-T15）：记本次深扫的轻探针签名（端点
+        # v0.5.0-beta.14.11：记本次深扫的轻探针签名（端点
         # 冷取不跑探针 → probe=None 不记，下轮后台刷新补记）。agents 支
         # 已早退且 agent="" 探针恒 None → 天然不记。
         if probe is not None:
@@ -4278,9 +4278,9 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     def _spawn_kb_refresh(kind: str, agent: str) -> None:
         """SWR 后台单飞刷新（fire-and-forget；调用路径零等待）。
 
-        计算体调用时从模块级注册表 _KB_PREWARM_HOOKS 解析（单测可换假
-        计算体；T9 _ctl_get 同款唯一注入点）。
-        """
+ 计算体调用时从模块级注册表 _KB_PREWARM_HOOKS 解析（单测可换假
+ 计算体；T9 _ctl_get 同款唯一注入点）。
+ """
         key = f"{kind}-{agent}" if agent else kind
         t = _kb_inflight.get(key)
         if t is not None and not t.done():
@@ -4297,14 +4297,14 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
         async def _run() -> None:
             try:
-                # v0.5.0-beta.14.12（UIPERF-T17）：后台共用通道——执行期
+                # v0.5.0-beta.14.12：后台共用通道——执行期
                 # 持锁（与两路 sweep 共享，同一时刻至多一路后台扫描）；
                 # 前台忙让权/等锁超时 → 本轮放弃（单飞槽位由 finally
                 # 释放，下轮重试）。
                 async with bg_slot() as _bg:
                     if not _bg:
                         return
-                    # v0.5.0-beta.14.11（UIPERF-T15）：变才刷——轻探针与上次
+                    # v0.5.0-beta.14.11：变才刷——轻探针与上次
                     # 签名一致 → 只重置 60s 时钟，零深扫；不一致/探针失败 →
                     # 深扫（安全）。探针经注册表调用时解析（单测假注入）。
                     probe_fn = _KB_PROBE_HOOKS.get("probe") or _kb_probe_signature
@@ -4326,8 +4326,8 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/kb/agents")
     async def kb_agents() -> Dict[str, Any]:
         """远端 Agent 清单：Docker 容器列表（agentteams-worker-* +
-        agentteams-manager）+ Controller workers API 补 role/team。"""
-        # v0.5.0-beta.14.10（UIPERF-T12）：SWR——60s 内存门 + 磁盘门（旧值
+ agentteams-manager）+ Controller workers API 补 role/team。"""
+        # v0.5.0-beta.14.10：SWR——60s 内存门 + 磁盘门（旧值
         # 秒回、cached/age 提示），冷取 = 原全量清单（抽为 _kb_agents_compute）。
         _c = _kb_agents_cache.get("agents")
         if _c and _c[0] > time.monotonic():
@@ -4347,14 +4347,14 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         return _payload
 
     async def _kb_agents_compute() -> Dict[str, Any]:
-        # v0.5.0-beta.14.10（T12）：kb_agents 冷取计算体——原端点体逐字搬移
+        # v0.5.0-beta.14.10：kb_agents 冷取计算体——原端点体逐字搬移
         # （原体无缓存写，抽取零 diff；缓存写收口在调用点 _store_kb）。
         token, base = _kb_require_token()
         # L2（403）/ Docker 挂（502）→ KB 形状兜底（worker 走 Controller；
-        # manager L1-only 占位）。v0.5.0-beta.14.2（F1-KB-500）：旧代码误调
+        # manager L1-only 占位）。v0.5.0-beta.14.2（-KB-500）：旧代码误调
         # _approval_list_wsf(token, base, agent)——本函数无 agent 变量 →
         # NameError → 500（仅 Docker 通道降级 401/403/502 时暴露，切外网后
-        # WAN 链路 401 首现场），且 approval 列表形状 ≠ KB {agents,count}。
+        # WAN 链路 401 首现），且 approval 列表形状 ≠ KB {agents,count}。
         try:
             st, data = await _kb_docker(token, base, "/containers/json")
         except HTTPException:
@@ -4425,7 +4425,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         _c = _kb_tree_cache.get(agent)
         if _c and _c[0] > time.monotonic():
             return _c[1]
-        # v0.5.0-beta.14.10（UIPERF-T12）：SWR 磁盘缓存——有旧数据先秒回
+        # v0.5.0-beta.14.10：SWR 磁盘缓存——有旧数据先秒回
         # （cached/age 提示），超 TTL 触发后台单飞刷新；无则同步冷取。
         _disk = kb_cache.load(f"tree-{agent}")
         if _disk is not None:
@@ -4443,7 +4443,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         return _payload
 
     async def _kb_tree_compute(agent: str) -> Dict[str, Any]:
-        # v0.5.0-beta.14.10（T12）：tree 冷取计算体——原端点「缓存门之后」
+        # v0.5.0-beta.14.10：tree 冷取计算体——原端点「缓存门之后」
         # 逐字搬移（原尾内存缓存写移至调用点 _store_kb，14.7「WSF 兜底早退
         # 不缓存」语义在 _store_kb 入口单点保留）。
         token, base = _kb_require_token()
@@ -4494,7 +4494,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         # ① 顶层：档案（6 默认 md）+ 文件（其余文件 + 目录条目）。
         # v0.5.0-beta.13.9 双通道：exec find 主（零下载，manager/worker 统一）
         # + tar 兜底（小工作区精确解析）。旧 worker 支整树 tar 在大工作区
-        # （实测 180MB）必 413；旧 manager 支 exec-only 无兜底——同批收口。
+        # （实测 180MB）必 413；旧 manager 支 exec-only 无兜底——同批处理。
         # v0.5.0-beta.14.17（KBBATCH-K2）：先试合并探测（1 exec = 顶层 +
         # memory + digest 三个 find + 六档案 stat 段）；通道挂（None）/
         # 无收尾标记 → 下方原双通道逻辑整段照跑（原代码保留为 fallback
@@ -4545,7 +4545,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                      "category": "file"}
                 )
             elif et == "l":
-                # v0.5.0-beta.13.10（13.9 用户反馈「知识库目录不全」真根因①）：
+                # v0.5.0-beta.13.10（13.9 知识库目录不全根因①）：
                 # 符号链接此前被整条跳过（worker 工作区 shared →
                 # teams/{team}/shared 团队共享目录不可见）。批量解析目标
                 # 类型（python3 argv 传路径，不经过 shell 解析——manager
@@ -4560,7 +4560,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                      "symlink": True, "_pending_resolve": True}
                 )
             else:
-                # 真根因②：非文本文件（.jsonl/.py/.bak/.db 等）此前被
+                # 根因②：非文本文件（.jsonl/.py/.bak/.db 等）此前被
                 # 文本过滤器整条吞掉 → 列表与实盘目录对不上（「不全」
                 # 感观）。改为全量列出 + openable 标记（前端不可点开）。
                 files.append(
@@ -4602,7 +4602,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
         # ②③ 日记（memory/**）+ 知识库（digest/**）：构建体与 ① 共用——
         # 条目源 = K2 合并探测段（_mem_entries/_dig_entries）或 fallback
-        # 分支上方的原双通道取数（v0.5.0-beta.13.9 真根因修保留）。
+        # 分支上方的原双通道取数（v0.5.0-beta.13.9 根因修保留）。
         for _sub, _cat, _src in (
             ("memory", "daily", _mem_entries),
             ("digest", "digest", _dig_entries),
@@ -4772,11 +4772,11 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/kb/{agent}/files-batch")
     async def kb_files_batch(agent: str, paths: str = "") -> Dict[str, Any]:
         """批量读（K1）：paths=逗号分隔相对路径（≤200），单次 exec
-        分帧批读。返回 {agent, files, missing, truncated, cached:false}。
-        敏感路径 → missing（不读不报错，与 tree 过滤口径一致）；非法
-        路径（绝对/.. /控制字符）静默跳过；通道挂 → 502（调用方 graph
-        compute 区分并回退逐文件）。本端点结果不缓存（K1 定位=冷时
-        graph compute 的内部批读通道，前端不直调）。"""
+ 分帧批读。返回 {agent, files, missing, truncated, cached:false}。
+ 敏感路径 → missing（不读不报错，与 tree 过滤口径一致）；非法
+ 路径（绝对/.. /控制字符）静默跳过；通道挂 → 502（调用方 graph
+ compute 区分并回退逐文件）。本端点结果不缓存（K1 定位=冷时
+ graph compute 的内部批读通道，前端不直调）。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
         input_missing: List[str] = []
@@ -4829,11 +4829,11 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/kb/{agent}/ls")
     async def kb_ls(agent: str, dir: str = "") -> Dict[str, Any]:
         """ （用户真机：知识库「只能看见工作区目录，不能点开看；
-        子目录文件也看不见」）：一级目录懒加载——前端目录树展开时按层
-        取内容。dir 空=工作区顶层；协议文档目录=该目录一级内容。
-        返回 files（文本可点开，路径=工作区相对全路径，直接喂 /file）+
-        dirs（可继续展开）。列取走双通道（exec find 主/tar 兜底，
-        v0.5.0-beta.13.9），只返回一级子条目，深层跳过。"""
+ 子目录文件也看不见」）：一级目录懒加载——前端目录树展开时按层
+ 取内容。dir 空=工作区顶层；协议文档目录=该目录一级内容。
+ 返回 files（文本可点开，路径=工作区相对全路径，直接喂 /file）+
+ dirs（可继续展开）。列取走双通道（exec find 主/tar 兜底，
+ v0.5.0-beta.13.9），只返回一级子条目，深层跳过。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
         if dir:
@@ -4909,7 +4909,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                     "symlink": True, "_pending_resolve": True,
                 })
             elif e["type"] == "f":
-                # 非文本文件列出 + openable 标记（13.9「不全」真根因②，
+                # 非文本文件列出 + openable 标记（13.9「不全」根因②，
                 # 与 kb_tree 同口径）。
                 files.append({
                     "path": rel, "name": name,
@@ -4956,17 +4956,17 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/kb/{agent}/graph")
     async def kb_graph(agent: str) -> Dict[str, Any]:
         """知识图谱（对齐 QwenPaw 最新版 ReMe 图谱模型）：
-        digest 三虚拟分类根 + digest/** + memory/** + 顶层 md 全量节点；
-        边 = 分类根→分桶文件（结构边）+ [[wikilink]]/inlinks-outlinks
-        路径块（语义边）；无 digest 分桶的旧布局由 MEMORY.md 挂 depth-1
-        memory 文件兜底。"""
+ digest 三虚拟分类根 + digest/** + memory/** + 顶层 md 全量节点；
+ 边 = 分类根→分桶文件（结构边）+ [[wikilink]]/inlinks-outlinks
+ 路径块（语义边）；无 digest 分桶的旧布局由 MEMORY.md 挂 depth-1
+ memory 文件兜底。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
         # v0.5.0-beta.14.7：graph 结果短 TTL 命中（内部 kb_tree 亦命中树缓存）。
         _c = _kb_graph_cache.get(agent)
         if _c and _c[0] > time.monotonic():
             return _c[1]
-        # v0.5.0-beta.14.10（UIPERF-T12）：SWR 磁盘缓存（与 tree 同款门；
+        # v0.5.0-beta.14.10：SWR 磁盘缓存（与 tree 同款门；
         # key=graph-{agent}）。
         _disk = kb_cache.load(f"graph-{agent}")
         if _disk is not None:
@@ -4984,7 +4984,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         return _payload
 
     async def _kb_graph_compute(agent: str) -> Dict[str, Any]:
-        # v0.5.0-beta.14.10（T12）：graph 冷取计算体——原端点「缓存门之后」
+        # v0.5.0-beta.14.10：graph 冷取计算体——原端点「缓存门之后」
         # 逐字搬移（原尾内存缓存写移至调用点 _store_kb；内部 kb_tree 调用
         # 走 tree 端点 = 先命中树缓存/SWR 门）。
         tree = await kb_tree(agent)
@@ -5193,9 +5193,9 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/kb/search")
     async def kb_search(q: str = "", agents: str = "") -> Dict[str, Any]:
         """v0.5.0-beta.12 ：团队知识全量搜索（跨 Worker）——扫各 Agent 的
-        MEMORY.md + memory/**/*.md，返回命中行+上下文。
-        agents=逗号分隔（缺省=全部，上限 12）；每 Agent ≤60 个 md 文件、
-        单文件 ≤100KB；结果上限 100 条（150 熔断）。"""
+ MEMORY.md + memory/**/*.md，返回命中行+上下文。
+ agents=逗号分隔（缺省=全部，上限 12）；每 Agent ≤60 个 md 文件、
+ 单文件 ≤100KB；结果上限 100 条（150 熔断）。"""
         query = (q or "").strip()
         if not query:
             raise HTTPException(status_code=400, detail="缺少搜索词 q")
@@ -5316,11 +5316,11 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/kb/graph/merged")
     async def kb_graph_merged(agents: str = "") -> Dict[str, Any]:
         """v0.5.0-beta.12 ：团队聚合图谱——多 Agent 图谱合并（节点 id=
-        agent::path，前端按 agent 着色；边保留在原 Agent 内）。
-        agents=逗号分隔（缺省=全部，上限 8）；节点 400 / 边 800 上限。
-        v0.5.0-beta.14.17（KBBATCH-K3）：SWR 30s 内存+磁盘门（与
-        tree/graph 同款），键 merged-<sorted(agents) 逗号连>；冷算 = 多
-        Agent 图谱合并（抽 kb_graph_merged_compute，供单飞复用）。"""
+ agent::path，前端按 agent 着色；边保留在原 Agent 内）。
+ agents=逗号分隔（缺省=全部，上限 8）；节点 400 / 边 800 上限。
+ v0.5.0-beta.14.17（KBBATCH-K3）：SWR 30s 内存+磁盘门（与
+ tree/graph 同款），键 merged-<sorted(agents) 逗号连>；冷算 = 多
+ Agent 图谱合并（抽 kb_graph_merged_compute，供单飞复用）。"""
         token, base = _kb_require_token()
         if agents.strip():
             agent_list = [
@@ -5354,10 +5354,10 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/room-mentions")
     async def room_mentions(limit: int = 30) -> Dict[str, Any]:
         """各房间最近 @提到当前用户 的消息（Element 通知同款语义）：
-        v0.5.0-beta.12  = 实时缓冲（sync_watcher /sync 长轮询事件流即时写入，
-        零扫描）+ 全量扫描历史（10s 缓存 bootstrap），event_id 去重合并，
-        按时间倒序。前端在 SSE mention 事件触发刷新（非轮询）。
-        点击 → 跳房间+定位事件。"""
+ v0.5.0-beta.12 = 实时缓冲（sync_watcher /sync 长轮询事件流即时写入，
+ 零扫描）+ 全量扫描历史（10s 缓存 bootstrap），event_id 去重合并，
+ 按时间倒序。前端在 SSE mention 事件触发刷新（非轮询）。
+ 点击 → 跳房间+定位事件。"""
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
         token = (matrix_cfg.get("access_token") or "").strip()
@@ -5371,7 +5371,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         from . import sync_watcher  # noqa: PLC0415 — 实时 @我 缓冲
         homeserver = base[0]
         limit = max(1, min(int(limit), 100))
-        # ① 实时缓冲（/sync 事件流，房间名从 60s 房间缓存补全）
+        # ① 实时缓冲（sync 事件流，房间名从 60s 房间缓存补全）
         with _rooms_cache_lock:
             _rd = (_rooms_cache.get("data") or {}).get("rooms") or []
         room_names: Dict[str, str] = {
@@ -5545,8 +5545,8 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/host-bridge/status")
     async def host_bridge_status() -> Dict[str, Any]:
         """宿主审批桥可用性 + 在途/累计计数。available=false → 宿主
-        无 create_pending_summary（<2.1），抖动/审批条目不可用，页面内
-        审批卡不受影响。"""
+ 无 create_pending_summary（<2.1），抖动/审批条目不可用，页面内
+ 审批卡不受影响。"""
         from agentteams_connector import host_bridge
 
         return host_bridge.bridge.status()
@@ -5558,7 +5558,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         room_ids: List[str],
     ) -> Dict[str, str]:
         """房间名懒加载兜底（basic info + m.room.name state，/room-mentions
-        内部同款两路取值；取不到保持空串，前端回退显示 room_id）。"""
+ 内部同款两路取值；取不到保持空串，前端回退显示 room_id）。"""
         for rid in room_ids:
             if not rid or names.get(rid):
                 continue
@@ -5612,8 +5612,8 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         scan_results: List[Dict[str, Any]],
     ) -> None:
         """审批状态机扫描（v0.5.0-beta.12 全量加入；v0.5.0-beta.14.7 T6：
-        增量——只重扫 sync 事件流显示有推进的房间，空闲零拨号；600s 兜底
-        全扫一次）。时间升序执行（dir=b 返回新→旧，先 reverse）。"""
+ 增量——只重扫 sync 事件流显示有推进的房间，空闲零拨号；600s 兜底
+ 全扫一次）。时间升序执行（dir=b 返回新→旧，先 reverse）。"""
         import urllib.parse as _up
         from . import sync_watcher  # noqa: PLC0415
         try:
@@ -5733,8 +5733,8 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         scan_results: List[Dict[str, Any]],
     ) -> None:
         """房间 @我 扫描（v0.5.0-beta.12 全量加入；v0.5.0-beta.14.7 T6：
-        增量——只重扫 sync 事件流显示有推进的房间，空闲零拨号；600s 兜底
-        全扫一次）。"""
+ 增量——只重扫 sync 事件流显示有推进的房间，空闲零拨号；600s 兜底
+ 全扫一次）。"""
         import urllib.parse as _up
         from . import sync_watcher  # noqa: PLC0415 — T6 增量探针
         try:
@@ -5983,7 +5983,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
     async def _approval_list_wsf(token: str, base: str, agent: str) -> Dict[str, Any]:
         """#1216 兜底列表（L2/docker 不可用）：worker 走 GET /api/v1/workers
-        + 逐个 GET approval；Manager 无 #1216 端点 → 错误标记（L1-only）。"""
+ + 逐个 GET approval；Manager 无 #1216 端点 → 错误标记（L1-only）。"""
         items: List[Dict[str, Any]] = []
         st, data, _ = await _ctl_json("GET", f"{base}/api/v1/workers", token)
         if st != 200:
@@ -6027,8 +6027,8 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     async def _approval_set_wsf(token: str, base: str, agent: str,
                                 level: str) -> Dict[str, Any]:
         """#1216 PUT 兜底（L2/docker 不可用，worker only）。
-        L2 仅可设 STRICT/SMART/AUTO（OFF→403 透传）；team leader 只读→403；
-        404=Controller < #1216 版本或跨团队；409=并发冲突。"""
+ L2 仅可设 STRICT/SMART/AUTO（OFF→403 透传）；team leader 只读→403；
+ 404=Controller < #1216 版本或跨团队；409=并发冲突。"""
         url = f"{base}/api/v1/workers/{agent}/approval"
         st, data, text = await _ctl_json(
             "PUT", url, token, json_body={"approval_level": level})
@@ -6067,7 +6067,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
     @router.get("/debug/dial-stats")
     async def debug_dial_stats() -> Dict[str, Any]:
-        """拨号计数快照（R7，v0.5.0-beta.14.6）——修复验收/排障对账用。"""
+        """拨号计数快照（，v0.5.0-beta.14.6）——修复验收/排障对账用。"""
         from . import dial_gate as _dg  # noqa: PLC0415
 
         return _dg.dial_stats()
@@ -6075,8 +6075,8 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
     @router.get("/approval/list")
     async def approval_list(agent: str = "") -> Dict[str, Any]:
         """各 Worker/Manager 当前 approval_level（只读：archive 直读
-        agent.json——与 KB 同通道，零新端点依赖）。
-        ?agent=xxx 过滤单个（Worker 管理展开行懒加载用，避免全量扫）。"""
+ agent.json——与 KB 同通道，零新端点依赖）。
+ ?agent=xxx 过滤单个（Worker 管理展开行懒加载用，避免全量扫）。"""
         token, base = _kb_require_token()
         # v0.5.0-beta.14.5: 20s TTL 缓存命中即返（成功响应才写；异常路径不缓存）。
         _cached = _approval_list_cache.get(agent)
@@ -6390,7 +6390,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         ):
             _flt = _urlparse_mod.quote('{"types":["m.room.message"]}', safe="")
             query_string += ("&" if query_string else "?") + f"filter={_flt}"
-        # v0.5.0-beta.14.2（F1 外网 401 真根因①②）：①4xx 不再标记 working
+        # v0.5.0-beta.14.2（外网 401 根因①②）：①4xx 不再标记 working
         # （旧版任何 HTTP 响应都 _mark_working——一次 401 即污染 working
         # cache，切回内网后死地址仍居首恒 401）；②GET/HEAD 遇 4xx/5xx 继续
         # 下一地址（首个 401 地址可能是网关代理的会话门、直连控制器健康
@@ -6463,7 +6463,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                         resp.status_code, resp.content,
                         resp.headers.get("content-type"),
                     )
-                # v0.5.0-beta.14.6（R4）：GET/HEAD 仅在地址相关/瞬时错误时换下
+                # v0.5.0-beta.14.6：GET/HEAD 仅在地址相关/瞬时错误时换下
                 # 一地址（401/403 网关门、408/429、5xx）；确定性 4xx（400/404/
                 # 409…）地址无关 → 原样立即返回（不再跨址重试）。
                 if request.method in ("GET", "HEAD") and should_failover_status(
@@ -6496,7 +6496,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
             status_code=502, detail=f"所有地址请求失败：{last_error}{_pinned_note(cfg)}"
         )
 
-    # v0.5.0-beta.14.10（T12）：SWR 计算体 + 刷新入口注册入模块级表（端点
+    # v0.5.0-beta.14.10：SWR 计算体 + 刷新入口注册入模块级表（端点
     # 调用时解析 / 单测假注入 / 启动预热 _kb_prewarm_agent 均读本表）。
     _KB_PREWARM_HOOKS.update({
         "refresh": _spawn_kb_refresh,
@@ -6508,7 +6508,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         "merged": _kb_merged_compute_wrapped,
         "file": _kb_file_compute_wrapped,
     })
-    # v0.5.0-beta.14.11（T15）：轻探针注册（SWR 刷新门变更检测用）。
+    # v0.5.0-beta.14.11：轻探针注册（SWR 刷新门变更检测用）。
     _KB_PROBE_HOOKS.update({"probe": _kb_probe_signature})
 
     return router

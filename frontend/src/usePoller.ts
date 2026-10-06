@@ -1,10 +1,10 @@
-// v0.5.0-beta.14.6（R2）：轮询调度器——单链 setTimeout（非 setInterval）
+// v0.5.0-beta.14.6：轮询调度器——单链 setTimeout（非 setInterval）
 // 替代散落的 15 处 window.setInterval，统一提供：
-//   - 活跃门控（isActive：tab 激活 && 页面可见等，每轮判定）；
-//   - 防堆积（await fn 完成再排下轮）；
-//   - 失败退避（下轮间隔 = min(interval * factor^失败数, backoffMax)）；
-//   - 可见性暂停 + 恢复补跑（隐藏清定时器；可见且闲置 > catchUpMs 立即补一次）；
-//   - 抖动（每轮间隔 ±jitterRatio，防多 poller 同刻同步打点）。
+// - 活跃门控（isActive：tab 激活 && 页面可见等，每轮判定）；
+// - 防堆积（await fn 完成再排下轮）；
+// - 失败退避（下轮间隔 = min(interval * factor^失败数, backoffMax)）；
+// - 可见性暂停 + 恢复补跑（隐藏清定时器；可见且闲置 > catchUpMs 立即补一次）；
+// - 抖动（每轮间隔 ±jitterRatio，防多 poller 同刻同步打点）。
 //
 // 结构：createPoller 为纯核心（不依赖 React，node 可直测——见
 // scripts/poller.smoke.mjs）；usePoller 为 React 包装（effect 建/卸载 stop，
@@ -30,11 +30,11 @@ export interface PollerOptions {
   /** 默认 0.1；每轮间隔 ±jitter 抖动防同步 */
   jitterRatio?: number;
   /**
-   * v0.5.0-beta.14.14（UIPERF-T25）：poke 节流——距上次真实执行 fn 不足
-   * 该间隔时跳过 poke（数据还新鲜，切回 tab 不重复拉）。默认 intervalMs/2
-   * （由 usePoller 包装传入；数据新鲜度保证 ≤ 一个轮询周期，语义不变）。
-   * 0/undefined = 旧行为（每次假→真必 poke）。
-   */
+ * v0.5.0-beta.14.14：poke 节流——距上次真实执行 fn 不足
+ * 该间隔时跳过 poke（数据还新鲜，切回 tab 不重复拉）。默认 intervalMs/2
+ * （由 usePoller 包装传入；数据新鲜度保证 ≤ 一个轮询周期，语义不变）。
+ * 0/undefined = 旧行为（每次假→真必 poke）。
+ */
   minPokeMs?: number;
 }
 
@@ -116,9 +116,9 @@ export function createPoller(opts: PollerOptions): Poller {
   };
 
   /** 可见性变化：隐藏 → 清定时器暂停调度；可见 → 闲置超 catchUpMs 立即补跑。
-   * v0.5.0-beta.14.16（深度体检）：补跑前加 isActive 门——隐藏期间用户切走
-   * 了 tab（如 settings→chat），可见恢复时 catch-up 不应在已失活的 poller 上
-   * 执行多余 fetch（旧行为：每次 Alt-Tab 往返多打一发该端点）。 */
+ * v0.5.0-beta.14.16（深度体检）：补跑前加 isActive 门——隐藏期间用户切走
+ * 了 tab（如 settings→chat），可见恢复时 catch-up 不应在已失活的 poller 上
+ * 执行多余 fetch（旧行为：每次 Alt-Tab 往返多打一发该端点）。 */
   const onVisibility = (): void => {
     if (stopped) return;
     if (document.hidden) {
@@ -163,7 +163,7 @@ export function createPoller(opts: PollerOptions): Poller {
     /** 立即执行并重置节拍（供「切回 tab 立即刷新」用）；不满足条件则不动。 */
     poke(): void {
       if (stopped || inFlight || !opts.isActive()) return;
-      // UIPERF-T25：数据还新鲜（半个周期内跑过）→ 跳过，避免连点重复重拉。
+ // 数据还新鲜（半个周期内跑过）→ 跳过，避免连点重复重拉。
       const minPokeMs = opts.minPokeMs;
       if (minPokeMs && lastTickAt > 0 && Date.now() - lastTickAt < minPokeMs) return;
       void runFn().then(() => {
@@ -186,7 +186,7 @@ export function usePoller(pollerOpts: {
   active?: boolean;
   catchUpMs?: number;
   backoffMaxMs?: number;
-  /** UIPERF-T25：默认 intervalMs/2（数据新鲜则跳过 poke）。 */
+  /** ：默认 intervalMs/2（数据新鲜则跳过 poke）。 */
   minPokeMs?: number;
 }): void {
   const { intervalMs, catchUpMs, backoffMaxMs } = pollerOpts;

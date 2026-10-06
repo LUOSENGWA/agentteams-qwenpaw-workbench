@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.9（UIPERF-T10）projects-workflow 取数聚合单测。
+"""v0.5.0-beta.14.9projects-workflow 取数聚合单测。
 
 覆盖 projects_workflow 的对外钉死语义：
 
 1. ``snapshot()`` 初始形状（projects=[] / workflows={} / projectsStatus=0 /
-   scanning=False，零副作用）；
+ scanning=False，零副作用）；
 2. sweep 成功路径：假 /projects 返回 3 条（p1 重复——无 team_id 一条 +
-   带 team_id 一条 → 去重后 2 条，p1 留带 team_id 的记录；p2 独立项目）；
-   p2 的 workflow 取数失败（抛异常，无旧值）→ 快照 workflows 仅含成功的
-   p1、projects_status=200；p1 的 URL 带 &team=（teamQ 规则）；
+ 带 team_id 一条 → 去重后 2 条，p1 留带 team_id 的记录；p2 独立项目）；
+ p2 的 workflow 取数失败（抛异常，无旧值）→ 快照 workflows 仅含成功的
+ p1、projects_status=200；p1 的 URL 带 &team=（teamQ 规则）；
 3. 名单失败（st=401）→ projects 保旧、projects_status=401、scan_at 推进
-   （避免 ensure_fresh 每次都重打）。
+ （避免 ensure_fresh 每次都重打）。
 
 取数函数以 monkeypatch 假 ``worker_status._ctl_get`` 注入（projects_workflow
 复用它为本模块唯一取数注入点，测试不碰真实网络）；asyncio 直跑 ``_sweep``
@@ -40,7 +40,7 @@ WF1 = {"nodes": [{"id": "n1"}], "edges": []}
 
 class _FakeCtlGet:
     """假取数：按 URL path 分发（名单 / 逐项目 workflow）；p2 的 workflow
-    恒抛异常。名单可配状态码（测名单失败保旧路径）。"""
+ 恒抛异常。名单可配状态码（测名单失败保旧路径）。"""
 
     def __init__(self, list_status=200):
         self.list_status = list_status
@@ -89,7 +89,7 @@ def _reset_and_cfg(monkeypatch):
 
 def test_snapshot_initial_shape():
     """1) 初始快照形状：projects 空表 / workflows 空表 / projectsStatus 0 /
-    scanning False。"""
+ scanning False。"""
     snap = pw.snapshot()
     assert snap == {
         "ok": True,
@@ -106,8 +106,8 @@ def test_snapshot_initial_shape():
 
 def test_sweep_dedup_and_missing_keep(monkeypatch):
     """2) sweep 成功：/projects 3 条（p1 重复无 team + 带 team）→ 去重后
-    2 条、p1 留带 team_id 的记录（teamQ 寻址有效键）；p2 workflow 取数
-    抛异常且无旧值 → workflows 仅含成功的 p1；projects_status=200。"""
+ 2 条、p1 留带 team_id 的记录（teamQ 寻址有效键）；p2 workflow 取数
+ 抛异常且无旧值 → workflows 仅含成功的 p1；projects_status=200。"""
     fake = _FakeCtlGet()
     monkeypatch.setattr(ws, "_ctl_get", fake)
 
@@ -141,7 +141,7 @@ def test_sweep_dedup_and_missing_keep(monkeypatch):
 
 def test_sweep_list_failure_keep_old(monkeypatch):
     """3) 名单失败（st=401）→ projects/workflows 保旧、projects_status=401、
-    projects_error 记录 detail、scan_at 照常推进（防 ensure_fresh 重打）。"""
+ projects_error 记录 detail、scan_at 照常推进（防 ensure_fresh 重打）。"""
     fake = _FakeCtlGet(list_status=401)
     monkeypatch.setattr(ws, "_ctl_get", fake)
     pw._snap["projects"] = [{"project_id": "old1"}]

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """房间列表增量 diff 回归测试（v0.5.0-beta.13.21 房间列表 Element 化）。
 
-背景（用户反馈「房间列表刷新慢有点笨，看看 Element」）：Element 的 room
+背景（房间列表刷新慢有点笨，看看 Element）：Element 的 room
 list 从不全量重拉——/sync 增量事件就地合并。插件此前每次房间列表更新=
 全量 /teams/sync（一次带全房间 state 的 Matrix 全量 /sync）。
 现 watcher 每轮 /sync 调 ``build_room_list_diff`` 收集元数据增量
@@ -12,7 +12,7 @@ list 从不全量重拉——/sync 增量事件就地合并。插件此前每次
 - 基线轮（baseline=True）：只建基线，不产 diff（存量房间不轰炸）。
 - 基线后新房间：diff 项 new=True + summary（name/member_count/last_ts）。
 - 已有房间：名字变更 / 成员 join 增减 / 未读 / typing 各自产变更字段，
-  无变更不产项。
+ 无变更不产项。
 - leave 段：房间从基线移除并进 left。
 """
 from __future__ import annotations
@@ -86,7 +86,7 @@ def test_new_room_after_baseline_gets_summary():
         },
         baseline=True,
     )
-    # 再增量：新房间 R2（/sync 新房间带全 state）
+    # 再增量：新房间 （sync 新房间带全 state）
     payload = {
         "rooms": {
             "join": {

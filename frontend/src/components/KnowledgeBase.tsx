@@ -33,7 +33,7 @@ import MdText from "./MdText";
 import { createPoller, type Poller } from "../usePoller";
 
 const host = window.QwenPaw.host;
-// v0.5.0-beta.13.13（13.12 用户反馈「知识文件和预览等高、知识文件 col 可滚动」）：
+// v0.5.0-beta.13.13（13.12 知识文件和预览等高、知识文件 col 可滚动）：
 // 两栏固定等高（min(viewport 余量, 640px)，下限 460），Card 内 body 独立滚动。
 const KB_COL_STYLE = { height: "min(calc(100vh - 330px), 640px)", minHeight: 460, minWidth: 0 } as const;
 const KB_CARD_STYLE = { height: "100%", display: "flex", flexDirection: "column" as const } as const;
@@ -149,9 +149,9 @@ export function clampZoomView(
 
 /** chip 宽：按 name 估宽，钳制 [MIN_W, MAX_W]。 */
 /** CJK 加权文本像素宽（11px 字体：CJK/全角 ≈ 字号，拉丁 ≈ FONT_W）。
- * 用户反馈（P1「簇不要重叠」）：原先 label.length * FONT_W 一律宽，
- *  中文文件名 chip 被严重低估 → 长中文名 chip 横向溢出与邻居压盖。
- *  chipWidth 与标签截断共用（同一估宽，避免两端口径漂移）。 */
+ * （P1「簇不要重叠」）：原先 label.length * FONT_W 一律宽，
+ * 中文文件名 chip 被严重低估 → 长中文名 chip 横向溢出与邻居压盖。
+ * chipWidth 与标签截断共用（同一估宽，避免两端口径漂移）。 */
 export function textWidthUnits(label: string): number {
   let units = 0;
   for (const ch of label) {
@@ -207,7 +207,7 @@ export function clusterGridLayout(
     adj[i].push(j); adj[j].push(i); deg[i] += 1; deg[j] += 1;
   }
   // 1) 簇 = 连通分量（v4 语义：一块=一个连通簇）。
-  //    聚合模式例外：簇按 agent 字段划分（Agent 块），不被跨 Agent 链接切碎。
+  // 聚合模式例外：簇按 agent 字段划分（Agent 块），不被跨 Agent 链接切碎。
   const isVirtual = (nd: GraphNodeLike): boolean =>
     Boolean(nd.virtual) || nd.id.startsWith("virtual:");
   const degRank = (x: number, y: number) =>
@@ -314,7 +314,7 @@ export function clusterGridLayout(
     if (row.length > 0) rowsBlocks.push(row);
   }
   // 12.12：yTop 改累计行高（原 ri*(本行 max 高+gap) 行高不等时跨行重叠——
-  // 「簇重叠」真根因（数值复现：588×104px 块重叠）；累计落地后行行相扣。
+  // 「簇重叠」根因（数值复现：588×104px 块重叠）；累计落地后行行相扣。
   let yAcc = 0;
   rowsBlocks.forEach((row) => {
     const rowW = row.reduce((acc, b) => acc + b.w, 0) + (row.length - 1) * KB2D.BLOCK_GAP_X;
@@ -405,7 +405,7 @@ interface SelectedFile {
  * - 节点大小=链接度；≤42 节点全标注，否则 根+高度数+hover/选中；
  * - 点节点选中：邻接高亮、其余变暗，详情面板=入边/出边列表+打开文件；
  * - 边箭头=引用方向；图例=三级+方向。
- * 聚合图谱（agentLegend 提供）保留 v0.5.0-beta.12  按 Agent 着色。 */
+ * 聚合图谱（agentLegend 提供）保留 v0.5.0-beta.12 按 Agent 着色。 */
 const GRAPH_ROOT_COLOR = "#FF7F16"; // QwenPaw --graph-3d-root
 const GRAPH_DIRECT_COLOR = "#389E5C"; // QwenPaw --graph-3d-direct
 const GRAPH_FILE_LIGHT = "#71665E"; // QwenPaw --graph-3d-file
@@ -413,7 +413,7 @@ const GRAPH_FILE_DARK = "#A29A92";
 
 /** v0.5.0-beta.12 ：聚合图谱按 Agent 着色的调色板（GraphCard 切片误删，补回）。 */
 const AGENT_PALETTE = [
-  "#FF7F16", "#1677ff", "#52c41a", "#f5222d", "#722ed1",
+ "#FF7F16", "#1677ff", "#52c41a", "#f5222d", "#722ed1",
   "#fa8c16", "#13c2c2", "#eb2f96",
 ];
 
@@ -427,7 +427,7 @@ interface GraphModel {
   outbound: Map<string, LinkRef[]>;
 }
 
-// export=UI harness 测试缝（ui-harness-1322 F4：选点持久性），非公共 API。
+// export=UI harness 测试缝（ui-harness-1322 ：选点持久性），非公共 API。
 export function GraphCard(props: {
   graph: { nodes: GraphNodeLike[]; edges: { source: string; target: string; target_anchor?: string | null }[] } | null;
   loading: boolean;
@@ -478,7 +478,7 @@ export function GraphCard(props: {
   };
   const handleGraphMove = (e: React.MouseEvent<SVGSVGElement>) => {
     // 12.12：拖拽中悬停停更（平移由 onSvgPanMove 处理——原实现 move 未接线，
-    // 「鼠标无法拖动」真根因）。
+    // 「鼠标无法拖动」根因）。
     if (dragRef.current) return;
     const cx = e.clientX;
     const cy = e.clientY;
@@ -571,7 +571,7 @@ export function GraphCard(props: {
       setSelectedId("");
       return;
     }
-    // v0.5.0-beta.13.22（13.21 用户反馈 F4「点节点看连接只闪一下箭头」）：
+ // v0.5.0-beta.13.22（13.21 「点节点看连接只闪一下箭头」）：
     // 旧实现 graph 引用一变就清 selectedId——聚合（merged）模式的 graph
     // prop 是每次 render 新建的对象字面量（点节点→openFile→父侧 3 次
     // state 更新→3 次新引用）→ 高亮闪一帧即被清除。正确语义=只在选中
@@ -602,7 +602,7 @@ export function GraphCard(props: {
   const [vb, setVb] = React.useState<RadialView>(view);
   const [focus, setFocus] = React.useState<FocusTarget | null>(null);
   const [panning, setPanning] = React.useState(false);
- // 用户反馈（P1「空白处可拖动整个画板」）：pan 本身 beta.12.8 已有
+ // （P1「空白处可拖动整个画板」）：pan 本身 beta.12.8 已有
   //（整 SVG mousedown + 4px 阈值），但无 cursor 提示 → 用户不知道可拖。
   // grab/grabbing 双态给可发现性。
   const vbRef = React.useRef(vb);
@@ -737,7 +737,7 @@ export function GraphCard(props: {
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
     // viewMode 入依赖：默认 3D 时 2D svg 未挂载，effect 首跑空跑；
-    // 切到 2D 后必须重跑才挂上监听（R12 用户反馈「插件没有滚轮缩放」根因）。
+ // 切到 2D 后必须重跑才挂上监听（R12 插件没有滚轮缩放根因）。
   }, [view, cancelAnim, viewMode]);
   const zoomBy = React.useCallback((factor: number) => {
     const vb0 = vbRef.current;
@@ -1404,7 +1404,7 @@ export function GraphCard(props: {
 
 // ── 远端团队知识库视图（主视图）──────────────────────────────
 
-/** v0.5.0-beta.12：KB 团队/Worker 选择记忆（用户反馈「知识库的团队和 worker
+/** v0.5.0-beta.12：KB 团队/Worker 选择记忆（「知识库的团队和 worker
  * 选择那里也要加记忆」，同工作流 tab 记忆惯例——localStorage 持久
  * 选中态，刷新/重装不丢）。失效值（worker/团队已不存在）回退默认。 */
 const KB_STATE_KEY = "kb-state-v1";
@@ -1472,7 +1472,7 @@ function RemoteKbView(props: {
   const [content, setContent] = React.useState("");
   const [contentLoading, setContentLoading] = React.useState(false);
   const [contentError, setContentError] = React.useState("");
-  // ：文件取回竞态守卫——慢请求的迟到响应（含其报错）不得覆盖新选择。
+  // 文件取回竞态守卫——慢请求的迟到响应（含其报错）不得覆盖新选择。
   const fileSeqRef = React.useRef(0);
   // v0.5.0-beta.12 ：图谱模式（当前 Agent / 团队聚合）
   // v0.5.0-beta.12：记忆恢复（非法值回退 "agent"，loadKbState 已校验枚举）。
@@ -1480,8 +1480,8 @@ function RemoteKbView(props: {
     "agent" | "merged"
   >(() => kbStateRef.current.graphMode ?? "agent");
   /** 聚合图谱团队化——聚合=当前团队内（非全部团队）。
-   * kbTeams=团队→成员（/teams/structure）；kbTeam=选中团队（""=全部，
-   * 默认=当前 agent 所在团队，缺省第一个团队）。 */
+ * kbTeams=团队→成员（teams/structure）；kbTeam=选中团队（""=全部，
+ * 默认=当前 agent 所在团队，缺省第一个团队）。 */
   const [kbTeams, setKbTeams] = React.useState<WorkerTreeTeam[]>([]);
   // v0.5.0-beta.12：记忆恢复（团队列表落地后校验存在性，失效回退默认）。
   const [kbTeam, setKbTeam] = React.useState(
@@ -1507,14 +1507,14 @@ function RemoteKbView(props: {
     Record<string, boolean>
   >({});
 
-  // v0.5.0-beta.14.11（用户反馈）：Agent 选项按所选「聚合团队」收敛
+  // v0.5.0-beta.14.11：Agent 选项按所选「聚合团队」收敛
   //（团队记忆=sysdev-team 时不再列全量 worker）；"全部团队"=全量。
-  // v0.5.0-beta.14.18 定案：记忆团队已设（如某团队），首帧却列出**全集群
-  // 其他团队的 worker**，切换 tab 后再回来才收敛到所选团队。真根因：
-  //   ① fetchTeamsStructure 旧版只在 graphMode==="merged" 的 effect 里调用
-  //     ——agent 模式下团队结构永不被拉 → kbTeams 恒空；
-  //   ② scopedAgents 旧版降级分支 `kbTeam && teamWorkerNames.length` 在
-  //     teams 未落地时落回 **全量 agents** → 首帧下拉=全集群列表（错）。
+  // v0.5.0-beta.14.18 ：记忆团队已设（如某团队），首帧却列出**全集群
+  // 其他团队的 worker**，切换 tab 后再回来才收敛到所选团队。根因：
+  // ① fetchTeamsStructure 旧版只在 graphMode==="merged" 的 effect 里调用
+  // ——agent 模式下团队结构永不被拉 → kbTeams 恒空；
+  // ② scopedAgents 旧版降级分支 `kbTeam && teamWorkerNames.length` 在
+  // teams 未落地时落回 **全量 agents** → 首帧下拉=全集群列表（错）。
   // 修：teams 拉取挪到 mount 无条件（下方 effect）；scopedAgents 语义改为
   // 「kbTeam 非空但团队未落地 = 空列表（宁空勿错）」——teams 落地后
   // scopedAgents 变化会重新触发默认选择 effect，秒级收敛到记忆/leader。
@@ -1532,7 +1532,7 @@ function RemoteKbView(props: {
 
   // 默认选第一个 leader（无则首个 worker）。
   // v0.5.0-beta.12：优先恢复记忆的 Worker（仍在列表中才用，失效回退默认）。
-  // v0.5.0-beta.14.11（用户反馈）：校验范围改用 scopedAgents（kbTeam 非空时
+  // v0.5.0-beta.14.11：校验范围改用 scopedAgents（kbTeam 非空时
   // 已收敛到所选团队），语义不变——记忆优先，失效回退 leader/首个。
   React.useEffect(() => {
     if (!agent && scopedAgents.length > 0) {
@@ -1548,7 +1548,7 @@ function RemoteKbView(props: {
     }
   }, [scopedAgents, agent]);
 
-  // v0.5.0-beta.14.11（用户反馈）：团队切换后当前 Agent 不在范围内 → 收敛到
+  // v0.5.0-beta.14.11：团队切换后当前 Agent 不在范围内 → 收敛到
   // 该团队 leader（无则首个）；记忆值若在范围内则保留（现有恢复逻辑已保证）。
   React.useEffect(() => {
     if (!kbTeam || scopedAgents.length === 0) return;
@@ -1609,7 +1609,7 @@ function RemoteKbView(props: {
     void loadAll();
   }, [agent, loadAll]);
 
-  // 目录展开=懒加载一级（/kb/{a}/ls）；收起不缓存清理（再展开免费）。
+  // 目录展开=懒加载一级（kb/{a}/ls）；收起不缓存清理（再展开免费）。
   const toggleDir = React.useCallback(
     (d: KbDirItem) => {
       const willExpand = !expandedDirs[d.path];
@@ -1647,9 +1647,9 @@ function RemoteKbView(props: {
 
   // v0.5.0-beta.14.18：团队结构**无条件 mount 拉取**——
   // 旧版只在 merged 模式拉，agent 模式下 kbTeams 恒空 → 下拉错列全集群
-  // （真根因见 scopedAgents 注释）。拉取与图谱模式解耦：
-  //   - agent 模式：收敛 agent 下拉范围（记忆团队 → 只列该团队 worker）；
-  //   - merged 模式：确定聚合范围。
+  // （根因见 scopedAgents 注释）。拉取与图谱模式解耦：
+  // - agent 模式：收敛 agent 下拉范围（记忆团队 → 只列该团队 worker）；
+  // - merged 模式：确定聚合范围。
   React.useEffect(() => {
     if (kbTeams.length > 0) return;
     void fetchTeamsStructure()
@@ -1697,12 +1697,12 @@ function RemoteKbView(props: {
     (path: string, agentOverride?: string) => {
       const a = agentOverride || agent;
       const title = path.split("/").pop() || path;
-      // （用户反馈「左边文件树一点击就开、图谱基本不开」）：不再
+      // （左边文件树一点击就开、图谱基本不开）：不再
       // setAgent(agentOverride)。旧副作用「点图谱节点（聚合模式）切到目标
       // Agent」触发 [agent, loadAll] effect 的 setSelected(null)+
       // setContent("")，把刚发起的预览擦掉——fetch 回来时 selected 已 null，
       // 面板不渲染 = 点击无反应；文件树点击不带 override 故一直正常。
-      // 取内容本就按 a=agentOverride 进行，无需切换 UI 当前 Agent（v0.5.0-beta.12 
+      // 取内容本就按 a=agentOverride 进行，无需切换 UI 当前 Agent（v0.5.0-beta.12
       // 跨 Agent 搜索的原始意图就是「不等 setAgent 落地」）。
       setSelected({ section: "remote", filename: path, title });
       const seq = ++fileSeqRef.current;
@@ -1821,7 +1821,7 @@ function RemoteKbView(props: {
 
   const agentInfo = agents.find((a) => a.name === agent);
 
-  // v0.5.0-beta.13.22（13.21 用户反馈 F4 配套）：聚合（merged）模式传给
+  // v0.5.0-beta.13.22（13.21 配套）：聚合（merged）模式传给
   // GraphCard 的 graph 对象旧实现在 JSX 里内联新建（每次 render 新引用）
   // → 子组件 layout/agentLegend 等 useMemo 反复重算（毛球布局 O(n²) 级别），
   // 且曾连带「点节点高亮闪一下」（见 GraphCard 内 effect 注释）。
@@ -1869,7 +1869,7 @@ function RemoteKbView(props: {
             value={agent || undefined}
             placeholder={tr("选择 Agent")}
             onChange={(v: string) => setAgent(v)}
-            // v0.5.0-beta.14.11（用户反馈）：选项按所选团队收敛。
+ // v0.5.0-beta.14.11：选项按所选团队收敛。
             options={agentSelectOptions(scopedAgents, tr)}
           />
           {agentInfo ? (
@@ -2026,7 +2026,7 @@ function RemoteKbView(props: {
       ) : null}
 
       {/* 图谱（v0.5.0-beta.12 ：可切团队聚合，节点按 Agent 着色）
-          v0.5.0-beta.13.22（F4）：merged graph/legend 用 memo 稳定引用。 */}
+ v0.5.0-beta.13.22：merged graph/legend 用 memo 稳定引用。 */}
       <GraphCard
         graph={
           graphMode === "merged" && mergedGraphProp
@@ -2255,10 +2255,10 @@ function LocalKbView(props: { refreshTick: number }) {
   const [content, setContent] = React.useState("");
   const [contentLoading, setContentLoading] = React.useState(false);
   const [contentError, setContentError] = React.useState("");
-  // ：文件取回竞态守卫（同 RemoteKbView）。
+  // 文件取回竞态守卫（同 RemoteKbView）。
   const fileSeqRef = React.useRef(0);
   const [reindexing, setReindexing] = React.useState(false);
-  // v0.5.0-beta.14.6（R2）：旧定时器 → 命令式 createPoller（5s 重建检查，
+  // v0.5.0-beta.14.6：旧定时器 → 命令式 createPoller（5s 重建检查，
   // !document.hidden——后台暂停；tries/停止逻辑原样保留）。
   const reindexPoller = React.useRef<Poller | null>(null);
   const stopReindexPoll = React.useCallback(() => {
@@ -2695,7 +2695,7 @@ function KnowledgeBase(props: { refreshTick?: number }) {
           return;
         }
         // v0.5.0-beta.14.18：probe 成功后后台预热默认 agent 的 tree+graph。
-        // 真冷路径实测（生产实例，外网 5M）：tree 冷算 ≈3.4-3.7s（单次 docker
+        // 真冷路径实测（生产环境，外网 5M）：tree 冷算 ≈3.4-3.7s（单次 docker
         // exec 往返的物理成本，
         // 架构层不可再压）、graph ≈0.9s、温缓存 13-18ms。首帧可见时若恰好
         // 撞上冷算 = 用户等 3.7s；预热后首帧请求命中 SWR（盘+30s 内存）。
@@ -2773,11 +2773,11 @@ function KnowledgeBase(props: { refreshTick?: number }) {
           }
         />
       ) : null}
-      {/* v0.5.0-beta.14.18（14.17 用户反馈「知识库一开始显示本机 agent，
-       * 切 tab 才变 sysdev-team」）：初始 probing 期间 mode 默认 "local"，
-       * LocalKbView（本机宿主 Agent）先闪一帧再切 RemoteKbView——首渲竞态。
-       * 探测中一律 loading，探测结束才落 remote/local 视图（手动切 local
-       * 不受影响：切时 probing 已 false）。 */}
+      {/* v0.5.0-beta.14.18（14.17 「知识库一开始显示本机 agent，
+ * 切 tab 才变 sysdev-team」）：初始 probing 期间 mode 默认 "local"，
+ * LocalKbView（本机宿主 Agent）先闪一帧再切 RemoteKbView——首渲竞态。
+ * 探测中一律 loading，探测结束才落 remote/local 视图（手动切 local
+ * 不受影响：切时 probing 已 false）。 */}
       {probing ? (
         <div style={{ padding: "40px 0", textAlign: "center" }}>
           <antd.Spin size="small" />
@@ -2831,7 +2831,7 @@ type DirChild = { files: KbFileItem[]; dirs: KbDirItem[] };
 
 /** （真机反馈：知识库「只能看见工作区目录，不能点开看；
  * 子目录文件在哪里也看不见」）：目录树节点——原「工作区目录」是
- * 不可点静态 Tag，现改懒加载可展开树：点目录=拉一级（/kb/{a}/ls），
+ * 不可点静态 Tag，现改懒加载可展开树：点目录=拉一级（kb/{a}/ls），
  * 点文件=openFile 预览（路径=工作区相对全路径，/file 端点直读）。
  * 深度上限 6 层防失控。 */
 function DirNode(props: {
@@ -3003,7 +3003,7 @@ function FileGroup({
             const key = keyOf(f);
             const name = key.split("/").pop() || key;
             const active = selected?.filename === key;
-            // v0.5.0-beta.13.10（13.9 用户反馈「知识库不全」）：非文本文件
+ // v0.5.0-beta.13.10（13.9 知识库不全）：非文本文件
             // 列出但灰显不可点开（openable=false，后端全量列目录）。
             const openable = f.openable !== false;
             return (
@@ -3076,6 +3076,6 @@ function RefreshIcon() {
   return <I />;
 }
 
-// v0.5.0-beta.14.10（UIPERF-T13）：面板级 memo——父级（WorkbenchPage）重渲染
+// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(KnowledgeBase);

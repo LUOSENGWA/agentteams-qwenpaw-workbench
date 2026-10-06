@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.9（UIPERF-T9）：Worker session 状态聚合器。
+"""v0.5.0-beta.14.9：Worker session 状态聚合器。
 
 背景：前端每 30s 对全部 worker 逐一打 /workers/{name}/chats（~25 路扇出，
 尾延迟 6-9s，多窗口各打一份）。改为连接器侧单点后台扫描 + 聚合缓存，
@@ -9,12 +9,12 @@
 asyncio task）：
 
 - tick 30s；sweep: GET /api/v1/workers（列名，60s 缓存）→ 逐个
-  /workers/{name}/chats → 归约 {running, lastUpdated}（判据与前端原实现
-  一致：status==="running"；updated_at→epoch ms 取最大）。
+ /workers/{name}/chats → 归约 {running, lastUpdated}（判据与前端原实现
+ 一致：status==="running"；updated_at→epoch ms 取最大）。
 - 失败保旧值；新 worker 下轮进、消失的下轮清（以本轮名单为准）。
 - 扫描并发 4（Semaphore；拨号走 GatedAsyncClient 全局闸门）。
 - 单飞：扫描中不重入；ensure_fresh fire-and-forget（端点路径零等待）；
-  stop 优雅退出。
+ stop 优雅退出。
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 
 from . import config as config_mod
 from . import router as router_mod
-# v0.5.0-beta.14.13（T20）：GatedAsyncClient/should_failover_status 随
+# v0.5.0-beta.14.13：GatedAsyncClient/should_failover_status 随
 # _ctl_get 实现体迁入 ctl_client，本模块仅剩 bg_slot（后台共用通道）。
 from .dial_gate import bg_slot
 
@@ -60,7 +60,7 @@ def snapshot() -> Dict[str, Any]:
 
 def ensure_fresh(force: bool = False) -> None:
     """过期（或 force=True 无视 TTL，v0.5.0-beta.14.12 手动刷新用）且未
-    扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
+ 扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
     if _agg["scanning"]:
         return
     if not force and time.time() - _agg["scan_at"] < _TTL:
@@ -79,9 +79,9 @@ def ensure_fresh(force: bool = False) -> None:
 async def _ctl_get(url: str, token: str) -> tuple:
     """薄包装 → ctl_client.ctl_json("GET", …)（v0.5.0-beta.14.13 去重）。
 
-    保持本名 = projects_workflow 与测试的既有取数注入点（测试 monkeypatch
-    本函数，不碰真实网络；签名与语义不变）。
-    """
+ 保持本名 = projects_workflow 与测试的既有取数注入点（测试 monkeypatch
+ 本函数，不碰真实网络；签名与语义不变）。
+ """
     from . import ctl_client  # noqa: PLC0415
     return await ctl_client.ctl_json("GET", url, token)
 
@@ -101,12 +101,12 @@ def _ts_ms(value: Any) -> int:
 
 
 async def _sweep() -> None:
-    """单飞门 + 后台共用通道（v0.5.0-beta.14.12，UIPERF-T17）。
+    """单飞门 + 后台共用通道（v0.5.0-beta.14.12，）。
 
-    前台忙（拨号 inflight > 12）让权、等共用锁超 90s 放弃本轮（下一
-    tick 重试）；扫描体持共用锁——同一时刻至多一路后台扫描在跑
-    （与 projects_workflow / KB 刷新共享，防齐发打满闸门抢前台）。
-    """
+ 前台忙（拨号 inflight > 12）让权、等共用锁超 90s 放弃本轮（下一
+ tick 重试）；扫描体持共用锁——同一时刻至多一路后台扫描在跑
+ （与 projects_workflow / KB 刷新共享，防齐发打满闸门抢前台）。
+ """
     if _agg["scanning"]:
         return  # 单飞：扫描中不重入
     _agg["scanning"] = True
@@ -124,10 +124,10 @@ async def _sweep() -> None:
 async def _do_sweep() -> None:
     """一轮全扫：名单（60s 缓存）→ 逐 worker /chats（并发 4）→ 归约。
 
-    保旧语义：单 worker 失败 → 该 worker 保旧值（无旧值则本轮缺省）；
-    名单级失败（token/网络/空名单）→ 整表不动。新 worker 成功即进，
-    消失的 worker（不在本轮名单）随新表清掉。
-    """
+ 保旧语义：单 worker 失败 → 该 worker 保旧值（无旧值则本轮缺省）；
+ 名单级失败（token/网络/空名单）→ 整表不动。新 worker 成功即进，
+ 消失的 worker（不在本轮名单）随新表清掉。
+ """
     cfg = config_mod.load_config()
     try:
         token, _src = router_mod._resolve_controller_token(cfg)

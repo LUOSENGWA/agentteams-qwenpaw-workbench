@@ -5,10 +5,10 @@
 调用但**从未定义** → 每次请求 NameError → 500。本文件护栏：
 
 - 带 token 时打 Controller /api/v1/workers 成功 → 200 + 树含 runtime/room_id
-  （基础字段）+ source=controller-workers。
+ （基础字段）+ source=controller-workers。
 - 无 Controller 配置 → 200 优雅降级（空树），不 500。
 - ``_token_or_none`` 纯函数：空配置 → None；有 token → token；内容非法 →
-  None（不裸抛）。
+ None（不裸抛）。
 """
 from __future__ import annotations
 
@@ -166,8 +166,8 @@ def test_token_or_none_invalid_content_no_raise():
 
 
 # ── v0.5.0-beta.13.12：/teams/structure 缓存 TTL 正负分离回归 ──────────
-# 13.11 用户反馈「团队管理 tab 刷不出完整信息，手动刷新也不行，要等 30s 自动
-# 刷新」后端半真根因：首次失败/空树结果被正缓存 60s（负缓存），锁死后续
+# 13.11 「团队管理 tab 刷不出完整信息，手动刷新也不行，要等 30s 自动
+# 刷新」后端半根因：首次失败/空树结果被正缓存 60s（负缓存），锁死后续
 # 手动刷新。修法：成功（controller-workers 且非空）= 60s；降级/空树 = 5s。
 # 本文件护栏：两条 TTL 分支 + force 旁路 + 负缓存快速过期语义。
 
