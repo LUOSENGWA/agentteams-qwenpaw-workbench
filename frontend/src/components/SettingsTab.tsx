@@ -153,7 +153,7 @@ function ConnRow({
           minWidth: 0,
           padding: "4px 8px",
           borderRadius: 6,
-          background: active ? "rgba(255,127,22,0.06)" : "transparent",
+          background: active ? "color-mix(in srgb, var(--app-accent, #FF7F16) 6%, transparent)" : "transparent",
           cursor: row.diag ? "pointer" : "default",
           userSelect: "none",
         }}
@@ -978,11 +978,20 @@ const SettingsTab = React.memo(function SettingsTab({
                 (config.gateway_admin_urls || []).some((e) => typeof e === "object" && e !== null && (e as { auth?: unknown }).auth),
               ],
               [
-                tr("SGLang 地址凭据"),
+                tr("SGLang 地址凭据（通常不需要）"),
                 ((config.sglang as { urls?: AddressEntry[] } | undefined)?.urls || []).some((e) => typeof e === "object" && e !== null && (e as { auth?: unknown }).auth),
               ],
             ] as [string, boolean][]).map(([label, on]) => (
-              <span key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span
+                key={label}
+                style={{ display: "flex", alignItems: "center", gap: 6 }}
+                // v0.5.0-beta.14.18（14.17 装验反馈「SGLang 要什么凭据？」）：
+                // 悬停说明——SGLang 是本地推理服务，自身无认证；只有访问
+                // 地址后面套了网关 Basic 门才需要，默认留空。
+                title={label.includes("SGLang")
+                  ? tr("SGLang 通常不需要凭据（本地推理服务自身无认证）——仅当访问地址经公网网关 Basic 门时填写，默认留空。")
+                  : undefined}
+              >
                 <span
                   style={{
                     width: 7,
@@ -1288,7 +1297,7 @@ const SettingsTab = React.memo(function SettingsTab({
                 borderRadius: 6,
                 background: connTest.applied
                   ? connTest.switched?.matrix || connTest.switched?.controller
-                    ? "rgba(255,127,22,0.08)"
+                    ? "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)"
                     : "rgba(82,196,26,0.08)"
                   : "rgba(128,128,128,0.08)",
               }}
@@ -1349,20 +1358,24 @@ const SettingsTab = React.memo(function SettingsTab({
               { label: tr("L1 管理面（token / Higress）"), value: "token" },
             ]}
           />
+          {/* v0.5.0-beta.14.18（14.17 装验反馈「Matrix 登录和认证/登录卡片
+              是不是重复或者冲突」）：一行点破两者关系——Matrix 登录是
+              AgentTeams 消息系统的账号（=上方 Matrix 地址区同一账号），
+              与 QwenPaw 页面自身的登录无关。 */}
+          <div style={{ fontSize: 11.5, color: "#888", marginBottom: 10, lineHeight: 1.6 }}>
+            {tr("「Matrix 登录」= AgentTeams 消息系统账号（与上方 Matrix 地址同一账号，L2 只读）；与 QwenPaw 页面自身的登录是两回事，不冲突。")}
+          </div>
           {ctlMode === "token" ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ fontSize: 12, color: "#888" }}>
-                {tr("两块凭据互相独立、各管一个系统（不是二选一）：")}
-                <div>
-                  {tr("① Controller 管理员 token——Controller 管理 API 的唯一凭证（CRD 管理/全量视图）。Controller 只认 SA token 与 Matrix token：Matrix 路径只放行 level-2/3（只读），level-1（admin）明确 401，且无任何密码登录端点——dashboard 能「admin 账密进门」同样是部署期把该 token 注入服务端 env，浏览器用户从不输入它。")}
-                </div>
-                <div>
-                  {tr("② Higress 账号+密码——Higress Console 的账号（模型 alias 面，独立系统）。它恰好与 Matrix @admin 同源（部署时同一对账密注册两处），但不是 Controller 凭证、也不改变 Controller 权限。")}
-                </div>
-              </div>
-              <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "grid", gap: 14 }}>
+              {/* v0.5.0-beta.14.18（14.17 装验反馈「Higress 的认证和 controller
+                  token 认证应该分开吧」）：两块凭据拆成视觉上独立的两块——
+                  各带系统归属行，不再是「一套认证里的两个字段」。 */}
+              <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: "rgba(0,0,0,0.025)", borderRadius: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>
-                  {tr("① Controller 管理员 token")}
+                  {tr("① Controller 认证（管理面：CRD/全量视图/日志）")}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#888", lineHeight: 1.6 }}>
+                  {tr("Controller 只认 SA token 与 Matrix token（Matrix 路径只放行 L2/L3 只读，L1 明确 401，无密码登录端点）——admin 能力只能来自管理员 token。")}
                 </div>
                 {/* v0.5.0-beta.12（用户反馈：「controller token 的文件路径可以
                     删掉了，留个命令就行」）：文件路径字段删除，留获取命令。 */}
@@ -1419,9 +1432,12 @@ const SettingsTab = React.memo(function SettingsTab({
                   </div>
                 ) : null}
               </div>
-              <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: "rgba(0,0,0,0.025)", borderRadius: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>
-                  {tr("② Higress Console 会话（模型面）——admin 账号+密码")}
+                  {tr("② Higress Console 认证（模型面：alias/提供商/路由）——独立系统")}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#888", lineHeight: 1.6 }}>
+                  {tr("Higress Console 自己的账号体系（admin 账号+密码），与 Controller 认证互不相关、可各自独立配置。")}
                 </div>
                 <antd.Input
                   placeholder={tr("admin 账号（如 admin）")}
