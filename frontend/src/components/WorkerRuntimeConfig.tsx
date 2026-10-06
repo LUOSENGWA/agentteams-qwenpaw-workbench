@@ -1,7 +1,7 @@
 /**
  * WorkerRuntimeConfig.tsx — A2：Worker 运行配置（消费上游 #1231 端点族）。
  *
- * 9/6 顺序铁律「插件 A2 先做先验证，dashboard 后对齐」——插件侧本轮落地，
+ * 顺序铁律「插件 A2 先做先验证，dashboard 后对齐」——插件侧本轮落地，
  * dashboard B5（#103）为镜像语义。
  *
  * 契约（上游 pinned qwenpaw running-config + loops router 实读 +
@@ -20,7 +20,7 @@
  * - L1 全字段（除 approval_level）；L2 = 5-tab 字段白名单，未知键拒绝
  *   不静默丢弃 → 本面板可编辑键全部在 L2 白名单内，diff 按构造 L2 安全。
  * - approval_level 由审批端点（#1216）管理——WRC PUT 发送会被服务端 400
- *   拒绝；「系统」tab 内嵌 ApprovalControl 就地编辑（13.24 F3 装验定案：
+ *   拒绝；「系统」tab 内嵌 ApprovalControl 就地编辑（13.24 F3 用户反馈定案：
  *   不再只读展示），数据面=审批端点，与 WRC 白名单互不干扰（无双写）。
  * - loop（含 custom_modes）改动成功后服务端自动通知团队 Leader。
  * - 409 = Worker 正在执行任务/配置锁定；404 = Controller 未含该端点
@@ -77,7 +77,7 @@ function isPosNum(s: string): boolean {
 }
 
 /**
- * v0.5.0-beta.13.7 Loop 全 gate 模型（13.6 装验「Loop 设置抄 QwenPaw 没抄完」
+ * v0.5.0-beta.13.7 Loop 全 gate 模型（13.6 用户反馈「Loop 设置抄 QwenPaw 没抄完」
  * 正源 = qwenpaw/config/config.py LoopConfig 数据模型 + QwenPaw console
  * AgentLoopCard 控件逐一对账）：
  * - 迭代上限在 **Agent Loop → Default → iteration 门**（QwenPaw
@@ -287,7 +287,7 @@ function GateParam({
 type EditVal = string | boolean | null;
 type EditMap = Record<string, EditVal>;
 
-/** v0.5.0-beta.13.8（13.7 装验「QwenPaw 有模板的，你可以抄过来——别忘
+/** v0.5.0-beta.13.8（13.7 用户反馈「QwenPaw 有模板的，你可以抄过来——别忘
  *  开源项目的礼仪」）：Loop 模板 + gate 定义移植自 QwenPaw console
  *  AgentLoopCard.tsx（agentscope-ai/QwenPaw，开源项目）。礼仪处理：
  *  ① 模板名/gate 定义/默认值逐值保留原作者设计 ② 代码注释保留出处 ③
@@ -397,7 +397,7 @@ function WorkerRuntimeConfig({
   const [gateMsg, setGateMsg] = React.useState("");
 
   // 编辑值（null = 未改动）。
-  // v0.5.0-beta.13.7（13.6 装验「基本 tab 的拖动条有问题，QwenPaw 是输入
+  // v0.5.0-beta.13.7（13.6 用户反馈「基本 tab 的拖动条有问题，QwenPaw 是输入
   // 数字的」）：maxIters Slider 废弃——QwenPaw 正源配置面**无滑杆**，迭代
   // 上限 = Agent Loop → Default → iteration 门（enable Switch + InputNumber
   // 1..500）；保存时按 useAgentConfig L183-185 语义镜像 legacy max_iters。
@@ -422,7 +422,7 @@ function WorkerRuntimeConfig({
   const [maxRetries, setMaxRetries] = React.useState<string | null>(null);
   const [backoffBase, setBackoffBase] = React.useState<string | null>(null);
   const [backoffCap, setBackoffCap] = React.useState<string | null>(null);
-  // v0.5.0-beta.13.8（13.7 装验「ReAct 智能体/LLM 并发限流/上下文管理/
+  // v0.5.0-beta.13.8（13.7 用户反馈「ReAct 智能体/LLM 并发限流/上下文管理/
   // 长期记忆 都做进去了吗——接口实盘全在」）：六 tab 补齐的新字段组。
   // ReAct 智能体（shell_*/auto_title，L1）+ LLM 并发限流（5 键，L1）+
   // 上下文管理（light_context_config 嵌套，L1）+ 长期记忆（reme，L2 白名单）。
@@ -1168,7 +1168,7 @@ function WorkerRuntimeConfig({
   };
 
   // 折叠头（Worker 管理展开区内的可折叠段）。
-  // v0.5.0-beta.13.16（13.15 装验「运行配置的按钮做好看一点，和资源管理的
+  // v0.5.0-beta.13.16（13.15 用户反馈「运行配置的按钮做好看一点，和资源管理的
   // 按钮做一样」）：text link → 与「资源管理」区块同款卡片式折叠头
   // （▸/▾ + 图标 + 标题 + qwenpaw 标签 + 边框卡片）。
   if (!open) {
@@ -1284,7 +1284,7 @@ function WorkerRuntimeConfig({
         />
       ) : null}
 
-      {/* v0.5.0-beta.13.6（装验反馈「太简陋太不直观」）：按 QwenPaw console
+      {/* v0.5.0-beta.13.6（用户反馈「太简陋太不直观」）：按 QwenPaw console
           Agent Config 页正源重构呈现——Tabs 分域 + 每域 Card + 表单项行
           （label + tooltip 左 / 控件右）+ 滑杆带数值显示。旧版把所有字段
           挤进一行 flex-wrap：窄容器换行错乱、语义分组不可见。
@@ -1398,7 +1398,7 @@ function WorkerRuntimeConfig({
               label: tr("智能体 Loop 设置"),
               children: (
                 <antd.Card size="small" title={tr("智能体 Loop 设置")} style={{ marginTop: 4 }}>
-                  {/* v0.5.0-beta.13.7（13.6 装验「Loop 设置抄 QwenPaw 没抄
+                  {/* v0.5.0-beta.13.7（13.6 用户反馈「Loop 设置抄 QwenPaw 没抄
                       完」）：按 QwenPaw AgentLoopCard 补齐——Default 模式 gate
                       管道（iteration/doom_loop/rubric）+ Goal/Mission 内置
                       参数，全部 InputNumber（QwenPaw 配置面无滑杆）；13.6
@@ -1407,7 +1407,7 @@ function WorkerRuntimeConfig({
                       对账 qwenpaw LoopConfig（iteration 1..500 / doom
                       window≥2 / threshold 0..1 / stages after≥1 / rubric
                       1..10 / goal 1..500 / mission 1..100·retry 0..10）。 */}
-                  {/* v0.5.0-beta.13.8（13.7 装验「QwenPaw 有模板的，你可以抄
+                  {/* v0.5.0-beta.13.8（13.7 用户反馈「QwenPaw 有模板的，你可以抄
                       过来——别忘了开源项目的礼仪」）：Loop 模板——QwenPaw
                       AgentLoopCard 的「Loop 模板」区移植（出处/署名见文件
                       顶部 LOOP_TEMPLATES 注释；模板/gate 默认值逐值保留
@@ -2459,7 +2459,7 @@ function WorkerRuntimeConfig({
             },
             {
               key: "system",
-              // v0.5.0-beta.13.24（F3·装验定案）：审批级别不再只读——内嵌
+              // v0.5.0-beta.13.24（F3·用户反馈定案）：审批级别不再只读——内嵌
               // 与团队管理卡同源的 ApprovalControl（四档卡选择器 + 读/写
               // 双路径回退 + L1/L2 权限 + OFF capability 提示，零新写链路）。
               // 数据面仍走审批端点 #1216（WRC PUT 白名单本就不含

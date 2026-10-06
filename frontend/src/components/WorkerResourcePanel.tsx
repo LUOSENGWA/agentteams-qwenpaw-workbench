@@ -2,8 +2,8 @@
  * ⚙️ 资源管理（v0.5.0-beta.13.15 B5b 集成 / 13.16 合并重构）。
  *
  * 位置：团队拓扑 Worker 行展开区（WorkerManage → WorkerRow）。
- * 装验反馈（13.14）：「技能中心和频道和 MCP 和工具集成到团队拓扑」；
- * 13.15 装验再收口：「技能中心和 MCP 完全和 worker 拓扑合并 + 做好 UI/UX
+ * 用户反馈（13.14）：「技能中心和频道和 MCP 和工具集成到团队拓扑」；
+ * 13.15 用户反馈再收口：「技能中心和 MCP 完全和 worker 拓扑合并 + 做好 UI/UX
  * + 点开工具不应再选 Worker」——四维全部就地可管理，不再跳页。
  *
  * 四页签（全部复用既有组件/编辑链路，不裸重写）：
@@ -55,7 +55,7 @@ export default function WorkerResourcePanel({
   const items = [
     {
       key: "skills",
-      // v0.5.0-beta.13.16（13.15 装验「技能中心和 MCP 完全和 worker 拓扑
+      // v0.5.0-beta.13.16（13.15 用户反馈「技能中心和 MCP 完全和 worker 拓扑
       // 合并」）：只读概览 + 跳转链接 → 直接嵌入技能中心的可编辑矩阵
       // （SkillCenter onlyWorker+sections——同一组件、同一保存链路，就地编辑）。
       label: (
@@ -64,7 +64,7 @@ export default function WorkerResourcePanel({
         </span>
       ),
       children: (
-        // v0.5.0-beta.13.21（13.20 装验「worker 也是，和技能中心一样的搜索/
+        // v0.5.0-beta.13.21（13.20 用户反馈「worker 也是，和技能中心一样的搜索/
         // 上传/自定义等，都集成在拓扑里面」）：技能节=目录（搜索/上传/自定义/
         // 下载，scope=该 Worker 所属团队）+ 可编辑分配矩阵（preload 等）。
         <SkillCenter

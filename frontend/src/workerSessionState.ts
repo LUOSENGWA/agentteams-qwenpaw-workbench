@@ -17,7 +17,7 @@
 //   TeamRoom.last_ts     —— 该条消息的时间戳（/sync timeline limit=1）
 //   TeamRoom.members     —— 房间成员 MXID 表
 //
-// 状态机（9/14 定稿 + 9/18 心跳升级 + 13.2 per-sender，色板：蓝=运行中（呼吸）/绿=运行完成/灰=无任务）：
+// 状态机（定稿 + 心跳升级 + 13.2 per-sender，色板：蓝=运行中（呼吸）/绿=运行完成/灰=无任务）：
 //   running = agentStatus "running" / runningTaskCount>0（任务级，无上限）
 //           或该 Worker 的 MXID 在任一房间 typing[] 内（实时回退）
 //   done    = lastFinishAt 距今 ≤ 10min（任务级）
@@ -156,7 +156,7 @@ export interface WorkerSessionStates {
   byName: Record<string, WorkerSessionState>;
   /** 房间 room_id → 状态（Worker 个人房间卡 / 1:1 聊天头用）。 */
   byRoom: Record<string, WorkerSessionState>;
-  /** Worker MXID → 状态（聊天消息头像状态点用，9/18 落点）。 */
+ /** Worker MXID → 状态（聊天消息头像状态点用，落点）。 */
   byMxid: Record<string, WorkerSessionState>;
   /** 全部 Worker MXID（团队房间 running 判定用）。 */
   workerMxids: Set<string>;

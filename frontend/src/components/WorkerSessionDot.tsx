@@ -35,7 +35,7 @@ export default function WorkerSessionDot({
 }: {
   state: WorkerSessionState;
   size?: number;
-  /** （9/19 定案：灯在头像角落）：absolute 挂右下 + 白描边环。 */
+ /** （定案：灯在头像角落）：absolute 挂右下 + 白描边环。 */
   corner?: boolean;
 }) {
   const tr = useT();

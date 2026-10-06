@@ -1,4 +1,4 @@
-// v0.5.0-beta.12.9（P7，装验 9/18「插件要加上和 dashboard 一样的模型
+// v0.5.0-beta.12.9（P7，用户反馈「插件要加上和 dashboard 一样的模型
 // 配置页面」）：模型网关配置页（插件版，只读 v1）。
 //
 // 数据面双源（与 dashboard A2「controller-first 只读降级」同语义）：
@@ -44,7 +44,7 @@ interface RouteRow {
   name: string;
   upstreams: string;
   aliases: string;
-  /** P7b（9/19 全套抄 dashboard）：授权 consumer 与请求模型 alias 分列
+ /** P7b（全套抄 dashboard）：授权 consumer 与请求模型 alias 分列
    * （原先 controller 源把 allowedConsumers 填进 alias 列，语义错位）。 */
   consumers: string;
   /** console 源的 Console 原始记录（编辑预填全字段用；controller 源无）。 */
@@ -55,7 +55,7 @@ function routeRowOf(r: AiRouteLite): RouteRow {
   const ups = (r.upstreams || [])
     .map((u) => (u.weight != null ? `${u.provider}（${u.weight}%）` : u.provider))
     .join("、");
-  // 装验反馈 9/19（P7）：preds 原先是 join("、") 后的字符串，下面
+ // 用户反馈（P7）：preds 原先是 join("、") 后的字符串，下面
   // [...preds] spread 字符串 = 逐字符拆开（"d、e、p、s、k、-"）。
   // 拆成 predsArr（数组）+ 显示串两段，spread 用数组。
   const predsArr = (r.modelPredicates || []).map(
@@ -238,7 +238,7 @@ function ModelsTab() {
       key: "upstreams",
     },
     {
-      // P7a（9/19）：alias 逐字拆开 bug 修后，本列正常显示请求模型别名。
+ // P7a：alias 逐字拆开 bug 修后，本列正常显示请求模型别名。
       title: tr("请求模型（alias）"),
       dataIndex: "aliases",
       key: "aliases",
@@ -363,7 +363,7 @@ function ModelsTab() {
           />
           {source === "console" ? (
             <>
-              {/* P7b（9/19 全套抄 dashboard）：可请求模型（alias）全集——
+ {/* P7b（全套抄 dashboard）：可请求模型（alias）全集——
                   路由 predicate/mapping 去重聚合，即 Worker 模型下拉的
                   「网关 alias」分组内容（dashboard 模型页同信息）。 */}
               {(() => {

@@ -71,7 +71,7 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
     }
   }, [sel, tr]);
 
-  // v0.5.0-beta.13.16（13.15 装验「点开工具的管理不应该要我再选 worker」）：
+  // v0.5.0-beta.13.16（13.15 用户反馈「点开工具的管理不应该要我再选 worker」）：
   // 单 Worker 场景（拓扑资源管理嵌入 = workers=[w]）自动选中，无需手动选。
   React.useEffect(() => {
     if (!sel && workers.length === 1) setSel(workers[0].name);

@@ -6,7 +6,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-/** v0.5.0-beta.13.8（13.7 装验「@mention 格式不对——Element 渲染整 MXID」）：
+/** v0.5.0-beta.13.8（13.7 用户反馈「@mention 格式不对——Element 渲染整 MXID」）：
  *  Element/Matrix 口径——消息 body 里的整 MXID（@local:server[:port]）被
  *  正则扫描渲染成 pill（Element Pill.tsx 同款前端后处理；本集群
  *  formatted_body 不含 matrix.to 链接，纯前端正则即正解）。chip 显
@@ -94,7 +94,7 @@ const InlineMd = React.memo(function InlineMd({
       nodes.push(<i key={key++}>{tok.slice(1, -1)}</i>);
     } else if (tok.startsWith("@")) {
       // 13.8 收口（F4）：整 MXID 与短 @name **统一 pill**（此前短名只是橙色
-      // 加粗——装验反馈「@mention 是简单字符串」）。MentionPill 对无 :server 的
+      // 加粗——用户反馈「@mention 是简单字符串」）。MentionPill 对无 :server 的
       // 短名同样工作（chip=localpart，Tooltip=短名，点击=onMentionClick 短名
       // 插入输入框走原逻辑）。
       if (MXID_TEST.test(tok)) {
@@ -154,7 +154,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 /** 代码块：深底 + 语言标签 + 复制。 */
-/** v0.5.0-beta.13.7（13.6 装验「看看 dashboard 和 QwenPaw 怎么渲染消息，
+/** v0.5.0-beta.13.7（13.6 用户反馈「看看 dashboard 和 QwenPaw 怎么渲染消息，
  *  继续优化」）：代码块对齐 dashboard markdown-message CodeBlock 口径——
  *  浅底卡片 + 边框 + 灰底语言栏 + 复制按钮**hover 才出现**（dashboard
  *  opacity-0 group-hover:opacity-100 同款），替代 13.6 的暗色底+常显复制

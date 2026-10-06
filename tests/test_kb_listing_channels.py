@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """KB 目录列取双通道回归测试（v0.5.0-beta.13.9 真根因修）。
 
-背景（真机反馈 9/22）：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
+背景（真机反馈）：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
 kb_tree 顶层（worker 支）/ memory / digest 子树全走「先整目录递归 tar
 下载完、下载完才查大小」→ 413「工作区顶层超过 20MB，无法列取」。
 
@@ -220,7 +220,7 @@ def test_tree_large_workspace_exec_primary_zero_download(client):
     body = r.json()
     files = {f["path"]: f for f in body["files"]}
     # 200 = 核心（旧版整树 tar 到 20MB 就 413，连一个文件都拿不到）。
-    # v0.5.0-beta.13.10（13.9 装验「知识库不全」真根因②）：非文本文件
+    # v0.5.0-beta.13.10（13.9 用户反馈「知识库不全」真根因②）：非文本文件
     # 全量列出 + openable=False（旧断言「bigfile.bin 不入列」已废弃）。
     assert files["bigfile.bin"]["openable"] is False
     assert "AGENTS.md" in files
@@ -375,7 +375,7 @@ def test_ls_exec_down_tar_404_is_404(client):
     assert "目录不存在" in r.text
 
 
-# ── v0.5.0-beta.13.10：符号链接列全（13.9 装验「知识库不全」真根因①）──
+# ── v0.5.0-beta.13.10：符号链接列全（13.9 用户反馈「知识库不全」真根因①）──
 def test_tree_symlink_dir_and_file(client):
     """shared→目录（python3 解析 D）入 dirs + symlink 标记；
     note-link→文件（解析 F）入 files openable=False。"""

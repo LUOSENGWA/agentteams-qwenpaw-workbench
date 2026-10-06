@@ -47,7 +47,7 @@ export interface ProjectDag {
 
 /** 节点状态 → 看板状态空间（revision 保留自身状态；
  * v0.5.0-beta.13.12：cancelled 独立态——此前折入 blocked 是状态映射
- * 不一致缺陷（现场 9/23 报告：cancelled 任务显示成 blocked）。 */
+ * 不一致缺陷（现场 报告：cancelled 任务显示成 blocked）。 */
 const WORKFLOW_STATUS_MAP: Record<string, string> = {
   pending: "pending",
   planned: "pending",
@@ -190,7 +190,7 @@ export interface DagLayout {
 /** 自上而下分层布局（与 dashboard layoutProjectDag 同算法）：
  * layer 0 在顶，同层左→右。
  *
- * v0.5.0-beta.13.24（F5 图优化，装验反馈「只需优化这个图」）：
+ * v0.5.0-beta.13.24（F5 图优化，用户反馈「只需优化这个图」）：
  *  ① 层行水平居中——旧版每行从 PAD 左对齐，节点少的行贴左、
  *     整体左重右空（与 mermaid 居中行的观感差距主因）；先扫最大行
  *     宽，各行居中，图整体视觉重心居中。

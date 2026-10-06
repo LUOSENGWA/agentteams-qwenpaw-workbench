@@ -577,7 +577,7 @@ def _scan_should_full(kind: str) -> bool:
 def _scan_mark_full(kind: str) -> None:
     _room_scan_state["full_at"][kind] = time.time()
 _room_approvals_lock = threading.Lock()
-# v0.5.0-beta.13.12（13.11 装验「团队管理 tab 刷不出完整信息，手动刷新不
+# v0.5.0-beta.13.12（13.11 用户反馈「团队管理 tab 刷不出完整信息，手动刷新不
 # 行，要等 30s 自动刷新」真根因·后端半）：/teams/structure 60s TTL 缓存
 # 此前把**首次失败/空树结果也缓存 60s（负缓存）**——token 未就绪时首拉
 # 得空树（source=room-fallback 或 []），之后 60s 内手动刷新（force=true
@@ -2586,7 +2586,7 @@ def build_router() -> APIRouter:
         for base in base_urls:
             target = f"{base.rstrip('/')}{encoded}{query_string}"
             try:
-                # v0.5.0-beta.14.18（14.17 装验「运行日志 HTTP 502: Docker API
+                # v0.5.0-beta.14.18（14.17 用户反馈「运行日志 HTTP 502: Docker API
                 # 401」真根因）：该端点漏在 14.3 的 _headers_for 覆盖凭据修复面
                 # 外——外网固定档（address_mode=wan）经公网网关时只发 Bearer，
                 # 网关 Basic 门拒收 → 401 → 本端点转 502。其余 15+ 拨号点早已
@@ -3458,7 +3458,7 @@ def build_router() -> APIRouter:
         return out
 
     # ── KB 目录列取双通道（v0.5.0-beta.13.9 真根因修）────────────────
-    # 真机反馈 9/22：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
+ # 真机反馈：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
     # kb_tree 顶层（worker 支）/ memory / digest 子树全走「先整目录递归
     # tar 下载完、下载完才查大小」→ 413「工作区顶层超过 20MB，无法列取」
     # （manager 顶层早前已单独切 exec find，worker 支漏改=同类没扫全）。
@@ -4545,7 +4545,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                      "category": "file"}
                 )
             elif et == "l":
-                # v0.5.0-beta.13.10（13.9 装验「知识库目录不全」真根因①）：
+                # v0.5.0-beta.13.10（13.9 用户反馈「知识库目录不全」真根因①）：
                 # 符号链接此前被整条跳过（worker 工作区 shared →
                 # teams/{team}/shared 团队共享目录不可见）。批量解析目标
                 # 类型（python3 argv 传路径，不经过 shell 解析——manager

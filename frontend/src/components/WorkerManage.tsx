@@ -966,7 +966,7 @@ function TeamNode({
               sessionState={g.worker_name ? sessionByName?.[g.worker_name] : undefined}
               // v0.5.0-beta.13.10（B1 真根因）：l1 此前在此层丢失——
               // TeamNode 拿到 l1 却没传给 WorkerRow，运行配置面板恒
-              // l1=undefined → 恒「只读」Alert（装验：L1 登录仍见只读）。
+              // l1=undefined → 恒「只读」Alert（用户反馈：L1 登录仍见只读）。
               l1={l1}
               onOpenSettings={onOpenSettings}
             />
@@ -1621,8 +1621,8 @@ function WorkerManage(props: WorkerManageProps) {
             label: tr("工具"),
             children: <WorkerTools workers={admin.workers} />,
           },
-          // 会话入口 9/19 迁移：群内 worker 头像点击（RoomChat 抽屉）——
-          // 不在团队管理出 tab（9/19 定案：会话属于聊天上下文，且要看完整
+ // 会话入口 迁移：群内 worker 头像点击（RoomChat 抽屉）——
+ // 不在团队管理出 tab（定案：会话属于聊天上下文，且要看完整
           // session，不是最后活动列表）。
           // v0.5.0-beta.12 ：技能中心从顶层 tab 收编（设计结论——团队级
           // 技能/MCP 资源管理归团队管理，不独立顶层 tab）。
@@ -1634,7 +1634,7 @@ function WorkerManage(props: WorkerManageProps) {
         ]
       : myUserId
         ? [
-            // v0.5.0-beta.13.14（L2 双模式——9/11 调研 P0 定案 + 上游
+ // v0.5.0-beta.13.14（L2 双模式——调研 P0 定案 + 上游
             // l2-worker-scoped-write.md/team-skills.md/skill-catalog-api.md
             // 已合 main）：L2 身份（Matrix token、无 admin token）只出技能
             // 中心（我的团队 scope）：目录 ?team= + skills 可写 + MCP 只读。
@@ -1735,7 +1735,7 @@ function WorkerManage(props: WorkerManageProps) {
       </antd.Card>
       {hasToken && !admin ? (
         <antd.Card size="small">
-          {/* v0.5.0-beta.13.21（13.20 装验「首屏只显拓扑」缺口⑤）：静默失败不再
+          {/* v0.5.0-beta.13.21（13.20 用户反馈「首屏只显拓扑」缺口⑤）：静默失败不再
               无感空面板——连续失败 ≥2 次显 Alert+重试（此前失败被 silent 吞掉，
               面板恒显「加载中」，用户只能手动点刷新）。 */}
           {adminFailCount >= 2 ? (

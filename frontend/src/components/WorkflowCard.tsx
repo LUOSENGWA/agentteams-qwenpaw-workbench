@@ -18,7 +18,7 @@ const antd = host.antd;
 
 /** 状态分集（dashboard workflow-card.tsx 同款集合，交叉验证基准）。
  *  v0.5.0-beta.13.12：cancelled 从 ERROR 拆出独立集——此前取消任务
- *  显示「失败」是状态映射不一致缺陷（现场 9/23 报告）。 */
+ * 显示「失败」是状态映射不一致缺陷（现场 报告）。 */
 const COMPLETE = new Set(["completed", "success", "done"]);
 const ERROR = new Set(["failed", "error"]);
 const CANCELLED = new Set(["cancelled", "canceled"]);

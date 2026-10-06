@@ -30,7 +30,7 @@ const ReloadIcon = pick("ReloadOutlined");
 const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
 const GREEN = "#52c41a"; // 状态绿（DM 标签）
 const FAV_KEY = "agentteams-qwenpaw-workbench:favorites";
-// v0.5.0-beta.13.12（13.11 装验「房间列表排序感觉可以优化」）：排序偏好
+// v0.5.0-beta.13.12（13.11 用户反馈「房间列表排序感觉可以优化」）：排序偏好
 // 客户端本地持久化（与收藏同一思路——Element 房间排序存客户端本地）。
 const SORT_KEY = "agentteams-qwenpaw-workbench:room-sort";
 const CARD_RADIUS = 10; // 卡片圆角
@@ -44,7 +44,7 @@ function memberShortName(mxid: string, member?: TeamMember): string {
   return localpart || mxid;
 }
 
-/** v0.5.0-beta.13.22（13.21 装验反馈 F5「未读气泡改到卡片头像右上角」）：
+/** v0.5.0-beta.13.22（13.21 用户反馈 F5「未读气泡改到卡片头像右上角」）：
  *  原实现=名称行内灰色胶囊（占宽、挤名字）。改为返回徽章参数，由卡片
  *  头像外层 UnreadBubble 渲染（头像右上角，Element 同款；13.24 F4 自绘
  *  居中+含住）。红=highlight（@我/提及），灰=普通未读；都 0 = null。 */
@@ -58,7 +58,7 @@ function unreadBadgeOf(
   return null;
 }
 
-/** v0.5.0-beta.13.24（F4·装验定案：「数字应居中且不超过气泡」）：自绘
+/** v0.5.0-beta.13.24（F4·用户反馈定案：「数字应居中且不超过气泡」）：自绘
  * 未读气泡替代 antd.Badge——antd 默认胶囊在窄字宽/自定义色下数字偏心
  * 且 3 位数+overflowCount 时溢出气泡边缘。本组件 flex 双向居中 +
  * min-width 16/padding 0 4（气泡随内容长宽自适应，永不溢出）+ 1.5px
@@ -140,7 +140,7 @@ function GroupCard({
   const t = useThemeColors();
   const tr = useT();
   const memberEntries = Object.entries(room.members || {}).slice(0, 3);
-  // 装验反馈 9/19（P8b）：成员列表默认隐藏（成员多的房间 chips 占卡高度，
+ // 用户反馈（P8b）：成员列表默认隐藏（成员多的房间 chips 占卡高度，
   // 房间列又长又密），点「N 人」tag 展开/收起。
   const [membersOpen, setMembersOpen] = React.useState(false);
   // 团队群只表达 running（Worker 正在打字）；不显 done/idle
@@ -251,7 +251,7 @@ function GroupCard({
               </antd.Dropdown>
             </span>
           </div>
-          {/* v0.5.0-beta.13.14（装验反馈）：房间名下面显示项目名
+          {/* v0.5.0-beta.13.14（用户反馈）：房间名下面显示项目名
               （数据=Controller 工作流事件 room_id→title；无项目不占行）。 */}
           {projectTitles && projectTitles.length ? (
             <div
@@ -851,8 +851,8 @@ function TeamOverview(props: TeamOverviewProps) {
       .filter((g) => g.rooms.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dms, workerRoleByMxid, user_id]);
-  // v0.5.0-beta.13.22（13.21 装验反馈 F7）：私聊角色从「列表直接分割成
-  // 4 段+组头」改为「列表下方按对象角色筛选 chips」（装验原话：「应该在
+  // v0.5.0-beta.13.22（13.21 用户反馈 F7）：私聊角色从「列表直接分割成
+  // 4 段+组头」改为「列表下方按对象角色筛选 chips」（用户反馈原话：「应该在
   // 下面加个按对象角色分区显示，而不是直接在列表分割」）——默认全部=扁平
   // 列表（不再切段），选某角色=只看该角色的私聊（仍是单一排序列表）。
   const [dmRole, setDmRole] = React.useState<string>("all");
