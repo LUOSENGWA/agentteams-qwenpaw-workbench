@@ -5,6 +5,45 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.18（2026-10-06 · 主题实时跟随 + 外网凭据全族补齐 + 认证语义 + 首渲竞态）
+
+**14.17 装验反馈批：宿主改主题色全插件毫秒级跟随（CSS 变量化）+ 外网路径 401 全族补齐（运行日志 502 真根因）+ 认证语义拆分 + 知识库首渲竞态修复**
+
+## 主题色实时跟随宿主（装验反馈「插件不少东西没有跟着 QwenPaw 的主题色」）
+
+真根因（源码级）：①插件主题拉取单飞缓存**永不失效**——页面加载后第一次取到就永久缓存，宿主改 accent 插件永不重拉（刷新才生效）；②全插件 ~99 处 accent 硬编码（hex/渐变/浅底），即使重拉也不变色。
+
+- **事件驱动跟随**：宿主改主题 = 写 `:root` CSS 变量（宿主 App.tsx 实证 `--app-accent` 等）→ MutationObserver 毫秒级触发重拉 → 值有 diff 才重渲染；30s 兜底轮询（防 observer 漏发/旧宿主）
+- **accent 全面 CSS 变量化**：`var(--app-accent, #FF7F16)`（fallback 原值，旧宿主无变量时行为不变）；透明浅底 → `color-mix(in srgb, …)`（原 `${PRIMARY}14` hex-alpha 拼接在 var 下会产生非法 CSS，全部改 color-mix）
+- 保留不动：语义色（成功/错误/警告/灰）、状态灯、分类色板（角色/Agent/类别——换主色会撞色）、canvas/3D 与 SVG attribute 语境（var() 不支持）、antd Tag preset
+- 效果：宿主改主题色 ≤1s 全插件跟随，稳态零请求、零 JS 重渲染（CSS 层直连）
+
+## 外网路径凭据全族补齐（装验反馈「运行日志 HTTP 502: Docker API 401」）
+
+真根因：`docker-logs` / 审批 exec / 房间列表三处拨号点漏在 14.3「地址覆盖凭据」修复面外——外网固定档（address_mode=wan）只发 Bearer，公网网关 Basic 门拒收 → 401 → 透传 502。
+
+- 全仓 18+ controller/matrix/sglang/gateway 拨号点 **100% 统一走 `_headers_for`**（该地址配了覆盖凭据则替换 Authorization，未配则原样 Bearer）
+- 实测：外网 controller 路径 basic-only → 200（修复前 401）；内网 Bearer 路径行为不变
+- Higress 连通性测试 5xx 提示加方向：外网 console 多为隧道暴露，503 = 隧道活着但后端瞬断（内网建议地址模式 auto/内网）
+
+## 配置页认证语义拆分（装验反馈「Higress 的认证和 controller token 认证应该分开吧」/「Matrix 登录和认证卡片是不是重复或者冲突」/「SGLang 要什么凭据」）
+
+- 「认证与登录」卡内两块凭据拆成**视觉独立区**：① Controller 认证（管理面：CRD/全量视图/日志）② Higress Console 认证（模型面：alias/提供商/路由）——各带系统归属与"互不相关"说明
+- Matrix 登录加一行关系说明：= AgentTeams 消息系统账号（与 Matrix 地址同一账号，L2 只读），与 QwenPaw 页面自身登录两回事、不冲突
+- SGLang 凭据行加悬停说明：本地推理服务通常无认证，仅公网网关 Basic 门才填，默认留空
+- 运维页「模型网关路由」卡移除——模型页已有同款「模型网关配置」（功能超集），重复视图删除
+
+## 知识库首渲竞态（装验反馈「知识库是 sysdev-team，可一开始显示 daily-luo 等本机 agent，切 tab 才正常」）
+
+真根因：初始探测（远端 worker 列表）在飞期间默认渲染"本机宿主 Agent"视图——首帧闪本机列表。现改：探测中一律 loading，探测结束才落远端/本机视图（手动切本机不受影响）。提示文案与实际权限对齐（L1 管理员见全部团队，L2 见自己团队）。
+
+## 性能/调度全量测试（14.18 批）
+
+- 45s 空闲稳态：**+8 拨号 / +8.4KB**（14.17 基线 +44 拨号；判据 <50/<50KB ✅）
+- 并发闸 inflight 峰值 13/cap 24；审批扫 joined_rooms 30s TTL 缓存稳态零增量
+- `/workers/*/chats` 4s = 会话面板打开时的主动刷新（关面板即停）——非泄漏
+- 门：pytest 194/194、tsc 0、i18n 1384 键 0 缺 0 重、敏感 0、dist 2,372.58kB
+
 ## 0.5.0-beta.14.17（2026-10-06 · 凭据记忆 + Higress 连通性 + KB 冷时根治 + 低带宽性能批 4）
 
 **凭据记忆重做（每个系统认证独立记忆）+ 连通性测试覆盖 Higress + 知识库冷加载根治（冷时实测 -64%~-78%）+ T181 全量审计性能落码（稳态拨号再降，45s 基线 <50）**
