@@ -115,11 +115,19 @@ export function createPoller(opts: PollerOptions): Poller {
     schedule(nextDelay());
   };
 
-  /** 可见性变化：隐藏 → 清定时器暂停调度；可见 → 闲置超 catchUpMs 立即补跑。 */
+  /** 可见性变化：隐藏 → 清定时器暂停调度；可见 → 闲置超 catchUpMs 立即补跑。
+   * v0.5.0-beta.14.16（深度体检）：补跑前加 isActive 门——隐藏期间用户切走
+   * 了 tab（如 settings→chat），可见恢复时 catch-up 不应在已失活的 poller 上
+   * 执行多余 fetch（旧行为：每次 Alt-Tab 往返多打一发该端点）。 */
   const onVisibility = (): void => {
     if (stopped) return;
     if (document.hidden) {
       clearTimer();
+      return;
+    }
+    if (!opts.isActive()) {
+      // 失活：只做调度链恢复（tick 会自行按 isActive 跳过 fn），不补跑。
+      if (timer === null && !inFlight) schedule(jittered());
       return;
     }
     // 可见：之前已跑过且闲置超过 catchUpMs → 立即补跑一次（catch-up）。

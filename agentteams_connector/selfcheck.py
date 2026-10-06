@@ -629,7 +629,7 @@ async def test_addresses(
 
     # v0.5.0-beta.14.16（F4 连通性提速）：三类地址（matrix/controller/sglang）
     # 原来三段串行 await gather——WAN 上每类都含一个不可达内网地址吃满
-    # (timeout+重试+timeout)=12.5s，三段相加≈37.5s（罗总 10/6「连通性测试很慢」
+    # (timeout+重试+timeout)=12.5s，三段相加≈37.5s（10/6 用户装验反馈「连通性测试很慢」
     # 真根因）。改为三段嵌套进同一个外层 gather=全并行：总时长=最慢单地址，
     # 37.5s→8.3s（配合下方 timeout 4s）。逐地址语义/重试/凭据完全不变。
     matrix_rows, controller_rows, sglang_rows = await asyncio.gather(
