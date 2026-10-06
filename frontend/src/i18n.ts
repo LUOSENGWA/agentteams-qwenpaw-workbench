@@ -176,12 +176,21 @@ const DICT: Record<string, { en: string }> = {
   "地址模式保存失败，请重试": { en: "Failed to save address mode; please retry" },
   "固定": { en: "Pinned" },
   // ── v0.5.0-beta.14.3: 地址覆盖凭据（公网 Basic 门 / API key 门）──
-  "使用服务自身认证（内网默认，留空即用）": { en: "Use the service's own auth (LAN default — leave empty)" },
+  // v0.5.0-beta.14.17（C1）：「none」label 加清除语义（旧版 label 已退役）。
+  "使用服务自身认证（内网默认，留空即用；选此项=清除该地址已存凭据）": { en: "Use the service's own auth (LAN default — leave empty; picking this clears saved credentials for this address)" },
   "Basic 认证（公网网关 Basic 门，如 Caddy）": { en: "Basic auth (public gateway Basic gate, e.g. Caddy)" },
   "API Key（Bearer，公网网关 API key 门，如 Higress）": { en: "API key (Bearer; public gateway key gate, e.g. Higress)" },
   "API Key（Bearer token）": { en: "API key (Bearer token)" },
   "用户名（与网关一致）": { en: "Username (matching the gateway)" },
   "密码（与网关一致）": { en: "Password (matching the gateway)" },
+  // ── v0.5.0-beta.14.17（C1 凭据记忆重做）：空框=保持不变 占位 + 状态总览 ──
+  "密码（已保存 · 留空保持不变）": { en: "Password (saved — leave blank to keep)" },
+  "API Key（已保存 · 留空保持不变）": { en: "API key (saved — leave blank to keep)" },
+  "Controller token": { en: "Controller token" },
+  "Controller 地址凭据": { en: "Controller address credential" },
+  "Higress 账号（Console 会话）": { en: "Higress account (Console session)" },
+  "Higress 地址凭据": { en: "Higress address credential" },
+  "SGLang 地址凭据": { en: "SGLang address credential" },
   "该地址走公网入口：请填 Basic 用户名/密码或 API Key（与网关一致）": {
     en: "This address uses the public entry: fill Basic username/password or API key (matching the gateway)",
   },
