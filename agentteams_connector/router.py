@@ -59,7 +59,9 @@ _working_cache: Dict[str, str] = {}  # {"matrix": url, "controller": url}
 # v0.5.0-beta.14.5: approval/list 短 TTL 缓存——高频展开/切页时省一整轮容器扫
 # 描（原串行全量实测 23s@WAN）；approval_set 成功后主动失效。key=agent 参数
 # （""=全量）→ (expiry_monotonic, payload)。只存成功响应。
-_APPROVAL_LIST_TTL_SECONDS = 20.0
+# 60s：级别变更是低频用户动作，写路径（/approval/set）成功后主动失效缓存，
+# 读窗口拉长只省扫描（全量 = 逐容器 docker exec 读 agent.json）。
+_APPROVAL_LIST_TTL_SECONDS = 60.0
 _approval_list_cache: Dict[str, Any] = {}
 # v0.5.0-beta.14.7：KB tree/graph 结果短 TTL 缓存——一次图谱构建 = 逐 md 文件
 # 一次容器 archive 读（实测单容器 381 次），重复访问（切 tab/重渲染）直接命中。
@@ -2141,7 +2143,10 @@ def build_router() -> APIRouter:
                     async with GatedAsyncClient(timeout=8.0, verify=False) as client:
                         rr = await client.get(
                             f"{base}/api/v1/teams",
-                            headers={"Authorization": f"Bearer {token}"},
+                            headers=_headers_for(
+                                cfg, "controller", base,
+                                {"Authorization": f"Bearer {token}"},
+                            ),
                         )
                     if rr.status_code == 200:
                         ok = True
@@ -2516,10 +2521,13 @@ def build_router() -> APIRouter:
                 resp = await client.post(
                     url,
                     content=data,
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Content-Type": content_type,
-                    },
+                    headers=_headers_for(
+                        cfg, "matrix", homeserver,
+                        {
+                            "Authorization": f"Bearer {token}",
+                            "Content-Type": content_type,
+                        },
+                    ),
                 )
             if resp.status_code != 200:
                 raise HTTPException(
@@ -5741,7 +5749,10 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
             async with GatedAsyncClient(
                 timeout=20.0, verify=False
             ) as client:
-                headers = {"Authorization": f"Bearer {token}"}
+                headers = _headers_for(
+                    config_mod.load_config(), "matrix", homeserver,
+                    {"Authorization": f"Bearer {token}"},
+                )
                 jresp = await client.get(
                     f"{homeserver.rstrip('/')}/_matrix/client/v3/joined_rooms",
                     headers=headers,

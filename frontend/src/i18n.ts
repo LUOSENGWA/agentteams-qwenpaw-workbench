@@ -498,6 +498,7 @@ const DICT: Record<string, { en: string }> = {
   },
   "以下为新消息": { en: "New messages" },
   "加载更早的消息 ↑": { en: "Load earlier messages ↑" },
+  "显示更早的消息 ↑": { en: "Show earlier messages ↑" },
   "还没有消息，发一条打个招呼吧": { en: "No messages yet — say hi!" },
   "你没有在此房间发送消息的权限": {
     en: "You don't have permission to post to this room",

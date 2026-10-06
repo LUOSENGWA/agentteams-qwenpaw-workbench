@@ -22,7 +22,8 @@ import MemberDetail from "./MemberDetail";
 import WorkflowCard from "./WorkflowCard";
 import AgentActivityTrack from "./AgentActivityTrack";
 import type { WorkerInfo, WorkflowEvent } from "../api";
-import WorkerChats from "./WorkerChats";
+import { groupThreads, applyWindow } from "../threadWindow";
+
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
@@ -50,6 +51,12 @@ import {
 import WorkerSessionDot from "./WorkerSessionDot";
 import MemberStrip from "./MemberStrip";
 import type { WorkerSessionState } from "../workerSessionState";
+
+// 消息渲染窗上限（顶层消息条数）：长房间/长滚动会话的 DOM 与重渲成本
+// 封顶——超出部分由顶部「显示更早」揭示（本地放出，无网络往返）。
+// 与历史分页（每页 50 条）独立：窗口管「已载消息渲染多少」，分页管
+// 「从服务端拉多少」。
+const MSG_WINDOW_LIMIT = 150;
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -1575,10 +1582,9 @@ export interface RoomChatProps {
  * 前置节点（Element 汉堡位）——WorkbenchPage 宽屏收起列表时把
  * 「☰ 房间列表」按钮传进来，不再 absolute 浮在聊天区左上角压住返回键。 */
   headerPrefix?: ReactNS.ReactNode;
-  /** v0.5.0-beta.13.11（会话窗 Element 化）：SSE room_message 递增的
- * tick——头像会话窗（WorkerChats fixedWorker）打开时，任意房间来消息
- * 即触发其立即刷新（事件驱动主路，替代纯 4s 轮询）。 */
-  chatsTick?: number;
+  /** 头像「查看会话」→ 父组件打开 WorkerChats 抽屉（会话窗与聊天区
+ * 解耦为兄弟视图：SSE 消息 tick 只刷新抽屉，不触发聊天整树重渲）。 */
+  onOpenWorkerChats?: (worker: string) => void;
   /** DM 房间显示"发起任务"按钮（Phase 2 任务向导入口，〇）。 */
   onNewTask?: () => void;
   /** 向上翻页（父组件 fetch 更早消息并前插）。 */
@@ -1645,7 +1651,7 @@ function RoomChat(props: RoomChatProps) {
     onDm,
     onBack,
     headerPrefix,
-    chatsTick,
+    onOpenWorkerChats,
     onNewTask,
     onLoadMore,
     onPoll,
@@ -1670,7 +1676,7 @@ function RoomChat(props: RoomChatProps) {
   } = props;
  // v0.5.0-beta.13.1（入口迁移）：头像点击 → Worker 会话抽屉（只读，
   // #1295 端点；404 版本门占位）。团队管理不再挂会话 tab。
-  const [chatsWorker, setChatsWorker] = React.useState<string | null>(null);
+
   // v0.5.0-beta.12.8（第 11 轮）：runId → live 工作流事件（controller 正源
   // 双轨，WorkbenchPage 15s 轮询；聊天 tab 含 workflow 卡片时保持活跃）。
   const liveByRunId = React.useMemo(() => {
@@ -1930,16 +1936,30 @@ function RoomChat(props: RoomChatProps) {
   const nearTop = React.useCallback((el: HTMLElement) => {
     return el.scrollTop < Math.max(400, el.clientHeight * 0.6);
   }, []);
+  // 消息窗口封顶（见 threadGroups 注释）：初始渲染窗 + 揭示步长同值。
+  const [windowLimit, setWindowLimit] = React.useState(MSG_WINDOW_LIMIT);
+  const revealWindow = React.useCallback(() => {
+    setWindowLimit((w) => w + MSG_WINDOW_LIMIT);
+  }, []);
+  // 被窗口藏起的顶层消息数（每渲染同步；kickLoadMore 声明早于
+  // threadGroups，经 ref 桥接避免声明顺序依赖）。
+  const hiddenCountRef = React.useRef(0);
   // 触碰式拉取统一入口：同步防重（autoLoadRef）+ 6s 兜底复位（成功路径
   // 由锚 effect 的「前插检测」更快复位）。滚动/按钮/驻顶接力共用。
+  // 窗口化：有被藏起消息时优先本地揭示（无网络往返、不占防重锁）；
+  // 揭示干净后才真正拉更早页。
   const kickLoadMore = React.useCallback(() => {
+    if (hiddenCountRef.current > 0) {
+      revealWindow();
+      return;
+    }
     if (autoLoadRef.current) return;
     autoLoadRef.current = true;
     window.setTimeout(() => {
       autoLoadRef.current = false;
     }, 6000);
     void onLoadMore?.();
-  }, [onLoadMore]);
+  }, [revealWindow, onLoadMore]);
   const handleListScroll = React.useCallback(() => {
     const el = listRef.current;
     if (!el) return;
@@ -2323,37 +2343,7 @@ function RoomChat(props: RoomChatProps) {
   const scrollAnchorRef = React.useRef<{ top: number; height: number } | null>(null);
   const roomKeyRef = React.useRef("");
   const autoLoadRef = React.useRef(false);
-  React.useLayoutEffect(() => {
-    const el = listRef.current;
-    // 换房间：清锚（新房间首条 id 变化不是前插，防误恢复）。
-    const rk = room?.room_id || "";
-    if (roomKeyRef.current !== rk) {
-      roomKeyRef.current = rk;
-      prevFirstIdRef.current = "";
-      scrollAnchorRef.current = null;
-      lastMsgIdRef.current = "";
-      autoLoadRef.current = false;
-    }
-    // v0.5.0-beta.13.19：用**原始** messages 判前插（旧版用 visibleMessages——
-    // 整页都是被折叠/隐藏消息时首条 id 不变 → 锚不恢复、解锁失效）。
-    const firstId = messages[0]?.event_id || "";
-    const prepended =
-      prevFirstIdRef.current !== "" &&
-      firstId !== "" &&
-      firstId !== prevFirstIdRef.current;
-    if (prepended) {
-      autoLoadRef.current = false; // 自动加载完成（新数据已到位）
-      const a = scrollAnchorRef.current;
-      if (el && a) el.scrollTop = a.top + (el.scrollHeight - a.height);
-    }
-    if (el) scrollAnchorRef.current = { top: el.scrollTop, height: el.scrollHeight };
-    prevFirstIdRef.current = firstId;
- // v0.5.0-beta.14.14：deps 化——锚快照只在「数据变 /
-    // 换房」时才有意义（前插恢复读的就是上一次数据变更后的快照）；此前
-    // 无 deps 每次渲染都读 scrollTop/scrollHeight（hover 等非数据渲染
-    // 也强制布局读）。换房即使 messages 暂未更新也会经 room_id 触发
-    // 清锚分支，语义不变。
-  }, [messages, room?.room_id]);
+  // 锚 effect 在 threadGroups 声明之后（首条顶层消息 id 为判定信号）。
 
   // v0.5.0-beta.13.19：数据推进即解锁——messages 引用变化（前插/轮询追加）
   // 说明上一轮加载已落地 → 立刻允许下一次触碰（旧版只在「前插检测」时解锁，
@@ -2401,6 +2391,8 @@ function RoomChat(props: RoomChatProps) {
     pendingCacheRef.current = null;
     setNewMsgCount(0);
     setShowJumpBottom(false);
+    // 消息窗口回初始（换房=新渲染起点，揭示进度不跨房保留）。
+    setWindowLimit(MSG_WINDOW_LIMIT);
     requestAnimationFrame(() => {
       const el = listRef.current;
       if (el) el.scrollTop = el.scrollHeight;
@@ -2488,24 +2480,53 @@ function RoomChat(props: RoomChatProps) {
 
   // 线程分组（Element/Discord 式）：回复消息归入被回复消息的线程，
   // 不再顶层重复显示——"谁的哪条消息回复谁的"一目了然。
+  //
+  // 窗口封顶（DOM 上限）：只渲染最近 MSG_WINDOW_LIMIT 条顶层消息，更早的
+  // 由顶部「显示更早」入口（手动）/ 驻顶接力（滚近顶部自动揭示）逐步放出——
+  // 长房间/长滚动会话的重渲成本不再随房间年龄无上界增长。
+  // pendingOriginal 激活期旁路（「加载原消息」定位要求目标消息必在 DOM）。
+  // 目标消息被窗口藏起的回复降级为顶层、置于渲染窗首（消息序连续，
+  // 与「target 不在已载窗口」的既有行为一致）。
   const threadGroups = React.useMemo(() => {
-    const tops: RoomMessage[] = [];
-    const repliesOf = new Map<string, RoomMessage[]>();
- // v0.5.0-beta.14.14：O(n²) `.some` → O(n) 建 Set + O(1)
-    // 查询（语义等价：target 在窗口内即归线程）。n=300 时单次渲染从
-    // ~9×10⁴ 比较降到 O(n)。
-    const idSet = new Set(visibleMessages.map((m) => m.event_id));
-    for (const m of visibleMessages) {
-      const targetId = m.reply?.event_id || "";
-      if (targetId && idSet.has(targetId)) {
-        if (!repliesOf.has(targetId)) repliesOf.set(targetId, []);
-        repliesOf.get(targetId)!.push(m);
-      } else {
-        tops.push(m);
-      }
+    const g = groupThreads(visibleMessages);
+    return applyWindow(g.tops, g.repliesOf, windowLimit, pendingOriginal);
+  }, [visibleMessages, windowLimit, pendingOriginal]);
+  hiddenCountRef.current = threadGroups.hiddenCount;
+
+  // 前插滚动锚（声明位置在 threadGroups 之后：判定信号=渲染窗首条顶层
+  // 消息 id）。loadMore 前插更早消息时保持滚动锚——旧版前插 50 条后视口
+  // 被顶到最顶部，用户看到「历史滚不动/跳走」。检测=首条消息 id 变化
+  // （前插/揭示特征），锚=前插前记录的 (scrollTop, scrollHeight)；恢复式：
+  // newScrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight)。
+  // useLayoutEffect（paint 前）——闪顶不可见。
+  // 窗口化后覆盖两种「首条变更早消息」：更早的页加载（前插）与窗口揭示
+  // （首条变为更早消息）——同一锚恢复式通用：揭示时新高度在顶部生长，
+  // 视口贴底不受扰；滚在顶部时位置被推离 → 驻顶接力 effect 按滚动节奏
+  // 继续揭示。
+  React.useLayoutEffect(() => {
+    const el = listRef.current;
+    // 换房间：清锚（新房间首条 id 变化不是前插，防误恢复）。
+    const rk = room?.room_id || "";
+    if (roomKeyRef.current !== rk) {
+      roomKeyRef.current = rk;
+      prevFirstIdRef.current = "";
+      scrollAnchorRef.current = null;
+      lastMsgIdRef.current = "";
+      autoLoadRef.current = false;
     }
-    return { tops, repliesOf };
-  }, [visibleMessages]);
+    const firstId = threadGroups.tops[0]?.event_id || "";
+    const prepended =
+      prevFirstIdRef.current !== "" &&
+      firstId !== "" &&
+      firstId !== prevFirstIdRef.current;
+    if (prepended) {
+      autoLoadRef.current = false; // 自动加载完成（新数据已到位）
+      const a = scrollAnchorRef.current;
+      if (el && a) el.scrollTop = a.top + (el.scrollHeight - a.height);
+    }
+    if (el) scrollAnchorRef.current = { top: el.scrollTop, height: el.scrollHeight };
+    prevFirstIdRef.current = firstId;
+  }, [messages, room?.room_id, threadGroups]);
 
   // 线程面板打开的 root 消息 + 回复列表。
   const activeThreadMsg = React.useMemo(() => {
@@ -2514,7 +2535,14 @@ function RoomChat(props: RoomChatProps) {
   }, [activeThread, visibleMessages]);
   const activeThreadReplies = React.useMemo(() => {
     if (!activeThread) return [];
-    return threadGroups.repliesOf.get(activeThread) || [];
+    // 主题根被渲染窗藏起时（孤儿回复降级置顶），从渲染窗内按 reply 目标
+    // 反查该主题的回复——线程面板不因窗口化丢失数据（主题消息本体要
+    // 看仍需先「显示更早」）。
+    const direct = threadGroups.repliesOf.get(activeThread);
+    if (direct) return direct;
+    return threadGroups.tops.filter(
+      (m) => m.reply?.event_id === activeThread,
+    );
   }, [activeThread, threadGroups]);
 
  // v0.5.0-beta.14.14：useCallback——行内 SenderAvatar
@@ -2536,11 +2564,6 @@ function RoomChat(props: RoomChatProps) {
     (m: string) => setDetailMxid(m),
     [],
   );
-  const openChatsWorker = React.useCallback(
-    (w: string) => setChatsWorker(w),
-    [],
-  );
-
   // ── @mention 输入弹层（Element 同款交互：@ 触发 / 子串匹配 / ↑↓ Enter Esc）──
   const mentionCandidates = React.useMemo(() => {
     if (mentionQuery === null) return [];
@@ -3015,9 +3038,10 @@ function RoomChat(props: RoomChatProps) {
             <WarnIcon size={13} style={{ verticalAlign: "-2px" }} /> {errorNote}
           </div>
         ) : null}
-        {hasMore ? (
+        {hasMore || threadGroups.hiddenCount > 0 ? (
           <div style={{ textAlign: "center", paddingBottom: 12 }}>
-            {/* v0.5.0-beta.13.17：预载中显形（自动预载与手动共用同一状态）。 */}
+            {/* 预载中显形（自动预载与手动共用同一状态）；窗口揭示
+                无网络往返，按钮即时放出更早消息。 */}
             {loadingMore ? (
               <span style={{ fontSize: 12, color: t.textSecondary }}>
                 {tr("正在加载更早的消息…")}
@@ -3026,9 +3050,14 @@ function RoomChat(props: RoomChatProps) {
               <antd.Button
                 size="small"
                 type="link"
-                onClick={() => kickLoadMore()}
+                onClick={() => {
+                  if (threadGroups.hiddenCount > 0) revealWindow();
+                  else kickLoadMore();
+                }}
               >
-                {tr("加载更早的消息 ↑")}
+                {threadGroups.hiddenCount > 0
+                  ? tr("显示更早的消息 ↑")
+                  : tr("加载更早的消息 ↑")}
               </antd.Button>
             )}
           </div>
@@ -3206,7 +3235,7 @@ function RoomChat(props: RoomChatProps) {
  // （灯在头像角落，不再名字旁）：
                             // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
                             sessionState={workerSessionByMxid?.[msg.sender]}
-                            onOpenChats={openChatsWorker}
+                            onOpenChats={onOpenWorkerChats}
                           />
                           {senderShortName(msg.sender, room)}
                           <span
@@ -4261,24 +4290,6 @@ function RoomChat(props: RoomChatProps) {
         />
       ) : null}
 
- {/* v0.5.0-beta.13.1（入口迁移）：头像 → Worker 会话抽屉（只读，
- #1295 端点 + 版本门；内容=会话列表 → agent 上下文完整 session）。 */}
-      {chatsWorker ? (
-        // v0.5.0-beta.13.4：QwenPaw 会话口径五列表需要更宽（560→620）。
-        <antd.Drawer
-          open
-          onClose={() => setChatsWorker(null)}
-          width={620}
-          title={`${chatsWorker} — ${tr("会话")}`}
-          styles={{ body: { padding: 14, background: t.bg } }}
-        >
-          <WorkerChats
-            workers={workers ?? []}
-            fixedWorker={chatsWorker}
-            refreshTick={chatsTick}
-          />
-        </antd.Drawer>
-      ) : null}
     </div>
   );
 }
