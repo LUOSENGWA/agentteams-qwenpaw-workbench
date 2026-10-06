@@ -512,6 +512,10 @@ const DICT: Record<string, { en: string }> = {
     en: "Settings saved (reachable address auto-detected)",
   },
   "保存失败": { en: "Save failed" },
+  "正在加载已保存配置…": { en: "Loading saved settings…" },
+  "配置加载失败（插件后端可能正在重载）。页面上显示的是默认值，不是你的已保存配置——请勿直接保存，以免覆盖。": {
+    en: "Failed to load settings (plugin backend may be reloading). What you see are default values, not your saved config — do not save as-is, or you'll overwrite it.",
+  },
   "登录成功": { en: "Signed in" },
   "登录失败": { en: "Sign-in failed" },
   "Matrix 账号（不含 @ 和域名）": { en: "Matrix username (without @ and domain)" },
@@ -1316,41 +1320,17 @@ const DICT: Record<string, { en: string }> = {
   "远端团队 Worker 技能只读展示见「Worker 管理」tab；团队侧技能上传/应用 =  功能线（待上游 PR）": {
     en: "Remote team worker skills are read-only in the Team Management tab; team-side skill upload/apply =  feature line (upstream PR pending)",
   },
-  "重新扫描": { en: "Rescan" },
   "上传技能（zip）": { en: "Upload skill (zip)" },
-  "新建技能": { en: "New skill" },
   "共 {n} 个技能（{e} 个启用）": { en: "{n} skills ({e} enabled)" },
-  "请先禁用技能再删除": { en: "Disable the skill before deleting" },
   "上传成功（导入 {n} 个技能）": { en: "Uploaded ({n} skill(s) imported)" },
-  "存在命名冲突，已按建议名导入": {
-    en: "Name conflict detected; imported under suggested name",
-  },
   "上传失败": { en: "Upload failed" },
-  "技能名与 SKILL.md 内容均必填": {
-    en: "Skill name and SKILL.md content are both required",
-  },
   "新建技能成功：{n}": { en: "Skill created: {n}" },
-  "已重新扫描": { en: "Rescanned" },
-  "暂无技能（可上传 zip 或新建）": {
-    en: "No skills yet (upload a zip or create one)",
-  },
-  "（无描述）": { en: "(no description)" },
-  "查看详情": { en: "Details" },
   "删除技能「{name}」？（仅已禁用可删）": {
     en: "Delete skill “{name}”? (only disabled skills can be deleted)",
-  },
-  "安装来源": { en: "Installed from" },
-  "适用通道": { en: "Channels" },
-  "更新时间": { en: "Updated" },
-  "创建后立即启用": { en: "Enable immediately after creation" },
-  "技能已删除": { en: "Skill deleted" },
-  "技能名（= 目录名，小写字母/数字/连字符）": {
-    en: "Skill name (= directory name, lowercase letters/digits/hyphens)",
   },
   "SKILL.md 全文（YAML frontmatter + 正文）": {
     en: "Full SKILL.md (YAML frontmatter + body)",
   },
-  "SKILL.md": { en: "SKILL.md" },
   // DirNode 目录树（早期遗留补登记）
   "工作区目录（点文件夹展开）": {
     en: "Workspace directories (click a folder to expand)",

@@ -296,13 +296,14 @@ async def _probe_sglang(
 async def _probe_with_retry(
     probe, url: str, token: str, timeout: float
 ) -> Dict[str, Any]:
-    """v0.5.0-beta.12：探测失败重试一次（500ms 后）——切网瞬间的瞬断
-    不应被判 ❌ 或触发误切换（用户「连通失败重试」）。两次都败才记失败。
-    v0.5.0-beta.12: 已连通（ok=True，含 401）不重试——只重试网络层失败。"""
+    """v0.5.0-beta.12：探测失败重试一次（v0.5.0-beta.14.16：300ms 后）——
+    切网瞬间的瞬断不应被判 ❌ 或触发误切换（用户「连通失败重试」）。
+    两次都败才记失败。v0.5.0-beta.12: 已连通（ok=True，含 401）不重试——
+    只重试网络层失败。"""
     result = await probe(url, token, timeout)
     if result.get("ok"):
         return result
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.3)  # v0.5.0-beta.14.16（F4）：0.5→0.3s（重试间隔收紧）
     return await probe(url, token, timeout)
 
 
@@ -586,7 +587,7 @@ async def test_addresses(
     controller_urls: List[str],
     sglang_urls: List[str],
     token: str = "",
-    timeout: float = 6.0,
+    timeout: float = 4.0,  # v0.5.0-beta.14.16（F4）：6→4s（死地址上限收紧，可达地址 <1s 不受影响）
     with_diag: bool = False,
     auth_maps: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
 ) -> Dict[str, Any]:
@@ -618,15 +619,6 @@ async def test_addresses(
         row["auth"] = (auth or {}).get("type") or "none"
         return row
 
-    matrix_rows = await asyncio.gather(
-        *[_probe_with_retry(_probe_m, u, "", timeout) for u in matrix_urls]
-    )
-    controller_rows = await asyncio.gather(
-        *[
-            _probe_with_retry(_probe_c, u, token, timeout)
-            for u in controller_urls
-        ]
-    )
     # v0.5.0-beta.12: SGLang 双地址（内网/外网）逐地址探测（失败重试一次，与其他类型同构）。
     # wrapper 对齐 _probe_with_retry 的 (url, token, timeout) 签名（SGLang 无鉴权）。
     async def _probe_s(url: str, _token: str, t: float) -> Dict[str, Any]:
@@ -635,8 +627,24 @@ async def test_addresses(
         row["auth"] = (auth or {}).get("type") or "none"
         return row
 
-    sglang_rows = await asyncio.gather(
-        *[_probe_with_retry(_probe_s, u, "", timeout) for u in sglang_urls]
+    # v0.5.0-beta.14.16（F4 连通性提速）：三类地址（matrix/controller/sglang）
+    # 原来三段串行 await gather——WAN 上每类都含一个不可达内网地址吃满
+    # (timeout+重试+timeout)=12.5s，三段相加≈37.5s（罗总 10/6「连通性测试很慢」
+    # 真根因）。改为三段嵌套进同一个外层 gather=全并行：总时长=最慢单地址，
+    # 37.5s→8.3s（配合下方 timeout 4s）。逐地址语义/重试/凭据完全不变。
+    matrix_rows, controller_rows, sglang_rows = await asyncio.gather(
+        asyncio.gather(
+            *[_probe_with_retry(_probe_m, u, "", timeout) for u in matrix_urls]
+        ),
+        asyncio.gather(
+            *[
+                _probe_with_retry(_probe_c, u, token, timeout)
+                for u in controller_urls
+            ]
+        ),
+        asyncio.gather(
+            *[_probe_with_retry(_probe_s, u, "", timeout) for u in sglang_urls]
+        ),
     )
 
     async def _attach(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
