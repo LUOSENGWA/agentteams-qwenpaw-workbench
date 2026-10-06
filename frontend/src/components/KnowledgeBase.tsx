@@ -2712,7 +2712,7 @@ function KnowledgeBase(props: { refreshTick?: number }) {
         />
         <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>
           {mode === "remote"
-            ? tr("读自己团队 Leader/Worker 的远端知识库（只读）")
+            ? tr("读集群 Worker 的远端知识库（只读；管理员见全部团队，L2 见自己团队）")
             : tr("读本机 QwenPaw Agent 的记忆库")}
         </antd.Typography.Text>
         <antd.Button
@@ -2738,7 +2738,16 @@ function KnowledgeBase(props: { refreshTick?: number }) {
           }
         />
       ) : null}
-      {mode === "remote" ? (
+      {/* v0.5.0-beta.14.18（14.17 装验反馈「知识库一开始显示本机 agent，
+       * 切 tab 才变 sysdev-team」）：初始 probing 期间 mode 默认 "local"，
+       * LocalKbView（本机宿主 Agent）先闪一帧再切 RemoteKbView——首渲竞态。
+       * 探测中一律 loading，探测结束才落 remote/local 视图（手动切 local
+       * 不受影响：切时 probing 已 false）。 */}
+      {probing ? (
+        <div style={{ padding: "40px 0", textAlign: "center" }}>
+          <antd.Spin size="small" />
+        </div>
+      ) : mode === "remote" ? (
         <RemoteKbView agents={agents} refreshTick={refreshTick} />
       ) : (
         <LocalKbView refreshTick={refreshTick} />
@@ -2859,9 +2868,9 @@ function DirNode(props: {
                   alignItems: "center",
                   gap: 4,
                   padding: `2px 4px 2px ${childIndent}px`,
-                  color: isSel ? "#FF7F16" : t.text,
+                  color: isSel ? "var(--app-accent, #FF7F16)" : t.text,
                   opacity: openable ? undefined : 0.55,
-                  background: isSel ? "rgba(255,127,22,0.08)" : undefined,
+                  background: isSel ? "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)" : undefined,
                 }}
               >
                 <span style={{ width: 10, display: "inline-block" }} />

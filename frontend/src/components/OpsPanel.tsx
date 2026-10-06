@@ -1,10 +1,8 @@
 import type * as ReactNS from "react";
 
 import {
-  fetchGatewayRouteCatalog,
   fetchSglangLoads,
   requestJson,
-  type GatewayRouteInfo,
   type SglangLoads,
 } from "../api";
 import { useThemeColors } from "../theme";
@@ -86,57 +84,8 @@ function OpsPanel({
     }
   }, []);
 
-  // 模型网关只读路由目录（上游 #1242：Controller /api/v1/gateway/ai-routes）。
-  // 与集群状态同款 L1 视图——token 模式 L1 也可读（只凭 controller token）。
-  // 旧 Controller（< 含 #1242 版本）→ 404 → gatewayCatalogOff=true 不渲染；
-  // L2 调用 → 403 → 显权限提示（不报错噪音）。
-  const [gatewayRoutes, setGatewayRoutes] = React.useState<
-    GatewayRouteInfo[] | null
-  >(null);
-  const [gatewayCatalogOff, setGatewayCatalogOff] = React.useState(false);
-  const [gatewayCatalogError, setGatewayCatalogError] = React.useState("");
-  const [gatewayCatalogLoading, setGatewayCatalogLoading] = React.useState(false);
-  const refreshGatewayCatalog = React.useCallback(async (silent = false) => {
-    if (!silent) setGatewayCatalogLoading(true);
-    try {
-      const data = await fetchGatewayRouteCatalog();
-      setGatewayRoutes(data.routes || []);
-      setGatewayCatalogOff(false);
-      setGatewayCatalogError("");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("HTTP 404")) {
-        // 端点未部署（旧 Controller）——静默隐藏卡片，不渲染噪音。
-        setGatewayCatalogOff(true);
-        setGatewayRoutes(null);
-      } else if (msg.includes("HTTP 403")) {
-        // L2 无权限——显式提示（该端点 L1-only）。
-        setGatewayCatalogError(tr("仅 L1 管理员可见（Controller 路由目录，token 鉴权）"));
-        setGatewayRoutes(null);
-      } else if (/HTTP 5\d{2}/.test(msg)) {
-        // 5xx（如 501=controller 网关后端未配置 / 502=Console 不可达）——
-        // 卡片内显可操作提示，不弹错误噪音。
-        setGatewayCatalogError(
-          tr("模型网关数据暂不可用（Controller 返回 5xx）——请检查 Controller 的网关后端配置（Higress Console 可达性与凭据），稍后重试"),
-        );
-        setGatewayRoutes(null);
-      } else {
-        if (!silent)
-          antd.message.error(e instanceof Error ? e.message : tr("模型网关目录获取失败"));
-        setGatewayRoutes(null);
-      }
-    } finally {
-      if (!silent) setGatewayCatalogLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  React.useEffect(() => {
-    void refreshGatewayCatalog(true);
-  }, [refreshGatewayCatalog]);
-  React.useEffect(() => {
-    if (refreshTick) void refreshGatewayCatalog(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshTick]);
+  // v0.5.0-beta.14.18：模型网关路由目录卡已移除（重复视图——模型页
+  // ModelsTab 已有「模型网关配置」功能超集），关联 state/fetch 一并清理。
 
   // v0.5.0-beta.14.6（R2 补）：活跃 tab 单源（rc-tabs 保活，切走仍需显式
   // 门控——ops 的 1s 集群负载轮询此前切走常驻）。
@@ -334,108 +283,10 @@ function OpsPanel({
         )}
       </div>
 
-      {/* 模型网关路由目录（上游 #1242，只读，L1 视图——路由名/上游 provider/授权
-          consumer；旧 Controller 404 → 整卡隐藏，L2 403 → 权限提示） */}
-      {!gatewayCatalogOff ? (
-        <div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={{ fontWeight: 700, fontSize: 15 }}>
-              模型网关路由
-            </span>
-            <antd.Tooltip
-              title={tr(
-                "Controller /api/v1/gateway/ai-routes（只读路由目录：路由名=网关 /v1 入口，非模型 ID；上游 provider+权重；被授权 consumer。token 模式 L1 可读，L2 无权限）",
-              )}
-            >
-              <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
-            </antd.Tooltip>
-            <div style={{ flex: 1 }} />
-            <antd.Tooltip title={tr("刷新")}>
-              <antd.Button
-                type="text"
-                size="small"
-                icon={<ReloadIcon />}
-                loading={gatewayCatalogLoading}
-                onClick={() => void refreshGatewayCatalog()}
-              />
-            </antd.Tooltip>
-          </div>
-          {gatewayCatalogError ? (
-            <antd.Alert type="warning" showIcon message={gatewayCatalogError} />
-          ) : gatewayRoutes === null ? (
-            <antd.Empty
-              description={tr("加载中…")}
-              image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
-            />
-          ) : gatewayRoutes.length === 0 ? (
-            <antd.Empty
-              description={tr("暂无 AI 路由（网关未配置路由）")}
-              image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
-            />
-          ) : (
-            <div
-              style={{
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              {gatewayRoutes.map((route) => (
-                <div
-                  key={route.name}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 8,
-                    border: `1px solid ${t.border}`,
-                    background: t.cardBg,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{route.name}</span>
-                    {(route.upstreams || []).map((u, i) => (
-                      <antd.Tag
-                        key={`${u.provider}-${i}`}
-                        color="blue"
-                        style={{ fontSize: 11, marginInlineEnd: 0 }}
-                      >
-                        {u.provider}
-                        {typeof u.weight === "number" ? ` · w${u.weight}` : ""}
-                      </antd.Tag>
-                    ))}
-                  </div>
-                  {(route.allowedConsumers || []).length > 0 && (
-                    <div style={{ marginTop: 6, fontSize: 11, color: t.textSecondary }}>
-                      {tr("授权 consumer")}：
-                      {(route.allowedConsumers || []).map((c) => (
-                        <antd.Tag
-                          key={c}
-                          style={{ fontSize: 10, marginInlineEnd: 4 }}
-                        >
-                          {c}
-                        </antd.Tag>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : null}
+      {/* v0.5.0-beta.14.18（14.17 装验反馈「运维页面不需要放模型网关路由，
+          把模型页面做好就可以」）：路由目录卡整块移除——模型页（ModelsTab）
+          已有同款「模型网关配置」（提供商/路由/alias 表，功能超集），运维页
+          重复视图删除。 */}
 
       {/* 集群负载（可选模块，L1 专属——未启用时后端 404，不渲染） */}
       {!sglangOff ? (
