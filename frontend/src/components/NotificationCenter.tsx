@@ -90,9 +90,12 @@ function NotificationCenter(props: {
   const [approvalsError, setApprovalsError] = React.useState("");
   const [approvalActing, setApprovalActing] = React.useState<string | null>(null);
 
-  const loadApprovals = React.useCallback(async () => {
+  // force=true 绕过 15s 读缓存直回源——审批动作后的「立即+3s」双拉必须
+  // 都打后端（后端审批缓冲经 sync watcher 异步 resolve，≈1-2s；若 3s 那次
+  // 命中缓存，未 resolve 项会被缓存值顶回=卡片复活）。
+  const loadApprovals = React.useCallback(async (force = false) => {
     try {
-      const list = await fetchRoomApprovals(30);
+      const list = await fetchRoomApprovals(30, force);
       setApprovals(list);
       setApprovalsError("");
     } catch (e) {
@@ -119,13 +122,11 @@ function NotificationCenter(props: {
           action === "approve" ? tr("已发送批准命令（Worker 继续执行）") : tr("已发送拒绝命令"),
         );
         setApprovals((prev) => prev.filter((x) => (x.event_id || x.room_id) !== key));
-        // v0.5.0-beta.13.11（13.10 点了批准，通知面板还见未批准卡片
-        // 根因）：后端 sync watcher 收到审批命令消息后才 _resolve_approval
-        // 清缓冲（异步，≈1-2s）——乐观删除后 30s 轮询若在 resolve 窗口前
-        // 拉取，未清项被拉回=卡片"复活"。修法=发送成功后立即重拉 + 3s
-        // 再拉（覆盖后端 resolve 异步窗口），状态与后端缓冲强制对齐。
-        void loadApprovals();
-        window.setTimeout(() => void loadApprovals(), 3000);
+        // 审批命令发出后后端缓冲经 sync watcher 异步 resolve（≈1-2s）——
+        // 乐观删除后若轮询在 resolve 窗口前拉取，未清项被拉回=卡片复活。
+        // 故发送成功后立即重拉 + 3s 再拉，两次都 force 直回源。
+        void loadApprovals(true);
+        window.setTimeout(() => void loadApprovals(true), 3000);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("发送失败"));
       } finally {

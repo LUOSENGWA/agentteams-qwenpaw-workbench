@@ -7,7 +7,7 @@
  * toast 后可手动重试）；不传 = 原行为（SSE/长轮询等端点不受影响）。 */
 // v0.5.0-beta.14.6：读缓存接线——下方 15 个同源读接口经 cachedRequest
 // 走 TTL+在飞去重+标签失效+LRU（requestCache.ts）；写面（POST/DELETE）不包。
-import { cachedRequest } from "./requestCache";
+import { cachedRequest, invalidateTags } from "./requestCache";
 
 export async function requestJson(
   path: string,
@@ -2812,7 +2812,7 @@ export async function sendRoomFile(
       size: opts.size || 0,
     },
   };
-  return (await requestJson(
+  const res = (await requestJson(
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
     {
       method: "PUT",
@@ -2820,6 +2820,10 @@ export async function sendRoomFile(
       body: JSON.stringify(content),
     },
   )) as { event_id: string };
+  // 审批命令已发出 → 队列缓存即刻失效（各面板下次取数即回源；后端
+  // 缓冲的异步 resolve 窗口由各面板既有的「立即+延迟」重拉覆盖）。
+  invalidateTags(["room-approvals"]);
+  return res;
 }
 
 /** v0.5.0-beta.13.10（13.9 @mention 是单纯字符串根因）：
@@ -2894,7 +2898,7 @@ export async function sendRoomMessage(
       },
     };
   }
-  return (await requestJson(
+  const res = (await requestJson(
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
     {
       method: "PUT",
@@ -2902,6 +2906,10 @@ export async function sendRoomMessage(
       body: JSON.stringify(content),
     },
   )) as { event_id: string };
+  // 审批命令已发出 → 队列缓存即刻失效（各面板下次取数即回源；后端
+  // 缓冲的异步 resolve 窗口由各面板既有的「立即+延迟」重拉覆盖）。
+  invalidateTags(["room-approvals"]);
+  return res;
 }
 
 /** v0.5.0-beta.12 ：审批命令带 @Worker（真机反馈：无 @ 的
@@ -2938,7 +2946,7 @@ export async function sendApprovalCommand(
       },
     };
   }
-  return (await requestJson(
+  const res = (await requestJson(
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
     {
       method: "PUT",
@@ -2946,6 +2954,10 @@ export async function sendApprovalCommand(
       body: JSON.stringify(content),
     },
   )) as { event_id: string };
+  // 审批命令已发出 → 队列缓存即刻失效（各面板下次取数即回源；后端
+  // 缓冲的异步 resolve 窗口由各面板既有的「立即+延迟」重拉覆盖）。
+  invalidateTags(["room-approvals"]);
+  return res;
 }
 
 /** v0.5.0-beta.12 ：编辑自己的消息（Element 同款标注编辑，CS-API m.replace）：
@@ -2964,7 +2976,7 @@ export async function sendRoomMessageEdit(
     "m.new_content": { msgtype: "m.text", body },
     "m.relates_to": { rel_type: "m.replace", event_id: originalEventId },
   };
-  return (await requestJson(
+  const res = (await requestJson(
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
     {
       method: "PUT",
@@ -2972,6 +2984,10 @@ export async function sendRoomMessageEdit(
       body: JSON.stringify(content),
     },
   )) as { event_id: string };
+  // 审批命令已发出 → 队列缓存即刻失效（各面板下次取数即回源；后端
+  // 缓冲的异步 resolve 窗口由各面板既有的「立即+延迟」重拉覆盖）。
+  invalidateTags(["room-approvals"]);
+  return res;
 }
 
 /** v0.5.0-beta.12 ：撤回自己的消息（redaction，CS-API 标准端点）：
@@ -4013,11 +4029,26 @@ export interface RoomApproval {
   deny_cmd: string;
 }
 
-export async function fetchRoomApprovals(limit = 30): Promise<RoomApproval[]> {
-  const raw = (await requestJson(
-    `/agentteams-proxy/room-approvals?limit=${limit}`,
-  )) as Record<string, unknown>;
-  return (Array.isArray(raw.approvals)
-    ? raw.approvals
-    : []) as RoomApproval[];
+/** 房间审批队列（/room-approvals）。
+ * 15s 读缓存 + 在飞去重：首页/通知面板/聊天页三组件多触发源合流——
+ * 任一 15s 窗内已取过即零拨号，同刻并发共享同一 Promise。
+ * force=true 绕过缓存（审批动作后由 sendApprovalCommand 统一失效
+ * "room-approvals" 标签，无需调用方逐个 force）。 */
+export async function fetchRoomApprovals(
+  limit = 30,
+  force = false,
+): Promise<RoomApproval[]> {
+  return cachedRequest(
+    `room-approvals:${limit}`,
+    15000,
+    async () => {
+      const raw = (await requestJson(
+        `/agentteams-proxy/room-approvals?limit=${limit}`,
+      )) as Record<string, unknown>;
+      return (Array.isArray(raw.approvals)
+        ? raw.approvals
+        : []) as RoomApproval[];
+    },
+    { force, tags: ["room-approvals"] },
+  );
 }
