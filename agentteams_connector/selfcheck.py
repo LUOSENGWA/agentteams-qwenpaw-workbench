@@ -293,6 +293,59 @@ async def _probe_sglang(
         }
 
 
+async def _probe_gateway(
+    url: str,
+    timeout: float = 6.0,
+    auth: Optional[Dict[str, str]] = None,
+    session_cookie: str = "",
+) -> Dict[str, Any]:
+    """v0.5.0-beta.14.17: Higress Console 探测——可达性 + 会话三态。
+
+    ① GET /（Console 页面入口）——可达性主判据。
+    ② 持有 console_session 时 GET /v1/ai/routes（带 Cookie，与 verify-admin
+    自检同路径）：200=会话有效 / 401|403=会话已过期 / 404=该版本无此端点
+    （只报可达，不臆断会话态）。会话自检失败不拖可达判定（只记 detail）。
+    """
+    if not url:
+        return {"ok": False, "http_ok": False, "ms": None, "detail": "未配置 Higress 地址"}
+    headers = config_mod.headers_with_auth(auth, {})
+    try:
+        t0 = time.monotonic()
+        async with GatedAsyncClient(
+            timeout=timeout, verify=False, trust_env=False
+        ) as client:
+            resp = await client.get(f"{url.rstrip('/')}/", headers=headers)
+        ms = int((time.monotonic() - t0) * 1000)
+        if resp.status_code >= 500:
+            return {
+                "ok": True,
+                "http_ok": False,
+                "ms": ms,
+                "detail": f"已连通，HTTP {resp.status_code}（Console 服务端错误）",
+            }
+        detail = f"已连通，HTTP {resp.status_code}"
+        if session_cookie:
+            try:
+                async with GatedAsyncClient(
+                    timeout=timeout, verify=False, trust_env=False
+                ) as client:
+                    sr = await client.get(
+                        f"{url.rstrip('/')}/v1/ai/routes",
+                        headers={"Cookie": session_cookie},
+                    )
+                if sr.status_code == 200:
+                    detail += "｜Higress 会话有效"
+                elif sr.status_code in (401, 403):
+                    detail += "｜Higress 会话已过期（需重新验证）"
+                elif sr.status_code == 404:
+                    detail += "｜该版本不支持会话自检"
+            except Exception:  # noqa: BLE001 - 会话自检失败不影响可达判定
+                pass
+        return {"ok": True, "http_ok": True, "ms": ms, "detail": detail}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "http_ok": False, "ms": None, "detail": _classify_error(exc)}
+
+
 async def _probe_with_retry(
     probe, url: str, token: str, timeout: float
 ) -> Dict[str, Any]:
@@ -590,6 +643,8 @@ async def test_addresses(
     timeout: float = 4.0,  # v0.5.0-beta.14.16（F4）：6→4s（死地址上限收紧，可达地址 <1s 不受影响）
     with_diag: bool = False,
     auth_maps: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
+    gateway_urls: Optional[List[str]] = None,
+    gateway_session_cookie: str = "",
 ) -> Dict[str, Any]:
     """v0.5.0-beta.12: 连通性测试——全部地址并行探测（失败重试一次），
     返回每地址 {url, ok, ms, detail}。手动测试与后台自动重排共用。
@@ -599,6 +654,8 @@ async def test_addresses(
     v0.5.0-beta.14.3: auth_maps={kind: {url: auth}}——该地址配了覆盖凭据时
     探测也带（否则 WAN basic/key 门地址永远 401，自动重排选不上）；行级
     auth 字段=该地址实际生效的凭据类型（none/basic/bearer）。
+    v0.5.0-beta.14.17: gateway_urls——Higress Console 探测（可达性+会话三态，
+    诊断面：不参与自动重排；后台 refresh 不传=零额外开销）。
     """
     maps = auth_maps or {}
 
@@ -627,12 +684,23 @@ async def test_addresses(
         row["auth"] = (auth or {}).get("type") or "none"
         return row
 
-    # v0.5.0-beta.14.16（F4 连通性提速）：三类地址（matrix/controller/sglang）
+    # v0.5.0-beta.14.17: Higress 探测闭包（wrapper 对齐 _probe_with_retry 的
+    # (url, token, timeout) 签名；session_cookie 自外层参数闭包）。
+    _gw_urls = list(gateway_urls or [])
+
+    async def _probe_g(url: str, _token: str, t: float) -> Dict[str, Any]:
+        auth = _am("gateway", url)
+        row = await _probe_gateway(url, t, auth, gateway_session_cookie)
+        row["auth"] = (auth or {}).get("type") or "none"
+        return row
+
+    # v0.5.0-beta.14.16（F4 连通性提速）：四类地址（matrix/controller/sglang/gateway）
     # 原来三段串行 await gather——WAN 上每类都含一个不可达内网地址吃满
     # (timeout+重试+timeout)=12.5s，三段相加≈37.5s（10/6 用户装验反馈「连通性测试很慢」
-    # 真根因）。改为三段嵌套进同一个外层 gather=全并行：总时长=最慢单地址，
+    # 真根因）。改为各段嵌套进同一个外层 gather=全并行：总时长=最慢单地址，
     # 37.5s→8.3s（配合下方 timeout 4s）。逐地址语义/重试/凭据完全不变。
-    matrix_rows, controller_rows, sglang_rows = await asyncio.gather(
+    # v0.5.0-beta.14.17: gateway 段并入（未配置=空列表，gather 零任务）。
+    matrix_rows, controller_rows, sglang_rows, gateway_rows = await asyncio.gather(
         asyncio.gather(
             *[_probe_with_retry(_probe_m, u, "", timeout) for u in matrix_urls]
         ),
@@ -644,6 +712,9 @@ async def test_addresses(
         ),
         asyncio.gather(
             *[_probe_with_retry(_probe_s, u, "", timeout) for u in sglang_urls]
+        ),
+        asyncio.gather(
+            *[_probe_with_retry(_probe_g, u, "", timeout) for u in _gw_urls]
         ),
     )
 
@@ -687,6 +758,10 @@ async def test_addresses(
             ]
         ),
         "sglang": sglang_out,
+        # v0.5.0-beta.14.17: Higress 探测行（未配置=空列表）。诊断面，不参与重排。
+        "gateway": await _attach(
+            [{"url": u, **r} for u, r in zip(_gw_urls, gateway_rows)]
+        ) if _gw_urls else [],
     }
 
 

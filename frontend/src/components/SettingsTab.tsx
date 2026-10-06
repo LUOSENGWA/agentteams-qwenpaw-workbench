@@ -126,12 +126,16 @@ function ConnRow({
   tag,
   active,
   pinned,
+  // v0.5.0-beta.14.17（C2）：Higress 会话三态在 detail 里——ok 时也强制显示
+  // detail（而非仅 ms）。
+  showDetail,
 }: {
   row: AddressTestResult;
   tag: string;
   active: boolean;
   // v0.5.0-beta.14.1: 固定档——该地址被 address_mode 钉住（与 active 徽标并行显示）。
   pinned?: boolean;
+  showDetail?: boolean;
 }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
@@ -181,7 +185,11 @@ function ConnRow({
           }}
           title={row.detail}
         >
-          {row.ok && !degraded ? `${row.ms} ms` : row.detail}
+          {row.ok && !degraded && !showDetail
+            ? `${row.ms} ms`
+            : showDetail && row.ok && row.ms != null
+              ? `${row.detail}｜${row.ms} ms`
+              : row.detail}
         </span>
         {active ? (
           <antd.Tag color="orange" style={{ margin: 0, flexShrink: 0 }}>
@@ -245,19 +253,26 @@ function StartupPrefRow() {
 
 // ── v0.5.0-beta.14.3: 地址覆盖凭据（公网网关 Basic 门 / API key 门）──
 // 编辑草稿（每地址一份；提交时 buildAuthEntry 组装条目，无凭据=纯 URL 串）。
+// v0.5.0-beta.14.17（C1 凭据记忆重做）：stored=「该类型原有已保存凭据」。
+// 输入框协议：秘密字段**永不预填脱敏字面量**（*** 回显进框 = 用户不清空直接
+// 输入 → 拼接串覆盖真凭据；状态也不透明）。空框 = 保持不变，提交时按 stored
+// 语义发 *** 占位（后端 merge 继承旧值）；显式清除=把类型切回「服务自身认证」。
 type AddrAuthDraft = {
   type: "none" | "basic" | "bearer";
   username: string;
   password: string;
   token: string;
+  stored: boolean;
 };
 const EMPTY_ADDR_AUTH: AddrAuthDraft = {
   type: "none",
   username: "",
   password: "",
   token: "",
+  stored: false,
 };
-/** 地址条目（string | {url, auth?}）→ 编辑草稿（字符串/无效 = none）。 */
+/** 地址条目（string | {url, auth?}）→ 编辑草稿（字符串/无效 = none）。
+ *  v0.5.0-beta.14.17（C1）：脱敏值 *** 不进输入框（存 stored 标记）。 */
 function entryToAuthDraft(e: AddressEntry | undefined | null): AddrAuthDraft {
   if (e && typeof e === "object" && e.auth) {
     const a = e.auth;
@@ -265,25 +280,47 @@ function entryToAuthDraft(e: AddressEntry | undefined | null): AddrAuthDraft {
       return {
         type: "basic",
         username: a.username || "",
-        password: a.password || "",
+        password: a.password && a.password !== "***" ? a.password : "",
         token: "",
+        stored: Boolean(a.username && a.password),
       };
     if (a.type === "bearer")
-      return { type: "bearer", username: "", password: "", token: a.token || "" };
+      return {
+        type: "bearer",
+        username: "",
+        password: "",
+        token: a.token && a.token !== "***" ? a.token : "",
+        stored: Boolean(a.token),
+      };
   }
   return { ...EMPTY_ADDR_AUTH };
 }
-/** 草稿 + URL → 提交条目（凭据类型选了但字段不全 = 降级纯 URL，诚实不装）。 */
+/** 草稿 + URL → 提交条目。
+ *  v0.5.0-beta.14.17（C1）：秘密字段空 = 保持不变（stored → 发 *** 占位让后端
+ *  继承；非 stored 且字段不全 = 降级纯 URL，诚实不装）。显式清除=类型切 none
+ *  （=纯 URL 条目，后端按显式清除处理）——旧「选了类型但密码空=纯 URL」会把
+ *  已保存凭据误清除，已废。 */
 function buildAuthEntry(url: string, d: AddrAuthDraft): AddressEntry {
   const u = (url || "").trim();
   if (!u) return "";
-  if (d.type === "basic" && d.username.trim() && d.password.trim())
-    return {
-      url: u,
-      auth: { type: "basic", username: d.username.trim(), password: d.password.trim() },
-    };
-  if (d.type === "bearer" && d.token.trim())
-    return { url: u, auth: { type: "bearer", token: d.token.trim() } };
+  if (d.type === "basic" && d.username.trim()) {
+    const pw = d.password.trim();
+    if (pw)
+      return {
+        url: u,
+        auth: { type: "basic", username: d.username.trim(), password: pw },
+      };
+    if (d.stored)
+      return {
+        url: u,
+        auth: { type: "basic", username: d.username.trim(), password: "***" },
+      };
+  }
+  if (d.type === "bearer") {
+    const tok = d.token.trim();
+    if (tok) return { url: u, auth: { type: "bearer", token: tok } };
+    if (d.stored) return { url: u, auth: { type: "bearer", token: "***" } };
+  }
   return u;
 }
 
@@ -304,12 +341,14 @@ function AddrAuthEditor({
         size="small"
         value={value.type}
         disabled={disabled}
+        // v0.5.0-beta.14.17（C1）：换类型=新类型无已存凭据（stored 清零，
+        // 防把 A 类型的 stored 标记误带到 B 类型触发 *** 继承）。
         onChange={(t: "none" | "basic" | "bearer") =>
-          onChange({ ...value, type: t })
+          onChange({ ...value, type: t, stored: false })
         }
         style={{ width: 300, maxWidth: "100%" }}
         options={[
-          { value: "none", label: tr("使用服务自身认证（内网默认，留空即用）") },
+          { value: "none", label: tr("使用服务自身认证（内网默认，留空即用；选此项=清除该地址已存凭据）") },
           { value: "basic", label: tr("Basic 认证（公网网关 Basic 门，如 Caddy）") },
           { value: "bearer", label: tr("API Key（Bearer，公网网关 API key 门，如 Higress）") },
         ]}
@@ -326,9 +365,13 @@ function AddrAuthEditor({
             }
             style={{ width: 150 }}
           />
+          {/* v0.5.0-beta.14.17（C1）：已存密码不回显字面量——空框+占位提示
+              「已保存·留空保持不变」，消除拼接覆盖真密码的路径。 */}
           <antd.Input.Password
             size="small"
-            placeholder={tr("密码（与网关一致）")}
+            placeholder={tr(
+              value.stored ? "密码（已保存 · 留空保持不变）" : "密码（与网关一致）",
+            )}
             value={value.password}
             disabled={disabled}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -341,7 +384,9 @@ function AddrAuthEditor({
       {value.type === "bearer" ? (
         <antd.Input
           size="small"
-          placeholder={tr("API Key（Bearer token）")}
+          placeholder={tr(
+            value.stored ? "API Key（已保存 · 留空保持不变）" : "API Key（Bearer token）",
+          )}
           value={value.token}
           disabled={disabled}
           onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -435,14 +480,17 @@ const SettingsTab = React.memo(function SettingsTab({
     [],
   );
   // 表单当前值 → 提交条目（URL + 可选凭据；空=空串，后端合并时丢弃）。
+  // v0.5.0-beta.14.17（C2）：gateway 族（Higress 双地址，同构）。
   const buildAddrEntries = React.useCallback(
-    (kind: "matrix" | "controller" | "sglang"): AddressEntry[] => {
+    (kind: "matrix" | "controller" | "sglang" | "gateway"): AddressEntry[] => {
       const urls =
         kind === "matrix"
           ? [matrixLan, matrixWan]
           : kind === "controller"
             ? [controllerLan, controllerWan]
-            : [sglangLan, sglangWan];
+            : kind === "gateway"
+              ? [gatewayAdminUrl, gatewayWan]
+              : [sglangLan, sglangWan];
       return [0, 1].map((i) =>
         buildAuthEntry(urls[i], addrAuth[`${kind}:${i}`] || EMPTY_ADDR_AUTH),
       );
@@ -452,6 +500,8 @@ const SettingsTab = React.memo(function SettingsTab({
       matrixWan,
       controllerLan,
       controllerWan,
+      gatewayAdminUrl,
+      gatewayWan,
       sglangLan,
       sglangWan,
       addrAuth,
@@ -615,11 +665,27 @@ const SettingsTab = React.memo(function SettingsTab({
     }
   }, [downloadJson]);
 
+  // v0.5.0-beta.14.17（C1 凭据记忆重做）：回填 effect 冻结——首载（或换账号）
+  // 后初始化一次，之后 config 引用变化（保存/验证/登录都触发 onConfigChange
+  // → 主组件 re-GET → 新对象）不再重置表单草稿。此前用户未保存的凭据编辑
+  // （如填了 Higress 密码、改了控制器 basic 密码）会被任意一次验证/保存
+  // 引发的 config 刷新整体冲掉（装验反馈「输完 Higress 账号密码，控制器的
+  // basic 认证又要重新输入」）。换账号=doLogin→onLoginSuccess 清数据+重挂载，
+  // 新实例自然重新初始化；user_id 变化兜底（同实例热切账号场景）。
+  const backfillKeyRef = React.useRef<string>("");
   React.useEffect(() => {
     if (!config) return;
+    const uid =
+      ((config.matrix as { user_id?: string } | undefined)?.user_id as
+        | string
+        | undefined) || "";
+    const key = uid || "__not-logged-in__";
+    if (backfillKeyRef.current === key) return;
+    backfillKeyRef.current = key;
     setMatrixLan(entryUrl(config.matrix_homeservers?.[0]));
     setMatrixWan(entryUrl(config.matrix_homeservers?.[1]));
-    // v0.5.0-beta.14.3: 每地址凭据回填（密码脱敏 ***——后端合并时保持旧值）。
+    // v0.5.0-beta.14.3: 每地址凭据回填（v0.5.0-beta.14.17（C1）：脱敏 *** 不进
+    // 输入框，存 stored 标记——空框=保持不变）。
     setAddrAuth({
       "matrix:0": entryToAuthDraft(config.matrix_homeservers?.[0]),
       "matrix:1": entryToAuthDraft(config.matrix_homeservers?.[1]),
@@ -627,12 +693,21 @@ const SettingsTab = React.memo(function SettingsTab({
       "controller:1": entryToAuthDraft(config.controller_urls?.[1]),
       "sglang:0": entryToAuthDraft(config.sglang?.urls?.[0]),
       "sglang:1": entryToAuthDraft(config.sglang?.urls?.[1]),
+      // v0.5.0-beta.14.17（C2）：Higress 双地址凭据（四地址族同构）。
+      "gateway:0": entryToAuthDraft(config.gateway_admin_urls?.[0]),
+      "gateway:1": entryToAuthDraft(config.gateway_admin_urls?.[1]),
     });
     // v0.5.0-beta.14.1: 地址模式回填（垃圾值后端已降级 auto）。
     setAddressMode(config.address_mode || "auto");
     setControllerLan(entryUrl(config.controller_urls?.[0]));
     setControllerWan(entryUrl(config.controller_urls?.[1]));
-    setControllerToken(config.controller_token || "");
+    // v0.5.0-beta.14.17（C1）：token 脱敏 *** 不进输入框（同密码协议：空框=
+    // 保持不变；此前字面量回显 + 不清空直接输入 = 拼接串覆盖真 token）。
+    setControllerToken(
+      config.controller_token && config.controller_token !== "***"
+        ? config.controller_token
+        : "",
+    );
     // v0.5.0-beta.12: admin 账号 / 网关地址回填；密码只标记「已配置」不回填。
     setAdminUsername(config.admin_username || "");
     // v0.5.0-beta.14.7: Higress 双地址（内/外网），legacy 单值回退内网框。
@@ -671,7 +746,9 @@ const SettingsTab = React.memo(function SettingsTab({
             // v0.5.0-beta.14.3: 条目 str | {url, auth?}（凭据随条目走）。
             matrix_homeservers: buildAddrEntries("matrix"),
             controller_urls: buildAddrEntries("controller"),
-            controller_token: controllerToken,
+            // v0.5.0-beta.14.17（C1）：token 空=不覆盖已存（后端字段合并保留
+            // 旧值；空串/脱敏 *** 都不落盘）——此前回显 *** 字面量+拼接=覆盖。
+            controller_token: controllerToken || undefined,
             // v0.5.0-beta.14.1: 地址模式（auto/lan/wan）——保存后不重启即生效。
             address_mode: addressMode,
             // v0.5.0-beta.14.12（UIPERF-T18 补完）：特效三档直存。
@@ -680,6 +757,8 @@ const SettingsTab = React.memo(function SettingsTab({
               enabled: sglangEnabled,
               urls: buildAddrEntries("sglang"),
             },
+            // v0.5.0-beta.14.17（C2）：Higress 双地址（凭据随条目，四族同构）。
+            gateway_admin_urls: buildAddrEntries("gateway"),
           },
         }),
       });
@@ -687,10 +766,12 @@ const SettingsTab = React.memo(function SettingsTab({
       onConfigChange();
       // v0.5.0-beta.12: 保存后立即连通性测试——用户当场看到两条路径的延迟与状态。
       // v0.5.0-beta.14.3: 草稿凭据随测（未保存也能当场验证公网门）。
+      // v0.5.0-beta.14.17（C2）：gateway=Higress 探测（诊断面）。
       void runConnTest(
         buildAddrEntries("matrix"),
         buildAddrEntries("controller"),
         buildAddrEntries("sglang"),
+        buildAddrEntries("gateway"),
       );
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("保存失败"));
@@ -701,11 +782,17 @@ const SettingsTab = React.memo(function SettingsTab({
 
   // v0.5.0-beta.12: 连通性测试——测表单当前值（可未保存）；后端并行探测测延迟，
   // 列表与已配置一致时顺手按最快可达重排生效地址（applied）。
+  // v0.5.0-beta.14.17（C2）：gateway=Higress 探测（可达性+会话三态，诊断面）。
   const runConnTest = React.useCallback(
-    async (matrix?: AddressEntry[], controller?: AddressEntry[], sglang?: AddressEntry[]) => {
+    async (
+      matrix?: AddressEntry[],
+      controller?: AddressEntry[],
+      sglang?: AddressEntry[],
+      gateway?: AddressEntry[],
+    ) => {
       setTesting(true);
       try {
-        const res = await testAddresses(matrix, controller, sglang);
+        const res = await testAddresses(matrix, controller, sglang, gateway);
         setConnTest(res);
       } catch (e) {
         message.error(
@@ -855,6 +942,61 @@ const SettingsTab = React.memo(function SettingsTab({
       {/* v0.5.0-beta.14.4：「访问地址」卡片。 */}
       <div style={{ ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("访问地址")}</div>
+        {/* v0.5.0-beta.14.17（C1）：凭据记忆状态总览——每个系统凭据是否已保存
+            一眼可见（装验反馈「每个账号密码的认证都要分开」的可视化收口）。 */}
+        {config ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+              gap: 6,
+              fontSize: 12,
+              padding: 8,
+              borderRadius: 6,
+              background: "rgba(128,128,128,0.06)",
+            }}
+          >
+            {([
+              [
+                tr("Matrix 登录"),
+                Boolean((config.matrix as { user_id?: string } | undefined)?.user_id),
+              ],
+              [
+                tr("Controller token"),
+                Boolean(config.controllerTokenSource && config.controllerTokenSource !== "invalid"),
+              ],
+              [
+                tr("Controller 地址凭据"),
+                (config.controller_urls || []).some((e) => typeof e === "object" && e !== null && (e as { auth?: unknown }).auth),
+              ],
+              [
+                tr("Higress 账号（Console 会话）"),
+                Boolean(config.admin_username) && Boolean(config.console_session),
+              ],
+              [
+                tr("Higress 地址凭据"),
+                (config.gateway_admin_urls || []).some((e) => typeof e === "object" && e !== null && (e as { auth?: unknown }).auth),
+              ],
+              [
+                tr("SGLang 地址凭据"),
+                ((config.sglang as { urls?: AddressEntry[] } | undefined)?.urls || []).some((e) => typeof e === "object" && e !== null && (e as { auth?: unknown }).auth),
+              ],
+            ] as [string, boolean][]).map(([label, on]) => (
+              <span key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: "50%",
+                    background: on ? "#52c41a" : "#d9d9d9",
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ color: on ? t.text : t.textSecondary }}>{label}</span>
+              </span>
+            ))}
+          </div>
+        ) : null}
         {/* v0.5.0-beta.14.1 (S1-4)：事件流连接态——「断开自动重连」从黑箱变可见。 */}
         {sseState ? (
           <div
@@ -963,12 +1105,23 @@ const SettingsTab = React.memo(function SettingsTab({
             }
             style={{ marginBottom: 8 }}
           />
+          {/* v0.5.0-beta.14.17（C2）：Higress 内网地址覆盖凭据（四族同构；
+              公网入口挂 Basic/key 门时用）。 */}
+          <AddrAuthEditor
+            value={addrAuth["gateway:0"] || EMPTY_ADDR_AUTH}
+            onChange={(v) => setAddrAuthFor("gateway:0", v)}
+          />
           <antd.Input
             placeholder={tr("Higress 地址·外网（公网入口，可留空；内网不可达时自动降级）")}
             value={gatewayWan}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setGatewayWan(e.target.value)
             }
+            style={{ marginBottom: 8 }}
+          />
+          <AddrAuthEditor
+            value={addrAuth["gateway:1"] || EMPTY_ADDR_AUTH}
+            onChange={(v) => setAddrAuthFor("gateway:1", v)}
           />
         </div>
         )}
@@ -1059,6 +1212,10 @@ const SettingsTab = React.memo(function SettingsTab({
                   buildAddrEntries("matrix"),
                   buildAddrEntries("controller"),
                   sglangEnabled ? buildAddrEntries("sglang") : [],
+                  // v0.5.0-beta.14.17（C2）：Higress 双地址（内网框非空才测）。
+                  gatewayAdminUrl.trim() || gatewayWan.trim()
+                    ? buildAddrEntries("gateway")
+                    : [],
                 )
               }
             >
@@ -1103,6 +1260,19 @@ const SettingsTab = React.memo(function SettingsTab({
                       tag="SGLang"
                       active={false}
                       pinned={connTest.pinned?.sglang === r.url}
+                    />
+                  ))
+                : null}
+              {/* v0.5.0-beta.14.17（C2）：Higress 探测行（诊断面；含会话三态）。 */}
+              {connTest.gateway?.length
+                ? connTest.gateway.map((r) => (
+                    <ConnRow
+                      key={`g-${r.url}`}
+                      row={r}
+                      tag="Higress"
+                      active={false}
+                      pinned={connTest.pinned?.gateway === r.url}
+                      showDetail
                     />
                   ))
                 : null}
