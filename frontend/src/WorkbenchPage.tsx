@@ -75,7 +75,6 @@ import { useWorkerChatStatuses } from "./workerChatStatus";
 import WorkerManage from "./components/WorkerManage";
 import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, RefreshIcon, MenuIcon, MonitorIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon, FolderIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
-import SkillsTab from "./components/SkillsTab";
 import ModelsTab from "./ModelsTab";
 // v0.5.0-beta.14.6（R2）：轮询统一走 usePoller/createPoller（16 处迁移之一）；
 // setActiveTab 供 tab 切换时同步活跃 tab 单源（tabActivity）。
@@ -523,6 +522,8 @@ function AddrAuthEditor({
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 const SettingsTab = React.memo(function SettingsTab({
   config,
+  configLoadState,
+  onRetryConfig,
   onConfigChange,
   onLoginSuccess,
   chatForceWide,
@@ -530,6 +531,9 @@ const SettingsTab = React.memo(function SettingsTab({
   sseState,
 }: {
   config: WorkbenchConfig | null;
+  // v0.5.0-beta.14.16（F1）：config 加载态（加载中横幅 / 失败+重试 / 保存钮门控）。
+  configLoadState: "loading" | "ready" | "failed";
+  onRetryConfig: () => void;
   onConfigChange: () => void;
   // v0.5.0-beta.12: 登录（账号切换）成功后 → 清本地旧账号数据 + 全量刷新。
   onLoginSuccess?: () => void;
@@ -946,6 +950,50 @@ const SettingsTab = React.memo(function SettingsTab({
 
   return (
     <div style={{ display: "grid", gap: 24, maxWidth: 720 }}>
+      {/* v0.5.0-beta.14.16（F1）：config 加载态横幅——加载中/失败必须显式。
+          静默吞错会让用户把默认态当成已保存值（10/6「没有记忆」事故根因）。 */}
+      {config === null && (
+        <div
+          style={{
+            ...cardBox,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 13,
+            color: configLoadState === "failed" ? "#d4380d" : t.textSecondary,
+            border:
+              configLoadState === "failed"
+                ? "1px solid #ffccc7"
+                : undefined,
+          }}
+        >
+          {configLoadState === "failed" ? (
+            <>
+              <span>
+                {tr(
+                  "配置加载失败（插件后端可能正在重载）。页面上显示的是默认值，不是你的已保存配置——请勿直接保存，以免覆盖。",
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={onRetryConfig}
+                style={{
+                  border: "1px solid currentColor",
+                  borderRadius: 6,
+                  background: "transparent",
+                  color: "inherit",
+                  padding: "2px 12px",
+                  cursor: "pointer",
+                }}
+              >
+                {tr("重试")}
+              </button>
+            </>
+          ) : (
+            <span>{tr("正在加载已保存配置…")}</span>
+          )}
+        </div>
+      )}
       {/* v0.5.0-beta.14.4（设置页 UI 整理）：分节卡片化——「聊天页面」卡片。 */}
       <div style={{ ...cardBox, fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
         {tr("内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到最快可达的一条，外网/内网切换自动识别。")}
@@ -1062,7 +1110,10 @@ const SettingsTab = React.memo(function SettingsTab({
 
         {/* v0.5.0-beta.14.7（UIPERF-P3）：Higress 地址并入地址配置区（与
             Matrix/Controller/SGLang 同处），内网/外网按序降级、受地址模式
-            固定档控制。 */}
+            固定档控制。
+            v0.5.0-beta.14.16（F3）：Higress=模型管理面=L1 专属 → L2 模式
+            隐藏（罗总 10/6「如果是 L2 登录，该隐藏的就隐藏」）。 */}
+        {ctlMode === "token" && (
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("Higress Console 地址（模型管理面；内网/外网按序降级）")}
@@ -1084,6 +1135,7 @@ const SettingsTab = React.memo(function SettingsTab({
             }
           />
         </div>
+        )}
 
         {/* v0.5.0-beta.14.1: 地址手动固定档——固定档请求只用固定地址、失败
             诚实报错不静默 failover；探测循环照跑（显示层不受影响）。 */}
@@ -1523,7 +1575,11 @@ const SettingsTab = React.memo(function SettingsTab({
         <StartupPrefRow />
       </div>
 
-      {/* v0.5.0-beta.14.4：「集群负载」独立卡片。 */}
+      {/* v0.5.0-beta.14.4：「集群负载」独立卡片。
+          v0.5.0-beta.14.16（F3）：部署者专属模块（L2 用户无 SGLang 集群）
+          → L2 模式隐藏（罗总 10/6「该隐藏的就隐藏」；切 L1 模式仍可配置，
+          值已持久化不丢）。 */}
+      {ctlMode === "token" && (
       <div style={{ ...cardBox, display: "grid", gap: 12 }}>
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
@@ -1582,11 +1638,15 @@ const SettingsTab = React.memo(function SettingsTab({
           </div>
         </div>
       </div>
+      )}
 
       <div>
         <antd.Button
           type="primary"
           loading={saving}
+          // v0.5.0-beta.14.16（F1）：config 未就绪时禁用保存——默认态保存
+          // 会用 UI 空值覆盖已保存的地址/模式（10/6「没有记忆」事故放大点）。
+          disabled={config === null}
           onClick={() => void save()}
         >
           {tr("保存配置")}
@@ -1738,9 +1798,10 @@ const SettingsTab = React.memo(function SettingsTab({
           </antd.Button>
         </div>
       </div>
-      {/* v0.5.0-beta.12 ：宿主技能从顶层 tab 收编（本机 Agent 技能池
-          属实例级配置面，归配置页）。 */}
-      <SkillsTab />
+      {/* v0.5.0-beta.14.16（F2）：宿主 Agent 技能管理区块移除（罗总 10/6：
+          「配置页的 QwenPaw 宿主 Agent 技能不需要了」）——SkillsTab 组件
+          已删（死代码零残留）；宿主技能系统本体是 QwenPaw 核心功能，
+          不受影响（SkillCenter 团队技能池保留）。 */}
     </div>
   );
 });
@@ -1985,6 +2046,16 @@ export default function WorkbenchPage() {
     };
   }, []);
   const [config, setConfig] = React.useState<WorkbenchConfig | null>(null);
+  // v0.5.0-beta.14.16（F1）：config 稳定镜像 ref——refreshConfig（deps=[]）
+  // 读它判断首载/静默刷新，避免把 config 放进 useCallback deps（引用变化
+  // 连锁重建下游全部回调）。
+  const configRef = React.useRef<WorkbenchConfig | null>(null);
+  configRef.current = config;
+  // v0.5.0-beta.14.16（F1）：config 加载态——设置页「加载中/失败+重试」横幅
+  // + 保存钮禁用（防默认态覆盖真数据）的数据源。
+  const [configLoadState, setConfigLoadState] = React.useState<
+    "loading" | "ready" | "failed"
+  >("loading");
   // ── 状态记忆（用户反馈）：重开插件恢复上次 tab + 房间 + 话题 + 面板宽度 ──
   // v0.5.0-beta.12: tab key 随名字归位（房间 team→chat、管理 spawn→team）——
   // storage key 升 v2 区分新旧格式：否则新版写入的 "team"（管理）会被
@@ -2001,7 +2072,9 @@ export default function WorkbenchPage() {
   // "team"=旧房间语义，v2 里 "team"=团队管理现行 key，不能共表）。
   const UI_TAB_MIGRATION_V2: Record<string, string> = {
     "skill-center": "team",
-    skills: "settings",
+    // v0.5.0-beta.14.16（F2）：skills 区块已从配置页移除 → 旧持久化 tab
+    // 落地首页（不再落设置页——该页已无技能区，落家最自然）。
+    skills: "home",
   };
   const readUiState = (
     key: string,
@@ -2251,15 +2324,56 @@ export default function WorkbenchPage() {
   const [adminData, setAdminData] = React.useState<AdminData | null>(null);
   const [adminLoading, setAdminLoading] = React.useState(false);
 
+  // v0.5.0-beta.14.16（F1 配置记忆根治）：进行锁——退避重试链最长 15.5s，
+  // 期间 poller / 切 tab / 手动重试的重入直接丢弃（避免并发链互踩 loadState）。
+  const configFetchingRef = React.useRef(false);
   const refreshConfig = React.useCallback(async () => {
+    if (configFetchingRef.current) return;
+    configFetchingRef.current = true;
     try {
-      const payload = await requestJson("/agentteams-proxy/config");
-      // v0.5.0-beta.14.13（UIPERF-T21）：数据波 setState 转 transition——
-      // 切 tab 触发的多路 fetch 响应波（home 4 路 / team 2 路）落地渲染
-      // 是可中断的低优先工作，不再整体压进切换后的第一帧。
-      React.startTransition(() => setConfig(payload as WorkbenchConfig));
-    } catch {
-      /* backend unreachable — selfcheck will surface it */
+      // v0.5.0-beta.14.16（F1 配置记忆根治）：失败重试 3 次（1.5/4/10s 退避）。
+      // 真根因（罗总 10/6 装验「地址模式/凭据没有记忆」）：插件安装重载窗口 /
+      // WAN 抖动时首个 GET /config 失败被静默吞掉 → config=null 贯穿页面
+      // 生命周期 → 设置页全默认态 → 用户以为「没记住」重填。回环（保存→落盘→
+      // 重载→回填）本身完好（debug 插桩+回环实验实锤）。重试覆盖重载窗口
+      // （实测 <30s 恢复）。
+      const backoffs = [1500, 4000, 10000];
+      let lastErr: unknown;
+      for (let attempt = 0; attempt <= backoffs.length; attempt++) {
+        try {
+          const payload = await requestJson("/agentteams-proxy/config");
+          if (attempt > 0) {
+            // eslint-disable-next-line no-console
+            console.info(
+              `[workbench] config fetch recovered on retry #${attempt}`,
+            );
+          }
+          // 首载（null→payload）走高优先立即落地——保证设置页首帧即回填；
+          // 静默刷新（已有 config）仍走 transition（UIPERF-T21：切 tab 数据波
+          // 是可中断低优先工作，不压切换帧）。
+          if (configRef.current === null) {
+            setConfig(payload as WorkbenchConfig);
+          } else {
+            React.startTransition(() =>
+              setConfig(payload as WorkbenchConfig),
+            );
+          }
+          setConfigLoadState("ready");
+          return;
+        } catch (e) {
+          lastErr = e;
+          if (attempt < backoffs.length) {
+            await new Promise((r) => setTimeout(r, backoffs[attempt]));
+          }
+        }
+      }
+      // 全部重试失败：显式置 failed（设置页出「加载失败+重试」横幅），
+      // 不再静默——静默吞错 = 用户把默认态当成已保存值（本次事故根因）。
+      setConfigLoadState("failed");
+      // eslint-disable-next-line no-console
+      console.error("[workbench] config fetch failed after retries", lastErr);
+    } finally {
+      configFetchingRef.current = false;
     }
   }, []);
 
@@ -3984,6 +4098,21 @@ export default function WorkbenchPage() {
     () => void refreshConfig(),
     [refreshConfig],
   );
+  // v0.5.0-beta.14.16（F1）：设置页「重试」按钮——置回 loading 再走
+  // refreshConfig（内部含 3 次退避重试）。
+  const handleConfigRetry = React.useCallback(() => {
+    setConfigLoadState("loading");
+    void refreshConfig();
+  }, [refreshConfig]);
+  // v0.5.0-beta.14.16（F1）：周期兜底——settings tab 激活且 config 未就绪时
+  // 每 5s 重取（refreshConfig 自带退避重试，此处只是「第二次机会」的定时器；
+  // 就绪即停，零空转）。覆盖「首 GET 撞上插件重载窗口 + 用户不切 tab 不操作」
+  // 的静默失败路径（10/6「没有记忆」事故链）。
+  usePoller({
+    fn: () => void refreshConfig(),
+    intervalMs: 5000,
+    active: tab === "settings" && configLoadState !== "ready",
+  });
   const handleChatBack = React.useCallback(
     () => {
       closeChatRoom();
@@ -4635,6 +4764,8 @@ export default function WorkbenchPage() {
               <SettingsTab
                 onLoginSuccess={onLoginSuccess}
                 config={config}
+                configLoadState={configLoadState}
+                onRetryConfig={handleConfigRetry}
                 // v0.5.0-beta.14.10（UIPERF-T13）：回调 prop 稳定化引用。
                 onConfigChange={handleConfigChange}
                 chatForceWide={chatForceWide}

@@ -426,7 +426,7 @@ export default function SkillCenter({
       setUpBody("");
       // v0.5.0-beta.14.6（D3）：技能中心安装=写路径 → 失效 skills 缓存
       // （loadCatalog 走 fetchSkillCatalog 未入 R1 缓存，但同步失效
-      // skills/list 缓存保证宿主技能列表（SkillsTab）读新值）。
+      // skills/list 缓存保证技能目录读新值）。
       invalidateTags(["skills"]);
       void loadCatalog();
       void loadWorkers();
