@@ -28,6 +28,7 @@ import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
+import { formatSize } from "../util";
 import {
   CheckIcon,
   CloseIcon,
@@ -999,15 +1000,6 @@ function formatTime(ts: number): string {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
-}
-
-/** 文件大小 humanize。 */
-function formatSize(bytes?: unknown): string {
-  const n = Number(bytes || 0);
-  if (!n) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 /** 文件名截断：>19 字符裁成「前 15 字符…扩展名」，保留扩展名可见。 */

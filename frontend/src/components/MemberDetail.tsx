@@ -4,6 +4,7 @@ import { useAvatarUrl } from "../useAvatar";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import ApprovalControl from "./ApprovalControl";
+import { formatChatTime } from "../util";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -24,20 +25,6 @@ const ROLE_COLOR: Record<string, string> = {
   critic: "#52c41a",
   unknown: "#999",
 };
-
-function formatWhen(ts: number): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  if (sameDay) return `${hh}:${mm}`;
-  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hh}:${mm}`;
-}
 
 interface MemberDetailProps {
   mxid: string;
@@ -222,7 +209,7 @@ export default function MemberDetail(props: MemberDetailProps) {
               }}
             >
               <div style={{ color: t.textSecondary, fontSize: 11, marginBottom: 2 }}>
-                {formatWhen(m.origin_server_ts)}
+                {formatChatTime(m.origin_server_ts)}
               </div>
               {m.body.slice(0, 300)}
             </div>

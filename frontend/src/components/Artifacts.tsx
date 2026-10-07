@@ -17,6 +17,7 @@ import {
   httpErrorDetail,
   type Artifact,
 } from "../api";
+import { formatSize } from "../util";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -120,14 +121,6 @@ function projectTs(
     if (t && !Number.isNaN(t)) realTs = t;
   }
   return projectActivityTs(realTs, meta?.roomId || "", p.project_id || "");
-}
-
-function formatSize(bytes?: number | null): string {
-  const n = Number(bytes || 0);
-  if (!n) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function formatTime(ts: number): string {
