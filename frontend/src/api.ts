@@ -229,6 +229,12 @@ export interface WorkbenchConfig {
   gateway_admin_url?: string;
   // v0.5.0-beta.14.7: Higress 双地址（canonical；legacy 单值键=urls[0] 镜像）。
   gateway_admin_urls?: AddressEntry[];
+  // v0.5.0-beta.14.20：持久化诊断（后端 GET /config 自 14.12 已返回，
+  // 前端此前未消费——「内外网固定没生效/账密没记忆」无法自证时，
+  // 设置页直接显示落盘证据）。
+  configPath?: string;
+  configSavedAt?: number; // config 文件 mtime（epoch 秒）
+  configWritable?: boolean; // 配置目录可写性
  // v0.5.0-beta.14.8：控制台特效安抚（默认开；false=启用动画）。
  // v0.5.0-beta.14.12：保留为兼容键（console_effects 三档取代；
   // 后端 load 迁移时以其值推导初值，前端只读不写）。

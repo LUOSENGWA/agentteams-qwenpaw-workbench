@@ -78,6 +78,66 @@ function hostAccentBgForMode(
 // - useHostTheme()：antd token 消费方，diff 门控 setState（旧宿主/取不到
 // = null → 消费方回退 DEFAULT_ACCENT，与 CSS 变量 fallback 同源同值）。
 
+// ── v0.5.0-beta.14.20：首帧同步主题（用户 14.19 验收：「每个有主题色的
+// 组件加载主题色的逻辑和时间不一样」）。根因：CSS 变量组件首帧即宿主色，
+// antd token 组件要等 /config/theme 网络返回 → 先闪 DEFAULT_ACCENT 再
+// 变宿主色——不同组件"上色时间"不同。修法=单一事实源优先：宿主 App.tsx
+// 页面加载时已把生效主题写 :root（--app-accent 等，2.2.2b4 源码实证；
+// 14.18「对齐宿主刷新语义」的主力机制）——插件首渲染同步读变量，零网络
+// 零闪动；/config/theme 降级为补全（radius 等细节）与旧宿主兜底。
+// 模块级快照：变量只在宿主整页刷新时变（=本模块重建），读一次即可。
+let _cssVarSnapshot: {
+  accent: string;
+  accent_hover?: string;
+  accent_bg?: string;
+} | null | undefined;
+function readAccentFromCssVars(): {
+  accent: string;
+  accent_hover?: string;
+  accent_bg?: string;
+} | null {
+  if (_cssVarSnapshot !== undefined) return _cssVarSnapshot;
+  _cssVarSnapshot = null;
+  try {
+    if (typeof window === "undefined" || !window.getComputedStyle)
+      return null;
+    const vars = window.getComputedStyle(document.documentElement);
+    const accent = (vars.getPropertyValue("--app-accent") || "").trim();
+    if (!safeHex(accent)) return null; // 未写变量/非 hex → 走 fetch 路径
+    const out: {
+      accent: string;
+      accent_hover?: string;
+      accent_bg?: string;
+    } = { accent };
+    const hover = (vars.getPropertyValue("--app-accent-hover") || "").trim();
+    if (safeHex(hover)) out.accent_hover = hover;
+    const bg = (vars.getPropertyValue("--app-accent-bg") || "").trim();
+    if (safeHex(bg)) out.accent_bg = bg;
+    _cssVarSnapshot = out;
+  } catch {
+    /* 无 DOM → null */
+  }
+  return _cssVarSnapshot;
+}
+
+/** 首帧同步主题：CSS 变量可得 → 直接构造（亮/暗槽同值——:root 变量是
+ * 宿主当前生效主题，模式已解析，hostAccentForMode 两种模式取同一生效色）；
+ * 不可得 → null（调用方走 fetch 异步路径，行为与 14.19 及以前一致）。 */
+export function syncHostTheme(): HostTheme | null {
+  const v = readAccentFromCssVars();
+  if (!v) return null;
+  const dark: HostThemeDark = {
+    accent: v.accent,
+    ...(v.accent_bg ? { accent_bg: v.accent_bg } : {}),
+  };
+  return {
+    accent: v.accent,
+    ...(v.accent_hover ? { accent_hover: v.accent_hover } : {}),
+    ...(v.accent_bg ? { accent_bg: v.accent_bg } : {}),
+    dark,
+  };
+}
+
 let _themePromise: Promise<HostTheme | null> | null = null;
 
 /** 读宿主生效主题（稀疏）。页面生命周期内读一次（单飞缓存）。 */
@@ -104,11 +164,27 @@ const React: typeof ReactNS = host.React;
 /** 读宿主主题（组件内）。旧宿主/取不到 = null（消费方各自回退）。
  * 页面加载读一次（与宿主「刷新才更新」行为对齐，14.18）。 */
 export function useHostTheme(): HostTheme | null {
-  const [theme, setTheme] = React.useState<HostTheme | null>(null);
+  // v0.5.0-beta.14.20：初始态=同步 CSS 变量主题（首帧即宿主色，antd
+  // token 组件不再先闪默认橙）；旧宿主/无变量 → null（与旧行为一致）。
+  const [theme, setTheme] = React.useState<HostTheme | null>(() =>
+    syncHostTheme(),
+  );
   React.useEffect(() => {
     let alive = true;
     void fetchHostTheme().then((t) => {
-      if (alive) setTheme(t);
+      if (!alive) return;
+      const sync = syncHostTheme();
+      if (sync) {
+        // 合并：accent 系取 :root 变量（=宿主当前生效色，首帧事实源）；
+        // radius/dark.surface 等细节取 fetch 补全（sync 无这些键）。
+        setTheme({
+          ...(t || {}),
+          ...sync,
+          dark: { ...(t?.dark), ...sync.dark },
+        });
+      } else {
+        setTheme(t);
+      }
     });
     return () => {
       alive = false;

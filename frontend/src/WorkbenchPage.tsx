@@ -2187,6 +2187,16 @@ export default function WorkbenchPage() {
     void refreshAdmin(true);
   }, [hasCtlToken, refreshAdmin]);
 
+  // v0.5.0-beta.14.20（模型页 L2 门控配套）：记忆 tab=models 但当前 L2
+  // （config 已落地且无 token）→ 回首页。config ready 前不判——L1 用户
+  // 的 config 异步窗口内 hasCtlToken 短暂为 false，不能误踢。
+  React.useEffect(() => {
+    if (tab === "models" && !hasCtlToken && configLoadState === "ready") {
+      setTabState("home");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, hasCtlToken, configLoadState]);
+
   // v0.5.0-beta.12: 账号切换（登录成功）= 数据源全切——清本地旧账号数据 + 全量重取。
   // 与后端联动：/login 已同步清 60s 聚合缓存（rooms/workflow/artifacts/
   // structure）+ 重置 sync 游标；前端本地状态不清的话，切完账号屏幕还挂着
@@ -3030,7 +3040,11 @@ export default function WorkbenchPage() {
           { key: "models", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BrainIcon size={15} /> {tr("模型")}</span> },
 
           { key: "settings", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SettingsIcon size={15} /> {tr("配置")}</span> },
-        ].map((item) => {
+        ]
+          // v0.5.0-beta.14.20（用户 14.19 验收：模型页不应向 L2 提供）：
+          // 无 Controller token（L1 不可用）时隐藏「模型」入口。
+          .filter((item) => item.key !== "models" || hasCtlToken)
+          .map((item) => {
           const active = tab === item.key;
           return (
             <button
@@ -3269,7 +3283,9 @@ export default function WorkbenchPage() {
               />
             ),
           },
-        ]}
+        ]
+          // v0.5.0-beta.14.20：与侧栏同门控——L2 无「模型」页。
+          .filter((it) => it.key !== "models" || hasCtlToken)}
       />
       </div>
       {/* 跨房间消息搜索：点击结果 → 打开房间 + 定位事件；
