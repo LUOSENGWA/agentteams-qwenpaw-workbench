@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.23 (2026-10-07 - 14.22 acceptance batch: credential-verify separation + PATCH proxy pass-through + KB WAN bulk-read compression + server-side prewarm)
+
+**System fixes for the 14.22 acceptance feedback — Higress verify mis-reporting a token error, "modification failed: HTTP 405" on the tools write path, slow KB cold path on WAN**
+
+- **Higress / Controller credential verification separated** (N1): `verify-admin` resolved the Controller token **before** the path branch — a token with illegal characters in config made a pure Higress credential check (path A, username/password) fail with a token error, coupling the two verifiers. Now token resolution lives **inside path B only**: path A verifies the Console credential, path B verifies the Controller token — each independent, a credential error in one no longer mis-reports the other.
+- **Tools write path 405** (N3, latent since beta.12.3): the catch-all proxy's `methods` list lacked **PATCH** while the Controller tools endpoint is exactly `PATCH /workers/{name}/tools/{tool}` — both write entries (worker tools tab + resource panel) failed with `Method Not Allowed`. WAN direct-to-controller measured PUT 200 / PATCH 200 (upstream exonerated). Fix: PATCH added to the catch-all methods (body read with POST/PUT semantics); write paths (POST/PUT/PATCH/DELETE) now log a warning on any non-2xx (method + path + upstream status + body head 200B), so upstream method-table mismatches are visible at a glance.
+- **KB WAN cold path: bulk-read compression + server-side prewarm** (N2, K1/K2): root cause measured — the WAN cold path is a single ≤1.8MB raw graph bulk-read (≈3–5s on 5M); the warm path SWR is 8ms. (K1) the bulk-read script output is now a `===GZB1===` gzip+base64 envelope — the 1.8MB payload shrinks ~5× in transit; legacy responses (no magic prefix) pass through unchanged and a corrupt envelope safely falls back to the per-file path (frame protocol unchanged). (K2) after a `/kb/agents` response the server prewarms the last-agent's tree+graph in the background (silently skipped when missing / absent from the list / abnormal; single-flight), so a WAN "open knowledge base" usually hits a warm cache — complementing the existing client-side prewarm (14.18) and SWR caching.
+- **Safety-net expansion (13 coverage points)**: D4 runtime pass-through A1–A7 (docker main + ctl fallback paths: `runtime` written only when non-empty, `runtimeDeprecated` only when truthy, legacy controller = key absent not null, malformed entries skipped safely, disk-cache passthrough, 401 wording, endpoint-level pass-through) and credential-guard B1–B6 (pre-save 400 naming the address position, type mismatch = same gap, explicit-clear 200 with on-disk downgrade, batch reject, `credential_check` per-position form str/basic/bearer). All test dial points are intercepted by a fake client — zero real HTTP.
+
+---
+
 ## 0.5.0-beta.14.22 (2026-10-07 - 14.21 acceptance batch: SGLang activity signal + config/credential resilience + KB low-bandwidth adaptation + runtime notices (8 panels) + button alignment)
 
 **System fixes for the 14.21 acceptance feedback — SGLang throughput-0 mislead, config/credential "saved but not effective", slow KB on WAN, non-QwenPaw runtime confusion, button look**
