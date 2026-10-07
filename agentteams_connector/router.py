@@ -2189,29 +2189,69 @@ def build_router() -> APIRouter:
             cfg_ctl = _ordered_ctl_urls(cfg)
             if not cfg_ctl:
                 return {"ok": False, "error": "请先配置 Controller 地址"}
+            # v0.5.0-beta.14.21：韧性 + 诊断增强（外网验证 500 根因治理）。
+            # 实测：LAN 活地址 /api/v1/teams Bearer JWT = 200 <1s；外网路径
+            # （Higress 网关→Controller）偶发 500 = 网关/上游瞬时错（非 token 错）。
+            # 旧版把任何非 200 一律报「token 无效」且 3s 超时（5M WAN 偏紧）
+            # → 真 500 被误诊为凭据错、慢验证「一直转圈」。现：
+            # ① 5xx = 网关/上游瞬时 → 退避 1s 重试一次（同一活地址再探）；
+            # ② 4xx = 凭据/权限（地址无关）→ 立即报、不重试不换址；
+            # ③ 超时/连接错 = 地址级 → 换下一地址（不重试）；
+            # ④ 透出 5xx body 供 UI 显示真实原因（不再被通用文案掩盖）。
+            headers_ctl = lambda b: _headers_for(  # noqa: E731
+                cfg, "controller", b, {"Authorization": f"Bearer {token}"}
+            )
             ok = False
             last_err = ""
+            last_status = 0
+            last_body = ""
             for base in cfg_ctl:
-                try:
-                    # v0.5.0-beta.14.20：8→3s——可达地址 <1s 不受影响；死地址
-                    # 最坏成本 2×8s→2×3s（配合 working-cache 前置，常态首槽
-                    # 即活地址 <1s 返回，不再「一直转圈」）。
-                    async with GatedAsyncClient(timeout=3.0, verify=False) as client:
-                        rr = await client.get(
-                            f"{base}/api/v1/teams",
-                            headers=_headers_for(
-                                cfg, "controller", base,
-                                {"Authorization": f"Bearer {token}"},
-                            ),
-                        )
+                for attempt in (1, 2):
+                    try:
+                        # 5s：5M WAN 活地址 <1s，给瞬时抖动留余量；死地址
+                        # 因超时/连接错直接换址（不重试），最坏成本受控。
+                        async with GatedAsyncClient(timeout=5.0, verify=False) as client:
+                            rr = await client.get(
+                                f"{base}/api/v1/teams",
+                                headers=headers_ctl(base),
+                            )
+                    except Exception as exc:  # noqa: BLE001 - 地址级，换下一地址
+                        last_err = exc.__class__.__name__
+                        last_status = 0
+                        break  # 本地址不可达 → 不重试，换下一地址
                     if rr.status_code == 200:
                         ok = True
                         break
+                    last_status = rr.status_code
                     last_err = f"HTTP {rr.status_code}"
-                except Exception as exc:
-                    last_err = exc.__class__.__name__
+                    last_body = (rr.text or "")[:300]
+                    if rr.status_code < 500:
+                        break  # 4xx 凭据错：地址无关，立即报
+                    # 5xx 瞬时：退避后重试一次（同地址）。
+                    if attempt == 1:
+                        await asyncio.sleep(1.0)
+                        continue
+                    break  # 重试仍 5xx → 换下一地址
+                if ok:
+                    break
             if not ok:
-                return {"ok": False, "error": f"Controller 管理员 token 无效（{last_err}）"}
+                if 400 <= last_status < 500:
+                    return {
+                        "ok": False,
+                        "error": f"Controller 管理员 token 无效或凭据错误（HTTP {last_status}）",
+                    }
+                if last_status >= 500:
+                    return {
+                        "ok": False,
+                        "error": (
+                            f"外网/网关异常（HTTP {last_status}）：{last_body}——"
+                            "瞬时的网关或上游错误，非 token 问题，请稍后重试或检查外网路径"
+                        ),
+                    }
+                return {
+                    "ok": False,
+                    "error": f"无法连接 Controller（{last_err}）——请检查 Controller 地址与网络",
+                }
             # env 来源不落盘：保持 config 为空让 env 保持唯一事实源
             # （token 轮换=更新 QwenPaw env，不会被旧 config 值遮蔽）。
             if token_source in ("input", "config"):
