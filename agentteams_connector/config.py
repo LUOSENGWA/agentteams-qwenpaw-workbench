@@ -39,6 +39,10 @@ _CONFIG_DIR = Path(_SECRET_DIR) / "agentteams-qwenpaw-workbench"
 _CONFIG_PATH = _CONFIG_DIR / "config.json"
 
 _lock = threading.Lock()
+# load_config 读缓存（进程内单进程安全：同 _lock 保护；键=文件 mtime+size，
+# 外部改文件自然失效；save_config 写盘后立即失效）。value=原始 raw dict
+# （未合并 defaults），命中时仍走完整合并逻辑——只省 read/parse/chmod。
+_config_read_cache: Dict[str, Any] = {"mtime_ns": None, "size": None, "data": None}
 
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
 
@@ -325,6 +329,24 @@ def _restore_from_backup() -> Optional[Dict[str, Any]]:
 def load_config() -> Dict[str, Any]:
     """Load the config, merging with defaults for missing keys."""
     with _lock:
+        # 读缓存（mtime+size 判定）：命中跳 disk read/parse/chmod，返回深拷贝
+        # （与未缓存路径同语义——调用方可自由改返回值不污染缓存）；
+        # save_config 写盘后失效，外部改文件靠 mtime/size 变化自然失效。
+        _cst = None
+        try:
+            _cst = _CONFIG_PATH.stat()
+        except OSError:
+            _cst = None
+        if (
+            _cst is not None
+            and _config_read_cache["mtime_ns"] == _cst.st_mtime_ns
+            and _config_read_cache["size"] == _cst.st_size
+            and _config_read_cache["data"] is not None
+        ):
+            return json.loads(json.dumps(_config_read_cache["data"]))
+        _stat_key = (
+            (_cst.st_mtime_ns, _cst.st_size) if _cst is not None else None
+        )
         try:
             raw = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
@@ -418,6 +440,12 @@ def load_config() -> Dict[str, Any]:
             if legacy:
                 sg["urls"] = [legacy]
             sg.pop("url", None)
+        # 自愈/缺失路径（_stat_key=None，文件在调用中重写或不存在）不缓存
+        # ——下次 load 按新文件 stat 判定，避免缓存与重写后内容失配。
+        if _stat_key is not None:
+            _config_read_cache.update(
+                {"mtime_ns": _stat_key[0], "size": _stat_key[1], "data": raw}
+            )
         return merged
 
 
@@ -441,6 +469,8 @@ def save_config(config: Dict[str, Any], refresh_backup: bool = True) -> None:
                 raise IOError("配置写盘校验不一致（磁盘内容与内存态不同）")
         except Exception as exc:  # noqa: BLE001
             raise IOError(f"配置写入失败：{exc}") from exc
+        # 写盘成功 → 读缓存立即失效（下次 load 必然回源读新内容）。
+        _config_read_cache.update({"mtime_ns": None, "size": None, "data": None})
         if refresh_backup:
             try:
                 write_backup(config)
