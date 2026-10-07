@@ -1444,7 +1444,7 @@ export function ManagerTable({
   );
 }
 
-export interface WorkerManageProps {
+interface WorkerManageProps {
   teams: WorkerTreeTeam[];
   admin: AdminData | null;
   treeLoading?: boolean;

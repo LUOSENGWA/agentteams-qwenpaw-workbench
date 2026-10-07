@@ -3514,33 +3514,12 @@ export interface MemoryFileItem {
 
 export type MemorySection = "daily" | "digest";
 
-/** host API 统一 JSON 取数（鉴权由 host.fetch 注入）。 */
-async function hostJson(path: string, init?: RequestInit): Promise<unknown> {
-  const host = window.QwenPaw?.host;
-  if (!host || typeof host.fetch !== "function") {
-    throw new Error("宿主环境不可用（无 host.fetch）");
-  }
-  const resp = await host.fetch(path, init);
-  const text = await resp.text();
-  let data: unknown = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    /* 非 JSON（404 HTML 壳等）→ 用状态码报错 */
-  }
-  if (!resp.ok) {
-    const detail = (data as Record<string, unknown> | null)?.detail;
-    throw new Error(typeof detail === "string" ? detail : `HTTP ${resp.status}`);
-  }
-  return data;
-}
-
 /** 宿主 agent 列表（getSelectedAgentId 运行时缺失时的 agentId 兜底源）。
  * v0.5.0-beta.14.6：cachedRequest 包裹（kb/agent-ids，60s）——
  * KnowledgeBase 等多处取数合并为一次。 */
 export async function fetchAgentIdList(): Promise<string[]> {
   return cachedRequest("kb/agent-ids", 60000, async () => {
-    const raw = (await hostJson("/agents")) as Record<string, unknown>;
+    const raw = (await requestJson("/agents")) as Record<string, unknown>;
     const agents = Array.isArray(raw.agents) ? raw.agents : [];
     return agents
       .map((a) => {
@@ -3554,7 +3533,7 @@ export async function fetchAgentIdList(): Promise<string[]> {
 export async function fetchMemoryGraph(
   agentId: string,
 ): Promise<MemoryGraphSnapshot> {
-  const raw = (await hostJson(
+  const raw = (await requestJson(
     `/agents/${encodeURIComponent(agentId)}/memory/graph`,
   )) as Record<string, unknown>;
   return {
@@ -3569,7 +3548,7 @@ export async function fetchMemoryGraph(
 export async function fetchMemoryStatus(
   agentId: string,
 ): Promise<MemoryStatusResponse> {
-  const raw = (await hostJson(
+  const raw = (await requestJson(
     `/agents/${encodeURIComponent(agentId)}/memory/status`,
   )) as Record<string, unknown>;
   const runtime = (raw.runtime ?? {}) as MemoryRuntimeStatus;
@@ -3594,7 +3573,7 @@ export async function fetchMemoryStatus(
 
 /** 触发重建索引（可能耗时数分钟，fire-and-forget；进度轮询 status.reindexing）。 */
 export async function reindexMemory(agentId: string): Promise<void> {
-  await hostJson(
+  await requestJson(
     `/agents/${encodeURIComponent(agentId)}/memory/reindex`,
     { method: "POST" },
   );
@@ -3603,7 +3582,7 @@ export async function reindexMemory(agentId: string): Promise<void> {
 export async function listMemoryFiles(
   section: MemorySection,
 ): Promise<MemoryFileItem[]> {
-  const raw = await hostJson(`/workspace/memory?section=${section}`);
+  const raw = await requestJson(`/workspace/memory?section=${section}`);
   if (!Array.isArray(raw)) return [];
   return raw.map((f) => {
     const o = f as Record<string, unknown>;
@@ -3623,105 +3602,14 @@ export async function loadMemoryFile(
   memoryPath: string,
   section: MemorySection,
 ): Promise<string> {
-  const raw = (await hostJson(
+  const raw = (await requestJson(
     `/workspace/memory/${memoryPath.split("/").map(encodeURIComponent).join("/")}?section=${section}`,
   )) as Record<string, unknown>;
   return String(raw.content ?? "");
 }
 
-// ── 技能管理（QwenPaw 宿主 Agent，host.fetch 零新后端）──
-// 复刻宿主 SkillPool 核心面（参考 QwenPaw Settings/SkillPool），契约源
-// src/qwenpaw/app/routers/skills.py（2.1.0+）：
-// GET /skills SkillSpec[]（X-Agent-Id 由 host.fetch 注入）
-// POST /skills/refresh 强制 reconcile 后返回 SkillSpec[]
-// GET /skills/{name} SkillDetail（+content/config/installed_from）
-// POST /skills/{name}/enable {enabled: true}
-// POST /skills/{name}/disable {disabled: true}
-// DELETE /skills/{name} {deleted: true}（仅已禁用，409=先禁用）
-// POST /skills {name, content, config?, enable?} 新建
-// POST /skills/upload multipart zip（enable/target_name 参数）
-// 范围=当前宿主 Agent（本机助手），非远端 Worker——远端 Worker 技能
-// 只读展示在 Worker 管理 tab），团队侧上传/应用待上游合并。
-export interface SkillSpec {
-  name: string;
-  description: string;
-  source: string;
-  emoji: string;
-  enabled: boolean;
-  channels: string[];
-  tags: string[];
-  last_updated: string;
-}
+// ── 技能管理 ──
 
-export interface SkillDetail extends SkillSpec {
-  content: string;
-  config: Record<string, unknown>;
-  installed_from: string;
-}
-
-export interface SkillUploadResult {
-  imported: string[];
-  count: number;
-  enabled: boolean;
-  conflicts?: { reason: string; skill_name: string; suggested_name: string }[];
-}
-
-/** 当前宿主 Agent 技能清单。
- * v0.5.0-beta.14.6：cachedRequest 包裹（skills/list，60s，tags
- * ["skills"]）——写面（开关/删除/上传/新建/重扫）变更后由调用方
- * invalidateTags(["skills"]) 再取。 */
-export async function fetchSkills(): Promise<SkillSpec[]> {
-  return cachedRequest(
-    "skills/list",
-    60000,
-    async () => {
-      const raw = await hostJson("/skills");
-      return Array.isArray(raw) ? (raw as SkillSpec[]) : [];
-    },
-    { tags: ["skills"] },
-  );
-}
-
-/** 强制 reconcile（目录有变动但清单未跟上时用）。 */
-export async function refreshSkills(): Promise<SkillSpec[]> {
-  const raw = await hostJson("/skills/refresh", { method: "POST" });
-  return Array.isArray(raw) ? (raw as SkillSpec[]) : [];
-}
-
-export async function getSkillDetail(
-  name: string,
-): Promise<SkillDetail> {
-  return (await hostJson(
-    `/skills/${encodeURIComponent(name)}`,
-  )) as SkillDetail;
-}
-
-export async function setSkillEnabled(
-  name: string,
-  enable: boolean,
-): Promise<void> {
-  await hostJson(
-    `/skills/${encodeURIComponent(name)}/${enable ? "enable" : "disable"}`,
-    { method: "POST" },
-  );
-}
-
-/** 仅已禁用技能可删；409 detail="Only disabled workspace skills can be deleted"。 */
-export async function deleteSkill(name: string): Promise<void> {
-  await hostJson(`/skills/${encodeURIComponent(name)}`, { method: "DELETE" });
-}
-
-export async function createSkill(
-  name: string,
-  content: string,
-  enable: boolean,
-): Promise<{ created: boolean; name: string }> {
-  return (await hostJson("/skills", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, content, enable }),
-  })) as { created: boolean; name: string };
-}
 
 /** v0.5.0-beta.13.19（13.18 技能上传呢？）：**团队技能包上传**——
  * POST /api/v1/skills（multipart：scope=team + team + file=技能 zip）。
@@ -3780,43 +3668,6 @@ export async function uploadTeamSkill(opts: {
             ? (scanRaw.findings as string[])
             : undefined,
         }
-      : undefined,
-  };
-}
-
-/** zip 上传（multipart；Content-Type 由 fetch 自填 boundary，勿手设）。 */
-export async function uploadSkillZip(
-  file: File,
-  enable: boolean,
-): Promise<SkillUploadResult> {
-  const host = window.QwenPaw?.host;
-  if (!host || typeof host.fetch !== "function") {
-    throw new Error("宿主环境不可用（无 host.fetch）");
-  }
-  const fd = new FormData();
-  fd.append("file", file);
-  const resp = await host.fetch(
-    `/skills/upload?enable=${enable ? "true" : "false"}`,
-    { method: "POST", body: fd },
-  );
-  const text = await resp.text();
-  let data: unknown = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    /* 非 JSON（错误页等）→ 按状态码报错 */
-  }
-  if (!resp.ok) {
-    const detail = (data as Record<string, unknown> | null)?.detail;
-    throw new Error(typeof detail === "string" ? detail : `HTTP ${resp.status}`);
-  }
-  const o = (data || {}) as Record<string, unknown>;
-  return {
-    imported: Array.isArray(o.imported) ? (o.imported as string[]) : [],
-    count: typeof o.count === "number" ? o.count : 0,
-    enabled: Boolean(o.enabled),
-    conflicts: Array.isArray(o.conflicts)
-      ? (o.conflicts as SkillUploadResult["conflicts"])
       : undefined,
   };
 }

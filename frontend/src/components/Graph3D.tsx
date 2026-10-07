@@ -32,7 +32,7 @@ const antd = host.antd;
  * three-spritetext (MIT, Jay Weisskopf)——包内 THIRD-PARTY-NOTICES.md。
  */
 
-export interface G3DNodeInput {
+interface G3DNodeInput {
   id: string;
   name: string;
   virtual?: boolean;
@@ -43,7 +43,7 @@ export interface G3DNodeInput {
   y?: number;
   z?: number;
 }
-export interface G3DLinkInput {
+interface G3DLinkInput {
   source: string;
   target: string;
 }

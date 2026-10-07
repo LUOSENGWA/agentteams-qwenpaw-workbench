@@ -27,7 +27,7 @@ import { fetchWorkerChats, fetchWorkersStatus } from "./api";
 import { usePoller } from "./usePoller";
 
 /** Per-Worker session 状态聚合（chats 全量 session 归约）。 */
-export interface WorkerChatStatusAgg {
+interface WorkerChatStatusAgg {
   /** 任一 session status === "running"（qwenpaw app 自维护）。 */
   running: boolean;
   /** 最新 session updated_at（epoch ms；0 = 无/不可解析）。 */
@@ -35,7 +35,7 @@ export interface WorkerChatStatusAgg {
 }
 
 /** 单 Worker 的 /chats → 聚合。502/404/网络错误 → null（调用方保旧值）。 */
-export async function fetchWorkerChatStatusAgg(
+async function fetchWorkerChatStatusAgg(
   name: string,
 ): Promise<WorkerChatStatusAgg | null> {
   let chats;

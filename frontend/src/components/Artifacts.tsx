@@ -159,7 +159,7 @@ function extOf(name: string): string {
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
 }
 
-export type ArtifactKind = "image" | "document" | "data" | "code" | "other";
+type ArtifactKind = "image" | "document" | "data" | "code" | "other";
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"]);
 const DOC_EXT = new Set([
@@ -213,7 +213,7 @@ interface FileEntry {
   mxcUrl?: string;
 }
 
-export interface ArtifactsProps {
+interface ArtifactsProps {
   rooms?: { room_id: string; name: string }[];
   onBack?: () => void;
 }

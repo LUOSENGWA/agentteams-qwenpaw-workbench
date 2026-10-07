@@ -19,7 +19,7 @@
 // 仍会写回缓存（stale-write race）——调用方在写操作后紧跟 force:true 或
 // invalidateTags 即可自愈（见 api.ts 失效接线）。
 
-export interface RequestCacheOptions {
+interface RequestCacheOptions {
   /** true=跳过读缓存（仍参与在飞去重；完成后覆盖写缓存） */
   force?: boolean;
   /** 失效标签 */
@@ -28,7 +28,7 @@ export interface RequestCacheOptions {
   maxEntries?: number;
 }
 
-export interface RequestCacheStats {
+interface RequestCacheStats {
   hits: number;
   misses: number;
   deduped: number;
@@ -132,7 +132,7 @@ export function invalidateTags(tags: string[]): void {
 }
 
 /** 删除单键。 */
-export function invalidateKey(key: string): void {
+function invalidateKey(key: string): void {
   store.delete(key);
 }
 

@@ -92,10 +92,10 @@ interface GraphNodeLike {
 interface RadialView { minX: number; minY: number; width: number; height: number }
 
 /** 簇块包围盒（渲染虚线框 + 聚焦视野）。 */
-export interface ClusterBlock { hubId: string; minX: number; minY: number; w: number; h: number }
+interface ClusterBlock { hubId: string; minX: number; minY: number; w: number; h: number }
 
 // 几何常量（双端同值——dashboard 镜像时逐字对齐，勿单端调参）。
-export const KB2D = {
+const KB2D = {
   CHIP_H: 26,        // 成员节点 chip 高
   HUB_H: 34,         // hub（簇横幅）chip 高
   CHIP_PAD_X: 12,    // chip 左右内边距（各）
@@ -113,10 +113,10 @@ export const KB2D = {
 } as const;
 
 /** 聚焦目标：簇（hub 块）或单节点邻域。 */
-export type FocusTarget = { kind: "sector"; hubId: string } | { kind: "node"; id: string };
+type FocusTarget = { kind: "sector"; hubId: string } | { kind: "node"; id: string };
 
 /** 一组点的包围盒 + 留白（聚焦视野）。空集 → null。 */
-export function focusView(points: Array<{ x: number; y: number }>, pad = 70): RadialView | null {
+function focusView(points: Array<{ x: number; y: number }>, pad = 70): RadialView | null {
   if (points.length === 0) return null;
   let minX = Infinity;
   let minY = Infinity;
@@ -132,7 +132,7 @@ export function focusView(points: Array<{ x: number; y: number }>, pad = 70): Ra
 }
 
 /** 缩放钳制：zoom = fit.width / vb.width ∈ [minZoom, maxZoom]，越界以视野中心为锚回缩。 */
-export function clampZoomView(
+function clampZoomView(
   vb: RadialView,
   fit: RadialView,
   minZoom = 0.25,
@@ -152,7 +152,7 @@ export function clampZoomView(
  * （P1「簇不要重叠」）：原先 label.length * FONT_W 一律宽，
  * 中文文件名 chip 被严重低估 → 长中文名 chip 横向溢出与邻居压盖。
  * chipWidth 与标签截断共用（同一估宽，避免两端口径漂移）。 */
-export function textWidthUnits(label: string): number {
+function textWidthUnits(label: string): number {
   let units = 0;
   for (const ch of label) {
     units += /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/.test(ch)
@@ -162,12 +162,12 @@ export function textWidthUnits(label: string): number {
   return units;
 }
 
-export function chipWidth(label: string): number {
+function chipWidth(label: string): number {
   const w = textWidthUnits(label) + KB2D.CHIP_PAD_X * 2;
   return Math.min(KB2D.MAX_W, Math.max(KB2D.MIN_W, Math.round(w)));
 }
 
-export interface ClusterLayout {
+interface ClusterLayout {
   /** 节点 id → chip 中心。 */
   pos: Map<string, { x: number; y: number }>;
   /** 节点 id → chip 尺寸（渲染 rect）。 */
@@ -182,7 +182,7 @@ export interface ClusterLayout {
   view: RadialView;
 }
 
-export function clusterGridLayout(
+function clusterGridLayout(
   nodes: GraphNodeLike[],
   edgePairs: Array<[string, string]>,
   agentOrder?: string[],

@@ -39,7 +39,7 @@ function formatWhen(ts: number): string {
   return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hh}:${mm}`;
 }
 
-export interface MemberDetailProps {
+interface MemberDetailProps {
   mxid: string;
   displayName: string;
   avatarUrl?: string;
