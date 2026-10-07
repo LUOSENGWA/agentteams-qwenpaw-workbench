@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.13（·屎山治理）ctl_client 单一实现单测。
+"""v0.5.0-beta.14.13（·技术债治理）ctl_client 单一实现单测。
 
 去重目标：「ordered 地址 failover」此前在 router._ctl_json（超集闭包）与
 worker_status._ctl_get（GET 版）双实现，现唯一实现在 ctl_client.ctl_json；
