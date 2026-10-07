@@ -8,6 +8,7 @@ import {
   sendApprovalCommand,
   type Artifact,
   type RoomApproval,
+  type SglangRank,
   type ManagerInfo,
   type TeamRoom,
   type WorkbenchConfig,
@@ -177,7 +178,11 @@ function HomePage(props: HomePageProps) {
   const refreshApprovals = React.useCallback(async () => {
     try {
       const items = await fetchRoomApprovals(30);
-      setApprovals(items);
+      // v0.5.0-beta.14.19（diff 门）：内容 diff 门——无变化复用 prev 引用
+      // （30s 空转轮询不再重渲整个首页）。
+      setApprovals((prev) =>
+        JSON.stringify(prev) === JSON.stringify(items) ? prev : items,
+      );
     } catch {
       /* 未登录 Matrix 时保持现状 */
     }
@@ -272,13 +277,34 @@ function HomePage(props: HomePageProps) {
       sglangAliveRef.current = false;
     };
   }, []);
+  // v0.5.0-beta.14.19（SGLang 卡自适应节奏，与 OpsPanel 同案）：
+  // 14.17 一刀切 1s→5s 后验收实测回归「刷新很慢几乎不刷」——监控卡活性
+  // 靠活跃快档（1s，恢复 1s 时代实时感），省 5M 行拨号靠空闲慢档
+  // （15s）。指纹=ranks 归一化 JSON（SglangRank 无每帧时钟字段，直接比）。
+  const SG_FAST_MS = 1000;
+  const SG_SLOW_MS = 15000;
+  const sgCadenceRef = React.useRef(SG_FAST_MS);
+  const sgStableRef = React.useRef(0);
+  const sgRanksRef = React.useRef<SglangRank[] | null>(null);
   const pullSglang = React.useCallback(async () => {
     // 关闭后在飞请求不写状态（原 cancelled flag 语义）。
     if (!sglangEnabledRef.current || !sglangAliveRef.current) return;
     try {
       const d = await fetchSglangLoads();
       if (!sglangAliveRef.current) return;
-      setSglang({ loaded: true, ranks: d.ranks || [] });
+      const ranks = d.ranks || [];
+      const changed =
+        JSON.stringify(sgRanksRef.current) !== JSON.stringify(ranks);
+      if (changed) {
+        sgRanksRef.current = ranks;
+        sgStableRef.current = 0;
+        sgCadenceRef.current = SG_FAST_MS;
+        setSglang({ loaded: true, ranks });
+      } else {
+        // 连续 2 周期不变才降速（一周期确认，防快变场景误判空闲）。
+        sgStableRef.current += 1;
+        if (sgStableRef.current >= 2) sgCadenceRef.current = SG_SLOW_MS;
+      }
     } catch {
       /* 404/网络失败 → 保持未加载 */
     }
@@ -295,8 +321,11 @@ function HomePage(props: HomePageProps) {
   // 保留分支是死逻辑）。后端 1s 单飞缓存由后端批补（解锁 router.py 后）。
   usePoller({
     fn: pullSglang,
-    intervalMs: 5000,
+    // v0.5.0-beta.14.19：自适应节奏（getter 档；sgCadenceRef 在
+    // pullSglang 内按 ranks 指纹切 1s/15s）。
+    intervalMs: () => sgCadenceRef.current,
     active: homeActive && sglangEnabled,
+    minPokeMs: 800,
   });
 
   const stats = workflowStats(workflowEvents);

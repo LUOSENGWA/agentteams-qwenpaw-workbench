@@ -234,5 +234,38 @@ const { createPoller } = await import(path.join(tmp, "usePoller.mjs"));
   console.log("P7 失活可见性恢复不补跑 ✓");
 }
 
+// 8. v0.5.0-beta.14.19: 动态 interval（getter 档）——监控卡自适应节奏
+// （活跃快档/空闲慢档）。getter 每轮实时读：fn 内切档后，下一 tick
+// 应跟随新档（SGLang 卡 1s/15s 的同构小间隔版）。
+{
+  let calls = 0;
+  let interval = 200; // 起步慢档
+  const times = [];
+  const p = createPoller({
+    fn: () => {
+      calls++;
+      times.push(Date.now());
+      if (calls === 2) interval = 20; // 第 2 次 tick 后切快档
+    },
+    intervalMs: () => interval,
+    isActive: () => true,
+    jitterRatio: 0,
+  });
+  p.start();
+  while (calls < 4) await sleep(5);
+  p.stop();
+  const gapSlow = times[1] - times[0];
+  const gapFast = times[3] - times[2];
+  assert.ok(
+    gapSlow >= 180,
+    `P8 慢档：切档前间隔 ${gapSlow}ms ≈200ms`,
+  );
+  assert.ok(
+    gapFast < 100,
+    `P8 快档：切档后间隔 ${gapFast}ms ≈20ms（不再是 200）`,
+  );
+  console.log("P8 动态 interval 自适应档 ✓");
+}
+
 rmSync(tmp, { recursive: true, force: true });
-console.log("\npoller 冒烟全绿（7 断言）");
+console.log("\npoller 冒烟全绿（8 断言）");
