@@ -18,7 +18,11 @@ const React: typeof ReactNS = host.React;
 
 interface PollerOptions {
   fn: () => void | Promise<void>;
-  intervalMs: number;
+  /**
+   * 基础轮询间隔。v0.5.0-beta.14.19：支持 getter（每轮实时读，
+   * 自适应节奏——如监控卡「活跃快档/空闲慢档」）；数字=恒定（原语义）。
+   */
+  intervalMs: number | (() => number);
   /** 综合条件（tab 激活 && !document.hidden 等），每轮与恢复时判定 */
   isActive: () => boolean;
   /** 默认 intervalMs*2；恢复活跃且闲置超过它 → 立即补跑一次 */
@@ -45,8 +49,10 @@ export interface Poller {
 }
 
 export function createPoller(opts: PollerOptions): Poller {
-  const intervalMs = opts.intervalMs;
-  const catchUpMs = opts.catchUpMs ?? intervalMs * 2;
+  // v0.5.0-beta.14.19：每轮实时读（getter=自适应节奏；数字=恒定原语义）。
+  const currentInterval = (): number =>
+    typeof opts.intervalMs === "function" ? opts.intervalMs() : opts.intervalMs;
+  const catchUpMs = opts.catchUpMs ?? currentInterval() * 2;
   const backoffFactor = opts.backoffFactor ?? 2;
   const backoffMaxMs = opts.backoffMaxMs ?? 120000;
   const jitterRatio = opts.jitterRatio ?? 0.1;
@@ -60,11 +66,14 @@ export function createPoller(opts: PollerOptions): Poller {
 
   /** 抖动间隔：delay = interval * (1 + (Math.random()*2-1) * jitterRatio)。 */
   const jittered = (): number =>
-    intervalMs * (1 + (Math.random() * 2 - 1) * jitterRatio);
+    currentInterval() * (1 + (Math.random() * 2 - 1) * jitterRatio);
 
   /** 失败退避间隔：min(interval * factor^失败数, backoffMax)。 */
   const backoffMs = (): number =>
-    Math.min(intervalMs * Math.pow(backoffFactor, failures), backoffMaxMs);
+    Math.min(
+      currentInterval() * Math.pow(backoffFactor, failures),
+      backoffMaxMs,
+    );
 
   /** 下一轮间隔：有失败走退避，否则基础抖动间隔。 */
   const nextDelay = (): number =>
@@ -182,15 +191,19 @@ export function createPoller(opts: PollerOptions): Poller {
  */
 export function usePoller(pollerOpts: {
   fn: () => void | Promise<void>;
-  intervalMs: number;
+  /** v0.5.0-beta.14.19：数字=恒定（原语义）；getter=自适应节奏
+   * （组件以 ref 持有档位，getter 须稳定引用——useCallback([])）。 */
+  intervalMs: number | (() => number);
   active?: boolean;
   catchUpMs?: number;
   backoffMaxMs?: number;
-  /** ：默认 intervalMs/2（数据新鲜则跳过 poke）。 */
+  /** 默认 intervalMs/2（数字档）；getter 档建议显式传（默认 1000）。 */
   minPokeMs?: number;
 }): void {
   const { intervalMs, catchUpMs, backoffMaxMs } = pollerOpts;
-  const minPokeMs = pollerOpts.minPokeMs ?? intervalMs / 2;
+  const minPokeMs =
+    pollerOpts.minPokeMs ??
+    (typeof intervalMs === "number" ? intervalMs / 2 : 1000);
   const activeRequested = pollerOpts.active !== false; // 默认 true
 
   // fn 用 ref 持有（每次渲染刷新），poller 闭包永远调最新版。
@@ -203,10 +216,18 @@ export function usePoller(pollerOpts: {
 
   const pollerRef = React.useRef<Poller | null>(null);
 
+  // v0.5.0-beta.14.19：getter 档经 ref 持有（重建键只认数字档的值——
+  // 组件可传内联 getter 而不会每渲染重建 poller）。
+  const intervalRef = React.useRef(intervalMs);
+  intervalRef.current = intervalMs;
+  const intervalNum = typeof intervalMs === "number" ? intervalMs : null;
   React.useEffect(() => {
     const p = createPoller({
       fn: () => fnRef.current(),
-      intervalMs,
+      intervalMs: () => {
+        const v = intervalRef.current;
+        return typeof v === "function" ? v() : v;
+      },
       isActive: () => activeRef.current && !document.hidden,
       catchUpMs,
       backoffMaxMs,
@@ -218,7 +239,7 @@ export function usePoller(pollerOpts: {
       p.stop();
       pollerRef.current = null;
     };
-  }, [intervalMs, catchUpMs, backoffMaxMs, minPokeMs]);
+  }, [intervalNum, catchUpMs, backoffMaxMs, minPokeMs]);
 
   // active 假→真 → poke()（立即补跑一次，替代「切回 tab 再等一个间隔」）。
   const prevActiveRef = React.useRef(activeRef.current);

@@ -134,13 +134,42 @@ function OpsPanel({
 
   // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
   const [sglangLocalAt, setSglangLocalAt] = React.useState<number>(0);
+  // v0.5.0-beta.14.19（diff 门修正 + 自适应节奏）：稳定快照（refreshSglang
+  // deps=[]，不能直接读 state；ref 每次渲染同步最新值）。
+  const sglangRef = React.useRef(sglang);
+  sglangRef.current = sglang;
+  // ── 自适应节奏（SGLang 卡片刷新回归的系统修复）──────────────────
+  // 业界监控采集通式（Prometheus scrape tuning / nvidia-smi dmon）：
+  // 活跃采样快、空闲采样稀。14.17 一刀切 1s→5s 导致验收实测回归「刷新
+  // 很慢几乎不刷」——改两档：数据指纹变（推理中）=1s 快档（恢复 1s 时代
+  // 实时感）；连续 2 周期不变（空闲）=15s 慢档（5M 行低带宽省拨号，
+  // 空闲负载数据本无信息量）。指纹=归一化 JSON（服务端 timestamp 每帧
+  // 变但不携带信息，参与比较会永远判"变"）。
+  const SG_FAST_MS = 1000;
+  const SG_SLOW_MS = 15000;
+  const sgCadenceRef = React.useRef(SG_FAST_MS);
+  const sgStableRef = React.useRef(0);
+  const sgFingerprint = (d: SglangLoads | null): string =>
+    d ? JSON.stringify({ ...d, timestamp: "" }) : "";
   const refreshSglang = React.useCallback(async (silent = false) => {
     if (!silent) setSglangLoading(true);
     try {
       const data = await fetchSglangLoads();
-      setSglang(data);
-      setSglangLocalAt(Date.now()); // 本地到达时间—— 问「高延迟」：
-      // 此前显示服务器端时间戳，本地与服务器时钟漂移会显得滞后
+      const changed =
+        sgFingerprint(sglangRef.current) !== sgFingerprint(data);
+      if (changed) {
+        setSglang(data);
+        sgStableRef.current = 0;
+        sgCadenceRef.current = SG_FAST_MS;
+      } else {
+        // 连续 2 周期不变才降速（一周期确认，防快变场景误判空闲）。
+        sgStableRef.current += 1;
+        if (sgStableRef.current >= 2) sgCadenceRef.current = SG_SLOW_MS;
+      }
+      // 「更新于」=最后检查时间（监控卡活性证明，每检查必跳）——
+      // 14.19 初版 diff 门把它绑成"最后变化时间"，空闲时停摆=假死观感
+      // （回归反馈真根因之一）。
+      setSglangLocalAt(Date.now());
       setSglangOff(false);
       setSglangError("");
     } catch (e) {
@@ -165,12 +194,16 @@ function OpsPanel({
   // 集群负载静默轮询（v1/loads 读 SHM 快照）。
   // v0.5.0-beta.14.6（补）：→ usePoller（ops tab 激活；切走即停 + 可见性
   // 内置——原「rc-tabs 保活切走也续」的每 1s 常驻开销由此消除）。
-  // v0.5.0-beta.14.17（审计）：1s→5s（与 HomePage 同批——/v1/loads
-  // 是前端最大可控频次，两页同屏时原 2×1/s 叠加；5s 对负载曲线仍够"活"）。
+  // v0.5.0-beta.14.17：一刀切 1s→5s（省 5M 行拨号）。
+  // v0.5.0-beta.14.19：改自适应节奏（getter 档）——14.17 的 5s 恒定档
+  // 被验收实测打回「刷新很慢几乎不刷」：负载仪表要的是活性，省拨号
+  // 靠空闲降档而非恒定降速。活跃 1s / 空闲 15s（refreshSglang 内
+  // sgCadenceRef 按数据指纹切档）。
   usePoller({
     fn: () => void refreshSglang(true),
-    intervalMs: 5000,
+    intervalMs: () => sgCadenceRef.current,
     active: opsActive,
+    minPokeMs: 800,
   });
 
   // 切 Tab 回来时（refreshTick 变化）重取——rc-tabs 保活不会重跑挂载 effect。
