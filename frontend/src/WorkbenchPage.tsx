@@ -52,6 +52,8 @@ import {
   type WorkbenchConfig,
   type WorkerTreeTeam,
   type WorkflowEvent,
+  fetchAuthStatus,
+  type AuthStatus,
 } from "./api";
 // v0.5.0-beta.13.20：群消息加载收敛——窗口游标/预取槽/在飞闸/空页走查
 // 单一权威（I1–I6 不变量见模块头注释）；本地 mergeMessagePages 退役。
@@ -440,6 +442,9 @@ export default function WorkbenchPage() {
   const [configLoadState, setConfigLoadState] = React.useState<
     "loading" | "ready" | "failed"
   >("loading");
+ // v0.5.0-beta.14.19: 登录态/凭据健康（30s 低频轮询；端点零外发请求，
+  // 成本=一次进程内读——token 失效后 @通知静默全断，此前前端零感知）。
+  const [authStatus, setAuthStatus] = React.useState<AuthStatus | null>(null);
  // ── 状态记忆：重开插件恢复上次 tab + 房间 + 话题 + 面板宽度 ──
   // v0.5.0-beta.12: tab key 随名字归位（房间 team→chat、管理 spawn→team）——
   // storage key 升 v2 区分新旧格式：否则新版写入的 "team"（管理）会被
@@ -905,6 +910,28 @@ export default function WorkbenchPage() {
     void refreshTree();
     void refreshConfig();
   }, [refreshConfig, refreshRooms, refreshTree]);
+
+  // v0.5.0-beta.14.19: 登录态轮询（30s；visibility 回前台即刷——后台
+  // 切回时失效态要立刻上横幅，不等 30s 节拍）。
+  React.useEffect(() => {
+    let alive = true;
+    const poll = () => {
+      void fetchAuthStatus().then((s) => {
+        if (alive) setAuthStatus(s);
+      });
+    };
+    poll();
+    const id = window.setInterval(poll, 30000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   // ── 已读回执（m.read + m.fully_read 双写）──────────
   // 打开房间/轮询到新消息 → 对最新消息发回执 → Element 侧不再显示未读。
@@ -2875,6 +2902,42 @@ export default function WorkbenchPage() {
           </antd.Button>
         )}
       </header>
+
+ {/* v0.5.0-beta.14.19: 登录态/凭据失效横幅——token 失效后 @通知静默
+ 全断、Higress 会话过期后 alias 层静默消失，此前前端零感知（产品
+ 盲点）。数据源=30s 轮询 /auth-status（零外发请求）。 */}
+      {authStatus?.matrix_token === "invalid" && (
+        <antd.Alert
+          type="error"
+          showIcon
+          style={{ flex: "0 0 auto" }}
+          message={tr("Matrix 登录已失效")}
+          description={tr(
+            "你的 Matrix 访问令牌已被服务器拒绝（通常是密码修改、设备被移除或管理员重置）。@提到我、通知与任务状态更新不可用——请重新登录后恢复。",
+          )}
+          action={
+            <antd.Button size="small" danger onClick={() => setTab("settings")}>
+              {tr("重新登录")}
+            </antd.Button>
+          }
+        />
+      )}
+      {authStatus?.console_session === "expired" && (
+        <antd.Alert
+          type="warning"
+          showIcon
+          style={{ flex: "0 0 auto" }}
+          message={tr("Higress 管理会话已过期")}
+          description={tr(
+            "模型 alias 层的 Console 管理会话已失效——设置页用管理员账号密码重新验证后恢复。",
+          )}
+          action={
+            <antd.Button size="small" onClick={() => setTab("settings")}>
+              {tr("重新验证")}
+            </antd.Button>
+          }
+        />
+      )}
 
  {/* 自定义 tab 栏（布局自控——antd Tabs 内部 DOM 不可控，
  高度链断导致头部不固定。自写 tab bar + 内容容器 flex 布局） */}
