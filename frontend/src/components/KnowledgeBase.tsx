@@ -29,6 +29,7 @@ import {
 import Graph3D from "./Graph3D";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { formatSize } from "../util";
 import MdText from "./MdText";
 import { createPoller, type Poller } from "../usePoller";
 
@@ -3036,7 +3037,7 @@ function FileGroup({
                 </span>
                 {f.size != null && f.size > 0 ? (
                   <span style={{ color: active ? "rgba(255,255,255,0.75)" : t.textSecondary, fontSize: 10.5, flexShrink: 0 }}>
-                    {formatFileSize(f.size)}
+                    {formatSize(f.size)}
                   </span>
                 ) : null}
                 {/* v0.5.0-beta.12 ：文件更新时间（tar mtime） */}
@@ -3058,12 +3059,6 @@ function FileGroup({
       )}
     </div>
   );
-}
-
-function formatFileSize(n: number): string {
-  if (n < 1024) return `${n}B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
-  return `${(n / 1024 / 1024).toFixed(1)}MB`;
 }
 
 function RefreshIcon() {

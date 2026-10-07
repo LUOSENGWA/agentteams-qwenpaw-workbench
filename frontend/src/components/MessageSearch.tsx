@@ -11,6 +11,7 @@ import {
 } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { formatChatTime } from "../util";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -21,21 +22,6 @@ const PRIMARY = "var(--app-accent, #FF7F16)";
 /** sender MXID → 短名（@alice:example.org → alice）。 */
 export function senderShort(sender: string): string {
   return (sender.split(":")[0] || sender).replace(/^@/, "");
-}
-
-/** 时间格式：今天 HH:MM，更早 MM-DD HH:MM。 */
-function formatWhen(ts: number): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  if (sameDay) return `${hh}:${mm}`;
-  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hh}:${mm}`;
 }
 
 /** v0.5.0-beta.12 ：Levenshtein 编辑距离（短串，>2 提前退出）。 */
@@ -157,7 +143,7 @@ function ContextPreview(props: {
           <span style={{ fontWeight: 600, color: t.text }}>
             {senderShort(m.sender)}
           </span>
-          <span>{formatWhen(m.origin_server_ts)}</span>
+          <span>{formatChatTime(m.origin_server_ts)}</span>
           {isTarget ? (
             <span style={{ color: PRIMARY, fontWeight: 700 }}>●</span>
           ) : null}
@@ -534,7 +520,7 @@ function MessageSearch(props: MessageSearchProps) {
                   {senderShort(item.sender)}
                 </span>
                 <span style={{ color: t.textSecondary, fontSize: 11.5 }}>
-                  {formatWhen(item.origin_server_ts)}
+                  {formatChatTime(item.origin_server_ts)}
                 </span>
               </div>
               <div
