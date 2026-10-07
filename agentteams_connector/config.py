@@ -183,6 +183,72 @@ def merge_address_entries(
             merged.append(u)
     return merged
 
+def credential_gaps(
+    old_entries: Any, new_entries: Any
+) -> List[Dict[str, Any]]:
+    """保存前凭据意图检查（v0.5.0-beta.14.22）。
+
+ 找出「用户明确选择覆盖凭据（basic/bearer）但凭据字段为空、且旧条目
+ 在同位置没有可继承的凭据」的条目——按 merge_address_entries 的继承
+ 规则，这种条目会**静默降级为无凭据字符串条目**（网关门 → 401），
+ 而保存响应仍报成功。现由调用方在保存前拦截/保存后显形，杜绝
+ 「显示已保存、实际没凭据」的糊涂态。
+
+ 返回缺失清单：[{"index": i, "type": "basic"|"bearer", "username": ...}]
+ （username 仅 basic 且已填时给出，供错误文案定位）。
+ 与 merge_address_entries 的配对口径完全一致（按位置配对；旧列表更短
+ 的尾部位置=无旧凭据）。
+ """
+    gaps: List[Dict[str, Any]] = []
+    old_list = list(old_entries or [])
+    for i, entry in enumerate(new_entries or []):
+        if not isinstance(entry, dict):
+            continue
+        auth_in = entry.get("auth")
+        if not isinstance(auth_in, dict):
+            continue
+        atype = str(auth_in.get("type") or "").strip().lower()
+        if atype not in ("basic", "bearer"):
+            continue  # none/缺省=显式清除，无继承语义
+        old_entry = old_list[i] if i < len(old_list) else None
+        old_auth = (
+            _normalize_auth((old_entry or {}).get("auth"))
+            if isinstance(old_entry, dict)
+            else None
+        )
+        # 继承只认**同类型**旧凭据（merge_address_entries 的字段口径：
+        # basic 继承 username/password，bearer 继承 token；类型不同=
+        # 无字段可继承 → 静默降级 str 条目，同缺口）。
+        if old_auth and old_auth.get("type") != atype:
+            old_auth = None
+        if atype == "basic":
+            username = str(auth_in.get("username") or "").strip()
+            password = str(auth_in.get("password") or "").strip()
+            # 空/"***" = 走继承；旧凭据也在 = 继承成功（无缺口）。
+            if (not password or password == "***") and not old_auth:
+                gaps.append({"index": i, "type": "basic",
+                             "username": username})
+        else:
+            token = str(auth_in.get("token") or "").strip()
+            if (not token or token == "***") and not old_auth:
+                gaps.append({"index": i, "type": "bearer"})
+    return gaps
+
+
+def persisted_credential_kinds(entries: Any) -> List[str]:
+    """地址列表 → 逐位置凭据形态（回读校验用）：
+ "str"=无凭据 / "basic" / "bearer"。口径=redact 后前端可见的结构
+ （凭据值已脱敏，但条目形态与 auth 类型保留）。"""
+    out: List[str] = []
+    for entry in entries or []:
+        if isinstance(entry, dict):
+            auth = _normalize_auth(entry.get("auth"))
+            out.append(auth.get("type") if auth else "str")
+        else:
+            out.append("str")
+    return out
+
+
 _DEFAULTS: Dict[str, Any] = {
     # Ordered address lists — first reachable wins (auto-failover).
     "matrix_homeservers": [],  # e.g. ["http://10.0.0.10:6867", "https://agentteams.example.com:6867"]

@@ -108,6 +108,16 @@ async def _kb_prewarm_agent(agent: str) -> None:
     refresh("tree", agent)
     refresh("graph", agent)
 
+def kb_swr_ttl_for(address_mode: Any) -> float:
+    """v0.5.0-beta.14.22：KB 磁盘 SWR stale 阈值随生效网路自适应。
+
+ 外网（address_mode=wan）RTT 高、后台刷新深扫 round-trip 成本高——
+ 180s 窗口内重复进知识库零后台拨号；内网/自动档 60s（14.11 基线，
+ 数据新鲜度优先）。非法值按 auto 对待（与 load_config 降级先例一致）。
+ """
+    return 180.0 if address_mode == "wan" else 60.0
+
+
 _PROBE_TIMEOUT = 6.0
 
 # v0.5.0-beta.13.24（首刷 race·根因）：代理超时结构化——旧版标量
@@ -1841,6 +1851,41 @@ def build_router() -> APIRouter:
         if incoming.get("controller_token") == "***":
             incoming.pop("controller_token", None)
         prev = config_mod.load_config()
+        # v0.5.0-beta.14.22：凭据意图检查——用户选了覆盖凭据（basic/
+        # bearer）但凭据为空且旧条目无可继承同类型凭据时，merge 会静默
+        # 降级为无凭据条目（网关恒 401）而保存仍报成功（「已保存但
+        # 没记住」的根因）。保存前拦截 400，错误文案点名地址位置。
+        _fam_names = {
+            "matrix": ("matrix_homeservers", "Matrix"),
+            "controller": ("controller_urls", "Controller"),
+            "sglang": (None, "SGLang"),
+            "gateway": ("gateway_admin_urls", "Higress"),
+        }
+        _gap_msgs: List[str] = []
+        for _fam, (_key, _label) in _fam_names.items():
+            if _key is not None:
+                _new_entries = incoming.get(_key)
+                if _new_entries is None:
+                    continue
+                _old_entries = prev.get(_key)
+            else:
+                _sg_in = incoming.get("sglang")
+                if not isinstance(_sg_in, dict) or "urls" not in _sg_in:
+                    continue
+                _new_entries = _sg_in.get("urls")
+                _old_entries = (prev.get("sglang") or {}).get("urls")
+            _gaps = config_mod.credential_gaps(_old_entries, _new_entries)
+            for _g in _gaps:
+                _pos = _g["index"] + 1
+                _who = _g.get("username") or ""
+                _gap_msgs.append(
+                    f"{_label} 第 {_pos} 个地址选了"
+                    f"{'Basic 认证' if _g['type'] == 'basic' else 'API Key'}"
+                    + (f"（用户名 {_who}）" if _who else "")
+                    + "但凭据为空，也没有已存凭据可沿用——请填完整凭据再保存"
+                )
+        if _gap_msgs:
+            raise HTTPException(status_code=400, detail="；".join(_gap_msgs))
         # v0.5.0-beta.14.12：保存失败显性化——落盘失败（磁盘
         # 满/权限）此前裸抛 = 500 无详情；现明确报原因（前端可显示）。
         # v0.5.0-beta.14.12：config 写盘校验失败（写+回读
@@ -1871,7 +1916,20 @@ def build_router() -> APIRouter:
         # 旧行为=同步 await 全地址探测（本机实测 ~4.8s，WAN 高延迟下保存
         # 几乎保存不了）；后台任务经 _safe_refresh_effective 错误自保。
         asyncio.create_task(_safe_refresh_effective(merged))
-        return config_mod.redact(merged)
+        _resp = config_mod.redact(merged)
+        # v0.5.0-beta.14.22：凭据回读校验——四类地址逐位置落盘形态
+        # （str=无凭据/basic/bearer），前端与表单意图对表；不一致=显形。
+        _resp["credential_check"] = {
+            "matrix": config_mod.persisted_credential_kinds(
+                merged.get("matrix_homeservers")),
+            "controller": config_mod.persisted_credential_kinds(
+                merged.get("controller_urls")),
+            "sglang": config_mod.persisted_credential_kinds(
+                (merged.get("sglang") or {}).get("urls")),
+            "gateway": config_mod.persisted_credential_kinds(
+                merged.get("gateway_admin_urls")),
+        }
+        return _resp
 
     # ── v0.5.0-beta.14.14：完整配置备份/恢复 ─────────────────
     # 安全边界：同源本地、面向用户自己的备份用途（换环境/装包后一键还原）。
@@ -4275,11 +4333,21 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
     # ── v0.5.0-beta.14.10：SWR 刷新/存储助手（tree/graph/agents 共用）──
     # 单飞：同 key 刷新任务在飞不重复起；刷新失败保旧值（磁盘缓存不覆写）。
-    # _KB_SWR_TTL = 磁盘 stale 阈值（超过 → 触发后台刷新；未超旧值也先回，
-    # SWR 语义）；内存缓存 TTL 以现有常量为准对齐（tree 30s / graph 60s /
-    # agents 60s）。
+    # _kb_swr_ttl_now() = 磁盘 stale 阈值（超过 → 触发后台刷新；未超旧值
+    # 也先回，SWR 语义；v0.5.0-beta.14.22 起随 address_mode 自适应
+    # wan=180s / 其余 60s）；内存缓存 TTL 以现有常量为准对齐（tree 30s /
+    # graph 60s / agents 60s）。
     _kb_inflight: Dict[str, Any] = {}
-    _KB_SWR_TTL = 60.0
+
+    def _kb_swr_ttl_now() -> float:
+        """v0.5.0-beta.14.22：SWR TTL 随生效网路自适应（见
+ kb_swr_ttl_for）。配置读取走 load_config 读缓存（零磁盘）；异常回退
+ 内网值（TTL 不是安全边界，降级无害）。"""
+        try:
+            return kb_swr_ttl_for(
+                config_mod.load_config().get("address_mode") or "auto")
+        except Exception:  # noqa: BLE001
+            return 60.0
 
     # ── v0.5.0-beta.14.11：轻探针（变更检测——变才刷）──────────
     # 刷新门前先跑轻探针：只列条目元数据（name/mtime/size，绝不读文件
@@ -4456,7 +4524,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         if _disk is not None:
             _ts, _payload = _disk
             _age = time.time() - _ts
-            if _age > _KB_SWR_TTL:
+            if _age > _kb_swr_ttl_now():
                 _spawn_kb_refresh("agents", "")
             return {**_payload, "cached": True, "age": int(_age)}
         # 冷取经注册表取计算体（生产 = 本闭包；测试可假注入，与预热/
@@ -4527,6 +4595,15 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                             else "critic" if "critic" in wn.lower()
                             else "worker"
                         )
+                        # v0.5.0-beta.14.22（D4 #5/#8）：runtime 判定字段
+                        # 同批透传（KB 面按 runtime 降级空态 + legacy 角标；
+                        # 旧 controller 无 runtimeDeprecated = 键缺失，
+                        # 前端 undefined 降级为仅按 runtime 判定）。
+                        rt = str(w.get("runtime") or "")
+                        if rt:
+                            found[wn]["runtime"] = rt
+                        if w.get("runtimeDeprecated"):
+                            found[wn]["runtimeDeprecated"] = True
         except Exception:  # noqa: BLE001 — role/team 补全失败不致命
             pass
         agents = sorted(
@@ -4551,7 +4628,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         if _disk is not None:
             _ts, _payload = _disk
             _age = time.time() - _ts
-            if _age > _KB_SWR_TTL:
+            if _age > _kb_swr_ttl_now():
                 _spawn_kb_refresh("tree", agent)
             kb_cache.save("last-agent", {"agent": agent})
             return {**_payload, "cached": True, "age": int(_age)}
@@ -4889,7 +4966,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         if _disk is not None:
             _ts, _payload = _disk
             _age = time.time() - _ts
-            if _age > _KB_SWR_TTL:
+            if _age > _kb_swr_ttl_now():
                 _spawn_kb_refresh("file", f"{agent}/{path}")
             return {**_payload, "cached": True, "age": int(_age)}
         _payload = await (_KB_PREWARM_HOOKS.get("file")
@@ -5100,7 +5177,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         if _disk is not None:
             _ts, _payload = _disk
             _age = time.time() - _ts
-            if _age > _KB_SWR_TTL:
+            if _age > _kb_swr_ttl_now():
                 _spawn_kb_refresh("graph", agent)
             kb_cache.save("last-agent", {"agent": agent})
             return {**_payload, "cached": True, "age": int(_age)}
@@ -5468,7 +5545,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         if _disk is not None:
             _ts, _payload = _disk
             _age = time.time() - _ts
-            if _age > _KB_SWR_TTL:
+            if _age > _kb_swr_ttl_now():
                 _spawn_kb_refresh("merged", csv)
             return {**_payload, "cached": True, "age": int(_age)}
         _payload = await (_KB_PREWARM_HOOKS.get("merged")
