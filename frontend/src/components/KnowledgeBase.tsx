@@ -1494,6 +1494,16 @@ function RemoteKbView(props: {
     agents: string[];
   } | null>(null);
   const [mergedLoading, setMergedLoading] = React.useState(false);
+  // v0.5.0-beta.14.20（用户 14.19 验收：聚合图首载出非所选团队 worker，
+  // 切 tab 才正常——问题已久）：范围/竞态双轨状态——
+  // mergedForRef=上一次**成功**落图的范围（agents csv；""=正确的空态）；
+  // mergedGenRef=单飞代际——旧请求晚到不得覆盖新范围（切团队秒切场景）。
+  const mergedForRef = React.useRef("");
+  const mergedGenRef = React.useRef(0);
+  // refreshTick 自动重拉节流：聚合图有 30s SWR 门，无需逐 SSE 事件重拉
+  //（旧版每 tick 新对象引用 → GraphCanvas 全量重布局，「加载慢」的持续性
+  // 观感之一）。
+  const lastMergedFetchRef = React.useRef(0);
   // v0.5.0-beta.12 ：团队知识搜索（跨 Worker）
   const [searchQ, setSearchQ] = React.useState("");
   const [searchBusy, setSearchBusy] = React.useState(false);
@@ -1640,9 +1650,18 @@ function RemoteKbView(props: {
   );
 
   // 切 tab 刷新（rc-tabs 保活）。
+  // v0.5.0-beta.14.20：聚合图重拉加双门——① teams 未落地禁止拉（防无参
+  // 全集群拉取竞态）② 30s 节流（聚合图后端有 30s SWR 门，逐 SSE tick
+  // 重拉=纯浪费+全量重布局）。
   React.useEffect(() => {
     if (refreshTick > 0 && agent) void loadAll(true);
-    if (graphMode === "merged") void loadMerged();
+    if (
+      graphMode === "merged" &&
+      kbTeams.length > 0 &&
+      Date.now() - lastMergedFetchRef.current > 30000
+    ) {
+      void loadMerged();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTick]);
 
@@ -1674,14 +1693,22 @@ function RemoteKbView(props: {
   }, []);
 
   // v0.5.0-beta.12 ：首次切到聚合模式时拉一次。
-  // 团队化：先等团队结构落地（上方 mount effect），就绪后再拉聚合图谱——
-  // 避免团队列表未落地时先拉了"全部团队"。
+  // v0.5.0-beta.14.20：不变式改为「显示范围==当前团队范围」——旧守卫
+  // `!mergedGraph` 在错误范围（全集群）响应已落地时**永久挡住**正确重拉
+  //（切 tab 重挂才复位=用户看到的「切 tab 才正常」）。mergedForRef 记录
+  // 已落地范围，不一致即重拉（含错误范围自愈）。
   React.useEffect(() => {
     if (graphMode !== "merged") return;
     if (kbTeams.length === 0) return;
-    if (!mergedGraph && !mergedLoading) void loadMerged();
+    const team = kbTeams.find((t) => t.team_name === kbTeam);
+    const want = team
+      ? (team.workers || []).map((w) => w.worker_name).filter(Boolean).join(",")
+      : "";
+    if (mergedForRef.current === want) return;
+    if (mergedLoading) return;
+    void loadMerged();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphMode, kbTeams]);
+  }, [graphMode, kbTeams, kbTeam]);
 
   // 切换聚合团队 → 清旧图重拉（避免旧团队图谱残留显示）。
   React.useEffect(() => {
@@ -1751,17 +1778,36 @@ function RemoteKbView(props: {
   // v0.5.0-beta.12 ：团队聚合图谱（节点按 Agent 着色；边保留原 Agent 内）。
   // 团队化：按选中团队成员聚合（kbTeam=""→全部团队）。
   const loadMerged = React.useCallback(() => {
-    setMergedLoading(true);
     const team = kbTeams.find((t) => t.team_name === kbTeam);
     const agents = team
       ? (team.workers || []).map((w) => w.worker_name).filter(Boolean).join(",")
       : "";
-    void fetchKbGraphMerged(agents || undefined)
-      .then((g) =>
-        setMergedGraph({ nodes: g.nodes as GraphNodeLike[], edges: g.edges, agents: g.agents }),
-      )
-      .catch(() => setMergedGraph(null))
-      .finally(() => setMergedLoading(false));
+    if (!agents) {
+      // 宁空勿错（与 14.18 scopedAgents 同款定案）：团队未落地/无 worker
+      // 时**禁止**无参拉取——后端 agents 缺省=全集群，正是「首载出非所选
+      // 团队 worker」的根因（旧版此路径被 refreshTick 在 teams 未落地时
+      // 命中）。
+      mergedForRef.current = "";
+      setMergedGraph(null);
+      return;
+    }
+    const gen = ++mergedGenRef.current;
+    lastMergedFetchRef.current = Date.now();
+    setMergedLoading(true);
+    void fetchKbGraphMerged(agents)
+      .then((g) => {
+        if (gen !== mergedGenRef.current) return; // 晚到的旧范围请求丢弃
+        mergedForRef.current = agents;
+        setMergedGraph({ nodes: g.nodes as GraphNodeLike[], edges: g.edges, agents: g.agents });
+      })
+      .catch(() => {
+        if (gen !== mergedGenRef.current) return;
+        mergedForRef.current = "";
+        setMergedGraph(null);
+      })
+      .finally(() => {
+        if (gen === mergedGenRef.current) setMergedLoading(false);
+      });
   }, [kbTeams, kbTeam]);
 
   // v0.5.0-beta.12 ：团队知识搜索（跨 Worker，后端并发扫各 Agent 知识文件）。

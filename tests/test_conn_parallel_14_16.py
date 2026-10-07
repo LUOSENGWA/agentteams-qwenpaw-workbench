@@ -95,12 +95,16 @@ def test_empty_category_does_not_break_gather(monkeypatch) -> None:
     assert res["sglang"] is None  # 空列表 → None（既有形态）
 
 
-def test_default_timeout_is_4s() -> None:
-    """test_addresses 的 timeout 默认值 = 4.0s（从 6.0 收紧，防回退）。"""
+def test_default_timeout_is_3s() -> None:
+    """test_addresses 的 timeout 默认值 = 3.0s。
+
+ 演进：6.0→4.0（14.16 死地址上限收紧）→3.0（14.20，用户 14.19 验收
+ 「保存/连通性又慢」——可达地址 <1s 不受影响，死地址再配
+ _probe_with_retry 超时不重试 = 单程成本）。"""
     import inspect
 
     sig = inspect.signature(selfcheck.test_addresses)
     default = sig.parameters["timeout"].default
-    assert default == 4.0, (
-        f"test_addresses timeout 默认值 = {default}，期望 4.0"
+    assert default == 3.0, (
+        f"test_addresses timeout 默认值 = {default}，期望 3.0"
     )

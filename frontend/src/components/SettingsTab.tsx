@@ -179,8 +179,14 @@ function ConnRow({
           {row.url || tr("（未设置）")}
         </span>
         <span
+          // v0.5.0-beta.14.20（用户 14.19 验收：Higress 503 时橙色 detail
+          // 过长撑破行）：长诊断文案可收缩+省略号，全文走 hover title。
           style={{
-            flexShrink: 0,
+            flex: "0 1 auto",
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
             marginLeft: "auto",
             color,
           }}
@@ -1679,6 +1685,25 @@ const SettingsTab = React.memo(function SettingsTab({
         >
           {tr("保存配置")}
         </antd.Button>
+        {/* v0.5.0-beta.14.20（用户 14.19 验收：内外网固定/账密"没有记忆"
+            无法自证）：持久化自检行——上次落盘时间（config 文件 mtime）+
+            目录可写性。写失败 PUT 本就 500 显性报，此处补"落没落盘"锚点。 */}
+        {config && (
+          <span
+            style={{
+              fontSize: 12,
+              alignSelf: "center",
+              color: config.configWritable ? "#888" : "#d48806",
+            }}
+            title={config.configPath || undefined}
+          >
+            {config.configWritable
+              ? config.configSavedAt
+                ? tr("上次落盘 {time}").replace("{time}", new Date(config.configSavedAt * 1000).toLocaleTimeString())
+                : tr("尚未落盘")
+              : tr("⚠ 配置目录不可写——保存可能不落盘")}
+          </span>
+        )}
       </div>
 
       {/* v0.5.0-beta.14.4：「配置迁移与诊断」卡片。 */}

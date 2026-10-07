@@ -239,6 +239,23 @@ async def _safe_refresh_effective(cfg: Dict[str, Any]) -> None:
         )
 
 
+def _ordered_ctl_urls(cfg: Dict[str, Any]) -> List[str]:
+    """v0.5.0-beta.14.20：验证探测顺序——working-cache（最后已知可达）优先、
+ 其余原序。外网场景 LAN 死地址不再烧首槽（8s 时代「token 验证转圈」的
+ 主因之一：按配置序 [LAN, WAN] 先拨必死的 LAN）。"""
+    urls = [
+        u.strip().rstrip("/")
+        for u in (cfg.get("controller_urls") or [])
+        if u and u.strip()
+    ]
+    with _cache_lock:
+        cached = _working_cache.get("controller")
+    if cached and cached in urls:
+        urls.remove(cached)
+        urls.insert(0, cached)
+    return urls
+
+
 def _pick_address(cfg: Dict[str, Any], kind: str) -> str:
     """直拨单地址解析：固定档=固定地址；auto=working cache 优先、
  cache miss 回退列表首个（= 现有语义，零行为变化）。"""
@@ -2169,18 +2186,17 @@ def build_router() -> APIRouter:
 
         # --- 路径 B：Controller 管理员 token ---
         if token:
-            cfg_ctl = [
-                u.strip().rstrip("/")
-                for u in (cfg.get("controller_urls") or [])
-                if u and u.strip()
-            ]
+            cfg_ctl = _ordered_ctl_urls(cfg)
             if not cfg_ctl:
                 return {"ok": False, "error": "请先配置 Controller 地址"}
             ok = False
             last_err = ""
             for base in cfg_ctl:
                 try:
-                    async with GatedAsyncClient(timeout=8.0, verify=False) as client:
+                    # v0.5.0-beta.14.20：8→3s——可达地址 <1s 不受影响；死地址
+                    # 最坏成本 2×8s→2×3s（配合 working-cache 前置，常态首槽
+                    # 即活地址 <1s 返回，不再「一直转圈」）。
+                    async with GatedAsyncClient(timeout=3.0, verify=False) as client:
                         rr = await client.get(
                             f"{base}/api/v1/teams",
                             headers=_headers_for(
