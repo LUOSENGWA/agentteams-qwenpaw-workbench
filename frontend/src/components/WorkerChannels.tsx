@@ -29,6 +29,7 @@ import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT, useLang } from "../i18n";
+import { usePoller } from "../usePoller";
 import {
   type WorkerInfo,
   type WorkerChannelConfig,
@@ -240,14 +241,14 @@ export default function WorkerChannels(props: {
   }, [sel]);
 
   // 保活 tab 激活时 30s 静默刷新（WorkerManage 同款节奏）。
-  const loadRef = React.useRef(load);
-  loadRef.current = load;
-  React.useEffect(() => {
-    const id = window.setInterval(() => {
-      if (active && !document.hidden) void loadRef.current(true);
-    }, 30000);
-    return () => window.clearInterval(id);
-  }, [active]);
+  // v0.5.0-beta.14.19：裸 setInterval → usePoller——切回全前端
+  // 统一的轮询门控体系（usePoller 内置 !document.hidden，active 外部门
+  // 语义不变；此前是唯一绕开体系的裸定时器，后续 usePoller 增强不同步）。
+  usePoller({
+    fn: () => void load(true),
+    intervalMs: 30000,
+    active,
+  });
 
   const openDrawer = React.useCallback(async (ch: string) => {
     const cfg = channels[ch] || { enabled: false, bot_prefix: "" };
