@@ -732,50 +732,61 @@ async def test_addresses(
         ),
     )
 
-    async def _attach(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _attach_one(r: Dict[str, Any]) -> Dict[str, Any]:
         # v0.5.0-beta.12: 网络层失败时附加解析诊断（fake-ip/私有段提示）
         # v0.5.0-beta.12: with_diag 时附结构化诊断（分步+traceback+环境）
         # v0.5.0-beta.14.5: getaddrinfo / diagnose_target 均同步阻塞——to_thread
         # 化（DNS 慢时不再冻结事件循环）。
-        out = []
-        for r in rows:
-            if not r.get("ok"):
-                hint = await asyncio.to_thread(_resolve_ip_hint, r["url"])
-                if hint:
-                    r = {**r, "detail": f"{r['detail']}｜{hint}"}
-            if with_diag:
-                try:
-                    diag = await asyncio.to_thread(
-                        diagnose_target, r["url"], timeout
-                    )
-                    r = {**r, "diag": diag}
-                except Exception:  # noqa: BLE001 - 诊断坏了不拖垮测试
-                    pass
-            out.append(r)
-        return out
+        if not r.get("ok"):
+            hint = await asyncio.to_thread(_resolve_ip_hint, r["url"])
+            if hint:
+                r = {**r, "detail": f"{r['detail']}｜{hint}"}
+        if with_diag:
+            try:
+                diag = await asyncio.to_thread(
+                    diagnose_target, r["url"], timeout
+                )
+                r = {**r, "diag": diag}
+            except Exception:  # noqa: BLE001 - 诊断坏了不拖垮测试
+                pass
+        return r
+
+    async def _attach(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        # v0.5.0-beta.14.20（用户 14.19 验收：连通性测试慢）：诊断并行化——
+        # 旧版逐行串行 diagnose_target（死地址每行烧满 timeout，N 死地址
+        # 串行 N×timeout，2 死地址实测 9s）；现 gather 并行，墙钟=
+        # max(单行诊断) 与 N 无关（2 死地址 → ~6s，3 死地址仍 ~6s）。
+        if not rows:
+            return []
+        return list(await asyncio.gather(*[_attach_one(r) for r in rows]))
 
     # v0.5.0-beta.12: 列表形态（0 地址 → None，1/2 地址 → 逐地址行），_attach 统一挂诊断。
-    sglang_out = (
-        await _attach([{"url": u, **r} for u, r in zip(sglang_urls, sglang_rows)])
-        if sglang_urls
-        else None
-    )
-
-    return {
-        "matrix": await _attach(
-            [{"url": u, **r} for u, r in zip(matrix_urls, matrix_rows)]
-        ),
-        "controller": await _attach(
+    # v0.5.0-beta.14.20（用户 14.19 验收：连通性测试慢）：四族 _attach 并行——
+    # 旧版 dict 字面量内逐族 await（+ sglang_out 先行）= 族间串行：N 族有死
+    # 地址时诊断段 N×timeout（2 死地址实测 9s=3s 探测+6s 串行诊断）；
+    # 现单 gather，诊断段=max(单族诊断) 与族数无关。
+    matrix_out, controller_out, sglang_out, gateway_out = await asyncio.gather(
+        _attach([{"url": u, **r} for u, r in zip(matrix_urls, matrix_rows)]),
+        _attach(
             [
                 {"url": u, **r}
                 for u, r in zip(controller_urls, controller_rows)
             ]
         ),
+        _attach([{"url": u, **r} for u, r in zip(sglang_urls, sglang_rows)])
+        if sglang_urls
+        else asyncio.sleep(0, result=None),
+        _attach([{"url": u, **r} for u, r in zip(_gw_urls, gateway_rows)])
+        if _gw_urls
+        else asyncio.sleep(0, result=[]),
+    )
+
+    return {
+        "matrix": matrix_out,
+        "controller": controller_out,
         "sglang": sglang_out,
         # v0.5.0-beta.14.17: Higress 探测行（未配置=空列表）。诊断面，不参与重排。
-        "gateway": await _attach(
-            [{"url": u, **r} for u, r in zip(_gw_urls, gateway_rows)]
-        ) if _gw_urls else [],
+        "gateway": gateway_out,
     }
 
 

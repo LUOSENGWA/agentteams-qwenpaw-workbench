@@ -95,3 +95,36 @@ def test_ordered_ctl_urls_cache_not_in_list_ignored(monkeypatch) -> None:
     )
     out = router_mod._ordered_ctl_urls(cfg)
     assert out == ["http://lan:8080"]
+
+
+# ── ③ 连通性测试墙钟：探测段与诊断段各自并行（族间不串行）────────────
+
+
+@pytest.mark.asyncio
+async def test_dead_address_wall_clock_bounded() -> None:
+    """4 族各 1 死地址（3s 超时）+ with_diag：墙钟上界 ≈ 2×timeout
+ （探测段 max + 诊断段 max）。旧版族间串行 _attach → 4×timeout 诊断段
+ （实测 12s）；2 死地址旧版 9s。上界取 4.5×timeout=13.5s 防回归到
+ 串行形态（串行=12s 起步，再加探测段必超）。"""
+    dead = "http://10.255.255.1"
+    t0 = time.monotonic()
+    res = await selfcheck.test_addresses(
+        [f"{dead}:8008"], [f"{dead}:8080"], [f"{dead}:8000"], "",
+        timeout=3.0, with_diag=True, gateway_urls=[f"{dead}:8001"],
+    )
+    wall = time.monotonic() - t0
+    assert wall < 4.5 * 3.0, f"墙钟 {wall:.1f}s 超上界——族间诊断疑似回退串行"
+    # 形态回归：sglang/gateway 有地址=列表，空族语义保持
+    assert res["matrix"] and res["controller"] and res["sglang"] and res["gateway"]
+    assert all(row["ok"] is False for row in res["matrix"] + res["controller"])
+
+
+@pytest.mark.asyncio
+async def test_empty_families_keep_shape() -> None:
+    """无 sglang/gateway 配置 → None/[] 形态不回归（前端依赖）。"""
+    res = await selfcheck.test_addresses(
+        ["http://127.0.0.1:9"], [], [], "", timeout=1.0, with_diag=True,
+    )
+    assert res["sglang"] is None
+    assert res["gateway"] == []
+    assert res["matrix"] and res["matrix"][0]["ok"] is False
