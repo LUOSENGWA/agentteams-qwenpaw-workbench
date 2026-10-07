@@ -360,8 +360,15 @@ async def _probe_with_retry(
  切网瞬间的瞬断不应被判 ❌ 或触发误切换（用户「连通失败重试」）。
  两次都败才记失败。v0.5.0-beta.12: 已连通（ok=True，含 401）不重试——
  只重试网络层失败。"""
+    t0 = time.monotonic()
     result = await probe(url, token, timeout)
     if result.get("ok"):
+        return result
+    # v0.5.0-beta.14.20（用户 14.19 验收：保存/连通性又慢）：超时烧满（≥80%
+    # 预算）= 确定性死地址（外网线对端不可达），重试只翻倍成本、无恢复概率
+    # ——跳过（后台自适应重测负责捡回恢复）；快失败（拒连/DNS）仍重试，
+    # 瞬断语义不变。5M 外网线死地址成本 2×timeout → 1×timeout。
+    if (time.monotonic() - t0) >= (timeout or 4.0) * 0.8:
         return result
     await asyncio.sleep(0.3)  # v0.5.0-beta.14.16：0.5→0.3s（重试间隔收紧）
     return await probe(url, token, timeout)
@@ -647,7 +654,7 @@ async def test_addresses(
     controller_urls: List[str],
     sglang_urls: List[str],
     token: str = "",
-    timeout: float = 4.0,  # v0.5.0-beta.14.16：6→4s（死地址上限收紧，可达地址 <1s 不受影响）
+    timeout: float = 3.0,  # v0.5.0-beta.14.20：4→3s（可达地址 <1s 不受影响；死地址配合 _probe_with_retry 超时不重试 = 单程成本）
     with_diag: bool = False,
     auth_maps: Optional[Dict[str, Dict[str, Dict[str, str]]]] = None,
     gateway_urls: Optional[List[str]] = None,

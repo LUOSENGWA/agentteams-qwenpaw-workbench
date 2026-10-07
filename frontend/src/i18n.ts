@@ -511,6 +511,11 @@ const DICT: Record<string, { en: string }> = {
     en: "Settings saved (reachable address auto-detected)",
   },
   "保存失败": { en: "Save failed" },
+  "上次落盘 {time}": { en: "Last persisted {time}" },
+  "尚未落盘": { en: "Not persisted yet" },
+  "⚠ 配置目录不可写——保存可能不落盘": {
+    en: "⚠ Config directory not writable — saves may not persist",
+  },
   "正在加载已保存配置…": { en: "Loading saved settings…" },
   "配置加载失败（插件后端可能正在重载）。页面上显示的是默认值，不是你的已保存配置——请勿直接保存，以免覆盖。": {
     en: "Failed to load settings (plugin backend may be reloading). What you see are default values, not your saved config — do not save as-is, or you'll overwrite it.",
