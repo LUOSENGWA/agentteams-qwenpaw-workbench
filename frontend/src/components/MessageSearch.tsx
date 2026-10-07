@@ -202,7 +202,7 @@ function ContextPreview(props: {
   );
 }
 
-export interface MessageSearchProps {
+interface MessageSearchProps {
   open: boolean;
   onClose: () => void;
   /** 房间内搜索：固定房间；跨房间模式不传。 */

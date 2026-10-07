@@ -23,7 +23,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface MyScopeCardProps {
+interface MyScopeCardProps {
   /** 当前 Matrix 登录账号的 MXID（config.matrix.user_id）；空 = 未登录，卡片隐藏。 */
   myUserId: string;
   hasToken: boolean;

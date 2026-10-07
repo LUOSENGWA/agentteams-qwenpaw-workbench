@@ -19,10 +19,10 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 /** 收起时最多可见的头像数（其余收进 +N）。 */
-export const STRIP_MAX = 6;
+const STRIP_MAX = 6;
 
 /** Worker 优先排序（状态灯=可观测对象在前），组内保持房间原顺序。 */
-export function orderStripMembers<T extends { mxid: string }>(
+function orderStripMembers<T extends { mxid: string }>(
   items: T[],
   isWorker: (mxid: string) => boolean,
 ): T[] {

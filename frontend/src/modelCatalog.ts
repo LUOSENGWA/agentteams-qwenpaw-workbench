@@ -29,7 +29,7 @@ export interface LlmProviderLite {
   rawConfigs?: Record<string, unknown>;
 }
 
-export interface ModelBindingLite {
+interface ModelBindingLite {
   requestModelAlias: string;
   routeName: string;
   providerName: string;
@@ -47,7 +47,7 @@ export interface ModelSelectionOption {
 
 /** AgentTeams v1.2.0 内置请求模型 alias（16 个，对齐 controller generator.go）。
  * 选择一个内置 alias 只是命名请求模型；实际转发仍需匹配的路由映射。 */
-export const BUILTIN_MODEL_ALIASES: readonly string[] = [
+const BUILTIN_MODEL_ALIASES: readonly string[] = [
   "gpt-5.4",
   "gpt-5.3-codex",
   "gpt-5-mini",
@@ -172,7 +172,7 @@ function collectAllAliases(
   return aliases;
 }
 
-export function buildModelBindings(
+function buildModelBindings(
   aliases: string[],
   routes: AiRouteLite[],
   providers: LlmProviderLite[],
@@ -253,7 +253,7 @@ export function buildModelBindings(
 
 /** 可解析的请求模型 alias 列表（EXACT predicate + 精确 mapping key，含 provider 级
  * mapping——ai-proxy 用请求模型名做 key，provider-only mapping 也必须可选）。 */
-export function listAvailableRequestModelAliases(
+function listAvailableRequestModelAliases(
   routes: AiRouteLite[],
   providers: LlmProviderLite[],
 ): ModelBindingLite[] {

@@ -332,7 +332,7 @@ function parseBlocks(text: string): Block[] {
   return blocks;
 }
 
-export interface MdTextProps {
+interface MdTextProps {
   text: string;
   /** 折叠阈值（字符数）；超长文本默认折叠显示前 400 字符。 */
   maxLength?: number;

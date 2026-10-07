@@ -12,7 +12,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface TruncatedIdProps {
+interface TruncatedIdProps {
   value?: string;
   /** 用于提示文案的标识名称（如「MXID」「团队房间」）。 */
   label?: string;

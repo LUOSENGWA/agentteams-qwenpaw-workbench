@@ -33,13 +33,13 @@ import { usePoller } from "./usePoller";
 export type WorkerSessionState = "running" | "done" | "idle";
 
 /** done 窗口：最后活动距今 ≤10min 视为「刚完成」。 */
-export const DONE_WINDOW_MS = 10 * 60 * 1000;
+const DONE_WINDOW_MS = 10 * 60 * 1000;
 /** 老化 tick：15s 重派生一次（done→idle 边界翻转不依赖新消息；
  * beta.13.2 从 60s 收紧，对齐 dashboard useSessionTick 方向，纯派生零成本）。 */
 const TICK_MS = 15 * 1000;
 
 /** 派生所需的最小房间形状（TeamRoom 满足；测试可传瘦对象）。 */
-export interface SessionRoomLike {
+interface SessionRoomLike {
   typing?: string[];
   last_ts?: number;
   /** v0.5.0-beta.13.2：最后一条消息的发送者 MXID（teams/sync 线格式
@@ -49,7 +49,7 @@ export interface SessionRoomLike {
 }
 
 /** Worker 心跳 agent 状态子集（WorkerInfo 同形状；测试可传瘦对象）。 */
-export interface WorkerHeartbeatInfo {
+interface WorkerHeartbeatInfo {
   agentStatus?: string;
   runningTaskCount?: number;
   lastRunAt?: string;
@@ -63,7 +63,7 @@ export interface WorkerHeartbeatInfo {
  * 2) 实时 typing（回退）
  * 3) 最近完成（lastFinishAt 或最后活动，10min 衰减）
  */
-export function deriveWorkerSessionState(opts: {
+function deriveWorkerSessionState(opts: {
   heartbeat?: WorkerHeartbeatInfo | null;
   isTyping: boolean;
   /** v0.5.0-beta.13.8：session 级正源（chats 任一 session status=running，
@@ -98,7 +98,7 @@ export function deriveWorkerSessionState(opts: {
 
 /** Per-Worker 三态：按 Worker MXID 跨全部房间派生（心跳优先，v2；
  * v0.5.0-beta.13.8 加 session 级 chatRunning 正源）。 */
-export function workerSessionState(
+function workerSessionState(
   mxid: string | undefined,
   rooms: readonly SessionRoomLike[],
   heartbeat?: WorkerHeartbeatInfo | null,
@@ -129,7 +129,7 @@ export function workerSessionState(
 /** 房间级活动指示（房间头/房间卡专用，非 per-Worker 语义）：
  * 任一 Worker 正在该房间 typing → running；否则按房间最后活动（任何
  * 发送者）→ done。**per-Worker 灯一律走 workerSessionState（per-sender）。** */
-export function roomWorkerState(
+function roomWorkerState(
   room: SessionRoomLike,
   workerMxids: ReadonlySet<string>,
   now: number = Date.now(),
@@ -141,7 +141,7 @@ export function roomWorkerState(
 }
 
 /** 从团队树收集全部 Worker MXID（L2 / 未配 token 的 room-fallback 源同款）。 */
-export function collectWorkerMxids(
+function collectWorkerMxids(
   workerTree?: WorkerTreeTeam[] | null,
 ): Set<string> {
   const out = new Set<string>();
@@ -151,7 +151,7 @@ export function collectWorkerMxids(
   return out;
 }
 
-export interface WorkerSessionStates {
+interface WorkerSessionStates {
   /** worker_name → 状态（WorkerManage 行用）。 */
   byName: Record<string, WorkerSessionState>;
   /** 房间 room_id → 状态（Worker 个人房间卡 / 1:1 聊天头用）。 */

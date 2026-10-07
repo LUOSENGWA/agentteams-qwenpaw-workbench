@@ -16,7 +16,7 @@ import type * as ReactNS from "react";
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 
-export interface PollerOptions {
+interface PollerOptions {
   fn: () => void | Promise<void>;
   intervalMs: number;
   /** 综合条件（tab 激活 && !document.hidden 等），每轮与恢复时判定 */

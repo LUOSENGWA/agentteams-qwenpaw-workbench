@@ -14,8 +14,6 @@ const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
   (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
 const DownloadIcon = pick("DownloadOutlined");
 
-const PRIMARY = "var(--app-accent, #FF7F16)";
-
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"]);
 const TEXT_PREVIEW_EXT = new Set([
   "md", "markdown", "txt", "log", "json", "csv", "tsv", "yaml", "yml",
@@ -575,6 +573,3 @@ function JsonHighlight({ text }: { text: string }) {
     </pre>
   );
 }
-
-/** 供列表/消息渲染处引用（避免重复 import PRIMARY）。 */
-export { PRIMARY };

@@ -27,7 +27,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface ArtifactLineSpec {
+interface ArtifactLineSpec {
   label: string;
   path: string;
 }

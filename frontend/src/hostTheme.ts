@@ -11,13 +11,13 @@ import type * as ReactNS from "react";
 
 const host = window.QwenPaw.host;
 
-export interface HostThemeDark {
+interface HostThemeDark {
   accent?: string;
   accent_bg?: string;
   surface?: string;
 }
 
-export interface HostTheme {
+interface HostTheme {
   accent?: string;
   accent_hover?: string;
   accent_bg?: string;
@@ -26,7 +26,7 @@ export interface HostTheme {
 }
 
 /** 2.2.x 宿主内置默认主色（= 宿主 defaultConfig.theme.colorPrimary）。 */
-export const DEFAULT_ACCENT = "#FF7F16";
+const DEFAULT_ACCENT = "#FF7F16";
 
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
@@ -46,7 +46,7 @@ export function hostAccentForMode(
 }
 
 /** 指定模式下的主色浅底（accent_bg；dark → dark.accent_bg ?? accent_bg）。 */
-export function hostAccentBgForMode(
+function hostAccentBgForMode(
   theme: HostTheme | null,
   mode: "light" | "dark",
 ): string | undefined {
@@ -81,7 +81,7 @@ export function hostAccentBgForMode(
 let _themePromise: Promise<HostTheme | null> | null = null;
 
 /** 读宿主生效主题（稀疏）。页面生命周期内读一次（单飞缓存）。 */
-export function fetchHostTheme(): Promise<HostTheme | null> {
+function fetchHostTheme(): Promise<HostTheme | null> {
   if (!_themePromise) {
     _themePromise = (async () => {
       try {
@@ -118,7 +118,7 @@ export function useHostTheme(): HostTheme | null {
 }
 
 /** 解析宿主 radius："12px"/"0" → 数值；其他 → undefined（antd 默认）。 */
-export function parseRadius(v: string | undefined): number | undefined {
+function parseRadius(v: string | undefined): number | undefined {
   if (!v) return undefined;
   const s = v.trim();
   const m = /^(\d+)px$/.exec(s);
@@ -128,7 +128,7 @@ export function parseRadius(v: string | undefined): number | undefined {
 }
 
 /** 当前模式的 antd token（accent 跟随宿主）。 */
-export function resolveAntdTokens(
+function resolveAntdTokens(
   theme: HostTheme | null,
   mode: "light" | "dark",
 ): Record<string, string | number> {

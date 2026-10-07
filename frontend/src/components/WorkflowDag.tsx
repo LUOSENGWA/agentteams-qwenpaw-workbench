@@ -22,7 +22,7 @@ interface WfNodeInput {
   task?: string;
 }
 
-export interface DagNode {
+interface DagNode {
   id: string;
   title: string;
   status: string;
@@ -33,12 +33,12 @@ export interface DagNode {
   layer: number;
 }
 
-export interface DagEdge {
+interface DagEdge {
   source: string;
   target: string;
 }
 
-export interface ProjectDag {
+interface ProjectDag {
   nodes: DagNode[];
   edges: DagEdge[];
   /** 依赖了本项目之外 id 的边来源（展示用，不阻塞 ready 推导）。 */
@@ -173,7 +173,7 @@ export function buildWorkflowDag(nodes: WfNodeInput[]): ProjectDag {
   };
 }
 
-export interface DagLayoutOptions {
+interface DagLayoutOptions {
   nodeWidth?: number;
   nodeHeight?: number;
   gapX?: number;
@@ -181,7 +181,7 @@ export interface DagLayoutOptions {
   padding?: number;
 }
 
-export interface DagLayout {
+interface DagLayout {
   width: number;
   height: number;
   positions: Map<string, { x: number; y: number }>;
@@ -195,7 +195,7 @@ export interface DagLayout {
  * 整体左重右空（与 mermaid 居中行的观感差距主因）；先扫最大行
  * 宽，各行居中，图整体视觉重心居中。
  * ② 节点默认 190×40 → 200×44（文字更松，subagent 行不挤）。 */
-export function layoutProjectDag(
+function layoutProjectDag(
   dag: ProjectDag,
   options: DagLayoutOptions = {},
 ): DagLayout {

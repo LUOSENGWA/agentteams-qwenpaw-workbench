@@ -28,7 +28,7 @@ import {
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 
-export type ModelVerdict = {
+type ModelVerdict = {
   level: "ok" | "warn" | "error";
   /** warn 细分：list=不在在服列表；nocands=候选列表不可用（未校验）。 */
   reason?: "list" | "nocands";
@@ -81,7 +81,7 @@ export function modelVerdictText(
 }
 
 /** 合并候选（纯函数——可测）：SGLang ∪ 在用 ∪ 网关 alias，去重 + 剔除路径形态。 */
-export function mergeModelCandidates(
+function mergeModelCandidates(
   sglangModels: string[],
   usedModels: string[],
   gatewayOpts: ModelSelectionOption[] | null,
@@ -104,8 +104,8 @@ export function mergeModelCandidates(
   return out;
 }
 
-export type ModelGroupOption = { value: string; label?: string };
-export type ModelOptionGroup = {
+type ModelGroupOption = { value: string; label?: string };
+type ModelOptionGroup = {
   value: string;
   label: string;
   options: ModelGroupOption[];
@@ -113,7 +113,7 @@ export type ModelOptionGroup = {
 
 /** AutoComplete 下拉（纯函数——可测）：Higress Console 会话可用时三组（Higress alias 可
  * 解析 / 内置 alias / 在服+在用）；不可用=平铺列表。value 恒为 alias 本身。 */
-export function buildModelOptionGroups(
+function buildModelOptionGroups(
   candidates: string[],
   gatewayOpts: ModelSelectionOption[] | null,
   tr: (s: string, vars?: Record<string, string | number>) => string,
@@ -153,7 +153,7 @@ export function buildModelOptionGroups(
   return groups;
 }
 
-export interface ModelUnionState {
+interface ModelUnionState {
   /** 平铺候选（路径形态已剔除）——validateModelValue 用。 */
   candidates: string[];
   /** AutoComplete options（三组或平铺）。 */

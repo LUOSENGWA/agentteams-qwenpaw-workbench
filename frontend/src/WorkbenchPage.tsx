@@ -87,10 +87,6 @@ const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 const { message } = antd;
-const icons = (host.antdIcons || {}) as Record<string, ReactNS.ComponentType>;
-const EmptyIcon = (() => null) as unknown as ReactNS.FC<Record<string, unknown>>;
-const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
-  (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
 
 function StatusIcon({ ok }: { ok: boolean }) {
   return (
