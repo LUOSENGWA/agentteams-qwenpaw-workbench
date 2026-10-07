@@ -408,6 +408,18 @@ export default function WorkbenchPage() {
   // QwenPaw ≥2.2.2 配色跟随：主色 token 取自宿主生效主题（GET /config/theme，
   // 经 host.fetch 桥）；旧宿主/取不到 = 内置橙（DEFAULT_ACCENT，行为不变）。
   const hostTokens = useHostThemeTokens(t.mode);
+  // v0.5.0-beta.14.19：theme 对象 memoize——此前每次 WP 渲染新建
+  // （dark 时还产新数组字面量）→ antd ConfigContext 更新传播，React.memo
+  // 面板挡不住 context 更新（WP 是最高频渲染组件）。t.mode/hostTokens
+  // 稳定时 theme 引用稳定 → 下游 context 不重刷。
+  const themeCfg = React.useMemo(
+    () => ({
+      algorithm:
+        t.mode === "dark" ? [antd.theme.darkAlgorithm] : undefined,
+      token: hostTokens,
+    }),
+    [t.mode, hostTokens],
+  );
   const tr = useT();
   // 插件版本：从后端 /health 读（单一真相源 = agentteams_connector/__init__.py）。
   // v0.5.0-beta.13.17（13.16 顶部版本号显示不对）：主显示改**构建
@@ -1434,6 +1446,35 @@ export default function WorkbenchPage() {
         fallback = null;
       }
     };
+    // v0.5.0-beta.14.19：重连调度统一加可见性感知——token 失效态/
+    // 断连态 + 后台 tab 此前每 60s 一次 SSE 空拨（浏览器节流下定时器仍
+    // 会跑，只是降频）。后台期间不拨；回前台立即重拨（visibility 追平
+    // 路径已覆盖数据新鲜度，SSE 恢复只需在可见时进行）。
+    let pendingVisListener: (() => void) | null = null;
+    const clearPendingVis = () => {
+      if (pendingVisListener) {
+        document.removeEventListener("visibilitychange", pendingVisListener);
+        pendingVisListener = null;
+      }
+    };
+    const scheduleReconnect = (delay: number) => {
+      window.setTimeout(() => {
+        if (closed) return;
+        if (document.hidden) {
+          if (pendingVisListener) return; // 已有待回前台的重拨
+          const onVis = () => {
+            if (closed) return;
+            clearPendingVis();
+            if (document.visibilityState !== "visible") return;
+            void connect();
+          };
+          pendingVisListener = onVis;
+          document.addEventListener("visibilitychange", onVis);
+        } else {
+          void connect();
+        }
+      }, delay);
+    };
 
     const connect = async () => {
       // v0.5.0-beta.14.1 (S1-2)：watchdog 句柄 hoist 到 connect() 顶部——
@@ -1462,9 +1503,7 @@ export default function WorkbenchPage() {
             // （重登后宿主 token 刷新，下次 connect 自动恢复）；轮询兜底并行。
             bootFallback();
             setSseState({ status: "reconnecting", since: lastDownSince });
-            window.setTimeout(() => {
-              void connect();
-            }, 60000);
+            scheduleReconnect(60000);
             return;
           }
           throw new Error(`SSE ${res.status}`);
@@ -1549,16 +1588,31 @@ export default function WorkbenchPage() {
                     const idx = next.findIndex((r) => r.room_id === it.room_id);
                     if (idx >= 0) {
                       const cur = next[idx];
-                      const merged: TeamRoom = { ...cur };
-                      if (typeof it.name === "string") merged.name = it.name;
-                      if (typeof it.member_count === "number") merged.member_count = it.member_count;
-                      if (typeof it.unread === "number") merged.unread = it.unread;
-                      if (typeof it.unread_highlight === "number") merged.unread_highlight = it.unread_highlight;
-                      if (typeof it.last_ts === "number") merged.last_ts = it.last_ts;
-                      if (typeof it.last_sender === "string") merged.last_sender = it.last_sender;
-                      if (typeof it.last_body === "string") merged.last_body = it.last_body;
-                      if (Array.isArray(it.typing)) merged.typing = it.typing;
-                      next = [...next.slice(0, idx), merged, ...next.slice(idx + 1)];
+                      // v0.5.0-beta.14.19：逐字段比对——全等则复用
+                      // 原 item 与原数组引用（此前每帧产新对象+新数组 →
+                      // openRoom deps [rooms] 连锁 → HomePage/TeamOverview
+                      // memo 失效 + 全消费方重渲）。首个变化字段才克隆。
+                      let m: TeamRoom = cur;
+                      const touch = (patch: Partial<TeamRoom>) => {
+                        if (m === cur) m = { ...cur };
+                        Object.assign(m, patch);
+                      };
+                      if (typeof it.name === "string" && it.name !== cur.name) touch({ name: it.name });
+                      if (typeof it.member_count === "number" && it.member_count !== cur.member_count) touch({ member_count: it.member_count });
+                      if (typeof it.unread === "number" && it.unread !== cur.unread) touch({ unread: it.unread });
+                      if (typeof it.unread_highlight === "number" && it.unread_highlight !== cur.unread_highlight) touch({ unread_highlight: it.unread_highlight });
+                      if (typeof it.last_ts === "number" && it.last_ts !== cur.last_ts) touch({ last_ts: it.last_ts });
+                      if (typeof it.last_sender === "string" && it.last_sender !== cur.last_sender) touch({ last_sender: it.last_sender });
+                      if (typeof it.last_body === "string" && it.last_body !== cur.last_body) touch({ last_body: it.last_body });
+                      if (Array.isArray(it.typing)) {
+                        const curTyping = cur.typing || [];
+                        if (it.typing.length !== curTyping.length || it.typing.some((u, i) => curTyping[i] !== u)) {
+                          touch({ typing: it.typing });
+                        }
+                      }
+                      if (m !== cur) {
+                        next = [...next.slice(0, idx), m, ...next.slice(idx + 1)];
+                      }
                     } else if (it.new) {
                       next = [
                         ...next,
@@ -1648,15 +1702,14 @@ export default function WorkbenchPage() {
       if (closed) return;
       if (retryDelay >= 60000) bootFallback(); // 幂等
       setSseState({ status: "reconnecting", since: lastDownSince });
-      window.setTimeout(() => {
-        void connect();
-      }, retryDelay);
+      scheduleReconnect(retryDelay);
       retryDelay = Math.min(retryDelay * 2, 60000);
     };
 
     void connect();
     return () => {
       closed = true;
+      clearPendingVis();
       abort?.abort();
       clearFallback();
     };
@@ -2015,6 +2068,11 @@ export default function WorkbenchPage() {
     void refreshWorkflow();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // v0.5.0-beta.14.19 注（评估后不改）：15s 周期内的 JSON.stringify
+  // 全量 diff 是**正确性门**（steps 内容变而 status/数量不变的情况只有
+  // 全量比对能抓住）；双 poller 翻倍问题已由双 poller 合并修复，单 poller
+  // 下数组规模（数十项）stringify 为毫秒级，指纹门方案有更新丢失风险，
+  // 收益不抵风险 → 保持原样。
   const refreshWorkflow = React.useCallback(async (silent = false) => {
     // v0.5.0-beta.13.13: 记录拉取时间——切 tab 立即刷新用 2s 去抖（防连环拉）。
     workflowLastFetchRef.current = Date.now();
@@ -2058,7 +2116,13 @@ export default function WorkbenchPage() {
   // 此前插件只在挂载/手动刷新/登录时拉取，任务推进时看板不自动更新
   // 仅 workflow tab 激活或聊天消息含工作流卡片时轮询（聊天内卡片
   // live overlay 复用 workflowEvents 正源）；页面隐藏即停（内置）。
-  const chatHasWfCards = tab === "chat" && messages.some((m) => m.workflow != null);
+  // v0.5.0-beta.14.19：memoize——此前每次 WP 渲染 O(n) 扫全量
+  // messages（最高频渲染组件 × 消息数组大）。messages 引用只在 mergeForward
+  // 换数组时变（无变化复用 prev）→ 扫描只随消息到达发生。
+  const chatHasWfCards = React.useMemo(
+    () => tab === "chat" && messages.some((m) => m.workflow != null),
+    [tab, messages],
+  );
   usePoller({
     fn: () => void refreshWorkflow(true),
     intervalMs: 15000,
@@ -2741,13 +2805,7 @@ export default function WorkbenchPage() {
   );
 
   return (
-    <antd.ConfigProvider
-      theme={{
-        algorithm:
-          t.mode === "dark" ? [antd.theme.darkAlgorithm] : undefined,
-        token: hostTokens,
-      }}
-    >
+    <antd.ConfigProvider theme={themeCfg}>
     <main
       ref={mainRef}
       className="wb-main"

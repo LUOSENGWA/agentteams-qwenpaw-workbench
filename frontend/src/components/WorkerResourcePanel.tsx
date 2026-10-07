@@ -96,7 +96,9 @@ export default function WorkerResourcePanel({
         </span>
       ),
       children: mounted.channels ? (
-        <WorkerChannels workers={[worker]} />
+        // v0.5.0-beta.14.19：懒挂载保活后传显式 active 门——
+        // 抽屉关闭/切到其他 tab 时 30s 轮询停（此前默认 active=true 恒跑）。
+        <WorkerChannels workers={[worker]} active={open && tab === "channels"} />
       ) : (
         <div style={{ padding: 8, color: t.textSecondary, fontSize: 12 }}>
           {tr("首次打开加载频道编辑器…")}

@@ -182,14 +182,49 @@ function NotificationCenter(props: {
   }, [load]);
   usePoller({ fn: load, intervalMs: 30000, active: inboxActive });
 
-  // SSE 事件触发（IM 式）：refreshTick 变化 → 立即刷新（不等轮询）。
+  // SSE 事件触发（IM 式）：refreshTick 变化 → 刷新（不等轮询）。
+  // v0.5.0-beta.14.19：加 500ms 合并窗 + 可见性门——此前 5 类 SSE
+  // 事件（mention/task_status/invite/approval_*）每帧无条件三连 GET
+  // （inbox tab 隐藏/后台 tab 也跑，忙集群 ≈12 次无缓冲宿主拨号/min）。
+  // 合并窗内多事件=一次 load；tab 激活+可见时补刷 pending（不丢刷新，
+  // 只削突发；与 30s poller 的门控语义对齐）。
   const tickRef = React.useRef(refreshTick);
+  const loadRef2 = React.useRef(load);
+  loadRef2.current = load;
+  const activeRef = React.useRef(inboxActive);
+  activeRef.current = inboxActive;
+  const pendingTick = React.useRef(false);
+  const sseDebounce = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
-    if (refreshTick !== undefined && refreshTick !== tickRef.current) {
-      tickRef.current = refreshTick;
-      void load();
-    }
+    if (refreshTick === undefined || refreshTick === tickRef.current) return;
+    tickRef.current = refreshTick;
+    pendingTick.current = true;
+    if (sseDebounce.current) return;
+    sseDebounce.current = setTimeout(() => {
+      sseDebounce.current = null;
+      if (pendingTick.current && activeRef.current) {
+        pendingTick.current = false;
+        void loadRef2.current();
+      }
+    }, 500);
   }, [refreshTick, load]);
+  // tab 激活/回前台：pending 立即补刷（不等 500ms 窗尾）。
+  React.useEffect(() => {
+    if (!inboxActive || !pendingTick.current) return;
+    if (sseDebounce.current) {
+      clearTimeout(sseDebounce.current);
+      sseDebounce.current = null;
+    }
+    pendingTick.current = false;
+    void load();
+  }, [inboxActive, load]);
+  // 卸载清窗。
+  React.useEffect(
+    () => () => {
+      if (sseDebounce.current) clearTimeout(sseDebounce.current);
+    },
+    [],
+  );
 
   // 待审批计数（顶部入口条，跳首页审批卡）= 房间审批源（load() 30s 轮询
   // 已含 loadApprovals）。v0.5.0-beta.12 ：弃用宿主 push-messages
