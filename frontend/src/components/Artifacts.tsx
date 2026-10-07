@@ -4,6 +4,7 @@ import type * as ReactNS from "react";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { FilePreview, type PreviewFile } from "./FilePreview";
+import { ActionBtn } from "./ActionBtn";
 import {
   downloadViaHost,
   resolveFileTarget,
@@ -963,7 +964,7 @@ function Artifacts(props: ArtifactsProps) {
                 {
                   title: tr("操作"),
                   key: "actions",
-                  width: 130,
+                  width: 176,
                   render: (_: unknown, f: FileEntry) => {
                     // v0.5.0-beta.12: mxc/正源 → apiPath（host.fetch blob 下载，带鉴权）；
                     // http 直链 → 原样导航。裸插件路径落 SPA 兜底（index.html 壳），
@@ -986,28 +987,26 @@ function Artifacts(props: ArtifactsProps) {
                         f.kind === "document" ||
                         f.kind === "data" ||
                         f.kind === "code");
+                    // v0.5.0-beta.14.21：行内动作按钮统一 ActionBtn（图标+文字+可见规格），
+                    // 弃纯图标 type="text"（观感糊弄、不可发现）。
                     return (
-                      <div style={{ display: "flex", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
                         {previewable ? (
-                          <antd.Button
-                            type="text"
-                            size="small"
+                          <ActionBtn
                             icon={<EyeIcon />}
-                            title={tr("预览")}
+                            label={tr("查看")}
                             onClick={() => void openPreview(f)}
                           />
                         ) : null}
-                        <antd.Button
-                          type="text"
-                          size="small"
+                        <ActionBtn
                           icon={<DownloadIcon />}
-                          title={tr("下载")}
+                          label={tr("下载")}
                           href={target.apiPath ? undefined : target.url || undefined}
                           download={f.name}
                           disabled={!target.url}
                           onClick={
                             target.apiPath
-                              ? (e: { preventDefault: () => void }) => {
+                              ? (e) => {
                                   e.preventDefault();
                                   void (async () => {
                                     const ok = await downloadViaHost(
