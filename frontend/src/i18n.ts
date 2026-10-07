@@ -2012,6 +2012,17 @@ const DICT: Record<string, { en: string }> = {
     en: "Paste the full JSON from 'Export config (with credentials)'. Import validates it and auto-backs up the current config before overwriting.",
   },
   "导入": { en: "Import" },
+  // v0.5.0-beta.14.19: 登录态/凭据失效横幅
+  "Matrix 登录已失效": { en: "Matrix login expired" },
+  "你的 Matrix 访问令牌已被服务器拒绝（通常是密码修改、设备被移除或管理员重置）。@提到我、通知与任务状态更新不可用——请重新登录后恢复。": {
+    en: "Your Matrix access token was rejected by the server (usually after a password change, device removal, or admin reset). @-mentions, notifications and task status updates are unavailable until you log in again.",
+  },
+  "重新登录": { en: "Log in again" },
+  "Higress 管理会话已过期": { en: "Higress admin session expired" },
+  "模型 alias 层的 Console 管理会话已失效——设置页用管理员账号密码重新验证后恢复。": {
+    en: "The Console admin session for the model alias layer has expired — re-verify with the admin account on the Settings page to restore it.",
+  },
+  "重新验证": { en: "Re-verify" },
 };
 
 type Lang = "zh" | "en";

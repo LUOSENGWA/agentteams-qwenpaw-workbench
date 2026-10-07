@@ -66,6 +66,13 @@ def room_last_ts(room_id: str) -> int:
 _since: Optional[str] = None
 _first_sync_done = False
 _consecutive_failures = 0  # v0.5.0-beta.12: 连续 /sync 失败计数（token 失效/切账号自愈用）
+# v0.5.0-beta.14.19: matrix access_token 失效检测（登录态可观测性）。
+# /sync 401 且响应体是 Matrix JSON + auth 类 errcode（M_UNKNOWN_TOKEN /
+# M_MISSING_TOKEN / M_FORBIDDEN）→ 判 token 已失效（改密/设备被踢/admin
+# 重置），置位后降级为低频复核（180s）——死 token 轮询零收益，且此前
+# 失效对前端完全不可见（@通知静默全断、无人知晓）。
+# 注意区分：401 + 非 JSON body = 网关 Basic 门（Caddy），不是 token 失效。
+_auth_invalid = False
 
 
 def reset_state() -> None:
@@ -75,10 +82,11 @@ def reset_state() -> None:
  新账号的 /sync 会一直 401，循环空转（@提到我/任务状态通知全断）。
  账号切换（login、config.matrix 身份变更）必须调用。
  """
-    global _since, _first_sync_done, _consecutive_failures
+    global _since, _first_sync_done, _consecutive_failures, _auth_invalid
     _since = None
     _first_sync_done = False
     _consecutive_failures = 0
+    _auth_invalid = False  # v0.5.0-beta.14.19: 新登录=新 token，失效标记清零
     _recent_ids.clear()
     _muted_rooms.clear()  # v0.5.0-beta.12 ：静音集合是账号级状态，切账号重建
     _mention_buffer.clear()  # v0.5.0-beta.12 ：@我缓冲是账号级状态
@@ -87,6 +95,34 @@ def reset_state() -> None:
     _approval_buffer.clear()  # v0.5.0-beta.12：审批缓冲是账号级状态
     _approval_eids.clear()
     _invited_rooms.clear()  # v0.5.0-beta.12：邀请基线是账号级状态
+
+
+def auth_status() -> str:
+    """v0.5.0-beta.14.19: matrix token 登录态（"valid" | "invalid"）。
+
+ invalid 只在「401 + Matrix auth errcode」时置位——是确定性信号，
+ 不是连续失败推断（网络抖动/网关 401 不误报）。"""
+    return "invalid" if _auth_invalid else "valid"
+
+
+_AUTH_INVALID_ERRCODES = frozenset(
+    ("M_UNKNOWN_TOKEN", "M_MISSING_TOKEN", "M_FORBIDDEN")
+)
+
+
+def is_auth_invalid_401(status_code: int, body: str) -> bool:
+    """v0.5.0-beta.14.19: /sync 响应是否判定 matrix token 失效。
+
+ 判据=401 且 body 是 Matrix JSON + auth 类 errcode。401+非 JSON
+ （网关 Basic 门，Caddy 空 body）/403/5xx 一律 False——不混淆
+ 「token 死」与「地址/门问题」。"""
+    if status_code != 401:
+        return False
+    try:
+        parsed = _json.loads(body) or {}
+    except Exception:  # noqa: BLE001 - 非 JSON=网关门/截断，不判 token 死
+        return False
+    return str(parsed.get("errcode") or "") in _AUTH_INVALID_ERRCODES
 
 
 async def restart(reason: str = "") -> None:
@@ -739,6 +775,16 @@ async def _run() -> None:
                     logger.warning(
                         "sync -> %s: %s", hs, resp.text[:120]
                     )
+                    # v0.5.0-beta.14.19: token 失效确定性检测——401 且
+                    # Matrix JSON auth errcode（改密/踢设备/重置后旧 token
+                    # 死透，此前无限 15s 轮询 + 前端零感知）。
+                    if is_auth_invalid_401(resp.status_code, resp.text):
+                        global _auth_invalid
+                        if not _auth_invalid:
+                            logger.warning(
+                                "matrix access_token rejected — login state invalid"
+                            )
+                        _auth_invalid = True
                     continue
                 payload = resp.json()
             except asyncio.CancelledError:
@@ -761,8 +807,12 @@ async def _run() -> None:
                     _consecutive_failures,
                 )
                 reset_state()
-            await asyncio.sleep(15)
+            # v0.5.0-beta.14.19: token 已判死 → 180s 低频复核（等用户
+            # 重登；login→restart→reset_state 清标记并立即重建）。
+            await asyncio.sleep(180 if _auth_invalid else 15)
             continue
+        # v0.5.0-beta.14.19: 复核成功（配置被修复/换账号）→ 失效标记清零。
+        _auth_invalid = False
         _consecutive_failures = 0
 
         _since = str(payload.get("next_batch") or _since or "")

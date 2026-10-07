@@ -248,6 +248,30 @@ export interface WorkbenchConfig {
   address_mode?: "auto" | "lan" | "wan";
 }
 
+// v0.5.0-beta.14.19: 登录态/凭据健康（后端纯进程内状态，零外发请求）。
+// 用途：token 失效后 @通知静默全断且此前前端零感知——30s 低频轮询驱动横幅。
+export interface AuthStatus {
+  // none=未登录 / valid=正常 / invalid=/sync 401+auth errcode 判死
+  matrix_token: "none" | "valid" | "invalid";
+  // none=未验证 / active=正常 / expired=网关面 401 被动判死
+  console_session: "none" | "active" | "expired";
+  // none / config / env / invalid
+  controller_token: string;
+}
+
+export async function fetchAuthStatus(): Promise<AuthStatus | null> {
+  try {
+    return (await requestJson(
+      "/agentteams-proxy/auth-status",
+      undefined,
+      4000,
+    )) as AuthStatus;
+  } catch {
+    // 端点不可用（连接器重载窗口）→ null=横幅不渲染，下轮再试。
+    return null;
+  }
+}
+
 /** v0.5.0-beta.12: 网关面（Higress Console）列表响应——
  * available=false = 无 Console 会话/不可达（前端优雅降级，非错误）。 */
 export interface GatewayListResponse {
