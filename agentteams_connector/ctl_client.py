@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-# v0.5.0-beta.14.13（·屎山治理）：Controller JSON 客户端单一实现。
+# v0.5.0-beta.14.13（·技术债治理）：Controller JSON 客户端单一实现。
 # 合并自 router._ctl_json（超集语义）与 worker_status._ctl_get（GET 包装）——
 # 此前「ordered 地址 failover」逻辑双实现，现唯一实现在此；两处旧调用点
 # 均保留为薄包装（注入点/调用面语义不变）。
-"""v0.5.0-beta.14.13（·屎山治理）：Controller JSON 客户端单一实现。
+"""v0.5.0-beta.14.13（·技术债治理）：Controller JSON 客户端单一实现。
 
 - ``router.build_router`` 的 ``_ctl_json`` 闭包 → 薄包装（调用点零改动）。
 - ``worker_status._ctl_get`` → 薄包装（projects_workflow 与测试的既有
