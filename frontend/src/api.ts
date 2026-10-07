@@ -2540,8 +2540,9 @@ export async function openDm(
   })) as { ok: boolean; target: string; room_id: string; created: boolean };
 }
 
-/** 【历史替代，勿删】/teams/rooms 实时聚合版——现役链路用 /teams/sync（缓存+force 超集）；
- * 保留作实时无缓存替代（排查缓存问题时用）。 */
+/** 【历史替代，勿删·预埋清单 P2】/teams/rooms 实时聚合版——现役链路用
+ * /teams/sync（缓存+force 超集）；保留作实时无缓存替代（排查缓存问题时用）。
+ * 死码审计豁免：见 PREEMBED-EXEMPT.md（方案 §5.5c）。 */
 export async function fetchTeamsRooms(): Promise<TeamsRoomsResponse> {
   return (await requestJson("/agentteams-proxy/teams/rooms")) as TeamsRoomsResponse;
 }
@@ -3270,10 +3271,12 @@ export async function deleteInboxEvent(eventId: string): Promise<unknown> {
   });
 }
 
-/** 【预埋，勿删】插件通知 → 宿主收件箱（后端 inbox_store.append_event 内部通道）。
- * v0.5.0-beta.12 曾为 @提到我活链路；v0.5.0-beta.12 起 sync_watcher 接管 @mention 事件流后本函数待命——
- * 保留为 UI 主动推送通知的通用入口（产物完成通知等未来触发点，见方案 v5.29「产物通知待评估」）。
- * os_notify=true 映射 OS 通知白名单 source_type → 桌面 toast + 铃铛。 */
+/** 【预埋，勿删·预埋清单 P1】插件通知 → 宿主收件箱（后端
+ * inbox_store.append_event 内部通道）。v0.5.0-beta.12 曾为 @提到我活链路；
+ * sync_watcher 接管 @mention 事件流后本函数待命——保留为 UI 主动推送通知
+ * 的通用入口（产物完成通知等未来触发点，方案 v5.29「产物通知待评估」）。
+ * os_notify=true 映射 OS 通知白名单 source_type → 桌面 toast + 铃铛。
+ * 死码审计豁免：见 PREEMBED-EXEMPT.md。 */
 export async function sendInboxNotify(opts: {
   title: string;
   body?: string;

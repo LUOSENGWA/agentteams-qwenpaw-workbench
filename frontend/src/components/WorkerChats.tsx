@@ -517,6 +517,10 @@ function WorkerChats({
 
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [msgs, setMsgs] = React.useState<WorkerChatMessage[]>([]);
+  // v0.5.0-beta.14.19：groupTurns 是 O(n) 重分组（每轮 result-only
+  // 折叠），此前在渲染路径每次重算——被 RoomChat 重渲连带放大。memo 到
+  // msgs 引用（4s 轮询已有 length+末行 diff 门，msgs 引用不变=不重算）。
+  const turns = React.useMemo(() => groupTurns(msgs), [msgs]);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [detailErr, setDetailErr] = React.useState("");
   const [status, setStatus] = React.useState<"" | "idle" | "running">("");
@@ -604,9 +608,14 @@ function WorkerChats({
     const s = selRef.current;
     const oid = openIdRef.current;
     if (!s || !oid) return;
-    try {
-      const d = await fetchWorkerChat(s, oid);
-      const next = Array.isArray(d?.messages) ? d.messages : null;
+    // v0.5.0-beta.14.19：两独立端点并行（原串行=状态灯延迟
+    // 叠加全量消息 RTT；allSettled=单端点失败不影响另一个，原语义）。
+    const [chatRes, statusRes] = await Promise.allSettled([
+      fetchWorkerChat(s, oid),
+      fetchWorkerChatStatus(s, oid),
+    ]);
+    if (chatRes.status === "fulfilled") {
+      const next = Array.isArray(chatRes.value?.messages) ? chatRes.value.messages : null;
       if (next)
         setMsgs((prev) =>
           prev.length === next.length &&
@@ -616,15 +625,10 @@ function WorkerChats({
             ? prev
             : next,
         );
-    } catch {
-      /* 静默——失败不打扰（下一轮再试） */
     }
-    try {
-      const r = await fetchWorkerChatStatus(s, oid);
-      if (r?.status === "running" || r?.status === "idle")
-        setStatus(r.status);
-    } catch {
-      /* 静默 */
+    if (statusRes.status === "fulfilled") {
+      const st = statusRes.value?.status;
+      if (st === "running" || st === "idle") setStatus(st);
     }
   }, []);
   // v0.5.0-beta.14.6：旧定时器 → usePoller（4s 开房间刷新；
@@ -634,15 +638,33 @@ function WorkerChats({
     intervalMs: 4000,
     active: !!openId,
   });
-  // SSE 事件驱动主路：refreshTick 变化（room_message 等）→ 立即刷新。
+  // SSE 事件驱动主路：refreshTick 变化（room_message 等）→ 刷新。
+  // v0.5.0-beta.14.19：加 300ms 合并窗——refreshTick 是全集群
+  // room_message 事件驱动（与打开的会话房间无关），burst 消息此前每条
+  // 立即 2 GET（fetchWorkerChat 全量 + status）。单条消息仍是 ~即时
+  // （300ms 窗尾触发），burst 10 条 = 1 次而非 10 次。
   const tickRef = React.useRef(refreshTick);
+  const sseDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshOpenChatRef = React.useRef(refreshOpenChat);
+  refreshOpenChatRef.current = refreshOpenChat;
   React.useEffect(() => {
     if (refreshTick === undefined) return;
     if (refreshTick !== tickRef.current) {
       tickRef.current = refreshTick;
-      void refreshOpenChat();
+      if (sseDebounceRef.current) return;
+      sseDebounceRef.current = setTimeout(() => {
+        sseDebounceRef.current = null;
+        void refreshOpenChatRef.current();
+      }, 300);
     }
-  }, [refreshTick, refreshOpenChat]);
+  }, [refreshTick]);
+  // 卸载清窗（openId 关闭/切走 tab → 组件卸载，pending 刷新丢弃）。
+  React.useEffect(
+    () => () => {
+      if (sseDebounceRef.current) clearTimeout(sseDebounceRef.current);
+    },
+    [],
+  );
 
   // 底部跟随（QwenPaw 对话框口径）：消息变化时——用户已在底部（近底
   // 100px 内）= 自动贴底；用户上翻看历史 = 不动（不打断阅读）。
@@ -888,7 +910,7 @@ function WorkerChats({
  （assistant 气泡），中间工具/思考步收进「N 步」pill（懒渲染，
  点开才渲染子行）；user 右气泡 / error 红线恒可见 / system 居中。
  旧版逐条平铺 + tool 块 RAW JSON 输出，全部替换。 */
-              groupTurns(msgs).map((it) => {
+              turns.map((it) => {
                 if (it.k === "steps") {
                   return (
                     <StepsCollapse key={`s${it.items[0].i}`} items={it.items} tr={tr} />
@@ -1245,4 +1267,7 @@ function WorkerChats({
   );
 }
 
-export default WorkerChats;
+// v0.5.0-beta.14.19：WorkerChats 是十一面板中唯一未包 memo 的
+// ——被 RoomChat 重渲连带放大（抽屉开着时 groupTurns 重分组+会话卡
+// 全重渲）。props 已稳定（workers=useMemo、回调 useCallback）→ memo 生效。
+export default React.memo(WorkerChats);

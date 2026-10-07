@@ -1612,7 +1612,14 @@ function WorkerManage(props: WorkerManageProps) {
           {
             key: "channels",
             label: tr("频道"),
-            children: <WorkerChannels workers={admin.workers} />,
+            // v0.5.0-beta.14.19：显式 active 门——折叠面板收起时
+            // 30s 轮询停（rc-tabs 保活下组件不卸载，此前默认 active=true 恒跑）。
+            children: (
+              <WorkerChannels
+                workers={admin.workers}
+                active={collapseKeys.includes("channels")}
+              />
+            ),
           },
           // v0.5.0-beta.13.1：内置工具（#1255 消费；与频道接入同款版本门
           // ——Controller 未含该端点时 404 占位，不炸 tab）。
