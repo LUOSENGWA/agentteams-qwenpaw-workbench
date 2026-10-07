@@ -16,6 +16,7 @@ import {
 } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { copyText } from "../util";
 import { SearchIcon, RefreshIcon, CheckIcon, CloseIcon, WarnIcon, HomeIcon, MonitorIcon } from "./icons";
 
 
@@ -587,12 +588,17 @@ const SettingsTab = React.memo(function SettingsTab({
   }, [tr]);
 
   // 复制兜底：navigator.clipboard 不可用（宿主 webview 差异）→ execCommand。
-  const copyText = React.useCallback(
+  const copySettingText = React.useCallback(
     (text: string) => {
       const done = () => message.success(tr("已复制到剪贴板"));
       const fail = () => message.error(tr("复制失败——请手动全选复制"));
-      if (navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(text).then(done, fail);
+      // typeof 守卫（与真值判断语义一致）：TS 5.9 对「函数引用真值判断 + 分支内
+      // 普通函数调用」误报 TS2774，真值写法在分支体含函数调用时不可用。
+      if (typeof navigator.clipboard?.writeText === "function") {
+        copyText(text, (ok) => {
+          if (ok) done();
+          else fail();
+        });
         return;
       }
       const ta = document.createElement("textarea");
@@ -1743,7 +1749,7 @@ const SettingsTab = React.memo(function SettingsTab({
             key="copy"
             type="primary"
             icon={<CopyIcon />}
-            onClick={() => copyText(exportText)}
+            onClick={() => copySettingText(exportText)}
           >
             {tr("复制")}
           </antd.Button>,

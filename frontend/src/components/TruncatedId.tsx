@@ -1,6 +1,7 @@
 import type * as ReactNS from "react";
 
 import { useT } from "../i18n";
+import { copyText } from "../util";
 
 /**
  * v0.5.0-beta.12: 长标识符（MXID / 房间 ID 等）截断展示——移植 dashboard
@@ -28,14 +29,10 @@ export default function TruncatedId(props: TruncatedIdProps) {
   const truncated =
     value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value;
   const copy = () => {
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(value).then(
-        () => antd.message.success(tr("已复制")),
-        () => antd.message.warning(tr("复制失败——请手动全选复制")),
-      );
-    } else {
-      antd.message.warning(tr("复制失败——请手动全选复制"));
-    }
+    copyText(value, (ok) => {
+      if (ok) antd.message.success(tr("已复制"));
+      else antd.message.warning(tr("复制失败——请手动全选复制"));
+    });
   };
   return (
     <span

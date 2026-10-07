@@ -34,6 +34,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { createPoller, type Poller } from "../usePoller";
 import { invalidateTags } from "../requestCache";
+import { copyText } from "../util";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -227,14 +228,10 @@ export default function CrdManage(props: CrdManageProps) {
   const copyPassword = React.useCallback(() => {
     if (!created) return;
     const text = `${created.name} / ${created.password}`;
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(
-        () => antd.message.success(tr("已复制")),
-        () => antd.message.warning(text),
-      );
-    } else {
-      antd.message.warning(text);
-    }
+    copyText(text, (ok) => {
+      if (ok) antd.message.success(tr("已复制"));
+      else antd.message.warning(text);
+    });
   }, [created, tr]);
 
   const doDeleteHuman = React.useCallback(
@@ -1078,14 +1075,10 @@ export default function CrdManage(props: CrdManageProps) {
 
   const copyPermCmd = React.useCallback(() => {
     if (!permCmd) return;
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(permCmd).then(
-        () => antd.message.success(tr("已复制")),
-        () => antd.message.warning(tr("复制失败——请手动全选复制")),
-      );
-    } else {
-      antd.message.warning(tr("复制失败——请手动全选复制"));
-    }
+    copyText(permCmd, (ok) => {
+      if (ok) antd.message.success(tr("已复制"));
+      else antd.message.warning(tr("复制失败——请手动全选复制"));
+    });
   }, [permCmd, tr]);
 
   // ── 团队访问配置（员工 × 团队矩阵）──
@@ -1161,14 +1154,10 @@ export default function CrdManage(props: CrdManageProps) {
 
   const copyAccessCmd = React.useCallback(() => {
     if (!accessCmd) return;
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(accessCmd).then(
-        () => antd.message.success(tr("已复制")),
-        () => antd.message.warning(tr("复制失败——请手动全选复制")),
-      );
-    } else {
-      antd.message.warning(tr("复制失败——请手动全选复制"));
-    }
+    copyText(accessCmd, (ok) => {
+      if (ok) antd.message.success(tr("已复制"));
+      else antd.message.warning(tr("复制失败——请手动全选复制"));
+    });
   }, [accessCmd, tr]);
 
   const humanCols = [

@@ -18,6 +18,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
+import { formatChatTime } from "../util";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -31,20 +32,6 @@ const SEV_COLOR: Record<string, string> = {
   MEDIUM: "#fa8c16",
   LOW: "#52c41a",
 };
-
-function formatWhen(ts: number): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  if (sameDay) return `${hh}:${mm}`;
-  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hh}:${mm}`;
-}
 
 /** 通知中心：宿主 /console/inbox 事件流聚合。
  * 与 OS 通知/MenuBar 铃铛同一事件源（useOsNotifyPoller 同款端点）。
@@ -371,7 +358,7 @@ function NotificationCenter(props: {
                   <span style={{ color: t.textSecondary, fontSize: 11.5 }}>
                     {tr("邀请人：")}
                     {inv.inviter ? senderShort(inv.inviter) : "—"}
-                    {inv.inviter_ts ? ` · ${formatWhen(inv.inviter_ts)}` : ""}
+                    {inv.inviter_ts ? ` · ${formatChatTime(inv.inviter_ts)}` : ""}
                   </span>
                   <span style={{ flex: 1 }} />
                   <span style={{ color: PRIMARY, fontSize: 12, fontWeight: 600 }}>
@@ -445,7 +432,7 @@ function NotificationCenter(props: {
                   </span>
                   <span style={{ flex: 1 }} />
                   <span style={{ color: t.textSecondary, fontSize: 11.5 }}>
-                    {formatWhen(a.ts)}
+                    {formatChatTime(a.ts)}
                   </span>
                 </div>
                 <div
@@ -566,7 +553,7 @@ function NotificationCenter(props: {
                   </span>
                   <span style={{ flex: 1 }} />
                   <span style={{ color: t.textSecondary, fontSize: 11.5 }}>
-                    {formatWhen(m.ts)}
+                    {formatChatTime(m.ts)}
                   </span>
                 </div>
                 <div
@@ -699,7 +686,7 @@ function NotificationCenter(props: {
                       ) : null}
                       <span style={{ flex: 1 }} />
                       <span style={{ color: t.textSecondary, fontSize: 11.5 }}>
-                        {formatWhen(ev.created_at)}
+                        {formatChatTime(ev.created_at)}
                       </span>
                     </div>
                     <div

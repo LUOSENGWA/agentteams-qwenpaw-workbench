@@ -45,6 +45,8 @@ import {
 import MdText from "./MdText";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { usePoller } from "../usePoller";
+import { useTabActive } from "../tabActivity";
+import { copyText } from "../util";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -636,7 +638,7 @@ function WorkerChats({
   usePoller({
     fn: () => void refreshOpenChat(),
     intervalMs: 4000,
-    active: !!openId,
+    active: !!openId && useTabActive("chat"),
   });
   // SSE 事件驱动主路：refreshTick 变化（room_message 等）→ 刷新。
   // v0.5.0-beta.14.19：加 300ms 合并窗——refreshTick 是全集群
@@ -769,17 +771,15 @@ function WorkerChats({
   // v0.5.0-beta.13.11（QwenPaw 化：ResponseActions 同款复制——气泡
   // hover 显 ⧉，复制该条全部文本部分）。
   const copyParts = React.useCallback(
-    async (parts: MsgPart[]) => {
+    (parts: MsgPart[]) => {
       const txt = parts
         .filter((p) => p.kind === "text" || p.kind === "thinking")
         .map((p) => p.label)
         .join("\n");
-      try {
-        await navigator.clipboard.writeText(txt);
-        antd.message.success(tr("已复制"));
-      } catch {
-        antd.message.error(tr("复制失败"));
-      }
+      copyText(txt, (ok) => {
+        if (ok) antd.message.success(tr("已复制"));
+        else antd.message.error(tr("复制失败"));
+      });
     },
     [tr],
   );
