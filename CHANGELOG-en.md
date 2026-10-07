@@ -5,6 +5,16 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.21 (2026-10-07 - 14.20 acceptance batch: progressive workflow landing + background foreground-yielding + token-verify resilience + inline action buttons unified)
+
+**System fixes for the 14.20 acceptance feedback — workflow loading slow / contending with chat, Controller token verify 500, inline button look**
+
+- **Workflow "slow to load" + "chat slows while it loads"** (low-bandwidth architecture fix): the `projects-workflow` aggregator waited for **all** 36+ projects before writing the snapshot (`asyncio.gather`) — on a 5M WAN link the first sweep took 1–3 minutes with the UI spinner idling; and the background sweep only checked foreground load once at round start, so a long round kept the shared dial gate (cap 24) and the same WAN uplink busy while the user switched to chat (room messages 0.8–2.5MB each). Now: the project list lands as soon as `/projects` returns (first screen waits one round trip only); each per-project `/workflow` result is written the moment it completes (progressive; the 15s frontend poll picks items up as they arrive; single-project failure keeps the old value; vanished projects are pruned at the end); and each dial backs off while foreground inflight > 8 (re-check every 0.5s, max 10s per item) — background scanning now politely yields to interactive foreground as a standing semantic.
+- **Controller token verify HTTP 500** (misdiagnosis + resilience): LAN live address `GET /api/v1/teams` (Bearer JWT) = 200 <1s; the WAN path (Higress gateway → Controller) intermittently returns 500 = transient gateway/upstream error (**not a token problem**). Old code reported any non-200 as "token invalid" with a 3s timeout (tight for 5M WAN). Now: 5xx = transient → back off 1s and **retry once** on the same live address; 4xx = credential/permission (address-independent) → report "token invalid or credential error" immediately without retry; timeout/connection error = address-level → move to the next address; timeout 3s→5s (WAN live address <1s, headroom for jitter); and the **5xx body is surfaced**: "WAN/gateway anomaly (HTTP 500): <real body> — transient gateway or upstream error, not a token problem; retry later or check the WAN path".
+- **Inline action buttons unified** (the "rushed look" cleanup): the inline "Download" / "View" actions on artifact tables, message file cards and project files were `type="text" size="small"` **icon-only** buttons (nearly invisible, no label), each written per component with its own font size / padding. New shared component `ActionBtn` (icon + text label + small bordered default, with href / download / onClick / authenticated blob-download support); artifact table (View + Download), message file card (Download + View) and project files (Download) now use the unified spec; the actions column width adapts to the text. **Reload icon-only buttons are kept** (universal convention + Tooltip, looks fine).
+
+---
+
 ## 0.5.0-beta.14.20 (2026-10-07 - 14.19 acceptance batch: first-frame theme consistency + merged-graph race + slow-path system speedups + L2 gating)
 
 **System fixes for all 8 items of the 14.19 acceptance feedback — each root-caused before the fix, no point patches**
