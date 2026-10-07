@@ -7,7 +7,7 @@
 //   - 图标 + 文字标签（label 必填，不再纯图标）——可读、可发现；
 //   - size="small" + 默认可见边框（type="default"），行内不突兀；
 //   - 支持 href/download（直链）或 onClick（鉴权 blob 下载）；
-// 各组件行内动作按钮一律经本组件，杜绝再次漂移（屎山防线）。
+// 各组件行内动作按钮一律经本组件，杜绝再次漂移（技术债防线）。
 // host（React/antd）经 window.QwenPaw.host 注入（与其余组件同款）。
 import type * as ReactNS from "react";
 
