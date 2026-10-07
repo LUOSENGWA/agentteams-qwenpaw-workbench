@@ -162,3 +162,143 @@ def test_sweep_list_failure_keep_old(monkeypatch):
     snap = pw.snapshot()
     assert snap["projectsStatus"] == 401
     assert snap["projects"] == [{"project_id": "old1"}]
+
+
+# ── v0.5.0-beta.14.21：渐进落地 + 前台让权 ──────────────────────────────
+# 旧版整批 gather 到全部完成才写快照 → 外网首扫空窗 1-3 分钟。现逐项目
+# 完成即落地（前端 15s 轮询逐步看见）+ 每项拨号前让前台。以下钉死新语义。
+
+
+class _FakeCtlGetProgressive:
+    """p1 成功、p2 成功（用于渐进落地断言）；记录 p2 取数时刻的快照状态。"""
+
+    def __init__(self):
+        self.snapshot_at_p2_call: dict | None = None  # p2 拨号时的 workflows 快照
+        self.p1_landed_before_p2_fetched: bool = False
+
+    async def __call__(self, url: str, token: str):
+        p = _up.urlparse(url)
+        if p.path == "/api/v1/projects":
+            return 200, {"projects": [{"project_id": "p1"}, {"project_id": "p2"}],
+                         "total": 2}, ""
+        if p.path == "/api/v1/projects/p1/workflow":
+            return 200, {"nodes": [{"id": "n1"}], "edges": []}, ""
+        if p.path == "/api/v1/projects/p2/workflow":
+            # p2 取数时，p1 应已渐进落地（谁先完成谁先写）→ 首屏不必等全量。
+            self.snapshot_at_p2_call = dict(pw._snap["workflows"])
+            if pw._snap["workflows"].get("p1") is not None:
+                self.p1_landed_before_p2_fetched = True
+            return 200, {"nodes": [{"id": "n2"}], "edges": []}, ""
+        return 404, {}, ""
+
+
+def test_progressive_landing_projects_first(monkeypatch):
+    """名单先行：/projects 一成功 projects 即落地（不等 workflow 扫完）。
+ 断言：p2 拨号时 _snap['projects'] 已含 p1+p2（首屏只等 1 次 /projects）。"""
+    fake = _FakeCtlGetProgressive()
+    monkeypatch.setattr(ws, "_ctl_get", fake)
+
+    asyncio.run(pw._sweep())
+
+    # 关键：p2 取数那一刻，projects 名单已就位（渐进首屏）。
+    # （projects 在逐项目扇出前就落地，故 p2 拨号时必可见。）
+    assert fake.snapshot_at_p2_call is not None
+    assert pw._snap["projects"] == [{"project_id": "p1"}, {"project_id": "p2"}]
+    # 两项目最终都落地。
+    assert set(pw._snap["workflows"].keys()) == {"p1", "p2"}
+    # 渐进：p1 在 p2 取数前已写入快照（首屏秒级、不等最慢项）。
+    assert fake.p1_landed_before_p2_fetched is True
+    assert fake.snapshot_at_p2_call.get("p1") == {"nodes": [{"id": "n1"}], "edges": []}
+
+
+class _FakeCtlGetFailWithOld:
+    """p1 成功、p2 抛异常（有旧值 → 应保旧）。"""
+
+    async def __call__(self, url: str, token: str):
+        p = _up.urlparse(url)
+        if p.path == "/api/v1/projects":
+            return 200, {"projects": [{"project_id": "p1"}, {"project_id": "p2"}],
+                         "total": 2}, ""
+        if p.path == "/api/v1/projects/p1/workflow":
+            return 200, {"nodes": [{"id": "n1"}]}, ""
+        if p.path == "/api/v1/projects/p2/workflow":
+            raise RuntimeError("transient")
+        return 404, {}, ""
+
+
+def test_progressive_failure_keeps_old(monkeypatch):
+    """失败保旧：p2 取数抛异常且已有旧值 → 保旧值（不被清空/删）。"""
+    fake = _FakeCtlGetFailWithOld()
+    monkeypatch.setattr(ws, "_ctl_get", fake)
+    pw._snap["workflows"] = {"p2": {"nodes": [{"id": "OLD"}]}}  # 预置旧值
+
+    asyncio.run(pw._sweep())
+
+    assert pw._snap["workflows"]["p1"] == {"nodes": [{"id": "n1"}]}
+    # p2 失败 → 保旧（不是 {} / 不是删）。
+    assert pw._snap["workflows"]["p2"] == {"nodes": [{"id": "OLD"}]}
+
+
+class _FakeCtlGetWithGone:
+    """新名单只 p1；旧快照有 gone1（已消失）→ 收尾应清掉。"""
+
+    async def __call__(self, url: str, token: str):
+        p = _up.urlparse(url)
+        if p.path == "/api/v1/projects":
+            return 200, {"projects": [{"project_id": "p1"}], "total": 1}, ""
+        if p.path == "/api/v1/projects/p1/workflow":
+            return 200, {"nodes": [{"id": "n1"}]}, ""
+        return 404, {}, ""
+
+
+def test_progressive_removes_gone_projects(monkeypatch):
+    """收尾清消失项：新名单无 gone1 → sweep 后 gone1 被删、p1 保留。"""
+    fake = _FakeCtlGetWithGone()
+    monkeypatch.setattr(ws, "_ctl_get", fake)
+    pw._snap["workflows"] = {"gone1": {"nodes": []}}  # 预置消失项
+
+    asyncio.run(pw._sweep())
+
+    assert "gone1" not in pw._snap["workflows"]
+    assert pw._snap["workflows"]["p1"] == {"nodes": [{"id": "n1"}]}
+    assert pw._snap["projects"] == [{"project_id": "p1"}]
+
+
+def test_yield_to_foreground_idle_returns_immediately(monkeypatch):
+    """前台闲（inflight=0）→ _yield_to_foreground 立即返回（不退避）。"""
+    from agentteams_connector import dial_gate
+
+    calls = {"n": 0}
+
+    def _idle_stats():
+        calls["n"] += 1
+        return {"async": {"inflight": 0}}
+
+    monkeypatch.setattr(pw, "dial_stats", _idle_stats)
+    t0 = time.time()
+    asyncio.run(pw._yield_to_foreground())
+    # 立即返回：几乎不耗时、不进入退避循环。
+    assert time.time() - t0 < 0.1
+    assert calls["n"] >= 1
+
+
+def test_yield_to_foreground_backoff_when_busy(monkeypatch):
+    """前台忙（inflight>阈值）→ 退避直到预算耗尽才返回（礼让前台）。"""
+    import agentteams_connector.projects_workflow as _pw
+
+    monkeypatch.setattr(_pw, "_SWEEP_YIELD_INFLIGHT", 8)
+    monkeypatch.setattr(_pw, "_SWEEP_YIELD_POLL", 0.01)
+    monkeypatch.setattr(_pw, "_SWEEP_YIELD_MAX_WAIT", 0.05)
+
+    busy = {"v": True}
+
+    def _busy_stats():
+        return {"async": {"inflight": 99 if busy["v"] else 0}}
+
+    monkeypatch.setattr(pw, "dial_stats", _busy_stats)
+    t0 = time.time()
+    asyncio.run(pw._yield_to_foreground())
+    elapsed = time.time() - t0
+    # 前台一直忙 → 退避到预算耗尽（≈0.05s）才走（不退化、不无限等）。
+    assert elapsed >= 0.04
+    # 若前台中途转闲，应提前返回（这里保持忙，验证预算耗尽路径）。
