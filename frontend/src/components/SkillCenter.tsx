@@ -25,6 +25,7 @@ import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import {
   type WorkerInfo,
   type TeamInfo,
@@ -968,10 +969,17 @@ export default function SkillCenter({
                                   >
                                     {inAssigned ? tr("已分配") : tr("仅物化")}
                                   </antd.Tag>
+                                  {/* v0.5.0-beta.14.22（D4 #4）：preload 是物化层
+  QwenPaw 独有面（常驻 system prompt，仅 qwenpaw 装载）——非 qwenpaw 禁用开关
+  + 说明；分配层 CRD 视图（已分配/物化标签）照读不受影响。 */}
                                   <antd.Tooltip
-                                    title={tr(
-                                      "预加载：技能全文常驻该 Worker 每个会话的 system prompt（有 per-session token 成本；QwenPaw ≥ 2.2.1；worker 侧热加载无需重启）",
-                                    )}
+                                    title={
+                                      isQwenpawOnlyDisabled(w.runtime)
+                                        ? tr("预加载仅支持 QwenPaw 运行时的 Worker（当前：{rt}）", { rt: w.runtime })
+                                        : tr(
+                                            "预加载：技能全文常驻该 Worker 每个会话的 system prompt（有 per-session token 成本；QwenPaw ≥ 2.2.1；worker 侧热加载无需重启）",
+                                          )
+                                    }
                                   >
                                     <span
                                       style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
@@ -983,7 +991,7 @@ export default function SkillCenter({
                                         size="small"
                                         checked={!!s.preload}
                                         loading={busy}
-                                        disabled={busy}
+                                        disabled={busy || isQwenpawOnlyDisabled(w.runtime)}
                                         onChange={(v: boolean) =>
                                           void togglePreload(w.name, s, v)
                                         }

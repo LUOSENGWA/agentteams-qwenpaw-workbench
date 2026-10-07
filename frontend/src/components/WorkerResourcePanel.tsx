@@ -22,6 +22,7 @@ import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 import { type WorkerInfo } from "../api";
 import SkillCenter from "./SkillCenter";
 import WorkerChannels from "./WorkerChannels";
@@ -95,7 +96,15 @@ export default function WorkerResourcePanel({
           <NotesIcon size={13} /> {tr("频道")}
         </span>
       ),
-      children: mounted.channels ? (
+      // v0.5.0-beta.14.22（D4 #3）：频道编辑器是 QwenPaw 独有面（改
+      // agent.json channels，qwenpaw bridge 消费）——非 qwenpaw 禁用页签 +
+      // 说明（对齐后端 400 语义，不发起无谓的频道拨号）。
+      disabled: isQwenpawOnlyDisabled(worker.runtime),
+      children: isQwenpawOnlyDisabled(worker.runtime) ? (
+        <div style={{ padding: "12px 8px" }}>
+          <RuntimeNotice runtime={worker.runtime} />
+        </div>
+      ) : mounted.channels ? (
         // v0.5.0-beta.14.19：懒挂载保活后传显式 active 门——
         // 抽屉关闭/切到其他 tab 时 30s 轮询停（此前默认 active=true 恒跑）。
         <WorkerChannels workers={[worker]} active={open && tab === "channels"} />

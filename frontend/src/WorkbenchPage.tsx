@@ -773,6 +773,33 @@ export default function WorkbenchPage() {
       setConfigLoadState("failed");
       // eslint-disable-next-line no-console
       console.error("[workbench] config fetch failed after retries", lastErr);
+      // v0.5.0-beta.14.22：重试链（15.5s）覆盖不了的安装重载长窗
+      // （换容器/重载 >60s）——failed 后转低频后台自恢复（10s 间隔、
+      // 至多 6 次=60s），成功即落地回填（与首载同语义）；不再依赖
+      // 用户手动点「重试」。期间 poller 触发的 refreshConfig 被
+      // configFetchingRef/本链互斥，不叠链。
+      void (async () => {
+        for (let n = 1; n <= 6; n++) {
+          await new Promise((r) => setTimeout(r, 10000));
+          if (configRef.current !== null) return;
+          try {
+            const payload = await requestJson("/agentteams-proxy/config");
+            configRef.current === null
+              ? setConfig(payload as WorkbenchConfig)
+              : React.startTransition(() =>
+                  setConfig(payload as WorkbenchConfig),
+                );
+            setConfigLoadState("ready");
+            // eslint-disable-next-line no-console
+            console.info(
+              `[workbench] config recovered on background retry #${n}`,
+            );
+            return;
+          } catch {
+            /* 继续下一轮 */
+          }
+        }
+      })();
     } finally {
       configFetchingRef.current = false;
     }
@@ -1293,13 +1320,18 @@ export default function WorkbenchPage() {
 
   // v0.5.0-beta.12：room_id → Worker phase/runtime 徽章（聊天头注入）。
   // 数据 = Worker CR 字段：admin 数据优先（全量），tree 兜底（L2/未配 token）。
+  // v0.5.0-beta.14.22（D4）：runtimeDeprecated 同批透传（legacy 角标 #8）。
   const workerBadgeMap = React.useMemo(() => {
-    const map: Record<string, { phase?: string; runtime?: string }> = {};
+    const map: Record<
+      string,
+      { phase?: string; runtime?: string; runtimeDeprecated?: boolean }
+    > = {};
     for (const w of adminData?.workers || []) {
       if (w.roomID)
         map[w.roomID] = {
           phase: w.phase || undefined,
           runtime: w.runtime || undefined,
+          runtimeDeprecated: w.runtimeDeprecated || undefined,
         };
     }
     for (const team of workerTree || []) {
@@ -1308,8 +1340,24 @@ export default function WorkbenchPage() {
           map[w.room_id] = {
             phase: w.phase || undefined,
             runtime: w.runtime || undefined,
+            runtimeDeprecated: w.runtimeDeprecated || undefined,
           };
       }
+    }
+    return map;
+  }, [adminData, workerTree]);
+
+  // v0.5.0-beta.14.22（D4 #6/#8）：MXID → runtime（头像菜单「查看会话」
+  // 入口门控 + 消息行 legacy 角标；admin 数据优先，tree 兜底）。
+  const workerRuntimeByMxid = React.useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const team of workerTree || []) {
+      for (const w of team.workers || []) {
+        if (w.mxid && w.runtime) map[w.mxid] = w.runtime;
+      }
+    }
+    for (const w of adminData?.workers || []) {
+      if (w.matrixUserID && w.runtime) map[w.matrixUserID] = w.runtime;
     }
     return map;
   }, [adminData, workerTree]);

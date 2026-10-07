@@ -33,6 +33,7 @@ import WorkerRuntimeConfig from "./WorkerRuntimeConfig";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 import type { WorkerSessionState } from "../workerSessionState";
 import { usePoller } from "../usePoller";
 import { invalidateTags } from "../requestCache";
@@ -363,6 +364,11 @@ function WorkerManageInfo({
         gap: 6,
       }}
     >
+      {/* v0.5.0-beta.14.22（D4）：非 qwenpaw runtime 统一提醒——下方运行
+  配置(#1)/审批(#2)/频道(#3)/技能 preload(#4)/时间线(#7) 均为
+  QwenPaw 独有面，非 qwenpaw 会被服务端 400/无数据。顶部一条说明
+  （各面板另按矩阵做入口禁用/空态，双保险）。qwenpaw/空 runtime 不显。 */}
+      <RuntimeNotice runtime={worker.runtime} compact />
       {/* 两层状态分开命名：Worker 状态 = CRD phase（Controller），容器状态 = docker 层；
  两行都显示（不隐藏——字段稳定可预期），不一致时容器值红色高亮 = crashloop 诊断信号 */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
@@ -530,6 +536,12 @@ function WorkerRow({
  的 phase/runtime（后端 team-structure 已透传，零新请求）。 */
   const phase = adminWorker?.phase || group.phase || "";
   const rowRuntime = adminWorker?.runtime || group.runtime || "";
+  // v0.5.0-beta.14.22（D4 #8）：legacy 角标判据——controller ≥#1327 对
+  // copaw 存量置 runtimeDeprecated=true（admin 源有；tree 源 undefined=
+  // 降级为仅按 runtime 判定）。
+  const rowDeprecated = !!(
+    adminWorker?.runtimeDeprecated || group.runtimeDeprecated
+  );
   return (
     <div>
       <div
@@ -614,6 +626,8 @@ function WorkerRow({
             {rowRuntime}
           </antd.Tag>
         ) : null}
+        {/* v0.5.0-beta.14.22（D4 #8）：legacy 运行时统一角标（含升级指引）。 */}
+        {rowDeprecated ? <RuntimeNotice kind="legacy" compact /> : null}
         {adminWorker?.version ? (
           <span style={{ color: "#999", fontSize: 11, marginLeft: 2 }}>
             {adminWorker.version}
@@ -689,7 +703,7 @@ function WorkerRow({
               </div>
             )}
           {group.worker_name ? (
-            <CheckpointCard workerName={group.worker_name} />
+            <CheckpointCard workerName={group.worker_name} runtime={rowRuntime} />
           ) : null}
           {group.worker_name ? (
             <ApprovalControl workerName={group.worker_name} />
@@ -700,10 +714,20 @@ function WorkerRow({
   );
 }
 
-/** Worker 执行检查点（checkpoint 端点；懒加载：展开时才请求）。 */
-function CheckpointCard({ workerName }: { workerName: string }) {
+/** Worker 执行检查点（checkpoint 端点；懒加载：展开时才请求）。
+ * v0.5.0-beta.14.22（D4 #7）：runtime 非 qwenpaw → 禁用入口 + 说明
+ * （不发起无谓的 checkpoint 拨号）。 */
+function CheckpointCard({
+  workerName,
+  runtime,
+}: {
+  workerName: string;
+  runtime?: string;
+}) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
+  // v0.5.0-beta.14.22（D4 #7）：非 qwenpaw 禁用入口 + 不发起拨号。
+  const gated = isQwenpawOnlyDisabled(runtime);
   const [state, setState] = React.useState<
     | { kind: "idle" }
     | { kind: "loading" }
@@ -717,7 +741,7 @@ function CheckpointCard({ workerName }: { workerName: string }) {
   >({ kind: "idle" });
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || gated) return; // D4 #7：非 qwenpaw 不拨号
     let alive = true;
     setState({ kind: "loading" });
     Promise.all([
@@ -741,7 +765,7 @@ function CheckpointCard({ workerName }: { workerName: string }) {
     return () => {
       alive = false;
     };
-  }, [open, workerName]);
+  }, [open, workerName, gated]);
 
   const nodes = state.kind === "ok" ? state.graph.nodes.slice(0, 5) : [];
   return (
@@ -751,14 +775,17 @@ function CheckpointCard({ workerName }: { workerName: string }) {
           display: "flex",
           alignItems: "center",
           gap: 6,
-          cursor: "pointer",
-          color: "#888",
+          cursor: gated ? "not-allowed" : "pointer",
+          color: gated ? "#bbb" : "#888",
           padding: "2px 0",
         }}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => !gated && setOpen((v) => !v)}
       >
         <span style={{ fontSize: 11 }}>{open ? "▾" : "▸"}</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><BookmarkIcon size={12} /> {tr("检查点")}</span>
+        {gated ? (
+          <span style={{ fontSize: 11, color: "#bbb" }}>{tr("仅 QwenPaw 运行时可用")}</span>
+        ) : null}
         {state.kind === "ok" && state.graph.summary.total > 0 ? (
           <antd.Badge
             count={state.graph.summary.total}
@@ -767,7 +794,7 @@ function CheckpointCard({ workerName }: { workerName: string }) {
           />
         ) : null}
       </div>
-      {open ? (
+      {open && !gated ? (
         <div style={{ display: "grid", gap: 4, paddingLeft: 14 }}>
           {state.kind === "loading" ? (
             <span style={{ color: "#999" }}>{tr("加载中…")}</span>
