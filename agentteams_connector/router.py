@@ -118,6 +118,33 @@ def kb_swr_ttl_for(address_mode: Any) -> float:
     return 180.0 if address_mode == "wan" else 60.0
 
 
+def _kb_apply_runtime_fields(
+    found: Dict[str, Dict[str, Any]], workers: List[Any],
+) -> None:
+    """v0.5.0-beta.14.22（D4 #5/#8）：kb/agents 的 runtime 判定字段
+补全——主（Docker）路径与 ctl 兜底路径共用此唯一实现。
+
+透传 worker 对象的 runtime / runtimeDeprecated（CR 字段）：
+- runtime 非空才写键（空串不写，前端按 undefined 降级放行）；
+- runtimeDeprecated 真值才写（旧 controller 无该字段 = 键缺失）。
+
+背景（E2E 实锤）：初版只在主路径内联透传，而本部署 Docker 通道对
+插件 token 不可用 → /kb/agents 全量走兜底路径 → 兜底面 0 透传、
+前端运行时提醒全灭。两路径各写一份=漂移温床，收口为单一函数。
+"""
+    for w in workers:
+        if not isinstance(w, dict):
+            continue
+        wn = str(w.get("name") or "")
+        if not wn or wn not in found:
+            continue
+        rt = str(w.get("runtime") or "")
+        if rt:
+            found[wn]["runtime"] = rt
+        if w.get("runtimeDeprecated"):
+            found[wn]["runtimeDeprecated"] = True
+
+
 _PROBE_TIMEOUT = 6.0
 
 # v0.5.0-beta.13.24（首刷 race·根因）：代理超时结构化——旧版标量
@@ -4313,6 +4340,10 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                     else "worker"
                 ),
             }
+        # v0.5.0-beta.14.22（D4 #5/#8）：runtime 判定字段与主（Docker）
+        # 路径同批透传——共用 _kb_apply_runtime_fields 单一实现（E2E
+        # 实锤：本部署 Docker 通道不可用 → 全量走本兜底路径）。
+        _kb_apply_runtime_fields(found, workers)
         found["manager"] = {
             "name": "manager",
             "container": "agentteams-manager",
@@ -4595,15 +4626,10 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                             else "critic" if "critic" in wn.lower()
                             else "worker"
                         )
-                        # v0.5.0-beta.14.22（D4 #5/#8）：runtime 判定字段
-                        # 同批透传（KB 面按 runtime 降级空态 + legacy 角标；
-                        # 旧 controller 无 runtimeDeprecated = 键缺失，
-                        # 前端 undefined 降级为仅按 runtime 判定）。
-                        rt = str(w.get("runtime") or "")
-                        if rt:
-                            found[wn]["runtime"] = rt
-                        if w.get("runtimeDeprecated"):
-                            found[wn]["runtimeDeprecated"] = True
+                # v0.5.0-beta.14.22（D4 #5/#8）：runtime 判定字段同批
+                # 透传（KB 面按 runtime 降级空态 + legacy 角标）——与
+                # ctl 兜底路径共用 _kb_apply_runtime_fields 单一实现。
+                _kb_apply_runtime_fields(found, workers)
         except Exception:  # noqa: BLE001 — role/team 补全失败不致命
             pass
         agents = sorted(
