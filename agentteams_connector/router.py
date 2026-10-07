@@ -3395,16 +3395,15 @@ def build_router() -> APIRouter:
             i += ln
         return "".join(out)
 
-    async def _kb_exec(
-        token: str, base: str, container: str, cmd: List[str],
-        timeout: float = 40.0,
-    ) -> str:
-        """兼容包装：传输失败返空串（不区分失败的调用方用）。"""
-        return (await _kb_exec_full(token, base, container, cmd, timeout)) or ""
-
     def _kb_tar_entries(data: bytes) -> List[Dict[str, Any]]:
         """Docker archive tar → 相对条目列表。目录请求时顶层条目名=
- 所请求目录/文件自身，剥离后得相对路径。"""
+ 所请求目录/文件自身，剥离后得相对路径。同步函数——调用方必须
+  asyncio.to_thread 包裹（tar 解析挂事件循环会卡全部并发请求）。"""
+        if len(data) > _KB_MAX_TAR:
+            raise HTTPException(
+                status_code=413,
+                detail="目录过大（tar 超过 20MB），无法列取",
+            )
         import io as _io
         import tarfile as _tf
         raw: List[Dict[str, Any]] = []
@@ -3524,32 +3523,16 @@ def build_router() -> APIRouter:
             return None
         return _kb_parse_find_lines(out)
 
-    async def _kb_tar_list(
-        token: str, base: str, container: str, target: str,
-        maxdepth: Optional[int] = None,
-        include_dirs: bool = False,
-    ) -> Optional[List[Dict[str, Any]]]:
-        """兜底通道：Docker archive tar 列目录（递归 tar，只解析到指定层）。
- 返回 [{type,size,mtime,rel}]；路径不存在 → None；tar 超
- _KB_MAX_TAR → 413；其余非 200/304 → 502。
- maxdepth=1 + include_dirs=True → 一级文件+目录（tree 顶层/kb_ls）；
- maxdepth=None → 全层文件（tree memory/digest 子树，旧
- _kb_tar_entries 语义）。"""
+    def _kb_parse_tar_list(
+        data: bytes,
+        maxdepth: Optional[int],
+        include_dirs: bool,
+    ) -> List[Dict[str, Any]]:
+        """tar 解析 → 条目列表（同步，调用方 to_thread 包裹）。
+ 语义与旧 _kb_tar_list 内联解析逐字一致：超 _KB_MAX_TAR → 413；
+ tar 损坏 → 502；顶层统一判定（单顶层=剥前缀）。"""
         import io as _io
         import tarfile as _tf
-        import urllib.parse as _up
-        st, data = await _kb_docker(
-            token, base,
-            f"/containers/{container}/archive?path={_up.quote(target)}",
-            timeout=60.0,
-        )
-        if st in (400, 404):
-            return None
-        if st not in (200, 304):
-            raise HTTPException(
-                status_code=502, detail=f"目录列取失败（Docker API {st}）")
-        if not data:
-            return []
         if len(data) > _KB_MAX_TAR:
             raise HTTPException(
                 status_code=413,
@@ -3589,6 +3572,34 @@ def build_router() -> APIRouter:
                                 "mtime": int(m.mtime),
                                 "rel": "/".join(rel_parts)})
         return entries
+
+    async def _kb_tar_list(
+        token: str, base: str, container: str, target: str,
+        maxdepth: Optional[int] = None,
+        include_dirs: bool = False,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """兜底通道：Docker archive tar 列目录（递归 tar，只解析到指定层）。
+ 返回 [{type,size,mtime,rel}]；路径不存在 → None；tar 超
+ _KB_MAX_TAR → 413；其余非 200/304 → 502。
+ maxdepth=1 + include_dirs=True → 一级文件+目录（tree 顶层/kb_ls）；
+ maxdepth=None → 全层文件（tree memory/digest 子树，旧
+ _kb_tar_entries 语义）。tar 解析在 to_thread（不挂事件循环）。"""
+        import urllib.parse as _up
+        st, data = await _kb_docker(
+            token, base,
+            f"/containers/{container}/archive?path={_up.quote(target)}",
+            timeout=60.0,
+        )
+        if st in (400, 404):
+            return None
+        if st not in (200, 304):
+            raise HTTPException(
+                status_code=502, detail=f"目录列取失败（Docker API {st}）")
+        if not data:
+            return []
+        return await asyncio.to_thread(
+            _kb_parse_tar_list, data, maxdepth, include_dirs
+        )
 
     # ── v0.5.0-beta.14.17（KBBATCH-K2）：tree 合并探测 ─────────────────
     # 冷时 tree = ws 探测 + 可用性探测 + 顶层 find + memory find + digest
@@ -4485,7 +4496,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
             # 早期版本起 tree 返回相对路径导致日记/digest 文件点开必 404
             # （此前被「容器不存在」404 掩盖，用户未走到点开那步）。
             # 此处统一拼回工作区相对全路径。
-            for e in _kb_tar_entries(data):
+            for e in await asyncio.to_thread(_kb_tar_entries, data):
                 rel = e["path"]
                 p = f"{prefix}/{rel}" if rel else prefix
                 if _kb_is_sensitive(e["name"] or p.rsplit("/", 1)[-1], p):
@@ -4683,6 +4694,26 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         }
         return _payload
 
+    def _kb_file_first_member(data: bytes) -> tuple:
+        """tar → 首个普通文件的 (content, size)。同步，调用方 to_thread
+        包裹（不挂事件循环）；tar 损坏 → 502（与旧内联版语义一致）。"""
+        import io as _io
+        import tarfile as _tf
+        content = b""
+        size = 0
+        try:
+            with _tf.open(fileobj=_io.BytesIO(data), mode="r:*") as tf:
+                for m in tf.getmembers():
+                    if m.isfile():
+                        fobj = tf.extractfile(m)
+                        if fobj:
+                            content = fobj.read()
+                            size = m.size
+                        break
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"tar 解包失败：{exc}")
+        return content, size
+
     async def _kb_file_compute(agent: str, path: str) -> Dict[str, Any]:
         # v0.5.0-beta.14.17（KBBATCH-K5）：kb_file 冷取计算体——原端点体
         # （校验之后）逐字搬移；缓存写收口在调用点 _store_kb。只缓存
@@ -4715,21 +4746,9 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
             raise HTTPException(status_code=404, detail=f"文件不存在：{path}")
         if len(data) > _KB_MAX_TAR:
             raise HTTPException(status_code=413, detail="文件 tar 超过 20MB")
-        import io as _io
-        import tarfile as _tf
-        content = b""
-        size = 0
-        try:
-            with _tf.open(fileobj=_io.BytesIO(data), mode="r:*") as tf:
-                for m in tf.getmembers():
-                    if m.isfile():
-                        fobj = tf.extractfile(m)
-                        if fobj:
-                            content = fobj.read()
-                            size = m.size
-                        break
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail=f"tar 解包失败：{exc}")
+        content, size = await asyncio.to_thread(
+            _kb_file_first_member, data
+        )
         if size > _KB_MAX_FILE:
             raise HTTPException(
                 status_code=413, detail="文件超过 512KB，暂不支持在线预览"

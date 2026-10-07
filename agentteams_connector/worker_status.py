@@ -27,9 +27,11 @@ from typing import Any, Dict, List, Optional
 
 from . import config as config_mod
 from . import router as router_mod
-# v0.5.0-beta.14.13：GatedAsyncClient/should_failover_status 随
-# _ctl_get 实现体迁入 ctl_client，本模块仅剩 bg_slot（后台共用通道）。
-from .dial_gate import bg_slot
+# v0.5.0-beta.14.19：tick 生命周期骨架抽 bg_aggregator.BgTicker
+# （与 projects_workflow 去克隆——ensure_fresh/_sweep 单飞/bg_slot
+# 让权/_run tick/start-stop 五段此前逐字克隆）。本模块保留数据态
+# _agg 与扫描体 _do_sweep（取数注入点 _ctl_get 不变）。
+from .bg_aggregator import BgTicker
 
 logger = logging.getLogger(
     "qwenpaw.plugins.agentteams_qwenpaw_workbench.worker_status"
@@ -44,9 +46,6 @@ _STARTUP_DELAY = 3.0  # 启动让行（address_probe 同款，不抢宿主启动
 _agg: Dict[str, Any] = {"workers": {}, "scan_at": 0.0, "scanning": False}
 _names_cache: Dict[str, Any] = {"names": [], "ts": 0.0}
 
-_task: Optional[asyncio.Task] = None
-_stop_event = asyncio.Event()
-
 
 def snapshot() -> Dict[str, Any]:
     """当前聚合快照（端点直读；不触发扫描）。"""
@@ -56,24 +55,6 @@ def snapshot() -> Dict[str, Any]:
         "scanAt": int(_agg["scan_at"]),
         "scanning": bool(_agg["scanning"]),
     }
-
-
-def ensure_fresh(force: bool = False) -> None:
-    """过期（或 force=True 无视 TTL，v0.5.0-beta.14.12 手动刷新用）且未
- 扫描中 → 起后台扫描（fire-and-forget；端点路径零等待）。"""
-    if _agg["scanning"]:
-        return
-    if not force and time.time() - _agg["scan_at"] < _TTL:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # 当前上下文无运行事件循环（异常调用路径）→ 忽略，下轮 tick/
-        # 端点重试（本函数承诺非阻塞、不抛；先查循环再建协程，
-        # 避免留下未 await 的悬挂 coroutine 警告）。
-        logger.debug("ensure_fresh: no running event loop, skip")
-        return
-    loop.create_task(_sweep())
 
 
 async def _ctl_get(url: str, token: str) -> tuple:
@@ -100,25 +81,27 @@ def _ts_ms(value: Any) -> int:
         return 0
 
 
-async def _sweep() -> None:
-    """单飞门 + 后台共用通道（v0.5.0-beta.14.12，）。
+# 骨架实例在 _do_sweep 定义后构造（模块尾 _ticker = BgTicker(...)）；
+# 以下为模块级薄委托——测试/前端的既有注入点与断言面（ws._agg 状态
+# 容器、ws._ctl_get 取数、ws._sweep 直跑、snapshot 形状）全部保持。
+_ticker: Optional[BgTicker] = None
 
- 前台忙（拨号 inflight > 12）让权、等共用锁超 90s 放弃本轮（下一
- tick 重试）；扫描体持共用锁——同一时刻至多一路后台扫描在跑
- （与 projects_workflow / KB 刷新共享，防齐发打满闸门抢前台）。
- """
-    if _agg["scanning"]:
-        return  # 单飞：扫描中不重入
-    _agg["scanning"] = True
-    try:
-        async with bg_slot() as _bg:
-            if not _bg:
-                return  # 让权/放弃 → 本轮不动（保旧值，下一 tick 重试）
-            await _do_sweep()
-    except Exception:  # noqa: BLE001 - 后台循环不得因单轮异常死掉
-        logger.warning("worker_status sweep failed", exc_info=True)
-    finally:
-        _agg["scanning"] = False
+
+def _ticker_ref() -> BgTicker:
+    assert _ticker is not None, "worker_status ticker 未初始化（模块加载顺序）"
+    return _ticker
+
+
+def ensure_fresh(force: bool = False) -> None:
+    """过期（或 force=True 无视 TTL）且未扫描中 → 起后台扫描
+ （fire-and-forget；端点路径零等待）。实现见 BgTicker.ensure_fresh。"""
+    _ticker_ref().ensure_fresh(force)
+
+
+async def _sweep() -> None:
+    """单飞门 + 后台共用通道（让权/90s 超时放弃本轮）。
+ 实现见 BgTicker._sweep；扫描体=_do_sweep（本模块）。"""
+    await _ticker_ref()._sweep()
 
 
 async def _do_sweep() -> None:
@@ -211,37 +194,28 @@ async def _do_sweep() -> None:
     _agg["scan_at"] = time.time()
 
 
-async def _run() -> None:
-    # 启动让行（address_probe 同款 _STARTUP_DELAY），随后每 30s 一次
-    # ensure_fresh（TTL 未过期自动跳过）。
-    await _stop_event.wait(_STARTUP_DELAY)
-    while not _stop_event.is_set():
-        ensure_fresh()
-        await _stop_event.wait(_TICK)
-
-
 def start() -> None:
     """启动 tick 循环（幂等，进程内单实例）。由 plugin.register_startup_hook 调用。"""
-    global _task
-    if _task and not _task.done():
-        return
-    _stop_event.clear()
-    _task = asyncio.create_task(_run())
-    logger.info(
-        "worker status aggregator started (tick=%.0fs, ttl=%.0fs, names_ttl=%.0fs)",
-        _TICK,
-        _TTL,
-        _NAMES_TTL,
-    )
+    _ticker_ref().start()
 
 
 async def stop() -> None:
     """停止 tick 循环。由 plugin.register_shutdown_hook 调用。"""
-    _stop_event.set()
-    if _task and not _task.done():
-        _task.cancel()
-        try:
-            await _task
-        except asyncio.CancelledError:  # pragma: no cover
-            pass
-    logger.info("worker status aggregator stopped")
+    await _ticker_ref().stop()
+
+
+# 扫描体（_do_sweep）定义完成 → 骨架实例就位。
+_ticker = BgTicker(
+    "worker_status",
+    _agg,
+    _do_sweep,
+    tick=_TICK,
+    ttl=_TTL,
+    startup_delay=_STARTUP_DELAY,
+)
+logger.info(
+    "worker status aggregator configured (tick=%.0fs, ttl=%.0fs, names_ttl=%.0fs)",
+    _TICK,
+    _TTL,
+    _NAMES_TTL,
+)
