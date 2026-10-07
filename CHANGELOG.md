@@ -5,6 +5,58 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.23（2026-10-07 · 14.22 验收反馈批：凭证验证分离 + PATCH 代理透传 + KB 低带宽批量读压缩 + 服务端预热）
+
+**14.22 验收反馈的系统修复——Higress 验证误报 token 错、工具写链路「修改失败：HTTP 405」、KB 外网冷路径慢**
+
+## ① Higress / Controller 凭证验证分离（N1）
+
+真根因（源码级）：`verify-admin` 在分支前**无条件**解析 Controller token——
+config 里 token 含非法字符时，点 Higress 验证（纯账密链路，路径 A）会被
+token 错拦截，两套验证互相牵连。
+
+修：token 解析移入路径 B 内部；路径 A 只验 Console 账密、路径 B 只验
+Controller token。两验证器各自独立，一侧凭据错误不再误报另一侧。
+
+## ② 工具写链路 405（N3，beta.12.3 潜伏）
+
+真根因（实证）：插件 catch-all 代理的 `methods` 漏了 **PATCH**——
+Controller tools 端点恰为 `PATCH /workers/{name}/tools/{tool}`，两个写
+入口（WorkerManage 工具 tab + 资源管理面板）全部 `Method Not Allowed`。
+WAN 直连 Controller 实测 PUT 200 / PATCH 200，Caddy 与上游清白。
+
+修：catch-all methods 增 PATCH（body 与 POST/PUT 同语义读取）；写路径
+（POST/PUT/PATCH/DELETE）非 2xx 记 warning 留痕（方法 + 路径 + 上游状态
++ body 头 200B）——上游方法表不符从此一眼可辨。
+
+## ③ KB 外网冷路径：批量读压缩 + 服务端预热（N2，K1/K2）
+
+真根因（实证）：WAN 冷路径 = 1 次 graph 批量读 ≤1.8MB 原文
+（5M 带宽 ≈ 3–5s）；暖路径 SWR 8ms 已优。
+
+修：
+- **K1 批量读 gzip 信封**：批量读脚本输出升级为 `===GZB1===`
+  gzip+base64 信封，1.8MB 原文过链路体积降约 5×；旧协议响应（无 magic
+  前缀）原样透传、信封损坏安全回退逐文件路径；帧协议零改动。
+- **K2 服务端预热**：`/kb/agents` 响应后后台预热 last-agent 的
+  tree+graph（缺失/不在清单/异常均静默跳过，单飞保护）——外网打开
+  知识库时缓存大概率已暖。
+- 与既有客户端预热（探测成功后并行发，14.18）+ SWR 缓存叠加，
+  外网冷路径收敛到秒级内。
+
+## ④ 安全网扩展（13 覆盖点）
+
+- **D4 运行时透传 A1–A7**：docker 主路径与 ctl 兜底路径的
+  `runtime`/`runtimeDeprecated` 字段写语义（非空才写键/真值才写键/
+  旧 Controller 键缺失而非 null/畸形条目安全跳过）、磁盘缓存命中原样
+  透传、401 文案、兜底路径端点级透传。
+- **凭据护栏 B1–B6**：`PUT /config` 保存前 400 拦截（类型不匹配=
+  同缺口/显式清除 200 + 落盘降级/整单拒不落盘）、`credential_check`
+  逐位置形态（str/basic/bearer）。
+- 全部测试拨号点由假客户端拦截，零真实 HTTP。
+
+---
+
 ## 0.5.0-beta.14.22（2026-10-07 · 14.21 验收反馈批：SGLang 活动信号 + 配置/凭据韧性 + KB 低带宽自适应 + 运行时提醒 8 面板 + 按钮对齐）
 
 **14.21 验收反馈的系统修复——SGLang 吞吐 0 值误导、配置/凭据「已保存但未生效」、KB 外网加载慢、非 QwenPaw 运行时功能糊涂态、按钮观感不对齐**
