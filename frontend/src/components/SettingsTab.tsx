@@ -750,7 +750,7 @@ const SettingsTab = React.memo(function SettingsTab({
   const save = async () => {
     setSaving(true);
     try {
-      await requestJson("/agentteams-proxy/config", {
+      const resp = await requestJson("/agentteams-proxy/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -774,6 +774,37 @@ const SettingsTab = React.memo(function SettingsTab({
           },
         }),
       });
+      // v0.5.0-beta.14.22：凭据回读校验——落盘形态（str=无凭据/basic/
+      // bearer）与表单意图逐位置对表，不一致=当场显形（「已保存但没
+      // 记住」不再无痕：成功 toast 后紧跟警告列出异常位置）。
+      const check: Record<string, string[] | undefined> =
+        (resp as { credential_check?: Record<string, string[]> })
+          ?.credential_check || {};
+      const mismatch: string[] = [];
+      const expect = (fam: "matrix" | "controller" | "sglang" | "gateway") => {
+        const rows = buildAddrEntries(fam);
+        const got = check[fam] || [];
+        rows.forEach((entry, i) => {
+          const isObj = typeof entry === "object" && entry !== null;
+          const want = isObj
+            ? (entry as { auth?: { type?: string } }).auth?.type || "str"
+            : "str";
+          if ((got[i] || "str") !== want) {
+            mismatch.push(
+              `${{ matrix: "Matrix", controller: "Controller", sglang: "SGLang", gateway: "Higress" }[fam]} 第 ${i + 1} 个地址`,
+            );
+          }
+        });
+      };
+      (["matrix", "controller", "sglang", "gateway"] as const).forEach(expect);
+      if (mismatch.length > 0) {
+        message.warning(
+          tr("部分地址凭据未按预期保存：{where}——请重新填写并保存", {
+            where: mismatch.join("、"),
+          }),
+          6,
+        );
+      }
       message.success(tr("配置已保存（已自动探测生效地址）"));
       onConfigChange();
       // v0.5.0-beta.12: 保存后立即连通性测试——用户当场看到两条路径的延迟与状态。
@@ -909,20 +940,15 @@ const SettingsTab = React.memo(function SettingsTab({
                   "配置加载失败（插件后端可能正在重载）。页面上显示的是默认值，不是你的已保存配置——请勿直接保存，以免覆盖。",
                 )}
               </span>
-              <button
-                type="button"
+              {/* v0.5.0-beta.14.22：按钮对齐 QwenPaw 风格——antd Button
+  继承主题 token（主色/圆角/悬停/焦点环），不再手写边框。 */}
+              <antd.Button
+                size="small"
+                danger
                 onClick={onRetryConfig}
-                style={{
-                  border: "1px solid currentColor",
-                  borderRadius: 6,
-                  background: "transparent",
-                  color: "inherit",
-                  padding: "2px 12px",
-                  cursor: "pointer",
-                }}
               >
                 {tr("重试")}
-              </button>
+              </antd.Button>
             </>
           ) : (
             <span>{tr("正在加载已保存配置…")}</span>
@@ -1155,10 +1181,17 @@ const SettingsTab = React.memo(function SettingsTab({
           </div>
           <antd.Select
             value={addressMode}
+            disabled={config === null}
             onChange={(v: "auto" | "lan" | "wan") => {
               setAddressMode(v);
               // v0.5.0-beta.14.11：模式变更即落盘——修复「改了但
               // 未点保存 → 重开跳回自动」。轻量 PUT，仅 address_mode 一键。
+              // v0.5.0-beta.14.22：config 未就绪时禁止落盘——默认态
+              // 的「auto」一键 PUT 会覆盖已保存模式（与保存门控同源）。
+              if (config === null) {
+                message.warning(tr("配置尚未加载完成，暂不能保存"));
+                return;
+              }
               void (async () => {
                 try {
                   await requestJson("/agentteams-proxy/config", {
@@ -1197,6 +1230,11 @@ const SettingsTab = React.memo(function SettingsTab({
             onChange={(v: "light" | "off" | "full") => {
               setFxMode(v);
               document.documentElement.dataset.wbFx = v;
+              // v0.5.0-beta.14.22：config 未就绪时禁止落盘（与地址模式同源）。
+              if (config === null) {
+                message.warning(tr("配置尚未加载完成，暂不能保存"));
+                return;
+              }
               // 与地址模式同款：变更即落盘（轻量 PUT）。
               void (async () => {
                 try {

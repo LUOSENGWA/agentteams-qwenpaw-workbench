@@ -29,6 +29,7 @@ import {
 import Graph3D from "./Graph3D";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 import { formatSize } from "../util";
 import MdText from "./MdText";
 import { createPoller, type Poller } from "../usePoller";
@@ -1574,9 +1575,26 @@ function RemoteKbView(props: {
     if (agent) saveKbState(agent, kbTeam, graphMode);
   }, [agent, kbTeam, graphMode]);
 
+  // v0.5.0-beta.14.22（D4 #5）：选中 Agent 非 qwenpaw → 知识文件视图降级
+  // 空态 + 说明（workspace-files 是 QwenPaw 独有面；controller 透传
+  // runtime，旧 controller 无字段 = undefined 放行不误伤）。
+  const kbGated = React.useMemo(() => {
+    const info = agents.find((a) => a.name === agent);
+    return isQwenpawOnlyDisabled(info?.runtime);
+  }, [agents, agent]);
+
   const loadAll = React.useCallback(
     (silent = false) => {
       if (!agent) return;
+      if (kbGated) {
+        // 降级空态：不发起文件/图谱拨号（对齐 dashboard B2 数据源级过滤）。
+        setTree(null);
+        setGraph(null);
+        setError("");
+        setLoading(false);
+        setGraphLoading(false);
+        return;
+      }
       if (!silent) {
         setLoading(true);
         setGraphLoading(true);
@@ -1606,7 +1624,7 @@ function RemoteKbView(props: {
         setGraphLoading(false);
       })();
     },
-    [agent],
+    [agent, kbGated],
   );
 
   React.useEffect(() => {
@@ -2095,6 +2113,20 @@ function RemoteKbView(props: {
       <antd.Row gutter={12}>
         <antd.Col span={10} style={KB_COL_STYLE}>
           <antd.Card size="small" style={KB_CARD_STYLE} styles={{ body: KB_CARD_BODY_STYLE }} title={<span style={{ fontSize: 13 }}>{tr("知识文件")}</span>}>
+            {kbGated ? (
+              // v0.5.0-beta.14.22（D4 #5）：非 qwenpaw Agent → 降级空态 + 说明。
+              <div style={{ padding: 16 }}>
+                <RuntimeNotice runtime={agentInfo?.runtime} />
+                <antd.Empty
+                  image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={tr(
+                    "知识文件视图仅支持 QwenPaw 运行时的 Agent（当前：{rt}）",
+                    { rt: agentInfo?.runtime || "—" },
+                  )}
+                  style={{ margin: "24px 0" }}
+                />
+              </div>
+            ) : (
             <antd.Spin spinning={loading}>
               <FileGroup
                 title={tr("档案（工作区核心文件）")}
@@ -2181,6 +2213,7 @@ function RemoteKbView(props: {
                 />
               ) : null}
             </antd.Spin>
+            )}
           </antd.Card>
         </antd.Col>
         <antd.Col span={14} style={KB_COL_STYLE}>

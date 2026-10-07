@@ -9,6 +9,7 @@ import {
   setWorkerApproval,
 } from "../api";
 import { useT } from "../i18n";
+import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -197,8 +198,17 @@ function LevelCardGrid({
   );
 }
 
-function ApprovalControl({ workerName }: { workerName: string }) {
+function ApprovalControl({
+  workerName,
+  runtime,
+}: {
+  workerName: string;
+  /** v0.5.0-beta.14.22（D4 #2）：Worker runtime——非 qwenpaw 时禁用四档
+   * 卡 + 说明（审批是 QwenPaw 独有面，服务端 400；提前挡住不撞 400）。 */
+  runtime?: string;
+}) {
   const tr = useT();
+  const gated = isQwenpawOnlyDisabled(runtime);
   const [level, setLevel] = React.useState<string | null>(null);
   const [readError, setReadError] = React.useState("");
   const [sel, setSel] = React.useState<string | null>(null);
@@ -252,8 +262,9 @@ function ApprovalControl({ workerName }: { workerName: string }) {
   }, [workerName, tr]);
 
   React.useEffect(() => {
+    if (gated) return; // D4 #2：非 qwenpaw 不拨号
     void load();
-  }, [load]);
+  }, [load, gated]);
 
   const apply = React.useCallback(
     async (v: string) => {
@@ -309,6 +320,27 @@ function ApprovalControl({ workerName }: { workerName: string }) {
     },
     [level, tr, workerName],
   );
+
+  if (gated) {
+    // D4 #2：非 qwenpaw 运行时——禁用卡 + 说明（不渲染四档、不拨号）。
+    return (
+      <div>
+        <div
+          style={{
+            padding: "8px 10px",
+            border: `1px solid rgba(0,0,0,0.06)`,
+            borderRadius: 8,
+            fontSize: 12,
+          }}
+        >
+          <span style={{ color: "#bbb" }}>
+            {tr("工具执行安全")}（{runtime}）
+          </span>
+          <RuntimeNotice runtime={runtime} compact />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

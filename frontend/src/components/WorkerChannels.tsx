@@ -30,6 +30,7 @@ import type * as ReactNS from "react";
 import { useThemeColors } from "../theme";
 import { useT, useLang } from "../i18n";
 import { usePoller } from "../usePoller";
+import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 import {
   type WorkerInfo,
   type WorkerChannelConfig,
@@ -250,7 +251,14 @@ export default function WorkerChannels(props: {
     active,
   });
 
+  // v0.5.0-beta.14.22（D4 #3）：频道面板门控——频道配置写的是 worker
+  // 容器 agent.json（QwenPaw 独有面），非 qwenpaw runtime 拨号会 400/
+  // 无数据。只读展示照读（列表/健康），写路径（抽屉）提前挡住。
+  const selWorker = workers.find((w) => w.name === sel);
+  const gated = isQwenpawOnlyDisabled(selWorker?.runtime);
+
   const openDrawer = React.useCallback(async (ch: string) => {
+    if (gated) return; // D4 #3：非 qwenpaw 不展开抽屉（写路径）
     const cfg = channels[ch] || { enabled: false, bot_prefix: "" };
     setDrawerCh(ch);
     setEnabled(Boolean(cfg.enabled));
@@ -268,7 +276,7 @@ export default function WorkerChannels(props: {
     } catch {
       /* 现值读失败用卡片缓存 */
     }
-  }, [channels, sel, stopQrPoll]);
+  }, [channels, sel, stopQrPoll, gated]);
 
   const closeDrawer = React.useCallback(() => {
     setDrawerCh("");
@@ -471,6 +479,9 @@ export default function WorkerChannels(props: {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
+      {/* v0.5.0-beta.14.22（D4 #3）：非 qwenpaw runtime 顶部说明（写路径
+  已挡；只读列表/健康照读）。 */}
+      {gated ? <RuntimeNotice runtime={selWorker?.runtime} compact /> : null}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
         {/* v0.5.0-beta.13.16：单 Worker（拓扑资源管理嵌入）→ 定显名字，
