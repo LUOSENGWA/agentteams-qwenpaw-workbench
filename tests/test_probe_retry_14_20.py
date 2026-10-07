@@ -97,6 +97,43 @@ def test_ordered_ctl_urls_cache_not_in_list_ignored(monkeypatch) -> None:
     assert out == ["http://lan:8080"]
 
 
+def test_ordered_ctl_urls_dict_entries_wan_basic(monkeypatch) -> None:
+    """v0.5.0-beta.14.21 回归：controller_urls 的 WAN 条目常态=带 basic
+ 凭据的 dict（{url, auth}）——旧版直接 u.strip() 对 dict 抛 AttributeError
+ （verify-admin 500 真根因；14.20 单测只覆盖 str 形态漏网）。
+ 现走 _address_list 归一化：dict→url、尾斜杠去除、顺序保留。"""
+    cfg = {
+        "controller_urls": [
+            "http://lan:8080/",
+            {
+                "url": "https://ctlr.example.com:7113",
+                "auth": {"type": "basic", "username": "u", "password": "p"},
+            },
+        ],
+    }
+    monkeypatch.setattr(router_mod, "_working_cache", {})
+    out = router_mod._ordered_ctl_urls(cfg)
+    assert out == [
+        "http://lan:8080",
+        "https://ctlr.example.com:7113",
+    ], f"dict 条目应归一化为 url（去尾斜杠、保序），实际 {out}"
+
+
+def test_ordered_ctl_urls_dict_entry_cache_first(monkeypatch) -> None:
+    """dict（WAN）地址命中 working-cache → 前置（外网场景常态=首槽活地址）。"""
+    cfg = {
+        "controller_urls": [
+            "http://lan:8080/",
+            {"url": "https://ctlr.example.com:7113/"},
+        ],
+    }
+    monkeypatch.setattr(
+        router_mod, "_working_cache", {"controller": "https://ctlr.example.com:7113"},
+    )
+    out = router_mod._ordered_ctl_urls(cfg)
+    assert out == ["https://ctlr.example.com:7113", "http://lan:8080"]
+
+
 # ── ③ 连通性测试墙钟：探测段与诊断段各自并行（族间不串行）────────────
 
 

@@ -242,12 +242,12 @@ async def _safe_refresh_effective(cfg: Dict[str, Any]) -> None:
 def _ordered_ctl_urls(cfg: Dict[str, Any]) -> List[str]:
     """v0.5.0-beta.14.20：验证探测顺序——working-cache（最后已知可达）优先、
  其余原序。外网场景 LAN 死地址不再烧首槽（8s 时代「token 验证转圈」的
- 主因之一：按配置序 [LAN, WAN] 先拨必死的 LAN）。"""
-    urls = [
-        u.strip().rstrip("/")
-        for u in (cfg.get("controller_urls") or [])
-        if u and u.strip()
-    ]
+ 主因之一：按配置序 [LAN, WAN] 先拨必死的 LAN）。
+ v0.5.0-beta.14.21：地址归一化改走 _address_list（同全部拨号点）——
+ controller_urls 条目支持 str | {url, auth}（WAN 条目常态=带 basic 凭据的
+ dict），旧版直接 u.strip() 对 dict 条目抛 AttributeError（verify-admin
+ 500 真根因；14.20 单测只覆盖 str 形态漏网）。"""
+    urls = [u.rstrip("/") for u in _address_list(cfg, "controller") if u]
     with _cache_lock:
         cached = _working_cache.get("controller")
     if cached and cached in urls:
