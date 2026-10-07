@@ -56,6 +56,11 @@ CONTROLLER_ALLOWED_PREFIXES = ("/api/", "/healthz")
 # Per-process cache of the currently working address, keyed by target kind.
 _cache_lock = threading.Lock()
 _working_cache: Dict[str, str] = {}  # {"matrix": url, "controller": url}
+# v0.5.0-beta.14.19: Higress Console 管理会话（console_session）过期被动检测
+# ——网关面请求带 Cookie 收到 401 = 会话已死（此前前端只见 alias 层静默
+# 消失，无人知晓该重新验证）。置位后由 /auth-status 暴露给前端横幅；
+# verify-admin 成功（新会话到手）时清零。
+_console_session_expired = False
 # v0.5.0-beta.14.5: approval/list 短 TTL 缓存——高频展开/切页时省一整轮容器扫
 # 描（原串行全量实测 23s@WAN）；approval_set 成功后主动失效。key=agent 参数
 # （""=全量）→ (expiry_monotonic, payload)。只存成功响应。
@@ -1777,6 +1782,38 @@ def build_router() -> APIRouter:
             out["configWritable"] = False
         return out
 
+    @router.get("/auth-status")
+    async def get_auth_status() -> Dict[str, Any]:
+        """v0.5.0-beta.14.19: 登录态/凭据健康（纯进程内状态，零外发请求）。
+
+ 前端 30s 低频轮询驱动「登录已失效」横幅——此前 token 失效后
+ @通知静默全断且无人知晓（改密/踢设备/重置 token 是高频运维动作）。
+ - matrix_token: none=未登录 / invalid=/sync 401+auth errcode 判死
+ - console_session: none=未验证 / expired=网关面 401 被动判死
+ - controller_token: config|env|invalid|none（与 /config 同源逻辑）
+ """
+        from . import sync_watcher as _sw  # noqa: PLC0415
+
+        cfg = config_mod.load_config()
+        matrix = cfg.get("matrix") or {}
+        has_matrix = bool(str(matrix.get("access_token") or "").strip())
+        out: Dict[str, Any] = {
+            "matrix_token": ("none" if not has_matrix else _sw.auth_status()),
+            "console_session": (
+                "none"
+                if not str(cfg.get("console_session") or "").strip()
+                else ("expired" if _console_session_expired else "active")
+            ),
+            "controller_token": "none",
+        }
+        try:
+            _t, _src = _resolve_controller_token(cfg)
+            if _t:
+                out["controller_token"] = _src
+        except TokenValidationError:
+            out["controller_token"] = "invalid"
+        return out
+
     @router.put("/config")
     async def put_config(patch: ConfigPatch) -> Dict[str, Any]:
         """Persist config fields. Never accept a redacted token back."""
@@ -2097,6 +2134,9 @@ def build_router() -> APIRouter:
                     "console_session": session_cookie,
                 },
             )
+            # v0.5.0-beta.14.19: 新会话到手 → 过期标记清零。
+            global _console_session_expired
+            _console_session_expired = False
             # v0.5.0-beta.12：会话到手立即自检 alias 层（有会话≠有 alias——
             # 解包/形状断点要在验证时就暴露，而不是等模型下拉静默平铺）。
             gw_routes, gw_aliases = 0, []
@@ -2256,6 +2296,11 @@ def build_router() -> APIRouter:
                     "data": None,
                     "reason": f"http_{r.status_code}",
                 }
+                # v0.5.0-beta.14.19: 带 Cookie 的网关面 401 = 会话过期
+                # （Higress Console 对失效 session 回 401 + JSON）。
+                if r.status_code == 401:
+                    global _console_session_expired
+                    _console_session_expired = True
                 detail = ""
                 try:
                     j = r.json()
