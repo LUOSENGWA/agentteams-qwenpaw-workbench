@@ -21,6 +21,8 @@ both paths (same homeserver behind different network routes).
 from __future__ import annotations
 
 import asyncio
+import base64
+import gzip
 import json as _json_mod
 import logging
 import os
@@ -107,6 +109,31 @@ async def _kb_prewarm_agent(agent: str) -> None:
         return
     refresh("tree", agent)
     refresh("graph", agent)
+
+
+def _kb_batch_decode(text: Optional[str]) -> Optional[str]:
+    """v0.5.0-beta.14.23：K1 批量读 GZB1 信封解码——WAN 冷路径
+ 1.8MB 原文过链路 → gzip+base64 信封（体积 ~5× 收敛，帧语义不变）。
+ 首行恰为 ``===GZB1===``（新协议）→ 取 magic 行后、最后一个
+ ``\\n===END`` 前的 b64（strip）→ b64decode(validate) →
+ gzip.decompress → utf-8/replace；无 magic 前缀（旧协议/防御）→
+ 原样返回；text=None 或信封损坏（b64/gzip 失败、无 ===END 收尾）
+ → None（调用方按通道挂处理，回退逐文件路径）。"""
+    if text is None:
+        return None
+    if text.split("\n", 1)[0] != "===GZB1===":
+        return text
+    rest = text[len("===GZB1===") + 1:]
+    end = rest.rfind("\n===END")
+    if end == -1:
+        return None
+    blob = rest[:end].strip()
+    try:
+        raw = base64.b64decode(blob, validate=True)
+        return gzip.decompress(raw).decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001
+        return None
+
 
 def kb_swr_ttl_for(address_mode: Any) -> float:
     """v0.5.0-beta.14.22：KB 磁盘 SWR stale 阈值随生效网路自适应。
@@ -2138,21 +2165,13 @@ def build_router() -> APIRouter:
 
         username = (body.admin_username or "").strip()
         password = (body.admin_password or "").strip()
-        token = (body.controller_token or "").strip()
-        token_source = ""
         if password == "***":
             password = str(cfg.get("admin_password") or "")
-        if token == "***" or not token:
-            try:
-                token, token_source = _resolve_controller_token(cfg)
-            except TokenValidationError as e:
-                return {"ok": False, "error": str(e), "tokenPath": False}
-        else:
-            try:
-                token = _sanitize_token(token)
-            except TokenValidationError as e:
-                return {"ok": False, "error": str(e), "tokenPath": False}
-            token_source = "input"
+        # v0.5.0-beta.14.23（N1 验证分离）：Controller token 解析**只在
+        # 路径 B 内**做——Higress 账密验证（路径 A）不触碰 token：旧版在
+        # 分支前无条件 _resolve_controller_token，config 里 token 含非法
+        # 字符时点「Higress 验证」会报 token 错（两套凭证互相牵连）。
+        # 两验证器现在各自独立：A 只验 Console 账密，B 只验 Controller token。
         # v0.5.0-beta.14.7: 双地址——body 列表/单值优先，配置次之；按序尝试，
         # 传输错误换下一地址，凭据错误立即报（地址无关）。
         console_urls: List[str] = []
@@ -2270,6 +2289,21 @@ def build_router() -> APIRouter:
             }
 
         # --- 路径 B：Controller 管理员 token ---
+        # v0.5.0-beta.14.23：token 解析在此处（路径 A 早退后）——见函数头
+        # N1 注释；token_source ∈ {"input", "config", "env"}。
+        token = (body.controller_token or "").strip()
+        token_source = ""
+        if token == "***" or not token:
+            try:
+                token, token_source = _resolve_controller_token(cfg)
+            except TokenValidationError as e:
+                return {"ok": False, "error": str(e), "tokenPath": False}
+        else:
+            try:
+                token = _sanitize_token(token)
+            except TokenValidationError as e:
+                return {"ok": False, "error": str(e), "tokenPath": False}
+            token_source = "input"
         if token:
             cfg_ctl = _ordered_ctl_urls(cfg)
             if not cfg_ctl:
@@ -3887,6 +3921,7 @@ def build_router() -> APIRouter:
     _KB_BATCH_BUDGET = 1887436  # 1.8MB 内容预算（2MB 传输上限内）
     _KB_BATCH_MAX_PATHS = 200
     _KB_BATCH_READ_SCRIPT = r'''import os, sys
+import gzip, base64
 ws = sys.argv[1]
 paths = sys.argv[2:]
 budget = 1887436
@@ -3921,7 +3956,10 @@ for p in paths:
  else:
  out.append("===FRAME:0:" + p)
 out.append("===END")
-sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
+payload = ("\n".join(out) + "\n").encode("utf-8")
+blob = base64.b64encode(gzip.compress(payload, 9)).decode("ascii")
+sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
+                        + b"\n===END\n")
 '''
 
     def _kb_take_bytes(s: str, pos: int, nbytes: int):
@@ -4019,7 +4057,10 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         )
         if out is None:
             return None
-        return _kb_parse_batch(out)
+        text = _kb_batch_decode(out)
+        if text is None:
+            return None  # 信封损坏=通道挂（调用方回退逐文件路径）
+        return _kb_parse_batch(text)
 
     async def _kb_workspace(token: str, base: str, agent: str) -> str:
         """探测 Agent 工作区路径（5min 缓存）。无则 404。"""
@@ -4542,6 +4583,32 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                 _kb_inflight.pop(key, None)
         _kb_inflight[key] = loop.create_task(_run())
 
+    def _kb_prewarm_last(payload: Optional[Dict[str, Any]]) -> None:
+        """v0.5.0-beta.14.23：/kb/agents 响应后后台预热 last-agent 的
+ tree+graph——外网「打开知识库」时缓存大概率已暖（首屏 graph 冷读
+ 3–5s 的 WAN 往返）。last-agent 缺失/非 dict/空名/不在本次清单
+ （防预热已删除的 agent）→ 静默跳过；单飞由 _spawn_kb_refresh 的
+ _kb_inflight 保证（重复 /kb/agents 请求在飞即跳过）；异常全吞
+ （预热失败不得影响主响应）。"""
+        try:
+            hit = kb_cache.load("last-agent")
+            if hit is None:
+                return
+            meta = hit[1]
+            agent = meta.get("agent") if isinstance(meta, dict) else None
+            if not isinstance(agent, str) or not agent:
+                return
+            names = {
+                str(a.get("name") or "")
+                for a in ((payload or {}).get("agents") or [])
+                if isinstance(a, dict)
+            }
+            if agent not in names:
+                return
+            asyncio.create_task(_kb_prewarm_agent(agent))
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("kb last-agent prewarm skipped: %s", exc)
+
     @router.get("/kb/agents")
     async def kb_agents() -> Dict[str, Any]:
         """远端 Agent 清单：Docker 容器列表（agentteams-worker-* +
@@ -4550,6 +4617,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         # 秒回、cached/age 提示），冷取 = 原全量清单（抽为 _kb_agents_compute）。
         _c = _kb_agents_cache.get("agents")
         if _c and _c[0] > time.monotonic():
+            _kb_prewarm_last(_c[1])
             return _c[1]
         _disk = kb_cache.load("agents")
         if _disk is not None:
@@ -4557,12 +4625,15 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
             _age = time.time() - _ts
             if _age > _kb_swr_ttl_now():
                 _spawn_kb_refresh("agents", "")
-            return {**_payload, "cached": True, "age": int(_age)}
+            _resp = {**_payload, "cached": True, "age": int(_age)}
+            _kb_prewarm_last(_resp)
+            return _resp
         # 冷取经注册表取计算体（生产 = 本闭包；测试可假注入，与预热/
         # 刷新同一注入点）。
         _payload = await (_KB_PREWARM_HOOKS.get("agents")
                           or _kb_agents_compute)()
         _store_kb("", _payload, "agents")
+        _kb_prewarm_last(_payload)
         return _payload
 
     async def _kb_agents_compute() -> Dict[str, Any]:
@@ -6536,7 +6607,7 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
 
     @router.api_route(
         "/{target}/{path:path}",
-        methods=["GET", "POST", "PUT", "DELETE"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     )
     async def proxy(
         request: Request,
@@ -6596,7 +6667,11 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
         body = None
         raw_body: Optional[bytes] = None
         req_ct = request.headers.get("content-type", "")
-        if request.method in ("POST", "PUT"):
+        # v0.5.0-beta.14.23：PATCH 与 POST/PUT 同语义读 body（Controller
+        # tools 端点 = PATCH /workers/{name}/tools/{tool}，beta.12.3 起
+        # catch-all 漏了 PATCH → 405 Method Not Allowed，打地鼠前的
+        # 方法表对账：Go mux 注册的方法集合=GET/PUT/POST/PATCH/DELETE）。
+        if request.method in ("POST", "PUT", "PATCH"):
             if req_ct.lower().startswith("multipart/form-data"):
                 raw_body = await request.body()
             else:
@@ -6708,6 +6783,16 @@ sys.stdout.buffer.write(("\n".join(out) + "\n").encode("utf-8"))
                         target, full_path, base, resp.status_code,
                     )
                     continue
+                # v0.5.0-beta.14.23：写路径（POST/PUT/PATCH/DELETE）非 2xx
+                # 即终态（副作用安全不跨址重放）——warning 留痕（方法+路径
+                # +上游状态+body 前 200B），405 这类「上游方法表不符」问题
+                # 从此一眼可辨（此前静默透传，只能靠前端文案反推）。
+                if request.method not in ("GET", "HEAD") and resp.status_code >= 400:
+                    logger.warning(
+                        "proxy write %s %s via %s -> %d（body 头：%s）",
+                        request.method, full_path, base, resp.status_code,
+                        resp.content[:200],
+                    )
                 return Response(
                     content=resp.content,
                     status_code=resp.status_code,
