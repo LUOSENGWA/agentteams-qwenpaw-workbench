@@ -988,41 +988,16 @@ function TeamOverview(props: TeamOverviewProps) {
             onClick={() => onRefresh?.()}
           />
         </antd.Tooltip>
+        {/* v0.5.0-beta.14.22：按钮对齐 QwenPaw 风格（antd Button 继承主题
+  token；旧版手写 pill 圆角 16 + 自绘 hover 与宿主方形按钮不一致）。 */}
         {onGlobalSearch ? (
-          <button
+          <antd.Button
+            size="small"
+            icon={<SearchIcon size={14} />}
             onClick={onGlobalSearch}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              border: `1px solid ${t.border}`,
-              background: t.cardBg,
-              color: t.textSecondary,
-              borderRadius: 16,
-              padding: "3px 12px",
-              fontSize: 12.5,
-              cursor: "pointer",
-              transition: "all 0.18s ease",
-              lineHeight: "20px",
-            }}
-            onMouseEnter={(e) => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.borderColor = "var(--app-accent, #FF7F16)";
-              el.style.color = "var(--app-accent, #FF7F16)";
-              el.style.background = "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)";
-              el.style.transform = "translateY(-1px)";
-            }}
-            onMouseLeave={(e) => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.borderColor = t.border;
-              el.style.color = t.textSecondary;
-              el.style.background = t.cardBg;
-              el.style.transform = "none";
-            }}
           >
-            <SearchIcon size={14} />
             {tr("搜索消息")}
-          </button>
+          </antd.Button>
         ) : null}
       </div>
 

@@ -1749,6 +1749,12 @@ export interface WorkerInfo {
   runningTaskCount?: number;
   lastRunAt?: string;
   lastFinishAt?: string;
+  /**
+ * v0.5.0-beta.14.22（D4）：legacy 运行时角标判定——controller ≥#1327
+ * 对 copaw 存量 worker 置 true（omitempty）；旧 controller 无此字段 =
+ * undefined（降级为仅按 runtime 判定，可接受）。
+ */
+  runtimeDeprecated?: boolean;
 }
 
 export interface TeamInfo {
@@ -2401,6 +2407,8 @@ export interface WorkerSpawnGroup {
  私聊直跳）+ runtime（CR 字段，runtime 徽章）。room-fallback 源无此二字段。 */
   room_id?: string;
   runtime?: string;
+  /** v0.5.0-beta.14.22（D4 #8）：legacy 角标（admin 源有；tree 源无=undefined）。 */
+  runtimeDeprecated?: boolean;
 }
 
 export interface WorkerTreeTeam {
@@ -3719,6 +3727,10 @@ export interface KbAgent {
   kind: "worker" | "manager";
   team?: string;
   role?: "leader" | "worker" | "critic";
+  /** v0.5.0-beta.14.22（D4 #5/#8）：runtime 判定字段（controller 透传；
+   * 旧 controller / manager 无此字段 = undefined，降级为仅按 runtime 判定）。 */
+  runtime?: string;
+  runtimeDeprecated?: boolean;
 }
 
 export interface KbFileItem {

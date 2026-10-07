@@ -1748,6 +1748,43 @@ const DICT: Record<string, { en: string }> = {
   "仅 spec.runtime = qwenpaw 的 Worker 支持。": {
     en: "Only workers with spec.runtime = qwenpaw are supported.",
   },
+  // ── v0.5.0-beta.14.22（D4 运行时提醒配套）：8 面板矩阵共用文案 ──
+  "此功能仅支持 QwenPaw 运行时的 Worker": {
+    en: "This feature only supports workers on the QwenPaw runtime",
+  },
+  "Legacy · 建议升级 QwenPaw": {
+    en: "Legacy · upgrade to QwenPaw recommended",
+  },
+  "该 Worker 的运行时为 {rt}，以下 QwenPaw 独有功能已禁用：": {
+    en: "This worker runs on {rt}; the following QwenPaw-only features are disabled:",
+  },
+  "知识库文件视图仅支持 QwenPaw 运行时（当前：{rt}）。该 Worker 的知识文件请在其所在房间或容器内查看。": {
+    en: "The knowledge file view only supports the QwenPaw runtime (current: {rt}). See this worker's room or container for its knowledge files.",
+  },
+  "会话窗（worker chats）仅支持 QwenPaw 运行时的 Worker（当前：{rt}）。": {
+    en: "The session window (worker chats) only supports QwenPaw workers (current: {rt}).",
+  },
+  "仅 QwenPaw 运行时可用": {
+    en: "Only available on the QwenPaw runtime",
+  },
+  "预加载仅支持 QwenPaw 运行时的 Worker（当前：{rt}）": {
+    en: "Preload only supports QwenPaw workers (current: {rt})",
+  },
+  "知识文件视图仅支持 QwenPaw 运行时的 Agent（当前：{rt}）": {
+    en: "The knowledge file view only supports QwenPaw agents (current: {rt})",
+  },
+  "Decode 窗口采样：上游 30s 无 decode 报 0。0 不代表空闲——看下方 KV 绿点（最近一次轮询 KV 有变化 = 推理在跑）": {
+    en: "Decode-window sampling: upstream reports 0 after 30s without decode. 0 does not mean idle — see the KV dot below (KV changed on last poll = inference running)",
+  },
+  "最近一次轮询 KV 占用有变化——推理在跑": {
+    en: "KV usage changed on the last poll — inference running",
+  },
+  "部分地址凭据未按预期保存：{where}——请重新填写并保存": {
+    en: "Some address credentials were not saved as expected: {where} — re-enter and save",
+  },
+  "配置尚未加载完成，暂不能保存": {
+    en: "Config has not finished loading yet; saving is temporarily unavailable",
+  },
   "Controller 版本未含运行配置端点，或当前账号无该 Worker 访问权（L2 仅限自己团队）。": {
     en: "Controller lacks the runtime config endpoint, or this account has no access to the worker (L2 is limited to its own team).",
   },

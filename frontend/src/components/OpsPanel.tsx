@@ -151,10 +151,28 @@ function OpsPanel({
   const sgStableRef = React.useRef(0);
   const sgFingerprint = (d: SglangLoads | null): string =>
     d ? JSON.stringify({ ...d, timestamp: "" }) : "";
+  // ── v0.5.0-beta.14.22：KV 活信号（自采样）──────────────────────
+  // gen_throughput 是 SGLang 侧「decode 窗口采样」：只在 decode-stats
+  // tick 计算，连续 30s 无 decode（长 prefill/采样稀疏）即归零导出——
+  // 推理在跑（KV 仍在变化）时卡片也可能显示 0.0 tok/s。活信号改由
+  // 前端自采样：相邻两次 poll 的 num_used_tokens 变化 = KV 在动。
+  // 两信号并显（吞吐=采样窗速率 / 活动=实时占用变化），不再单值误导。
+  const sgKvPrevRef = React.useRef<Map<number, number>>(new Map());
+  const sgKvMovingRef = React.useRef<Set<number>>(new Set());
   const refreshSglang = React.useCallback(async (silent = false) => {
     if (!silent) setSglangLoading(true);
     try {
       const data = await fetchSglangLoads();
+      // 活信号采样：占用变化必然改指纹 → 本轮 setSglang 重渲染，
+      // 渲染时读 sgKvMovingRef 即最新值（idle 轮 moved=空，无渲染亦无感）。
+      const prevMap = sgKvPrevRef.current;
+      const moved = sgKvMovingRef.current;
+      moved.clear();
+      for (const r of data.ranks) {
+        const prev = prevMap.get(r.dp_rank);
+        if (prev !== undefined && r.num_used_tokens !== prev) moved.add(r.dp_rank);
+        prevMap.set(r.dp_rank, r.num_used_tokens);
+      }
       const changed =
         sgFingerprint(sglangRef.current) !== sgFingerprint(data);
       if (changed) {
@@ -447,12 +465,29 @@ function OpsPanel({
                         <span>
                           {tr("排队")} <b>{r.num_waiting_reqs}</b>
                         </span>
-                        <span>
+                        {/* v0.5.0-beta.14.22：吞吐 0 值语义显形——
+ 上游 decode 窗口采样，0 ≠ 空闲（KV 仍在动时推理在跑）。
+ 0 显示「—」+ 悬停说明；活动判定交给下方 KV 绿点（自采样）。 */}
+                        <span style={{ cursor: "help" }}
+                          title={tr("Decode 窗口采样：上游 30s 无 decode 报 0。0 不代表空闲——看下方 KV 绿点（最近一次轮询 KV 有变化 = 推理在跑）")}
+                        >
                           {tr("吞吐")}{" "}
-                          <b>{r.gen_throughput.toFixed(1)} tok/s</b>
+                          <b>
+                            {r.gen_throughput > 0
+                              ? `${r.gen_throughput.toFixed(1)} tok/s`
+                              : "—"}
+                          </b>
                         </span>
                       </div>
                       <div style={{ fontSize: 11, color: t.textSecondary }}>
+                        {sgKvMovingRef.current.has(r.dp_rank) ? (
+                          <span
+                            style={{ color: "#52c41a", cursor: "help" }}
+                            title={tr("最近一次轮询 KV 占用有变化——推理在跑")}
+                          >
+                            ●{" "}
+                          </span>
+                        ) : null}
                         KV {r.num_used_tokens.toLocaleString()}
                         {r.pool_total_tokens > 0
                           ? `/${r.pool_total_tokens.toLocaleString()}`

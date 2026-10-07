@@ -27,6 +27,7 @@ import { groupThreads, applyWindow } from "../threadWindow";
 
 import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import { formatSize } from "../util";
@@ -684,6 +685,7 @@ function SenderAvatar({
   onDetail,
   sessionState,
   onOpenChats,
+  workerRuntime,
 }: {
   mxid: string;
   room: TeamRoom | null;
@@ -699,6 +701,9 @@ function SenderAvatar({
   sessionState?: WorkerSessionState;
   /** v0.5.0-beta.13.1：打开该 Worker 的会话抽屉（完整 session，只读）。 */
   onOpenChats?: (workerName: string) => void;
+  /** v0.5.0-beta.14.22（D4 #6）：该 Worker 的 runtime——非 qwenpaw 时
+ * 隐藏「查看会话」入口（worker chats 是 qwenpaw 独有面）。 */
+  workerRuntime?: string;
 }) {
   const tr = useT();
   const [popOpen, setPopOpen] = React.useState(false);
@@ -706,8 +711,11 @@ function SenderAvatar({
   const member = room?.members?.[mxid];
   const isMe = mxid === myUserId;
   // 左键点击弹层（需求：「点击头像可以@和改 worker 配置」）
+  // v0.5.0-beta.14.22（D4 #6）：worker chats 是 QwenPaw 独有面——非
+  // qwenpaw runtime 隐藏「查看会话」入口（runtime 未知=放行不误伤）。
+  const chatsGated = workerName && onOpenChats && !isQwenpawOnlyDisabled(workerRuntime);
   const quick: Array<{ label: ReactNS.ReactNode; act: () => void }> = [];
-  if (workerName && onOpenChats) {
+  if (chatsGated) {
     quick.push({
       label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={13} /> {tr("查看会话")}</span>,
       act: () => onOpenChats(workerName),
@@ -750,7 +758,7 @@ function SenderAvatar({
           },
         ]
       : []),
-    ...(workerName && onOpenChats
+    ...(chatsGated
       ? [
           {
             key: "chats",
@@ -1591,6 +1599,8 @@ interface RoomChatProps {
   memberRoles?: Record<string, string>;
   /** MXID → Worker 容器名（5.0.0-beta.3：成员卡显示审批卡用）。 */
   memberWorkerNames?: Record<string, string>;
+  /** v0.5.0-beta.14.22（D4 #6）：MXID → runtime（头像「查看会话」入口门控）。 */
+  workerRuntimeByMxid?: Record<string, string>;
   /** v0.5.0-beta.12：当前房间对应 Worker 的 phase/runtime 徽章
  * （1:1 个人房间才有；数据=Worker CR 字段，零新请求）。 */
   workerBadge?: { phase?: string; runtime?: string };
@@ -1653,6 +1663,7 @@ function RoomChat(props: RoomChatProps) {
     onThreadPanelLayout,
     memberRoles,
     memberWorkerNames,
+    workerRuntimeByMxid,
     workerBadge,
     sessionState,
     workerMxids,
@@ -2801,42 +2812,16 @@ function RoomChat(props: RoomChatProps) {
             <FolderIcon size={13} style={{ verticalAlign: "-2px" }} /> {tr("项目文件")}
           </antd.Button>
         ) : null}
-        <button
+        {/* v0.5.0-beta.14.22：按钮对齐 QwenPaw 风格——antd Button 继承主题
+  token（主色/圆角/悬停），不再手写 pill+hover（与宿主结构同款）。 */}
+        <antd.Button
+          size="small"
+          icon={<SearchIcon size={14} />}
           onClick={() => setSearchOpen(true)}
           title={tr("搜索当前房间历史消息")}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            border: `1px solid ${t.border}`,
-            background: t.cardBg,
-            color: t.textSecondary,
-            borderRadius: 16,
-            padding: "3px 12px",
-            fontSize: 12.5,
-            cursor: "pointer",
-            transition: "all 0.18s ease",
-            lineHeight: "20px",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.borderColor = PRIMARY;
-            (e.currentTarget as HTMLElement).style.color = PRIMARY;
-            (e.currentTarget as HTMLElement).style.background =
-              "color-mix(in srgb, var(--app-accent, #FF7F16) 8%, transparent)";
-            (e.currentTarget as HTMLElement).style.transform =
-              "translateY(-1px)";
-          }}
-          onMouseLeave={(e) => {
-            const el = e.currentTarget as HTMLElement;
-            el.style.borderColor = t.border;
-            el.style.color = t.textSecondary;
-            el.style.background = t.cardBg;
-            el.style.transform = "none";
-          }}
         >
-          <SearchIcon size={14} />
           {tr("搜索")}
-        </button>
+        </antd.Button>
         {/* v0.5.0-beta.12 ：房间操作（Element 同款能力：静音 + 退出房间）。
  静音=m.muted_room account data（跨客户端状态源；插件通知引擎
  sync_watcher 同数据源消费，静音房间不再触发 @/任务通知）。
@@ -3221,6 +3206,7 @@ function RoomChat(props: RoomChatProps) {
                             onMention={insertMention}
                             onDm={onDm}
                             workerName={memberWorkerNames?.[msg.sender]}
+                            workerRuntime={workerRuntimeByMxid?.[msg.sender]}
                             onDetail={openDetailMxid}
  // （灯在头像角落，不再名字旁）：
                             // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
