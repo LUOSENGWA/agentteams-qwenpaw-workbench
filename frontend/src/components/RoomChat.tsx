@@ -17,6 +17,7 @@ import { useMediaObjectUrl } from "../useMediaObjectUrl";
 import { MxcAvatar } from "../MxcAvatar";
 import MdText from "./MdText";
 import { FilePreview, type PreviewFile } from "./FilePreview";
+import { ActionBtn } from "./ActionBtn";
 import MessageSearch from "./MessageSearch";
 import MemberDetail from "./MemberDetail";
 import WorkflowCard from "./WorkflowCard";
@@ -1332,17 +1333,16 @@ function MessageBody({
  v0.5.0-beta.12 : 直链经代抓同样有 apiPath → 全类型统一
  host 链（跨域 a[download] 会变导航）。url 为空时不渲染
  href（href="" 点击会重载当前页面）。 */}
-          <antd.Button
-            type="text"
-            size="small"
+          {/* v0.5.0-beta.14.21：消息文件卡操作统一 ActionBtn（图标+文字+可见规格）。 */}
+          <ActionBtn
             icon={<DownloadOutlined />}
+            label={tr("下载")}
             href={fileTarget.apiPath ? undefined : url || undefined}
             disabled={!url && !fileTarget.apiPath}
             download={msg.filename || msg.body || "file"}
-            title={tr("下载")}
             onClick={
               fileTarget.apiPath
-                ? (e: { preventDefault: () => void }) => {
+                ? (e) => {
                     e.preventDefault();
                     void (async () => {
                       const ok = await downloadViaHost(
@@ -1355,10 +1355,9 @@ function MessageBody({
                 : undefined
             }
           />
-          <antd.Button
-            type="text"
-            size="small"
+          <ActionBtn
             icon={<EyeOutlined />}
+            label={tr("查看")}
             onClick={() =>
               setPreviewFile({
                 name: msg.filename || msg.body || "file",
@@ -1371,7 +1370,6 @@ function MessageBody({
                 ...(typeof msg.size === "number" ? { size: msg.size } : {}),
               })
             }
-            title={tr("预览")}
           />
         </div>
         {/* 产物验收（Phase 4 交付闭环）：Agent 交付的 m.file 消息

@@ -11,6 +11,7 @@ import {
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
 import { FilePreview, type PreviewFile } from "./FilePreview";
+import { ActionBtn } from "./ActionBtn";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -315,12 +316,11 @@ export default function ProjectFiles(props: {
                       >
                         <PageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {basenameOf(f.path) || f.path}
                       </span>
-                      <antd.Button
-                        size="small"
-                        type="text"
-                        style={{ fontSize: 11, padding: "0 4px", flexShrink: 0 }}
+                      {/* v0.5.0-beta.14.21：下载统一 ActionBtn（图标+文字+可见规格）。 */}
+                      <ActionBtn
                         icon={<DownloadIcon />}
-                        title={tr("下载")}
+                        label={tr("下载")}
+                        style={{ flexShrink: 0 }}
                         onClick={() => {
                           void (async () => {
                             const ok = await downloadViaHost(

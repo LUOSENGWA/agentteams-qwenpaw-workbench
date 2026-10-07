@@ -32,10 +32,12 @@ class _FakeResponse:
         status_code: int,
         headers: dict | None = None,
         json_body: object = None,
+        text: str = "",
     ):
         self.status_code = status_code
         self.headers = headers or {}
         self._json_body = json_body
+        self.text = text
 
     def json(self):
         if self._json_body is None:
@@ -71,6 +73,8 @@ class _FakeClient:
             if key in url:
                 if isinstance(resp, Exception):
                     raise resp
+                if isinstance(resp, list):  # 序列：按调用序逐个返回（测重试）
+                    return resp.pop(0) if len(resp) > 1 else resp[0]
                 return resp
         return _FakeResponse(404)
 
@@ -341,6 +345,71 @@ def test_verify_admin_token_invalid(client):
     assert body["ok"] is False
     assert "无效" in body["error"]
     assert state["data"]["controller_token"] == ""
+
+
+# ── v0.5.0-beta.14.21：外网验证 500 根因治理（韧性 + 诊断）──────────────
+def test_verify_admin_token_5xx_retry_success(client):
+    """5xx 瞬时 → 退避重试一次：首响 500、二响 200 → 验证通过（拨 2 次）。"""
+    tc, state = client
+    _FakeClient.get_spec["/api/v1/teams"] = [
+        _FakeResponse(500, text="upstream connect error"),
+        _FakeResponse(200),
+    ]
+    r = tc.post("/config/verify-admin", json={"controller_token": "tok"})
+    body = r.json()
+    assert body["ok"] is True, body
+    assert body["mode"] == "token"
+    # 重试生效：/api/v1/teams 拨了 2 次（首 500 + 重试 200）——跨所有 client
+    # 实例计数（每次 GatedAsyncClient 新建实例，重试在第二个实例上）。
+    total = sum(
+        1
+        for inst in _FakeClient.instances
+        for _m, u in inst.calls
+        if "/api/v1/teams" in u
+    )
+    assert total == 2, f"应拨 2 次（首 500 + 重试 200），实际 {total}"
+
+
+def test_verify_admin_token_5xx_persistent(client):
+    """5xx 持续（重试仍 500）→ 报「外网/网关异常」并透出 body（非 token 错）。"""
+    tc, state = client
+    _FakeClient.get_spec["/api/v1/teams"] = [
+        _FakeResponse(500, text="bad gateway: mc ls fail"),
+        _FakeResponse(503, text="service unavailable"),
+    ]
+    r = tc.post("/config/verify-admin", json={"controller_token": "tok"})
+    body = r.json()
+    assert body["ok"] is False
+    assert "外网/网关异常" in body["error"]
+    assert "503" in body["error"]  # 最后一次状态码
+    assert "service unavailable" in body["error"]  # 透出 5xx body
+    # 5xx 不是凭据错 → token 不落盘。
+    assert state["data"]["controller_token"] == ""
+
+
+def test_verify_admin_token_4xx_no_retry(client):
+    """4xx 凭据错（地址无关）→ 立即报、不重试（只拨 1 次）。"""
+    tc, state = client
+    _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(403)
+    r = tc.post("/config/verify-admin", json={"controller_token": "nope"})
+    body = r.json()
+    assert body["ok"] is False
+    assert "403" in body["error"]
+    c = _last_client()
+    assert sum(1 for _m, u in c.calls if "/api/v1/teams" in u) == 1
+
+
+def test_verify_admin_token_connection_error(client):
+    """连接错/超时（地址级）→ 报「无法连接 Controller」（不重试）。"""
+    tc, state = client
+    # 匹配到即抛（模拟连接失败/超时，地址级）。
+    _FakeClient.get_spec["/api/v1/teams"] = ConnectionError("net down")
+    r = tc.post("/config/verify-admin", json={"controller_token": "tok"})
+    body = r.json()
+    assert body["ok"] is False
+    assert "无法连接" in body["error"]
+    c = _last_client()
+    assert sum(1 for _m, u in c.calls if "/api/v1/teams" in u) == 1
 
 
 # ── 凭据全空 ───────────────────────────────────────────
