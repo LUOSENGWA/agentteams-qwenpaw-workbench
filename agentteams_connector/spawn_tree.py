@@ -42,7 +42,10 @@ def normalize_room_session_id(raw: str) -> Optional[str]:
 
 
 def room_id_to_session_id(room_id: str) -> Optional[str]:
-    """Inverse bridge: room id → Worker session id (``matrix:`` prefix)."""
+    """Inverse bridge: room id → Worker session id (``matrix:`` prefix).
+
+    预埋清单 P3（PREEMBED-EXEMPT.md）：死码审计豁免，勿删。
+    """
     normalized = normalize_room_session_id(room_id)
     if normalized is None:
         return None
