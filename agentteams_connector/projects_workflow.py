@@ -37,6 +37,8 @@ from . import worker_status
 # （与 worker_status 去克隆）。本模块保留数据态 _snap 与扫描体
 # _do_sweep；取数注入点仍复用 worker_status._ctl_get（测试 monkeypatch 面不变）。
 from .bg_aggregator import BgTicker
+# v0.5.0-beta.14.21：前台让权需读全局拨号在飞数（聊天忙则 sweep 退避）。
+from .dial_gate import dial_stats
 
 logger = logging.getLogger(
     "qwenpaw.plugins.agentteams_qwenpaw_workbench.projects_workflow"
@@ -47,6 +49,34 @@ _TTL = 30.0  # 快照新鲜度阈值（ensure_fresh 判据）
 _CONCURRENCY = 4  # 扫描并发（与旧前端扇出同档）
 _STARTUP_DELAY = 6.0  # 启动让行（比 worker_status 稍后，避开启动风暴）
 _MAX_PROJECTS = 100  # 逐项目扇出安全上限（与旧前端 slice(0, 100) 一致）
+
+# ── v0.5.0-beta.14.21：前台让权参数（sweep 逐项目拨号前退避） ─────────────
+# bg_slot 只在 sweep **开始时**让权一次（inflight>12 跳过整轮）；但一轮扫描
+# 在外网（5M WAN，36+ 项目扇出）可持续数十秒——期间用户随时切去聊天/开房间，
+# 前台流量起来后 sweep 仍占着共享拨号闸 + 同一 WAN 上行抢带宽（实测聊天
+# 房间消息单条 0.8-2.5MB，与 sweep 同闸同链）→「工作流加载时聊天也慢」。
+# 这里补「执行中持续让权」：每个项目**即将拨号前**看全局 async inflight，
+# 前台忙（>阈值）则退避让行，直到前台闲下来或本项让权预算耗尽。
+# 阈值 8 < bg_slot 的 12：后台扫描本就更应礼让前台交互。
+_SWEEP_YIELD_INFLIGHT = 8     # 前台负载线：async inflight 超过则让权
+_SWEEP_YIELD_POLL = 0.5       # 让权复检间隔（秒）
+_SWEEP_YIELD_MAX_WAIT = 10.0  # 单项最大让权（秒）——预算耗尽即走（本轮新鲜度 > 单项目）
+
+
+async def _yield_to_foreground() -> None:
+    """v0.5.0-beta.14.21：持续前台让权（不占并发槽）。
+
+ 前台忙（async inflight > _SWEEP_YIELD_INFLIGHT）→ 每 0.5s 复检，最多等
+ _SWEEP_YIELD_MAX_WAIT 秒；预算耗尽或前台转闲即返回。仅影响 sweep 逐项目
+ 拨号节奏，不改快照语义（单飞/保旧值/清消失项不变）。
+ """
+    waited = 0.0
+    while dial_stats()["async"]["inflight"] > _SWEEP_YIELD_INFLIGHT:
+        if waited >= _SWEEP_YIELD_MAX_WAIT:
+            return  # 让权预算耗尽 → 走（不让单个项目饿死整轮）
+        await asyncio.sleep(_SWEEP_YIELD_POLL)
+        waited += _SWEEP_YIELD_POLL
+
 
 _snap: Dict[str, Any] = {
     "projects": [],  # 去重后项目摘要列表（与前端 fetchProjectSummaries 语义一致）
@@ -162,7 +192,22 @@ async def _do_sweep() -> None:
         _snap["scan_at"] = time.time()
         return
 
-    # 2) 逐项目 /workflow（并发 4）。
+    # ── v0.5.0-beta.14.21：渐进落地 + 执行中持续让权 ────────────────────
+    # 旧版整批 gather 到全部项目完成才一次性写快照 → 外网首扫空窗 1-3 分钟
+    # （前端首载状态机 Spin 空转、聊天期间 sweep 又占满共享闸/WAN 上行）。
+    # 现在：
+    # ① 名单先行——projects 立即落地（前端首屏只等 1 次 /projects 往返，
+    #    不再等全量 workflow 扫完）；
+    # ② 逐项目 /workflow 完成即写 _snap["workflows"][pid]（前端 15s 轮询
+    #    逐步看见，首屏秒级、渐进填满）；失败保旧（不动该 pid）；
+    # ③ 每项拨号前 _yield_to_foreground()（聊天忙则退避让行）；
+    # ④ 收尾清消失项目（新名单无的旧 pid）。单飞/保旧语义不变。
+    _snap["projects"] = projects
+    _snap["projects_status"] = 200
+    _snap["projects_error"] = ""
+    _snap["scan_at"] = time.time()  # 本轮开始即记新鲜（单飞防 ensure_fresh 重入）
+
+    # 2) 逐项目 /workflow（并发 4 + 渐进 + 让权）。
     sem = asyncio.Semaphore(_CONCURRENCY)
 
     async def _one(proj: Dict[str, Any]) -> tuple:
@@ -179,31 +224,29 @@ async def _do_sweep() -> None:
             f"{base}/api/v1/projects/{_quote(pid, safe='')}/workflow"
             f"?includeTasks=true{team_q}"
         )
+        # 让权不占并发槽：前台忙则先退避，再进扇出。
+        await _yield_to_foreground()
         async with sem:
             try:
-                return await worker_status._ctl_get(url, token)
+                wst, wdata, wtext = await worker_status._ctl_get(url, token)
             except Exception:  # noqa: BLE001 - 单项目失败不影响同轮其他
-                return (0, {}, "")
-
-    results = await asyncio.gather(*[_one(p) for p in projects])
-
-    # 3) 组装新表：成功覆盖、失败保旧、消失项目随新名单清。
-    new_workflows: Dict[str, Any] = {}
-    for proj, res in zip(projects, results):
-        pid = str(proj.get("project_id") or "")
-        wst, wdata, _wtext = res
+                wst, wdata, wtext = 0, {}, ""
+        # 渐进：本项完成即落地（谁先完成谁先写，不等最慢项）。
         if wst == 200 and isinstance(wdata, dict):
-            new_workflows[pid] = wdata
-        else:
-            old = _snap["workflows"].get(pid)
-            if old is not None:
-                new_workflows[pid] = old
-            # 无旧值 → 不落（前端 mapProjectWorkflow 跳过该 pid）
-    _snap["projects"] = projects
-    _snap["workflows"] = new_workflows
-    _snap["projects_status"] = 200
-    _snap["projects_error"] = ""
-    _snap["scan_at"] = time.time()
+            _snap["workflows"][pid] = wdata  # 覆盖旧值
+        # 失败/非 dict → 不动 _snap["workflows"][pid]（保旧值）；
+        # 无旧值 → 不落（前端 mapProjectWorkflow 跳过该 pid）。
+        return pid, (wst, wdata, wtext)
+
+    # gather 保既有调度顺序（测试断言 _ctl_get 调用序 p1→p2）；渐进写已在
+    # 任务内完成，这里只等全部收口。
+    await asyncio.gather(*[_one(p) for p in projects])
+
+    # 3) 收尾：清消失项目（新名单里没有的旧 pid）。
+    keep = {str(p.get("project_id") or "") for p in projects}
+    for pid in list(_snap["workflows"].keys()):
+        if pid not in keep:
+            del _snap["workflows"][pid]
 
 
 def start() -> None:
