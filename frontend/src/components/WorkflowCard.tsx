@@ -2,7 +2,6 @@ import { SettingsIcon, CheckIcon, CloseIcon, PlayIcon, PauseIcon } from "./icons
 import type * as ReactNS from "react";
 
 import {
-  isWorkflowPayload,
   pauseProject,
   resumeProject,
   type WorkflowCardItem,
@@ -55,7 +54,7 @@ function statusColor(status?: string): string {
  * 事件无 nodes → 用事件自带 steps（原始卡片形状）。subagents=nodes.subagent
  * （assignee）去重；无 nodes 时回退事件 subagents。语义对齐 dashboard
  * workflowLiveFromProject（双端同值铁律）。 */
-export function liveOverlayFromEvent(ev: WorkflowEvent): {
+function liveOverlayFromEvent(ev: WorkflowEvent): {
   status?: string;
   title?: string;
   steps: WorkflowCardItem[];
@@ -398,6 +397,3 @@ export default function WorkflowCard(props: {
 function PRIMARY_TINT(t: ReturnType<typeof useThemeColors>): string {
   return t.mode === "dark" ? "rgba(114,46,209,0.16)" : "rgba(114,46,209,0.06)";
 }
-
-// 供 RoomChat 判定：消息是否携带 workflow 卡片载荷。
-export { isWorkflowPayload };

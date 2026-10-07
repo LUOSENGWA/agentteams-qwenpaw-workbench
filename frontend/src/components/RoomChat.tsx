@@ -1511,7 +1511,7 @@ function MessageBody({
  * （15s 轮询）才变。 */
 const MessageBodyMemo = React.memo(MessageBody);
 
-export interface RoomChatProps {
+interface RoomChatProps {
   room: TeamRoom | null;
   messages: RoomMessage[];
   loading?: boolean;

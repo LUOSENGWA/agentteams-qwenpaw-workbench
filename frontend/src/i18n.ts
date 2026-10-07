@@ -2014,7 +2014,7 @@ const DICT: Record<string, { en: string }> = {
   "导入": { en: "Import" },
 };
 
-export type Lang = "zh" | "en";
+type Lang = "zh" | "en";
 
 /** 当前语言（host.useLocale；非 zh 一律 en）。 */
 export function useLang(): Lang {

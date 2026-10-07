@@ -1852,7 +1852,7 @@ function EventCard({
   );
 }
 
-export interface WorkflowBoardProps {
+interface WorkflowBoardProps {
   events: WorkflowEvent[]; // 由父组件通过 api.ts fetchWorkflowEvents 获取
   loading?: boolean;
   onRefresh?: () => void;

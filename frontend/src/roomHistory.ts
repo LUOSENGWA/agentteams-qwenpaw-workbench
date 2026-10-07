@@ -39,7 +39,7 @@
 import type { RoomMessage, RoomMessagesPage } from "./api";
 
 /** 取页：(roomId, limit, from?) → 页。from=undefined = 最新一页。 */
-export type PageFetcher = (
+type PageFetcher = (
   roomId: string,
   limit: number,
   from?: string,

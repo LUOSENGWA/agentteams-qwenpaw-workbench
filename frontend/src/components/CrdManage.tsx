@@ -51,7 +51,7 @@ const antd = host.antd;
  * 宿主机执行。上游 Human PUT 端点合并后此处可零改动升级为一键 PUT
  * （通用代理已支持 PUT）。
  */
-export interface CrdManageProps {
+interface CrdManageProps {
   /** 管理数据（humans/teams/workers）——与 WorkerManage 底部三表同一数据源。 */
   admin: AdminData;
   /** 写操作成功后静默刷新管理数据。 */

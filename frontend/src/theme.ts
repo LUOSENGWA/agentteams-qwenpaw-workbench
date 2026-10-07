@@ -5,7 +5,7 @@ import { hostAccentForMode, useHostTheme } from "./hostTheme";
 const host = window.QwenPaw.host;
 
 /** hex（#rgb/#rrggbb）+ alpha → rgba() 串。非法 hex 回退现行橙。 */
-export function accentTint(accent: string, alpha: number): string {
+function accentTint(accent: string, alpha: number): string {
   const m =
     /^#([0-9a-fA-F]{6})$/.exec(accent) ?? /^#([0-9a-fA-F]{3})$/.exec(accent);
  if (!m) return `color-mix(in srgb, var(--app-accent, #FF7F16) ${(alpha * 100).toFixed(1)}%, transparent)`;
