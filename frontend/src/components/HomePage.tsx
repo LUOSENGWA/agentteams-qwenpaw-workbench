@@ -20,7 +20,7 @@ import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import LOGO_URL from "../lib/logo";
-import { formatChatTime } from "../util";
+import { formatChatTime, formatTimeShort } from "../util";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -712,10 +712,7 @@ function HomePage(props: HomePageProps) {
                     : sev === "LOW"
                       ? "#52c41a"
                       : "#fa8c16";
-                const when = new Date(item.ts * 1000).toLocaleTimeString(
-                  "zh-CN",
-                  { hour: "2-digit", minute: "2-digit" },
-                );
+                const when = formatTimeShort(item.ts * 1000);
                 const workerShort = (item.sender.split(":")[0] || "")
                   .replace(/^@/, "");
                 const toolName = toolMatch?.[1]?.trim() || "";

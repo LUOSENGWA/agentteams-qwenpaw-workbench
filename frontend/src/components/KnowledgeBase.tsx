@@ -30,7 +30,12 @@ import Graph3D from "./Graph3D";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
-import { formatSize } from "../util";
+import {
+  formatDateTime,
+  formatDateShort,
+  formatSize,
+  formatTimeShort,
+} from "../util";
 import MdText from "./MdText";
 import { createPoller, type Poller } from "../usePoller";
 
@@ -1972,7 +1977,7 @@ function RemoteKbView(props: {
           {latestMtime ? (
             <StatusChip
               label={tr("最近更新")}
-              value={new Date(latestMtime * 1000).toLocaleString()}
+              value={formatDateTime(latestMtime * 1000)}
               ok
             />
           ) : null}
@@ -3090,7 +3095,7 @@ function FileGroup({
               <div
                 key={key}
                 onClick={openable ? () => onSelect(key) : undefined}
-                title={`${key}${!openable ? " · 非文本文件（不可在线预览）" : ""}${f.mtime ? ` · ${new Date(f.mtime * 1000).toLocaleString("zh-CN")}` : ""}`}
+                title={`${key}${!openable ? " · 非文本文件（不可在线预览）" : ""}${f.mtime ? ` · ${formatDateTime(f.mtime * 1000, "zh-CN")}` : ""}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -3122,8 +3127,8 @@ function FileGroup({
                 {/* v0.5.0-beta.12 ：文件更新时间（tar mtime） */}
                 {f.mtime ? (
                   <span style={{ color: active ? "rgba(255,255,255,0.75)" : t.textSecondary, fontSize: 10, flexShrink: 0 }}>
-                    {new Date(f.mtime * 1000).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}{" "}
-                    {new Date(f.mtime * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                    {formatDateShort(f.mtime * 1000)}{" "}
+                    {formatTimeShort(f.mtime * 1000)}
                   </span>
                 ) : null}
               </div>

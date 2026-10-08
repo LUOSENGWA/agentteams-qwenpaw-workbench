@@ -7,7 +7,8 @@ each Worker owns its spawn tree. Main data source = Controller spawn endpoint
 Worker list comes from Matrix joined_members (real) and the spawn lists are
 empty placeholders (no PR dependency for Phase 2).
 
-The bridge pure functions below are unit-tested (variant list in ).
+The bridge pure functions below are unit-tested (variant list in
+tests/test_spawn_tree.py).
 """
 
 from __future__ import annotations

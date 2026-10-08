@@ -19,6 +19,8 @@ import time
 import urllib.parse as _up
 
 import pytest
+
+from conftest import patch_shared_name
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -123,9 +125,8 @@ def client(monkeypatch):
         cache.update({"data": None, "ts": 0.0})
     _FakeClient.instances = []
     _FakeClient.msg_spec = {}
-    monkeypatch.setattr(
-        "agentteams_connector.router.GatedAsyncClient",
-        lambda *a, **k: _FakeClient(*a, **k),
+    patch_shared_name(
+        monkeypatch, "GatedAsyncClient", lambda *a, **k: _FakeClient(*a, **k)
     )
     with router_mod._cache_lock:
         router_mod._working_cache.clear()

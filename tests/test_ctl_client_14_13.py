@@ -57,11 +57,12 @@ def test_router_ctl_json_is_thin_wrapper():
         None,
     )
     assert start is not None, "router 源码缺 _ctl_json 定义"
-    # 包装体 = def 起至下一行缩进回 4 空格（模块级兄弟 def）；
-    # _ctl_json 为 router 模块级函数（def 4 空格 / 体 8 空格）。
+    # 包装体 = def 起至下一行缩进回 0（下一个模块级 def）；
+    # 任务 190：_ctl_json 自 build_router 闭包提升为模块级（def 0 空格/体 4 空格），
+    # 探针按新缩进收集。
     body: list[str] = []
     for line in lines[start + 1:]:
-        if line.strip() and not line.startswith("        "):
+        if line.strip() and not line.startswith("    "):
             break
         body.append(line)
     text = "\n".join(body)

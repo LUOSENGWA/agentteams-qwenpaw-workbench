@@ -23,6 +23,8 @@ import json
 
 import pytest
 
+from conftest import patch_shared_name
+
 from agentteams_connector import config as cfgmod
 from agentteams_connector import router as router_mod
 
@@ -119,9 +121,7 @@ def p4(monkeypatch):
         clients.append(c)
         return c
 
-    monkeypatch.setattr(
-        "agentteams_connector.router.GatedAsyncClient", factory
-    )
+    patch_shared_name(monkeypatch, "GatedAsyncClient", factory)
     monkeypatch.setattr(router_mod, "_working_cache", {})
     return clients, spec
 
