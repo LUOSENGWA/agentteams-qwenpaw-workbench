@@ -5,6 +5,16 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.25 (2026-10-09 — tech-debt batch: router domain split + time-formatting convergence + test coverage)
+
+**P0 tech-debt closure — the 6,833-line router single function split into 9 domain routers with zero behavior change; time formatting converged into 5 pure helpers; two zero-test modules gain 42 cases**
+
+- **build_router split by domain** (router.py 6,833 → 997 lines): a full-stack audit flagged `build_router` as a 5,719-line single function (~50 nested handlers capturing function-local state) — the main cost of every subsequent backend change. It is now 9 sub-router modules under `agentteams_connector/routers/` (status / teams / config / gateway / matrix / kb / live / approval, the latter carrying the trailing catch-all proxy and assembled last); `build_router` is pure assembly. Mutable shared state (3 KB caches) is created by the assembler and passed explicitly — no module-level mutable globals. Zero behavior change guaranteed: handler bodies moved verbatim (only closure references became explicit parameters); route registration order identical to before (53-route table diffed entry by entry, including order — zero difference); full test suite 285 → 327, all green (+42 new).
+- **Time-formatting convergence** (10 sites → 5 pure helpers): `util.ts` gains `formatTimeOfDay` / `formatDateTime` / `formatTimeOfDayNo12` / `formatDateShort` / `formatTimeShort`; 10 hand-rolled `toLocale*` call sites across 6 components (6 different locale/option combinations) now route through them — each site's locale and options preserved exactly, rendered output byte-identical. `WorkerChats`' `formatTime` (Z-suffix UTC normalization + two-level fallback) is outside the helpers' expressive range and is kept as-is by convention.
+- **Zero-test modules covered** (+42 cases): `spawn_tree` (4 pure functions; the file header claimed "unit-tested" with no test file existing) gains 38 table-driven cases — normalization 14 / session mapping 6 (incl. idempotency) / role inference 14 (priority chains such as lead over critic) / scenarios 4; `bg_aggregator` (the background tick scheduler shared by projects_workflow and worker_status, previously zero direct tests) gains 4 concurrency-semantics cases — single-flight no-reentry / TTL dedup + force bypass / no-loop silent skip / per-round exception swallowed with state reset.
+
+**Gates**: pytest 327/327 (285 baseline + 42 new) / tsc 0 / i18n 1,409 keys 0 missing-dup-empty / sensitive scan 0 / route table 53/53 zero diff.
+
 ## 0.5.0-beta.14.24 (2026-10-08 — weak-deployment batch: partial-connection banner + embedded deployment docs)
 
 **The "silent partial-connection" blind spot exposed on an embedded all-in-one standalone node (no host port mapping, no Matrix login) — Controller data normal while chat/notifications/task status are limited, with zero indication on the home page before**

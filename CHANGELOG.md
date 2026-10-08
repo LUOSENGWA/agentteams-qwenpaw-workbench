@@ -5,6 +5,31 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.25（2026-10-09 · 技术债批：router 域拆分 + 时间格式化收敛 + 测试补齐）
+
+**P0 技术债收口——6833 行 router 单函数拆为 9 个域路由，行为零变更；时间格式化收敛到 5 个纯函数；两个零测试模块补 42 用例**
+
+## ① build_router 按域拆分（router.py 6833 → 997 行）
+
+背景：全量屎山审计（P0）指出 `build_router` 是 5719 行单函数（~50 个嵌套 handler 捕获函数局部状态），任何修改都要在巨型函数内导航，是后续所有后端改动的主要成本。
+
+修：按域拆为 9 个子路由模块（`agentteams_connector/routers/`）——status / teams / config / gateway / matrix / kb / live / approval（含 catch-all 代理尾段，装配最后）。`build_router` 退化为纯装配；可变共享状态（3 个 KB 缓存）由装配方创建、显式传参，不引入模块级可变全局。
+
+零行为变更保证：handler 函数体逐字搬移（仅闭包引用改显式参数）；路由注册序与拆前完全一致（53 条路由表逐条 diff 零差异，含顺序）；全量测试 285 → 327 全绿（+42 新增）。
+
+## ② 时间格式化收敛（10 处 → 5 个纯函数）
+
+`util.ts` 新增 `formatTimeOfDay` / `formatDateTime` / `formatTimeOfDayNo12` / `formatDateShort` / `formatTimeShort` 五个纯函数，10 处散落的手写 `toLocale*`（6 个组件、6 种互不相同的 locale/options 组合）逐处收敛——各调用点 locale 与 options 精确保留，显示输出逐字节不变。WorkerChats 的 `formatTime`（含 Z 后缀 UTC 归一化 + 两级兜底）超出纯函数表达面，按约定保留原样。
+
+## ③ 零测试模块补齐（+42 用例）
+
+- `spawn_tree`（4 个纯函数，此前文件头声称「unit-tested」但无任何测试文件）：38 个表驱动用例——归一化 14 / 会话映射 6（含幂等）/ 角色推断 14（lead 优先于 critic 等优先级链）/ 场景 4。
+- `bg_aggregator`（projects_workflow 与 worker_status 共用的后台 tick 调度器，零直连测试）：4 个并发语义用例——单飞不重入 / TTL 去重 + force 穿透 / 无循环静默跳过 / 单轮异常吞掉且复位。
+
+## 门
+
+pytest 327/327（285 基线 + 42 新）/ tsc 0 / i18n 1409 键 0 缺 0 重 0 空 / 敏感扫描 0 / 路由表 53/53 零 diff。
+
 ## 0.5.0-beta.14.24（2026-10-08 · 弱部署形态批：半连通提示 + embedded 部署文档）
 
 **在 embedded all-in-one 独立节点（无宿主端口映射、无 Matrix 登录）实测暴露的「静默半连通」盲点——Controller 数据正常而聊天/通知/任务状态受限，此前首页零提示**
