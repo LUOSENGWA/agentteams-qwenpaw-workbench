@@ -66,6 +66,21 @@ token 无接口可获取（上游安全设计），由部署管理员线下提�
 - 测的是「未保存的地址」——保存后才按延迟切换生效
 - 不填：聊天/审批/附件扫描等房间侧功能照常，跨团队总览不可用
 
+### Embedded all-in-one 部署形态（controller 无宿主端口）
+
+独立/测试节点常用 `agentteams-embedded` all-in-one 镜像（controller / Matrix / MinIO / Higress 同容器）。与生产部署的差别：**Controller API 不映射到宿主端口**——容器内端口 8090 只暴露在 docker 桥网上（生产部署则把 8090 映射到宿主自选端口，如 6866）。
+
+此时 Controller 地址的填法取决于 **QwenPaw 宿主进程在哪**：
+
+- **与 embedded 容器同一宿主机**（典型）：在**宿主机**上取 controller 容器的桥网 IP——
+  `docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' agentteams-controller`——
+  填 `http://<该IP>:8090`。桥网 IP 稳定（容器不重建不变），重启/升级不丢。
+- **不同主机**：无法直连（8090 未对外暴露）——需要部署侧给 Controller API 加端口映射，或改用生产形态部署。
+
+token 获取路径与生产一致（`docker exec agentteams-controller cat /var/run/agentteams/cli-token`，命令在 controller 容器内执行、与端口映射无关）；Matrix 地址填 embedded 的 Matrix 宿主端口（安装时映射，默认 18080）。
+
+> 未登录 Matrix 时的界面行为：Controller 通而 Matrix 未登录 = **半连通**（团队/工作流数据正常，聊天/通知/@提醒/任务状态受限）——首页顶部会有一条可关闭的 info 横幅提示（v0.5.0-beta.14.24），不再静默。
+
 ## L1 / L2 权限矩阵（完整）
 
 | 能力 | L2 | L1 |

@@ -457,6 +457,31 @@ export default function WorkbenchPage() {
  // v0.5.0-beta.14.19: 登录态/凭据健康（30s 低频轮询；端点零外发请求，
   // 成本=一次进程内读——token 失效后 @通知静默全断，此前前端零感知）。
   const [authStatus, setAuthStatus] = React.useState<AuthStatus | null>(null);
+ // v0.5.0-beta.14.24: 半连通（Controller 通 + Matrix 未登录）info 横幅的关闭态
+ // ——持久化到 localStorage，避免每次重开插件都打扰（登录态轮询会重拉数据）。
+ const [matrixNoneDismissed, setMatrixNoneDismissed] =
+    React.useState<boolean>(() => {
+      try {
+        return (
+          window.localStorage.getItem(
+            "agentteams-qwenpaw-workbench:matrix-none-dismissed",
+          ) === "1"
+        );
+      } catch {
+        return false;
+      }
+    });
+ const dismissMatrixNone = React.useCallback(() => {
+    setMatrixNoneDismissed(true);
+    try {
+      window.localStorage.setItem(
+        "agentteams-qwenpaw-workbench:matrix-none-dismissed",
+        "1",
+      );
+    } catch {
+      /* storage 不可用则跳过（横幅仍可点「登录」进入配置） */
+    }
+  }, []);
  // ── 状态记忆：重开插件恢复上次 tab + 房间 + 话题 + 面板宽度 ──
   // v0.5.0-beta.12: tab key 随名字归位（房间 team→chat、管理 spawn→team）——
   // storage key 升 v2 区分新旧格式：否则新版写入的 "team"（管理）会被
@@ -3050,6 +3075,29 @@ export default function WorkbenchPage() {
           action={
             <antd.Button size="small" onClick={() => setTab("settings")}>
               {tr("重新验证")}
+            </antd.Button>
+          }
+        />
+      )}
+      {/* v0.5.0-beta.14.24: 半连通 info 横幅——Controller 已连通（团队/工作流
+      数据正常）但 Matrix 未登录（聊天/通知/@提醒/任务状态受限）。此前首页
+      静默显示部分数据零提示（Pi 实测：1 team 正常 + 0 rooms 0 unread）。
+      与上方两条不同：这是「可降级可用」而非「故障」，故 type=info + 可关闭，
+      关闭态持久化避免每次重开打扰。 */}
+      {authStatus?.matrix_token === "none" && !matrixNoneDismissed && (
+        <antd.Alert
+          type="info"
+          showIcon
+          closable
+          onClose={() => dismissMatrixNone()}
+          style={{ flex: "0 0 auto" }}
+          message={tr("Matrix 未登录——部分功能受限")}
+          description={tr(
+            "团队 / 工作流等数据来自 Controller，显示正常；但聊天、通知、@提醒与任务状态同步需要 Matrix 账号。在「配置」页完成 Matrix 登录后功能即补齐。",
+          )}
+          action={
+            <antd.Button size="small" onClick={() => setTab("settings")}>
+              {tr("登录")}
             </antd.Button>
           }
         />

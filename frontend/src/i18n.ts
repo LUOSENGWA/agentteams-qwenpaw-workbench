@@ -2065,6 +2065,14 @@ const DICT: Record<string, { en: string }> = {
     en: "The Console admin session for the model alias layer has expired — re-verify with the admin account on the Settings page to restore it.",
   },
   "重新验证": { en: "Re-verify" },
+  // v0.5.0-beta.14.24: 半连通横幅——Controller 通但 Matrix 未登录时，
+  // 团队/工作流数据正常而聊天/通知/任务状态受限，此前首页静默零提示。
+  "Matrix 未登录——部分功能受限": {
+    en: "Matrix not signed in — some features limited",
+  },
+  "团队 / 工作流等数据来自 Controller，显示正常；但聊天、通知、@提醒与任务状态同步需要 Matrix 账号。在「配置」页完成 Matrix 登录后功能即补齐。": {
+    en: "Team / workflow data from the Controller renders normally, but chat, notifications, @-mentions and task status sync require a Matrix account. Sign in on the Settings page to unlock the full feature set.",
+  },
 };
 
 type Lang = "zh" | "en";

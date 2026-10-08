@@ -66,6 +66,21 @@ Behavior rules:
 - What gets measured is the *unsaved* address — the latency-based switch takes effect only after saving
 - If left empty: room-side features (chat/approvals/attachment scanning) work as usual; cross-team overviews are unavailable
 
+### Embedded all-in-one deployment (no host port on the controller)
+
+Standalone / test nodes often use the `agentteams-embedded` all-in-one image (controller / Matrix / MinIO / Higress in one container). Difference from a production install: **the Controller API is not mapped to a host port** — container port 8090 is only reachable on the docker bridge (a production install maps 8090 to a host-chosen port such as 6866).
+
+How to fill in the Controller address then depends on **where the QwenPaw host process runs**:
+
+- **Same host as the embedded container** (typical): on the **host**, get the controller container's bridge IP —
+  `docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' agentteams-controller` —
+  then enter `http://<that-IP>:8090`. The bridge IP is stable (unchanged unless the container is recreated) and survives restarts/upgrades.
+- **Different host**: not directly reachable (8090 is not exposed) — the deployment must add a port mapping for the Controller API, or use a production-style install.
+
+Token retrieval is identical to production (`docker exec agentteams-controller cat /var/run/agentteams/cli-token` — run inside the controller container, independent of port mapping); the Matrix address is the embedded install's Matrix host port (mapped at install time, default 18080).
+
+> Behavior when Matrix is not signed in: Controller up but Matrix unsigned-in is a **partial-connection** state (team/workflow data normal; chat/notifications/@-mentions/task status limited) — an dismissible info banner now surfaces at the top of the home page (v0.5.0-beta.14.24) instead of failing silently.
+
 ## L1 / L2 permission matrix (full)
 
 | Capability | L2 | L1 |
