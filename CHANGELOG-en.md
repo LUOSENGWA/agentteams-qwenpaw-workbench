@@ -5,6 +5,14 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.24 (2026-10-08 — weak-deployment batch: partial-connection banner + embedded deployment docs)
+
+**The "silent partial-connection" blind spot exposed on an embedded all-in-one standalone node (no host port mapping, no Matrix login) — Controller data normal while chat/notifications/task status are limited, with zero indication on the home page before**
+
+- **Partial-connection info banner** (product blind-spot fix): on a deployment where the Controller is reachable (team/workflow/worker data all render) but Matrix is not signed in (chat, notifications, @-mentions, task status sync unavailable), the home page showed a mixed "Teams 0 rooms 0 unread + Worker 1 teams" with no hint why the chat side was empty. Now a dismissible info banner appears at the top (condition: `/auth-status` `matrix_token === "none"` while the controller is reachable), separating what works from what is limited, with a "Sign in" action to Settings. Sits alongside — and is mutually exclusive from — the existing "Matrix login expired (error)" and "Higress session expired (warning)" banners. Dismissal persists to localStorage (the auth-status poll re-fetches, so non-persisted dismissal would re-nag on every reopen).
+
+- **Embedded all-in-one deployment docs** (Controller address entry): testing found the `agentteams-embedded` all-in-one image's Controller API (container port 8090) is **not mapped to a host port** — unlike the production layout (mapped to a host-chosen port such as 6866), so the plugin cannot probe it and the docs previously covered only the production layout. `docs/12-config` gains an "Embedded all-in-one deployment" section (EN+ZH): on the same host, take the controller container's bridge IP (`docker inspect`) and enter `http://<bridge-IP>:8090` (stable, survives restarts); across hosts the deployment must add a port mapping. Token retrieval is unchanged from production (in-container `docker exec`, port-independent).
+
 ## 0.5.0-beta.14.23 (2026-10-07 - 14.22 acceptance batch: credential-verify separation + PATCH proxy pass-through + KB WAN bulk-read compression + server-side prewarm)
 
 **System fixes for the 14.22 acceptance feedback — Higress verify mis-reporting a token error, "modification failed: HTTP 405" on the tools write path, slow KB cold path on WAN**
