@@ -5,6 +5,17 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.26（2026-10-09 · 实盘反馈四件批：群内项目产物同源同速 + Console 会话自动重登 + 工具横幅终态一致 + SGLang 卡节奏标注）
+
+**四件实盘反馈，每件先归因再修（不打地鼠）：同端点不同策略 → 统一缓存层；会话只判死不重登 → 自动重登 + 透明重放；文案只按字段不按值 → 四分支纯函数；标注误导 → 双节奏标注**
+
+- **群内项目文件面板与产物 tab 同源同速**——两处同一 `workflow?includeTasks` 端点，旧版策略分叉：产物 tab 懒加载 + 组件内缓存（点过的不再拉），群内面板却是每次开 Drawer 对当前房间全部项目逐个裸拉（零缓存层，关再开全量重拉）。修：`api.ts` 新增 `fetchProjectWorkflow`（`cachedRequest` 30s TTL + tag `project:{pid}`），两面板同用，30s 内零重复回源、在飞去重合并；手动刷新走 `invalidateTags` 显式失效必穿透。局部 `TaskDetail`/`WorkflowResponse` 提升为共享 `WorkflowTaskDetail`/`WorkflowDetailResponse`（组件渲染代码经别名零改动）。
+- **Console 会话自动重登**——真根因：Console 管理会话 cookie 有服务端 TTL，过期后旧版**只被动判死、无任何自动重登**，每次插件重载/会话过期必须手动重验证一次；而 admin 账密本就持久化在 `config.json`（600 权限）却从未用于自动恢复。修：`router.console_try_relogin`（持久账密 → Console `/session/login`，与 `/config/verify` 路径 A 同端点同语义）；gateway 透传 401 → 自动重登 + **透明重放本次请求**（调用方看到正常数据，无感）。防风暴三闸：60s 冷却窗 / asyncio.Lock 并发合并 / 400-401-403 凭据错即停（地址无关不逐地址空转）。新会话落盘 + 过期旗清零。「内外网固定变回自动」实查磁盘与 API 均完好（前端首载失败窗由 14.16 起的加载态三态 + 保存门控兜底）。
+- **工具开关横幅与终态一致**——真根因：toggle 成功文案只按 field 分支、不看 value——关工具仍显示「已启用」，开异步执行显示「已停用」（两字段文案还互相张冠李戴）。修：四分支纯函数 `toolToggleMessage`（`util.ts`，smoke 可测）+ 2 新 i18n 键。
+- **SGLang 卡刷新观感**——链路实证无 bug（`/sglang/loads` 无前后端缓存、1s/15s 自适应档工作）；真根因=**标注误导**：卡片标「自动刷新 1 秒」但数据源是 SGLang 侧负载快照发布（服务端默认 15s 一帧），数字冻结 14s 被误判卡死，手动刷新读的又是同一快照。修：副标改双节奏「自动刷新（1s/15s 自适应）· 数据快照 ~15s」+ tooltip 讲清数据节奏与调参入口（sglang 容器 `--load-snapshot-publish-interval`）。
+
+**门**：pytest 332/332（+F2 5 例：透明重试/凭据错判死/无凭据不尝试/冷却窗抑制/并发合并）/ tsc 0 / i18n 1,411 键 0 缺 0 重 / 4 套 smoke 全绿（+toolToggle 4 断言）/ 敏感扫描 0。
+
 ## 0.5.0-beta.14.25（2026-10-09 · 技术债批：router 域拆分 + 时间格式化收敛 + 测试补齐）
 
 **P0 技术债收口——6833 行 router 单函数拆为 9 个域路由，行为零变更；时间格式化收敛到 5 个纯函数；两个零测试模块补 42 用例**
