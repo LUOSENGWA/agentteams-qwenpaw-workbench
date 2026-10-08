@@ -2,12 +2,13 @@ import { PageIcon, CloseIcon } from "./icons";
 import type * as ReactNS from "react";
 import {
   downloadViaHost,
-  requestJson,
+  fetchProjectWorkflow,
   resolvePluginUrl,
   roomMatchesProject,
   type TeamRoom,
   type WorkflowEvent,
 } from "../api";
+import { invalidateTags } from "../requestCache";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
 import { FilePreview, type PreviewFile } from "./FilePreview";
@@ -59,19 +60,14 @@ function statusColor(status: string): string {
   return "default";
 }
 
-/** 单项目文件拉取（includeTasks → tasks_detail 声明的 result/spec/deliverables）。
+/** 单项目文件拉取（workflow 明细 → tasks_detail 声明的 result/spec/deliverables）。
  * v0.5.0-beta.13.13：带 &team= 限定——同一 project_id 跨团队重名时
  * Controller 回 409（fetchWorkflowProjects 同款处理），此前本面板不传
  * team → 重名项目 409 被静默吞掉 → 「读取不到」的另一条根因。 */
 async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
-  const teamQ =
-    typeof ev.team_id === "string" && ev.team_id
-      ? `&team=${encodeURIComponent(ev.team_id)}`
-      : "";
-  const wf = (await requestJson(
-    `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(ev.runId)}` +
-      `/workflow?includeTasks=true${teamQ}`,
-  )) as { tasks_detail?: Array<Record<string, unknown>> };
+  // v0.5.0-beta.14.26：统一走 api.ts 共享缓存函数（30s TTL + 标签失效）——
+  // 与产物 tab 同源同速（此前本面板 Drawer 挂载即逐项目裸拉、重开全量重拉）。
+  const wf = await fetchProjectWorkflow(ev.runId, ev.team_id);
   const tasks = Array.isArray(wf.tasks_detail) ? wf.tasks_detail : [];
   const collected: TaskFile[] = [];
   for (const task of tasks) {
@@ -162,6 +158,8 @@ export default function ProjectFiles(props: {
     async (ev: WorkflowEvent, force = false) => {
       if (!force && loadedSet[ev.runId]) return;
       if (loadingSet[ev.runId]) return;
+      // v0.5.0-beta.14.26：force 路径先显式失效——手动刷新必穿透 30s 读缓存。
+      if (force) invalidateTags([`project:${ev.runId}`]);
       setLoadingSet((s) => ({ ...s, [ev.runId]: true }));
       setErrByProject((s) => ({ ...s, [ev.runId]: "" }));
       try {
@@ -182,7 +180,9 @@ export default function ProjectFiles(props: {
 
   const refresh = React.useCallback(async () => {
     // 全量重拉：当前房间项目（13.14 起面板只含本群项目）。
+    // v0.5.0-beta.14.26：先逐项目显式失效——手动刷新必穿透 30s 读缓存。
     setLoadedSet({});
+    for (const ev of roomProjects) invalidateTags([`project:${ev.runId}`]);
     await Promise.all(roomProjects.map((ev) => loadOne(ev, true)));
   }, [roomProjects, loadOne]);
 

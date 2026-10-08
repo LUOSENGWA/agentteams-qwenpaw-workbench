@@ -263,7 +263,17 @@ const DICT: Record<string, { en: string }> = {
     en: "Room creation reported success but the room is missing from the room list (homeserver config may be misaligned). Check settings and retry.",
   },
   "自动刷新 30 秒": { en: "Auto-refresh 30s" },
-  "自动刷新 1 秒": { en: "Auto-refresh 1s" },
+  // v0.5.0-beta.14.26（F4：SGLang 卡「要手动刷新才更新」观感真根因=标注
+  // 误导——卡片标「自动刷新 1 秒」但数据源是 SGLang 侧快照发布，服务端
+  // 默认 15s 才出新值，数字冻结 14s 被误判卡死、手动刷新又读同一快照。
+  // 改双节奏标注：刷新（1s/15s 自适应检查）× 数据（~15s 快照，服务端参数
+  // 可调）分开说清。
+  "自动刷新（1s/15s 自适应）· 数据快照 ~15s": {
+    en: "Auto (1s/15s adaptive) · data snapshot ~15s",
+  },
+  "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。数据节奏：SGLang 每 ~15s 发布一次负载快照（服务端默认；容器启动参数 --load-snapshot-publish-interval 可调）。卡片 1s/15s 自适应检查——数字不变是快照没更新，不是卡死；手动刷新读的也是同一份快照。": {
+    en: "SGLang /v1/loads per DP rank: waiting/running/GPU (optional module — enable and set the SGLang address on the Settings page). Data cadence: SGLang publishes a load snapshot every ~15s (server default; tunable via the container startup flag --load-snapshot-publish-interval). The card polls at 1s/15s adaptive — an unchanged number means the snapshot did not refresh, not a freeze; manual refresh reads the same snapshot.",
+  },
   "点击展开": { en: "Click to expand" },
   "私聊 {name}": { en: "DM {name}" },
   "暂无活跃会话——接入 spawn 端点后显示": {
@@ -1721,6 +1731,8 @@ const DICT: Record<string, { en: string }> = {
   "需配置": { en: "Needs config" },
   "{w} 已启用": { en: "{w} enabled" },
   "{w} 已停用": { en: "{w} disabled" },
+  "{w} 异步执行已启用": { en: "{w} async execution enabled" },
+  "{w} 异步执行已停用": { en: "{w} async execution disabled" },
   "修改失败：{m}": { en: "Update failed: {m}" },
   "当前角色仅可查看工具设置，不能修改（Controller 拒绝）": {
     en: "Current role can only view tool settings, not modify them (rejected by Controller)",

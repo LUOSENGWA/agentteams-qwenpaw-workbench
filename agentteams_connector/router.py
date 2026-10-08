@@ -63,6 +63,86 @@ _working_cache: Dict[str, str] = {}  # {"matrix": url, "controller": url}
 # 消失，无人知晓该重新验证）。置位后由 /auth-status 暴露给前端横幅；
 # verify-admin 成功（新会话到手）时清零。
 _console_session_expired = False
+# v0.5.0-beta.14.26（F2：实盘反馈「每次升级后 basic 登录状态也没了」——真根因=
+# Console 会话 cookie 有服务端 TTL，过期后**只被动判死、无任何自动重登**，
+# 每次插件重载/会话过期用户必须手动重验证一次）：用 config 里持久化的
+# admin 账密自动重登一次（凭据一直在 config.json，600 权限，不丢）。
+# 防风暴三闸：① 冷却窗 60s 内最多一次尝试（网络抖动/凭据错都不连打）
+# ② asyncio.Lock 并发合并（同刻 N 个网关请求只触发 1 次登录）
+# ③ 400/401/403=凭据错立即停（地址无关，不再逐地址空转）。
+_CONSOLE_RELOGIN_COOLDOWN_SECONDS = 60.0
+_console_relogin_lock = asyncio.Lock()
+_console_last_relogin_attempt = 0.0  # time.monotonic()
+
+
+def _console_relogin_allowed() -> bool:
+    return (
+        time.monotonic() - _console_last_relogin_attempt
+    ) >= _CONSOLE_RELOGIN_COOLDOWN_SECONDS
+
+
+async def console_try_relogin(cfg: Dict[str, Any]) -> Optional[str]:
+    """v0.5.0-beta.14.26（F2）：Console 会话自愈重登。
+
+ 凭据齐（admin_username/admin_password 已持久化）+ 网关地址可达时，
+ 用持久账密走 Console /session/login 换新会话（与 /config/verify 路径 A
+ 同一端点同一语义，抽到 router 层供 gateway 401 与入口自愈共用）：
+ 成功 → 落盘 console_session + 清 expired 旗 + 返回新会话；
+ 失败/无凭据/冷却窗内 → None（调用方按既有 no_console_session/401 逻辑
+ 降级，行为不回退旧版）。
+ """
+    global _console_last_relogin_attempt
+    if not _console_relogin_allowed():
+        return None
+    async with _console_relogin_lock:
+        if not _console_relogin_allowed():  # 锁后双检（并发合并后窗口可能已过）
+            return None
+        username = str(cfg.get("admin_username") or "").strip()
+        password = str(cfg.get("admin_password") or "").strip()
+        if not username or not password:
+            return None
+        gateways = _address_list(cfg, "gateway")
+        if not gateways:
+            return None
+        last_err = "无可用网关地址"
+        for base in gateways:
+            try:
+                async with GatedAsyncClient(timeout=8.0, verify=False) as client:
+                    resp = await client.post(
+                        f"{base}/session/login",
+                        json={"username": username, "password": password},
+                    )
+            except Exception as exc:  # noqa: BLE001 - 传输错误换下一地址
+                last_err = f"{base} {selfcheck._classify_error(exc)}"
+                continue
+            if resp.status_code in (400, 401, 403):
+                # 地址通但凭据错=地址无关——停（不再逐地址空转、不覆盖
+                # 已存凭据，等用户手动重新验证）。
+                logger.warning(
+                    "console auto-relogin: auth rejected (HTTP %s) — "
+                    "credentials may have changed; awaiting manual re-verify",
+                    resp.status_code,
+                )
+                _console_last_relogin_attempt = time.monotonic()
+                return None
+            if resp.status_code not in (200, 201, 204):
+                last_err = f"{base} HTTP {resp.status_code}"
+                continue
+            set_cookie = resp.headers.get("set-cookie", "")
+            session = set_cookie.split(";")[0].strip() if set_cookie else ""
+            if not session:
+                last_err = f"{base} no set-cookie"
+                continue
+            await asyncio.to_thread(
+                config_mod.update_config, {"console_session": session}
+            )
+            _console_session_expired = False
+            _console_last_relogin_attempt = time.monotonic()
+            logger.warning("console auto-relogin: session refreshed via %s", base)
+            return session
+        _console_last_relogin_attempt = time.monotonic()
+        logger.warning("console auto-relogin: all addresses failed (last: %s)", last_err)
+        return None
 # v0.5.0-beta.14.5: approval/list 短 TTL 缓存——高频展开/切页时省一整轮容器扫
 # 描（原串行全量实测 23s@WAN）；approval_set 成功后主动失效。key=agent 参数
 # （""=全量）→ (expiry_monotonic, payload)。只存成功响应。

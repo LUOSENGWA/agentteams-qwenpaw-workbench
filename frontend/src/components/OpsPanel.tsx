@@ -378,9 +378,19 @@ function OpsPanel({
               集群负载
             </span>
             <span style={{ fontSize: 11, color: t.textSecondary }}>
-              {tr("自动刷新 1 秒")}
+              {tr("自动刷新（1s/15s 自适应）· 数据快照 ~15s")}
             </span>
-            <antd.Tooltip title="SGLang /v1/loads 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）">
+            {/* v0.5.0-beta.14.26（F4：SGLang 卡「要手动刷新才更新」观感
+  真根因=标注误导）：卡片旧标「自动刷新 1 秒」但数据源是 SGLang 侧
+  快照发布（服务端默认 15s 才出新值）——数字冻结 14s 被误判卡死，手动
+  刷新又读同一快照（双重误导）。修：副标改「刷新 1s/15s 自适应 ×
+  数据快照 ~15s」双节奏；tooltip 讲清数据节奏 + 服务端调参入口
+  （--load-snapshot-publish-interval，部署方自管 sglang 容器侧改）。 */}
+            <antd.Tooltip
+              title={tr(
+                "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。数据节奏：SGLang 每 ~15s 发布一次负载快照（服务端默认；容器启动参数 --load-snapshot-publish-interval 可调）。卡片 1s/15s 自适应检查——数字不变是快照没更新，不是卡死；手动刷新读的也是同一份快照。",
+              )}
+            >
               <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>
                 ⓘ
               </span>

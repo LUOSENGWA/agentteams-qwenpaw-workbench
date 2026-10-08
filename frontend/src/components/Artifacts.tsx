@@ -11,13 +11,15 @@ import {
   resolvePluginUrl,
   fetchArtifacts,
   fetchProjectSummaries,
+  fetchProjectWorkflow,
   getCachedRooms,
   projectActivityTs,
-  requestJson,
   httpErrorStatus,
   httpErrorDetail,
   type Artifact,
+  type WorkflowTaskDetail,
 } from "../api";
+import { invalidateTags } from "../requestCache";
 import { formatSize } from "../util";
 
 const host = window.QwenPaw.host;
@@ -54,21 +56,10 @@ interface ProjectSummary {
   worker_count?: number;
 }
 
-interface TaskDetail {
-  task_id: string;
-  status?: string;
-  assigned_to?: string;
-  result_status?: string;
-  summary?: string;
-  deliverables?: string[];
-  result_path?: string;
-}
-
-interface WorkflowResponse {
-  tasks_detail?: TaskDetail[];
-  nodes?: { id: string; name: string; status: string; assignee?: string }[];
-  [k: string]: unknown;
-}
+// v0.5.0-beta.14.26：局部类型提升为 api.ts 共享类型（群内项目文件面板与
+// 产物 tab 同源同型）；组件内渲染代码经别名零改动。旧局部
+// WorkflowResponse 的 nodes 字段本文件无读取点（grep 核实），随提升移除。
+type TaskDetail = WorkflowTaskDetail; // 组件内渲染代码零改动别名
 
 /** 正源产物下载 URL（项目产物端点，query path 透传）。 */
 function artifactDownloadUrl(
@@ -300,12 +291,10 @@ function Artifacts(props: ArtifactsProps) {
     async (projectId: string, teamId?: string) => {
       if (tasksByProject[projectId]) return;
       try {
-        const teamQ = teamId
-          ? `&team=${encodeURIComponent(teamId)}`
-          : "";
-        const wf = (await requestJson(
-          `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?includeTasks=true${teamQ}`,
-        )) as WorkflowResponse;
+        // v0.5.0-beta.14.26：统一走 api.ts 共享缓存函数（30s TTL + 标签
+        // 失效）——与群内项目文件面板同源同速；手动刷新经 refresh()
+        // 显式失效后穿透。
+        const wf = await fetchProjectWorkflow(projectId, teamId);
         setTasksByProject((prev) => ({
           ...prev,
           [projectId]: wf.tasks_detail || [],
@@ -648,8 +637,13 @@ function Artifacts(props: ArtifactsProps) {
   const refresh = React.useCallback(async () => {
     // v0.5.0-beta.12: 手动刷新连任务缓存一起清——之前失败/空的项目永不重试。
     setTasksByProject({});
+    // v0.5.0-beta.14.26：手动刷新穿透全局 30s 读缓存——对当前已加载的
+    // 项目集合显式失效（tags 为空数组时 invalidateTags 为无害空操作）。
+    invalidateTags(
+      Object.keys(tasksByProject).map((p) => `project:${p}`),
+    );
     await Promise.all([refreshProjects(true), refreshItems(true)]);
-  }, [refreshProjects, refreshItems]);
+  }, [refreshProjects, refreshItems, tasksByProject]);
 
   // 预览入口：把 FileEntry 归一化为 PreviewFile 交给共享 FilePreview。
   // needsFetch=true 用于正源产物（URL 带后端注入的鉴权，图片必须 fetch blob）。

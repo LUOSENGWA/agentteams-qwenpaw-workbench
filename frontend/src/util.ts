@@ -59,6 +59,25 @@ export function formatSize(bytes?: unknown): string {
   return `${(n / 1024 / 1024).toFixed(1)}MB`;
 }
 
+/** v0.5.0-beta.14.26（F3：工具开关成功横幅与终态不一致——旧版只按
+ * field 分支不看 value，关工具仍显示「已启用」）：工具开关成功文案
+ * 四分支纯函数（smoke 可测，scripts/toolToggle.smoke.mjs）——横幅
+ * 必须与开关终态（enabled/asyncExecution × true/false）严格一致。 */
+export function toolToggleMessage(
+  tr: (key: string, vars?: Record<string, string>) => string,
+  field: "enabled" | "asyncExecution",
+  tool: string,
+  enabled: boolean,
+): string {
+  if (field === "enabled") {
+    return tr(enabled ? "{w} 已启用" : "{w} 已停用", { w: tool });
+  }
+  return tr(
+    enabled ? "{w} 异步执行已启用" : "{w} 异步执行已停用",
+    { w: tool },
+  );
+}
+
 /** 复制到剪贴板（五处重复片段收敛）：clipboard 不可用 → 直接 onResult(false)，
  * 不静默吞掉。成败 toast 由调用点传入（各点文案/级别原样保留，i18n 零新条目）——
  * tr 只有 i18n hooks（useT）可达，util 纯模块不复制 DICT 查找逻辑。 */

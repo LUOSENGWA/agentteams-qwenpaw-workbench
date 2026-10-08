@@ -87,15 +87,74 @@ def build_gateway_router() -> APIRouter:
                 "detail": last_err,
             }
         try:
-            if r.status_code not in (200, 201, 204):
+            # v0.5.0-beta.14.19: 带 Cookie 的网关面 401 = 会话过期
+            # （Higress Console 对失效 session 回 401 + JSON）。
+            # v0.5.0-beta.14.26（F2：实盘反馈「每次搞完 basic 登录状态也没了」）：
+            # 过期不再只判死——用 config 持久账密自动重登一次（冷却 60s/
+            # 并发合并/凭据错即停三闸防风暴），成功则新会话落盘 +
+            # **透明重放本次请求**（调用方无感，模型下拉等面不再静默消失，
+            # 用户不必手动重验证）。自愈前置到降级响应构建之前：重放成功
+            # → 直接走下方 2xx 路径；重放/重登未遂 → 落到降级构建。
+            if r.status_code == 401:
+                new_session = await router_mod.console_try_relogin(cfg)
+                if new_session:
+                    retry_ok = None
+                    for retry_url in gateways:
+                        try:
+                            async with GatedAsyncClient(
+                                timeout=8.0, verify=False
+                            ) as client:
+                                if method == "POST":
+                                    resp2 = await client.post(
+                                        f"{retry_url}{path}",
+                                        headers={
+                                            "Cookie": new_session,
+                                            "Content-Type": "application/json",
+                                        },
+                                        json=json_body or {},
+                                    )
+                                elif method == "PUT":
+                                    resp2 = await client.put(
+                                        f"{retry_url}{path}",
+                                        headers={
+                                            "Cookie": new_session,
+                                            "Content-Type": "application/json",
+                                        },
+                                        json=json_body or {},
+                                    )
+                                elif method == "DELETE":
+                                    resp2 = await client.delete(
+                                        f"{retry_url}{path}",
+                                        headers={"Cookie": new_session},
+                                    )
+                                else:
+                                    resp2 = await client.get(
+                                        f"{retry_url}{path}",
+                                        headers={"Cookie": new_session},
+                                    )
+                            _mark_working("gateway", retry_url)
+                            retry_ok = resp2
+                            break
+                        except Exception:  # noqa: BLE001 - 逐地址降级
+                            continue
+                    if retry_ok is not None and retry_ok.status_code in (
+                        200,
+                        201,
+                        204,
+                    ):
+                        r = retry_ok  # 透明重放成功 → 下方 2xx 路径
+                    elif retry_ok is not None and retry_ok.status_code == 401:
+                        r = retry_ok  # 新会话仍 401 → 判死路径
+                    # 其余（传输全败/其他状态）：保留原 401 响应。
+            if r is None or r.status_code not in (200, 201, 204):
                 out: Dict[str, Any] = {
                     "available": False,
                     "data": None,
                     "reason": f"http_{r.status_code}",
                 }
-                # v0.5.0-beta.14.19: 带 Cookie 的网关面 401 = 会话过期
-                # （Higress Console 对失效 session 回 401 + JSON）。
-                if r.status_code == 401:
+                if r is not None and r.status_code == 401:
+                    # 重登未遂（无凭据/冷却窗/凭据错/网络）→ 维持 14.19
+                    # 判死语义（前端横幅提示手动重新验证）。
                     # 任务 190：跨域共享状态，经 router 模块属性写入（勿改回 global）。
                     router_mod._console_session_expired = True
                 detail = ""

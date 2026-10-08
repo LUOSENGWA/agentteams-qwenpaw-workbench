@@ -1347,6 +1347,53 @@ async function loadWorkflowProjectsLegacy(): Promise<WorkflowProjectsResult> {
   }
 }
 
+/** 任务级明细（?includeTasks=true 的 tasks_detail 条目）——字段全集 =
+ * 群内项目文件面板（result/spec/deliverables 声明）+ 产物 tab（状态/摘要）
+ * 两消费方实际读取的并集。v0.5.0-beta.14.26：从 Artifacts.tsx 局部
+ * interface 提升为共享类型（两面板同源同型）。 */
+export interface WorkflowTaskDetail {
+  task_id: string;
+  status?: string;
+  assigned_to?: string;
+  result_status?: string;
+  summary?: string;
+  deliverables?: string[];
+  result_path?: string;
+  spec_path?: string;
+}
+
+/** 单项目 workflow 明细响应（tasks_detail + 时间多源元数据；
+ * index signature 保留——旧消费者按 [k: string]: unknown 读取扩展字段）。 */
+export interface WorkflowDetailResponse {
+  tasks_detail?: WorkflowTaskDetail[];
+  source_room_id?: string;
+  updated_at?: string;
+  [k: string]: unknown;
+}
+
+/** 单项目 workflow 明细（?includeTasks=true）。群内项目文件面板
+ * （ProjectFiles）与产物 tab（Artifacts）共用——
+ * v0.5.0-beta.14.26（实盘反馈 10/8：两处同源同接口，群内却慢）：旧版
+ * ProjectFiles 挂载即逐项目裸拉且 Drawer 重开全量重拉（零缓存层）；
+ * 统一走本函数后 30s TTL 内两面板零重复回源，手动刷新走
+ * invalidateTags 显式失效。team 参数同 fetchWorkflowProjects 契约
+ * （跨团队重名 project_id 防 409）。 */
+export async function fetchProjectWorkflow(
+  projectId: string,
+  teamId?: string,
+): Promise<WorkflowDetailResponse> {
+  const teamQ = teamId ? `&team=${encodeURIComponent(teamId)}` : "";
+  return cachedRequest(
+    `project/wf:${projectId}`,
+    30000,
+    async () =>
+      (await requestJson(
+        `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?includeTasks=true${teamQ}`,
+      )) as WorkflowDetailResponse,
+    { tags: [`project:${projectId}`] },
+  );
+}
+
 /** v0.5.0-beta.14.6：对外缓存包装（workflow/projects，30s）。
  * v0.5.0-beta.14.12（b）：force=true → opts.force 绕过 30s 读缓存
  * （手动刷新必穿透）+ fetcher 带 ?refresh=1 触发连接器后台补扫；
