@@ -5,6 +5,22 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.24（2026-10-08 · 弱部署形态批：半连通提示 + embedded 部署文档）
+
+**在 embedded all-in-one 独立节点（无宿主端口映射、无 Matrix 登录）实测暴露的「静默半连通」盲点——Controller 数据正常而聊天/通知/任务状态受限，此前首页零提示**
+
+## ① 半连通 info 横幅（产品盲点修复）
+
+现象（弱部署形态实测）：Controller 已连通（团队/工作流/Worker 数据全部正常）但 Matrix 未登录（聊天、通知、@提醒、任务状态同步不可用）——首页「Teams 0 rooms 0 unread + Worker 1 teams」混合显示，用户无从得知聊天侧为什么是空的。
+
+修：首页顶部新增可关闭的 info 横幅（条件 = `/auth-status` 的 `matrix_token === "none"` 且 controller 可达），文案区分「数据正常」与「受限项」，附「登录」直达配置页。与既有的「Matrix 登录已失效（error）」「Higress 会话过期（warning）」两条横幅并列、互斥不冲突。关闭态持久化到 localStorage（登录态轮询会重拉数据，不持久化会每次重开打扰）。
+
+## ② embedded all-in-one 部署形态文档（Controller 地址填法）
+
+实测发现：`agentteams-embedded` all-in-one 镜像的 Controller API（容器 8090）**不映射宿主端口**——与生产形态（映射到宿主自选端口，如 6866）不同，插件无从「探测」，此前文档只覆盖生产形态。
+
+修：`docs/12-config` 新增「Embedded all-in-one 部署形态」小节（中英）——同宿主机时取 controller 容器桥网 IP（`docker inspect` 一条命令）填 `http://<桥网IP>:8090`（IP 稳定、重启不丢）；跨主机则需部署侧加端口映射。token 获取路径与生产一致（容器内 `docker exec`，与端口无关）。
+
 ## 0.5.0-beta.14.23（2026-10-07 · 14.22 验收反馈批：凭证验证分离 + PATCH 代理透传 + KB 低带宽批量读压缩 + 服务端预热）
 
 **14.22 验收反馈的系统修复——Higress 验证误报 token 错、工具写链路「修改失败：HTTP 405」、KB 外网冷路径慢**
