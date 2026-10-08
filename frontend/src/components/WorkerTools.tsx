@@ -18,6 +18,7 @@ import { WrenchIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useT } from "../i18n";
+import { toolToggleMessage } from "../util";
 import {
   type WorkerInfo,
   type WorkerToolInfo,
@@ -100,13 +101,11 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
           prev.map((t) => (t.name === updated.name ? { ...t, ...updated } : t)),
         );
       }
-      setMsg({
-        kind: "ok",
-        text:
-          field === "enabled"
-            ? tr("{w} 已启用", { w: tool })
-            : tr("{w} 已停用", { w: tool }),
-      });
+      // v0.5.0-beta.14.26（实盘反馈 10/8：关掉工具横幅仍显示「已启用」）：
+      // 旧版成功文案只按 field 分支、不看 value——关工具（value=false）仍
+      // 显示「已启用」，开异步执行也显示「已停用」（两字段文案还互相张冠
+      // 李戴）。改 (field, value) 四分支纯函数：横幅必须与开关终态一致。
+      setMsg({ kind: "ok", text: toolToggleMessage(tr, field, tool, value) });
     } catch (e) {
       setTools((prev) =>
         prev.map((t) => (t.name === tool ? { ...t, [field]: !value } : t)),
