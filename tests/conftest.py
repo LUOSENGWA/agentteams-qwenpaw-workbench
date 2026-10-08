@@ -4,9 +4,44 @@
 # T4a 引入 _kb_tree_cache/_kb_graph_cache 后，4 个 KB 树测试互污
 # （单跑全过、全跑必挂的经典形态）。本 fixture 用「属性名后缀匹配」通用
 # 清空，未来新增的 *_cache dict 自动纳入，避免每加一个缓存回来逐个修补。
+#
+# v0.5.0-beta.14.25（任务 190）：build_router 按域拆到 routers/ 包后，
+# 各域模块经 `from ..router import X` 在自己的命名空间持有共享名的独立
+# 引用——rebind 型 monkeypatch（把 router 模块属性整体替换）对域 handler
+# 侧不可见，须同步 rebind 各域模块。patch_shared_name 统一处理。
 from __future__ import annotations
 
+import importlib
+
 import pytest
+
+# 任务 190：build_router 的 8 个域子路由模块（rebind 同步用；hasattr
+# 过滤，域未持有该属性时跳过）。
+_DOMAIN_MODULES = (
+    "agentteams_connector.routers.status_api",
+    "agentteams_connector.routers.teams_api",
+    "agentteams_connector.routers.config_api",
+    "agentteams_connector.routers.gateway_api",
+    "agentteams_connector.routers.matrix_api",
+    "agentteams_connector.routers.kb_api",
+    "agentteams_connector.routers.live_api",
+    "agentteams_connector.routers.approval_api",
+)
+
+
+def patch_shared_name(monkeypatch, name, value):
+    """任务 190：rebind router 模块共享名并同步到持有该属性的各域模块。
+
+    拆分前 handler 与测试同处 router 模块命名空间，rebind router 属性即可；
+    拆分后域 handler 经 from-import 持有自己的绑定，必须逐模块 rebind，
+    否则 patch 失效 → 测试走真实拨号（挂死/误断言）。"""
+    from agentteams_connector import router as router_mod
+
+    monkeypatch.setattr(router_mod, name, value)
+    for mod_name in _DOMAIN_MODULES:
+        mod = importlib.import_module(mod_name)
+        if hasattr(mod, name):
+            monkeypatch.setattr(mod, name, value)
 
 
 @pytest.fixture(autouse=True)

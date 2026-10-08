@@ -24,6 +24,8 @@ import json
 
 import pytest
 
+from conftest import patch_shared_name
+
 from agentteams_connector import config as cfgmod
 from agentteams_connector.router import build_router
 
@@ -116,9 +118,7 @@ def client(monkeypatch):
     def fake_client_cls(*a, **k):
         return _FakeClient(*a, **k)
 
-    monkeypatch.setattr(
-        "agentteams_connector.router.GatedAsyncClient", fake_client_cls
-    )
+    patch_shared_name(monkeypatch, "GatedAsyncClient", fake_client_cls)
 
     app = FastAPI()
     app.include_router(build_router())

@@ -10,6 +10,7 @@ import {
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
+import { formatTimeOfDayNo12 } from "../util";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -233,7 +234,7 @@ export default function WorkflowCard(props: {
               title={tr("controller 正源，15s 轮询")}
             >
               <span className="wb-live-dot" style={{ width: 6, height: 6, borderRadius: 999, background: "#10b981", display: "inline-block", flexShrink: 0 }} />
-              live{live.ts ? ` ${new Date(live.ts).toLocaleTimeString("zh-CN", { hour12: false })}` : ""}
+              live{live.ts ? ` ${formatTimeOfDayNo12(live.ts)}` : ""}
             </span>
           ) : null}
         </span>

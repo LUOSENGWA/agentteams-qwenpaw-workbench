@@ -30,6 +30,8 @@ import time
 from pathlib import Path
 
 import pytest
+
+from conftest import patch_shared_name
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -92,7 +94,7 @@ def _install_fake_dial(monkeypatch):
     def _factory(*a, **kw):
         return fake
 
-    monkeypatch.setattr(router_mod, "GatedAsyncClient", _factory)
+    patch_shared_name(monkeypatch, "GatedAsyncClient", _factory)
     return fake
 
 
