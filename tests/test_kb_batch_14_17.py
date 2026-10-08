@@ -38,6 +38,8 @@ import time
 
 import pytest
 
+from conftest import patch_shared_name
+
 from agentteams_connector import config as cfgmod
 from agentteams_connector import kb_cache
 from agentteams_connector import router as router_mod
@@ -200,9 +202,8 @@ def client(monkeypatch):
     _FakeClient.exec_create_status = 201
     _FakeClient.last_cmd = []
 
-    monkeypatch.setattr(
-        "agentteams_connector.router.GatedAsyncClient",
-        lambda *a, **k: _FakeClient(*a, **k),
+    patch_shared_name(
+        monkeypatch, "GatedAsyncClient", lambda *a, **k: _FakeClient(*a, **k)
     )
     app = FastAPI()
     app.include_router(router_mod.build_router())

@@ -16,7 +16,7 @@ import {
 } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { copyText } from "../util";
+import { copyText, formatTimeOfDay } from "../util";
 import { SearchIcon, RefreshIcon, CheckIcon, CloseIcon, WarnIcon, HomeIcon, MonitorIcon } from "./icons";
 
 
@@ -1070,7 +1070,7 @@ const SettingsTab = React.memo(function SettingsTab({
             {sseState.status === "connected"
               ? tr("事件流：已连接")
               : tr("事件流：已断开——自动重连中（上次断开 {time}）", {
-                  time: new Date(sseState.since).toLocaleTimeString(),
+                  time: formatTimeOfDay(sseState.since),
                 })}
           </div>
         ) : null}
@@ -1737,7 +1737,7 @@ const SettingsTab = React.memo(function SettingsTab({
           >
             {config.configWritable
               ? config.configSavedAt
-                ? tr("上次落盘 {time}").replace("{time}", new Date(config.configSavedAt * 1000).toLocaleTimeString())
+                ? tr("上次落盘 {time}").replace("{time}", formatTimeOfDay(config.configSavedAt * 1000))
                 : tr("尚未落盘")
               : tr("⚠ 配置目录不可写——保存可能不落盘")}
           </span>

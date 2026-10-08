@@ -9,6 +9,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
+import { formatTimeOfDay } from "../util";
 
 
 const host = window.QwenPaw.host;
@@ -552,7 +553,7 @@ function OpsPanel({
               {sglangLocalAt > 0 && (
                 <span>
                   {tr("更新于 {time}", {
-                    time: new Date(sglangLocalAt).toLocaleTimeString(),
+                    time: formatTimeOfDay(sglangLocalAt),
                   })}
                 </span>
               )}
@@ -581,7 +582,7 @@ function OpsPanel({
             {logsUpdatedAt > 0 &&
               ` · ${tr("{n} 行 · 更新于 {time}", {
                 n: logs.length,
-                time: new Date(logsUpdatedAt).toLocaleTimeString(),
+                time: formatTimeOfDay(logsUpdatedAt),
               })}`}
           </span>
           <div style={{ flex: 1 }} />
