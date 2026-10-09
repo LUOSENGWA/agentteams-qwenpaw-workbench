@@ -1,5 +1,4 @@
-# v0.5.0-beta.14.19: 登录态/凭据健康（/auth-status + token 失效检测）。
-#
+# 登录态/凭据健康（/auth-status + token 失效检测）。
 # 背景：matrix access_token 失效（改密/踢设备/admin 重置）后，
 # sync 循环此前无限 15s 空转 401、@通知静默全断、前端零感知；
 # Higress console_session 过期后 alias 层静默消失同样无感知。

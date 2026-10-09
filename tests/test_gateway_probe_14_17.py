@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Higress 连通性探测 + 凭据记忆重做回归（v0.5.0-beta.14.17 /）。
+"""Higress 连通性探测 + 凭据记忆重做回归（/）。
 
 连通性测试也要测试 Higress「每个账号密码的认证都要分开」。
  修复：``test_addresses`` 增加 ``gateway_urls`` 段（Higress Console 可达性

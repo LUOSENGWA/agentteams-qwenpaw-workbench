@@ -40,8 +40,7 @@ import MdText from "./MdText";
 import { createPoller, type Poller } from "../usePoller";
 
 const host = window.QwenPaw.host;
-// v0.5.0-beta.13.13（13.12 知识文件和预览等高、知识文件 col 可滚动）：
-// 两栏固定等高（min(viewport 余量, 640px)，下限 460），Card 内 body 独立滚动。
+// // 两栏固定等高（min(viewport 余量, 640px)，下限 460），Card 内 body 独立滚动。
 const KB_COL_STYLE = { height: "min(calc(100vh - 330px), 640px)", minHeight: 460, minWidth: 0 } as const;
 const KB_CARD_STYLE = { height: "100%", display: "flex", flexDirection: "column" as const } as const;
 const KB_CARD_BODY_STYLE = { flex: 1, minHeight: 0, overflowY: "auto" as const };
@@ -79,7 +78,7 @@ interface GraphNodeLike {
   category?: string;
   /** false=未解析引用（文件不存在，不可点开）。 */
   resolved?: boolean;
-  /** v0.5.0-beta.12 ：聚合图谱节点归属 Agent（agent::path 前缀）。 */
+  /** 聚合图谱节点归属 Agent（agent::path 前缀）。 */
   agent?: string;
   section?: "daily" | "digest" | null;
   relative_path?: string | null;
@@ -412,13 +411,13 @@ interface SelectedFile {
  * - 节点大小=链接度；≤42 节点全标注，否则 根+高度数+hover/选中；
  * - 点节点选中：邻接高亮、其余变暗，详情面板=入边/出边列表+打开文件；
  * - 边箭头=引用方向；图例=三级+方向。
- * 聚合图谱（agentLegend 提供）保留 v0.5.0-beta.12 按 Agent 着色。 */
+ * 聚合图谱（agentLegend 提供）保留 按 Agent 着色。 */
 const GRAPH_ROOT_COLOR = "#FF7F16"; // QwenPaw --graph-3d-root
 const GRAPH_DIRECT_COLOR = "#389E5C"; // QwenPaw --graph-3d-direct
 const GRAPH_FILE_LIGHT = "#71665E"; // QwenPaw --graph-3d-file
 const GRAPH_FILE_DARK = "#A29A92";
 
-/** v0.5.0-beta.12 ：聚合图谱按 Agent 着色的调色板（GraphCard 切片误删，补回）。 */
+/** 聚合图谱按 Agent 着色的调色板（GraphCard 切片误删，补回）。 */
 const AGENT_PALETTE = [
  "#FF7F16", "#1677ff", "#52c41a", "#f5222d", "#722ed1",
   "#fa8c16", "#13c2c2", "#eb2f96",
@@ -440,7 +439,7 @@ export function GraphCard(props: {
   loading: boolean;
   error: string;
   onOpenNode: (node: GraphNodeLike) => void;
-  /** v0.5.0-beta.12 ：聚合图谱按 Agent 着色（提供时覆盖三级配色+图例）。 */
+  /** 聚合图谱按 Agent 着色（提供时覆盖三级配色+图例）。 */
   agentLegend?: { name: string; color: string }[] | null;
 }) {
   const { graph, loading, error, onOpenNode, agentLegend } = props;
@@ -578,8 +577,7 @@ export function GraphCard(props: {
       setSelectedId("");
       return;
     }
- // v0.5.0-beta.13.22（13.21 「点节点看连接只闪一下箭头」）：
-    // 旧实现 graph 引用一变就清 selectedId——聚合（merged）模式的 graph
+ // // 旧实现 graph 引用一变就清 selectedId——聚合（merged）模式的 graph
     // prop 是每次 render 新建的对象字面量（点节点→openFile→父侧 3 次
     // state 更新→3 次新引用）→ 高亮闪一帧即被清除。正确语义=只在选中
     // 节点在新图中不存在时清除（切 Agent/重拉）；同图同形重渲染保持选中。
@@ -1411,7 +1409,7 @@ export function GraphCard(props: {
 
 // ── 远端团队知识库视图（主视图）──────────────────────────────
 
-/** v0.5.0-beta.12：KB 团队/Worker 选择记忆（「知识库的团队和 worker
+/** KB 团队/Worker 选择记忆（「知识库的团队和 worker
  * 选择那里也要加记忆」，同工作流 tab 记忆惯例——localStorage 持久
  * 选中态，刷新/重装不丢）。失效值（worker/团队已不存在）回退默认。 */
 const KB_STATE_KEY = "kb-state-v1";
@@ -1463,7 +1461,7 @@ function RemoteKbView(props: {
   const { agents, refreshTick } = props;
   const t = useThemeColors();
   const tr = useT();
-  // v0.5.0-beta.12：选择记忆（只读一次，失效校验在初始化 effect 里做）。
+  // 选择记忆（只读一次，失效校验在初始化 effect 里做）。
   const kbStateRef = React.useRef<KbState>(loadKbState());
   const [agent, setAgent] = React.useState("");
   const [tree, setTree] = React.useState<{
@@ -1481,8 +1479,8 @@ function RemoteKbView(props: {
   const [contentError, setContentError] = React.useState("");
   // 文件取回竞态守卫——慢请求的迟到响应（含其报错）不得覆盖新选择。
   const fileSeqRef = React.useRef(0);
-  // v0.5.0-beta.12 ：图谱模式（当前 Agent / 团队聚合）
-  // v0.5.0-beta.12：记忆恢复（非法值回退 "agent"，loadKbState 已校验枚举）。
+  // 图谱模式（当前 Agent / 团队聚合）
+  // 记忆恢复（非法值回退 "agent"，loadKbState 已校验枚举）。
   const [graphMode, setGraphMode] = React.useState<
     "agent" | "merged"
   >(() => kbStateRef.current.graphMode ?? "agent");
@@ -1490,7 +1488,7 @@ function RemoteKbView(props: {
  * kbTeams=团队→成员（teams/structure）；kbTeam=选中团队（""=全部，
  * 默认=当前 agent 所在团队，缺省第一个团队）。 */
   const [kbTeams, setKbTeams] = React.useState<WorkerTreeTeam[]>([]);
-  // v0.5.0-beta.12：记忆恢复（团队列表落地后校验存在性，失效回退默认）。
+  // 记忆恢复（团队列表落地后校验存在性，失效回退默认）。
   const [kbTeam, setKbTeam] = React.useState(
     () => kbStateRef.current.team ?? "",
   );
@@ -1500,8 +1498,8 @@ function RemoteKbView(props: {
     agents: string[];
   } | null>(null);
   const [mergedLoading, setMergedLoading] = React.useState(false);
-  // v0.5.0-beta.14.20（用户 14.19 验收：聚合图首载出非所选团队 worker，
-  // 切 tab 才正常——问题已久）：范围/竞态双轨状态——
+  // （旧疾：聚合图首载出非所选团队 worker，切 tab 才正常）：
+  // 范围/竞态双轨状态——
   // mergedForRef=上一次**成功**落图的范围（agents csv；""=正确的空态）；
   // mergedGenRef=单飞代际——旧请求晚到不得覆盖新范围（切团队秒切场景）。
   const mergedForRef = React.useRef("");
@@ -1510,7 +1508,7 @@ function RemoteKbView(props: {
   //（旧版每 tick 新对象引用 → GraphCanvas 全量重布局，「加载慢」的持续性
   // 观感之一）。
   const lastMergedFetchRef = React.useRef(0);
-  // v0.5.0-beta.12 ：团队知识搜索（跨 Worker）
+  // 团队知识搜索（跨 Worker）
   const [searchQ, setSearchQ] = React.useState("");
   const [searchBusy, setSearchBusy] = React.useState(false);
   const [searchResults, setSearchResults] = React.useState<
@@ -1524,9 +1522,9 @@ function RemoteKbView(props: {
     Record<string, boolean>
   >({});
 
-  // v0.5.0-beta.14.11：Agent 选项按所选「聚合团队」收敛
+  // Agent 选项按所选「聚合团队」收敛
   //（团队记忆=sysdev-team 时不再列全量 worker）；"全部团队"=全量。
-  // v0.5.0-beta.14.18 ：记忆团队已设（如某团队），首帧却列出**全集群
+  // 记忆团队已设（如某团队），首帧却列出**全集群
   // 其他团队的 worker**，切换 tab 后再回来才收敛到所选团队。根因：
   // ① fetchTeamsStructure 旧版只在 graphMode==="merged" 的 effect 里调用
   // ——agent 模式下团队结构永不被拉 → kbTeams 恒空；
@@ -1548,8 +1546,8 @@ function RemoteKbView(props: {
   }, [agents, kbTeam, kbTeams]);
 
   // 默认选第一个 leader（无则首个 worker）。
-  // v0.5.0-beta.12：优先恢复记忆的 Worker（仍在列表中才用，失效回退默认）。
-  // v0.5.0-beta.14.11：校验范围改用 scopedAgents（kbTeam 非空时
+  // 优先恢复记忆的 Worker（仍在列表中才用，失效回退默认）。
+  // 校验范围改用 scopedAgents（kbTeam 非空时
   // 已收敛到所选团队），语义不变——记忆优先，失效回退 leader/首个。
   React.useEffect(() => {
     if (!agent && scopedAgents.length > 0) {
@@ -1565,7 +1563,7 @@ function RemoteKbView(props: {
     }
   }, [scopedAgents, agent]);
 
-  // v0.5.0-beta.14.11：团队切换后当前 Agent 不在范围内 → 收敛到
+  // 团队切换后当前 Agent 不在范围内 → 收敛到
   // 该团队 leader（无则首个）；记忆值若在范围内则保留（现有恢复逻辑已保证）。
   React.useEffect(() => {
     if (!kbTeam || scopedAgents.length === 0) return;
@@ -1575,12 +1573,12 @@ function RemoteKbView(props: {
     if (lead && lead.name !== agent) setAgent(lead.name);
   }, [kbTeam, scopedAgents, agent]);
 
-  // v0.5.0-beta.12：记忆持久化（worker/团队/图谱模式三态）。
+  // 记忆持久化（worker/团队/图谱模式三态）。
   React.useEffect(() => {
     if (agent) saveKbState(agent, kbTeam, graphMode);
   }, [agent, kbTeam, graphMode]);
 
-  // v0.5.0-beta.14.22（D4 #5）：选中 Agent 非 qwenpaw → 知识文件视图降级
+  // 选中 Agent 非 qwenpaw → 知识文件视图降级
   // 空态 + 说明（workspace-files 是 QwenPaw 独有面；controller 透传
   // runtime，旧 controller 无字段 = undefined 放行不误伤）。
   const kbGated = React.useMemo(() => {
@@ -1673,7 +1671,7 @@ function RemoteKbView(props: {
   );
 
   // 切 tab 刷新（rc-tabs 保活）。
-  // v0.5.0-beta.14.20：聚合图重拉加双门——① teams 未落地禁止拉（防无参
+  // 聚合图重拉加双门——① teams 未落地禁止拉（防无参
   // 全集群拉取竞态）② 30s 节流（聚合图后端有 30s SWR 门，逐 SSE tick
   // 重拉=纯浪费+全量重布局）。
   React.useEffect(() => {
@@ -1688,7 +1686,7 @@ function RemoteKbView(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTick]);
 
-  // v0.5.0-beta.14.18：团队结构**无条件 mount 拉取**——
+  // 团队结构**无条件 mount 拉取**——
   // 旧版只在 merged 模式拉，agent 模式下 kbTeams 恒空 → 下拉错列全集群
   // （根因见 scopedAgents 注释）。拉取与图谱模式解耦：
   // - agent 模式：收敛 agent 下拉范围（记忆团队 → 只列该团队 worker）；
@@ -1700,7 +1698,7 @@ function RemoteKbView(props: {
         const tree = r.tree || [];
         setKbTeams(tree);
         setKbTeam((prev) => {
-          // v0.5.0-beta.12：记忆团队仍在团队列表 → 恢复；失效 → 走默认。
+          // 记忆团队仍在团队列表 → 恢复；失效 → 走默认。
           if (prev && tree.some((t) => t.team_name === prev)) {
             return prev;
           }
@@ -1715,8 +1713,8 @@ function RemoteKbView(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // v0.5.0-beta.12 ：首次切到聚合模式时拉一次。
-  // v0.5.0-beta.14.20：不变式改为「显示范围==当前团队范围」——旧守卫
+  // 首次切到聚合模式时拉一次。
+  // 不变式改为「显示范围==当前团队范围」——旧守卫
   // `!mergedGraph` 在错误范围（全集群）响应已落地时**永久挡住**正确重拉
   //（切 tab 重挂才复位=用户看到的「切 tab 才正常」）。mergedForRef 记录
   // 已落地范围，不一致即重拉（含错误范围自愈）。
@@ -1742,7 +1740,7 @@ function RemoteKbView(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbTeam]);
 
-  // v0.5.0-beta.12 ：agentOverride——跨 Agent 搜索结果点击直接打开目标 Agent 文件
+  // agentOverride——跨 Agent 搜索结果点击直接打开目标 Agent 文件
   // （不等 setAgent 状态落地）。
   const openFile = React.useCallback(
     (path: string, agentOverride?: string) => {
@@ -1753,7 +1751,7 @@ function RemoteKbView(props: {
       // Agent」触发 [agent, loadAll] effect 的 setSelected(null)+
       // setContent("")，把刚发起的预览擦掉——fetch 回来时 selected 已 null，
       // 面板不渲染 = 点击无反应；文件树点击不带 override 故一直正常。
-      // 取内容本就按 a=agentOverride 进行，无需切换 UI 当前 Agent（v0.5.0-beta.12
+      // 取内容本就按 a=agentOverride 进行，无需切换 UI 当前 Agent（
       // 跨 Agent 搜索的原始意图就是「不等 setAgent 落地」）。
       setSelected({ section: "remote", filename: path, title });
       const seq = ++fileSeqRef.current;
@@ -1787,7 +1785,7 @@ function RemoteKbView(props: {
         antd.message.info(tr("未解析引用（对应文件不存在）"));
         return;
       }
-      // v0.5.0-beta.12 ：聚合图谱 id = agent::path（跨 Agent 跳转）。
+      // 聚合图谱 id = agent::path（跨 Agent 跳转）。
       const sep = node.id.indexOf("::");
       if (graphMode === "merged" && sep > 0) {
         openFile(node.id.slice(sep + 2), node.id.slice(0, sep));
@@ -1798,7 +1796,7 @@ function RemoteKbView(props: {
     [openFile, tr, graphMode],
   );
 
-  // v0.5.0-beta.12 ：团队聚合图谱（节点按 Agent 着色；边保留原 Agent 内）。
+  // 团队聚合图谱（节点按 Agent 着色；边保留原 Agent 内）。
   // 团队化：按选中团队成员聚合（kbTeam=""→全部团队）。
   const loadMerged = React.useCallback(() => {
     const team = kbTeams.find((t) => t.team_name === kbTeam);
@@ -1833,7 +1831,7 @@ function RemoteKbView(props: {
       });
   }, [kbTeams, kbTeam]);
 
-  // v0.5.0-beta.12 ：团队知识搜索（跨 Worker，后端并发扫各 Agent 知识文件）。
+  // 团队知识搜索（跨 Worker，后端并发扫各 Agent 知识文件）。
   const runSearch = React.useCallback((q: string) => {
     const term = q.trim();
     setSearchQ(term);
@@ -1891,7 +1889,7 @@ function RemoteKbView(props: {
 
   const agentInfo = agents.find((a) => a.name === agent);
 
-  // v0.5.0-beta.13.22（13.21 配套）：聚合（merged）模式传给
+  // 聚合（merged）模式传给
   // GraphCard 的 graph 对象旧实现在 JSX 里内联新建（每次 render 新引用）
   // → 子组件 layout/agentLegend 等 useMemo 反复重算（毛球布局 O(n²) 级别），
   // 且曾连带「点节点高亮闪一下」（见 GraphCard 内 effect 注释）。
@@ -1939,7 +1937,7 @@ function RemoteKbView(props: {
             value={agent || undefined}
             placeholder={tr("选择 Agent")}
             onChange={(v: string) => setAgent(v)}
- // v0.5.0-beta.14.11：选项按所选团队收敛。
+ // 选项按所选团队收敛。
             options={agentSelectOptions(scopedAgents, tr)}
           />
           {agentInfo ? (
@@ -1992,7 +1990,7 @@ function RemoteKbView(props: {
         </div>
       </antd.Card>
 
-      {/* v0.5.0-beta.12 ：图谱模式 + 团队知识搜索 */}
+      {/* 图谱模式 + 团队知识搜索 */}
       <div
         style={{
           display: "flex",
@@ -2038,7 +2036,7 @@ function RemoteKbView(props: {
         />
       </div>
 
-      {/* v0.5.0-beta.12 ：搜索结果显示（点击=切到该 Agent 并打开文件） */}
+      {/* 搜索结果显示（点击=切到该 Agent 并打开文件） */}
       {searchResults !== null ? (
         <antd.Card
           size="small"
@@ -2095,8 +2093,8 @@ function RemoteKbView(props: {
         </antd.Card>
       ) : null}
 
-      {/* 图谱（v0.5.0-beta.12 ：可切团队聚合，节点按 Agent 着色）
- v0.5.0-beta.13.22：merged graph/legend 用 memo 稳定引用。 */}
+      {/* 图谱（可切团队聚合，节点按 Agent 着色）
+ merged graph/legend 用 memo 稳定引用。 */}
       <GraphCard
         graph={
           graphMode === "merged" && mergedGraphProp
@@ -2119,7 +2117,7 @@ function RemoteKbView(props: {
         <antd.Col span={10} style={KB_COL_STYLE}>
           <antd.Card size="small" style={KB_CARD_STYLE} styles={{ body: KB_CARD_BODY_STYLE }} title={<span style={{ fontSize: 13 }}>{tr("知识文件")}</span>}>
             {kbGated ? (
-              // v0.5.0-beta.14.22（D4 #5）：非 qwenpaw Agent → 降级空态 + 说明。
+              // 非 qwenpaw Agent → 降级空态 + 说明。
               <div style={{ padding: 16 }}>
                 <RuntimeNotice runtime={agentInfo?.runtime} />
                 <antd.Empty
@@ -2343,7 +2341,7 @@ function LocalKbView(props: { refreshTick: number }) {
   // 文件取回竞态守卫（同 RemoteKbView）。
   const fileSeqRef = React.useRef(0);
   const [reindexing, setReindexing] = React.useState(false);
-  // v0.5.0-beta.14.6：旧定时器 → 命令式 createPoller（5s 重建检查，
+  // 旧定时器 → 命令式 createPoller（5s 重建检查，
   // !document.hidden——后台暂停；tries/停止逻辑原样保留）。
   const reindexPoller = React.useRef<Poller | null>(null);
   const stopReindexPoll = React.useCallback(() => {
@@ -2779,7 +2777,7 @@ function KnowledgeBase(props: { refreshTick?: number }) {
           setProbeError("no-agents");
           return;
         }
-        // v0.5.0-beta.14.18：probe 成功后后台预热默认 agent 的 tree+graph。
+        // probe 成功后后台预热默认 agent 的 tree+graph。
         // 真冷路径实测（生产环境，外网 5M）：tree 冷算 ≈3.4-3.7s（单次 docker
         // exec 往返的物理成本，
         // 架构层不可再压）、graph ≈0.9s、温缓存 13-18ms。首帧可见时若恰好
@@ -2858,7 +2856,7 @@ function KnowledgeBase(props: { refreshTick?: number }) {
           }
         />
       ) : null}
-      {/* v0.5.0-beta.14.18（14.17 「知识库一开始显示本机 agent，
+      {/* （14.17 「知识库一开始显示本机 agent，
  * 切 tab 才变 sysdev-team」）：初始 probing 期间 mode 默认 "local"，
  * LocalKbView（本机宿主 Agent）先闪一帧再切 RemoteKbView——首渲竞态。
  * 探测中一律 loading，探测结束才落 remote/local 视图（手动切 local
@@ -2907,7 +2905,7 @@ interface AnyFile {
   path?: string;
   size?: number;
   mtime?: number;
-  /** v0.5.0-beta.13.10：非文本文件灰显不可点（后端全量列目录）。 */
+  /** 非文本文件灰显不可点（后端全量列目录）。 */
   openable?: boolean;
 }
 
@@ -3088,7 +3086,7 @@ function FileGroup({
             const key = keyOf(f);
             const name = key.split("/").pop() || key;
             const active = selected?.filename === key;
- // v0.5.0-beta.13.10（13.9 知识库不全）：非文本文件
+ // 非文本文件
             // 列出但灰显不可点开（openable=false，后端全量列目录）。
             const openable = f.openable !== false;
             return (
@@ -3124,7 +3122,7 @@ function FileGroup({
                     {formatSize(f.size)}
                   </span>
                 ) : null}
-                {/* v0.5.0-beta.12 ：文件更新时间（tar mtime） */}
+                {/* 文件更新时间（tar mtime） */}
                 {f.mtime ? (
                   <span style={{ color: active ? "rgba(255,255,255,0.75)" : t.textSecondary, fontSize: 10, flexShrink: 0 }}>
                     {formatDateShort(f.mtime * 1000)}{" "}
@@ -3155,6 +3153,6 @@ function RefreshIcon() {
   return <I />;
 }
 
-// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
+// 面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(KnowledgeBase);

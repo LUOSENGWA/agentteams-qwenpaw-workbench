@@ -17,7 +17,7 @@ const React = host.React;
 const antd = host.antd;
 
 /** 状态分集（dashboard workflow-card.tsx 同款集合，交叉验证基准）。
- * v0.5.0-beta.13.12：cancelled 从 ERROR 拆出独立集——此前取消任务
+ * cancelled 从 ERROR 拆出独立集——此前取消任务
  * 显示「失败」是状态映射不一致缺陷（报告）。 */
 const COMPLETE = new Set(["completed", "success", "done"]);
 const ERROR = new Set(["failed", "error"]);
@@ -50,7 +50,7 @@ function statusColor(status?: string): string {
   return "#722ed1";
 }
 
-/** v0.5.0-beta.12.8（第 11 轮）：WorkflowEvent（正源 15s 轮询）→ 卡片 overlay。
+/** ：WorkflowEvent（正源 15s 轮询）→ 卡片 overlay。
  * steps 优先 nodes（controller 轨 DAG 任务行 id/name/status）；rooms 降级轨
  * 事件无 nodes → 用事件自带 steps（原始卡片形状）。subagents=nodes.subagent
  * （assignee）去重；无 nodes 时回退事件 subagents。语义对齐 dashboard
@@ -128,7 +128,7 @@ function ProjectStatusBadge(props: { status?: string; t: ReturnType<typeof useTh
  * 点卡片 → onOpenProject(runId)（工作流 tab 选中该项目）。
  * body 非空时卡片下方保留灰字摘要（信息不丢）。
  *
- * v0.5.0-beta.12.8（第 11 轮）live overlay（dashboard workflow-card 同语义）：
+ * live overlay（dashboard workflow-card 同语义）：
  * 项目工作流卡=一次性发布的快照，任务推进在 controller 侧无人再编辑卡片 →
  * RoomChat 按 runId 传入正源 live 事件（15s 轮询；降级轨传 null）：
  * 状态/步骤/参与 Worker 优先 live，逐字段回退快照；LIVE 徽标（绿点脉冲 +
@@ -140,7 +140,7 @@ export default function WorkflowCard(props: {
   onOpenProject?: (runId: string) => void;
   /** 干预成功 → 刷新工作流（与 WorkflowBoard onDone 同语义）。 */
   onIntervened?: () => void;
-  /** v0.5.0-beta.12.8（第 11 轮）：runId 匹配的正源 live 事件；null=不 overlay。 */
+  /** ：runId 匹配的正源 live 事件；null=不 overlay。 */
   live?: WorkflowEvent | null;
 }) {
   const { payload, body, onOpenProject, onIntervened, live } = props;

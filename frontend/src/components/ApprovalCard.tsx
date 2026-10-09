@@ -31,7 +31,7 @@ export interface ApprovalPayload {
   reasoning?: string;
 }
 
-/** v0.5.0-beta.12 agentteams 源（Worker 工具审批桥接）的详情字段。
+/** agentteams 源（Worker 工具审批桥接）的详情字段。
  * 后端 host_bridge 把 worker/room/request 放进 tool_call.input（=
  * 前端 toolParams）——宿主 payload 透传，不依赖 extra 穿透。 */
 function agentteamsDetails(
@@ -133,7 +133,7 @@ export default function ApprovalCard({
           {approval.findingsSummary}
         </div>
       ) : null}
-      {/* v0.5.0-beta.12 AgentTeams 源详情（Worker/房间/审批请求原文） */}
+      {/* AgentTeams 源详情（Worker/房间/审批请求原文） */}
       {at ? (
         <div
           style={{

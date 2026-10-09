@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""address_mode（手动固定内网/外网）回归测试（v0.5.0-beta.14.1）。
+"""address_mode（手动固定内网/外网）回归测试（）。
 
 语义（用户 2026-09-30，14.1 同批落地）：
 
@@ -118,7 +118,7 @@ def test_pinned_note() -> None:
 
 
 def test_pinned_map() -> None:
-    # v0.5.0-beta.14.7：固定档映射扩为四类（补 gateway）——
+    # 固定档映射扩为四类（补 gateway）——
     # 本测试 _cfg 未配 gateway 地址，故 gateway 固定值 None。
     m = router_mod._pinned_map(_cfg("lan"))
     assert m == {

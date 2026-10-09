@@ -8,7 +8,7 @@
 // matchValue}], authConfig{enabled,allowedCredentialTypes,
 // allowedConsumers?} }
 // 写面经连接器 /gateway/* 透传到 Higress Console（console_session）。
-// v0.5.0-beta.14.4：加编辑模式（initial 预填 + PUT 原名称，与 dashboard
+// 加编辑模式（initial 预填 + PUT 原名称，与 dashboard
 // higress BFF update 语义同款——name 在路径上，body 不变名）。
 
 import type * as ReactNS from "react";

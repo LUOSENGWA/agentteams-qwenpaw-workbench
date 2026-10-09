@@ -41,7 +41,7 @@ def build_kb_router(
         _kb_docker_ok_cache: Dict[str, tuple],
         _kb_inflight: Dict[str, Any],
     ) -> tuple:
-    """KB 域子路由（build_router 原段逐字搬移，任务 190）。
+    """KB 域子路由（build_router 原段逐字搬移）。
 
     三个可变状态（_kb_ws_cache/_kb_docker_ok_cache/_kb_inflight）由装配方
     build_router 创建并显式传入；返回 (router, _kb_shared)，_kb_shared 携带
@@ -105,7 +105,7 @@ def build_kb_router(
     ) -> tuple:
         """Controller Docker API（GET/HEAD 恒放行）。返回 (status, bytes)。
 
- v0.5.0-beta.14.2（外网 401 根因③）：单地址直拨改 ordered 地址
+ ：单地址直拨改 ordered 地址
  failover——旧版只拨 _pick_address 单地址：切网窗口 working cache 未
  换 / 401 地址居首时全族端点（KB/审批/日志）恒 401 或卡满 40s 超时。
  200 即止；4xx/5xx/传输错 → 下一地址；全败 → 返回最后一个
@@ -121,7 +121,7 @@ def build_kb_router(
         all_timeout = True
         for b in urls:
             url = f"{b}/docker/v1.41{path}"
-            # v0.5.0-beta.14.3: 该地址覆盖凭据（无则原生 Bearer）。
+            # 该地址覆盖凭据（无则原生 Bearer）。
             headers = _headers_for(
                 cfg, "controller", b, {"Authorization": f"Bearer {token}"}
             )
@@ -172,7 +172,7 @@ def build_kb_router(
  与「命令成功但输出为空」（后者含 find 目标不存在：find 报错走
  stderr、stdout 为空，exec 仍 200）。"""
         import httpx as _h
-        # v0.5.0-beta.14.3: 该地址覆盖凭据（无则原生 Bearer）。
+        # 该地址覆盖凭据（无则原生 Bearer）。
         _cfg = config_mod.load_config()
         headers = _headers_for(
             _cfg, "controller", base, {"Authorization": f"Bearer {token}"}
@@ -285,7 +285,7 @@ def build_kb_router(
                 )
         return out
 
-    # ── KB 目录列取双通道（v0.5.0-beta.13.9 根因修）────────────────
+    # ── KB 目录列取双通道（根因修）────────────────
  # 真机反馈：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
     # kb_tree 顶层（worker 支）/ memory / digest 子树全走「先整目录递归
     # tar 下载完、下载完才查大小」→ 413「工作区顶层超过 20MB，无法列取」
@@ -300,7 +300,7 @@ def build_kb_router(
 
     def _kb_parse_find_lines(out: str) -> List[Dict[str, Any]]:
         """find -printf '%y %s %T@ %P' 行解析（_kb_find_list 主通道与
- v0.5.0-beta.14.17 KBBATCH-K2 合并探测共用——同一解析=同一语义：
+ KBBATCH-K2 合并探测共用——同一解析=同一语义：
  rel 空/绝对路径行跳过，size/mtime 解析失败归 0）。"""
         entries: List[Dict[str, Any]] = []
         for ln in out.splitlines():
@@ -332,7 +332,7 @@ def build_kb_router(
  通道失败 → None（调用方切 tar 兜底）；目标不存在/空目录 → 空列表
  （find 报错走 stderr、stdout 空——调用方必要时以 HEAD 探针区分
  空目录与不存在）。
- v0.5.0-beta.13.10：-H 跟随**命令行参数**层的符号链接（worker
+ -H 跟随**命令行参数**层的符号链接（worker
  工作区 shared → teams/.../shared 团队目录符号链接——kb_ls 展开
  符号链接目录需要；条目内深层符号链接仍不跟随，防环）。"""
         cmd = ["find", "-H", target]
@@ -422,7 +422,7 @@ def build_kb_router(
             _kb_parse_tar_list, data, maxdepth, include_dirs
         )
 
-    # ── v0.5.0-beta.14.17（KBBATCH-K2）：tree 合并探测 ─────────────────
+    # ── ：tree 合并探测 ─────────────────
     # 冷时 tree = ws 探测 + 可用性探测 + 顶层 find + memory find + digest
     # find + 六档案逐个 archive 兜底（4-10 次 HTTP 往返）。合并探测把
     # 三个 find 与六档案 stat 收进**一次** exec（sh -c 分段脚本，
@@ -506,14 +506,13 @@ def build_kb_router(
             return None
         return _kb_split_sections(out)
 
-    # ── v0.5.0-beta.14.17（KBBATCH-K1）：批量读（单次 exec 分帧）────────
+    # ── ：批量读（单次 exec 分帧）────────
     # graph 冷取 = N 次逐文件 kb_file 往返（N=md 数，数十~上百）。批量读
     # 把 N 次往返收进**单次** exec：容器内 python3 逐文件读，输出确定性
     # 分帧 `===FRAME:<size>:<path>` + **恰好 size 字节**内容（帧边界由
     # size 决定，内容含 ===FRAME: 字样也不串帧），总内容 ≤1.8MB（2MB
     # 传输上限内留帧头余量），超限 `===TRUNC`。通道挂（None）→ 调用方
     # 区分并回退旧逐文件路径。
-    #
     # 声明偏离（任务书 §二 K1 字面为 sh -c stat+cat 两段）：传输层
     # _kb_exec_full 以 utf-8/replace 解码帧——二进制帧直穿会因多字节
     # 截断/替换符使 size 与实际字节失配、必然串帧。改为容器内
@@ -677,7 +676,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
             "agentteams-manager" if agent == "manager"
             else f"agentteams-worker-{agent}"
         )
-        # v0.5.0-beta.12 修：Controller Docker 代理不转 HEAD /containers/{name}/json
+        # 修：Controller Docker 代理不转 HEAD /containers/{name}/json
         # （实测 HEAD=404 / GET=200 / HEAD archive=200）——改用 GET
         # 探存在性，候选路径探测仍走 HEAD archive（可用）。
         st, _ = await _kb_docker(
@@ -947,7 +946,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
     async def _kb_agents_ctl_fallback(token: str, base: str) -> Dict[str, Any]:
         """KB 形状兜底（Docker 通道不可用）：agent 清单=Controller workers API。
 
- v0.5.0-beta.14.2（-KB-500）：/kb/agents 的 Docker 降级路径此前误调
+ ：/kb/agents 的 Docker 降级路径此前误调
  _approval_list_wsf(token, base, agent)——agent 在 kb_agents 作用域
  不存在 → NameError → 500（Docker 通道 401/403/502 即触发：切外网后
  WAN 链路 401 首现）。形状必须 KB {agents, count}（旧调用即便不
@@ -979,7 +978,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                     else "worker"
                 ),
             }
-        # v0.5.0-beta.14.22（D4 #5/#8）：runtime 判定字段与主（Docker）
+        # runtime 判定字段与主（Docker）
         # 路径同批透传——共用 _kb_apply_runtime_fields 单一实现（E2E
         # 实锤：本部署 Docker 通道不可用 → 全量走本兜底路径）。
         _kb_apply_runtime_fields(found, workers)
@@ -1001,15 +1000,15 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         )
         return {"agents": agents, "count": len(agents)}
 
-    # ── v0.5.0-beta.14.10：SWR 刷新/存储助手（tree/graph/agents 共用）──
+    # ── SWR 刷新/存储助手（tree/graph/agents 共用）──
     # 单飞：同 key 刷新任务在飞不重复起；刷新失败保旧值（磁盘缓存不覆写）。
     # _kb_swr_ttl_now() = 磁盘 stale 阈值（超过 → 触发后台刷新；未超旧值
-    # 也先回，SWR 语义；v0.5.0-beta.14.22 起随 address_mode 自适应
+    # 也先回，SWR 语义；起随 address_mode 自适应
     # wan=180s / 其余 60s）；内存缓存 TTL 以现有常量为准对齐（tree 30s /
     # graph 60s / agents 60s）。
 
     def _kb_swr_ttl_now() -> float:
-        """v0.5.0-beta.14.22：SWR TTL 随生效网路自适应（见
+        """SWR TTL 随生效网路自适应（见
  kb_swr_ttl_for）。配置读取走 load_config 读缓存（零磁盘）；异常回退
  内网值（TTL 不是安全边界，降级无害）。"""
         try:
@@ -1018,7 +1017,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         except Exception:  # noqa: BLE001
             return 60.0
 
-    # ── v0.5.0-beta.14.11：轻探针（变更检测——变才刷）──────────
+    # ── 轻探针（变更检测——变才刷）──────────
     # 刷新门前先跑轻探针：只列条目元数据（name/mtime/size，绝不读文件
     # 内容）。签名一致 → 只重置 60s 时钟（零深扫）；不一致/失败 → 深扫
     # （安全）。目录集 = tree 同款数据源（ws 顶层 + memory/ + digest/）。
@@ -1026,7 +1025,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
     # 状态码/降级处理）——纯 archive 在大工作区（实测 180MB）必 413，
     # 探针将恒 None、优化失效，故以 tree 实际通道为准。
     async def _kb_probe_signature(agent: str) -> Optional[str]:
-        """v0.5.0-beta.14.11：KB 轻探针——只列工作区顶层 +
+        """KB 轻探针——只列工作区顶层 +
  memory/ + digest/ 的条目元数据（name/mtime/size），不读文件内容。
  签名=排序后的 sha1；任何失败 → None（调用方退回深扫，安全）。
  复用 tree 计算体里同款 archive 列目录通道（参考其状态码/降级处理）。
@@ -1081,17 +1080,17 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                   probe: Optional[str] = None) -> None:
         """SWR 内存+磁盘同点写（端点冷取与后台刷新共用）。
 
- v0.5.0-beta.14.7 语义保留：#1208 WSF 兜底 payload（标记
+ 语义保留：#1208 WSF 兜底 payload（标记
  source:"controller"，见 _kb_tree_wsf_fallback）不写任何缓存——
  单点收口在此，后台刷新同样不会用降级值污染磁盘缓存。
 
- v0.5.0-beta.14.11：probe = 本次深扫时的轻探针签名；
+ probe = 本次深扫时的轻探针签名；
  非 None 时一并落盘（下轮刷新门「变才刷」的比对基准）。端点冷取
  路径不跑探针（传 None）→ 不记，由下轮后台刷新的深扫补记。
  """
         if kind == "tree" and payload.get("source") == "controller":
             return
-        # v0.5.0-beta.14.17（KBBATCH-K5）：file 的 WSF 兜底 payload 同样
+        # file 的 WSF 兜底 payload 同样
         # 不缓存（14.7 不变式扩展到 file 支）。
         if kind == "file" and payload.get("source") == "controller":
             return
@@ -1105,13 +1104,13 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                 time.monotonic() + _KB_GRAPH_TTL_SECONDS, payload
             )
             kb_cache.save(f"graph-{agent}", payload)
-        elif kind == "merged":  # v0.5.0-beta.14.17（KBBATCH-K3）：键=csv
+        elif kind == "merged":  # ：键=csv
             _kb_merged_cache[agent] = (
                 time.monotonic() + _KB_MERGED_TTL_SECONDS, payload
             )
             kb_cache.save(f"merged-{agent}", payload)
             return  # 不记 last-agent / 探针（csv 非 agent 名）
-        elif kind == "file":  # v0.5.0-beta.14.17（KBBATCH-K5）：键=agent/path
+        elif kind == "file":  # ：键=agent/path
             _a, _, _p = agent.partition("/")
             _kb_file_cache[f"file-{_a}-{_p}"] = (
                 time.monotonic() + _KB_FILE_TTL_SECONDS, payload
@@ -1126,7 +1125,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
             kb_cache.save("agents", payload)
             return
         kb_cache.save("last-agent", {"agent": agent})
-        # v0.5.0-beta.14.11：记本次深扫的轻探针签名（端点
+        # 记本次深扫的轻探针签名（端点
         # 冷取不跑探针 → probe=None 不记，下轮后台刷新补记）。agents 支
         # 已早退且 agent="" 探针恒 None → 天然不记。
         if probe is not None:
@@ -1154,14 +1153,14 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
 
         async def _run() -> None:
             try:
-                # v0.5.0-beta.14.12：后台共用通道——执行期
+                # 后台共用通道——执行期
                 # 持锁（与两路 sweep 共享，同一时刻至多一路后台扫描）；
                 # 前台忙让权/等锁超时 → 本轮放弃（单飞槽位由 finally
                 # 释放，下轮重试）。
                 async with bg_slot() as _bg:
                     if not _bg:
                         return
-                    # v0.5.0-beta.14.11：变才刷——轻探针与上次
+                    # 变才刷——轻探针与上次
                     # 签名一致 → 只重置 60s 时钟，零深扫；不一致/探针失败 →
                     # 深扫（安全）。探针经注册表调用时解析（单测假注入）。
                     probe_fn = _KB_PROBE_HOOKS.get("probe") or _kb_probe_signature
@@ -1181,7 +1180,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         _kb_inflight[key] = loop.create_task(_run())
 
     def _kb_prewarm_last(payload: Optional[Dict[str, Any]]) -> None:
-        """v0.5.0-beta.14.23：/kb/agents 响应后后台预热 last-agent 的
+        """/kb/agents 响应后后台预热 last-agent 的
  tree+graph——外网「打开知识库」时缓存大概率已暖（首屏 graph 冷读
  3–5s 的 WAN 往返）。last-agent 缺失/非 dict/空名/不在本次清单
  （防预热已删除的 agent）→ 静默跳过；单飞由 _spawn_kb_refresh 的
@@ -1210,7 +1209,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
     async def kb_agents() -> Dict[str, Any]:
         """远端 Agent 清单：Docker 容器列表（agentteams-worker-* +
  agentteams-manager）+ Controller workers API 补 role/team。"""
-        # v0.5.0-beta.14.10：SWR——60s 内存门 + 磁盘门（旧值
+        # SWR——60s 内存门 + 磁盘门（旧值
         # 秒回、cached/age 提示），冷取 = 原全量清单（抽为 _kb_agents_compute）。
         _c = _kb_agents_cache.get("agents")
         if _c and _c[0] > time.monotonic():
@@ -1234,11 +1233,11 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         return _payload
 
     async def _kb_agents_compute() -> Dict[str, Any]:
-        # v0.5.0-beta.14.10：kb_agents 冷取计算体——原端点体逐字搬移
+        # kb_agents 冷取计算体——原端点体逐字搬移
         # （原体无缓存写，抽取零 diff；缓存写收口在调用点 _store_kb）。
         token, base = _kb_require_token()
         # L2（403）/ Docker 挂（502）→ KB 形状兜底（worker 走 Controller；
-        # manager L1-only 占位）。v0.5.0-beta.14.2（-KB-500）：旧代码误调
+        # manager L1-only 占位）。：旧代码误调
         # _approval_list_wsf(token, base, agent)——本函数无 agent 变量 →
         # NameError → 500（仅 Docker 通道降级 401/403/502 时暴露，切外网后
         # WAN 链路 401 首现），且 approval 列表形状 ≠ KB {agents,count}。
@@ -1294,7 +1293,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                             else "critic" if "critic" in wn.lower()
                             else "worker"
                         )
-                # v0.5.0-beta.14.22（D4 #5/#8）：runtime 判定字段同批
+                # runtime 判定字段同批
                 # 透传（KB 面按 runtime 降级空态 + legacy 角标）——与
                 # ctl 兜底路径共用 _kb_apply_runtime_fields 单一实现。
                 _kb_apply_runtime_fields(found, workers)
@@ -1312,11 +1311,11 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         """知识库文件清单：工作区顶层知识文件 + memory/ 全子树（文本过滤）。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
-        # v0.5.0-beta.14.7：tree 结果短 TTL 命中（重复访问零容器读）。
+        # tree 结果短 TTL 命中（重复访问零容器读）。
         _c = _kb_tree_cache.get(agent)
         if _c and _c[0] > time.monotonic():
             return _c[1]
-        # v0.5.0-beta.14.10：SWR 磁盘缓存——有旧数据先秒回
+        # SWR 磁盘缓存——有旧数据先秒回
         # （cached/age 提示），超 TTL 触发后台单飞刷新；无则同步冷取。
         _disk = kb_cache.load(f"tree-{agent}")
         if _disk is not None:
@@ -1334,7 +1333,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         return _payload
 
     async def _kb_tree_compute(agent: str) -> Dict[str, Any]:
-        # v0.5.0-beta.14.10：tree 冷取计算体——原端点「缓存门之后」
+        # tree 冷取计算体——原端点「缓存门之后」
         # 逐字搬移（原尾内存缓存写移至调用点 _store_kb，14.7「WSF 兜底早退
         # 不缓存」语义在 _store_kb 入口单点保留）。
         token, base = _kb_require_token()
@@ -1353,7 +1352,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         # （用户要求对齐 QwenPaw 最新版文件管理）：四分类——
         # 档案 = 6 个默认 workspace markdown（QwenPaw console
         # defaultWorkspaceMarkdown 同款清单，_KB_PROFILE_FILES——
-        # v0.5.0-beta.14.17 K2 合并探测 stat 段共用）；日记 = memory/**
+        # K2 合并探测 stat 段共用）；日记 = memory/**
         # （daily section）；知识库 = digest/**（digest section）；
         # 文件 = 其余顶层文件 + 顶层目录（只列不展开，文本可点开）。
         files: List[Dict[str, Any]] = []
@@ -1383,10 +1382,10 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                 )
 
         # ① 顶层：档案（6 默认 md）+ 文件（其余文件 + 目录条目）。
-        # v0.5.0-beta.13.9 双通道：exec find 主（零下载，manager/worker 统一）
+        # 双通道：exec find 主（零下载，manager/worker 统一）
         # + tar 兜底（小工作区精确解析）。旧 worker 支整树 tar 在大工作区
         # （实测 180MB）必 413；旧 manager 支 exec-only 无兜底——同批处理。
-        # v0.5.0-beta.14.17（KBBATCH-K2）：先试合并探测（1 exec = 顶层 +
+        # 先试合并探测（1 exec = 顶层 +
         # memory + digest 三个 find + 六档案 stat 段）；通道挂（None）/
         # 无收尾标记 → 下方原双通道逻辑整段照跑（原代码保留为 fallback
         # 路径，输出逐字段一致——共用同一下方构建代码与 _kb_parse_find_lines）。
@@ -1436,8 +1435,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                      "category": "file"}
                 )
             elif et == "l":
-                # v0.5.0-beta.13.10（13.9 知识库目录不全根因①）：
-                # 符号链接此前被整条跳过（worker 工作区 shared →
+                # # 符号链接此前被整条跳过（worker 工作区 shared →
                 # teams/{team}/shared 团队共享目录不可见）。批量解析目标
                 # 类型（python3 argv 传路径，不经过 shell 解析——manager
                 # 工作区存在含空格/逗号/引号的目录名，shell 拼串必碎）。
@@ -1493,7 +1491,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
 
         # ②③ 日记（memory/**）+ 知识库（digest/**）：构建体与 ① 共用——
         # 条目源 = K2 合并探测段（_mem_entries/_dig_entries）或 fallback
-        # 分支上方的原双通道取数（v0.5.0-beta.13.9 根因修保留）。
+        # 分支上方的原双通道取数（根因修保留）。
         for _sub, _cat, _src in (
             ("memory", "daily", _mem_entries),
             ("digest", "digest", _dig_entries),
@@ -1511,7 +1509,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                 if rel in seen:
                     continue
                 seen.add(rel)
-                # v0.5.0-beta.13.10：非文本文件同样列出（openable=False）——
+                # 非文本文件同样列出（openable=False）——
                 # 与 ① 顶层同口径，列表=实盘目录的诚实镜像。
                 files.append(
                     {"path": rel, "name": nm, "size": e["size"],
@@ -1547,7 +1545,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                      "openable": True}
                 )
 
-        # v0.5.0-beta.13.10：不再按文本扩展名整体过滤——每条自带 openable
+        # 不再按文本扩展名整体过滤——每条自带 openable
         # 标记（前端据此决定可否点开），列表=实盘目录诚实镜像（非文本
         # 灰显不可点）。排序：分类优先 → 可打开优先 → 路径。
         cat_order = {"profile": 0, "daily": 1, "digest": 2, "file": 3}
@@ -1587,7 +1585,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         return content, size
 
     async def _kb_file_compute(agent: str, path: str) -> Dict[str, Any]:
-        # v0.5.0-beta.14.17（KBBATCH-K5）：kb_file 冷取计算体——原端点体
+        # kb_file 冷取计算体——原端点体
         # （校验之后）逐字搬移；缓存写收口在调用点 _store_kb。只缓存
         # 文本类返回（{"path","size","content"}）；415 二进制 / 413 超限
         # 均以 HTTPException 终止、不达 _store_kb，天然不缓存。
@@ -1647,7 +1645,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         if _kb_is_sensitive(path.rsplit("/", 1)[-1], path):
             # 404 而非 403：不泄露敏感文件存在性（dashboard 同款过滤）
             raise HTTPException(status_code=404, detail=f"文件不存在：{path}")
-        # v0.5.0-beta.14.17（KBBATCH-K5）：SWR 30s 内存+磁盘门（与
+        # SWR 30s 内存+磁盘门（与
         # tree/graph 同款），键 file-<agent>-<path>。只缓存文本类返回
         # （{"path","size","content"} 形态）；415 二进制/413 超限以
         # HTTPException 终止不达 _store_kb；WSF 兜底（source:"controller"）
@@ -1732,7 +1730,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
  取内容。dir 空=工作区顶层；协议文档目录=该目录一级内容。
  返回 files（文本可点开，路径=工作区相对全路径，直接喂 /file）+
  dirs（可继续展开）。列取走双通道（exec find 主/tar 兜底，
- v0.5.0-beta.13.9），只返回一级子条目，深层跳过。"""
+ ），只返回一级子条目，深层跳过。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
         if dir:
@@ -1753,7 +1751,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                 return await _kb_ls_wsf_fallback(token, base, agent, dir)
         ws = await _kb_workspace(token, base, agent)
         target = f"{ws}/{dir}" if dir else ws
-        # v0.5.0-beta.13.9 双通道（旧版 exec-only：通道挂时把传输失败误报
+        # 双通道（旧版 exec-only：通道挂时把传输失败误报
         # 「目录不存在」404）：exec find 主 + tar 兜底；「通道正常但输出空」
         # 以 HEAD 探针（零下载）区分空目录（200/304）与不存在（404）。
         entries = await _kb_find_list(token, base, container, target, maxdepth=1)
@@ -1798,7 +1796,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                     "path": rel, "name": name, "isdir": True,
                 })
             elif e["type"] == "l":
-                # v0.5.0-beta.13.10：符号链接列全（目标=目录→可展开，
+                # 符号链接列全（目标=目录→可展开，
                 # find -H 展开已支持；目标=文件/断链→非文本条目）。
                 symlink_names.append(name)
                 files.append({
@@ -1861,11 +1859,11 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
  memory 文件兜底。"""
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
-        # v0.5.0-beta.14.7：graph 结果短 TTL 命中（内部 kb_tree 亦命中树缓存）。
+        # graph 结果短 TTL 命中（内部 kb_tree 亦命中树缓存）。
         _c = _kb_graph_cache.get(agent)
         if _c and _c[0] > time.monotonic():
             return _c[1]
-        # v0.5.0-beta.14.10：SWR 磁盘缓存（与 tree 同款门；
+        # SWR 磁盘缓存（与 tree 同款门；
         # key=graph-{agent}）。
         _disk = kb_cache.load(f"graph-{agent}")
         if _disk is not None:
@@ -1883,7 +1881,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         return _payload
 
     async def _kb_graph_compute(agent: str) -> Dict[str, Any]:
-        # v0.5.0-beta.14.10：graph 冷取计算体——原端点「缓存门之后」
+        # graph 冷取计算体——原端点「缓存门之后」
         # 逐字搬移（原尾内存缓存写移至调用点 _store_kb；内部 kb_tree 调用
         # 走 tree 端点 = 先命中树缓存/SWR 门）。
         tree = await kb_tree(agent)
@@ -1973,7 +1971,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
             for p in existing:
                 if p.startswith("memory/") and p.count("/") == 1:
                     _add_edge("MEMORY.md", p)
-        # v0.5.0-beta.14.17（KBBATCH-K1 接线）：N 个 md 冷拉——先试 K1
+        # N 个 md 冷拉——先试 K1
         # 批量读（N 次往返 → 单次 exec 分帧读；仅 docker 正常 tree 可用，
         # WSF 兜底 tree 无真实工作区路径）；通道挂（None）/ 截断 / 任何
         # 异常 → 下方旧并发 8 逐文件路径（原代码逐字保留为 fallback）。
@@ -2014,7 +2012,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                 continue
             if len(text) > _KB_GRAPH_FILE_CAP:
                 text = text[:_KB_GRAPH_FILE_CAP]
-            # v0.5.0-beta.12：节点 description（首个非标题/标记行 = 文件
+            # 节点 description（首个非标题/标记行 = 文件
             # 摘要，≤120 字；供详情面板展示）。
             for line in text.splitlines():
                 s0 = line.strip()
@@ -2025,7 +2023,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
                     continue
                 nodes[p]["description"] = s0[:120]
                 break
-            # v0.5.0-beta.12：[[wiki#anchor]] 锚点捕获（移植 QwenPaw
+            # [[wiki#anchor]] 锚点捕获（移植 QwenPaw
             # MemoryGraphView 详情面板出链/入链展示，开源见
             # THIRD-PARTY-NOTICES）。
             targets: list = []
@@ -2072,7 +2070,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         }
         return _payload
 
-    # ── v0.5.0-beta.12 ：团队知识库深化（跨 Worker 搜索 + 聚合图谱）──────────
+    # ── 团队知识库深化（跨 Worker 搜索 + 聚合图谱）──────────
 
     async def _kb_all_agents(token: str, base: str) -> List[str]:
         """全部 Agent 名（worker 容器 + manager），供搜索/聚合默认范围。"""
@@ -2091,7 +2089,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
 
     @router.get("/kb/search")
     async def kb_search(q: str = "", agents: str = "") -> Dict[str, Any]:
-        """v0.5.0-beta.12 ：团队知识全量搜索（跨 Worker）——扫各 Agent 的
+        """团队知识全量搜索（跨 Worker）——扫各 Agent 的
  MEMORY.md + memory/**/*.md，返回命中行+上下文。
  agents=逗号分隔（缺省=全部，上限 12）；每 Agent ≤60 个 md 文件、
  单文件 ≤100KB；结果上限 100 条（150 熔断）。"""
@@ -2161,7 +2159,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         }
 
     async def kb_graph_merged_compute(agent_list: List[str]) -> Dict[str, Any]:
-        # v0.5.0-beta.14.17（KBBATCH-K3）：kb_graph_merged 冷取计算体——
+        # kb_graph_merged 冷取计算体——
         # 原端点体（agent 解析之后）逐字搬移；供单飞刷新复用
         # （_spawn_kb_refresh "merged"）。逐 agent 走 kb_graph 端点（自带
         # 其 tree/graph 缓存门）→ 合并本身不重复付单 agent 冷取成本。
@@ -2214,10 +2212,10 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
 
     @router.get("/kb/graph/merged")
     async def kb_graph_merged(agents: str = "") -> Dict[str, Any]:
-        """v0.5.0-beta.12 ：团队聚合图谱——多 Agent 图谱合并（节点 id=
+        """团队聚合图谱——多 Agent 图谱合并（节点 id=
  agent::path，前端按 agent 着色；边保留在原 Agent 内）。
  agents=逗号分隔（缺省=全部，上限 8）；节点 400 / 边 800 上限。
- v0.5.0-beta.14.17（KBBATCH-K3）：SWR 30s 内存+磁盘门（与
+ ：SWR 30s 内存+磁盘门（与
  tree/graph 同款），键 merged-<sorted(agents) 逗号连>；冷算 = 多
  Agent 图谱合并（抽 kb_graph_merged_compute，供单飞复用）。"""
         token, base = _kb_require_token()
@@ -2231,7 +2229,7 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         if not agent_list:
             return {"nodes": [], "edges": [], "agents": []}
         csv = ",".join(sorted(agent_list))
-        # v0.5.0-beta.14.17（KBBATCH-K3）：SWR 门（与 tree/graph 同款）。
+        # SWR 门（与 tree/graph 同款）。
         _c = _kb_merged_cache.get(csv)
         if _c and _c[0] > time.monotonic():
             return _c[1]
@@ -2247,22 +2245,22 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         _store_kb(csv, _payload, "merged")
         return _payload
 
-    # v0.5.0-beta.14.10：SWR 计算体 + 刷新入口注册入模块级表（端点
+    # SWR 计算体 + 刷新入口注册入模块级表（端点
     # 调用时解析 / 单测假注入 / 启动预热 _kb_prewarm_agent 均读本表）。
     _KB_PREWARM_HOOKS.update({
         "refresh": _spawn_kb_refresh,
         "tree": _kb_tree_compute,
         "graph": _kb_graph_compute,
         "agents": _kb_agents_compute,
-        # v0.5.0-beta.14.17（KBBATCH-K3/K5）：merged/file 冷取计算体注册
+        # merged/file 冷取计算体注册
         # （单飞刷新与端点冷取同一注入点；签名=key 字符串）。
         "merged": _kb_merged_compute_wrapped,
         "file": _kb_file_compute_wrapped,
     })
-    # v0.5.0-beta.14.11：轻探针注册（SWR 刷新门变更检测用）。
+    # 轻探针注册（SWR 刷新门变更检测用）。
     _KB_PROBE_HOOKS.update({"probe": _kb_probe_signature})
 
-    # 与 approval 域共享（任务 190）：交装配方转传。
+    # 与 approval 域共享：交装配方转传。
     _kb_shared = {
         "agent_re": _KB_AGENT_RE,
         "require_token": _kb_require_token,

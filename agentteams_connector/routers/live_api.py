@@ -29,7 +29,7 @@ from ..router import (
 
 
 def build_live_router() -> APIRouter:
-    """实时缓冲域子路由（build_router 原段逐字搬移，任务 190）。"""
+    """实时缓冲域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
     # ── 房间通知（通知中心点击跳转=团队房间的 @提到我，
     # 宿主 inbox 事件无 room_id 是「点了不跳」的根因）──────────────
@@ -37,7 +37,7 @@ def build_live_router() -> APIRouter:
     @router.get("/room-mentions")
     async def room_mentions(limit: int = 30) -> Dict[str, Any]:
         """各房间最近 @提到当前用户 的消息（Element 通知同款语义）：
- v0.5.0-beta.12 = 实时缓冲（sync_watcher /sync 长轮询事件流即时写入，
+ = 实时缓冲（sync_watcher /sync 长轮询事件流即时写入，
  零扫描）+ 全量扫描历史（10s 缓存 bootstrap），event_id 去重合并，
  按时间倒序。前端在 SSE mention 事件触发刷新（非轮询）。
  点击 → 跳房间+定位事件。"""
@@ -157,7 +157,7 @@ def build_live_router() -> APIRouter:
         results.sort(key=lambda r: -(r.get("ts") or 0))
         return {"mentions": results[:limit], "count": len(results)}
 
-    # ── 待工具审批请求（v0.5.0-beta.12：通知中心「待审批请求」数据源）────
+    # ── 待工具审批请求（通知中心「待审批请求」数据源）────
     # Worker Tool Guard 审批请求不带 @人类 → /room-mentions 捞不到（用户
     # 真机缺陷「需要审批没有提示，只能在聊天群看见」根因）。数据源：
     # 实时缓冲（sync_watcher /sync 事件流）+ 全量扫描历史（10s 缓存
@@ -224,7 +224,7 @@ def build_live_router() -> APIRouter:
         results.sort(key=lambda r: -(r.get("ts") or 0))
         return {"approvals": results[:limit], "count": len(results)}
 
-    # ── v0.5.0-beta.12 宿主收件箱审批桥状态（调试/selfcheck 用）──
+    # ── 宿主收件箱审批桥状态（调试/selfcheck 用）──
     @router.get("/host-bridge/status")
     async def host_bridge_status() -> Dict[str, Any]:
         """宿主审批桥可用性 + 在途/累计计数。available=false → 宿主
@@ -294,14 +294,14 @@ def build_live_router() -> APIRouter:
         token: str,
         scan_results: List[Dict[str, Any]],
     ) -> None:
-        """审批状态机扫描（v0.5.0-beta.12 全量加入；v0.5.0-beta.14.7 T6：
+        """审批状态机扫描（全量加入；T6：
  增量——只重扫 sync 事件流显示有推进的房间，空闲零拨号；600s 兜底
  全扫一次）。时间升序执行（dir=b 返回新→旧，先 reverse）。"""
         import urllib.parse as _up
         from .. import sync_watcher  # noqa: PLC0415
         try:
             async with GatedAsyncClient(timeout=20.0, verify=False) as client:
-                # v0.5.0-beta.14.18：与全族一致走 _headers_for（该 matrix 地址
+                # 与全族一致走 _headers_for（该 matrix 地址
                 # 若配了覆盖凭据则替换，未配则原样 Bearer）——防公网 matrix
                 # 网关 Basic 门场景 401（与 docker_logs 同族缺口）。
                 headers = _headers_for(
@@ -415,7 +415,7 @@ def build_live_router() -> APIRouter:
         localpart: str,
         scan_results: List[Dict[str, Any]],
     ) -> None:
-        """房间 @我 扫描（v0.5.0-beta.12 全量加入；v0.5.0-beta.14.7 T6：
+        """房间 @我 扫描（全量加入；T6：
  增量——只重扫 sync 事件流显示有推进的房间，空闲零拨号；600s 兜底
  全扫一次）。"""
         import urllib.parse as _up

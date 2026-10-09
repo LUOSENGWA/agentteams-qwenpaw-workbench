@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""/teams/structure 回归测试（v0.5.0-beta.12）。
+"""/teams/structure 回归测试（）。
 
 背景（历史缺陷：团队管理页 HTTP 500）：``_token_or_none`` 曾被 3 个端点
 调用但**从未定义** → 每次请求 NameError → 500。本文件护栏：
@@ -122,7 +122,7 @@ def client(monkeypatch):
 
 
 def test_teams_structure_with_controller_token(client):
-    """v0.5.0-beta.12 回归：修复前此端点恒 500（_token_or_none NameError）。"""
+    """回归：修复前此端点恒 500（_token_or_none NameError）。"""
     tc, _ = client
     _FakeClient.get_spec["/api/v1/workers"] = _FakeResponse(200, _WORKERS)
     r = tc.get("/teams/structure", params={"force": True})
@@ -165,7 +165,7 @@ def test_token_or_none_invalid_content_no_raise():
     assert _token_or_none({"controller_token": "tok\u4e2d123"}) is None
 
 
-# ── v0.5.0-beta.13.12：/teams/structure 缓存 TTL 正负分离回归 ──────────
+# ── /teams/structure 缓存 TTL 正负分离回归 ──────────
 # 13.11 「团队管理 tab 刷不出完整信息，手动刷新也不行，要等 30s 自动
 # 刷新」后端半根因：首次失败/空树结果被正缓存 60s（负缓存），锁死后续
 # 手动刷新。修法：成功（controller-workers 且非空）= 60s；降级/空树 = 5s。

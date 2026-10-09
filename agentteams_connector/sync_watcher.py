@@ -29,18 +29,18 @@ from .dial_gate import GatedAsyncClient
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench.sync_watcher")
 
 # 精简 sync filter：只收 timeline 最新事件 + m.muted_room account data
-# （v0.5.0-beta.12 房间静音——Element 同款状态源，此处是通知引擎侧的消费点）。
+# （房间静音——Element 同款状态源，此处是通知引擎侧的消费点）。
 _SYNC_FILTER = {
     "presence": {"not_types": ["*"]},
     "account_data": {"types": ["m.muted_room"]},
-    # v0.5.0-beta.14.7（带宽）：timeline 10→2——实测初始 sync 1.4MB 中消息占
+    # timeline 10→2——实测初始 sync 1.4MB 中消息占
     # ~1MB（75 房 × 10 条），而本 watcher 只取「最后 1 条消息摘要
     # （last_ts/last_sender/last_body）+ 成员/房名差分」；多带的 8 条纯浪费
     # （5Mbps 链路上每次初始 sync 省 ~0.9MB）。内容按需由 /messages 拉取。
     "room": {
         "timeline": {
             "limit": 2,
-            # v0.5.0-beta.14.7（带宽）：types 白名单再收窄——timeline 只保留
+            # types 白名单再收窄——timeline 只保留
             # watcher 实际消费的两类（m.room.message=摘要/推送/工作流载荷、
             # m.room.member=成员增减差分）；样本中 timeline 还混有 ~28KB
             # room.meta 等未被消费的事件。
@@ -55,7 +55,7 @@ _task: Optional[asyncio.Task] = None
 _stop_event = asyncio.Event()
 # 事件去重：sync 重连可能重放，按 event_id 去重。
 _recent_ids: deque = deque(maxlen=2000)
-# v0.5.0-beta.14.7（T6 增量扫描）：逐房最新消息 ts——扫描跳过判据的
+# 逐房最新消息 ts——扫描跳过判据的
 # 变更探针。每轮 /sync 事件就地更新（数据本就在手），空闲期零额外请求。
 _room_last_ts: Dict[str, int] = {}
 
@@ -65,8 +65,8 @@ def room_last_ts(room_id: str) -> int:
     return _room_last_ts.get(room_id, 0)
 _since: Optional[str] = None
 _first_sync_done = False
-_consecutive_failures = 0  # v0.5.0-beta.12: 连续 /sync 失败计数（token 失效/切账号自愈用）
-# v0.5.0-beta.14.19: matrix access_token 失效检测（登录态可观测性）。
+_consecutive_failures = 0  # 连续 /sync 失败计数（token 失效/切账号自愈用）
+# matrix access_token 失效检测（登录态可观测性）。
 # /sync 401 且响应体是 Matrix JSON + auth 类 errcode（M_UNKNOWN_TOKEN /
 # M_MISSING_TOKEN / M_FORBIDDEN）→ 判 token 已失效（改密/设备被踢/admin
 # 重置），置位后降级为低频复核（180s）——死 token 轮询零收益，且此前
@@ -76,7 +76,7 @@ _auth_invalid = False
 
 
 def reset_state() -> None:
-    """v0.5.0-beta.12: 账号切换 → 丢弃旧账号的 sync 游标。
+    """账号切换 → 丢弃旧账号的 sync 游标。
 
  since（next_batch）只对产生它的账号有效——切账号后拿旧 since 请求
  新账号的 /sync 会一直 401，循环空转（@提到我/任务状态通知全断）。
@@ -86,19 +86,19 @@ def reset_state() -> None:
     _since = None
     _first_sync_done = False
     _consecutive_failures = 0
-    _auth_invalid = False  # v0.5.0-beta.14.19: 新登录=新 token，失效标记清零
+    _auth_invalid = False  # 新登录=新 token，失效标记清零
     _recent_ids.clear()
-    _muted_rooms.clear()  # v0.5.0-beta.12 ：静音集合是账号级状态，切账号重建
-    _mention_buffer.clear()  # v0.5.0-beta.12 ：@我缓冲是账号级状态
-    _room_meta.clear()  # v0.5.0-beta.13.21 ：房间列表增量基线随账号重建
+    _muted_rooms.clear()  # 静音集合是账号级状态，切账号重建
+    _mention_buffer.clear()  # @我缓冲是账号级状态
+    _room_meta.clear()  # 房间列表增量基线随账号重建
     _mention_eids.clear()
-    _approval_buffer.clear()  # v0.5.0-beta.12：审批缓冲是账号级状态
+    _approval_buffer.clear()  # 审批缓冲是账号级状态
     _approval_eids.clear()
-    _invited_rooms.clear()  # v0.5.0-beta.12：邀请基线是账号级状态
+    _invited_rooms.clear()  # 邀请基线是账号级状态
 
 
 def auth_status() -> str:
-    """v0.5.0-beta.14.19: matrix token 登录态（"valid" | "invalid"）。
+    """matrix token 登录态（"valid" | "invalid"）。
 
  invalid 只在「401 + Matrix auth errcode」时置位——是确定性信号，
  不是连续失败推断（网络抖动/网关 401 不误报）。"""
@@ -111,7 +111,7 @@ _AUTH_INVALID_ERRCODES = frozenset(
 
 
 def is_auth_invalid_401(status_code: int, body: str) -> bool:
-    """v0.5.0-beta.14.19: /sync 响应是否判定 matrix token 失效。
+    """/sync 响应是否判定 matrix token 失效。
 
  判据=401 且 body 是 Matrix JSON + auth 类 errcode。401+非 JSON
  （网关 Basic 门，Caddy 空 body）/403/5xx 一律 False——不混淆
@@ -126,7 +126,7 @@ def is_auth_invalid_401(status_code: int, body: str) -> bool:
 
 
 async def restart(reason: str = "") -> None:
-    """v0.5.0-beta.12: 账号切换 → 重启 sync 循环并重置游标（router /login、put_config 调用）。"""
+    """账号切换 → 重启 sync 循环并重置游标（router /login、put_config 调用）。"""
     await stop()
     reset_state()
     start()
@@ -137,13 +137,13 @@ async def restart(reason: str = "") -> None:
 # 只在「旧状态存在且不同」时通知——首次见到只记录不通知（防噪音）。
 _PROJECT_STATES: Dict[str, str] = {}
 _TASK_STATES: Dict[str, str] = {}
-# v0.5.0-beta.12 ：已静音房间集合（account_data m.muted_room，Element 同款
+# 已静音房间集合（account_data m.muted_room，Element 同款
 # 跨客户端状态源）。首轮 /sync=全量，增量=diff（muted:false=取消静音）。
 # 静音效果：该房间的 @提到我/任务状态变化不再写收件箱+不广播（消息本体
 # 仍可见——静音≠退群，Element 语义一致）。
 _muted_rooms: set = set()
 
-# v0.5.0-beta.12 ：@我 实时缓冲——/sync 长轮询事件流即时写入（Element 同款：事件
+# @我 实时缓冲——/sync 长轮询事件流即时写入（Element 同款：事件
 # 驱动，非轮询扫描）；/room-mentions 端点直接读，零额外房间扫描。
 # Element 机制 = Matrix /sync 长连接（事件到达即返回）；QwenPaw 宿主 =
 # 2s 轮询本地收件箱（无外部连接只能轮询）；本插件两者都有 = 事件主路 + 轮询兜底。
@@ -159,7 +159,7 @@ def get_mention_buffer(limit: int = 30) -> List[Dict[str, Any]]:
     items.reverse()
     return items[: max(1, min(int(limit), 50))]
 
-# v0.5.0-beta.12：工具审批请求（Tool Guard HITL）实时缓冲。
+# 工具审批请求（Tool Guard HITL）实时缓冲。
 # Worker 受控工具调用会在房间发「🛡️ Approval Required」/旧版「⏳ Waiting
 # for approval」——不带 @人类（旧逻辑只检测 @我 → 用户无提示，只能去
 # Element 翻房间找，用户真机反馈）。/sync 事件流检测 → 宿主收件箱
@@ -168,12 +168,12 @@ def get_mention_buffer(limit: int = 30) -> List[Dict[str, Any]]:
 _approval_buffer: "deque[Dict[str, Any]]" = deque(maxlen=50)
 _approval_eids: "OrderedDict[str, None]" = OrderedDict()
 
-# v0.5.0-beta.12：已通知的邀请房间集合（新邀请只通知一次；sync 重连/
+# 已通知的邀请房间集合（新邀请只通知一次；sync 重连/
 # 重放时 rooms.invite 段会重复出现，按 room_id 去重）。首轮 /sync=基线
 # （只建集合不通知，防插件启动把存量邀请轰炸成 toast）。
 _invited_rooms: set = set()
 
-# v0.5.0-beta.13.21：房间列表增量基线（room_id → {name, member_count}）。
+# 房间列表增量基线（room_id → {name, member_count}）。
 # 首轮全量 /sync 建基线，后续增量 diff 用；账号切换 reset_state 清空。
 _room_meta: "Dict[str, Dict[str, Any]]" = {}
 
@@ -203,7 +203,7 @@ def _approval_command_body(body: str) -> str:
  插件审批卡发的命令是 ``@worker1 /approval approve``（无 @ 不进
  Worker 消费队列，必须带前缀）；历史/手工命令可能是裸 ``/approval
  approve``。两种形态都要识别——否则房间侧决议传导（宿主桥消解 +
- 缓冲清理）对插件卡路径完全失效（v0.5.0-beta.12 修复）。
+ 缓冲清理）对插件卡路径完全失效（修复）。
  """
     b = (body or "").strip()
     if b.startswith("@") and " " in b:
@@ -341,7 +341,7 @@ async def _append_inbox(
 
 
 def _is_muted(room_id: str) -> bool:
-    """v0.5.0-beta.12 ：房间静音门（@通知/任务状态通知共用）。"""
+    """房间静音门（@通知/任务状态通知共用）。"""
     return room_id in _muted_rooms
 
 
@@ -355,7 +355,7 @@ async def _notify_mention(
     """@提到我：实时缓冲+ 收件箱 + SSE 广播。"""
     if _is_muted(room_id):
         return  # 静音房间不通知（消息本体仍可见）
-    # v0.5.0-beta.12 ：实时缓冲（event_id 去重；sync 重放安全）。
+    # 实时缓冲（event_id 去重；sync 重放安全）。
     if event_id and event_id not in _mention_eids:
         _mention_buffer.append(
             {
@@ -389,7 +389,7 @@ async def _notify_approval(
     event_id: str = "",
     ts: int = 0,
 ) -> None:
-    """v0.5.0-beta.12：工具审批请求 → 缓冲 + 收件箱（桌面 toast）+ SSE。"""
+    """工具审批请求 → 缓冲 + 收件箱（桌面 toast）+ SSE。"""
     if _is_muted(room_id):
         return  # 静音房间不通知（与 @我 同语义）
     if event_id and event_id not in _approval_eids:
@@ -424,7 +424,7 @@ async def _notify_approval(
         source_id="agentteams-qwenpaw-workbench-approval",
     )
     await _broadcast(payload)
-    # v0.5.0-beta.12 桥接宿主收件箱审批（导航抖动+红点+审批条目+
+    # 桥接宿主收件箱审批（导航抖动+红点+审批条目+
     # 一键批准/拒绝）。特性探测降级：宿主无 create_pending_summary → 静默
     # 跳过（插件内审批卡不受影响）。决议回传走 host_bridge 的 future 回调。
     try:
@@ -453,9 +453,9 @@ async def _resolve_approval(
     thread_root: str = "",
     approved: bool = True,
 ) -> None:
-    """v0.5.0-beta.12：审批已解决（该房间出现 /approval 命令）→
+    """审批已解决（该房间出现 /approval 命令）→
  移除未决项 + SSE 通知前端刷新。
- v0.5.0-beta.12：优先按 reply 链精确匹配删除（命令 thread reply →
+ 优先按 reply 链精确匹配删除（命令 thread reply →
  审批 event_id），并把房间侧决议通知宿主桥——宿主收件箱记录立即
  消解，防 30 分钟超时兜底补发陈旧反向命令。"""
     removed = None
@@ -494,7 +494,7 @@ async def _notify_invite(
     inviter: str,
     ts: int = 0,
 ) -> None:
-    """v0.5.0-beta.12：新房间邀请 → 收件箱（桌面 toast）+ SSE。
+    """新房间邀请 → 收件箱（桌面 toast）+ SSE。
  接受/拒绝 UI 在团队概览（chat tab）邀请区，单一事实源。"""
     if _is_muted(room_id):
         return
@@ -590,7 +590,7 @@ def _track_workflow(wf: Dict[str, Any], room_id: str) -> None:
 def build_room_list_diff(
     payload: Dict[str, Any], baseline: bool
 ) -> "Tuple[List[Dict[str, Any]], List[str]]":
-    """v0.5.0-beta.13.21（房间列表 Element 化）：从一轮 /sync payload 收集
+    """：从一轮 /sync payload 收集
  各 join 房间元数据增量 diff——(diff_items, left_room_ids)。
 
  纯函数（除维护模块级基线 ``_room_meta``，账号切换 reset_state 清空）：
@@ -760,7 +760,7 @@ async def _run() -> None:
                 async with GatedAsyncClient(
                     timeout=40.0, verify=False
                 ) as client:
-                    # v0.5.0-beta.14.3: 该地址覆盖凭据（同轮 cfg，无额外读）。
+                    # 该地址覆盖凭据（同轮 cfg，无额外读）。
                     resp = await client.get(
                         url,
                         headers=config_mod.headers_with_auth(
@@ -775,7 +775,7 @@ async def _run() -> None:
                     logger.warning(
                         "sync -> %s: %s", hs, resp.text[:120]
                     )
-                    # v0.5.0-beta.14.19: token 失效确定性检测——401 且
+                    # token 失效确定性检测——401 且
                     # Matrix JSON auth errcode（改密/踢设备/重置后旧 token
                     # 死透，此前无限 15s 轮询 + 前端零感知）。
                     if is_auth_invalid_401(resp.status_code, resp.text):
@@ -797,7 +797,7 @@ async def _run() -> None:
             break
 
         if not synced:
-            # v0.5.0-beta.12: 自愈——连续失败（token 失效/账号切换/服务重启）达到阈值
+            # 自愈——连续失败（token 失效/账号切换/服务重启）达到阈值
             # → 重置游标重建基线，不等人工重启（login 已显式 restart，这里
             # 兜底 Matrix 侧 token 过期等边缘场景）。
             _consecutive_failures += 1
@@ -807,16 +807,16 @@ async def _run() -> None:
                     _consecutive_failures,
                 )
                 reset_state()
-            # v0.5.0-beta.14.19: token 已判死 → 180s 低频复核（等用户
+            # token 已判死 → 180s 低频复核（等用户
             # 重登；login→restart→reset_state 清标记并立即重建）。
             await asyncio.sleep(180 if _auth_invalid else 15)
             continue
-        # v0.5.0-beta.14.19: 复核成功（配置被修复/换账号）→ 失效标记清零。
+        # 复核成功（配置被修复/换账号）→ 失效标记清零。
         _auth_invalid = False
         _consecutive_failures = 0
 
         _since = str(payload.get("next_batch") or _since or "")
-        # v0.5.0-beta.12 ：m.muted_room 增量合并（首轮=全量、增量=diff；
+        # m.muted_room 增量合并（首轮=全量、增量=diff；
         # muted:false=取消静音）。在首轮基线判断之前——静音状态不依赖事件。
         for ev in ((payload.get("account_data") or {}).get("events") or []):
             if not isinstance(ev, dict) or ev.get("type") != "m.muted_room":
@@ -836,7 +836,7 @@ async def _run() -> None:
         if baseline:
             # 首轮（since 为空）邀请只建基线集合不通知——防止插件启动把
             # 存量邀请轰炸成 toast。
-            # v0.5.0-beta.12 ：首轮 timeline 仍走审批请求/命令检测——
+            # 首轮 timeline 仍走审批请求/命令检测——
             # 插件停机/重装重启窗口内到达的审批消息还挂着未处理（
             # 「通知没有」：旧逻辑整轮 continue=离线审批永远漏检，RoomChat
             # 12s 轮询能看到卡片但 toast/缓冲/首页卡全空）。@我仍抑制
@@ -871,7 +871,7 @@ async def _run() -> None:
             )
 
         rooms = (payload.get("rooms") or {}).get("join") or {}
-        # ⑥ v0.5.0-beta.13.21（房间列表 Element 化，「刷新慢有点笨，看看
+        # ⑥ （房间列表 Element 化，「刷新慢有点笨，看看
         # Element」）：Element 的 room list 从不全量重拉——/sync 增量事件就地
         # 合并（新房间插入/元数据更新/未读计数/离开移除）。此前插件每次房间
         # 列表更新=全量 /teams/sync=一次带全房间 state 的 Matrix 全量 /sync
@@ -900,7 +900,7 @@ async def _run() -> None:
                 content = ev.get("content") or {}
                 if not isinstance(content, dict):
                     continue
-                # v0.5.0-beta.14.7（T6）：记录该房最新消息 ts（增量扫描探针）。
+                # 记录该房最新消息 ts（增量扫描探针）。
                 _ts0 = int(ev.get("origin_server_ts") or 0)
                 if _ts0 and _ts0 > _room_last_ts.get(room_id, 0):
                     _room_last_ts[room_id] = _ts0
@@ -916,7 +916,7 @@ async def _run() -> None:
                     and sender != me
                     and not content.get("m.new_content")
                 ):
-                    # v0.5.0-beta.14.7（带宽）：附最小载荷——文本消息可被前端直接
+                    # 附最小载荷——文本消息可被前端直接
                     # 合并渲染（活跃房零回拉）；非文本/复杂消息前端仍走兜底拉取。
                     await _broadcast(
                         {

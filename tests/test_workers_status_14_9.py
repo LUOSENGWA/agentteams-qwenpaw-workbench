@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.9Worker 状态聚合器单测。
+"""Worker 状态聚合器单测。
 
 覆盖 worker_status 的对外钉死语义：
 

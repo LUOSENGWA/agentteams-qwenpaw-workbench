@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.17（KBBATCH）：KB 冷读批读 / tree 合并探测 / merged 缓存 /
+"""：KB 冷读批读 / tree 合并探测 / merged 缓存 /
 file 缓存单测（任务书 §二 测试 4 项）。
 
 背景（实测）：冷读 tree 13.8s / graph 12.1s / merged 40.7s——根因是

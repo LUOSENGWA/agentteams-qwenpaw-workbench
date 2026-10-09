@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.12: 后台地址自动重排——外网/内网切换自动识别。
+"""后台地址自动重排——外网/内网切换自动识别。
 
 同一后端两条网络路径（内网 IP / 公网反代域名）。用户切网（家里↔外出、
 WiFi↔有线）后两条路径的延迟/可达性都会变。本循环定期并行探测全部配置
@@ -37,7 +37,7 @@ _INTERVAL_FAST = 30.0  # 切换/失败后（切网进行中）
 _INTERVAL_BASE = 120.0  # 常规
 _INTERVAL_STABLE = 300.0  # 连续稳定后的低频稳态
 _STABLE_ROUNDS = 2  # 连续 N 轮稳定才降频
-# v0.5.0-beta.13.24（首刷 race·根因）：15s→3s——进程重启（每次装新
+# 15s→3s——进程重启（每次装新
 # beta）后 working cache 重置，旧版前 15s 内所有请求走配置顺序（LAN IP
 # 优先），切网窗口团队管理刷不出且手动无效（用户「要等一会」=等这 15s）。
 # 3s 仍让宿主启动期（不抢网络），首轮探测在会话开始前后即收敛 working
@@ -65,7 +65,7 @@ async def _run() -> None:
                 for k, urls in (
                     ("matrix", cfg.get("matrix_homeservers") or []),
                     ("controller", cfg.get("controller_urls") or []),
-                    # v0.5.0-beta.12: SGLang 双地址（内网/外网）纳入自动重排。
+                    # SGLang 双地址（内网/外网）纳入自动重排。
                     ("sglang", (cfg.get("sglang") or {}).get("urls") or []),
                 ):
                     if len([u for u in urls if u]) >= 2:

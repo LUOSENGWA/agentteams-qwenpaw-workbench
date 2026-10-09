@@ -58,7 +58,7 @@ function hostAccentBgForMode(
   return safeHex(v) ? v : undefined;
 }
 
-// v0.5.0-beta.14.18：插件主题**与宿主对齐 = 页面加载读一次，
+// 插件主题**与宿主对齐 = 页面加载读一次，
 // 不跟随、不轮询**。
 // 背景：宿主改主题色在部分实例/版本上是刷新页面才生效（不实时应用），
 // 插件若做实时跟随会先于宿主变色，造成插件/宿主颜色失配（比不跟随更糟）。
@@ -78,8 +78,8 @@ function hostAccentBgForMode(
 // - useHostTheme()：antd token 消费方，diff 门控 setState（旧宿主/取不到
 // = null → 消费方回退 DEFAULT_ACCENT，与 CSS 变量 fallback 同源同值）。
 
-// ── v0.5.0-beta.14.20：首帧同步主题（用户 14.19 验收：「每个有主题色的
-// 组件加载主题色的逻辑和时间不一样」）。根因：CSS 变量组件首帧即宿主色，
+// ── 首帧同步主题（症状：不同组件"上色时间"不一致——各组件加载主题
+// 色的逻辑和时间不一样）。根因：CSS 变量组件首帧即宿主色，
 // antd token 组件要等 /config/theme 网络返回 → 先闪 DEFAULT_ACCENT 再
 // 变宿主色——不同组件"上色时间"不同。修法=单一事实源优先：宿主 App.tsx
 // 页面加载时已把生效主题写 :root（--app-accent 等，2.2.2b4 源码实证；
@@ -164,7 +164,7 @@ const React: typeof ReactNS = host.React;
 /** 读宿主主题（组件内）。旧宿主/取不到 = null（消费方各自回退）。
  * 页面加载读一次（与宿主「刷新才更新」行为对齐，14.18）。 */
 export function useHostTheme(): HostTheme | null {
-  // v0.5.0-beta.14.20：初始态=同步 CSS 变量主题（首帧即宿主色，antd
+  // 初始态=同步 CSS 变量主题（首帧即宿主色，antd
   // token 组件不再先闪默认橙）；旧宿主/无变量 → null（与旧行为一致）。
   const [theme, setTheme] = React.useState<HostTheme | null>(() =>
     syncHostTheme(),

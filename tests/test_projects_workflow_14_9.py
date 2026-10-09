@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.9projects-workflow 取数聚合单测。
+"""projects-workflow 取数聚合单测。
 
 覆盖 projects_workflow 的对外钉死语义：
 
@@ -164,7 +164,7 @@ def test_sweep_list_failure_keep_old(monkeypatch):
     assert snap["projects"] == [{"project_id": "old1"}]
 
 
-# ── v0.5.0-beta.14.21：渐进落地 + 前台让权 ──────────────────────────────
+# ── 渐进落地 + 前台让权 ──────────────────────────────
 # 旧版整批 gather 到全部完成才写快照 → 外网首扫空窗 1-3 分钟。现逐项目
 # 完成即落地（前端 15s 轮询逐步看见）+ 每项拨号前让前台。以下钉死新语义。
 

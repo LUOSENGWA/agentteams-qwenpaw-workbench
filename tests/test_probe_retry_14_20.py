@@ -1,10 +1,9 @@
-# v0.5.0-beta.14.20：探测重试语义 + 验证地址排序回归。
-#
-# 用户 14.19 验收「保存配置和连通性测试又慢了 / Controller token 认证一直
-# 转圈圈」的系统修复（非点补丁）：
+# 探测重试语义 + 验证地址排序回归。
+# 「保存配置和连通性测试又慢了 / Controller token 认证一直转圈圈」
+# 的系统修复（非点补丁）：
 #  ① _probe_with_retry：超时烧满（≥80% 预算）= 确定性死地址 → 不重试
 #     （5M 外网线死地址成本 2×timeout → 1×timeout）；快失败（拒连/DNS）
-#     仍重试（瞬断语义保留，14.12 用户「连通失败重试」诉求不变）。
+#     仍重试（瞬断语义保留，「连通失败重试」诉求不变）。
 #  ② verify-admin 路径 B：_ordered_ctl_urls——working-cache（最后已知可达）
 #     前置，外网场景 LAN 死地址不再烧首槽。
 #  ③ test_addresses 默认 timeout 6→4（14.16）→3s（本批）。
@@ -98,7 +97,7 @@ def test_ordered_ctl_urls_cache_not_in_list_ignored(monkeypatch) -> None:
 
 
 def test_ordered_ctl_urls_dict_entries_wan_basic(monkeypatch) -> None:
-    """v0.5.0-beta.14.21 回归：controller_urls 的 WAN 条目常态=带 basic
+    """回归：controller_urls 的 WAN 条目常态=带 basic
  凭据的 dict（{url, auth}）——旧版直接 u.strip() 对 dict 抛 AttributeError
  （verify-admin 500 真根因；14.20 单测只覆盖 str 形态漏网）。
  现走 _address_list 归一化：dict→url、尾斜杠去除、顺序保留。"""

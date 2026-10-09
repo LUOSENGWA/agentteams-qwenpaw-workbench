@@ -36,7 +36,7 @@ def _request(
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    # v0.5.0-beta.14.3: 该地址覆盖凭据（WAN 门）——无覆盖=原生认证零变化。
+    # 该地址覆盖凭据（WAN 门）——无覆盖=原生认证零变化。
     # 低频用户态调用（whoami/房间列表/发送），每调用一次 load_config 可接受。
     try:
         from . import config as _config
@@ -105,7 +105,7 @@ def send_message(
 ) -> Dict[str, Any]:
     """Send an m.room.message event. Returns {event_id}.
 
- v0.5.0-beta.12 ``content`` 传完整结构化事件 content（带
+ ``content`` 传完整结构化事件 content（带
  m.mentions/formatted_body 的 @mention 消息用）；None → 纯文本。
  """
     import time

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.12：保存提速 + 闸门让权 + 快照参数。
+"""保存提速 + 闸门让权 + 快照参数。
 
 覆盖三组对外钉死语义：
 
@@ -106,7 +106,7 @@ def test_put_config_write_failure_500_with_detail(client, monkeypatch):
     """1b) 保存失败显性化：落盘失败 → 500 + detail 含原因（非裸抛
  500 无详情）。
 
- v0.5.0-beta.14.12：OSError（=IOError）现归入「磁盘写入
+ OSError（=IOError）现归入「磁盘写入
  问题」分类分支——措辞由「配置写入失败」细化为「配置保存失败（磁盘写
  入问题）」，此处钉新措辞。
  """

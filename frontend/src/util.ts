@@ -1,7 +1,7 @@
 /** 共享工具（无 DOM 依赖的纯函数）。 */
 
 /** 聊天时间格式化：0/空 → ""，今天 → HH:mm，跨天 → MM-DD HH:mm（本地时间）。
- * v0.5.0-beta.12：聊天 tab 房间列表「最后消息时间」列。 */
+ * 聊天 tab 房间列表「最后消息时间」列。 */
 export function formatChatTime(ts?: number): string {
   if (!ts) return "";
   const d = new Date(ts);
@@ -18,23 +18,23 @@ export function formatChatTime(ts?: number): string {
   ).padStart(2, "0")} ${hh}:${mm}`;
 }
 
-/** 时刻（B-1 收敛，任务 190）：逐字等价 new Date(ms).toLocaleTimeString(locale)。
+/** 时刻（B-1 收敛）：逐字等价 new Date(ms).toLocaleTimeString(locale)。
  * locale 省略 → 默认 locale，与原裸 toLocaleTimeString() 调用同输出。 */
 export function formatTimeOfDay(ms: number, locale?: string): string {
   return new Date(ms).toLocaleTimeString(locale);
 }
 
-/** 完整日期+时间（B-1 收敛，任务 190）：逐字等价 new Date(ms).toLocaleString(locale)。 */
+/** 完整日期+时间（B-1 收敛）：逐字等价 new Date(ms).toLocaleString(locale)。 */
 export function formatDateTime(ms: number, locale?: string): string {
   return new Date(ms).toLocaleString(locale);
 }
 
-/** 时刻不带 AM/PM（B-1 收敛，任务 190）：逐字等价 toLocaleTimeString("zh-CN", { hour12: false })。 */
+/** 时刻不带 AM/PM（B-1 收敛）：逐字等价 toLocaleTimeString("zh-CN", { hour12: false })。 */
 export function formatTimeOfDayNo12(ms: number): string {
   return new Date(ms).toLocaleTimeString("zh-CN", { hour12: false });
 }
 
-/** 短日期（B-1 收敛，任务 190）：逐字等价 toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })。 */
+/** 短日期（B-1 收敛）：逐字等价 toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })。 */
 export function formatDateShort(ms: number): string {
   return new Date(ms).toLocaleDateString("zh-CN", {
     month: "2-digit",
@@ -42,7 +42,7 @@ export function formatDateShort(ms: number): string {
   });
 }
 
-/** 短时刻（B-1 收敛，任务 190）：逐字等价 toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })。 */
+/** 短时刻（B-1 收敛）：逐字等价 toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })。 */
 export function formatTimeShort(ms: number): string {
   return new Date(ms).toLocaleTimeString("zh-CN", {
     hour: "2-digit",
@@ -59,7 +59,7 @@ export function formatSize(bytes?: unknown): string {
   return `${(n / 1024 / 1024).toFixed(1)}MB`;
 }
 
-/** v0.5.0-beta.14.26（F3：工具开关成功横幅与终态不一致——旧版只按
+/** （F3：工具开关成功横幅与终态不一致——旧版只按
  * field 分支不看 value，关工具仍显示「已启用」）：工具开关成功文案
  * 四分支纯函数（smoke 可测，scripts/toolToggle.smoke.mjs）——横幅
  * 必须与开关终态（enabled/asyncExecution × true/false）严格一致。 */

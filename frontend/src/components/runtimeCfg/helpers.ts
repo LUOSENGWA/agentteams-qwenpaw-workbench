@@ -19,7 +19,7 @@ export function isPosNum(s: string): boolean {
 }
 
 /**
- * v0.5.0-beta.13.7 Loop 全 gate 模型（13.6 Loop 设置抄 QwenPaw 没抄完
+ * Loop 全 gate 模型（13.6 Loop 设置抄 QwenPaw 没抄完
  * 正源 = qwenpaw/config/config.py LoopConfig 数据模型 + QwenPaw console
  * AgentLoopCard 控件逐一对账）：
  * - 迭代上限在 **Agent Loop → Default → iteration 门**（QwenPaw
@@ -97,7 +97,7 @@ export const SOURCE_COLOR: Record<string, string> = {
   plugin: "purple",
 };
 
-/** v0.5.0-beta.13.8（13.7 「QwenPaw 有模板的，你可以抄过来——别忘
+/** （13.7 「QwenPaw 有模板的，你可以抄过来——别忘
  * 开源项目的礼仪」）：Loop 模板 + gate 定义移植自 QwenPaw console
  * AgentLoopCard.tsx（agentscope-ai/QwenPaw，开源项目）。礼仪处理：
  * ① 模板名/gate 定义/默认值逐值保留原作者设计 ② 代码注释保留出处 ③

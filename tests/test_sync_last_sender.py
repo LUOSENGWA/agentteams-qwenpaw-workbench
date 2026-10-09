@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""/teams/sync last_sender 回归测试（v0.5.0-beta.13.2 灯源修正）。
+"""/teams/sync last_sender 回归测试（灯源修正）。
 
 背景（状态灯一直绿根因）：session 灯 done 回退原用**房间级
 last_ts**——用户自己在房间里发消息也会刷新 last_ts → 该房间所有 Worker

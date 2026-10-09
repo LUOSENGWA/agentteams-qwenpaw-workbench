@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.22（D4）：/kb/agents runtime/runtimeDeprecated 端点级透传单测（A 组）。
+"""：/kb/agents runtime/runtimeDeprecated 端点级透传单测（A 组）。
 
 任务书 A1-A6 + A7（超出 spec，加测兜底端点路径）。helper 层（
 _kb_apply_runtime_fields 直测）已由同批外部落盘的
@@ -87,7 +87,7 @@ def _install_fake_dial(monkeypatch):
     """patch router.GatedAsyncClient → 返回同一 fake 的工厂（覆盖全部拨号点）。
 
     工厂签名 *a/**k 透传构造参（timeout 标量或 Timeout 对象、verify）——
-    假构造器必须接受任意参（任务 180 教训：构造 TypeError 会被宽 except
+    假构造器必须接受任意参（构造 TypeError 会被宽 except
     吞成隐蔽失败）。"""
     fake = _FakeGatedClient()
 

@@ -26,7 +26,7 @@ function extOf(name: string): string {
   return i >= 0 ? name.slice(i + 1).toLowerCase() : "";
 }
 
-/** markdown 内容特征嗅探（v0.5.0-beta.12：无扩展名/无 mime 时的最后一道识别）。
+/** markdown 内容特征嗅探（无扩展名/无 mime 时的最后一道识别）。
  * 只查前 2000 字符，成本可忽略；命中任一特征即按 md 渲染。 */
 const MD_HINTS: RegExp[] = [
   /^#{1,6}\s/m, // 标题
@@ -45,9 +45,9 @@ export interface PreviewFile {
   name: string;
   /** 下载/预览地址（mxc 已转 media 代理 URL，或正源产物 URL，或 http 直链）。 */
   url: string;
-  /** v0.5.0-beta.12: 裸插件 API 路径（mxc 媒体代理 / 正源产物）——fetch 必须走
+  /** 裸插件 API 路径（mxc 媒体代理 / 正源产物）——fetch 必须走
  * host.fetch（带鉴权）；缺省时 url 直接 fetch（http 直链）。
- * v0.5.0-beta.12 ：http 直链也带（media/proxy?url= 服务端代抓，
+ * http 直链也带（media/proxy?url= 服务端代抓，
  * 绕浏览器 CORS）。 */
   apiPath?: string;
   mimeType?: string;
@@ -55,7 +55,7 @@ export interface PreviewFile {
   size?: number;
   /** 正源产物 URL 带后端注入的鉴权——图片必须 fetch blob 而非 img 直链。 */
   needsFetch?: boolean;
-  /** v0.5.0-beta.12 ：原始 url 值（mxc/直链/畸形地址原样）——错误态展示
+  /** 原始 url 值（mxc/直链/畸形地址原样）——错误态展示
  * 证据，「预览不行」不再是无从查起。 */
   rawUrl?: string;
 }
@@ -63,7 +63,7 @@ export interface PreviewFile {
 /** 共享文件预览 Modal：图片（blob/objectURL 或直链）/ md·文本（fetch text）/
  * 其他类型（新窗口打开）。大小守卫：图片 8MB、文本 2MB，超限提示下载。
  *
- * v0.5.0-beta.12 ：fetch 失败不再静默 toast+close——错误细节进 Modal
+ * fetch 失败不再静默 toast+close——错误细节进 Modal
  * （状态码/代理 vs 直链/原始地址），用户可截图定位、可直接新窗口兜底。 */
 export function FilePreview({
   file,
@@ -77,17 +77,17 @@ export function FilePreview({
     url?: string;
     text?: string;
     blobUrl?: string;
-    /** v0.5.0-beta.12: 文本经嗅探通道载入（无扩展名/无 mime 的未知类型）。 */
+    /** 文本经嗅探通道载入（无扩展名/无 mime 的未知类型）。 */
     sniffed?: boolean;
-    /** v0.5.0-beta.12: 文件地址为空/无效（不 fetch，防 fetch("") 取回 SPA 壳）。 */
+    /** 文件地址为空/无效（不 fetch，防 fetch("") 取回 SPA 壳）。 */
     errorUrl?: boolean;
-    /** v0.5.0-beta.12 : fetch 失败原因（Modal 内可见）。 */
+    /** fetch 失败原因（Modal 内可见）。 */
     error?: string;
-    /** v0.5.0-beta.12 : xlsx 解析后的表格数据。 */
+    /** xlsx 解析后的表格数据。 */
     table?: TableData;
   }>({});
 
-  // v0.5.0-beta.12: close 稳定化——onClose 是父组件内联箭头（每次渲染新引用），
+  // close 稳定化——onClose 是父组件内联箭头（每次渲染新引用），
   // 旧实现 close 依赖 [onClose] → 父组件每次重渲染（消息轮询）都让
   // effect 重跑、文本重复 fetch（预览闪烁/重复加载）。
   const stateRef = React.useRef(state);
@@ -113,7 +113,7 @@ export function FilePreview({
 
   React.useEffect(() => {
     if (!file) return;
-    // v0.5.0-beta.12: 空 url 守卫——fetch("") 会取当前页面自身（QwenPaw Console 的
+    // 空 url 守卫——fetch("") 会取当前页面自身（QwenPaw Console 的
     // index.html SPA 壳），「md 预览出控制台 HTML」历史缺陷故即 url 解析器对非 mxc
     // 链接回 "" 所致（见 api.ts resolveFileUrl 注释）。
     if (!file.url) {
@@ -122,14 +122,14 @@ export function FilePreview({
     }
     const ext = extOf(file.name);
     const mime = (file.mimeType || "").toLowerCase();
-    // v0.5.0-beta.12: 文件名无 .md 后缀时靠 mimetype 识别——此前 md 文件按名称
+    // 文件名无 .md 后缀时靠 mimetype 识别——此前 md 文件按名称
     // 落不到 md 分支，预览出 RAW 源码（用户：「预览只给了 RAW 没渲染，
     // 参考 QwenPaw」）。
     const isMd = ["md", "markdown"].includes(ext) || mime.includes("markdown");
     const isImage = IMAGE_EXT.has(ext) || mime.startsWith("image/");
     const isText = TEXT_PREVIEW_EXT.has(ext) || mime.startsWith("text/");
 
-    // v0.5.0-beta.12 : fetch 回退链——
+    // fetch 回退链——
     // ① apiPath（host.fetch 同源带鉴权）：mxc 媒体代理 / 产物正源 /
     // http 直链的 /media/proxy 服务端代抓（绕 CORS，后端同网段可达）；
     // ② http 直链裸 fetch（代抓不可用时的最后一线，同域/CORS 放行时有效）；
@@ -178,9 +178,9 @@ export function FilePreview({
         close();
         return;
       }
-      // v0.5.0-beta.12: mxc 媒体代理（apiPath）与正源产物一样必须 fetch blob——
+      // mxc 媒体代理（apiPath）与正源产物一样必须 fetch blob——
       // img src 裸导航带不了鉴权头，会落 SPA 兜底（index.html 壳）或 401。
-      // v0.5.0-beta.12 : 直链图片同样带 apiPath（代抓）→ 此处统一 blob 路径。
+      // 直链图片同样带 apiPath（代抓）→ 此处统一 blob 路径。
       if (file.needsFetch || file.apiPath) {
         setState({ loading: true });
         void (async () => {
@@ -199,7 +199,7 @@ export function FilePreview({
       return;
     }
 
-    // v0.5.0-beta.12 : xlsx 表格预览（ArrayBuffer + fflate + DOMParser，零重依赖）。
+    // xlsx 表格预览（ArrayBuffer + fflate + DOMParser，零重依赖）。
     if (ext === "xlsx") {
       if (file.size && file.size > 4 * 1024 * 1024) {
         antd.message.info("Excel 文件超过 4MB，请直接下载");
@@ -232,12 +232,12 @@ export function FilePreview({
       setState({ loading: true });
       void (async () => {
         try {
-          // v0.5.0-beta.12: 插件路径走 host.fetch（带鉴权）；裸路径落 SPA 兜底取回
+          // 插件路径走 host.fetch（带鉴权）；裸路径落 SPA 兜底取回
           // index.html 壳 = 「内容是网页」根因。
           const resp = await fetchWithFallback();
-          // v0.5.0-beta.12: 502/404 守卫——代理失败时的错误 JSON 体不再当正文渲染。
+          // 502/404 守卫——代理失败时的错误 JSON 体不再当正文渲染。
           const text = await resp.text();
-          // v0.5.0-beta.12: md 期望但内容实为 HTML = 地址指向网页兜底页（SPA 壳）
+          // md 期望但内容实为 HTML = 地址指向网页兜底页（SPA 壳）
           // 或发送端把网页存成了文件——两种都不该按 md 渲染（出一屏标签）。
           if (isMd && /^\s*(<!doctype html|<html)/i.test(text)) {
             antd.message.error(
@@ -254,7 +254,7 @@ export function FilePreview({
       return;
     }
 
-    // v0.5.0-beta.12: 未知类型先尝试「文本 + markdown 嗅探」——Worker 附件常连
+    // 未知类型先尝试「文本 + markdown 嗅探」——Worker 附件常连
     // info.mimetype 都没有（扩展名+mime 双源识别落空）。内容特征嗅探兜底，
     // 二进制（null 字节）/超大文件回退下载提示。
     setState({ loading: true });
@@ -291,7 +291,7 @@ export function FilePreview({
   }, [file, close]);
 
   if (!file) return null;
-  // md 识别三源（v0.5.0-beta.12）：扩展名 / mimetype / 内容嗅探——
+  // md 识别三源（）：扩展名 / mimetype / 内容嗅探——
   // 前两源都可能缺失（Worker 附件不带元数据），嗅探兜底。
   const md =
     ["md", "markdown"].includes(extOf(file.name)) ||
@@ -306,7 +306,7 @@ export function FilePreview({
         state.errorUrl || state.error ? null : (
           <antd.Button
             icon={<DownloadIcon />}
-            // v0.5.0-beta.12 : apiPath 路径（mxc/产物端点/代抓）裸 href 导航带
+            // apiPath 路径（mxc/产物端点/代抓）裸 href 导航带
             // 不了鉴权头（401）→ 改 onClick blob 下载；纯直链保持 href。
             {...(file.apiPath
               ? {
@@ -431,7 +431,7 @@ export function FilePreview({
       ) : state.text !== undefined ? (
         md ? (
           <div style={{ maxHeight: "60vh", overflow: "auto" }}>
-            {/* v0.5.0-beta.12: 预览弹窗全文渲染——聊天气泡默认 800 字折叠是聊天
+            {/* 预览弹窗全文渲染——聊天气泡默认 800 字折叠是聊天
  场景防刷屏，预览场景要完整看长报告（用户「RAW 没修好」
  的观感来源之一：长文被截到 400 字 + 展开按钮）。 */}
             <MdText text={state.text} maxLength={Number.MAX_SAFE_INTEGER} />
@@ -468,7 +468,7 @@ export function FilePreview({
   );
 }
 
-/** v0.5.0-beta.12 ：文本预览分派——json 高亮 / csv·tsv 表格 / 纯文本。 */
+/** 文本预览分派——json 高亮 / csv·tsv 表格 / 纯文本。 */
 function renderTextPreview(
   file: PreviewFile,
   text: string,
@@ -502,7 +502,7 @@ const preStyle: ReactNS.CSSProperties = {
   wordBreak: "break-all",
 };
 
-/** v0.5.0-beta.12 ：表格预览（antd Table；首行=表头）。 */
+/** 表格预览（antd Table；首行=表头）。 */
 function TableView({ table }: { table: TableData }) {
   const columns = table.header.map((h, i) => ({
     title: h || `列${i + 1}`,
@@ -534,7 +534,7 @@ function TableView({ table }: { table: TableData }) {
   );
 }
 
-/** v0.5.0-beta.12 ：JSON 语法高亮（轻量正则 tokenizer，零依赖）。 */
+/** JSON 语法高亮（轻量正则 tokenizer，零依赖）。 */
 const JSON_TOKEN_RE =
   /("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
 function JsonHighlight({ text }: { text: string }) {

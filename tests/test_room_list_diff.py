@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""房间列表增量 diff 回归测试（v0.5.0-beta.13.21 房间列表 Element 化）。
+"""房间列表增量 diff 回归测试（房间列表 Element 化）。
 
 背景（房间列表刷新慢有点笨，看看 Element）：Element 的 room
 list 从不全量重拉——/sync 增量事件就地合并。插件此前每次房间列表更新=

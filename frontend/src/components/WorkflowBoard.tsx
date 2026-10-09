@@ -45,7 +45,7 @@ const STATUS_COLOR: Record<string, string> = {
   failed: "#ff4d4f",
   error: "#ff4d4f",
   blocked: "#fa8c16",
- // v0.5.0-beta.13.12（报告顺带缺陷：cancelled 显示成
+ // （报告顺带缺陷：cancelled 显示成
   // blocked）：cancelled 独立态——深红 #cf1322（与 failed #ff4d4f 区分：
   // 失败=执行出错，取消=人为终止，语义不同不同色）。
   cancelled: "#cf1322",
@@ -86,7 +86,7 @@ function dagNodeColors(t: ThemeColors): Record<string, DagNodeColor> {
     completed: { fill: "rgba(82,196,26,0.12)", stroke: "#52c41a", text: t.text },
     failed: { fill: "rgba(255,77,79,0.12)", stroke: "#ff4d4f", text: t.text },
     blocked: { fill: "rgba(250,140,22,0.10)", stroke: "#fa8c16", text: t.text },
-    // v0.5.0-beta.13.12：cancelled 独立节点色（深红，与 failed 区分）。
+    // cancelled 独立节点色（深红，与 failed 区分）。
     cancelled: { fill: "rgba(207,19,34,0.10)", stroke: "#cf1322", text: t.text },
     unknown: { fill: "rgba(140,140,140,0.08)", stroke: "#8c8c8c", text: t.text },
   };
@@ -181,11 +181,10 @@ function ProjectRail(props: {
 
 /** 拓扑主体：分层 DAG（buildWorkflowDag → WorkflowDagSvg，dashboard
  * 同源算法）+ 外部依赖注记 + ready 图例。
- * v0.5.0-beta.13.11（拓扑优化，参照 dashboard + 改进）：
- * ① 统计条（N 任务·M 依赖·K 外部依赖——dashboard ProjectDagView 同款）
+ * * ① 统计条（N 任务·M 依赖·K 外部依赖——dashboard ProjectDagView 同款）
  * ② 缩放工具条（- / 百分比 / + / 复位）——宽图不裁切、细节可读
  * ③ 节点带 subagent 执行者行 + 点击 → 任务巡检 Drawer。 */
-// v0.5.0-beta.13.24（·「DAG 和 mermaid 没必要分两个，只需优化
+// （·「DAG 和 mermaid 没必要分两个，只需优化
 // 这个图」）：Mermaid 视图整体退役——两图同结构（mermaid=上游
 // ?format=mermaid 快照，非交互：节点点击降级提示），自绘 DAG 保交互
 // （节点点看任务）且内联依赖撤除后主包 −5.1MB。图本身优化见
@@ -234,7 +233,7 @@ function DagTopo(props: {
           {dag.externalDeps.length > 0 &&
             ` · ${dag.externalDeps.length} ${tr("外部依赖")}`}
         </span>
- {/* v0.5.0-beta.13.24：DAG/Mermaid 样式切换退役——两图同结构、
+ {/* DAG/Mermaid 样式切换退役——两图同结构、
  Mermaid 非交互，保单一 DAG 视图（图本身优化见 WorkflowDag.tsx）。 */}
         <span style={{ flex: 1 }} />
         <span
@@ -456,7 +455,7 @@ function secTitleStyle(t: ThemeColors): ReactNS.CSSProperties {
 function TopoTaskDetailRow(props: {
   td: import("../api").TaskDetail;
   t: ThemeColors;
-  /** v0.5.0-beta.13.4：传 ev 供 ArtifactLines 构造产物 URL（此前缺
+  /** 传 ev 供 ArtifactLines 构造产物 URL（此前缺
  runId 上下文 → 本行只有路径文本无查看/下载，结果产物没解决）。 */
   ev: WorkflowEvent;
 }) {
@@ -477,7 +476,7 @@ function TopoTaskDetailRow(props: {
         background: t.bg,
       }}
     >
-      {/* v0.5.0-beta.13.5：展开开关只挂头部行——整卡 onClick 会把展开区内
+      {/* 展开开关只挂头部行——整卡 onClick 会把展开区内
  按钮（ArtifactLines「查看/下载」）的点击也当切换，点「查看」即收起
  面板、预览 Modal 随组件卸载消失（点击查看却收回了菜单）。 */}
       <div
@@ -526,7 +525,7 @@ function TopoTaskDetailRow(props: {
       </div>
       {open ? (
         <div style={{ padding: "0 10px 8px 28px", fontSize: 11, color: t.textSecondary, lineHeight: 1.7 }}>
-          {/* v0.5.0-beta.13.4：spec/结果产物/交付物 = 共享 ArtifactLines
+          {/* spec/结果产物/交付物 = 共享 ArtifactLines
  （monospace 路径 + 查看内联预览 + 下载），与任务巡检 Drawer
  同一组件同一行为。 */}
           <ArtifactLines
@@ -610,7 +609,7 @@ function workflowStatusToTaskStatus(status?: string): BoardCol {
     case "blocked":
     case "revision":
       return "blocked";
-    // v0.5.0-beta.13.12：cancelled 独立列（不再折入 blocked——状态映射
+    // cancelled 独立列（不再折入 blocked——状态映射
  // 不一致缺陷，报告）。
     case "cancelled":
     case "canceled":
@@ -638,7 +637,7 @@ interface BoardTask {
   projectStatus: string;
   node: WorkflowNode;
   col: BoardCol;
-  /** v0.5.0-beta.13.15：原节点序（列内时间排序的同项目保序键）。 */
+  /** 原节点序（列内时间排序的同项目保序键）。 */
   __seq?: number;
 }
 
@@ -662,12 +661,12 @@ function boardTasksFromEvents(events: WorkflowEvent[]): BoardTask[] {
 }
 
 /** 终态任务判定（上游归一化状态：completed/revision/blocked/cancelled）。
- * v0.5.0-beta.13.3：上移——任务巡检 Drawer 的门控也要用。
- * v0.5.0-beta.13.12：cancelled 升为独立终态（不再藏进 blocked）。 */
+ * 上移——任务巡检 Drawer 的门控也要用。
+ * cancelled 升为独立终态（不再藏进 blocked）。 */
 const TERMINAL_NODE_STATUSES = ["completed", "revision", "blocked", "cancelled"];
 
 /** 任务级取消 Modal（dashboard TaskDetailRow CancelTaskButton 同款语义：
- * reason 必填、非终态门控、上游 409 幂等收敛）。v0.5.0-beta.13.3（P3
+ * reason 必填、非终态门控、上游 409 幂等收敛）。（P3
  * 对齐）：看板卡 + 任务巡检 Drawer 共用——此前只有看板卡有取消入口，
  * 拓扑/卡片视图点开任务详情后取消功能「消失」（dashboard 任务行始终可
  * 取消）。 */
@@ -736,7 +735,7 @@ function TaskCancelModal(props: {
  * 入口 = 看板/卡片视图任务卡点击。数据边界：Matrix 降级轨事件无 taskDetails
  * → 显式提示，不编造。tracing 提示语义=过滤提示（值匹配 worker entry span
  * 的 agentteams.project.id / agentteams.task.id 属性，不构造 URL）。
- * v0.5.0-beta.13.3（P3 对齐 dashboard）：补 result_path 查看/下载（此前
+ * 补 result_path 查看/下载（此前
  * 类型有字段、UI 不渲染）+ 任务级取消（走共享 TaskCancelModal）。 */
 function TaskInspectionDrawer(props: {
   ev: WorkflowEvent | null;
@@ -748,10 +747,10 @@ function TaskInspectionDrawer(props: {
   const t = useThemeColors();
   const tr = useT();
   const { ev, taskId } = props;
-  // v0.5.0-beta.13.4：spec/结果产物/交付物的查看/下载/预览 = 共享
+  // spec/结果产物/交付物的查看/下载/预览 = 共享
   // ArtifactLines（与拓扑任务详情行同一组件——预览态随组件内聚，
   // 本 Drawer 不再自持 preview/downloading）。
-  // v0.5.0-beta.13.3（P3 对齐）：任务级取消——与看板卡同一门控/同一共享 Modal。
+  // 任务级取消——与看板卡同一门控/同一共享 Modal。
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const open = ev !== null && taskId !== null;
   const detail =
@@ -829,7 +828,7 @@ function TaskInspectionDrawer(props: {
                   <div>{detail.cancel_reason}</div>
                 </div>
               ) : null}
-              {/* v0.5.0-beta.13.4：共享 ArtifactLines（与拓扑任务详情行
+              {/* 共享 ArtifactLines（与拓扑任务详情行
  同一组件——monospace 路径 + 查看内联预览 + 下载）。 */}
               <ArtifactLines
                 runId={ev.runId}
@@ -1020,14 +1019,14 @@ function BoardCard(props: {
   );
 }
 
-/** 看板容器（v0.5.0-beta.13.15 B7，13.14 「项目看板改成两行四列，
+/** 看板容器（B7，13.14 「项目看板改成两行四列，
  * 每个看板显示三个卡片，再多滚动 col，时间排序要做好」）：
  * - 8 状态列 4×2 网格（旧 1×8 横滚——列窄到不可读、一屏塞 8 列过密）；
  * - 每列卡区限高 ≈3 卡（BOARD_CARD_CAP_PX），超出列内纵向滚动；
  * - 列内显式时间排序：项目活动 ts 新→旧（看板恒时间序——项目级 sortBy
  * 是列表/轨道视图语义，不应扰动看板列内顺序；旧版列内顺序=events
  * 传入序，受 sortBy 影响，「时间排序」不成立）。 */
-// v0.5.0-beta.13.16（13.15）：原「限高 ≈3 卡」静态常量改为按屏动态
+// 原「限高 ≈3 卡」静态常量改为按屏动态
 // 计算（见 BoardColumnsView 的 grid 状态：宽 4×2 / 窄 2×4，列高=视口可用
 // 高/行数）——8 列等高、随屏幕高度按比例伸缩、内容超出列内滚动。
 const BOARD_CARD_CAP_PX = 330; // 初始/回退值（≈3 卡）
@@ -1058,7 +1057,7 @@ function BoardColumnsView(props: {
     return m;
   }, [events]);
 
-  // v0.5.0-beta.13.16（13.15 「每个看板要等高 + 随屏幕高度动态调整 +
+  // （13.15 「每个看板要等高 + 随屏幕高度动态调整 +
   // 宽屏 4×2 / 窄屏 2×4」）：列数与列高由容器宽/视口高推导——
   // 宽 ≥ 950 → 4 列 × 2 行；否则 2 列 × 4 行。卡区高 = 视口可用高 / 行数
   // （下限 200 / 上限 460，含页面头等占位 240 余量）→ 8 列恒等高。
@@ -1077,8 +1076,7 @@ function BoardColumnsView(props: {
       if (rect.width <= 0) return;
       const cols = rect.width >= 950 ? 4 : 2;
       const rows = Math.ceil(BOARD_COLUMNS.length / cols);
-      // v0.5.0-beta.13.17（13.16 还是有点高导致整体滚动条）：
-      // 可用高 = 约束底 − 看板顶，**全部实测**（旧版用 innerHeight-240 估算
+      // // 可用高 = 约束底 − 看板顶，**全部实测**（旧版用 innerHeight-240 估算
       // 页面头高，系统性偏大 → 8 列总和超出容器 → 整页滚动）。
       // 约束底 = 最近的可滚动祖先容器底（无则视口底）。
       let bottom =
@@ -1455,7 +1453,7 @@ function InterventionActions({
 }
 
 /** 中断横幅：展示 interrupts 与暂停原因（paused interrupt）。
- * v0.5.0-beta.13.13（13.12 「顶上三个 ⚠ blocked 只显示 '⚠ blocked'
+ * （13.12 「顶上三个 ⚠ blocked 只显示 '⚠ blocked'
  * 有点突兀」）：interrupt.id 即 task_id（实盘某项目 3 条 blocked
  * interrupt id=...-03/-04/-07 与 tasks_detail task_id 一一对应）→
  * 横幅带任务短编号 + 当前状态 + 分配 Worker，可定位到具体任务。
@@ -1858,20 +1856,20 @@ interface WorkflowBoardProps {
   onRefresh?: () => void;
   /** 聊天 workflow 卡片点击跳转：高亮/滚动到该项目。 */
   highlightRunId?: string;
-  /** v0.5.0-beta.12: 正源状态——rooms=已降级到「只扫已加入房间」。 */
+  /** 正源状态——rooms=已降级到「只扫已加入房间」。 */
   source?: "controller" | "rooms";
   failReason?: "auth" | "not_deployed" | "error";
   /** error 分支的真实上游错误（如 Controller 500 的 mc 报错）。 */
   failDetail?: string;
-  /** v0.5.0-beta.12 ：视图 tab 受控（父组件记忆到大 tab 同款 ui-state）。 */
+  /** 视图 tab 受控（父组件记忆到大 tab 同款 ui-state）。 */
   view?: WfView;
   onViewChange?: (v: WfView) => void;
-  /** v0.5.0-beta.12 ：拓扑视图选中的 runId 受控（父组件记忆）。 */
+  /** 拓扑视图选中的 runId 受控（父组件记忆）。 */
   topoRun?: string;
   onTopoRunChange?: (runId: string) => void;
 }
 
-/** v0.5.0-beta.13.22（13.21）：13.21 曾加第 5 项「mermaid」独立
+/** ：13.21 曾加第 5 项「mermaid」独立
  * 视图——与拓扑依赖图同结构（并入拓扑：「不需要新开第 5 项，把
  * 拓扑的依赖图优化就好」）→ mermaid 退役为拓扑视图内的图样式切换。 */
 export type WfView = "list" | "card" | "board" | "topo";
@@ -1892,15 +1890,14 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   } = props;
   const t = useThemeColors();
   const tr = useT();
-  // v0.5.0-beta.12 ：受控——父组件（WorkbenchPage）持有记忆并下发；
+  // 受控——父组件（WorkbenchPage）持有记忆并下发；
   // 未传时回退内部 "list"（组件单独使用不报错）。
   const view: WfView = viewProp ?? "list";
   const setView = (v: WfView) => onViewChange?.(v);
-  // v0.5.0-beta.13.24（·「DAG 和 mermaid 没必要分两个」）：
-  // 拓扑依赖图样式切换退役——两图同结构、Mermaid 快照非交互，保单一
+  // // 拓扑依赖图样式切换退役——两图同结构、Mermaid 快照非交互，保单一
   // DAG 视图（图本身优化见 WorkflowDag.tsx）。旧 localStorage 键
   // wf-topo-graph-style 不再读写（残留值无害）。
-  /** v0.5.0-beta.12 ：排序（用户「工作流的排序要加上时间排序」）。
+  /** 排序（用户「工作流的排序要加上时间排序」）。
  * 默认时间新→旧（与聊天列表一致）；ts 数据源=api.ts projectActivityTs
  * 多源富化（此前恒 0——上游列表端点无时间戳字段）。 */
   const [sortBy, setSortBy] = React.useState<
@@ -1937,7 +1934,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   }, [events, sortBy]);
   // 拓扑视图：选一个有 nodes 的 runId。
   const withNodes = events.filter((e) => (e.nodes || []).length > 0);
-  // v0.5.0-beta.12: 空态说真话——项目已列出但 nodes 全空（create-project.sh 建的项目
+  // 空态说真话——项目已列出但 nodes 全空（create-project.sh 建的项目
   // 是 planning 状态：meta.json 只有 workers 没有任务 DAG，任务在群聊 @mention
   // 协调）。此前空态一律说"等 DAG 模式"，用户「看板和拓扑都没有信息」无从下手。
   const emptyEventCount = events.length;
@@ -1946,12 +1943,12 @@ function WorkflowBoard(props: WorkflowBoardProps) {
     () => boardTasksFromEvents(events).length,
     [events],
   );
-  // v0.5.0-beta.12 ：受控——拓扑选中的 runId 由父组件记忆下发；失效值由
+  // 受控——拓扑选中的 runId 由父组件记忆下发；失效值由
   // 下方 topoEvent 的 withNodes[0] 兜底（Select value 跟随 topoEvent）。
   const topoRun = topoRunProp ?? "";
   const setTopoRun = (runId: string) => onTopoRunChange?.(runId);
 
-  // ── v0.5.0-beta.14.12（b）：首载状态机 ──
+  // ── ：首载状态机 ──
   // 冷启动期 /projects-workflow 快照为空（后端首扫 1-3 分钟），旧行为渲染
   // 空表格/「暂无工作流事件」占位（「UI 好像烂了，要过很久或者
   // 刷新才正常」）。现在：正源健康（source=controller）且 events 空 →
@@ -1993,7 +1990,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
     return () => window.clearTimeout(timer);
   }, [aggGate, aggPhase]);
 
- // v0.5.0-beta.14.12（b）：手动刷新必穿透——force=true 绕过
+ // 手动刷新必穿透——force=true 绕过
  // 30s 缓存 + ?refresh=1 触发连接器后台补扫；结果仍空 →
   // （重新）进入首聚合态（180s 预算重置）。随后 onRefresh 让父级同步
   // 状态（其无参调用命中 force 刚写入的新缓存，events prop 收敛同值）。
@@ -2044,7 +2041,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
     ? events.find((e) => e.runId === inspect.runId) || null
     : null;
 
-  // v0.5.0-beta.13.11（拓扑左侧项目列表要可拖宽度）：左栏宽
+  // 左栏宽
   // 220–520，默认 320，持久化（与聊天分栏 chatSplitW 同款交互）。
   const RAIL_KEY = "agentteams-qwenpaw-workbench:workflow-rail-w";
   const [railW, setRailW] = React.useState<number>(() => {
@@ -2079,7 +2076,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      {/* v0.5.0-beta.12: 正源降级横幅（不再静默）——用户「Leader 项目看不到，只有
+      {/* 正源降级横幅（不再静默）——用户「Leader 项目看不到，只有
  Manager 的」= 正源 401 静默回退、只剩自己已加入房间的 Matrix 扫描。 */}
       {source === "rooms" ? (
         <div
@@ -2120,7 +2117,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
         </antd.Tooltip>
         <div style={{ flex: 1 }} />
-        {/* v0.5.0-beta.12 ：排序（时间/状态/名称）——列表/看板跟随；
+        {/* 排序（时间/状态/名称）——列表/看板跟随；
  卡片/拓扑的左栏项目列表跟随（DAG 内部结构不排序）。 */}
         <antd.Select
           size="small"
@@ -2150,7 +2147,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             { value: "board", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><ChartIcon size={12} /> {tr("看板")}</span> },
             {
               value: "topo",
-              // v0.5.0-beta.13.12：🌳 一棵树 → DAG 拓扑图标（表依赖拓扑）。
+              // 🌳 一棵树 → DAG 拓扑图标（表依赖拓扑）。
               // 13.21 加的「Mermaid」第 5 项：13.22 并入拓扑内样式切换 →
               // 13.24整体退役（两图同结构，保单一 DAG，见 DagTopo）。
               label: (
@@ -2166,7 +2163,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             type="text"
             size="small"
             icon={<ReloadIcon />}
-            // v0.5.0-beta.14.12（b）：手动刷新必穿透（force +
+            // 手动刷新必穿透（force +
             // ?refresh=1）；loading 含本地穿透请求期。
             loading={loading || manualRefresh}
             onClick={() => void handleRefreshClick()}
@@ -2175,7 +2172,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
       </div>
 
       {aggGate && aggPhase === "aggregating" ? (
-        /* v0.5.0-beta.14.12（b）：首聚合态——冷启动期不渲染空
+        /* ：首聚合态——冷启动期不渲染空
  表格（「烂」的直接观感源），明确加载态 + 自动重试（状态机见上）。 */
         <div
           style={{
@@ -2235,7 +2232,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
                 title: tr("协调者"),
                 dataIndex: "coordinator",
                 width: 130,
- // v0.5.0-beta.14.13（附带项）：协调者为原始
+ // 协调者为原始
                 // matrix ID（未富化名字）时长 ID 换行撑高行（40→61px）
                 // → 首屏底缘半裁行视觉「双影/糊」。ellipsis 截断 +
                 // antd 自动 title 悬停见全文（不丢信息）。
@@ -2253,7 +2250,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
                 dataIndex: "room_name",
                 width: 150,
                 ellipsis: true,
-                // v0.5.0-beta.12：房间名未富化（用户未加入该房间）时回退显示 room_id，
+                // 房间名未富化（用户未加入该房间）时回退显示 room_id，
                 // 与 dashboard tasks 栏 shortId(roomId) 行为对齐。
                 render: (v: string, ev: WorkflowEvent) => v || ev.room_id || "",
               },
@@ -2266,7 +2263,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               {
                 title: tr("操作"),
                 key: "actions",
- // v0.5.0-beta.14.13（附带项）：3 个操作按钮
+ // 3 个操作按钮
                 // （暂停/完成/重规划 ≈205px）在 150px 列内换行 → 行高
                 // 40/65px 混杂 → 首屏底缘半裁行两行按钮各切一半，
                 // 视觉「双影/糊」（DOM 实证无 transform/克隆/opacity，
@@ -2446,6 +2443,6 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   );
 }
 
-// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
+// 面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(WorkflowBoard);

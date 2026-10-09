@@ -1,5 +1,5 @@
 /**
- * AgentActivityTrack（v0.5.0-beta.13.21，「侧栏角色分组/活动轨/
+ * AgentActivityTrack（，「侧栏角色分组/活动轨/
  * mermaid/undo」批）：聊天 composer 上方的「当前房间项目任务进度 + HITL」
  * 内联轨。数据面=既有 workflow API（零后端）：父组件把当前房间匹配的
  * WorkflowEvent（roomMatchesProject 同源）传进来，本组件纯渲染。

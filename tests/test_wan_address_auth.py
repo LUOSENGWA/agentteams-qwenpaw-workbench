@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.3: 地址覆盖凭据（WAN Basic 门 / API key 门）单测。
+"""地址覆盖凭据（WAN Basic 门 / API key 门）单测。
 
 覆盖：
 - 地址条目解析（str | {url, auth?} 归一化）

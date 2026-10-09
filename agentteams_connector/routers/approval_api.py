@@ -26,10 +26,10 @@ from ..router import (
 
 
 def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
-    """approval + catch-all proxy 域子路由（build_router 原段逐字搬移，任务 190；catch-all /{target}/{path:path} 必须装配最后）。"""
+    """approval + catch-all proxy 域子路由（build_router 原段逐字搬移；catch-all /{target}/{path:path} 必须装配最后）。"""
     router = APIRouter()
 
-    # 跨域共享（kb builder 内定义，装配方显式传入，任务 190）：
+    # 跨域共享（kb builder 内定义，装配方显式传入）：
     _KB_AGENT_RE = kb_shared["agent_re"]
     _kb_require_token = kb_shared["require_token"]
     _kb_docker = kb_shared["docker"]
@@ -95,7 +95,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
             f"base64 -d | /opt/venv/qwenpaw/bin/python > {tmp_path} 2>&1; "
             f"echo rc=$? >> {tmp_path}"
         )
-        # v0.5.0-beta.14.18：与全族一致走 _headers_for（controller 地址覆盖
+        # 与全族一致走 _headers_for（controller 地址覆盖
         # 凭据替换，未配则原样 Bearer）——外网审批 exec 同族 401 缺口。
         headers = _headers_for(
             config_mod.load_config(), "controller", base,
@@ -251,7 +251,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
 
     @router.get("/debug/dial-stats")
     async def debug_dial_stats() -> Dict[str, Any]:
-        """拨号计数快照（，v0.5.0-beta.14.6）——修复验收/排障对账用。"""
+        """拨号计数快照（，）——修复验收/排障对账用。"""
         from .. import dial_gate as _dg  # noqa: PLC0415
 
         return _dg.dial_stats()
@@ -262,7 +262,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
  agent.json——与 KB 同通道，零新端点依赖）。
  ?agent=xxx 过滤单个（Worker 管理展开行懒加载用，避免全量扫）。"""
         token, base = _kb_require_token()
-        # v0.5.0-beta.14.5: 20s TTL 缓存命中即返（成功响应才写；异常路径不缓存）。
+        # 20s TTL 缓存命中即返（成功响应才写；异常路径不缓存）。
         _cached = _approval_list_cache.get(agent)
         if _cached and _cached[0] > time.monotonic():
             return _cached[1]
@@ -341,7 +341,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                 }],
                 "levels": list(_APPROVAL_LEVELS),
             }
-        # v0.5.0-beta.14.5: 串行 → 并发（原 for ... await _one() 串行 ≈23s@WAN）。
+        # 串行 → 并发（原 for ... await _one() 串行 ≈23s@WAN）。
         # 先收集目标（manager/worker 去重与 agent 过滤语义与旧版一致），再
         # asyncio.gather 并发执行；并发上限 12（对 Controller Docker API 礼貌）。
         targets: List[tuple] = []
@@ -386,7 +386,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
         level = str(body.get("level") or "").strip().upper()
         if not _KB_AGENT_RE.match(agent):
             raise HTTPException(status_code=400, detail="非法 agent 名")
-        # v0.5.0-beta.14.5: 写路径先失效缓存（防写窗口内列表缓存旧值）。
+        # 写路径先失效缓存（防写窗口内列表缓存旧值）。
         _approval_list_cache.pop("", None)
         _approval_list_cache.pop(agent, None)
         if level not in _APPROVAL_LEVELS:
@@ -400,7 +400,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
         if agent != "manager":
             if not await _kb_docker_available(token, base, container):
                 _res = await _approval_set_wsf(token, base, agent, level)
-                # v0.5.0-beta.14.5: 兜底写成功后同样失效缓存。
+                # 兜底写成功后同样失效缓存。
                 _approval_list_cache.pop("", None)
                 _approval_list_cache.pop(agent, None)
                 return _res
@@ -462,7 +462,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                     pass
                 break
         if out.startswith("OK"):
-            # v0.5.0-beta.14.5: 写成功后再次失效（清掉写窗口内缓存的旧值）。
+            # 写成功后再次失效（清掉写窗口内缓存的旧值）。
             _approval_list_cache.pop("", None)
             _approval_list_cache.pop(agent, None)
             return {
@@ -539,14 +539,14 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                 detail="未配置任何地址" if target == "controller" else "未配置 Matrix 地址",
             )
 
-        # v0.5.0-beta.13.19（技能中心「上传/自定义技能」）：multipart/form-data
+        # multipart/form-data
         # 原样透传——读原始字节 + 连同 boundary 的 Content-Type 一起转发；
         # 旧版一律 request.json() → multipart 解析失败 body=None → 上游收
         # 空体（技能 zip 上传必 400）。
         body = None
         raw_body: Optional[bytes] = None
         req_ct = request.headers.get("content-type", "")
-        # v0.5.0-beta.14.23：PATCH 与 POST/PUT 同语义读 body（Controller
+        # PATCH 与 POST/PUT 同语义读 body（Controller
         # tools 端点 = PATCH /workers/{name}/tools/{tool}，beta.12.3 起
         # catch-all 漏了 PATCH → 405 Method Not Allowed，打地鼠前的
         # 方法表对账：Go mux 注册的方法集合=GET/PUT/POST/PATCH/DELETE）。
@@ -568,7 +568,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
         import urllib.parse as _urlparse_mod
 
         encoded_path = _urlparse_mod.quote(full_path, safe="/._-~")
-        # v0.5.0-beta.14.7（带宽）：/messages 默认只取 message 事件（实测
+        # /messages 默认只取 message 事件（实测
         # 5.2KB→1KB/页，5Mbps 链路显著）；调用方显式传 filter= 时尊重其选择。
         if (
             target == "matrix"
@@ -578,7 +578,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
         ):
             _flt = _urlparse_mod.quote('{"types":["m.room.message"]}', safe="")
             query_string += ("&" if query_string else "?") + f"filter={_flt}"
-        # v0.5.0-beta.14.2（外网 401 根因①②）：①4xx 不再标记 working
+        # ①4xx 不再标记 working
         # （旧版任何 HTTP 响应都 _mark_working——一次 401 即污染 working
         # cache，切回内网后死地址仍居首恒 401）；②GET/HEAD 遇 4xx/5xx 继续
         # 下一地址（首个 401 地址可能是网关代理的会话门、直连控制器健康
@@ -588,10 +588,10 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
         first_bad: Optional[tuple] = None
         for base in base_urls:
             url = f"{base.rstrip('/')}{encoded_path}{query_string}"
-            # v0.5.0-beta.14.3: 该地址的覆盖凭据（basic/bearer）——无则原生认证。
+            # 该地址的覆盖凭据（basic/bearer）——无则原生认证。
             addr_headers = _headers_for(cfg, target, base, headers)
             try:
-                # v0.5.0-beta.12：连接类错误同址重试一次（300ms 退避）——
+                # 连接类错误同址重试一次（300ms 退避）——
                 # 切网瞬间/偶发抖动不应直接放弃该地址（用户「连通失败重试」）。
                 # 只重试传输层错误；已拿到 HTTP 响应（含 5xx）的不重试。
                 resp = None
@@ -651,7 +651,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                         resp.status_code, resp.content,
                         resp.headers.get("content-type"),
                     )
-                # v0.5.0-beta.14.6：GET/HEAD 仅在地址相关/瞬时错误时换下
+                # GET/HEAD 仅在地址相关/瞬时错误时换下
                 # 一地址（401/403 网关门、408/429、5xx）；确定性 4xx（400/404/
                 # 409…）地址无关 → 原样立即返回（不再跨址重试）。
                 if request.method in ("GET", "HEAD") and should_failover_status(
@@ -662,7 +662,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                         target, full_path, base, resp.status_code,
                     )
                     continue
-                # v0.5.0-beta.14.23：写路径（POST/PUT/PATCH/DELETE）非 2xx
+                # 写路径（POST/PUT/PATCH/DELETE）非 2xx
                 # 即终态（副作用安全不跨址重放）——warning 留痕（方法+路径
                 # +上游状态+body 前 200B），405 这类「上游方法表不符」问题
                 # 从此一眼可辨（此前静默透传，只能靠前端文案反推）。

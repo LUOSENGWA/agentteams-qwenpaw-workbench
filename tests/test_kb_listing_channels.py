@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""KB 目录列取双通道回归测试（v0.5.0-beta.13.9 根因修）。
+"""KB 目录列取双通道回归测试（根因修）。
 
 背景（真机反馈）：worker 工作区总体积 >20MB（实测 180MB）→ 旧版
 kb_tree 顶层（worker 支）/ memory / digest 子树全走「先整目录递归 tar
@@ -194,7 +194,7 @@ def _dir_archive_gets() -> list:
 
 
 def _exec_find_spec():
-    # v0.5.0-beta.13.10：find 带 -H（跟随命令行参数层符号链接）。
+    # find 带 -H（跟随命令行参数层符号链接）。
     return [
         (f"find -H {WS}/memory", MEM_FIND),
         (f"find -H {WS}/digest", DIG_FIND),
@@ -221,7 +221,7 @@ def test_tree_large_workspace_exec_primary_zero_download(client):
     body = r.json()
     files = {f["path"]: f for f in body["files"]}
     # 200 = 核心（旧版整树 tar 到 20MB 就 413，连一个文件都拿不到）。
-    # v0.5.0-beta.13.10（13.9 知识库不全根因②）：非文本文件
+    # 非文本文件
     # 全量列出 + openable=False（旧断言「bigfile.bin 不入列」已废弃）。
     assert files["bigfile.bin"]["openable"] is False
     assert "AGENTS.md" in files
@@ -376,7 +376,7 @@ def test_ls_exec_down_tar_404_is_404(client):
     assert "目录不存在" in r.text
 
 
-# ── v0.5.0-beta.13.10：符号链接列全（13.9 知识库不全根因①）──
+# ── 符号链接列全（13.9 知识库不全根因①）──
 def test_tree_symlink_dir_and_file(client):
     """shared→目录（python3 解析 D）入 dirs + symlink 标记；
  note-link→文件（解析 F）入 files openable=False。"""

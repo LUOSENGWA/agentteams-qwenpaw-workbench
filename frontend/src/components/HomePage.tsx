@@ -40,7 +40,7 @@ interface HomePageProps {
   onGotoTab: (tabKey: string) => void;
   /** 发起任务弹窗选定目标 → DM 该 Leader/Manager。 */
   onDm?: (mxid: string, roomId?: string) => void;
-  /** 团队结构来源（v0.5.0-beta.12）："room-fallback"=Controller 未接入——房间聚合不可当团队，Leader 列表只留 Manager 入口。 */
+  /** 团队结构来源（）："room-fallback"=Controller 未接入——房间聚合不可当团队，Leader 列表只留 Manager 入口。 */
   treeSource?: string;
   /** ：通知中心未读数（快捷入口角标）。 */
   inboxUnread?: number;
@@ -125,12 +125,12 @@ function HomePage(props: HomePageProps) {
   const t = useThemeColors();
   const tr = useT();
 
-  // 发起任务弹窗（v0.5.0-beta.12：选 Leader 入口——入口 B 默认 / Manager 跨团队 A）。
+  // 发起任务弹窗（选 Leader 入口——入口 B 默认 / Manager 跨团队 A）。
   const [newTaskOpen, setNewTaskOpen] = React.useState(false);
   const [newTaskSel, setNewTaskSel] = React.useState<string>("");
   const newTaskTargets = React.useMemo<NewTaskTarget[]>(() => {
     const out: NewTaskTarget[] = [];
-    // v0.5.0-beta.12: room-fallback（Controller 未接入）时房间聚合不是真团队——
+    // room-fallback（Controller 未接入）时房间聚合不是真团队——
     // 项目群聊里的 manager 会被 spawn 归类 leader 列成垃圾，只留 Manager 入口。
     if (treeSource !== "room-fallback") {
       for (const team of workerTree) {
@@ -170,7 +170,7 @@ function HomePage(props: HomePageProps) {
     ranks: { dp_rank: number; num_running_reqs: number; num_waiting_reqs: number }[];
   }>({ loaded: false, ranks: [] });
   // 待审批（房间审批源：/room-approvals=Worker Tool Guard 真实队列，
-  // 30s 轮询）。v0.5.0-beta.12 ：弃用宿主 push-messages——集群
+  // 30s 轮询）。弃用宿主 push-messages——集群
  // Worker 的审批发生在 Worker 所在进程，本机队列恒 0（首页没有）。
   const [approvals, setApprovals] = React.useState<RoomApproval[]>([]);
   const [approvalBusy, setApprovalBusy] = React.useState<string>("");
@@ -178,7 +178,7 @@ function HomePage(props: HomePageProps) {
   const refreshApprovals = React.useCallback(async () => {
     try {
       const items = await fetchRoomApprovals(30);
-      // v0.5.0-beta.14.19（diff 门）：内容 diff 门——无变化复用 prev 引用
+      // 内容 diff 门——无变化复用 prev 引用
       // （30s 空转轮询不再重渲整个首页）。
       setApprovals((prev) =>
         JSON.stringify(prev) === JSON.stringify(items) ? prev : items,
@@ -188,16 +188,16 @@ function HomePage(props: HomePageProps) {
     }
   }, []);
 
-  // v0.5.0-beta.14.6：home tab 轮询活跃门控（tabActivity 单源 +
+  // home tab 轮询活跃门控（tabActivity 单源 +
   // 页面可见；rc-tabs 保活：切走组件不卸载，必须显式门控）。
-  // v0.5.0-beta.14.14：字符串快照 → 布尔快照（useTabActive）
+  // 字符串快照 → 布尔快照（useTabActive）
   // ——非 home tab 的互切不再触发本面板重渲（连点 Tab CPU 成本）。
   const homeActive = useTabActive("home") && !document.hidden;
   // 挂载首拉。
   React.useEffect(() => {
     void refreshApprovals();
   }, [refreshApprovals]);
-  // v0.5.0-beta.14.6：旧定时器 → usePoller（30s，!document.hidden
+  // 旧定时器 → usePoller（30s，!document.hidden
   // 由 hook 内置再 AND 一次）。
   usePoller({
     fn: refreshApprovals,
@@ -234,19 +234,19 @@ function HomePage(props: HomePageProps) {
     [refreshApprovals],
   );
 
-  // v0.5.0-beta.14.7：最近动态改「零拉取派生」——直接消费 rooms 自带摘要
+  // 最近动态改「零拉取派生」——直接消费 rooms 自带摘要
   // （last_sender/last_body/last_ts，由服务端 /sync timeline limit=1 与 SSE
   // room_list_update 增量维护）。已删原「每房拉最后 1 条」effect：
   // 其依赖整个 rooms 数组，任何增量合并都会全量重拉（实测 20+ 房 × 数秒级）。
 
-  // 产物计数（v0.5.0-beta.14.7 ·）：首屏不拉——home 激活 + 4s
-  // 后拉（v0.5.0-beta.14.9：2.5s→4s + 隐藏页不拉）；避免整页装载窗口内
+  // 产物计数（·）：首屏不拉——home 激活 + 4s
+  // 后拉（2.5s→4s + 隐藏页不拉）；避免整页装载窗口内
   // 触发服务端 75 房深扫（实测冷 55.9s）。
   React.useEffect(() => {
     if (!homeActive) return undefined;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      // v0.5.0-beta.14.9：延迟窗口内切走（页隐藏）不拉。
+      // 延迟窗口内切走（页隐藏）不拉。
       if (document.hidden) return;
       void fetchArtifacts()
         .then((items) => {
@@ -264,7 +264,7 @@ function HomePage(props: HomePageProps) {
 
  // 集群负载（可选模块，仅配置开启时拉取；1s 静默轮询——实时刷新，
   // /v1/loads 读 SHM 快照专为高频轮询设计，1 QPS 零负担）。
- // v0.5.0-beta.14.6：1s 旧定时器 → usePoller + 自适应间隔——
+ // 1s 旧定时器 → usePoller + 自适应间隔——
   // 上轮耗时 >300ms（后端慢窗）→ 本轮改 5000 降频，恢复快 → 回 1000；
   // 仅 home tab 激活 + 页面可见时跑（homeActive）。
   const sglangEnabled = Boolean(config?.sglang?.enabled);
@@ -277,8 +277,7 @@ function HomePage(props: HomePageProps) {
       sglangAliveRef.current = false;
     };
   }, []);
-  // v0.5.0-beta.14.19（SGLang 卡自适应节奏，与 OpsPanel 同案）：
-  // 14.17 一刀切 1s→5s 后验收实测回归「刷新很慢几乎不刷」——监控卡活性
+  // // 14.17 一刀切 1s→5s 后验收实测回归「刷新很慢几乎不刷」——监控卡活性
   // 靠活跃快档（1s，恢复 1s 时代实时感），省 5M 行拨号靠空闲慢档
   // （15s）。指纹=ranks 归一化 JSON（SglangRank 无每帧时钟字段，直接比）。
   const SG_FAST_MS = 1000;
@@ -315,13 +314,13 @@ function HomePage(props: HomePageProps) {
     if (sglangEnabledRef.current) void pullSglang();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pullSglang]);
-  // v0.5.0-beta.14.17（审计）：快档 1s→5s。/v1/loads 是前端最大
+  // 快档 1s→5s。/v1/loads 是前端最大
   // 可控频次（1s 轮询×1.2KB/次，45s 稳态 ≈13/45s 的主项）；负载仪表 5s
   // 刷新仍属"活"感，与慢档合并为恒定 5s（快慢档区分取消——差异消失后
   // 保留分支是死逻辑）。后端 1s 单飞缓存由后端批补（解锁 router.py 后）。
   usePoller({
     fn: pullSglang,
-    // v0.5.0-beta.14.19：自适应节奏（getter 档；sgCadenceRef 在
+    // 自适应节奏（getter 档；sgCadenceRef 在
     // pullSglang 内按 ranks 指纹切 1s/15s）。
     intervalMs: () => sgCadenceRef.current,
     active: homeActive && sglangEnabled,
@@ -369,7 +368,7 @@ function HomePage(props: HomePageProps) {
         minWidth: 140,
         cursor: "pointer",
         borderRadius: CARD_RADIUS,
-        // v0.5.0-beta.14.18：accent 品牌浅底卡——底/边/字从主色派生
+        // accent 品牌浅底卡——底/边/字从主色派生
         // （原 #FFF3E8/#FFD9B3/#c2410c/#9a3412 是 accent 的固定橙衍生，
         // 宿主换主色时这层不跟）。color-mix 保证任意主色下的浅底/边。
         background: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, white)",
@@ -409,7 +408,7 @@ function HomePage(props: HomePageProps) {
     </div>
   );
 
-  // v0.5.0-beta.12：两种排序语义分开——团队卡=未读优先再按活跃（动作导向）；
+  // 两种排序语义分开——团队卡=未读优先再按活跃（动作导向）；
   // 最近动态=严格时间序（此前按未读排，全 0 未读时顺序任意=观感无时间序）。
   const roomsByUnread = [...rooms].sort(
     (a, b) =>
@@ -432,7 +431,7 @@ function HomePage(props: HomePageProps) {
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: t.text }}>
-            {/* v0.5.0-beta.12.2：AgentTeams logo 替代 🏢。 */}
+            {/* AgentTeams logo 替代 🏢。 */}
             <img
               src={LOGO_URL}
               width={18}
@@ -442,7 +441,7 @@ function HomePage(props: HomePageProps) {
             />
             {tr("AgentTeams 工作台")}
           </div>
-          {/* v0.5.0-beta.12：身份行——当前账号 + Controller 视图级别（多账号/双模式
+          {/* 身份行——当前账号 + Controller 视图级别（多账号/双模式
  时一眼看清看的是谁的数据；L2 只看到授权团队，L1 全量）。 */}
           <div style={{ fontSize: 11, color: t.textSecondary }}>
             {config?.matrix?.user_id ? (
@@ -565,7 +564,7 @@ function HomePage(props: HomePageProps) {
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
                     {r.name}
                   </span>
-                  {/* v0.5.0-beta.12：房间行动态时间（与聊天列表同口径 formatChatTime） */}
+                  {/* 房间行动态时间（与聊天列表同口径 formatChatTime） */}
                   <span style={{ fontSize: 10, color: t.textSecondary, flexShrink: 0 }}>
                     {r.last_ts ? formatChatTime(r.last_ts) : ""}
                   </span>
@@ -661,11 +660,11 @@ function HomePage(props: HomePageProps) {
       </antd.Row>
 
       {/* 审批卡（房间审批源 /room-approvals=Worker Tool Guard 真实队列，
- 30s 轮询；v0.5.0-beta.12 弃宿主 push-messages 死源） */}
+ 30s 轮询；弃宿主 push-messages 死源） */}
       <antd.Row gutter={[12, 12]}>
         <antd.Col span={24}>
           <antd.Card style={cardStyle} styles={{ body: cardBody }}>
-            {/* v0.5.0-beta.12：空态压缩为单行细条（此前空态也占整卡高度） */}
+            {/* 空态压缩为单行细条（此前空态也占整卡高度） */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldIcon size={14} /> {tr("待审批")}</span>
@@ -802,7 +801,7 @@ function HomePage(props: HomePageProps) {
         </antd.Col>
       </antd.Row>
 
-      {/* 第二行：最近动态（左宽）/ 右列=产物+集群负载堆叠（v0.5.0-beta.12 重排） */}
+      {/* 第二行：最近动态（左宽）/ 右列=产物+集群负载堆叠（重排） */}
       <antd.Row gutter={[12, 12]} style={{ marginTop: 0 }}>
         <antd.Col xs={24} sm={16}>
           <antd.Card style={cardStyle} styles={{ body: cardBody }}>
@@ -817,7 +816,7 @@ function HomePage(props: HomePageProps) {
               </div>
             ) : (
               roomsByActivity.slice(0, 4).map((r) => {
-                // v0.5.0-beta.14.7：直接用自带摘要（零拉取）。
+                // 直接用自带摘要（零拉取）。
                 const sender = r.last_sender ? memberName(r, r.last_sender) : "";
                 return (
                   <div
@@ -862,7 +861,7 @@ function HomePage(props: HomePageProps) {
                         ? `${sender}: ${r.last_body || tr("（非文本消息）")}`
                         : tr("暂无消息")}
                     </span>
-                    {/* v0.5.0-beta.12：动态行时间戳（此前最近动态无时间=无法判断新鲜度） */}
+                    {/* 动态行时间戳（此前最近动态无时间=无法判断新鲜度） */}
                     <span
                       style={{
                         fontSize: 10,
@@ -894,7 +893,7 @@ function HomePage(props: HomePageProps) {
           </antd.Card>
         </antd.Col>
         <antd.Col xs={24} sm={8}>
-          {/* v0.5.0-beta.12：右列=产物+集群负载堆叠（此前产物卡半空、负载独占整行） */}
+          {/* 右列=产物+集群负载堆叠（此前产物卡半空、负载独占整行） */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
   <antd.Card style={cardStyle} styles={{ body: cardBody }}>
               <div
@@ -910,7 +909,7 @@ function HomePage(props: HomePageProps) {
                     <div style={subLabel}>{tr("个产物")}</div>
                   </div>
                 </div>
-                {/* v0.5.0-beta.12：最新产物行（此前卡片下半空白=信息密度低） */}
+                {/* 最新产物行（此前卡片下半空白=信息密度低） */}
                 {(() => {
                   const latest = artifacts.reduce<Artifact | null>(
                     (acc, a) => (!acc || (a.ts || 0) > (acc.ts || 0) ? a : acc),
@@ -996,7 +995,7 @@ function HomePage(props: HomePageProps) {
 
       
 
-      {/* 发起任务 · 选择 Leader（v0.5.0-beta.12：入口 B Leader 默认 / 入口 A Manager 跨团队） */}
+      {/* 发起任务 · 选择 Leader（入口 B Leader 默认 / 入口 A Manager 跨团队） */}
       <antd.Modal
         open={newTaskOpen}
         title={tr("发起任务 · 选择 Leader")}
@@ -1097,6 +1096,6 @@ function HomePage(props: HomePageProps) {
   );
 }
 
-// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
+// 面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(HomePage);

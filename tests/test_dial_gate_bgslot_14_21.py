@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-# v0.5.0-beta.14.21：dial_gate 后台共用通道（bg_slot / bg_lock）+
+# dial_gate 后台共用通道（bg_slot / bg_lock）+
 # dial_stats 计数行为单测。
-#
 # bg_slot 是 worker_status / projects_workflow / KB 刷新三类后台扫描的
 # 共用通道（让权 + 单飞 + 等锁超时防堆积），此前仅有静态护栏、无行为
 # 测试。异步行为全部用 asyncio.Event 可控桩驱动，不靠 sleep 猜时序；

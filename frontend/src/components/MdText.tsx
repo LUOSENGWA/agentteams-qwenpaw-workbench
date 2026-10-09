@@ -6,7 +6,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-/** v0.5.0-beta.13.8（13.7 @mention 格式不对——Element 渲染整 MXID）：
+/** ：
  * Element/Matrix 口径——消息 body 里的整 MXID（@local:server[:port]）被
  * 正则扫描渲染成 pill（Element Pill.tsx 同款前端后处理；本集群
  * formatted_body 不含 matrix.to 链接，纯前端正则即正解）。chip 显
@@ -52,7 +52,7 @@ function MentionPill({
 }
 
 /** 行内格式：`code` / **bold** / *italic* / @mention（整 MXID pill + 短名）/ 裸 URL。
- * v0.5.0-beta.14.14：memo——blocks 缓存命中时（已完成消息）
+ * memo——blocks 缓存命中时（已完成消息）
  * 父行重渲染不再重跑逐 token 正则 + 节点重建（流式期成本点）。 */
 const InlineMd = React.memo(function InlineMd({
   text,
@@ -154,7 +154,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 /** 代码块：深底 + 语言标签 + 复制。 */
-/** v0.5.0-beta.13.7（13.6 「看看 dashboard 和 QwenPaw 怎么渲染消息，
+/** （13.6 「看看 dashboard 和 QwenPaw 怎么渲染消息，
  * 继续优化」）：代码块对齐 dashboard markdown-message CodeBlock 口径——
  * 浅底卡片 + 边框 + 灰底语言栏 + 复制按钮**hover 才出现**（dashboard
  * opacity-0 group-hover:opacity-100 同款），替代 13.6 的暗色底+常显复制
@@ -217,11 +217,11 @@ interface Block {
   lang?: string;
   content: string;
   items?: string[];
-  /** 表格：行数组（首行 = 表头）。v0.5.0-beta.12。 */
+  /** 表格：行数组（首行 = 表头）。。 */
   rows?: string[][];
-  /** 有序列表标记。v0.5.0-beta.12。 */
+  /** 有序列表标记。。 */
   ordered?: boolean;
-  /** 标题层级（1-6）。v0.5.0-beta.12。 */
+  /** 标题层级（1-6）。。 */
   level?: number;
 }
 
@@ -276,7 +276,7 @@ function parseBlocks(text: string): Block[] {
       i++;
       continue;
     }
-    // 表格（v0.5.0-beta.12）：| 开头行 + 下一行是分隔行 |---|---| → 吃掉连续 | 行。
+    // 表格（）：| 开头行 + 下一行是分隔行 |---|---| → 吃掉连续 | 行。
     // 报告类产物（对比表/清单）表格是主形态——此前全部按 RAW 文本渲染，
     // 用户「md 预览 RAW 没修好」的主要根因之一。
     if (
@@ -305,7 +305,7 @@ function parseBlocks(text: string): Block[] {
       continue;
     }
     if (/^\s*\d+[.)]\s+/.test(line)) {
-      // 有序列表（v0.5.0-beta.12）：1. / 2) 连续行。
+      // 有序列表（）：1. / 2) 连续行。
       flush();
       const items: string[] = [];
       while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
@@ -340,7 +340,7 @@ interface MdTextProps {
 }
 
 /** 零依赖 markdown 渲染：代码块/标题/列表/引用 + 行内格式 + @高亮 + 长文折叠。
- * v0.5.0-beta.14.14：memo——text 未变的行（流式期间已完成的
+ * memo——text 未变的行（流式期间已完成的
  * 历史消息）父行重渲染时整体跳过（parseBlocks + 块 JSX + InlineMd 全不跑）。 */
 export default React.memo(function MdText({
   text,

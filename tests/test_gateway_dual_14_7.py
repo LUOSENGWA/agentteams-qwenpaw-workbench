@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.7: Higress 内外网双地址（canonical 列表 gateway_admin_urls）回归。
+"""Higress 内外网双地址（canonical 列表 gateway_admin_urls）回归。
 
 覆盖（5 例）：
 - test_gateway_migration: legacy 单值 → load_config() 提升为列表 + legacy 键镜像一致。

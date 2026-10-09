@@ -24,7 +24,7 @@ export function senderShort(sender: string): string {
   return (sender.split(":")[0] || sender).replace(/^@/, "");
 }
 
-/** v0.5.0-beta.12 ：Levenshtein 编辑距离（短串，>2 提前退出）。 */
+/** Levenshtein 编辑距离（短串，>2 提前退出）。 */
 function levDistance(a: string, b: string): number {
   if (Math.abs(a.length - b.length) > 2) return 3;
   const m = a.length;
@@ -44,7 +44,7 @@ function levDistance(a: string, b: string): number {
   return prev[n];
 }
 
-/** v0.5.0-beta.12 ：房间名模糊匹配打分（微信式）——
+/** 房间名模糊匹配打分（微信式）——
  * 100 子串命中（位置越靠前分越高）/ 50 有序子序列（"lead"→team-lead）/
  * 30 短名（≤12 字符）编辑距离 ≤2（容错 "devbt"→devbot）。
  * 不做拼音匹配：需内置 4000 字拼音表（数百 KB）价值低，房间名通常整段/片段输入。 */
@@ -236,7 +236,7 @@ function MessageSearch(props: MessageSearchProps) {
   const roomMatches = React.useMemo(() => {
     if (roomId || !rooms || !query.trim()) return [];
     const q = query.trim().toLowerCase();
-    // v0.5.0-beta.12 ：模糊匹配（子串 > 子序列 > 短名编辑距离≤2），按分排序。
+    // 模糊匹配（子串 > 子序列 > 短名编辑距离≤2），按分排序。
     return rooms
       .map((r) => [r, fuzzyRoomScore(r.name || "", q)] as const)
       .filter(([, score]) => score > 0)
@@ -586,7 +586,7 @@ function MessageSearch(props: MessageSearchProps) {
   );
 }
 
-// v0.5.0-beta.14.14：memo 化——本组件常驻渲染于 WorkbenchPage
+// memo 化——本组件常驻渲染于 WorkbenchPage
 // 根（全局搜索 Drawer），此前每次重渲都进组件体（hooks + useMemo）。
 // 调用方 props 已稳定化（rooms 保引用 + 回调 useCallback）→ 关闭
 // 态下 bail out。

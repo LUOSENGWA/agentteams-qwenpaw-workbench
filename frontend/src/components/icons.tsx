@@ -1,5 +1,5 @@
-// v0.5.0-beta.13.12 起：tab/按钮 emoji → 语义 SVG（TopologyIcon/TeamIcon）。
-// v0.5.0-beta.13.13（13.12 「这版最好把所有 emoji 都换到对应的
+// 起：tab/按钮 emoji → 语义 SVG（TopologyIcon/TeamIcon）。
+// （13.12 「这版最好把所有 emoji 都换到对应的
 // SVG」）：全量图标库——HarmonyOS 系统图标集（ic_public_*，用户提供的开源素材，
 // 24×24 fill 路径直接内联，currentColor 着色）+ 手写 stroke 图标（脑/雷达/
 // 闪电/灯泡等 HarmonyOS 无对应件）。
@@ -711,7 +711,7 @@ export function StarOutlineIcon({ size = 14, style, className }: IconProps) {
 }
 
 
-// v0.5.0-beta.13.13: 信息提示（ApprovalControl 头）/ 聚焦（KnowledgeBase 焦点退出）
+// 信息提示（ApprovalControl 头）/ 聚焦（KnowledgeBase 焦点退出）
 export function InfoIcon({ size = 14, style }: { size?: number; style?: React.CSSProperties }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" style={style} aria-hidden>

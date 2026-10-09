@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.12：持久化硬化 + 诊断端点。
+"""持久化硬化 + 诊断端点。
 
 覆盖：
 1. update_config 写验证（save_config 写后回读）：

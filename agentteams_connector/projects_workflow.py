@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.9：projects-workflow 取数聚合器。
+"""projects-workflow 取数聚合器。
 
 背景：前端装载/每 30s 对全部项目逐个打
 GET /api/v1/projects/{id}/workflow?includeTasks=true（实测 36 路并发，
@@ -33,11 +33,11 @@ from urllib.parse import quote as _quote
 from . import config as config_mod
 from . import router as router_mod
 from . import worker_status
-# v0.5.0-beta.14.19：tick 生命周期骨架抽 bg_aggregator.BgTicker
+# tick 生命周期骨架抽 bg_aggregator.BgTicker
 # （与 worker_status 去克隆）。本模块保留数据态 _snap 与扫描体
 # _do_sweep；取数注入点仍复用 worker_status._ctl_get（测试 monkeypatch 面不变）。
 from .bg_aggregator import BgTicker
-# v0.5.0-beta.14.21：前台让权需读全局拨号在飞数（聊天忙则 sweep 退避）。
+# 前台让权需读全局拨号在飞数（聊天忙则 sweep 退避）。
 from .dial_gate import dial_stats
 
 logger = logging.getLogger(
@@ -50,7 +50,7 @@ _CONCURRENCY = 4  # 扫描并发（与旧前端扇出同档）
 _STARTUP_DELAY = 6.0  # 启动让行（比 worker_status 稍后，避开启动风暴）
 _MAX_PROJECTS = 100  # 逐项目扇出安全上限（与旧前端 slice(0, 100) 一致）
 
-# ── v0.5.0-beta.14.21：前台让权参数（sweep 逐项目拨号前退避） ─────────────
+# ── 前台让权参数（sweep 逐项目拨号前退避） ─────────────
 # bg_slot 只在 sweep **开始时**让权一次（inflight>12 跳过整轮）；但一轮扫描
 # 在外网（5M WAN，36+ 项目扇出）可持续数十秒——期间用户随时切去聊天/开房间，
 # 前台流量起来后 sweep 仍占着共享拨号闸 + 同一 WAN 上行抢带宽（实测聊天
@@ -64,7 +64,7 @@ _SWEEP_YIELD_MAX_WAIT = 10.0  # 单项最大让权（秒）——预算耗尽即
 
 
 async def _yield_to_foreground() -> None:
-    """v0.5.0-beta.14.21：持续前台让权（不占并发槽）。
+    """持续前台让权（不占并发槽）。
 
  前台忙（async inflight > _SWEEP_YIELD_INFLIGHT）→ 每 0.5s 复检，最多等
  _SWEEP_YIELD_MAX_WAIT 秒；预算耗尽或前台转闲即返回。仅影响 sweep 逐项目
@@ -192,7 +192,7 @@ async def _do_sweep() -> None:
         _snap["scan_at"] = time.time()
         return
 
-    # ── v0.5.0-beta.14.21：渐进落地 + 执行中持续让权 ────────────────────
+    # ── 渐进落地 + 执行中持续让权 ────────────────────
     # 旧版整批 gather 到全部项目完成才一次性写快照 → 外网首扫空窗 1-3 分钟
     # （前端首载状态机 Spin 空转、聊天期间 sweep 又占满共享闸/WAN 上行）。
     # 现在：

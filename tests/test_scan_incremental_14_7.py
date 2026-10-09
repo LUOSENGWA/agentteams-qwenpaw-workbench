@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""T6 增量扫描（v0.5.0-beta.14.7）单测。
+"""T6 增量扫描（）单测。
 
 覆盖三处扫描（room-mentions、/room-approvals、/workflow/events）的
 「无推进零重扫 / 推进只重扫该房 / 600s 兜底全扫」语义：
@@ -106,7 +106,7 @@ def client(monkeypatch):
     router_mod._room_scan_state["mentions"].clear()
     router_mod._room_scan_state["approvals"].clear()
     router_mod._room_scan_state["workflow"].clear()
-    router_mod._room_scan_state["artifacts"].clear()  # v0.5.0-beta.14.7（P2）
+    router_mod._room_scan_state["artifacts"].clear()
     now = time.time()
     router_mod._room_scan_state["full_at"].update(
         {"mentions": now, "approvals": now, "workflow": now, "artifacts": now}
@@ -119,7 +119,7 @@ def client(monkeypatch):
         router_mod._room_approvals_cache,
         router_mod._workflow_cache,
         router_mod._rooms_cache,
-        router_mod._artifacts_cache,  # v0.5.0-beta.14.7（P2）/artifacts 按键读 ["data"]
+        router_mod._artifacts_cache,  # /artifacts 按键读 ["data"]
     ):
         cache.clear()
         cache.update({"data": None, "ts": 0.0})
@@ -264,7 +264,7 @@ def test_workflow_incremental_skip(client):
 
 
 # ── artifacts ─────────────────────────────────────────────────────────
-# v0.5.0-beta.14.7（P2）：/artifacts 全量扫描增量化（T6 同款）——
+# /artifacts 全量扫描增量化（T6 同款）——
 # 冷缓存 55.9s 全量 75 房深扫；无新消息房间复用上次产物条目零拨号。
 def test_artifacts_incremental_skip_and_rescan(client):
     router_mod._rooms_cache.update(

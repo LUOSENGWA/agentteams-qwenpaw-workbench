@@ -66,7 +66,7 @@ export default function MemberDetail(props: MemberDetailProps) {
   const [messages, setMessages] = React.useState<MemberMessage[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
-  // v0.5.0-beta.12 : mxc 头像走 blob objectURL（裂图修，8 处之一）。
+  // mxc 头像走 blob objectURL（裂图修，8 处之一）。
   const avatarSrc = useAvatarUrl(avatarUrl);
 
   React.useEffect(() => {

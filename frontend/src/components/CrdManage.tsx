@@ -41,7 +41,7 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 /**
- * v0.5.0-beta.12: CRD 管理面板（L1 门控——仅配置了 Controller 管理员 token 时由
+ * CRD 管理面板（L1 门控——仅配置了 Controller 管理员 token 时由
  * WorkerManage 渲染）。真人"员工"入职（Human CRD）+ 团队创建/配置（Team CRD）。
  * 走现有通用 Controller 代理（agentteams-proxy/controller），零新后端端点。
  *
@@ -60,7 +60,7 @@ interface CrdManageProps {
   /** L1 走 controller_token（无 admin 账号密码 → 无 Higress Console 会话
  * → 网关 alias 层不可见）——为 true 且网关拉取完成仍无会话时显示提示。 */
   l1TokenMode?: boolean;
-  /** v0.5.0-beta.13.20：注册式 handle——拓扑 TeamNode「N人」右侧齿轮要
+  /** 注册式 handle——拓扑 TeamNode「N人」右侧齿轮要
  * 打开本组件的「配置团队」弹窗（与团队表「配置」按钮同一入口）。
  * 用注册回调而非 forwardRef：本组件 2200+ 行，forwardRef 会把整个
  * 函数体缩进 +2，diff 噪音远大于收益（本仓已有 refreshRef 同款
@@ -68,7 +68,7 @@ interface CrdManageProps {
   registerHandle?: (h: CrdManageHandle) => void;
 }
 
-/** v0.5.0-beta.13.20：注册式 handle 类型（WorkerManage 拓扑齿轮消费）。 */
+/** 注册式 handle 类型（WorkerManage 拓扑齿轮消费）。 */
 export interface CrdManageHandle {
   /** 按 CR 名打开配置团队弹窗；团队未加载/不存在时 toast 提示，不静默。 */
   openConfig: (teamName: string) => void;
@@ -97,13 +97,13 @@ interface WorkerRow {
   model?: string;
   /** 打开弹窗时的原值——保存时 diff，未改动不发请求。 */
   modelOrig?: string;
-  /** v0.5.0-beta.12（建团自检修复）：SOUL 富文本（多行/上传 → spec.soul 内联）。 */
+  /** ：SOUL 富文本（多行/上传 → spec.soul 内联）。 */
   soul?: string;
   /** SOUL 编辑器展开状态（行级折叠，默认收起保持表单紧凑）。 */
   soulOpen?: boolean;
 }
 
-// ── v0.5.0-beta.12（建团自检修复）──────────────────────────
+// ── ──────────────────────────
 // 建团缺陷（历史回归）：建团表单只有 name+role，
 // Worker 出生即无模型；model 自由文本零校验，SGLang 在服列表被污染时
 // 「/models」被当作候选下拉项写进 CRD → 全团 LLM 死亡。修复：
@@ -112,7 +112,7 @@ interface WorkerRow {
 // ③ SOUL 多行+上传入口（预算告警不阻断）；
 // ④ 创建自检（CRD 回读+阶段轮询；LLM 冒烟/SOUL 检查=无通道，如实标注）。
 
-// 模型校验/合并/分组的纯函数在 ../modelUnion（v0.5.0-beta.12 抽出，
+// 模型校验/合并/分组的纯函数在 ../modelUnion（抽出，
 // 与 WorkerManage ManagerTable 共用——同一套候选与校验，行为零分叉）。
 
 /** SOUL 行数预算（设计约束 v2.39.2：Worker ≤150 / Leader ≤250 行）——超了告警不阻断。 */
@@ -120,7 +120,7 @@ function soulBudget(role: string): number {
   return role === "team_leader" ? 250 : 150;
 }
 
-/** v0.5.0-beta.12（配置团队弹窗需选项标题）：Worker 选择选项 = 名字 + 现况（所属团队 · 现用模型），
+/** ：Worker 选择选项 = 名字 + 现况（所属团队 · 现用模型），
  * 一眼分辨"换谁、现在跑的什么模型"；无数据时退回纯名字。 */
 function workerOptionLabel(
   name: string,
@@ -166,7 +166,7 @@ const EMPTY_TEAM_FORM = {
 export default function CrdManage(props: CrdManageProps) {
   const t = useThemeColors();
   const tr = useT();
-  /** v0.5.0-beta.12（配置团队弹窗需选项标题）：
+  /** ：
  * 字段标题——输入框/选择器上方人话标签（占位符输入即消失=无标题，
  * 与 11.7 团队成员「名称/角色/模型」标签同构）。 */
   const FieldLabel = ({ children }: { children: ReactNS.ReactNode }) => (
@@ -175,7 +175,7 @@ export default function CrdManage(props: CrdManageProps) {
     </div>
   );
   const { admin, onRefresh, l1TokenMode } = props;
- // v0.5.0-beta.13：三卡同排 + 可折叠。
+ // 三卡同排 + 可折叠。
   const [crdCardsOpen, setCrdCardsOpen] = React.useState(true);
   const { humans, teams, workers } = admin;
 
@@ -215,7 +215,7 @@ export default function CrdManage(props: CrdManageProps) {
       } else {
         antd.message.success(tr("入职成功"));
       }
-      // v0.5.0-beta.14.6：人 CRD 变更 → 失效 admin 缓存再刷。
+      // 人 CRD 变更 → 失效 admin 缓存再刷。
       invalidateTags(["teams", "admin"]);
       onRefresh?.(true);
     } catch (e) {
@@ -239,7 +239,7 @@ export default function CrdManage(props: CrdManageProps) {
       try {
         await deleteHuman(name);
         antd.message.success(tr("已删除"));
-        // v0.5.0-beta.14.6：人 CRD 变更 → 失效 admin 缓存再刷。
+        // 人 CRD 变更 → 失效 admin 缓存再刷。
         invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
       } catch (e) {
@@ -255,7 +255,7 @@ export default function CrdManage(props: CrdManageProps) {
     { name: "", role: "team_leader" },
   ]);
   const [tBusy, setTBusy] = React.useState(false);
-  // v0.5.0-beta.12.2：导出 JSON 按钮的 loading 态。
+  // 导出 JSON 按钮的 loading 态。
   const [exporting, setExporting] = React.useState(false);
 
   const updateRow = React.useCallback((i: number, patch: Partial<WorkerRow>) => {
@@ -270,13 +270,13 @@ export default function CrdManage(props: CrdManageProps) {
     setWorkerRows((prev) => [...prev, { name: "", role: "worker" }]);
   }, []);
 
-  // ── v0.5.0-beta.12：创建团队时新建 Worker（POST /api/v1/workers）──
+  // ── 创建团队时新建 Worker（POST /api/v1/workers）──
   // 上游 CreateWorkerRequest：name 必填，containerManaged 默认 true
   // （Controller 调和拉镜像起容器，数分钟就绪）；团队可先保存，
   // Worker 就绪后调和自动关联。
   const [nw, setNw] = React.useState({
     name: "",
-    // v0.5.0-beta.12.2：新建 Worker 可选运行时。选项正源 = 上游
+    // 新建 Worker 可选运行时。选项正源 = 上游
     // internal/backend/interface.go（Runtime* 常量 + L158 五值集）；copaw 退役
  // 移除，deepseek-harness 补上（上游近期新加，镜像
     // agentteams-deepseek-harness-worker:v0.1.0）；默认 qwenpaw = 安装脚本默认
@@ -288,14 +288,14 @@ export default function CrdManage(props: CrdManageProps) {
   });
   /** 在服模型候选（SGLang /v1/models 代理；空=模块未启用→自由输入）。 */
   const [modelOpts, setModelOpts] = React.useState<string[]>([]);
-  /** v0.5.0-beta.12：Higress 面 alias 候选（configured+builtin，Higress Console 经
+  /** Higress 面 alias 候选（configured+builtin，Higress Console 经
  * admin 密码模式会话取）；null=无会话/不可用→alias 层隐藏（SGLang∪在用
  * +自由输入不受影响）。 */
   const [gatewayOpts, setGatewayOpts] = React.useState<
     ModelSelectionOption[] | null
   >(null);
   const [gatewayLoaded, setGatewayLoaded] = React.useState(false);
-  /** v0.5.0-beta.12：网关 alias 拉取（一次性；available=false=无 Console
+  /** 网关 alias 拉取（一次性；available=false=无 Console
  * 会话，属正常降级非错误）。 */
   const loadGatewayAliases = React.useCallback(async () => {
     try {
@@ -307,8 +307,8 @@ export default function CrdManage(props: CrdManageProps) {
         setGatewayOpts(null);
         return;
       }
-      // v0.5.0-beta.12 起解包逻辑（{code,data} 信封 + providers 键名，
-      // 对齐 dashboard unwrapData 实证）；v0.5.0-beta.12 提升为 modelUnion
+      // 起解包逻辑（{code,data} 信封 + providers 键名，
+      // 对齐 dashboard unwrapData 实证）；提升为 modelUnion
       // extractGatewayLists 共享（ManagerTable hook 原 ad-hoc 副本漏信封
       // + 错键=alias 恒空根因，同源零分叉）。
       const { routesList, providersList } = extractGatewayLists(
@@ -322,7 +322,7 @@ export default function CrdManage(props: CrdManageProps) {
       setGatewayLoaded(true);
     }
   }, []);
-  /** v0.5.0-beta.12：最终候选 = SGLang ∪ 在服 Worker 已用模型，剔除路径形态
+  /** 最终候选 = SGLang ∪ 在服 Worker 已用模型，剔除路径形态
  * （实锤：SGLang 在服列表本身可被污染出 "/models"——下拉项必须过滤，
  * 否则候选列表成为毒源，成员校验形同虚设）。 */
   const modelCandidates = React.useMemo(() => {
@@ -338,12 +338,12 @@ export default function CrdManage(props: CrdManageProps) {
     };
     modelOpts.forEach(push);
     workers.forEach((w) => push(w.model));
-    // v0.5.0-beta.12：网关 alias（configured+builtin）同为合法 model 值
+    // 网关 alias（configured+builtin）同为合法 model 值
     // （经网关路由转发）——入候选，写前校验不误报「不在在服列表」。
     gatewayOpts?.forEach((o) => push(o.alias));
     return out;
   }, [modelOpts, workers, gatewayOpts]);
-  /** v0.5.0-beta.12：AutoComplete 下拉——Higress Console 会话可用时三组（Higress alias
+  /** AutoComplete 下拉——Higress Console 会话可用时三组（Higress alias
  * 可解析 / 内置 alias / 在服+在用）；不可用=原平铺列表。value 恒为 alias 本身。 */
   const modelOptions = React.useMemo(() => {
     if (!gatewayOpts || gatewayOpts.length === 0) {
@@ -438,7 +438,7 @@ export default function CrdManage(props: CrdManageProps) {
     deadline: number;
     done: boolean;
   } | null>(null);
-  // v0.5.0-beta.14.6：旧定时器 → 命令式 createPoller（5s 检查 tick，
+  // 旧定时器 → 命令式 createPoller（5s 检查 tick，
   // !document.hidden——后台不查；finished 时 tick 内自停逻辑保留）。
   const tCheckPoller = React.useRef<Poller | null>(null);
 
@@ -449,7 +449,7 @@ export default function CrdManage(props: CrdManageProps) {
     }
   }, []);
   React.useEffect(() => stopTeamCheck, [stopTeamCheck]);
-  /** v0.5.0-beta.12（历史缺陷：新建团队 Worker 模型问题）：gateway alias 此前只在打开配置团队/新建 Worker 弹窗时拉
+  /** ：gateway alias 此前只在打开配置团队/新建 Worker 弹窗时拉
  * → 建队卡（常驻视图）模型下拉首开必平铺、无 alias 组。挂载即拉一次，
  * 三入口（建队卡行/新建 Worker 弹窗/配置团队行）开屏即有 alias 组。 */
   React.useEffect(() => {
@@ -530,7 +530,7 @@ export default function CrdManage(props: CrdManageProps) {
     [stopTeamCheck],
   );
 
- // v0.5.0-beta.12.2（参考 dashboard 加导出 JSON 功能）——参考
+ // ——参考
   // dashboard teams-section handleExport（Blob + a.download + toast）。
   // 插件侧导出一份 fetchAdminData 全量（teams/workers/humans/managers 四类
   // CRD，比 dashboard 的 teams-only 更实），文件名 agentteams-crd-YYYY-MM-DD.json。
@@ -591,7 +591,7 @@ export default function CrdManage(props: CrdManageProps) {
           { name, role: "worker", model: nw.model.trim(), modelOrig: nw.model.trim() },
         ]);
         setNw({ name: "", runtime: "qwenpaw", model: "", soul: "", busy: false });
-        // v0.5.0-beta.14.6：Worker CRD 变更（加入团队成员）→ 失效
+        // Worker CRD 变更（加入团队成员）→ 失效
         // teams/admin 缓存再刷。
         invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
@@ -698,7 +698,7 @@ export default function CrdManage(props: CrdManageProps) {
         );
         setTForm(EMPTY_TEAM_FORM);
         setWorkerRows([{ name: "", role: "team_leader" }]);
-        // v0.5.0-beta.14.6：建队=团队结构+admin 变更 → 失效缓存再刷
+        // 建队=团队结构+admin 变更 → 失效缓存再刷
         // （否则 30s TTL 内拓扑树/管理面板读旧值）。
         invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
@@ -736,7 +736,7 @@ export default function CrdManage(props: CrdManageProps) {
 
   // ── 配置团队（PUT 部分更新：空字段不覆盖；成员编辑 = workerMembers 全量替换）──
   const [cfgTeam, setCfgTeam] = React.useState<TeamInfo | null>(null);
- // v0.5.0-beta.13.22（13.21）：收起动画——旧实现 cfgTeam 置 null
+ // 收起动画——旧实现 cfgTeam 置 null
   // 即整树卸载=弹窗瞬间消失（弹出有动画、收起没有）。cfgOpen 控制 antd 退出
   // 过渡，afterClose 才清 cfgTeam（动画期间内容保持，不闪空）。
   const [cfgOpen, setCfgOpen] = React.useState(false);
@@ -773,13 +773,13 @@ export default function CrdManage(props: CrdManageProps) {
     if (modelOpts.length === 0) {
       void fetchSglangModels().then(setModelOpts);
     }
-    // v0.5.0-beta.12：网关 alias（一次性；available=false=无 Higress Console 会话，正常）
+    // 网关 alias（一次性；available=false=无 Higress Console 会话，正常）
     if (!gatewayLoaded) void loadGatewayAliases();
- // v0.5.0-beta.13.24：批量画笔每次开弹窗复位（不跨团队残留）。
+ // 批量画笔每次开弹窗复位（不跨团队残留）。
     setCfgBatchModel({ leader: "", workers: "" });
   }, [modelOf, modelOpts, gatewayLoaded, loadGatewayAliases]);
 
-  // v0.5.0-beta.13.20：齿轮入口——拓扑 TeamNode「N人」右侧 ⚙ 点按 →
+  // 齿轮入口——拓扑 TeamNode「N人」右侧 ⚙ 点按 →
   // 按 CR 名找到 TeamInfo → 走既有 openCfg（预填/模型候选/网关 alias
   // 逻辑零复制）。注册式 handle：父侧只持有 ref，无渲染依赖。
   const { registerHandle } = props;
@@ -813,8 +813,7 @@ export default function CrdManage(props: CrdManageProps) {
     ]);
   }, []);
 
- // v0.5.0-beta.13.24（·团队配置窗口批量改模型，leader/workers 两批）：
-  // 批量模型画笔——两把独立画笔（Leader 批 / Workers 批）。选中值即刷到对应
+ // // 批量模型画笔——两把独立画笔（Leader 批 / Workers 批）。选中值即刷到对应
   // 角色行的 model 字段（行内仍可按人精修，行 diff/橙框/校验态全复用），
   // 落盘走既有「保存」链（updateTeam + 逐改动行 updateWorkerModel），
   // 零新端点。留空=不刷。只刷有名字的行（新增空行选 Worker 时自动基线）。
@@ -849,8 +848,7 @@ export default function CrdManage(props: CrdManageProps) {
       // 空串=不改（上游 PUT 语义：heartbeatEvery 发 null 才表示不改）
       heartbeatEvery: cfg.heartbeatEvery.trim() || null,
       peerMentions: cfg.peerMentions,
-      // v0.5.0-beta.13.21（「团队的技能等团队配置也要放在团队配置里面」）：
-      // subagentModel=团队级 spawn 子代理默认模型（上游 PUT 指针语义：
+      // // subagentModel=团队级 spawn 子代理默认模型（上游 PUT 指针语义：
       // null=清空/继承 Worker 主模型；值=覆盖）。与 heartbeatEvery 同 UX。
       subagentModel: cfg.subagentModel.trim() || null,
     };
@@ -925,9 +923,9 @@ export default function CrdManage(props: CrdManageProps) {
           ? tr("已保存，已更新 {n} 个 Worker 模型", { n: okCount })
           : tr("已保存"),
       );
- // v0.5.0-beta.13.22：走收起动画（afterClose 清 cfgTeam）。
+ // 走收起动画（afterClose 清 cfgTeam）。
       setCfgOpen(false);
-      // v0.5.0-beta.14.6：团队配置保存=团队结构+admin 变更 → 失效再刷。
+      // 团队配置保存=团队结构+admin 变更 → 失效再刷。
       invalidateTags(["teams", "admin"]);
       onRefresh?.(true);
     } catch (e) {
@@ -958,7 +956,7 @@ export default function CrdManage(props: CrdManageProps) {
     void proceedCfg();
   }, [cfgTeam, cfg, cfgRows, workerNames, onRefresh, tr, modelCandidates]);
 
-  // v0.5.0-beta.13.21（undo）：删团队前快照 → 删除成功后 6s「撤销」
+  // 删团队前快照 → 删除成功后 6s「撤销」
   // toast → 点撤销按快照重建（createTeam 原字段回写）。诚实语义=重建
   // 非恢复：Matrix 房间历史/容器状态不随 CRD 回来（上游删除是破坏性的），
   // toast 文案明示。workerMembers 只含引用（name/role），Worker CR 本体
@@ -979,7 +977,7 @@ export default function CrdManage(props: CrdManageProps) {
           subagentModel: snap.subagentModel || undefined,
         });
         antd.message.success(tr("团队 {name} 已按快照重建", { name: snap.name }));
-        // v0.5.0-beta.14.6：撤销=按快照重建团队 → 失效再刷。
+        // 撤销=按快照重建团队 → 失效再刷。
         invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
       } catch (e) {
@@ -1018,7 +1016,7 @@ export default function CrdManage(props: CrdManageProps) {
         } else {
           antd.message.success(tr("已删除"));
         }
-        // v0.5.0-beta.14.6：删团队=团队结构+admin 变更 → 失效再刷。
+        // 删团队=团队结构+admin 变更 → 失效再刷。
         invalidateTags(["teams", "admin"]);
         onRefresh?.(true);
       } catch (e) {
@@ -1082,7 +1080,7 @@ export default function CrdManage(props: CrdManageProps) {
   }, [permCmd, tr]);
 
   // ── 团队访问配置（员工 × 团队矩阵）──
-  // v0.5.0-beta.12 ：需求——「可以配置哪些员工可以访问哪些团队」。
+  // 需求——「可以配置哪些员工可以访问哪些团队」。
   // 勾选只改本地 overlay（不直写）——上游 Controller REST 无 PUT humans
   // （三重实锤同权限管理）→ 「生成命令」把全部变更汇成一条批量
   // merge-patch 脚本（每变更员工一行 patch 调用），在 Controller 宿主机
@@ -1213,11 +1211,10 @@ export default function CrdManage(props: CrdManageProps) {
     {
       title: "MXID",
       dataIndex: "matrixUserID",
- // v0.5.0-beta.12（已有省略号的列过宽）：
-      // 不定宽列在 fixed 布局吃掉全部剩余（170px）→ 定宽 120，余量给可访问团队。
+ // // 不定宽列在 fixed 布局吃掉全部剩余（170px）→ 定宽 120，余量给可访问团队。
       width: 120,
       ellipsis: true,
-      // v0.5.0-beta.12 ：长 MXID 截断展示（前 8+…+后 4），悬停看完整值+复制
+      // 长 MXID 截断展示（前 8+…+后 4），悬停看完整值+复制
       // （对齐 dashboard Manager 卡片 TruncatedId 交互）。
       render: (v: string) => <TruncatedId value={v} label="MXID" />,
     },
@@ -1287,7 +1284,7 @@ export default function CrdManage(props: CrdManageProps) {
       dataIndex: "teamRoomID",
       width: 140,
       ellipsis: true,
-      // v0.5.0-beta.12 ：房间 ID 同为长字符串——同款截断+悬停+复制。
+      // 房间 ID 同为长字符串——同款截断+悬停+复制。
       // label 走 tr() 保持 EN 环境提示文案语言一致（词条已有）。
       render: (v: string) => <TruncatedId value={v} label={tr("团队房间")} />,
     },
@@ -1331,7 +1328,7 @@ export default function CrdManage(props: CrdManageProps) {
           </span>
         }
         extra={
-          // v0.5.0-beta.12.2：导出 JSON（参考 dashboard 团队页同款；按钮不用
+          // 导出 JSON（参考 dashboard 团队页同款；按钮不用
  // emoji 图标——，icon SVG 化在 backlog）。
           <antd.Button size="small" loading={exporting} onClick={() => void doExportCrd()}>
             {tr("导出 JSON")}
@@ -1356,7 +1353,7 @@ export default function CrdManage(props: CrdManageProps) {
             <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 5 }}><WarnIcon size={12} style={{ marginTop: 2, flexShrink: 0 }} /> {tr("token 模式无 Higress Console 会话——Higress alias 层当前不可见。配置 admin 账号密码后，「Higress alias（路由可解析）」与「Higress 内置 alias」分组将出现在模型下拉中；或等待上游支持 controller_token 直连 Higress Console 的 PR 合入。")}</span>
           </div>
         ) : null}
- {/* v0.5.0-beta.13：三张快捷操作卡同排（lg=8×3）+
+ {/* 三张快捷操作卡同排（lg=8×3）+
  可折叠——此前 员工入职/创建团队 各占半行、新建 Worker 单占半行。 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: crdCardsOpen ? 6 : 0 }}>
           <antd.Button
@@ -1536,12 +1533,12 @@ export default function CrdManage(props: CrdManageProps) {
                         padding: 8,
                       }}
                     >
-                      {/* v0.5.0-beta.12（选项标签——配置团队弹窗
+                      {/* （选项标签——配置团队弹窗
  同名需求，建队卡片同构补齐，不留半截）。 */}
                       <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
                         {tr("名称 / 角色")}
                       </div>
-                      {/* v0.5.0-beta.12（竖屏创建团队卡溢出——
+                      {/* （竖屏创建团队卡溢出——
  行内 Select flex 项 min-width:auto 撑宽，与 cfgRows
  同几何：40% 基线 + wrap 断撑链）。 */}
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1592,7 +1589,7 @@ export default function CrdManage(props: CrdManageProps) {
                         {tr("模型")}
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
- {/* v0.5.0-beta.12（新建团队 Worker 模型问题）：240 定宽，与配置团队/Manager 表同几何。 */}
+ {/* ：240 定宽，与配置团队/Manager 表同几何。 */}
                         <antd.AutoComplete
                           size="small"
                           style={{ width: 240 }}
@@ -1795,7 +1792,7 @@ export default function CrdManage(props: CrdManageProps) {
               </div>
             ) : null}
           </antd.Col>
-          {/* v0.5.0-beta.12.2（创建 Worker 独立成卡）：
+          {/* ：
  新建 Worker 从建队卡内折叠区独立成卡（建队卡聚焦团队字段）。
  行为不变：创建成功后仍自动加入建队表单的 Worker 成员行。
  模型/alias 拉取由组件 mount 时统一触发（原展开时拉取的逻辑移除）。 */}
@@ -1819,7 +1816,7 @@ export default function CrdManage(props: CrdManageProps) {
                     setNw((p) => ({ ...p, name: e.target.value }))
                   }
                 />
-                {/* v0.5.0-beta.12.2：运行时下拉 4 项——copaw 退役移除、
+                {/* 运行时下拉 4 项——copaw 退役移除、
  deepseek-harness 补上（上游 RuntimeDeepSeekHarness 常量实锤）、
  默认 qwenpaw（安装脚本 AGENTTEAMS_DEFAULT_WORKER_RUNTIME:-qwenpaw）。 */}
                 <FieldLabel>{tr("运行时")}</FieldLabel>
@@ -1910,7 +1907,7 @@ export default function CrdManage(props: CrdManageProps) {
           size={12}
           style={{ display: "flex", marginTop: 12 }}
         >
-          {/* v0.5.0-beta.12 ：团队访问配置矩阵（员工 × 团队）。
+          {/* 团队访问配置矩阵（员工 × 团队）。
  勾选 = 本地目标态；「生成命令」汇成批量 merge-patch 脚本
  （上游无 PUT humans——P-HUMANS-PUT 合并后升级一键 PUT）。 */}
           <antd.Card
@@ -2077,7 +2074,7 @@ export default function CrdManage(props: CrdManageProps) {
           open={cfgOpen}
           width={780}
           title={`${tr("配置团队")} · ${cfgTeam.name}`}
-          // v0.5.0-beta.13.22：收起动画——onCancel 只关 cfgOpen（antd
+          // 收起动画——onCancel 只关 cfgOpen（antd
           // 播退出过渡），afterClose 才卸载（cfgTeam=null），动画期间内容
           // 保持不闪空。
           onCancel={() => setCfgOpen(false)}
@@ -2116,9 +2113,9 @@ export default function CrdManage(props: CrdManageProps) {
                 setCfg({ ...cfg, heartbeatEvery: e.target.value })
               }
             />
-            {/* v0.5.0-beta.13.21（「团队的技能等团队配置也要放在团队配置里面」）：
+            {/* ：
  subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型）。
- v0.5.0-beta.13.22（13.21）：裸 Input → 与 Worker 选模型
+ ：裸 Input → 与 Worker 选模型
  同款 AutoComplete（同数据源 modelOptions=在服∪在用模型∪网关 alias，
  同 validateModelValue 校验态）——「来源一样」。 */}
             <FieldLabel>{tr("子代理默认模型（留空 = 继承各 Worker 主模型）")}</FieldLabel>
@@ -2178,7 +2175,7 @@ export default function CrdManage(props: CrdManageProps) {
                 <div style={{ fontSize: 11, color: t.textSecondary }}>
                   {tr("团队成员（workerMembers）——保存 = 全量替换成员列表")}
                 </div>
-                {/* v0.5.0-beta.13.24（·「团队配置的窗口应该增加批量改模型，
+                {/* （·「团队配置的窗口应该增加批量改模型，
  leader/workers 两批」）：批量模型画笔——Leader 批 / Workers 批
  两把独立 AutoComplete（数据源/校验态与行内模型框完全同源：
  modelOptions=在服∪在用∪网关 alias，validateModelValue）。
@@ -2263,7 +2260,7 @@ export default function CrdManage(props: CrdManageProps) {
                     )}
                   </div>
                 </div>
-                {/* v0.5.0-beta.12（历史缺陷：标题位置——11.7 共享头行的「模型」悬在满宽模型框上方错位，
+                {/* （历史缺陷：标题位置——11.7 共享头行的「模型」悬在满宽模型框上方错位，
  标题没有落在它的框上）：删共享头，改每行行内标签
  （与建队卡同构：名称/角色、模型 各管各的框）。 */}
                 {cfgRows.map((row, i) => {
@@ -2332,7 +2329,7 @@ export default function CrdManage(props: CrdManageProps) {
                         </antd.Button>
                       ) : null}
                       </div>
-                      {/* v0.5.0-beta.12：模型框 240 定宽（原 1 1 100% 满宽
+                      {/* 模型框 240 定宽（原 1 1 100% 满宽
  =「超宽」；与 Manager 表模型列 180-240 同几何）+ 行内
  「模型」标签落在框正上方。 */}
                       <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
@@ -2397,7 +2394,7 @@ export default function CrdManage(props: CrdManageProps) {
                 </antd.Button>
               </>
             ) : null}
-            {/* v0.5.0-beta.13.21（13.20 「团队的技能等团队配置也要放在团队
+            {/* （13.20 「团队的技能等团队配置也要放在团队
  配置里面，和技能中心一样的搜索/上传/自定义等」）：团队技能节=
  SkillCenter 同款组件 onlyTeam 模式内嵌（目录搜索/上传/自定义/
  下载 + 成员分配矩阵 + MCP 卡；保存走原技能中心端点链，本弹窗
