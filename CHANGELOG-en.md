@@ -5,6 +5,22 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.33 (2026-10-09 — "home SGLang card parity" batch — the twin card 14.26 missed)
+
+**When 14.26 fixed "SGLang card refresh feels sluggish", it only fixed the Ops Panel card (slow tier 15s→5s + "snapshot Ns ago" freshness self-proof). The Home page "cluster load" card is its twin — missed in the same batch: slow tier still 15s, and its state has no snapshot time at all, so when idle the card shows zero change signals (running/waiting frozen + no age counter) — perceived as "not refreshing". This batch closes the gap: slow tier 15s→5s (OpsPanel parity — 14.26 already proved the underlying SGLang parameter is decode iterations, not seconds, snapshots publish ≥1Hz when busy with <1s staleness, so the slow tier itself was the culprit) + ported the snapshot-age self-proof (refreshed every poll, independent of the diff gate — when idle the numbers are frozen but "snapshot Ns ago" keeps ticking, proving the link is alive)**
+
+### Fixes
+
+- **Home SGLang card slow tier 15000ms → 5000ms**: aligned with the OpsPanel twin (1s fast tier while load changes / 5s slow tier after 2 stable cycles), removing the 14.26 gap
+- **Home SGLang card gets the "snapshot Ns ago" freshness self-proof**: per-rank `snapshot_ts`, newest across ranks, refreshed on every poll (independent of the setSglang diff gate so the age keeps ticking when idle); reuses the existing i18n key (zero new keys)
+- Removed 3 stale comment blocks contradicting the current adaptive logic (constant-5s dead-logic note / 1s-15s tier description)
+
+### Tests
+
+- pytest 369 green (real config untouched — 14.32 sentinel verified in the same run); tsc 0; i18n full coverage (0 new keys); sensitive scan 0
+
+---
+
 ## 0.5.0-beta.14.32 (2026-10-09 — "test-suite isolation" batch — pytest real-path write hole sealed for good)
 
 **10/9 16:39:49 field case: a full pytest gate run had `test_update_config_address_mode` (unisolated, calling `update_config` directly) write the real config three times (wan→auto→auto), silently reverting the user's "pinned WAN" to auto. The same case also explains every "nobody touched it but the mode flipped back to auto" disk event since 10/8: since 14.1, every full suite run (including all QC gate runs) rewrote the real config through this test, while pytest's own log capture and its in-process audit ring leave zero trace in the main log (earlier rounds misattributed this to "another session / external writer"). Structural fix: conftest autouse redirects `_CONFIG_PATH` to tmp for every test (same pattern as the existing KB-cache isolation) + a session sentinel (real config file must be byte- and mtime-identical across the whole run, else the entire suite fails and names the case) + explicit isolation on the offending test. Zero runtime behavior change — test-side only**

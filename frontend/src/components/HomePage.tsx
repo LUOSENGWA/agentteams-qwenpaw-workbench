@@ -169,6 +169,15 @@ function HomePage(props: HomePageProps) {
     loaded: boolean;
     ranks: { dp_rank: number; num_running_reqs: number; num_waiting_reqs: number }[];
   }>({ loaded: false, ranks: [] });
+  // 新鲜度自证（移植 OpsPanel 同名卡机制）：快照发布时刻 + 最后检查时刻
+  // 每轮必刷（独立于 setSglang 的 diff 门——空闲时数值不变但 age 在跳，
+  // 卡片不显「冻结」）。0=尚无有效快照。
+  const [sgSnapshotAt, setSgSnapshotAt] = React.useState(0);
+  const [sgLocalAt, setSgLocalAt] = React.useState(0);
+  const sgSnapshotAgeSec =
+    sgSnapshotAt > 0 && sgLocalAt > 0
+      ? Math.max(0, Math.round((sgLocalAt - sgSnapshotAt) / 1000))
+      : null;
   // 待审批（房间审批源：/room-approvals=Worker Tool Guard 真实队列，
   // 30s 轮询）。弃用宿主 push-messages——集群
  // Worker 的审批发生在 Worker 所在进程，本机队列恒 0（首页没有）。
@@ -277,11 +286,12 @@ function HomePage(props: HomePageProps) {
       sglangAliveRef.current = false;
     };
   }, []);
-  // // 14.17 一刀切 1s→5s 后验收实测回归「刷新很慢几乎不刷」——监控卡活性
-  // 靠活跃快档（1s，恢复 1s 时代实时感），省 5M 行拨号靠空闲慢档
-  // （15s）。指纹=ranks 归一化 JSON（SglangRank 无每帧时钟字段，直接比）。
+  // 自适应节奏（与 OpsPanel 同名卡对齐，14.26 修复）：负载在变=1s 快档
+  // （实时感），连续 2 周期不变（空闲）=5s 慢档。15s 慢档是「15s 一帧」
+  // 被感知为「刷新慢几乎不刷」的真凶（14.26 在 OpsPanel 侧实证 15s→5s；
+  // 本卡同批漏修，14.33 补平）。指纹=ranks JSON。
   const SG_FAST_MS = 1000;
-  const SG_SLOW_MS = 15000;
+  const SG_SLOW_MS = 5000;
   const sgCadenceRef = React.useRef(SG_FAST_MS);
   const sgStableRef = React.useRef(0);
   const sgRanksRef = React.useRef<SglangRank[] | null>(null);
@@ -292,6 +302,16 @@ function HomePage(props: HomePageProps) {
       const d = await fetchSglangLoads();
       if (!sglangAliveRef.current) return;
       const ranks = d.ranks || [];
+      // 新鲜度自证每轮必刷（独立于下方 diff 门——空闲数值不变但快照帧
+      // 持续重发，age 在跳=链路活的证明；若只跟 setSglang 走，空闲时
+      // age 虚涨误判断流）。取 per-rank snapshot_ts（快照发布时刻，
+      // epoch 秒）多 rank 取最新；0=旧版无字段→隐藏 age。
+      const _snapSec = ranks.reduce(
+        (mx, r) => Math.max(mx, r.snapshot_ts || 0),
+        0,
+      );
+      setSgSnapshotAt(_snapSec > 0 ? Math.round(_snapSec * 1000) : 0);
+      setSgLocalAt(Date.now());
       const changed =
         JSON.stringify(sgRanksRef.current) !== JSON.stringify(ranks);
       if (changed) {
@@ -314,14 +334,10 @@ function HomePage(props: HomePageProps) {
     if (sglangEnabledRef.current) void pullSglang();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pullSglang]);
-  // 快档 1s→5s。/v1/loads 是前端最大
-  // 可控频次（1s 轮询×1.2KB/次，45s 稳态 ≈13/45s 的主项）；负载仪表 5s
-  // 刷新仍属"活"感，与慢档合并为恒定 5s（快慢档区分取消——差异消失后
-  // 保留分支是死逻辑）。后端 1s 单飞缓存由后端批补（解锁 router.py 后）。
   usePoller({
     fn: pullSglang,
     // 自适应节奏（getter 档；sgCadenceRef 在
-    // pullSglang 内按 ranks 指纹切 1s/15s）。
+    // pullSglang 内按 ranks 指纹切 1s/5s）。
     intervalMs: () => sgCadenceRef.current,
     active: homeActive && sglangEnabled,
     minPokeMs: 800,
@@ -961,6 +977,7 @@ function HomePage(props: HomePageProps) {
                       {tr("暂无负载数据")}
                     </div>
                   ) : (
+                    <>
                     <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
                       {sglang.ranks.map((r) => (
                         <div
@@ -984,6 +1001,12 @@ function HomePage(props: HomePageProps) {
                         </div>
                       ))}
                     </div>
+                    {sgSnapshotAgeSec !== null && (
+                      <div style={{ fontSize: 10, color: t.textSecondary, marginTop: 4 }}>
+                        {tr("快照 {n} 秒前", { n: String(sgSnapshotAgeSec) })}
+                      </div>
+                    )}
+                    </>
                   )}
                 </div>
               </antd.Card>
