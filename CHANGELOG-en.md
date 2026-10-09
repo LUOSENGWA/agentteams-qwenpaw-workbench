@@ -5,6 +5,31 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.27 (2026-10-09 — config pinning + native top toast + SGLang real-time correction)
+
+**Three field-feedback items + a full write-path audit of the config: the 3rd recurrence of "address mode reverted to auto / basic login state gone" is handled by exhaustively instrumenting every write path (who changed it, the log says so) + concurrent-write protection + defaults-overwrite guard + load-state surfacing; the worker tool toggle now fires the host-native top toast (same mechanism as skill changes); the SGLang card's "~15s per frame" is proven to be the front-end slow tier (the upstream snapshot is measured at ≥1 Hz), so the slow tier drops 15s→5s and a snapshot-age self-check is shown**
+
+### Fixes
+
+- **Config silently rewritten (3rd recurrence — now pinned for good)**: field forensics found `config.json` being rewritten with no one touching it (address_mode lan→auto, and zero logs on any write path, so the culprit was untraceable). Four defense lines this batch:
+  1. **Write audit ring** — every real write (save / login / auto-relogin / import / self-heal restore) records its source + the shape change of key fields (secret values never logged); the last 20 entries are exposed via GET /config. Next time it recurs, the log names the culprit.
+  2. **Concurrent-write protection (optimistic lock)** — if the config changes on disk after the page opened (another tab / manual edit / import / self-heal), saving returns 409 and the page explicitly prompts to refresh & re-save, instead of silently clobbering the newer value.
+  3. **Defaults-overwrite guard** — when the main config file is corrupt and no backup exists (backend running on defaults), patch writes no longer persist full defaults over the corrupt file.
+  4. **Load-state surfacing** — a top banner in Settings explicitly states "main config missing/corrupt, running on defaults / restored from backup", so defaults and saved config are never confused.
+- **Worker tool toggle → QwenPaw host-native top toast**: success/failure of toggling a tool or its async-execution moves from an in-page banner to a host-level top toast (the same mechanism as the skill-install "top popup" — same-page mount reuses the host antd notification context); failure text matches the final state.
+- **SGLang card "~15s per frame" root-caused & corrected**: upstream source archaeology + live measurement prove the server-side load snapshot publishes multiple frames per second while busy (and stays fresh while idle — the interval parameter is in decode iterations, not seconds). The real culprit of "one frame per 15s" is the plugin's own 15s idle tier. Slow tier 15s→5s (load recovers back to the 1s real-time tier within 5s), and the card subtitle is now "1s active / 5s idle + snapshot Ns ago" — a ticking age with an unchanged number = fresh data, just no change; a stalled age = real stall, visible at a glance.
+
+### Changes
+
+- Settings save requests now carry a config revision (backwards-compatible with older plugin versions)
+- GET /config gains `config_rev` / `config_health` fields (diagnostics + the front-end banner's data source)
+
+### Tests
+
+- +13 backend cases (write audit / guard / optimistic lock / health state); pytest 345 all green; tsc 0; i18n 1416 keys 0 missing; 5 front-end smoke suites pass
+
+---
+
 ## 0.5.0-beta.14.26 (2026-10-09 — field-feedback batch: in-room artifacts same-source/same-speed + console session auto-relogin + tool banner matches final state + SGLang cadence label)
 
 **Four field-feedback items, each root-caused before fixing (no whack-a-mole): same endpoint with divergent strategies → unified cache layer; session expiry only flagged, never renewed → auto-relogin + transparent replay; banner branched on field not value → 4-branch pure function; misleading label → dual-cadence label**
