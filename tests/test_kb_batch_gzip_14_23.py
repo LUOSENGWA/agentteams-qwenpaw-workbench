@@ -1,4 +1,4 @@
-"""v0.5.0-beta.14.23（KBBATCH-GZ）：KB 批量读 gzip 信封（GZB1）+
+"""：KB 批量读 gzip 信封（GZB1）+
 /kb/agents 后 last-agent 预热接线单测（任务书 T1–T5）。
 
 背景（外网 5Mbps 链路实测）：K1 单次 exec 批量读输出 = 1.8MB 原文

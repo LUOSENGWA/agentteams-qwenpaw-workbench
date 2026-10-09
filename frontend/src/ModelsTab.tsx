@@ -1,4 +1,4 @@
-// v0.5.0-beta.12.9（P7，「插件要加上和 dashboard 一样的模型
+// （P7，「插件要加上和 dashboard 一样的模型
 // 配置页面」）：模型网关配置页（插件版，只读 v1）。
 //
 // 数据面双源（与 dashboard 「controller-first 只读降级」同语义）：
@@ -97,7 +97,7 @@ function ModelsTab() {
   const [note, setNote] = React.useState("");
   const [providerOpen, setProviderOpen] = React.useState(false);
   const [routeOpen, setRouteOpen] = React.useState(false);
-  // v0.5.0-beta.14.4：编辑入口（Console 源才有写面）——initial=Console 原始
+  // 编辑入口（Console 源才有写面）——initial=Console 原始
   // 记录（全字段预填）；null=创建模式。
   const [editingProvider, setEditingProvider] = React.useState<
     ProviderEditSource | null
@@ -120,7 +120,7 @@ function ModelsTab() {
       const res = await deleteGatewayAiRoute(name);
       if (res.available) {
         antd.message.success(tr("已删除路由「{n}」", { n: name }));
-        // v0.5.0-beta.14.6：删路由=写路径 → 失效 gateway 再强刷。
+        // 删路由=写路径 → 失效 gateway 再强刷。
         invalidateTags(["gateway"]);
         void load(true);
       } else {
@@ -135,7 +135,7 @@ function ModelsTab() {
       const res = await deleteGatewayAiProvider(name);
       if (res.available) {
         antd.message.success(tr("已删除提供商「{n}」", { n: name }));
-        // v0.5.0-beta.14.6：删提供商=写路径 → 失效 gateway 再强刷。
+        // 删提供商=写路径 → 失效 gateway 再强刷。
         invalidateTags(["gateway"]);
         void load(true);
       } else {
@@ -146,7 +146,7 @@ function ModelsTab() {
     }
   };
 
-  // v0.5.0-beta.14.6：force 形参——手动刷新/保存/删除后传 true 绕
+  // force 形参——手动刷新/保存/删除后传 true 绕
   // gateway 缓存读（仍写回），其余轮询/挂载走 30s TTL 缓存。
   const load = React.useCallback(async (force = false) => {
     setLoading(true);
@@ -244,7 +244,7 @@ function ModelsTab() {
       key: "aliases",
     },
     { title: tr("授权 Consumer"), dataIndex: "consumers", key: "consumers" },
-    // v0.5.0-beta.14.4：编辑/删除（仅 Console 源=有写面；controller 只读目录
+    // 编辑/删除（仅 Console 源=有写面；controller 只读目录
     // 无原始记录，不显入口）。
     ...(source === "console"
       ? [
@@ -315,7 +315,7 @@ function ModelsTab() {
         ) : null}
       </div>
 
-      {/* v0.5.0-beta.14.4：写面提示按数据源区分（console=全功能透传；
+      {/* 写面提示按数据源区分（console=全功能透传；
  controller=只读，编辑/删除需 Console 会话）。 */}
       {source === "console" ? (
         <antd.Alert
@@ -408,7 +408,7 @@ function ModelsTab() {
                     render: (_: unknown, p: LlmProviderLite) => providerRowName(p),
                   },
                   {
-                    // v0.5.0-beta.14.4：编辑/删除（console 源=有写面）。
+                    // 编辑/删除（console 源=有写面）。
                     title: tr("操作"),
                     key: "ops",
                     width: 140,
@@ -446,7 +446,7 @@ function ModelsTab() {
         open={providerOpen}
         onClose={() => setProviderOpen(false)}
         onSaved={() => {
-          // v0.5.0-beta.14.6：保存 provider=写路径 → 失效 gateway 再强刷。
+          // 保存 provider=写路径 → 失效 gateway 再强刷。
           invalidateTags(["gateway"]);
           void load(true);
         }}
@@ -456,7 +456,7 @@ function ModelsTab() {
         open={routeOpen}
         onClose={() => setRouteOpen(false)}
         onSaved={() => {
-          // v0.5.0-beta.14.6：保存 route=写路径 → 失效 gateway 再强刷。
+          // 保存 route=写路径 → 失效 gateway 再强刷。
           invalidateTags(["gateway"]);
           void load(true);
         }}
@@ -469,6 +469,6 @@ function ModelsTab() {
   );
 }
 
-// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
+// 面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(ModelsTab);

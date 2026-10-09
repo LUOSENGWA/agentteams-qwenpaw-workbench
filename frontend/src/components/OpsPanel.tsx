@@ -85,16 +85,16 @@ function OpsPanel({
     }
   }, []);
 
-  // v0.5.0-beta.14.18：模型网关路由目录卡已移除（重复视图——模型页
+  // 模型网关路由目录卡已移除（重复视图——模型页
   // ModelsTab 已有「模型网关配置」功能超集），关联 state/fetch 一并清理。
 
-  // v0.5.0-beta.14.6（补）：活跃 tab 单源（rc-tabs 保活，切走仍需显式
+  // 活跃 tab 单源（rc-tabs 保活，切走仍需显式
   // 门控——ops 的 1s 集群负载轮询此前切走常驻）。
-  // v0.5.0-beta.14.14：布尔快照——非 ops tab 互切不再重渲
+  // 布尔快照——非 ops tab 互切不再重渲
   // 本面板（连点 Tab 固定成本）。
   const opsActive = useTabActive("ops");
   const [logsUpdatedAt, setLogsUpdatedAt] = React.useState<number>(0);
-  // v0.5.0-beta.14.6（补）：轮询已并入 usePoller（ops tab 激活门控 +
+  // 轮询已并入 usePoller（ops tab 激活门控 +
   // 失败退避内置：×2 至 120s 封顶、成功复位；静默失败保留上次内容）。
   // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
   const refreshLogs = React.useCallback(async (comp: string, silent = false) => {
@@ -119,7 +119,7 @@ function OpsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // v0.5.0-beta.14.6（补）：组件日志轮询 → usePoller（ops tab 激活；
+  // 组件日志轮询 → usePoller（ops tab 激活；
   // !document.hidden 由 hook 内置；失败退避由 hook 内置）。
   usePoller({
     fn: () => void refreshLogs(component, true),
@@ -135,7 +135,7 @@ function OpsPanel({
 
   // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
   const [sglangLocalAt, setSglangLocalAt] = React.useState<number>(0);
-  // v0.5.0-beta.14.27（任务 192 实测修正）：快照发布时间（epoch ms）——
+  // 快照发布时间（epoch ms）——
   // 每轮 poll 成功必刷新（独立于 setSglang 的 diff 门：空闲时数值不变
   // 但快照帧持续重发，timestamp 每帧都是新的；若只跟 setSglang 走，
   // 空闲时 age 会虚涨，误判断流）。
@@ -147,7 +147,7 @@ function OpsPanel({
     sgSnapshotAt > 0 && sglangLocalAt > 0
       ? Math.max(0, Math.round((sglangLocalAt - sgSnapshotAt) / 1000))
       : null;
-  // v0.5.0-beta.14.19（diff 门修正 + 自适应节奏）：稳定快照（refreshSglang
+  // 稳定快照（refreshSglang
   // deps=[]，不能直接读 state；ref 每次渲染同步最新值）。
   const sglangRef = React.useRef(sglang);
   sglangRef.current = sglang;
@@ -156,7 +156,7 @@ function OpsPanel({
   // 活跃采样快、空闲采样稀。14.17 一刀切 1s→5s 导致验收实测回归「刷新
   // 很慢几乎不刷」——改两档：数据指纹变（推理中）=1s 快档（恢复 1s 时代
   // 实时感）；连续 2 周期不变（空闲）=慢档。
-  // v0.5.0-beta.14.27（任务 192 实盘实测修正）：慢档 15s→5s——14.26 批
+  // 慢档 15s→5s——14.26 批
   // 把「15s 一帧」归因到 SGLang 参数 load_snapshot_publish_interval=15，
   // 实查该参数单位是 **decode 迭代次数**（非秒）且 prefill/停滞/空闲均
   // 强制即时发布，忙态实测快照 ≥1Hz、陈旧度 <1s（192 报告 §2.3）——
@@ -168,7 +168,7 @@ function OpsPanel({
   const sgStableRef = React.useRef(0);
   const sgFingerprint = (d: SglangLoads | null): string =>
     d ? JSON.stringify({ ...d, timestamp: "" }) : "";
-  // ── v0.5.0-beta.14.22：KV 活信号（自采样）──────────────────────
+  // ── KV 活信号（自采样）──────────────────────
   // gen_throughput 是 SGLang 侧「decode 窗口采样」：只在 decode-stats
   // tick 计算，连续 30s 无 decode（长 prefill/采样稀疏）即归零导出——
   // 推理在跑（KV 仍在变化）时卡片也可能显示 0.0 tok/s。活信号改由
@@ -237,10 +237,10 @@ function OpsPanel({
   }, []);
 
   // 集群负载静默轮询（v1/loads 读 SHM 快照）。
-  // v0.5.0-beta.14.6（补）：→ usePoller（ops tab 激活；切走即停 + 可见性
+  // → usePoller（ops tab 激活；切走即停 + 可见性
   // 内置——原「rc-tabs 保活切走也续」的每 1s 常驻开销由此消除）。
-  // v0.5.0-beta.14.17：一刀切 1s→5s（省 5M 行拨号）。
-  // v0.5.0-beta.14.19：改自适应节奏（getter 档）——14.17 的 5s 恒定档
+  // 一刀切 1s→5s（省 5M 行拨号）。
+  // 改自适应节奏（getter 档）——14.17 的 5s 恒定档
   // 被验收实测打回「刷新很慢几乎不刷」：负载仪表要的是活性，省拨号
   // 靠空闲降档而非恒定降速。活跃 1s / 空闲 15s（refreshSglang 内
   // sgCadenceRef 按数据指纹切档）。
@@ -265,7 +265,7 @@ function OpsPanel({
     [logs, levelFilter],
   );
 
-  // v0.5.0-beta.14.18：旧版展示改「最新在上」(14.10) 但跟随逻辑留了
+  // 旧版展示改「最新在上」(14.10) 但跟随逻辑留了
   // scrollTop=scrollHeight（滚到最底=最旧）——语义打架，轮询把用户视口拽走。
   // 现按业界标准（kubectl/docker --follow/Grafana logs 同款语义，适配最新在上）：
   // ① 跟随 = 顶部跟随（autoScroll 时 scrollTop=0，最新行永远贴顶可见）；
@@ -303,7 +303,7 @@ function OpsPanel({
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      {/* v0.5.0-beta.12（设计）：多运行时卡从运维页移除——静态 runtime
+      {/* ：多运行时卡从运维页移除——静态 runtime
  清单硬编码不全 + 位置错。运行时管理归团队管理：每个 Worker/Manager 卡
  直接显示自己的 runtime·version（Worker 卡 / Manager 表本轮加列）。 */}
       {/* 集群状态 */}
@@ -383,7 +383,7 @@ function OpsPanel({
         )}
       </div>
 
- {/* v0.5.0-beta.14.18（14.17 「运维页面不需要放模型网关路由，
+ {/* （14.17 「运维页面不需要放模型网关路由，
  把模型页面做好就可以」）：路由目录卡整块移除——模型页（ModelsTab）
  已有同款「模型网关配置」（提供商/路由/alias 表，功能超集），运维页
  重复视图删除。 */}
@@ -403,7 +403,7 @@ function OpsPanel({
             <span style={{ fontWeight: 700, fontSize: 15 }}>
               集群负载
             </span>
-            {/* v0.5.0-beta.14.27（任务 192 实盘实测修正）：副标=检查节奏
+            {/* ：副标=检查节奏
   + 快照年龄（每轮 poll 刷新——「数据 N 秒前」是新鲜度自证：数字不变
   但 age 在跳=数据新鲜只是没变化；age 停住才是真断流）。取代 14.26
   的错误标注「数据快照 ~15s」（参数单位误读，192 报告 §2.5 证伪）。 */}
@@ -502,7 +502,7 @@ function OpsPanel({
                         <span>
                           {tr("排队")} <b>{r.num_waiting_reqs}</b>
                         </span>
-                        {/* v0.5.0-beta.14.22：吞吐 0 值语义显形——
+                        {/* 吞吐 0 值语义显形——
  上游 decode 窗口采样，0 ≠ 空闲（KV 仍在动时推理在跑）。
  0 显示「—」+ 悬停说明；活动判定交给下方 KV 绿点（自采样）。 */}
                         <span style={{ cursor: "help" }}
@@ -680,7 +680,7 @@ function OpsPanel({
           ) : visibleLogs.length === 0 ? (
             <div style={{ color: "#8b949e" }}>{tr("（无日志行）")}</div>
           ) : (
- /* v0.5.0-beta.14.10：最新在最上——展示倒序（不
+ /* 最新在最上——展示倒序（不
  改动状态数组本身；过滤/计数语义不变）。 */
             [...visibleLogs].reverse().map((l, i) => (
               <div key={i} style={{ color: l.level === "error" ? "#ff7b72" : "#c9d1d9" }}>
@@ -718,6 +718,6 @@ function OpsPanel({
   );
 }
 
-// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
+// 面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(OpsPanel);

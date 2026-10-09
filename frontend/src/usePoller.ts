@@ -1,4 +1,4 @@
-// v0.5.0-beta.14.6：轮询调度器——单链 setTimeout（非 setInterval）
+// 轮询调度器——单链 setTimeout（非 setInterval）
 // 替代散落的 15 处 window.setInterval，统一提供：
 // - 活跃门控（isActive：tab 激活 && 页面可见等，每轮判定）；
 // - 防堆积（await fn 完成再排下轮）；
@@ -19,7 +19,7 @@ const React: typeof ReactNS = host.React;
 interface PollerOptions {
   fn: () => void | Promise<void>;
   /**
-   * 基础轮询间隔。v0.5.0-beta.14.19：支持 getter（每轮实时读，
+   * 基础轮询间隔。支持 getter（每轮实时读，
    * 自适应节奏——如监控卡「活跃快档/空闲慢档」）；数字=恒定（原语义）。
    */
   intervalMs: number | (() => number);
@@ -34,7 +34,7 @@ interface PollerOptions {
   /** 默认 0.1；每轮间隔 ±jitter 抖动防同步 */
   jitterRatio?: number;
   /**
- * v0.5.0-beta.14.14：poke 节流——距上次真实执行 fn 不足
+ * poke 节流——距上次真实执行 fn 不足
  * 该间隔时跳过 poke（数据还新鲜，切回 tab 不重复拉）。默认 intervalMs/2
  * （由 usePoller 包装传入；数据新鲜度保证 ≤ 一个轮询周期，语义不变）。
  * 0/undefined = 旧行为（每次假→真必 poke）。
@@ -49,7 +49,7 @@ export interface Poller {
 }
 
 export function createPoller(opts: PollerOptions): Poller {
-  // v0.5.0-beta.14.19：每轮实时读（getter=自适应节奏；数字=恒定原语义）。
+  // 每轮实时读（getter=自适应节奏；数字=恒定原语义）。
   const currentInterval = (): number =>
     typeof opts.intervalMs === "function" ? opts.intervalMs() : opts.intervalMs;
   const catchUpMs = opts.catchUpMs ?? currentInterval() * 2;
@@ -125,7 +125,7 @@ export function createPoller(opts: PollerOptions): Poller {
   };
 
   /** 可见性变化：隐藏 → 清定时器暂停调度；可见 → 闲置超 catchUpMs 立即补跑。
- * v0.5.0-beta.14.16（深度体检）：补跑前加 isActive 门——隐藏期间用户切走
+ * 补跑前加 isActive 门——隐藏期间用户切走
  * 了 tab（如 settings→chat），可见恢复时 catch-up 不应在已失活的 poller 上
  * 执行多余 fetch（旧行为：每次 Alt-Tab 往返多打一发该端点）。 */
   const onVisibility = (): void => {
@@ -191,7 +191,7 @@ export function createPoller(opts: PollerOptions): Poller {
  */
 export function usePoller(pollerOpts: {
   fn: () => void | Promise<void>;
-  /** v0.5.0-beta.14.19：数字=恒定（原语义）；getter=自适应节奏
+  /** 数字=恒定（原语义）；getter=自适应节奏
    * （组件以 ref 持有档位，getter 须稳定引用——useCallback([])）。 */
   intervalMs: number | (() => number);
   active?: boolean;
@@ -216,7 +216,7 @@ export function usePoller(pollerOpts: {
 
   const pollerRef = React.useRef<Poller | null>(null);
 
-  // v0.5.0-beta.14.19：getter 档经 ref 持有（重建键只认数字档的值——
+  // getter 档经 ref 持有（重建键只认数字档的值——
   // 组件可传内联 getter 而不会每渲染重建 poller）。
   const intervalRef = React.useRef(intervalMs);
   intervalRef.current = intervalMs;

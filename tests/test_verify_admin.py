@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""L1 管理员验证二选一（v0.5.0-beta.12）单测。
+"""L1 管理员验证二选一（）单测。
 
 覆盖 plan 件 4 的三组护栏：
 
 - **verify-admin 两路径**：admin 账号密码 → Console /session/login（成功持
  会话 / 失败 / 不可达）；Controller token → GET /api/v1/teams（无尾斜杠，
- v0.5.0-beta.12：Gin 对 /teams/ 返 404；成功 / 无效）；凭据全空 → 「二选一」错误。
-- **网关地址必填（v0.5.0-beta.12）**：Console 宿主端口部署时自选（安装脚本
+ Gin 对 /teams/ 返 404；成功 / 无效）；凭据全空 → 「二选一」错误。
+- **网关地址必填（）**：Console 宿主端口部署时自选（安装脚本
  AGENTTEAMS_PORT_CONSOLE，默认 18001，人人不同）→ 8001/6868 探测已移除；
  gateway_admin_url 留空 → 可操作错误（不再盲探）。
 - **脱敏**：redact() 对 admin_password / console_session 打 ***，
@@ -148,7 +148,7 @@ def test_verify_admin_password_success(client):
     _FakeClient.post_spec["/session/login"] = _FakeResponse(
         200, {"set-cookie": "higress-session=abc123; Path=/; HttpOnly"}
     )
-    # v0.5.0-beta.12：验证成功后立即自检 alias 层——fixture 用实测环境实况
+    # 验证成功后立即自检 alias 层——fixture 用实测环境实况
     # （Console {code,data} 信封 + EQUAL 精确匹配 + 3 provider），把解包
     # 契约钉死：data 信封必须解开，providers 键必须取 .providers。
     _FakeClient.get_spec["/v1/ai/routes"] = _FakeResponse(
@@ -204,11 +204,11 @@ def test_verify_admin_password_success(client):
     assert body["ok"] is True
     assert body["mode"] == "password"
     assert body["has_console_session"] is True
-    # v0.5.0-beta.12：无探测——只打显式配置的网关地址（登录 client 是第一个实例，
-    # v0.5.0-beta.12 自检 client 是第二个）
+    # 无探测——只打显式配置的网关地址（登录 client 是第一个实例，
+    # 自检 client 是第二个）
     login_client = _FakeClient.instances[0]
     assert ("POST", "http://10.0.0.1:6868/session/login") in login_client.calls
-    # v0.5.0-beta.12：自检计数 + alias 名单（信封解包 + EQUAL + provider 存在性）
+    # 自检计数 + alias 名单（信封解包 + EQUAL + provider 存在性）
     assert body["gateway_routes"] == 3
     assert body["gateway_aliases"] == [
         "deepseek-v4-flash",
@@ -226,7 +226,7 @@ def test_verify_admin_password_success(client):
 
 
 def test_verify_admin_password_selfcheck_degraded(client):
-    """v0.5.0-beta.12：自检 GET 失败（404/异常）不挡验证主流程——
+    """自检 GET 失败（404/异常）不挡验证主流程——
  ok 仍 True，gateway_routes=0/aliases=[]（降级计数）。"""
     tc, state = client
     state["data"]["gateway_admin_url"] = "http://10.0.0.1:6868"
@@ -246,7 +246,7 @@ def test_verify_admin_password_selfcheck_degraded(client):
 
 
 def test_verify_admin_password_empty_gateway_url(client):
-    """v0.5.0-beta.12：网关地址留空 → 可操作错误（端口是部署时自选的，不盲探）。"""
+    """网关地址留空 → 可操作错误（端口是部署时自选的，不盲探）。"""
     tc, _ = client
     _FakeClient.post_spec["/session/login"] = _FakeResponse(200)
     r = tc.post(
@@ -306,7 +306,7 @@ def test_verify_admin_password_star_placeholder(client):
 
 
 def test_verify_admin_password_no_gateway_url(client):
-    """v0.5.0-beta.12：网关地址留空（无论 Controller 是否配置）→ 明确报错。"""
+    """网关地址留空（无论 Controller 是否配置）→ 明确报错。"""
     tc, state = client
     state["data"]["controller_urls"] = []
     r = tc.post(
@@ -321,7 +321,7 @@ def test_verify_admin_password_no_gateway_url(client):
 # ── 路径 B：Controller 管理员 token ──────────────────────
 def test_verify_admin_token_success(client):
     tc, state = client
-    # v0.5.0-beta.12：探测 URL 无尾斜杠（Gin 对 /api/v1/teams/ 返 404）
+    # 探测 URL 无尾斜杠（Gin 对 /api/v1/teams/ 返 404）
     _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(200)
     r = tc.post(
         "/config/verify-admin", json={"controller_token": "tok123"}
@@ -347,7 +347,7 @@ def test_verify_admin_token_invalid(client):
     assert state["data"]["controller_token"] == ""
 
 
-# ── v0.5.0-beta.14.21：外网验证 500 根因治理（韧性 + 诊断）──────────────
+# ── 外网验证 500 根因治理（韧性 + 诊断）──────────────
 def test_verify_admin_token_5xx_retry_success(client):
     """5xx 瞬时 → 退避重试一次：首响 500、二响 200 → 验证通过（拨 2 次）。"""
     tc, state = client
@@ -550,7 +550,7 @@ def test_redact_masks_admin_credentials():
     assert out["gateway_admin_url"] == "http://10.0.0.1:8001"
 
 
-# ── v0.5.0-beta.12: env 注入（AGENTTEAMS_CONTROLLER_TOKEN）──────────────────
+# ── env 注入（AGENTTEAMS_CONTROLLER_TOKEN）──────────────────
 def test_verify_admin_token_env_fallback(client, monkeypatch):
     """cfg token 空 + env 已设 → 自动用 env（不落盘，tokenSource=env）。"""
     tc, state = client
@@ -603,7 +603,7 @@ def test_verify_admin_token_non_ascii_rejected(client):
 
 
 def test_verify_admin_password_no_blind_probe(client):
-    """v0.5.0-beta.12：网关地址留空时**不得发起任何探测请求**（端口人人不同，
+    """网关地址留空时**不得发起任何探测请求**（端口人人不同，
  8001/6868 盲探已移除）——直接报可操作错误。"""
     tc, _ = client
 

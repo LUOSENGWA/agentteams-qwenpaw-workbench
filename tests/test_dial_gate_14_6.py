@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""拨号闸门/计数/ 判定（v0.5.0-beta.14.6，//）。"""
+"""拨号闸门/计数/ 判定（，//）。"""
 from __future__ import annotations
 
 import asyncio
@@ -70,14 +70,14 @@ def test_gate_stats_and_top_paths(monkeypatch):
     paths = {p["path"]: p["count"] for p in stats["async"]["top_paths"]}
     assert paths.get("/api/thing0") == 3
     assert paths.get("/api/thing1") == 2
-    # v0.5.0-beta.14.7（.1）：字节计量。
+    # 字节计量。
     assert stats["async"]["bytes_total"] > 0
     by_path = {p["path"]: p for p in stats["async"]["top_paths"]}
     assert by_path["/api/thing0"].get("bytes", 0) > 0
 
 
 def test_sync_filter_slim_and_typed():
-    """v0.5.0-beta.14.7：sync filter 瘦身（limit≤2）+ types 白名单。"""
+    """sync filter 瘦身（limit≤2）+ types 白名单。"""
     from agentteams_connector import sync_watcher
 
     tl = sync_watcher._SYNC_FILTER["room"]["timeline"]
@@ -98,7 +98,7 @@ def test_no_ungated_async_client_in_connector():
         ):
             if line.strip().startswith("#"):
                 continue
-            # v0.5.0-beta.14.6（采纳审查建议）：捕一切别名形态
+            # 捕一切别名形态
             # （httpx.AsyncClient / _h.AsyncClient / _httpx.AsyncClient），
             # 仅放行 GatedAsyncClient(。
             if ".AsyncClient(" in line and "GatedAsyncClient(" not in line:

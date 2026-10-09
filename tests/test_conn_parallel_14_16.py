@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""连通性测试并行化回归（v0.5.0-beta.14.16 /）。
+"""连通性测试并行化回归（/）。
 
 连通性测试很慢。根因：``test_addresses`` 里三类地址
 （matrix / controller / sglang）原先是**三段串行** ``await asyncio.gather``，
@@ -98,8 +98,8 @@ def test_empty_category_does_not_break_gather(monkeypatch) -> None:
 def test_default_timeout_is_3s() -> None:
     """test_addresses 的 timeout 默认值 = 3.0s。
 
- 演进：6.0→4.0（14.16 死地址上限收紧）→3.0（14.20，用户 14.19 验收
- 「保存/连通性又慢」——可达地址 <1s 不受影响，死地址再配
+ 演进：6.0→4.0（死地址上限收紧）→3.0（保存/连通性慢修——
+ 可达地址 <1s 不受影响，死地址再配
  _probe_with_retry 超时不重试 = 单程成本）。"""
     import inspect
 

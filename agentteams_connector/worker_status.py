@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.9：Worker session 状态聚合器。
+"""Worker session 状态聚合器。
 
 背景：前端每 30s 对全部 worker 逐一打 /workers/{name}/chats（~25 路扇出，
 尾延迟 6-9s，多窗口各打一份）。改为连接器侧单点后台扫描 + 聚合缓存，
@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 
 from . import config as config_mod
 from . import router as router_mod
-# v0.5.0-beta.14.19：tick 生命周期骨架抽 bg_aggregator.BgTicker
+# tick 生命周期骨架抽 bg_aggregator.BgTicker
 # （与 projects_workflow 去克隆——ensure_fresh/_sweep 单飞/bg_slot
 # 让权/_run tick/start-stop 五段此前逐字克隆）。本模块保留数据态
 # _agg 与扫描体 _do_sweep（取数注入点 _ctl_get 不变）。
@@ -58,7 +58,7 @@ def snapshot() -> Dict[str, Any]:
 
 
 async def _ctl_get(url: str, token: str) -> tuple:
-    """薄包装 → ctl_client.ctl_json("GET", …)（v0.5.0-beta.14.13 去重）。
+    """薄包装 → ctl_client.ctl_json("GET", …)（去重）。
 
  保持本名 = projects_workflow 与测试的既有取数注入点（测试 monkeypatch
  本函数，不碰真实网络；签名与语义不变）。

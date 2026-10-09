@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""/approval/list 性能护栏（v0.5.0-beta.14.5，/）。
+"""/approval/list 性能护栏（，/）。
 
 背景：``approval_list`` 旧实现串行遍历全部容器（31 容器 WAN 实测 ≈23s），
 且无缓存——每次展开/切页都重扫一遍。beta.14.5 把遍历改为并发

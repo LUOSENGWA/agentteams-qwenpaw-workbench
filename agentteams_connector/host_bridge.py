@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""宿主收件箱审批桥（v0.5.0-beta.12）。
+"""宿主收件箱审批桥（）。
 
 把 AgentTeams Worker 的 Tool Guard 审批请求（🛡️ Approval Required）桥接进
 宿主 QwenPaw 收件箱审批体系，让用户不必进 Element/房间翻找：
@@ -309,7 +309,7 @@ class HostApprovalBridge:
         try:
             homeservers = _ordered_addresses(cfg, "matrix")
         except Exception:  # noqa: BLE001
-            # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url。
+            # 条目 str | {url, auth?}——统一取 url。
             homeservers = [
                 config_mod.address_url(h)
                 for h in (cfg.get("matrix_homeservers") or [])

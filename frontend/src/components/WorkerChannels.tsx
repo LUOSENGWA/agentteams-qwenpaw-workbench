@@ -1,5 +1,5 @@
 /**
- * 📡 频道接入（v0.5.0-beta.12，频道接入图形化调研结论实现）。
+ * 📡 频道接入（，频道接入图形化调研结论实现）。
  *
  * 位置：「👷 团队管理」tab 内的子节（设计决策：不独立成 tab）。
  * 数据面：Controller 的频道代理端点（#1219/#1269 已合 main；
@@ -126,7 +126,7 @@ function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
     if (k === "enabled" || k === "bot_prefix" || k === "isBuiltin") continue;
     rows.push({ key: k, value: v });
   }
-  // v0.5.0-beta.13.15（B10 sender 隔离开关）：agentteams_matrix 的
+  // agentteams_matrix 的
   // share_session_in_group 旧版 Controller 下发的频道配置可能不带该字段
  // （语义后才进 payload）→ 缺省行注入 false（=按发送者隔离，
   // 上游 AGENTTEAMS_MATRIX_SHARE_SESSION 默认 false 同款）。旧 runtime
@@ -140,7 +140,7 @@ function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
   return rows;
 }
 
-/** v0.5.0-beta.13.15：已知频道字段专属标签（通用编辑器默认裸键名
+/** 已知频道字段专属标签（通用编辑器默认裸键名
  * 显示——布尔开关必须有语义化名字，否则用户不敢动）。 */
 const FIELD_LABELS: Record<string, { zh: string; en: string }> = {
   share_session_in_group: {
@@ -242,7 +242,7 @@ export default function WorkerChannels(props: {
   }, [sel]);
 
   // 保活 tab 激活时 30s 静默刷新（WorkerManage 同款节奏）。
-  // v0.5.0-beta.14.19：裸 setInterval → usePoller——切回全前端
+  // 裸 setInterval → usePoller——切回全前端
   // 统一的轮询门控体系（usePoller 内置 !document.hidden，active 外部门
   // 语义不变；此前是唯一绕开体系的裸定时器，后续 usePoller 增强不同步）。
   usePoller({
@@ -251,7 +251,7 @@ export default function WorkerChannels(props: {
     active,
   });
 
-  // v0.5.0-beta.14.22（D4 #3）：频道面板门控——频道配置写的是 worker
+  // 频道面板门控——频道配置写的是 worker
   // 容器 agent.json（QwenPaw 独有面），非 qwenpaw runtime 拨号会 400/
   // 无数据。只读展示照读（列表/健康），写路径（抽屉）提前挡住。
   const selWorker = workers.find((w) => w.name === sel);
@@ -479,12 +479,12 @@ export default function WorkerChannels(props: {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      {/* v0.5.0-beta.14.22（D4 #3）：非 qwenpaw runtime 顶部说明（写路径
+      {/* ：非 qwenpaw runtime 顶部说明（写路径
   已挡；只读列表/健康照读）。 */}
       {gated ? <RuntimeNotice runtime={selWorker?.runtime} compact /> : null}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
-        {/* v0.5.0-beta.13.16：单 Worker（拓扑资源管理嵌入）→ 定显名字，
+        {/* 单 Worker（拓扑资源管理嵌入）→ 定显名字，
  不再给只有一个选项的选择器。多 Worker 场景保持下拉。 */}
         {workers.length === 1 ? (
           <antd.Tag style={{ marginInlineEnd: 0, fontSize: 11.5 }}>
@@ -623,7 +623,7 @@ export default function WorkerChannels(props: {
                   <div key={`${r.key}-${idx}`} style={{ display: "grid", gap: 2 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {(() => {
-                        // v0.5.0-beta.13.15：语义化标签 + 悬停说明。
+                        // 语义化标签 + 悬停说明。
                         const lbl =
                           f?.label || FIELD_LABELS[r.key]?.[lang] || r.key;
                         const tip = FIELD_TIPS[r.key]?.[lang];

@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.27（F-A 配置钉死）：写盘审计 + 防呆 + 并发保护。
+"""：写盘审计 + 防呆 + 并发保护。
 
-背景（10/8 实盘）：config.json 的 address_mode 在无人操作的情况下
-lan→auto 被改写，且全部写路径零日志——「查这么多次没修好」的真因
-是写发生时无从取证。本批：
+背景：config.json 的 address_mode 曾在无人操作的情况下 lan→auto
+被改写，且全部写路径零日志——难查的真因是写发生时无从取证。本批：
 1. save_config 记审计环（source + 关键字段形态 diff，秘密值不入日志）；
 2. update_config 在 defaults-fallback 态（主文件缺失/损坏且无备份）
    拒绝落盘——堵住「表单默认值静默覆盖全配置」；

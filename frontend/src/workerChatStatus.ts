@@ -1,4 +1,4 @@
-// v0.5.0-beta.13.8（13.7 「状态灯显示不准确，看整个信息源是不是正确
+// （13.7 「状态灯显示不准确，看整个信息源是不是正确
 // session 状态」）：Worker session 级状态轮询——状态灯正源升级。
 //
 // 背景（实盘证据链）：
@@ -19,7 +19,7 @@
 //
 // 轮询策略：30s tick；仅 document 可见时发（后台零负载）；
 // 失败静默保旧值（不闪灰、不报错——数据面降级回消息级启发式）。
-// v0.5.0-beta.14.9：旧「逐 worker /chats 扇出（并发 4，~25 路，
+// 旧「逐 worker /chats 扇出（并发 4，~25 路，
 // 尾延迟 6-9s，每个浏览器窗口各打一份）」退役——改单端点 /workers-status
 // （后端连接器侧 30s 后台单点扫描 + 聚合缓存，多窗口共享），每 tick 仅 1 请求。
 
@@ -59,7 +59,7 @@ async function fetchWorkerChatStatusAgg(
 
 const POLL_MS = 30_000;
 
-// v0.5.0-beta.14.9退役说明：旧 pollAll 逐 worker 扇出
+// 退役说明：旧 pollAll 逐 worker 扇出
 // （并发 4，~25 路，尾延迟 6-9s，每窗口各打一份）已替换为单端点
 // /workers-status（后端后台单点扫描 + 聚合缓存）。fetchWorkerChatStatusAgg
 // 保留（export 契约不变，供其他调用方）。
@@ -67,7 +67,7 @@ const POLL_MS = 30_000;
 /**
  * 轮询 hook：names（worker 名集合，随团队树变化）→ name → 聚合状态。
  * 仅 document 可见时轮询；卸载停表。React 惰性取宿主。
- * v0.5.0-beta.14.6：旧定时器 → usePoller（30s；!document.hidden
+ * 旧定时器 → usePoller（30s；!document.hidden
  * 内置；隐藏恢复后的补跑走 poller catch-up 语义=闲置>2×间隔立即补）。
  * out 累积表移入 ref（跨 fn 重建存活）；namesKey 变化清表（旧 effect 重建
  * = 新表同款语义）；enabled 假→真由 usePoller 的 poke 覆盖立即拉。
@@ -92,7 +92,7 @@ export function useWorkerChatStatuses(
     outRef.current = {};
   }, [namesKey]);
 
-  // v0.5.0-beta.14.9：单端点拉取——每 tick 仅 1 个
+  // 单端点拉取——每 tick 仅 1 个
   // /workers-status 请求（后端聚合表已含逐 worker 保旧值，映射为同旧形状
   // 合并进累积表）；请求失败/形状不符 → 保留旧值（不闪灯、不报错——与旧
   // 语义一致）。

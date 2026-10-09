@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""KB 敏感文件过滤回归测试（v0.5.0-beta.12.3）。
+"""KB 敏感文件过滤回归测试（）。
 
 背景（产物部分对齐 dashboard）：dashboard ChatRoom 文件面板
 （FilesBrowserPanel）用 SENSITIVE_PATTERNS 从 MinIO 树里滤掉

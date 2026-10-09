@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-# v0.5.0-beta.14.13（·技术债治理）：Controller JSON 客户端单一实现。
+# Controller JSON 客户端单一实现。
 # 合并自 router._ctl_json（超集语义）与 worker_status._ctl_get（GET 包装）——
 # 此前「ordered 地址 failover」逻辑双实现，现唯一实现在此；两处旧调用点
 # 均保留为薄包装（注入点/调用面语义不变）。
-"""v0.5.0-beta.14.13（·技术债治理）：Controller JSON 客户端单一实现。
+"""：Controller JSON 客户端单一实现。
 
 - ``router.build_router`` 的 ``_ctl_json`` 闭包 → 薄包装（调用点零改动）。
 - ``worker_status._ctl_get`` → 薄包装（projects_workflow 与测试的既有
@@ -22,13 +22,13 @@ async def ctl_json(method: str, url: str, token: str,
                    json_body: Optional[Dict[str, Any]] = None) -> tuple:
     """通用 Controller JSON 调用。返回 (status_code, 解析 JSON|str, 原始 text)。
 
- v0.5.0-beta.14.2（外网 401 根因③）：单地址直拨改 ordered 地址
+ ：单地址直拨改 ordered 地址
  failover——同 _kb_docker：拆出 url 的 path（含 query），在 ordered
  控制器地址上依次试；200 即止；4xx/5xx/传输错 → 下一地址；全败 →
  返回最后一个 (status, json, text)（调用方按 st 判降级），全传输错 →
  旧 (0, {}, "请求失败：…")。
  """
-    # v0.5.0-beta.14.13：router._ctl_json 闭包体逐行迁入——惰性 import
+    # router._ctl_json 闭包体逐行迁入——惰性 import
     # 照原样保留（_h 原实现即未再引用，逐字保真不删）。
     import httpx as _h
     from urllib.parse import urlparse as _urlparse
@@ -54,7 +54,7 @@ async def ctl_json(method: str, url: str, token: str,
                 r = await client.request(
                     method, u,
                     json=json_body,
-                    # v0.5.0-beta.14.3: 该地址覆盖凭据（无则原生 Bearer）。
+                    # 该地址覆盖凭据（无则原生 Bearer）。
                     headers=_r._headers_for(
                         cfg, "controller", b,
                         {"Authorization": f"Bearer {token}"},
@@ -70,7 +70,7 @@ async def ctl_json(method: str, url: str, token: str,
         if r.status_code == 200:
             return r.status_code, data, r.text
         if not _r.should_failover_status(r.status_code):
-            # v0.5.0-beta.14.6：确定性 4xx 地址无关——立即返回。
+            # 确定性 4xx 地址无关——立即返回。
             return r.status_code, data, r.text
         last = (r.status_code, data, r.text)
     if last is None:

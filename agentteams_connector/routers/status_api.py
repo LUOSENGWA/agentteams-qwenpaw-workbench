@@ -17,7 +17,7 @@ from ..router import (
 
 
 def build_status_router() -> APIRouter:
-    """状态/监控域子路由（build_router 原段逐字搬移，任务 190）。"""
+    """状态/监控域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
     @router.get("/health")
     async def health() -> Dict[str, Any]:
@@ -26,7 +26,7 @@ def build_status_router() -> APIRouter:
 
     @router.get("/debug/tasks")
     async def debug_tasks() -> Dict[str, Any]:
-        """v0.5.0-beta.14.12：asyncio 任务清单（按协程名聚合）
+        """asyncio 任务清单（按协程名聚合）
  ——CPU 吃满/疑似循环类问题的第一诊断（看谁在反复跑）。零副作用。"""
         import collections as _col  # noqa: PLC0415
 
@@ -46,11 +46,11 @@ def build_status_router() -> APIRouter:
 
     @router.get("/workers-status")
     async def workers_status(refresh: int = 0) -> Dict[str, Any]:
-        """v0.5.0-beta.14.9：Worker session 状态聚合（前端一次
+        """Worker session 状态聚合（前端一次
  拿全量；数据由 worker_status 后台 30s 扫描维护，过期时本端点触发
  后台补扫、零等待返回上轮快照）。
 
- v0.5.0-beta.14.12：?refresh=1 → 无视 TTL 触发后台
+ ?refresh=1 → 无视 TTL 触发后台
  补扫（前端手动刷新按钮用；仍 fire-and-forget 零等待返回当前快照，
  响应字段不变）。
  """
@@ -61,11 +61,11 @@ def build_status_router() -> APIRouter:
 
     @router.get("/projects-workflow")
     async def projects_workflow_snapshot(refresh: int = 0) -> Dict[str, Any]:
-        """v0.5.0-beta.14.9：项目+工作流取数聚合（前端一次拿
+        """项目+工作流取数聚合（前端一次拿
  {projects, workflows} 原始件；数据由后台 30s 扫描维护，过期时本端点
  触发后台补扫、零等待返回上轮快照）。
 
- v0.5.0-beta.14.12：?refresh=1 → 无视 TTL 触发后台
+ ?refresh=1 → 无视 TTL 触发后台
  补扫（前端手动刷新按钮用；仍 fire-and-forget 零等待返回当前快照，
  响应字段不变）。
  """
@@ -93,9 +93,9 @@ def build_status_router() -> APIRouter:
                 status_code=404,
                 detail="集群负载模块未启用（配置页开启并填写 SGLang 地址）",
             )
-        # v0.5.0-beta.12: 双地址（内网/外网）failover——working cache 优先（自动重排
+        # 双地址（内网/外网）failover——working cache 优先（自动重排
         # 选出的最快可达），其余按配置顺序；兼容旧配置单地址 "url"。
-        # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url（auth 按 url 反查）。
+        # 条目 str | {url, auth?}——统一取 url（auth 按 url 反查）。
         bases = [
             config_mod.address_url(u).rstrip("/")
             for u in (sglang.get("urls") or [])
@@ -120,7 +120,7 @@ def build_status_router() -> APIRouter:
         for base in ordered:
             try:
                 async with GatedAsyncClient(timeout=8.0, verify=False) as client:
-                    # v0.5.0-beta.14.3: WAN 地址 key 门（bearer 覆盖；无则无头）。
+                    # WAN 地址 key 门（bearer 覆盖；无则无头）。
                     resp = await client.get(
                         f"{base}/v1/loads",
                         headers=_headers_for(cfg, "sglang", base, {}),
@@ -201,7 +201,7 @@ def build_status_router() -> APIRouter:
                 status_code=404,
                 detail="SGLang 模块未启用（配置页开启并填写地址）",
             )
-        # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url（auth 按 url 反查）。
+        # 条目 str | {url, auth?}——统一取 url（auth 按 url 反查）。
         bases = [
             config_mod.address_url(u).rstrip("/")
             for u in (sglang.get("urls") or [])
@@ -223,7 +223,7 @@ def build_status_router() -> APIRouter:
         for base in ordered:
             try:
                 async with GatedAsyncClient(timeout=8.0, verify=False) as client:
-                    # v0.5.0-beta.14.3: WAN 地址 key 门（bearer 覆盖；无则无头）。
+                    # WAN 地址 key 门（bearer 覆盖；无则无头）。
                     resp = await client.get(
                         f"{base}/v1/models",
                         headers=_headers_for(cfg, "sglang", base, {}),

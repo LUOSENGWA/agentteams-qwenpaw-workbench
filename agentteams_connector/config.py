@@ -23,7 +23,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Union
 
-# v0.5.0-beta.14.3（WAN 通用认证）：地址条目 = 字符串（服务原生认证，
+# 地址条目 = 字符串（服务原生认证，
 # 内网默认形态）或 {url, auth?}（显式覆盖凭据）。auth 类型：
 # {"type": "basic", "username": ..., "password": ...} —— 网关 Basic 门
 # {"type": "bearer", "token": ...} —— API key / 专用
@@ -46,10 +46,10 @@ _lock = threading.Lock()
 # （未合并 defaults），命中时仍走完整合并逻辑——只省 read/parse/chmod。
 _config_read_cache: Dict[str, Any] = {"mtime_ns": None, "size": None, "data": None}
 
-# v0.5.0-beta.14.27（F-A 配置取证）：写盘审计环（最近 20 条）——每次真实
+# 写盘审计环（最近 20 条）——每次真实
 # 写盘记 source + 关键字段形态 diff（只记有无/模式，秘密值永不入日志）。
-# 10/8 实盘 config 在 19:57(lan)→21:06(auto) 间被改写而无任何观测，
-# 「查这么多次没修好」的真因=写路径零日志；本环让下次再犯一次日志即定凶。
+# 背景：config 曾被静默改写（address_mode 无人操作下自变）且全程无观测
+# ——难查的真因=写路径零日志；本环让下次再犯一次日志即定凶。
 _CONFIG_WRITE_AUDIT: Deque[Dict[str, Any]] = deque(maxlen=20)
 
 # 最近一次 load_config 的加载结局（ok / defaults-fallback /
@@ -61,7 +61,7 @@ logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
 
 
 def config_rev() -> Optional[str]:
-    """v0.5.0-beta.14.27（F-A）：配置修订号 = "mtime_ns:size"（文件不存在→None）。
+    """：配置修订号 = "mtime_ns:size"（文件不存在→None）。
 
  前端页面加载时取走、保存时回传；后端对不上即 409——挡住「页面加载后
  配置被外部改动（另一 tab/手工编辑/导入/自愈恢复）再被旧表单静默覆盖」。
@@ -74,7 +74,7 @@ def config_rev() -> Optional[str]:
 
 
 def config_health() -> Dict[str, Any]:
-    """v0.5.0-beta.14.27（F-A）：配置健康态（/config 展示 + 前端横幅）。
+    """：配置健康态（/config 展示 + 前端横幅）。
 
  state 取值（=最近一次 load_config 的结局）：
    ok                   = 主文件存在且合法
@@ -128,7 +128,7 @@ def _config_signature(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 def _record_config_write(
     source: str, before: Optional[Dict[str, Any]], after: Dict[str, Any]
 ) -> None:
-    """v0.5.0-beta.14.27（F-A）：记一次真实写盘（WARNING 日志 + 审计环）。
+    """：记一次真实写盘（WARNING 日志 + 审计环）。
 
  before=None = 写前文件不存在（首写/删后恢复）。changed=签名差异键
  （空=仅秘密值变化——值本身不入审计）。
@@ -151,7 +151,7 @@ def _record_config_write(
         changed or "-",
     )
 
-# ── v0.5.0-beta.14.3: 地址条目（str | {url, auth?}）解析与凭据 helper ──
+# ── 地址条目（str | {url, auth?}）解析与凭据 helper ──
 
 _AUTH_TYPES = ("basic", "bearer")
 
@@ -291,7 +291,7 @@ def merge_address_entries(
 def credential_gaps(
     old_entries: Any, new_entries: Any
 ) -> List[Dict[str, Any]]:
-    """保存前凭据意图检查（v0.5.0-beta.14.22）。
+    """保存前凭据意图检查（）。
 
  找出「用户明确选择覆盖凭据（basic/bearer）但凭据字段为空、且旧条目
  在同位置没有可继承的凭据」的条目——按 merge_address_entries 的继承
@@ -360,27 +360,27 @@ _DEFAULTS: Dict[str, Any] = {
     "controller_urls": [],  # e.g. ["http://10.0.0.10:8090"]
     # Optional admin token for L1 full view (same token on both paths).
     "controller_token": "",
-    # v0.5.0-beta.12: L1 管理员验证二选一（同 dashboard 语义，仅 L1）——
+    # L1 管理员验证二选一（同 dashboard 语义，仅 L1）——
     # ① admin 账号+密码：POST {gateway_admin_url}/session/login 验证，
     # 成功后持有 Console 管理员会话（console_session），供网关面
     # （AI routes/providers = 模型选择 alias 层数据源）消费。
     # ② controller_token（上）：Controller 管理 API 全量（现状）。
     "admin_username": "",
     "admin_password": "",
-    # Higress Console（管理面）地址。**必填**（v0.5.0-beta.12 设计）：
+    # Higress Console（管理面）地址。**必填**（设计）：
     # 留空 = 验证时报可操作错误——不从 Controller 地址推导、不盲探端口
     # （宿主端口是安装时自选的，AGENTTEAMS_PORT_CONSOLE 默认 18001）。
-    # v0.5.0-beta.14.7: Higress Console 双地址（canonical；legacy 单值键保留为
+    # Higress Console 双地址（canonical；legacy 单值键保留为
     # urls[0] 镜像，老读者兼容）。条目不限 2 个，按序降级。
     "gateway_admin_urls": [],
     "gateway_admin_url": "",
-    # v0.5.0-beta.14.8：控制台特效安抚——停用上游 RunningGlow
+    # 控制台特效安抚——停用上游 RunningGlow
     # 旋转光环/呼吸层的动画（保留光效视觉）。默认开（省 GPU）；可关。
-    # v0.5.0-beta.14.12：保留为兼容键（新键 console_effects
+    # 保留为兼容键（新键 console_effects
     # 三档取代其功能；load 迁移时以其值推导 console_effects 初值，
     # 之后不再读写，老配置/老读者兼容）。
     "console_calm": True,
-    # v0.5.0-beta.14.12：控制台特效三档——
+    # 控制台特效三档——
     # "light"（默认：动画保留、模糊半径封顶 6px）/ "off"（动画与模糊全停，
     # 等价旧 console_calm 开启）/ "full"（上游原样，零覆盖）。
     "console_effects": "light",
@@ -389,13 +389,13 @@ _DEFAULTS: Dict[str, Any] = {
     "console_session": "",
     # 可选模块：集群负载监控（L1 专属——不是每个部署都有本地 SGLang）。
     # enabled=false 时前端不渲染卡片、后端不注册语义（404），零痕迹。
-    # v0.5.0-beta.12: 双地址（内网/外网）——有序数组，首个可达 + failover，
+    # 双地址（内网/外网）——有序数组，首个可达 + failover，
     # 与 matrix_homeservers/controller_urls 同构；旧版单地址 "url" 自动迁移。
     "sglang": {
         "enabled": False,
         "urls": [],  # e.g. ["http://192.168.x.x:30000", "https://你的域名:30000"]
     },
-    # v0.5.0-beta.14.1: 地址手动固定档（"auto"=自动切换[默认] /
+    # 地址手动固定档（"auto"=自动切换[默认] /
     # "lan"=固定内网[列表索引 0] / "wan"=固定外网[索引 1]）——固定档失败
     # 诚实报错不 failover，探测循环照跑只供显示。
     "address_mode": "auto",
@@ -408,7 +408,7 @@ _DEFAULTS: Dict[str, Any] = {
 
 
 def _ensure_dir() -> None:
-    """v0.5.0-beta.14.7（安全）：目录 700（内含明文凭据的 config）。"""
+    """：目录 700（内含明文凭据的 config）。"""
     import os as _os
 
     _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -419,7 +419,7 @@ def _ensure_dir() -> None:
 
 
 def _config_bak_path() -> Path:
-    """v0.5.0-beta.14.14：备份文件路径——从 _CONFIG_PATH 派生
+    """备份文件路径——从 _CONFIG_PATH 派生
  （config.json 旁的 config.bak.json；测试 monkeypatch 主文件路径时自动
  跟随，零额外注入点）。"""
     return _CONFIG_PATH.with_name("config.bak.json")
@@ -440,7 +440,7 @@ def _atomic_write_config(path: Path, data: Dict[str, Any]) -> None:
             encoding="utf-8",
         )
         tmp.replace(path)
-        # v0.5.0-beta.14.7（安全）：文件含明文凭据（Basic 密码等）——收紧到
+        # 文件含明文凭据（Basic 密码等）——收紧到
         # 600（best-effort，失败不影响功能）。
         try:
             _os.chmod(path, 0o600)
@@ -451,7 +451,7 @@ def _atomic_write_config(path: Path, data: Dict[str, Any]) -> None:
 
 
 def write_backup(snapshot: Dict[str, Any]) -> None:
-    """v0.5.0-beta.14.14：原子写 config.bak.json 快照。
+    """原子写 config.bak.json 快照。
 
  失败抛 IOError——调用方决定：save 路径仅告警（主文件已验证落盘，不
  拖累保存）；导入路径 = 中止不覆盖（「先备份再覆盖」安全契约）。
@@ -460,7 +460,7 @@ def write_backup(snapshot: Dict[str, Any]) -> None:
 
 
 def _restore_from_backup() -> Optional[Dict[str, Any]]:
-    """v0.5.0-beta.14.14：自愈——主配置缺失/损坏 → 从
+    """自愈——主配置缺失/损坏 → 从
  config.bak.json 恢复（原子写回主文件 + 日志明示）。
 
  无备份/备份损坏/写回失败 → None（调用方回默认值，不崩）。
@@ -529,7 +529,7 @@ def load_config() -> Dict[str, Any]:
             if not isinstance(raw, dict):
                 raise ValueError("top-level JSON must be an object")
         except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
-            # v0.5.0-beta.14.14：自愈——主文件缺失/损坏
+            # 自愈——主文件缺失/损坏
             # （含顶层非对象）→ 自动从备份恢复（日志明示）；无可用备份
             # → 默认值（不崩）。
             restored = _restore_from_backup()
@@ -540,7 +540,7 @@ def load_config() -> Dict[str, Any]:
                 _last_load_state = "defaults-fallback"
                 return json.loads(json.dumps(_DEFAULTS))
 
-        # v0.5.0-beta.14.7（安全）：存量 644 → 600 兜底（一次性收敛）。
+        # 存量 644 → 600 兜底（一次性收敛）。
         try:
             import os as _os
 
@@ -556,12 +556,12 @@ def load_config() -> Dict[str, Any]:
             "controller_token",
             "admin_username",
             "admin_password",
-            # v0.5.0-beta.14.7: 双地址 canonical 列表（不加则落盘值重载时被丢）。
+            # 双地址 canonical 列表（不加则落盘值重载时被丢）。
             "gateway_admin_urls",
             "gateway_admin_url",
-            # v0.5.0-beta.14.8：控制台特效安抚（bool，落盘值须重载保留）。
+            # 控制台特效安抚（bool，落盘值须重载保留）。
             "console_calm",
-            # v0.5.0-beta.14.12：控制台特效三档（落盘值须重载保留）。
+            # 控制台特效三档（落盘值须重载保留）。
             "console_effects",
             "console_session",
             "sglang",
@@ -570,10 +570,10 @@ def load_config() -> Dict[str, Any]:
         ):
             if key in raw and raw[key] is not None:
                 merged[key] = raw[key]
-        # v0.5.0-beta.14.1: 旧配置垃圾值降级 auto（不 400 不崩）。
+        # 旧配置垃圾值降级 auto（不 400 不崩）。
         if merged.get("address_mode") not in ("auto", "lan", "wan"):
             merged["address_mode"] = "auto"
-        # v0.5.0-beta.14.12：console_effects 迁移——
+        # console_effects 迁移——
         # 落盘缺省（老配置无此键）或非法值 → 按 console_calm 推导：
         # console_calm is False（用户曾选"完整特效"语义）→ "full"，否则
         # "light"（不 400 不崩，与 address_mode 降级先例一致）。
@@ -582,7 +582,7 @@ def load_config() -> Dict[str, Any]:
             merged["console_effects"] = (
                 "full" if raw.get("console_calm") is False else "light"
             )
-        # v0.5.0-beta.14.7: gateway 双地址——legacy 单值 → 列表（空列表时）；
+        # gateway 双地址——legacy 单值 → 列表（空列表时）；
         # 列表非空时 legacy 键镜像 urls[0]（老读者兼容）。
         if not merged.get("gateway_admin_urls"):
             legacy_gw = str(merged.get("gateway_admin_url") or "").strip()
@@ -611,7 +611,7 @@ def load_config() -> Dict[str, Any]:
             merged["controller_urls"] = controller_urls
             if token:
                 merged["controller_token"] = token
-        # v0.5.0-beta.12: sglang 旧版单地址 "url" → 双地址 "urls"（存量配置自动迁移）。
+        # sglang 旧版单地址 "url" → 双地址 "urls"（存量配置自动迁移）。
         # 迁移后 pop 旧键——否则旧 url 会作为第三个 failover 候选混入请求链。
         sg = merged.get("sglang")
         if isinstance(sg, dict) and not sg.get("urls"):
@@ -636,13 +636,13 @@ def save_config(
 ) -> None:
     """Persist the full config (caller is responsible for shape).
 
- v0.5.0-beta.14.14：成功保存后自动原子刷新 config.bak.json
+ 成功保存后自动原子刷新 config.bak.json
  ——下次加载主文件丢失/损坏时从中自愈（见 load_config/_restore_from_backup）。
  备份失败仅告警（主文件已验证落盘，不拖累保存）；refresh_backup=False 供
  导入路径（导入前先手工备份覆盖前状态，覆盖后备份保持为恢复点，不被新值
  顶掉）。
 
- v0.5.0-beta.14.27（F-A）：source=调用方标识（PUT /config / login /
+ ：source=调用方标识（PUT /config / login /
  relogin / import / self-heal…），每次真实写盘记审计环 + WARNING 日志
  （关键字段形态 diff，秘密值永不入日志）——配置被谁改的，日志说了算。
  """
@@ -658,7 +658,7 @@ def save_config(
     with _lock:
         try:
             _atomic_write_config(_CONFIG_PATH, config)
-            # v0.5.0-beta.14.12：写后回读验证（小文件，成本可忽略）
+            # 写后回读验证（小文件，成本可忽略）
             # ——「保存成功」必须以磁盘实况为准，读回不一致直接抛错（由端点
             # 转 500 详情）。
             _back = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -669,7 +669,7 @@ def save_config(
         # 写盘成功 → 读缓存立即失效（下次 load 必然回源读新内容）。
         _config_read_cache.update({"mtime_ns": None, "size": None, "data": None})
         _last_load_state = "ok"
-        # v0.5.0-beta.14.27（F-A）：写盘审计（环 + WARNING 日志，
+        # 写盘审计（环 + WARNING 日志，
         # 关键字段形态 diff——下次配置被谁改的，日志即定凶）。
         try:
             _record_config_write(source, _before, config)
@@ -700,7 +700,7 @@ def update_config(
  force_persist=True 显式放行。文件不存在（全新安装首写）不受影响。
  """
     merged = load_config()
-    # v0.5.0-beta.14.3: 地址条目 str | {url, auth?}——按位置合并（保留旧秘密）。
+    # 地址条目 str | {url, auth?}——按位置合并（保留旧秘密）。
     for key in ("matrix_homeservers", "controller_urls"):
         if key in patch and isinstance(patch[key], list):
             merged[key] = merge_address_entries(merged.get(key), patch[key])
@@ -709,13 +709,13 @@ def update_config(
         # "***" 是脱敏占位符（导出再导入场景）——不覆盖真实 token。
         if tok and tok != "***":
             merged["controller_token"] = tok
-    # v0.5.0-beta.12: L1 管理员验证字段（同 token 的脱敏占位符语义）。
+    # L1 管理员验证字段（同 token 的脱敏占位符语义）。
     for key in ("admin_username", "admin_password", "gateway_admin_url", "console_session"):
         if key in patch and isinstance(patch[key], str):
             val = patch[key].strip()
             if val and val != "***":
                 merged[key] = val
-    # v0.5.0-beta.14.7: gateway 双地址（同 matrix/controller 的位置合并语义）；
+    # gateway 双地址（同 matrix/controller 的位置合并语义）；
     # legacy 单值仍可写（同步为单元素列表）。
     if "gateway_admin_urls" in patch and isinstance(patch["gateway_admin_urls"], list):
         merged["gateway_admin_urls"] = merge_address_entries(
@@ -729,17 +729,17 @@ def update_config(
         and not patch.get("gateway_admin_urls")
     ):
         merged["gateway_admin_urls"] = [patch["gateway_admin_url"].strip()]
-    # v0.5.0-beta.14.8：console_calm 直存（bool，非法忽略）。
+    # console_calm 直存（bool，非法忽略）。
     if isinstance(patch.get("console_calm"), bool):
         merged["console_calm"] = patch["console_calm"]
-    # v0.5.0-beta.14.12：console_effects 三档直存
+    # console_effects 三档直存
     # （非 {light, off, full} 的字符串/类型一律忽略，不 400）。
     if (
         isinstance(patch.get("console_effects"), str)
         and patch["console_effects"] in ("light", "off", "full")
     ):
         merged["console_effects"] = patch["console_effects"]
-    # v0.5.0-beta.14.1: 地址模式（无效值归 auto；空串不动）。
+    # 地址模式（无效值归 auto；空串不动）。
     if "address_mode" in patch and isinstance(patch["address_mode"], str):
         val = patch["address_mode"].strip()
         if val:
@@ -747,8 +747,8 @@ def update_config(
     if "sglang" in patch and isinstance(patch["sglang"], dict):
         existing = merged.get("sglang") or {}
         incoming = dict(patch["sglang"])
-        # v0.5.0-beta.12: 双地址列表；兼容旧前端/旧配置的单地址 "url"。
-        # v0.5.0-beta.14.3: 条目 str | {url, auth?}（同 matrix/controller 合并语义）。
+        # 双地址列表；兼容旧前端/旧配置的单地址 "url"。
+        # 条目 str | {url, auth?}（同 matrix/controller 合并语义）。
         if "urls" in incoming and isinstance(incoming["urls"], list):
             incoming["urls"] = merge_address_entries(
                 (existing.get("urls") if isinstance(existing.get("urls"), list) else []),
@@ -813,8 +813,8 @@ def redact(config: Dict[str, Any]) -> Dict[str, Any]:
     out = json.loads(json.dumps(config))
     if out.get("controller_token"):
         out["controller_token"] = "***"
-    # v0.5.0-beta.14.3: 地址条目内凭据（basic password / bearer token）。
-    # v0.5.0-beta.14.7: gateway 双地址条目同语义（防 GET /config 泄露）。
+    # 地址条目内凭据（basic password / bearer token）。
+    # gateway 双地址条目同语义（防 GET /config 泄露）。
     for key in ("matrix_homeservers", "controller_urls", "gateway_admin_urls"):
         _redact_entry_list(out.get(key))
     sg = out.get("sglang")

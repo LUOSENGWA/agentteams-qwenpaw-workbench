@@ -10,7 +10,7 @@ const React: typeof ReactNS = host.React;
 // 字段 → ready 走本地推导。算法与 dashboard 同源——拓扑视图观感一致）──
 
 /** 插件 workflow 节点（api.ts WorkflowNode 的 DAG 投影）。
- * v0.5.0-beta.13.11（拓扑优化）：补 subagent/task——Controller
+ * 补 subagent/task——Controller
  * workflow_run nodes 自带执行者字段，此前投影丢弃（节点只有名字，
  * 看不出谁在跑）。 */
 interface WfNodeInput {
@@ -46,7 +46,7 @@ interface ProjectDag {
 }
 
 /** 节点状态 → 看板状态空间（revision 保留自身状态；
- * v0.5.0-beta.13.12：cancelled 独立态——此前折入 blocked 是状态映射
+ * cancelled 独立态——此前折入 blocked 是状态映射
  * 不一致缺陷（报告：cancelled 任务显示成 blocked）。 */
 const WORKFLOW_STATUS_MAP: Record<string, string> = {
   pending: "pending",
@@ -157,7 +157,7 @@ export function buildWorkflowDag(nodes: WfNodeInput[]): ProjectDag {
           ? n.name.trim()
           : id,
       status,
-      // v0.5.0-beta.13.12：终态（completed/failed/revision/blocked/
+      // 终态（completed/failed/revision/blocked/
       // cancelled）不画 ready 青框——此前只排 completed，cancelled 节点
       // 依赖全绿时误显「就绪」。
       ready: allDepsDone && !DAG_TERMINAL_STATUSES.has(status),
@@ -190,8 +190,7 @@ interface DagLayout {
 /** 自上而下分层布局（与 dashboard layoutProjectDag 同算法）：
  * layer 0 在顶，同层左→右。
  *
- * v0.5.0-beta.13.24（图优化，只需优化这个图）：
- * ① 层行水平居中——旧版每行从 PAD 左对齐，节点少的行贴左、
+ * * ① 层行水平居中——旧版每行从 PAD 左对齐，节点少的行贴左、
  * 整体左重右空（与 mermaid 居中行的观感差距主因）；先扫最大行
  * 宽，各行居中，图整体视觉重心居中。
  * ② 节点默认 190×40 → 200×44（文字更松，subagent 行不挤）。 */
@@ -250,7 +249,7 @@ export function WorkflowDagSvg(props: {
   nodeHeight?: number;
   gapY?: number;
   title?: string;
-  /** v0.5.0-beta.13.11（拓扑优化）：缩放（工具条 +/-/复位驱动）。 */
+  /** ：缩放（工具条 +/-/复位驱动）。 */
   scale?: number;
   /** 节点点击 → 任务巡检 Drawer（看板任务卡同款入口）。 */
   onNodeClick?: (id: string) => void;
@@ -269,7 +268,7 @@ export function WorkflowDagSvg(props: {
   const GY = gapY;
   const tr = useT();
 
-  // v0.5.0-beta.13.24（图优化）：hover 高亮——旧版节点无 hover 反馈，
+  // hover 高亮——旧版节点无 hover 反馈，
   // 看不出可点；悬停加粗描边 + 阴影提示交互（仅可点模式启用）。
   const [hoverId, setHoverId] = React.useState<string | null>(null);
 

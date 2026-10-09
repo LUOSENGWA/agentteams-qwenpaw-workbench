@@ -41,7 +41,7 @@ const DataIcon = pick("DatabaseOutlined");
 const PRIMARY = "var(--app-accent, #FF7F16)";
 
 // ── 正源类型（端点已合并；Controller 升级后自动生效）──
-// v0.5.0-beta.12: 字段 1:1 对齐 Go projectSummary（v0.5.0-beta.12 核对 6 字段；本次补
+// 字段 1:1 对齐 Go projectSummary（核对 6 字段；本次补
 // name/created_at/updated_at/worker_count——排序/筛选需要时间戳与团队）。
 interface ProjectSummary {
   project_id: string;
@@ -56,7 +56,7 @@ interface ProjectSummary {
   worker_count?: number;
 }
 
-// v0.5.0-beta.14.26：局部类型提升为 api.ts 共享类型（群内项目文件面板与
+// 局部类型提升为 api.ts 共享类型（群内项目文件面板与
 // 产物 tab 同源同型）；组件内渲染代码经别名零改动。旧局部
 // WorkflowResponse 的 nodes 字段本文件无读取点（grep 核实），随提升移除。
 type TaskDetail = WorkflowTaskDetail; // 组件内渲染代码零改动别名
@@ -75,14 +75,14 @@ function artifactDownloadUrl(
 
 // ── 工具函数 ──────────────────────────────────────────────
 /**
- * v0.5.0-beta.12: 项目时间戳（排序/树标题共用）。上游 ListProjects 的
+ * 项目时间戳（排序/树标题共用）。上游 ListProjects 的
  * projectSummary 目前不含时间戳字段（v1.2.3 实测全无 created_at/
  * updated_at；meta.json 有 UpdatedAt string 未映射进列表——上游候选
  * PR 已记）。字段优先（number/string 都认，上游补字段后自动生效）→
  * 缺失用 project_id 内嵌日期近似（YYYYMMDD 段）→ 都没有 = 0。
- * v0.5.0-beta.12 曾直接取不存在的字段 → 全 0 排序空转（交付前自查发现）。
+ * 曾直接取不存在的字段 → 全 0 排序空转（交付前自查发现）。
  */
-/** workflow 详情富化元数据（v0.5.0-beta.12 ：时间多源需要项目房间 id）。 */
+/** workflow 详情富化元数据（时间多源需要项目房间 id）。 */
 interface ProjectMeta {
   /** 项目来源房间（workflow meta.source_room_id，项目专用群）。 */
   roomId?: string;
@@ -91,10 +91,10 @@ interface ProjectMeta {
 }
 
 /**
- * v0.5.0-beta.12: 项目时间戳（排序/树标题共用）。上游 ListProjects 的
+ * 项目时间戳（排序/树标题共用）。上游 ListProjects 的
  * projectSummary 目前不含时间戳字段（v1.2.3 实测全无 created_at/
  * updated_at；meta.json 有 UpdatedAt string 未映射进列表——上游候选
- * PR 已记）。v0.5.0-beta.12 起走 api.ts projectActivityTs 多源：
+ * PR 已记）。起走 api.ts projectActivityTs 多源：
  * 真实字段（列表/workflow 详情，上游补字段后自动生效）→ 项目房间
  * 最后消息（roomsCache 零额外请求）→ project_id 内嵌日期近似 → 0。
  */
@@ -188,7 +188,7 @@ interface FileEntry {
   source: string; // 项目名 / 房间名
   time: number;
   sender: string;
-  /** MIME（v0.5.0-beta.12：文件名无扩展时预览靠它识别 md——修 RAW 不渲染）。 */
+  /** MIME（文件名无扩展时预览靠它识别 md——修 RAW 不渲染）。 */
   mimeType?: string;
   /** 正源：项目产物下载参数。 */
   projectId?: string;
@@ -212,12 +212,12 @@ function Artifacts(props: ArtifactsProps) {
   const [tasksByProject, setTasksByProject] = React.useState<
     Record<string, TaskDetail[]>
   >({});
-  /** v0.5.0-beta.12 ：项目时间多源元数据（roomId/updatedAt，workflow 详情来）。 */
+  /** 项目时间多源元数据（roomId/updatedAt，workflow 详情来）。 */
   const [metaByProject, setMetaByProject] = React.useState<
     Record<string, ProjectMeta>
   >({});
   const [projectsLoading, setProjectsLoading] = React.useState(false);
-  // v0.5.0-beta.12: 正源降级原因（横幅提示，不再静默空列表）。
+  // 正源降级原因（横幅提示，不再静默空列表）。
   const [o19Fail, setO19Fail] = React.useState<
     "auth" | "not_deployed" | "error" | null
   >(null);
@@ -230,7 +230,7 @@ function Artifacts(props: ArtifactsProps) {
   // 选择态：selectedKey = tree 节点 key。
   const [selectedKey, setSelectedKey] = React.useState<string>("root");
   const [expandedKeys, setExpandedKeys] = React.useState<ReactNS.Key[]>(["projects"]);
-  // v0.5.0-beta.12: 项目产物排序 + 团队筛选（纯前端，零后端改动）。
+  // 项目产物排序 + 团队筛选（纯前端，零后端改动）。
   const [projSort, setProjSort] = React.useState<
     "time_desc" | "time_asc" | "name"
   >("time_desc");
@@ -238,7 +238,7 @@ function Artifacts(props: ArtifactsProps) {
   const [preview, setPreview] = React.useState<PreviewFile | null>(null);
 
   // 正源加载：GET /api/v1/projects（404 → 端点未部署 → projects=[] fallback）。
-  // v0.5.0-beta.12: 走 fetchProjectSummaries 统一解包——此前只认裸数组，Controller
+  // 走 fetchProjectSummaries 统一解包——此前只认裸数组，Controller
   // 信封 {projects,total} 被误判空列表（200 真数据仍渲染「暂无项目」，
   // 且 o19Fail=null 无降级横幅）。
   const refreshProjects = React.useCallback(async (force = false) => {
@@ -283,15 +283,15 @@ function Artifacts(props: ArtifactsProps) {
   }, [refreshProjects, refreshItems]);
 
   // 选中项目时懒加载其 workflow（tasks_detail）。
-  // v0.5.0-beta.12: 带 ?team=——同一 project_id 跨团队/全局目录重复注册时裸 id
+  // 带 ?team=——同一 project_id 跨团队/全局目录重复注册时裸 id
   // 寻址 Controller 回 409 ambiguous（实测）；此前 catch 静默吞 → 重复项目的任务
   // 恒空（「项目产物（0）」的第二成因）。与 fetchWorkflowProjects 的
-  // v0.5.0-beta.12 ?team= 修法对齐。
+  // ?team= 修法对齐。
   const loadProjectTasks = React.useCallback(
     async (projectId: string, teamId?: string) => {
       if (tasksByProject[projectId]) return;
       try {
-        // v0.5.0-beta.14.26：统一走 api.ts 共享缓存函数（30s TTL + 标签
+        // 统一走 api.ts 共享缓存函数（30s TTL + 标签
         // 失效）——与群内项目文件面板同源同速；手动刷新经 refresh()
         // 显式失效后穿透。
         const wf = await fetchProjectWorkflow(projectId, teamId);
@@ -299,7 +299,7 @@ function Artifacts(props: ArtifactsProps) {
           ...prev,
           [projectId]: wf.tasks_detail || [],
         }));
-        // v0.5.0-beta.12 ：存时间多源元数据（source_room_id → 房间最后消息；
+        // 存时间多源元数据（source_room_id → 房间最后消息；
         // updated_at → 真实生命周期时间）。
         setMetaByProject((prev) => ({
           ...prev,
@@ -318,7 +318,7 @@ function Artifacts(props: ArtifactsProps) {
     [tasksByProject],
   );
 
-  // v0.5.0-beta.12: 项目列表就绪后并行预取全部项目的 workflow（tasks_detail）——
+  // 项目列表就绪后并行预取全部项目的 workflow（tasks_detail）——
   // 展开/收起问题根治：旧版任务只在选择行时异步加载，项目节点在加载前
   // children:[] → antd Tree 当叶子渲染 → 无展开箭头，「展开没反应」；
   // 且展开状态与数据到达不同步。预取后树全同步，展开/收起纯状态操作。
@@ -343,13 +343,13 @@ function Artifacts(props: ArtifactsProps) {
     return seen;
   }, [rooms, items]);
 
-  // ── v0.5.0-beta.12: 筛选（团队）+ 排序（时间/名称）——树/右列/根计数同源跟随 ──
+  // ── 筛选（团队）+ 排序（时间/名称）——树/右列/根计数同源跟随 ──
   const visibleProjects = React.useMemo(() => {
     let list = projects || [];
     if (teamFilter !== "all") {
       list = list.filter((p) => p.team_id === teamFilter);
     }
-    // 时间键见模块级 projectTs()（v0.5.0-beta.12 起多源：真实字段 →
+    // 时间键见模块级 projectTs()（起多源：真实字段 →
     // 项目房间最后消息 → id 内嵌日期近似；此前列表端点无时间戳字段
     // 且 id 无日期时全 0，用户「显示不了时间」）。
     const tsOf = (p: ProjectSummary) =>
@@ -443,7 +443,7 @@ function Artifacts(props: ArtifactsProps) {
       const dispName = p.title || p.name || p.project_id;
       const meta = metaByProject[p.project_id];
       const ts = projectTs(p, meta);
-      // 时间标签规则（v0.5.0-beta.12）：真实来源（字段/已加入的项目房间
+      // 时间标签规则（）：真实来源（字段/已加入的项目房间
       // last_ts）显完整时间；仅 id 近似日期时只显 MM-DD，不挂 00:00 噪音。
       const hasReal = Boolean(p.updated_at || p.created_at || meta?.updatedAt);
       const roomKnown = Boolean(
@@ -461,12 +461,12 @@ function Artifacts(props: ArtifactsProps) {
             : "";
       return {
         key: `proj:${p.project_id}`,
-        // v0.5.0-beta.12: 两行标题——第 1 行 名称+状态 tag；第 2 行 团队·更新时间
+        // 两行标题——第 1 行 名称+状态 tag；第 2 行 团队·更新时间
         // （配合顶部筛选/排序控件，让排序结果在树上可感知）。
         title: (
           <div style={{ lineHeight: 1.35, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-              {/* v0.5.0-beta.12: antd Tooltip 显全名（原生 title 在树节点里不生效）；
+              {/* antd Tooltip 显全名（原生 title 在树节点里不生效）；
  名称 ≠ project_id 时 tooltip 附带 id（id 是寻址键，排障要用）。 */}
               <antd.Tooltip
                 title={
@@ -539,7 +539,7 @@ function Artifacts(props: ArtifactsProps) {
         title: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{KIND_META[k].icon} {KIND_META[k].label}（{inKind.length}）</span>,
         children: Array.from(srcCounts.entries()).map(([src, cnt]) => ({
           key: `asrc:${k}:${src}`,
-          // v0.5.0-beta.12: 两行排版 + antd Tooltip——
+          // 两行排版 + antd Tooltip——
           // ① 原生 title 在 rc-tree 节点里不生效（用户真机验证），改 antd Tooltip
           // （portal 渲染，即时显示，不受树节点包装影响）；
           // ② 房间名单独占一行（260px 全宽给名字），计数下沉第二行灰字；
@@ -619,7 +619,7 @@ function Artifacts(props: ArtifactsProps) {
       const key = String(keys[0] || "root");
       setSelectedKey(key);
       if (key.startsWith("proj:")) {
-        // v0.5.0-beta.12: 点行 = 选中 + 展开（展开箭头在旧版要等任务异步加载完
+        // 点行 = 选中 + 展开（展开箭头在旧版要等任务异步加载完
         // 才出现，用户点行无展开反馈，视为「展开有问题」）。
         setExpandedKeys((prev) =>
           prev.includes(key) ? prev : [...prev, key],
@@ -635,9 +635,9 @@ function Artifacts(props: ArtifactsProps) {
   );
 
   const refresh = React.useCallback(async () => {
-    // v0.5.0-beta.12: 手动刷新连任务缓存一起清——之前失败/空的项目永不重试。
+    // 手动刷新连任务缓存一起清——之前失败/空的项目永不重试。
     setTasksByProject({});
-    // v0.5.0-beta.14.26：手动刷新穿透全局 30s 读缓存——对当前已加载的
+    // 手动刷新穿透全局 30s 读缓存——对当前已加载的
     // 项目集合显式失效（tags 为空数组时 invalidateTags 为无害空操作）。
     invalidateTags(
       Object.keys(tasksByProject).map((p) => `project:${p}`),
@@ -650,7 +650,7 @@ function Artifacts(props: ArtifactsProps) {
   const openPreview = React.useCallback(
     (f: FileEntry) => {
       if (f.mxcUrl) {
-        // v0.5.0-beta.12: resolveFileTarget——mxc→媒体代理（apiPath + getApiUrl 解析）。
+        // resolveFileTarget——mxc→媒体代理（apiPath + getApiUrl 解析）。
         // 裸 /agentteams-proxy/... 路径落 SPA 兜底取回 index.html 壳
         //（历史缺陷「内容是网页」根因）。
         const t = resolveFileTarget(f.mxcUrl);
@@ -683,8 +683,8 @@ function Artifacts(props: ArtifactsProps) {
     [],
   );
 
-  // v0.5.0-beta.12: 左栏（产物树）宽度可拖拽——200–480px，默认 260，localStorage 持久化
-  // （话题面板同款交互）。拖拽期直接改 DOM（v0.5.0-beta.12 教训：高频交互不进
+  // 左栏（产物树）宽度可拖拽——200–480px，默认 260，localStorage 持久化
+  // （话题面板同款交互）。拖拽期直接改 DOM（教训：高频交互不进
   // React 渲染循环），松手才提交 state + 持久化。
   const [treeColW, setTreeColW] = React.useState(() => {
     const v = Number(localStorage.getItem("agentteams-qwenpaw-workbench:artifacts-tree-w"));
@@ -731,7 +731,7 @@ function Artifacts(props: ArtifactsProps) {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      {/* v0.5.0-beta.12: 正源降级横幅——「新接口的产物还没扫描到」可视化：
+      {/* 正源降级横幅——「新接口的产物还没扫描到」可视化：
  Controller 项目产物（产物端点）不可用时只剩房间附件扫描。 */}
       {o19Fail ? (
         <div
@@ -781,7 +781,7 @@ function Artifacts(props: ArtifactsProps) {
           <span style={{ color: "#999", cursor: "help", fontSize: 12 }}>ⓘ</span>
         </antd.Tooltip>
         <div style={{ flex: 1 }} />
-        {/* v0.5.0-beta.12: 项目产物排序 + 团队筛选（纯前端，项目就绪后显示） */}
+        {/* 项目产物排序 + 团队筛选（纯前端，项目就绪后显示） */}
         {projects && projects.length > 0 ? (
           <>
             <antd.Select
@@ -818,7 +818,7 @@ function Artifacts(props: ArtifactsProps) {
         </antd.Tooltip>
       </div>
 
-      {/* v0.5.0-beta.12 ：左右分栏独立滚动（用户「产物页面左右两栏要做成分开滚动」）。
+      {/* 左右分栏独立滚动（用户「产物页面左右两栏要做成分开滚动」）。
  容器定高（RoomChat 同款 calc 经验值 100vh-230 再减工具栏行 ~48）+
  两栏各自 overflow auto——此前整页滚动，树和表一起滚、排序控件滚出视野。 */}
       <div
@@ -830,11 +830,11 @@ function Artifacts(props: ArtifactsProps) {
         }}
       >
         {/* 左栏：产物树（项目 → 任务 → 文件；附件 → 类型 → 来源）。
- v0.5.0-beta.12: overflow hidden 硬裁剪——长节点标题（房间附件的来源=房间名）
+ overflow hidden 硬裁剪——长节点标题（房间附件的来源=房间名）
  之前溢出 260px 伸进右栏区，右栏 Table 后绘覆盖其上 = 用户所见
  「房间附件宽度不一样，右边栏挡住房间产物左边栏」。
- v0.5.0-beta.12: 宽度可拖拽 200–480px（默认 260，持久化）——房间名长，宽度用户自定。
- v0.5.0-beta.12 : 树自身垂直滚动（不再随整页滚）。 */}
+ 宽度可拖拽 200–480px（默认 260，持久化）——房间名长，宽度用户自定。
+ 树自身垂直滚动（不再随整页滚）。 */}
         <div
           ref={treeColRef}
           style={{
@@ -878,7 +878,7 @@ function Artifacts(props: ArtifactsProps) {
           />
         </div>
 
-        {/* 右栏：文件列表（v0.5.0-beta.12 : 自身垂直滚动，与左栏分开） */}
+        {/* 右栏：文件列表（自身垂直滚动，与左栏分开） */}
         <div
           style={{ flex: 1, minWidth: 0, marginLeft: 10, overflowY: "auto" }}
         >
@@ -895,7 +895,7 @@ function Artifacts(props: ArtifactsProps) {
               rowKey="key"
               size="small"
               pagination={false}
-              // v0.5.0-beta.12: 固定列合计 ~700px，窄窗口下表格在右栏内部横滚，
+              // 固定列合计 ~700px，窄窗口下表格在右栏内部横滚，
               // 不再撑破 flex 容器溢出页面（与左栏互挡的另一半根因）。
               scroll={{ x: "max-content" }}
               dataSource={visibleFiles}
@@ -960,7 +960,7 @@ function Artifacts(props: ArtifactsProps) {
                   key: "actions",
                   width: 176,
                   render: (_: unknown, f: FileEntry) => {
-                    // v0.5.0-beta.12: mxc/正源 → apiPath（host.fetch blob 下载，带鉴权）；
+                    // mxc/正源 → apiPath（host.fetch blob 下载，带鉴权）；
                     // http 直链 → 原样导航。裸插件路径落 SPA 兜底（index.html 壳），
                     // 解析后 /api 路径裸导航带不了鉴权头会 401——两条都不通。
                     const target = f.mxcUrl
@@ -981,7 +981,7 @@ function Artifacts(props: ArtifactsProps) {
                         f.kind === "document" ||
                         f.kind === "data" ||
                         f.kind === "code");
-                    // v0.5.0-beta.14.21：行内动作按钮统一 ActionBtn（图标+文字+可见规格），
+                    // 行内动作按钮统一 ActionBtn（图标+文字+可见规格），
                     // 弃纯图标 type="text"（观感糊弄、不可发现）。
                     return (
                       <div style={{ display: "flex", gap: 6 }}>
@@ -1030,6 +1030,6 @@ function Artifacts(props: ArtifactsProps) {
   );
 }
 
-// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
+// 面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(Artifacts);

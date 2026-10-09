@@ -73,7 +73,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-/** v0.5.0-beta.13.8 六 tab 补齐——新字段组草稿（key=字段路径，
+/** 六 tab 补齐——新字段组草稿（key=字段路径，
  * null/undefined=未改动；buildDiff 时与当前值比对决定是否入 diff）。 */
 type EditVal = string | boolean | null;
 type EditMap = Record<string, EditVal>;
@@ -87,7 +87,7 @@ function WorkerRuntimeConfig({
   /** 当前账号 L1（controller token）——L1-only 字段（并发限流/上下文管理/
  * shell 组/auto_title）可编辑；L2 只读（PUT 非 L2 白名单键被服务端 403）。 */
   l1?: boolean;
-  /** v0.5.0-beta.13.10（B1：L1 登录仍见「只读」Alert）：跳「设置」页
+  /** ：跳「设置」页
  * 配 Controller token 的入口（L1 账号密码登录只落 Higress Console
  * 会话 ≠ Controller 管理 token——两套凭证，Alert 给明确指引）。 */
   onOpenSettings?: () => void;
@@ -100,7 +100,7 @@ function WorkerRuntimeConfig({
   const [gateMsg, setGateMsg] = React.useState("");
 
   // 编辑值（null = 未改动）。
-  // v0.5.0-beta.13.7（13.6 「基本 tab 的拖动条有问题，QwenPaw 是输入
+  // （13.6 「基本 tab 的拖动条有问题，QwenPaw 是输入
   // 数字的」）：maxIters Slider 废弃——QwenPaw 正源配置面**无滑杆**，迭代
   // 上限 = Agent Loop → Default → iteration 门（enable Switch + InputNumber
   // 1..500）；保存时按 useAgentConfig L183-185 语义镜像 legacy max_iters。
@@ -125,7 +125,7 @@ function WorkerRuntimeConfig({
   const [maxRetries, setMaxRetries] = React.useState<string | null>(null);
   const [backoffBase, setBackoffBase] = React.useState<string | null>(null);
   const [backoffCap, setBackoffCap] = React.useState<string | null>(null);
-  // v0.5.0-beta.13.8（13.7 「ReAct 智能体/LLM 并发限流/上下文管理/
+  // （13.7 「ReAct 智能体/LLM 并发限流/上下文管理/
   // 长期记忆 都做进去了吗——接口实盘全在」）：六 tab 补齐的新字段组。
   // ReAct 智能体（shell_*/auto_title，L1）+ LLM 并发限流（5 键，L1）+
   // 上下文管理（light_context_config 嵌套，L1）+ 长期记忆（reme，L2 白名单）。
@@ -490,7 +490,7 @@ function WorkerRuntimeConfig({
     if (mirrorVal !== null && mirrorVal !== num(cfg.max_iters)) {
       diff.max_iters = mirrorVal;
     }
-    // ── v0.5.0-beta.13.8 六 tab 补齐 ───────────────────────────────
+    // ── 六 tab 补齐 ───────────────────────────────
     // ReAct 智能体（L1-only 键；L2 面板侧已只读，双保险）。
     if (l1) {
       const st = shellEdits.shell_command_timeout;
@@ -793,7 +793,7 @@ function WorkerRuntimeConfig({
     }
   };
 
-  /** v0.5.0-beta.13.8：模板创建自定义 loop 模式（QwenPaw buildCustomLoopMode
+  /** 模板创建自定义 loop 模式（QwenPaw buildCustomLoopMode
  * 同语义：模板 gate 序列 → makeGate（id=`${type}-${nonce}` + 默认参数））。 */
   const createViaTemplate = async () => {
     const nm = tmplName.trim();
@@ -871,7 +871,7 @@ function WorkerRuntimeConfig({
   };
 
   // 折叠头（Worker 管理展开区内的可折叠段）。
-  // v0.5.0-beta.13.16（13.15 「运行配置的按钮做好看一点，和资源管理的
+  // （13.15 「运行配置的按钮做好看一点，和资源管理的
   // 按钮做一样」）：text link → 与「资源管理」区块同款卡片式折叠头
   // （▸/▾ + 图标 + 标题 + qwenpaw 标签 + 边框卡片）。
   if (!open) {
@@ -928,7 +928,7 @@ function WorkerRuntimeConfig({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {/* v0.5.0-beta.13.16：展开态补收起抓手（原展开后无法收起）。 */}
+        {/* 展开态补收起抓手（原展开后无法收起）。 */}
         <span
           style={{ width: 12, fontSize: 10, color: "#888", cursor: "pointer" }}
           onClick={() => setOpen(false)}
@@ -987,7 +987,7 @@ function WorkerRuntimeConfig({
         />
       ) : null}
 
- {/* v0.5.0-beta.13.6（太简陋太不直观）：按 QwenPaw console
+ {/* ：按 QwenPaw console
  Agent Config 页正源重构呈现——Tabs 分域 + 每域 Card + 表单项行
  （label + tooltip 左 / 控件右）+ 滑杆带数值显示。旧版把所有字段
  挤进一行 flex-wrap：窄容器换行错乱、语义分组不可见。
@@ -1001,7 +1001,7 @@ function WorkerRuntimeConfig({
               label: tr("ReAct 智能体"),
               children: (
                 <antd.Card size="small" title={tr("ReAct 智能体")} style={{ marginTop: 4 }}>
-                  {/* v0.5.0-beta.13.8 六 tab 补齐：按 QwenPaw ReactAgentCard
+                  {/* 六 tab 补齐：按 QwenPaw ReactAgentCard
  行序对齐（语言/时区/项目目录/代码能力 = QwenPaw 本机
  字段，Controller running-config 不暴露，不做）。
  13.8：shell 组与 auto_title 在 L1 下可编辑（接口实盘
@@ -1101,7 +1101,7 @@ function WorkerRuntimeConfig({
               label: tr("智能体 Loop 设置"),
               children: (
                 <antd.Card size="small" title={tr("智能体 Loop 设置")} style={{ marginTop: 4 }}>
-                  {/* v0.5.0-beta.13.7（13.6 「Loop 设置抄 QwenPaw 没抄
+                  {/* （13.6 「Loop 设置抄 QwenPaw 没抄
  完」）：按 QwenPaw AgentLoopCard 补齐——Default 模式 gate
  管道（iteration/doom_loop/rubric）+ Goal/Mission 内置
  参数，全部 InputNumber（QwenPaw 配置面无滑杆）；13.6
@@ -1110,7 +1110,7 @@ function WorkerRuntimeConfig({
  对账 qwenpaw LoopConfig（iteration 1..500 / doom
  window≥2 / threshold 0..1 / stages after≥1 / rubric
  1..10 / goal 1..500 / mission 1..100·retry 0..10）。 */}
-                  {/* v0.5.0-beta.13.8（13.7 「QwenPaw 有模板的，你可以抄
+                  {/* （13.7 「QwenPaw 有模板的，你可以抄
  过来——别忘了开源项目的礼仪」）：Loop 模板——QwenPaw
  AgentLoopCard 的「Loop 模板」区移植（出处/署名见文件
  顶部 LOOP_TEMPLATES 注释；模板/gate 默认值逐值保留
@@ -1258,7 +1258,7 @@ function WorkerRuntimeConfig({
                             value={
                               iterValue !== null && isPosInt(iterValue)
                                 ? Number(iterValue)
-                                : // v0.5.0-beta.13.10（B1b：「最大迭代等窗口应该
+                                : // （B1b：「最大迭代等窗口应该
                                   // 被自动填入当前值，而不是空的框」）：实盘
                                   // max_iterations=None（未显式配置）时预填
                                   // 运行时默认 40（QwenPaw LOOP 正源默认）——
@@ -1767,7 +1767,7 @@ function WorkerRuntimeConfig({
                 </antd.Card>
               ),
             },
-            // v0.5.0-beta.13.8 六 tab 补齐：LLM 并发限流（QwenPaw
+            // 六 tab 补齐：LLM 并发限流（QwenPaw
             // LlmRateLimiterCard 同款 5 键，L1 可编辑 / L2 只读）。
             {
               key: "rate",
@@ -1862,7 +1862,7 @@ function WorkerRuntimeConfig({
                 </antd.Card>
               ),
             },
-            // v0.5.0-beta.13.8：上下文管理（light_context_config 嵌套合并，
+            // 上下文管理（light_context_config 嵌套合并，
             // L1 可编辑 / L2 只读）——字段名逐字对账实盘 GET。
             {
               key: "ctx",
@@ -2051,7 +2051,7 @@ function WorkerRuntimeConfig({
                 </antd.Card>
               ),
             },
-            // v0.5.0-beta.13.8：长期记忆（reme_light_memory_config——
+            // 长期记忆（reme_light_memory_config——
             // L2 白名单键，全角色可编辑核心项；embedding/目录只读展示）。
             {
               key: "mem",
@@ -2162,7 +2162,7 @@ function WorkerRuntimeConfig({
             },
             {
               key: "system",
-              // v0.5.0-beta.13.24（·）：审批级别不再只读——内嵌
+              // 审批级别不再只读——内嵌
               // 与团队管理卡同源的 ApprovalControl（四档卡选择器 + 读/写
               // 双路径回退 + L1/L2 权限 + OFF capability 提示，零新写链路）。
               // 数据面仍走审批端点 #1216（WRC PUT 白名单本就不含

@@ -4,7 +4,7 @@
  * Two routes, one component:
  * - /apps/agentteams-qwenpaw-workbench (PawApp, via registerRoutes) → App Center +
  * desktop Dock window. /apps/ routes intentionally get NO sidebar menu.
- * ⚠ v0.5.0-beta.14.15：web console 的 PawApp 加载器按 plugin_type 门控
+ * ⚠ web console 的 PawApp 加载器按 plugin_type 门控
  * （expectedType="app"），本插件 manifest 有 meta.tools → 推断 TOOL →
  * web 端直接打开 /apps/ 会报 "PawApp frontend plugin not found"（实测
  * 2.2.2b4）。入口统一走 /plugin/（见下）；/apps/ 仅 desktop PawApp
@@ -20,7 +20,7 @@
 import type * as ReactNS from "react";
 import LOGO_URL from "./lib/logo";
 
-// v0.5.0-beta.12.2（去掉占位 emoji，直接用 AgentTeams logo）——
+// ——
 // 宿主 menu.add/registerRoutes 的 icon 接受 ReactNode（console types.ts
 // 「ReactNode for custom」）：传 AgentTeams logo（?inline data URI）的
 // <img> 元素；宿主 React 缺失的极端场景降级回 emoji。
@@ -35,7 +35,7 @@ const LOGO_ICON: ReactNS.ReactNode = hostReact
     })
   : "🏢";
 
-// v0.5.0-beta.13.11（QwenPaw 同款 Tab 震动）：侧栏 logo 待审批徽标——
+// 侧栏 logo 待审批徽标——
 // 轮询 /room-approvals（与通知中心同源），出现待审批即红点计数 + 图标
 // 晃一次（wbTabShake）。宿主侧栏 icon 接受 ReactNode（console types.ts
 // 「ReactNode for custom」）；宿主 React 缺失时降级回静态 LOGO_ICON。
@@ -96,7 +96,7 @@ function SidebarApprovalIcon() {
             style: {
               position: "absolute",
               top: -5,
- left: -7, // v0.5.0-beta.13.21：未读气泡左上角
+ left: -7, // 未读气泡左上角
               minWidth: 13,
               height: 13,
               lineHeight: "13px",
@@ -156,7 +156,7 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-/* v0.5.0-beta.12.4：Worker session 运行指示呼吸动画——照搬 QwenPaw
+/* Worker session 运行指示呼吸动画——照搬 QwenPaw
  AgentStatusIndicator 的 statusPulse（1.2s ease-in-out，opacity 1↔0.35 +
  box-shadow 扩散）。动画挂在 class 上（非内联），reduced-motion 可关。 */
 @keyframes wbSessionPulse {
@@ -166,7 +166,7 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
 .wb-session-dot.running {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }
-/* v0.5.0-beta.12.8（第 11 轮）：聊天工作流卡 LIVE 徽标脉冲点（绿，节奏同
+/* ：聊天工作流卡 LIVE 徽标脉冲点（绿，节奏同
  wbSessionPulse 1.2s）。 */
 @keyframes wbLivePulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
@@ -175,12 +175,12 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
 .wb-live-dot {
   animation: wbLivePulse 1.2s ease-in-out infinite;
 }
-/* v0.5.0-beta.13.6：聊天输入区 loop 状态 chip 呼吸点（复用 wbSessionPulse
+/* 聊天输入区 loop 状态 chip 呼吸点（复用 wbSessionPulse
  蓝色节奏；awaiting_user 为静态琥珀点，不挂动画）。 */
 .wb-loop-dot.running {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }
-/* v0.5.0-beta.13.11（QwenPaw 同款 Tab 震动）：有待审批时侧栏 logo
+/* ：有待审批时侧栏 logo
  晃一次（bell shake，1.2s）；持续待批挂红点计数（静态，不循环晃）。 */
 @keyframes wbTabShake {
   0%, 100% { transform: rotate(0); }
@@ -220,7 +220,7 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   height: 100%;
   overflow: auto;
 }
-/* v0.5.0-beta.14.12：控制台特效三档（console_effects，
+/* 控制台特效三档（console_effects，
  默认 light）取代旧 console_calm bool——旧 data-wb-calm 属性删除
  （迁移后不再写）：
  - off = 旧 calm 行为照搬（RunningGlow 旋转光环/呼吸层停动画，
@@ -234,7 +234,7 @@ html[data-wb-fx="off"] [class*="RunningGlow-module"] *,
 html[data-wb-fx="off"] [class*="ambientLight"] {
   animation: none !important;
 }
-/* v0.5.0-beta.14.11：console 玻璃模糊选择器清单（各
+/* console 玻璃模糊选择器清单（各
  backdrop-filter 元素是核显常驻合成负担）。清单 = 对运行中
  qwenpaw 2.2.2b4 console dist CSS 的全量扫描（36 处声明 / 17 个选择器，
  实际 blur 规则全列；已 backdrop-filter:none 的规则——dockableSidebar
@@ -260,7 +260,7 @@ html[data-wb-fx="off"] [class*="HubShell-module__topbar"] {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-/* v0.5.0-beta.14.12：light 档（默认）——同清单 blur 半径
+/* light 档（默认）——同清单 blur 半径
  封顶 6px（保留玻璃观感，大幅降低大半径 blur 的合成负担）。 */
 html[data-wb-fx="light"] [class*="stickyGroupHeader"],
 html[data-wb-fx="light"] [class*="dockableSidebar"][class*="floating"],
@@ -292,13 +292,13 @@ html[data-wb-fx="light"] .wb-loop-dot.running {
 `;
   document.head.appendChild(style);
 }
-// v0.5.0-beta.14.12：启动默认 light 档（配置加载后覆写为
+// 启动默认 light 档（配置加载后覆写为
 // 落盘值；旧 data-wb-calm 属性已删除，迁移后不再写）。
 if (typeof document !== "undefined") {
   document.documentElement.dataset.wbFx = "light";
 }
 
-// v0.5.0-beta.14.14：特效档位跨页生效。 的配置驱动覆写只
+// 特效档位跨页生效。 的配置驱动覆写只
 // 写在 WorkbenchPage 的配置回填里（工作台挂载才执行），其余页面（chat、
 // /plugin/*、设置……）永远停在模块级 light 默认。这里补全局同步：插件前端
 // 启动即 GET /config，把 console_effects 写到 html[data-wb-fx]（取数失败
@@ -348,7 +348,7 @@ if (typeof window !== "undefined") {
 // 宿主聊天审批卡定制渲染（Phase 4 审批流）：
 // 覆盖工具审批主来源 driver_policy 的原生卡——批准/拒绝走同一后端
 // POST /approval/{action} 链路，成功 onResolved 关闭卡片。
-// v0.5.0-beta.12 agentteams 源——Worker 工具审批经后端 host_bridge
+// agentteams 源——Worker 工具审批经后端 host_bridge
 // 注入宿主收件箱（source_type="agentteams"），同一张卡渲染（卡内按
 // toolParams.worker 区分显示 Worker/房间/审批请求详情）。
 const APPROVAL_CARD_SOURCES = ["driver_policy", "agentteams"] as const;

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""KB/approval 的 #1208/#1216 兜底数据面回归测试（v0.5.0-beta.12.5）。
+"""KB/approval 的 #1208/#1216 兜底数据面回归测试（）。
 
 背景（L2 实损修复）：插件 KB 与 approval 此前全走 Controller Docker 代理
 （archive/exec），而 ``/docker/`` 挂 ``ActionGateway``（L1-only）→ L2

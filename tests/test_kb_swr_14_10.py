@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.10：KB 端点 SWR 持久缓存单测。
+"""KB 端点 SWR 持久缓存单测。
 
 背景（实测）：冷读容器 tree 最慢 13.8s、graph 同级、/kb/agents 3.3s 且无
 缓存（每次全量）；命中缓存 = 4-5ms。修法 = stale-while-revalidate + 磁盘

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""代理 4xx failover + 直拨族 failover 回归（v0.5.0-beta.14.2，）。
+"""代理 4xx failover + 直拨族 failover 回归（，）。
 
 问题根因（14.2 切外网 controller 401、知识图谱 500、连不上）：
 1. catch-all 代理对**任何** HTTP 响应都 _mark_working（含 401）→ 一次 401
