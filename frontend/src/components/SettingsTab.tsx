@@ -567,10 +567,13 @@ const SettingsTab = React.memo(function SettingsTab({
       try {
         const text = await file.text();
         const cfg = JSON.parse(text) as Record<string, unknown>;
-        await requestJson("/agentteams-proxy/config", {
-          method: "PUT",
+        // 走专用 import 端点（非 PUT /config）——导入=用户显式整盘
+        // 替换语义，自带「覆盖前状态备份」回滚点，且不受修订号门控
+        // （14.30 无 rev 保存 409；导入不需要也不应需要旧页面状态）。
+        await requestJson("/agentteams-proxy/config/import", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ config: cfg }),
+          body: JSON.stringify(cfg),
         });
         message.success(tr("配置已导入"));
         onConfigChange();
@@ -1003,6 +1006,19 @@ const SettingsTab = React.memo(function SettingsTab({
           </span>
         </div>
       )}
+      {/* 未加载锁（14.30）：config===null（加载窗口/失败）时整个表单
+  只读显形——此前默认态表单完整可编辑观感（密码框空着像要填），
+  用户误判「配置丢了」重填（今早实锤）；10/8 wipe 的触发面也在此。
+  保存按钮另被 disabled 门控、后端另有 no-rev 409 兜底，三层互备。 */}
+      <div
+        style={{
+          display: "grid",
+          gap: 24,
+          opacity: config === null ? 0.45 : 1,
+          pointerEvents: config === null ? "none" : undefined,
+        }}
+        aria-disabled={config === null || undefined}
+      >
       {/* ：分节卡片化——「聊天页面」卡片。 */}
       <div style={{ ...cardBox, fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
         {tr("内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到最快可达的一条，外网/内网切换自动识别。")}
@@ -1244,7 +1260,13 @@ const SettingsTab = React.memo(function SettingsTab({
                   await requestJson("/agentteams-proxy/config", {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ config: { address_mode: v } }),
+                    // 带修订号——14.30 起无 rev 保存（磁盘有文件时）409，
+                    // 防陈旧标签页/默认态覆盖。rev 过期=外部改过磁盘，
+                    // 409 显形提示刷新，不误覆盖。
+                    body: JSON.stringify({
+                      config: { address_mode: v },
+                      config_rev: config.config_rev,
+                    }),
                   });
                   message.success(tr("地址模式已保存并即时生效"));
                   onConfigChange();
@@ -1282,13 +1304,17 @@ const SettingsTab = React.memo(function SettingsTab({
                 message.warning(tr("配置尚未加载完成，暂不能保存"));
                 return;
               }
-              // 与地址模式同款：变更即落盘（轻量 PUT）。
+              // 与地址模式同款：变更即落盘（轻量 PUT，带修订号——
+              // 14.30 无 rev 409 门控，同地址模式路径）。
               void (async () => {
                 try {
                   await requestJson("/agentteams-proxy/config", {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ config: { console_effects: v } }),
+                    body: JSON.stringify({
+                      config: { console_effects: v },
+                      config_rev: config.config_rev,
+                    }),
                   });
                   message.success(tr("特效档已保存并即时生效"));
                   onConfigChange();
@@ -1984,6 +2010,7 @@ const SettingsTab = React.memo(function SettingsTab({
  「配置页的 QwenPaw 宿主 Agent 技能不需要了」）——SkillsTab 组件
  已删（死代码零残留）；宿主技能系统本体是 QwenPaw 核心功能，
  不受影响（SkillCenter 团队技能池保留）。 */}
+      </div>
     </div>
   );
 });
