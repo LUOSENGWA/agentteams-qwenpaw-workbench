@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""全局拨号闸门与计数（v0.5.0-beta.14.6，/）。
+"""全局拨号闸门与计数（，/）。
 
 背景：插件所有出站 HTTP（异步 httpx.AsyncClient / matrix_client 同步
 httpx.Client / selfcheck 探针）此前无全局并发上限——「点开全部 tab」时
@@ -62,7 +62,7 @@ _stats: Dict[str, Any] = {
     "async_inflight": 0,
     "async_peak": 0,
     "async_paths": Counter(),
-    # v0.5.0-beta.14.7：bytes 计量——计数之外再记响应字节（带宽验收对账）。
+    # bytes 计量——计数之外再记响应字节（带宽验收对账）。
     "async_bytes": 0,
     "async_path_bytes": Counter(),
     "sync_total": 0,
@@ -107,7 +107,7 @@ def _exit(kind: str) -> None:
 
 
 def _record_bytes(path: str, n: int) -> None:
-    """v0.5.0-beta.14.7：响应字节累计（总计数 + 按路径，供 top_paths 对账）。"""
+    """响应字节累计（总计数 + 按路径，供 top_paths 对账）。"""
     if not path or n <= 0:
         return
     with _lock:
@@ -128,7 +128,7 @@ class GatedAsyncClient(httpx.AsyncClient):
             _enter("async", str(request.url.path))
             try:
                 resp = await super().send(request, **kwargs)
-                # v0.5.0-beta.14.7：响应字节计量（失败/流式不记，不致命）。
+                # 响应字节计量（失败/流式不记，不致命）。
                 try:
                     _record_bytes(str(request.url.path), len(resp.content))
                 except Exception:
@@ -162,7 +162,7 @@ def should_failover_status(status: int) -> bool:
 def dial_stats() -> Dict[str, Any]:
     """计数快照：供 GET /debug/dial-stats 与测试对账。"""
     with _lock:
-        # v0.5.0-beta.14.7：top 20→100（带宽排障要看全路径分布）+ 每项 bytes。
+        # top 20→100（带宽排障要看全路径分布）+ 每项 bytes。
         top: List[Any] = _stats["async_paths"].most_common(100)
         return {
             "async": {
@@ -180,7 +180,7 @@ def dial_stats() -> Dict[str, Any]:
         }
 
 
-# v0.5.0-beta.14.12：后台任务共用通道锁——同一时刻至多一路
+# 后台任务共用通道锁——同一时刻至多一路
 # 后台扫描在跑（worker_status / projects_workflow / KB 刷新三类轮转），
 # 避免周期性齐发打满闸门（dial-stats 实测 peak=cap=24）抢前台（保存/
 # 测试/切页排队）。
@@ -206,7 +206,7 @@ async def bg_slot(
     timeout: float = _BG_LOCK_TIMEOUT,
     yield_threshold: int = _BG_YIELD_THRESHOLD,
 ) -> Iterator[bool]:
-    """v0.5.0-beta.14.12：后台扫描共用通道（让权 + 单飞）。
+    """后台扫描共用通道（让权 + 单飞）。
 
  - 让权：async inflight > yield_threshold（前台忙）→ yield False，
  本轮跳过（下一周期再来）；

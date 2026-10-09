@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.26（F2）: Console 会话自动重登（透明重试）回归。
+""": Console 会话自动重登（透明重试）回归。
 
-实盘反馈 10/8「每次搞完，basic 登录状态也没了」——真根因：Console
+症状：「每次搞完，basic 登录状态也没了」——真根因：Console
 管理会话 cookie 有服务端 TTL，过期后旧版**只被动判死
 （_console_session_expired=True）、无任何自动重登**，用户每次插件
 重载/会话过期必须手动重验证。凭据（admin_username/admin_password）
@@ -132,7 +132,7 @@ def relogin_env(monkeypatch):
     update_calls: list[dict] = []
 
     def fake_update(patch, source=""):
-        # v0.5.0-beta.14.27：update_config 新增 source 参（写盘审计）——
+        # update_config 新增 source 参（写盘审计）——
         # fake 同步签名（relogin 以位置参传入）。
         update_calls.append(json.loads(json.dumps(patch)))
         return json.loads(json.dumps(state))

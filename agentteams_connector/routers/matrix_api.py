@@ -31,7 +31,7 @@ from ..router import (
 
 
 def build_matrix_router() -> APIRouter:
-    """matrix 域子路由（build_router 原段逐字搬移，任务 190）。"""
+    """matrix 域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
     @router.get("/teams/rooms")
     # 【历史替代，勿删】实时聚合版；现役用 /teams/sync（缓存+force）。排查缓存问题时的对照端点。
@@ -57,7 +57,7 @@ def build_matrix_router() -> APIRouter:
             raise HTTPException(status_code=401, detail="未登录，请先在配置页登录")
 
         try:
-            # v0.5.0-beta.14.5: 同步 matrix_client 调用 to_thread 化——避免冻结
+            # 同步 matrix_client 调用 to_thread 化——避免冻结
             # 宿主事件循环（原实现直调同步 httpx，最长 20s）。
             rooms = (
                 await asyncio.to_thread(
@@ -86,7 +86,7 @@ def build_matrix_router() -> APIRouter:
                 "member_count": 0,
                 "name_fallback": False,
             }
-            # v0.5.0-beta.14.5: 单房两往返（成员 + 房名）并发——原串行 2×RTT/房，
+            # 单房两往返（成员 + 房名）并发——原串行 2×RTT/房，
             # 75 房叠加 WAN 实测 11.3s。best-effort 容错与日志语义不变。
             async def _members() -> None:
                 try:
@@ -281,7 +281,7 @@ def build_matrix_router() -> APIRouter:
         for base in base_urls:
             target = f"{base.rstrip('/')}{encoded}{query_string}"
             try:
-                # v0.5.0-beta.14.18（14.17 「运行日志 HTTP 502: Docker API
+                # （14.17 「运行日志 HTTP 502: Docker API
                 # 401」根因）：该端点漏在 14.3 的 _headers_for 覆盖凭据修复面
                 # 外——外网固定档（address_mode=wan）经公网网关时只发 Bearer，
                 # 网关 Basic 门拒收 → 401 → 本端点转 502。其余 15+ 拨号点早已
@@ -353,7 +353,7 @@ def build_matrix_router() -> APIRouter:
                 )
             target = f"@{target}:{server}"
         try:
-            # v0.5.0-beta.14.5: to_thread（同步 httpx，最长 20s）。
+            # to_thread（同步 httpx，最长 20s）。
             result = await asyncio.to_thread(
                 matrix_client.create_dm, homeserver, token, target
             )
@@ -391,7 +391,7 @@ def build_matrix_router() -> APIRouter:
             raise HTTPException(status_code=401, detail="未登录，请先在配置页登录")
 
         limit = max(1, min(int(limit), 20))
-        # v0.5.0-beta.14.17：上限 10→5 页。limit≤20 条
+        # 上限 10→5 页。limit≤20 条
         # 散在 500+ 条之外=该成员在此房近乎沉默，抽屉价值低；5 页
         # （250 条）覆盖正常场景，省最坏 5×~250KB 上游拨号。
         max_pages = max(1, min(int(maxPages), 5))
@@ -404,7 +404,7 @@ def build_matrix_router() -> APIRouter:
             params = {
                 "dir": "b",
                 "limit": "50",
-                # v0.5.0-beta.14.7（带宽）：只要 message 事件。
+                # 只要 message 事件。
                 "filter": '{"types":["m.room.message"]}',
             }
             if from_token:
@@ -738,7 +738,7 @@ def build_matrix_router() -> APIRouter:
         last_error = "无可用地址"
         for hs in homeservers:
             try:
-                # v0.5.0-beta.14.5: to_thread（同步 httpx，最长 20s）。
+                # to_thread（同步 httpx，最长 20s）。
                 data = await asyncio.to_thread(
                     matrix_client.login, hs, req.user, req.password
                 )
@@ -759,7 +759,7 @@ def build_matrix_router() -> APIRouter:
                     hs,
                     data.get("device_id", "?"),
                 )
-                # v0.5.0-beta.12: 切账号 = 数据源切换——清 60s 聚合缓存（手动刷新不再
+                # 切账号 = 数据源切换——清 60s 聚合缓存（手动刷新不再
                 # 命中旧账号数据）+ 重置 sync 游标（since 跨账号无效，旧游标
                 # 会让 /sync 一直 401、@通知链全断）。
                 invalidate_data_caches("login")
@@ -793,7 +793,7 @@ def build_matrix_router() -> APIRouter:
         if level == "l1":
             return await selfcheck.run_l1(cfg)
         if level == "l2":
-            # v0.5.0-beta.14.5: run_l2 全同步（httpx 10s+15s）——to_thread 化。
+            # run_l2 全同步（httpx 10s+15s）——to_thread 化。
             return await asyncio.to_thread(selfcheck.run_l2, cfg)
         if level == "l3":
             return await selfcheck.run_l3(cfg)
@@ -805,7 +805,7 @@ def build_matrix_router() -> APIRouter:
 
     @router.get("/media/proxy")
     async def proxy_direct_url(url: str) -> Response:
-        """Server-side fetch of a direct http(s) file URL (v0.5.0-beta.12 ).
+        """Server-side fetch of a direct http(s) file URL ().
 
  Worker m.file 事件的 url 除 mxc:// 外也可能是直链（内网 MinIO/
  本地 http 服务等）。浏览器 fetch 跨域会被 CORS 拦、<img>/a[download]

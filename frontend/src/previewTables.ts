@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from "fflate";
 
-/** v0.5.0-beta.12 ：表格预览解析——csv（RFC4180-lite）+ xlsx（fflate 解包 +
+/** 表格预览解析——csv（RFC4180-lite）+ xlsx（fflate 解包 +
  * DOMParser 解析 sheet XML，零重依赖：不引 SheetJS 400KB+）。
  * 统一输出 { header, rows } 供 antd Table 渲染（前 300 行 × 30 列上限）。 */
 

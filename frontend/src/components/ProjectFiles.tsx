@@ -61,11 +61,11 @@ function statusColor(status: string): string {
 }
 
 /** 单项目文件拉取（workflow 明细 → tasks_detail 声明的 result/spec/deliverables）。
- * v0.5.0-beta.13.13：带 &team= 限定——同一 project_id 跨团队重名时
+ * 带 &team= 限定——同一 project_id 跨团队重名时
  * Controller 回 409（fetchWorkflowProjects 同款处理），此前本面板不传
  * team → 重名项目 409 被静默吞掉 → 「读取不到」的另一条根因。 */
 async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
-  // v0.5.0-beta.14.26：统一走 api.ts 共享缓存函数（30s TTL + 标签失效）——
+  // 统一走 api.ts 共享缓存函数（30s TTL + 标签失效）——
   // 与产物 tab 同源同速（此前本面板 Drawer 挂载即逐项目裸拉、重开全量重拉）。
   const wf = await fetchProjectWorkflow(ev.runId, ev.team_id);
   const tasks = Array.isArray(wf.tasks_detail) ? wf.tasks_detail : [];
@@ -96,7 +96,7 @@ async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
   return collected;
 }
 
-/** 团队共享空间 / 项目文件面板（v0.5.0-beta.12）。
+/** 团队共享空间 / 项目文件面板（）。
  *
  * 数据源决策：dashboard 共享空间是 MinIO 直读（dashboard 与 Controller 同机
  * 有凭据）；插件在用户侧外网，部署侧反代只暴露 Controller API——Controller
@@ -104,7 +104,7 @@ async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
  * artifact）。故第一版 = 产物端点 任务文件（workflow tasks_detail 声明的
  * result/spec/deliverables），房间级共享空间待上游文件 API PR。
  *
- * v0.5.0-beta.13.13（13.12 聊天群的项目文件读取不到）匹配模型重构：
+ * 匹配模型重构：
  * 旧版只认 `ev.room_id === 当前房间 room_id` 严格相等——项目从 QQ/其他通道
  * 发起时 source_room_id 为 `qq:...` 等非 Matrix 房间 ID（实盘项目
  * 2026-09-23 实证），任何 Matrix 房间里开 📁 都空面板。新版：
@@ -112,11 +112,11 @@ async function fetchProjectFiles(ev: WorkflowEvent): Promise<TaskFile[]> {
  * ② 其他项目（不匹配但已注册）→ 折叠列表懒加载（点开才拉）；
  * ③ 每项目拉取失败显形（旧版静默 continue = 黑盒）+ 刷新按钮全量重拉
  * 已加载项目。
- * v0.5.0-beta.13.14（13.13）：面板只显示当前房间项目（「其他
+ * 面板只显示当前房间项目（「其他
  * 项目」折叠区移除——聊天上下文只讲本群）；标题行去冗余（Drawer 标题
  * 已带文件夹 SVG +「项目文件」）；文件行主点击=弹窗预览（同产物 tab
  * FilePreview，不再触发下载跳外部应用）+ 独立下载按钮。
- * v0.5.0-beta.13.15（B3 根因修）：关联判定改 roomMatchesProject 双源
+ * 关联判定改 roomMatchesProject 双源
  * （source_room_id 严格匹配 ∪ 标准项目群命名 `Project: <项目名>`）——
  * 旧严格相等在「项目从 QQ/DM 发起」时 source_room_id≠项目群 ID，
  * 标准项目群也 miss（13.14 空面板）。 */
@@ -129,9 +129,9 @@ export default function ProjectFiles(props: {
   const t = useThemeColors();
   const tr = useT();
 
-  // v0.5.0-beta.13.14：只显示当前房间项目（13.13 的「其他项目」折叠区
+  // 只显示当前房间项目（13.13 的「其他项目」折叠区
   // 按移除——聊天上下文只讲本群）。
-  // v0.5.0-beta.13.15：匹配改 roomMatchesProject 双源判定——
+  // 匹配改 roomMatchesProject 双源判定——
   // source_room_id 严格相等只覆盖「发起房间=当前房间」；标准项目群
   // （名 `Project: <项目名>`）按命名关联（根因：project_room_id 不
   // 走 API，见 api.ts roomMatchesProject 头注）。
@@ -158,7 +158,7 @@ export default function ProjectFiles(props: {
     async (ev: WorkflowEvent, force = false) => {
       if (!force && loadedSet[ev.runId]) return;
       if (loadingSet[ev.runId]) return;
-      // v0.5.0-beta.14.26：force 路径先显式失效——手动刷新必穿透 30s 读缓存。
+      // force 路径先显式失效——手动刷新必穿透 30s 读缓存。
       if (force) invalidateTags([`project:${ev.runId}`]);
       setLoadingSet((s) => ({ ...s, [ev.runId]: true }));
       setErrByProject((s) => ({ ...s, [ev.runId]: "" }));
@@ -180,7 +180,7 @@ export default function ProjectFiles(props: {
 
   const refresh = React.useCallback(async () => {
     // 全量重拉：当前房间项目（13.14 起面板只含本群项目）。
-    // v0.5.0-beta.14.26：先逐项目显式失效——手动刷新必穿透 30s 读缓存。
+    // 先逐项目显式失效——手动刷新必穿透 30s 读缓存。
     setLoadedSet({});
     for (const ev of roomProjects) invalidateTags([`project:${ev.runId}`]);
     await Promise.all(roomProjects.map((ev) => loadOne(ev, true)));
@@ -220,7 +220,7 @@ export default function ProjectFiles(props: {
       name: basenameOf(f.path) || f.path,
       url: resolvePluginUrl(p),
       apiPath: p,
-      // v0.5.0-beta.12: 正源走 host.fetch（带鉴权）；裸插件路径落 SPA 兜底
+      // 正源走 host.fetch（带鉴权）；裸插件路径落 SPA 兜底
       needsFetch: true,
     });
   };
@@ -298,7 +298,7 @@ export default function ProjectFiles(props: {
                       }}
                     >
                       {kindTag(f.kind)}
- {/* v0.5.0-beta.13.14：主点击=弹窗预览
+ {/* 主点击=弹窗预览
  （同产物 tab FilePreview，不再触发下载→外部应用
  打开）；下载=独立按钮（blob 下载带鉴权）。 */}
                       <span
@@ -316,7 +316,7 @@ export default function ProjectFiles(props: {
                       >
                         <PageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {basenameOf(f.path) || f.path}
                       </span>
-                      {/* v0.5.0-beta.14.21：下载统一 ActionBtn（图标+文字+可见规格）。 */}
+                      {/* 下载统一 ActionBtn（图标+文字+可见规格）。 */}
                       <ActionBtn
                         icon={<DownloadIcon />}
                         label={tr("下载")}
@@ -344,7 +344,7 @@ export default function ProjectFiles(props: {
 
   return (
     <div style={{ display: "grid", gap: 10, padding: 12 }}>
-      {/* v0.5.0-beta.13.14：标题行只留房间标签+操作（Drawer 标题已带
+      {/* 标题行只留房间标签+操作（Drawer 标题已带
  文件夹 SVG +「项目文件」，这里不再重复）。 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <antd.Tag style={{ fontSize: 10.5 }}>{room?.name || ""}</antd.Tag>

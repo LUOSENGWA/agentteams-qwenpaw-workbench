@@ -1,5 +1,5 @@
 /**
- * ⚙️ 资源管理（v0.5.0-beta.13.15 B5b 集成 / 13.16 合并重构）。
+ * ⚙️ 资源管理（B5b 集成 / 13.16 合并重构）。
  *
  * 位置：团队拓扑 Worker 行展开区（WorkerManage → WorkerRow）。
  * （13.14）：「技能中心和频道和 MCP 和工具集成到团队拓扑」；
@@ -56,7 +56,7 @@ export default function WorkerResourcePanel({
   const items = [
     {
       key: "skills",
-      // v0.5.0-beta.13.16（13.15 「技能中心和 MCP 完全和 worker 拓扑
+      // （13.15 「技能中心和 MCP 完全和 worker 拓扑
       // 合并」）：只读概览 + 跳转链接 → 直接嵌入技能中心的可编辑矩阵
       // （SkillCenter onlyWorker+sections——同一组件、同一保存链路，就地编辑）。
       label: (
@@ -65,7 +65,7 @@ export default function WorkerResourcePanel({
         </span>
       ),
       children: (
-        // v0.5.0-beta.13.21（13.20 「worker 也是，和技能中心一样的搜索/
+        // （13.20 「worker 也是，和技能中心一样的搜索/
         // 上传/自定义等，都集成在拓扑里面」）：技能节=目录（搜索/上传/自定义/
         // 下载，scope=该 Worker 所属团队）+ 可编辑分配矩阵（preload 等）。
         <SkillCenter
@@ -78,7 +78,7 @@ export default function WorkerResourcePanel({
     },
     {
       key: "mcp",
-      // v0.5.0-beta.13.16：只读列表 → 嵌入技能中心 MCP 卡（L1 就地编辑
+      // 只读列表 → 嵌入技能中心 MCP 卡（L1 就地编辑
       // mcpServers；L2 只读——elevated capability 设计前契约如此）。
       label: (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -96,7 +96,7 @@ export default function WorkerResourcePanel({
           <NotesIcon size={13} /> {tr("频道")}
         </span>
       ),
-      // v0.5.0-beta.14.22（D4 #3）：频道编辑器是 QwenPaw 独有面（改
+      // 频道编辑器是 QwenPaw 独有面（改
       // agent.json channels，qwenpaw bridge 消费）——非 qwenpaw 禁用页签 +
       // 说明（对齐后端 400 语义，不发起无谓的频道拨号）。
       disabled: isQwenpawOnlyDisabled(worker.runtime),
@@ -105,7 +105,7 @@ export default function WorkerResourcePanel({
           <RuntimeNotice runtime={worker.runtime} />
         </div>
       ) : mounted.channels ? (
-        // v0.5.0-beta.14.19：懒挂载保活后传显式 active 门——
+        // 懒挂载保活后传显式 active 门——
         // 抽屉关闭/切到其他 tab 时 30s 轮询停（此前默认 active=true 恒跑）。
         <WorkerChannels workers={[worker]} active={open && tab === "channels"} />
       ) : (

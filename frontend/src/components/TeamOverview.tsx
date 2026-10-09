@@ -30,7 +30,7 @@ const ReloadIcon = pick("ReloadOutlined");
 const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
 const GREEN = "#52c41a"; // 状态绿（DM 标签）
 const FAV_KEY = "agentteams-qwenpaw-workbench:favorites";
-// v0.5.0-beta.13.12（13.11 房间列表排序感觉可以优化）：排序偏好
+// 排序偏好
 // 客户端本地持久化（与收藏同一思路——Element 房间排序存客户端本地）。
 const SORT_KEY = "agentteams-qwenpaw-workbench:room-sort";
 const CARD_RADIUS = 10; // 卡片圆角
@@ -44,7 +44,7 @@ function memberShortName(mxid: string, member?: TeamMember): string {
   return localpart || mxid;
 }
 
-/** v0.5.0-beta.13.22（13.21 「未读气泡改到卡片头像右上角」）：
+/** ：
  * 原实现=名称行内灰色胶囊（占宽、挤名字）。改为返回徽章参数，由卡片
  * 头像外层 UnreadBubble 渲染（头像右上角，Element 同款；13.24 自绘
  * 居中+含住）。红=highlight（@我/提及），灰=普通未读；都 0 = null。 */
@@ -58,7 +58,7 @@ function unreadBadgeOf(
   return null;
 }
 
-/** v0.5.0-beta.13.24（·：「数字应居中且不超过气泡」）：自绘
+/** ：自绘
  * 未读气泡替代 antd.Badge——antd 默认胶囊在窄字宽/自定义色下数字偏心
  * 且 3 位数+overflowCount 时溢出气泡边缘。本组件 flex 双向居中 +
  * min-width 16/padding 0 4（气泡随内容长宽自适应，永不溢出）+ 1.5px
@@ -96,7 +96,7 @@ function UnreadBubble({ count, color }: { count: number; color: string }) {
   );
 }
 
-/* v0.5.0-beta.12（dashboard 对齐：房间卡最后消息正文预览）。
+/* 。
  72 字截断 + 媒体标记（图片 🖼 / 文件 📎，按扩展名判定；后端 last_body
  已含 m.image/m.file 的 body=文件名）。 */
 const MEDIA_IMG_RE = /\.(png|jpe?g|gif|webp|heic|bmp|svg)$/i;
@@ -127,14 +127,14 @@ function GroupCard({
   user_id?: string;
   onOpenRoom?: (roomId: string) => void;
   onDm?: (mxid: string, roomId?: string) => void;
-  /** v0.5.0-beta.13.14：本房间项目名（卡片名称下小字显示）。 */
+  /** 本房间项目名（卡片名称下小字显示）。 */
   projectTitles?: string[];
-  /** v0.5.0-beta.12 B3：收藏态（客户端本地）。 */
+  /** B3：收藏态（客户端本地）。 */
   isFavorite?: boolean;
   onToggleFavorite?: (roomId: string) => void;
   /** 5.0.0 release：房间 ⋯ 菜单（退出 / 退出并删除，Element 同款列表操作）。 */
   onExitRoom?: (room: TeamRoom, forget: boolean) => void;
-  /** v0.5.0-beta.12.4：全部 Worker MXID——任一 Worker 正在输入则显蓝点。 */
+  /** 全部 Worker MXID——任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
 }) {
   const t = useThemeColors();
@@ -155,7 +155,7 @@ function GroupCard({
       style={{ borderRadius: CARD_RADIUS, cursor: "pointer" }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
- {/* v0.5.0-beta.13.22：群卡片加头像（原无头像，未读气泡无处挂）——
+ {/* 群卡片加头像（原无头像，未读气泡无处挂）——
  头像右上角=未读徽章（红=highlight/灰=普通未读）。 */}
         {(() => {
           const avatar = (
@@ -163,7 +163,7 @@ function GroupCard({
               <UsersIcon size={16} />
             </antd.Avatar>
           );
-          // v0.5.0-beta.13.24：自绘 UnreadBubble（居中+含住+白描边环）。
+          // 自绘 UnreadBubble（居中+含住+白描边环）。
           const ub = unreadBadgeOf(room);
           return (
             <div style={{ position: "relative", flexShrink: 0, lineHeight: 0 }}>
@@ -194,7 +194,7 @@ function GroupCard({
             >
               {formatChatTime(room.last_ts)}
             </span>
-            {/* v0.5.0-beta.12 B3：收藏切换（stopPropagation 防误开房间） */}
+            {/* B3：收藏切换（stopPropagation 防误开房间） */}
             <span
               role="button"
               onClick={(e) => {
@@ -251,7 +251,7 @@ function GroupCard({
               </antd.Dropdown>
             </span>
           </div>
-          {/* v0.5.0-beta.13.14：房间名下面显示项目名
+          {/* 房间名下面显示项目名
  （数据=Controller 工作流事件 room_id→title；无项目不占行）。 */}
           {projectTitles && projectTitles.length ? (
             <div
@@ -284,7 +284,7 @@ function GroupCard({
               {room.member_count} 人 {membersOpen ? "▴" : "▾"}
             </antd.Tag>
           </div>
-          {/* v0.5.0-beta.12：最后消息正文预览（72 字 + 媒体标记）。 */}
+          {/* 最后消息正文预览（72 字 + 媒体标记）。 */}
           {(() => {
             const p = lastBodyPreview(room.last_body);
             return p ? (
@@ -381,12 +381,12 @@ function DmCard({
   room: TeamRoom;
   user_id?: string;
   onOpenRoom?: (roomId: string) => void;
-  /** v0.5.0-beta.12 B3：收藏态（客户端本地）。 */
+  /** B3：收藏态（客户端本地）。 */
   isFavorite?: boolean;
   onToggleFavorite?: (roomId: string) => void;
   /** 5.0.0 release：房间 ⋯ 菜单（退出 / 退出并删除，Element 同款列表操作）。 */
   onExitRoom?: (room: TeamRoom, forget: boolean) => void;
-  /** v0.5.0-beta.12.4：对方 Worker 的 session 状态（仅 Worker 个人房间有值）。 */
+  /** 对方 Worker 的 session 状态（仅 Worker 个人房间有值）。 */
   sessionState?: WorkerSessionState;
 }) {
   const other = Object.entries(room.members || {}).find(
@@ -411,7 +411,7 @@ function DmCard({
         background: t.popoverBg,
       }}
     >
- {/* v0.5.0-beta.13.22：未读徽章挂头像右上角（原名称行内灰胶囊）。 */}
+ {/* 未读徽章挂头像右上角（原名称行内灰胶囊）。 */}
       {(() => {
         const avatar = (
           <MxcAvatar
@@ -422,7 +422,7 @@ function DmCard({
             {otherName.slice(0, 1).toUpperCase()}
           </MxcAvatar>
         );
-        // v0.5.0-beta.13.24：自绘 UnreadBubble（居中+含住+白描边环）。
+        // 自绘 UnreadBubble（居中+含住+白描边环）。
         const ub = unreadBadgeOf(room);
         return (
           <div style={{ position: "relative", flexShrink: 0, lineHeight: 0 }}>
@@ -443,7 +443,7 @@ function DmCard({
         >
           {otherName}
           {sessionState ? <WorkerSessionDot state={sessionState} /> : null}
-          {/* v0.5.0-beta.12 B3：收藏切换（stopPropagation 防误开房间） */}
+          {/* B3：收藏切换（stopPropagation 防误开房间） */}
           <span
             role="button"
             onClick={(e) => {
@@ -529,7 +529,7 @@ function DmCard({
   );
 }
 
-/** v0.5.0-beta.12 ：邀请区（Element 同款邀请交互）。
+/** 邀请区（Element 同款邀请交互）。
  * 数据=/sync rooms.invite 段（后端 _parse_sync_rooms 解析）；
  * 接受=POST /rooms/{id}/invite/{userId}/accept，拒绝=POST /rooms/{id}/leave
  * （CS-API v3 标准端点，走通用代理零新后端；Element matrix-js-sdk
@@ -664,7 +664,7 @@ function InviteSection(props: {
 
 export interface TeamOverviewProps {
   rooms: TeamRoom[]; // 数据由父组件通过 api.ts fetchTeamsSync 获取（14.x 起 sync 为唯一房间源）
-  /** v0.5.0-beta.12 ：待接受邀请（独立区块，不受群/私聊过滤影响）。 */
+  /** 待接受邀请（独立区块，不受群/私聊过滤影响）。 */
   invites?: InviteRoom[];
   /** 接受/拒绝成功后回调（父组件 force 重同步）。 */
   onInviteSettled?: () => void;
@@ -679,13 +679,13 @@ export interface TeamOverviewProps {
   /** 一键全部已读：所有未读房间逐房间双写回执。 */
   onMarkAllRead?: () => void;
   markingAllRead?: boolean;
-  /** v0.5.0-beta.12.4：Worker 个人房间 room_id → session 状态（DM 卡圆点）。 */
+  /** Worker 个人房间 room_id → session 状态（DM 卡圆点）。 */
   workerSessionByRoom?: Record<string, WorkerSessionState>;
-  /** v0.5.0-beta.12.4：全部 Worker MXID（团队群 running 判定）。 */
+  /** 全部 Worker MXID（团队群 running 判定）。 */
   workerMxids?: Set<string>;
-  /** v0.5.0-beta.13.14：房间 room_id → 该项目名列表（房间卡名称下显示）。 */
+  /** 房间 room_id → 该项目名列表（房间卡名称下显示）。 */
   roomProjectNames?: Record<string, string[]>;
-  /** v0.5.0-beta.13.21（侧栏角色分组）：MXID → 角色标签
+  /** ：MXID → 角色标签
  * （Leader/Worker/Manager）——「私聊」视图按对象角色分区显示；
  * 无此 prop 或查不到角色时退回扁平列表（人类 DM 归「其他」）。 */
   workerRoleByMxid?: Record<string, string>;
@@ -712,7 +712,7 @@ function TeamOverview(props: TeamOverviewProps) {
     workerRoleByMxid,
   } = props;
   const [filter, setFilter] = React.useState<"all" | "group" | "dm">("all");
-  // v0.5.0-beta.12 B3：房间收藏（客户端本地 localStorage——Element 无房间级收藏协议：
+  // B3：房间收藏（客户端本地 localStorage——Element 无房间级收藏协议：
   // 其 pin = m.room.pinned_events 消息固定且需房间写权限；收藏=本地偏好，
   // 与 Element X 房间排序存客户端本地同一思路，跨设备不共享）。
   const [favorites, setFavorites] = React.useState<string[]>(() => {
@@ -736,7 +736,7 @@ function TeamOverview(props: TeamOverviewProps) {
       return next;
     });
   }, []);
-  // v0.5.0-beta.13.12：排序偏好（recent=最后消息新到旧 / name=名称 A-Z）。
+  // 排序偏好（recent=最后消息新到旧 / name=名称 A-Z）。
   // 客户端本地持久化；主列表与分区共用，收藏/提及区恒置顶不受影响。
   const [roomSort, setRoomSort] = React.useState<"recent" | "name">(() => {
     try {
@@ -797,13 +797,13 @@ function TeamOverview(props: TeamOverviewProps) {
     0,
   );
   // 分区：团队群（>2 人）与 DM 私聊，顶层 Segmented 切换。
-  // v0.5.0-beta.12: member_count 未填充（新房间 summary 未回）按 0 计——
+  // member_count 未填充（新房间 summary 未回）按 0 计——
   // 否则新建的 DM 两个列表都不进，表现为"说已创建实际没有"。
-  // v0.5.0-beta.12: 分区内按最后消息时间新到旧排序（用户：聊天主页要时间+倒序）。
-  // : 「全部」改 Element 式单一时间序混合列表（群/DM 交错）——
+  // 分区内按最后消息时间新到旧排序（用户：聊天主页要时间+倒序）。
+  // 「全部」改 Element 式单一时间序混合列表（群/DM 交错）——
   // 此前两段式（群段整段在前）最新 DM 会沉到所有旧群下面，真机反馈
   // 「房间列表没做时间排序」= 感知无时间序。群/DM 过滤仍分区展示。
-  // v0.5.0-beta.13.12：排序=用户偏好（recent 默认时间新到旧 / name A-Z），
+  // 排序=用户偏好（recent 默认时间新到旧 / name A-Z），
   // 替代此前恒定时间序。roomSort 来自 state（闭包每渲染更新，无需 memo）。
   const sortRooms = (list: TeamRoom[]) =>
     roomSort === "name"
@@ -812,7 +812,7 @@ function TeamOverview(props: TeamOverviewProps) {
         )
       : [...list].sort((a, b) => (b.last_ts || 0) - (a.last_ts || 0));
   const isFav = (r: TeamRoom) => favorites.includes(r.room_id);
-  // v0.5.0-beta.13.12（Element X 提及区语义）：@我/高亮未读的房间独立置顶
+  // @我/高亮未读的房间独立置顶
   // 分区（unread_highlight>0），主列表剔除——被 @ 的房间不再沉在时间序
   // 深处。无高亮时该分区整体隐藏（不占位）。
   const isMention = (r: TeamRoom) => (r.unread_highlight || 0) > 0;
@@ -821,7 +821,7 @@ function TeamOverview(props: TeamOverviewProps) {
   const groups = sortRooms(mainRooms.filter((r) => (r.member_count ?? 0) > 2));
   const dms = sortRooms(mainRooms.filter((r) => (r.member_count ?? 0) <= 2));
   const allByRecent = sortRooms(mainRooms);
-  // v0.5.0-beta.13.21（侧栏角色分组）：私聊视图按对象角色分区
+  // 私聊视图按对象角色分区
   // （Leader/Worker/Manager/其他，组内仍按 roomSort 序）。仅当提供了
   // 角色映射时启用——无 L1 管理数据时自动退回扁平列表。
   const dmOtherMxid = (r: TeamRoom): string | null => {
@@ -851,7 +851,7 @@ function TeamOverview(props: TeamOverviewProps) {
       .filter((g) => g.rooms.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dms, workerRoleByMxid, user_id]);
-  // v0.5.0-beta.13.22（13.21）：私聊角色从「列表直接分割成
+  // 私聊角色从「列表直接分割成
   // 4 段+组头」改为「列表下方按对象角色筛选 chips」（原话：「应该在
   // 下面加个按对象角色分区显示，而不是直接在列表分割」）——默认全部=扁平
   // 列表（不再切段），选某角色=只看该角色的私聊（仍是单一排序列表）。
@@ -886,7 +886,7 @@ function TeamOverview(props: TeamOverviewProps) {
         ? sortRooms(rooms.filter((r) => isMention(r) && !isFav(r) && (r.member_count ?? 0) <= 2))
         : sortRooms(rooms.filter((r) => isMention(r) && !isFav(r)));
 
-  // v0.5.0-beta.13.12：房间卡渲染 helper——提及/收藏/主列表三区共用，
+  // 房间卡渲染 helper——提及/收藏/主列表三区共用，
   // 群/DM 按 member_count 分派（此前三区各写一份，新增分区会三处漂移）。
   const renderRoomCard = (room: TeamRoom, keyPrefix = "") => {
     const key = `${keyPrefix}${room.room_id}`;
@@ -967,7 +967,7 @@ function TeamOverview(props: TeamOverviewProps) {
             { value: "dm", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><MessageIcon size={12} /> 私聊（{dms.length}）</span> },
           ]}
         />
-        {/* v0.5.0-beta.13.12：排序切换（时间↓默认 / 名称 A-Z），本地持久化 */}
+        {/* 排序切换（时间↓默认 / 名称 A-Z），本地持久化 */}
         <antd.Segmented
           size="small"
           value={roomSort}
@@ -988,7 +988,7 @@ function TeamOverview(props: TeamOverviewProps) {
             onClick={() => onRefresh?.()}
           />
         </antd.Tooltip>
-        {/* v0.5.0-beta.14.22：按钮对齐 QwenPaw 风格（antd Button 继承主题
+        {/* 按钮对齐 QwenPaw 风格（antd Button 继承主题
   token；旧版手写 pill 圆角 16 + 自绘 hover 与宿主方形按钮不一致）。 */}
         {onGlobalSearch ? (
           <antd.Button
@@ -1007,7 +1007,7 @@ function TeamOverview(props: TeamOverviewProps) {
         </antd.Card>
       ) : (
         <div style={{ display: "grid", gap: 16 }}>
-          {/* 邀请区（v0.5.0-beta.12 ：Element 同款接受/拒绝；置顶显示，
+          {/* 邀请区（Element 同款接受/拒绝；置顶显示，
  不受群/私聊过滤影响——待办动作优先于已加入房间） */}
           {invites && invites.length > 0 ? (
             <InviteSection
@@ -1015,7 +1015,7 @@ function TeamOverview(props: TeamOverviewProps) {
               onSettled={onInviteSettled}
             />
           ) : null}
-          {/* v0.5.0-beta.13.12（Element X 提及区）：@我/高亮未读置顶分区，
+          {/* ：@我/高亮未读置顶分区，
  主列表剔除（isMention 已在 mainRooms 过滤）。无高亮整体隐藏。 */}
           {mentionRoomsForFilter.length > 0 ? (
             <div style={{ display: "grid", gap: 8 }}>
@@ -1033,7 +1033,7 @@ function TeamOverview(props: TeamOverviewProps) {
               )}
             </div>
           ) : null}
-          {/* v0.5.0-beta.12 B3：⭐ 收藏区（置顶，主列表不再重复） */}
+          {/* B3：⭐ 收藏区（置顶，主列表不再重复） */}
           {favRoomsForFilter.length > 0 ? (
             <div style={{ display: "grid", gap: 8 }}>
               <div
@@ -1065,7 +1065,7 @@ function TeamOverview(props: TeamOverviewProps) {
                 </div>
               ) : null}
               {/* DM 私聊
- v0.5.0-beta.13.22：角色改为下方 chips 筛选（不再直接
+ 角色改为下方 chips 筛选（不再直接
  分割列表）；默认「全部」=扁平列表（roomSort 同序）。 */}
               {showDms ? (
                 <div style={{ display: "grid", gap: 8 }}>
@@ -1130,7 +1130,7 @@ function TeamOverview(props: TeamOverviewProps) {
   );
 }
 
-// v0.5.0-beta.14.14：memo 化——rc-tabs 保活下本组件首访后
+// memo 化——rc-tabs 保活下本组件首访后
 // 常驻挂载，WorkbenchPage 每次重渲（SSE 帧/数据波/tab 切换）此前都会
 // 无差别重渲它（房间列表卡片族）。props 已稳定化（rooms/invites 保引用
 // 、workerSessionStates 保引用 、roomProjectNames/workerRoleByMxid

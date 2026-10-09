@@ -1,4 +1,4 @@
-// v0.5.0-beta.14.6：前端内存读缓存（requestCache）单例模块。
+// 前端内存读缓存（requestCache）单例模块。
 //
 // 用途：api.ts 的同源读接口（teams/admin/gateway/skills/kb/...）统一经
 // cachedRequest 走「TTL 过期 + 在飞去重 + 标签失效 + LRU 限容」，消除

@@ -1,4 +1,4 @@
-// v0.5.0-beta.12: 模型选择目录（自 dashboard model-catalog / model-bindings 移植）。
+// 模型选择目录（自 dashboard model-catalog / model-bindings 移植）。
 //
 // 语义对照（dashboard 同源，已对 AgentTeams v1.2.0 generator.go 校验）：
 // - configured = 经现有 Higress AI route + provider 可解析的请求模型 alias；
@@ -66,7 +66,7 @@ const BUILTIN_MODEL_ALIASES: readonly string[] = [
   "MiniMax-M2.5",
 ];
 
-/** v0.5.0-beta.12（历史缺陷：Higress Console 建的 deepseek-v4-pro 自定义
+/** （历史缺陷：Higress Console 建的 deepseek-v4-pro 自定义
  * 模型不见）：精确匹配 predicate 的 matchType 有**两种写法**——dashboard 建
  * 路由写 `EXACT`（models-section.tsx 下拉），Higress Console 原生建路由写
  * `EQUAL`（活体数据三条路由全是 EQUAL）。此前只收 EXACT → Console 建

@@ -1,5 +1,5 @@
 /**
- * 🔧 内置工具（v0.5.0-beta.13.1，消费上游 #1255，issue #1254）。
+ * 🔧 内置工具（，消费上游 #1255，issue #1254）。
  *
  * 位置：「👷 团队管理」tab 内的子节（与频道接入同款，不独立顶层 tab）。
  * 数据面：Controller 内置工具端点（#1255 已合 main）——
@@ -35,8 +35,8 @@ type ToolField = "enabled" | "asyncExecution";
 
 function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
   const tr = useT();
-  // v0.5.0-beta.14.27（F-B：工具开关改走宿主原生顶部 toast——10/8 反馈：
-  // 「像改技能那样」的顶部通知）。任务 193 调研实锤：宿主技能变更的
+  // 工具开关走宿主原生顶部 toast（与技能变更的交互对齐：
+  // 「像改技能那样」的顶部通知）。宿主技能变更的
   // 「顶部弹窗」= antd App.useApp().message（顶部居中 toast，portal 到
   // document.body）；插件同页挂载（无 iframe）跑在宿主 <AntdApp> 之内，
   // 调同一个 API 即与技能 toast 逐像素同源。旧版页内 antd Alert 横幅
@@ -77,8 +77,7 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
     }
   }, [sel, tr]);
 
-  // v0.5.0-beta.13.16（13.15 点开工具的管理不应该要我再选 worker）：
-  // 单 Worker 场景（拓扑资源管理嵌入 = workers=[w]）自动选中，无需手动选。
+  // // 单 Worker 场景（拓扑资源管理嵌入 = workers=[w]）自动选中，无需手动选。
   React.useEffect(() => {
     if (!sel && workers.length === 1) setSel(workers[0].name);
   }, [workers, sel]);
@@ -105,9 +104,8 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
           prev.map((t) => (t.name === updated.name ? { ...t, ...updated } : t)),
         );
       }
-      // v0.5.0-beta.14.26（实盘反馈 10/8：关掉工具横幅仍显示「已启用」）：
-      // 成功文案四分支纯函数（util.toolToggleMessage）必须与开关终态一致。
-      // v0.5.0-beta.14.27（F-B）：PATCH 确认后走宿主原生顶部 toast
+      // // 成功文案四分支纯函数（util.toolToggleMessage）必须与开关终态一致。
+      // PATCH 确认后走宿主原生顶部 toast
       // （不做乐观 toast——「toast 说成功、实际回滚」的错位不允许）。
       toast.success(toolToggleMessage(tr, field, tool, value));
     } catch (e) {
@@ -221,7 +219,7 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontWeight: 600 }}>{tr("Worker")}</span>
-        {/* v0.5.0-beta.13.16：单 Worker（拓扑资源管理嵌入）→ 定显名字，
+        {/* 单 Worker（拓扑资源管理嵌入）→ 定显名字，
  不再给只有一个选项的选择器。多 Worker 场景保持下拉。 */}
         {workers.length === 1 ? (
           <antd.Tag style={{ marginInlineEnd: 0, fontSize: 11.5 }}>

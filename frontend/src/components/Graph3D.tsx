@@ -50,7 +50,7 @@ interface G3DLinkInput {
 
 const ENGINE_CREDIT = "3d-force-graph (MIT) + three.js (MIT)";
 
-// ── 相机适配（v0.5.0-beta.12：QwenPaw 2.2 MemoryGraphView 逐行移植，开源，
+// ── 相机适配（QwenPaw 2.2 MemoryGraphView 逐行移植，开源，
 // 出处已在文件头注明）。官方三处调用时机：
 // ① 建图后 rAF 立即 fit（0ms）——初始视角不再卡默认远位（「无限远」
 // 根因：此前版本只有 onEngineStop fit，引擎收敛前相机停在默认位，
@@ -83,7 +83,7 @@ const CLICK_TAP_MAX_MOVE_PX = 5;
 const CLICK_TAP_MAX_MS = 500;
 const CLICK_DEDUP_MS = 200;
 
-// ── 物理收敛（v0.5.0-beta.14.14，）──
+// ── 物理收敛（，）──
 // 「首访拖动卡」根因（dist 实证）：库 d3AlphaMin 默认 0 → alpha 阈值永不
 // 触发，引擎 tick 到 cooldownTicks(160) 硬停——2070 节点每 tick ~8ms
 // 物理与 orbit 交互/渲染竞争（60fps 下 ~2.7s 卡顿窗口），引擎停后即
@@ -250,7 +250,7 @@ interface G3DGraph {
   isRoot: (n: G3DNodeInput) => boolean;
   isDirect: (n: G3DNodeInput) => boolean;
   onOpenNode: (n: G3DNodeInput) => void;
-  /** v0.5.0-beta.12：选中状态外抛（详情面板双视图共享）。 */
+  /** 选中状态外抛（详情面板双视图共享）。 */
   onSelect?: (id: string) => void;
   onExit3D: () => void;
   height?: number;
@@ -273,7 +273,7 @@ function Graph3D(props: G3DGraph) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const graphRef = React.useRef<any>(null);
   const [ready, setReady] = React.useState(false);
-  // v0.5.0-beta.14.14：换数据（切 KB agent）= 又一次
+  // 换数据（切 KB agent）= 又一次
   // warmup 同步阻塞（大图 ~1s）——无遮罩=无解释的 UI 冻结。双 rAF 先
   // 上屏再阻塞（直接 setState→同步阻塞会让遮罩来不及 paint）。
   const [recomputing, setRecomputing] = React.useState(false);
@@ -281,13 +281,13 @@ function Graph3D(props: G3DGraph) {
   const [initError, setInitError] = React.useState("");
   const [autoRotate, setAutoRotate] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState("");
-  // v0.5.0-beta.12：选中 ref（onNodeClick 只在 init effect
+  // 选中 ref（onNodeClick 只在 init effect
   // 注册一次，闭包读不到最新 selectedId，走 ref 同步）。
   const selIdRef = React.useRef("");
   React.useEffect(() => {
     selIdRef.current = selectedId;
   }, [selectedId]);
-  // v0.5.0-beta.12：fit 中心（拾取球自适应距离基准）+ hover 节点（ref 直改
+  // fit 中心（拾取球自适应距离基准）+ hover 节点（ref 直改
   // material，零 re-render——hover 是高频事件）。
   const fitTargetRef = React.useRef<{
     x: number;
@@ -356,7 +356,7 @@ function Graph3D(props: G3DGraph) {
     [],
   );
 
-  // v0.5.0-beta.14.13：渲染循环双位暂停状态机。
+  // 渲染循环双位暂停状态机。
   // vis = 既有可见性门控（.7 ，切 tab/隐藏即停）；
   // idle = 稳态自动暂停——引擎已停 + 无相机 tween + 无指针交互时场景
   // 完全静态，但 3d-force-graph 循环仍 60fps 全场景 drawArrays
@@ -550,7 +550,7 @@ function Graph3D(props: G3DGraph) {
     );
     obj.add(core);
 
- // 拾取放大球（引入，v0.5.0-beta.12 改自适应——命中区还是太小）。
+ // 拾取放大球（引入，改自适应——命中区还是太小）。
     // 可见球半径只有 2.55–4.8 世界单位（link distance 72），而团队合并
     // 图谱（100+ 节点）fit 后 viewRadius 大，节点屏幕占比远小于官方
     // 单 agent 记忆图谱（10–40 节点）——同半径不同图规模=屏幕尺寸不同。
@@ -723,7 +723,7 @@ function Graph3D(props: G3DGraph) {
       // 库 onNodeClick 与自持点击层共用此出口。
       const handleNodeActivate = (n: G3DNodeInput) => {
         if (stateRef.current.isRoot(n)) {
-          // v0.5.0-beta.12：root 大球不再是"点了没反应"的最大目标——
+          // root 大球不再是"点了没反应"的最大目标——
           // 官方 onNodeClick=focusGraphNode 同款：相机聚焦到 root
           // （centerAt 600ms 平滑），不选中。
           try {
@@ -736,7 +736,7 @@ function Graph3D(props: G3DGraph) {
         const next = selIdRef.current === n.id ? "" : n.id;
         setSelectedId(next);
         onSelect?.(next);
-        // v0.5.0-beta.12 ：点文件节点直接开预览（2D 同款）。改为
+        // 点文件节点直接开预览（2D 同款）。改为
  // 「点选+面板按钮」后点没反应——再选中才开，再次点击仅取消选中。
         if (next) stateRef.current.onOpenNode(n);
       };
@@ -744,7 +744,7 @@ function Graph3D(props: G3DGraph) {
       // 实例类型化（tsc 对照 d.ts 验证链式调用）。
       const graph = new ForceGraph3DImpl(el, {
         controlType: "orbit",
- // v0.5.0-beta.14.14：混合 GPU 机器优先独显（真机
+ // 混合 GPU 机器优先独显（真机
         // 卡顿面——核显跑 2070 节点 4 灯 MeshStandard 场景 fillrate 吃
         // 紧）。antialias 保持（库默认 true；关掉球体边缘锯齿=可见
         // 劣化，不偿失）。
@@ -797,7 +797,7 @@ function Graph3D(props: G3DGraph) {
         // alphaMinFor 注释）：同轨迹，只改首帧前/尾部截断点。
         .d3AlphaDecay(0.038)
         .d3VelocityDecay(0.3)
- // v0.5.0-beta.14.14：启用 alpha 停引擎阈值
+ // 启用 alpha 停引擎阈值
         // （库默认 0 = 永不触发 → tick 到 cooldownTicks 硬停，首访
         // 2.7s 卡顿窗口根因）。
         .d3AlphaMin(alphaMinFor(nodes.length))
@@ -818,7 +818,7 @@ function Graph3D(props: G3DGraph) {
           handleNodeActivate(n);
         })
         .onNodeHover((n: any) => {
-          // v0.5.0-beta.12：hover 视觉反馈（提亮+glow）——可见的"对准了"提示。
+          // hover 视觉反馈（提亮+glow）——可见的"对准了"提示。
           const prev = hoverIdRef.current;
           const next = n && !stateRef.current.isRoot(n) ? n.id : "";
           if (prev !== next) {
@@ -844,7 +844,7 @@ function Graph3D(props: G3DGraph) {
       const controls: any = graph.controls();
       controls.minDistance = GRAPH_ZOOM_MIN_DISTANCE_FLOOR;
       controls.maxDistance = GRAPH_ZOOM_MAX_DISTANCE_CEILING;
- // v0.5.0-beta.14.14：渲染像素比封顶 1.5——库初始化
+ // 渲染像素比封顶 1.5——库初始化
       // 固定 min(2, devicePixelRatio)：2x/3x 真机上 1242×480 画布=
       // 248/508 万物理像素，fillrate 为 1x 的 2.5/6.3 倍（真机 GPU
       // 卡顿面）。1.5 封顶：2x 机省 44% 像素、3x 机省 78%；节点球/
@@ -857,7 +857,7 @@ function Graph3D(props: G3DGraph) {
       } catch {
         /* noop */
       }
-      // v0.5.0-beta.12：相机移动（缩放/平移/旋转 tween/fit tween）→ 拾取球
+      // 相机移动（缩放/平移/旋转 tween/fit tween）→ 拾取球
       // 半径自适应（屏幕命中区恒定）。
       controls.addEventListener("change", updatePickScales);
 
@@ -938,10 +938,10 @@ function Graph3D(props: G3DGraph) {
       graphRef.current = graph;
       setReady(true);
 
-      // v0.5.0-beta.14.7：可见性门控——3d-force-graph 渲染循环
+      // 可见性门控——3d-force-graph 渲染循环
       // 与物理冷却无关，挂载后即 60fps 永续（实测切走后仍 2340 draw calls/s）。
       // 容器不可见（rc-tabs 保活切走/收起）或页面隐藏 → vis 位暂停。
-      // v0.5.0-beta.14.13：vis 位并入双位状态机
+      // vis 位并入双位状态机
       // （pauseBitsRef）——idle 位（稳态自动暂停）见组件级状态机注释。
       const setVisPaused = (p: boolean) => {
         const s = pauseBitsRef.current;
@@ -991,7 +991,7 @@ function Graph3D(props: G3DGraph) {
 
       // resize → 官方 resizeAndFit：改尺寸 + 220ms 重 fit
       // （有选中态不重 fit——官方同款保护选中视角）。
-      // v0.5.0-beta.14.13：隐藏容器（display:none →
+      // 隐藏容器（display:none →
       // rect 0）跳过 resize——旧式 `b.width || 960` 会在切走瞬间把
       // 1242x480 缓冲重分配成 960x480（实测），切回再改回 → 双份
       // WebGL 缓冲 churn 落进切换帧。恢复可见时 RO 以真实尺寸触发。
@@ -1143,7 +1143,7 @@ function Graph3D(props: G3DGraph) {
 
   // 数据变化 → 换图 + 重新 fit（选中态清空、visual 表由
   // nodeThreeObject accessor 重建）。
-  // v0.5.0-beta.14.14：真实换数据时 warmup 同步阻塞
+  // 真实换数据时 warmup 同步阻塞
   // （大图 ~1s）——双 rAF 先让「布局计算中」遮罩上屏再阻塞。首次
   // 挂载 ready=false→true 重跑时 graphData 引用未变（init effect 已
   // 灌入同一对象，库 kapsule 按引用 no-op）→ 跳过遮罩与双 rAF，
@@ -1157,12 +1157,12 @@ function Graph3D(props: G3DGraph) {
     setSelectedId("");
     hoverIdRef.current = "";
     nodeVisualsRef.current.clear();
-    // v0.5.0-beta.14.13：换数据 = 引擎重启——复位收敛态
+    // 换数据 = 引擎重启——复位收敛态
     // 并恢复帧循环（库无 onEngineStart，重启路径只有此处）。
     pauseBitsRef.current.engineStopped = false;
     markGraphActivity();
     const loadData = () => {
-      // v0.5.0-beta.14.14：自适应收敛阈值须在 graphData
+      // 自适应收敛阈值须在 graphData
       // 之前设（warmup 循环读 state.d3AlphaMin 决定截断点）。
       g.d3AlphaMin(alphaMinFor(graphData.nodes.length));
       g.graphData(graphData);
@@ -1406,7 +1406,7 @@ function Graph3D(props: G3DGraph) {
           ref={containerRef}
           style={{ position: "absolute", inset: 0 }}
         />
- {/* v0.5.0-beta.14.14：recomputing=换数据 warmup
+ {/* recomputing=换数据 warmup
  * 同步阻塞期（大图 ~1s），复用同一遮罩（文案相同，零 i18n 新键）。 */}
         {!ready || recomputing ? (
           <div

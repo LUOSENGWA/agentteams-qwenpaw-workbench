@@ -38,10 +38,10 @@ from pydantic import BaseModel, Field
 
 from . import __version__, config as config_mod
 from . import matrix_client, selfcheck
-# v0.5.0-beta.14.10：KB 端点 SWR 磁盘缓存。
+# KB 端点 SWR 磁盘缓存。
 from . import kb_cache
-# v0.5.0-beta.14.6：全局拨号闸门 + failover 判定 + 计数。
-# v0.5.0-beta.14.12：+ 后台扫描共用通道（bg_slot）。
+# 全局拨号闸门 + failover 判定 + 计数。
+# + 后台扫描共用通道（bg_slot）。
 from .dial_gate import GatedAsyncClient, bg_slot, should_failover_status
 
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
@@ -58,12 +58,12 @@ CONTROLLER_ALLOWED_PREFIXES = ("/api/", "/healthz")
 # Per-process cache of the currently working address, keyed by target kind.
 _cache_lock = threading.Lock()
 _working_cache: Dict[str, str] = {}  # {"matrix": url, "controller": url}
-# v0.5.0-beta.14.19: Higress Console 管理会话（console_session）过期被动检测
+# Higress Console 管理会话（console_session）过期被动检测
 # ——网关面请求带 Cookie 收到 401 = 会话已死（此前前端只见 alias 层静默
 # 消失，无人知晓该重新验证）。置位后由 /auth-status 暴露给前端横幅；
 # verify-admin 成功（新会话到手）时清零。
 _console_session_expired = False
-# v0.5.0-beta.14.26（F2：实盘反馈「每次升级后 basic 登录状态也没了」——真根因=
+# （F2：实盘反馈「每次升级后 basic 登录状态也没了」——真根因=
 # Console 会话 cookie 有服务端 TTL，过期后**只被动判死、无任何自动重登**，
 # 每次插件重载/会话过期用户必须手动重验证一次）：用 config 里持久化的
 # admin 账密自动重登一次（凭据一直在 config.json，600 权限，不丢）。
@@ -82,7 +82,7 @@ def _console_relogin_allowed() -> bool:
 
 
 async def console_try_relogin(cfg: Dict[str, Any]) -> Optional[str]:
-    """v0.5.0-beta.14.26（F2）：Console 会话自愈重登。
+    """：Console 会话自愈重登。
 
  凭据齐（admin_username/admin_password 已持久化）+ 网关地址可达时，
  用持久账密走 Console /session/login 换新会话（与 /config/verify 路径 A
@@ -145,24 +145,24 @@ async def console_try_relogin(cfg: Dict[str, Any]) -> Optional[str]:
         _console_last_relogin_attempt = time.monotonic()
         logger.warning("console auto-relogin: all addresses failed (last: %s)", last_err)
         return None
-# v0.5.0-beta.14.5: approval/list 短 TTL 缓存——高频展开/切页时省一整轮容器扫
+# approval/list 短 TTL 缓存——高频展开/切页时省一整轮容器扫
 # 描（原串行全量实测 23s@WAN）；approval_set 成功后主动失效。key=agent 参数
 # （""=全量）→ (expiry_monotonic, payload)。只存成功响应。
 # 60s：级别变更是低频用户动作，写路径（/approval/set）成功后主动失效缓存，
 # 读窗口拉长只省扫描（全量 = 逐容器 docker exec 读 agent.json）。
 _APPROVAL_LIST_TTL_SECONDS = 60.0
 _approval_list_cache: Dict[str, Any] = {}
-# v0.5.0-beta.14.7：KB tree/graph 结果短 TTL 缓存——一次图谱构建 = 逐 md 文件
+# KB tree/graph 结果短 TTL 缓存——一次图谱构建 = 逐 md 文件
 # 一次容器 archive 读（实测单容器 381 次），重复访问（切 tab/重渲染）直接命中。
 _KB_TREE_TTL_SECONDS = 30.0
 _KB_GRAPH_TTL_SECONDS = 60.0
 _kb_tree_cache: Dict[str, Any] = {}   # agent -> (expiry_monotonic, payload)
 _kb_graph_cache: Dict[str, Any] = {}
-# v0.5.0-beta.14.10：/kb/agents 单键内存门（agent 无关；
+# /kb/agents 单键内存门（agent 无关；
 # 与 tree/graph 同款 SWR 双层门；conftest 的 *_cache 通用清空覆盖本键）。
 _KB_AGENTS_TTL_SECONDS = 60.0
 _kb_agents_cache: Dict[str, Any] = {}  # "agents" -> (expiry_monotonic, payload)
-# v0.5.0-beta.14.17（KBBATCH-K3/K5）：聚合图谱 + 单文件 30s 内存门——
+# 聚合图谱 + 单文件 30s 内存门——
 # merged 冷算 = 8 agent ×（tree+批量读）实测 40.7s，file 重复点开重拉
 # 全文；与 tree/graph/agents 同款 SWR 双层门（conftest *_cache 通用清空
 # 自动覆盖）。key：merged-<sorted(agents) 逗号连> / file-<agent>-<path>。
@@ -170,13 +170,13 @@ _KB_MERGED_TTL_SECONDS = 30.0
 _KB_FILE_TTL_SECONDS = 30.0
 _kb_merged_cache: Dict[str, Any] = {}  # csv -> (expiry_monotonic, payload)
 _kb_file_cache: Dict[str, Any] = {}    # "file-<agent>-<path>" -> (expiry, payload)
-# v0.5.0-beta.14.10：SWR 计算体注册表——build_router() 末尾（return
+# SWR 计算体注册表——build_router() 末尾（return
 # router 前）填入 tree/graph/agents 计算体与 _spawn_kb_refresh；端点冷取、
 # 后台刷新、启动预热、单测假注入统一在**调用时**读本表（T9 _ctl_get 同款
 # 唯一注入点；预热路径不依赖 HTTP 自呼）。
 _KB_PREWARM_HOOKS: Dict[str, Any] = {}
 
-# v0.5.0-beta.14.11：轻探针唯一注入点——build_router() 末尾填生产
+# 轻探针唯一注入点——build_router() 末尾填生产
 # 探针闭包；单测换假探针（返回固定签名 / None）。探针是 build_router 闭包
 # 不可直接 monkeypatch，注册表 + 调用时读取与 _KB_PREWARM_HOOKS 同款
 # （T9 _ctl_get 模式）。
@@ -184,7 +184,7 @@ _KB_PROBE_HOOKS: Dict[str, Any] = {}
 
 
 async def _kb_prewarm_agent(agent: str) -> None:
-    """v0.5.0-beta.14.10：启动预热——后台静默补上次访问 agent 的
+    """启动预热——后台静默补上次访问 agent 的
  tree+graph（注册表未填 = 插件未初始化 → 静默跳过）。"""
     refresh = _KB_PREWARM_HOOKS.get("refresh")
     if not refresh:
@@ -194,7 +194,7 @@ async def _kb_prewarm_agent(agent: str) -> None:
 
 
 def _kb_batch_decode(text: Optional[str]) -> Optional[str]:
-    """v0.5.0-beta.14.23：K1 批量读 GZB1 信封解码——WAN 冷路径
+    """K1 批量读 GZB1 信封解码——WAN 冷路径
  1.8MB 原文过链路 → gzip+base64 信封（体积 ~5× 收敛，帧语义不变）。
  首行恰为 ``===GZB1===``（新协议）→ 取 magic 行后、最后一个
  ``\\n===END`` 前的 b64（strip）→ b64decode(validate) →
@@ -218,7 +218,7 @@ def _kb_batch_decode(text: Optional[str]) -> Optional[str]:
 
 
 def kb_swr_ttl_for(address_mode: Any) -> float:
-    """v0.5.0-beta.14.22：KB 磁盘 SWR stale 阈值随生效网路自适应。
+    """KB 磁盘 SWR stale 阈值随生效网路自适应。
 
  外网（address_mode=wan）RTT 高、后台刷新深扫 round-trip 成本高——
  180s 窗口内重复进知识库零后台拨号；内网/自动档 60s（14.11 基线，
@@ -230,7 +230,7 @@ def kb_swr_ttl_for(address_mode: Any) -> float:
 def _kb_apply_runtime_fields(
     found: Dict[str, Dict[str, Any]], workers: List[Any],
 ) -> None:
-    """v0.5.0-beta.14.22（D4 #5/#8）：kb/agents 的 runtime 判定字段
+    """：kb/agents 的 runtime 判定字段
 补全——主（Docker）路径与 ctl 兜底路径共用此唯一实现。
 
 透传 worker 对象的 runtime / runtimeDeprecated（CR 字段）：
@@ -256,7 +256,7 @@ def _kb_apply_runtime_fields(
 
 _PROBE_TIMEOUT = 6.0
 
-# v0.5.0-beta.13.24（首刷 race·根因）：代理超时结构化——旧版标量
+# 代理超时结构化——旧版标量
 # timeout=6.0 把「建连」也算进 6s：切网窗口 LAN IP 不可达时 SYN 被丢，
 # 每个请求要卡满 6s×2 次重试才 failover 到公网地址（+12s 冷窗）。connect
 # 单独压到 3s 快速识破死地址；read 保留 6s（真实响应慢≠地址死）。
@@ -264,15 +264,15 @@ _PROXY_TIMEOUT = httpx.Timeout(connect=3.0, read=6.0, write=10.0, pool=3.0)
 
 
 def _address_list(cfg: Dict[str, Any], kind: str) -> List[str]:
-    # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一归一化取 url
+    # 条目 str | {url, auth?}——统一归一化取 url
     #（dict 条目的 auth 由 _headers_for/auth_for_url 按 url 反查，不在此丢）。
     if kind == "matrix":
         raw = cfg.get("matrix_homeservers") or []
     elif kind == "sglang":
-        # v0.5.0-beta.12: SGLang 双地址纳入 working cache 体系（自动重排/failover）。
+        # SGLang 双地址纳入 working cache 体系（自动重排/failover）。
         raw = (cfg.get("sglang") or {}).get("urls") or []
     elif kind == "gateway":
-        # v0.5.0-beta.14.7: Higress Console 双地址（canonical=gateway_admin_urls，
+        # Higress Console 双地址（canonical=gateway_admin_urls，
         # 空则回退 legacy 单值）。
         raw = cfg.get("gateway_admin_urls") or (
             [cfg.get("gateway_admin_url")] if cfg.get("gateway_admin_url") else []
@@ -287,7 +287,7 @@ def _raw_addresses(cfg: Dict[str, Any], kind: str) -> List[Any]:
     if kind == "matrix":
         return cfg.get("matrix_homeservers") or []
     if kind == "gateway":
-        # v0.5.0-beta.14.7: Higress Console 双地址（canonical 列表，空则回退
+        # Higress Console 双地址（canonical 列表，空则回退
         # legacy 单值）——供凭据反查（同 _address_list 的 gateway 口径）。
         return cfg.get("gateway_admin_urls") or (
             [cfg.get("gateway_admin_url")] if cfg.get("gateway_admin_url") else []
@@ -300,7 +300,7 @@ def _raw_addresses(cfg: Dict[str, Any], kind: str) -> List[Any]:
 def _headers_for(
     cfg: Dict[str, Any], kind: str, base: str, base_headers: Dict[str, str]
 ) -> Dict[str, str]:
-    """v0.5.0-beta.14.3: 单一拨号凭据解析——该地址配置了覆盖凭据则替换
+    """单一拨号凭据解析——该地址配置了覆盖凭据则替换
  Authorization，否则原样（服务原生认证）。所有 controller/matrix/sglang
  拨号点统一走这里（新增拨号点照抄这一行，不各写各的）。"""
     auth = config_mod.auth_for_url(_raw_addresses(cfg, kind), base)
@@ -310,7 +310,7 @@ def _headers_for(
 def _ordered_addresses(cfg: Dict[str, Any], kind: str) -> List[str]:
     """Cached working address first, then the rest in configured order.
 
- v0.5.0-beta.14.1: 固定档（lan/wan）= 单元素链——请求层 failover 自然
+ 固定档（lan/wan）= 单元素链——请求层 failover 自然
  退化为「只用固定地址」，失败诚实报错。
  """
     urls = _address_list(cfg, kind)
@@ -331,7 +331,7 @@ def _mark_working(kind: str, url: str) -> None:
         _working_cache[kind] = url
 
 
-# v0.5.0-beta.14.1（address_mode 手动档）：固定内网/外网——请求只用固定
+# 固定内网/外网——请求只用固定
 # 地址、失败诚实报错（_pinned_note 追加到 502 detail），不静默 failover；
 # 探测循环照跑（连通性测试显示另一条路径状态）但不影响路由。列表顺序
 # 约定=[内网, 外网]（设置页内网/外网两个显式输入框同源）。
@@ -357,7 +357,7 @@ def _pinned_url(cfg: Dict[str, Any], kind: str) -> str | None:
 
 def _pinned_map(cfg: Dict[str, Any]) -> Dict[str, Optional[str]]:
     """四类地址各自的固定值（None=未固定）——供 /config/test 回报显示。"""
-    # v0.5.0-beta.14.7：固定档映射补 gateway（语义经 _pinned_url 通用）。
+    # 固定档映射补 gateway（语义经 _pinned_url 通用）。
     return {k: _pinned_url(cfg, k) for k in ("matrix", "controller", "sglang", "gateway")}
 
 
@@ -371,7 +371,7 @@ def _pinned_note(cfg: Dict[str, Any]) -> str:
 
 
 async def _safe_refresh_effective(cfg: Dict[str, Any]) -> None:
-    """v0.5.0-beta.14.12：后台地址探测任务的错误自保。
+    """后台地址探测任务的错误自保。
 
  保存请求已先行返回（PUT /config 快速路径），后台探测若抛异常没有
  请求上下文可兜底——只记日志（避免 "Task exception was never
@@ -386,10 +386,10 @@ async def _safe_refresh_effective(cfg: Dict[str, Any]) -> None:
 
 
 def _ordered_ctl_urls(cfg: Dict[str, Any]) -> List[str]:
-    """v0.5.0-beta.14.20：验证探测顺序——working-cache（最后已知可达）优先、
+    """验证探测顺序——working-cache（最后已知可达）优先、
  其余原序。外网场景 LAN 死地址不再烧首槽（8s 时代「token 验证转圈」的
  主因之一：按配置序 [LAN, WAN] 先拨必死的 LAN）。
- v0.5.0-beta.14.21：地址归一化改走 _address_list（同全部拨号点）——
+ 地址归一化改走 _address_list（同全部拨号点）——
  controller_urls 条目支持 str | {url, auth}（WAN 条目常态=带 basic 凭据的
  dict），旧版直接 u.strip() 对 dict 条目抛 AttributeError（verify-admin
  500 真根因；14.20 单测只覆盖 str 形态漏网）。"""
@@ -419,7 +419,7 @@ def _pick_address(cfg: Dict[str, Any], kind: str) -> str:
 def _count_gateway_aliases(
     routes_body: object, providers_body: object
 ) -> tuple[int, list[str]]:
-    """v0.5.0-beta.12：验证回报——网关 alias 层自检计数。
+    """验证回报——网关 alias 层自检计数。
 
  解包语义与前端 unwrapHigress 严格一致（Console {code,data} 信封 →
  裸数组 / data.routes / data.providers），谓词只认 EXACT/EQUAL 精确匹配
@@ -498,26 +498,26 @@ class ConfigPatch(BaseModel):
 
 
 class ConfigTestRequest(BaseModel):
-    """v0.5.0-beta.12: 连通性测试请求——传表单当前值（可未保存），空则测已配置。
+    """连通性测试请求——传表单当前值（可未保存），空则测已配置。
 
- v0.5.0-beta.14.3: 条目 = str | {url, auth?}（草稿凭据随测——未保存的
+ 条目 = str | {url, auth?}（草稿凭据随测——未保存的
  公网凭据也能当场验证；旧字符串条目完全兼容）。
  """
 
     matrix: Optional[List[Any]] = None
     controller: Optional[List[Any]] = None
-    sglang: Optional[List[Any]] = None  # v0.5.0-beta.12: SGLang 双地址列表
-    gateway: Optional[List[Any]] = None  # v0.5.0-beta.14.17: Higress 双地址列表
+    sglang: Optional[List[Any]] = None  # SGLang 双地址列表
+    gateway: Optional[List[Any]] = None  # Higress 双地址列表
 
 
 class VerifyAdminRequest(BaseModel):
-    """v0.5.0-beta.12: L1 管理员验证二选一（同 dashboard 语义，仅 L1 使用）。
+    """L1 管理员验证二选一（同 dashboard 语义，仅 L1 使用）。
 
  两条路径（互斥，优先密码）：
  - admin_username + admin_password → POST {gateway}/session/login
  （Console 单操作员登录；成功 → 持有 Console 管理员会话，
  供网关面 AI routes/providers 消费 = 模型选择 alias 层数据源）。
- - controller_token → GET {controller}/api/v1/teams Bearer（v0.5.0-beta.12：
+ - controller_token → GET {controller}/api/v1/teams Bearer（
  去尾斜杠——Controller 的 Gin 对 /api/v1/teams/ 返回 404，与
  dashboard f1f2 同款坑；无斜杠才进鉴权门，401=token 无效）
  （现状 L1 全量 Controller 管理 API 凭据，语义不变）。
@@ -526,14 +526,14 @@ class VerifyAdminRequest(BaseModel):
     admin_username: Optional[str] = None
     admin_password: Optional[str] = None  # "***" = 用已存值（脱敏占位符语义）
     controller_token: Optional[str] = None  # "***" = 用已存值
-    # 留空 = 回退 config 已存值；config 也空 → 可操作错误（v0.5.0-beta.12：
+    # 留空 = 回退 config 已存值；config 也空 → 可操作错误（
     # Console 宿主端口部署时自选、人人不同，不做端口探测）
     gateway_admin_url: Optional[str] = None
-    # v0.5.0-beta.14.7: Higress 双地址（列表优先；单项亦可）。
+    # Higress 双地址（列表优先；单项亦可）。
     gateway_admin_urls: Optional[List[str]] = None
 
 
-# ── v0.5.0-beta.14.14：/config/import schema 级校验 ──────────
+# ── /config/import schema 级校验 ──────────
 
 # 已知顶层键 → 期望类型（None 值与 load_config 同语义=缺省，跳过；
 # 未知键放行——老导出在新版导入的前向兼容）。
@@ -653,7 +653,7 @@ def _sanitize_token(raw: str) -> str:
 
 
 def _resolve_controller_token(cfg: Dict[str, Any]) -> tuple:
-    """Controller admin token 解析（v0.5.0-beta.12 设计，「controller
+    """Controller admin token 解析（设计，「controller
  token 的文件路径可以删掉了，留个命令就行」——token 文件路径删除，获取
  方式=UI 留获取命令（docker exec agentteams-controller cat
  /var/run/agentteams/cli-token）+ 粘贴；非 docker 部署=部署期注入 env）。
@@ -679,7 +679,7 @@ def _resolve_controller_token(cfg: Dict[str, Any]) -> tuple:
 def _token_or_none(cfg: Dict[str, Any]) -> Optional[str]:
     """Controller admin token（或 None）——Controller 管理 API 端点内部用。
 
- v0.5.0-beta.12 修复（历史缺陷：团队管理页 HTTP 500）：此函数此前
+ 修复（历史缺陷：团队管理页 HTTP 500）：此函数此前
  被 3 个端点调用（teams/structure、/docker-logs/{component}、/approval/set）
  但**从未定义**（旧版重构遗留的悬挂引用）→ 每次请求 NameError →
  500。现实现为 _resolve_controller_token 的薄封装：解析失败/无 token →
@@ -718,20 +718,20 @@ _rooms_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 _ROOMS_CACHE_TTL = 60.0
 _workflow_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 _artifacts_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
-# v0.5.0-beta.12 ：/room-mentions 全量扫描结果 10s 缓存（实时增量走 sync_watcher
+# /room-mentions 全量扫描结果 10s 缓存（实时增量走 sync_watcher
 # 事件缓冲，扫描只做历史 bootstrap——前端按 SSE mention 事件刷新非轮询）。
 _room_mentions_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 _room_mentions_lock = threading.Lock()
-# v0.5.0-beta.12：/room-approvals 全量扫描结果缓存（同款 bootstrap：
+# /room-approvals 全量扫描结果缓存（同款 bootstrap：
 # 实时增量走 sync_watcher 审批缓冲，扫描捞插件关闭期间的未决审批请求）。
-# v0.5.0-beta.14.17（审计 C 面）：10s→30s。10s TTL vs 15s 轮询=每轮
+# 10s→30s。10s TTL vs 15s 轮询=每轮
 # 必 miss（全房扫描≈每 15s 一次）；30s=半数命中。新审批/新 @ 的实时性
 # 由 sync_watcher 事件缓冲承担（零延迟，与 TTL 无关）——TTL 只影响
 # 「插件关闭期间」历史捞回的刷新粒度，+20s 无产品感知。
 _BOOTSTRAP_SCAN_TTL = 30.0
 _room_approvals_cache: Dict[str, Any] = {"data": None, "ts": 0.0}
 
-# v0.5.0-beta.14.7（T6 增量扫描）：逐房扫描态 {rid: {"ts": 已见最新消息 ts,
+# 逐房扫描态 {rid: {"ts": 已见最新消息 ts,
 # "entries": [...]}}。房间无推进（sync watcher 探针）→ 复用条目零重扫；
 # 600s 兜底全扫一次（watcher 停摆时防结果静默陈旧）。
 _room_scan_state: Dict[str, Any] = {
@@ -740,7 +740,7 @@ _room_scan_state: Dict[str, Any] = {
 }
 _ROOM_SCAN_FULL_EVERY = 600.0
 
-# v0.5.0-beta.14.7（T6b）：房间名模块级缓存——mentions 轮询遇未命名房
+# 房间名模块级缓存——mentions 轮询遇未命名房
 # 不再每请求逐行重解析（曾致单次响应 8.9s：每行 ≥2 次 HTTP 兜底）。
 _room_name_cache: Dict[str, str] = {}
 # 负缓存：解析为空的房间（DM 无 name 态）600s 内不再重试——此前每请求
@@ -755,7 +755,7 @@ def _scan_should_full(kind: str) -> bool:
 def _scan_mark_full(kind: str) -> None:
     _room_scan_state["full_at"][kind] = time.time()
 _room_approvals_lock = threading.Lock()
-# v0.5.0-beta.13.12（13.11 「团队管理 tab 刷不出完整信息，手动刷新不
+# （13.11 「团队管理 tab 刷不出完整信息，手动刷新不
 # 行，要等 30s 自动刷新」根因·后端半）：/teams/structure 60s TTL 缓存
 # 此前把**首次失败/空树结果也缓存 60s（负缓存）**——token 未就绪时首拉
 # 得空树（source=room-fallback 或 []），之后 60s 内手动刷新（force=true
@@ -772,7 +772,7 @@ _structure_cache: Dict[str, Any] = {
 
 
 def invalidate_data_caches(reason: str = "") -> None:
-    """v0.5.0-beta.12: 账号切换 → 清空全部聚合数据缓存。
+    """账号切换 → 清空全部聚合数据缓存。
 
  rooms/workflow/artifacts/structure 四份缓存都是按登录账号返回的数据
  （同一端点不同账号内容不同），但 TTL key 是全局单例——切账号后手动刷新
@@ -796,7 +796,7 @@ def invalidate_data_caches(reason: str = "") -> None:
 # presence/ephemeral — keeps the first sync payload small (dashboard 同款做法).
 _SYNC_FILTER: Dict[str, Any] = {
     "presence": {"types": []},
-    # v0.5.0-beta.12 ：m.muted_room（房间静音，Element 同款 account data——
+    # m.muted_room（房间静音，Element 同款 account data——
     # 插件通知引擎 sync_watcher 与前端静音状态同一数据源）。
     "account_data": {"types": ["m.muted_room"]},
     "room": {
@@ -852,7 +852,7 @@ def _parse_sync_rooms(
                 for uid in (eph.get("content") or {}).get("user_ids") or []:
                     if isinstance(uid, str) and uid != user_id and uid not in typing_users:
                         typing_users.append(uid)
-        # 最后一条消息（v0.5.0-beta.12：聊天 tab「最后消息时间 + 新到旧排序」数据源）。
+        # 最后一条消息（聊天 tab「最后消息时间 + 新到旧排序」数据源）。
         # /sync 无 since（每次全量快照）→ timeline(limit=1) 恒为该房间最新事件。
         last_ts = 0
         last_body = ""
@@ -870,7 +870,7 @@ def _parse_sync_rooms(
                 and lc.get("msgtype") in ("m.text", "m.notice", "m.file", "m.image")
             ):
                 last_body = str(lc.get("body") or "")[:120]
-                # v0.5.0-beta.13.2（灯源修正）：最后一条消息的发送者——
+                # 最后一条消息的发送者——
                 # session 灯 done 回退只认 Worker 自己的消息（per-sender，
                 # 与 dashboard 9a9cc8d 同源），用户消息不再点绿整个房间。
                 last_sender = str(last_ev.get("sender") or "")
@@ -899,7 +899,7 @@ def _parse_sync_rooms(
             "last_sender": last_sender,
         }
         if not entry["name"]:
-            # 无名房间命名优先级（v0.5.0-beta.12）：
+            # 无名房间命名优先级（）：
             # ① m.direct 对方（新 DM 对方未 accept 邀请时 members 只有自己，
             # 此前直接落「（空房间）」——用户真机反馈"空房间，说过话才有名字"）
             # ② 其他已加入成员 ③（空房间）兜底
@@ -941,7 +941,7 @@ def _parse_sync_rooms(
         )
     )
 
-    # v0.5.0-beta.12 ：解析 /sync rooms.invite 段（此前只读 join——邀请房间
+    # 解析 /sync rooms.invite 段（此前只读 join——邀请房间
     # 在插件里完全不可见，用户真机「没有 Element 的接受入群按钮和接口」根因）。
     # invite_state.events 带 m.room.name + 邀请人的 m.room.member（membership=invite）；
     # 接受=POST /rooms/{roomId}/invite/{userId}/accept，拒绝=POST /rooms/{roomId}/leave
@@ -976,7 +976,7 @@ def _parse_sync_rooms(
         )
     invites.sort(key=lambda r: -r["inviter_ts"])
 
-    # v0.5.0-beta.12 ：静音房间集合（account_data m.muted_room 聚合，
+    # 静音房间集合（account_data m.muted_room 聚合，
     # Element 同款状态源；前端 RoomChat 静音按钮 + 通知引擎共读）。
     muted_rooms: List[str] = []
     for ev in ((sync_resp.get("account_data") or {}).get("events") or []):
@@ -1039,12 +1039,12 @@ def _parse_docker_stream(data: bytes, component: str) -> List[Dict[str, Any]]:
 
 async def _ctl_json(method: str, url: str, token: str,
                     json_body: Optional[Dict[str, Any]] = None) -> tuple:
-    """薄包装 → ctl_client.ctl_json（v0.5.0-beta.14.13 去重）。"""
+    """薄包装 → ctl_client.ctl_json（去重）。"""
     from . import ctl_client  # noqa: PLC0415
     return await ctl_client.ctl_json(method, url, token, json_body)
 
 
-# 任务 190：域子路由装配。此导入须位于上方全部模块级名之后（域模块反向导入本模块
+# 域子路由装配。此导入须位于上方全部模块级名之后（域模块反向导入本模块
 # 共享名，循环导入解析时本模块须已具备这些名）。
 from .routers import (  # noqa: E402
     approval_api,
@@ -1061,7 +1061,7 @@ from .routers import (  # noqa: E402
 def build_router() -> APIRouter:
     router = APIRouter()
 
-    # v0.5.0-beta.14.25（任务 190）：KB 域可变状态由装配方创建、显式传入
+    # KB 域可变状态由装配方创建、显式传入
     # build_kb_router（原为 build_router 函数局部声明，语义不变）。
     _kb_ws_cache: Dict[str, Dict[str, Any]] = {}  # agent → {ws, ts}（闭包共享）
 

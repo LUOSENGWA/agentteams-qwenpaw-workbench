@@ -20,7 +20,7 @@ const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
   (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
 const ReloadIcon = pick("ReloadOutlined");
 
-// v0.5.0-beta.13.24（502 缓解）：#1216 审批端点「不可用」判定——
+// #1216 审批端点「不可用」判定——
 // 404 = 旧 Controller（无该端点）；
 // 502 "worker returned an unparsable running config" = 上游路径缺陷
 // （worker_approval.go 拨号漏 /api 前缀 → Worker SPA 回退 200 HTML →
@@ -40,9 +40,9 @@ function approvalUpstreamGone(e: unknown): boolean {
 // 数据源：容器 agent.json（archive 直读，与远端 KB 同通道）；
 // 写入：容器内 PUT /api/workspace/running-config（GET→改→整 PUT，
 // live 热加载，push_loop 同步 MinIO）。
-// v0.5.0-beta.12：抽为共享组件（Worker 管理树 + 聊天房间成员卡两处用）
+// 抽为共享组件（Worker 管理树 + 聊天房间成员卡两处用）
 // + 官方描述块整套搬 + L2 权限提示（401/403 橙色提示不报错）。
-// v0.5.0-beta.12：官方 ToolExecutionLevelCard 逐件对齐——
+// 官方 ToolExecutionLevelCard 逐件对齐——
 // ① 四模式图标整套搬（官方 lucide-react：STRICT=Ban / SMART=
 // AlertTriangle / AUTO=Shield / OFF=CircleCheck，ISC，内联 SVG
 // 零新依赖，THIRD-PARTY-NOTICES 已注）
@@ -51,9 +51,9 @@ function approvalUpstreamGone(e: unknown): boolean {
 // ③ 顶部官方 info 提示行（alertMessage 原文）
 // ④ 描述表 Tag 框重叠修（固定 width:62 装不下「严格（STRICT）」
 // 溢出压描述 → 自适应宽度 + nowrap）
-// v0.5.0-beta.12：⑤ 删「说明（官方）」折叠块 + 官方控制台演示截图（四档卡片
+// ⑤ 删「说明（官方）」折叠块 + 官方控制台演示截图（四档卡片
 // 选择器已含官方图标+文案，说明块重复，故去掉）
-// v0.5.0-beta.13.23：数据面统一 #1216 主路径——读/写优先走 Controller
+// 数据面统一 #1216 主路径——读/写优先走 Controller
 // 审批端点（catch-all 透传：admin token 在=L1，空=Matrix access_token
 // L2 team-scoped 可读写本团队 Worker，上游已合并）；404（旧
 // Controller）→ 回退旧端点（docker 直读/PUT running-config，L1-only）。
@@ -203,7 +203,7 @@ function ApprovalControl({
   runtime,
 }: {
   workerName: string;
-  /** v0.5.0-beta.14.22（D4 #2）：Worker runtime——非 qwenpaw 时禁用四档
+  /** ：Worker runtime——非 qwenpaw 时禁用四档
    * 卡 + 说明（审批是 QwenPaw 独有面，服务端 400；提前挡住不撞 400）。 */
   runtime?: string;
 }) {
@@ -213,7 +213,7 @@ function ApprovalControl({
   const [readError, setReadError] = React.useState("");
   const [sel, setSel] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
-  // v0.5.0-beta.13.24：#1216 端点 502 上游缺陷已观测——回退 401 时
+  // #1216 端点 502 上游缺陷已观测——回退 401 时
   // 给精确提示（不是「L2 可读写」的误导文案）。
   const [upstreamBug, setUpstreamBug] = React.useState(false);
 

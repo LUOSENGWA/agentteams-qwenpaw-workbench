@@ -1,8 +1,7 @@
 /**
  * ArtifactLines.tsx — 任务文件行（spec/结果产物/交付物）的共享渲染。
  *
- * v0.5.0-beta.13.4（结果产物查看/下载没有解决定位）：
- * 数据与后端链路实盘验证完好（controller /tasks/{id}/artifact 200+内容，
+ * * 数据与后端链路实盘验证完好（controller /tasks/{id}/artifact 200+内容，
  * 插件 catch-all 代理同链 E2E 200），缺口在表面——任务巡检 Drawer 有
  * 查看/下载，但拓扑任务详情行（TopoTaskDetailRow）只有路径文本（原注释
  * 「本行无 runId 上下文」= 没把 ev 传下来）。两处行为必须一致 →
@@ -78,7 +77,7 @@ export default function ArtifactLines(props: {
 
   if (props.lines.length === 0) return null;
   const fs = props.compact ? 11 : 11.5;
- // v0.5.0-beta.13.10（E1：「查看按钮恒可见但依旧被挤压裁切」→ 卡片化
+ // （E1：「查看按钮恒可见但依旧被挤压裁切」→ 卡片化
   // 卡片化）：单行 flex + 路径 ellipsis 在窄容器里把按钮挤没。改卡片——
   // 路径完整换行显示（break-all，无截断），按钮独立一行（永不被裁）。
   return (

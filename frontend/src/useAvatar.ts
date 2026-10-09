@@ -2,11 +2,11 @@ import type * as ReactNS from "react";
 
 import { mxcToMediaUrl } from "./api";
 
-// v0.5.0-beta.12: React 必须取宿主的（window.QwenPaw.host.React）——全代码库唯一模式。
+// React 必须取宿主的（window.QwenPaw.host.React）——全代码库唯一模式。
 const React: typeof ReactNS = window.QwenPaw.host.React;
 
 /**
- * v0.5.0-beta.12 ：头像 mxc 裂图修（8 处统一）。
+ * 头像 mxc 裂图修（8 处统一）。
  *
  * 背景：Matrix 成员头像 url 是 mxc://——浏览器 img src 直接指向 mxc://
  * 无法加载（不是合法 URL scheme），指向裸插件路径又带不了鉴权头。

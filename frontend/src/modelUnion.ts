@@ -1,5 +1,5 @@
 /**
- * 模型并集共享逻辑（v0.5.0-beta.12，/）。
+ * 模型并集共享逻辑（，/）。
  *
  * 纯函数（校验/合并/分组）从 CrdManage 抽出，供 CrdManage 三入口
  * （建 Worker 弹窗/建队行/团队配置内联）与 WorkerManage ManagerTable
@@ -166,7 +166,7 @@ interface ModelUnionState {
   refetchSglang: () => void;
 }
 
-/** v0.5.0-beta.12（历史缺陷Manager 模型 alias 问题）：
+/** ：
  * Higress Console {code, data: ...} 信封解包 + listKey 提取——CrdManage
  * 旧版 inline 副本提升为共享（同源零分叉教训）。ManagerTable hook
  * 原 ad-hoc 提取漏信封层 + providers 取错键（.data 应为 .providers）
@@ -242,7 +242,7 @@ export function useModelUnionOptions(
           setGatewayOpts(null); // 无 Higress Console 会话=正常降级（token 模式）
           return;
         }
-        // v0.5.0-beta.12：共享解包（原 ad-hoc 提取漏信封+错键=alias 恒空根因）。
+        // 共享解包（原 ad-hoc 提取漏信封+错键=alias 恒空根因）。
         const { routesList, providersList } = extractGatewayLists(
           routes.data,
           providers.data,

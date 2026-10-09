@@ -29,17 +29,17 @@ from ..router import (
 
 
 def build_config_router() -> APIRouter:
-    """config 域子路由（build_router 原段逐字搬移，任务 190）。"""
+    """config 域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
     @router.get("/config")
     async def get_config() -> Dict[str, Any]:
         """Config with secrets redacted + current effective addresses."""
         cfg = config_mod.load_config()
         out = config_mod.redact(cfg)
-        # v0.5.0-beta.12：token 可来自粘贴或 env 时 config.controller_token
+        # token 可来自粘贴或 env 时 config.controller_token
         # 为空——前端门控（hasToken/l1TokenMode）需要知道 L1 管理 API 可用。
         # 只暴露来源标记，token 值永不离开连接器进程。
-        # 取值："config"|"env"=可用；"invalid"=配置了但坏了。（v0.5.0-beta.12：
+        # 取值："config"|"env"=可用；"invalid"=配置了但坏了。（
         # token 文件路径删除——file/file_unreadable 取值不复存在。）
         try:
             _t, _src = _resolve_controller_token(cfg)
@@ -49,15 +49,15 @@ def build_config_router() -> APIRouter:
                 out["controllerTokenSource"] = ""
         except TokenValidationError:
             out["controllerTokenSource"] = "invalid"
-        # v0.5.0-beta.14.1: effective 走 _pick_address（固定档=固定值；auto
+        # effective 走 _pick_address（固定档=固定值；auto
         # = cache 优先、miss 回退首个——比原来「cache 空=空串」更诚实）。
         out["effective"] = {
             "matrix": _pick_address(cfg, "matrix"),
             "controller": _pick_address(cfg, "controller"),
-            # v0.5.0-beta.14.7：effective 补 gateway（固定档同源）。
+            # effective 补 gateway（固定档同源）。
             "gateway": _pick_address(cfg, "gateway"),
         }
-        # v0.5.0-beta.14.12：持久化诊断——路径/挂载可见性/
+        # 持久化诊断——路径/挂载可见性/
         # 上次写盘时间（帮助定位"设置不落盘"的环境问题）。
         out["configPath"] = str(config_mod._CONFIG_PATH)
         try:
@@ -67,7 +67,7 @@ def build_config_router() -> APIRouter:
         except Exception:  # noqa: BLE001
             out["configSavedAt"] = 0
             out["configWritable"] = False
-        # v0.5.0-beta.14.27（F-A）：配置修订号（PUT 乐观锁用）+
+        # 配置修订号（PUT 乐观锁用）+
         # 加载态健康（defaults-fallback=当前在跑默认值，UI 必须显形）
         # + 写盘审计环（最近 20 条——「谁改了配置」当场可查，
         # 再犯一次无需翻日志）。
@@ -78,7 +78,7 @@ def build_config_router() -> APIRouter:
 
     @router.get("/auth-status")
     async def get_auth_status() -> Dict[str, Any]:
-        """v0.5.0-beta.14.19: 登录态/凭据健康（纯进程内状态，零外发请求）。
+        """登录态/凭据健康（纯进程内状态，零外发请求）。
 
  前端 30s 低频轮询驱动「登录已失效」横幅——此前 token 失效后
  @通知静默全断且无人知晓（改密/踢设备/重置 token 是高频运维动作）。
@@ -96,7 +96,7 @@ def build_config_router() -> APIRouter:
             "console_session": (
                 "none"
                 if not str(cfg.get("console_session") or "").strip()
-                # 任务 190：跨域共享状态，经 router 模块属性访问（勿改回局部绑定）
+                # 跨域共享状态，经 router 模块属性访问（勿改回局部绑定）
                 else ("expired" if router_mod._console_session_expired else "active")
             ),
             "controller_token": "none",
@@ -119,7 +119,7 @@ def build_config_router() -> APIRouter:
         if incoming.get("controller_token") == "***":
             incoming.pop("controller_token", None)
         prev = config_mod.load_config()
-        # v0.5.0-beta.14.22：凭据意图检查——用户选了覆盖凭据（basic/
+        # 凭据意图检查——用户选了覆盖凭据（basic/
         # bearer）但凭据为空且旧条目无可继承同类型凭据时，merge 会静默
         # 降级为无凭据条目（网关恒 401）而保存仍报成功（「已保存但
         # 没记住」的根因）。保存前拦截 400，错误文案点名地址位置。
@@ -154,7 +154,7 @@ def build_config_router() -> APIRouter:
                 )
         if _gap_msgs:
             raise HTTPException(status_code=400, detail="；".join(_gap_msgs))
-        # v0.5.0-beta.14.27（F-A）：并发写保护——页面加载后的配置修订号
+        # 并发写保护——页面加载后的配置修订号
         # 与磁盘对不上（外部改动过）→ 409，前端提示刷新后重存。
         # 旧前端不传 config_rev → 跳过（向后兼容）。
         if patch.config_rev is not None:
@@ -167,9 +167,9 @@ def build_config_router() -> APIRouter:
                         "请刷新设置页核对后再保存，避免覆盖新值"
                     ),
                 )
-        # v0.5.0-beta.14.12：保存失败显性化——落盘失败（磁盘
+        # 保存失败显性化——落盘失败（磁盘
         # 满/权限）此前裸抛 = 500 无详情；现明确报原因（前端可显示）。
-        # v0.5.0-beta.14.12：config 写盘校验失败（写+回读
+        # config 写盘校验失败（写+回读
         # 不一致/磁盘异常）统一为 IOError——分类报「配置保存失败（磁盘写入
         # 问题）」；其余异常仍走 通用兜底。
         try:
@@ -187,7 +187,7 @@ def build_config_router() -> APIRouter:
             raise HTTPException(
                 status_code=500, detail=f"配置写入失败：{exc}"
             )
-        # v0.5.0-beta.12: 登录身份变更（同 /login 语义）→ 清聚合缓存 + 重启 sync 游标。
+        # 登录身份变更（同 /login 语义）→ 清聚合缓存 + 重启 sync 游标。
         # 只按 user_id 判定——普通保存配置（未换账号）不触发重启。
         if (prev.get("matrix") or {}).get("user_id") != (
             merged.get("matrix") or {}
@@ -196,13 +196,13 @@ def build_config_router() -> APIRouter:
             from .. import sync_watcher as _sw  # noqa: PLC0415
 
             await _sw.restart("config.matrix")
-        # v0.5.0-beta.14.12：地址探测转后台——保存即时返回
+        # 地址探测转后台——保存即时返回
         # （<1s），effective 状态随后自动刷新（前端下次 GET /config 可见）。
         # 旧行为=同步 await 全地址探测（本机实测 ~4.8s，WAN 高延迟下保存
         # 几乎保存不了）；后台任务经 _safe_refresh_effective 错误自保。
         asyncio.create_task(_safe_refresh_effective(merged))
         _resp = config_mod.redact(merged)
-        # v0.5.0-beta.14.22：凭据回读校验——四类地址逐位置落盘形态
+        # 凭据回读校验——四类地址逐位置落盘形态
         # （str=无凭据/basic/bearer），前端与表单意图对表；不一致=显形。
         _resp["credential_check"] = {
             "matrix": config_mod.persisted_credential_kinds(
@@ -216,14 +216,14 @@ def build_config_router() -> APIRouter:
         }
         return _resp
 
-    # ── v0.5.0-beta.14.14：完整配置备份/恢复 ─────────────────
+    # ── 完整配置备份/恢复 ─────────────────
     # 安全边界：同源本地、面向用户自己的备份用途（换环境/装包后一键还原）。
     # GET /config 保持脱敏不动（前端展示面）；export/import 是独立通道——
     # 导出返回含明文凭据的完整配置，导入校验 → 备份当前态 → 覆盖。
 
     @router.get("/config/export")
     async def config_export() -> Dict[str, Any]:
-        """v0.5.0-beta.14.14：完整配置导出（含明文凭据）。
+        """完整配置导出（含明文凭据）。
 
  同源本地、面向用户自己的备份用途——输出即落盘同形的完整配置对象，
  原样复制保存；换环境/装包/配置丢失后贴回 /config/import 即还原。
@@ -232,7 +232,7 @@ def build_config_router() -> APIRouter:
 
     @router.post("/config/import")
     async def config_import(request: Request) -> Dict[str, Any]:
-        """v0.5.0-beta.14.14：完整配置导入（覆盖式恢复）。
+        """完整配置导入（覆盖式恢复）。
 
  同源本地、面向用户自己的备份用途（与 GET /config/export 一对）。
  流程：① schema 级校验（顶层 dict + 关键键类型 + 无脱敏占位符，
@@ -303,14 +303,14 @@ def build_config_router() -> APIRouter:
 
     @router.post("/config/test")
     async def config_test(patch: ConfigTestRequest) -> Dict[str, Any]:
-        """v0.5.0-beta.12: 连通性测试——逐地址测延迟，返回 {url, ok, ms, detail}。
+        """连通性测试——逐地址测延迟，返回 {url, ok, ms, detail}。
 
  可传未保存的表单值（测试草稿地址）；不传则测已配置列表。
  仅当传入列表与已配置一致时才更新 working cache（applied=true）——
  草稿测试不动生效地址。
  """
         cfg = config_mod.load_config()
-        # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url 再测。
+        # 条目 str | {url, auth?}——统一取 url 再测。
         def _urls(entries: Any) -> List[str]:
             return [config_mod.address_url(u) for u in (entries or []) if config_mod.address_url(u)]
 
@@ -318,24 +318,24 @@ def build_config_router() -> APIRouter:
         cfg_ctl = _urls(cfg.get("controller_urls"))
         matrix_list = _urls(patch.matrix or cfg_matrix)
         ctl_list = _urls(patch.controller or cfg_ctl)
-        # v0.5.0-beta.12: SGLang 双地址（传草稿列表则测草稿，否则测已配置；兼容旧 "url"）。
+        # SGLang 双地址（传草稿列表则测草稿，否则测已配置；兼容旧 "url"）。
         cfg_sg = cfg.get("sglang") or {}
         cfg_sg_urls = _urls(
             cfg_sg.get("urls")
             or ([cfg_sg.get("url")] if cfg_sg.get("url") else [])
         )
         sglang_list = _urls(patch.sglang or cfg_sg_urls)
-        # v0.5.0-beta.14.17: Higress 双地址（传草稿列表则测草稿，否则测已配置）。
+        # Higress 双地址（传草稿列表则测草稿，否则测已配置）。
         cfg_gw_urls = _urls(cfg.get("gateway_admin_urls"))
         gateway_list = _urls(patch.gateway or cfg_gw_urls)
-        # v0.5.0-beta.14.3: 草稿凭据随测——条目级 auth 图（未保存也能验）。
+        # 草稿凭据随测——条目级 auth 图（未保存也能验）。
         auth_maps = {
             "matrix": config_mod.build_auth_map(patch.matrix if patch.matrix is not None else cfg.get("matrix_homeservers")),
             "controller": config_mod.build_auth_map(patch.controller if patch.controller is not None else cfg.get("controller_urls")),
             "sglang": config_mod.build_auth_map(
                 (patch.sglang if patch.sglang is not None else cfg_sg.get("urls"))
             ),
-            # v0.5.0-beta.14.17: Higress 覆盖凭据（同口径）。
+            # Higress 覆盖凭据（同口径）。
             "gateway": config_mod.build_auth_map(
                 (patch.gateway if patch.gateway is not None else cfg.get("gateway_admin_urls"))
             ),
@@ -350,7 +350,7 @@ def build_config_router() -> APIRouter:
             matrix_list, ctl_list, sglang_list, token, with_diag=True,
             auth_maps=auth_maps,
             gateway_urls=gateway_list,
-            # v0.5.0-beta.14.17: 会话三态——已配置且持有会话才探会话有效性。
+            # 会话三态——已配置且持有会话才探会话有效性。
             gateway_session_cookie=str(
                 cfg.get("console_session") or ""
             ).strip(),
@@ -364,7 +364,7 @@ def build_config_router() -> APIRouter:
             "matrix": _pick_address(cfg, "matrix"),
             "controller": _pick_address(cfg, "controller"),
         }
-        # v0.5.0-beta.12：测完自动切换要可见——switched 标记哪些类型换了生效地址。
+        # 测完自动切换要可见——switched 标记哪些类型换了生效地址。
         switched = {
             kind: bool(effective.get(kind) and effective[kind] != prev[kind])
             for kind in ("matrix", "controller")
@@ -374,10 +374,10 @@ def build_config_router() -> APIRouter:
             "matrix": results["matrix"],
             "controller": results["controller"],
             "sglang": results["sglang"],
-            # v0.5.0-beta.14.17: Higress 探测行（诊断面；未配置=空列表）。
+            # Higress 探测行（诊断面；未配置=空列表）。
             "gateway": results.get("gateway", []),
             "effective": effective,
-            # v0.5.0-beta.14.1: 固定档回报——三类地址各自的固定值（None=未固定）。
+            # 固定档回报——三类地址各自的固定值（None=未固定）。
             "pinned": _pinned_map(cfg),
             "applied": applied,
             "switched": switched,
@@ -385,7 +385,7 @@ def build_config_router() -> APIRouter:
 
     @router.post("/config/verify-admin")
     async def verify_admin(body: VerifyAdminRequest) -> Dict[str, Any]:
-        """v0.5.0-beta.12: L1 管理员验证（admin 账号密码 或 Controller token 二选一）。
+        """L1 管理员验证（admin 账号密码 或 Controller token 二选一）。
 
  密码路径换不来 Controller 管理 API 凭据（controller 无 token 签发端点，
  不收 level-1 matrix token）——成功只授予 Console 会话（网关面）；
@@ -400,12 +400,12 @@ def build_config_router() -> APIRouter:
         password = (body.admin_password or "").strip()
         if password == "***":
             password = str(cfg.get("admin_password") or "")
-        # v0.5.0-beta.14.23（N1 验证分离）：Controller token 解析**只在
+        # Controller token 解析**只在
         # 路径 B 内**做——Higress 账密验证（路径 A）不触碰 token：旧版在
         # 分支前无条件 _resolve_controller_token，config 里 token 含非法
         # 字符时点「Higress 验证」会报 token 错（两套凭证互相牵连）。
         # 两验证器现在各自独立：A 只验 Console 账密，B 只验 Controller token。
-        # v0.5.0-beta.14.7: 双地址——body 列表/单值优先，配置次之；按序尝试，
+        # 双地址——body 列表/单值优先，配置次之；按序尝试，
         # 传输错误换下一地址，凭据错误立即报（地址无关）。
         console_urls: List[str] = []
         for u in list(body.gateway_admin_urls or []):
@@ -422,7 +422,7 @@ def build_config_router() -> APIRouter:
 
         # --- 路径 A：admin 账号密码 → Console /session/login ---
         if username and password:
-            # Higress 地址（v0.5.0-beta.12 设计，「同主机 8001/6868
+            # Higress 地址（设计，「同主机 8001/6868
             # 顺序探测行不通，每个人映射的端口都不一样」）：Higress Console 与
             # Controller 同容器不同端口（源码实锤：install 脚本
             # `docker exec agentteams-controller curl 127.0.0.1:8001`），但宿主
@@ -439,7 +439,7 @@ def build_config_router() -> APIRouter:
                         "填写「Higress 地址」后重试"
                     ),
                 }
-            # v0.5.0-beta.14.7: 逐地址尝试（传输错误换下一地址；凭据错误=地址
+            # 逐地址尝试（传输错误换下一地址；凭据错误=地址
             # 无关，立即报；会话 cookie 由 Console 后端校验、跨入口通用）。
             rr = None
             last_exc: Optional[Exception] = None
@@ -488,10 +488,10 @@ def build_config_router() -> APIRouter:
                     "console_session": session_cookie,
                 },
             )
-            # v0.5.0-beta.14.19: 新会话到手 → 过期标记清零。
-            # 任务 190：跨域共享状态，经 router 模块属性写入（勿改回 global）。
+            # 新会话到手 → 过期标记清零。
+            # 跨域共享状态，经 router 模块属性写入（勿改回 global）。
             router_mod._console_session_expired = False
-            # v0.5.0-beta.12：会话到手立即自检 alias 层（有会话≠有 alias——
+            # 会话到手立即自检 alias 层（有会话≠有 alias——
             # 解包/形状断点要在验证时就暴露，而不是等模型下拉静默平铺）。
             gw_routes, gw_aliases = 0, []
             if session_cookie:
@@ -522,7 +522,7 @@ def build_config_router() -> APIRouter:
             }
 
         # --- 路径 B：Controller 管理员 token ---
-        # v0.5.0-beta.14.23：token 解析在此处（路径 A 早退后）——见函数头
+        # token 解析在此处（路径 A 早退后）——见函数头
         # N1 注释；token_source ∈ {"input", "config", "env"}。
         token = (body.controller_token or "").strip()
         token_source = ""
@@ -541,7 +541,7 @@ def build_config_router() -> APIRouter:
             cfg_ctl = _ordered_ctl_urls(cfg)
             if not cfg_ctl:
                 return {"ok": False, "error": "请先配置 Controller 地址"}
-            # v0.5.0-beta.14.21：韧性 + 诊断增强（外网验证 500 根因治理）。
+            # 韧性 + 诊断增强（外网验证 500 根因治理）。
             # 实测：LAN 活地址 /api/v1/teams Bearer JWT = 200 <1s；外网路径
             # （Higress 网关→Controller）偶发 500 = 网关/上游瞬时错（非 token 错）。
             # 旧版把任何非 200 一律报「token 无效」且 3s 超时（5M WAN 偏紧）

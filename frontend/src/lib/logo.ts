@@ -1,5 +1,5 @@
 /**
- * v0.5.0-beta.12.2（去掉占位 emoji，直接用 AgentTeams logo，
+ * （去掉占位 emoji，直接用 AgentTeams logo，
  * 与 dashboard 同一文件）——logo 正源 = dashboard public/agentteams-logo.svg
  * （128×128，内嵌 base64 PNG，与 dashboard 侧边栏/favicon 同一文件）。
  *

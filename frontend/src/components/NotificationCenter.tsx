@@ -45,7 +45,7 @@ function NotificationCenter(props: {
  * eventId 可选 → 跳房间并定位到该消息。 */
   onGotoRoom?: (roomId: string, eventId?: string) => void;
   refreshTick?: number;
-  /** v0.5.0-beta.12（邀请主动通知）：待接受邀请（sync rooms.invite 段，
+  /** ：待接受邀请（sync rooms.invite 段，
  * WorkbenchPage 已随 /teams/sync 持有）——此处只做入口卡，接受/拒绝
  * UI 留在团队概览（单一事实源，Tuwunel /join 修复不重复实现）。 */
   invites?: InviteRoom[];
@@ -69,7 +69,7 @@ function NotificationCenter(props: {
   const [unreadOnly, setUnreadOnly] = React.useState(false);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
   const [marking, setMarking] = React.useState(false);
-  // v0.5.0-beta.12（审批主动通知）：房间级 Worker Tool Guard 审批请求——
+  // 房间级 Worker Tool Guard 审批请求——
   // 与上面「宿主待审批」（本机 QwenPaw 原生队列）不同源：Worker 的受控
   // 工具调用在 Matrix 房间发「🛡️ Approval Required」，不带 @人类，
  // 旧逻辑零提示（「只能在聊天群看见，并 @相关 worker」）。
@@ -91,7 +91,7 @@ function NotificationCenter(props: {
   }, []);
 
   /** 一键批准/拒绝：向房间发带 @Worker 的审批命令（RoomChat 审批卡同款
- * 语义）。v0.5.0-beta.12 ：此前裸发命令（无 @）——群房间
+ * 语义）。此前裸发命令（无 @）——群房间
  * _require_mention=True 时 Worker 不消费；sender 缺失（异常数据）时
  * 降级为无 @ 命令（比不发强，DM 房间本就不需要 mention）。 */
   const doApproval = React.useCallback(
@@ -157,11 +157,11 @@ function NotificationCenter(props: {
   }, [unreadOnly, onUnreadCount, loadMentions, loadApprovals]);
 
   // 30s 轮询（含未读计数 → tab badge）。
-  // v0.5.0-beta.14.6：旧定时器 → usePoller（30s）。任务书条件写作
+  // 旧定时器 → usePoller（30s）。任务书条件写作
   // `open && !document.hidden`，但本组件 props 无 open（实况核对）——本组件
   // 即 inbox tab 内容，useTabActive("inbox") 为等价门控（rc-tabs 保活：
   // 切走组件不卸载）。
-  // v0.5.0-beta.14.14：布尔快照——非 inbox tab 互切不再重渲。
+  // 布尔快照——非 inbox tab 互切不再重渲。
   const inboxActive = useTabActive("inbox") && !document.hidden;
   // 挂载首拉（load 身份变化——如 unreadOnly 翻转——同样重拉，原码同款）。
   React.useEffect(() => {
@@ -170,7 +170,7 @@ function NotificationCenter(props: {
   usePoller({ fn: load, intervalMs: 30000, active: inboxActive });
 
   // SSE 事件触发（IM 式）：refreshTick 变化 → 刷新（不等轮询）。
-  // v0.5.0-beta.14.19：加 500ms 合并窗 + 可见性门——此前 5 类 SSE
+  // 加 500ms 合并窗 + 可见性门——此前 5 类 SSE
   // 事件（mention/task_status/invite/approval_*）每帧无条件三连 GET
   // （inbox tab 隐藏/后台 tab 也跑，忙集群 ≈12 次无缓冲宿主拨号/min）。
   // 合并窗内多事件=一次 load；tab 激活+可见时补刷 pending（不丢刷新，
@@ -214,7 +214,7 @@ function NotificationCenter(props: {
   );
 
   // 待审批计数（顶部入口条，跳首页审批卡）= 房间审批源（load() 30s 轮询
-  // 已含 loadApprovals）。v0.5.0-beta.12 ：弃用宿主 push-messages
+  // 已含 loadApprovals）。弃用宿主 push-messages
   // 队列（远程 Worker 审批在该进程内，本机队列恒 0——首页没有）。
 
   const markAll = async () => {
@@ -316,7 +316,7 @@ function NotificationCenter(props: {
         <div style={{ color: "#ff4d4f", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}><WarnIcon size={12} /> {error}</div>
       ) : null}
 
-      {/* v0.5.0-beta.12（邀请主动通知）：新邀请卡片 → 跳团队概览处理。
+      {/* ：新邀请卡片 → 跳团队概览处理。
  OS toast/铃铛由后端 sync_watcher 写宿主收件箱（本区是面板内入口，
  防 toast 漏看——「邀请有时候收不到，要去 Element 点」）。 */}
       {invites && invites.length > 0 ? (
@@ -371,7 +371,7 @@ function NotificationCenter(props: {
         </div>
       ) : null}
 
-      {/* v0.5.0-beta.12（审批主动通知）：房间级 Worker Tool Guard 审批请求
+      {/* ：房间级 Worker Tool Guard 审批请求
  ——OS toast 由 sync_watcher 推宿主收件箱，此处可一键批准/拒绝
  （向房间发 /approval 命令，RoomChat 审批卡同款语义）。 */}
       <div>
@@ -762,6 +762,6 @@ function NotificationCenter(props: {
   );
 }
 
-// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
+// 面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(NotificationCenter);

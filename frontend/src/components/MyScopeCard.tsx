@@ -7,9 +7,8 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 
 /**
- * v0.5.0-beta.12（「我的团队/我的权限」员工视角只读视图）：
- * 当前登录账号能看到什么、被授权了什么—— 产品化的员工侧半边
- * （L1 侧的「团队访问配置矩阵」是管理员半边，v0.5.0-beta.12）。
+ * * 当前登录账号能看到什么、被授权了什么—— 产品化的员工侧半边
+ * （L1 侧的「团队访问配置矩阵」是管理员半边，）。
  *
  * 数据源（全部现有端点，零新后端）：
  * - L1（配了 Controller token）：adminData.humans 中 matrixUserID == 我的

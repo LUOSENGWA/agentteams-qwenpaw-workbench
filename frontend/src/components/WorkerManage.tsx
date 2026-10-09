@@ -94,10 +94,10 @@ function phaseMeta(phase: string): { label: string; color: string } {
   };
 }
 
-/** v0.5.0-beta.12（模型/运行时=两个独立标签+颜色区分，
+/** （模型/运行时=两个独立标签+颜色区分，
  * 参考 dashboard RuntimeBadge 配色）：qwenpaw 橙 / openclaw 蓝 / copaw 绿 /
  * hermes 紫 / openhuman 青（对齐 dashboard runtime-meta badgeClass）。
- * v0.5.0-beta.12.2：补 deepseek-harness 洋红（上游新运行时，新建 Worker
+ * 补 deepseek-harness 洋红（上游新运行时，新建 Worker
  * 可选后 Worker 行/Manager 表标签需着色；copaw 退役但存量 CR 可能仍显示，
  * 颜色保留兼容）。 */
 const RUNTIME_TAG_COLOR: Record<string, string> = {
@@ -125,7 +125,7 @@ function fmtTime(ts: number): string {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** v0.5.0-beta.13.21（#1247 心跳态）：RFC3339（UTC/Z）→ 本地时区
+/** ：RFC3339（UTC/Z）→ 本地时区
  * MM-DD HH:mm:ss；解析失败原样返回（不吞字段）。 */
 function fmtRfc3339(v: string): string {
   const d = new Date(v);
@@ -309,7 +309,7 @@ function WorkerManageInfo({
   worker: AdminData["workers"][number];
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
-  /** v0.5.0-beta.13.8：L1 账号（controller token）→ 运行配置面板 L1-only
+  /** L1 账号（controller token）→ 运行配置面板 L1-only
  * 字段可编辑；L2 只读（PUT 非白名单键会被服务端 403 拒绝）。 */
   l1?: boolean;
   onOpenSettings?: () => void;
@@ -364,7 +364,7 @@ function WorkerManageInfo({
         gap: 6,
       }}
     >
-      {/* v0.5.0-beta.14.22（D4）：非 qwenpaw runtime 统一提醒——下方运行
+      {/* ：非 qwenpaw runtime 统一提醒——下方运行
   配置(#1)/审批(#2)/频道(#3)/技能 preload(#4)/时间线(#7) 均为
   QwenPaw 独有面，非 qwenpaw 会被服务端 400/无数据。顶部一条说明
   （各面板另按矩阵做入口禁用/空态，双保险）。qwenpaw/空 runtime 不显。 */}
@@ -382,7 +382,7 @@ function WorkerManageInfo({
           warn={!!worker.containerState && !isStateConsistent(worker.state, worker.containerState)}
         />
       </div>
-      {/* v0.5.0-beta.13.21（#1247 心跳态 UI）：心跳任务运行态四字段
+      {/* ：心跳任务运行态四字段
  （worker-agent-status 契约——任务级真相；旧版 Controller 无
  → 整行隐藏，不显空占位）。 */}
       {worker.agentStatus ||
@@ -408,10 +408,10 @@ function WorkerManageInfo({
           />
         </div>
       ) : null}
-      {/* v0.5.0-beta.12（读路径）：Worker 已装载 Skill / MCP——零新后端
+      {/* ：Worker 已装载 Skill / MCP——零新后端
  （Controller /workers 响应已含 skills/mcpServers，通用代理透传）。
  写路径（员工自助增删）等上游 PR，此处只读展示。
- v0.5.0-beta.12（建团自检修复）：MCP 行恒显——此列表只含用户自定义
+ ：MCP 行恒显——此列表只含用户自定义
  MCP（CRD spec.mcpServers）；内置 teamharness/workerflow 走镜像插件
  bootstrap，永不在此出现（历史缺陷「MCP 全没配」误诊的误导源）。 */}
       {worker.skills?.length || worker.mcpServers?.length || worker.runtime === "qwenpaw" ? (
@@ -491,7 +491,7 @@ function WorkerManageInfo({
           </antd.Tooltip>
         )}
       </div>
-      {/* v0.5.0-beta.13.4（落地）：Worker 运行配置（上游 #1231 消费）——
+      {/* ：Worker 运行配置（上游 #1231 消费）——
  默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。 */}
       <WorkerRuntimeConfig
         name={worker.name}
@@ -520,11 +520,11 @@ function WorkerRow({
   adminWorker?: AdminData["workers"][number];
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
-  /** v0.5.0-beta.13.8：L1 账号 → 运行配置面板 L1-only 字段可编辑。 */
+  /** L1 账号 → 运行配置面板 L1-only 字段可编辑。 */
   l1?: boolean;
-  /** v0.5.0-beta.13.10：L1 只读 Alert「去设置」跳转透传。 */
+  /** L1 只读 Alert「去设置」跳转透传。 */
   onOpenSettings?: () => void;
-  /** v0.5.0-beta.12.4：该 Worker 的 session 状态（typing/last_ts 派生）。
+  /** 该 Worker 的 session 状态（typing/last_ts 派生）。
  * 与行首既有圆点（CR phase / spawn running，进程级）并存——两轴不同。 */
   sessionState?: WorkerSessionState;
 }) {
@@ -532,11 +532,11 @@ function WorkerRow({
   const [expanded, setExpanded] = React.useState(false);
   const spawns = group.spawns || [];
   const hasRunning = spawns.some((s) => s.status === "running");
-  /* v0.5.0-beta.12：admin 数据未加载（L2/未配 token）时回退 tree 数据
+  /* admin 数据未加载（L2/未配 token）时回退 tree 数据
  的 phase/runtime（后端 team-structure 已透传，零新请求）。 */
   const phase = adminWorker?.phase || group.phase || "";
   const rowRuntime = adminWorker?.runtime || group.runtime || "";
-  // v0.5.0-beta.14.22（D4 #8）：legacy 角标判据——controller ≥#1327 对
+  // legacy 角标判据——controller ≥#1327 对
   // copaw 存量置 runtimeDeprecated=true（admin 源有；tree 源 undefined=
   // 降级为仅按 runtime 判定）。
   const rowDeprecated = !!(
@@ -597,7 +597,7 @@ function WorkerRow({
             {phaseMeta(phase).label}
           </antd.Tag>
         ) : null}
-        {/* v0.5.0-beta.12（不圈在一起——模型/运行时各一个
+        {/* （不圈在一起——模型/运行时各一个
  标签，颜色区分，参考 dashboard RuntimeBadge）：模型=蓝、
  运行时=按运行时着色（RUNTIME_TAG_COLOR），版本=灰小字+悬停全量。
  / 数据源不变：WorkerInfo.runtime/version，未加载回退 tree
@@ -626,7 +626,7 @@ function WorkerRow({
             {rowRuntime}
           </antd.Tag>
         ) : null}
-        {/* v0.5.0-beta.14.22（D4 #8）：legacy 运行时统一角标（含升级指引）。 */}
+        {/* ：legacy 运行时统一角标（含升级指引）。 */}
         {rowDeprecated ? <RuntimeNotice kind="legacy" compact /> : null}
         {adminWorker?.version ? (
           <span style={{ color: "#999", fontSize: 11, marginLeft: 2 }}>
@@ -657,7 +657,7 @@ function WorkerRow({
               icon={<MessageIcon />}
               onClick={(e: ReactNS.MouseEvent) => {
                 e.stopPropagation();
-                // v0.5.0-beta.12：Worker 个人
+                // Worker 个人
                 // 房间（CR roomID）直跳——Worker 容器无法接受 Matrix 邀请，
                 // 新建 DM 房间 Worker 进不来=死路。无 room_id 才 fallback openDm。
                 onDm(group.mxid || group.worker_name, group.room_id);
@@ -677,9 +677,9 @@ function WorkerRow({
               onOpenSettings={onOpenSettings}
             />
           ) : null}
-          {/* v0.5.0-beta.13.15（B5b 拓扑集成）：per-Worker 资源管理
+          {/* ：per-Worker 资源管理
  （技能/MCP/频道/工具 四页签，就地编辑）。
- v0.5.0-beta.13.16：技能/MCP 改为技能中心同款可编辑卡直接嵌入
+ 技能/MCP 改为技能中心同款可编辑卡直接嵌入
  （SkillCenter onlyWorker），撤「去技能中心编辑」跳转。 */}
           {adminWorker ? (
             <WorkerResourcePanel worker={adminWorker} l1={l1} />
@@ -715,7 +715,7 @@ function WorkerRow({
 }
 
 /** Worker 执行检查点（checkpoint 端点；懒加载：展开时才请求）。
- * v0.5.0-beta.14.22（D4 #7）：runtime 非 qwenpaw → 禁用入口 + 说明
+ * runtime 非 qwenpaw → 禁用入口 + 说明
  * （不发起无谓的 checkpoint 拨号）。 */
 function CheckpointCard({
   workerName,
@@ -726,7 +726,7 @@ function CheckpointCard({
 }) {
   const tr = useT();
   const [open, setOpen] = React.useState(false);
-  // v0.5.0-beta.14.22（D4 #7）：非 qwenpaw 禁用入口 + 不发起拨号。
+  // 非 qwenpaw 禁用入口 + 不发起拨号。
   const gated = isQwenpawOnlyDisabled(runtime);
   const [state, setState] = React.useState<
     | { kind: "idle" }
@@ -902,14 +902,14 @@ function TeamNode({
   adminByWorker: Map<string, AdminData["workers"][number]>;
   onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
-  /** v0.5.0-beta.12.4：worker_name → session 状态（行内圆点）。 */
+  /** worker_name → session 状态（行内圆点）。 */
   sessionByName?: Record<string, WorkerSessionState>;
-  /** v0.5.0-beta.13.8：当前账号 L1（controller token）→ 运行配置面板的
+  /** 当前账号 L1（controller token）→ 运行配置面板的
  * L1-only 字段（并发限流/上下文管理/shell 组/auto_title）可编辑。 */
   l1?: boolean;
-  /** v0.5.0-beta.13.10：L1 只读 Alert「去设置」跳转透传。 */
+  /** L1 只读 Alert「去设置」跳转透传。 */
   onOpenSettings?: () => void;
-  /** v0.5.0-beta.13.20：「N人」右侧齿轮 → 配置团队弹窗（CrdManage 同一
+  /** 「N人」右侧齿轮 → 配置团队弹窗（CrdManage 同一
  * 入口）。未传（L1 未登录/管理数据未就绪）= 不渲染齿轮。 */
   onTeamConfig?: (teamName: string) => void;
 }) {
@@ -936,7 +936,7 @@ function TeamNode({
         <antd.Tag style={{ margin: "0 0 0 8px", fontSize: 11 }}>
           {workerCount} 人
         </antd.Tag>
-        {/* v0.5.0-beta.13.20：团队配置入口上移——「N人」右侧齿轮，
+        {/* 团队配置入口上移——「N人」右侧齿轮，
  打开 CrdManage「配置团队」弹窗（名称/描述/心跳/成员模型，
  与团队表「配置」按钮同一入口）。stopPropagation：点齿轮
  不触发行展开/收起。 */}
@@ -991,7 +991,7 @@ function TeamNode({
               onLifecycle={onLifecycle}
               acting={acting}
               sessionState={g.worker_name ? sessionByName?.[g.worker_name] : undefined}
-              // v0.5.0-beta.13.10（B1 根因）：l1 此前在此层丢失——
+              // l1 此前在此层丢失——
               // TeamNode 拿到 l1 却没传给 WorkerRow，运行配置面板恒
               // l1=undefined → 恒「只读」Alert（L1 登录仍见只读）。
               l1={l1}
@@ -1161,11 +1161,11 @@ function HumanTable({ humans }: { humans: AdminData["humans"] }) {
   );
 }
 
-/** v0.5.0-beta.12：Manager 模型选择——与 CrdManage 三入口同一候选并集
+/** Manager 模型选择——与 CrdManage 三入口同一候选并集
  * （SGLang 在服 ∪ 在用 ∪ 网关 alias，../modelUnion）+ 同一写前校验。
  * 写路径 = PUT /managers/{name} {model}（Controller 合并语义，provider 不动）。
  * 面板 hasToken 门控（L1 only）——L2 结构上不可达（插件侧零改动）。 */
-/** v0.5.0-beta.12：Manager 详情面板（表格展开行）——image/version/个人房间
+/** Manager 详情面板（表格展开行）——image/version/个人房间
  + 私聊直跳（roomID，同款逻辑）+ L1 日志（docker-logs 既有代理，
  零新端点）。wake/sleep = dashboard/插件两端都没有（轮 3 实锤），不做。 */
 function ManagerDetail({
@@ -1270,7 +1270,7 @@ function ManagerDetail({
   );
 }
 
-/** v0.5.0-beta.12（竖屏 Manager 表模型列太宽——894px 总宽下 240 模型列
+/** （竖屏 Manager 表模型列太宽——894px 总宽下 240 模型列
  * 要滚到底才见）：≤700px 视口紧凑列宽（总宽 894→664，模型列 240→180）。 */
 function useIsPortrait(): boolean {
   const q = "(max-width: 700px)";
@@ -1286,7 +1286,7 @@ function useIsPortrait(): boolean {
   return p;
 }
 
-/** v0.5.0-beta.12：导出供渲染审计（dev-overflow.html）与未来复用。 */
+/** 导出供渲染审计（dev-overflow.html）与未来复用。 */
 export function ManagerTable({
   managers,
   usedModels,
@@ -1299,14 +1299,14 @@ export function ManagerTable({
   usedModels: string[];
   onRefreshAdmin?: (silent?: boolean) => void;
   l1TokenMode?: boolean;
-  /** v0.5.0-beta.12：详情面板私聊按钮。 */
+  /** 详情面板私聊按钮。 */
   onDm?: (mxid: string, roomId?: string) => void;
-  /** v0.5.0-beta.12：L1 门控（日志按钮）。 */
+  /** L1 门控（日志按钮）。 */
   hasToken?: boolean;
 }) {
   const tr = useT();
   const portrait = useIsPortrait();
-  /** v0.5.0-beta.12：竖屏紧凑列宽（模型列 240→180，总宽 894→664）。 */
+  /** 竖屏紧凑列宽（模型列 240→180，总宽 894→664）。 */
   const W = portrait
     ? { mgr: 110, phase: 64, runtime: 72, model: 180, version: 110, tail: 128 }
     : { mgr: 150, phase: 88, runtime: 96, model: 240, version: 150, tail: 170 };
@@ -1367,13 +1367,13 @@ export function ManagerTable({
         size="small"
         pagination={false}
         tableLayout="fixed"
- /* v0.5.0-beta.12（模型列定宽 262 后「左边列被严重
+ /* （模型列定宽 262 后「左边列被严重
  挤压」——fixed 布局下剩余空间只够喂一个浮动列，列间互相抢宽。
  设计=全列显式定宽 + 横向滚动兜底：谁也不挤压，窄屏出滚动条。
- v0.5.0-beta.12：≤700px 紧凑列宽（竖屏少滚 230px，模型列提前可见）。 */
+ ≤700px 紧凑列宽（竖屏少滚 230px，模型列提前可见）。 */
         scroll={{ x: W.mgr + W.phase + W.runtime + W.model + W.version + W.tail }}
         dataSource={managers}
-        /* v0.5.0-beta.12：展开行 = Manager 详情面板（零新端点）。 */
+        /* 展开行 = Manager 详情面板（零新端点）。 */
         expandable={{
           expandedRowRender: (mgr: ManagerInfo) => (
             <ManagerDetail mgr={mgr} hasToken={hasToken} onDm={onDm} />
@@ -1396,7 +1396,7 @@ export function ManagerTable({
               </antd.Tag>
             ),
           },
- /* v0.5.0-beta.12（运行时管理归团队管理）：每个 Manager
+ /* ：每个 Manager
  直接显示自己的 runtime（ManagerResponse.runtime，零新端点）。 */
           {
             title: tr("运行时"),
@@ -1414,7 +1414,7 @@ export function ManagerTable({
                 "–"
               ),
           },
-          /* v0.5.0-beta.12（纠偏：v0.5.0-beta.12 单列定宽 262 后
+          /* （纠偏：单列定宽 262 后
  左列反被挤压）：全列定宽方案下模型列=240（170 输入框+保存按钮）。 */
           {
             title: tr("模型"),
@@ -1476,39 +1476,39 @@ interface WorkerManageProps {
   admin: AdminData | null;
   treeLoading?: boolean;
   adminLoading?: boolean;
-  /** v0.5.0-beta.13.21：admin 取数连续失败次数（≥2 且无数据时显 Alert+重试）。 */
+  /** admin 取数连续失败次数（≥2 且无数据时显 Alert+重试）。 */
   adminFailCount?: number;
  /** 刷新拓扑树/管理数据。silent=true = 静默刷新（不闪 loading， 要求）。 */
   onRefreshTree?: (silent?: boolean) => void;
   onRefreshAdmin?: (silent?: boolean) => void;
   /** 点击 Worker 的"私聊"按钮 → 优先直跳 Worker 个人房间（roomId=CR roomID），
- * 无 roomId 才 fallback 新建 DM。v0.5.0-beta.12。 */
+ * 无 roomId 才 fallback 新建 DM。。 */
   onDm?: (mxid: string, roomId?: string) => void;
   /** 是否已配置 Controller 管理员 token（决定管理信息面板/三表是否可用）。 */
   hasToken?: boolean;
   /** 当前 tab 是否激活（rc-tabs 保活：不激活时自动刷新跳过）。
- * v0.5.0-beta.14.13：boolean prop 每次切 tab 翻转 →
+ * boolean prop 每次切 tab 翻转 →
  * 本组件（1784 行、全树行渲染）整树重渲，落进切换帧（实测
  * 无 fetch 的 →团队 切换帧 61ms）。改传稳定 ref——prop 引用不变，
  * React.memo 命中零重渲；tick 时读 ref 当前值门控。 */
   activeRef?: { current: boolean };
   /**
- * 团队结构数据来源（v0.5.0-beta.12）："controller-workers"=正源；
+ * 团队结构数据来源（）："controller-workers"=正源；
  * "room-fallback"=Controller 未接入的房间聚合（群聊冒充团队——警示横幅）。
  */
   treeSource?: string;
-  /** v0.5.0-beta.12：当前 Matrix 登录账号 MXID → 「我的团队/权限」卡。 */
+  /** 当前 Matrix 登录账号 MXID → 「我的团队/权限」卡。 */
   myUserId?: string;
   /** L1 走 controller_token（无 Console 会话 → 网关 alias 层不可见提示）。 */
   l1TokenMode?: boolean;
-  /** v0.5.0-beta.12.4：worker_name → session 状态（行内圆点）。 */
+  /** worker_name → session 状态（行内圆点）。 */
   workerSessionByName?: Record<string, WorkerSessionState>;
-  /** v0.5.0-beta.13.10：运行配置 L1 只读 Alert 的「去设置」跳转。 */
+  /** 运行配置 L1 只读 Alert 的「去设置」跳转。 */
   onOpenSettings?: () => void;
 }
 
 /**
- * 👷 Worker 管理（v0.5.0-beta.12：合并原「Worker 树」+「管理」两 tab）。
+ * 👷 Worker 管理（合并原「Worker 树」+「管理」两 tab）。
  * 主视图 = 拓扑树（团队 → Worker → spawns）；Worker 行展开 = 管理信息面板
  * （状态/团队/角色/模型/容器 + 唤醒/休眠）+ spawn 子任务树 + 检查点；
  * 底部折叠区 = 团队/用户/Manager 三表（原管理页无损下沉）。
@@ -1533,20 +1533,20 @@ function WorkerManage(props: WorkerManageProps) {
     workerSessionByName,
   } = props;
   const [acting, setActing] = React.useState<string | null>(null);
-  // 底部折叠区受控（默认全收起）。v0.5.0-beta.13.16：技能/MCP 已并入拓扑
+  // 底部折叠区受控（默认全收起）。技能/MCP 已并入拓扑
   // 资源管理（就地编辑），此折叠区保留为跨 Worker 全量视图，不再被程序化展开。
   const [collapseKeys, setCollapseKeys] = React.useState<string[]>([]);
 
   // 自动刷新（30s）：拓扑 + 管理数据。rc-tabs 保活（切走不卸载），
   // 所以用 tab 激活门控：仅当前 tab 激活时才轮询。
-  // v0.5.0-beta.14.13：门控走稳定 ref（activeRef）——
+  // 门控走稳定 ref（activeRef）——
   // tick 时读当前值，tab 翻转不再触发本组件重渲（memo 零重渲）。
   const refreshRef = React.useRef({
     tree: onRefreshTree,
     admin: onRefreshAdmin,
   });
   refreshRef.current = { tree: onRefreshTree, admin: onRefreshAdmin };
-  // v0.5.0-beta.14.6：旧定时器 → usePoller（30s；tab 门控在 fn 内
+  // 旧定时器 → usePoller（30s；tab 门控在 fn 内
   // 读 activeRef 双保险；!document.hidden 内置——后台零负载）。
   // 不传 active：poller 常 tick（inactive tab 时 fn 内 no-op，零负载）；
   // 切回 team 的即时刷新由「点 Tab 即刷新」effect 覆盖（refreshTree+
@@ -1569,7 +1569,7 @@ function WorkerManage(props: WorkerManageProps) {
         antd.message.success(
           action === "wake" ? tr("{name} 已唤醒", { name }) : tr("{name} 已休眠", { name }),
         );
-        // v0.5.0-beta.14.6：唤醒/休眠=Worker 运行态变更 → 失效缓存
+        // 唤醒/休眠=Worker 运行态变更 → 失效缓存
         // （否则 30s TTL 内 admin/拓扑读旧心跳）。
         invalidateTags(["teams", "admin"]);
         void onRefreshAdmin?.();
@@ -1591,7 +1591,7 @@ function WorkerManage(props: WorkerManageProps) {
   const refresh = onRefreshTree || onRefreshAdmin;
   const refreshLoading = Boolean(treeLoading) || Boolean(adminLoading);
 
-  // v0.5.0-beta.13.20：拓扑齿轮 → CrdManage「配置团队」弹窗（注册式
+  // 拓扑齿轮 → CrdManage「配置团队」弹窗（注册式
   // handle——CrdManage 只渲染于 hasToken && admin，齿轮同步受同门控；
   // 弹窗打开瞬间若 admin 已卸载，openConfig 内查无团队会 toast 不炸）。
   const crdRef = React.useRef<CrdManageHandle | null>(null);
@@ -1634,12 +1634,12 @@ function WorkerManage(props: WorkerManageProps) {
               />
             ),
           },
-          // v0.5.0-beta.12：频道接入（调研结论——「👷 团队管理」下，
+          // 频道接入（调研结论——「👷 团队管理」下，
           // 不独立成 tab；Controller 频道端点未合时整节 404 版本门占位）。
           {
             key: "channels",
             label: tr("频道"),
-            // v0.5.0-beta.14.19：显式 active 门——折叠面板收起时
+            // 显式 active 门——折叠面板收起时
             // 30s 轮询停（rc-tabs 保活下组件不卸载，此前默认 active=true 恒跑）。
             children: (
               <WorkerChannels
@@ -1648,7 +1648,7 @@ function WorkerManage(props: WorkerManageProps) {
               />
             ),
           },
-          // v0.5.0-beta.13.1：内置工具（#1255 消费；与频道接入同款版本门
+          // 内置工具（#1255 消费；与频道接入同款版本门
           // ——Controller 未含该端点时 404 占位，不炸 tab）。
           {
             key: "tools",
@@ -1658,7 +1658,7 @@ function WorkerManage(props: WorkerManageProps) {
  // 会话入口 迁移：群内 worker 头像点击（RoomChat 抽屉）——
  // 不在团队管理出 tab（会话属于聊天上下文，且要看完整
           // session，不是最后活动列表）。
-          // v0.5.0-beta.12 ：技能中心从顶层 tab 收编（设计结论——团队级
+          // 技能中心从顶层 tab 收编（设计结论——团队级
           // 技能/MCP 资源管理归团队管理，不独立顶层 tab）。
           {
             key: "skills-center",
@@ -1668,7 +1668,7 @@ function WorkerManage(props: WorkerManageProps) {
         ]
       : myUserId
         ? [
- // v0.5.0-beta.13.14（L2 双模式——调研 P0 + 上游
+ // （L2 双模式——调研 P0 + 上游
             // l2-worker-scoped-write.md/team-skills.md/skill-catalog-api.md
             // 已合 main）：L2 身份（Matrix token、无 admin token）只出技能
             // 中心（我的团队 scope）：目录 ?team= + skills 可写 + MCP 只读。
@@ -1709,7 +1709,7 @@ function WorkerManage(props: WorkerManageProps) {
           </antd.Tooltip>
         ) : null}
       </div>
-      {/* v0.5.0-beta.12：我的团队/我的权限——员工视角只读半边
+      {/* 我的团队/我的权限——员工视角只读半边
  （管理员半边 = CrdManage 团队访问配置矩阵）。登录即显示。 */}
       <MyScopeCard
         myUserId={myUserId}
@@ -1769,7 +1769,7 @@ function WorkerManage(props: WorkerManageProps) {
       </antd.Card>
       {hasToken && !admin ? (
         <antd.Card size="small">
-          {/* v0.5.0-beta.13.21（13.20 首屏只显拓扑缺口⑤）：静默失败不再
+          {/* ：静默失败不再
  无感空面板——连续失败 ≥2 次显 Alert+重试（此前失败被 silent 吞掉，
  面板恒显「加载中」，用户只能手动点刷新）。 */}
           {adminFailCount >= 2 ? (
@@ -1820,6 +1820,6 @@ function WorkerManage(props: WorkerManageProps) {
   );
 }
 
-// v0.5.0-beta.14.10：面板级 memo——父级（WorkbenchPage）重渲染
+// 面板级 memo——父级（WorkbenchPage）重渲染
 // 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
 export default React.memo(WorkerManage);

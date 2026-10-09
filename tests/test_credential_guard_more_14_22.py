@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.22：PUT /config 凭据护栏——四类地址族缺口 400 / 继承 /
+"""PUT /config 凭据护栏——四类地址族缺口 400 / 继承 /
 显式清除单测（B 组）。
 
 与既有 test_credential_guard_14_22.py（钉 controller 族 + merge 口径）

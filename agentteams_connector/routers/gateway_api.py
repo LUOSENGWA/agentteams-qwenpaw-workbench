@@ -12,17 +12,17 @@ from ..router import _address_list, _mark_working
 
 
 def build_gateway_router() -> APIRouter:
-    """gateway 透传域子路由（build_router 原段逐字搬移，任务 190）。"""
+    """gateway 透传域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
     async def _gateway_passthrough(
         path: str,
         method: str = "GET",
         json_body: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """v0.5.0-beta.12: 网关面透传（Higress Console，8001）。
+        """网关面透传（Higress Console，8001）。
 
- v0.5.0-beta.12.13：加写面（POST，「添加提供商/添加路由」P7b）；
- v0.5.0-beta.14.4：加编辑/删除面（PUT/DELETE，与 dashboard higress
+ 加写面（POST，「添加提供商/添加路由」P7b）；
+ 加编辑/删除面（PUT/DELETE，与 dashboard higress
  BFF `/api/higress/ai-{routes,providers}` 同款 Console 端点）；
  写失败时透出 Console 的 message/detail 供 UI 显示。
 
@@ -35,12 +35,12 @@ def build_gateway_router() -> APIRouter:
 
         cfg = await asyncio.to_thread(cfgmod.load_config)
         session = str(cfg.get("console_session") or "")
-        # v0.5.0-beta.14.7: Higress 双地址（canonical=gateway_admin_urls，空则
+        # Higress 双地址（canonical=gateway_admin_urls，空则
         # 回退 legacy 单值）——按序降级。
         gateways = _address_list(cfg, "gateway")
         if not session or not gateways:
             return {"available": False, "data": None, "reason": "no_console_session"}
-        # v0.5.0-beta.14.7: 逐地址降级——传输错误换下一地址；拿到响应=地址可达，
+        # 逐地址降级——传输错误换下一地址；拿到响应=地址可达，
         # 状态码由下方既有逻辑处理（会话 cookie 由 Console 后端校验、跨入口通用）。
         r = None
         last_err = ""
@@ -87,10 +87,9 @@ def build_gateway_router() -> APIRouter:
                 "detail": last_err,
             }
         try:
-            # v0.5.0-beta.14.19: 带 Cookie 的网关面 401 = 会话过期
+            # 带 Cookie 的网关面 401 = 会话过期
             # （Higress Console 对失效 session 回 401 + JSON）。
-            # v0.5.0-beta.14.26（F2：实盘反馈「每次搞完 basic 登录状态也没了」）：
-            # 过期不再只判死——用 config 持久账密自动重登一次（冷却 60s/
+            # # 过期不再只判死——用 config 持久账密自动重登一次（冷却 60s/
             # 并发合并/凭据错即停三闸防风暴），成功则新会话落盘 +
             # **透明重放本次请求**（调用方无感，模型下拉等面不再静默消失，
             # 用户不必手动重验证）。自愈前置到降级响应构建之前：重放成功
@@ -155,7 +154,7 @@ def build_gateway_router() -> APIRouter:
                 if r is not None and r.status_code == 401:
                     # 重登未遂（无凭据/冷却窗/凭据错/网络）→ 维持 14.19
                     # 判死语义（前端横幅提示手动重新验证）。
-                    # 任务 190：跨域共享状态，经 router 模块属性写入（勿改回 global）。
+                    # 跨域共享状态，经 router 模块属性写入（勿改回 global）。
                     router_mod._console_session_expired = True
                 detail = ""
                 try:
@@ -204,7 +203,7 @@ def build_gateway_router() -> APIRouter:
             return {"available": False, "data": None, "reason": "invalid", "detail": "name 必填"}
         return await _gateway_passthrough("/v1/ai/providers", method="POST", json_body=payload)
 
-    # ---- v0.5.0-beta.14.4：模型配置编辑/删除（Console 写面透传，与 dashboard
+    # ---- 模型配置编辑/删除（Console 写面透传，与 dashboard
     # higress BFF `/api/higress/ai-{routes,providers}/{name}` 同款端点）----
 
     @router.put("/gateway/ai-routes/{name}")

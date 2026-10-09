@@ -4,7 +4,7 @@ import { useT } from "../i18n";
 import { copyText } from "../util";
 
 /**
- * v0.5.0-beta.12: 长标识符（MXID / 房间 ID 等）截断展示——移植 dashboard
+ * 长标识符（MXID / 房间 ID 等）截断展示——移植 dashboard
  * TruncatedId 交互（Manager 卡片同款）：>16 字符显示「前 8 + … + 后 4」，
  * 悬停 Tooltip 显示完整值（可换行），行内复制按钮一键复制。
  * 通用组件，CrdManage 人员表 MXID 列 / 团队表房间列共用。

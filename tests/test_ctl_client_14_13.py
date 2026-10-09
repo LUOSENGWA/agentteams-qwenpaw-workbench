@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.13（·技术债治理）ctl_client 单一实现单测。
+"""ctl_client 单一实现单测。
 
 去重目标：「ordered 地址 failover」此前在 router._ctl_json（超集闭包）与
 worker_status._ctl_get（GET 版）双实现，现唯一实现在 ctl_client.ctl_json；
@@ -58,7 +58,7 @@ def test_router_ctl_json_is_thin_wrapper():
     )
     assert start is not None, "router 源码缺 _ctl_json 定义"
     # 包装体 = def 起至下一行缩进回 0（下一个模块级 def）；
-    # 任务 190：_ctl_json 自 build_router 闭包提升为模块级（def 0 空格/体 4 空格），
+    # _ctl_json 自 build_router 闭包提升为模块级（def 0 空格/体 4 空格），
     # 探针按新缩进收集。
     body: list[str] = []
     for line in lines[start + 1:]:

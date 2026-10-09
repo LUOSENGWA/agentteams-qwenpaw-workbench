@@ -1,4 +1,4 @@
-"""v0.5.0-beta.12: agent 工具实现——补 plugin.json 声明的 ``agentteams_qwenpaw_workbench_status``。
+"""agent 工具实现——补 plugin.json 声明的 ``agentteams_qwenpaw_workbench_status``。
 
 此前 manifest 声明了该工具但无注册代码（代码审计发现的 manifest/实现漂移，
 本轮补齐实现而非删声明）。工具复用 teams/sync 的同一数据链
@@ -51,7 +51,7 @@ async def agentteams_qwenpaw_workbench_status(scope: str = "overview") -> str:
     if not token or not user_id:
         return "工作台未登录：请先在插件配置页登录 Matrix 账号，再重试。"
     homeservers = cfg.get("matrix_homeservers") or []
-    # v0.5.0-beta.14.3: 条目 str | {url, auth?}——统一取 url。
+    # 条目 str | {url, auth?}——统一取 url。
     homeserver = config_mod.address_url(homeservers[0]) if homeservers else ""
     if not homeserver:
         return "未配置 Matrix 地址（插件配置页 matrix_homeservers 为空）。"

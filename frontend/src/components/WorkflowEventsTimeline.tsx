@@ -148,7 +148,7 @@ export function WorkflowEventsTimeline(props: {
       stopped = true;
     };
   }, [open, loadAll]);
- // v0.5.0-beta.14.6：旧定时器 → usePoller（20s；active=open——
+ // 旧定时器 → usePoller（20s；active=open——
   // 收起时停；!document.hidden 内置）。
   usePoller({
     fn: () => void refresh(),
@@ -193,7 +193,7 @@ export function WorkflowEventsTimeline(props: {
               {tr("事件流加载失败")}：{error}
             </div>
           ) : shown.length === 0 && !loading ? (
- // v0.5.0-beta.13.12（调查报告）：events 端点
+ // events 端点
             // 只读（POST→405），Controller 事件摄取链路未实现——6 项目全空
             // 是平台侧系统性缺口，非本项目未执行。空态文案必须说清「数据源
             // 未接通」，不再暗示"Agent 执行后会聚合"（摄取未落地前永不出现）；

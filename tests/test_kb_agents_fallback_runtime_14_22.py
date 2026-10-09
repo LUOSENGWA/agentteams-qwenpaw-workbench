@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v0.5.0-beta.14.22：kb/agents runtime 透传单一实现（_kb_apply_runtime_fields）单测。
+"""kb/agents runtime 透传单一实现（_kb_apply_runtime_fields）单测。
 
 背景（E2E 实锤）：本部署 Controller 的 Docker 通道对插件 token 不可用
 （401/403/502）→ /kb/agents 全量走 ``_kb_agents_ctl_fallback``。D4 初版

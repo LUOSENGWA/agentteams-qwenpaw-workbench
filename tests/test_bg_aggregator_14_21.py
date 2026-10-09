@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-# v0.5.0-beta.14.21：BgTicker 后台聚合骨架行为单测。
-#
+# BgTicker 后台聚合骨架行为单测。
 # worker_status / projects_workflow 共用的后台聚合骨架（ensure_fresh
 # TTL 门/force/单飞/fire-and-forget、_sweep bg_slot 让权/异常吞没/单飞
 # 复位、start/stop 生命周期）此前零行为测试，本批为后续改动上安全网。
-#
 # 风格：照 tests/test_dial_gate_14_6.py——同步测试体 + asyncio.run；
 # 后台异步行为用 asyncio.Event 可控桩驱动，不靠 sleep 猜时序；
 # 每个测试 dial_gate._reset_for_tests() + 全新 BgTicker 实例（自建
