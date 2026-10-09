@@ -35,6 +35,14 @@ type ToolField = "enabled" | "asyncExecution";
 
 function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
   const tr = useT();
+  // v0.5.0-beta.14.27（F-B：工具开关改走宿主原生顶部 toast——10/8 反馈：
+  // 「像改技能那样」的顶部通知）。任务 193 调研实锤：宿主技能变更的
+  // 「顶部弹窗」= antd App.useApp().message（顶部居中 toast，portal 到
+  // document.body）；插件同页挂载（无 iframe）跑在宿主 <AntdApp> 之内，
+  // 调同一个 API 即与技能 toast 逐像素同源。旧版页内 antd Alert 横幅
+  // （transient ok/err）退役；403 只读门/加载失败 gate 等**持久状态**
+  // 仍用 Alert（toast 3s 自消失，不适合持久提示）。
+  const { message: toast } = antd.App.useApp();
   const [sel, setSel] = React.useState("");
   // 版本门：404 = Controller 无工具端点（#1255 未合并 / Controller 未升级）
   // 或 L2 跨团队 W8 防探测隐藏——两者不可区分，占位文案覆盖两种情况。
@@ -44,9 +52,6 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
   const [loading, setLoading] = React.useState(false);
   const [readOnly, setReadOnly] = React.useState(false);
   const [busy, setBusy] = React.useState<"" | "enabled" | "asyncExecution">("");
-  const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(
-    null,
-  );
 
   const load = React.useCallback(async () => {
     if (!sel) return;
@@ -89,7 +94,6 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
     if (!current) return;
     const value = field === "enabled" ? !current.enabled : !(current.asyncExecution ?? false);
     setBusy(field);
-    setMsg(null);
     // 乐观更新 + 失败回滚
     setTools((prev) =>
       prev.map((t) => (t.name === tool ? { ...t, [field]: value } : t)),
@@ -102,10 +106,10 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
         );
       }
       // v0.5.0-beta.14.26（实盘反馈 10/8：关掉工具横幅仍显示「已启用」）：
-      // 旧版成功文案只按 field 分支、不看 value——关工具（value=false）仍
-      // 显示「已启用」，开异步执行也显示「已停用」（两字段文案还互相张冠
-      // 李戴）。改 (field, value) 四分支纯函数：横幅必须与开关终态一致。
-      setMsg({ kind: "ok", text: toolToggleMessage(tr, field, tool, value) });
+      // 成功文案四分支纯函数（util.toolToggleMessage）必须与开关终态一致。
+      // v0.5.0-beta.14.27（F-B）：PATCH 确认后走宿主原生顶部 toast
+      // （不做乐观 toast——「toast 说成功、实际回滚」的错位不允许）。
+      toast.success(toolToggleMessage(tr, field, tool, value));
     } catch (e) {
       setTools((prev) =>
         prev.map((t) => (t.name === tool ? { ...t, [field]: !value } : t)),
@@ -113,17 +117,15 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
       const st = httpErrorStatus(e);
       if (st === 403) {
         setReadOnly(true);
-        setMsg({
-          kind: "err",
-          text: tr("当前角色仅可查看工具设置，不能修改（Controller 拒绝）"),
-        });
+        toast.error(
+          tr("当前角色仅可查看工具设置，不能修改（Controller 拒绝）"),
+        );
       } else {
-        setMsg({
-          kind: "err",
-          text: tr("修改失败：{m}", {
+        toast.error(
+          tr("修改失败：{m}", {
             m: e instanceof Error ? e.message : String(st ?? e),
           }),
-        });
+        );
       }
     } finally {
       setBusy("");
@@ -233,7 +235,6 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
             value={sel || undefined}
             onChange={(v: string) => {
               setSel(v);
-              setMsg(null);
               setReadOnly(false);
             }}
             options={workers.map((w) => ({
@@ -254,16 +255,6 @@ function WorkerTools({ workers }: { workers: WorkerInfo[] }) {
           type="warning"
           showIcon
           message={tr("当前角色仅可查看工具设置，不能修改（团队 Leader 只读 / L2 限本团队）")}
-        />
-      ) : null}
-
-      {msg ? (
-        <antd.Alert
-          type={msg.kind === "ok" ? "success" : "error"}
-          showIcon
-          closable
-          message={msg.text}
-          onClose={() => setMsg(null)}
         />
       ) : null}
 
