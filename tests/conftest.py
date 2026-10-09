@@ -55,6 +55,55 @@ def _isolate_kb_disk_cache(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_real_config(tmp_path, monkeypatch):
+    """配置主文件/secret 目录重定向到本测 tmp——与 KB 缓存同款隔离。
+
+ 背景（10/9 16:39:49 实案）：test_update_config_address_mode 历史上
+ 无隔离直调 update_config，每次全量跑对真实 config 连写三次
+ （wan→auto→auto），把用户「固定外网」静默打回 auto——10/8 之后
+ 一系列「没人动过又变回自动」的磁盘 wan→auto 翻转均为本测试所写
+ （pytest 进程日志被捕获、审计环随进程消失，故主日志零痕迹）。
+ 个别测试可再 monkeypatch _CONFIG_PATH 覆盖（LIFO 后设生效）。"""
+    from agentteams_connector import config as config_mod
+
+    cfg_dir = tmp_path / "agentteams-qwenpaw-workbench"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(config_mod, "_SECRET_DIR", tmp_path)
+    monkeypatch.setattr(config_mod, "_CONFIG_DIR", cfg_dir)
+    monkeypatch.setattr(config_mod, "_CONFIG_PATH", cfg_dir / "config.json")
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _real_config_sentinel():
+    """session 哨兵：真实 config 文件在整个测试运行期间必须零变化
+ （mtime+sha256）。任何测试再写真实 secret 目录 → 全量跑失败并指名
+ 实案（10/9 16:39:49 回归锁——与 _isolate_real_config 双保险：
+ 前者按路径挡，本哨兵按结果挡）。"""
+    import hashlib
+    import os
+
+    from agentteams_connector import config as config_mod
+
+    p = config_mod._CONFIG_PATH  # session 启动时的真实路径（早于任何测试重定向）
+
+    def _snap():
+        try:
+            st = os.stat(p)
+            h = hashlib.sha256(p.read_bytes()).hexdigest()
+            return (st.st_mtime_ns, h)
+        except OSError:
+            return None
+
+    before = _snap()
+    yield
+    after = _snap()
+    assert before == after, (
+        f"真实 config 文件在测试运行期间被修改（{p}）——测试禁止写真实 secret 目录"
+    )
+
+
+@pytest.fixture(autouse=True)
 def _clear_module_caches():
     try:
         from agentteams_connector import router as router_mod

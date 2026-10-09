@@ -76,7 +76,16 @@ def test_config_load_merges_and_sanitizes(tmp_path, monkeypatch) -> None:
     assert config_mod.load_config()["address_mode"] == "auto"
 
 
-def test_update_config_address_mode() -> None:
+def test_update_config_address_mode(tmp_path, monkeypatch) -> None:
+    # 显式隔离（10/9 16:39:49 实案）：本测试曾无 fixture 直调
+    # update_config，每次全量跑对真实 config 连写三次（wan→auto→auto），
+    # 把用户「固定外网」静默打回 auto。conftest 现已有 autouse 兜底，
+    # 此处显式隔离是双保险 + 自文档。
+    cfg_dir = tmp_path / "agentteams-qwenpaw-workbench"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(config_mod, "_SECRET_DIR", tmp_path)
+    monkeypatch.setattr(config_mod, "_CONFIG_DIR", cfg_dir)
+    monkeypatch.setattr(config_mod, "_CONFIG_PATH", cfg_dir / "config.json")
     merged = config_mod.update_config({"address_mode": "wan"})
     assert merged["address_mode"] == "wan"
     merged = config_mod.update_config({"address_mode": "garbage"})
