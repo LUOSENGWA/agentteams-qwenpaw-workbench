@@ -7,6 +7,7 @@ import {
   exportFullConfig,
   importFullConfig,
   verifyAdmin,
+  httpErrorStatus,
   type VerifyAdminResult,
   type AddressEntry,
   type AddressTestResult,
@@ -754,6 +755,9 @@ const SettingsTab = React.memo(function SettingsTab({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // v0.5.0-beta.14.27（F-A）：并发写保护——页面加载时的修订号；
+          // 保存前磁盘配置已被外部改动 → 409（下方 catch 显形提示）。
+          config_rev: config?.config_rev ?? undefined,
           config: {
             // v0.5.0-beta.14.3: 条目 str | {url, auth?}（凭据随条目走）。
             matrix_homeservers: buildAddrEntries("matrix"),
@@ -817,6 +821,18 @@ const SettingsTab = React.memo(function SettingsTab({
         buildAddrEntries("gateway"),
       );
     } catch (e) {
+      // v0.5.0-beta.14.27（F-A）：409=页面打开后配置被外部改动——
+      // 显性提示刷新重存，而不是把错误吞成一句「保存失败」。
+      if (httpErrorStatus(e) === 409) {
+        onConfigChange();
+        message.error(
+          tr(
+            "配置已被外部修改——本页显示的是打开时的旧值，已放弃本次保存。请核对最新配置后再保存。",
+          ),
+          8,
+        );
+        return;
+      }
       message.error(e instanceof Error ? e.message : tr("保存失败"));
     } finally {
       setSaving(false);
@@ -953,6 +969,33 @@ const SettingsTab = React.memo(function SettingsTab({
           ) : (
             <span>{tr("正在加载已保存配置…")}</span>
           )}
+        </div>
+      )}
+      {/* v0.5.0-beta.14.27（F-A）：配置健康横幅——后端主配置缺失/损坏时
+  在跑默认值（defaults-fallback）或刚从备份自愈（restored-from-backup），
+  页面必须显形：此时的表单是默认值而非用户配置，直接保存会把默认值
+  盖回去（10/8「内外网变回自动」事故的 UI 侧防线）。 */}
+      {config !== null &&
+        (config.config_health?.state === "defaults-fallback" ||
+          config.config_health?.state === "restored-from-backup") && (
+        <div
+          style={{
+            ...cardBox,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 13,
+            color: "#d4380d",
+            border: "1px solid #ffccc7",
+          }}
+        >
+          <span>
+            {tr(
+              config.config_health?.state === "defaults-fallback"
+                ? "配置主文件缺失或损坏且无备份——当前运行在默认值上，本页显示的是默认值。请先用「导入」恢复配置，或重新填写后保存（将写回新文件）。"
+                : "配置主文件缺失或损坏，已从备份 config.bak.json 自动恢复。请核对设置是否完整。",
+            )}
+          </span>
         </div>
       )}
       {/* v0.5.0-beta.14.4（设置页 UI 整理）：分节卡片化——「聊天页面」卡片。 */}

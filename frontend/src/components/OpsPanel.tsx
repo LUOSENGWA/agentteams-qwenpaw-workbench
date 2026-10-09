@@ -135,6 +135,18 @@ function OpsPanel({
 
   // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
   const [sglangLocalAt, setSglangLocalAt] = React.useState<number>(0);
+  // v0.5.0-beta.14.27（任务 192 实测修正）：快照发布时间（epoch ms）——
+  // 每轮 poll 成功必刷新（独立于 setSglang 的 diff 门：空闲时数值不变
+  // 但快照帧持续重发，timestamp 每帧都是新的；若只跟 setSglang 走，
+  // 空闲时 age 会虚涨，误判断流）。
+  const [sgSnapshotAt, setSgSnapshotAt] = React.useState<number>(0);
+  // 快照年龄（秒）= 服务端快照发布时刻 距「最后检查时刻」的差。
+  // null=尚无有效快照。这是新鲜度自证：数字不变但秒数在跳=链路活、
+  // 只是没变化；秒数持续涨才是真断流。
+  const sgSnapshotAgeSec =
+    sgSnapshotAt > 0 && sglangLocalAt > 0
+      ? Math.max(0, Math.round((sglangLocalAt - sgSnapshotAt) / 1000))
+      : null;
   // v0.5.0-beta.14.19（diff 门修正 + 自适应节奏）：稳定快照（refreshSglang
   // deps=[]，不能直接读 state；ref 每次渲染同步最新值）。
   const sglangRef = React.useRef(sglang);
@@ -143,11 +155,15 @@ function OpsPanel({
   // 业界监控采集通式（Prometheus scrape tuning / nvidia-smi dmon）：
   // 活跃采样快、空闲采样稀。14.17 一刀切 1s→5s 导致验收实测回归「刷新
   // 很慢几乎不刷」——改两档：数据指纹变（推理中）=1s 快档（恢复 1s 时代
-  // 实时感）；连续 2 周期不变（空闲）=15s 慢档（5M 行低带宽省拨号，
-  // 空闲负载数据本无信息量）。指纹=归一化 JSON（服务端 timestamp 每帧
-  // 变但不携带信息，参与比较会永远判"变"）。
+  // 实时感）；连续 2 周期不变（空闲）=慢档。
+  // v0.5.0-beta.14.27（任务 192 实盘实测修正）：慢档 15s→5s——14.26 批
+  // 把「15s 一帧」归因到 SGLang 参数 load_snapshot_publish_interval=15，
+  // 实查该参数单位是 **decode 迭代次数**（非秒）且 prefill/停滞/空闲均
+  // 强制即时发布，忙态实测快照 ≥1Hz、陈旧度 <1s（192 报告 §2.3）——
+  // 用户感知「15s 才跳」的真凶是本慢档本身。5s 档=负载恢复时最迟 5s
+  // 内回快档，带宽代价每 5s 数 KB（5M 行可忽略）。
   const SG_FAST_MS = 1000;
-  const SG_SLOW_MS = 15000;
+  const SG_SLOW_MS = 5000;
   const sgCadenceRef = React.useRef(SG_FAST_MS);
   const sgStableRef = React.useRef(0);
   const sgFingerprint = (d: SglangLoads | null): string =>
@@ -188,6 +204,11 @@ function OpsPanel({
       // 「更新于」=最后检查时间（监控卡活性证明，每检查必跳）——
       // 14.19 初版 diff 门把它绑成"最后变化时间"，空闲时停摆=假死观感
       // （回归反馈真根因之一）。
+      // v0.5.0-beta.14.27（任务 192 实测修正）：快照发布时间每轮必刷
+      // （data.timestamp=本帧服务端发布时刻，独立于 setSglang 的 diff
+      // 门）——「快照 N 秒前」据此自证新鲜度（见 sgSnapshotAgeSec）。
+      const _snapT = Date.parse(data.timestamp);
+      if (!Number.isNaN(_snapT)) setSgSnapshotAt(_snapT);
       setSglangLocalAt(Date.now());
       setSglangOff(false);
       setSglangError("");
@@ -377,18 +398,18 @@ function OpsPanel({
             <span style={{ fontWeight: 700, fontSize: 15 }}>
               集群负载
             </span>
+            {/* v0.5.0-beta.14.27（任务 192 实盘实测修正）：副标=检查节奏
+  + 快照年龄（每轮 poll 刷新——「数据 N 秒前」是新鲜度自证：数字不变
+  但 age 在跳=数据新鲜只是没变化；age 停住才是真断流）。取代 14.26
+  的错误标注「数据快照 ~15s」（参数单位误读，192 报告 §2.5 证伪）。 */}
             <span style={{ fontSize: 11, color: t.textSecondary }}>
-              {tr("自动刷新（1s/15s 自适应）· 数据快照 ~15s")}
+              {tr("自动刷新（活跃 1s / 稳定 5s）")}
+              {sgSnapshotAgeSec !== null &&
+                ` · ${tr("快照 {n} 秒前", { n: String(sgSnapshotAgeSec) })}`}
             </span>
-            {/* v0.5.0-beta.14.26（F4：SGLang 卡「要手动刷新才更新」观感
-  真根因=标注误导）：卡片旧标「自动刷新 1 秒」但数据源是 SGLang 侧
-  快照发布（服务端默认 15s 才出新值）——数字冻结 14s 被误判卡死，手动
-  刷新又读同一快照（双重误导）。修：副标改「刷新 1s/15s 自适应 ×
-  数据快照 ~15s」双节奏；tooltip 讲清数据节奏 + 服务端调参入口
-  （--load-snapshot-publish-interval，部署方自管 sglang 容器侧改）。 */}
             <antd.Tooltip
               title={tr(
-                "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。数据节奏：SGLang 每 ~15s 发布一次负载快照（服务端默认；容器启动参数 --load-snapshot-publish-interval 可调）。卡片 1s/15s 自适应检查——数字不变是快照没更新，不是卡死；手动刷新读的也是同一份快照。",
+                "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。卡片按数据变化自适应检查：负载在变 1s 一轮，稳定 5s 一轮。「快照 N 秒前」= 服务端快照发布时间（SGLang 忙态实测每秒多帧、空闲也持续保鲜）——数字不变但秒数在跳=数据新鲜只是没变化。",
               )}
             >
               <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>

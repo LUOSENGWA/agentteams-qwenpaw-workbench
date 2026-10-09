@@ -268,11 +268,15 @@ const DICT: Record<string, { en: string }> = {
   // 默认 15s 才出新值，数字冻结 14s 被误判卡死、手动刷新又读同一快照。
   // 改双节奏标注：刷新（1s/15s 自适应检查）× 数据（~15s 快照，服务端参数
   // 可调）分开说清。
-  "自动刷新（1s/15s 自适应）· 数据快照 ~15s": {
-    en: "Auto (1s/15s adaptive) · data snapshot ~15s",
+  // v0.5.0-beta.14.27（任务 192 实盘实测修正）：14.26 的「数据快照 ~15s」
+  // 标注错误（参数单位误读）——SGLang 快照忙态 ≥1Hz；卡片慢档 15s→5s，
+  // 副标改检查节奏 + 快照年龄（新鲜度自证）。
+  "自动刷新（活跃 1s / 稳定 5s）": {
+    en: "Auto refresh (1s active / 5s idle)",
   },
-  "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。数据节奏：SGLang 每 ~15s 发布一次负载快照（服务端默认；容器启动参数 --load-snapshot-publish-interval 可调）。卡片 1s/15s 自适应检查——数字不变是快照没更新，不是卡死；手动刷新读的也是同一份快照。": {
-    en: "SGLang /v1/loads per DP rank: waiting/running/GPU (optional module — enable and set the SGLang address on the Settings page). Data cadence: SGLang publishes a load snapshot every ~15s (server default; tunable via the container startup flag --load-snapshot-publish-interval). The card polls at 1s/15s adaptive — an unchanged number means the snapshot did not refresh, not a freeze; manual refresh reads the same snapshot.",
+  "快照 {n} 秒前": { en: "snapshot {n}s ago" },
+  "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。卡片按数据变化自适应检查：负载在变 1s 一轮，稳定 5s 一轮。「快照 N 秒前」= 服务端快照发布时间（SGLang 忙态实测每秒多帧、空闲也持续保鲜）——数字不变但秒数在跳=数据新鲜只是没变化。": {
+    en: "SGLang queue/running/GPU per DP rank (optional module — enable and set the SGLang address on the Settings page). The card adapts its check cadence to data: 1s while load changes, 5s when stable. \"Snapshot Ns ago\" = server snapshot publish time (SGLang measured to publish multiple frames per second under load, and keeps it fresh while idle) — an unchanged number with ticking seconds means fresh data, just no change.",
   },
   "点击展开": { en: "Click to expand" },
   "私聊 {name}": { en: "DM {name}" },
@@ -529,6 +533,15 @@ const DICT: Record<string, { en: string }> = {
   "正在加载已保存配置…": { en: "Loading saved settings…" },
   "配置加载失败（插件后端可能正在重载）。页面上显示的是默认值，不是你的已保存配置——请勿直接保存，以免覆盖。": {
     en: "Failed to load settings (plugin backend may be reloading). What you see are default values, not your saved config — do not save as-is, or you'll overwrite it.",
+  },
+  "配置已被外部修改——本页显示的是打开时的旧值，已放弃本次保存。请核对最新配置后再保存。": {
+    en: "Settings were changed externally since this page opened — it was showing stale values, so this save was cancelled. Review the latest settings, then save again.",
+  },
+  "配置主文件缺失或损坏且无备份——当前运行在默认值上，本页显示的是默认值。请先用「导入」恢复配置，或重新填写后保存（将写回新文件）。": {
+    en: "The main config file is missing or corrupt and no backup exists — the plugin is running on default values, which is what this page shows. Restore via Import first, or refill and save to write a fresh file.",
+  },
+  "配置主文件缺失或损坏，已从备份 config.bak.json 自动恢复。请核对设置是否完整。": {
+    en: "The main config file was missing or corrupt and has been auto-restored from the config.bak.json backup. Please verify the settings are complete.",
   },
   "登录成功": { en: "Signed in" },
   "登录失败": { en: "Sign-in failed" },

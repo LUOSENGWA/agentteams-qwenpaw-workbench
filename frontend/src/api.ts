@@ -235,6 +235,19 @@ export interface WorkbenchConfig {
   configPath?: string;
   configSavedAt?: number; // config 文件 mtime（epoch 秒）
   configWritable?: boolean; // 配置目录可写性
+  // v0.5.0-beta.14.27（F-A 配置钉死）：配置修订号（页面加载时取走，保存时
+  // 回传——磁盘在此期间被外部改动则 PUT 409，挡住旧表单静默覆盖）。
+  config_rev?: string | null;
+  // v0.5.0-beta.14.27（F-A）：最近一次后端加载结局——
+  // ok=正常 / defaults-fallback=主文件缺失/损坏且无备份（在跑默认值！）/
+  // restored-from-backup=已从备份自愈 / unknown=尚未加载。
+  config_health?: {
+    state: "ok" | "defaults-fallback" | "restored-from-backup" | "unknown" | string;
+    path?: string;
+    mtime?: number;
+    size?: number;
+    writable?: boolean;
+  };
  // v0.5.0-beta.14.8：控制台特效安抚（默认开；false=启用动画）。
  // v0.5.0-beta.14.12：保留为兼容键（console_effects 三档取代；
   // 后端 load 迁移时以其值推导初值，前端只读不写）。
