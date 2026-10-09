@@ -975,27 +975,23 @@ export default function WorkbenchPage() {
     void refreshConfig();
   }, [refreshConfig, refreshRooms, refreshTree]);
 
-  // v0.5.0-beta.14.19: 登录态轮询（30s；visibility 回前台即刷——后台
-  // 切回时失效态要立刻上横幅，不等 30s 节拍）。
-  React.useEffect(() => {
-    let alive = true;
-    const poll = () => {
-      void fetchAuthStatus().then((s) => {
-        if (alive) setAuthStatus(s);
-      });
-    };
-    poll();
-    const id = window.setInterval(poll, 30000);
-    const onVis = () => {
-      if (document.visibilityState === "visible") poll();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      alive = false;
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
+  // 登录态轮询（30s）——usePoller（hidden 自动停 + 回前台 catch-up 立即
+  // 刷：失效态要马上上横幅，不等 30s 节拍）+ 字段级值门：网络层每回包
+  // 必新对象，登录态却几乎不变，无条件 set 会让 3400 行本组件每 30s
+  // 空转重渲一次。
+  const authPollerFn = React.useCallback(async () => {
+    const s = await fetchAuthStatus();
+    if (!s) return; // 取数失败保旧值（横幅状态不因瞬时抖动闪变）
+    setAuthStatus((prev) => {
+      const same =
+        prev !== null &&
+        prev.matrix_token === s.matrix_token &&
+        prev.console_session === s.console_session &&
+        prev.controller_token === s.controller_token;
+      return same ? prev : s;
+    });
   }, []);
+  usePoller({ fn: authPollerFn, intervalMs: 30000 });
 
   // ── 已读回执（m.read + m.fully_read 双写）──────────
   // 打开房间/轮询到新消息 → 对最新消息发回执 → Element 侧不再显示未读。
@@ -1486,6 +1482,10 @@ export default function WorkbenchPage() {
   // 避免每条消息击穿 4200 行聊天组件的 memo 整树重渲。
   const [chatsTick, setChatsTick] = React.useState(0);
   const [chatsWorker, setChatsWorker] = React.useState<string | null>(null);
+  // SSE 帧回调闭包里的抽屉开合镜像（75 房集群下 room_message 高频到达，
+  // 抽屉没开时递增 tick=纯浪费；抽屉自带 4s poller 会补齐期间增量）。
+  const chatsDrawerOpenRef = React.useRef(false);
+  chatsDrawerOpenRef.current = tab === "chat" && chatsWorker !== null;
   const handleOpenWorkerChats = React.useCallback(
     (w: string) => setChatsWorker(w),
     [],
@@ -1750,9 +1750,11 @@ export default function WorkbenchPage() {
                     pollSoon();
                   }
                 }
- // （13.11）：任意房间来消息 → 递增 chatsTick → 打开的
-                // 头像会话窗立即刷新（事件驱动主路，Element 式延迟≈0）。
-                setChatsTick((v) => v + 1);
+ // 任意房间来消息 → 递增 chatsTick → 打开的头像会话窗立即刷新
+                // （事件驱动主路，Element 式延迟≈0）。门控：仅抽屉打开
+                // 时递增（75 房集群下任意房消息=全页重渲染源）；抽屉
+                // 关闭期间由 4s poller 兜底，打开瞬间立即补齐。
+                if (chatsDrawerOpenRef.current) setChatsTick((v) => v + 1);
               }
             } catch {
               /* 忽略非法帧 */

@@ -543,6 +543,16 @@ const DICT: Record<string, { en: string }> = {
   "配置主文件缺失或损坏，已从备份 config.bak.json 自动恢复。请核对设置是否完整。": {
     en: "The main config file was missing or corrupt and has been auto-restored from the config.bak.json backup. Please verify the settings are complete.",
   },
+  "admin 密码（已保存 · 留空保持不变）": {
+    en: "admin password (saved · leave blank to keep)",
+  },
+  "admin 密码": { en: "admin password" },
+  "密码安全起见永不回显——框空白不代表没记住；留空保存=沿用已存密码。": {
+    en: "Passwords are never echoed back for security — a blank field does not mean it was forgotten. Saving with it blank keeps the stored password.",
+  },
+  "保存（将用当前表单值重建配置文件）": {
+    en: "Save (rebuild the config file with the current form values)",
+  },
   "登录成功": { en: "Signed in" },
   "登录失败": { en: "Sign-in failed" },
   "Matrix 账号（不含 @ 和域名）": { en: "Matrix username (without @ and domain)" },
