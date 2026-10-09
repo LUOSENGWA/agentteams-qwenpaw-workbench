@@ -534,6 +534,13 @@ const DICT: Record<string, { en: string }> = {
   "配置加载失败（插件后端可能正在重载）。页面上显示的是默认值，不是你的已保存配置——请勿直接保存，以免覆盖。": {
     en: "Failed to load settings (plugin backend may be reloading). What you see are default values, not your saved config — do not save as-is, or you'll overwrite it.",
   },
+  // 凭据存在态自证（credential_state 告警，14.29）
+  "Matrix": { en: "Matrix" },
+  "Controller": { en: "Controller" },
+  "网关管理": { en: "Gateway admin" },
+  "凭据缺口：{label} 第 {n} 条只存了用户名（密码缺失，需补全）": {
+    en: "Credential gap: {label} entry {n} has username only (password missing)",
+  },
   "配置已被外部修改——本页显示的是打开时的旧值，已放弃本次保存。请核对最新配置后再保存。": {
     en: "Settings were changed externally since this page opened — it was showing stale values, so this save was cancelled. Review the latest settings, then save again.",
   },

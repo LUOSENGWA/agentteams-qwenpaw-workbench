@@ -252,6 +252,19 @@ export interface WorkbenchConfig {
     size?: number;
     writable?: boolean;
   };
+  // 逐条凭据存在态自证（redact 前对原始态算的有无标记，不泄露值）：
+  // 地址条目三态 saved=完整凭据在 / username-only=只存了用户名（密码
+  // 缺失，需补）/ none=裸 URL 或无 auth。设置页显形——「basic 密码要不要
+  // 重新填」一眼可判（username-only=真缺要填；saved=留空即保持不变）。
+  // admin_password 仅 saved|none（admin 用户名是独立字段恒在，无
+  // username-only 态）。
+  credential_state?: {
+    matrix_homeservers?: string[];
+    controller_urls?: string[];
+    gateway_admin_urls?: string[];
+    sglang_urls?: string[];
+    admin_password?: "saved" | "none" | string;
+  };
  // 控制台特效安抚（默认开；false=启用动画）。
  // 保留为兼容键（console_effects 三档取代；
   // 后端 load 迁移时以其值推导初值，前端只读不写）。

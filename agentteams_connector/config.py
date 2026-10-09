@@ -524,11 +524,25 @@ def load_config() -> Dict[str, Any]:
         _stat_key = (
             (_cst.st_mtime_ns, _cst.st_size) if _cst is not None else None
         )
-        try:
-            raw = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
-            if not isinstance(raw, dict):
-                raise ValueError("top-level JSON must be an object")
-        except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
+        # 读失败重试一次再判损坏：挂载层（NFS/FUSE）抖动会瞬时返回
+        # 空/截断内容——不重试会被误判「文件损坏」→ defaults-fallback
+        # （地址模式回 auto、地址凭据显示全丢），后续保存又可能被
+        # 防呆守卫拦成假成功。重试仍失败才走备份/默认值兜底。
+        raw = None
+        for _attempt in (1, 2):
+            try:
+                _text = _CONFIG_PATH.read_text(encoding="utf-8")
+                raw = json.loads(_text)
+                if not isinstance(raw, dict):
+                    raise ValueError("top-level JSON must be an object")
+                break
+            except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
+                raw = None
+                if _attempt == 1:
+                    import time as _t
+
+                    _t.sleep(0.25)
+        if raw is None:
             # 自愈——主文件缺失/损坏
             # （含顶层非对象）→ 自动从备份恢复（日志明示）；无可用备份
             # → 默认值（不崩）。
@@ -790,6 +804,39 @@ def update_config(
                 source,
             )
             return merged
+    # 防 wipe：patch 写不得丢失它**没碰**的数据。内存基线被瞬时读失败
+    # 污染（误判损坏→默认值兜底）时，一个单字段补丁（如登录写
+    # console_session / 切地址模式写 address_mode）落盘=把磁盘上的地址
+    # 列表与凭据整个抹掉（10/8 实盘：lan→auto 静默改写，密码/地址全丢
+    # 且零日志）。落盘前对照磁盘实况兜底拦截——即使 defaults-fallback
+    # 守卫被 force_persist 显式放行也仍受此约束（显式恢复只豁免「默认
+    # 值盖损坏文件」，不豁免「丢未触碰数据」）。
+    try:
+        _disk_now = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        _disk_now = None
+    if isinstance(_disk_now, dict):
+        for _k in ("matrix_homeservers", "controller_urls",
+                   "gateway_admin_urls"):
+            if (
+                _k not in patch
+                and _disk_now.get(_k)
+                and not merged.get(_k)
+            ):
+                logger.error(
+                    "update_config WIPES-BLOCKED (source=%s): disk %s "
+                    "has values but merged result would drop them — "
+                    "in-memory baseline is suspected poisoned "
+                    "(transient read failure → defaults). Refusing to "
+                    "persist; disk data preserved.",
+                    source,
+                    _k,
+                )
+                raise IOError(
+                    f"配置写入被防 wipe 守卫拦截：磁盘 {_k} 有值而本次"
+                    f"合并结果丢失（内存基线疑似瞬时读失败的默认值）。"
+                    f"已拒绝落盘以保留磁盘数据，请刷新页面后重试。"
+                )
     save_config(merged, source=source)
     return merged
 
@@ -806,6 +853,46 @@ def _redact_entry_list(entries: Any) -> None:
             auth["password"] = "***"
         if auth.get("token"):
             auth["token"] = "***"
+
+
+def credential_state(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """逐条凭据存在态（UI 自证显形用，取值只看有无不看值）。
+
+    saved=完整凭据在 / username-only=只存了用户名（密码缺失——
+    显示必须与 saved 区分开，「看起来有其实没存」是 basic 密码
+    「要重新填」类投诉的观感根源）/ none=裸 URL 或无 auth。
+    在 redact 之前对原始内存态计算（脱敏副本上算不出有无）。
+    """
+    def _entry_state(e: Any) -> str:
+        if not isinstance(e, dict):
+            return "none"
+        a = e.get("auth")
+        if not isinstance(a, dict):
+            return "none"
+        t = str(a.get("type") or "").strip().lower()
+        if t == "basic":
+            user = str(a.get("username") or "").strip()
+            pw = str(a.get("password") or "").strip()
+            if user and pw:
+                return "saved"
+            return "username-only" if user else "none"
+        if t == "bearer":
+            return "saved" if str(a.get("token") or "").strip() else "none"
+        return "none"
+
+    out: Dict[str, Any] = {
+        key: [_entry_state(e) for e in cfg.get(key) or []]
+        for key in ("matrix_homeservers", "controller_urls",
+                    "gateway_admin_urls")
+    }
+    sg = cfg.get("sglang")
+    out["sglang_urls"] = [
+        _entry_state(e) for e in ((sg or {}).get("urls") or [])
+    ]
+    out["admin_password"] = (
+        "saved" if str(cfg.get("admin_password") or "").strip() else "none"
+    )
+    return out
 
 
 def redact(config: Dict[str, Any]) -> Dict[str, Any]:

@@ -35,7 +35,11 @@ def build_config_router() -> APIRouter:
     async def get_config() -> Dict[str, Any]:
         """Config with secrets redacted + current effective addresses."""
         cfg = config_mod.load_config()
+        # 凭据存在态自证（redact 之前对原始态计算）：UI 逐条显示
+        # 「已存/只存了用户名/无」——「basic 密码要不要重新填」不再
+        # 靠猜（username-only=密码真缺，要填；saved=留空即保持）。
         out = config_mod.redact(cfg)
+        out["credential_state"] = config_mod.credential_state(cfg)
         # token 可来自粘贴或 env 时 config.controller_token
         # 为空——前端门控（hasToken/l1TokenMode）需要知道 L1 管理 API 可用。
         # 只暴露来源标记，token 值永不离开连接器进程。
