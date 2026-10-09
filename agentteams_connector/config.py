@@ -18,8 +18,10 @@ import base64
 import json
 import logging
 import threading
+import time
+from collections import deque
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Deque, Dict, List, Optional, Union
 
 # v0.5.0-beta.14.3（WAN 通用认证）：地址条目 = 字符串（服务原生认证，
 # 内网默认形态）或 {url, auth?}（显式覆盖凭据）。auth 类型：
@@ -44,7 +46,110 @@ _lock = threading.Lock()
 # （未合并 defaults），命中时仍走完整合并逻辑——只省 read/parse/chmod。
 _config_read_cache: Dict[str, Any] = {"mtime_ns": None, "size": None, "data": None}
 
+# v0.5.0-beta.14.27（F-A 配置取证）：写盘审计环（最近 20 条）——每次真实
+# 写盘记 source + 关键字段形态 diff（只记有无/模式，秘密值永不入日志）。
+# 10/8 实盘 config 在 19:57(lan)→21:06(auto) 间被改写而无任何观测，
+# 「查这么多次没修好」的真因=写路径零日志；本环让下次再犯一次日志即定凶。
+_CONFIG_WRITE_AUDIT: Deque[Dict[str, Any]] = deque(maxlen=20)
+
+# 最近一次 load_config 的加载结局（ok / defaults-fallback /
+# restored-from-backup / unknown=尚未加载）——供 update_config 的
+# 「defaults 态自动补丁不落盘」防呆与 /config 健康展示。
+_last_load_state = "unknown"
+
 logger = logging.getLogger("qwenpaw.plugins.agentteams_qwenpaw_workbench")
+
+
+def config_rev() -> Optional[str]:
+    """v0.5.0-beta.14.27（F-A）：配置修订号 = "mtime_ns:size"（文件不存在→None）。
+
+ 前端页面加载时取走、保存时回传；后端对不上即 409——挡住「页面加载后
+ 配置被外部改动（另一 tab/手工编辑/导入/自愈恢复）再被旧表单静默覆盖」。
+ """
+    try:
+        st = _CONFIG_PATH.stat()
+    except OSError:
+        return None
+    return f"{st.st_mtime_ns}:{st.st_size}"
+
+
+def config_health() -> Dict[str, Any]:
+    """v0.5.0-beta.14.27（F-A）：配置健康态（/config 展示 + 前端横幅）。
+
+ state 取值（=最近一次 load_config 的结局）：
+   ok                   = 主文件存在且合法
+   defaults-fallback    = 主文件缺失/损坏且无备份 → 默认值在内存运行（未落盘）
+   restored-from-backup = 主文件缺失/损坏 → 已从 config.bak.json 恢复
+   unknown              = 进程启动后尚未加载过
+ """
+    writable = False
+    try:
+        import os as _os
+
+        writable = _os.access(str(_CONFIG_DIR), _os.W_OK)
+    except Exception:  # noqa: BLE001
+        pass
+    out: Dict[str, Any] = {
+        "state": _last_load_state,
+        "path": str(_CONFIG_PATH),
+        "mtime": 0,
+        "size": 0,
+        "writable": writable,
+    }
+    try:
+        st = _CONFIG_PATH.stat()
+        out["mtime"] = int(st.st_mtime)
+        out["size"] = st.st_size
+    except OSError:
+        pass
+    return out
+
+
+def _config_signature(data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """配置关键字段形态签名（审计用——只有有无/模式，无秘密值）。"""
+    if not isinstance(data, dict):
+        return {
+            "mode": None,
+            "admin_user": False,
+            "admin_pass": False,
+            "console_session": False,
+            "matrix_token": False,
+        }
+    matrix = data.get("matrix") or {}
+    return {
+        "mode": data.get("address_mode"),
+        "admin_user": bool(str(data.get("admin_username") or "").strip()),
+        "admin_pass": bool(str(data.get("admin_password") or "").strip()),
+        "console_session": bool(str(data.get("console_session") or "").strip()),
+        "matrix_token": bool(str(matrix.get("access_token") or "").strip()),
+    }
+
+
+def _record_config_write(
+    source: str, before: Optional[Dict[str, Any]], after: Dict[str, Any]
+) -> None:
+    """v0.5.0-beta.14.27（F-A）：记一次真实写盘（WARNING 日志 + 审计环）。
+
+ before=None = 写前文件不存在（首写/删后恢复）。changed=签名差异键
+ （空=仅秘密值变化——值本身不入审计）。
+ """
+    b, a = _config_signature(before), _config_signature(after)
+    changed = sorted(k for k in b if b[k] != a[k])
+    entry = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "source": source,
+        "before": b,
+        "after": a,
+        "changed": changed,
+    }
+    _CONFIG_WRITE_AUDIT.append(entry)
+    logger.warning(
+        "config write: source=%s before=%s after=%s changed=%s",
+        source,
+        b,
+        a,
+        changed or "-",
+    )
 
 # ── v0.5.0-beta.14.3: 地址条目（str | {url, auth?}）解析与凭据 helper ──
 
@@ -389,11 +494,16 @@ def _restore_from_backup() -> Optional[Dict[str, Any]]:
         "config self-heal: main config missing or corrupt — restored from %s",
         bak,
     )
+    try:
+        _record_config_write("self-heal(restore-from-backup)", None, data)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("config write audit failed: %s", exc)
     return data
 
 
 def load_config() -> Dict[str, Any]:
     """Load the config, merging with defaults for missing keys."""
+    global _last_load_state
     with _lock:
         # 读缓存（mtime+size 判定）：命中跳 disk read/parse/chmod，返回深拷贝
         # （与未缓存路径同语义——调用方可自由改返回值不污染缓存）；
@@ -409,6 +519,7 @@ def load_config() -> Dict[str, Any]:
             and _config_read_cache["size"] == _cst.st_size
             and _config_read_cache["data"] is not None
         ):
+            _last_load_state = "ok"
             return json.loads(json.dumps(_config_read_cache["data"]))
         _stat_key = (
             (_cst.st_mtime_ns, _cst.st_size) if _cst is not None else None
@@ -423,8 +534,10 @@ def load_config() -> Dict[str, Any]:
             # → 默认值（不崩）。
             restored = _restore_from_backup()
             if restored is not None:
+                _last_load_state = "restored-from-backup"
                 raw = restored
             else:
+                _last_load_state = "defaults-fallback"
                 return json.loads(json.dumps(_DEFAULTS))
 
         # v0.5.0-beta.14.7（安全）：存量 644 → 600 兜底（一次性收敛）。
@@ -512,10 +625,15 @@ def load_config() -> Dict[str, Any]:
             _config_read_cache.update(
                 {"mtime_ns": _stat_key[0], "size": _stat_key[1], "data": raw}
             )
+        _last_load_state = "ok"
         return merged
 
 
-def save_config(config: Dict[str, Any], refresh_backup: bool = True) -> None:
+def save_config(
+    config: Dict[str, Any],
+    refresh_backup: bool = True,
+    source: str = "unknown",
+) -> None:
     """Persist the full config (caller is responsible for shape).
 
  v0.5.0-beta.14.14：成功保存后自动原子刷新 config.bak.json
@@ -523,7 +641,20 @@ def save_config(config: Dict[str, Any], refresh_backup: bool = True) -> None:
  备份失败仅告警（主文件已验证落盘，不拖累保存）；refresh_backup=False 供
  导入路径（导入前先手工备份覆盖前状态，覆盖后备份保持为恢复点，不被新值
  顶掉）。
+
+ v0.5.0-beta.14.27（F-A）：source=调用方标识（PUT /config / login /
+ relogin / import / self-heal…），每次真实写盘记审计环 + WARNING 日志
+ （关键字段形态 diff，秘密值永不入日志）——配置被谁改的，日志说了算。
  """
+    global _last_load_state
+    # 写前签名（文件不存在/损坏=None）——锁外读：审计用途，与并发写
+    # 竞态时 before 可能偏新一格（可接受，不影响正确性）。
+    try:
+        _before = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+        if not isinstance(_before, dict):
+            _before = None
+    except (OSError, ValueError):
+        _before = None
     with _lock:
         try:
             _atomic_write_config(_CONFIG_PATH, config)
@@ -537,6 +668,13 @@ def save_config(config: Dict[str, Any], refresh_backup: bool = True) -> None:
             raise IOError(f"配置写入失败：{exc}") from exc
         # 写盘成功 → 读缓存立即失效（下次 load 必然回源读新内容）。
         _config_read_cache.update({"mtime_ns": None, "size": None, "data": None})
+        _last_load_state = "ok"
+        # v0.5.0-beta.14.27（F-A）：写盘审计（环 + WARNING 日志，
+        # 关键字段形态 diff——下次配置被谁改的，日志即定凶）。
+        try:
+            _record_config_write(source, _before, config)
+        except Exception as exc:  # noqa: BLE001 - 审计失败不影响主流程
+            logger.warning("config write audit failed: %s", exc)
         if refresh_backup:
             try:
                 write_backup(config)
@@ -547,8 +685,16 @@ def save_config(config: Dict[str, Any], refresh_backup: bool = True) -> None:
                 )
 
 
-def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply a shallow patch and persist. Returns the merged config."""
+def update_config(patch: Dict[str, Any], source: str = "update_config") -> Dict[str, Any]:
+    """Apply a shallow patch and persist. Returns the merged config.
+
+ v0.5.0-beta.14.27（F-A 防呆）：若最近一次 load_config 是
+ defaults-fallback（主文件缺失/损坏且无备份），本补丁会被完整默认值
+ **静默覆盖落盘**——用户表单里的 address_mode=wan/凭据会在下一次写
+ 路径（哪怕只是登录/重登写一个字段）瞬间变成全默认。此时跳过落盘：
+ 返回内存合并态（本次请求内行为不变），WARNING 明示「补丁未落盘」。
+ 主文件恢复后（用户重存/导入）补丁自然重新可写。
+ """
     merged = load_config()
     # v0.5.0-beta.14.3: 地址条目 str | {url, auth?}——按位置合并（保留旧秘密）。
     for key in ("matrix_homeservers", "controller_urls"):
@@ -621,7 +767,26 @@ def update_config(patch: Dict[str, Any]) -> Dict[str, Any]:
             incoming.pop("access_token", None)
         existing.update(incoming)
         merged["matrix"] = existing
-    save_config(merged)
+    # v0.5.0-beta.14.27（F-A 防呆）：defaults-fallback 且主文件**存在**
+    # （=文件损坏且无备份）→ 禁止落盘：不拿全默认值盖掉损坏文件
+    # （保留损坏现场供取证，UI 健康横幅已显形，用户走导入/重存恢复）。
+    # 文件**不存在**（全新安装首写）→ 正常落盘（首写=创建，不是覆盖）。
+    # 补丁已应用进 merged，跳过时本次请求内行为不变；见 docstring。
+    if _last_load_state == "defaults-fallback":
+        try:
+            _file_present = _CONFIG_PATH.exists()
+        except OSError:
+            _file_present = False
+        if _file_present:
+            logger.warning(
+                "update_config SKIPPED persist (source=%s): main config "
+                "file exists but last load was defaults-fallback (corrupt "
+                "file, no backup) — persisting would mask the corruption "
+                "with full defaults; restore via import/re-save",
+                source,
+            )
+            return merged
+    save_config(merged, source=source)
     return merged
 
 
