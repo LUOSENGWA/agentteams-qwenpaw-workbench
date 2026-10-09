@@ -1896,7 +1896,7 @@ const DICT: Record<string, { en: string }> = {
   "等待输入": { en: "Awaiting input" },
   "Worker 正在执行激活 loop": { en: "Worker is running an active loop" },
   "基本": { en: "Basic" },
-  // "系统": { en: "System" },
+  "系统": { en: "System" },
   "审批端点有上游路径缺陷（502，修复待合入并重建 Controller）；该账号旧端点无权限——L1 账号可经旧端点读取": {
     en: "The approval endpoint has an upstream path defect (502; fix pending merge and Controller rebuild) and this account cannot use the legacy endpoint — an L1 account can read via it",
   },
