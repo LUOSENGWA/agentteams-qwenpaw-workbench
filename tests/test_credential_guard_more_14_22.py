@@ -83,7 +83,7 @@ def test_b3_matrix_inherit_success_200(client):
     r1 = client.put("/config", json={"config": {
         "matrix_homeservers": [
             {"url": "https://matrix.example.com",
-             "auth": {"type": "basic", "username": "luo", "password": "p0"}},
+             "auth": {"type": "basic", "username": "testuser", "password": "p0"}},
         ],
     }})
     assert r1.status_code == 200
@@ -92,7 +92,7 @@ def test_b3_matrix_inherit_success_200(client):
     r2 = client.put("/config", json={"config": {
         "matrix_homeservers": [
             {"url": "https://matrix.example.com",
-             "auth": {"type": "basic", "username": "luo", "password": ""}},
+             "auth": {"type": "basic", "username": "testuser", "password": ""}},
         ],
     }})
     assert r2.status_code == 200
@@ -110,7 +110,7 @@ def test_b4_type_mismatch_gap_400(client):
     r0 = client.put("/config", json={"config": {
         "matrix_homeservers": [
             {"url": "https://m.example.com",
-             "auth": {"type": "basic", "username": "luo", "password": "p0"}},
+             "auth": {"type": "basic", "username": "testuser", "password": "p0"}},
         ],
     }})
     assert r0.status_code == 200
@@ -136,7 +136,7 @@ def test_b5_explicit_clear_200(client):
     r0 = client.put("/config", json={"config": {
         "matrix_homeservers": [
             {"url": "https://m.example.com",
-             "auth": {"type": "basic", "username": "luo", "password": "p0"}},
+             "auth": {"type": "basic", "username": "testuser", "password": "p0"}},
         ],
     }})
     assert r0.status_code == 200
@@ -156,14 +156,14 @@ def test_b5_explicit_clear_200(client):
 def test_b6_multi_family_batch_reject(client):
     """B6：多族同批——matrix 缺口 + controller 继承成功 → 400 整单拒，只点 matrix 缺口。
 
-    前置：controller 第 2 地址已存 basic（luo/p0）。同批 PUT 发 controller
+    前置：controller 第 2 地址已存 basic（testuser/p0）。同批 PUT 发 controller
     空密码（可继承）+ matrix 缺口（无已存凭据）。400 在 update_config 前
     抛出 → 整单不落盘（controller 密码仍 p0，matrix 未保存）。"""
     r0 = client.put("/config", json={"config": {
         "controller_urls": [
             "http://10.0.0.20:6866",
             {"url": "https://wan.example.com",
-             "auth": {"type": "basic", "username": "luo", "password": "p0"}},
+             "auth": {"type": "basic", "username": "testuser", "password": "p0"}},
         ],
     }})
     assert r0.status_code == 200
@@ -176,7 +176,7 @@ def test_b6_multi_family_batch_reject(client):
         "controller_urls": [
             "http://10.0.0.20:6866",
             {"url": "https://wan.example.com",
-             "auth": {"type": "basic", "username": "luo", "password": ""}},
+             "auth": {"type": "basic", "username": "testuser", "password": ""}},
         ],
     }})
     assert r.status_code == 400

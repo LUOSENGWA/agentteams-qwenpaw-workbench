@@ -1800,6 +1800,39 @@ const SettingsTab = React.memo(function SettingsTab({
               : tr("⚠ 配置目录不可写——保存可能不落盘")}
           </span>
         )}
+        {/* 凭据存在态自证（credential_state）：只显形「只存了用户名」
+            的可操作缺口（saved=正常、none=裸 URL 本就无凭据，都不吵）。
+            「basic 密码好像要重新填」→ 一眼判断是真缺（要填）还是
+            已存留空即可（不用填）。 */}
+        {(() => {
+          const cs = config?.credential_state;
+          if (!cs) return null;
+          const parts: string[] = [];
+          // 只显形「只存了用户名」的可操作缺口（saved=正常、none=裸 URL
+          // 本就无凭据，都不吵）。admin_password 无 username-only 态
+          // （用户名是独立字段恒在），不参与此告警。
+          const scan = (label: string, states?: string[]) => {
+            (states || []).forEach((s, i) => {
+              if (s === "username-only")
+                parts.push(
+                  tr(
+                    "凭据缺口：{label} 第 {n} 条只存了用户名（密码缺失，需补全）",
+                  )
+                    .replace("{label}", label)
+                    .replace("{n}", String(i + 1)),
+                );
+            });
+          };
+          scan(tr("Matrix"), cs.matrix_homeservers);
+          scan(tr("Controller"), cs.controller_urls);
+          scan(tr("网关管理"), cs.gateway_admin_urls);
+          if (!parts.length) return null;
+          return (
+            <span style={{ fontSize: 12, alignSelf: "center", color: "#d48806" }}>
+              ⚠ {parts.join("；")}
+            </span>
+          );
+        })()}
       </div>
 
       {/* 「配置迁移与诊断」卡片。 */}
