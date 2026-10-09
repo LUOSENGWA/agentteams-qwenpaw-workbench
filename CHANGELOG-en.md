@@ -5,6 +5,32 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.28 (2026-10-09 — low-bandwidth P0/P1 perf batch + comment archaeology cleanup)
+
+**Full-audit P0/P1 landing: bundle −25% (dead WebGPU path stripped) / sidebar approval badge goes subscription-based (4 dials/min → 1) / three idle re-render hotspots get value gates / three memory leaks plugged; two 14.27 review gaps fixed (SGLang snapshot-age read the wrong field; corrupted-config recovery path was blocked); password-field display semantics ("saved · leave blank to keep"); per-version changelog-style comments fully stripped from source (1646 → 0)**
+
+### Fixes
+
+- **SGLang "snapshot Ns ago" read the wrong field (14.27 gap)**: it measured request-processing time (≈ link RTT, always ~0s), which masked a genuinely stale snapshot — now reads each rank's real snapshot publish time (age hidden when the upstream lacks the field)
+- **Corrupted-config "re-fill and save" was actually blocked (14.27 gap)**: the banner's second recovery path hit the same overwrite guard (200 response but nothing written, so the save looked successful) — explicit recovery channel: saving under the banner warning now carries `force_persist`; the button reads "Save (rebuild the config file with the current form values)"
+- **Basic-auth password "memory gone" display semantics**: passwords are never echoed back for security, but a blank field read as "forgotten" — placeholder now "admin password (saved · leave blank to keep)" plus an explanatory line
+- **Three memory leaks plugged**: avatar cache capped at 300 (unbounded growth in long sessions); media objectURLs over the cap are reference-counted and revoked on the last owner's unmount (previously unreclaimable blobs); FilePreview revokes its blob on unmount
+
+### Changes
+
+- **Bundle −25%**: three's 2.1 MB WebGPU path (statically imported by 3d-force-graph's transitive dep, never instantiated — the plugin only uses WebGLRenderer) is aliased to a stub — gzip 661.8 → 497.7 KB
+- **Sidebar approval badge is now subscription-based**: real fetches are driven by active consumers (SSE approval events drive invalidation with zero extra dials); the icon is a pure subscriber + 60s backstop (only while the page is visible) — 4 dials/min → 1/min
+- **Three idle re-render hotspots get value gates**: ① auth-status polling moves to the shared poller scheduler (auto-pauses when hidden, catch-up on return) + field-level value gate (previously a forced main-component re-render every 30s) ② worker status dots only update when running/lastUpdated actually change ③ SSE message frames drive the chat-drawer refresh only while the drawer is open
+- **Cadence drops**: chat-drawer backstop poll 4s→10s (SSE is the primary path); 3D graph visibility re-check 2s→5s
+- **Light console-fx tier**: the 1.2s infinite pulse animations pause (dots stay visible; the running semantics live in color/tooltip)
+- **Comment archaeology cleanup**: all per-version changelog-style comments (version prefixes / internal task numbers / acceptance narratives — 1,646 lines → 0) removed from source, keeping only the "why" of the code in front of you; version history lives in the CHANGELOG and git history
+
+### Tests
+
+- +2 backend cases (explicit-recovery endpoint/unit); pytest 348 all green; tsc 0; i18n 1419 keys 0 missing 0 dup; secret scan 0; bundle gzip 497.7 KB
+
+---
+
 ## 0.5.0-beta.14.27 (2026-10-09 — config pinning + native top toast + SGLang real-time correction)
 
 **Three field-feedback items + a full write-path audit of the config: the 3rd recurrence of "address mode reverted to auto / basic login state gone" is handled by exhaustively instrumenting every write path (who changed it, the log says so) + concurrent-write protection + defaults-overwrite guard + load-state surfacing; the worker tool toggle now fires the host-native top toast (same mechanism as skill changes); the SGLang card's "~15s per frame" is proven to be the front-end slow tier (the upstream snapshot is measured at ≥1 Hz), so the slow tier drops 15s→5s and a snapshot-age self-check is shown**
