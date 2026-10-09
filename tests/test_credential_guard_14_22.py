@@ -161,6 +161,9 @@ def test_put_config_credential_inherit_ok_200(client):
     })
     assert r1.status_code == 200
     # 再保存：空密码=继承 → 200，回读校验=第 2 条 basic。
+    # 带 config_rev=模拟真实前端（页面已加载；14.30 起无 rev 保存
+    # 在有文件的磁盘上 409）。
+    _rev = client.get("/config").json()["config_rev"]
     r2 = client.put("/config", json={
         "config": {"controller_urls": [
             "http://lan:6866",
@@ -168,6 +171,7 @@ def test_put_config_credential_inherit_ok_200(client):
              "auth": {"type": "basic", "username": "testuser",
                       "password": ""}},
         ]},
+        "config_rev": _rev,
     })
     assert r2.status_code == 200
     check = r2.json()["credential_check"]

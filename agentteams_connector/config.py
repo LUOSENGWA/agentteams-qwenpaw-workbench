@@ -73,12 +73,34 @@ def config_rev() -> Optional[str]:
     return f"{st.st_mtime_ns}:{st.st_size}"
 
 
+def config_load_state() -> str:
+    """最近一次 load_config 的结局（ok/fresh/read-error/
+    restored-from-backup/defaults-fallback(兼容保留)/unknown）。"""
+    return _last_load_state
+
+
+def disk_has_config() -> bool:
+    """磁盘上主配置文件是否存在（保存防呆用：无修订号的保存 +
+    文件存在 = 拒——默认表单/脚本/旧标签页拿不到 rev，文件存在
+    说明历史上有过用户配置，覆盖即高危）。首启（无文件）放行。"""
+    try:
+        return _CONFIG_PATH.exists()
+    except OSError:
+        return False
+
+
 def config_health() -> Dict[str, Any]:
     """：配置健康态（/config 展示 + 前端横幅）。
 
  state 取值（=最近一次 load_config 的结局）：
    ok                   = 主文件存在且合法
-   defaults-fallback    = 主文件缺失/损坏且无备份 → 默认值在内存运行（未落盘）
+   fresh                = 主文件从未存在（全新首启）→ 默认值=合法初始态，
+                          表单可填可存（首写=创建）
+   read-error           = 主文件存在但读失败（挂载层瞬时故障/损坏且无
+                          备份）→ 假状态，GET /config 返回 503、保存拒
+                          绝（防默认值盖盘——10/8 wipe 链堵点）
+   defaults-fallback    = （兼容保留，现不再产生——已被 fresh/read-error
+                          细分取代）
    restored-from-backup = 主文件缺失/损坏 → 已从 config.bak.json 恢复
    unknown              = 进程启动后尚未加载过
  """
@@ -551,7 +573,21 @@ def load_config() -> Dict[str, Any]:
                 _last_load_state = "restored-from-backup"
                 raw = restored
             else:
-                _last_load_state = "defaults-fallback"
+                # 细分「兜底默认值」的两种语义——前端据此决定能否保存：
+                #   fresh      = 主文件从未存在（全新首启）→ 合法初始态，
+                #                表单应可填、可保存（首写=创建，非覆盖）
+                #   read-error = 主文件存在但读失败（挂载层瞬时故障/损坏
+                #                且无备份）→ 假状态。文件内容很可能仍正常，
+                #                此时把默认值当真配置返回=10/8 wipe 链的
+                #                起点（前端 ready→保存→全默认值盖盘）。
+                #                GET 返回 503，前端进重试链而非填充表单。
+                try:
+                    _file_exists = _CONFIG_PATH.exists()
+                except OSError:
+                    _file_exists = False
+                _last_load_state = (
+                    "fresh" if not _file_exists else "read-error"
+                )
                 return json.loads(json.dumps(_DEFAULTS))
 
         # 存量 644 → 600 兜底（一次性收敛）。
@@ -639,7 +675,11 @@ def load_config() -> Dict[str, Any]:
             _config_read_cache.update(
                 {"mtime_ns": _stat_key[0], "size": _stat_key[1], "data": raw}
             )
-        _last_load_state = "ok"
+        # 仅「正常磁盘读」路径标 ok——无条件置 ok 会抹掉
+        # restored-from-backup 标记（既有缺陷：14.27 加的「已从备份恢复，
+        # 请核对」横幅因此从未显形过，state 到 GET 时已变 ok）。
+        if _last_load_state != "restored-from-backup":
+            _last_load_state = "ok"
         return merged
 
 
@@ -804,6 +844,23 @@ def update_config(
                 source,
             )
             return merged
+    # 纵深防线：read-error（文件存在但瞬时读失败）→ 无条件拒（force_
+    # persist 不豁免——显式恢复的语义是「重建缺失文件」，而 read-error
+    # 的文件很可能完好，落盘=拿默认值盖真数据，正是 10/8 wipe 链的
+    # 最后一步。PUT handler 已先行 409；此层兜住任何其它调用路径。
+    if _last_load_state == "read-error":
+        logger.error(
+            "update_config REFUSED (source=%s): last load was read-error "
+            "(file present, transient read failure) — in-memory baseline "
+            "is defaults; persisting any patch would overwrite likely-"
+            "healthy disk data with defaults. force_persist does NOT "
+            "exempt (10/8 wipe chain).",
+            source,
+        )
+        raise IOError(
+            "配置文件暂不可读（read-error）——为防止默认值覆盖你的已保存"
+            "配置，拒绝保存。请稍后重试。"
+        )
     # 防 wipe：patch 写不得丢失它**没碰**的数据。内存基线被瞬时读失败
     # 污染（误判损坏→默认值兜底）时，一个单字段补丁（如登录写
     # console_session / 切地址模式写 address_mode）落盘=把磁盘上的地址

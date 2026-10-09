@@ -125,23 +125,25 @@ def test_self_heal_restore_records_audit(tmp_config):
 # ── 2) defaults-fallback 防呆 ───────────────────────────────────────────
 
 
-def test_update_config_skips_persist_when_file_corrupt(tmp_config):
-    """主文件损坏且无备份 → update_config 不落盘（保留损坏现场，
-  不拿全默认值盖掉它——UI 健康横幅显形，用户走导入/重存恢复）。"""
+def test_update_config_refused_when_file_corrupt(tmp_config):
+    """主文件损坏且无备份（14.30: state=read-error）→ update_config
+  拒绝（IOError）——保留损坏现场，不拿默认值盖掉它；恢复走 import。
+  （14.27 原语义=skip 落盘仍返回内存态；14.30 收紧为拒绝：read-error
+  下内存基线不可信，连「本次请求可用」都不给。）"""
     tmp_config.write_text("{corrupt!!", encoding="utf-8")
-    config_mod.load_config()  # → defaults-fallback（无备份）
-    assert config_mod._last_load_state == "defaults-fallback"
-    merged = config_mod.update_config(
-        {"address_mode": "wan", "admin_password": "x"}, source="test"
-    )
-    assert merged["address_mode"] == "wan"  # 内存态本次请求可用
+    config_mod.load_config()  # → read-error（14.30 细分）
+    assert config_mod._last_load_state == "read-error"
+    with pytest.raises(IOError):
+        config_mod.update_config(
+            {"address_mode": "wan", "admin_password": "x"}, source="test"
+        )
     assert tmp_config.read_text(encoding="utf-8") == "{corrupt!!"
 
 
 def test_update_config_first_write_fresh_install(tmp_config):
-    """全新安装（文件不存在）→ update_config 正常首写（回归锁：
-  防呆守卫不得误伤首装——否则用户第一次保存静默丢失）。"""
-    config_mod.load_config()  # 文件不存在 → defaults-fallback
+    """全新安装（文件不存在，14.30: state=fresh）→ update_config 正常
+  首写（回归锁：防呆守卫不得误伤首装——否则用户第一次保存静默丢失）。"""
+    config_mod.load_config()  # 文件不存在 → fresh（14.30 细分）
     config_mod.update_config({"address_mode": "wan"}, source="first-save")
     assert tmp_config.exists(), "首装必须落盘"
     on_disk = json.loads(tmp_config.read_text(encoding="utf-8"))
@@ -159,9 +161,9 @@ def test_update_config_persists_when_file_ok(tmp_config):
 
 
 def test_update_config_persists_after_recovery(tmp_config):
-    """defaults-fallback 后主文件恢复（用户重存/导入）→ 补丁重新可写。"""
+    """fresh（无文件）后首写落盘（用户重存/导入）→ 后续补丁正常可写。"""
     config_mod.load_config()
-    assert config_mod._last_load_state == "defaults-fallback"
+    assert config_mod._last_load_state == "fresh"
     config_mod.save_config({"address_mode": "auto"}, source="user-resave")
     config_mod.load_config()
     assert config_mod._last_load_state == "ok"
@@ -203,17 +205,19 @@ def test_put_config_matching_rev_succeeds(client, tmp_config):
     assert on_disk["address_mode"] == "wan"
 
 
-def test_put_config_without_rev_backward_compat(client, tmp_config):
-    """旧前端不传 config_rev → 跳过校验（向后兼容，正常保存）。"""
+def test_put_config_without_rev_409_when_file_exists(client, tmp_config):
+    """无 config_rev + 磁盘有文件 → 409（14.30 废除「不传 rev=跳过」
+    向后兼容——那是 10/8 wipe 的放行后门：默认表单/脚本/旧标签页
+    拿不到 rev 也能直接盖盘。首启（无文件）不受影响，见 14_30 测试。"""
     config_mod.save_config({"address_mode": "lan"}, source="seed")
     config_mod.save_config({"address_mode": "auto"}, source="external")
     r = client.put(
         "/config",
         json={"config": {"address_mode": "wan"}},
     )
-    assert r.status_code == 200
+    assert r.status_code == 409
     on_disk = json.loads(tmp_config.read_text(encoding="utf-8"))
-    assert on_disk["address_mode"] == "wan"
+    assert on_disk["address_mode"] == "auto", "无 rev 保存被拒，磁盘保持原值"
 
 
 # ── 4) GET /config 暴露 rev + health ───────────────────────────────────
@@ -230,38 +234,38 @@ def test_get_config_exposes_rev_and_health_ok(client, tmp_config):
     assert out["configSavedAt"] > 0
 
 
-def test_get_config_health_defaults_fallback(client):
-    """主文件缺失且无备份 → health.state=defaults-fallback（UI 显形依据）。"""
+def test_get_config_health_fresh_on_first_boot(client):
+    """主文件从未存在（全新首启）→ 200 + health.state=fresh（合法
+    初始态，表单可填可存；14.30 从 defaults-fallback 细分出来——
+    首启流程不得被 read-error 的 503/拒保存误伤）。"""
     out = client.get("/config").json()
-    assert out["config_health"]["state"] == "defaults-fallback"
+    assert out["config_health"]["state"] == "fresh"
     assert out["config_health"]["mtime"] == 0
 
 
-def test_update_config_force_persist_recovers_corrupt_file(tmp_config):
-    """损坏态下 force_persist=True（健康横幅警示下的显式恢复）→
-  放行守卫落盘（重建文件）；不带 force 仍被拦（双路径锁）。"""
+def test_update_config_force_persist_not_exempt_on_read_error(tmp_config):
+    """14.30 语义收紧：read-error（文件在但读失败）下 force_persist
+    不再豁免——「显式恢复」的语义是重建缺失文件，而 read-error 的
+    文件很可能完好，拿默认值盖=10/8 wipe 链的最后一步。损坏文件
+    的恢复通道=POST /config/import（用户显式粘贴，带备份回滚点）。"""
     tmp_config.write_text("{corrupt!!", encoding="utf-8")
     config_mod.load_config()
-    assert config_mod._last_load_state == "defaults-fallback"
-    config_mod.update_config({"address_mode": "wan"}, source="t")
+    assert config_mod._last_load_state == "read-error"
+    with pytest.raises(IOError):
+        config_mod.update_config(
+            {"address_mode": "wan", "admin_password": "recovered"},
+            source="explicit-recovery",
+            force_persist=True,
+        )
     assert tmp_config.read_text(encoding="utf-8") == "{corrupt!!"
-    config_mod.load_config()  # 刷新加载态
-    config_mod.update_config(
-        {"address_mode": "wan", "admin_password": "recovered"},
-        source="explicit-recovery",
-        force_persist=True,
-    )
-    on_disk = json.loads(tmp_config.read_text(encoding="utf-8"))
-    assert on_disk["address_mode"] == "wan"
-    assert on_disk["admin_password"] == "recovered"
 
 
-def test_put_config_force_persist_endpoint(client, tmp_config):
-    """PUT /config force_persist=true 显式恢复路径（端到端）。"""
+def test_put_config_force_persist_409_then_import_recovers(client, tmp_config):
+    """14.30 端到端：read-error 下 GET=503、PUT（含 force_persist）=409，
+    恢复走 import（用户显式粘贴完整配置）→ 落盘 → health 回 ok。"""
     tmp_config.write_text("{corrupt!!", encoding="utf-8")
     config_mod.load_config()
-    out = client.get("/config").json()
-    assert out["config_health"]["state"] == "defaults-fallback"
+    assert client.get("/config").status_code == 503
     r = client.put(
         "/config",
         json={
@@ -269,7 +273,17 @@ def test_put_config_force_persist_endpoint(client, tmp_config):
             "force_persist": True,
         },
     )
-    assert r.status_code == 200
+    assert r.status_code == 409
+    # 恢复通道=import（绕过 update_config 守卫，自带备份回滚点）。
+    r2 = client.post(
+        "/config/import",
+        json={
+            "address_mode": "wan",
+            "admin_password": "recovered",
+            "controller_urls": [],
+        },
+    )
+    assert r2.status_code == 200
     on_disk = json.loads(tmp_config.read_text(encoding="utf-8"))
     assert on_disk["address_mode"] == "wan"
     assert on_disk["admin_password"] == "recovered"

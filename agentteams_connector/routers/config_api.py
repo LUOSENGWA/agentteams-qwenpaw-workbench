@@ -35,6 +35,19 @@ def build_config_router() -> APIRouter:
     async def get_config() -> Dict[str, Any]:
         """Config with secrets redacted + current effective addresses."""
         cfg = config_mod.load_config()
+        # read-error（文件存在但瞬时读失败）→ 503，绝不 200 默认值：
+        # 200 假成功=前端 config 非空→保存按钮解锁→用户把默认态当
+        # 「已保存配置」保存=10/8 wipe 链。503=前端进重试链（1.5/4/10s
+        # 退避+后台自恢复），重试全败显「加载失败」横幅，表单保持不可
+        # 保存态——默认值永远进不了用户的决策面。
+        if config_mod.config_load_state() == "read-error":
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "配置文件暂不可读（挂载层繁忙或文件瞬时异常）——"
+                    "请重试。为避免你把默认值误当已保存配置，暂不返回配置。"
+                ),
+            )
         # 凭据存在态自证（redact 之前对原始态计算）：UI 逐条显示
         # 「已存/只存了用户名/无」——「basic 密码要不要重新填」不再
         # 靠猜（username-only=密码真缺，要填；saved=留空即保持）。
@@ -158,9 +171,20 @@ def build_config_router() -> APIRouter:
                 )
         if _gap_msgs:
             raise HTTPException(status_code=400, detail="；".join(_gap_msgs))
+        # read-error（文件存在但瞬时读失败）→ 无条件拒保存：内存基线
+        # 是默认值假状态，任何保存（含带 rev 的全表单、含 force_persist
+        # 显式恢复）= 拿默认值盖掉很可能正常的磁盘数据（10/8 wipe 链）。
+        # 409=冲突：磁盘现状未知，保存前提不成立。
+        if config_mod.config_load_state() == "read-error":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "配置文件暂不可读（挂载层繁忙）——为防止默认值覆盖"
+                    "你的已保存配置，拒绝保存。请刷新设置页稍后重试。"
+                ),
+            )
         # 并发写保护——页面加载后的配置修订号
         # 与磁盘对不上（外部改动过）→ 409，前端提示刷新后重存。
-        # 旧前端不传 config_rev → 跳过（向后兼容）。
         if patch.config_rev is not None:
             _cur_rev = config_mod.config_rev()
             if _cur_rev != patch.config_rev:
@@ -171,6 +195,19 @@ def build_config_router() -> APIRouter:
                         "请刷新设置页核对后再保存，避免覆盖新值"
                     ),
                 )
+        elif config_mod.disk_has_config():
+            # 无修订号 = 页面从未成功加载过配置（首载失败窗口/旧标签页/
+            # 脚本直调 API）。磁盘有文件 = 历史上有过用户配置 → 拒保存。
+            # 此前「不传 rev=跳过校验（向后兼容）」是 10/8 wipe 的放行
+            # 后门：默认表单保存（无 rev）直接盖盘。首启（磁盘无文件）
+            # 不受影响——正常保存都带 rev，唯一合法无 rev 场景=首启首写。
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "配置未加载（页面首载未完成或为陈旧标签页）——为防止"
+                    "默认值覆盖已保存配置，拒绝保存。请刷新设置页后重试。"
+                ),
+            )
         # 保存失败显性化——落盘失败（磁盘
         # 满/权限）此前裸抛 = 500 无详情；现明确报原因（前端可显示）。
         # config 写盘校验失败（写+回读

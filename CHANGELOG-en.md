@@ -5,6 +5,26 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.30 (2026-10-09 — "defaults masquerading as success" chain sealed — config mis-wipe root cause closed out)
+
+**Final seal on the 10/8 "mode reverted to auto + all credentials gone" wipe chain: load-state split into `fresh` (first boot — legal, editable, savable) and `read-error` (file present but transient read failure — a fake state); on `read-error` GET /config returns 503 (defaults can never reach the user's decision surface) and saves are 409 (force_persist does not exempt); the "no config_rev in save = skip validation" backward compatibility is retired (it was the back door that let a default-state form / direct API call overwrite disk — first boot is unaffected); plus a latent-defect fix — `load_config` unconditionally stamped `ok` at the tail, wiping the `restored-from-backup` marker, so the "restored from backup, please verify" banner had never actually been shown; frontend locks the whole settings form to read-only while config is still loading (belt-and-braces with the disabled save button and the backend 409)**
+
+### Fixes
+
+- **Load-state semantics split (root cause)**: the old `defaults-fallback` conflated "no file on first boot (legal initial state)" with "file present but unreadable (fake state)" — the frontend could not tell "you may fill this in" from "do not touch this". Now: `fresh` = main file never existed → 200 + savable (first write = creation); `read-error` = file present but read failed → GET 503 into the retry chain, form unsavable
+- **GET /config read-error → 503**: a transient read failure used to still return 200 with full defaults (fake success) — the frontend took the defaults for "saved config", the user saw "mode = auto, password blank", assumed loss, and saving wrote the defaults back over disk (the starting point of the 10/8 wipe chain). Now 503 forces the retry chain; when all retries fail the page shows a "load failed" banner
+- **PUT /config without revision → 409 (when the file exists)**: "no config_rev = skip validation (backward compatibility)" used to allow a default-state form / script / stale tab to overwrite disk — the 10/8 wipe's back door. First boot (no file on disk) keeps working normally
+- **read-error save → 409 (force_persist does not exempt)**: "explicit recovery" means rebuilding a *missing* file; a read-error file is very likely intact, and overwriting it with defaults is the last step of the wipe chain. Recovery path for a genuinely corrupt file = config import (explicit paste, with a backup rollback point)
+- **update_config defense in depth**: in read-error state any call path's persist → IOError refusal (does not rely on the HTTP-layer check)
+- **Restored banner never shown (latent defect fixed)**: `load_config`'s tail unconditionally set `ok`, wiping the `restored-from-backup` marker — the "config was auto-restored from backup, please verify" banner condition never held. Now only the plain disk-read path stamps `ok`
+- **Frontend load-window form lock**: while config is still loading (load window / failure) the whole settings form goes 45% opacity + non-interactive (the banner stays clickable for retry) — the default-state form no longer presents the misleading "password box looks empty, must be re-typed" look; three layers (form lock / disabled save button / backend 409) back each other up — if any one layer fails, the rest still hold
+
+### Tests
+
+- +10 backend cases (fresh/read-error split ×3, GET 503/fresh 200 ×2, PUT 409 ×3 (read-error force not exempt / no-rev file-present / first-boot no-rev allowed), with-rev normal save regression, config.py-layer refusal); 7 14.27-semantics tests rewritten for the new semantics (including the "no-rev backward compat" test inverted to assert 409); pytest 364 green; tsc 0; sensitive scan 0 new
+
+---
+
 ## 0.5.0-beta.14.29 (2026-10-09 — root-cause fix for "basic password needs re-entering / LAN-WAN mode reverts to auto")
 
 **Root-cause fix for the recurring "basic-auth password needs re-entering after a new install" / "credentials vanish after switching to fixed LAN/WAN": config-read retry on transient mount-layer failure (no more false "corrupt file" → running on defaults) + anti-wipe guard (a single-field patch can never erase disk data it didn't touch — the 10/8 wipe mechanism, now blocked) + credential self-attestation (settings page shows per-entry "saved / username-only / none" so "do I need to re-type it" is a glance, not a guess)**

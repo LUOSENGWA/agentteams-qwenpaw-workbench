@@ -89,12 +89,14 @@ def test_b3_matrix_inherit_success_200(client):
     assert r1.status_code == 200
     assert r1.json()["credential_check"]["matrix"] == ["basic"]
 
+    # 带 rev=模拟真实前端（14.30 起无 rev 续存 409）。
+    _rev = client.get("/config").json()["config_rev"]
     r2 = client.put("/config", json={"config": {
         "matrix_homeservers": [
             {"url": "https://matrix.example.com",
              "auth": {"type": "basic", "username": "testuser", "password": ""}},
         ],
-    }})
+    }, "config_rev": _rev})
     assert r2.status_code == 200
     assert r2.json()["credential_check"]["matrix"] == ["basic"]
     # 落盘密码继承旧值（空串=继承口径）
@@ -141,11 +143,13 @@ def test_b5_explicit_clear_200(client):
     }})
     assert r0.status_code == 200
 
+    # 带 rev=模拟真实前端（14.30 起无 rev 续存 409）。
+    _rev = client.get("/config").json()["config_rev"]
     r = client.put("/config", json={"config": {
         "matrix_homeservers": [
             {"url": "https://m.example.com", "auth": {"type": "none"}},
         ],
-    }})
+    }, "config_rev": _rev})
     assert r.status_code == 200
     assert r.json()["credential_check"]["matrix"] == ["str"]
     # 落盘降级 str 条目（显式清除口径）
