@@ -5,6 +5,22 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.32 (2026-10-09 — "test-suite isolation" batch — pytest real-path write hole sealed for good)
+
+**10/9 16:39:49 field case: a full pytest gate run had `test_update_config_address_mode` (unisolated, calling `update_config` directly) write the real config three times (wan→auto→auto), silently reverting the user's "pinned WAN" to auto. The same case also explains every "nobody touched it but the mode flipped back to auto" disk event since 10/8: since 14.1, every full suite run (including all QC gate runs) rewrote the real config through this test, while pytest's own log capture and its in-process audit ring leave zero trace in the main log (earlier rounds misattributed this to "another session / external writer"). Structural fix: conftest autouse redirects `_CONFIG_PATH` to tmp for every test (same pattern as the existing KB-cache isolation) + a session sentinel (real config file must be byte- and mtime-identical across the whole run, else the entire suite fails and names the case) + explicit isolation on the offending test. Zero runtime behavior change — test-side only**
+
+### Fixes
+
+- **conftest autouse `_isolate_real_config`**: every test now redirects `_SECRET_DIR`/`_CONFIG_DIR`/`_CONFIG_PATH` to its own tmp — no test calling `update_config`/`save_config`/HTTP PUT directly can ever reach the real secret dir (individual tests may still override, LIFO last-set-wins)
+- **session sentinel `_real_config_sentinel`**: snapshots the real config's mtime+sha256 at session start, compares at the end — any test touching the real path fails the whole run and names the file (belt-and-braces with the autouse: one blocks by path, one by outcome)
+- **`test_update_config_address_mode` explicit isolation**: the offending test gets its own tmp redirect + field-case comment (defense in depth + self-documentation)
+
+### Tests
+
+- pytest 369 green; the real config file's sha256+mtime are bit-identical before and after the full run (independent external check, sentinel agrees) — this batch's own gate is the verification: the 14.31 batch's gate run (16:39:49) was the crime scene, and this batch re-runs the same conditions with zero touch
+
+---
+
 ## 0.5.0-beta.14.31 (2026-10-09 — "fresh misclassification" fix — mount-layer immunity for the 14.30 discriminator itself)
 
 **10/9 16:15 field case: opening Settings inside the cold-mount window after a Docker Desktop restart showed the editable "mode=auto + basic password to re-enter" form again. The 14.30 fresh/read-error discriminator stood on the same shaky ground — `Path.exists()` also returns False for paths that can't be stat'ed (EMFILE/EIO), so a transient mount-layer failure was misclassified as "file never existed" → `fresh` → GET 200 + default-state form (same chain as the 10/8 wipe, with the entry swapped for a fake-fresh identity). This release re-bases the discriminator on error types: only `FileNotFoundError` = truly absent (fresh — first-boot behavior unchanged); any other OSError = existence unknown → `read-error` (GET 503 + frontend retry chain, self-heals when the mount recovers). The defaults-fallback path also logs state+presence+errno now (previously these events left zero trace — forensics ran on mtime guesswork)**

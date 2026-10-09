@@ -5,6 +5,22 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.32（2026-10-09 · 「测试套件隔离」批——pytest 真实路径写盘洞永久封口）
+
+**10/9 16:39:49 实案：全量 pytest 门内 `test_update_config_address_mode`（无隔离直调 `update_config`）对真实 config 连写三次（wan→auto→auto），把用户「固定外网」静默打回 auto。本实案一并解释了 10/8 以来全部「没人动过又变回自动」的磁盘翻转：该测试自 14.1 起每次全量跑（含各 QC 门跑）都重写真实 config，而 pytest 进程日志被捕获、审计环随进程消失，主日志因此零痕迹（此前多轮误判为「另一会话/外部写入」）。结构性修复：conftest autouse 全量重定向 `_CONFIG_PATH` 到 tmp（与既有 KB 缓存隔离同款）+ session 哨兵（真实 config 文件全运行期 mtime+sha256 零变化，否则全量跑失败并指名实案）+ 肇事测试显式隔离。运行时行为零变化——本批纯测试面**
+
+### 修复
+
+- **conftest autouse `_isolate_real_config`**：所有测试统一把 `_SECRET_DIR`/`_CONFIG_DIR`/`_CONFIG_PATH` 重定向到本测 tmp——直调 `update_config`/`save_config`/HTTP PUT 的任何测试都不可能再碰到真实 secret 目录（个别测试可再覆盖，LIFO 后设生效）
+- **session 哨兵 `_real_config_sentinel`**：session 启动快照真实 config 的 mtime+sha256，收尾比对——任何测试再写真实路径 → 整轮失败并指名文件（与 autouse 双保险：一个按路径挡，一个按结果挡）
+- **`test_update_config_address_mode` 显式隔离**：肇事测试补上 tmp 重定向 + 实案注释（双保险 + 自文档）
+
+### 测试
+
+- pytest 369 全绿；全量跑前后真实 config 文件 sha256+mtime 逐位一致（外部独立验证，哨兵同判）——本批的门本身就是验证：14.31 批的门跑（16:39:49）正是肇事现场，本批同条件复跑零触碰
+
+---
+
 ## 0.5.0-beta.14.31（2026-10-09 · 「fresh 误判洞」修复——14.30 判别器自身的挂载层免疫）
 
 **10/9 16:15 实案：DD 重启后冷挂载窗口内首开设置页，再次出现「内外网=自动 + basic 密码要重填」的可编辑表单。14.30 的 fresh/read-error 判别器自身站在同一块不稳的地基上——`Path.exists()` 对「stat 不出来」的路径（EMFILE/EIO）也返回 False，挂载层瞬时故障被误判成「文件从未存在」→ `fresh` → GET 200 + 默认值表单（与 10/8 wipe 同链，入口换成 fresh 假身份）。本批按错误类型重做判别：只有 `FileNotFoundError` = 真不存在（fresh，首启放行不变）；其他任何 OSError = 存在性未知 → 一律 `read-error`（GET 503 + 前端重试链，挂载恢复即自愈）。顺带给默认值兜底加了一条带 errno 的日志（此前这类事件零留痕，取证全靠猜）**
