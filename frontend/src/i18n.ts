@@ -274,9 +274,13 @@ const DICT: Record<string, { en: string }> = {
   "自动刷新（活跃 1s / 稳定 5s）": {
     en: "Auto refresh (1s active / 5s idle)",
   },
-  "快照 {n} 秒前": { en: "snapshot {n}s ago" },
-  "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。卡片按数据变化自适应检查：负载在变 1s 一轮，稳定 5s 一轮。「快照 N 秒前」= 服务端快照发布时间（SGLang 忙态实测每秒多帧、空闲也持续保鲜）——数字不变但秒数在跳=数据新鲜只是没变化。": {
-    en: "SGLang queue/running/GPU per DP rank (optional module — enable and set the SGLang address on the Settings page). The card adapts its check cadence to data: 1s while load changes, 5s when stable. \"Snapshot Ns ago\" = server snapshot publish time (SGLang measured to publish multiple frames per second under load, and keeps it fresh while idle) — an unchanged number with ticking seconds means fresh data, just no change.",
+  // 14.34：「快照 N 秒前」age 文字在 1s 轮询下恒显 0、无可感知性（用户
+  // 点名删）——改绿点脉冲（每帧亮一次），tooltip/提示键同步换新。
+  "每收到一帧负载快照亮一次——正在实时刷新": {
+    en: "Lights up once per load snapshot — refreshing live",
+  },
+  "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。卡片按数据变化自适应检查：负载在变 1s 一轮，稳定 5s 一轮。绿点每收到一帧快照亮一次=正在实时刷新。": {
+    en: "SGLang queue/running/GPU per DP rank (optional module — enable and set the SGLang address on the Settings page). The card adapts its check cadence to data: 1s while load changes, 5s when stable. The green dot lights up once per snapshot = refreshing live.",
   },
   "点击展开": { en: "Click to expand" },
   "私聊 {name}": { en: "DM {name}" },

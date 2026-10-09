@@ -396,6 +396,25 @@ def build_config_router() -> APIRouter:
                 cfg.get("console_session") or ""
             ).strip(),
         )
+        # 14.34 同组交叉核对——同族另一地址 200 可达（同凭据）时，
+        # 401 行的「凭据被拒」改为「更可能是隧道/网关瞬时故障」：
+        # 外网隧道瞬断时边缘网关可能直接 401，旧文案一律怪密码，
+        # 用户反复重填（反馈：显示「已保存」但 401 逼重填，而
+        # controller 明明能连上）。
+        for _kind in ("matrix", "controller", "sglang", "gateway"):
+            _rows = [r for r in (results.get(_kind) or []) if isinstance(r, dict)]
+            if not any(r.get("http_ok") for r in _rows):
+                continue
+            for r in _rows:
+                if (
+                    r.get("http_ok") is False
+                    and r.get("challenge") in ("basic", "key")
+                    and "401" in str(r.get("detail") or "")
+                ):
+                    r["detail"] += (
+                        "；同组另一地址 200 可达（同凭据）——"
+                        "更可能是隧道/网关瞬时故障，不一定是密码错"
+                    )
         applied = False
         same_lists = (matrix_list == cfg_matrix) and (ctl_list == cfg_ctl)
         if same_lists and (matrix_list or ctl_list):
