@@ -206,7 +206,7 @@ def gw_router(monkeypatch):
 
     update_calls: list[dict] = []
 
-    def fake_update(patch):
+    def fake_update(patch, source=""):
         update_calls.append(json.loads(json.dumps(patch)))
         return json.loads(json.dumps(state))
 

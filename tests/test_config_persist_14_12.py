@@ -100,7 +100,7 @@ def test_put_config_ioerror_reports_disk_write_issue(client, monkeypatch):
  （磁盘写入问题）」。"""
     tc = client
 
-    def boom(patch):
+    def boom(patch, **kw):
         raise IOError("配置写入失败：配置写盘校验不一致（磁盘内容与内存态不同）")
 
     monkeypatch.setattr(config_mod, "update_config", boom)
@@ -117,7 +117,7 @@ def test_put_config_non_io_error_keeps_t17_generic_500(client, monkeypatch):
  磁盘写入分类措辞。"""
     tc = client
 
-    def boom(patch):
+    def boom(patch, **kw):
         raise ValueError("unexpected-shape-error")
 
     monkeypatch.setattr(config_mod, "update_config", boom)

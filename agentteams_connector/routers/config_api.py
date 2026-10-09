@@ -67,6 +67,10 @@ def build_config_router() -> APIRouter:
         except Exception:  # noqa: BLE001
             out["configSavedAt"] = 0
             out["configWritable"] = False
+        # v0.5.0-beta.14.27（F-A）：配置修订号（PUT 乐观锁用）+
+        # 加载态健康（defaults-fallback=当前在跑默认值，UI 必须显形）。
+        out["config_rev"] = config_mod.config_rev()
+        out["config_health"] = config_mod.config_health()
         return out
 
     @router.get("/auth-status")
@@ -147,13 +151,26 @@ def build_config_router() -> APIRouter:
                 )
         if _gap_msgs:
             raise HTTPException(status_code=400, detail="；".join(_gap_msgs))
+        # v0.5.0-beta.14.27（F-A）：并发写保护——页面加载后的配置修订号
+        # 与磁盘对不上（外部改动过）→ 409，前端提示刷新后重存。
+        # 旧前端不传 config_rev → 跳过（向后兼容）。
+        if patch.config_rev is not None:
+            _cur_rev = config_mod.config_rev()
+            if _cur_rev != patch.config_rev:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "配置已被外部修改（页面打开后磁盘配置变化）——"
+                        "请刷新设置页核对后再保存，避免覆盖新值"
+                    ),
+                )
         # v0.5.0-beta.14.12：保存失败显性化——落盘失败（磁盘
         # 满/权限）此前裸抛 = 500 无详情；现明确报原因（前端可显示）。
         # v0.5.0-beta.14.12：config 写盘校验失败（写+回读
         # 不一致/磁盘异常）统一为 IOError——分类报「配置保存失败（磁盘写入
         # 问题）」；其余异常仍走 通用兜底。
         try:
-            merged = config_mod.update_config(incoming)
+            merged = config_mod.update_config(incoming, source="PUT /config")
         except IOError as exc:
             raise HTTPException(
                 status_code=500,
@@ -249,7 +266,9 @@ def build_config_router() -> APIRouter:
             ) from exc
         try:
             # refresh_backup=False：备份保持覆盖前状态（用户回滚点）。
-            config_mod.save_config(data, refresh_backup=False)
+            config_mod.save_config(
+                data, refresh_backup=False, source="POST /config/import"
+            )
         except IOError as exc:
             raise HTTPException(
                 status_code=500,

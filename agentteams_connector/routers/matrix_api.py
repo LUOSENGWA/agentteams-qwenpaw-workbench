@@ -750,7 +750,8 @@ def build_matrix_router() -> APIRouter:
                             "access_token": data.get("access_token", ""),
                             "device_id": data.get("device_id", ""),
                         }
-                    }
+                    },
+                    source="matrix login",
                 )
                 logger.info(
                     "login ok: %s via %s (device %s)",
