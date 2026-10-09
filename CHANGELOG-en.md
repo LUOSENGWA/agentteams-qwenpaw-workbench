@@ -5,6 +5,22 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.29 (2026-10-09 — root-cause fix for "basic password needs re-entering / LAN-WAN mode reverts to auto")
+
+**Root-cause fix for the recurring "basic-auth password needs re-entering after a new install" / "credentials vanish after switching to fixed LAN/WAN": config-read retry on transient mount-layer failure (no more false "corrupt file" → running on defaults) + anti-wipe guard (a single-field patch can never erase disk data it didn't touch — the 10/8 wipe mechanism, now blocked) + credential self-attestation (settings page shows per-entry "saved / username-only / none" so "do I need to re-type it" is a glance, not a guess)**
+
+### Fixes
+
+- **Config-read retry on transient failure (root cause)**: installing the plugin triggers a workspace reload storm during which the NFS/FUSE mount layer can momentarily return empty/truncated content — a single failed read was treated as "corrupt file" → fell back to defaults (address mode jumped back to auto, address credentials appeared fully lost), and the page displayed those defaults as if they were the saved config. A failed read now retries once (0.25 s) before declaring corruption, so a transient hiccup no longer triggers the defaults fallback
+- **Anti-wipe guard (mechanism blocked)**: when the in-memory baseline was poisoned by a transient read failure (false corruption → defaults), a single-field patch (mode switch / login writing a session) persisted = wiping the entire on-disk address list and credentials (10/8 production incident: lan→auto silently rewritten, password and addresses all gone, zero log lines). Before persisting, the merged result is now checked against the actual disk state — any key the patch didn't touch, that has values on disk but would be dropped by the merge → persist refused with an explicit error, disk data preserved. Explicit recovery (`force_persist`) waives only "defaults over a corrupt file", never "dropping untouched data"
+- **Credential self-attestation (`credential_state`)**: GET /config now carries per-entry presence flags (computed from the raw pre-redaction state, values never leak) — each address entry is `saved` / `username-only` (username stored, password missing) / `none`; the settings page surfaces an amber warning for `username-only`. A blank password field no longer reads as "maybe lost": `saved` = leave blank to keep, `username-only` = genuinely missing, fill it in
+
+### Tests
+
+- +6 backend cases (transient-read retry / persistent failure still falls back / poisoned-baseline wipe blocked / explicit family override still allowed / credential_state three-state decision / GET exposes credential_state); pytest 354 green; tsc 0; i18n 1311 keys 0 missing; sensitive scan 0
+
+---
+
 ## 0.5.0-beta.14.28 (2026-10-09 — low-bandwidth P0/P1 perf batch + comment archaeology cleanup)
 
 **Full-audit P0/P1 landing: bundle −25% (dead WebGPU path stripped) / sidebar approval badge goes subscription-based (4 dials/min → 1) / three idle re-render hotspots get value gates / three memory leaks plugged; two 14.27 review gaps fixed (SGLang snapshot-age read the wrong field; corrupted-config recovery path was blocked); password-field display semantics ("saved · leave blank to keep"); per-version changelog-style comments fully stripped from source (1646 → 0)**

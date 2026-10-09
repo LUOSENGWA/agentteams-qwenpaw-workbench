@@ -30,9 +30,9 @@ def test_gaps_basic_empty_no_old_auth():
         ["http://lan", "https://wan"],
         ["http://lan",
          {"url": "https://wan",
-          "auth": {"type": "basic", "username": "luo", "password": ""}}],
+          "auth": {"type": "basic", "username": "testuser", "password": ""}}],
     )
-    assert gaps == [{"index": 1, "type": "basic", "username": "luo"}]
+    assert gaps == [{"index": 1, "type": "basic", "username": "testuser"}]
 
 
 def test_gaps_basic_empty_masked_no_old_auth():
@@ -138,7 +138,7 @@ def test_put_config_credential_gap_400(client):
             "controller_urls": [
                 "http://lan:6866",
                 {"url": "https://wan:7113",
-                 "auth": {"type": "basic", "username": "luo",
+                 "auth": {"type": "basic", "username": "testuser",
                           "password": ""}},
             ],
         },
@@ -155,7 +155,7 @@ def test_put_config_credential_inherit_ok_200(client):
         "config": {"controller_urls": [
             "http://lan:6866",
             {"url": "https://wan:7113",
-             "auth": {"type": "basic", "username": "luo",
+             "auth": {"type": "basic", "username": "testuser",
                       "password": "p1"}},
         ]},
     })
@@ -165,7 +165,7 @@ def test_put_config_credential_inherit_ok_200(client):
         "config": {"controller_urls": [
             "http://lan:6866",
             {"url": "https://wan:7113",
-             "auth": {"type": "basic", "username": "luo",
+             "auth": {"type": "basic", "username": "testuser",
                       "password": ""}},
         ]},
     })
