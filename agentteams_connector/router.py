@@ -487,12 +487,14 @@ class SearchRequest(BaseModel):
 
 class ConfigPatch(BaseModel):
     config: Dict[str, Any]
-    # v0.5.0-beta.14.27（F-A 并发写保护）：页面加载时的配置修订号
-    # （GET /config 的 config_rev）——保存时若磁盘配置已被外部改动
-    # （另一 tab/手工编辑/导入/自愈恢复），PUT 返回 409 而非静默覆盖
-    # 新值（10/8 实盘 lan→auto 覆盖事件的直接防线）。旧前端不传=跳过
-    # 校验（向后兼容）。
+    # 并发写保护：页面加载时的配置修订号（GET /config 的 config_rev）——
+    # 保存时若磁盘配置已被外部改动（另一 tab/手工编辑/导入/自愈恢复），
+    # PUT 返回 409 而非静默覆盖新值。旧前端不传=跳过校验（向后兼容）。
     config_rev: Optional[str] = None
+    # 显式恢复通道：配置处于损坏态（defaults-fallback）时，普通保存被
+    # 防呆守卫拦下（防全默认值盖掉损坏现场）；用户在健康横幅警示下
+    # 确认用表单值重建文件 → 前端带 force_persist=True 放行。
+    force_persist: bool = False
 
 
 class ConfigTestRequest(BaseModel):

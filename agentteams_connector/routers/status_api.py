@@ -148,6 +148,10 @@ def build_status_router() -> APIRouter:
             ranks.append(
                 {
                     "dp_rank": int(l.get("dp_rank") or 0),
+                    # 本 rank 快照发布时刻（epoch 秒）——前端「快照 N 秒前」
+                    # 新鲜度自证用。注意与顶层 timestamp 区分：顶层是请求
+                    # 处理时刻（≈RTT），不是快照陈旧度。旧版无字段时 0。
+                    "snapshot_ts": float(l.get("timestamp") or 0),
                     "num_running_reqs": int(l.get("num_running_reqs") or 0),
                     "num_waiting_reqs": int(l.get("num_waiting_reqs") or 0),
                     "num_used_tokens": int(l.get("num_used_tokens") or 0),

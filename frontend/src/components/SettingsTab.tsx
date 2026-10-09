@@ -755,9 +755,14 @@ const SettingsTab = React.memo(function SettingsTab({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // v0.5.0-beta.14.27（F-A）：并发写保护——页面加载时的修订号；
-          // 保存前磁盘配置已被外部改动 → 409（下方 catch 显形提示）。
+          // 并发写保护——页面加载时的修订号；保存前磁盘配置已被外部
+          // 改动 → 409（下方 catch 显形提示）。
           config_rev: config?.config_rev ?? undefined,
+          // 损坏态（defaults-fallback）显式恢复：健康横幅已警示「当前
+          // 在跑默认值」，用户仍选择保存=确认用表单值重建文件 → 放行
+          // 防呆守卫（不传=守卫照常拦截，防误覆盖损坏现场）。
+          force_persist:
+            config?.config_health?.state === "defaults-fallback" || undefined,
           config: {
             // v0.5.0-beta.14.3: 条目 str | {url, auth?}（凭据随条目走）。
             matrix_homeservers: buildAddrEntries("matrix"),
@@ -1540,12 +1545,19 @@ const SettingsTab = React.memo(function SettingsTab({
                   }
                 />
                 <antd.Input.Password
-                  placeholder={tr("admin 密码（留空=保持现有）")}
+                  placeholder={tr(
+                    config?.admin_password
+                      ? "admin 密码（已保存 · 留空保持不变）"
+                      : "admin 密码",
+                  )}
                   value={adminPassword}
                   onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                     setAdminPassword(e.target.value)
                   }
                 />
+                <div style={{ fontSize: 11, color: "#999", lineHeight: 1.5 }}>
+                  {tr("密码安全起见永不回显——框空白不代表没记住；留空保存=沿用已存密码。")}
+                </div>
                 <div>
                   <antd.Button
                     size="small"
@@ -1764,7 +1776,11 @@ const SettingsTab = React.memo(function SettingsTab({
           disabled={config === null}
           onClick={() => void save()}
         >
-          {tr("保存配置")}
+          {tr(
+            config?.config_health?.state === "defaults-fallback"
+              ? "保存（将用当前表单值重建配置文件）"
+              : "保存配置",
+          )}
         </antd.Button>
         {/* v0.5.0-beta.14.20（用户 14.19 验收：内外网固定/账密"没有记忆"
             无法自证）：持久化自检行——上次落盘时间（config 文件 mtime）+

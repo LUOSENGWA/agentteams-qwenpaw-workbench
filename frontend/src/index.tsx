@@ -41,24 +41,30 @@ const LOGO_ICON: ReactNS.ReactNode = hostReact
 // 「ReactNode for custom」）；宿主 React 缺失时降级回静态 LOGO_ICON。
 // 轮询失败/未登录静默降级为 0（不打扰，也不误报）。
 function SidebarApprovalIcon() {
-  const [count, setCount] = hostReact.useState(0);
+  const [count, setCount] = hostReact.useState(() => getApprovalCount());
   const [shake, setShake] = hostReact.useState(false);
-  const prevRef = hostReact.useRef(0);
-  // v0.5.0-beta.14.6：旧定时器 → usePoller（15s，!document.hidden
-  // 内置于 poller）——去掉 alive flag（React 18 卸载后 setState 为 no-op）。
-  const poll = hostReact.useCallback(async () => {
+  const prevRef = hostReact.useRef(count);
+  // 纯订阅：插件内活跃消费方（HomePage/NotificationCenter）真实取数或
+  // SSE 审批事件失效缓存重取后，计数经 fetchRoomApprovals 内
+  // publishApprovalCount 发布 → 本图标零拨号跟随。
+  hostReact.useEffect(
+    () => subscribeApprovalCount(() => setCount(getApprovalCount())),
+    [],
+  );
+  // 60s 兜底轮询：覆盖「插件 tab 不活跃、无任何消费方在跑」的死角
+  // （usePoller 内置 !document.hidden 暂停）。成本 4 拨/分 → 1 拨/分；
+  // 活跃期新鲜度由上面订阅路径保证（≤15s，无额外拨号）。
+  const backstop = hostReact.useCallback(async () => {
     try {
-      const list = await fetchRoomApprovals(30);
-      setCount(Array.isArray(list) ? list.length : 0);
+      await fetchRoomApprovals(30); // 成功即自动 publish（api 内）
     } catch {
-      /* 未登录/后端不可达 → 静默 0 */
+      /* 未登录/后端不可达 → 静默 */
     }
   }, []);
-  // 挂载首拉（原码立即 void poll()）。
   hostReact.useEffect(() => {
-    void poll();
-  }, [poll]);
-  usePoller({ fn: poll, intervalMs: 15000 });
+    void backstop();
+  }, [backstop]);
+  usePoller({ fn: backstop, intervalMs: 60000 });
   // 新增审批（0→n 或 n→n+m）触发一次震动（reduced-motion 由 CSS 关闭）。
   hostReact.useEffect(() => {
     if (count > prevRef.current) {
@@ -117,6 +123,7 @@ const SIDEBAR_ICON: ReactNS.ReactNode = hostReact
 import WorkbenchPage from "./WorkbenchPage";
 import ApprovalCard from "./components/ApprovalCard";
 import { fetchRoomApprovals, requestJson } from "./api";
+import { getApprovalCount, subscribeApprovalCount } from "./approvalsStore";
 import { usePoller } from "./usePoller";
 
 const host = window.QwenPaw.host;
@@ -273,6 +280,14 @@ html[data-wb-fx="light"] [class*="HubShell-module__topbar"] {
 /* light 档：ambientLight 环境光层降透明（减小常驻合成面积，观感保留）。 */
 html[data-wb-fx="light"] [class*="ambientLight"] {
   opacity: 0.55 !important;
+}
+/* light 档：1.2s infinite 呼吸动画暂停——75 房侧栏多状态点同屏时
+ 是持续合成层重绘源。paused 停在首帧（点仍可见、颜色/Tooltip 继续
+ 承载 running 语义），观感无损；off 档本就全停。 */
+html[data-wb-fx="light"] .wb-session-dot.running,
+html[data-wb-fx="light"] .wb-live-dot,
+html[data-wb-fx="light"] .wb-loop-dot.running {
+  animation-play-state: paused !important;
 }
 `;
   document.head.appendChild(style);

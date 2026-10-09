@@ -106,10 +106,13 @@ export function useWorkerChatStatuses(
       return; // 失败保旧值（不闪灯、不报错——与旧语义一致）。
     }
     if (!res || !res.workers || typeof res.workers !== "object") return; // 形状不符保旧值
+    // 值门：逐 worker 比 running/lastUpdated，全等 → 不换 ref（后端聚合
+    // 表保旧值，静集群 30s 一拍数据几乎不变；无条件换 ref=每分钟 2 次
+    // 空转重渲 3400 行主组件 + 13 面板 memo 比对）。
     let changed = false;
     for (const [name, agg] of Object.entries(res.workers)) {
       if (agg && typeof agg === "object") {
-        outRef.current[name] = {
+        const next = {
           running: Boolean(agg.running),
           lastUpdated:
             typeof agg.lastUpdated === "number" &&
@@ -117,7 +120,15 @@ export function useWorkerChatStatuses(
               ? agg.lastUpdated
               : 0,
         };
-        changed = true;
+        const prev = outRef.current[name];
+        if (
+          !prev ||
+          prev.running !== next.running ||
+          prev.lastUpdated !== next.lastUpdated
+        ) {
+          outRef.current[name] = next;
+          changed = true;
+        }
       }
     }
     if (changed) setStatuses({ ...outRef.current });

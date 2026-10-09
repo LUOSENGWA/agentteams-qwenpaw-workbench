@@ -8,6 +8,7 @@
 // v0.5.0-beta.14.6：读缓存接线——下方 15 个同源读接口经 cachedRequest
 // 走 TTL+在飞去重+标签失效+LRU（requestCache.ts）；写面（POST/DELETE）不包。
 import { cachedRequest, invalidateTags } from "./requestCache";
+import { publishApprovalCount } from "./approvalsStore";
 
 export async function requestJson(
   path: string,
@@ -129,6 +130,9 @@ export interface L3RoomResult {
 /** SGLang 集群负载（可选模块，L1 专属——/v1/loads 每 DP rank 核心字段）。 */
 export interface SglangRank {
   dp_rank: number;
+  /** 本 rank 负载快照发布时刻（epoch 秒；SGLang load_snapshot publish 时刻）。
+   *  与顶层 timestamp 区分：顶层=请求处理时刻（≈RTT），非快照新鲜度。0=旧版无字段 */
+  snapshot_ts?: number;
   num_running_reqs: number;
   num_waiting_reqs: number;
   num_used_tokens: number;
@@ -4001,9 +4005,13 @@ export async function fetchRoomApprovals(
       const raw = (await requestJson(
         `/agentteams-proxy/room-approvals?limit=${limit}`,
       )) as Record<string, unknown>;
-      return (Array.isArray(raw.approvals)
+      const list = (Array.isArray(raw.approvals)
         ? raw.approvals
         : []) as RoomApproval[];
+      // 真实取数（缓存未命中/loader 执行）→ 发布共享计数：侧栏徽标
+      // 等被动订阅者零拨号跟随（见 approvalsStore 模块头注释）。
+      publishApprovalCount(list.length);
+      return list;
     },
     { force, tags: ["room-approvals"] },
   );

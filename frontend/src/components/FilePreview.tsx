@@ -102,6 +102,15 @@ export function FilePreview({
     onCloseRef.current();
   }, []);
 
+  // 卸载清理：预览开着直接卸载（切房/关消息窗）时回收 blob——
+  // 否则不可回收 blob 泄漏（图片可达数 MB，长会话累计爬坡）。
+  React.useEffect(() => {
+    return () => {
+      const s = stateRef.current;
+      if (s.blobUrl) URL.revokeObjectURL(s.blobUrl);
+    };
+  }, []);
+
   React.useEffect(() => {
     if (!file) return;
     // v0.5.0-beta.12: 空 url 守卫——fetch("") 会取当前页面自身（QwenPaw Console 的

@@ -173,7 +173,11 @@ def build_config_router() -> APIRouter:
         # 不一致/磁盘异常）统一为 IOError——分类报「配置保存失败（磁盘写入
         # 问题）」；其余异常仍走 通用兜底。
         try:
-            merged = config_mod.update_config(incoming, source="PUT /config")
+            merged = config_mod.update_config(
+                incoming,
+                source="PUT /config",
+                force_persist=patch.force_persist,
+            )
         except IOError as exc:
             raise HTTPException(
                 status_code=500,

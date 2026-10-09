@@ -204,11 +204,16 @@ function OpsPanel({
       // 「更新于」=最后检查时间（监控卡活性证明，每检查必跳）——
       // 14.19 初版 diff 门把它绑成"最后变化时间"，空闲时停摆=假死观感
       // （回归反馈真根因之一）。
-      // v0.5.0-beta.14.27（任务 192 实测修正）：快照发布时间每轮必刷
-      // （data.timestamp=本帧服务端发布时刻，独立于 setSglang 的 diff
-      // 门）——「快照 N 秒前」据此自证新鲜度（见 sgSnapshotAgeSec）。
-      const _snapT = Date.parse(data.timestamp);
-      if (!Number.isNaN(_snapT)) setSgSnapshotAt(_snapT);
+      // 快照发布时间每轮必刷（独立于 setSglang 的 diff 门——空闲时数值
+      // 不变但快照帧持续重发）。「快照 N 秒前」据此自证新鲜度。
+      // 取 per-rank snapshot_ts（SGLang load_snapshot 发布时刻，epoch
+      // 秒）而非顶层 timestamp（=请求处理时刻≈RTT，会恒显 0 秒掩盖
+      // 真实快照陈旧）。多 rank 取最新；0=旧版无字段→隐藏年龄。
+      const _snapSec = (data.ranks || []).reduce(
+        (mx, r) => Math.max(mx, r.snapshot_ts || 0),
+        0,
+      );
+      setSgSnapshotAt(_snapSec > 0 ? Math.round(_snapSec * 1000) : 0);
       setSglangLocalAt(Date.now());
       setSglangOff(false);
       setSglangError("");

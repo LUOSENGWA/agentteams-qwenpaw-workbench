@@ -238,6 +238,47 @@ def test_get_config_health_defaults_fallback(client):
     assert out["config_health"]["mtime"] == 0
 
 
+def test_update_config_force_persist_recovers_corrupt_file(tmp_config):
+    """损坏态下 force_persist=True（健康横幅警示下的显式恢复）→
+  放行守卫落盘（重建文件）；不带 force 仍被拦（双路径锁）。"""
+    tmp_config.write_text("{corrupt!!", encoding="utf-8")
+    config_mod.load_config()
+    assert config_mod._last_load_state == "defaults-fallback"
+    config_mod.update_config({"address_mode": "wan"}, source="t")
+    assert tmp_config.read_text(encoding="utf-8") == "{corrupt!!"
+    config_mod.load_config()  # 刷新加载态
+    config_mod.update_config(
+        {"address_mode": "wan", "admin_password": "recovered"},
+        source="explicit-recovery",
+        force_persist=True,
+    )
+    on_disk = json.loads(tmp_config.read_text(encoding="utf-8"))
+    assert on_disk["address_mode"] == "wan"
+    assert on_disk["admin_password"] == "recovered"
+
+
+def test_put_config_force_persist_endpoint(client, tmp_config):
+    """PUT /config force_persist=true 显式恢复路径（端到端）。"""
+    tmp_config.write_text("{corrupt!!", encoding="utf-8")
+    config_mod.load_config()
+    out = client.get("/config").json()
+    assert out["config_health"]["state"] == "defaults-fallback"
+    r = client.put(
+        "/config",
+        json={
+            "config": {"address_mode": "wan", "admin_password": "recovered"},
+            "force_persist": True,
+        },
+    )
+    assert r.status_code == 200
+    on_disk = json.loads(tmp_config.read_text(encoding="utf-8"))
+    assert on_disk["address_mode"] == "wan"
+    assert on_disk["admin_password"] == "recovered"
+    # 恢复后健康态回到 ok，后续普通写不再被拦。
+    out = client.get("/config").json()
+    assert out["config_health"]["state"] == "ok"
+
+
 def test_get_config_exposes_write_audit(client, tmp_config):
     """GET /config 返回 write_audit（最近写盘审计——「谁改了配置」
   当场可查）：空环=空列表；写一次后条目含 source，秘密值不出现。"""

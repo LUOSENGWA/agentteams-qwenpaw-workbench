@@ -24,6 +24,11 @@ const React: typeof ReactNS = window.QwenPaw.host.React;
 const mediaCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
 const MEDIA_CACHE_CAP = 300;
+// 超 cap 未入缓存的 objectURL 的实例引用计数（apiPath → 持有数）：
+// 满后新 URL 不入缓存，但同 apiPath 的多组件实例经 in-flight 共享同一
+// URL——卸载时引用计数归零才 revoke（过早 revoke 会裂其他实例的图；
+// 不 revoke 则不可回收 blob 常驻，图片可达数 MB）。
+const nonCachedOwners = new Map<string, number>();
 
 function fetchMediaObjectUrl(apiPath: string): Promise<string> {
   const hit = mediaCache.get(apiPath);
@@ -73,16 +78,33 @@ export function useMediaObjectUrl(
       return;
     }
     let alive = true;
+    let ownedUrl: string | undefined;
+    let share = 0; // 1 = 我持有一个未入缓存 URL 的引用（见 nonCachedOwners）
     void fetchMediaObjectUrl(apiPath)
       .then((url) => {
+        ownedUrl = url;
+        if (!mediaCache.has(apiPath)) {
+          share = (nonCachedOwners.get(apiPath) ?? 0) + 1;
+          nonCachedOwners.set(apiPath, share);
+        }
         if (alive) setObj(url);
       })
       .catch(() => {
         if (alive) setObj(fallbackUrl);
       });
     return () => {
-      // 不再 revokeObjectURL——objectURL 已入模块缓存供其他实例共享。
       alive = false;
+      // 已入缓存的 URL 由模块缓存持有（其他实例共享），不 revoke；
+      // 未入缓存（超 cap）的由引用计数归零时统一回收。
+      if (share > 0 && ownedUrl !== undefined) {
+        const left = (nonCachedOwners.get(apiPath) ?? share) - 1;
+        if (left <= 0) {
+          nonCachedOwners.delete(apiPath);
+          URL.revokeObjectURL(ownedUrl);
+        } else {
+          nonCachedOwners.set(apiPath, left);
+        }
+      }
     };
   }, [apiPath, fallbackUrl]);
 

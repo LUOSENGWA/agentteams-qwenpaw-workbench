@@ -245,6 +245,13 @@ export default defineConfig({
   define: {
     __PLUGIN_VERSION__: JSON.stringify(PKG_VERSION),
   },
+  resolve: {
+    alias: {
+      // 包体瘦身：three/webgpu 2.1MB raw 死路径（3d-force-graph 传递
+      // 依赖静态 import，插件走 WebGL 分支从不实例化）→ 替身剔除。
+      "three/webgpu": resolve(__dirname, "stubs/three-webgpu.mjs"),
+    },
+  },
   build: {
     lib: {
       entry: resolve(__dirname, "src/index.tsx"),
