@@ -20,6 +20,10 @@ const React: typeof ReactNS = window.QwenPaw.host.React;
  */
 const avatarCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
+// 缓存上限（对照 useMediaObjectUrl 的 300 cap——同模式两处必须一致）：
+// 75 房集群多成员会话下无上限 Map 长会话单调爬坡；满后新头像只 fetch
+// 不入缓存（功能不变，内存封顶）。
+const AVATAR_CACHE_CAP = 300;
 
 export function useAvatarUrl(
   url: string | null | undefined,
@@ -60,7 +64,7 @@ export function useAvatarUrl(
       inflight.set(url, p);
       p.then(
         (u) => {
-          avatarCache.set(url, u);
+          if (avatarCache.size < AVATAR_CACHE_CAP) avatarCache.set(url, u);
           inflight.delete(url);
         },
         () => {

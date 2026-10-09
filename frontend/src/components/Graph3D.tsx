@@ -975,8 +975,9 @@ function Graph3D(props: G3DGraph) {
       );
       io.observe(el);
       document.addEventListener("visibilitychange", syncAnimState);
-      // 兜底复查：visibility:hidden / display 变化未必触发 IO。
-      const visTimer = window.setInterval(syncAnimState, 2000);
+      // 兜底复查：visibility:hidden / display 变化未必触发 IO
+      // （本地 DOM 状态检查，非网络拨号；5s 档足够）。
+      const visTimer = window.setInterval(syncAnimState, 5000);
       syncAnimState();
 
       // 相机活动（orbit/zoom/pan/autoRotate/fit tween 收尾）→ 恢复 + 重排。

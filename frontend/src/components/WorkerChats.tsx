@@ -633,11 +633,12 @@ function WorkerChats({
       if (st === "running" || st === "idle") setStatus(st);
     }
   }, []);
-  // v0.5.0-beta.14.6：旧定时器 → usePoller（4s 开房间刷新；
-  // !openId 时不跑；!document.hidden 内置）。
+  // 开房间兜底刷新（usePoller：!openId 不跑；!document.hidden 内置）。
+  // 10s 档：SSE 300ms 合并窗是主路（事件驱动≈0 延迟），轮询只是
+  // 断线/丢帧保险丝——4s 档在 75 房集群下每分钟多 10 次无效拨号。
   usePoller({
     fn: () => void refreshOpenChat(),
-    intervalMs: 4000,
+    intervalMs: 10000,
     active: !!openId && useTabActive("chat"),
   });
   // SSE 事件驱动主路：refreshTick 变化（room_message 等）→ 刷新。

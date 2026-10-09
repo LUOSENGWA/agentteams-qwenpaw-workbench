@@ -685,15 +685,19 @@ def save_config(
                 )
 
 
-def update_config(patch: Dict[str, Any], source: str = "update_config") -> Dict[str, Any]:
+def update_config(
+    patch: Dict[str, Any],
+    source: str = "update_config",
+    force_persist: bool = False,
+) -> Dict[str, Any]:
     """Apply a shallow patch and persist. Returns the merged config.
 
- v0.5.0-beta.14.27（F-A 防呆）：若最近一次 load_config 是
- defaults-fallback（主文件缺失/损坏且无备份），本补丁会被完整默认值
- **静默覆盖落盘**——用户表单里的 address_mode=wan/凭据会在下一次写
- 路径（哪怕只是登录/重登写一个字段）瞬间变成全默认。此时跳过落盘：
- 返回内存合并态（本次请求内行为不变），WARNING 明示「补丁未落盘」。
- 主文件恢复后（用户重存/导入）补丁自然重新可写。
+ 防呆：若最近一次 load_config 是 defaults-fallback（主文件缺失/损坏
+ 且无备份），补丁与完整默认值合并落盘=用户配置被静默覆盖成全默认
+ （address_mode/凭据瞬间丢）。此时跳过落盘：返回内存合并态（本次
+ 请求内行为不变），WARNING 明示「补丁未落盘」。主文件恢复后（用户
+ 重存/导入）补丁自然重新可写；用户确认用表单值重建文件时传
+ force_persist=True 显式放行。文件不存在（全新安装首写）不受影响。
  """
     merged = load_config()
     # v0.5.0-beta.14.3: 地址条目 str | {url, auth?}——按位置合并（保留旧秘密）。
@@ -767,12 +771,12 @@ def update_config(patch: Dict[str, Any], source: str = "update_config") -> Dict[
             incoming.pop("access_token", None)
         existing.update(incoming)
         merged["matrix"] = existing
-    # v0.5.0-beta.14.27（F-A 防呆）：defaults-fallback 且主文件**存在**
-    # （=文件损坏且无备份）→ 禁止落盘：不拿全默认值盖掉损坏文件
-    # （保留损坏现场供取证，UI 健康横幅已显形，用户走导入/重存恢复）。
-    # 文件**不存在**（全新安装首写）→ 正常落盘（首写=创建，不是覆盖）。
-    # 补丁已应用进 merged，跳过时本次请求内行为不变；见 docstring。
-    if _last_load_state == "defaults-fallback":
+    # 防呆：defaults-fallback 且主文件**存在**（=文件损坏且无备份）→
+    # 默认禁止落盘：不拿全默认值盖掉损坏文件（保留现场供取证，UI 健康
+    # 横幅已显形，用户走导入/显式恢复）。文件**不存在**（全新安装首写）
+    # → 正常落盘（首写=创建，不是覆盖）。force_persist=True=用户显式
+    # 恢复（横幅警示下的「保存写新文件」），跳过守卫。
+    if _last_load_state == "defaults-fallback" and not force_persist:
         try:
             _file_present = _CONFIG_PATH.exists()
         except OSError:
