@@ -5,6 +5,25 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.34 (2026-10-09 — "401 forces re-entry of password" root fix batch — expected-state surfacing + perceivable refresh)
+
+**Three items from 14.33 install verification: (1) settings shows "WAN pinned + saved" yet a 401 forces re-entering the password while the controller test clearly connects — forensics verdict: the basic password itself was fine (after the 18:40 re-save all 7 URLs returned 200). The real culprit is the selfcheck L2 row "Controller projects (L2)" being a permanent 401 with a red cross — that check uses the Matrix-token path, which upstream admits only level-2/3 accounts; level-1 admin accounts always get 401 (unrelated to the WAN basic credentials), while the L1 admin-token primary source returns 200 at the same moment ("the controller connects"). The old code probed L1 *after* L2 and could not classify the expected state, so the red ✗ "HTTP 401" was read as "wrong password" → repeated re-entry. (2) SGLang refresh still feels sluggish. (3) The "snapshot 0s ago" label should go. This batch roots out all three: L2 expected-state surfacing (when L1 is usable the 401 is by design → amber ⚠️ + explicit "unrelated to basic credentials, no re-entry needed") / config/test same-family cross-check (when another same-family URL returns 200 with the same credentials, the 401 row says "more likely a transient tunnel/gateway failure, not necessarily a wrong password") / both SGLang cards drop the age text for a pulse dot (lights once per frame) + home card gains status tags and throughput**
+
+### Fixes
+
+- **selfcheck L2 "401 forces re-entry" root fix — expected-state surfacing**: the L1 admin-token probe now runs *before* L2; when L2 returns 401 and the L1 primary source returns 200, the row is classified **expected** (`ok=True, warn=True`, rendered amber ⚠️ instead of red ✗), with detail/hint stating "this account is a level-1 admin; this is upstream permission design, unrelated to WAN/LAN basic credentials, no re-entry needed". Without an L1 token, or with a dead L1 token, the row still shows as a real failure (no false expected-state). The L2 level is no longer dragged to ✗ by a structural 401
+- **config/test same-family cross-check**: when another URL in the same family returns 200 (same credentials), the 401 row's detail gains "another same-family URL returns 200 (same credentials) — more likely a transient tunnel/gateway failure, not necessarily a wrong password". When a WAN tunnel briefly drops, edge gateways can return 401 directly; the old text always blamed the credentials → users re-entered the password for nothing
+- **Both SGLang cards: drop "snapshot Ns ago" + pulse dot**: at a 1s poll the age text is permanently 0 with no perceptibility (user-named for removal) → a green dot lights once per load snapshot (remount re-plays the `wbSgTick` animation, so refresh is visible even when numbers are frozen)
+- **Home "cluster load" card gains perception**: per-DP-rank status tag (idle green / queued orange / running blue, OpsPanel parity) + throughput line (tok/s — a second signal when request counts are frozen but inference is still at full speed; 0 shows "—") + subtitle "Auto refresh (1s active / 5s idle)"
+- i18n: orphan key "snapshot Ns ago" removed, OpsPanel tooltip text refreshed, new pulse-dot hint key (zh+en)
+
+### Tests
+
+- New `test_14_34_401_perception.py` (5 regressions): L1 200 + L2 401 → expected state (incl. probe order L1-first + display order unchanged) / no token → still real failure / dead L1 token → still real failure / config/test same-family 200 → tunnel hint appended to the 401 row / all-401 → no hint
+- pytest 374 green; tsc 0; i18n gate 0 missing / 0 dup; poller smoke green
+
+---
+
 ## 0.5.0-beta.14.33 (2026-10-09 — "home SGLang card parity" batch — the twin card 14.26 missed)
 
 **When 14.26 fixed "SGLang card refresh feels sluggish", it only fixed the Ops Panel card (slow tier 15s→5s + "snapshot Ns ago" freshness self-proof). The Home page "cluster load" card is its twin — missed in the same batch: slow tier still 15s, and its state has no snapshot time at all, so when idle the card shows zero change signals (running/waiting frozen + no age counter) — perceived as "not refreshing". This batch closes the gap: slow tier 15s→5s (OpsPanel parity — 14.26 already proved the underlying SGLang parameter is decode iterations, not seconds, snapshots publish ≥1Hz when busy with <1s staleness, so the slow tier itself was the culprit) + ported the snapshot-age self-proof (refreshed every poll, independent of the diff gate — when idle the numbers are frozen but "snapshot Ns ago" keeps ticking, proving the link is alive)**

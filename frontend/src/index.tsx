@@ -163,6 +163,13 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(59,130,246,0.5); }
   50% { opacity: 0.35; box-shadow: 0 0 0 4px rgba(59,130,246,0); }
 }
+/* SGLang 卡刷新脉冲（14.34）——每收到一帧负载快照，绿点 ping 一次
+ （remount 重放）。取代恒显 0 的「快照 N 秒前」age 文字：空闲数值
+ 不变时也能肉眼看出正在刷新。 */
+@keyframes wbSgTick {
+  0% { box-shadow: 0 0 0 0 rgba(82,196,26,0.65); }
+  100% { box-shadow: 0 0 0 6px rgba(82,196,26,0); }
+}
 .wb-session-dot.running {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }

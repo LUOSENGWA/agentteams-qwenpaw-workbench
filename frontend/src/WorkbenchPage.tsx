@@ -90,7 +90,16 @@ const React = host.React;
 const antd = host.antd;
 const { message } = antd;
 
-function StatusIcon({ ok }: { ok: boolean }) {
+function StatusIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
+  // 14.34：warn=预期态（结构性 401 等，非故障）——琥珀 ⚠️，
+  // 不再红 ❌（此前 level-1 管理员的 L2 恒 401 显红叉，用户误读
+  // 成密码错反复重填）。
+  if (warn)
+    return (
+      <span style={{ color: "#faad14", display: "inline-flex" }}>
+        <WarnIcon size={14} />
+      </span>
+    );
   return (
     <span style={{ color: ok ? "#52c41a" : "#ff4d4f", display: "inline-flex" }}>
       {ok ? <CheckIcon size={14} /> : <CloseIcon size={14} />}
@@ -126,7 +135,7 @@ function CheckList({ result }: { result: SelfCheckResult | null }) {
                 fontSize: 13,
               }}
             >
-              <StatusIcon ok={c.ok} />
+              <StatusIcon ok={c.ok} warn={c.warn} />
               <div>
                 <span style={{ fontWeight: 600 }}>{c.name}</span>
                 {c.detail ? (

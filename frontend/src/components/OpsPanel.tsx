@@ -134,19 +134,11 @@ function OpsPanel({
   const [sglangError, setSglangError] = React.useState("");
 
   // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
+  // 刷新感知（14.34）：最后成功轮询时刻——每轮必刷（独立于
+  // setSglang 的 diff 门，空闲数值不变时也跳）。作脉冲点 remount
+  // key：每来一帧绿点 ping 一次。（14.33「快照 N 秒前」age 在 1s
+  // 轮询下恒显 0、无可感知性，用户点名删——改脉冲点。）
   const [sglangLocalAt, setSglangLocalAt] = React.useState<number>(0);
-  // 快照发布时间（epoch ms）——
-  // 每轮 poll 成功必刷新（独立于 setSglang 的 diff 门：空闲时数值不变
-  // 但快照帧持续重发，timestamp 每帧都是新的；若只跟 setSglang 走，
-  // 空闲时 age 会虚涨，误判断流）。
-  const [sgSnapshotAt, setSgSnapshotAt] = React.useState<number>(0);
-  // 快照年龄（秒）= 服务端快照发布时刻 距「最后检查时刻」的差。
-  // null=尚无有效快照。这是新鲜度自证：数字不变但秒数在跳=链路活、
-  // 只是没变化；秒数持续涨才是真断流。
-  const sgSnapshotAgeSec =
-    sgSnapshotAt > 0 && sglangLocalAt > 0
-      ? Math.max(0, Math.round((sglangLocalAt - sgSnapshotAt) / 1000))
-      : null;
   // 稳定快照（refreshSglang
   // deps=[]，不能直接读 state；ref 每次渲染同步最新值）。
   const sglangRef = React.useRef(sglang);
@@ -204,16 +196,8 @@ function OpsPanel({
       // 「更新于」=最后检查时间（监控卡活性证明，每检查必跳）——
       // 14.19 初版 diff 门把它绑成"最后变化时间"，空闲时停摆=假死观感
       // （回归反馈真根因之一）。
-      // 快照发布时间每轮必刷（独立于 setSglang 的 diff 门——空闲时数值
-      // 不变但快照帧持续重发）。「快照 N 秒前」据此自证新鲜度。
-      // 取 per-rank snapshot_ts（SGLang load_snapshot 发布时刻，epoch
-      // 秒）而非顶层 timestamp（=请求处理时刻≈RTT，会恒显 0 秒掩盖
-      // 真实快照陈旧）。多 rank 取最新；0=旧版无字段→隐藏年龄。
-      const _snapSec = (data.ranks || []).reduce(
-        (mx, r) => Math.max(mx, r.snapshot_ts || 0),
-        0,
-      );
-      setSgSnapshotAt(_snapSec > 0 ? Math.round(_snapSec * 1000) : 0);
+      // 脉冲点每轮必刷（独立于 setSglang 的 diff 门——空闲数值
+      // 不变时也 ping，刷新可感知）。
       setSglangLocalAt(Date.now());
       setSglangOff(false);
       setSglangError("");
@@ -403,18 +387,30 @@ function OpsPanel({
             <span style={{ fontWeight: 700, fontSize: 15 }}>
               集群负载
             </span>
-            {/* ：副标=检查节奏
-  + 快照年龄（每轮 poll 刷新——「数据 N 秒前」是新鲜度自证：数字不变
-  但 age 在跳=数据新鲜只是没变化；age 停住才是真断流）。取代 14.26
-  的错误标注「数据快照 ~15s」（参数单位误读，192 报告 §2.5 证伪）。 */}
+            {/* 副标=检查节奏 + 刷新脉冲（14.34）——每收到一帧快照亮一次
+  （remount key=sglangLocalAt 重放动画）：空闲数值不变时也能看出
+  「正在刷新」。取代 14.33 恒显 0 的「快照 N 秒前」age 文字（用户
+  点名删）与 14.26 的错误标注「数据快照 ~15s」（参数单位误读）。 */}
             <span style={{ fontSize: 11, color: t.textSecondary }}>
               {tr("自动刷新（活跃 1s / 稳定 5s）")}
-              {sgSnapshotAgeSec !== null &&
-                ` · ${tr("快照 {n} 秒前", { n: String(sgSnapshotAgeSec) })}`}
             </span>
+            {sglang ? (
+              <span
+                key={sglangLocalAt}
+                title={tr("每收到一帧负载快照亮一次——正在实时刷新")}
+                style={{
+                  display: "inline-block",
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "#52c41a",
+                  animation: "wbSgTick 0.9s ease-out",
+                }}
+              />
+            ) : null}
             <antd.Tooltip
               title={tr(
-                "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。卡片按数据变化自适应检查：负载在变 1s 一轮，稳定 5s 一轮。「快照 N 秒前」= 服务端快照发布时间（SGLang 忙态实测每秒多帧、空闲也持续保鲜）——数字不变但秒数在跳=数据新鲜只是没变化。",
+                "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。卡片按数据变化自适应检查：负载在变 1s 一轮，稳定 5s 一轮。绿点每收到一帧快照亮一次=正在实时刷新。",
               )}
             >
               <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>

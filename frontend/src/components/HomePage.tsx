@@ -167,17 +167,14 @@ function HomePage(props: HomePageProps) {
   const [artifacts, setArtifacts] = React.useState<Artifact[]>([]);
   const [sglang, setSglang] = React.useState<{
     loaded: boolean;
-    ranks: { dp_rank: number; num_running_reqs: number; num_waiting_reqs: number }[];
+    ranks: SglangRank[];
   }>({ loaded: false, ranks: [] });
-  // 新鲜度自证（移植 OpsPanel 同名卡机制）：快照发布时刻 + 最后检查时刻
-  // 每轮必刷（独立于 setSglang 的 diff 门——空闲时数值不变但 age 在跳，
-  // 卡片不显「冻结」）。0=尚无有效快照。
-  const [sgSnapshotAt, setSgSnapshotAt] = React.useState(0);
+  // 刷新感知（14.34）：最后一次成功轮询时刻——每轮必刷（独立于
+  // setSglang 的 diff 门，空闲数值不变时也跳）。作脉冲点 remount
+  // key：每来一帧数据绿点 ping 一次=「正在刷新」肉眼可感知。
+  // （14.33「快照 N 秒前」age 文字在 1s 轮询下恒显 0、无可感知
+  // 性，用户点名删——改脉冲点。）
   const [sgLocalAt, setSgLocalAt] = React.useState(0);
-  const sgSnapshotAgeSec =
-    sgSnapshotAt > 0 && sgLocalAt > 0
-      ? Math.max(0, Math.round((sgLocalAt - sgSnapshotAt) / 1000))
-      : null;
   // 待审批（房间审批源：/room-approvals=Worker Tool Guard 真实队列，
   // 30s 轮询）。弃用宿主 push-messages——集群
  // Worker 的审批发生在 Worker 所在进程，本机队列恒 0（首页没有）。
@@ -302,15 +299,8 @@ function HomePage(props: HomePageProps) {
       const d = await fetchSglangLoads();
       if (!sglangAliveRef.current) return;
       const ranks = d.ranks || [];
-      // 新鲜度自证每轮必刷（独立于下方 diff 门——空闲数值不变但快照帧
-      // 持续重发，age 在跳=链路活的证明；若只跟 setSglang 走，空闲时
-      // age 虚涨误判断流）。取 per-rank snapshot_ts（快照发布时刻，
-      // epoch 秒）多 rank 取最新；0=旧版无字段→隐藏 age。
-      const _snapSec = ranks.reduce(
-        (mx, r) => Math.max(mx, r.snapshot_ts || 0),
-        0,
-      );
-      setSgSnapshotAt(_snapSec > 0 ? Math.round(_snapSec * 1000) : 0);
+      // 脉冲点每轮必刷（独立于下方 diff 门——空闲数值不变时
+      // 也 ping，刷新可感知）。
       setSgLocalAt(Date.now());
       const changed =
         JSON.stringify(sgRanksRef.current) !== JSON.stringify(ranks);
@@ -967,8 +957,27 @@ function HomePage(props: HomePageProps) {
                   style={{ cursor: "pointer" }}
                   onClick={() => onGotoTab("ops")}
                 >
-                  <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                    集群负载
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
+                      集群负载
+                    </span>
+                    {/* 刷新脉冲（14.34）——每收到一帧快照亮一次
+  （remount key=sgLocalAt 重放动画）：空闲数值不变时也能
+  肉眼看出「正在刷新」，取代恒显 0 的 age 文字。 */}
+                    {sglang.loaded ? (
+                      <span
+                        key={sgLocalAt}
+                        title={tr("每收到一帧负载快照亮一次——正在实时刷新")}
+                        style={{
+                          display: "inline-block",
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "#52c41a",
+                          animation: "wbSgTick 0.9s ease-out",
+                        }}
+                      />
+                    ) : null}
                   </div>
                   {!sglang.loaded ? (
                     <div
@@ -979,7 +988,9 @@ function HomePage(props: HomePageProps) {
                   ) : (
                     <>
                     <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
-                      {sglang.ranks.map((r) => (
+                      {sglang.ranks.map((r) => {
+                        const busy = r.num_running_reqs + r.num_waiting_reqs;
+                        return (
                         <div
                           key={r.dp_rank}
                           style={{
@@ -989,8 +1000,21 @@ function HomePage(props: HomePageProps) {
                             minWidth: 140,
                           }}
                         >
-                          <div style={{ fontSize: 11, fontWeight: 700, color: t.text }}>
-                            DP {r.dp_rank}
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: t.text }}>
+                              DP {r.dp_rank}
+                            </span>
+                            {/* 状态标签——空闲/运行/排队一眼分辨（对齐 OpsPanel 卡）。 */}
+                            <antd.Tag
+                              color={busy === 0 ? "green" : r.num_waiting_reqs > 0 ? "orange" : "blue"}
+                              style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 5px" }}
+                            >
+                              {busy === 0
+                                ? tr("空闲")
+                                : r.num_waiting_reqs > 0
+                                  ? tr("排队")
+                                  : tr("运行中")}
+                            </antd.Tag>
                           </div>
                           <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
                             {tr("运行 {a} · 排队 {b}", {
@@ -998,14 +1022,21 @@ function HomePage(props: HomePageProps) {
                               b: r.num_waiting_reqs,
                             })}
                           </div>
+                          {/* 吞吐——请求数不变时推理仍可能在全速跑，
+  tok/s 跳动=「在干活」的第二重可感知信号。0 显「—」。 */}
+                          <div style={{ fontSize: 10, color: t.textSecondary, marginTop: 1 }}>
+                            {tr("吞吐")}{" "}
+                            {r.gen_throughput > 0
+                              ? `${Math.round(r.gen_throughput)} tok/s`
+                              : "—"}
+                          </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
-                    {sgSnapshotAgeSec !== null && (
-                      <div style={{ fontSize: 10, color: t.textSecondary, marginTop: 4 }}>
-                        {tr("快照 {n} 秒前", { n: String(sgSnapshotAgeSec) })}
-                      </div>
-                    )}
+                    <div style={{ fontSize: 10, color: t.textSecondary, marginTop: 4 }}>
+                      {tr("自动刷新（活跃 1s / 稳定 5s）")}
+                    </div>
                     </>
                   )}
                 </div>
