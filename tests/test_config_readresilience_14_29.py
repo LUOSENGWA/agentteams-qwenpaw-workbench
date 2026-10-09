@@ -67,15 +67,17 @@ def test_load_config_retries_transient_read_failure(tmp_config, monkeypatch):
     assert cfg["address_mode"] == "wan"
 
 
-def test_load_config_persistent_failure_still_defaults_fallback(tmp_config, monkeypatch):
-    """连续两次都失败→仍走 defaults-fallback（重试不是无限等）。"""
+def test_load_config_persistent_failure_read_error(tmp_config, monkeypatch):
+    """连续两次都失败（文件在）→ read-error（14.30 状态细分：文件
+    存在但读失败=假状态，GET 503/保存 409；原 defaults-fallback 语义
+    由 fresh/read-error 接管）。"""
     _seed(tmp_config, ["https://wan:7113"], mode="wan")
     flaky = _FlakyPath(config_mod._CONFIG_PATH, fail_times=99)
     monkeypatch.setattr(config_mod, "_CONFIG_PATH", flaky)
     config_mod._config_read_cache.update({"mtime_ns": None, "size": None, "data": None})
 
     cfg = config_mod.load_config()
-    assert config_mod._last_load_state == "defaults-fallback"
+    assert config_mod._last_load_state == "read-error"
     assert cfg["controller_urls"] == []
 
 
