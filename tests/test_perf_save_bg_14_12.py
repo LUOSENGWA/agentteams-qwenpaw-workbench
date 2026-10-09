@@ -112,7 +112,7 @@ def test_put_config_write_failure_500_with_detail(client, monkeypatch):
  """
     tc, _ = client
 
-    def boom(patch):
+    def boom(patch, **kw):
         raise OSError("No space left on device")
 
     monkeypatch.setattr(config_mod, "update_config", boom)

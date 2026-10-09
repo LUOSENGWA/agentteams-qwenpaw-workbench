@@ -112,7 +112,7 @@ def client(monkeypatch):
     def fake_load():
         return json.loads(json.dumps(state["data"]))
 
-    def fake_update(patch):
+    def fake_update(patch, source=""):
         for key, val in patch.items():
             if val:
                 state["data"][key] = val

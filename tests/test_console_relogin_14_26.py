@@ -131,7 +131,9 @@ def relogin_env(monkeypatch):
 
     update_calls: list[dict] = []
 
-    def fake_update(patch):
+    def fake_update(patch, source=""):
+        # v0.5.0-beta.14.27：update_config 新增 source 参（写盘审计）——
+        # fake 同步签名（relogin 以位置参传入）。
         update_calls.append(json.loads(json.dumps(patch)))
         return json.loads(json.dumps(state))
 
