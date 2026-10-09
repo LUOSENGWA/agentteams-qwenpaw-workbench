@@ -103,6 +103,8 @@ export function httpErrorDetail(e: unknown): string {
 export interface SelfCheckItem {
   name: string;
   ok: boolean;
+  // 14.34：预期态（结构性 401 等）——非故障，前端显 ⚠️ 琥珀而非 ❌ 红。
+  warn?: boolean;
   detail?: string;
   hint?: string | null;
 }

@@ -1129,6 +1129,76 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
         _ctl2_auth = config_mod.auth_for_url(
             cfg.get("controller_urls"), controller_url
         )
+        # ── 14.34：先探 L1 管理员 token 路径，L2 的 401 分支才能判「预期态」──
+        # L2 Matrix token 路径按上游设计只接受 level-2/3 Human，level-1 管理员
+        # 账号恒 401。L1 正源可用时，L2 的 401 是结构性预期状态（与 Basic
+        # 账密无关）——此前 L1 在 L2 之后探测、无法判定，L2 行红 ❌「HTTP 401」
+        # 被用户误读成「密码错」反复重填（14.34 反馈：显示「已保存」但 401
+        # 逼重填，而 controller 又能连上）。现在 L1 探测先跑，L2 分支用 l1_ok
+        # 判预期态，该行显 ⚠️ 预期而非 ❌ 失败。
+        ctl_token = (cfg.get("controller_token") or "").strip()
+        l1_ok: bool | None = None
+        l1_checks: list[Dict[str, Any]] = []
+        if ctl_token:
+            # 500 + mc/minio 特征 = Controller 侧 MinIO 客户端故障（mc 别名未
+            # 注册），不是权限问题——此前被前端「Controller 不可用」通用横幅
+            # 掩盖，用户无从下手（历史真机缺陷根因）。
+            try:
+                with sync_dial_slot(), httpx.Client(timeout=15.0, verify=False) as client:
+                    resp2 = client.get(
+                        f"{controller_url.rstrip('/')}/api/v1/projects",
+                        headers=config_mod.headers_with_auth(
+                            _ctl2_auth, {"Authorization": f"Bearer {ctl_token}"}
+                        ),
+                    )
+                body2 = (resp2.text or "")[:300]
+                if resp2.status_code == 200:
+                    l1_ok = True
+                    l1_checks.append(
+                        {
+                            "name": "Controller projects (L1 正源)",
+                            "ok": True,
+                            "detail": "admin token 正源可用",
+                        }
+                    )
+                elif resp2.status_code == 500 and (
+                    "mc " in body2 or "minio" in body2.lower()
+                ):
+                    l1_checks.append(
+                        {
+                            "name": "Controller projects (L1 正源)",
+                            "ok": False,
+                            "detail": f"HTTP 500: {body2[:200]}",
+                            "hint": "Controller 的 MinIO 客户端（mc 别名）异常——在 Controller 宿主机执行: docker exec agentteams-controller sh -c 'mc alias set agentteams $AGENTTEAMS_FS_ENDPOINT $AGENTTEAMS_MINIO_USER $AGENTTEAMS_MINIO_PASSWORD && mc ls agentteams/ | head -5'",
+                        }
+                    )
+                elif resp2.status_code in (401, 403):
+                    l1_checks.append(
+                        {
+                            "name": "Controller projects (L1 正源)",
+                            "ok": False,
+                            "detail": f"HTTP {resp2.status_code}",
+                            "hint": "controller_token 已失效——在 Controller 宿主机重新读取 /var/run/agentteams/cli-token 填入配置页",
+                        }
+                    )
+                else:
+                    l1_checks.append(
+                        {
+                            "name": "Controller projects (L1 正源)",
+                            "ok": False,
+                            "detail": f"HTTP {resp2.status_code}: {body2[:200]}",
+                        }
+                    )
+            except Exception as exc:  # noqa: BLE001
+                l1_checks.append(
+                    {
+                        "name": "Controller projects (L1 正源)",
+                        "ok": False,
+                        "detail": _classify_error(exc),
+                        "hint": "检查 Controller 地址",
+                    }
+                )
+
         # L2 Controller access: try Matrix-token auth (W-PR-1 composite
         # authenticator). 404 = endpoint/PR not deployed yet (distinguish
         # from 403 = permission denied).
@@ -1155,6 +1225,20 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
                         "detail": "404——接口未部署，AgentTeams 升级后自动生效",
                     }
                 )
+            elif resp.status_code == 401 and l1_ok:
+                # 预期态：L1 正源已可用 → L2 的 401 是上游权限设计使然
+                # （level-1 管理员走 Matrix token 恒 401），不是故障。
+                # 该行显 ⚠️ 而非 ❌，detail 点明「与 Basic 账密无关」——
+                # 此前用户把这条 401 读成密码错，反复重填保存（14.34）。
+                checks.append(
+                    {
+                        "name": "Controller projects (L2)",
+                        "ok": True,
+                        "warn": True,
+                        "detail": "HTTP 401（预期态——本账号为 level-1 管理员，L1 管理员 token 正源已可用，功能不受影响）",
+                        "hint": "此行为 Controller Matrix token 路径的结构性 401（上游只放行 level-2/3 只读），与外网/内网 Basic 账密无关，无需重新填写密码。若需 L2 只读视图，请让部署管理员把该 Human 改为 level 2。",
+                    }
+                )
             else:
                 all_ok = False
                 checks.append(
@@ -1176,71 +1260,11 @@ def run_l2(cfg: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
 
-        # L1 管理员 token 路径——正源数据的真实通道（L2 Matrix token
-        # 路径按上游设计只对 level-2 人类开放，level-1 管理员恒 401）。
-        # 500 + mc/minio 特征 = Controller 侧 MinIO 客户端故障（mc 别名未
-        # 注册），不是权限问题——此前被前端「Controller 不可用」通用横幅
-        # 掩盖，用户无从下手（历史真机缺陷根因）。
-        ctl_token = (cfg.get("controller_token") or "").strip()
-        if ctl_token:
-            try:
-                with sync_dial_slot(), httpx.Client(timeout=15.0, verify=False) as client:
-                    resp2 = client.get(
-                        f"{controller_url.rstrip('/')}/api/v1/projects",
-                        headers=config_mod.headers_with_auth(
-                            _ctl2_auth, {"Authorization": f"Bearer {ctl_token}"}
-                        ),
-                    )
-                body2 = (resp2.text or "")[:300]
-                if resp2.status_code == 200:
-                    checks.append(
-                        {
-                            "name": "Controller projects (L1 正源)",
-                            "ok": True,
-                            "detail": "admin token 正源可用",
-                        }
-                    )
-                elif resp2.status_code == 500 and (
-                    "mc " in body2 or "minio" in body2.lower()
-                ):
-                    all_ok = False
-                    checks.append(
-                        {
-                            "name": "Controller projects (L1 正源)",
-                            "ok": False,
-                            "detail": f"HTTP 500: {body2[:200]}",
-                            "hint": "Controller 的 MinIO 客户端（mc 别名）异常——在 Controller 宿主机执行: docker exec agentteams-controller sh -c 'mc alias set agentteams $AGENTTEAMS_FS_ENDPOINT $AGENTTEAMS_MINIO_USER $AGENTTEAMS_MINIO_PASSWORD && mc ls agentteams/ | head -5'",
-                        }
-                    )
-                elif resp2.status_code in (401, 403):
-                    all_ok = False
-                    checks.append(
-                        {
-                            "name": "Controller projects (L1 正源)",
-                            "ok": False,
-                            "detail": f"HTTP {resp2.status_code}",
-                            "hint": "controller_token 已失效——在 Controller 宿主机重新读取 /var/run/agentteams/cli-token 填入配置页",
-                        }
-                    )
-                else:
-                    all_ok = False
-                    checks.append(
-                        {
-                            "name": "Controller projects (L1 正源)",
-                            "ok": False,
-                            "detail": f"HTTP {resp2.status_code}: {body2[:200]}",
-                        }
-                    )
-            except Exception as exc:  # noqa: BLE001
-                all_ok = False
-                checks.append(
-                    {
-                        "name": "Controller projects (L1 正源)",
-                        "ok": False,
-                        "detail": _classify_error(exc),
-                        "hint": "检查 Controller 地址",
-                    }
-                )
+        # L1 检查结果（已在 L2 之前探测，供 L2 401 预期态判定）；
+        # 显示顺序不变（L1 行仍在 L2 行后）。
+        if l1_checks:
+            checks.extend(l1_checks)
+            all_ok = all_ok and all(c["ok"] for c in l1_checks)
 
     return {"level": "L2", "ok": all_ok, "checks": checks}
 
