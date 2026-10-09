@@ -5,6 +5,21 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.14.31 (2026-10-09 — "fresh misclassification" fix — mount-layer immunity for the 14.30 discriminator itself)
+
+**10/9 16:15 field case: opening Settings inside the cold-mount window after a Docker Desktop restart showed the editable "mode=auto + basic password to re-enter" form again. The 14.30 fresh/read-error discriminator stood on the same shaky ground — `Path.exists()` also returns False for paths that can't be stat'ed (EMFILE/EIO), so a transient mount-layer failure was misclassified as "file never existed" → `fresh` → GET 200 + default-state form (same chain as the 10/8 wipe, with the entry swapped for a fake-fresh identity). This release re-bases the discriminator on error types: only `FileNotFoundError` = truly absent (fresh — first-boot behavior unchanged); any other OSError = existence unknown → `read-error` (GET 503 + frontend retry chain, self-heals when the mount recovers). The defaults-fallback path also logs state+presence+errno now (previously these events left zero trace — forensics ran on mtime guesswork)**
+
+### Fixes
+
+- **fresh discriminator re-based on error type (root cause)**: `exists()` swallows OSError (CPython semantics: "doesn't exist **or can't be accessed**" → False) → replaced with explicit `stat()` three-state classification: success=present, `FileNotFoundError`=absent (fresh), other OSError=unknown (read-error). "Unknown" is never treated as absent — "we don't know if it's there" ≠ "it isn't"
+- **defaults-fallback leaves a trace**: entering the defaults fallback (fresh/read-error) now logs a WARNING (state + presence + errno) — events like 10/9 16:15 get an exact timestamp and errno instead of mtime-based guesswork
+
+### Tests
+
+- +5 cases (stat/read/bak all EMFILE → read-error not fresh / GET 503 under EMFILE / truly-absent still fresh (no first-boot regression) / stat-ok-but-read-EMFILE-no-backup → read-error / EMFILE-then-recovery → next load self-heals to ok with real data); pytest 369 green; tsc 0; sensitive scan 0 new
+
+---
+
 ## 0.5.0-beta.14.30 (2026-10-09 — "defaults masquerading as success" chain sealed — config mis-wipe root cause closed out)
 
 **Final seal on the 10/8 "mode reverted to auto + all credentials gone" wipe chain: load-state split into `fresh` (first boot — legal, editable, savable) and `read-error` (file present but transient read failure — a fake state); on `read-error` GET /config returns 503 (defaults can never reach the user's decision surface) and saves are 409 (force_persist does not exempt); the "no config_rev in save = skip validation" backward compatibility is retired (it was the back door that let a default-state form / direct API call overwrite disk — first boot is unaffected); plus a latent-defect fix — `load_config` unconditionally stamped `ok` at the tail, wiping the `restored-from-backup` marker, so the "restored from backup, please verify" banner had never actually been shown; frontend locks the whole settings form to read-only while config is still loading (belt-and-braces with the disabled save button and the backend 409)**

@@ -581,12 +581,33 @@ def load_config() -> Dict[str, Any]:
                 #                此时把默认值当真配置返回=10/8 wipe 链的
                 #                起点（前端 ready→保存→全默认值盖盘）。
                 #                GET 返回 503，前端进重试链而非填充表单。
+                # 14.31: 按错误类型判别文件存在性。14.30 用 exists() 布尔——
+                # CPython 对「无法访问」的路径也返回 False（官方语义
+                # "doesn't exist or can't be accessed"），挂载层瞬时故障
+                # （EMFILE/EIO，如 virtiofsd fd 耗尽、DD 重启后冷挂载）
+                # 被误判成「文件从未存在」→ fresh → 200+可编辑默认值表单
+                # （10/9 16:15 实案：DD 重启后首开即见「自动+空密码」，
+                # 照单保存=默认值盖盘）。只有 FileNotFoundError 才是
+                # 「真不存在」；其他 OSError = 存在性未知 ≠ 不存在 →
+                # 一律 read-error（GET 503，前端重试链自愈合）。
+                _presence = "present"
+                _presence_errno = None
                 try:
-                    _file_exists = _CONFIG_PATH.exists()
-                except OSError:
-                    _file_exists = False
+                    _CONFIG_PATH.stat()
+                except FileNotFoundError:
+                    _presence = "absent"
+                except OSError as _oe:
+                    _presence = "unknown"
+                    _presence_errno = getattr(_oe, "errno", None)
                 _last_load_state = (
-                    "fresh" if not _file_exists else "read-error"
+                    "fresh" if _presence == "absent" else "read-error"
+                )
+                logger.warning(
+                    "config load: defaults fallback state=%s presence=%s "
+                    "errno=%s (main unreadable, backup unavailable)",
+                    _last_load_state,
+                    _presence,
+                    _presence_errno,
                 )
                 return json.loads(json.dumps(_DEFAULTS))
 

@@ -5,6 +5,21 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.14.31（2026-10-09 · 「fresh 误判洞」修复——14.30 判别器自身的挂载层免疫）
+
+**10/9 16:15 实案：DD 重启后冷挂载窗口内首开设置页，再次出现「内外网=自动 + basic 密码要重填」的可编辑表单。14.30 的 fresh/read-error 判别器自身站在同一块不稳的地基上——`Path.exists()` 对「stat 不出来」的路径（EMFILE/EIO）也返回 False，挂载层瞬时故障被误判成「文件从未存在」→ `fresh` → GET 200 + 默认值表单（与 10/8 wipe 同链，入口换成 fresh 假身份）。本批按错误类型重做判别：只有 `FileNotFoundError` = 真不存在（fresh，首启放行不变）；其他任何 OSError = 存在性未知 → 一律 `read-error`（GET 503 + 前端重试链，挂载恢复即自愈）。顺带给默认值兜底加了一条带 errno 的日志（此前这类事件零留痕，取证全靠猜）**
+
+### 修复
+
+- **fresh 判别按错误类型重做（根因）**：`exists()` 布尔吞掉 OSError（CPython 官方语义 "doesn't exist **or can't be accessed**" → False）→ 改为显式 `stat()` 三态判别：成功=present、`FileNotFoundError`=absent（fresh）、其他 OSError=unknown（read-error）。unknown 永不当 absent 处理——「不知道在不在」≠「不在」
+- **默认值兜底留痕**：进入默认值兜底（fresh/read-error）时记 WARNING（state+presence+errno）——10/9 16:15 这种事件从此有精确时间戳和 errno 可查，不再靠 mtime 倒推
+
+### 测试
+
+- +5 用例（stat/read/bak 全 EMFILE → read-error 非 fresh / EMFILE 下 GET 503 / 真不存在仍 fresh 不受误伤 / stat 正常但 read EMFILE 无备份 → read-error / EMFILE 后挂载恢复 → 下一次 load 自愈 ok+真实数据）；pytest 369 全绿；tsc 0；敏感扫描 0 新增
+
+---
+
 ## 0.5.0-beta.14.30（2026-10-09 · 「默认值假成功」语义堵链批——配置误覆盖根因链封口）
 
 **10/8「内外网变回自动 + 凭据全丢」wipe 根因链的最后封口：加载失败态细分 `fresh`（首启合法可填可存）/ `read-error`（文件在但瞬时读失败=假状态）；`read-error` 下 GET /config 返回 503（默认值永远进不了用户决策面）、保存 409（force_persist 也不豁免）；废除「保存不带修订号=跳过校验」的向后兼容（那是默认表单/脚本直调 API 盖盘的放行后门，首启不受影响）；顺带修掉一个潜伏缺陷——`load_config` 尾部无条件标 `ok` 把「已从备份恢复」标记抹掉，恢复横幅因此从未显形过；前端加载窗口内整个表单只读显形（与保存按钮禁用、后端 409 三层互备）**
