@@ -236,3 +236,19 @@ def test_get_config_health_defaults_fallback(client):
     out = client.get("/config").json()
     assert out["config_health"]["state"] == "defaults-fallback"
     assert out["config_health"]["mtime"] == 0
+
+
+def test_get_config_exposes_write_audit(client, tmp_config):
+    """GET /config 返回 write_audit（最近写盘审计——「谁改了配置」
+  当场可查）：空环=空列表；写一次后条目含 source，秘密值不出现。"""
+    assert client.get("/config").json()["write_audit"] == []
+    config_mod.save_config(
+        {"address_mode": "lan", "admin_password": "TOP-SECRET"},
+        source="PUT /config",
+    )
+    audit = client.get("/config").json()["write_audit"]
+    assert len(audit) == 1
+    assert audit[0]["source"] == "PUT /config"
+    assert audit[0]["after"]["mode"] == "lan"
+    body = client.get("/config").text
+    assert "TOP-SECRET" not in body, "秘密值不得经 GET /config 外泄"

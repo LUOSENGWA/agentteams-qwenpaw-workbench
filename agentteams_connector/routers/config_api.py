@@ -68,9 +68,12 @@ def build_config_router() -> APIRouter:
             out["configSavedAt"] = 0
             out["configWritable"] = False
         # v0.5.0-beta.14.27（F-A）：配置修订号（PUT 乐观锁用）+
-        # 加载态健康（defaults-fallback=当前在跑默认值，UI 必须显形）。
+        # 加载态健康（defaults-fallback=当前在跑默认值，UI 必须显形）
+        # + 写盘审计环（最近 20 条——「谁改了配置」当场可查，
+        # 再犯一次无需翻日志）。
         out["config_rev"] = config_mod.config_rev()
         out["config_health"] = config_mod.config_health()
+        out["write_audit"] = list(config_mod._CONFIG_WRITE_AUDIT)
         return out
 
     @router.get("/auth-status")
