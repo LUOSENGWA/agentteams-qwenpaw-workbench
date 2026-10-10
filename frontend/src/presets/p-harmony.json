@@ -1,0 +1,51 @@
+{
+  "id": "p-harmony",
+  "name": { "zh-CN": "鸿蒙 AI 开发", "en-US": "HarmonyOS AI Development" },
+  "description": {
+    "zh-CN": "鸿蒙（ArkTS）原生开发 preset = 鸿蒙 v3 定案 worked example。harmony-dev worker 试点主力。",
+    "en-US": "HarmonyOS (ArkTS) native development preset = the v3 worked example. Primary preset for the harmony-dev worker pilot."
+  },
+  "team_mapping": {
+    "team": "sysdev",
+    "workers": ["harmony-dev"],
+    "note": {
+      "zh-CN": "试点在 sysdev-team 下 harmony-dev worker（鸿蒙方案 v3 §2）；embedded+sysdev MCU 属第①层（工具链共享卷）",
+      "en-US": "Pilot under sysdev-team harmony-dev worker (HarmonyOS plan v3 §2); embedded+sysdev MCU is layer ① (shared-volume toolchain)"
+    }
+  },
+  "settings_patch": { "model": { "name": "qwen3.6-27b-fp8" } },
+  "toolchain": {
+    "shared_volume": "/mnt/SRAIDZ1/AgentTeam/toolchains/harmony/",
+    "install": {
+      "zh-CN": "CLT 26.0.0（内嵌 NEXT SDK+hdc）+ JDK 21 + Node 22.20+（engines 硬要求 + TLS 指纹代际）",
+      "en-US": "CLT 26.0.0 (embedded NEXT SDK + hdc) + JDK 21 + Node 22.20+ (engines hard requirement + TLS fingerprint generation)"
+    },
+    "env": {
+      "DEVECO_CLI_CLT_PATH": "<shared_volume>/clt",
+      "DEVECO_CLI_DATA_DIR": "<shared_volume>/data",
+      "JAVA_HOME": "<shared_volume>/jdk21",
+      "DEVECO_CLI_DISABLE_TELEMETRY": "1"
+    },
+    "human_confirm": true,
+    "note": {
+      "zh-CN": "工具链动 CR（env）= 团队级决策，preset 只生成建议清单，不自动执行",
+      "en-US": "Toolchain changes touch the CR (env) = team-level decision; preset only generates the suggestion list, never auto-applies"
+    }
+  },
+  "mcp": {
+    "suggested": [
+      "devecocli serve（官方 stdio MCP 主锚：ArkTS LSP check/hover/definition + clangd + 文档）",
+      "devecocli-mcp（可选，capability_search）"
+    ],
+    "human_confirm": true,
+    "note": "走现有 McpSelector 链手动绑定，零新接口"
+  },
+  "discipline": {
+    "zh-CN": "docs-first + check 零错 + 构建通过 = 硬验收门（注入 worker SOUL/skill）",
+    "en-US": "docs-first + zero check errors + build pass = hard acceptance gate (injected into worker SOUL/skill)"
+  },
+  "artifacts": {
+    "minio_path": "teams/<team>/artifacts/harmony/",
+    "note": "HAP 包 → MinIO → 工作台审批"
+  }
+}
