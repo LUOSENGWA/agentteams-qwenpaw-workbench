@@ -43,7 +43,9 @@ export interface ThemeColors {
 const LIGHT: ThemeColors = {
   mode: "light",
   bg: "#ffffff",
-  cardBg: "#ffffff",
+  // 卡片微透——白 72% 让宿主米白底微透，
+  // 层次感增强；宿主底为纯色，文字对比不受影响。
+  cardBg: "rgba(255,255,255,0.72)",
   text: "rgba(0,0,0,0.88)",
   textSecondary: "#888",
   border: "rgba(0,0,0,0.08)",
@@ -57,7 +59,9 @@ const LIGHT: ThemeColors = {
 const DARK: ThemeColors = {
   mode: "dark",
   bg: "#141414",
-  cardBg: "#1f1f1f",
+  // 卡片透黑——白 5% 对黑底=比页面
+  // #141414 微亮一档的半透明卡，层次靠亮度差而非实色块。
+  cardBg: "rgba(255,255,255,0.05)",
   text: "rgba(255,255,255,0.88)",
   textSecondary: "#8c8c8c",
   border: "rgba(255,255,255,0.12)",

@@ -108,6 +108,7 @@ function StatusIcon({ ok, warn }: { ok: boolean; warn?: boolean }) {
 }
 
 function CheckList({ result }: { result: SelfCheckResult | null }) {
+  const t = useThemeColors(); 
   if (!result) return null;
   const levels: SelfCheckResult[] = result.levels ? result.levels : [result];
   return (
@@ -116,7 +117,7 @@ function CheckList({ result }: { result: SelfCheckResult | null }) {
         <div
           key={`${lv.level}-${i}`}
           style={{
-            border: "1px solid rgba(0,0,0,0.08)",
+            border: `1px solid ${t.border}`,
             borderRadius: 10,
             padding: "12px 16px",
           }}
@@ -157,6 +158,7 @@ function CheckList({ result }: { result: SelfCheckResult | null }) {
 
 function RoomResultTable({ rooms }: { rooms: L3RoomResult[] }) {
   const tr = useT();
+  const t = useThemeColors(); 
   if (!rooms || rooms.length === 0) return null;
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -165,7 +167,7 @@ function RoomResultTable({ rooms }: { rooms: L3RoomResult[] }) {
         <div
           key={r.room_id}
           style={{
-            border: "1px solid rgba(0,0,0,0.08)",
+            border: `1px solid ${t.border}`,
             borderRadius: 10,
             padding: "10px 14px",
             display: "grid",
@@ -2976,6 +2978,44 @@ export default function WorkbenchPage() {
           .wb-main .ant-table-thead > tr > th { padding-left: 6px !important; padding-right: 6px !important; }
           .wb-main .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
           .wb-main pre, .wb-main code { white-space: pre-wrap; word-break: break-all; }
+        }
+        /* ══ 触屏层（P0 触屏适配）══
+   触控检测 = any-pointer:coarse（纯触屏+笔记本触屏混合设备都命中；
+   不用 UA 嗅探，基础体验保持 input-agnostic——桌面路径零改动）。
+   宿主 antd=自家前缀分支（qwenpaw-*，12.15 真机实锤）→ 双前缀双写。 */
+        /* 1) 消双击缩放 + 点击延迟残留（现代 fastclick 等价 CSS）：
+  所有可交互元素统一 manipulation（pan+pinch 保留，单点即点）。 */
+        .wb-main button, .wb-main a, .wb-main [role="button"],
+        .wb-main .ant-btn, .wb-main .qwenpaw-btn,
+        .wb-main .ant-select, .wb-main .qwenpaw-select { touch-action: manipulation; }
+        /* 2) 系统 tap 灰闪去掉，视觉反馈交给 antd :active 自带态
+  （antd 5 按钮/输入自带 active 色，不重复造反馈）。 */
+        .wb-main { -webkit-tap-highlight-color: transparent; }
+        /* 3) 嵌套滚动区防滚动链传递（聊天窗/表格/列表内滚时
+  不把惯性甩给宿主页面）。 */
+        .wb-main .ant-table-body, .wb-main .qwenpaw-table-body,
+        .wb-main [class*="-tabs-tabpane"] { overscroll-behavior: contain; }
+        /* 4) 触控目标放大类（T3 高频路径挂 .wb-touch-lg）：
+  伪元素负 inset 扩 hit-area 到 ≥44×44（视觉尺寸不变）——
+  业界标准手法（GitHub/Material Web 同款）；密集表格行操作
+  不挂此类（24px AA 底线 + 间距豁免，扩了会互相叠压）。 */
+        @media (any-pointer: coarse) {
+          .wb-main .wb-touch-lg { position: relative; }
+          .wb-main .wb-touch-lg::before {
+            content: "";
+            position: absolute;
+            top: -10px; left: -10px; right: -10px; bottom: -10px;
+          }
+        }
+        /* 5) 底部 safe-area（notch/手势条）：置底钮等底部锚定元素挂
+  .wb-safe-bottom——padding-bottom 取 env 与最小间距的较大者。 */
+        .wb-main .wb-safe-bottom {
+          padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+        /* 6) 纯触屏设备（hover:none）：hover-only 装饰态不渲染
+  （hover 显现的操作按钮改常显——T5 逐处收口后统一由该类控制）。 */
+        @media (hover: none) {
+          .wb-main .wb-hover-only-action { opacity: 1 !important; }
         }
       `}</style>
       <header

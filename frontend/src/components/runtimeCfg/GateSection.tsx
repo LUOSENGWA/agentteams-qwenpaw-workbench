@@ -1,6 +1,7 @@
 /** WorkerRuntimeConfig 子组件——自 WorkerRuntimeConfig.tsx 纯移动拆出
  * （任务书 183 S3，行为零变化）。 */
 import type * as ReactNS from "react";
+import { useThemeColors } from "../../theme";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -21,9 +22,10 @@ function GateSection({
   onEnabled?: (v: boolean) => void;
   children?: ReactNS.ReactNode;
 }) {
+  const t = useThemeColors(); 
   const [open, setOpen] = React.useState(false);
   return (
-    <div style={{ border: "1px solid rgba(127,127,127,0.2)", borderRadius: 8, marginBottom: 8 }}>
+    <div style={{ border: `1px solid ${t.border}`, borderRadius: 8, marginBottom: 8 }}>
       <div
         style={{
           display: "flex",
@@ -31,7 +33,7 @@ function GateSection({
           gap: 8,
           padding: "6px 10px",
           cursor: enabled ? "pointer" : "default",
-          background: "rgba(127,127,127,0.05)",
+          background: t.toolBg,
           borderRadius: 8,
         }}
         onClick={() => {
@@ -52,9 +54,9 @@ function GateSection({
         ) : null}
         <div style={{ flex: 1 }} />
         {enabled ? (
-          <span style={{ fontSize: 9, color: "rgba(0,0,0,0.45)" }}>{open ? "▲" : "▼"}</span>
+          <span style={{ fontSize: 9, color: t.textSecondary }}>{open ? "▲" : "▼"}</span>
         ) : (
-          <span style={{ fontSize: 10.5, color: "rgba(0,0,0,0.35)" }}>off</span>
+          <span style={{ fontSize: 10.5, color: t.textSecondary }}>off</span>
         )}
       </div>
       {enabled && open ? (

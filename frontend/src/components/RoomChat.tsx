@@ -3898,12 +3898,15 @@ function RoomChat(props: RoomChatProps) {
                     padding: "0 10px",
                     borderRadius: 11,
                     whiteSpace: "nowrap",
+                    // 深色档深琥珀/深蓝字→亮向，底色加浓
                     color:
-                      roomLoop.state === "awaiting_user" ? "#d46b08" : "#0958d9",
+                      roomLoop.state === "awaiting_user"
+                        ? (t.mode === "dark" ? "#faad14" : "#d46b08")
+                        : (t.mode === "dark" ? "#4096ff" : "#0958d9"),
                     background:
                       roomLoop.state === "awaiting_user"
-                        ? "rgba(250,173,20,0.12)"
-                        : "rgba(24,144,255,0.10)",
+                        ? (t.mode === "dark" ? "rgba(250,173,20,0.16)" : "rgba(250,173,20,0.12)")
+                        : (t.mode === "dark" ? "rgba(24,144,255,0.16)" : "rgba(24,144,255,0.10)"),
                     border: `1px solid ${
                       roomLoop.state === "awaiting_user"
                         ? "rgba(250,173,20,0.40)"

@@ -361,6 +361,22 @@ function HomePage(props: HomePageProps) {
   };
 
   // 快捷操作（文字+emoji，零 antdIcons 依赖）。
+  // 快捷操作卡配色——accent 品牌浅底，底/边/字从主色派生
+  // （原 #FFF3E8/#FFD9B3/#c2410c/#9a3412 是 accent 的固定橙衍生，
+  // 宿主换主色时这层不跟）。color-mix 保证任意主色下派生。
+  // 深色模式：浅底白 mix 在暗页=亮斑 →
+  // 改 accent 对透明混色（黑底透出）+ 标签用亮向 accent（暗底可读）。
+  const dark = t.mode === "dark";
+  const quickCard = {
+    background: dark
+      ? "color-mix(in srgb, var(--app-accent, #FF7F16) 13%, transparent)"
+      : "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, white)",
+    border: `1px solid ${
+      dark
+        ? "color-mix(in srgb, var(--app-accent, #FF7F16) 32%, transparent)"
+        : "color-mix(in srgb, var(--app-accent, #FF7F16) 28%, white)"
+    }`,
+  };
   const quickBtn = (
     icon: ReactNS.ReactNode,
     label: string,
@@ -374,11 +390,7 @@ function HomePage(props: HomePageProps) {
         minWidth: 140,
         cursor: "pointer",
         borderRadius: CARD_RADIUS,
-        // accent 品牌浅底卡——底/边/字从主色派生
-        // （原 #FFF3E8/#FFD9B3/#c2410c/#9a3412 是 accent 的固定橙衍生，
-        // 宿主换主色时这层不跟）。color-mix 保证任意主色下的浅底/边。
-        background: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, white)",
-        border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 28%, white)",
+        ...quickCard,
         padding: "12px 14px",
         transition: "box-shadow .2s",
       }}
@@ -390,12 +402,27 @@ function HomePage(props: HomePageProps) {
         (e.currentTarget as HTMLElement).style.boxShadow = "none";
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", height: 24 }}>{icon}</div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          height: 24,
+          // 图标=主色（浅色档用深向 accent 保对比；深色档用亮向=主色提亮）
+          color: dark
+            ? "color-mix(in srgb, var(--app-accent, #FF7F16) 70%, white)"
+            : "var(--app-accent, #c2410c)",
+        }}
+      >
+        {icon}
+      </div>
       <div
         style={{
           fontSize: 13,
           fontWeight: 700,
-          color: "var(--app-accent, #c2410c)",
+          // 深色档：accent 70%+white=亮向主色（暗底可读）；浅色档原样
+          color: dark
+            ? "color-mix(in srgb, var(--app-accent, #FF7F16) 70%, white)"
+            : "var(--app-accent, #c2410c)",
           marginTop: 4,
         }}
       >
@@ -404,8 +431,9 @@ function HomePage(props: HomePageProps) {
       <div
         style={{
           fontSize: 10.5,
-          // 深档描述色 = 主色 70% + 深棕（任意主色下保持足够深、可读）
-          color: "color-mix(in srgb, var(--app-accent, #9a3412) 70%, #3a2410)",
+          // 描述色：浅色档=主色 70% + 深棕（任意主色下足够深可读）；
+          // 深色档=次级文字 token（t.textSecondary，暗页标准灰）
+          color: dark ? t.textSecondary : "color-mix(in srgb, var(--app-accent, #9a3412) 70%, #3a2410)",
           marginTop: 2,
         }}
       >

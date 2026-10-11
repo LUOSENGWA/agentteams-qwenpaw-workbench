@@ -33,6 +33,7 @@ import { CloseIcon, WrenchIcon, PictureIcon, ThoughtIcon, MessageIcon, UserIcon,
 import type * as ReactNS from "react";
 
 import { useT } from "../i18n";
+import { useThemeColors } from "../theme";
 import {
   type WorkerInfo,
   type WorkerChatSpec,
@@ -330,18 +331,19 @@ function StepLine({
   e: Extracted;
   tr: (k: string, v?: Record<string, string | number>) => string;
 }) {
+  const t = useThemeColors(); 
   return (
     <div
       style={{
         fontSize: 11.5,
-        color: "rgba(0,0,0,0.62)",
-        background: "rgba(127,127,127,0.07)",
+        color: t.textSecondary,
+        background: t.toolBg,
         borderRadius: 6,
         padding: "3px 8px",
       }}
     >
       {e.parts.length === 0 ? (
-        <span style={{ color: "rgba(0,0,0,0.35)" }}>{e.type || e.role || "…"}</span>
+        <span style={{ color: t.textSecondary }}>{e.type || e.role || "…"}</span>
       ) : (
         e.parts.map((p, j) => {
           if (p.kind === "tool") {
@@ -373,7 +375,7 @@ function StepLine({
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
-                      color: "rgba(0,0,0,0.45)",
+                      color: t.textSecondary,
                     }}
                   >
                     {p.detail}
@@ -404,7 +406,7 @@ function StepLine({
               style={{
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
-                color: "rgba(0,0,0,0.55)",
+                color: t.textSecondary,
               }}
             >
               {p.kind === "thinking" ? <ThoughtIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} /> : <MessageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 2 }} />} {txt}
@@ -425,6 +427,7 @@ function StepsCollapse({
   items: { i: number; e: Extracted }[];
   tr: (k: string, v?: Record<string, string | number>) => string;
 }) {
+  const t = useThemeColors(); 
   const [open, setOpen] = React.useState(false);
   // inline pill
   // 改 QwenPaw LazyAccordion 同款**整行头**——图标 + 文案 + 计数 + 右对齐
@@ -442,10 +445,10 @@ function StepsCollapse({
           width: "100%",
           padding: "5px 10px",
           borderRadius: 8,
-          background: "rgba(127,127,127,0.08)",
-          border: "1px solid rgba(127,127,127,0.14)",
+          background: t.toolBg,
+          border: `1px solid ${t.border}`,
           fontSize: 11.5,
-          color: "rgba(0,0,0,0.62)",
+          color: t.textSecondary,
           userSelect: "none",
         }}
         title={open ? tr("收起") : tr("点击展开步骤详情")}

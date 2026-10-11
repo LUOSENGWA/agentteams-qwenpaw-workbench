@@ -1305,6 +1305,7 @@ export function ManagerTable({
   hasToken?: boolean;
 }) {
   const tr = useT();
+  const t = useThemeColors(); 
   const portrait = useIsPortrait();
   /** 竖屏紧凑列宽（模型列 240→180，总宽 894→664）。 */
   const W = portrait
@@ -1351,9 +1352,11 @@ export function ManagerTable({
         <div
           style={{
             fontSize: 12,
-            color: "#ad6800",
-            background: "#fffbe6",
-            border: "1px solid #ffe58f",
+            // 深色档亮黄底+深琥珀字在暗页=亮斑+不可读
+            // → 半透明琥珀底+亮琥珀字（antd warning 亮向）。
+            color: t.mode === "dark" ? "#faad14" : "#ad6800",
+            background: t.mode === "dark" ? "rgba(250,173,20,0.10)" : "#fffbe6",
+            border: `1px solid ${t.mode === "dark" ? "rgba(250,173,20,0.35)" : "#ffe58f"}`,
             borderRadius: 4,
             padding: "4px 8px",
             marginBottom: 8,
