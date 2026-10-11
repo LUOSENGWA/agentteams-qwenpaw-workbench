@@ -613,6 +613,40 @@ export default function WorkbenchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeRoom, writeUiState],
   );
+
+  // ══ tab 栏窄屏横滚渐隐（P1）══
+  // 11 个 tab 在 390px 竖屏只装 ~4 个——overflowX 横滚本已有但无任何
+  // 视觉提示（scrollbar 隐藏）→ 用户不知道后面还有。业界做法
+  // （shadcn scroll-fade / 各 tab 库）= 边缘渐隐；scroll-driven
+  // animation（animation-timeline）iOS Safari 支持太晚 → 用
+  // 兼容稳妥的「mask-image 固定渐变 + scroll 事件切态」：
+  // 左缘可滚=左边渐隐，右缘可滚=右边渐隐，滚到头该侧消失。
+  const tabBarRef = React.useRef<HTMLDivElement | null>(null);
+  const [tabFade, setTabFade] = React.useState<
+    "both" | "l" | "r" | "none"
+  >("none");
+  const updateTabFade = React.useCallback(() => {
+    const el = tabBarRef.current;
+    if (!el) return;
+    const canL = el.scrollLeft > 2;
+    const canR = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+    setTabFade(canL && canR ? "both" : canL ? "l" : canR ? "r" : "none");
+  }, []);
+  React.useEffect(() => {
+    updateTabFade();
+    window.addEventListener("resize", updateTabFade);
+    return () => window.removeEventListener("resize", updateTabFade);
+  }, [updateTabFade]);
+  // 切 tab 后把目标 tab 滚入可见区（横滚栏 UX 必备——否则点了「配置」
+  // 高亮在屏外，用户以为没选中）。
+  const scrollTabIntoView = React.useCallback((key: string) => {
+    requestAnimationFrame(() => {
+      const el = tabBarRef.current?.querySelector<HTMLElement>(
+        `[data-tabkey="${key}"]`,
+      );
+      el?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    });
+  }, []);
  // 活跃 tab 单源（tabActivity）同步——各消费方
   // （useTabActive 布尔快照：HomePage/NotificationCenter/OpsPanel/RoomChat
  // 轮询门；从 useActiveTab 字符串快照切换）
@@ -3018,6 +3052,40 @@ export default function WorkbenchPage() {
         @media (hover: none) {
           .wb-main .wb-hover-only-action { opacity: 1 !important; }
         }
+        /* 7) tab 栏横滚渐隐（P1）：11 tab 窄屏只装 ~4 个，可滚但无
+  视觉提示 → mask-image 边缘渐变（业界 scroll-fade 的兼容版——
+  animation-timeline iOS Safari 支持太晚）。JS scroll 事件切四态：
+  both=两侧可滚 / l=仅左可滚（已滚到最右）/ r=仅右可滚（最左）/
+  none=内容装得下。20px 渐变带，边缘内容淡出=「还有更多」信号。 */
+        .wb-main .wb-tabs-fade-both {
+          -webkit-mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+        }
+        .wb-main .wb-tabs-fade-l {
+          -webkit-mask-image: linear-gradient(90deg, transparent, #000 20px);
+          mask-image: linear-gradient(90deg, transparent, #000 20px);
+        }
+        .wb-main .wb-tabs-fade-r {
+          -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+        }
+        .wb-main .wb-tabs-fade-none {
+          -webkit-mask-image: none;
+          mask-image: none;
+        }
+        /* 8) 表格右缘渐隐（P3）：WbTableFade 包装器挂类——窄屏下
+  scroll.x 表格恒可横滚，右缘 16px 灰透明渐变提示「还有更多」；
+  bottom 留 17px 不盖横滚条。灰透明（128 系 12%）双主题通用。 */
+        .wb-main .wb-table-fade-r { position: relative; }
+        .wb-main .wb-table-fade-r::after {
+          content: "";
+          position: absolute;
+          top: 0; right: 0;
+          width: 16px;
+          bottom: 17px;
+          background: linear-gradient(90deg, transparent, rgba(128,128,128,0.12));
+          pointer-events: none;
+        }
       `}</style>
       <header
         style={{
@@ -3152,11 +3220,15 @@ export default function WorkbenchPage() {
  {/* 自定义 tab 栏（布局自控——antd Tabs 内部 DOM 不可控，
  高度链断导致头部不固定。自写 tab bar + 内容容器 flex 布局） */}
       <div
+        ref={tabBarRef}
+        onScroll={updateTabFade}
+        className={`wb-tabs-fade-${tabFade}`}
         style={{
           flex: "0 0 auto",
           display: "flex",
           gap: 2,
-          borderBottom: `1px solid ${t.border}`,
+          // 底边线移到下方兄弟元素——渐隐 mask 作用于元素全部内容
+          // （含边框），留在容器内会被 mask 一起淡掉
           overflowX: "auto",
           scrollbarWidth: "none",
         }}
@@ -3190,7 +3262,11 @@ export default function WorkbenchPage() {
           return (
             <button
               key={item.key}
-              onClick={() => setTab(item.key)}
+              data-tabkey={item.key}
+              onClick={() => {
+                setTab(item.key);
+                scrollTabIntoView(item.key);
+              }}
               style={{
                 border: "none",
                 background: "transparent",
@@ -3236,6 +3312,8 @@ export default function WorkbenchPage() {
           );
         })}
       </div>
+      {/* tab 栏底边线（独立于渐隐容器，全宽不断边） */}
+      <div style={{ flex: "0 0 auto", height: 1, background: t.border }} />
 
       {/* 内容区：flex 1 + 内部滚动——头部与 tab 栏固定，只有这里滚 */}
  {/* 切页轻过渡目标（paneRef）——

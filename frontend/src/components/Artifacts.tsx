@@ -22,6 +22,7 @@ import {
 import { invalidateTags } from "../requestCache";
 import { formatSize } from "../util";
 import { WbTooltip } from "./WbTooltip";
+import WbTableFade from "./WbTableFade";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -892,6 +893,7 @@ function Artifacts(props: ArtifactsProps) {
               }
             />
           ) : (
+            <WbTableFade>
             <antd.Table
               rowKey="key"
               size="small"
@@ -1021,6 +1023,7 @@ function Artifacts(props: ArtifactsProps) {
                 },
               ]}
             />
+            </WbTableFade>
           )}
         </div>
       </div>

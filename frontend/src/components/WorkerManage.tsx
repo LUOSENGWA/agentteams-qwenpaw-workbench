@@ -33,6 +33,8 @@ import WorkerRuntimeConfig from "./WorkerRuntimeConfig";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { useNarrow } from "../useNarrow";
+import WbTableFade from "./WbTableFade";
 import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 import type { WorkerSessionState } from "../workerSessionState";
 import { usePoller } from "../usePoller";
@@ -1058,6 +1060,58 @@ function ExpandableText({
 
 function TeamTable({ teams }: { teams: AdminData["teams"] }) {
   const tr = useT();
+  const narrow = useNarrow();
+  if (narrow) {
+    // 窄屏卡片降级（P2）：5 列表格在 390px 挤压不可读 →
+    // 每队一张卡（名+状态一行、Leader/Worker 一行、成员 Tag 换行）。
+    // 数据层零改动，纯渲染分支。
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {(teams || []).map((t) => (
+          <div
+            key={t.name}
+            style={{
+              border: "1px solid rgba(128,128,128,0.24)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <b style={{ fontSize: 13.5, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {t.name}
+              </b>
+              <antd.Tag color={phaseMeta(t.phase).color} style={{ margin: 0 }}>
+                {phaseMeta(t.phase).label}
+              </antd.Tag>
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(128,128,128,0.88)" }}>
+              {tr("Leader")}: {t.leaderName || "–"} · {tr("Worker")}{" "}
+              {t.readyWorkers}/{t.totalWorkers}
+            </div>
+            {(t.workerNames || []).length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {(t.workerNames || []).map((n: string) => (
+                  <antd.Tag key={n} style={{ margin: 0, fontSize: 11 }}>
+                    {n}
+                  </antd.Tag>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <antd.Table
       rowKey="name"
@@ -1112,6 +1166,7 @@ function TeamTable({ teams }: { teams: AdminData["teams"] }) {
 function HumanTable({ humans }: { humans: AdminData["humans"] }) {
   const tr = useT();
   return (
+    <WbTableFade>
     <antd.Table
       rowKey="name"
       size="small"
@@ -1159,6 +1214,7 @@ function HumanTable({ humans }: { humans: AdminData["humans"] }) {
         },
       ]}
     />
+    </WbTableFade>
   );
 }
 
@@ -1366,6 +1422,7 @@ export function ManagerTable({
  <span style={{ display: "inline-flex", alignItems: "flex-start", gap: 5 }}><WarnIcon size={13} style={{ marginTop: 2, flexShrink: 0 }} /> {tr("token 模式无 Higress Console 会话——「Higress alias」分组当前不可见。配置 admin 账号密码后可读；或等待上游支持 controller_token 直连 Higress Console 的 PR 合入。")}</span>
         </div>
       ) : null}
+      <WbTableFade>
       <antd.Table
         rowKey="name"
         size="small"
@@ -1471,6 +1528,7 @@ export function ManagerTable({
           },
         ]}
       />
+      </WbTableFade>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { ClipIcon, WarnIcon } from "./icons";
 import type * as ReactNS from "react";
 import { useThemeColors } from "../theme";
+import WbTableFade from "./WbTableFade";
 
 import { downloadViaHost, fetchFile } from "../api";
 import { parseDelimited, parseXlsx, type TableData } from "../previewTables";
@@ -524,6 +525,7 @@ function TableView({ table }: { table: TableData }) {
           {table.note}
         </div>
       ) : null}
+      <WbTableFade>
       <antd.Table
         size="small"
         columns={columns}
@@ -532,6 +534,7 @@ function TableView({ table }: { table: TableData }) {
         scroll={{ x: "max-content" }}
         bordered
       />
+      </WbTableFade>
     </div>
   );
 }

@@ -32,6 +32,7 @@ import TruncatedId from "./TruncatedId";
 import SkillCenter from "./SkillCenter";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import WbTableFade from "./WbTableFade";
 import { createPoller, type Poller } from "../usePoller";
 import { invalidateTags } from "../requestCache";
 import { copyText } from "../util";
@@ -1940,6 +1941,7 @@ export default function CrdManage(props: CrdManageProps) {
                 "勾选要授予/取消的团队——改动先落本地，点「生成命令」后复制到 Controller 宿主机执行才真正生效（reconcile 约 5 分钟把员工拉入/移出团队房间）。上游 PR P-HUMANS-PUT 合并后此处升级为一键保存。",
               )}
             </div>
+            <WbTableFade>
             <antd.Table
               size="small"
               rowKey="name"
@@ -1990,6 +1992,7 @@ export default function CrdManage(props: CrdManageProps) {
                 },
               ]}
             />
+            </WbTableFade>
             {accessCmd ? (
               <div style={{ padding: "0 12px 12px" }}>
                 <antd.Input.TextArea
@@ -2013,6 +2016,7 @@ export default function CrdManage(props: CrdManageProps) {
             title={tr("人员列表")}
             styles={{ body: { padding: 0 } }}
           >
+            <WbTableFade>
             <antd.Table
               size="small"
               rowKey="name"
@@ -2023,12 +2027,14 @@ export default function CrdManage(props: CrdManageProps) {
               scroll={{ x: 700 }}
               locale={{ emptyText: tr("暂无人员记录") }}
             />
+            </WbTableFade>
           </antd.Card>
           <antd.Card
             size="small"
             title={tr("团队列表")}
             styles={{ body: { padding: 0 } }}
           >
+            <WbTableFade>
             <antd.Table
               size="small"
               rowKey="name"
@@ -2039,6 +2045,7 @@ export default function CrdManage(props: CrdManageProps) {
               scroll={{ x: 820 }}
               locale={{ emptyText: tr("暂无团队记录") }}
             />
+            </WbTableFade>
           </antd.Card>
         </antd.Space>
       </antd.Card>
