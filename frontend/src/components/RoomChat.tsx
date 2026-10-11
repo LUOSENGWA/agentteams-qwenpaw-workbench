@@ -749,6 +749,17 @@ function SenderAvatar({
       act: () => onDm(mxid),
     });
   }
+  // 复制 MXID——原本只在右键菜单（触屏无右键）；并入 tap 可达的
+  // quick 面板（P4 收口：右键菜单唯一独有功能补齐）。
+  quick.push({
+    label: tr("复制 MXID"),
+    act: () => {
+      void navigator.clipboard?.writeText(mxid).then(
+        () => host.antd.message?.success(tr("已复制")),
+        () => host.antd.message?.error(tr("复制失败")),
+      );
+    },
+  });
   const items = [
     ...(!isMe
       ? [
