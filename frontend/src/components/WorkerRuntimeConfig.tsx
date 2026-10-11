@@ -54,6 +54,7 @@ import {
   type WorkerLoopCustomMode,
 } from "../api";
 import { useT } from "../i18n";
+import { useThemeColors } from "../theme";
 import CfgRow from "./runtimeCfg/CfgRow";
 import GateSection from "./runtimeCfg/GateSection";
 import GateParam from "./runtimeCfg/GateParam";
@@ -93,6 +94,7 @@ function WorkerRuntimeConfig({
   onOpenSettings?: () => void;
 }) {
   const tr = useT();
+  const t = useThemeColors(); 
   const [open, setOpen] = React.useState(false);
   const [cfg, setCfg] = React.useState<Rc | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -1119,7 +1121,7 @@ function WorkerRuntimeConfig({
                     <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>
                       {tr("Loop 模板")}
                     </div>
-                    <div style={{ fontSize: 11.5, color: "rgba(0,0,0,0.45)", marginBottom: 6 }}>
+                    <div style={{ fontSize: 11.5, color: t.textSecondary, marginBottom: 6 }}>
                       {tr("选择内置模板，或添加自己的（按模板生成自定义模式）。模板设计：QwenPaw 上游。")}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
@@ -1163,13 +1165,13 @@ function WorkerRuntimeConfig({
  不与下方 GateSection 标题（纯中文）撞名。 */}
                             <span style={{ fontSize: 11.5 }}>
                               {LOOP_GATE_DEFS[g].title}
-                              <span style={{ fontSize: 10.5, color: "rgba(0,0,0,0.35)", marginLeft: 4 }}>{g}</span>
+                              <span style={{ fontSize: 10.5, color: t.textSecondary, marginLeft: 4 }}>{g}</span>
                             </span>
                           </antd.Checkbox>
                         ))}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11.5, color: "rgba(0,0,0,0.45)", marginBottom: 8 }}>
+                      <div style={{ fontSize: 11.5, color: t.textSecondary, marginBottom: 8 }}>
                         {tr("空管道——创建后再逐个添加 gate（高级 JSON）。")}
                       </div>
                     )}
@@ -2137,8 +2139,8 @@ function WorkerRuntimeConfig({
                           padding: 8,
                           fontSize: 10.5,
                           fontFamily: "monospace",
-                          background: "rgba(127,127,127,0.06)",
-                          border: "1px solid rgba(127,127,127,0.2)",
+                          background: t.toolBg,
+                          border: `1px solid ${t.border}`,
                           borderRadius: 6,
                           maxHeight: 180,
                           overflow: "auto",

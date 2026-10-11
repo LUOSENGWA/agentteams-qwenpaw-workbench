@@ -58,6 +58,7 @@ function EffectiveBadge({ url, label }: { url?: string; label: string }) {
  分步过程（✓/✗+ms）/ 完整原始异常（等宽全栈）/ 客户端环境（TLS 栈指纹，等宽）。 */
 function ConnDiagPanel({ diag }: { diag: ProbeDiag }) {
   const tr = useT();
+  const t = useThemeColors(); 
   const mono: React.CSSProperties = {
     fontFamily:
       'ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace',
@@ -73,8 +74,8 @@ function ConnDiagPanel({ diag }: { diag: ProbeDiag }) {
         margin: "4px 0 6px 16px",
         padding: "8px 10px",
         borderRadius: 6,
-        background: "rgba(0,0,0,0.03)",
-        border: "1px solid rgba(0,0,0,0.06)",
+        background: t.toolBg,
+        border: `1px solid ${t.border}`,
         display: "flex",
         flexDirection: "column",
         gap: 6,
@@ -83,7 +84,7 @@ function ConnDiagPanel({ diag }: { diag: ProbeDiag }) {
       <div style={mono}>
         <b>{tr("测试目标")}</b>：{diag.target}
       </div>
-      <div style={{ ...mono, color: "#333" }}>
+      <div style={{ ...mono, color: t.text }}>
         <div><b>{tr("分步过程")}</b></div>
         {diag.steps.map((s) => (
           <div key={s.name}>
@@ -98,7 +99,7 @@ function ConnDiagPanel({ diag }: { diag: ProbeDiag }) {
           {diag.error ? diag.error.traceback : tr("全部成功（无异常）")}
         </div>
       </div>
-      <div style={{ ...mono, color: "#333" }}>
+      <div style={{ ...mono, color: t.text }}>
         <div><b>{tr("客户端环境")}</b></div>
         <div>Python {diag.env.python} / OpenSSL {diag.env.openssl} / httpx {diag.env.httpx}</div>
         <div>{diag.env.platform}</div>
@@ -140,9 +141,10 @@ function ConnRow({
   showDetail?: boolean;
 }) {
   const tr = useT();
+  const t = useThemeColors(); 
   const [open, setOpen] = React.useState(false);
   const degraded = row.ok && row.http_ok === false;
-  const color = !row.ok ? "#cf1322" : degraded ? "#d48806" : "#52c41a";
+  const color = !row.ok ? "#cf1322" : degraded ? (t.mode === "dark" ? "#faad14" : "#d48806") : "#52c41a";
   return (
     <div style={{ minWidth: 0 }}>
       <div
@@ -950,10 +952,12 @@ const SettingsTab = React.memo(function SettingsTab({
             alignItems: "center",
             gap: 10,
             fontSize: 13,
-            color: configLoadState === "failed" ? "#d4380d" : t.textSecondary,
+            color: configLoadState === "failed"
+              ? (t.mode === "dark" ? "#ff7875" : "#d4380d")
+              : t.textSecondary,
             border:
               configLoadState === "failed"
-                ? "1px solid #ffccc7"
+                ? `1px solid ${t.mode === "dark" ? "rgba(255,77,79,0.35)" : "#ffccc7"}`
                 : undefined,
           }}
         >
@@ -993,8 +997,8 @@ const SettingsTab = React.memo(function SettingsTab({
             alignItems: "center",
             gap: 10,
             fontSize: 13,
-            color: "#d4380d",
-            border: "1px solid #ffccc7",
+            color: t.mode === "dark" ? "#ff7875" : "#d4380d",
+            border: `1px solid ${t.mode === "dark" ? "rgba(255,77,79,0.35)" : "#ffccc7"}`,
           }}
         >
           <span>
@@ -1493,7 +1497,7 @@ const SettingsTab = React.memo(function SettingsTab({
               {/* （14.17 「Higress 的认证和 controller
  token 认证应该分开吧」）：两块凭据拆成视觉上独立的两块——
  各带系统归属行，不再是「一套认证里的两个字段」。 */}
-              <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: "rgba(0,0,0,0.025)", borderRadius: 8 }}>
+              <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: t.hoverBg, borderRadius: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>
                   {tr("① Controller 认证（管理面：CRD/全量视图/日志）")}
                 </div>
@@ -1508,7 +1512,7 @@ const SettingsTab = React.memo(function SettingsTab({
                     style={{
                       display: "block",
                       padding: "3px 6px",
-                      background: "#f5f5f5",
+                      background: t.mode === "dark" ? "rgba(255,255,255,0.08)" : "#f5f5f5",
                       borderRadius: 4,
                       fontSize: 11,
                       userSelect: "all",
@@ -1555,7 +1559,7 @@ const SettingsTab = React.memo(function SettingsTab({
                   </div>
                 ) : null}
               </div>
-              <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: "rgba(0,0,0,0.025)", borderRadius: 8 }}>
+              <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: t.hoverBg, borderRadius: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>
                   {tr("② Higress Console 认证（模型面：alias/提供商/路由）——独立系统")}
                 </div>
@@ -1631,8 +1635,8 @@ const SettingsTab = React.memo(function SettingsTab({
                     fontSize: 12,
                     color:
                       verifyRes.gateway_aliases && verifyRes.gateway_aliases.length > 0
-                        ? "#389e0d"
-                        : "#d46b08",
+                        ? (t.mode === "dark" ? "#95de64" : "#389e0d")
+                        : (t.mode === "dark" ? "#faad14" : "#d46b08"),
                     background:
                       verifyRes.gateway_aliases && verifyRes.gateway_aliases.length > 0
                         ? "rgba(82,196,26,0.08)"
@@ -1677,8 +1681,8 @@ const SettingsTab = React.memo(function SettingsTab({
                 <div
                   style={{
                     fontSize: 12,
-                    color: "#d46b08",
-                    background: "rgba(250,173,20,0.1)",
+                    color: t.mode === "dark" ? "#faad14" : "#d46b08",
+                    background: t.mode === "dark" ? "rgba(250,173,20,0.14)" : "rgba(250,173,20,0.1)",
                     padding: "6px 10px",
                     borderRadius: 6,
                     display: "grid",
@@ -1693,7 +1697,7 @@ const SettingsTab = React.memo(function SettingsTab({
                     {tr("获取（在部署宿主机执行后复制，粘进上方 ① 字段）：")}
                     <code
                       style={{
-                        background: "rgba(0,0,0,0.06)",
+                        background: t.toolBg,
                         borderRadius: 4,
                         padding: "1px 5px",
                         fontSize: 11.5,
@@ -1712,7 +1716,7 @@ const SettingsTab = React.memo(function SettingsTab({
                 fontSize: 12,
                 color: "#888",
                 marginBottom: 6,
-                background: "rgba(0,0,0,0.03)",
+                background: t.toolBg,
                 padding: "6px 10px",
                 borderRadius: 6,
               }}
@@ -1815,7 +1819,7 @@ const SettingsTab = React.memo(function SettingsTab({
             style={{
               fontSize: 12,
               alignSelf: "center",
-              color: config.configWritable ? "#888" : "#d48806",
+              color: config.configWritable ? "#888" : (t.mode === "dark" ? "#faad14" : "#d48806"),
             }}
             title={config.configPath || undefined}
           >
@@ -1854,7 +1858,7 @@ const SettingsTab = React.memo(function SettingsTab({
           scan(tr("网关管理"), cs.gateway_admin_urls);
           if (!parts.length) return null;
           return (
-            <span style={{ fontSize: 12, alignSelf: "center", color: "#d48806" }}>
+            <span style={{ fontSize: 12, alignSelf: "center", color: t.mode === "dark" ? "#faad14" : "#d48806" }}>
               ⚠ {parts.join("；")}
             </span>
           );

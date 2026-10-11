@@ -1,5 +1,6 @@
 import { WarnIcon, InfoIcon } from "./icons";
 import type * as ReactNS from "react";
+import { useThemeColors } from "../theme";
 import {
   fetchApprovalList,
   fetchWorkerApproval,
@@ -156,6 +157,7 @@ function LevelCardGrid({
   onPick: (lv: string) => void;
 }) {
   const tr = useT();
+  const t = useThemeColors(); 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
       {LEVEL_ORDER.map((lv) => {
@@ -187,7 +189,7 @@ function LevelCardGrid({
               <div style={{ fontWeight: 700, fontSize: 12 }}>
                 {tr(APPROVAL_CARD_LABEL[lv])}
               </div>
-              <div style={{ color: "rgba(0,0,0,0.55)" }}>
+              <div style={{ color: t.textSecondary }}>
                 {tr(APPROVAL_DESC[lv])}
               </div>
             </div>
@@ -208,6 +210,7 @@ function ApprovalControl({
   runtime?: string;
 }) {
   const tr = useT();
+  const t = useThemeColors(); 
   const gated = isQwenpawOnlyDisabled(runtime);
   const [level, setLevel] = React.useState<string | null>(null);
   const [readError, setReadError] = React.useState("");
@@ -385,7 +388,7 @@ function ApprovalControl({
             <div
               style={{
                 marginTop: 5,
-                color: "rgba(0,0,0,0.45)",
+                color: t.textSecondary,
                 fontSize: 10.5,
                 lineHeight: 1.4,
               }}
@@ -419,7 +422,7 @@ function ApprovalControl({
                   {tr("应用")}: {APPROVAL_CARD_LABEL[sel] || sel}
                 </antd.Button>
               ) : (
-                <span style={{ color: "rgba(0,0,0,0.35)", fontSize: 11 }}>
+                <span style={{ color: t.textSecondary, fontSize: 11 }}>
                   {sel === level ? tr("无变更") : ""}
                 </span>
               )}

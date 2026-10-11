@@ -1468,6 +1468,7 @@ function InterruptsBlock({
   tasks?: TaskDetail[];
 }) {
   const tr = useT();
+  const t = useThemeColors(); 
   if (interrupts.length === 0) return null;
   const taskById = new Map<string, TaskDetail>();
   (tasks || []).forEach((tk) => {
@@ -1495,8 +1496,9 @@ function InterruptsBlock({
               padding: "6px 10px",
               borderRadius: 8,
               border: "1px solid #fa8c16",
-              background: "rgba(250, 140, 22, 0.06)",
-              color: "#d46b08",
+              // 深色档：6% 橙底太淡 / 深橙字不可读 → 加浓 + 亮向
+              background: t.mode === "dark" ? "rgba(250,140,22,0.14)" : "rgba(250, 140, 22, 0.06)",
+              color: t.mode === "dark" ? "#faad14" : "#d46b08",
             }}
           >
             {it.value === "paused" ? (
@@ -1534,6 +1536,7 @@ function LoopBlock({
   loop: NonNullable<WorkflowEvent["loop"]>;
 }) {
   const tr = useT();
+  const t = useThemeColors(); 
   const cur = typeof loop.current_iteration === "number" ? loop.current_iteration : 0;
   const max = typeof loop.max_iterations === "number" ? loop.max_iterations : 0;
   const pct = max > 0 ? Math.min(100, Math.round((cur / max) * 100)) : 0;
@@ -1545,8 +1548,8 @@ function LoopBlock({
         marginTop: 8,
         padding: "8px 10px",
         borderRadius: 8,
-        border: "1px solid #d9d9d9",
-        background: "rgba(0,0,0,0.02)",
+        border: `1px solid ${t.border}`,
+        background: t.hoverBg,
         fontSize: 12,
       }}
     >
@@ -1568,7 +1571,7 @@ function LoopBlock({
           style={{
             height: 6,
             borderRadius: 3,
-            background: "rgba(0,0,0,0.06)",
+            background: t.hoverBg, // 进度槽
             overflow: "hidden",
           }}
         >

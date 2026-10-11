@@ -1,5 +1,6 @@
 import { ClipIcon, WarnIcon } from "./icons";
 import type * as ReactNS from "react";
+import { useThemeColors } from "../theme";
 
 import { downloadViaHost, fetchFile } from "../api";
 import { parseDelimited, parseXlsx, type TableData } from "../previewTables";
@@ -72,6 +73,7 @@ export function FilePreview({
   file: PreviewFile | null;
   onClose: () => void;
 }) {
+  const t = useThemeColors(); 
   const [state, setState] = React.useState<{
     loading?: boolean;
     url?: string;
@@ -354,7 +356,7 @@ export function FilePreview({
                 wordBreak: "break-all",
                 fontFamily:
                   "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-                background: "rgba(0,0,0,0.04)",
+                background: t.toolBg,
                 padding: "6px 10px",
                 borderRadius: 6,
               }}
@@ -389,7 +391,7 @@ export function FilePreview({
               textAlign: "left",
               fontFamily:
                 "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-              background: "rgba(0,0,0,0.04)",
+              background: t.toolBg,
               padding: "8px 10px",
               borderRadius: 6,
               maxWidth: 560,
