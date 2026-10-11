@@ -5,6 +5,20 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.15.1 (2026-10-11 - dark-mode adaptation batch)
+
+**Full dark-mode pass: homepage quick-action cards go translucent (black shows through) + all cards slightly translucent (dark = black through) + repo-wide hardcoded-color audit — 40 sites mode-branched, 12 black-translucent text sites and 9 gray/black-translucent backgrounds migrated to theme tokens**
+
+- **Homepage quick-action cards**: dark mode background switches from accent-10%-on-white (a bright slab on a dark page) to accent-over-transparent (black shows through); border/label/description move to light-accent and the secondary-text token
+- **Card translucency**: cardBg is 72% white in light mode (host off-white shows through) and 5% white in dark (over #141414, so black shows through) — depth from a luminance step, not a solid block
+- **Dark-mode hard fails cleared**: yellow warning bars + dark-amber text (CRD/Worker management), error banners (dark-red text, light-red border), near-black `#333` text, solid `#f5f5f5` backgrounds — all switched to translucent semantic backgrounds + light-variant semantic colors in dark
+- **Token migration**: 12 `rgba(0,0,0,x)` text sites (approval cards / runtime config / session step lines / gate cards) → `textSecondary`; 9 `rgba(0,0,0,x)` / `rgba(127,127,127,x)` backgrounds and borders (code blocks / diagnostic cards / progress tracks / self-check cards) → `toolBg` / `hoverBg` / `border`
+- **Semantic light tints deepened in dark**: loop chips (awaiting-user / running), workflow pause cards, env hint bars — background opacity 0.06–0.12 → 0.14–0.16
+
+**Verification**: tsc 0 · vite build single file 1,790.00 kB (gzip 499.72 kB, 0 import statements) · pytest 374/374 · sensitive scan 0
+
+---
+
 ## 0.5.0-beta.15 (2026-10-09 - official release)
 
 **Merged release of the 14.1–14.34 sub-batches (low-bandwidth full-link performance + config/credential security hardening + deployment resilience + SGLang observability + tech-debt cleanup; pytest 71→374)**
