@@ -5,6 +5,21 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ---
 
+## 0.5.0-beta.15.2（2026-10-11 · P0 触屏可达性批）
+
+**触屏信息全可达：58 处 Tooltip 统一走 WbTooltip（触屏 tap 弹出、桌面 hover 不变）+ 高频操作 44px 触控目标 + 消息操作条触屏 tap 化 + 置底钮 safe-area 抬升**
+
+- **WbTooltip 共享包装**：默认 trigger = hover+focus+click——纯触屏（手机/平板/触控笔电）tap 弹出提示，桌面 hover 路径零改动；包**可点按钮**的 6 处自动降级 tap=false（只留 hover+focus）：click 触发会与按钮自身 onClick 同刻双发，触屏 tap 会「执行动作+弹提示」变误触噪音
+- **58 处迁移**（17 文件）：状态点/截断 ID/图标钮/模型判定/错误详情等信息型 Tooltip 全部触屏可达（WCAG 1.4.13）
+- **44px 触控目标**（.wb-touch-lg，coarse 指针下伪元素扩区、视觉尺寸不变）：聊天发送钮 + 审批应用钮；密集表格行操作保 24px（WCAG 2.5.8 行内+间距豁免，扩了会互相叠压）
+- **消息 hover 操作条触屏化**：纯触屏设备（hover:none）tap 消息行切换操作条；桌面鼠标路径零改动
+- **safe-area**：聊天两处「置底/N 条新消息」浮动钮 bottom 改 `max(Npx, env(safe-area-inset-bottom))`——notch/手势条设备不再被遮挡
+- **触屏 CSS 基建核验**（存量 13.x 已备，本批确认生效）：touch-action: manipulation / tap-highlight 透明 / 嵌套滚动 overscroll-behavior: contain / hover:none 下 hover-only 操作常显
+
+**验证**：tsc 0 · vite build 单文件 1,789.98kB（gzip 499.92kB，0 import 语句）· pytest 374/374 · i18n 1,424 键 0 缺 0 重 · 5 smoke 全过 · 敏感扫 0
+
+---
+
 ## 0.5.0-beta.15.1（2026-10-11 · 深色模式适配批）
 
 **深色模式全面适配：首页快捷操作卡透黑 + 卡片微透（深色透黑）+ 全仓硬编码颜色审计——40 处分档、12 处黑透明文字与 9 处灰/黑透明底迁移到主题 token**

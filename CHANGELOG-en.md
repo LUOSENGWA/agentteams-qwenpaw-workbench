@@ -5,6 +5,21 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.15.2 (2026-10-11 - P0 touch-reachability batch)
+
+**All touch information reachable: 58 Tooltips unified on WbTooltip (tap-to-open on touch, hover unchanged on desktop) + 44px touch targets on high-frequency actions + message action bar tap-to-toggle + jump-to-bottom floaters lifted into the safe area**
+
+- **WbTooltip shared wrapper**: default trigger = hover+focus+click — pure touch devices (phone/tablet/touch laptop) tap to reveal, desktop hover path untouched; the 6 sites wrapping **clickable buttons** auto-downgrade to tap=false (hover+focus only): a click trigger would double-fire with the button's own onClick, turning a touch tap into "action executed + tooltip noise"
+- **58 sites migrated** (17 files): status dots / truncated IDs / icon buttons / model verdicts / error details — all touch-reachable (WCAG 1.4.13)
+- **44px touch targets** (.wb-touch-lg, pseudo-element hit-area under coarse pointer, visual size unchanged): chat send + approval apply; dense table row actions stay 24px (WCAG 2.5.8 row-inline + spacing exemption — expanding would overlap neighbours)
+- **Message hover action bar touch-ified**: on touch-only devices (hover:none) tap the message row to toggle the action bar; desktop mouse path unchanged
+- **safe-area**: both chat jump-to-bottom / "N new messages" floaters move to `max(Npx, env(safe-area-inset-bottom))` — no longer covered by notch/home-indicator devices
+- **Touch CSS infra verified** (already present from 13.x, confirmed effective this batch): touch-action: manipulation / transparent tap-highlight / overscroll-behavior: contain on nested scrollers / hover:none always-shows hover-only actions
+
+**Verification**: tsc 0 · vite build single file 1,789.98 kB (gzip 499.92 kB, 0 import statements) · pytest 374/374 · i18n 1,424 keys 0 missing 0 dup · 5 smoke scripts pass · sensitive scan 0
+
+---
+
 ## 0.5.0-beta.15.1 (2026-10-11 - dark-mode adaptation batch)
 
 **Full dark-mode pass: homepage quick-action cards go translucent (black shows through) + all cards slightly translucent (dark = black through) + repo-wide hardcoded-color audit — 40 sites mode-branched, 12 black-translucent text sites and 9 gray/black-translucent backgrounds migrated to theme tokens**
