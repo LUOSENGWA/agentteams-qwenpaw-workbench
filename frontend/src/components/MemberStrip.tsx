@@ -12,6 +12,7 @@ import { MxcAvatar } from "../MxcAvatar";
 import WorkerSessionDot from "./WorkerSessionDot";
 import type { WorkerSessionState } from "../workerSessionState";
 import { useT } from "../i18n";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -73,7 +74,7 @@ export default function MemberStrip({
         const name = displayNameOf(mxid, room);
         const state = workerSessionByMxid?.[mxid];
         return (
-          <antd.Tooltip key={mxid} title={name}>
+          <WbTooltip key={mxid} title={name} tap={false} >
             <span
               onClick={() => onOpenPanel?.()}
               style={{
@@ -91,7 +92,7 @@ export default function MemberStrip({
               </MxcAvatar>
               {state ? <WorkerSessionDot state={state} size={7} corner /> : null}
             </span>
-          </antd.Tooltip>
+          </WbTooltip>
         );
       })}
       {hiddenCount > 0 ? (

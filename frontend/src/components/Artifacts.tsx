@@ -21,6 +21,7 @@ import {
 } from "../api";
 import { invalidateTags } from "../requestCache";
 import { formatSize } from "../util";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -468,7 +469,7 @@ function Artifacts(props: ArtifactsProps) {
             <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
               {/* antd Tooltip 显全名（原生 title 在树节点里不生效）；
  名称 ≠ project_id 时 tooltip 附带 id（id 是寻址键，排障要用）。 */}
-              <antd.Tooltip
+              <WbTooltip
                 title={
                   (p.title || p.name) && p.project_id !== dispName
                     ? `${dispName}（${p.project_id}）`
@@ -485,7 +486,7 @@ function Artifacts(props: ArtifactsProps) {
                 >
                   {dispName}
                 </span>
-              </antd.Tooltip>
+              </WbTooltip>
               <antd.Tag
                 color={statusColor[p.status] || "default"}
                 style={{ margin: 0, fontSize: 11, flexShrink: 0 }}
@@ -546,7 +547,7 @@ function Artifacts(props: ArtifactsProps) {
           // ③ 左栏可拖拽调宽（见下），长房间名可放宽到 480px 基本不用截断。
           title: (
             <div style={{ lineHeight: 1.35, minWidth: 0 }}>
-              <antd.Tooltip title={src} mouseEnterDelay={0.2}>
+              <WbTooltip title={src} mouseEnterDelay={0.2}>
                 <span
                   style={{
                     display: "block",
@@ -557,7 +558,7 @@ function Artifacts(props: ArtifactsProps) {
                 >
                   {src}
                 </span>
-              </antd.Tooltip>
+              </WbTooltip>
               <div style={{ fontSize: 11, color: "#999" }}>
                 {cnt} {tr("个文件")}
               </div>
@@ -777,9 +778,9 @@ function Artifacts(props: ArtifactsProps) {
           </antd.Button>
         ) : null}
         <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><BoxIcon size={15} /> {tr("团队产物")}</span>
-        <antd.Tooltip title="项目产物来自 Controller 项目端点（上游端点）；房间附件为 Matrix 消息扫描兜底。同一 project_id 若在团队目录与全局目录各有一份注册（数据侧重复），此处按 project_id 合并为一条显示（优先带团队的记录）。">
+        <WbTooltip title="项目产物来自 Controller 项目端点（上游端点）；房间附件为 Matrix 消息扫描兜底。同一 project_id 若在团队目录与全局目录各有一份注册（数据侧重复），此处按 project_id 合并为一条显示（优先带团队的记录）。">
           <span style={{ color: "#999", cursor: "help", fontSize: 12 }}>ⓘ</span>
-        </antd.Tooltip>
+        </WbTooltip>
         <div style={{ flex: 1 }} />
         {/* 项目产物排序 + 团队筛选（纯前端，项目就绪后显示） */}
         {projects && projects.length > 0 ? (
@@ -807,7 +808,7 @@ function Artifacts(props: ArtifactsProps) {
             />
           </>
         ) : null}
-        <antd.Tooltip title="刷新">
+        <WbTooltip title="刷新">
           <antd.Button
             type="text"
             size="small"
@@ -815,7 +816,7 @@ function Artifacts(props: ArtifactsProps) {
             loading={projectsLoading || itemsLoading}
             onClick={() => void refresh()}
           />
-        </antd.Tooltip>
+        </WbTooltip>
       </div>
 
       {/* 左右分栏独立滚动（用户「产物页面左右两栏要做成分开滚动」）。
@@ -906,7 +907,7 @@ function Artifacts(props: ArtifactsProps) {
                   render: (_: unknown, f: FileEntry) => (
                     <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                       {KIND_META[f.kind].icon}
-                      <antd.Tooltip title={f.name}>
+                      <WbTooltip title={f.name} tap={false} >
                         <a
                           style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 300 }}
                           onClick={(e) => {
@@ -916,7 +917,7 @@ function Artifacts(props: ArtifactsProps) {
                         >
                           {truncateFilename(f.name)}
                         </a>
-                      </antd.Tooltip>
+                      </WbTooltip>
                     </div>
                   ),
                 },

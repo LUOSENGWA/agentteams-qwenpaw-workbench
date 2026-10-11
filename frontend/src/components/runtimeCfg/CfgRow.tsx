@@ -1,6 +1,7 @@
 /** WorkerRuntimeConfig 子组件——自 WorkerRuntimeConfig.tsx 纯移动拆出
  * （任务书 183 S3，行为零变化）。 */
 import type * as ReactNS from "react";
+import { WbTooltip } from "../WbTooltip";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -39,7 +40,7 @@ function CfgRow({
       >
         {label}
         {tip ? (
-          <antd.Tooltip title={tip}>
+          <WbTooltip title={tip}>
             <span
               style={{
                 fontSize: 11,
@@ -50,7 +51,7 @@ function CfgRow({
             >
               ⓘ
             </span>
-          </antd.Tooltip>
+          </WbTooltip>
         ) : null}
       </span>
       <div style={{ minWidth: 0 }}>{children}</div>

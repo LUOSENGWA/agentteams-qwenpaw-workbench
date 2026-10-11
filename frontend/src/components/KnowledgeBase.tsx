@@ -38,6 +38,7 @@ import {
 } from "../util";
 import MdText from "./MdText";
 import { createPoller, type Poller } from "../usePoller";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 // // 两栏固定等高（min(viewport 余量, 640px)，下限 460），Card 内 body 独立滚动。
@@ -2629,9 +2630,9 @@ function LocalKbView(props: { refreshTick: number }) {
           />
           <StatusChip label={tr("进程内存")} value={status?.process_rss || "—"} ok />
           {status?.runtime?.recent?.last_error ? (
-            <antd.Tooltip title={status.runtime.recent.last_error}>
+            <WbTooltip title={status.runtime.recent.last_error}>
               <StatusChip label={tr("最近错误")} value="⚠" ok={false} />
-            </antd.Tooltip>
+            </WbTooltip>
           ) : null}
           {graphUnavailable ? (
             <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>

@@ -16,6 +16,7 @@ import { MxcAvatar } from "../MxcAvatar";
 import { formatChatTime } from "../util";
 import WorkerSessionDot from "./WorkerSessionDot";
 import type { WorkerSessionState } from "../workerSessionState";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -342,7 +343,7 @@ function GroupCard({
             </antd.Avatar>
           ) : (
             memberEntries.map(([mxid, member], i) => (
-              <antd.Tooltip key={mxid} title={memberShortName(mxid, member)}>
+              <WbTooltip key={mxid} title={memberShortName(mxid, member)}>
                 <MxcAvatar
                   url={member.avatar_url}
                   size="small"
@@ -354,7 +355,7 @@ function GroupCard({
                 >
                   {memberShortName(mxid, member).slice(0, 1)}
                 </MxcAvatar>
-              </antd.Tooltip>
+              </WbTooltip>
             ))
           )}
           {room.member_count > 3 ? (
@@ -979,7 +980,7 @@ function TeamOverview(props: TeamOverviewProps) {
             { value: "name", label: tr("名称 A-Z") },
           ]}
         />
-        <antd.Tooltip title="刷新">
+        <WbTooltip title="刷新" tap={false} >
           <antd.Button
             type="text"
             size="small"
@@ -987,7 +988,7 @@ function TeamOverview(props: TeamOverviewProps) {
             loading={loading}
             onClick={() => onRefresh?.()}
           />
-        </antd.Tooltip>
+        </WbTooltip>
         {/* 按钮对齐 QwenPaw 风格（antd Button 继承主题
   token；旧版手写 pill 圆角 16 + 自绘 hover 与宿主方形按钮不一致）。 */}
         {onGlobalSearch ? (

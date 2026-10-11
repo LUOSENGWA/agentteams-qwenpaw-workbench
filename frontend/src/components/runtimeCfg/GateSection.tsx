@@ -2,6 +2,7 @@
  * （任务书 183 S3，行为零变化）。 */
 import type * as ReactNS from "react";
 import { useThemeColors } from "../../theme";
+import { WbTooltip } from "../WbTooltip";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -48,9 +49,9 @@ function GateSection({
         />
         <span style={{ fontWeight: 600, fontSize: 12.5 }}>{title}</span>
         {tip ? (
-          <antd.Tooltip title={tip}>
+          <WbTooltip title={tip}>
             <span style={{ fontSize: 11, color: "rgba(127,127,127,0.55)", cursor: "help", lineHeight: 1 }}>ⓘ</span>
-          </antd.Tooltip>
+          </WbTooltip>
         ) : null}
         <div style={{ flex: 1 }} />
         {enabled ? (

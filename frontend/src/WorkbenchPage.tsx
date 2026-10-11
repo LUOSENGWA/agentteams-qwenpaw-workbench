@@ -84,6 +84,7 @@ import ModelsTab from "./ModelsTab";
 // setActiveTab 供 tab 切换时同步活跃 tab 单源（tabActivity）。
 import { usePoller, createPoller, type Poller } from "./usePoller";
 import { setActiveTab as setActiveTabState } from "./tabActivity";
+import { WbTooltip } from "./components/WbTooltip";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -3040,7 +3041,7 @@ export default function WorkbenchPage() {
           <antd.Typography.Title level={3} style={{ margin: 0 }}>
             AgentTeams 团队工作台
           </antd.Typography.Title>
-          <antd.Tooltip
+          <WbTooltip
             title={
               connectorVersion && connectorVersion !== pluginVersion
                 ? tr("前端 {f} · 连接器 {b}", {
@@ -3053,11 +3054,11 @@ export default function WorkbenchPage() {
             <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>
               v{pluginVersion} —— 多团队工作台（聊天/工作流/产物/运维/管理）
             </antd.Typography.Text>
-          </antd.Tooltip>
+          </WbTooltip>
         </div>
         <div style={{ flex: 1 }} />
         {config?.matrix?.user_id ? (
-          <antd.Tooltip title={tr("点击进入配置页")}>
+          <WbTooltip title={tr("点击进入配置页")}>
             <div
               style={{
                 display: "flex",
@@ -3081,7 +3082,7 @@ export default function WorkbenchPage() {
                   config.matrix.user_id.split(":")[0].replace(/^@/, "")}
               </span>
             </div>
-          </antd.Tooltip>
+          </WbTooltip>
         ) : (
           <antd.Button size="small" onClick={() => setTab("settings")}>
             {tr("登录")}

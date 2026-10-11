@@ -45,6 +45,7 @@ import {
 } from "../api";
 import { strToU8, zipSync } from "fflate";
 import { invalidateTags } from "../requestCache";
+import { WbTooltip } from "./WbTooltip";
 
 /** ：Worker 行按 team 分组
  * （保持原始相对序；无 team 的归「未分组」殿后）。 */
@@ -574,7 +575,7 @@ export default function SkillCenter({
       {!onlyWorker ? (
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><BoltIcon size={15} /> {tr("技能中心")}</span>
-        <antd.Tooltip
+        <WbTooltip
           title={tr(
             l2
             ? "团队技能/MCP 的统一管理面（L2 我的团队视角）：技能目录（本团队，只读）+ Worker 技能分配（可写 skills）+ MCP Servers（只读，写权限待上游 elevated capability 设计）。身份=Matrix token，L2 路径不走 admin token。频道接入见「团队管理 → 频道」。"
@@ -582,7 +583,7 @@ export default function SkillCenter({
           )}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
-        </antd.Tooltip>
+        </WbTooltip>
         <div style={{ flex: 1 }} />
         <antd.Button
           size="small"
@@ -809,7 +810,7 @@ export default function SkillCenter({
                         // 分配层空但物化层非空——
                         // 「未分配但可调用」的可视化真相（团队层自动物化/
                         // builtin 恢复/镜像自带不写 spec.skills）。
-                        <antd.Tooltip
+                        <WbTooltip
                           title={tr(
                             "未显式分配（CRD 分配层为空），但运行时已装载 {n} 个技能（团队层物化/内置恢复/镜像自带）——展开行查看明细",
                             { n: mat.length },
@@ -818,7 +819,7 @@ export default function SkillCenter({
                           <antd.Tag color="cyan" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
                             {tr("运行时已装载 {n}", { n: mat.length })}
                           </antd.Tag>
-                        </antd.Tooltip>
+                        </WbTooltip>
                       ) : (
                         <span style={{ color: t.textSecondary, fontSize: 11 }}>
                           {tr("暂无技能分配")}
@@ -970,7 +971,7 @@ export default function SkillCenter({
                                   {/* ：preload 是物化层
   QwenPaw 独有面（常驻 system prompt，仅 qwenpaw 装载）——非 qwenpaw 禁用开关
   + 说明；分配层 CRD 视图（已分配/物化标签）照读不受影响。 */}
-                                  <antd.Tooltip
+                                  <WbTooltip
                                     title={
                                       isQwenpawOnlyDisabled(w.runtime)
                                         ? tr("预加载仅支持 QwenPaw 运行时的 Worker（当前：{rt}）", { rt: w.runtime })
@@ -995,7 +996,7 @@ export default function SkillCenter({
                                         }
                                       />
                                     </span>
-                                  </antd.Tooltip>
+                                  </WbTooltip>
                                 </div>
                               );
                             })}

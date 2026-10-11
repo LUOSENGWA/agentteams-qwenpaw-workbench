@@ -37,6 +37,7 @@ import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 import type { WorkerSessionState } from "../workerSessionState";
 import { usePoller } from "../usePoller";
 import { invalidateTags } from "../requestCache";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -198,7 +199,7 @@ function SpawnRow({
             marginRight: 8,
           }}
         />
-        <antd.Tooltip title={node.session_id}>
+        <WbTooltip title={node.session_id}>
           <span
             style={{
               color: node.status === "done" ? "#999" : "#333",
@@ -212,7 +213,7 @@ function SpawnRow({
           >
             {node.name || node.session_id}
           </span>
-        </antd.Tooltip>
+        </WbTooltip>
         {node.last_activity ? (
           <span
             style={{
@@ -438,7 +439,7 @@ function WorkerManageInfo({
               worker.mcpServers?.length ? (
                 <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
                   {worker.mcpServers.map((m) => (
-                    <antd.Tooltip
+                    <WbTooltip
                       key={m.name}
                       title={
                         <span style={{ fontFamily: "monospace", wordBreak: "break-all", maxWidth: 320 }}>
@@ -450,7 +451,7 @@ function WorkerManageInfo({
                         {m.name}
                         {m.transport ? ` · ${m.transport}` : ""}
                       </antd.Tag>
-                    </antd.Tooltip>
+                    </WbTooltip>
                   ))}
                 </span>
               ) : (
@@ -464,7 +465,7 @@ function WorkerManageInfo({
       ) : null}
       <div style={{ display: "flex", gap: 6 }}>
         {sleeping ? (
-          <antd.Tooltip title={tr("唤醒 {name}", { name: worker.name })}>
+          <WbTooltip title={tr("唤醒 {name}", { name: worker.name })}>
             <antd.Button
               type="text"
               size="small"
@@ -475,9 +476,9 @@ function WorkerManageInfo({
             >
               {tr("唤醒")}
             </antd.Button>
-          </antd.Tooltip>
+          </WbTooltip>
         ) : (
-          <antd.Tooltip title={tr("休眠 {name}（释放算力）", { name: worker.name })}>
+          <WbTooltip title={tr("休眠 {name}（释放算力）", { name: worker.name })}>
             <antd.Button
               type="text"
               size="small"
@@ -488,7 +489,7 @@ function WorkerManageInfo({
             >
               {tr("休眠")}
             </antd.Button>
-          </antd.Tooltip>
+          </WbTooltip>
         )}
       </div>
       {/* ：Worker 运行配置（上游 #1231 消费）——
@@ -644,7 +645,7 @@ function WorkerRow({
           />
         ) : null}
         {onDm && !group.is_self ? (
-          <antd.Tooltip title={tr("私聊 {name}", { name: group.worker_name })}>
+          <WbTooltip title={tr("私聊 {name}", { name: group.worker_name })}>
             <antd.Button
               type="text"
               size="small"
@@ -663,7 +664,7 @@ function WorkerRow({
                 onDm(group.mxid || group.worker_name, group.room_id);
               }}
             />
-          </antd.Tooltip>
+          </WbTooltip>
         ) : null}
       </div>
       {expanded ? (
@@ -941,9 +942,9 @@ function TeamNode({
  与团队表「配置」按钮同一入口）。stopPropagation：点齿轮
  不触发行展开/收起。 */}
         {onTeamConfig ? (
-          <antd.Tooltip
+          <WbTooltip
             title={tr("配置团队（名称 / 描述 / 心跳间隔 / 成员模型）")}
-          >
+           tap={false} >
             <span
               role="button"
               aria-label={tr("配置团队")}
@@ -962,9 +963,9 @@ function TeamNode({
             >
               <SettingsIcon size={13} />
             </span>
-          </antd.Tooltip>
+          </WbTooltip>
         ) : null}
-        <antd.Tooltip title={team.room_id}>
+        <WbTooltip title={team.room_id}>
           <span
             style={{
               color: "#999",
@@ -978,7 +979,7 @@ function TeamNode({
           >
             {team.room_id}
           </span>
-        </antd.Tooltip>
+        </WbTooltip>
       </div>
       {expanded
         ? team.workers.map((g) => (
@@ -1019,7 +1020,7 @@ function ExpandableText({
   const value = items ? items.join("、") : text || "";
   return (
     <>
-      <antd.Tooltip title={tr("点击展开")}>
+      <WbTooltip title={tr("点击展开")} tap={false} >
         <span
           onClick={() => setOpen(true)}
           style={{
@@ -1033,7 +1034,7 @@ function ExpandableText({
         >
           {value || "—"}
         </span>
-      </antd.Tooltip>
+      </WbTooltip>
       <antd.Modal
         open={open}
         onCancel={() => setOpen(false)}
@@ -1688,17 +1689,17 @@ function WorkerManage(props: WorkerManageProps) {
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><TeamIcon size={15} /> {tr("团队管理")}</span>
-        <antd.Tooltip
+        <WbTooltip
           title={tr(
             "拓扑树（团队 → Worker → spawn）；点 Worker 行展开管理信息（Worker 状态[CRD] / 容器状态[docker，不一致时标红] / 模型 / 唤醒休眠）与检查点；底部团队/用户/Manager 全量表；自动刷新不闪页（静默+diff）",
           )}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
-        </antd.Tooltip>
+        </WbTooltip>
         <span style={{ color: "#bbb", fontSize: 11 }}>{tr("自动刷新 30 秒")}</span>
         <div style={{ flex: 1 }} />
         {refresh ? (
-          <antd.Tooltip title={tr("刷新")}>
+          <WbTooltip title={tr("刷新")}>
             <antd.Button
               type="text"
               size="small"
@@ -1709,7 +1710,7 @@ function WorkerManage(props: WorkerManageProps) {
                 void onRefreshAdmin?.();
               }}
             />
-          </antd.Tooltip>
+          </WbTooltip>
         ) : null}
       </div>
       {/* 我的团队/我的权限——员工视角只读半边
