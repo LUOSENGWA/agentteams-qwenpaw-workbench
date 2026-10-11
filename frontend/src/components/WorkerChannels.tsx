@@ -47,6 +47,7 @@ import {
   fetchWorkerChannelQrcodeStatus,
   httpErrorStatus,
 } from "../api";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -641,9 +642,9 @@ export default function WorkerChannels(props: {
                           </span>
                         );
                         return tip ? (
-                          <antd.Tooltip title={tip} key="tip">
+                          <WbTooltip title={tip} key="tip">
                             {span}
-                          </antd.Tooltip>
+                          </WbTooltip>
                         ) : (
                           span
                         );

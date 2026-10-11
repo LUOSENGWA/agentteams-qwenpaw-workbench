@@ -1,6 +1,7 @@
 import type * as ReactNS from "react";
 
 import { useT } from "../i18n";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -26,7 +27,7 @@ function MentionPill({
 }) {
   const localpart = mxid.split(":")[0].replace(/^@/, "");
   return (
-    <antd.Tooltip title={mxid} mouseEnterDelay={0.3}>
+    <WbTooltip title={mxid} mouseEnterDelay={0.3} tap={false} >
       <span
         onClick={onMentionClick ? () => onMentionClick(mxid) : undefined}
         style={{
@@ -47,7 +48,7 @@ function MentionPill({
       >
         @{localpart}
       </span>
-    </antd.Tooltip>
+    </WbTooltip>
   );
 }
 

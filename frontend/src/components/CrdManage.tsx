@@ -35,6 +35,7 @@ import { useT } from "../i18n";
 import { createPoller, type Poller } from "../usePoller";
 import { invalidateTags } from "../requestCache";
 import { copyText } from "../util";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -1181,13 +1182,13 @@ export default function CrdManage(props: CrdManageProps) {
         const m = LEVEL_META[lv] ?? { label: `L${lv}`, color: "#999" };
         const tag = <antd.Tag color={m.color}>{m.label}</antd.Tag>;
         return lv === 1 ? (
-          <antd.Tooltip
+          <WbTooltip
             title={tr(
               "级别 1 管理员不能经 Matrix 登录获得 L2（上游设计）——团队/团队配置页需用 Controller 管理员 token",
             )}
           >
             {tag}
-          </antd.Tooltip>
+          </WbTooltip>
         ) : (
           tag
         );
@@ -1608,7 +1609,7 @@ export default function CrdManage(props: CrdManageProps) {
                           }
                         />
                         {(row.model || "").trim() && rowMv.level !== "ok" ? (
-                          <antd.Tooltip title={modelVerdictText(tr, rowMv, row.model || "", modelCandidates)}>
+                          <WbTooltip title={modelVerdictText(tr, rowMv, row.model || "", modelCandidates)}>
                             <span
                               style={{
                                 fontSize: 11,
@@ -1626,7 +1627,7 @@ export default function CrdManage(props: CrdManageProps) {
                                 </span>
                               )}
                             </span>
-                          </antd.Tooltip>
+                          </WbTooltip>
                         ) : null}
                       </div>
                       {/* ：行级 SOUL（折叠；多行+上传） */}
@@ -2140,7 +2141,7 @@ export default function CrdManage(props: CrdManageProps) {
               if (!v) return null;
               const sv = validateModelValue(v, modelCandidates);
               return sv.level === "ok" ? null : (
-                <antd.Tooltip title={modelVerdictText(tr, sv, v, modelCandidates)}>
+                <WbTooltip title={modelVerdictText(tr, sv, v, modelCandidates)}>
                   <antd.Tag color={sv.level === "error" ? "red" : "orange"} style={{ marginBottom: 4 }}>
                     {sv.level === "error" ? (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
@@ -2152,7 +2153,7 @@ export default function CrdManage(props: CrdManageProps) {
                       </span>
                     )}
                   </antd.Tag>
-                </antd.Tooltip>
+                </WbTooltip>
               );
             })()}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2364,7 +2365,7 @@ export default function CrdManage(props: CrdManageProps) {
                           return cmv.level === "ok" ? (
                             <antd.Tag color="orange">{tr("模型已改动")}</antd.Tag>
                           ) : (
-                            <antd.Tooltip
+                            <WbTooltip
                               title={modelVerdictText(tr, cmv, row.model || "", modelCandidates)}
                             >
                               <antd.Tag color={cmv.level === "error" ? "red" : "orange"}>
@@ -2378,7 +2379,7 @@ export default function CrdManage(props: CrdManageProps) {
                                   </span>
                                 )}
                               </antd.Tag>
-                            </antd.Tooltip>
+                            </WbTooltip>
                           );
                         })()
                       ) : null}

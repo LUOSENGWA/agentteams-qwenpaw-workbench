@@ -2,6 +2,7 @@ import type * as ReactNS from "react";
 
 import { useT } from "../i18n";
 import { copyText } from "../util";
+import { WbTooltip } from "./WbTooltip";
 
 /**
  * 长标识符（MXID / 房间 ID 等）截断展示——移植 dashboard
@@ -44,7 +45,7 @@ export default function TruncatedId(props: TruncatedIdProps) {
         maxWidth: "100%",
       }}
     >
-      <antd.Tooltip
+      <WbTooltip
         title={
           <span style={{ display: "inline-block", maxWidth: 420 }}>
             <span style={{ fontFamily: "monospace", wordBreak: "break-all" }}>
@@ -71,7 +72,7 @@ export default function TruncatedId(props: TruncatedIdProps) {
         >
           {truncated}
         </span>
-      </antd.Tooltip>
+      </WbTooltip>
       <antd.Button
         size="small"
         type="text"

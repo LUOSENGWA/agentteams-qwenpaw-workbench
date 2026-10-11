@@ -11,6 +11,7 @@ import type * as ReactNS from "react";
 
 import type { WorkerSessionState } from "../workerSessionState";
 import { useT } from "../i18n";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -43,7 +44,7 @@ export default function WorkerSessionDot({
   // role="img" + aria-label：屏幕阅读器读出状态（dashboard #127 合并时
   // 维护者 a11y 修复同款，beta.13.2 对齐）。
   return (
-    <antd.Tooltip key={state} title={tr(STATE_TEXT[state])}>
+    <WbTooltip key={state} title={tr(STATE_TEXT[state])}>
       <span
         role="img"
         aria-label={tr(STATE_TEXT[state])}
@@ -75,6 +76,6 @@ export default function WorkerSessionDot({
               }
         }
       />
-    </antd.Tooltip>
+    </WbTooltip>
   );
 }

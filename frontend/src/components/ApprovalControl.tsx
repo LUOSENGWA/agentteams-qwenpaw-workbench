@@ -414,6 +414,7 @@ function ApprovalControl({
               </antd.Tag>
               {sel && sel !== level ? (
                 <antd.Button
+                  className="wb-touch-lg"
                   size="small"
                   type="primary"
                   loading={busy}

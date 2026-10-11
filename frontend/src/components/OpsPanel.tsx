@@ -10,6 +10,7 @@ import { useT } from "../i18n";
 import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
 import { formatTimeOfDay } from "../util";
+import { WbTooltip } from "./WbTooltip";
 
 
 const host = window.QwenPaw.host;
@@ -301,11 +302,11 @@ function OpsPanel({
           }}
         >
           <span style={{ fontWeight: 700, fontSize: 15 }}>集群状态</span>
-          <antd.Tooltip title={tr("Controller /api/v1/status（L1 视图，dashboard cluster-status 同源）")}>
+          <WbTooltip title={tr("Controller /api/v1/status（L1 视图，dashboard cluster-status 同源）")}>
             <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
-          </antd.Tooltip>
+          </WbTooltip>
           <div style={{ flex: 1 }} />
-          <antd.Tooltip title="刷新">
+          <WbTooltip title="刷新">
             <antd.Button
               type="text"
               size="small"
@@ -313,7 +314,7 @@ function OpsPanel({
               loading={statusLoading}
               onClick={() => void refreshStatus()}
             />
-          </antd.Tooltip>
+          </WbTooltip>
         </div>
         {statusEntries.length === 0 ? (
           <antd.Empty
@@ -408,7 +409,7 @@ function OpsPanel({
                 }}
               />
             ) : null}
-            <antd.Tooltip
+            <WbTooltip
               title={tr(
                 "SGLang 每 DP rank 排队/运行/显存（可选模块——配置页开启并填 SGLang 地址）。卡片按数据变化自适应检查：负载在变 1s 一轮，稳定 5s 一轮。绿点每收到一帧快照亮一次=正在实时刷新。",
               )}
@@ -416,9 +417,9 @@ function OpsPanel({
               <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>
                 ⓘ
               </span>
-            </antd.Tooltip>
+            </WbTooltip>
             <div style={{ flex: 1 }} />
-            <antd.Tooltip title="刷新">
+            <WbTooltip title="刷新">
               <antd.Button
                 type="text"
                 size="small"
@@ -426,7 +427,7 @@ function OpsPanel({
                 loading={sglangLoading}
                 onClick={() => void refreshSglang()}
               />
-            </antd.Tooltip>
+            </WbTooltip>
           </div>
           {sglangError ? (
             <antd.Alert
@@ -606,9 +607,9 @@ function OpsPanel({
           }}
         >
           <span style={{ fontWeight: 700, fontSize: 15 }}>组件日志</span>
-          <antd.Tooltip title={tr("经 Controller Docker API 代理拉容器日志（dashboard debug-log 同源；需要管理员 token）")}>
+          <WbTooltip title={tr("经 Controller Docker API 代理拉容器日志（dashboard debug-log 同源；需要管理员 token）")}>
             <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
-          </antd.Tooltip>
+          </WbTooltip>
           <span style={{ fontSize: 11, color: t.textSecondary }}>
             {tr("自动刷新 15 秒")}
             {logsUpdatedAt > 0 &&
@@ -646,7 +647,7 @@ function OpsPanel({
             checkedChildren={tr("自动滚动")}
             unCheckedChildren={tr("暂停")}
           />
-          <antd.Tooltip title={tr("刷新日志")}>
+          <WbTooltip title={tr("刷新日志")}>
             <antd.Button
               type="text"
               size="small"
@@ -654,7 +655,7 @@ function OpsPanel({
               loading={logsLoading}
               onClick={() => void refreshLogs(component)}
             />
-          </antd.Tooltip>
+          </WbTooltip>
         </div>
         <div style={{ position: "relative" }}>
           <div

@@ -54,6 +54,7 @@ import {
 import WorkerSessionDot from "./WorkerSessionDot";
 import MemberStrip from "./MemberStrip";
 import type { WorkerSessionState } from "../workerSessionState";
+import { WbTooltip } from "./WbTooltip";
 
 // 消息渲染窗上限（顶层消息条数）：长房间/长滚动会话的 DOM 与重渲成本
 // 封顶——超出部分由顶部「显示更早」揭示（本地放出，无网络往返）。
@@ -78,6 +79,13 @@ const PaperClipOutlined = icon("PaperClipOutlined");
 
 // ── UI 常量（与 WorkbenchPage 视觉一致）──────────────────────────────
 const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
+
+/** 纯触屏设备（无 hover 能力）：hover 操作条改 tap 切换（T5）。
+ * 模块级一次求值——设备指针类型在会话内不变。 */
+const TOUCH_ONLY =
+  typeof window !== "undefined" &&
+  !!window.matchMedia &&
+  window.matchMedia("(hover: none)").matches;
 // 自己的消息气泡浅橙背景：改用主题（useThemeColors().bubbleMine）
 const CARD_RADIUS = 10;
 
@@ -630,7 +638,8 @@ function ThreadPanelView({
           style={{
             position: "absolute",
             right: 10,
-            bottom: 8,
+            // safe-area：notch/手势条设备上抬高到安全区之上
+            bottom: "max(8px, env(safe-area-inset-bottom))",
             zIndex: 5,
             backgroundColor: PRIMARY,
             borderColor: PRIMARY,
@@ -660,6 +669,7 @@ function ThreadPanelView({
         />
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
           <antd.Button
+            className="wb-touch-lg"
             loading={sending}
             disabled={!draft.trim()}
             onClick={() => void handleSend()}
@@ -1318,7 +1328,7 @@ function MessageBody({
             <FileOutlined style={{ fontSize: 20, color: PRIMARY }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <antd.Tooltip
+            <WbTooltip
               title={(msg.filename || msg.body || tr("附件")).length > 19 ? msg.filename || msg.body : undefined}
             >
               <div
@@ -1332,7 +1342,7 @@ function MessageBody({
               >
                 {truncateFilename(msg.filename || msg.body || tr("附件"))}
               </div>
-            </antd.Tooltip>
+            </WbTooltip>
             {sizeLine ? (
               <div style={{ fontSize: 12, color: t.textSecondary }}>{sizeLine}</div>
             ) : null}
@@ -3220,12 +3230,12 @@ function RoomChat(props: RoomChatProps) {
                             {formatTime(msg.origin_server_ts)}
                           </span>
                           {msg.pending ? (
-                            <antd.Tooltip title={tr("发送中…")}>
+                            <WbTooltip title={tr("发送中…")}>
                               <span style={{ color: "#bbb", fontSize: 12 }}>⏳</span>
-                            </antd.Tooltip>
+                            </WbTooltip>
                           ) : null}
                           {msg.failed ? (
-                            <antd.Tooltip title={tr("发送失败")}>
+                            <WbTooltip title={tr("发送失败")}>
                               <span
                                 style={{
                                   color: "#f5222d",
@@ -3235,7 +3245,7 @@ function RoomChat(props: RoomChatProps) {
                               >
                                 !
                               </span>
-                            </antd.Tooltip>
+                            </WbTooltip>
                           ) : null}
                         </div>
                       )}
@@ -3258,6 +3268,14 @@ function RoomChat(props: RoomChatProps) {
                           alignItems: "flex-start",
                           gap: 4,
                           flexDirection: mine ? "row-reverse" : "row",
+                        }}
+                        // 触屏（hover:none）无 hover 概念——tap 消息行切换操作条
+                        // （桌面鼠标路径零改动：onClick 仅在 touch-only 设备生效）
+                        onClick={() => {
+                          if (TOUCH_ONLY)
+                            setHoveredId((prev) =>
+                              prev === msg.event_id ? null : msg.event_id,
+                            );
                         }}
                         onMouseEnter={() => {
                           if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current);
@@ -3505,7 +3523,8 @@ function RoomChat(props: RoomChatProps) {
             style={{
               position: "absolute",
               right: 14,
-              bottom: 10,
+              // safe-area：notch/手势条设备上抬高到安全区之上
+              bottom: "max(10px, env(safe-area-inset-bottom))",
               zIndex: 5,
               display: "flex",
               flexDirection: "column",
@@ -3880,7 +3899,7 @@ function RoomChat(props: RoomChatProps) {
             }}
           >
             {roomLoop ? (
-              <antd.Tooltip
+              <WbTooltip
                 title={
                   roomLoop.mode?.description ||
                   roomLoop.mode?.name ||
@@ -3938,7 +3957,7 @@ function RoomChat(props: RoomChatProps) {
                       : tr("运行中")}
                   </span>
                 </span>
-              </antd.Tooltip>
+              </WbTooltip>
             ) : null}
             <antd.Popover
               trigger="click"
@@ -3979,7 +3998,7 @@ function RoomChat(props: RoomChatProps) {
             </antd.Popover>
             {onSendFiles ? (
               <>
-                <antd.Tooltip title={tr("发送文件/图片")}>
+                <WbTooltip title={tr("发送文件/图片")}>
                   <antd.Button
                     type="text"
                     size="small"
@@ -3987,7 +4006,7 @@ function RoomChat(props: RoomChatProps) {
                     loading={sending}
                     onClick={() => fileInputRef.current?.click()}
                   />
-                </antd.Tooltip>
+                </WbTooltip>
                 <input
                   ref={fileInputRef}
                   type="file"

@@ -25,6 +25,7 @@ import {
 } from "./WorkflowDag";
 import { WorkflowEventsTimeline } from "./WorkflowEventsTimeline";
 import { TopologyIcon } from "./icons";
+import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -994,7 +995,7 @@ function BoardCard(props: {
           </antd.Tag>
         ) : null}
         {canCancel ? (
-          <antd.Tooltip title={tr("取消此任务（须填原因，不可恢复）")}>
+          <WbTooltip title={tr("取消此任务（须填原因，不可恢复）")}>
             <antd.Button
               size="small"
               type="text"
@@ -1004,7 +1005,7 @@ function BoardCard(props: {
             >
               <CloseIcon size={12} />
             </antd.Button>
-          </antd.Tooltip>
+          </WbTooltip>
         ) : null}
       </div>
       <TaskCancelModal
@@ -2114,11 +2115,11 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         <span style={{ fontSize: 12.5, color: t.textSecondary }}>
           {tr("项目")}（{events.length}）
         </span>
-        <antd.Tooltip
+        <WbTooltip
           title={tr("项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）")}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
-        </antd.Tooltip>
+        </WbTooltip>
         <div style={{ flex: 1 }} />
         {/* 排序（时间/状态/名称）——列表/看板跟随；
  卡片/拓扑的左栏项目列表跟随（DAG 内部结构不排序）。 */}
@@ -2161,7 +2162,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             },
           ]}
         />
-        <antd.Tooltip title="刷新">
+        <WbTooltip title="刷新">
           <antd.Button
             type="text"
             size="small"
@@ -2171,7 +2172,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             loading={loading || manualRefresh}
             onClick={() => void handleRefreshClick()}
           />
-        </antd.Tooltip>
+        </WbTooltip>
       </div>
 
       {aggGate && aggPhase === "aggregating" ? (
