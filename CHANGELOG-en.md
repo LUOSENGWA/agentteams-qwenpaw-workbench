@@ -5,6 +5,20 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.15.3 (2026-10-11 - P1 portrait-refinement batch)
+
+**Portrait discoverability: tab bar horizontal-scroll edge fade (11 tabs no longer "invisible" at 390px) + teams table card layout in narrow + right-edge fade on 7 scrollable tables + copy-MXID (the one context-menu-only avatar action) moved into the tap panel**
+
+- **Tab bar scroll fade**: 11 tabs fit ~4 on a 390px phone — scrollable but no visual cue. Four-state mask-image fade (both/left/right/none) driven by scroll events (scroll-driven animation is not Safari-safe yet); switching tabs auto-scrolls the target into view (else the active highlight sits off-screen); bottom border moved outside the masked container so it can't fade
+- **Teams table → cards** (<576px): 5 columns are unreadable at 390px — one card per team (name+status / Leader + ready-worker count / member tags wrapping), data layer untouched, render branch only. The other "three tables" checked out: Workers is a tree, sessions a drawer list, ops a card grid — already portrait-friendly, left alone
+- **Right-edge fade on 7 scrollable tables** (artifacts / CRD ×3 / file preview / people ×2): scroll.x tables are always horizontally scrollable in narrow → a 16px gray translucent gradient at the right edge signals "more"; wide screens where content fits get no fade (no false signals)
+- **Avatar menu touch closure**: copy-MXID was context-menu-only (no right-click on touch) → moved into the tap-reachable quick panel; the rest (view sessions / mention / worker config / DM) already lived there — the context menu is now a desktop-only extra
+- **Workflow board checked**: no drag interaction exists (sortable list, not a drag kanban) — WCAG 2.5.7 passes by construction, no alternative path needed
+
+**Verification**: tsc 0 · vite build single file 1,795.03 kB (gzip 501.31 kB, 0 import statements = host-blob safe) · pytest 374/374 · i18n gate pass · 5 smoke scripts pass · sensitive scan 0
+
+---
+
 ## 0.5.0-beta.15.2 (2026-10-11 - P0 touch-reachability batch)
 
 **All touch information reachable: 58 Tooltips unified on WbTooltip (tap-to-open on touch, hover unchanged on desktop) + 44px touch targets on high-frequency actions + message action bar tap-to-toggle + jump-to-bottom floaters lifted into the safe area**
