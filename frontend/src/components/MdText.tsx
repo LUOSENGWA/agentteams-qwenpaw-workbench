@@ -7,6 +7,12 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
+// 纯触屏（无 hover 概念）——代码块复制按钮常显，否则 hover 才显 = 触屏不可达
+const IS_TOUCH =
+  typeof window !== "undefined" &&
+  !!window.matchMedia &&
+  window.matchMedia("(hover: none)").matches;
+
 /** ：
  * Element/Matrix 口径——消息 body 里的整 MXID（@local:server[:port]）被
  * 正则扫描渲染成 pill（Element Pill.tsx 同款前端后处理；本集群
@@ -188,7 +194,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
         <span>{lang || "code"}</span>
         <span
           style={{
-            opacity: hover ? 1 : 0,
+            opacity: hover || IS_TOUCH ? 1 : 0,
             transition: "opacity 0.15s",
             display: "inline-flex",
           }}

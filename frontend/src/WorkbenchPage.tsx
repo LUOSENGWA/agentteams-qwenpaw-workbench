@@ -3040,6 +3040,15 @@ export default function WorkbenchPage() {
           .wb-main .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
           .wb-main pre, .wb-main code { white-space: pre-wrap; word-break: break-all; }
         }
+        /* ══ 浮层（Modal/Drawer）窄视口防溢出 ══
+   固定像素宽（420~780）的 Modal/Drawer 在窄视口（手机 390）会横向溢出屏外
+   ——antd 把 width 设成 inline，用 max-width 约束「有效宽 = min(设定宽, 视口)」：
+   宽视口下 min 取设定宽 = 桌面零变化；窄视口下取视口 = 不溢出。max-width 只收缩
+   从不撑宽，纯保护性（对任何浮层都只防超宽，无副作用）。
+   antd Drawer/Modal portal 到 body（脱离 .wb-main 作用域）→ 选择器不加 .wb-main
+   前缀；宿主 antd=自家前缀分支，双前缀双写。 */
+        .ant-modal, .qwenpaw-modal { max-width: calc(100vw - 16px) !important; }
+        .ant-drawer-content-wrapper, .qwenpaw-drawer-content-wrapper { max-width: 100vw !important; }
         /* ══ 触屏层（P0 触屏适配）══
    触控检测 = any-pointer:coarse（纯触屏+笔记本触屏混合设备都命中；
    不用 UA 嗅探，基础体验保持 input-agnostic——桌面路径零改动）。
