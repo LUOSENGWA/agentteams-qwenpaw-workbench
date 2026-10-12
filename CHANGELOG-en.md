@@ -5,6 +5,18 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.15.8 (2026-10-12 - portrait round 4: per-page layout tightening + button inlining + cards no-overflow)
+
+**376px measured round-4 per-page refinement — chat composer buttons inlined / room name wraps / scroll-to-bottom stays round, workflow title removed / sort+refresh pinned to edges / board 2-column 3-card / cards no-overflow / topo back merged into title / worker short-name, artifacts kind under icon / actions stacked, team-management modal content hugging width**
+
+- **Chat**: the emoji/attach/send buttons below the input are now **inlined into the same row as the input** (send hugs the right edge, shorter height; wide screens unchanged); the member @tag row drops the "tap a member to insert a mention" hint + no longer stretches vertically; the scroll-to-bottom button is a true circle (no longer stretched into a vertical bar in portrait); the portrait chat header is tightened further + the room name wraps (long names show fully instead of truncating)
+- **Workflow**: the "Workflow" title is removed (the top tab already says it); the sort + refresh buttons are pinned to the left/right ends of the toolbar; the narrow board is 2 columns again with ~3 cards per column and inner-column scrolling beyond that; board cards no longer blow past the column width (long strings shrink/wrap); the topology back button is merged into the bottom title bar (the duplicate top title is removed, saving vertical space); the task detail shows the worker's short name (e.g. @tech-writer, not a long address)
+- **Artifacts**: in the narrow file list the "kind" label moves under the file icon (saving horizontal room so filenames wrap less); the view/download action buttons stack vertically in portrait
+- **Team management**: the run-config / resource-management modal inner containers tighten to hug the modal width (no more large side gaps); the top tabs scroll horizontally in portrait
+- **Verified**: tsc 0 · vite build single-file (468 modules) · secret scan 0 · 5 commits (8a6c850/b0b71ba/661d2d0/260e4d6)
+
+---
+
 ## 0.5.0-beta.15.5 (2026-10-12 - portrait overlay overflow guard + touch-reachable copy)
 
 **Modals/drawers no longer overflow the screen in portrait (fixed-pixel-width overlays clamp to the viewport) + copy buttons in code blocks and chat bubbles are reachable on touch (no longer hover-only)**
