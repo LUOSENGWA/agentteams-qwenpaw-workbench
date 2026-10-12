@@ -816,7 +816,15 @@ function Artifacts(props: ArtifactsProps) {
               dataIndex: "name",
               render: (_: unknown, f: FileEntry) => (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  {KIND_META[f.kind].icon}
+                  {/* 窄屏：类型移到图标下方（省横向给文件名换行）；宽屏仅图标。 */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                    {KIND_META[f.kind].icon}
+                    {narrow ? (
+                      <span style={{ fontSize: 10, color: t.textSecondary, lineHeight: 1 }}>
+                        {KIND_META[f.kind].label}
+                      </span>
+                    ) : null}
+                  </div>
                   <WbTooltip title={f.name} tap={false} >
                     <a
                       // 窄屏自动换行（不横滚/不截断），宽屏保持单行 ellipsis。
@@ -832,16 +840,21 @@ function Artifacts(props: ArtifactsProps) {
                 </div>
               ),
             },
-            {
-              title: tr("类型"),
-              dataIndex: "kind",
-              width: narrow ? 56 : 80,
-              render: (k: ArtifactKind) => (
-                <antd.Tag style={{ margin: 0 }} color={k === "image" ? "orange" : k === "document" ? "blue" : k === "data" ? "green" : k === "code" ? "purple" : undefined}>
-                  {KIND_META[k].label}
-                </antd.Tag>
-              ),
-            },
+            // 类型列：窄屏隐藏（已移入文件列图标下方）；宽屏保留。
+            ...(narrow
+              ? []
+              : [
+                  {
+                    title: tr("类型"),
+                    dataIndex: "kind",
+                    width: 80,
+                    render: (k: ArtifactKind) => (
+                      <antd.Tag style={{ margin: 0 }} color={k === "image" ? "orange" : k === "document" ? "blue" : k === "data" ? "green" : k === "code" ? "purple" : undefined}>
+                        {KIND_META[k].label}
+                      </antd.Tag>
+                    ),
+                  },
+                ]),
             // 窄屏隐藏次要列（省宽度给文件名换行）
             ...(narrow
               ? []
@@ -903,10 +916,10 @@ function Artifacts(props: ArtifactsProps) {
                     f.kind === "document" ||
                     f.kind === "data" ||
                     f.kind === "code");
-                // 行内动作按钮统一 ActionBtn（图标+文字+可见规格），
-                // 弃纯图标 type="text"（观感糊弄、不可发现）。
+                // 行内动作按钮统一 ActionBtn（图标+文字+可见规格）。
+                // 窄屏：查看/下载纵向排列（省横向给文件名换行）。
                 return (
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: 4, alignItems: narrow ? "stretch" : "center" }}>
                     {previewable ? (
                       <ActionBtn
                         icon={<EyeIcon />}
