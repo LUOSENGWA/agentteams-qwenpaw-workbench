@@ -999,11 +999,12 @@ function TaskInspectionDrawer(props: {
               {tr(meta.label)}
             </antd.Tag>
             {assignee ? (
-              <antd.Tag style={{ margin: 0 }}>
-                <UserIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {assignee.split(":")[0].replace(/^@/, "")}
+              // worker 短名（@name，保留 @，非全 MXID）。
+              <antd.Tag style={{ margin: 0, maxWidth: "100%", overflow: "hidden" }}>
+                <UserIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {assignee.split(":")[0]}
               </antd.Tag>
             ) : null}
-            <span style={{ fontFamily: "monospace", fontSize: 11, color: t.textSecondary }}>
+            <span style={{ fontFamily: "monospace", fontSize: 11, color: t.textSecondary, overflowWrap: "anywhere" }}>
               {taskId}
             </span>
             {canCancel ? (
@@ -1082,7 +1083,8 @@ function TaskInspectionDrawer(props: {
                           <b>{h.from || "∅"} → {h.to}</b>
                           <span style={{ color: t.textSecondary }}>
                             {" "}{h.action}
-                            {h.actor ? `（${h.actor}）` : ""}
+                            {/* actor 短名（@name，非全 MXID） */}
+                            {h.actor ? `（${h.actor.split(":")[0]}）` : ""}
                           </span>
                           <div style={{ color: t.textSecondary, fontSize: 10.5, fontFamily: "inherit" }}>
                             {h.ts}
@@ -1343,9 +1345,9 @@ function BoardColumnsView(props: {
   // 测量 effect 对本分支无副作用（wrapRef 未挂载 → compute 早退）。
   if (narrow) {
     return (
-      // 窄屏看板恢复两列（单列 370px 卡过宽被点名）——两列各 ~175px，
-      // BoardCard 标题 2 行 wrap / projectTitle ellipsis / tags wrap，窄宽不横溢。
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, minWidth: 0 }}>
+      // 窄屏看板恢复两列（单列 370px 卡过宽被点名）——minmax(0,1fr) 让列可收缩到 0，
+      // 长串（MXID/URL）不会撑破列宽（BoardCard 标题 wrap / projectTitle ellipsis / tags wrap）。
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8, minWidth: 0 }}>
         {BOARD_COLUMNS.map((col) => {
           const colTasks = tasksByCol.get(col.key) || [];
           return (
@@ -1385,7 +1387,8 @@ function BoardColumnsView(props: {
                 {tr(col.zh)}（{colTasks.length}）
               </div>
               {colTasks.length === 0 ? null : (
-                <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                // 每列最多显示 ~3 卡，超出列内纵向滚（对齐宽屏 grid.h+overflowY 行为）。
+                <div style={{ display: "grid", gap: 8, minWidth: 0, maxHeight: "min(40vh, 320px)", overflowY: "auto", overflowX: "hidden" }}>
                   {colTasks.map((task) => (
                     <BoardCard
                       key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
@@ -2384,6 +2387,8 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   // 窄/宽共用：拓扑视图详情体（标题行 + 干预/中断/loop + DAG + 事件流）。
   const topoDetail = topoEvent ? (
     <div>
+      {/* 窄屏：返回按钮并入此标题行（省纵向空间——删上方重复标题栏）；
+      sticky 顶部保滚 DAG 时返回可点。宽屏无返回（左栏列表在）。 */}
       <div
         style={{
           fontWeight: 700,
@@ -2392,8 +2397,19 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           alignItems: "center",
           gap: 8,
           flexWrap: "wrap",
+          position: narrow ? "sticky" : "static",
+          top: 0,
+          background: narrow ? t.cardBg : undefined,
+          zIndex: narrow ? 2 : undefined,
+          paddingTop: narrow ? 2 : 0,
+          paddingBottom: narrow ? 2 : 0,
         }}
       >
+        {narrow ? (
+          <antd.Button size="small" onClick={() => setDetailOpen(false)} style={{ flexShrink: 0 }}>
+            ← {tr("返回")}
+          </antd.Button>
+        ) : null}
         {topoEvent.title || topoEvent.runId}
         <antd.Tag
           color={statusMeta(topoEvent.status).color}
@@ -2510,69 +2526,66 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               )}
         </div>
       ) : null}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
-        <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><TopologyIcon size={15} /> {tr("工作流")}</span>
-        <span style={{ fontSize: 12.5, color: t.textSecondary }}>
-          {tr("项目")}（{events.length}）
-        </span>
-        <WbTooltip
-          title={tr("项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）")}
-        >
-          <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
-        </WbTooltip>
-        <div style={{ flex: 1 }} />
-        {/* 排序（时间/状态/名称）——列表/看板跟随；
- 卡片/拓扑的左栏项目列表跟随（DAG 内部结构不排序）。 */}
-        <antd.Select
-          size="small"
-          value={sortBy}
-          onChange={(v: "time_desc" | "time_asc" | "status" | "name") =>
-            setSortBy(v)
-          }
-          style={{ width: 128 }}
-          options={[
-            { value: "time_desc", label: tr("时间 新→旧") },
-            { value: "time_asc", label: tr("时间 旧→新") },
-            { value: "status", label: tr("按状态") },
-            { value: "name", label: tr("名称 A→Z") },
-          ]}
-        />
-        <antd.Segmented
-          size="small"
-          value={view}
-          onChange={(v: ReactNS.Key | number) =>
-            setView(v as "list" | "card" | "board" | "topo")
-          }
- // （P3）：看板/拓扑视图 tab 计数取消——
-          // 页头「项目 (N)」已给总量，视图 tab 上的计数冗余。
-          options={[
-            { value: "list", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><TodoIcon size={12} /> {tr("项目列表")}</span> },
-            { value: "card", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><AppIcon size={12} /> {tr("项目卡片")}</span> },
-            { value: "board", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><ChartIcon size={12} /> {tr("看板")}</span> },
-            {
-              value: "topo",
-              // 🌳 一棵树 → DAG 拓扑图标（表依赖拓扑）。
-              // 13.21 加的「Mermaid」第 5 项：13.22 并入拓扑内样式切换 →
-              // 13.24整体退役（两图同结构，保单一 DAG，见 DagTopo）。
-              label: (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <TopologyIcon size={14} /> {tr("拓扑")}
-                </span>
-              ),
-            },
-          ]}
-        />
-        <WbTooltip title="刷新">
-          <antd.Button
-            type="text"
+      {/* 竖屏工具行：「工作流」标题去掉（tab 已有）；拆两行——
+      RowA 计数+ⓘ+视图 tab；RowB 排序(左)+刷新(右)贴左右两边。 */}
+      <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12.5, color: t.textSecondary }}>
+            {tr("项目")}（{events.length}）
+          </span>
+          <WbTooltip
+            title={tr("项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）")}
+          >
+            <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
+          </WbTooltip>
+          <div style={{ flex: 1 }} />
+          <antd.Segmented
             size="small"
-            icon={<ReloadIcon />}
-            // 手动刷新必穿透（force +
-            // ?refresh=1）；loading 含本地穿透请求期。
-            loading={loading || manualRefresh}
-            onClick={() => void handleRefreshClick()}
+            value={view}
+            onChange={(v: ReactNS.Key | number) =>
+              setView(v as "list" | "card" | "board" | "topo")
+            }
+            options={[
+              { value: "list", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><TodoIcon size={12} /> {tr("项目列表")}</span> },
+              { value: "card", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><AppIcon size={12} /> {tr("项目卡片")}</span> },
+              { value: "board", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><ChartIcon size={12} /> {tr("看板")}</span> },
+              {
+                value: "topo",
+                label: (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <TopologyIcon size={14} /> {tr("拓扑")}
+                  </span>
+                ),
+              },
+            ]}
           />
-        </WbTooltip>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          {/* 排序（时间/状态/名称）——列表/看板跟随；卡片/拓扑左栏项目列表跟随。 */}
+          <antd.Select
+            size="small"
+            value={sortBy}
+            onChange={(v: "time_desc" | "time_asc" | "status" | "name") =>
+              setSortBy(v)
+            }
+            style={{ width: 128 }}
+            options={[
+              { value: "time_desc", label: tr("时间 新→旧") },
+              { value: "time_asc", label: tr("时间 旧→新") },
+              { value: "status", label: tr("按状态") },
+              { value: "name", label: tr("名称 A→Z") },
+            ]}
+          />
+          <WbTooltip title="刷新">
+            <antd.Button
+              type="text"
+              size="small"
+              icon={<ReloadIcon />}
+              loading={loading || manualRefresh}
+              onClick={() => void handleRefreshClick()}
+            />
+          </WbTooltip>
+        </div>
       </div>
 
       {/* 视图区：占根容器剩余高（flex:1+minHeight:0，容器相对链的唯一出口）。
@@ -2798,16 +2811,14 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           /* 高度=容器相对：返回条固定，详情盒占剩余高（flex:1+minHeight:0）
 内部滚——旧 calc(100vh - 300px) 在宿主容器高≠视口高时外溢/过矮。 */
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 10 }}>
-            <NarrowDetailBack
-              title={topoEvent ? topoEvent.title || topoEvent.runId : ""}
-              onBack={() => setDetailOpen(false)}
-            />
+            {/* 返回按钮已并入 topoDetail 标题行（sticky）——上方 NarrowDetailBack 删除省纵向空间。 */}
             <div
               style={{
                 flex: 1,
                 minHeight: 0,
                 minWidth: 0,
                 padding: 12,
+                paddingTop: 4,
                 borderRadius: 10,
                 border: `1px solid ${t.border}`,
                 boxSizing: "border-box",
