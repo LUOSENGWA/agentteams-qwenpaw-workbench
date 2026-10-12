@@ -817,7 +817,7 @@ function Artifacts(props: ArtifactsProps) {
                   {KIND_META[f.kind].icon}
                   <WbTooltip title={f.name} tap={false} >
                     <a
-                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 300 }}
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: narrow ? 130 : 300 }}
                       onClick={(e) => {
                         e.preventDefault();
                         void openPreview(f);
@@ -832,7 +832,7 @@ function Artifacts(props: ArtifactsProps) {
             {
               title: tr("类型"),
               dataIndex: "kind",
-              width: 80,
+              width: narrow ? 56 : 80,
               render: (k: ArtifactKind) => (
                 <antd.Tag style={{ margin: 0 }} color={k === "image" ? "orange" : k === "document" ? "blue" : k === "data" ? "green" : k === "code" ? "purple" : undefined}>
                   {KIND_META[k].label}
@@ -842,32 +842,32 @@ function Artifacts(props: ArtifactsProps) {
             {
               title: tr("来源"),
               dataIndex: "source",
-              width: 170,
+              width: narrow ? 92 : 170,
               ellipsis: true,
             },
             {
               title: tr("大小"),
               dataIndex: "size",
-              width: 90,
+              width: narrow ? 62 : 90,
               render: (v: number | null) => formatSize(v) || "—",
             },
             {
               title: tr("发送者"),
               dataIndex: "sender",
-              width: 110,
+              width: narrow ? 72 : 110,
               render: (v: string) =>
                 (v.split(":")[0] || v || "").replace(/^@/, ""),
             },
             {
               title: tr("时间"),
               dataIndex: "time",
-              width: 120,
+              width: narrow ? 84 : 120,
               render: (v: number) => (v ? formatTime(v) : "—"),
             },
             {
               title: tr("操作"),
               key: "actions",
-              width: 176,
+              width: narrow ? 108 : 176,
               render: (_: unknown, f: FileEntry) => {
                 // mxc/正源 → apiPath（host.fetch blob 下载，带鉴权）；
                 // http 直链 → 原样导航。裸插件路径落 SPA 兜底（index.html 壳），
