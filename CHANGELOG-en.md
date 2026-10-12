@@ -5,6 +5,17 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.15.5 (2026-10-12 - portrait overlay overflow guard + touch-reachable copy)
+
+**Modals/drawers no longer overflow the screen in portrait (fixed-pixel-width overlays clamp to the viewport) + copy buttons in code blocks and chat bubbles are reachable on touch (no longer hover-only)**
+
+- **Portrait overlay overflow guard**: a set of modals/drawers (create gateway, team config, file preview, workflow detail, etc.) had hard-coded 420-780px widths — on a 390px phone they overflow horizontally, with the right half pushed off-screen and unreadable. Now modals/drawers get an "effective width = min(set width, viewport width)" constraint: on a phone they always fit inside the screen (drawer = full width, modal = 8px side margins), and wide desktop is completely unchanged (a wide viewport takes the set width = as before). Applies to all modals/drawers; newly added ones get it automatically.
+- **Touch-reachable copy**: the "copy" buttons in the top-right of code blocks and inside chat bubbles used to appear only on hover — phones have no "hover", so the buttons were invisible and untappable. Now on pure-touch devices these copy buttons are always visible and tappable at any time.
+
+**Verification**: tsc 0 · vite build single file (0 import statements = host-blob safe) · pytest 374/374 · i18n 0 new keys · 5 smoke all pass · sensitive scan 0
+
+---
+
 ## 0.5.0-beta.15.4 (2026-10-12 - unified portrait detection + compact chat header + tap-to-dismiss tooltips)
 
 **One shared portrait/narrow judgment for the whole plugin (chat single-column ⇔ team cards always in sync) + portrait chat header compressed to 1 line (secondary controls moved into the "more" menu, giving room back to messages) + touch tooltips dismiss the instant you press elsewhere**
