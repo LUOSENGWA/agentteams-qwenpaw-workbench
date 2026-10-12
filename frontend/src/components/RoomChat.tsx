@@ -632,10 +632,13 @@ function ThreadPanelView({
           </div>
         )}
       </div>
+      {/* 纯 div 圆（弃 antd Button——CSS 对抗 inline 尺寸致纵向拉长），32×32 恒圆。 */}
       {threadShowJump ? (
-        <antd.Button
-          shape="circle"
-          size="small"
+        <div
+          role="button"
+          aria-label={tr("回到最新消息")}
+          title={tr("回到最新消息")}
+          onClick={threadJumpToBottom}
           style={{
             position: "absolute",
             right: 10,
@@ -644,23 +647,22 @@ function ThreadPanelView({
             zIndex: 5,
             width: 32,
             height: 32,
-            minWidth: 32,
-            padding: 0,
-            lineHeight: 1,
-            display: "inline-flex",
+            boxSizing: "border-box",
+            borderRadius: "50%",
+            display: "flex",
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: PRIMARY,
-            borderColor: PRIMARY,
             color: "#fff",
+            border: `1px solid ${PRIMARY}`,
             boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
+            fontSize: 14,
+            lineHeight: 1,
+            cursor: "pointer",
           }}
-          onClick={threadJumpToBottom}
-          title={tr("回到最新消息")}
-          aria-label={tr("回到最新消息")}
         >
           ↓
-        </antd.Button>
+        </div>
       ) : null}
       </div>
       <div style={{ flexShrink: 0, paddingTop: 10, borderTop: `1px solid ${t.border}` }}>
@@ -2846,9 +2848,10 @@ function RoomChat(props: RoomChatProps) {
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 8,
-        padding: "8px 12px",
-        paddingBottom: 10,
+        gap: 6,
+        // 竖屏紧凑头再收窄：padding 8/12→4/10 + paddingBottom 10→4（高度更矮）。
+        padding: "4px 10px",
+        paddingBottom: 4,
         borderBottom: "1px solid rgba(0,0,0,0.08)",
         flexWrap: "nowrap",
       }}
@@ -2864,10 +2867,11 @@ function RoomChat(props: RoomChatProps) {
           level={5}
           style={{
             margin: 0,
-            fontSize: 15,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            fontSize: 14,
+            lineHeight: 1.25,
+            // 群名自动换行（竖屏不截断——长群名完整显示多行，短群名单行）。
+            whiteSpace: "normal",
+            wordBreak: "break-word",
           }}
         >
           {room.name}
@@ -2898,6 +2902,86 @@ function RoomChat(props: RoomChatProps) {
       </antd.Dropdown>
     </div>
   );
+
+  // 竖屏 composer：发送/附件/表情按钮提取为 const——窄屏与输入框同 row（发送贴输入框旁，
+  // size small 高度别太高），宽屏原操作行复用同款按钮（行为不变）。
+  const composerEmojiBtn = (
+    <antd.Popover
+      trigger="click"
+      placement="topRight"
+      content={
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(10, 28px)",
+            gap: 2,
+            width: 300,
+          }}
+        >
+          {EMOJI_PANEL.map((emoji) => (
+            <span
+              key={emoji}
+              onClick={() => {
+                setDraft((d) => d + emoji);
+              }}
+              style={{
+                fontSize: 18,
+                cursor: "pointer",
+                textAlign: "center",
+                padding: 2,
+                borderRadius: 4,
+              }}
+              title={emoji}
+            >
+              {emoji}
+            </span>
+          ))}
+        </div>
+      }
+    >
+      <antd.Button type="text" size="small" title={tr("表情")}>
+        😀
+      </antd.Button>
+    </antd.Popover>
+  );
+  const composerAttachBtn = onSendFiles ? (
+    <>
+      <WbTooltip title={tr("发送文件/图片")}>
+        <antd.Button
+          type="text"
+          size="small"
+          icon={<PaperClipOutlined />}
+          loading={sending}
+          onClick={() => fileInputRef.current?.click()}
+        />
+      </WbTooltip>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const files = Array.from(e.target.files || []);
+          e.target.value = ""; // 重置——同一文件可再次选择
+          if (files.length) void onSendFiles(files);
+        }}
+      />
+    </>
+  ) : null;
+  const composerSendBtn = draft.trim() ? (
+    <antd.Button
+      size={narrow ? "small" : undefined}
+      loading={sending}
+      onClick={() => void handleSend()}
+      style={{
+        backgroundColor: PRIMARY,
+        borderColor: PRIMARY,
+        color: "#fff",
+      }}
+    >
+      发送
+    </antd.Button>
+  ) : null;
 
   return (
     <div
@@ -3719,29 +3803,33 @@ function RoomChat(props: RoomChatProps) {
                 {newMsgCount} {tr("条新消息")}
               </span>
             ) : null}
-            <antd.Button
-              shape="circle"
+            {/* 置底按钮：纯 div 圆（弃 antd Button——其 CSS 与 inline 尺寸对抗，
+      竖屏被纵向拉长）。flex:none 防 column wrapper 拉伸，38×38 恒圆。 */}
+            <div
+              role="button"
+              aria-label={tr("回到最新消息")}
+              title={tr("回到最新消息")}
+              onClick={jumpToBottom}
               style={{
                 width: 38,
                 height: 38,
-                minWidth: 38,
-                padding: 0,
-                lineHeight: 1,
-                display: "inline-flex",
+                flex: "none",
+                boxSizing: "border-box",
+                borderRadius: "50%",
+                display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 backgroundColor: PRIMARY,
-                borderColor: PRIMARY,
                 color: "#fff",
+                border: `1px solid ${PRIMARY}`,
                 boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
                 fontSize: 16,
+                lineHeight: 1,
+                cursor: "pointer",
               }}
-              onClick={jumpToBottom}
-              title={tr("回到最新消息")}
-              aria-label={tr("回到最新消息")}
             >
               ↓
-            </antd.Button>
+            </div>
           </div>
         ) : null}
           </div>
@@ -3938,9 +4026,10 @@ function RoomChat(props: RoomChatProps) {
                     flexWrap: "nowrap",
                     overflowX: "auto",
                     overflowY: "hidden",
+                    alignItems: "center",
                     paddingBottom: 2,
                   }
-                : { display: "flex", gap: 6, flexWrap: "wrap" }
+                : { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }
             }
           >
             {mentionTargets.map(([mxid, member]) => (
@@ -3954,9 +4043,8 @@ function RoomChat(props: RoomChatProps) {
                   (mxid.split(":")[0] || mxid).replace(/^@/, "")}
               </antd.Tag>
             ))}
-            <span style={{ fontSize: 12, color: "#bbb", alignSelf: "center" }}>
-              {tr("点击成员插入 @点名")}
-            </span>
+            {/* 提示「点击成员插入 @点名」已删——窄屏它把成员 @tag 栏纵向拉长
+（成员 tag 才是功能主体，点击即插入 @ 点名，无需再提示）。 */}
           </div>
         ) : null}
         {canSend ? (
@@ -4057,27 +4145,37 @@ function RoomChat(props: RoomChatProps) {
                 }}
               />
             </div>
-            <div
-              ref={composerBoxRef}
-              // 竖屏输入框过高：narrow 默认钳到 40px（≈1 行，配下方按钮同 row 更紧凑）；
-              // 宽屏/用户上拖仍自由（drag 直改 DOM，re-render 时按此钳）。
-              style={{ height: narrow ? Math.min(composerH, 40) : composerH, flexShrink: 0 }}
-            >
-            <antd.Input.TextArea
-              ref={composerRef}
-              value={draft}
-              rows={3}
-              style={{ height: "100%", resize: "none", overflowY: "auto" }}
-              placeholder={
-                editing
-                  ? tr("编辑消息…（Enter 保存，Shift+Enter 换行，Esc 取消编辑）")
-                  : replyTo
-                    ? tr("发送回复…（Enter 发送，Shift+Enter 换行，Esc 取消回复）")
-                    : tr("输入消息，@名字 可以点名成员（Enter 发送，Shift+Enter 换行）")
-              }
-              onChange={handleDraftChange}
-              onKeyDown={handleKeyDown}
-            />
+            {/* 竖屏：输入框 + 按钮 同行（发送贴输入框旁，高度别太高）；宽屏输入框整行。 */}
+            <div style={{ display: narrow ? "flex" : "block", alignItems: "flex-end", gap: narrow ? 6 : 0 }}>
+              <div
+                ref={composerBoxRef}
+                // 竖屏钳 40px；宽屏/拖拽自由。flex:1 让窄屏输入框吃掉按钮外的宽度。
+                style={{ height: narrow ? Math.min(composerH, 40) : composerH, flexShrink: 0, flex: narrow ? "1 1 auto" : undefined, minWidth: narrow ? 0 : undefined }}
+              >
+              <antd.Input.TextArea
+                ref={composerRef}
+                value={draft}
+                rows={3}
+                style={{ height: "100%", resize: "none", overflowY: "auto" }}
+                placeholder={
+                  editing
+                    ? tr("编辑消息…（Enter 保存，Shift+Enter 换行，Esc 取消编辑）")
+                    : replyTo
+                      ? tr("发送回复…（Enter 发送，Shift+Enter 换行，Esc 取消回复）")
+                      : tr("输入消息，@名字 可以点名成员（Enter 发送，Shift+Enter 换行）")
+                }
+                onChange={handleDraftChange}
+                onKeyDown={handleKeyDown}
+              />
+              </div>
+              {/* 窄屏：表情/附件/发送内联输入框右侧（const 与宽屏操作行同款）。 */}
+              {narrow ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0, paddingBottom: 2 }}>
+                  {composerEmojiBtn}
+                  {composerAttachBtn}
+                  {composerSendBtn}
+                </div>
+              ) : null}
             </div>
           </div>
           {/* 操作行移进圆角容器（Element：与输入框同
@@ -4090,7 +4188,8 @@ function RoomChat(props: RoomChatProps) {
               justifyContent: "flex-end",
               alignItems: "center",
               gap: 4,
-              padding: "2px 8px 8px 10px",
+              // 窄屏：按钮已内联输入框行，此操作行仅放 loop chip（罕见）→padding 收紧不留空。
+              padding: narrow ? "0 10px" : "2px 8px 8px 10px",
             }}
           >
             {roomLoop ? (
@@ -4154,79 +4253,14 @@ function RoomChat(props: RoomChatProps) {
                 </span>
               </WbTooltip>
             ) : null}
-            <antd.Popover
-              trigger="click"
-              placement="topRight"
-              content={
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(10, 28px)",
-                    gap: 2,
-                    width: 300,
-                  }}
-                >
-                  {EMOJI_PANEL.map((emoji) => (
-                    <span
-                      key={emoji}
-                      onClick={() => {
-                        setDraft((d) => d + emoji);
-                      }}
-                      style={{
-                        fontSize: 18,
-                        cursor: "pointer",
-                        textAlign: "center",
-                        padding: 2,
-                        borderRadius: 4,
-                      }}
-                      title={emoji}
-                    >
-                      {emoji}
-                    </span>
-                  ))}
-                </div>
-              }
-            >
-              <antd.Button type="text" size="small" title={tr("表情")}>
-                😀
-              </antd.Button>
-            </antd.Popover>
-            {onSendFiles ? (
+            {/* 表情/附件/发送：宽屏在此操作行；窄屏已内联到输入框行（上）。const 同款，
+      窄屏隐藏此处防按钮重复。 */}
+            {!narrow ? (
               <>
-                <WbTooltip title={tr("发送文件/图片")}>
-                  <antd.Button
-                    type="text"
-                    size="small"
-                    icon={<PaperClipOutlined />}
-                    loading={sending}
-                    onClick={() => fileInputRef.current?.click()}
-                  />
-                </WbTooltip>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []);
-                    e.target.value = ""; // 重置——同一文件可再次选择
-                    if (files.length) void onSendFiles(files);
-                  }}
-                />
+                {composerEmojiBtn}
+                {composerAttachBtn}
+                {composerSendBtn}
               </>
-            ) : null}
-            {draft.trim() ? (
-              <antd.Button
-                loading={sending}
-                onClick={() => void handleSend()}
-                style={{
-                  backgroundColor: PRIMARY,
-                  borderColor: PRIMARY,
-                  color: "#fff",
-                }}
-              >
-                发送
-              </antd.Button>
             ) : null}
           </div>
           </div>
