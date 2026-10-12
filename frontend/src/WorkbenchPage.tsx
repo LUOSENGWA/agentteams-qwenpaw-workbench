@@ -3146,32 +3146,38 @@ export default function WorkbenchPage() {
           display: "flex",
           alignItems: "center",
           gap: 12,
-          paddingBottom: 10,
+          // 竖屏 header 降高：去标题省一行 + paddingBottom 10→6。
+          // header 不隐藏——全屏手机挖孔摄像头会遮挡下方 tab 按钮，header 是安全缓冲。
+          paddingBottom: narrow ? 6 : 10,
           borderBottom: `1px solid ${t.border}`,
         }}
       >
-        {/* AgentTeams logo 替代 🏢（同 dashboard 侧边栏）。 */}
+        {/* AgentTeams logo（左端）——竖屏 28→24。右边是头像昵称（flex:1 推开）。
+    main 容器 20px L/R padding=圆角屏安全边距，别删。 */}
         <img
           src={LOGO_URL}
-          width={28}
-          height={28}
+          width={narrow ? 24 : 28}
+          height={narrow ? 24 : 28}
           alt="AgentTeams"
-          style={{ display: "block" }}
+          style={{ display: "block", flexShrink: 0 }}
         />
         <div style={{ minWidth: 0 }}>
           {/* 竖屏：标题缩到 16px 一行（level3=24px 在手机上过高）+ 隐藏描述行
     （「多团队工作台（聊天/工作流/…）」与下方 tab 栏重复，版本在配置页可见）
     ——整块从约 3 行压到 1 行，省下约 200px 竖向空间。宽屏保持原样。 */}
-          <antd.Typography.Title
-            level={3}
-            style={{
-              margin: 0,
-              fontSize: narrow ? 16 : undefined,
-              whiteSpace: "nowrap",
-            }}
-          >
-            AgentTeams 团队工作台
-          </antd.Typography.Title>
+          {/* 竖屏隐藏「AgentTeams 团队工作台」标题——logo 已代表品牌，
+    标题省一行竖向空间；宽屏保留。div 在竖屏变空（版本行本就 !narrow），无害。 */}
+          {!narrow && (
+            <antd.Typography.Title
+              level={3}
+              style={{
+                margin: 0,
+                whiteSpace: "nowrap",
+              }}
+            >
+              AgentTeams 团队工作台
+            </antd.Typography.Title>
+          )}
           {!narrow && (
             <WbTooltip
               title={

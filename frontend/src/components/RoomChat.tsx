@@ -642,6 +642,14 @@ function ThreadPanelView({
             // safe-area：notch/手势条设备上抬高到安全区之上
             bottom: "max(8px, env(safe-area-inset-bottom))",
             zIndex: 5,
+            width: 32,
+            height: 32,
+            minWidth: 32,
+            padding: 0,
+            lineHeight: 1,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
             backgroundColor: PRIMARY,
             borderColor: PRIMARY,
             color: "#fff",
@@ -3717,6 +3725,11 @@ function RoomChat(props: RoomChatProps) {
                 width: 38,
                 height: 38,
                 minWidth: 38,
+                padding: 0,
+                lineHeight: 1,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
                 backgroundColor: PRIMARY,
                 borderColor: PRIMARY,
                 color: "#fff",
@@ -4007,12 +4020,14 @@ function RoomChat(props: RoomChatProps) {
                     >
                       <antd.Avatar
                         size={24}
-                        style={{ backgroundColor: PRIMARY, fontSize: 12 }}
+                        style={{ backgroundColor: PRIMARY, fontSize: 12, flexShrink: 0 }}
                       >
                         {name.slice(0, 1).toUpperCase()}
                       </antd.Avatar>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{name}</span>
-                      <span style={{ fontSize: 12, color: t.textSecondary, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {/* 候选行单行 nowrap+固定行高：此前 name 无 nowrap，
+    窄屏长名换行→每行被纵向拉长。name flex:1 主占位、mxid 次级收缩，均 ellipsis。 */}
+                      <span style={{ fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
+                      <span style={{ fontSize: 12, color: t.textSecondary, minWidth: 0, flexShrink: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {c.mxid}
                       </span>
                     </div>
