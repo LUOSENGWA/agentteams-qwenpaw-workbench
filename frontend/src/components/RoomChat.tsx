@@ -4059,9 +4059,9 @@ function RoomChat(props: RoomChatProps) {
             </div>
             <div
               ref={composerBoxRef}
-              // 竖屏输入框太高：narrow 时把默认 76px 收到 52px（≈1.5 行）；
-              // 宽屏/用户拖拽仍自由（drag 直改 DOM，re-render 时按此钳）。
-              style={{ height: narrow ? Math.min(composerH, 52) : composerH, flexShrink: 0 }}
+              // 竖屏输入框过高：narrow 默认钳到 40px（≈1 行，配下方按钮同 row 更紧凑）；
+              // 宽屏/用户上拖仍自由（drag 直改 DOM，re-render 时按此钳）。
+              style={{ height: narrow ? Math.min(composerH, 40) : composerH, flexShrink: 0 }}
             >
             <antd.Input.TextArea
               ref={composerRef}
