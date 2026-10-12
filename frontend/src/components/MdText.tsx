@@ -38,6 +38,7 @@ function MentionPill({
         onClick={onMentionClick ? () => onMentionClick(mxid) : undefined}
         style={{
           display: "inline-block",
+          maxWidth: "100%",
           padding: "0 6px",
           margin: "0 1px",
           borderRadius: 999,
@@ -50,6 +51,13 @@ function MentionPill({
           cursor: onMentionClick ? "pointer" : undefined,
           whiteSpace: "nowrap",
           overflowWrap: "anywhere",
+          // 竖屏溢出修复：nowrap 单行 pill 无宽度上限时长 MXID 会撑破气泡
+          // 右边界——封顶容器宽 + 省略号（完整 MXID 已在上方 Tooltip）；
+          // 放不下剩余行宽时整颗 pill 原子换行。宽屏普通名 < 容器宽，
+          // 以上属性不生效 = 零变化。
+          boxSizing: "border-box",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
         }}
       >
         @{localpart}

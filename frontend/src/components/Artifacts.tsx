@@ -23,6 +23,7 @@ import { invalidateTags } from "../requestCache";
 import { formatSize } from "../util";
 import { WbTooltip } from "./WbTooltip";
 import WbTableFade from "./WbTableFade";
+import { useWbViewport } from "../WbViewportContext";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -238,6 +239,14 @@ function Artifacts(props: ArtifactsProps) {
   >("time_desc");
   const [teamFilter, setTeamFilter] = React.useState<string>("all");
   const [preview, setPreview] = React.useState<PreviewFile | null>(null);
+  // 窄屏单栏 drill-in（narrow = 容器宽 < 800，与聊天单栏同源判定）：
+  // 左右两栏（树 + 文件列表）→ 窄屏「文件树（整宽）→ 点节点 →
+  // 文件列表（整宽）+ ← 返回」，与聊天「房间列表 → 点进房间」同一心智；
+  // 宽屏（narrow=false）路径保持原两栏不变。
+  const { narrow } = useWbViewport();
+  // 「已钻进文件列表」局部标记——selectedKey 初值 "root" 恒非空，
+  // 不能直接当「是否钻进了列表」的判据。
+  const [listOpen, setListOpen] = React.useState(false);
 
   // 正源加载：GET /api/v1/projects（404 → 端点未部署 → projects=[] fallback）。
   // 走 fetchProjectSummaries 统一解包——此前只认裸数组，Controller
@@ -620,6 +629,8 @@ function Artifacts(props: ArtifactsProps) {
     (keys: ReactNS.Key[]) => {
       const key = String(keys[0] || "root");
       setSelectedKey(key);
+      // 窄屏 drill-in：点节点 = 钻进文件列表（宽屏此标记不参与渲染）。
+      setListOpen(true);
       if (key.startsWith("proj:")) {
         // 点行 = 选中 + 展开（展开箭头在旧版要等任务异步加载完
         // 才出现，用户点行无展开反馈，视为「展开有问题」）。
@@ -731,6 +742,196 @@ function Artifacts(props: ArtifactsProps) {
     [treeColW],
   );
 
+  // 窄屏 drill-in：钻进的文件列表标题（返回条右侧显示）。
+  const listTitle = React.useMemo(() => {
+    if (selectedKey === "root" || selectedKey === "projects")
+      return tr("项目产物");
+    if (selectedKey === "attachments") return tr("房间附件");
+    if (selectedKey.startsWith("proj:")) {
+      const pid = selectedKey.slice(5);
+      const p = (projects || []).find((x) => x.project_id === pid);
+      return p?.title || p?.name || pid;
+    }
+    if (selectedKey.startsWith("task:")) {
+      const parts = selectedKey.split(":");
+      return (parts[2] || "").slice(0, 16) || tr("文件");
+    }
+    if (selectedKey.startsWith("pf:")) {
+      const f = projectFiles.find((x) => x.key === selectedKey);
+      return f?.name || tr("文件");
+    }
+    if (selectedKey.startsWith("kind:")) {
+      const k = selectedKey.slice(5) as ArtifactKind;
+      return KIND_META[k] ? KIND_META[k].label : tr("文件");
+    }
+    if (selectedKey.startsWith("asrc:")) {
+      const parts = selectedKey.split(":");
+      return parts.slice(2).join(":") || tr("文件");
+    }
+    if (selectedKey.startsWith("af:")) {
+      const f = items.find((x) => `af:${x.event_id}` === selectedKey);
+      return f?.filename || f?.body || tr("文件");
+    }
+    return tr("文件");
+  }, [selectedKey, projects, projectFiles, items, tr]);
+
+  // 窄/宽共用：产物树。提为变量供窄屏整宽树与宽屏左栏共用——
+  // 宽屏渲染同一元素，输出不变。
+  const treeEl = (
+    <antd.Tree
+      blockNode
+      treeData={treeData}
+      selectedKeys={[selectedKey]}
+      expandedKeys={expandedKeys}
+      onExpand={(keys: ReactNS.Key[]) => setExpandedKeys(keys)}
+      onSelect={onTreeSelect}
+    />
+  );
+
+  // 窄/宽共用：文件列表（空态 / 表格）。同 treeEl，宽屏右栏渲染同一元素。
+  const fileListBlock =
+    visibleFiles.length === 0 ? (
+      <antd.Empty
+        description={
+          selectedKey === "projects"
+            ? tr("暂无项目产物——已登记项目的任务交付物会显示在这里（未登记项目只走下方房间附件扫描）")
+            : tr("该分类下还没有文件")
+        }
+      />
+    ) : (
+      <WbTableFade>
+        <antd.Table
+          rowKey="key"
+          size="small"
+          pagination={false}
+          // 固定列合计 ~700px，窄窗口下表格在右栏内部横滚，
+          // 不再撑破 flex 容器溢出页面（与左栏互挡的另一半根因）。
+          scroll={{ x: "max-content" }}
+          dataSource={visibleFiles}
+          columns={[
+            {
+              title: tr("文件"),
+              dataIndex: "name",
+              render: (_: unknown, f: FileEntry) => (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  {KIND_META[f.kind].icon}
+                  <WbTooltip title={f.name} tap={false} >
+                    <a
+                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 300 }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        void openPreview(f);
+                      }}
+                    >
+                      {truncateFilename(f.name)}
+                    </a>
+                  </WbTooltip>
+                </div>
+              ),
+            },
+            {
+              title: tr("类型"),
+              dataIndex: "kind",
+              width: 80,
+              render: (k: ArtifactKind) => (
+                <antd.Tag style={{ margin: 0 }} color={k === "image" ? "orange" : k === "document" ? "blue" : k === "data" ? "green" : k === "code" ? "purple" : undefined}>
+                  {KIND_META[k].label}
+                </antd.Tag>
+              ),
+            },
+            {
+              title: tr("来源"),
+              dataIndex: "source",
+              width: 170,
+              ellipsis: true,
+            },
+            {
+              title: tr("大小"),
+              dataIndex: "size",
+              width: 90,
+              render: (v: number | null) => formatSize(v) || "—",
+            },
+            {
+              title: tr("发送者"),
+              dataIndex: "sender",
+              width: 110,
+              render: (v: string) =>
+                (v.split(":")[0] || v || "").replace(/^@/, ""),
+            },
+            {
+              title: tr("时间"),
+              dataIndex: "time",
+              width: 120,
+              render: (v: number) => (v ? formatTime(v) : "—"),
+            },
+            {
+              title: tr("操作"),
+              key: "actions",
+              width: 176,
+              render: (_: unknown, f: FileEntry) => {
+                // mxc/正源 → apiPath（host.fetch blob 下载，带鉴权）；
+                // http 直链 → 原样导航。裸插件路径落 SPA 兜底（index.html 壳），
+                // 解析后 /api 路径裸导航带不了鉴权头会 401——两条都不通。
+                const target = f.mxcUrl
+                  ? resolveFileTarget(f.mxcUrl)
+                  : f.projectId && f.taskId && f.artifactPath
+                    ? (() => {
+                        const p = artifactDownloadUrl(
+                          f.projectId,
+                          f.taskId,
+                          f.artifactPath,
+                        );
+                        return { url: resolvePluginUrl(p), apiPath: p };
+                      })()
+                    : { url: "" };
+                const previewable =
+                  !!target.url &&
+                  (f.kind === "image" ||
+                    f.kind === "document" ||
+                    f.kind === "data" ||
+                    f.kind === "code");
+                // 行内动作按钮统一 ActionBtn（图标+文字+可见规格），
+                // 弃纯图标 type="text"（观感糊弄、不可发现）。
+                return (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {previewable ? (
+                      <ActionBtn
+                        icon={<EyeIcon />}
+                        label={tr("查看")}
+                        onClick={() => void openPreview(f)}
+                      />
+                    ) : null}
+                    <ActionBtn
+                      icon={<DownloadIcon />}
+                      label={tr("下载")}
+                      href={target.apiPath ? undefined : target.url || undefined}
+                      download={f.name}
+                      disabled={!target.url}
+                      onClick={
+                        target.apiPath
+                          ? (e) => {
+                              e.preventDefault();
+                              void (async () => {
+                                const ok = await downloadViaHost(
+                                  target.apiPath as string,
+                                  f.name,
+                                );
+                                if (!ok)
+                                  antd.message.error("下载失败，请稍后重试");
+                              })();
+                            }
+                          : undefined
+                      }
+                    />
+                  </div>
+                );
+              },
+            },
+          ]}
+        />
+      </WbTableFade>
+    );
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {/* 正源降级横幅——「新接口的产物还没扫描到」可视化：
@@ -820,41 +1021,95 @@ function Artifacts(props: ArtifactsProps) {
         </WbTooltip>
       </div>
 
-      {/* 左右分栏独立滚动（用户「产物页面左右两栏要做成分开滚动」）。
+      {/* 窄屏单栏 drill-in（narrow = 容器宽 < 800，与聊天单栏同源判定）：
+ 未选节点 = 文件树（整宽，无拖拽手柄）；点节点 = 文件列表（整宽）+
+ 顶部返回条——与聊天「房间列表 → 点进房间」同一心智。
+ 宽屏（narrow=false）保持原左右两栏不变。 */}
+      {narrow && !listOpen ? (
+        /* 窄屏 · 未钻取：文件树整宽（独立垂直滚动）。 */
+        <div
+          style={{
+            height: "calc(100vh - 280px)",
+            minHeight: 320,
+            overflowY: "auto",
+          }}
+        >
+          {treeEl}
+        </div>
+      ) : narrow && listOpen ? (
+        /* 窄屏 · 已钻取：返回条 + 文件列表整宽。 */
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: "calc(100vh - 280px)",
+            minHeight: 320,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexShrink: 0,
+              marginBottom: 8,
+            }}
+          >
+            <antd.Button
+              size="small"
+              onClick={() => setListOpen(false)}
+              style={{ flexShrink: 0 }}
+            >
+              ← {tr("返回")}
+            </antd.Button>
+            <span
+              title={listTitle}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontWeight: 700,
+                fontSize: 14,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {listTitle}
+            </span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
+            {fileListBlock}
+          </div>
+        </div>
+      ) : (
+        /* 宽屏：原左右分栏独立滚动（用户「产物页面左右两栏要做成分开滚动」）。
  容器定高（RoomChat 同款 calc 经验值 100vh-230 再减工具栏行 ~48）+
- 两栏各自 overflow auto——此前整页滚动，树和表一起滚、排序控件滚出视野。 */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "stretch",
-          height: "calc(100vh - 280px)",
-          minHeight: 320,
-        }}
-      >
-        {/* 左栏：产物树（项目 → 任务 → 文件；附件 → 类型 → 来源）。
+ 两栏各自 overflow auto——此前整页滚动，树和表一起滚、排序控件滚出视野。 */
+        <div
+          style={{
+            display: "flex",
+            alignItems: "stretch",
+            height: "calc(100vh - 280px)",
+            minHeight: 320,
+          }}
+        >
+          {/* 左栏：产物树（项目 → 任务 → 文件；附件 → 类型 → 来源）。
  overflow hidden 硬裁剪——长节点标题（房间附件的来源=房间名）
  之前溢出 260px 伸进右栏区，右栏 Table 后绘覆盖其上 = 用户所见
  「房间附件宽度不一样，右边栏挡住房间产物左边栏」。
  宽度可拖拽 200–480px（默认 260，持久化）——房间名长，宽度用户自定。
  树自身垂直滚动（不再随整页滚）。 */}
-        <div
-          ref={treeColRef}
-          style={{
-            width: treeColW,
-            flexShrink: 0,
-            overflow: "hidden",
-            overflowY: "auto",
-          }}
-        >
-          <antd.Tree
-            blockNode
-            treeData={treeData}
-            selectedKeys={[selectedKey]}
-            expandedKeys={expandedKeys}
-            onExpand={(keys: ReactNS.Key[]) => setExpandedKeys(keys)}
-            onSelect={onTreeSelect}
-          />
-        </div>
+          <div
+            ref={treeColRef}
+            style={{
+              width: treeColW,
+              flexShrink: 0,
+              overflow: "hidden",
+              overflowY: "auto",
+            }}
+          >
+            {treeEl}
+          </div>
 
         {/* 拖拽手柄（话题面板同款：细条，拖动时高亮 PRIMARY） */}
         <div
@@ -880,153 +1135,14 @@ function Artifacts(props: ArtifactsProps) {
           />
         </div>
 
-        {/* 右栏：文件列表（自身垂直滚动，与左栏分开） */}
-        <div
-          style={{ flex: 1, minWidth: 0, marginLeft: 10, overflowY: "auto" }}
-        >
-          {visibleFiles.length === 0 ? (
-            <antd.Empty
-              description={
-                selectedKey === "projects"
-                  ? tr("暂无项目产物——已登记项目的任务交付物会显示在这里（未登记项目只走下方房间附件扫描）")
-                  : tr("该分类下还没有文件")
-              }
-            />
-          ) : (
-            <WbTableFade>
-            <antd.Table
-              rowKey="key"
-              size="small"
-              pagination={false}
-              // 固定列合计 ~700px，窄窗口下表格在右栏内部横滚，
-              // 不再撑破 flex 容器溢出页面（与左栏互挡的另一半根因）。
-              scroll={{ x: "max-content" }}
-              dataSource={visibleFiles}
-              columns={[
-                {
-                  title: tr("文件"),
-                  dataIndex: "name",
-                  render: (_: unknown, f: FileEntry) => (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                      {KIND_META[f.kind].icon}
-                      <WbTooltip title={f.name} tap={false} >
-                        <a
-                          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 300 }}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            void openPreview(f);
-                          }}
-                        >
-                          {truncateFilename(f.name)}
-                        </a>
-                      </WbTooltip>
-                    </div>
-                  ),
-                },
-                {
-                  title: tr("类型"),
-                  dataIndex: "kind",
-                  width: 80,
-                  render: (k: ArtifactKind) => (
-                    <antd.Tag style={{ margin: 0 }} color={k === "image" ? "orange" : k === "document" ? "blue" : k === "data" ? "green" : k === "code" ? "purple" : undefined}>
-                      {KIND_META[k].label}
-                    </antd.Tag>
-                  ),
-                },
-                {
-                  title: tr("来源"),
-                  dataIndex: "source",
-                  width: 170,
-                  ellipsis: true,
-                },
-                {
-                  title: tr("大小"),
-                  dataIndex: "size",
-                  width: 90,
-                  render: (v: number | null) => formatSize(v) || "—",
-                },
-                {
-                  title: tr("发送者"),
-                  dataIndex: "sender",
-                  width: 110,
-                  render: (v: string) =>
-                    (v.split(":")[0] || v || "").replace(/^@/, ""),
-                },
-                {
-                  title: tr("时间"),
-                  dataIndex: "time",
-                  width: 120,
-                  render: (v: number) => (v ? formatTime(v) : "—"),
-                },
-                {
-                  title: tr("操作"),
-                  key: "actions",
-                  width: 176,
-                  render: (_: unknown, f: FileEntry) => {
-                    // mxc/正源 → apiPath（host.fetch blob 下载，带鉴权）；
-                    // http 直链 → 原样导航。裸插件路径落 SPA 兜底（index.html 壳），
-                    // 解析后 /api 路径裸导航带不了鉴权头会 401——两条都不通。
-                    const target = f.mxcUrl
-                      ? resolveFileTarget(f.mxcUrl)
-                      : f.projectId && f.taskId && f.artifactPath
-                        ? (() => {
-                            const p = artifactDownloadUrl(
-                              f.projectId,
-                              f.taskId,
-                              f.artifactPath,
-                            );
-                            return { url: resolvePluginUrl(p), apiPath: p };
-                          })()
-                        : { url: "" };
-                    const previewable =
-                      !!target.url &&
-                      (f.kind === "image" ||
-                        f.kind === "document" ||
-                        f.kind === "data" ||
-                        f.kind === "code");
-                    // 行内动作按钮统一 ActionBtn（图标+文字+可见规格），
-                    // 弃纯图标 type="text"（观感糊弄、不可发现）。
-                    return (
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {previewable ? (
-                          <ActionBtn
-                            icon={<EyeIcon />}
-                            label={tr("查看")}
-                            onClick={() => void openPreview(f)}
-                          />
-                        ) : null}
-                        <ActionBtn
-                          icon={<DownloadIcon />}
-                          label={tr("下载")}
-                          href={target.apiPath ? undefined : target.url || undefined}
-                          download={f.name}
-                          disabled={!target.url}
-                          onClick={
-                            target.apiPath
-                              ? (e) => {
-                                  e.preventDefault();
-                                  void (async () => {
-                                    const ok = await downloadViaHost(
-                                      target.apiPath as string,
-                                      f.name,
-                                    );
-                                    if (!ok)
-                                      antd.message.error("下载失败，请稍后重试");
-                                  })();
-                                }
-                              : undefined
-                          }
-                        />
-                      </div>
-                    );
-                  },
-                },
-              ]}
-            />
-            </WbTableFade>
-          )}
+          {/* 右栏：文件列表（自身垂直滚动，与左栏分开） */}
+          <div
+            style={{ flex: 1, minWidth: 0, marginLeft: 10, overflowY: "auto" }}
+          >
+            {fileListBlock}
+          </div>
         </div>
-      </div>
+      )}
 
       <FilePreview file={preview} onClose={() => setPreview(null)} />
 

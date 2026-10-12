@@ -12,6 +12,7 @@ import { MxcAvatar } from "../MxcAvatar";
 import WorkerSessionDot from "./WorkerSessionDot";
 import type { WorkerSessionState } from "../workerSessionState";
 import { useT } from "../i18n";
+import { useWbViewport } from "../WbViewportContext";
 import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
@@ -51,6 +52,7 @@ export default function MemberStrip({
   onOpenPanel?: () => void;
 }) {
   const tr = useT();
+  const { narrow } = useWbViewport();
   const [expanded, setExpanded] = React.useState(false);
   const entries = Object.entries(room?.members || {}).map(([mxid, member]) => ({
     mxid,
@@ -81,25 +83,37 @@ export default function MemberStrip({
                 position: "relative",
                 display: "inline-flex",
                 cursor: onOpenPanel ? "pointer" : "default",
+                // 触屏热区：24px 头像不可靠命中且相邻仅 4px 易误触——
+                // 透明 padding 把点击区扩到 44×44（头像视觉保持 24px，
+                // 相邻目标边距同时拉到 24px）。宽屏 narrow=false →
+                // padding=0，与改动前逐像素一致。
+                padding: narrow ? 10 : 0,
               }}
             >
-              <MxcAvatar
-                url={member?.avatar_url}
-                size={24}
+              {/* 内层 relative 容器只裹头像本体——corner 状态灯
+ absolute 挂此盒的右下，外层 padding 扩热区时灯仍贴头像角。 */}
+              <span style={{ position: "relative", display: "inline-flex" }}>
+                <MxcAvatar
+                  url={member?.avatar_url}
+                  size={24}
  style={{ backgroundColor: "var(--app-accent, #FF7F16)", fontSize: 11, flexShrink: 0 }}
-              >
-                {name.slice(0, 1).toUpperCase()}
-              </MxcAvatar>
-              {state ? <WorkerSessionDot state={state} size={7} corner /> : null}
+                >
+                  {name.slice(0, 1).toUpperCase()}
+                </MxcAvatar>
+                {state ? <WorkerSessionDot state={state} size={7} corner /> : null}
+              </span>
             </span>
           </WbTooltip>
         );
       })}
+      {/* 触屏：文字按钮仅 24px 高难命中——narrow 下内联 height 覆盖
+ antd small 的 24px（内联优先于类）扩到 44px 与头像热区同行高；
+ 宽屏 height=undefined → antd 原尺寸不变。 */}
       {hiddenCount > 0 ? (
         <antd.Button
           size="small"
           type="text"
-          style={{ padding: "0 6px", fontSize: 12 }}
+          style={{ padding: "0 6px", fontSize: 12, height: narrow ? 44 : undefined }}
           onClick={() => setExpanded(true)}
           title={tr("展开全部成员")}
         >
@@ -110,7 +124,7 @@ export default function MemberStrip({
         <antd.Button
           size="small"
           type="text"
-          style={{ padding: "0 6px", fontSize: 12 }}
+          style={{ padding: "0 6px", fontSize: 12, height: narrow ? 44 : undefined }}
           onClick={() => setExpanded(false)}
         >
           {tr("收起")}
