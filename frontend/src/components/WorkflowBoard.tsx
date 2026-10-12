@@ -26,6 +26,7 @@ import {
 import { WorkflowEventsTimeline } from "./WorkflowEventsTimeline";
 import { TopologyIcon } from "./icons";
 import { WbTooltip } from "./WbTooltip";
+import { useWbViewport } from "../WbViewportContext";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -176,6 +177,33 @@ function ProjectRail(props: {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** 窄屏单栏 drill-in：详情顶部返回条（← 返回 + 项目标题）——
+ * 与聊天房间紧凑头「← 返回」同一交互心智（列表 → 点进详情 → 返回列表）。 */
+function NarrowDetailBack(props: { title: string; onBack: () => void }) {
+  const tr = useT();
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+      <antd.Button size="small" onClick={props.onBack} style={{ flexShrink: 0 }}>
+        ← {tr("返回")}
+      </antd.Button>
+      <span
+        title={props.title}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontWeight: 700,
+          fontSize: 14,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {props.title}
+      </span>
     </div>
   );
 }
@@ -1951,6 +1979,13 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   // 下方 topoEvent 的 withNodes[0] 兜底（Select value 跟随 topoEvent）。
   const topoRun = topoRunProp ?? "";
   const setTopoRun = (runId: string) => onTopoRunChange?.(runId);
+  // 窄屏单栏 drill-in（narrow = 容器宽 < 800，与聊天单栏同源判定）：
+  // 卡片/拓扑视图在窄屏从左右两栏改「项目列表（整宽）→ 点项目 → 详情（整宽）+ ← 返回」，
+  // 与聊天「房间列表 → 点进房间」同一心智；宽屏（narrow=false）路径保持原两栏不变。
+  // detailOpen = 局部「已钻进详情」标记——topoEvent 有 withNodes[0] 回退、恒非空，
+  // 不能用来判「是否钻进了详情」。
+  const { narrow } = useWbViewport();
+  const [detailOpen, setDetailOpen] = React.useState(false);
 
   // ── ：首载状态机 ──
   // 冷启动期 /projects-workflow 快照为空（后端首扫 1-3 分钟），旧行为渲染
@@ -2044,6 +2079,88 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   const inspectEv = inspect
     ? events.find((e) => e.runId === inspect.runId) || null
     : null;
+
+  // 窄屏 drill-in：选中项目在刷新后从列表消失（topoEvent 落 null）→
+  // 自动回列表，避免停在空详情上回不去。
+  React.useEffect(() => {
+    if (narrow && detailOpen && !topoEvent) setDetailOpen(false);
+  }, [narrow, detailOpen, topoEvent]);
+
+  // 窄/宽共用：卡片视图详情体（EventCard + 任务卡网格）。提为变量供
+  // 窄屏钻取详情与宽屏右栏两分支共用——宽屏渲染同一元素，输出不变。
+  const cardDetail = topoEvent ? (
+    <div>
+      <EventCard ev={topoEvent} t={t} onIntervention={() => onRefresh?.()} />
+      {cardTasks.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10, marginTop: 12 }}>
+          {cardTasks.map((task, i) => (
+            <BoardCard
+              key={`${task.node.id ?? i}`}
+              task={task}
+              t={t}
+              onTaskDone={() => onRefresh?.()}
+              onOpenDetail={(tid) =>
+                setInspect({ runId: topoEvent.runId, taskId: tid })
+              }
+            />
+          ))}
+        </div>
+      ) : (
+        <div style={{ marginTop: 12, fontSize: 12, color: t.textSecondary, padding: "14px 12px", border: `1px dashed ${t.border}`, borderRadius: 8 }}>
+          {tr("暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡")}
+        </div>
+      )}
+    </div>
+  ) : (
+    <antd.Empty description={tr("请选择左侧项目")} />
+  );
+
+  // 窄/宽共用：拓扑视图详情体（标题行 + 干预/中断/loop + DAG + 事件流）。
+  const topoDetail = topoEvent ? (
+    <div>
+      <div
+        style={{
+          fontWeight: 700,
+          marginBottom: 10,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        {topoEvent.title || topoEvent.runId}
+        <antd.Tag
+          color={statusMeta(topoEvent.status).color}
+          style={{ margin: 0 }}
+        >
+          {statusMeta(topoEvent.status).label}
+        </antd.Tag>
+        <InterventionActions ev={topoEvent} onDone={() => onRefresh?.()} />
+      </div>
+      <InterruptsBlock
+        interrupts={topoEvent.interrupts || []}
+        pauseReason={topoEvent.pause_reason}
+        tasks={topoEvent.taskDetails}
+      />
+      {topoEvent.loop ? <LoopBlock loop={topoEvent.loop} /> : null}
+      {(topoEvent.nodes || []).length > 0 ? (
+        <DagTopo
+          ev={topoEvent}
+          t={t}
+          onNodeClick={(nodeId) =>
+            setInspect({ runId: topoEvent.runId, taskId: nodeId })
+          }
+        />
+      ) : (
+        <div style={{ color: t.textSecondary, fontSize: 12 }}>
+          {tr("暂无拓扑数据——本项目可能还在 planning（Coordinator 起草计划中），计划生成后请重试")}
+        </div>
+      )}
+      <WorkflowEventsTimeline projectId={topoEvent.runId} teamId={topoEvent.team_id} />
+    </div>
+  ) : (
+    <antd.Empty description={tr("请选择左侧项目")} />
+  );
 
   // 左栏宽
   // 220–520，默认 320，持久化（与聊天分栏 chatSplitW 同款交互）。
@@ -2292,6 +2409,27 @@ function WorkflowBoard(props: WorkflowBoardProps) {
       ) : view === "card" ? (
         events.length === 0 ? (
           <antd.Empty description={tr("暂无工作流事件")} />
+        ) : narrow ? (
+          /* 窄屏单栏 drill-in：未选 = 项目列表（整宽，无拖拽分隔条）；
+点项目 = 详情（整宽）+ 顶部返回条。 */
+          detailOpen ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <NarrowDetailBack
+                title={topoEvent ? topoEvent.title || topoEvent.runId : ""}
+                onBack={() => setDetailOpen(false)}
+              />
+              <div style={{ minWidth: 0 }}>{cardDetail}</div>
+            </div>
+          ) : (
+            <ProjectRail
+              events={sortedEvents}
+              selected={topoEvent?.runId ?? ""}
+              onSelect={(runId) => {
+                setTopoRun(runId);
+                setDetailOpen(true);
+              }}
+            />
+          )
         ) : (
           /* master-detail：左=项目列表（排序/独立滚动），右=选中项目详情
  （EventCard + 任务卡网格）——对齐 dashboard 任务看板「项目」区。 */
@@ -2310,34 +2448,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             >
               <div style={{ width: 3, height: "100%", background: t.border, borderRadius: 2 }} />
             </div>
-            <div style={{ minWidth: 0, paddingLeft: 12 }}>
-              {topoEvent ? (
-                <div>
-                  <EventCard ev={topoEvent} t={t} onIntervention={() => onRefresh?.()} />
-                  {cardTasks.length > 0 ? (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10, marginTop: 12 }}>
-                      {cardTasks.map((task, i) => (
-                        <BoardCard
-                          key={`${task.node.id ?? i}`}
-                          task={task}
-                          t={t}
-                          onTaskDone={() => onRefresh?.()}
-                          onOpenDetail={(tid) =>
-                            setInspect({ runId: topoEvent.runId, taskId: tid })
-                          }
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: 12, fontSize: 12, color: t.textSecondary, padding: "14px 12px", border: `1px dashed ${t.border}`, borderRadius: 8 }}>
-                      {tr("暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡")}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <antd.Empty description={tr("请选择左侧项目")} />
-              )}
-            </div>
+            <div style={{ minWidth: 0, paddingLeft: 12 }}>{cardDetail}</div>
           </div>
         )
       ) : view === "board" ? (
@@ -2355,6 +2466,40 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             t={t}
             onTaskDone={() => onRefresh?.()}
             onOpenDetail={(tid, rid) => setInspect({ runId: rid, taskId: tid })}
+          />
+        )
+      ) : narrow ? (
+        /* 窄屏单栏 drill-in（同卡片视图）：项目列表（整宽）→ 点项目 →
+ 详情（整宽）+ 返回条；拖拽分隔条窄屏不出现。 */
+        events.length === 0 ? (
+          <antd.Empty description={tr("暂无工作流事件")} />
+        ) : detailOpen ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <NarrowDetailBack
+              title={topoEvent ? topoEvent.title || topoEvent.runId : ""}
+              onBack={() => setDetailOpen(false)}
+            />
+            <div
+              style={{
+                minWidth: 0,
+                padding: 12,
+                borderRadius: 10,
+                border: `1px solid ${t.border}`,
+                maxHeight: "calc(100vh - 300px)",
+                overflow: "auto",
+              }}
+            >
+              {topoDetail}
+            </div>
+          </div>
+        ) : (
+          <ProjectRail
+            events={sortedEvents}
+            selected={topoEvent?.runId ?? ""}
+            onSelect={(runId) => {
+              setTopoRun(runId);
+              setDetailOpen(true);
+            }}
           />
         )
       ) : (
@@ -2386,53 +2531,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               overflow: "auto",
             }}
           >
-            {topoEvent ? (
-              <div>
-                <div
-                  style={{
-                    fontWeight: 700,
-                    marginBottom: 10,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {topoEvent.title || topoEvent.runId}
-                  <antd.Tag
-                    color={statusMeta(topoEvent.status).color}
-                    style={{ margin: 0 }}
-                  >
-                    {statusMeta(topoEvent.status).label}
-                  </antd.Tag>
-                  <InterventionActions ev={topoEvent} onDone={() => onRefresh?.()} />
-                </div>
-                <InterruptsBlock
-                  interrupts={topoEvent.interrupts || []}
-                  pauseReason={topoEvent.pause_reason}
-                  tasks={topoEvent.taskDetails}
-                />
-                {topoEvent.loop ? <LoopBlock loop={topoEvent.loop} /> : null}
-                {(topoEvent.nodes || []).length > 0 ? (
-                  <DagTopo
-                    ev={topoEvent}
-                    t={t}
-                    onNodeClick={(nodeId) =>
-                      setInspect({ runId: topoEvent.runId, taskId: nodeId })
-                    }
-                  />
-                ) : (
-                  <div style={{ color: t.textSecondary, fontSize: 12 }}>
-                    {tr("暂无拓扑数据——本项目可能还在 planning（Coordinator 起草计划中），计划生成后请重试")}
-                  </div>
-                )}
-                {/* 任务状态转换事件流（#1233 events 端点）——拓扑详情补时间线维度
- （P1「拓扑不够详细」：DAG 只讲结构，事件流讲过程）。 */}
-                <WorkflowEventsTimeline projectId={topoEvent.runId} teamId={topoEvent.team_id} />
-              </div>
-            ) : (
-              <antd.Empty description={tr("请选择左侧项目")} />
-            )}
+            {topoDetail}
           </div>
         </div>
       )}

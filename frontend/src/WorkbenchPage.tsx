@@ -2431,6 +2431,8 @@ export default function WorkbenchPage() {
     w: window.innerWidth,
     h: window.innerHeight,
   }));
+  // 窄屏（竖屏/窄容器）单一判定——供 header 压缩等共用（与聊天单栏同判据）。
+  const narrow = isNarrowLayout(vp.w, vp.h);
   // 12.14：强制分栏开关（配置页）——忽略宽度判定，持久化 ui-state。
   const [chatForceWide, setChatForceWide] = React.useState<boolean>(
     () => readUiState(UI_STATE_KEY).chatForceWide === "true",
@@ -3140,24 +3142,36 @@ export default function WorkbenchPage() {
           alt="AgentTeams"
           style={{ display: "block" }}
         />
-        <div>
-          <antd.Typography.Title level={3} style={{ margin: 0 }}>
+        <div style={{ minWidth: 0 }}>
+          {/* 竖屏：标题缩到 16px 一行（level3=24px 在手机上过高）+ 隐藏描述行
+    （「多团队工作台（聊天/工作流/…）」与下方 tab 栏重复，版本在配置页可见）
+    ——整块从约 3 行压到 1 行，省下约 200px 竖向空间。宽屏保持原样。 */}
+          <antd.Typography.Title
+            level={3}
+            style={{
+              margin: 0,
+              fontSize: narrow ? 16 : undefined,
+              whiteSpace: "nowrap",
+            }}
+          >
             AgentTeams 团队工作台
           </antd.Typography.Title>
-          <WbTooltip
-            title={
-              connectorVersion && connectorVersion !== pluginVersion
-                ? tr("前端 {f} · 连接器 {b}", {
-                    f: pluginVersion,
-                    b: connectorVersion,
-                  })
-                : tr("插件版本 {v}", { v: pluginVersion })
-            }
-          >
-            <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              v{pluginVersion} —— 多团队工作台（聊天/工作流/产物/运维/管理）
-            </antd.Typography.Text>
-          </WbTooltip>
+          {!narrow && (
+            <WbTooltip
+              title={
+                connectorVersion && connectorVersion !== pluginVersion
+                  ? tr("前端 {f} · 连接器 {b}", {
+                      f: pluginVersion,
+                      b: connectorVersion,
+                    })
+                  : tr("插件版本 {v}", { v: pluginVersion })
+              }
+            >
+              <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                v{pluginVersion} —— 多团队工作台（聊天/工作流/产物/运维/管理）
+              </antd.Typography.Text>
+            </WbTooltip>
+          )}
         </div>
         <div style={{ flex: 1 }} />
         {config?.matrix?.user_id ? (

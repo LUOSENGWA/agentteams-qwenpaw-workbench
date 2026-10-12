@@ -3916,11 +3916,24 @@ function RoomChat(props: RoomChatProps) {
           </div>
         ) : null}
         {mentionTargets.length > 0 ? (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div
+            style={
+              narrow
+                ? {
+                    display: "flex",
+                    gap: 6,
+                    flexWrap: "nowrap",
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    paddingBottom: 2,
+                  }
+                : { display: "flex", gap: 6, flexWrap: "wrap" }
+            }
+          >
             {mentionTargets.map(([mxid, member]) => (
               <antd.Tag
                 key={mxid}
-                style={{ margin: 0, cursor: "pointer" }}
+                style={{ margin: 0, cursor: "pointer", flexShrink: 0 }}
                 onClick={() => insertMention(mxid)}
               >
                 @

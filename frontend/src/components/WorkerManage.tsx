@@ -532,6 +532,7 @@ function WorkerRow({
   sessionState?: WorkerSessionState;
 }) {
   const tr = useT();
+  const { narrow } = useWbViewport();
   const [expanded, setExpanded] = React.useState(false);
   const spawns = group.spawns || [];
   const hasRunning = spawns.some((s) => s.status === "running");
@@ -551,7 +552,14 @@ function WorkerRow({
         style={{
           display: "flex",
           alignItems: "center",
-          padding: "5px 0",
+          // 竖屏：单行放不下 角色/名/状态/模型/运行时/版本/mxid——详情自动换到
+          // 第 2 行（rowGap 分隔），消除横向溢出；宽屏保持单行 nowrap 不变。
+          flexWrap: narrow ? "wrap" : "nowrap",
+          rowGap: 4,
+          // 触屏：整行可点的行高 = TreeLine 22 + 上下 padding——narrow 下
+          // 11×2 把行扩到 ≥44px（稳定命中展开/收起、不误触邻行）；
+          // 宽屏 5px 原值不变。
+          padding: narrow ? "11px 0" : "5px 0",
           cursor: "pointer",
         }}
         onClick={() => setExpanded((v) => !v)}
@@ -656,6 +664,10 @@ function WorkerRow({
                 marginLeft: 8,
                 color: "#888",
                 borderColor: "transparent",
+                // 触屏：antd small 圆形按钮仅 24px——narrow 下内联
+                // width/height 覆盖扩到 32px；宽屏 undefined → 原 24px。
+                width: narrow ? 32 : undefined,
+                height: narrow ? 32 : undefined,
               }}
               icon={<MessageIcon />}
               onClick={(e: ReactNS.MouseEvent) => {
@@ -917,6 +929,7 @@ function TeamNode({
   onTeamConfig?: (teamName: string) => void;
 }) {
   const tr = useT();
+  const { narrow } = useWbViewport();
   const [expanded, setExpanded] = React.useState(true);
   const workerCount = team.workers.length;
 
@@ -926,7 +939,10 @@ function TeamNode({
         style={{
           display: "flex",
           alignItems: "center",
-          padding: "6px 0",
+          // 触屏：整行可点的行高 = 内容 ~22 + 上下 padding——narrow 下
+          // 11×2 把行扩到 ≥44px（手指稳定命中展开/收起）；宽屏 6px
+          // 原值不变。
+          padding: narrow ? "11px 0" : "6px 0",
           cursor: "pointer",
         }}
         onClick={() => setExpanded((v) => !v)}
@@ -960,7 +976,9 @@ function TeamNode({
                 marginLeft: 2,
                 color: "#999",
                 cursor: "pointer",
-                padding: 2,
+                // 触屏：13px 图标 + padding 2 仅 17px 热区——narrow 下
+                // 扩到 ~25px（WCAG 2.5.8 下限）；宽屏 2 原值不变。
+                padding: narrow ? 6 : 2,
               }}
             >
               <SettingsIcon size={13} />
