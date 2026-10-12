@@ -59,6 +59,11 @@ import {
 // 单一权威（I1–I6 不变量见模块头注释）；本地 mergeMessagePages 退役。
 import { RoomHistory, mergeForward } from "./roomHistory";
 import RoomChat from "./components/RoomChat";
+import {
+  WbViewportProvider,
+  isNarrowLayout,
+  NARROW_MAX_W,
+} from "./WbViewportContext";
 
 import TeamOverview from "./components/TeamOverview";
 import LOGO_URL from "./lib/logo";
@@ -363,7 +368,9 @@ const SelfCheckTab = React.memo(function SelfCheckTab({
  * 12.16：宽窄判定「长宽比优先」——竖屏（高>宽）一律单列，横屏且 ≥600 才分栏。 */
 /** 聊天分栏最小容器宽（13.8：600→800——双栏可用性下限：列表 160 + 聊天
  * ≥320 + 拖柄；16:9 全屏恒过线，竖屏手机不过线）。 */
-const CHAT_SPLIT_MIN_CONTAINER_W = 800;
+// 单一事实源 = WbViewportContext.NARROW_MAX_W（团队表卡片化 / 表渐隐共用）。
+// 聊天单栏/双栏阈值即此：容器可见宽 < 800 = 单栏 = 窄。
+const CHAT_SPLIT_MIN_CONTAINER_W = NARROW_MAX_W;
 
 // mergeMessagePages 退役 → roomHistory.mergeForward
 //（语义原样迁移，单一出处）。
@@ -2417,6 +2424,13 @@ export default function WorkbenchPage() {
     // 初值按容器满宽假设（首帧），挂载后 measure 实测容器宽修正。
     () => isWideLayout(window.innerWidth, window.innerWidth),
   );
+  // viewport 单一判定数据源——宽度=聊天同源（父链 clientWidth min），高度=容器
+  // 可见高（预留竖屏/长宽比判据）。narrow = isNarrowLayout(w,h) 供全部页面共用
+  // （团队表卡片化 / 表右缘渐隐与聊天单栏永远同步；要调只改 isNarrowLayout）。
+  const [vp, setVp] = React.useState(() => ({
+    w: window.innerWidth,
+    h: window.innerHeight,
+  }));
   // 12.14：强制分栏开关（配置页）——忽略宽度判定，持久化 ui-state。
   const [chatForceWide, setChatForceWide] = React.useState<boolean>(
     () => readUiState(UI_STATE_KEY).chatForceWide === "true",
@@ -2468,6 +2482,11 @@ export default function WorkbenchPage() {
       const tp = threadPanelRef.current;
       const eff = tp.open ? visible - tp.width : visible;
       setChatWideMeasured(eff >= CHAT_SPLIT_MIN_CONTAINER_W);
+      // 下发容器可见宽/高 → 全插件「窄」判定共用同一份实测（单一判定源，改判定只改一处）。
+      setVp({
+        w: visible,
+        h: mainRef.current?.clientHeight ?? window.innerHeight,
+      });
     };
     measure();
     measureRef.current = measure;
@@ -2932,6 +2951,13 @@ export default function WorkbenchPage() {
 
   return (
     <antd.ConfigProvider theme={themeCfg}>
+    <WbViewportProvider
+      value={{
+        width: vp.w,
+        height: vp.h,
+        narrow: isNarrowLayout(vp.w, vp.h),
+      }}
+    >
     <main
       ref={mainRef}
       className="wb-main"
@@ -3558,6 +3584,7 @@ export default function WorkbenchPage() {
         </antd.Drawer>
       ) : null}
     </main>
+    </WbViewportProvider>
     </antd.ConfigProvider>
   );
 }

@@ -1,5 +1,5 @@
 import type * as ReactNS from "react";
-import { useNarrow } from "../useNarrow";
+import { useWbViewport } from "../WbViewportContext";
 
 /**
  * WbTableFade —— 窄屏表格右缘渐隐（P3 横向滚动提示）。
@@ -21,7 +21,8 @@ export default function WbTableFade({
 }: {
   children: ReactNS.ReactNode;
 }) {
-  const narrow = useNarrow();
+  // 单一判定：容器可见宽 < 800（与聊天单栏同源同步，非 window 575 断点）
+  const { narrow } = useWbViewport();
   if (!narrow) return children;
   return <div className="wb-table-fade-r">{children}</div>;
 }

@@ -29,6 +29,7 @@ import { useThemeColors, readThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import { useTabActive } from "../tabActivity";
+import { useWbViewport } from "../WbViewportContext";
 import { usePoller } from "../usePoller";
 import { formatSize } from "../util";
 import {
@@ -2741,6 +2742,155 @@ function RoomChat(props: RoomChatProps) {
     onThreadPanelLayout(open, open ? panelWidth : 0);
   }, [isWide, threadPanelBody, panelWidth, onThreadPanelLayout]);
 
+  // 竖屏紧凑头（narrow=容器<800，单一判定与聊天单栏同源同步）：宽屏头部的
+  // 6+ 内联控件（成员/项目文件/搜索/⋯菜单/工具开关/成员条/发起任务）全部收进
+  // ⋯ 菜单，头部压成 1 行「[返回]|房间名(ellipsis)|阶段|⋯」，把换行吃掉的
+  // 垂直空间还给消息区。宽屏（桌面）走原完整头部，零改动。
+  const { narrow } = useWbViewport();
+  const compactMenuItems = [
+    {
+      key: "members",
+      label: tr("查看成员") + "（" + room.member_count + " " + tr("人") + "）",
+    },
+    ...(onOpenProjectFiles
+      ? [
+          {
+            key: "project",
+            label:
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><FolderIcon size={13} /> {tr("项目文件")}</span>,
+          },
+        ]
+      : []),
+    {
+      key: "search",
+      label:
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SearchIcon size={13} /> {tr("搜索")}</span>,
+    },
+    {
+      key: "tools",
+      label:
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><WrenchIcon size={13} /> {hideTools ? tr("显示工具") : tr("隐藏工具")}</span>,
+    },
+    ...(onNewTask && room.member_count <= 2
+      ? [
+          {
+            key: "newtask",
+            label:
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TodoIcon size={13} /> {tr("发起任务")}</span>,
+          },
+        ]
+      : []),
+    ...(onRenameRoom || onToggleMute || onLeaveRoom
+      ? [{ type: "divider" as const }]
+      : []),
+    ...(onRenameRoom
+      ? [
+          {
+            key: "rename",
+            label:
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><EditIcon size={13} /> {tr("重命名房间")}</span>,
+          },
+        ]
+      : []),
+    ...(onToggleMute
+      ? [
+          {
+            key: "mute",
+            label:
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellIcon size={13} /> {muted ? tr("取消静音") : tr("静音此房间")}</span>,
+          },
+        ]
+      : []),
+    ...(onLeaveRoom
+      ? [
+          { type: "divider" as const },
+          {
+            key: "leave",
+            danger: true,
+            label:
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
+          },
+        ]
+      : []),
+  ];
+  const compactMenuClick = ({ key }: { key: string }) => {
+    if (key === "members") setMemberPanelOpen(true);
+    else if (key === "project") onOpenProjectFiles?.(room);
+    else if (key === "search") setSearchOpen(true);
+    else if (key === "tools") setHideTools(!hideTools);
+    else if (key === "newtask") onNewTask?.();
+    else if (key === "rename") openRename();
+    else if (key === "mute") void onToggleMute?.();
+    else if (key === "leave") {
+      antd.Modal.confirm({
+        title: tr("退出房间「{name}」？", { name: room.name }),
+        content:
+          tr("退出后不再接收该房间消息。系统团队房间可能被 Controller 调和器自动重新邀请；非系统房间需再次被邀请才能进入。"),
+        okText: tr("退出"),
+        okButtonProps: { danger: true },
+        cancelText: tr("返回"),
+        onOk: () => onLeaveRoom?.(),
+      });
+    }
+  };
+  const compactHeader = (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 12px",
+        paddingBottom: 10,
+        borderBottom: "1px solid rgba(0,0,0,0.08)",
+        flexWrap: "nowrap",
+      }}
+    >
+      {headerPrefix}
+      {onBack ? (
+        <antd.Button size="small" onClick={onBack} aria-label={tr("返回")}>
+          ← 返回
+        </antd.Button>
+      ) : null}
+      <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+        <antd.Typography.Title
+          level={5}
+          style={{
+            margin: 0,
+            fontSize: 15,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {room.name}
+        </antd.Typography.Title>
+      </div>
+      {workerBadge?.phase ? (
+        <antd.Tag
+          color={
+            workerBadge.phase === "Running"
+              ? "green"
+              : workerBadge.phase === "Sleeping" ||
+                  workerBadge.phase === "Stopped"
+                ? "orange"
+                : "default"
+          }
+          style={{ margin: 0, flexShrink: 0 }}
+        >
+          {workerBadge.phase}
+        </antd.Tag>
+      ) : null}
+      <antd.Dropdown
+        trigger={["click"]}
+        menu={{ items: compactMenuItems, onClick: compactMenuClick }}
+      >
+        <antd.Button size="small" type="text" aria-label={tr("更多")}>
+          ⋯
+        </antd.Button>
+      </antd.Dropdown>
+    </div>
+  );
+
   return (
     <div
       style={{
@@ -2756,7 +2906,8 @@ function RoomChat(props: RoomChatProps) {
         minWidth: 0,
       }}
     >
-      {/* 顶部栏：[前置] + 返回 + 房间名 + 成员数 + 发起任务 */}
+      {/* 顶部栏：窄屏走紧凑头（1 行，次要控件进 ⋯ 菜单）；宽屏走完整头部 */}
+      {narrow ? compactHeader : (
       <div
         style={{
           display: "flex",
@@ -2943,6 +3094,7 @@ function RoomChat(props: RoomChatProps) {
           </antd.Button>
         ) : null}
       </div>
+      )}
 
       {/* 主区：左消息流 + 右线程面板（宽屏）；窄屏线程走 Drawer */}
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
