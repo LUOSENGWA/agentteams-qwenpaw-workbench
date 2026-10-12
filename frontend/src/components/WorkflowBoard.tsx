@@ -490,9 +490,9 @@ function DagTopo(props: {
           border: `1px solid ${t.border}`,
           borderRadius: 8,
           padding: 10,
-          // 降高：依赖图封顶（窄屏 42vh / 宽屏 56vh）——不再占满整页挡住页面划动；
-          // 超出的内容在容器内手内 pan/捏合查看。滚轮不受影响，页面仍可上下滚动。
-          maxHeight: narrow ? "42vh" : "56vh",
+          // 依赖图降高：窄屏再收窄（≤260px 且 ≤32vh）——之前 42vh 在桌面高视口下
+          // =378px 挡住页面划动；封顶后下方节点卡更快可见，图内 pan/捏合看全貌。宽屏 56vh。
+          maxHeight: narrow ? "min(32vh, 260px)" : "56vh",
           // 手势由本容器接管（双指捏合 / 单指拖动），不让浏览器默认滚动/缩放抢占。
           touchAction: "none",
           userSelect: "none",
@@ -604,9 +604,12 @@ function DagTopo(props: {
                       margin: 0,
                       fontSize: 12,
                       fontWeight: 500,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      // 窄屏换行：长名/长 id 的 min-content 撑爆 flex 行→横向拖动；
+                      // 换行后节点卡顶满容器宽、超出文字自动换行。宽屏保持 ellipsis。
+                      overflow: narrow ? "visible" : "hidden",
+                      textOverflow: narrow ? "clip" : "ellipsis",
+                      whiteSpace: narrow ? "normal" : "nowrap",
+                      wordBreak: narrow ? "break-word" : undefined,
                     }}
                     title={nodeLabel(n)}
                   >
@@ -618,9 +621,10 @@ function DagTopo(props: {
                       fontSize: 10,
                       fontFamily: "monospace",
                       color: t.textSecondary,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      overflow: narrow ? "visible" : "hidden",
+                      textOverflow: narrow ? "clip" : "ellipsis",
+                      whiteSpace: narrow ? "normal" : "nowrap",
+                      wordBreak: narrow ? "break-all" : undefined,
                     }}
                   >
                     {typeof n.id === "string" ? n.id : ""}
@@ -1339,7 +1343,9 @@ function BoardColumnsView(props: {
   // 测量 effect 对本分支无副作用（wrapRef 未挂载 → compute 早退）。
   if (narrow) {
     return (
-      <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+      // 窄屏看板恢复两列（单列 370px 卡过宽被点名）——两列各 ~175px，
+      // BoardCard 标题 2 行 wrap / projectTitle ellipsis / tags wrap，窄宽不横溢。
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, minWidth: 0 }}>
         {BOARD_COLUMNS.map((col) => {
           const colTasks = tasksByCol.get(col.key) || [];
           return (
@@ -2598,10 +2604,32 @@ function WorkflowBoard(props: WorkflowBoardProps) {
       ) : view === "list" ? (
         events.length === 0 ? (
           <antd.Empty description={tr("暂无工作流事件——Agent 执行任务时会在这里聚合")} />
+        ) : narrow ? (
+          // 窄屏「项目列表」tab：表格 7 列(合计~825px)在 360px 下"每栏太宽不可用"
+          // → 卡片列表(整宽、标题/元信息自动换行、操作按钮成行)——mobile table→cards。
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto", padding: "4px 2px" }}>
+            {sortedEvents.map((ev) => {
+              const meta = statusMeta(ev.status);
+              return (
+                <div
+                  key={ev.runId}
+                  style={{ border: `1px solid ${t.border}`, borderRadius: 8, padding: "8px 10px", background: t.cardBg, marginBottom: 8, boxSizing: "border-box" }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <b style={{ flex: 1, minWidth: 0, fontSize: 13, whiteSpace: "normal", wordBreak: "break-word" }}>{ev.title || ev.runId}</b>
+                    <antd.Tag color={meta.color} style={{ margin: 0, flexShrink: 0 }}>{meta.label}</antd.Tag>
+                  </div>
+                  <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 4, whiteSpace: "normal", wordBreak: "break-word" }}>
+                    {(ev.coordinator || "").split(":")[0].replace(/^@/, "")}{(ev.steps || []).length ? ` · ${(ev.steps || []).length} 步` : ""}{ev.ts ? ` · ${fmtTime(ev.ts)}` : ""}
+                  </div>
+                  <div style={{ marginTop: 6 }}><InterventionActions ev={ev} onDone={() => onRefresh?.()} /></div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          // 窄屏：表格在视口区内部纵向滚（表头行固定）；宽屏：overflow
-          // visible，长表仍由 tabpane 整页滚动（现状不变）。
-          <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: narrow ? "auto" : "visible" }}>
+          // 宽屏：表格在视口区内部纵向滚；长表仍由 tabpane 整页滚动（现状不变）。
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: "visible" }}>
           <antd.Table
             rowKey={(r: WorkflowEvent) => r.runId}
             size="small"
