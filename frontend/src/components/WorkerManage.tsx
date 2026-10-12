@@ -1,4 +1,4 @@
-import { BookmarkIcon, TeamIcon, HistoryIcon, WarnIcon, MessageIcon as ChatIcon, SettingsIcon } from "./icons";
+import { BookmarkIcon, TeamIcon, HistoryIcon, WarnIcon, MessageIcon as ChatIcon, SettingsIcon, WrenchIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -301,6 +301,60 @@ function SpawnRow({
   );
 }
 
+/** 竖屏友好弹窗（narrow = 容器可见宽 < 800）：底部抽屉式 antd Modal——
+ * 贴底 + 上缘圆角 + 左右留边（手机近全宽；宽窗口上限 560 居中），
+ * body ≤88dvh 纵向可滚，头部标题 + 关闭（antd 自带）。
+ * 运行配置 / 资源管理 的 narrow 呈现容器——内容 = 现有面板组件原样复用
+ * （只换「内联↔弹窗」的呈现容器，不重写内容）。
+ * 关闭动画结束（afterClose）才卸载内容：面板内 30s 轮询/取数随之下线，
+ * 关窗后零后台负载（house 口径 = afterClose 卸载，动画期间不闪空）。 */
+function NarrowSheet({
+  open,
+  title,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNS.ReactNode;
+}) {
+  const [render, setRender] = React.useState(open);
+  React.useEffect(() => {
+    if (open) setRender(true);
+  }, [open]);
+  return (
+    <antd.Modal
+      open={open}
+      afterClose={() => setRender(false)}
+      onCancel={onClose}
+      footer={null}
+      title={title}
+      width="min(calc(100vw - 24px), 560px)"
+      styles={{
+        // 底部抽屉：wrap 为全屏 fixed 容器（overflow auto），panel 贴底
+        // （absolute bottom:0；top:auto 覆盖 antd 默认 top:100px），
+        // 水平 margin auto 居中（phone 近全宽 / 宽窗口 560 居中）。
+        wrapper: {
+          position: "absolute",
+          top: "auto",
+          bottom: 0,
+          boxSizing: "border-box",
+          borderRadius: "16px 16px 0 0",
+        },
+        // 内容纵向可滚：头部(~55px) + body(≤88dvh-56) ≈ 88dvh 封顶。
+        body: {
+          maxHeight: "calc(88dvh - 56px)",
+          overflowY: "auto",
+          padding: "12px 16px",
+        },
+      }}
+    >
+      {render ? children : null}
+    </antd.Modal>
+  );
+}
+
 /** 管理信息面板：原管理页 Worker 表行全字段 + 生命周期操作（唤醒/休眠）。 */
 function WorkerManageInfo({
   worker,
@@ -318,6 +372,9 @@ function WorkerManageInfo({
   onOpenSettings?: () => void;
 }) {
   const tr = useT();
+  const { narrow } = useWbViewport();
+  // 竖屏：运行配置改底部抽屉弹窗（narrow 下不内联撑长列表）。
+  const [rcOpen, setRcOpen] = React.useState(false);
   const meta = phaseMeta(worker.phase);
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const busy = acting != null;
@@ -493,14 +550,43 @@ function WorkerManageInfo({
             </antd.Button>
           </WbTooltip>
         )}
+        {/* 竖屏：运行配置入口=紧凑按钮（内容进 NarrowSheet 底部抽屉，
+  不再内联撑长）；宽屏 undefined → 不渲染（下方内联面板即入口）。 */}
+        {narrow ? (
+          <antd.Button
+            size="small"
+            icon={<SettingsIcon size={12} />}
+            onClick={() => setRcOpen(true)}
+          >
+            {tr("运行配置")}
+          </antd.Button>
+        ) : null}
       </div>
       {/* ：Worker 运行配置（上游 #1231 消费）——
- 默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。 */}
-      <WorkerRuntimeConfig
-        name={worker.name}
-        l1={l1}
-        onOpenSettings={onOpenSettings}
-      />
+ 默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。
+ 竖屏（narrow）：内联 → 竖屏友好弹窗（上方紧凑按钮 → NarrowSheet
+ 底部抽屉；面板 sheet=true 去卡片外框/自动展开，内容与懒加载逻辑不变）；
+ 宽屏：保持内联。 */}
+      {narrow ? (
+        <NarrowSheet
+          open={rcOpen}
+          title={tr("运行配置")}
+          onClose={() => setRcOpen(false)}
+        >
+          <WorkerRuntimeConfig
+            sheet
+            name={worker.name}
+            l1={l1}
+            onOpenSettings={onOpenSettings}
+          />
+        </NarrowSheet>
+      ) : (
+        <WorkerRuntimeConfig
+          name={worker.name}
+          l1={l1}
+          onOpenSettings={onOpenSettings}
+        />
+      )}
     </div>
   );
 }
@@ -534,6 +620,8 @@ function WorkerRow({
   const tr = useT();
   const { narrow } = useWbViewport();
   const [expanded, setExpanded] = React.useState(false);
+  // 竖屏：资源管理改底部抽屉弹窗（narrow 下不内联撑长列表）。
+  const [resOpen, setResOpen] = React.useState(false);
   const spawns = group.spawns || [];
   const hasRunning = spawns.some((s) => s.status === "running");
   /* admin 数据未加载（L2/未配 token）时回退 tree 数据
@@ -695,9 +783,33 @@ function WorkerRow({
           {/* ：per-Worker 资源管理
  （技能/MCP/频道/工具 四页签，就地编辑）。
  技能/MCP 改为技能中心同款可编辑卡直接嵌入
- （SkillCenter onlyWorker），撤「去技能中心编辑」跳转。 */}
+ （SkillCenter onlyWorker），撤「去技能中心编辑」跳转。
+ 竖屏（narrow）：内联 → 竖屏友好弹窗（紧凑按钮 → NarrowSheet
+ 底部抽屉；面板 sheet=true 去卡片外框/标题行，内容与懒挂载逻辑不变）；
+ 宽屏：保持内联。 */}
           {adminWorker ? (
-            <WorkerResourcePanel worker={adminWorker} l1={l1} />
+            narrow ? (
+              <>
+                <div style={{ display: "flex", marginLeft: 30 }}>
+                  <antd.Button
+                    size="small"
+                    icon={<WrenchIcon size={12} />}
+                    onClick={() => setResOpen(true)}
+                  >
+                    {tr("资源管理")}
+                  </antd.Button>
+                </div>
+                <NarrowSheet
+                  open={resOpen}
+                  title={tr("资源管理（技能 / MCP / 频道 / 工具）")}
+                  onClose={() => setResOpen(false)}
+                >
+                  <WorkerResourcePanel sheet worker={adminWorker} l1={l1} />
+                </NarrowSheet>
+              </>
+            ) : (
+              <WorkerResourcePanel worker={adminWorker} l1={l1} />
+            )
           ) : null}
           {spawns.length
             ? spawns.map((node) => (

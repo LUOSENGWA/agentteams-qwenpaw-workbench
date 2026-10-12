@@ -35,15 +35,20 @@ const antd = host.antd;
 export default function WorkerResourcePanel({
   worker,
   l1,
+  sheet,
 }: {
   worker: WorkerInfo;
   /** L1（Controller admin token）→ 技能/MCP 卡可写；L2 = 只读（MCP 写权限
  * 另待上游 elevated capability 设计，技能 skills 在 L2 白名单内可写）。 */
   l1?: boolean;
+  /** 竖屏弹窗模式（WorkerManage NarrowSheet 底部抽屉承载）：去卡片外框
+ * 与折叠标题行（Modal 头已带标题/关闭钮，弹窗打开即展开态），直接渲染
+ * 四页签；逐页签懒挂载逻辑不变。 */
+  sheet?: boolean;
 }) {
   const t = useThemeColors();
   const tr = useT();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(sheet === true);
   const [tab, setTab] = React.useState("skills");
   // 懒挂载：首次打开才渲染子组件（频道/工具编辑器自带版本门与取数）。
   const [mounted, setMounted] = React.useState<Record<string, boolean>>({});
@@ -130,6 +135,19 @@ export default function WorkerResourcePanel({
       ),
     },
   ];
+
+  // sheet（竖屏弹窗）：Modal 即容器——无卡片外框/折叠标题行，
+  // 弹窗打开即展开态，四页签直接渲染（懒挂载逻辑不变）。
+  if (sheet) {
+    return (
+      <antd.Tabs
+        size="small"
+        activeKey={tab}
+        onChange={showTab}
+        items={items}
+      />
+    );
+  }
 
   return (
     <div
