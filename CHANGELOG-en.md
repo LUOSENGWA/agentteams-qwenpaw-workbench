@@ -5,6 +5,18 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.15.4 (2026-10-12 - unified portrait detection + compact chat header + tap-to-dismiss tooltips)
+
+**One shared portrait/narrow judgment for the whole plugin (chat single-column ⇔ team cards always in sync) + portrait chat header compressed to 1 line (secondary controls moved into the "more" menu, giving room back to messages) + touch tooltips dismiss the instant you press elsewhere**
+
+- **Unified portrait detection**: the chat "single/two-pane" judgment used one logic while the teams-table card layout and table edge-fade each used a different one (with different thresholds) — so the chat could already be single-column while the teams table had not gone to cards. Now there is a **single source of truth** for the whole plugin (the same container-visible-width < 800 the chat uses); the teams table, table edge-fade, and chat all share it — the moment the chat collapses to single column, the teams table becomes cards and the tables show the scroll-fade, together. Adjusting the threshold now means editing one place.
+- **Portrait chat compact header**: the portrait chat header crammed 6+ controls on one line (room name + member count + phase badge + project files + search + more menu + tool toggle + member strip + start-task) — at 390px they wrap to 3-4 lines, squeezing the message area down to a sliver. Now the portrait header is **one line**: `← back | room name (ellipsized) | phase | more`, with the secondary controls (members / project files / search / tool toggle / start-task / rename / mute / leave) all inside the **more menu** (reachable in one screen). Wide-desktop header is unchanged.
+- **Touch tooltip "press to dismiss"**: a touch-opened tooltip used to close only when you *released* elsewhere; now it closes the instant your finger *lands* elsewhere — no waiting for the release, snappier.
+
+**Verification**: tsc 0 · vite build single-file (0 import statements = host blob-safe) · pytest 374/374 · i18n 1,425 keys 0 missing · 5 smoke all pass · sensitive scan 0
+
+---
+
 ## 0.5.0-beta.15.3 (2026-10-11 - P1 portrait-refinement batch)
 
 **Portrait discoverability: tab bar horizontal-scroll edge fade (11 tabs no longer "invisible" at 390px) + teams table card layout in narrow + right-edge fade on 7 scrollable tables + copy-MXID (the one context-menu-only avatar action) moved into the tap panel**
