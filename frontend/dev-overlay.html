@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>overlay-audit</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f0f0f0; }
+  #audit-viewport { width: 390px; background: #fff; position: relative; }
+  /* 候选修复规则：窄屏（viewport<800）下 antd Modal/Drawer 固定像素宽会溢出
+     视口 → 强制全宽/带边距。验证 !important 能否覆盖 antd 的 inline width。 */
+  #audit-viewport .fit-overlay .ant-drawer-content-wrapper {
+    width: 100vw !important; max-width: 100vw !important;
+  }
+  #audit-viewport .fit-overlay .ant-modal {
+    width: calc(100vw - 16px) !important; max-width: calc(100vw - 16px) !important;
+  }
+  #scan-out { width: 760px; margin: 16px; padding: 12px; background: #111; color: #7fff7f; font: 12px/1.5 monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="audit-viewport" class="fit-overlay"><div id="root"></div></div>
+<pre id="scan-out">scanning…</pre>
+<script type="module">
+  import React from "react";
+  import { createRoot } from "react-dom/client";
+  import * as antdNs from "antd";
+  const antd = antdNs.default ?? antdNs;
+
+  window.QwenPaw = { host: { React, antd, useTheme: () => "light", useLocale: () => "zh-CN",
+    fetch: async () => new Response("{}", { status: 200 }) } };
+
+  // 渲染：一个 720 Modal（打开）+ 一个 620 Drawer（打开），看 390px 视口是否溢出
+  function App() {
+    return React.createElement(React.Fragment, null,
+      React.createElement(antd.Modal, { open: true, width: 720, title: "720 宽 Modal", footer: null, style: { top: 20 } },
+        React.createElement("div", null, "这是 720px 宽的 Modal 内容")),
+      React.createElement(antd.Drawer, { open: true, width: 620, title: "620 宽 Drawer" },
+        React.createElement("div", null, "这是 620px 宽的 Drawer 内容"))
+    );
+  }
+  const root = createRoot(document.getElementById("root"));
+  root.render(React.createElement(App));
+
+  setTimeout(() => {
+    const vp = document.getElementById("audit-viewport");
+    const vpRight = vp.getBoundingClientRect().right;
+    const out = [];
+    // 找所有 antd Modal/Drawer 主体，看右边界是否超视口
+    const targets = [...vp.querySelectorAll(".ant-modal, .ant-drawer-content-wrapper")];
+    targets.forEach((el) => {
+      const r = el.getBoundingClientRect();
+      const over = r.right - vpRight;
+      out.push(`${el.className.includes("drawer") ? "Drawer" : "Modal"}: right=${Math.round(r.right)} vpRight=${Math.round(vpRight)} ${over > 2 ? "⚠溢出+" + Math.round(over) : "✓适配"} w=${Math.round(r.width)}`);
+    });
+    if (!targets.length) out.push("（无 Modal/Drawer 渲染——open 未生效？检查 antd 版本 portal）");
+    document.getElementById("scan-out").textContent =
+      `OVERLAY AUDIT viewport=390px\nviewportRight=${Math.round(vpRight)}\n\n${out.join("\n")}\n\n` +
+      `结论：${targets.every((el) => el.getBoundingClientRect().right <= vpRight + 2) ? "✓ 修复生效，全适配 390px" : "⚠ 仍有溢出，CSS !important 未覆盖 inline width"}`;
+  }, 1500);
+</script>
+</body>
+</html>

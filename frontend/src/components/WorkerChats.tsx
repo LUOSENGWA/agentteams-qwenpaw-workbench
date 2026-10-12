@@ -814,6 +814,10 @@ function WorkerChats({
           }
           .wb-chat-bubble:hover .wb-copy { opacity: 1; }
           .wb-chat-bubble .wb-copy:hover { color: #1677ff; border-color: #1677ff; }
+          /* 纯触屏无 hover：复制按钮常显，否则 hover 才显 = 触屏不可达 */
+          @media (hover: none) {
+            .wb-chat-bubble .wb-copy { opacity: 1; }
+          }
         `}</style>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: "0 0 auto" }}>
           <antd.Button
