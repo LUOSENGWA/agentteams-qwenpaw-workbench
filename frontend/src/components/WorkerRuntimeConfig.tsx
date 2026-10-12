@@ -83,6 +83,7 @@ function WorkerRuntimeConfig({
   name,
   l1,
   onOpenSettings,
+  sheet,
 }: {
   name: string;
   /** 当前账号 L1（controller token）——L1-only 字段（并发限流/上下文管理/
@@ -92,10 +93,15 @@ function WorkerRuntimeConfig({
  * 配 Controller token 的入口（L1 账号密码登录只落 Higress Console
  * 会话 ≠ Controller 管理 token——两套凭证，Alert 给明确指引）。 */
   onOpenSettings?: () => void;
+  /** 竖屏弹窗模式（WorkerManage NarrowSheet 底部抽屉承载）：初始即展开
+ * （懒加载时点 = 弹窗打开，语义不变）+ 去卡片外框（margin/边框，弹窗
+ * 即容器）+ 头部隐藏收起抓手/图标/标题（Modal 头已带标题，仅留 qwenpaw
+ * 标签与 刷新/重置/保存 动作钮）。表单内容零改动。 */
+  sheet?: boolean;
 }) {
   const tr = useT();
-  const t = useThemeColors(); 
-  const [open, setOpen] = React.useState(false);
+  const t = useThemeColors();
+  const [open, setOpen] = React.useState(sheet === true);
   const [cfg, setCfg] = React.useState<Rc | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [gate, setGate] = React.useState<"" | "404" | "400">("");
@@ -921,25 +927,32 @@ function WorkerRuntimeConfig({
   return (
     <div
       style={{
-        margin: "4px 0 4px 22px",
-        border: "1px solid rgba(127,127,127,0.25)",
-        borderRadius: 8,
-        padding: 10,
+        // sheet（竖屏弹窗）：去卡片外框——Modal 即容器，padding 交给弹窗 body。
+        margin: sheet ? 0 : "4px 0 4px 22px",
+        border: sheet ? "none" : "1px solid rgba(127,127,127,0.25)",
+        borderRadius: sheet ? 0 : 8,
+        padding: sheet ? 0 : 10,
         display: "grid",
         gap: 10,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {/* 展开态补收起抓手（原展开后无法收起）。 */}
-        <span
-          style={{ width: 12, fontSize: 10, color: "#888", cursor: "pointer" }}
-          onClick={() => setOpen(false)}
-          title={tr("收起")}
-        >
-          ▾
-        </span>
-        <SettingsIcon size={13} />
-        <span style={{ fontWeight: 600, fontSize: 12.5 }}>{tr("运行配置")}</span>
+        {/* 展开态补收起抓手（原展开后无法收起）。
+ sheet 模式隐藏抓手/图标/标题——Modal 头已带标题与关闭钮，
+ 仅留 qwenpaw 标签 + 右侧动作钮（刷新/重置/保存）。 */}
+        {sheet ? null : (
+          <span
+            style={{ width: 12, fontSize: 10, color: "#888", cursor: "pointer" }}
+            onClick={() => setOpen(false)}
+            title={tr("收起")}
+          >
+            ▾
+          </span>
+        )}
+        {sheet ? null : <SettingsIcon size={13} />}
+        {sheet ? null : (
+          <span style={{ fontWeight: 600, fontSize: 12.5 }}>{tr("运行配置")}</span>
+        )}
         <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
           qwenpaw
         </antd.Tag>

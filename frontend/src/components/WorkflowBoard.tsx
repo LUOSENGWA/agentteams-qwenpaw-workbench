@@ -100,10 +100,14 @@ function ProjectRail(props: {
   events: WorkflowEvent[];
   selected: string;
   onSelect: (runId: string) => void;
+  /** fill=撑满父级可用高（flex:1+minHeight:0，窄屏 drill-in 整高列表用）；
+   * 默认（宽屏 master-detail）限高=容器高（百分比对栅格行解析）。
+   * 高度一律容器相对，禁 100vh（宿主为可拖拽容器，100vh≠容器高）。 */
+  fill?: boolean;
 }) {
   const t = useThemeColors();
   const tr = useT();
-  const { events, selected, onSelect } = props;
+  const { events, selected, onSelect, fill } = props;
   if (events.length === 0) return null;
   return (
     <div
@@ -111,7 +115,8 @@ function ProjectRail(props: {
         border: `1px solid ${t.border}`,
         borderRadius: 8,
         background: t.cardBg,
-        maxHeight: "calc(100vh - 320px)",
+        boxSizing: "border-box",
+        ...(fill ? { flex: 1, minHeight: 0 } : { maxHeight: "100%" }),
         overflowY: "auto",
       }}
     >
@@ -125,7 +130,9 @@ function ProjectRail(props: {
             onClick={() => onSelect(ev.runId)}
             style={{
               cursor: "pointer",
-              padding: "8px 12px",
+              // compact 单卡（≈40px ≤ 48px）：标题 1 行 + 元信息 1 行，
+              // drill-in 列表一屏 ≥5 卡。
+              padding: "4px 12px",
               borderBottom: `1px solid ${t.border}`,
               borderLeft: active ? `3px solid ${meta.color}` : "3px solid transparent",
               background: active ? `${meta.color}14` : undefined,
@@ -135,6 +142,7 @@ function ProjectRail(props: {
               style={{
                 fontSize: 12,
                 fontWeight: 600,
+                lineHeight: 1.25,
                 color: t.text,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -145,11 +153,13 @@ function ProjectRail(props: {
             </div>
             <div
               style={{
-                marginTop: 3,
+                marginTop: 2,
                 display: "flex",
                 gap: 6,
                 alignItems: "center",
                 fontSize: 11,
+                lineHeight: 1.25,
+                whiteSpace: "nowrap",
                 color: t.textSecondary,
               }}
             >
@@ -186,7 +196,8 @@ function ProjectRail(props: {
 function NarrowDetailBack(props: { title: string; onBack: () => void }) {
   const tr = useT();
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+    // flexShrink:0——drill-in 详情为纵向 flex 链，返回条恒占自身高（不被详情区挤压）。
+    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 0 }}>
       <antd.Button size="small" onClick={props.onBack} style={{ flexShrink: 0 }}>
         ← {tr("返回")}
       </antd.Button>
@@ -227,9 +238,147 @@ function DagTopo(props: {
   const tr = useT();
   const dag = React.useMemo(() => buildWorkflowDag(ev.nodes ?? []), [ev]);
   const colors = dagNodeColors(t);
-  // 缩放（0.4–2.0，步进 0.2；1 = 原始尺寸）。
+  // 缩放（0.4–2.0；1 = 原始尺寸）+ 平移 panX/panY。
+  // 按钮 0.2 步进（0.1 取整）；触屏捏合在同区间内连续。
   const [zoom, setZoom] = React.useState(1);
-  const clampZoom = (z: number) => Math.min(2, Math.max(0.4, Math.round(z * 10) / 10));
+  const [panX, setPanX] = React.useState(0);
+  const [panY, setPanY] = React.useState(0);
+  const clampZoom = (z: number) => Math.min(2, Math.max(0.4, z));
+  const stepZoom = (z: number, d: number) => clampZoom(Math.round((z + d) * 10) / 10);
+  const { narrow } = useWbViewport();
+  // 触屏手势（pinch-zoom / pan）：Pointer Events 统一 touch+mouse；
+  // 基线存 ref，每帧从手势起点绝对计算（不累加 delta，无漂移）。
+  const pointersRef = React.useRef<Map<number, { x: number; y: number }>>(new Map());
+  const gestureRef = React.useRef<{
+    mode: "idle" | "pan" | "pinch";
+    panId: number;
+    startPanX: number;
+    startPanY: number;
+    originX: number;
+    originY: number;
+    startDist: number;
+    startZoom: number;
+    lastPanX: number;
+    lastPanY: number;
+  }>({ mode: "idle", panId: -1, startPanX: 0, startPanY: 0, originX: 0, originY: 0, startDist: 0, startZoom: 1, lastPanX: 0, lastPanY: 0 });
+  const graphLocalPt = (e: ReactNS.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const onGraphPointerDown = (e: ReactNS.PointerEvent<HTMLDivElement>) => {
+    const pts = pointersRef.current;
+    if (pts.size >= 5) pts.clear();
+    const p = graphLocalPt(e);
+    pts.set(e.pointerId, p);
+    const g = gestureRef.current;
+    if (pts.size === 1) {
+      // 单指：移动超阈值才接管为 pan——轻点/点击（节点 → 任务巡检）原样穿透。
+      g.mode = "idle";
+      g.originX = p.x;
+      g.originY = p.y;
+    } else if (pts.size === 2 && g.mode !== "pinch") {
+      // 双指：pinch-zoom（距离比 → zoom）。
+      const [a, b] = [...pts.entries()];
+      g.mode = "pinch";
+      g.startDist = Math.max(8, Math.hypot(b[1].x - a[1].x, b[1].y - a[1].y));
+      g.startZoom = zoom;
+      g.startPanX = panX;
+      g.startPanY = panY;
+      g.lastPanX = panX;
+      g.lastPanY = panY;
+      for (const [id] of pts) {
+        try {
+          e.currentTarget.setPointerCapture(id);
+        } catch {
+          /* 捕获失败不影响手势计算 */
+        }
+      }
+    }
+  };
+  const onGraphPointerMove = (e: ReactNS.PointerEvent<HTMLDivElement>) => {
+    const pts = pointersRef.current;
+    if (!pts.has(e.pointerId)) return;
+    const p = graphLocalPt(e);
+    pts.set(e.pointerId, p);
+    const g = gestureRef.current;
+    if (g.mode === "pinch") {
+      if (pts.size < 2) return;
+      const [a, b] = [...pts.entries()];
+      const dist = Math.hypot(b[1].x - a[1].x, b[1].y - a[1].y);
+      const midX = (a[1].x + b[1].x) / 2;
+      const midY = (a[1].y + b[1].y) / 2;
+      const newZoom = clampZoom(g.startZoom * (dist / g.startDist));
+      // 双指中点保持不动：screen = content×zoom + pan → pan′ = mid − (mid − pan₀)×(zoom′/zoom₀)
+      const k = newZoom / g.startZoom;
+      const newPanX = midX - (midX - g.startPanX) * k;
+      const newPanY = midY - (midY - g.startPanY) * k;
+      g.lastPanX = newPanX;
+      g.lastPanY = newPanY;
+      setZoom(newZoom);
+      setPanX(newPanX);
+      setPanY(newPanY);
+      return;
+    }
+    if (g.mode === "idle" && pts.size === 1) {
+      if (Math.hypot(p.x - g.originX, p.y - g.originY) > 4) {
+        g.mode = "pan";
+        g.panId = e.pointerId;
+        g.startPanX = panX;
+        g.startPanY = panY;
+        g.originX = p.x;
+        g.originY = p.y;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* 捕获失败不影响手势计算 */
+        }
+        e.currentTarget.style.cursor = "grabbing";
+      }
+    }
+    if (g.mode === "pan" && e.pointerId === g.panId) {
+      setPanX(g.startPanX + (p.x - g.originX));
+      setPanY(g.startPanY + (p.y - g.originY));
+    }
+  };
+  const endGraphPointer = (e: ReactNS.PointerEvent<HTMLDivElement>) => {
+    const pts = pointersRef.current;
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    const g = gestureRef.current;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* 未捕获则忽略 */
+    }
+    if (g.mode === "pinch") {
+      if (pts.size === 1) {
+        // 剩一指：从当前 pan 继续拖动（该指针捏合时已捕获）。
+        const [id, p] = [...pts.entries()][0];
+        g.mode = "pan";
+        g.panId = id;
+        g.startPanX = g.lastPanX;
+        g.startPanY = g.lastPanY;
+        g.originX = p.x;
+        g.originY = p.y;
+        e.currentTarget.style.cursor = "grabbing";
+      } else if (pts.size === 0) {
+        g.mode = "idle";
+        g.panId = -1;
+        e.currentTarget.style.cursor = "grab";
+      }
+      return;
+    }
+    if (g.mode === "pan" && e.pointerId === g.panId) {
+      g.mode = "idle";
+      g.panId = -1;
+      e.currentTarget.style.cursor = "grab";
+    }
+  };
+  const onGraphPointerLeave = (e: ReactNS.PointerEvent<HTMLDivElement>) => {
+    // 未捕获（超阈值前）的单指移出容器即清记录，避免陈旧指针干扰下一次手势。
+    if (gestureRef.current.mode !== "idle") return;
+    pointersRef.current.delete(e.pointerId);
+  };
   // P2：任务分布 = 节点按 status 计数（dashboard NODE_STATUS 分布同语义）。
   const statuses = React.useMemo(() => {
     const m = new Map<string, number>();
@@ -274,7 +423,7 @@ function DagTopo(props: {
         >
           <button
             type="button"
-            onClick={() => setZoom((z) => clampZoom(z - 0.2))}
+            onClick={() => setZoom((z) => stepZoom(z, -0.2))}
             disabled={zoom <= 0.4}
             style={{
               width: 22,
@@ -293,7 +442,12 @@ function DagTopo(props: {
           </button>
           <button
             type="button"
-            onClick={() => setZoom(1)}
+            onClick={() => {
+              // 复位：zoom 归 1，pan 一并归零。
+              setZoom(1);
+              setPanX(0);
+              setPanY(0);
+            }}
             style={{
               height: 22,
               padding: "0 7px",
@@ -310,7 +464,7 @@ function DagTopo(props: {
           </button>
           <button
             type="button"
-            onClick={() => setZoom((z) => clampZoom(z + 0.2))}
+            onClick={() => setZoom((z) => stepZoom(z, 0.2))}
             disabled={zoom >= 2}
             style={{
               width: 22,
@@ -331,19 +485,43 @@ function DagTopo(props: {
       </div>
       <div
         style={{
-          overflow: "auto",
+          position: "relative",
+          overflow: "hidden",
           border: `1px solid ${t.border}`,
           borderRadius: 8,
           padding: 10,
+          // 降高：依赖图封顶（窄屏 42vh / 宽屏 56vh）——不再占满整页挡住页面划动；
+          // 超出的内容在容器内手内 pan/捏合查看。滚轮不受影响，页面仍可上下滚动。
+          maxHeight: narrow ? "42vh" : "56vh",
+          // 手势由本容器接管（双指捏合 / 单指拖动），不让浏览器默认滚动/缩放抢占。
+          touchAction: "none",
+          userSelect: "none",
+          WebkitUserSelect: "none",
+          cursor: "grab",
         }}
+        onPointerDown={onGraphPointerDown}
+        onPointerMove={onGraphPointerMove}
+        onPointerUp={endGraphPointer}
+        onPointerCancel={endGraphPointer}
+        onPointerLeave={onGraphPointerLeave}
+        onContextMenu={(e) => e.preventDefault()}
       >
+        <div
+          style={{
+            // 变换只挂这一层（GPU 合成层）；内层 SVG 保持原始尺寸，不逐帧重排。
+            transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+            transformOrigin: "0 0",
+            willChange: "transform",
+          }}
+        >
           <WorkflowDagSvg
             dag={dag}
             nodeColors={colors}
-            scale={zoom}
+            scale={1}
             onNodeClick={onNodeClick}
             title={`${ev.title} — ${tr("项目任务依赖图")}`}
           />
+        </div>
       </div>
       {dag.externalDeps.length > 0 ? (
         <div style={{ marginTop: 8, fontSize: 11, color: t.textSecondary }}>
@@ -400,7 +578,9 @@ function DagTopo(props: {
         <p style={secTitleStyle(t)}>
           {tr("节点（{n}）", { n: (ev.nodes ?? []).length })}
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        {/* 窄屏单列全宽堆叠（双列在 <800 容器内每列 <340px，节点名+
+状态 Tag 挤爆横向）；宽屏保持双列。 */}
+        <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 6 }}>
           {(ev.nodes ?? []).map((n) => {
             const st = n.status || "";
             const info = statusMeta(st);
@@ -980,7 +1160,14 @@ function BoardCard(props: {
         style={{
           fontWeight: 600,
           fontSize: 12.5,
+          lineHeight: 1.3,
           color: t.text,
+          // 限高：标题最多 2 行（卡高封顶，看板列一屏可看更多卡）；
+          // 全文走 title 悬停，不丢信息。
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
           wordBreak: "break-word",
           cursor: taskId && onOpenDetail ? "pointer" : "default",
         }}
@@ -1067,6 +1254,8 @@ function BoardColumnsView(props: {
 }) {
   const { events, t, onTaskDone, onOpenDetail } = props;
   const tr = useT();
+  // 窄屏（容器宽 < 800）单列纵向堆叠——判定与聊天单栏同源。
+  const { narrow } = useWbViewport();
   // 列内时间序：按 (项目 ts 新→旧, 原节点序) 稳定排序。
   const tasksByCol = React.useMemo(() => {
     const tsOf = new Map(events.map((e) => [e.runId, e.ts || 0]));
@@ -1143,6 +1332,75 @@ function BoardColumnsView(props: {
       ro?.disconnect();
     };
   }, []);
+
+  // 窄屏竖屏修（②③）：8 列 2×4 网格在 <800 容器内每列仅 ~170px，任务卡
+  // 标题/负责人 Tag 挤爆横向、还要横拖——改单列全宽纵向堆叠（卡全宽、
+  // 标题 2 行封顶），整体在 WorkflowBoard 视口区内纵向滚、不外溢页面。
+  // 测量 effect 对本分支无副作用（wrapRef 未挂载 → compute 早退）。
+  if (narrow) {
+    return (
+      <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+        {BOARD_COLUMNS.map((col) => {
+          const colTasks = tasksByCol.get(col.key) || [];
+          return (
+            <div
+              key={col.key}
+              style={{
+                border: `1px solid ${t.border}`,
+                borderRadius: 10,
+                background: t.cardBg,
+                padding: 8,
+                boxSizing: "border-box",
+                minWidth: 0,
+                display: "grid",
+                gap: 8,
+                alignContent: "start",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontWeight: 700,
+                  fontSize: 12.5,
+                  color: col.color,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: col.color,
+                    flexShrink: 0,
+                  }}
+                />
+                {tr(col.zh)}（{colTasks.length}）
+              </div>
+              {colTasks.length === 0 ? null : (
+                <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                  {colTasks.map((task) => (
+                    <BoardCard
+                      key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
+                      task={task}
+                      t={t}
+                      onTaskDone={onTaskDone}
+                      onOpenDetail={
+                        onOpenDetail
+                          ? (tid) => onOpenDetail(tid, task.runId)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -2092,7 +2350,9 @@ function WorkflowBoard(props: WorkflowBoardProps) {
     <div>
       <EventCard ev={topoEvent} t={t} onIntervention={() => onRefresh?.()} />
       {cardTasks.length > 0 ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10, marginTop: 12 }}>
+        /* 窄屏单列全宽堆叠（auto-fill 230px 在窄容器内换行不彻底、
+卡被压窄）；宽屏保持 auto-fill。 */
+        <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "repeat(auto-fill, minmax(230px, 1fr))", gap: 10, marginTop: 12 }}>
           {cardTasks.map((task, i) => (
             <BoardCard
               key={`${task.node.id ?? i}`}
@@ -2196,7 +2456,23 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   }, []);
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    // 根容器对齐宿主可见宽高：height:100%（父 = tabpane，定高链见
+    // WorkbenchPage scoped CSS：content-holder flex:1 → content 100% →
+    // tabpane-active height:100%+overflow-y:auto）。纵向 flex 链，视图区
+    // 取剩余高（flex:1+minHeight:0），全程容器相对——文件内不再出现 100vh
+    // （宿主为 Desktop OS 可拖拽容器，100vh≠容器高，短窗口下列表被压到
+    // 不可用/内容外溢）。wide 布局结构不变（仅高度来源由视口换为容器）。
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        width: "100%",
+        boxSizing: "border-box",
+        minWidth: 0,
+        gap: 12,
+      }}
+    >
       {/* 正源降级横幅（不再静默）——用户「Leader 项目看不到，只有
  Manager 的」= 正源 401 静默回退、只剩自己已加入房间的 Matrix 扫描。 */}
       {source === "rooms" ? (
@@ -2207,6 +2483,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             borderRadius: 8,
             padding: "8px 12px",
             fontSize: 12,
+            flexShrink: 0,
             color: t.text,
           }}
         >
@@ -2227,7 +2504,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               )}
         </div>
       ) : null}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
         <span style={{ fontWeight: 700, fontSize: 15, display: "inline-flex", alignItems: "center", gap: 6 }}><TopologyIcon size={15} /> {tr("工作流")}</span>
         <span style={{ fontSize: 12.5, color: t.textSecondary }}>
           {tr("项目")}（{events.length}）
@@ -2292,6 +2569,10 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         </WbTooltip>
       </div>
 
+      {/* 视图区：占根容器剩余高（flex:1+minHeight:0，容器相对链的唯一出口）。
+窄屏各分支在此内部纵向滚（返回条/表头不随内容滚走）；宽屏分支内容溢出
+时仍由 tabpane（overflow-y:auto）承接整页滚动——现状不变。 */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
       {aggGate && aggPhase === "aggregating" ? (
         /* ：首聚合态——冷启动期不渲染空
  表格（「烂」的直接观感源），明确加载态 + 自动重试（状态机见上）。 */
@@ -2318,6 +2599,9 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         events.length === 0 ? (
           <antd.Empty description={tr("暂无工作流事件——Agent 执行任务时会在这里聚合")} />
         ) : (
+          // 窄屏：表格在视口区内部纵向滚（表头行固定）；宽屏：overflow
+          // visible，长表仍由 tabpane 整页滚动（现状不变）。
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: narrow ? "auto" : "visible" }}>
           <antd.Table
             rowKey={(r: WorkflowEvent) => r.runId}
             size="small"
@@ -2405,23 +2689,27 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               },
             ]}
           />
+          </div>
         )
       ) : view === "card" ? (
         events.length === 0 ? (
           <antd.Empty description={tr("暂无工作流事件")} />
         ) : narrow ? (
           /* 窄屏单栏 drill-in：未选 = 项目列表（整宽，无拖拽分隔条）；
-点项目 = 详情（整宽）+ 顶部返回条。 */
+点项目 = 详情（整宽）+ 顶部返回条。高度=容器相对 flex 链：列表填满
+剩余高纵向滚（compact 卡一屏 ≥5 张）；详情区占返回条以下剩余高、内部
+滚（返回条固定不随内容滚走）。 */
           detailOpen ? (
-            <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 10 }}>
               <NarrowDetailBack
                 title={topoEvent ? topoEvent.title || topoEvent.runId : ""}
                 onBack={() => setDetailOpen(false)}
               />
-              <div style={{ minWidth: 0 }}>{cardDetail}</div>
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", minWidth: 0 }}>{cardDetail}</div>
             </div>
           ) : (
             <ProjectRail
+              fill
               events={sortedEvents}
               selected={topoEvent?.runId ?? ""}
               onSelect={(runId) => {
@@ -2433,7 +2721,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         ) : (
           /* master-detail：左=项目列表（排序/独立滚动），右=选中项目详情
  （EventCard + 任务卡网格）——对齐 dashboard 任务看板「项目」区。 */
-          <div style={{ display: "grid", gridTemplateColumns: `${railW}px 6px minmax(0, 1fr)`, gap: "12px 0", alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: `${railW}px 6px minmax(0, 1fr)`, gridTemplateRows: "100%", gap: "12px 0", alignItems: "start", flex: 1, minHeight: 0 }}>
             <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
             <div
               onMouseDown={startRailDrag}
@@ -2461,12 +2749,17 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             }
           />
         ) : (
+          // 窄屏：看板=单列纵向堆叠（见 BoardColumnsView），整块在视口区
+          // 内部纵向滚、不外溢页面；宽屏：overflow visible，8 列自适应
+          // 等高网格恰好铺满容器，滚动行为现状不变。
+          <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: narrow ? "auto" : "visible" }}>
           <BoardColumnsView
             events={sortedEvents}
             t={t}
             onTaskDone={() => onRefresh?.()}
             onOpenDetail={(tid, rid) => setInspect({ runId: rid, taskId: tid })}
           />
+          </div>
         )
       ) : narrow ? (
         /* 窄屏单栏 drill-in（同卡片视图）：项目列表（整宽）→ 点项目 →
@@ -2474,18 +2767,22 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         events.length === 0 ? (
           <antd.Empty description={tr("暂无工作流事件")} />
         ) : detailOpen ? (
-          <div style={{ display: "grid", gap: 10 }}>
+          /* 高度=容器相对：返回条固定，详情盒占剩余高（flex:1+minHeight:0）
+内部滚——旧 calc(100vh - 300px) 在宿主容器高≠视口高时外溢/过矮。 */
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 10 }}>
             <NarrowDetailBack
               title={topoEvent ? topoEvent.title || topoEvent.runId : ""}
               onBack={() => setDetailOpen(false)}
             />
             <div
               style={{
+                flex: 1,
+                minHeight: 0,
                 minWidth: 0,
                 padding: 12,
                 borderRadius: 10,
                 border: `1px solid ${t.border}`,
-                maxHeight: "calc(100vh - 300px)",
+                boxSizing: "border-box",
                 overflow: "auto",
               }}
             >
@@ -2494,6 +2791,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           </div>
         ) : (
           <ProjectRail
+            fill
             events={sortedEvents}
             selected={topoEvent?.runId ?? ""}
             onSelect={(runId) => {
@@ -2527,7 +2825,10 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               paddingLeft: 24,
               borderRadius: 10,
               border: `1px solid ${t.border}`,
-              maxHeight: "calc(100vh - 300px)",
+              // 容器相对：maxHeight:100% 对栅格行（gridTemplateRows:100% =
+              // 视口区高）解析；padding 由 border-box 吃掉，不撑爆。
+              boxSizing: "border-box",
+              maxHeight: "100%",
               overflow: "auto",
             }}
           >
@@ -2535,6 +2836,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           </div>
         </div>
       )}
+      </div>
       {/* #1230 任务巡检 Drawer（看板/卡片任务卡点击） */}
       <TaskInspectionDrawer
         ev={inspectEv}
