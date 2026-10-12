@@ -339,7 +339,8 @@ function NarrowSheet({
         body: {
           maxHeight: "min(66dvh, 560px)",
           overflowY: "auto",
-          padding: "12px 16px",
+          // 内容贴弹窗宽（左右内边距收紧 16→10，内层 Card/面板铺满弹窗宽）。
+          padding: "8px 10px",
         },
         content: { borderRadius: 12, overflow: "hidden" },
       }}
