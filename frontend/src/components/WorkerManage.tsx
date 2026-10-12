@@ -330,24 +330,18 @@ function NarrowSheet({
       onCancel={onClose}
       footer={null}
       title={title}
-      width="min(calc(100vw - 24px), 560px)"
+      width="min(calc(100vw - 32px), 520px)"
+      // 居中弹窗（非底部抽屉）——竖屏友好：不贴底(不靠下)、不超屏底(居中 + body 内滚)。
+      // 此前 styles.wrapper 强改 bottom:0 成底部抽屉→"太靠下 + 贴手势条/超底部"。
+      centered
       styles={{
-        // 底部抽屉：wrap 为全屏 fixed 容器（overflow auto），panel 贴底
-        // （absolute bottom:0；top:auto 覆盖 antd 默认 top:100px），
-        // 水平 margin auto 居中（phone 近全宽 / 宽窗口 560 居中）。
-        wrapper: {
-          position: "absolute",
-          top: "auto",
-          bottom: 0,
-          boxSizing: "border-box",
-          borderRadius: "16px 16px 0 0",
-        },
-        // 内容纵向可滚：头部(~55px) + body(≤88dvh-56) ≈ 88dvh 封顶。
+        // 内容纵向可滚：body 封顶 66dvh(≈屏高 2/3)，居中后上下留白，不超屏底。
         body: {
-          maxHeight: "calc(88dvh - 56px)",
+          maxHeight: "min(66dvh, 560px)",
           overflowY: "auto",
           padding: "12px 16px",
         },
+        content: { borderRadius: 12, overflow: "hidden" },
       }}
     >
       {render ? children : null}
