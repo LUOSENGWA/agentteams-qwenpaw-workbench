@@ -33,7 +33,7 @@ import WorkerRuntimeConfig from "./WorkerRuntimeConfig";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { useNarrow } from "../useNarrow";
+import { useWbViewport } from "../WbViewportContext";
 import WbTableFade from "./WbTableFade";
 import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 import type { WorkerSessionState } from "../workerSessionState";
@@ -1060,7 +1060,8 @@ function ExpandableText({
 
 function TeamTable({ teams }: { teams: AdminData["teams"] }) {
   const tr = useT();
-  const narrow = useNarrow();
+  // 单一判定：容器可见宽 < 800 = 卡片化（与聊天单栏同源同步，非 window 575 断点）
+  const { narrow } = useWbViewport();
   if (narrow) {
     // 窄屏卡片降级（P2）：5 列表格在 390px 挤压不可读 →
     // 每队一张卡（名+状态一行、Leader/Worker 一行、成员 Tag 换行）。

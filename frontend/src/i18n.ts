@@ -10,6 +10,7 @@ const DICT: Record<string, { en: string }> = {
   "产物": { en: "Artifacts" },
   "聊天": { en: "Chat" },
   "团队管理": { en: "Team Management" },
+  "更多": { en: "More" },
   // ── 远端团队知识库 / 群名搜索 / 通知跳转 / 首页快捷）──
   "远端团队知识库": { en: "Remote team KB" },
   "本机宿主 Agent": { en: "Local host agent" },
