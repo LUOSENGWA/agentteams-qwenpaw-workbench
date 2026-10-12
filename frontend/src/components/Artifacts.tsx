@@ -804,9 +804,11 @@ function Artifacts(props: ArtifactsProps) {
           rowKey="key"
           size="small"
           pagination={false}
-          // 固定列合计 ~700px，窄窗口下表格在右栏内部横滚，
-          // 不再撑破 flex 容器溢出页面（与左栏互挡的另一半根因）。
-          scroll={{ x: "max-content" }}
+          // 竖屏：容器固定屏宽、不横滚（此前 scroll.x:max-content 横滚=每列被横拖）——
+          // 窄屏隐藏次要列(来源/发送者/时间)只留 文件/类型/大小/操作 4 列 +
+          // tableLayout:fixed 铺满屏宽 + 文件名自动换行。宽屏保持原样(横滚)。
+          scroll={narrow ? undefined : { x: "max-content" }}
+          tableLayout={narrow ? "fixed" : undefined}
           dataSource={visibleFiles}
           columns={[
             {
@@ -817,7 +819,8 @@ function Artifacts(props: ArtifactsProps) {
                   {KIND_META[f.kind].icon}
                   <WbTooltip title={f.name} tap={false} >
                     <a
-                      style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: narrow ? 130 : 300 }}
+                      // 窄屏自动换行（不横滚/不截断），宽屏保持单行 ellipsis。
+                      style={{ overflow: narrow ? "visible" : "hidden", textOverflow: narrow ? "clip" : "ellipsis", whiteSpace: narrow ? "normal" : "nowrap", wordBreak: narrow ? "break-word" : undefined, maxWidth: narrow ? "none" : 300 }}
                       onClick={(e) => {
                         e.preventDefault();
                         void openPreview(f);
@@ -839,31 +842,41 @@ function Artifacts(props: ArtifactsProps) {
                 </antd.Tag>
               ),
             },
-            {
-              title: tr("来源"),
-              dataIndex: "source",
-              width: narrow ? 92 : 170,
-              ellipsis: true,
-            },
+            // 窄屏隐藏次要列（省宽度给文件名换行）
+            ...(narrow
+              ? []
+              : [
+                  {
+                    title: tr("来源"),
+                    dataIndex: "source",
+                    width: 170,
+                    ellipsis: true,
+                  },
+                ]),
             {
               title: tr("大小"),
               dataIndex: "size",
               width: narrow ? 62 : 90,
               render: (v: number | null) => formatSize(v) || "—",
             },
-            {
-              title: tr("发送者"),
-              dataIndex: "sender",
-              width: narrow ? 72 : 110,
-              render: (v: string) =>
-                (v.split(":")[0] || v || "").replace(/^@/, ""),
-            },
-            {
-              title: tr("时间"),
-              dataIndex: "time",
-              width: narrow ? 84 : 120,
-              render: (v: number) => (v ? formatTime(v) : "—"),
-            },
+            // 发送者/时间：窄屏隐藏次要列
+            ...(narrow
+              ? []
+              : [
+                  {
+                    title: tr("发送者"),
+                    dataIndex: "sender",
+                    width: 110,
+                    render: (v: string) =>
+                      (v.split(":")[0] || v || "").replace(/^@/, ""),
+                  },
+                  {
+                    title: tr("时间"),
+                    dataIndex: "time",
+                    width: 120,
+                    render: (v: number) => (v ? formatTime(v) : "—"),
+                  },
+                ]),
             {
               title: tr("操作"),
               key: "actions",
