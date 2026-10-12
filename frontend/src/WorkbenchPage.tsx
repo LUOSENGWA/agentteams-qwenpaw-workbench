@@ -2433,6 +2433,13 @@ export default function WorkbenchPage() {
   }));
   // 窄屏（竖屏/窄容器）单一判定——供 header 压缩等共用（与聊天单栏同判据）。
   const narrow = isNarrowLayout(vp.w, vp.h);
+  // provider 值 memo 化：WorkbenchPage 因别的原因 re-render（房间消息到达/tab 切换）时，
+  // 只要 vp.w/vp.h 没变，provider 值引用不变 → WbViewport 消费方不重渲（配合 measure dedup，
+  // 消除"聊一句→整块工作流/产物树跟着重渲"的多余 re-render）。
+  const vpValue = React.useMemo(
+    () => ({ width: vp.w, height: vp.h, narrow: isNarrowLayout(vp.w, vp.h) }),
+    [vp.w, vp.h],
+  );
   // 12.14：强制分栏开关（配置页）——忽略宽度判定，持久化 ui-state。
   const [chatForceWide, setChatForceWide] = React.useState<boolean>(
     () => readUiState(UI_STATE_KEY).chatForceWide === "true",
@@ -2474,6 +2481,22 @@ export default function WorkbenchPage() {
     [],
   );
   React.useEffect(() => {
+    // 「拖窗口布局反应慢」根子修：此前每 resize 事件 + RO(观察 main+~20 层祖先) 都
+    // 无条件 setVp/setChatWideMeasured → 每像素拖动都换 provider 值 → 整棵 workbench
+    // 树 re-render。正解=业界通用：rAF 合并(一帧最多算一次) + dedup(w/h/eff 都没实际
+    // 变≥1px 就不 setState，子像素噪音吞掉)。
+    const last = { w: -1, h: -1, e: -1 };
+    let raf = 0;
+    let qw = 0, qh = 0, qe = 0, qd = false;
+    const apply = () => {
+      raf = 0;
+      if (!qd) return;
+      const rw = Math.round(qw), rh = Math.round(qh), re = Math.round(qe);
+      if (rw === last.w && rh === last.h && re === last.e) return; // dedup
+      last.w = rw; last.h = rh; last.e = re;
+      setChatWideMeasured(qe >= CHAT_SPLIT_MIN_CONTAINER_W);
+      setVp({ w: qw, h: qh });
+    };
     const measure = () => {
       let visible = window.innerWidth;
       let el: HTMLElement | null = mainRef.current;
@@ -2482,13 +2505,11 @@ export default function WorkbenchPage() {
         el = el.parentElement;
       }
       const tp = threadPanelRef.current;
-      const eff = tp.open ? visible - tp.width : visible;
-      setChatWideMeasured(eff >= CHAT_SPLIT_MIN_CONTAINER_W);
-      // 下发容器可见宽/高 → 全插件「窄」判定共用同一份实测（单一判定源，改判定只改一处）。
-      setVp({
-        w: visible,
-        h: mainRef.current?.clientHeight ?? window.innerHeight,
-      });
+      qe = tp.open ? visible - tp.width : visible;
+      qw = visible;
+      qh = mainRef.current?.clientHeight ?? window.innerHeight;
+      qd = true;
+      if (!raf) raf = requestAnimationFrame(apply); // rAF 合并
     };
     measure();
     measureRef.current = measure;
@@ -2507,6 +2528,7 @@ export default function WorkbenchPage() {
     return () => {
       window.removeEventListener("resize", measure);
       ro?.disconnect();
+      if (raf) cancelAnimationFrame(raf);
     };
   }, []);
  // shell 高度改为
@@ -2953,13 +2975,7 @@ export default function WorkbenchPage() {
 
   return (
     <antd.ConfigProvider theme={themeCfg}>
-    <WbViewportProvider
-      value={{
-        width: vp.w,
-        height: vp.h,
-        narrow: isNarrowLayout(vp.w, vp.h),
-      }}
-    >
+    <WbViewportProvider value={vpValue}>
     <main
       ref={mainRef}
       className="wb-main"
