@@ -3972,7 +3972,9 @@ function RoomChat(props: RoomChatProps) {
                   border: `1px solid ${t.border}`,
                   borderRadius: "8px 8px 0 0",
                   boxShadow: "0 -4px 12px rgba(0,0,0,0.1)",
-                  maxHeight: 260,
+                  // 竖屏 @mention 弹层随收窄被"纵向拉长"（窄宽+260px 高=又高又窄）：
+                  // narrow 限高 150px，少显几条、别盖住半屏（竖屏优化）。
+                  maxHeight: narrow ? 150 : 260,
                   overflowY: "auto",
                   padding: 4,
                 }}
@@ -4042,7 +4044,9 @@ function RoomChat(props: RoomChatProps) {
             </div>
             <div
               ref={composerBoxRef}
-              style={{ height: composerH, flexShrink: 0 }}
+              // 竖屏输入框太高：narrow 时把默认 76px 收到 52px（≈1.5 行）；
+              // 宽屏/用户拖拽仍自由（drag 直改 DOM，re-render 时按此钳）。
+              style={{ height: narrow ? Math.min(composerH, 52) : composerH, flexShrink: 0 }}
             >
             <antd.Input.TextArea
               ref={composerRef}
