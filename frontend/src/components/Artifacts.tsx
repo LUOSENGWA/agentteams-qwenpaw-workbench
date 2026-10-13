@@ -1103,7 +1103,7 @@ function Artifacts(props: ArtifactsProps) {
               {listTitle}
             </span>
           </div>
-          <div style={{ flex: 1, minWidth: 0, overflowY: "auto" }}>
+          <div style={{ flex: 1, minWidth: 0, maxWidth: "100%", overflowY: "auto", overflowX: "hidden" }}>
             {fileListBlock}
           </div>
         </div>
