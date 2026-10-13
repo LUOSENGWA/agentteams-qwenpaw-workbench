@@ -15,6 +15,11 @@ import type * as ReactNS from "react";
  *
  * h（容器可见高）一并下发并预留到 isNarrowLayout：将来要按长宽比 / 竖屏
  * （height > width 一律窄）加判据，只改 isNarrowLayout 一行即可。
+ *
+ * 性能约定（拖窗卡顿根修）：provider 值 identity 只在 **narrow 翻转**
+ * 时变化（像素实时在 WorkbenchPage 的 ref 里，不进 state）→ 拖窗全程消费方零重渲。
+ * 因此 width/height 是**翻转时刻的快照**——消费方只能依赖 narrow；要实时像素
+ * 宽度请自行 ResizeObserver 测量，勿把像素塞回 state。
  */
 const host = window.QwenPaw.host;
 const React = host.React;
