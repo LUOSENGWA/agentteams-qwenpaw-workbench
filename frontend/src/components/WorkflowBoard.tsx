@@ -2394,8 +2394,8 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   // 窄/宽共用：拓扑视图详情体（标题行 + 干预/中断/loop + DAG + 事件流）。
   const topoDetail = topoEvent ? (
     <div>
-      {/* 窄屏：返回按钮并入此标题行（省纵向空间——删上方重复标题栏）；
-      sticky 顶部保滚 DAG 时返回可点。宽屏无返回（左栏列表在）。 */}
+      {/* 窄屏：返回按钮在上条工具栏排序钮左侧（省标题行纵向空间，
+      工具栏恒可见）；此标题行 sticky 顶部保滚 DAG 时标题可追。宽屏无返回（左栏列表在）。 */}
       <div
         style={{
           fontWeight: 700,
@@ -2823,7 +2823,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           /* 高度=容器相对：返回条固定，详情盒占剩余高（flex:1+minHeight:0）
 内部滚——旧 calc(100vh - 300px) 在宿主容器高≠视口高时外溢/过矮。 */
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 10 }}>
-            {/* 返回按钮已并入 topoDetail 标题行（sticky）——上方 NarrowDetailBack 删除省纵向空间。 */}
+            {/* 返回钮在工具栏排序钮左侧——上方重复标题栏/NarrowDetailBack 已删省纵向空间。 */}
             <div
               style={{
                 flex: 1,
