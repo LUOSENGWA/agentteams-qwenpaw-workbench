@@ -3,6 +3,19 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.12 (2026-10-13 - local offline mode: zero data dialing + config kept locally)
+
+**Root fix for plugin behavior when running in a local environment (local plugin host, no QwenPaw server): the 503 error storm is eliminated structurally — the data domain (rooms / chat / workflows / artifacts) is not mounted at the entry point, so no data endpoint is ever dialed; the config domain stays fully usable — connection settings can be filled in and saved up front (kept locally, credentials redacted), and once a server is available this configuration can be applied via the Web console's "Backup & Restore → Import". Console host (online path) behavior is unchanged**
+
+- **Offline detection**: the local plugin host shell exposes a static offline signal (`QP.host.isOffline`); the plugin entry branches on it at render time — the local host mounts the offline page, the console host mounts the full workbench as before. One artifact serves both ends; the online path is untouched.
+- **Data domain**: the offline page mounts no data-page component — no dialing, no 503 errors, no polling; an offline banner explains why the data endpoints are unavailable and where the saved configuration goes.
+- **Config domain**: the offline page embeds the original settings panel; config read/write (GET/PUT), export/import, connection test and admin verification run against a localStorage emulation layer — credential redaction (echoed as `***`, plaintext never returned), position-paired merging of address entries, pre-save credential-gap interception and enum downgrade rules aligned line by line with the server connector; a saved configuration survives reopening the plugin (browser local storage).
+- **Connection test (offline)**: every address row honestly reports unreachable (the local host has no network path), with effective/pinned address computation identical to the online logic; admin verification returns a clear message — fill in and save now, verify once a server is connected.
+
+**Verification**: tsc 0 · vite build single file (all guards passed) · sensitive scan 0
+
+---
+
 ## 0.5.0-beta.15.11 (2026-10-13 - portrait round 7: board mobile layout + artifact name wrap + modal polish + container width alignment)
 
 **Round 7 on the 376px device: the project board in portrait switches to a mobile kanban layout (status columns stack vertically at full width, task cards inside a column scroll horizontally — no more squeezed strips); long project names in the artifacts list wrap and stay fully visible (no more row-stretching or name loss); the "runtime config / resource management" modals get horizontally scrollable tab strips and skill cards now render fully inside the modal without clipping; the knowledge base column heights use the dynamic viewport so the mobile browser chrome no longer pushes content off-screen**

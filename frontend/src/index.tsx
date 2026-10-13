@@ -121,6 +121,7 @@ const SIDEBAR_ICON: ReactNS.ReactNode = hostReact
   : LOGO_ICON;
 
 import WorkbenchPage from "./WorkbenchPage";
+import WorkbenchOfflinePage from "./WorkbenchOfflinePage";
 import ApprovalCard from "./components/ApprovalCard";
 import { fetchRoomApprovals, requestJson } from "./api";
 import { getApprovalCount, subscribeApprovalCount } from "./approvalsStore";
@@ -377,10 +378,19 @@ try {
   console.warn("[agentteams-qwenpaw-workbench] chat.approval.render unavailable:", e);
 }
 
+// 入口分流：本地插件宿主（QP.host.isOffline）挂离线页（数据域不挂载，
+// 配置域走 localStorage 模拟层）；console 宿主照旧挂全量工作台。
+// 分流在渲染时读 host 标志——同一份产物两端通用，console 路径零改动。
+function WorkbenchEntry() {
+  return (window.QwenPaw.host as { isOffline?: boolean }).isOffline
+    ? React.createElement(WorkbenchOfflinePage)
+    : React.createElement(WorkbenchPage);
+}
+
 window.QwenPaw.registerRoutes?.("agentteams-qwenpaw-workbench", [
   {
     path: "/apps/agentteams-qwenpaw-workbench",
-    component: WorkbenchPage,
+    component: WorkbenchEntry,
     label: "团队工作台",
     // /apps/ 路由的 icon 是死代码（宿主 shim 对 PawApp 路由只注册 route，
     // 不渲染 sidebar；类型也只收 string）——App Center 卡片 logo 走
@@ -394,7 +404,7 @@ window.QwenPaw.registerRoutes?.("agentteams-qwenpaw-workbench", [
 window.QwenPaw.route?.add("agentteams-qwenpaw-workbench", {
   id: "agentteams-qwenpaw-workbench.main",
   path: "/plugin/agentteams-qwenpaw-workbench",
-  component: WorkbenchPage,
+  component: WorkbenchEntry,
 });
 
 // Clean up the empty group header synthesized by v0.1.2/0.1.3/0.1.4.
