@@ -1036,17 +1036,6 @@ function formatTime(ts: number): string {
   return `${hh}:${mm}`;
 }
 
-/** 文件名截断：>19 字符裁成「前 15 字符…扩展名」，保留扩展名可见。 */
-function truncateFilename(name: string): string {
-  if (name.length <= 19) return name;
-  const dot = name.lastIndexOf(".");
-  if (dot > 0 && dot >= name.length - 8) {
-    const base = name.slice(0, Math.max(15, dot - (name.length - 19) - 3));
-    return `${base.slice(0, 15)}…${name.slice(dot)}`;
-  }
-  return `${name.slice(0, 15)}…${name.slice(-4)}`;
-}
-
 /** 日期分隔符标签：今天/昨天/近 6 天周几/具体日期（Element 同款四级）。 */
 function dateLabel(ts: number, tr: (s: string, vars?: Record<string, string | number>) => string): string {
   const d = new Date(ts);
