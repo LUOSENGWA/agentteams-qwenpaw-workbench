@@ -1399,15 +1399,15 @@ function BoardColumnsView(props: {
     };
   }, []);
 
-  // 窄屏竖屏修（②③）：8 列 2×4 网格在 <800 容器内每列仅 ~170px，任务卡
-  // 标题/负责人 Tag 挤爆横向、还要横拖——改单列全宽纵向堆叠（卡全宽、
-  // 标题 2 行封顶），整体在 WorkflowBoard 视口区内纵向滚、不外溢页面。
+  // 窄屏（移动看板标准布局，Trello/Jira mobile 同款）：状态列纵向堆叠、
+  // 全宽；列内任务卡=固定宽（165px）横向滚动行 + snap。
+  // 两版旧布局的问题：2×4 网格在 376px 下每列仅 ~170px，卡被挤成竖条；
+  // 单列全宽则 348px 卡过宽。固定卡宽 + 横滚是移动端任务看板的通用解
+  // （卡保持可读宽，列不再变细，>2 张卡时横向滑动=原生手势）。
   // 测量 effect 对本分支无副作用（wrapRef 未挂载 → compute 早退）。
   if (narrow) {
     return (
-      // 窄屏看板恢复两列（单列 370px 卡过宽被点名）——minmax(0,1fr) 让列可收缩到 0，
-      // 长串（MXID/URL）不会撑破列宽（BoardCard 标题 wrap / projectTitle ellipsis / tags wrap）。
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8, minWidth: 0 }}>
+      <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
         {BOARD_COLUMNS.map((col) => {
           const colTasks = tasksByCol.get(col.key) || [];
           return (
@@ -1420,9 +1420,6 @@ function BoardColumnsView(props: {
                 padding: 8,
                 boxSizing: "border-box",
                 minWidth: 0,
-                display: "grid",
-                gap: 8,
-                alignContent: "start",
               }}
             >
               <div
@@ -1433,6 +1430,7 @@ function BoardColumnsView(props: {
                   fontWeight: 700,
                   fontSize: 12.5,
                   color: col.color,
+                  marginBottom: colTasks.length > 0 ? 8 : 0,
                 }}
               >
                 <span
@@ -1447,20 +1445,40 @@ function BoardColumnsView(props: {
                 {tr(col.zh)}（{colTasks.length}）
               </div>
               {colTasks.length === 0 ? null : (
-                // 每列最多显示 ~3 卡，超出列内纵向滚（对齐宽屏 grid.h+overflowY 行为）。
-                <div style={{ display: "grid", gap: 8, minWidth: 0, maxHeight: "min(40vh, 320px)", overflowY: "auto", overflowX: "hidden" }}>
+                // 横向滚动卡行：固定卡宽 165px（~2 张半可见=滚动暗示），
+                // snap 对齐（proximity=轻扫不锁死，与原生列表手感一致）。
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    minWidth: 0,
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    paddingBottom: 2,
+                    scrollSnapType: "x proximity",
+                  }}
+                >
                   {colTasks.map((task) => (
-                    <BoardCard
+                    <div
                       key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
-                      task={task}
-                      t={t}
-                      onTaskDone={onTaskDone}
-                      onOpenDetail={
-                        onOpenDetail
-                          ? (tid) => onOpenDetail(tid, task.runId)
-                          : undefined
-                      }
-                    />
+                      style={{
+                        flex: "0 0 165px",
+                        width: 165,
+                        minWidth: 0,
+                        scrollSnapAlign: "start",
+                      }}
+                    >
+                      <BoardCard
+                        task={task}
+                        t={t}
+                        onTaskDone={onTaskDone}
+                        onOpenDetail={
+                          onOpenDetail
+                            ? (tid) => onOpenDetail(tid, task.runId)
+                            : undefined
+                        }
+                      />
+                    </div>
                   ))}
                 </div>
               )}

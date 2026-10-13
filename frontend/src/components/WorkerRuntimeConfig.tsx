@@ -1021,7 +1021,7 @@ function WorkerRuntimeConfig({
               key: "basic",
               label: tr("ReAct 智能体"),
               children: (
-                <antd.Card size="small" title={tr("ReAct 智能体")} style={{ marginTop: 4 }}>
+                <antd.Card size="small" title={sheet ? undefined : tr("ReAct 智能体")} style={{ marginTop: 4 }}>
                   {/* 六 tab 补齐：按 QwenPaw ReactAgentCard
  行序对齐（语言/时区/项目目录/代码能力 = QwenPaw 本机
  字段，Controller running-config 不暴露，不做）。
@@ -1121,7 +1121,7 @@ function WorkerRuntimeConfig({
               key: "loop",
               label: tr("智能体 Loop 设置"),
               children: (
-                <antd.Card size="small" title={tr("智能体 Loop 设置")} style={{ marginTop: 4 }}>
+                <antd.Card size="small" title={sheet ? undefined : tr("智能体 Loop 设置")} style={{ marginTop: 4 }}>
                   {/* （13.6 「Loop 设置抄 QwenPaw 没抄
  完」）：按 QwenPaw AgentLoopCard 补齐——Default 模式 gate
  管道（iteration/doom_loop/rubric）+ Goal/Mission 内置
@@ -1713,7 +1713,7 @@ function WorkerRuntimeConfig({
               key: "retry",
               label: tr("LLM 自动重试"),
               children: (
-                <antd.Card size="small" title={tr("LLM 自动重试")} style={{ marginTop: 4 }}>
+                <antd.Card size="small" title={sheet ? undefined : tr("LLM 自动重试")} style={{ marginTop: 4 }}>
                   <CfgRow
                     label={tr("启用自动重试")}
                     tip={tr("LLM 调用失败（限流/超时/5xx）时自动重试。关闭后失败立即上抛。")}
@@ -1794,7 +1794,7 @@ function WorkerRuntimeConfig({
               key: "rate",
               label: tr("LLM 并发限流"),
               children: (
-                <antd.Card size="small" title={tr("LLM 并发限流")} style={{ marginTop: 4 }}>
+                <antd.Card size="small" title={sheet ? undefined : tr("LLM 并发限流")} style={{ marginTop: 4 }}>
                   {!l1 ? (
                     <antd.Alert
                       type="info"
@@ -1889,7 +1889,7 @@ function WorkerRuntimeConfig({
               key: "ctx",
               label: tr("上下文管理"),
               children: (
-                <antd.Card size="small" title={tr("上下文管理")} style={{ marginTop: 4 }}>
+                <antd.Card size="small" title={sheet ? undefined : tr("上下文管理")} style={{ marginTop: 4 }}>
                   {!l1 ? (
                     <antd.Alert
                       type="info"
@@ -2078,7 +2078,7 @@ function WorkerRuntimeConfig({
               key: "mem",
               label: tr("长期记忆"),
               children: (
-                <antd.Card size="small" title={tr("长期记忆")} style={{ marginTop: 4 }}>
+                <antd.Card size="small" title={sheet ? undefined : tr("长期记忆")} style={{ marginTop: 4 }}>
                   <CfgRow
                     label={tr("记忆后端")}
                     tip={tr("memory_manager_backend——remelight=轻量本地记忆，adbpg=AnalyticDB PG 向量记忆。")}

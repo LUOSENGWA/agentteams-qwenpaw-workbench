@@ -42,7 +42,10 @@ import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 // // 两栏固定等高（min(viewport 余量, 640px)，下限 460），Card 内 body 独立滚动。
-const KB_COL_STYLE = { height: "min(calc(100vh - 330px), 640px)", minHeight: 460, minWidth: 0 } as const;
+// dvh（移动端=可视区动态高，地址栏伸缩时准；桌面端=vh 无差异）。
+// 全容器化需 KB 页结构重构（图谱卡夹在工具栏与两栏之间，Row 非定高父唯一
+// 子）——留档 state/p1-ui-round.md，本批先消 vh 不准根。
+const KB_COL_STYLE = { height: "min(calc(100dvh - 330px), 640px)", minHeight: 460, minWidth: 0 } as const;
 const KB_CARD_STYLE = { height: "100%", display: "flex", flexDirection: "column" as const } as const;
 const KB_CARD_BODY_STYLE = { flex: 1, minHeight: 0, overflowY: "auto" as const };
 
