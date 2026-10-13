@@ -84,7 +84,7 @@ class _FakeSyncClient:
 
 def _l2_cfg(token: str = "") -> dict:
     return {
-        "matrix": {"access_token": "MX_TOKEN", "user_id": "@luo:test"},
+        "matrix": {"access_token": "MX_TOKEN", "user_id": "@user:test"},
         "matrix_homeservers": ["http://mx.local:6867"],
         "controller_urls": ["http://ctl.local:6866"],
         "controller_token": token,
@@ -94,7 +94,7 @@ def _l2_cfg(token: str = "") -> dict:
 def _run_l2(monkeypatch, token: str = "", ctl_status: int = 200):
     fake = _FakeSyncClient(ctl_status=ctl_status)
     monkeypatch.setattr(selfcheck_mod.httpx, "Client", fake)
-    monkeypatch.setattr(matrix_client, "whoami", lambda hs, tk: {"user_id": "@luo:test"})
+    monkeypatch.setattr(matrix_client, "whoami", lambda hs, tk: {"user_id": "@user:test"})
     monkeypatch.setattr(matrix_client, "joined_rooms", lambda hs, tk: {"joined_rooms": ["!r1:test"]})
     # working cache 清空 → 用配置首个地址。
     from agentteams_connector import router as router_mod
