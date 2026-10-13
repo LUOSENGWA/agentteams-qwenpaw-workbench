@@ -9,6 +9,7 @@
 // 走 TTL+在飞去重+标签失效+LRU（requestCache.ts）；写面（POST/DELETE）不包。
 import { cachedRequest, invalidateTags } from "./requestCache";
 import { publishApprovalCount } from "./approvalsStore";
+import { tryOfflineConfigEndpoint } from "./offlineBackend";
 
 export async function requestJson(
   path: string,
@@ -16,6 +17,14 @@ export async function requestJson(
   timeoutMs?: number,
 ): Promise<unknown> {
   const host = window.QwenPaw.host;
+  // 本地离线模式（本地插件宿主 shell，QP.host.isOffline）——配置域走
+  // localStorage 模拟层（脱敏/合并语义对齐服务端连接器）；未命中的端点
+  // 放行宿主 fetch → 受控 503（离线页入口级不挂载数据页，不会拨号）。
+  // console 宿主无 isOffline 字段 → 本分支恒 false，在线路径零改动。
+  if ((host as { isOffline?: boolean }).isOffline) {
+    const emu = tryOfflineConfigEndpoint(path, init);
+    if (emu !== null) return await emu;
+  }
   let timer: ReturnType<typeof setTimeout> | null = null;
   let response: Response;
   try {
