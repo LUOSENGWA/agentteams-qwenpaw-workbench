@@ -46,6 +46,7 @@ import {
 import { strToU8, zipSync } from "fflate";
 import { invalidateTags } from "../requestCache";
 import { WbTooltip } from "./WbTooltip";
+import { useWbViewport } from "../WbViewportContext";
 
 /** ：Worker 行按 team 分组
  * （保持原始相对序；无 team 的归「未分组」殿后）。 */
@@ -122,6 +123,7 @@ export default function SkillCenter({
 }) {
   const t = useThemeColors();
   const tr = useT();
+  const { narrow } = useWbViewport();
   const showCatalog = !sections || sections.includes("catalog");
   const showMatrix = !sections || sections.includes("matrix");
   const showMcp = !sections || sections.includes("mcp");
@@ -143,6 +145,18 @@ export default function SkillCenter({
   const [upDesc, setUpDesc] = React.useState("");
   const [upBody, setUpBody] = React.useState("");
   const [upBusy, setUpBusy] = React.useState(false);
+  // 技能详情弹窗（卡面去描述后，完整 description/source/version 的唯一入口
+  // = 分配卡与物化层行的「详情」按钮，376 竖屏）。显示模型 = 目录项
+  // 与物化层项的公共字段超集（两边结构不同，统一收敛到这个视图模型）。
+  const [detailSkill, setDetailSkill] = React.useState<{
+    name: string;
+    description?: string;
+    source?: string;
+    version?: string;
+    runtimes?: string[];
+    agents?: string[];
+    channels?: string[];
+  } | null>(null);
   const [matrix, setMatrix] = React.useState<Record<string, string[]>>({});
   // 服务端基线（脏检测用——矩阵相对基线有改动才显「保存」）。
   const [baseMatrix, setBaseMatrix] = React.useState<Record<string, string[]>>({});
@@ -623,8 +637,10 @@ export default function SkillCenter({
       <antd.Card
         size="small"
         title={tr("① 技能目录（只读 · 上游 /api/v1/skills）")}
+        // 竖屏（376 点名）：extra 横排「搜索+上传+新建」超宽 → 工具条移入
+        // 卡身纵向堆叠（搜索整行 + 两钮等宽行）；宽屏保持 extra 横排。
         extra={
-          st.catalog !== undefined ? (
+          !narrow && st.catalog !== undefined ? (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <antd.Input
                 size="small"
@@ -645,6 +661,25 @@ export default function SkillCenter({
           ) : undefined
         }
       >
+        {narrow && st.catalog !== undefined ? (
+          <div style={{ display: "grid", gap: 8, marginBottom: 10, minWidth: 0 }}>
+            <antd.Input
+              size="small"
+              allowClear
+              placeholder={tr("搜索名称/描述")}
+              value={catalogSearch}
+              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setCatalogSearch(e.target.value)}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <antd.Button size="small" style={{ flex: 1 }} onClick={() => openUpload("zip")}>
+                {tr("上传技能（zip）")}
+              </antd.Button>
+              <antd.Button size="small" type="primary" ghost style={{ flex: 1 }} onClick={() => openUpload("new")}>
+                {tr("新建自定义技能")}
+              </antd.Button>
+            </div>
+          </div>
+        ) : null}
         {st.catalog === null ? (
           <antd.Spin />
         ) : st.catalog === undefined ? (
@@ -660,10 +695,9 @@ export default function SkillCenter({
                 key={`${s.source}-${s.name}`}
                 style={{
                   display: "flex",
-                  flexWrap: "wrap",
-                  gap: "4px 10px",
-                  alignItems: "baseline",
-                  padding: "6px 10px",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "5px 10px",
                   border: `1px solid ${t.border}`,
                   borderRadius: 6,
                   minWidth: 0,
@@ -673,12 +707,7 @@ export default function SkillCenter({
                 <antd.Tag color={s.source === "builtin" ? "blue" : "purple"} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
                   {s.source}
                 </antd.Tag>
-                {/* basis 55% 触发窄容器（资源管理弹窗 ~300px）下 wrap 独占
-   整行换行（不再被挤成单字竖排/词中裁剪）；宽屏（>900px）name+tag+basis
-   合计 < 容器宽 → 保持单行，观感不变。 */}
-                <span style={{ color: t.textSecondary, fontSize: 12, flex: "1 1 55%", minWidth: 0, wordBreak: "break-word" }}>
-                  {s.description || "—"}
-                </span>
+                {/* 描述已从目录行移除（376 竖屏）——完整详情走分配卡「详情」弹窗。 */}
                 <span style={{ flex: 1 }} />
                 {(s.source === "team" || s.source === "shared") ? (
                   <antd.Button
@@ -933,8 +962,8 @@ export default function SkillCenter({
                                     style={{
                                       fontWeight: 600,
                                       fontSize: 11.5,
-                                      flexShrink: 0,
-                                      maxWidth: 180,
+                                      flex: 1,
+                                      minWidth: 0,
                                       overflow: "hidden",
                                       textOverflow: "ellipsis",
                                       whiteSpace: "nowrap",
@@ -943,20 +972,24 @@ export default function SkillCenter({
                                   >
                                     {s.name}
                                   </span>
-                                  <span
-                                    style={{
-                                      flex: 1,
-                                      minWidth: 0,
-                                      color: t.textSecondary,
-                                      fontSize: 11,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
+                                  {/* 行内描述已去（376 竖屏）——完整详情走「详情」弹窗。 */}
+                                  <antd.Button
+                                    size="small"
+                                    type="text"
+                                    style={{ flexShrink: 0, padding: "0 4px", fontSize: 11 }}
+                                    onClick={(e: ReactNS.MouseEvent) => {
+                                      e.stopPropagation();
+                                      setDetailSkill({
+                                        name: s.name,
+                                        description: s.description,
+                                        source: s.source,
+                                        version: s.version_text,
+                                        channels: s.channels,
+                                      });
                                     }}
-                                    title={s.description || ""}
                                   >
-                                    {s.description || ""}
-                                  </span>
+                                    {tr("详情")}
+                                  </antd.Button>
                                   {s.source ? (
                                     <antd.Tag
                                       style={{ marginInlineEnd: 0, fontSize: 10 }}
@@ -1020,86 +1053,70 @@ export default function SkillCenter({
                       >
                         {skillColumns.map((s) => {
                           const on = assigned.includes(s);
-                          const desc = catalogByName.get(s)?.description;
+                          const item = catalogByName.get(s);
                           return (
                             <div
                               key={s}
                               onClick={() => toggleSkill(w.name, s, !on)}
                               style={{
                                 display: "flex",
-                                alignItems: "flex-start",
+                                alignItems: "center",
                                 gap: 6,
-                                padding: "6px 8px",
+                                padding: "5px 8px",
                                 borderRadius: 6,
                                 border: `1px solid ${on ? "rgba(22,119,255,0.5)" : t.border}`,
                                 background: on ? "rgba(22,119,255,0.06)" : t.cardBg,
                                 cursor: "pointer",
+                                minWidth: 0,
                               }}
                             >
                               <antd.Checkbox
                                 checked={on}
-                                style={{ marginTop: 1 }}
+                                style={{ flexShrink: 0 }}
                                 onClick={(e: ReactNS.MouseEvent) => e.stopPropagation()}
                                 onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                                   toggleSkill(w.name, s, e.target.checked)
                                 }
                               />
-                              <div style={{ minWidth: 0 }}>
-                                <div
+                              <div
+                                style={{
+                                  flex: 1,
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <span
+                                  style={{ fontWeight: 600, fontSize: 12 }}
+                                  title={s}
+                                >
+                                  {s}
+                                </span>
+                                <antd.Tag
+                                  color={item?.source === "builtin" ? "blue" : "purple"}
                                   style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 4,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
+                                    marginInlineEnd: 0,
+                                    fontSize: 10,
+                                    lineHeight: "16px",
+                                    marginLeft: 4,
                                   }}
                                 >
-                                  <span
-                                    style={{
-                                      fontWeight: 600,
-                                      fontSize: 12,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                    title={s}
-                                  >
-                                    {s}
-                                  </span>
-                                  <antd.Tag
-                                    color={
-                                      catalogByName.get(s)?.source === "builtin"
-                                        ? "blue"
-                                        : "purple"
-                                    }
-                                    style={{
-                                      marginInlineEnd: 0,
-                                      fontSize: 10,
-                                      lineHeight: "16px",
-                                    }}
-                                  >
-                                    {catalogByName.get(s)?.source || "custom"}
-                                  </antd.Tag>
-                                </div>
-                                {desc ? (
-                                  <div
-                                    style={{
-                                      fontSize: 11,
-                                      color: t.textSecondary,
-                                      marginTop: 2,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      display: "-webkit-box",
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: "vertical",
-                                    }}
-                                    title={desc}
-                                  >
-                                    {desc}
-                                  </div>
-                                ) : null}
+                                  {item?.source || "custom"}
+                                </antd.Tag>
                               </div>
+                              {/* 卡面描述已去（376 竖屏）——完整详情走弹窗。 */}
+                              <antd.Button
+                                size="small"
+                                type="text"
+                                style={{ flexShrink: 0, padding: "0 4px", fontSize: 11 }}
+                                onClick={(e: ReactNS.MouseEvent) => {
+                                  e.stopPropagation();
+                                  setDetailSkill(item || null);
+                                }}
+                              >
+                                {tr("详情")}
+                              </antd.Button>
                             </div>
                           );
                         })}
@@ -1182,33 +1199,64 @@ export default function SkillCenter({
           <div style={{ display: "grid", gap: 8 }}>
             {mcpVisible.map((w) => {
               const list = mcpMap[w.name] || [];
+              // 竖屏修复（376 点名「编辑按钮超出容器」）：行 wrap +
+              // 名称可收缩 + tag 组 flex:1 换行（长 url 不再把编辑钮
+              // 顶出容器）+ 编辑钮 flexShrink:0。
               return (
                 <div
                   key={w.name}
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
+                    flexWrap: "wrap",
+                    gap: "6px 10px",
                     padding: "8px 10px",
                     border: `1px solid ${t.border}`,
                     borderRadius: 6,
+                    minWidth: 0,
                   }}
                 >
-                  <span style={{ fontWeight: 600, minWidth: 180 }}>{w.name}</span>
-                  {list.length ? (
-                    list.map((m, i) => (
-                      <antd.Tag key={`${m.name}-${i}`} color="cyan">
-                        {m.name}
-                        {m.url ? ` · ${m.url}` : ""}
-                        {m.transport ? ` · ${m.transport}` : ""}
-                      </antd.Tag>
-                    ))
-                  ) : (
-                    <span style={{ color: t.textSecondary, fontSize: 12 }}>{tr("无 MCP")}</span>
-                  )}
-                  <div style={{ flex: 1 }} />
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      minWidth: narrow ? 0 : 180,
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {w.name}
+                  </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minWidth: 0, flex: 1 }}>
+                    {list.length ? (
+                      list.map((m, i) => (
+                        <antd.Tag
+                          key={`${m.name}-${i}`}
+                          color="cyan"
+                          style={{
+                            marginInlineEnd: 0,
+                            maxWidth: "100%",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {m.name}
+                          {m.url ? ` · ${m.url}` : ""}
+                          {m.transport ? ` · ${m.transport}` : ""}
+                        </antd.Tag>
+                      ))
+                    ) : (
+                      <span style={{ color: t.textSecondary, fontSize: 12 }}>{tr("无 MCP")}</span>
+                    )}
+                  </div>
                   {!l2 ? (
-                    <antd.Button size="small" onClick={() => openMcpEdit(w.name)}>
+                    <antd.Button
+                      size="small"
+                      style={{ flexShrink: 0 }}
+                      onClick={() => openMcpEdit(w.name)}
+                    >
                       {tr("编辑")}
                     </antd.Button>
                   ) : null}
@@ -1299,6 +1347,63 @@ export default function SkillCenter({
             {tr("上传进入该团队技能层；L1 可任意团队，L2 限本团队。上传经 skillscan 扫描（截拦即报原因）。")}
           </div>
         </div>
+      </antd.Modal>
+
+      {/* 技能详情弹窗（卡面去描述后的唯一完整信息入口，376 竖屏）。 */}
+      <antd.Modal
+        title={detailSkill ? detailSkill.name : ""}
+        open={Boolean(detailSkill)}
+        onCancel={() => setDetailSkill(null)}
+        footer={null}
+        width="min(calc(100vw - 48px), 480px)"
+        destroyOnClose
+      >
+        {detailSkill ? (
+          <div style={{ display: "grid", gap: 10, fontSize: 12.5 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              <antd.Tag color={detailSkill.source === "builtin" ? "blue" : "purple"}>
+                {detailSkill.source}
+              </antd.Tag>
+              {detailSkill.version ? (
+                <span style={{ color: t.textSecondary }}>
+                  {tr("版本")} {detailSkill.version}
+                </span>
+              ) : null}
+              {detailSkill.runtimes?.length ? (
+                <span style={{ color: t.textSecondary }}>
+                  {tr("运行时")} {detailSkill.runtimes.join(", ")}
+                </span>
+              ) : null}
+              {detailSkill.channels?.length ? (
+                <span style={{ color: t.textSecondary }}>
+                  {tr("装载渠道")} {detailSkill.channels.join(", ")}
+                </span>
+              ) : null}
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                {tr("描述")}
+              </div>
+              <div style={{ lineHeight: 1.6, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+                {detailSkill.description || tr("（无描述）")}
+              </div>
+            </div>
+            {detailSkill.agents?.length ? (
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  {tr("使用方")}（{detailSkill.agents.length}）
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {detailSkill.agents.map((a) => (
+                    <antd.Tag key={a} style={{ marginInlineEnd: 0 }}>
+                      {a}
+                    </antd.Tag>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </antd.Modal>
 
       <antd.Drawer

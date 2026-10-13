@@ -5,7 +5,6 @@ const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
 import {
   fetchAdminData,
   fetchRoomMessages,
-  type RoomMessagesPage,
   enrichWorkflowRoomNames,
   fetchTeamsStructure,
   fetchRoomPowerInfo,
@@ -29,21 +28,11 @@ import {
   sendRoomFile,
   sendReaction,
   setRoomMuted,
-  testAddresses,
   uploadMedia,
-  entryUrl,
-  exportFullConfig,
-  importFullConfig,
   setCachedMessages,
   setCachedRooms,
-  verifyAdmin,
   type AdminData,
-  type VerifyAdminResult,
-  type AddressEntry,
-  type AddressTestResult,
-  type ConfigTestResponse,
   type L3RoomResult,
-  type ProbeDiag,
   type RoomMessage,
   type SelfCheckResult,
   type SpawnNode,
@@ -82,7 +71,7 @@ import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
 import { useWorkerChatStatuses } from "./workerChatStatus";
 import WorkerManage from "./components/WorkerManage";
-import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, RefreshIcon, MenuIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon, FolderIcon } from "./components/icons";
+import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, MenuIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon, FolderIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import ModelsTab from "./ModelsTab";
 // 轮询统一走 usePoller/createPoller（16 处迁移之一）；
@@ -1415,21 +1404,6 @@ export default function WorkbenchPage() {
             runtimeDeprecated: w.runtimeDeprecated || undefined,
           };
       }
-    }
-    return map;
-  }, [adminData, workerTree]);
-
-  // MXID → runtime（头像菜单「查看会话」
-  // 入口门控 + 消息行 legacy 角标；admin 数据优先，tree 兜底）。
-  const workerRuntimeByMxid = React.useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const team of workerTree || []) {
-      for (const w of team.workers || []) {
-        if (w.mxid && w.runtime) map[w.mxid] = w.runtime;
-      }
-    }
-    for (const w of adminData?.workers || []) {
-      if (w.matrixUserID && w.runtime) map[w.matrixUserID] = w.runtime;
     }
     return map;
   }, [adminData, workerTree]);
@@ -3095,6 +3069,12 @@ export default function WorkbenchPage() {
           overflow-y: hidden !important;
           -webkit-overflow-scrolling: touch;
           scrollbar-width: none;
+          /* 卡顿根修（窄屏横滑反馈）：触屏横滑手势先声明 pan-x——浏览器无需
+     采样判定横/纵方向（省 ~100ms 手势延迟），且不再与 sheet body 的
+     纵向滚抢手势；overscroll-behavior-x:contain 切断滚链（tab 条到头
+     不再把 sheet body 带着滚）。业界横滚容器标准双件。 */
+          touch-action: pan-x;
+          overscroll-behavior-x: contain;
         }
         .wbc-narrow .ant-tabs-nav-wrap::-webkit-scrollbar,
         .wbc-narrow .qwenpaw-tabs-nav-wrap::-webkit-scrollbar { display: none; }

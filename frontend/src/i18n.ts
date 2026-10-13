@@ -1762,6 +1762,8 @@ const DICT: Record<string, { en: string }> = {
   "工具": { en: "Tools" },
   "重试": { en: "Retry" },
   "描述": { en: "Description" },
+  "（无描述）": { en: "(no description)" },
+  "装载渠道": { en: "Loaded via" },
   "异步执行": { en: "Async execution" },
   "需配置": { en: "Needs config" },
   "{w} 已启用": { en: "{w} enabled" },

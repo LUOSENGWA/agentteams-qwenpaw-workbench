@@ -1303,15 +1303,16 @@ function BoardCard(props: {
 
 /** 看板容器（B7，13.14 「项目看板改成两行四列，
  * 每个看板显示三个卡片，再多滚动 col，时间排序要做好」）：
- * - 8 状态列 4×2 网格（旧 1×8 横滚——列窄到不可读、一屏塞 8 列过密）；
- * - 每列卡区限高 ≈3 卡（BOARD_CARD_CAP_PX），超出列内纵向滚动；
+ * - 宽屏/横屏：Jira/Trello 标准看板——8 状态列固定 250px 不压缩、
+ *   看板横向滚动、列等高（=容器可用高实测）、卡区列内纵向滚动
+ *   （中间宽度不再把列压成竖条；放不下一屏时横向滑出余列）；
+ * - 窄屏（容器 < 800）：单列全宽纵向堆叠 + 卡行横向滑动（移动端看板交互）；
  * - 列内显式时间排序：项目活动 ts 新→旧（看板恒时间序——项目级 sortBy
- * 是列表/轨道视图语义，不应扰动看板列内顺序；旧版列内顺序=events
- * 传入序，受 sortBy 影响，「时间排序」不成立）。 */
-// 原「限高 ≈3 卡」静态常量改为按屏动态
-// 计算（见 BoardColumnsView 的 grid 状态：宽 4×2 / 窄 2×4，列高=视口可用
-// 高/行数）——8 列等高、随屏幕高度按比例伸缩、内容超出列内滚动。
-const BOARD_CARD_CAP_PX = 330; // 初始/回退值（≈3 卡）
+ *   是列表/轨道视图语义，不应扰动看板列内顺序；旧版列内顺序=events
+ *   传入序，受 sortBy 影响，「时间排序」不成立）。 */
+// 列高实测推导（BoardColumnsView 的 ResizeObserver：约束底 − 看板顶），
+// 随屏幕高度伸缩；BOARD_CARD_CAP_PX 仅作首次测量前的初始/回退值（≈3 卡）。
+const BOARD_CARD_CAP_PX = 330;
 function BoardColumnsView(props: {
   events: WorkflowEvent[];
   t: ReturnType<typeof useThemeColors>;
@@ -1341,15 +1342,14 @@ function BoardColumnsView(props: {
     return m;
   }, [events]);
 
-  // （13.15 「每个看板要等高 + 随屏幕高度动态调整 +
-  // 宽屏 4×2 / 窄屏 2×4」）：列数与列高由容器宽/视口高推导——
-  // 宽 ≥ 950 → 4 列 × 2 行；否则 2 列 × 4 行。卡区高 = 视口可用高 / 行数
-  // （下限 200 / 上限 460，含页面头等占位 240 余量）→ 8 列恒等高。
+  // （13.15 「每个看板要等高 + 随屏幕高度动态调整」）：列高由
+  // 容器可用高实测推导（约束底 − 看板顶）。
+  // 横屏/中间宽度（800-950，手机横屏常落此带）旧 4×2 网格每列仅
+  // ~190px → 卡挤成竖条。改 **Jira/Trello 标准看板**：列固定 250px +
+  // 看板横向滚动 + 列等高（=可用高）+ 列内卡区纵向滚——所有宽度同一布局，
+  // 列永不压缩，宽度不足时横向滑（移动端看板通用交互）。
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
-  const [grid, setGrid] = React.useState<{ cols: number; h: number }>({
-    cols: 4,
-    h: BOARD_CARD_CAP_PX,
-  });
+  const [colH, setColH] = React.useState<number>(BOARD_CARD_CAP_PX);
   React.useEffect(() => {
     const compute = () => {
       const wrap = wrapRef.current;
@@ -1358,10 +1358,8 @@ function BoardColumnsView(props: {
       // keep-alive 隐藏 tab（0 宽）不测量——RO 会在再次可见（0→N 尺寸
       // 变化）时重触发，届时拿到正确布局。
       if (rect.width <= 0) return;
-      const cols = rect.width >= 950 ? 4 : 2;
-      const rows = Math.ceil(BOARD_COLUMNS.length / cols);
       // // 可用高 = 约束底 − 看板顶，**全部实测**（旧版用 innerHeight-240 估算
-      // 页面头高，系统性偏大 → 8 列总和超出容器 → 整页滚动）。
+      // 页面头高，系统性偏大 → 列高超出容器 → 整页滚动）。
       // 约束底 = 最近的可滚动祖先容器底（无则视口底）。
       let bottom =
         (typeof window !== "undefined" ? window.innerHeight : 900) - 12;
@@ -1378,9 +1376,7 @@ function BoardColumnsView(props: {
       // 时容器 scrollTop=0，测量即准）。
       const top = Math.max(64, rect.top);
       const avail = Math.max(320, bottom - top);
-      // 列内固定开销：头部行(~28) + 行 gap(8) + 列内边距(16)≈52；行间 gap=10。
-      const h = Math.max(150, Math.floor((avail - 10 * (rows - 1)) / rows) - 52);
-      setGrid((prev) => (prev.cols === cols && prev.h === h ? prev : { cols, h }));
+      setColH((prev) => (prev === avail ? prev : avail));
     };
     compute();
     window.addEventListener("resize", compute);
@@ -1489,15 +1485,21 @@ function BoardColumnsView(props: {
     );
   }
 
+  // 横屏/宽屏统一 = Jira/Trello 标准看板：列固定 250px 不压缩，
+  // 8 列放不满/放不下都横向滑（列等高 = 实测可用高），卡区列内纵向滚。
+  // 中间宽度（800-950）旧 4×2 每列 ~190px 挤竖条的根因即「列宽按比例
+  // 压缩」——固定列宽后该宽度带只少显示几列（横滑补），不再挤。
   return (
     <div
       ref={wrapRef}
       style={{
-        display: "grid",
-        // 宽屏 4 列 × 2 行；窄屏（<950）2 列 × 4 行。列宽按比例（1fr）。
-        gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`,
+        display: "flex",
         gap: 10,
-        alignItems: "stretch",
+        minWidth: 0,
+        overflowX: "auto",
+        overflowY: "hidden",
+        paddingBottom: 4,
+        scrollSnapType: "x proximity",
       }}
     >
       {BOARD_COLUMNS.map((col) => {
@@ -1506,14 +1508,18 @@ function BoardColumnsView(props: {
           <div
             key={col.key}
             style={{
+              flex: "0 0 250px",
+              width: 250,
+              height: colH,
+              boxSizing: "border-box",
               border: `1px solid ${t.border}`,
               borderRadius: 10,
               background: t.cardBg,
               padding: 8,
               minWidth: 0,
-              display: "grid",
-              gap: 8,
-              alignContent: "start",
+              display: "flex",
+              flexDirection: "column",
+              scrollSnapAlign: "start",
             }}
           >
             <div
@@ -1524,6 +1530,7 @@ function BoardColumnsView(props: {
                 fontWeight: 700,
                 fontSize: 12.5,
                 color: col.color,
+                flexShrink: 0,
               }}
             >
               <span
@@ -1537,12 +1544,14 @@ function BoardColumnsView(props: {
               />
               {tr(col.zh)}（{colTasks.length}）
             </div>
-            {/* B7 + 13.16：卡区高 = 屏高比例（8 列等高），内容超出列内滚动。 */}
+            {/* 卡区 = 列高 − 头行（flex:1 + min-0），内容超出列内纵向滚。 */}
             <div
               style={{
                 display: "grid",
                 gap: 8,
-                height: grid.h,
+                flex: 1,
+                minHeight: 0,
+                marginTop: 8,
                 alignContent: "start",
                 overflowY: "auto",
                 overflowX: "hidden",
@@ -2465,8 +2474,8 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   // 窄/宽共用：拓扑视图详情体（标题行 + 干预/中断/loop + DAG + 事件流）。
   const topoDetail = topoEvent ? (
     <div>
-      {/* 窄屏：返回按钮在上条工具栏排序钮左侧（省标题行纵向空间，
-      工具栏恒可见）；此标题行 sticky 顶部保滚 DAG 时标题可追。宽屏无返回（左栏列表在）。 */}
+      {/* 标题行随内容滚（非常驻）——竖屏下 sticky 常驻吃掉纵向空间，
+      竖屏反馈「标题栏改成和下面一起滚动，增加可滚动空间」。 */}
       <div
         style={{
           fontWeight: 700,
@@ -2475,15 +2484,6 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           alignItems: "center",
           gap: 8,
           flexWrap: "wrap",
-          position: narrow ? "sticky" : "static",
-          top: 0,
-          // 标题必须**不透明实底**（t.bg）——cardBg 是半透明（暗 5%）滚内容会透出
-          // 重叠；高 zIndex + 底边。
-          background: narrow ? t.bg : undefined,
-          zIndex: narrow ? 20 : undefined,
-          paddingTop: narrow ? 4 : 0,
-          paddingBottom: narrow ? 4 : 0,
-          borderBottom: narrow ? `1px solid ${t.border}` : undefined,
         }}
       >
         {topoEvent.title || topoEvent.runId}
