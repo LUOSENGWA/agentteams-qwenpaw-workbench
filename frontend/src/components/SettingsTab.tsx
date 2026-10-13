@@ -19,6 +19,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { copyText, formatTimeOfDay } from "../util";
 import { SearchIcon, RefreshIcon, CheckIcon, CloseIcon, WarnIcon, HomeIcon, MonitorIcon } from "./icons";
+import { useWbViewport } from "../WbViewportContext";
 
 
 const host = window.QwenPaw.host;
@@ -437,6 +438,7 @@ const SettingsTab = React.memo(function SettingsTab({
   const tr = useT();
   // 设置页 UI 整理——分节卡片底色跟随主题（宿主配色）。
   const t = useThemeColors();
+  const { narrow } = useWbViewport();
   const cardBox: React.CSSProperties = {
     border: `1px solid ${t.border}`,
     borderRadius: 8,
@@ -1471,20 +1473,37 @@ const SettingsTab = React.memo(function SettingsTab({
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("Controller 认证（可选）")}
           </div>
-          <antd.Segmented
-            size="small"
-            style={{ marginBottom: 8 }}
-            value={ctlMode}
-            onChange={(v: string | number) => {
-              const m = v as "matrix" | "token";
-              setCtlMode(m);
-              if (m === "matrix" && controllerToken) setControllerToken("");
-            }}
-            options={[
-              { label: tr("Matrix 登录（L2，默认）"), value: "matrix" },
-              { label: tr("L1 管理面（token / Higress）"), value: "token" },
-            ]}
-          />
+          {/* 竖屏（376 点名）：Segmented 两长标签横排超宽 → 窄屏改
+      Radio 纵向（业界移动端 segmented 溢出标准解法=单选纵列）。 */}
+          {narrow ? (
+            <antd.Radio.Group
+              style={{ display: "grid", gap: 6, marginBottom: 8 }}
+              value={ctlMode}
+              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => {
+                const m = e.target.value as "matrix" | "token";
+                setCtlMode(m);
+                if (m === "matrix" && controllerToken) setControllerToken("");
+              }}
+            >
+              <antd.Radio value="matrix">{tr("Matrix 登录（L2，默认）")}</antd.Radio>
+              <antd.Radio value="token">{tr("L1 管理面（token / Higress）")}</antd.Radio>
+            </antd.Radio.Group>
+          ) : (
+            <antd.Segmented
+              size="small"
+              style={{ marginBottom: 8 }}
+              value={ctlMode}
+              onChange={(v: string | number) => {
+                const m = v as "matrix" | "token";
+                setCtlMode(m);
+                if (m === "matrix" && controllerToken) setControllerToken("");
+              }}
+              options={[
+                { label: tr("Matrix 登录（L2，默认）"), value: "matrix" },
+                { label: tr("L1 管理面（token / Higress）"), value: "token" },
+              ]}
+            />
+          )}
           {/* （14.17 「Matrix 登录和认证/登录卡片
  是不是重复或者冲突」）：一行点破两者关系——Matrix 登录是
  AgentTeams 消息系统的账号（=上方 Matrix 地址区同一账号），
