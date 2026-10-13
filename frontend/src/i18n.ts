@@ -2014,6 +2014,7 @@ const DICT: Record<string, { en: string }> = {
   },
   "首次打开加载频道编辑器…": { en: "Loading channel editor on first open…" },
   "首次打开加载工具面板…": { en: "Loading tools panel on first open…" },
+  "资源管理": { en: "Resources" },
   "资源管理（技能 / MCP / 频道 / 工具）": { en: "Resources (Skills / MCP / Channels / Tools)" },
   // 顶部版本号 tooltip（前端=构建版本恒准；连接器=
   // /health 运行版本，进程未随安装重启时会滞后）。
