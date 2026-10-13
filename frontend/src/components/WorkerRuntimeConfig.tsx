@@ -1010,6 +1010,11 @@ function WorkerRuntimeConfig({
       {cfg && !gate ? (
         <antd.Tabs
           size="small"
+          // 竖屏弹窗：tab 条吸顶（zIndex 高于内容），下方各域 Card 内容独立滚动
+          // （第5轮"上面的 tab 分开滚动"）。
+          tabBarStyle={
+            sheet ? { position: "sticky", top: 0, zIndex: 5, background: t.cardBg, paddingBottom: 6 } : undefined
+          }
           items={[
             {
               key: "basic",
@@ -1303,7 +1308,7 @@ function WorkerRuntimeConfig({
                         enabled={doomEnabled !== null ? doomEnabled : lv.doomEnabled}
                         onEnabled={(v) => setDoomEnabled(v)}
                       >
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: sheet ? "1fr" : "1fr 1fr", gap: 6 }}>
                           <GateParam label={tr("检测窗口")}>
                             <antd.InputNumber
                               style={{ width: "100%" }}
@@ -1445,7 +1450,7 @@ function WorkerRuntimeConfig({
                       <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 2px" }}>
                         {tr("Goal 模式 · 内置参数")}
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: sheet ? "1fr" : "1fr 1fr", gap: 6 }}>
                         <GateParam label={tr("最大迭代")}>
                           <antd.InputNumber
                             style={{ width: "100%" }}
@@ -1480,7 +1485,7 @@ function WorkerRuntimeConfig({
                       <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 2px" }}>
                         {tr("Mission 模式 · 内置参数")}
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: sheet ? "1fr" : "1fr 1fr", gap: 6 }}>
                         <GateParam label={tr("最大迭代")}>
                           <antd.InputNumber
                             style={{ width: "100%" }}
