@@ -3,6 +3,21 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.13 (2026-10-13 - portrait round 8: topo title scrolls, skill detail modal, board standard column width, tab scroll root fix)
+
+**Portrait (376px) round 8: the workflow topology detail title bar now scrolls with its content instead of staying pinned at the top (reclaiming the vertical space it used to occupy); the project board on wide/landscape viewports adopts a standard board layout (status columns fixed at 250px, never squeezed, horizontal scroll when they don't fit one screen) — root fix for columns with more than three cards collapsing into a single thin line in landscape; skill cards in both skill centers (resource management + skill center) drop the two-line truncated description in favor of a "Details" button that opens a modal with the full description / source / version / runtime / channels / used-by; on portrait the upload / new-skill buttons in the resource-management skill tab move below the search box (no more overflow); the MCP edit button no longer overflows its row; the tab-strip horizontal scrolling in the runtime-config / resource-management modals is root-fixed; and the two long auth-mode labels (Matrix login / L1 admin) stack vertically on portrait**
+
+- **Workflow / topology**: the project topology detail (interventions / interrupts / dependency graph / event stream) **title bar is no longer pinned to the top** — it scrolls together with the content below, reclaiming the vertical space on portrait so more of the graph and event stream is visible.
+- **Workflow / board**: the wide/landscape board now uses a **standard board layout** (Jira/Trello style) — each status column is a **fixed 250px wide and is no longer compressed to fit the screen**, column height adapts to the viewport, and columns that don't fit one screen are reached by **horizontal scroll**. Previously, on landscape/intermediate widths, columns with more than three cards were squeezed into a single thin line. Portrait (<800) keeps the mobile board layout (columns stacked full-width, cards scrolling horizontally).
+- **Team management / skill centers (resource management + skill center)**: skill cards **drop the two-line truncated description** — every skill card (assignment cards and the expanded materialized rows) gets a **"Details" button** opening a modal with the full description, source, version, runtime / load channels, and used-by. On portrait, the **upload-skill / new-custom-skill buttons in the resource-management skill tab move below the search box** (search takes the full row, the two buttons share a row at equal width) instead of overflowing the modal.
+- **Team management / MCP**: the MCP service row's **edit button no longer overflows its container** — long service names / URLs wrap and shrink, the button always stays inside.
+- **Global / tab strip**: the **janky horizontal scrolling of the tab strip** in the runtime-config / resource-management modals is root-fixed — the touch gesture declares horizontal panning up front (no direction-sampling delay) and the scroll chain is cut (scrolling the tabs to the end no longer drags the modal body with it).
+- **Config / auth & login**: on portrait the two long labels **"Matrix login (L2, default) / L1 admin (token / Higress)" stack vertically** (wide keeps the horizontal segmented control), no more overflow.
+
+**Verification**: real-data checks at 376px / 850px / 1440px viewports, item by item, plus a wide-viewport regression · tsc 0 · single-file vite build · 1428 i18n keys, zero duplicates · sensitive scan 0 · runtime smoke test clean
+
+---
+
 ## 0.5.0-beta.15.12 (2026-10-13 - local offline mode: zero data dialing + config kept locally)
 
 **Root fix for plugin behavior when running in a local environment (local plugin host, no QwenPaw server): the 503 error storm is eliminated structurally — the data domain (rooms / chat / workflows / artifacts) is not mounted at the entry point, so no data endpoint is ever dialed; the config domain stays fully usable — connection settings can be filled in and saved up front (kept locally, credentials redacted), and once a server is available this configuration can be applied via the Web console's "Backup & Restore → Import". Console host (online path) behavior is unchanged**
