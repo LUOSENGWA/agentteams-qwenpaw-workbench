@@ -19,6 +19,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
+import { useWbViewport } from "../WbViewportContext";
 import LOGO_URL from "../lib/logo";
 import { formatChatTime, formatTimeShort } from "../util";
 
@@ -124,6 +125,7 @@ function HomePage(props: HomePageProps) {
   } = props;
   const t = useThemeColors();
   const tr = useT();
+  const { narrow } = useWbViewport();
 
   // 发起任务弹窗（选 Leader 入口——入口 B 默认 / Manager 跨团队 A）。
   const [newTaskOpen, setNewTaskOpen] = React.useState(false);
@@ -455,7 +457,8 @@ function HomePage(props: HomePageProps) {
   return (
     <div
       style={{
-        padding: "16px 20px 24px",
+        // 窄屏左右外边距收窄（20→12，屏幕侧贴一点）；宽屏保持 20。
+        padding: narrow ? "14px 12px 24px" : "16px 20px 24px",
         maxWidth: 1080,
         margin: "0 auto",
         width: "100%",
@@ -496,12 +499,14 @@ function HomePage(props: HomePageProps) {
         <div style={{ fontSize: 12, color: t.textSecondary, marginTop: 2 }}>
           {tr("团队协作总览")}
         </div>
+        {/* 7 快捷卡：窄屏 2 列 grid（等宽不拉伸，末行不满也整齐）；宽屏 flex-wrap。 */}
         <div
           style={{
-            display: "flex",
-            gap: 12,
+            display: narrow ? "grid" : "flex",
+            gridTemplateColumns: narrow ? "1fr 1fr" : undefined,
+            gap: narrow ? 10 : 12,
             marginTop: 14,
-            flexWrap: "wrap",
+            flexWrap: narrow ? undefined : "wrap",
           }}
         >
           {quickBtn(
