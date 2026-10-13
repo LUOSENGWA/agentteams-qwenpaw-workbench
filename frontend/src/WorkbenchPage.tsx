@@ -3082,6 +3082,24 @@ export default function WorkbenchPage() {
         .wbc-narrow .ant-input-number, .wbc-narrow .qwenpaw-input-number,
         .wbc-narrow .ant-picker, .wbc-narrow .qwenpaw-picker { max-width: 100% !important; }
         .wbc-narrow .ant-slider { margin: 6px 8px 2px !important; }
+        /* 无列模板的 display:grid 隐式 auto 轨按 item min-content 撑宽
+   （.wb-main 同款规则——portal 弹窗在 body 作用域外，须 wbc-narrow 镜像；
+   CfgRow 的 150px 1fr 由 .wbc-cfgrow !important 规则优先，不受影响）。 */
+        .wbc-narrow [style*="display:grid"],
+        .wbc-narrow [style*="display: grid"] { grid-template-columns: minmax(0, 1fr); }
+        /* 上方 tab 条独立横向滚动（触屏滑；~320px 弹窗宽下 6 域 tab 溢出
+   不换行不截断，rc-tabs 自带左右箭头并存不冲突）：nav-wrap 触摸横滚 +
+   隐藏滚动条 + 标签 nowrap。portal 在 body → 双前缀双写。 */
+        .wbc-narrow .ant-tabs-nav-wrap, .wbc-narrow .qwenpaw-tabs-nav-wrap {
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+        .wbc-narrow .ant-tabs-nav-wrap::-webkit-scrollbar,
+        .wbc-narrow .qwenpaw-tabs-nav-wrap::-webkit-scrollbar { display: none; }
+        .wbc-narrow .ant-tabs-nav-list, .wbc-narrow .qwenpaw-tabs-nav-list { flex-wrap: nowrap !important; }
+        .wbc-narrow .ant-tabs-tab, .wbc-narrow .qwenpaw-tabs-tab { white-space: nowrap !important; }
         .wbc-narrow .ant-card, .wbc-narrow .qwenpaw-card,
         .wbc-narrow .ant-card-body, .wbc-narrow .qwenpaw-card-body { max-width: 100% !important; }
         /* ══ 触屏层（P0 触屏适配）══

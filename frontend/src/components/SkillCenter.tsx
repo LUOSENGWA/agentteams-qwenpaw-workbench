@@ -569,7 +569,10 @@ export default function SkillCenter({
   });
 
   return (
-    <div style={{ display: "grid", gap: onlyWorker ? 8 : 16 }}>
+    // minmax(0,1fr) 钉轨道：隐式 auto 轨按 item min-content 撑宽（技能矩阵
+    // 宽内容 702px > 窄容器 400px → 卡溢出弹窗被裁；.wb-main 全局 grid 锁轨
+    // 规则不覆盖 portal 弹窗，onlyWorker 嵌入弹窗场景须自锁）。
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: onlyWorker ? 8 : 16, minWidth: 0 }}>
       {/* 拓扑嵌入（onlyWorker）→ 页面题头不出（上下文中
  已明示 Worker 与「技能」页签，避免重复层级）。 */}
       {!onlyWorker ? (
@@ -657,18 +660,23 @@ export default function SkillCenter({
                 key={`${s.source}-${s.name}`}
                 style={{
                   display: "flex",
-                  gap: 10,
+                  flexWrap: "wrap",
+                  gap: "4px 10px",
                   alignItems: "baseline",
                   padding: "6px 10px",
                   border: `1px solid ${t.border}`,
                   borderRadius: 6,
+                  minWidth: 0,
                 }}
               >
-                <span style={{ fontWeight: 600, minWidth: 180 }}>{s.name}</span>
-                <antd.Tag color={s.source === "builtin" ? "blue" : "purple"} style={{ marginInlineEnd: 0 }}>
+                <span style={{ fontWeight: 600, minWidth: 0 }}>{s.name}</span>
+                <antd.Tag color={s.source === "builtin" ? "blue" : "purple"} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
                   {s.source}
                 </antd.Tag>
-                <span style={{ color: t.textSecondary, fontSize: 12 }}>
+                {/* basis 55% 触发窄容器（资源管理弹窗 ~300px）下 wrap 独占
+   整行换行（不再被挤成单字竖排/词中裁剪）；宽屏（>900px）name+tag+basis
+   合计 < 容器宽 → 保持单行，观感不变。 */}
+                <span style={{ color: t.textSecondary, fontSize: 12, flex: "1 1 55%", minWidth: 0, wordBreak: "break-word" }}>
                   {s.description || "—"}
                 </span>
                 <span style={{ flex: 1 }} />

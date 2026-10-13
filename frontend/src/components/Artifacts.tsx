@@ -488,10 +488,16 @@ function Artifacts(props: ArtifactsProps) {
                 mouseEnterDelay={0.2}
               >
                 <span
+                  // flex:1 + minWidth:0 让名称在行内可收缩（缺了它 flex 项
+                  // 按内容宽不缩，长项目名把整行撑出容器）；窄屏换行显全名，
+                  // 宽屏保持单行 ellipsis（Tooltip 兜底）。
                   style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: narrow ? "visible" : "hidden",
+                    textOverflow: narrow ? "clip" : "ellipsis",
+                    whiteSpace: narrow ? "normal" : "nowrap",
+                    wordBreak: narrow ? "break-word" : undefined,
                   }}
                 >
                   {dispName}
@@ -528,9 +534,12 @@ function Artifacts(props: ArtifactsProps) {
             children: files.map((f) => ({
               key: f.key,
               title: (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                // 窄屏：全名 + 换行（truncate 截断在 376px 下信息丢失）；宽屏保持截断。
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                   {KIND_META[f.kind].icon}
-                  <span style={{ fontSize: 12 }}>{truncateFilename(f.name)}</span>
+                  <span style={{ fontSize: 12, wordBreak: narrow ? "break-word" : undefined }}>
+                    {narrow ? f.name : truncateFilename(f.name)}
+                  </span>
                 </span>
               ),
               isLeaf: true,
@@ -561,9 +570,12 @@ function Artifacts(props: ArtifactsProps) {
                 <span
                   style={{
                     display: "block",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                    // 窄屏换行显全名（房间名长，截断丢信息）；宽屏单行 ellipsis。
+                    overflow: narrow ? "visible" : "hidden",
+                    textOverflow: narrow ? "clip" : "ellipsis",
+                    whiteSpace: narrow ? "normal" : "nowrap",
+                    wordBreak: narrow ? "break-word" : undefined,
                   }}
                 >
                   {src}
@@ -592,7 +604,7 @@ function Artifacts(props: ArtifactsProps) {
         children: attachNodes,
       },
     ];
-  }, [visibleProjects, tasksByProject, metaByProject, projectFiles, attachmentFiles, projectsLoading]);
+  }, [visibleProjects, tasksByProject, metaByProject, projectFiles, attachmentFiles, projectsLoading, narrow]);
 
   // ── 右列表（按选中节点推导）──
   const visibleFiles = React.useMemo(() => {
@@ -959,7 +971,10 @@ function Artifacts(props: ArtifactsProps) {
     );
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    // 高度链容器化（RoomChat 同款）：tabpane 已定高（height:100% min-0）→
+    // 本根 flex 列 height:100%，内容区 flex:1 内滚——替换 calc(100vh-280px)
+    // 魔法值（宿主容器高≠视口高时外溢/过矮）。
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%", minWidth: 0 }}>
       {/* 正源降级横幅——「新接口的产物还没扫描到」可视化：
  Controller 项目产物（产物端点）不可用时只剩房间附件扫描。 */}
       {o19Fail ? (
@@ -1052,12 +1067,17 @@ function Artifacts(props: ArtifactsProps) {
  顶部返回条——与聊天「房间列表 → 点进房间」同一心智。
  宽屏（narrow=false）保持原左右两栏不变。 */}
       {narrow && !listOpen ? (
-        /* 窄屏 · 未钻取：文件树整宽（独立垂直滚动）。 */
+        /* 窄屏 · 未钻取：文件树整宽（独立垂直滚动）。
+        容器钉屏宽（maxWidth 100% + overflowX hidden）——长项目名/房间名
+        在节点内换行（treeData 窄屏分支 whiteSpace normal），不撑出屏幕。 */
         <div
           style={{
-            height: "calc(100vh - 280px)",
-            minHeight: 320,
+            flex: 1,
+            minHeight: 0,
+            minWidth: 0,
+            maxWidth: "100%",
             overflowY: "auto",
+            overflowX: "hidden",
           }}
         >
           {treeEl}
@@ -1068,8 +1088,10 @@ function Artifacts(props: ArtifactsProps) {
           style={{
             display: "flex",
             flexDirection: "column",
-            height: "calc(100vh - 280px)",
-            minHeight: 320,
+            flex: 1,
+            minHeight: 0,
+            minWidth: 0,
+            maxWidth: "100%",
           }}
         >
           <div
@@ -1115,8 +1137,9 @@ function Artifacts(props: ArtifactsProps) {
           style={{
             display: "flex",
             alignItems: "stretch",
-            height: "calc(100vh - 280px)",
-            minHeight: 320,
+            flex: 1,
+            minHeight: 0,
+            minWidth: 0,
           }}
         >
           {/* 左栏：产物树（项目 → 任务 → 文件；附件 → 类型 → 来源）。
