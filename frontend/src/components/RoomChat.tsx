@@ -269,13 +269,6 @@ const ReplyBannerMemo = React.memo(ReplyBanner);
 const QUICK_REACTIONS = ["👍", "❤️", "😄", "🎉", "👀", "✅"];
 
 /** 输入框 emoji 面板常用集（Element emoji picker 交互，独立实现精简版）。 */
-const EMOJI_PANEL = [
-  "😀", "😄", "😂", "🤣", "😊", "🙂", "😉", "😍", "🤔", "😅",
-  "👍", "👎", "❤️", "💯", "🔥", "✨", "🎉", "🎊", "🙏", "💪",
-  "✅", "❌", "⚠️", "❓", "❗", "💡", "🚀", "📌", "👀", "🛡️",
-  "🔧", "📋", "📄", "📊", "🐛", "🤝", "👏", "☕", "🌙", "😴",
-];
-
 /** 表情反应 chips（emoji + 计数，点击追加同款反应）。
  * eventId 提为 prop + 父侧传稳定双参
  * 回调（(eventId, emoji)）+ memo——此前父侧每次渲染为每行内联闭包
@@ -1333,9 +1326,10 @@ function MessageBody({
           maxWidth: 360,
         }}
       >
-        {/* Element 风格文件卡——彩色图标块 + 名称 +
- 尺寸·类型 + 右侧操作（此前是平铺 icon，观感弱于 Element）。 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* 文件卡：名称行(icon+名/尺寸) + 操作行(下载/查看右对齐) 分两行——
+  窄屏 376 单行被挤，拆两行让文件名吃满宽度。 */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div
             style={{
               width: 40,
@@ -1357,18 +1351,21 @@ function MessageBody({
                 style={{
                   fontWeight: 600,
                   fontSize: 13,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  // 窄屏文件名换行（不 ellipsis 截断——完整可见）。
+                  whiteSpace: "normal",
+                  wordBreak: "break-word",
                 }}
               >
-                {truncateFilename(msg.filename || msg.body || tr("附件"))}
+                {msg.filename || msg.body || tr("附件")}
               </div>
             </WbTooltip>
             {sizeLine ? (
               <div style={{ fontSize: 12, color: t.textSecondary }}>{sizeLine}</div>
             ) : null}
           </div>
+          </div>
+          {/* 操作行：下载/查看 右对齐（从名称行拆出，窄屏不挤）。 */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
           {/* 插件路径走 host.fetch blob 下载（带鉴权）；
  直链经代抓同样有 apiPath → 全类型统一
  host 链（跨域 a[download] 会变导航）。url 为空时不渲染
@@ -1411,6 +1408,7 @@ function MessageBody({
               })
             }
           />
+          </div>
         </div>
         {/* 产物验收（Phase 4 交付闭环）：Agent 交付的 m.file 消息
  带验收按钮——接受发确认，修改意见弹输入。 */}
@@ -1746,49 +1744,9 @@ function RoomChat(props: RoomChatProps) {
   const composerRef = React.useRef<HTMLTextAreaElement | null>(null);
   // 拖拽文件悬停标记（drop zone 高亮，Element 同款）。
   const [dragOver, setDragOver] = React.useState(false);
-  // 输入框高度可上下拖拽调整（用户：「输入框应该可以上下拖动调整高度」）。
-  // px 高度持久化 localStorage；范围 48–320，默认 76（≈rows 3）。
-  const [composerH, setComposerH] = React.useState<number>(() => {
-    try {
-      const v = Number(window.localStorage.getItem("agentteams-qwenpaw-workbench:composer-h"));
-      return v >= 48 && v <= 320 ? v : 76;
-    } catch {
-      return 76;
-    }
-  });
-  // 拖拽中直接改 DOM 高度（不 setState——每帧 setState 会让整个
-  // 消息列表重渲染，用户真机反馈「拖拽有延迟」）；松手才提交 state+持久化。
+  // 输入框容器 ref（autoSize TextArea 所在）。高度拖拽手柄已删——
+  // 改 autoSize 随内容自动增高（1~5 行封顶），无需手动拖/持久化。
   const composerBoxRef = React.useRef<HTMLDivElement>(null);
-  const onComposerResizeStart = React.useCallback(
-    (e: ReactNS.MouseEvent) => {
-      e.preventDefault();
-      const box = composerBoxRef.current;
-      if (!box) return;
-      const startY = e.clientY;
-      const startH = box.offsetHeight;
-      const move = (ev: MouseEvent) => {
-        const h = Math.min(320, Math.max(48, startH + (startY - ev.clientY)));
-        box.style.height = `${h}px`;
-      };
-      const up = () => {
-        window.removeEventListener("mousemove", move);
-        window.removeEventListener("mouseup", up);
-        const h = box.offsetHeight;
-        setComposerH(h);
-        try {
-          window.localStorage.setItem(
-            "agentteams-qwenpaw-workbench:composer-h",
-            String(h),
-          );
-        } catch {
-          /* storage 不可用：跳过持久化（本次会话仍生效） */
-        }
-      };
-      window.addEventListener("mousemove", move);
-      window.addEventListener("mouseup", up);
-    },
-    [],
-  );
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
   // 审批已处理记录：event_id → approve/deny（本地标记，防重复点击）。
   const [resolvedApprovals, setResolvedApprovals] = React.useState<
@@ -2847,28 +2805,29 @@ function RoomChat(props: RoomChatProps) {
     <div
       style={{
         display: "flex",
+        // 内容纵向居中（返回钮 vs 多行群名，对最高者垂直居中）。
         alignItems: "center",
         gap: 6,
-        // 竖屏紧凑头再收窄：padding 8/12→4/10 + paddingBottom 10→4（高度更矮）。
-        padding: "4px 10px",
-        paddingBottom: 4,
+        // 竖屏紧凑头收窄：padding 4/10→2/8（左右更贴、上下留白更少），高度由返回钮触区决定。
+        padding: "2px 8px",
         borderBottom: "1px solid rgba(0,0,0,0.08)",
         flexWrap: "nowrap",
       }}
     >
       {headerPrefix}
       {onBack ? (
-        <antd.Button size="small" onClick={onBack} aria-label={tr("返回")}>
+        // 返回钮放大适配触屏（size large≈40px 触区，替代 small 24px 难点）。
+        <antd.Button size="large" onClick={onBack} aria-label={tr("返回")} style={{ flexShrink: 0 }}>
           ← 返回
         </antd.Button>
       ) : null}
-      <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+      <div style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", alignItems: "center" }}>
         <antd.Typography.Title
           level={5}
           style={{
             margin: 0,
             fontSize: 14,
-            lineHeight: 1.25,
+            lineHeight: 1.2,
             // 群名自动换行（竖屏不截断——长群名完整显示多行，短群名单行）。
             whiteSpace: "normal",
             wordBreak: "break-word",
@@ -2905,45 +2864,6 @@ function RoomChat(props: RoomChatProps) {
 
   // 竖屏 composer：发送/附件/表情按钮提取为 const——窄屏与输入框同 row（发送贴输入框旁，
   // size small 高度别太高），宽屏原操作行复用同款按钮（行为不变）。
-  const composerEmojiBtn = (
-    <antd.Popover
-      trigger="click"
-      placement="topRight"
-      content={
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(10, 28px)",
-            gap: 2,
-            width: 300,
-          }}
-        >
-          {EMOJI_PANEL.map((emoji) => (
-            <span
-              key={emoji}
-              onClick={() => {
-                setDraft((d) => d + emoji);
-              }}
-              style={{
-                fontSize: 18,
-                cursor: "pointer",
-                textAlign: "center",
-                padding: 2,
-                borderRadius: 4,
-              }}
-              title={emoji}
-            >
-              {emoji}
-            </span>
-          ))}
-        </div>
-      }
-    >
-      <antd.Button type="text" size="small" title={tr("表情")}>
-        😀
-      </antd.Button>
-    </antd.Popover>
-  );
   const composerAttachBtn = onSendFiles ? (
     <>
       <WbTooltip title={tr("发送文件/图片")}>
@@ -4123,58 +4043,31 @@ function RoomChat(props: RoomChatProps) {
                 })}
               </div>
             ) : null}
-            {/* 输入框高度拖拽手柄（上拖加高，下拖收矮）。 */}
-            <div
-              onMouseDown={onComposerResizeStart}
-              title={tr("拖动调整输入框高度")}
-              style={{
-                height: 10,
-                cursor: "row-resize",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{
-                  width: 40,
-                  height: 3,
-                  borderRadius: 2,
-                  background: t.border,
-                }}
-              />
-            </div>
-            {/* 竖屏：输入框 + 按钮 同行（发送贴输入框旁，高度别太高）；宽屏输入框整行。 */}
+            {/* 输入框 + 按钮：窄屏 附件(左)|输入框(自动增高≤5行)|发送(右) 同行；宽屏输入框整行。
+      拖拽手柄已删——改 autoSize 随内容自动增高（1~5 行封顶），无需手动拖；表情按钮已删。 */}
             <div style={{ display: narrow ? "flex" : "block", alignItems: "flex-end", gap: narrow ? 6 : 0 }}>
-              <div
-                ref={composerBoxRef}
-                // 竖屏钳 40px；宽屏/拖拽自由。flex:1 让窄屏输入框吃掉按钮外的宽度。
-                style={{ height: narrow ? Math.min(composerH, 40) : composerH, flexShrink: 0, flex: narrow ? "1 1 auto" : undefined, minWidth: narrow ? 0 : undefined }}
-              >
-              <antd.Input.TextArea
-                ref={composerRef}
-                value={draft}
-                rows={3}
-                style={{ height: "100%", resize: "none", overflowY: "auto" }}
-                placeholder={
-                  editing
-                    ? tr("编辑消息…（Enter 保存，Shift+Enter 换行，Esc 取消编辑）")
-                    : replyTo
-                      ? tr("发送回复…（Enter 发送，Shift+Enter 换行，Esc 取消回复）")
-                      : tr("输入消息，@名字 可以点名成员（Enter 发送，Shift+Enter 换行）")
-                }
-                onChange={handleDraftChange}
-                onKeyDown={handleKeyDown}
-              />
-              </div>
-              {/* 窄屏：表情/附件/发送内联输入框右侧（const 与宽屏操作行同款）。 */}
               {narrow ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0, paddingBottom: 2 }}>
-                  {composerEmojiBtn}
-                  {composerAttachBtn}
-                  {composerSendBtn}
-                </div>
+                <div style={{ flexShrink: 0, paddingBottom: 2 }}>{composerAttachBtn}</div>
+              ) : null}
+              <div ref={composerBoxRef} style={{ flex: "1 1 auto", minWidth: 0, width: "100%" }}>
+                <antd.Input.TextArea
+                  ref={composerRef}
+                  value={draft}
+                  autoSize={{ minRows: 1, maxRows: 5 }}
+                  style={{ resize: "none" }}
+                  placeholder={
+                    editing
+                      ? tr("编辑消息…（Enter 保存，Shift+Enter 换行，Esc 取消编辑）")
+                      : replyTo
+                        ? tr("发送回复…（Enter 发送，Shift+Enter 换行，Esc 取消回复）")
+                        : tr("输入消息，@名字 可以点名成员（Enter 发送，Shift+Enter 换行）")
+                  }
+                  onChange={handleDraftChange}
+                  onKeyDown={handleKeyDown}
+                />
+              </div>
+              {narrow ? (
+                <div style={{ flexShrink: 0, paddingBottom: 2 }}>{composerSendBtn}</div>
               ) : null}
             </div>
           </div>
@@ -4253,11 +4146,9 @@ function RoomChat(props: RoomChatProps) {
                 </span>
               </WbTooltip>
             ) : null}
-            {/* 表情/附件/发送：宽屏在此操作行；窄屏已内联到输入框行（上）。const 同款，
-      窄屏隐藏此处防按钮重复。 */}
+            {/* 附件/发送：宽屏在此操作行；窄屏已内联到输入框行（上）。表情按钮已删。 */}
             {!narrow ? (
               <>
-                {composerEmojiBtn}
                 {composerAttachBtn}
                 {composerSendBtn}
               </>
