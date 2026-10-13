@@ -1160,6 +1160,9 @@ function BoardCard(props: {
         background: t.cardBg,
         display: "grid",
         gap: 4,
+        // 溢出兜底：任何内容（worker/项目名/deps tag）不超出卡片容器。
+        overflow: "hidden",
+        minWidth: 0,
       }}
     >
       <div
@@ -1192,9 +1195,13 @@ function BoardCard(props: {
         style={{
           fontSize: 11.5,
           color: t.textSecondary,
+          // 窄屏项目名换行（2 行封顶，不 ellipsis 截断）。
+          whiteSpace: "normal",
+          wordBreak: "break-word",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
           overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
         }}
         title={task.projectTitle}
       >
@@ -2399,17 +2406,14 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           flexWrap: "wrap",
           position: narrow ? "sticky" : "static",
           top: 0,
+          // 标题不透明实底 + 高 zIndex + 底边——防向下滚动 DAG 透出重叠（第5轮反馈 N13）。
           background: narrow ? t.cardBg : undefined,
-          zIndex: narrow ? 2 : undefined,
-          paddingTop: narrow ? 2 : 0,
-          paddingBottom: narrow ? 2 : 0,
+          zIndex: narrow ? 20 : undefined,
+          paddingTop: narrow ? 4 : 0,
+          paddingBottom: narrow ? 4 : 0,
+          borderBottom: narrow ? `1px solid ${t.border}` : undefined,
         }}
       >
-        {narrow ? (
-          <antd.Button size="small" onClick={() => setDetailOpen(false)} style={{ flexShrink: 0 }}>
-            ← {tr("返回")}
-          </antd.Button>
-        ) : null}
         {topoEvent.title || topoEvent.runId}
         <antd.Tag
           color={statusMeta(topoEvent.status).color}
@@ -2529,16 +2533,8 @@ function WorkflowBoard(props: WorkflowBoardProps) {
       {/* 竖屏工具行：「工作流」标题去掉（tab 已有）；拆两行——
       RowA 计数+ⓘ+视图 tab；RowB 排序(左)+刷新(右)贴左右两边。 */}
       <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12.5, color: t.textSecondary }}>
-            {tr("项目")}（{events.length}）
-          </span>
-          <WbTooltip
-            title={tr("项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）")}
-          >
-            <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
-          </WbTooltip>
-          <div style={{ flex: 1 }} />
+        {/* Row A：仅视图 tab（项目计数+ⓘ 移到下行，与排序/刷新同 col——省一行）。 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <antd.Segmented
             size="small"
             value={view}
@@ -2560,7 +2556,23 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             ]}
           />
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        {/* Row B：项目(N) + ⓘ + 排序 + 刷新 同 col（第5轮反馈 N10——省一行）。 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12.5, color: t.textSecondary, flexShrink: 0 }}>
+            {tr("项目")}（{events.length}）
+          </span>
+          <WbTooltip
+            title={tr("项目列表/项目卡片/看板/拓扑 四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）；拓扑依赖图=DAG（交互，节点点看任务；13.24 起单一视图，Mermaid 快照已合并退役）")}
+          >
+            <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
+          </WbTooltip>
+          <div style={{ flex: 1 }} />
+          {/* 返回钮：窄屏 topo/card 钻详情时显示，放排序左（第5轮反馈 N12——省标题行纵向空间，工具栏恒可见）。 */}
+          {narrow && detailOpen && (view === "topo" || view === "card") ? (
+            <antd.Button size="small" onClick={() => setDetailOpen(false)} style={{ flexShrink: 0 }}>
+              ← {tr("返回")}
+            </antd.Button>
+          ) : null}
           {/* 排序（时间/状态/名称）——列表/看板跟随；卡片/拓扑左栏项目列表跟随。 */}
           <antd.Select
             size="small"
