@@ -1,4 +1,4 @@
-import { SendIcon, MessageIcon, SearchIcon, BellIcon, NotesIcon, BoltIcon, SettingsIcon, UserIcon, UsersIcon, TodoIcon, BotIcon, ShieldIcon, CheckIcon, CloseIcon, BoxIcon } from "./icons";
+import { SendIcon, MessageIcon, SearchIcon, BellIcon, NotesIcon, BoltIcon, SettingsIcon, UserIcon, UsersIcon, TodoIcon, BotIcon, ShieldIcon, CheckIcon, CloseIcon, BoxIcon, TopologyIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
@@ -520,6 +520,12 @@ function HomePage(props: HomePageProps) {
             tr("打开群聊"),
             unreadTotal > 0 ? tr("有 {n} 条未读", { n: unreadTotal }) : tr("进入团队群聊"),
             () => onGotoTab("chat"),
+          )}
+          {quickBtn(
+            <TopologyIcon size={20} />,
+            tr("工作流"),
+            tr("项目进展与任务拓扑"),
+            () => onGotoTab("workflow"),
           )}
           {quickBtn(
             <SearchIcon size={20} />,

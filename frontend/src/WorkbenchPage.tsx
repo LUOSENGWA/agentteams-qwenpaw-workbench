@@ -3069,6 +3069,21 @@ export default function WorkbenchPage() {
    前缀；宿主 antd=自家前缀分支，双前缀双写。 */
         .ant-modal, .qwenpaw-modal { max-width: calc(100vw - 16px) !important; }
         .ant-drawer-content-wrapper, .qwenpaw-drawer-content-wrapper { max-width: 100vw !important; }
+        /* ══ 窄屏弹窗内容（wbc-narrow：NarrowSheet 内容包裹层）══
+   弹窗内固定宽控件（140~220px）+ 表单行 150px 固定 label 列 超出弹窗内容宽
+   （~280px）→ 横向拖。正解=业界移动表单模式：
+   ①表单行转纵向（label 上、控件下整宽）②所有 antd 控件 max-width 限到容器宽
+   （inline width 被 max-width 钳住；宽控件在宽屏弹窗同样安全——只收缩不撑宽）。
+   portal 在 body → 不带 .wb-main 前缀；双前缀双写。 */
+        .wbc-narrow .wbc-cfgrow { grid-template-columns: 1fr !important; gap: 4px !important; }
+        .wbc-narrow .ant-select, .wbc-narrow .qwenpaw-select,
+        .wbc-narrow .ant-input, .wbc-narrow .qwenpaw-input,
+        .wbc-narrow .ant-input-affix-wrapper, .wbc-narrow .qwenpaw-input-affix-wrapper,
+        .wbc-narrow .ant-input-number, .wbc-narrow .qwenpaw-input-number,
+        .wbc-narrow .ant-picker, .wbc-narrow .qwenpaw-picker { max-width: 100% !important; }
+        .wbc-narrow .ant-slider { margin: 6px 8px 2px !important; }
+        .wbc-narrow .ant-card, .wbc-narrow .qwenpaw-card,
+        .wbc-narrow .ant-card-body, .wbc-narrow .qwenpaw-card-body { max-width: 100% !important; }
         /* ══ 触屏层（P0 触屏适配）══
    触控检测 = any-pointer:coarse（纯触屏+笔记本触屏混合设备都命中；
    不用 UA 嗅探，基础体验保持 input-agnostic——桌面路径零改动）。

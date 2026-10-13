@@ -345,7 +345,9 @@ function NarrowSheet({
         content: { borderRadius: 12, overflow: "hidden" },
       }}
     >
-      {render ? children : null}
+      {/* wbc-narrow：窄屏弹窗内容标记（全局 CSS 消费——表单行转纵向 + antd 控件
+      限宽到容器，治「弹窗内容横向拖」；portal 在 body，规则不带 .wb-main 前缀）。 */}
+      {render ? <div className="wbc-narrow" style={{ minWidth: 0 }}>{children}</div> : null}
     </antd.Modal>
   );
 }
@@ -691,6 +693,16 @@ function WorkerRow({
             {phaseMeta(phase).label}
           </antd.Tag>
         ) : null}
+        {/* meta 组（模型/运行时/legacy/版本/MXID/spawns 徽标/DM 按钮）：
+ 窄屏整组换行到第 2 行（width:100% 的 flex 行，触屏行更疏朗）；宽屏
+ display:contents = 布局上不存在此包裹，单行呈现与既往逐像素一致。 */}
+        <div
+          style={
+            narrow
+              ? { display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", width: "100%" }
+              : { display: "contents" }
+          }
+        >
         {/* （不圈在一起——模型/运行时各一个
  标签，颜色区分，参考 dashboard RuntimeBadge）：模型=蓝、
  运行时=按运行时着色（RUNTIME_TAG_COLOR），版本=灰小字+悬停全量。
@@ -727,7 +739,8 @@ function WorkerRow({
             {adminWorker.version}
           </span>
         ) : null}
-        <span style={{ color: "#888", fontSize: 12, marginLeft: 6 }}>
+        {/* MXID 长串：窄屏换行行内允许断行（不顶破容器）。 */}
+        <span style={{ color: "#888", fontSize: 12, marginLeft: 6, wordBreak: "break-all" }}>
           {group.mxid}
         </span>
         {spawns.length ? (
@@ -763,6 +776,7 @@ function WorkerRow({
             />
           </WbTooltip>
         ) : null}
+        </div>
       </div>
       {expanded ? (
         <>

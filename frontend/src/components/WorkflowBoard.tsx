@@ -244,8 +244,40 @@ function DagTopo(props: {
   const [panX, setPanX] = React.useState(0);
   const [panY, setPanY] = React.useState(0);
   const clampZoom = (z: number) => Math.min(2, Math.max(0.4, z));
-  const stepZoom = (z: number, d: number) => clampZoom(Math.round((z + d) * 10) / 10);
+  const stepZoom = (z: number, d: number) => {
+    userZoomedRef.current = true;
+    return clampZoom(Math.round((z + d) * 10) / 10);
+  };
   const { narrow } = useWbViewport();
+  // 窄屏 auto-fit（列宽受容器约束，容器=屏幕宽）：DAG 布局宽（列×200px 节点）
+  // 远超 376px 容器 → 初始 zoom 自动缩到整图宽=容器宽（捏合可放大细看）；
+  // 用户手动缩放后不覆盖。宽屏恒 1（现状不变）。
+  const graphRef = React.useRef<HTMLDivElement | null>(null);
+  const [contentSize, setContentSize] = React.useState<{ w: number; h: number } | null>(null);
+  const [graphW, setGraphW] = React.useState(0);
+  const userZoomedRef = React.useRef(false);
+  const handleContentSize = React.useCallback((w: number, h: number) => {
+    setContentSize({ w, h });
+  }, []);
+  React.useEffect(() => {
+    const el = graphRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((es) => {
+      for (const e of es) setGraphW(e.contentRect.width);
+    });
+    ro.observe(el);
+    setGraphW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  React.useEffect(() => {
+    if (!narrow || !contentSize || userZoomedRef.current) return;
+    const avail = graphW - 20; // contentRect=content box：只扣 padding 10×2
+    if (avail <= 0 || contentSize.w <= 0) return;
+    const fit = Math.min(1, avail / contentSize.w);
+    setZoom(fit);
+    setPanX(0);
+    setPanY(0);
+  }, [narrow, contentSize, graphW]);
   // 触屏手势（pinch-zoom / pan）：Pointer Events 统一 touch+mouse；
   // 基线存 ref，每帧从手势起点绝对计算（不累加 delta，无漂移）。
   const pointersRef = React.useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -278,6 +310,7 @@ function DagTopo(props: {
       g.originY = p.y;
     } else if (pts.size === 2 && g.mode !== "pinch") {
       // 双指：pinch-zoom（距离比 → zoom）。
+      userZoomedRef.current = true; // 手动缩放 → auto-fit 不再覆盖
       const [a, b] = [...pts.entries()];
       g.mode = "pinch";
       g.startDist = Math.max(8, Math.hypot(b[1].x - a[1].x, b[1].y - a[1].y));
@@ -443,8 +476,13 @@ function DagTopo(props: {
           <button
             type="button"
             onClick={() => {
-              // 复位：zoom 归 1，pan 一并归零。
-              setZoom(1);
+              // 复位：窄屏=回到 auto-fit 缩放（整图宽=容器宽）；宽屏=zoom 归 1。pan 一并归零。
+              userZoomedRef.current = false;
+              if (narrow && contentSize && graphW > 0 && contentSize.w > 0) {
+                setZoom(Math.min(1, Math.max(0.4, (graphW - 20) / contentSize.w)));
+              } else {
+                setZoom(1);
+              }
               setPanX(0);
               setPanY(0);
             }}
@@ -498,7 +536,12 @@ function DagTopo(props: {
           userSelect: "none",
           WebkitUserSelect: "none",
           cursor: "grab",
+          // 容器宽=父级（项目详情）满宽——narrow 下即屏幕宽；
+          // DAG 内容超宽由 auto-fit zoom 收纳，不横向溢出。
+          width: "100%",
+          maxWidth: "100%",
         }}
+        ref={graphRef}
         onPointerDown={onGraphPointerDown}
         onPointerMove={onGraphPointerMove}
         onPointerUp={endGraphPointer}
@@ -519,6 +562,7 @@ function DagTopo(props: {
             nodeColors={colors}
             scale={1}
             onNodeClick={onNodeClick}
+            onContentSize={handleContentSize}
             title={`${ev.title} — ${tr("项目任务依赖图")}`}
           />
         </div>
@@ -1207,9 +1251,18 @@ function BoardCard(props: {
       >
         {task.projectTitle}
       </div>
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
         {assignee ? (
-          <antd.Tag style={{ margin: 0, fontSize: 10.5 }}>
+          /* worker 名允许换行/断词（下划线长名无断点）——不撑破卡片容器。 */
+          <antd.Tag
+            style={{
+              margin: 0,
+              fontSize: 10.5,
+              maxWidth: "100%",
+              whiteSpace: "normal",
+              wordBreak: "break-word",
+            }}
+          >
             <UserIcon size={11} style={{ verticalAlign: "-1px", marginRight: 2 }} /> {assignee.split(":")[0].replace(/^@/, "")}
           </antd.Tag>
         ) : null}
@@ -2406,8 +2459,9 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           flexWrap: "wrap",
           position: narrow ? "sticky" : "static",
           top: 0,
-          // 标题不透明实底 + 高 zIndex + 底边——防向下滚动 DAG 透出重叠（第5轮反馈 N13）。
-          background: narrow ? t.cardBg : undefined,
+          // 标题必须**不透明实底**（t.bg）——cardBg 是半透明（暗 5%）滚内容会透出
+          // 重叠；高 zIndex + 底边。
+          background: narrow ? t.bg : undefined,
           zIndex: narrow ? 20 : undefined,
           paddingTop: narrow ? 4 : 0,
           paddingBottom: narrow ? 4 : 0,
@@ -2556,8 +2610,15 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             ]}
           />
         </div>
-        {/* Row B：项目(N) + ⓘ + 排序 + 刷新 同 col（第5轮反馈 N10——省一行）。 */}
+        {/* Row B：返回(恒最左) + 项目(N) + ⓘ + 排序 + 刷新（返回按钮始终在最左，
+        「项目 (N)」在返回钮右侧；排序/刷新贴右不变）。 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* 返回钮：窄屏 topo/card 钻详情时显示——恒占最左位。 */}
+          {narrow && detailOpen && (view === "topo" || view === "card") ? (
+            <antd.Button size="small" onClick={() => setDetailOpen(false)} style={{ flexShrink: 0 }}>
+              ← {tr("返回")}
+            </antd.Button>
+          ) : null}
           <span style={{ fontSize: 12.5, color: t.textSecondary, flexShrink: 0 }}>
             {tr("项目")}（{events.length}）
           </span>
@@ -2567,12 +2628,6 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
           </WbTooltip>
           <div style={{ flex: 1 }} />
-          {/* 返回钮：窄屏 topo/card 钻详情时显示，放排序左（第5轮反馈 N12——省标题行纵向空间，工具栏恒可见）。 */}
-          {narrow && detailOpen && (view === "topo" || view === "card") ? (
-            <antd.Button size="small" onClick={() => setDetailOpen(false)} style={{ flexShrink: 0 }}>
-              ← {tr("返回")}
-            </antd.Button>
-          ) : null}
           {/* 排序（时间/状态/名称）——列表/看板跟随；卡片/拓扑左栏项目列表跟随。 */}
           <antd.Select
             size="small"

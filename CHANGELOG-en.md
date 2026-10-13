@@ -5,6 +5,18 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.15.10 (2026-10-13 - portrait round 6: root-cause fix for the 4 re-reported items + home workflow card)
+
+**Round 6 on the 376px device: all 4 items re-reported as "still broken" fixed at the source level — the real root cause of horizontal drag in the team-management "runtime config / resource management" modals (150px fixed label column + 140–220px fixed-width controls exceeding the ~280px modal content width) is now a portrait-vertical form layout with controls clamped to the modal width; the workflow project topology (DAG) auto-fits the container width in portrait (whole graph visible at once) with node titles wrapping to 2 lines; board task-card worker tags wrap instead of bursting the card; the topology detail title bar now uses an opaque solid background (the previous "opaque" fix actually used a translucent color, so scrolling content still showed through); team-management topology-tree meta rows wrap to a second line in portrait**
+
+- **Team management**: the "runtime config / resource management" modals **no longer drag horizontally** in portrait — form rows (label + control) **switch to vertical layout** (label on top, full-width control below) and all select/input controls are **clamped to the modal content width** (the 150px fixed label column plus 220px fixed controls previously summed past the ~280px modal content width — the actual root cause of the horizontal drag); all containers inside the modals hug the modal width. In the topology tree, a worker row's secondary info (model / runtime / version / MXID / spawn badge / DM button) **moves as a group to a second line** in portrait; long MXIDs can break.
+- **Workflow**: the project topology (DAG) **auto-fits the container width** in portrait — when the DAG's layout width (columns × 200px nodes) exceeds the screen, it scales down so the whole graph is visible at once; pinch/zoom buttons explore in detail (reset = back to the fitted scale); DAG node titles **wrap to 2 lines** (previously hard-truncated at 14 chars); the topology detail **title bar uses an opaque solid background** (the previous "opaque" fix mistakenly used a translucent card color, so scrolled content still bled through), no more overlap when scrolling; the toolbar **back button is always leftmost**, with "Projects (xx)" to its right; board task-card worker tags **wrap / break** instead of overflowing the card.
+- **Home**: new "Workflow" quick card (one tap into project progress and task topology).
+
+**Verified**: tsc 0 · vite build single-file (468 modules) · sensitive scan 0
+
+---
+
 ## 0.5.0-beta.15.9 (2026-10-13 - portrait round 5: composer rework + file bubble relayout + drag-jank root fix)
 
 **376px measured round 5: chat composer rebuilt (attach/send inlined to the sides, emoji removed, long text auto-grows to 5 lines), file bubbles relayouted so 376px no longer crushes content, compact header tightened + larger back button; workflow toolbar merged into one row + board cards auto-wrap + topology back moved up; artifact project-topology pinned to screen width; team-management modals hugging width + sticky tab bar; home quick-cards 2-column in portrait; window-drag jank root-caused and fixed**

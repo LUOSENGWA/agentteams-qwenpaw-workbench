@@ -1013,7 +1013,8 @@ function WorkerRuntimeConfig({
           // 竖屏弹窗：tab 条吸顶（zIndex 高于内容），下方各域 Card 内容独立滚动
           // （第5轮"上面的 tab 分开滚动"）。
           tabBarStyle={
-            sheet ? { position: "sticky", top: 0, zIndex: 5, background: t.cardBg, paddingBottom: 6 } : undefined
+            // t.bg 不透明实底（cardBg 半透明会透出滚动内容）。
+            sheet ? { position: "sticky", top: 0, zIndex: 5, background: t.bg, paddingBottom: 6 } : undefined
           }
           items={[
             {
