@@ -3,6 +3,17 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.11 (2026-10-13 - portrait round 7: board mobile layout + artifact name wrap + modal polish + container width alignment)
+
+**Round 7 on the 376px device: the project board in portrait switches to a mobile kanban layout (status columns stack vertically at full width, task cards inside a column scroll horizontally — no more squeezed strips); long project names in the artifacts list wrap and stay fully visible (no more row-stretching or name loss); the "runtime config / resource management" modals get horizontally scrollable tab strips and skill cards now render fully inside the modal without clipping; the knowledge base column heights use the dynamic viewport so the mobile browser chrome no longer pushes content off-screen**
+
+- **Workflow**: the project board in portrait (phone) now uses a **mobile kanban layout** — status columns (todo / dispatched / in progress / …) **stack vertically at full width**, and task cards inside a column keep a readable fixed width and **scroll horizontally** (about two and a half cards visible, native-list swipe feel). Previously a column with more than 3 cards collapsed into a vertical strip.
+- **Artifacts**: **long project names wrap and stay fully visible** in the project artifacts list (previously overflow squeezed them into vertical single characters or stretched the row); long file names wrap instead of truncating; the artifacts area is **pinned to screen width** — no page-level horizontal scrolling no matter the content.
+- **Team management**: the "runtime config / resource management" modals now have **horizontally scrollable tab strips** (in narrow widths tabs are not cut off or lost; the last tab stays reachable via the overflow menu), and skill list cards **render fully inside the modal** — name, source tag and description lay out with normal wrapping (previously the description was squeezed into single-character vertical text or clipped past the modal edge).
+- **Global**: page containers uniformly hug the screen width (padding included); over-wide content no longer produces **page-level horizontal scrolling**; knowledge-base column heights use the dynamic viewport so the heights track the mobile address bar (no more content pushed off-page).
+
+**Verification**: live-data tests at a 376px phone viewport (board / artifacts / both modals / zero page horizontal overflow) + 1280px wide regression unchanged · tsc 0 · vite build single file (468 modules) · sensitive scan 0
+
 ---
 
 ## 0.5.0-beta.15.10 (2026-10-13 - portrait round 6: root-cause fix for the 4 re-reported items + home workflow card)
