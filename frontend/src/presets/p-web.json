@@ -12,7 +12,7 @@
   },
   "settings_patch": { "model": { "name": "qwen3.6-27b-fp8" } },
   "toolchain": {
-    "shared_volume": "/mnt/SRAIDZ1/AgentTeam/toolchains/web/",
+    "shared_volume": "/mnt/agentteam/toolchains/web/",
     "install": {
       "zh-CN": "Node 24.5+（指纹代际；容器不 apt 系统包，走共享卷或 nvm-in-container）；pnpm/corepack 随场景",
       "en-US": "Node 24.5+ (fingerprint generation; no apt system packages in container — shared volume or nvm-in-container); pnpm/corepack per scenario"

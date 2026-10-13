@@ -15,7 +15,7 @@
   },
   "settings_patch": { "model": { "name": "qwen3.6-27b-fp8" } },
   "toolchain": {
-    "shared_volume": "/mnt/SRAIDZ1/AgentTeam/toolchains/ios/",
+    "shared_volume": "/mnt/agentteam/toolchains/ios/",
     "install": {
       "zh-CN": "Swift 文档库（离线）→ 共享卷；Linux 容器内无 Xcode，明确边界",
       "en-US": "Swift docs (offline) → shared volume; no Xcode inside Linux containers — boundary is explicit"
