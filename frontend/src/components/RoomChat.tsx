@@ -268,7 +268,6 @@ const ReplyBannerMemo = React.memo(ReplyBanner);
 /** 常用快捷表情（Element 同款交互：hover 消息 → 快捷反应）。 */
 const QUICK_REACTIONS = ["👍", "❤️", "😄", "🎉", "👀", "✅"];
 
-/** 输入框 emoji 面板常用集（Element emoji picker 交互，独立实现精简版）。 */
 /** 表情反应 chips（emoji + 计数，点击追加同款反应）。
  * eventId 提为 prop + 父侧传稳定双参
  * 回调（(eventId, emoji)）+ memo——此前父侧每次渲染为每行内联闭包

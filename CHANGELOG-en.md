@@ -5,6 +5,21 @@ Version history of agentteams-qwenpaw-workbench.
 
 ---
 
+## 0.5.0-beta.15.9 (2026-10-13 - portrait round 5: composer rework + file bubble relayout + drag-jank root fix)
+
+**376px measured round 5: chat composer rebuilt (attach/send inlined to the sides, emoji removed, long text auto-grows to 5 lines), file bubbles relayouted so 376px no longer crushes content, compact header tightened + larger back button; workflow toolbar merged into one row + board cards auto-wrap + topology back moved up; artifact project-topology pinned to screen width; team-management modals hugging width + sticky tab bar; home quick-cards 2-column in portrait; window-drag jank root-caused and fixed**
+
+- **Chat**: the composer row is rebuilt — the **attach button sits on the left, the send button is inlined right next to the input**, and the **emoji button is removed**; the small bar above the input (the old manual height-drag handle) is gone, long text now **grows with content up to 5 lines max** (no manual dragging). File bubbles are relayouted into two rows — a name row (icon + full filename wrapping + size) and an action row (download/view right-aligned) — so at 376px nothing is crushed together. The portrait header is tightened further, content is **vertically centered**, and the **back button is enlarged for touch** (~40px target).
+- **Workflow**: the toolbar is merged into a single row — the "Project (xx)" selector shares it with the **sort and refresh** buttons; the topology view's back button moves to the **left of the sort button** (the old spot cost a whole title-row of vertical space); the title container is no longer transparent (no more overlap when scrolling down); worker tags inside project-board cards now **wrap automatically** instead of blowing past the card container; task details show the worker's **short name** (e.g. @tech-writer, not a long address).
+- **Artifacts**: the project-topology container under project artifacts is **pinned to the screen width** (columns used to get too wide); overflowing text wraps.
+- **Team management**: the run-config / resource-management overlays are now **portrait-friendly modals** — inner containers hug the modal width, form fields go single-column in portrait, the **top tab bar sticks while the settings content below scrolls independently** at the modal's width.
+- **Home**: the 7 quick cards go **2 equal columns** in portrait (no more uneven stretching); the screen-side left/right margins are trimmed.
+- **Performance**: **window-drag jank root fix** — dragging the window previously recomputed and re-rendered the whole page for every 1px of change; pixels are now only recorded, and a re-render happens only on the exact frame the narrow/wide threshold is crossed, so the page stays smooth while dragging.
+
+**Verified**: tsc 0 · vite build single-file (468 modules) · secret scan 0
+
+---
+
 ## 0.5.0-beta.15.8 (2026-10-12 - portrait round 4: per-page layout tightening + button inlining + cards no-overflow)
 
 **376px measured round-4 per-page refinement — chat composer buttons inlined / room name wraps / scroll-to-bottom stays round, workflow title removed / sort+refresh pinned to edges / board 2-column 3-card / cards no-overflow / topo back merged into title / worker short-name, artifacts kind under icon / actions stacked, team-management modal content hugging width**
@@ -14,6 +29,30 @@ Version history of agentteams-qwenpaw-workbench.
 - **Artifacts**: in the narrow file list the "kind" label moves under the file icon (saving horizontal room so filenames wrap less); the view/download action buttons stack vertically in portrait
 - **Team management**: the run-config / resource-management modal inner containers tighten to hug the modal width (no more large side gaps); the top tabs scroll horizontally in portrait
 - **Verified**: tsc 0 · vite build single-file (468 modules) · secret scan 0 · 5 commits (8a6c850/b0b71ba/661d2d0/260e4d6)
+
+---
+
+## 0.5.0-beta.15.7 (2026-10-12 - portrait workflow cluster + small-item refinement + drag initial fix)
+
+**The workflow page is reworked for portrait (card-ified project list + 2-column board + topology pinch-zoom + worker detail modal) + a batch of portrait small-item refinements + a first pass on window-drag layout responsiveness**
+
+- **Portrait workflow**: project list becomes tappable cards; the board returns to 2 columns; the topology supports **pinch-zoom** with node-card text wrapping; worker details move into a modal (no longer cramped in portrait).
+- **Portrait small items**: top tab bar tightened; chat composer height reduced; the @mention candidate popup gets a height cap (long lists no longer push the screen); artifact-table column widths trimmed.
+- **Performance (first pass)**: window-drag layout measurement is coalesced to at most once per frame and sub-pixel changes no longer re-render the whole page — dragging feels much more responsive (the complete root fix lands in 15.9).
+
+**Verified**: tsc 0 · vite build single-file (468 modules) · secret scan 0
+
+---
+
+## 0.5.0-beta.15.6 (2026-10-12 - portrait touch polish: drill-in + touch targets + overflow)
+
+**Portrait drill-in navigation (list → detail + back bar) + enlarged touch targets + portrait overflow cleanups, with zero wide-screen regressions**
+
+- **Portrait drill-in**: the "list → tap → detail + back bar" pattern lands on more pages in portrait; detail views go full-width with one-tap back.
+- **Touch targets**: small buttons get larger hit areas (easier to hit with a finger).
+- **Overflow**: a batch of portrait horizontal overflows cleaned up (content no longer pushes past the screen edge); wide-screen layout unchanged.
+
+**Verified**: tsc 0 · vite build single-file (468 modules) · secret scan 0
 
 ---
 
