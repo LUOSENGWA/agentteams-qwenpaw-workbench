@@ -242,6 +242,14 @@ export interface DagNodeColor {
   text: string;
 }
 
+/** CJK 标签换行：≤2 行（SVG <text> 不换行——长标题此前 14 字截断丢信息；
+超出的文字自动换行）。per=每行字数，超出 2 行截断+…（全量走 <title>）。 */
+function wrapLabel2(text: string, per = 14): string[] {
+  if (text.length <= per) return [text];
+  if (text.length <= per * 2) return [text.slice(0, per), text.slice(per)];
+  return [text.slice(0, per), `${text.slice(per, per * 2 - 1)}…`];
+}
+
 export function WorkflowDagSvg(props: {
   dag: ProjectDag;
   nodeColors: Record<string, DagNodeColor>;
@@ -253,6 +261,8 @@ export function WorkflowDagSvg(props: {
   scale?: number;
   /** 节点点击 → 任务巡检 Drawer（看板任务卡同款入口）。 */
   onNodeClick?: (id: string) => void;
+  /** 布局内容尺寸就绪/变化（父级窄屏 auto-fit 缩放用；回调须 useCallback 稳定）。 */
+  onContentSize?: (w: number, h: number) => void;
 }) {
   const {
     dag,
@@ -262,6 +272,7 @@ export function WorkflowDagSvg(props: {
     gapY = 64,
     scale = 1,
     onNodeClick,
+    onContentSize,
   } = props;
   const W = nodeWidth;
   const H = nodeHeight;
@@ -280,6 +291,11 @@ export function WorkflowDagSvg(props: {
     [dag, W, H, GY],
   );
   const { width, height, positions } = layout;
+
+  // 内容尺寸上抛——窄屏 auto-fit（DagTopo 按容器宽算初始 zoom）。
+  React.useEffect(() => {
+    if (dag.nodes.length > 0) onContentSize?.(width, height);
+  }, [dag.nodes.length, width, height, onContentSize]);
 
   if (dag.nodes.length === 0) return null;
 
@@ -329,7 +345,9 @@ export function WorkflowDagSvg(props: {
         if (!p) return null;
         const colors = nodeColors[n.status] ?? nodeColors.unknown;
         // ~14 个 CJK 字形在 11px 下放得进默认 190px 节点宽。
-        const label = n.title.length > 14 ? `${n.title.slice(0, 14)}…` : n.title;
+        // ~14 个 CJK 字形/行放得进默认 190px 节点宽；无 sub 节点自动换 2 行
+        // （超出的文字自动换行），有 sub 节点=标题 1 行+subagent 1 行。
+        const labelLines = wrapLabel2(n.title, 14);
         const sub = n.subagent ? (n.subagent.length > 16 ? `${n.subagent.slice(0, 16)}…` : n.subagent) : null;
         const hovered = hoverId === n.id;
         return (
@@ -373,7 +391,7 @@ export function WorkflowDagSvg(props: {
                   fill={colors.text}
                   fontFamily="inherit"
                 >
-                  {label}
+                  {labelLines[0]}
                 </text>
                 <text
                   x={p.x + 18}
@@ -387,15 +405,29 @@ export function WorkflowDagSvg(props: {
                 </text>
               </>
             ) : (
-              <text
-                x={p.x + 18}
-                y={p.y + H / 2 + 4}
-                fontSize={11}
-                fill={colors.text}
-                fontFamily="inherit"
-              >
-                {label}
-              </text>
+              <>
+                {/* 无 sub：标题自动换 2 行（单行时长短标题保持原垂直居中）。 */}
+                <text
+                  x={p.x + 18}
+                  y={labelLines.length > 1 ? p.y + H / 2 - 3 : p.y + H / 2 + 4}
+                  fontSize={11}
+                  fill={colors.text}
+                  fontFamily="inherit"
+                >
+                  {labelLines[0]}
+                </text>
+                {labelLines[1] ? (
+                  <text
+                    x={p.x + 18}
+                    y={p.y + H / 2 + 11}
+                    fontSize={11}
+                    fill={colors.text}
+                    fontFamily="inherit"
+                  >
+                    {labelLines[1]}
+                  </text>
+                ) : null}
+              </>
             )}
           </g>
         );

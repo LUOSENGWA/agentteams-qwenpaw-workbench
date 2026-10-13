@@ -20,6 +20,9 @@ function CfgRow({
 }) {
   return (
     <div
+      // wbc-cfgrow：窄屏弹窗（.wbc-narrow）内由全局 CSS 转纵向（label 上/控件下整宽）——
+      // 150px 固定 label 列 + 140~220px 固定控件在 ~280px 弹窗内容宽下横向溢出。
+      className="wbc-cfgrow"
       style={{
         display: "grid",
         gridTemplateColumns: "150px 1fr",
