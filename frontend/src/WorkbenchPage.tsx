@@ -2427,18 +2427,21 @@ export default function WorkbenchPage() {
   // viewport 单一判定数据源——宽度=聊天同源（父链 clientWidth min），高度=容器
   // 可见高（预留竖屏/长宽比判据）。narrow = isNarrowLayout(w,h) 供全部页面共用
   // （团队表卡片化 / 表右缘渐隐与聊天单栏永远同步；要调只改 isNarrowLayout）。
-  const [vp, setVp] = React.useState(() => ({
-    w: window.innerWidth,
-    h: window.innerHeight,
-  }));
+  // N18 根因修（拖窗口卡顿）：像素级 w/h **不进 React state**——此前每 1px 变化都
+  // setVp → WorkbenchPage body 每帧重跑 + 全量 JSX diff（业界正解：连续值走 ref/DOM，
+  // 只有阈值判定进 state）。像素实时写 ref；narrow 布尔翻转才 setNarrow → 整树重渲一次。
+  // 全部 13 个消费方只读 narrow（grep 实锤无 width/height 消费）。
+  const vpRef = React.useRef({ w: window.innerWidth, h: window.innerHeight });
   // 窄屏（竖屏/窄容器）单一判定——供 header 压缩等共用（与聊天单栏同判据）。
-  const narrow = isNarrowLayout(vp.w, vp.h);
-  // provider 值 memo 化：WorkbenchPage 因别的原因 re-render（房间消息到达/tab 切换）时，
-  // 只要 vp.w/vp.h 没变，provider 值引用不变 → WbViewport 消费方不重渲（配合 measure dedup，
-  // 消除"聊一句→整块工作流/产物树跟着重渲"的多余 re-render）。
+  const [narrow, setNarrow] = React.useState(
+    () => isNarrowLayout(window.innerWidth, window.innerHeight),
+  );
+  // provider 值 memo 化：identity 只在 narrow 翻转时变 → 拖窗全程 13 个消费组件零重渲。
+  // width/height = 翻转时刻的像素快照（当前无消费方依赖实时像素；将来要实时宽度
+  // 自行 ResizeObserver 测量，勿回退成 state）。
   const vpValue = React.useMemo(
-    () => ({ width: vp.w, height: vp.h, narrow: isNarrowLayout(vp.w, vp.h) }),
-    [vp.w, vp.h],
+    () => ({ width: vpRef.current.w, height: vpRef.current.h, narrow }),
+    [narrow],
   );
   // 12.14：强制分栏开关（配置页）——忽略宽度判定，持久化 ui-state。
   const [chatForceWide, setChatForceWide] = React.useState<boolean>(
@@ -2485,17 +2488,16 @@ export default function WorkbenchPage() {
     // 无条件 setVp/setChatWideMeasured → 每像素拖动都换 provider 值 → 整棵 workbench
     // 树 re-render。正解=业界通用：rAF 合并(一帧最多算一次) + dedup(w/h/eff 都没实际
     // 变≥1px 就不 setState，子像素噪音吞掉)。
-    const last = { w: -1, h: -1, e: -1 };
     let raf = 0;
     let qw = 0, qh = 0, qe = 0, qd = false;
     const apply = () => {
       raf = 0;
       if (!qd) return;
-      const rw = Math.round(qw), rh = Math.round(qh), re = Math.round(qe);
-      if (rw === last.w && rh === last.h && re === last.e) return; // dedup
-      last.w = rw; last.h = rh; last.e = re;
+      // 像素写 ref（零重渲）；两个阈值判定进 state——同值 React 自动 bail out，
+      // 只有跨越 narrow / 聊天分栏阈值那一帧才各重渲一次（拖窗全程 ≈0 重渲）。
+      vpRef.current = { w: qw, h: qh };
       setChatWideMeasured(qe >= CHAT_SPLIT_MIN_CONTAINER_W);
-      setVp({ w: qw, h: qh });
+      setNarrow(isNarrowLayout(qw, qh));
     };
     const measure = () => {
       let visible = window.innerWidth;
