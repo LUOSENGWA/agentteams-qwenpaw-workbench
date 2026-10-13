@@ -19,7 +19,7 @@
     "en-US": "arm64 16K-page systems (e.g. Pi): qwen-code 0.25.0's bundled ripgrep crash auto-downgrades gracefully to built-in grep — no config field required (verified on Pi 10/08; upstream issue draft ready). If a manual pin to built-in search is ever needed, the correct field is tools.useRipgrep:false (= built-in grep) — NOT tools.useBuiltinRipgrep (which only switches bundled rg → system-level rg, and only when useRipgrep=true)."
   },
   "toolchain": {
-    "shared_volume": "/mnt/SRAIDZ1/AgentTeam/toolchains/embedded/",
+    "shared_volume": "/mnt/agentteam/toolchains/embedded/",
     "install": {
       "zh-CN": "arm-none-eabi-gcc / ESP-IDF / Zephyr 按 MCU 平台 → 共享卷",
       "en-US": "arm-none-eabi-gcc / ESP-IDF / Zephyr per MCU platform → shared volume"

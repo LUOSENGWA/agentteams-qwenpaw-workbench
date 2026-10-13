@@ -15,7 +15,7 @@
   },
   "settings_patch": { "model": { "name": "qwen3.6-27b-fp8" } },
   "toolchain": {
-    "shared_volume": "/mnt/SRAIDZ1/AgentTeam/toolchains/harmony/",
+    "shared_volume": "/mnt/agentteam/toolchains/harmony/",
     "install": {
       "zh-CN": "CLT 26.0.0（内嵌 NEXT SDK+hdc）+ JDK 21 + Node 22.20+（engines 硬要求 + TLS 指纹代际）",
       "en-US": "CLT 26.0.0 (embedded NEXT SDK + hdc) + JDK 21 + Node 22.20+ (engines hard requirement + TLS fingerprint generation)"
