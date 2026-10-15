@@ -11,6 +11,38 @@ const DICT: Record<string, { en: string }> = {
   "聊天": { en: "Chat" },
   "团队管理": { en: "Team Management" },
   "更多": { en: "More" },
+  // ── 审计（A7，#1270 GET /api/v1/audit 消费）──
+  "审计": { en: "Audit" },
+  "审计日志": { en: "Audit Log" },
+  "视图限定本团队": { en: "Scoped to your team" },
+  "全部类型": { en: "All types" },
+  "能力授权": { en: "Capability" },
+  "最近 1 天": { en: "Last 1 day" },
+  "最近 7 天": { en: "Last 7 days" },
+  "最近 30 天": { en: "Last 30 days" },
+  "全部时间": { en: "All time" },
+  "操作者": { en: "Actor" },
+  "对象": { en: "Target" },
+  "动作": { en: "Action" },
+  "变更": { en: "Change" },
+  "信息": { en: "Info" },
+  "警告": { en: "Warning" },
+  "暂无审计事件": { en: "No audit events" },
+  "视图已限定为本团队范围内的治理事件": {
+    en: "View restricted to governance events within your team",
+  },
+  "当前 Controller 版本暂无审计端点": {
+    en: "This Controller version has no audit endpoint yet",
+  },
+  "审计读取依赖上游 GET /api/v1/audit（#1270，MinIO 持久审计存储）。升级 Controller 后本页自动可用，无需插件改动。": {
+    en: "Audit reading relies on the upstream GET /api/v1/audit (#1270, durable MinIO audit store). After upgrading the Controller this page becomes available automatically — no plugin change needed.",
+  },
+  "当前身份无权读取审计事件": {
+    en: "Current identity cannot read audit events",
+  },
+  "审计读取要求 L1（admin/manager）或 L2（团队负责人/本团队 human）。worker 身份被 Controller 默认拒绝。": {
+    en: "Reading audit requires L1 (admin/manager) or L2 (team leader / human of this team). Worker identities are denied by the Controller by default.",
+  },
   // ── 15.14 增补（离线模式 / 技能中心 / 首页）──
   "本地离线模式": { en: "Local Offline Mode" },
   "本地配置加载失败": { en: "Failed to load local config" },

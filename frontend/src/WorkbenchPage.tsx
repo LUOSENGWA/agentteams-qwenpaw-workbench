@@ -60,6 +60,7 @@ import HomePage from "./components/HomePage";
 import WorkflowBoard, { WfView } from "./components/WorkflowBoard";
 import Artifacts from "./components/Artifacts";
 import OpsPanel from "./components/OpsPanel";
+import AuditLog from "./components/AuditLog";
 import SettingsTab, { readStartupPref } from "./components/SettingsTab";
 import MessageSearch from "./components/MessageSearch";
 import ProjectFiles from "./components/ProjectFiles";
@@ -71,7 +72,7 @@ import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
 import { useWorkerChatStatuses } from "./workerChatStatus";
 import WorkerManage from "./components/WorkerManage";
-import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, MenuIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon, FolderIcon } from "./components/icons";
+import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, MenuIcon, CheckIcon, CloseIcon, WarnIcon, BulbIcon, FolderIcon, HistoryIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import ModelsTab from "./ModelsTab";
 // 轮询统一走 usePoller/createPoller（16 处迁移之一）；
@@ -3565,6 +3566,11 @@ export default function WorkbenchPage() {
             children: (
               <OpsPanel refreshTick={opsTick} />
             ),
+          },
+          {
+            key: "audit",
+            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><HistoryIcon size={15} /> {tr("审计")}</span>,
+            children: <AuditLog hasToken={hasCtlToken} />,
           },
           {
             key: "models",
