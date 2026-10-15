@@ -3,6 +3,25 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.17（2026-10-15 · 15.x 优化批：聊天文件引用 + 三大巨石拆分 + 审批色值收敛）
+
+**本轮 = beta 15.x 的 UI/性能/技术债收口批：1 个新功能（#87 聊天引用团队共享工作区文件）+ 三大前端巨石拆分（CrdManage/KB/看板 layout）+ 审批严重度色值单源收敛。**
+
+**新增**
+- **聊天引用团队共享工作区文件（#87）**：聊天输入框可 `@` 引用团队共享工作区里的文件（FileRefPicker 选择器 + 连接器 `/team-files` 端点），引用以文件徽标呈现、发送时附带文件引用，接收侧可点开查看——补齐「聊天里直接引用工作区文件」的协作闭环。
+
+**屎山清理（三大巨石拆分，行为零变）**
+- **团队管理 CrdManage 2540 → 353L**：拆成 `crdmanage/` 15 模块（纯叶子 types/helpers/FieldLabel ← 4 个 hooks ← 8 个渲染组件 ← 主装配层），依赖单向无环；纯搬移 + 锚点定位 + 全标识符审计（0 UNEXPLAINED），主文件瘦为「props → 4 hooks → JSX」装配层。
+- **知识库 KB 3162 → 142L**：双栏 KB 容器化 + 拆 9 模块（useKbColHeight 等高容器化），冒烟 160 断言全绿。
+- **看板 layout-mode 抽纯模块**：横屏/竖屏布局判定抽成纯函数模块 + 断点回归冒烟（15.15 横屏回归修复的防回归护栏，667<800 不再被卷进竖屏堆叠）。
+
+**修复**
+- **审批严重度色值单源收敛（P1-6）**：SEV_COLOR 此前在通知中心/审批卡各持一份、首页又内联 `#ff4d4f` 漂移（同为 CRITICAL/HIGH 两种红）→ 抽 `util.ts` 单源（CRITICAL/HIGH=`#f5222d` antd error 红 / MEDIUM 橙 / LOW 绿），三处审批严重度消费统一走 `sevColor()`（各消费方回退色保留：通知中心灰、审批卡/首页橙）。
+
+**验证**：tsc 0 · vite build 1,860kB · i18n 键全量 · crdmanageHelpers 冒烟 SMOKE_OK（esbuild transform 修脚本缺陷）· kbLayout2d 冒烟 160 绿 · 双态（竖/横）×双输入（触摸/鼠标）抽查·团队管理+工作流页零回归
+
+---
+
 ## 0.5.0-beta.15.16（2026-10-15 · 审计面板 A7：消费上游 #1270 持久审计）
 
 **新增「审计」tab——消费 Controller 持久审计存储读侧（上游 #1270 `GET /api/v1/audit`，MinIO JSONL 追加式，覆盖全部入口：dashboard / CLI / API）**
