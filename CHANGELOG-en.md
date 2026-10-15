@@ -3,6 +3,20 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.16 (2026-10-15 - audit panel A7: consumes the upstream #1270 durable audit store)
+
+**New "Audit" tab — reads the Controller's durable audit store (upstream #1270 `GET /api/v1/audit`, MinIO JSONL append-only, covering every entry point: dashboard / CLI / API)**
+
+- **Audit tab (new)**: a read-only governance-event panel, semantically aligned with dashboard B6 (audit-section) but on a different data path — the plugin has no BFF layer; the frontend proxies `/api/v1/audit` straight through the connector catch-all, and the scope is enforced server-side by the Controller (**L1 = full** / **L2 = `?team=` mandatory, cross-team reads hidden as 404 anti-probing** / worker identities denied 403 by default).
+- **Scope adaptation**: the team options are returned by the Controller scoped to the caller (L1 = all teams, L2 = own team) — "the token is the scope boundary", zero extra frontend logic. L1 defaults to "all teams" and can drill into a single team; L2 auto-locks to its own team and shows a "Scoped to your team" badge.
+- **Filters**: type (all / capability / approval level / channel / source) × time range (1 day / 7 days / 30 days / all) × team, three-way filtering; keyset pagination "Load more" (the cursor is held in a ref, out of the dependency chain, so loading more never resets the list back to page 1).
+- **Severity derivation**: Controller events carry no severity field — it is derived from the action's semantics (failed / denied / revoke / delete = error; grant / add / credential-write = warning; read / readback = info), the same approach as dashboard B6's normalization.
+- **Honest degradation**: 404 = old Controller without the endpoint → a version-gated info notice (available automatically after upgrade); 403 = identity not allowed → a permission notice; 30 s auto-refresh (gated on tab active, stops when you leave).
+
+**Verification**: tsc 0 · i18n 1,457 keys 0 missing / 0 duplicate / 0 empty · live audit endpoint 200 with real events (channel-kind sample checked against the field shape: targetTeam/before/after optional, capability prefix, cursor present only on a full page) · three carriers in sync at 15.16
+
+---
+
 ## 0.5.0-beta.15.15 (2026-10-15 - board landscape regression fix + home-page version number)
 
 **Board landscape regression fix: landscape phones (container width 500–950) were previously mis-classified into the portrait stacked layout (a landscape 667px is always "narrow" since <800, so the 15.13 Jira rework swept the landscape band into the portrait interaction). The layout is now branched three ways on the **measured** container width: portrait (<500) keeps the 15.11 mobile layout; landscape / mid width (500–950) restores the "two fixed-width column grid + at most 3 cards per column, the rest scroll vertically inside the column" (board columns are a fixed size, never compressed, no whole-board horizontal scroll); desktop widescreen (≥950) keeps the 250px Jira horizontal scroll. The layout mode is driven by the measured container width (phone rotation does not flip the narrow/wide snapshot — both values are <800 — so a ResizeObserver callback corrects a stale snapshot). The home-page welcome bar now appends the plugin version to the identity line (the header version line is hidden in portrait by `!narrow`, so on a portrait phone the version was previously uncheckable anywhere)**
