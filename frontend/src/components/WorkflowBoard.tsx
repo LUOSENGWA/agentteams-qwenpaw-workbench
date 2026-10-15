@@ -26,6 +26,7 @@ import {
 import { WorkflowEventsTimeline } from "./WorkflowEventsTimeline";
 import { TopologyIcon } from "./icons";
 import { WbTooltip } from "./WbTooltip";
+import { boardModeForWidth, type BoardMode } from "../boardMode";
 import { useWbViewport } from "../WbViewportContext";
 
 const host = window.QwenPaw.host;
@@ -1329,9 +1330,10 @@ function BoardCard(props: {
 // 列高实测推导（BoardColumnsView 的 ResizeObserver：约束底 − 看板顶），
 // 随屏幕高度伸缩；BOARD_CARD_CAP_PX 仅作首次测量前的初始/回退值（≈3 卡）。
 const BOARD_CARD_CAP_PX = 330;
-// 15.15 三档布局模式（横屏回归修复）：stacked=竖屏堆叠、grid2=两列定宽
-// +3 卡限高滚（横屏）、jira=250px 横滚（桌面）；按实测容器宽 500/950 断点。
-type BoardMode = "stacked" | "grid2" | "jira";
+// 15.15 三档布局模式（横屏回归修复）：判定收敛进纯模块 boardMode.ts
+// （断点回归护栏——本次横屏被搞烂的根因就是断点误判：横屏手机 667px 曾
+// 因 <800 恒 narrow 落进竖屏堆叠）。stacked=竖屏堆叠、grid2=两列定宽+3 卡
+// 限高滚（横屏）、jira=250px 横滚（桌面）；按实测容器宽 500/950 断点。
 function BoardColumnsView(props: {
   events: WorkflowEvent[];
   t: ReturnType<typeof useThemeColors>;
@@ -1372,7 +1374,7 @@ function BoardColumnsView(props: {
   const [colH, setColH] = React.useState<number>(BOARD_CARD_CAP_PX);
   // 15.15 布局模式：初值取快照，RO 回调按实测宽纠偏（0 宽早退防误翻）。
   const [mode, setMode] = React.useState<BoardMode>(() =>
-    vw < 500 ? "stacked" : vw < 950 ? "grid2" : "jira",
+    boardModeForWidth(vw),
   );
   React.useEffect(() => {
     const compute = () => {
@@ -1402,8 +1404,7 @@ function BoardColumnsView(props: {
       const avail = Math.max(320, bottom - top);
       setColH((prev) => (prev === avail ? prev : avail));
       // 模式随实测宽切换（正源；旋转不触发 narrow 翻转，快照会过期）。
-      const m: BoardMode =
-        rect.width < 500 ? "stacked" : rect.width < 950 ? "grid2" : "jira";
+      const m = boardModeForWidth(rect.width);
       setMode((prev) => (prev === m ? prev : m));
     };
     compute();
