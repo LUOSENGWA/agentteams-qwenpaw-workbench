@@ -37,3 +37,7 @@ NIGHT1419_TODO.md
 
 # 会话验收文档（本地，不入库）
 ACCEPTANCE-*.md
+
+# QC 会话产物（qc-task 任务书/结果 + qwen-cli 会话 tmp，非产品代码）
+.qwen/
+state/
