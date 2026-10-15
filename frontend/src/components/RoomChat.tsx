@@ -1783,9 +1783,23 @@ function RoomChat(props: RoomChatProps) {
   const [activeThread, setActiveThreadState] = React.useState<string | null>(
     initialThreadState.current.thread || null,
   );
+  // 15.14：窄屏话题=antd.Drawer（portal 覆盖层）。isWide 随窗口收窄
+  // true→false 时，宽屏内联面板的话题会「自动转成 Drawer 弹出」——叠加
+  // localStorage 持久化（切 tab 不卸载 + 重开恢复）→ 切 tab / 拖窄 / 重开
+  // 即出现「话题窗鬼影弹出」（真机反馈）。
+  // 修法：记住「该话题是用户在窄屏下显式打开的」——只有此种情况才允许
+  // Drawer 自动开；宽屏打开/持久化恢复的话题，收窄窗口时不弹 Drawer
+  // （状态保留，点消息上的话题图标可重新打开）。
+  const threadOpenedInNarrowRef = React.useRef(false);
   const setActiveThread = React.useCallback(
     (next: string | null) => {
       setActiveThreadState(next);
+      // 用户显式打开话题（next 非空，唯一来源=消息话题图标点击）→
+      // 记录此刻是否窄屏；关闭（null）→ 复位。持久化恢复不走此函数，
+      // ref 保持初始 false（恢复的话题不自动弹 Drawer）。
+      threadOpenedInNarrowRef.current =
+        next != null &&
+        (typeof window === "undefined" ? false : window.innerWidth < 900);
       try {
         window.localStorage.setItem(
           THREAD_STATE_KEY,
@@ -1805,6 +1819,16 @@ function RoomChat(props: RoomChatProps) {
   const [isWide, setIsWide] = React.useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 900 : true,
   );
+  // 15.14：离开聊天 tab → 关话题（含 Drawer）。窄屏 Drawer 是 portal
+  // 覆盖层，不关会「浮在别的 tab 之上」；宽屏内联面板隐藏于非激活 tab
+  // 无副作用，但统一关闭更干净（重开 chat tab 点消息可再开，thread 仍在
+  // localStorage，重开插件宽屏侧栏可恢复）。
+  const chatTabActive1514 = useTabActive("chat");
+  React.useEffect(() => {
+    if (chatTabActive1514) return;
+    if (activeThread) setActiveThread(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatTabActive1514, activeThread, setActiveThread]);
   React.useEffect(() => {
     const onResize = () => setIsWide(window.innerWidth >= 900);
     window.addEventListener("resize", onResize);
@@ -2876,20 +2900,24 @@ function RoomChat(props: RoomChatProps) {
       />
     </>
   ) : null;
-  const composerSendBtn = draft.trim() ? (
+  // 15.14：发送按钮常显（真机反馈「输入框发送按钮要加回来」）——空输入时
+  // disabled（不发），不再随 draft 有无消失（旧写法 draft.trim()?…:null
+  // 让空态整块消失，移动端误以为「没有发送键」）。
+  const composerSendBtn = (
     <antd.Button
       size={narrow ? "small" : undefined}
       loading={sending}
+      disabled={!draft.trim()}
       onClick={() => void handleSend()}
       style={{
-        backgroundColor: PRIMARY,
-        borderColor: PRIMARY,
-        color: "#fff",
+        backgroundColor: draft.trim() ? PRIMARY : undefined,
+        borderColor: draft.trim() ? PRIMARY : undefined,
+        color: draft.trim() ? "#fff" : undefined,
       }}
     >
-      发送
+      {tr("发送")}
     </antd.Button>
-  ) : null;
+  );
 
   return (
     <div
@@ -3098,12 +3126,18 @@ function RoomChat(props: RoomChatProps) {
 
       {/* 主区：左消息流 + 右线程面板（宽屏）；窄屏线程走 Drawer */}
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        {/* 15.14：左列补 minHeight:0——flex 高度链断点（教训 #615 同款）：
+ 缺它时列的自动最小高=内容最小高，列表 minHeight:300 会穿透撑破
+ 列 → RoomChat 根溢出 → tabpane（overflow auto）出现整页滚动 →
+ 「拖聊天页时输入框跟着动」（真机反馈）。补上后列恒=分配高，
+ 滚动只发生在列表内部，输入框钉在列底。 */}
         <div
           style={{
             display: "flex",
             flexDirection: "column",
             flex: 1,
             minWidth: 0,
+            minHeight: 0,
           }}
         >
           {/* 消息流（relative wrapper = 一键置底按钮锚点）。
@@ -3131,7 +3165,10 @@ function RoomChat(props: RoomChatProps) {
           overflowY: "auto",
           overflowX: "hidden",
           padding: "16px 4px",
-          minHeight: 300,
+          // 15.14：minHeight:300 → 0。旧值在「可用高 < 300」时强制列表
+          // 300px → 穿透撑破列 → tabpane 整页滚动 → 输入框随页动。
+          // flex:1 + minHeight:0 = 列表恒=可用高，内部自滚（Element 同款）。
+          minHeight: 0,
           minWidth: 0,
           // 拖拽文件高亮（Element 同款 drop zone）。
           outline: dragOver && onSendFiles ? "2px dashed color-mix(in srgb, var(--app-accent, #FF7F16) 60%, transparent)" : "none",
@@ -3839,13 +3876,16 @@ function RoomChat(props: RoomChatProps) {
         </div>
       ) : null}
 
-      {/* 底部输入区 */}
+      {/* 底部输入区。15.14：flexShrink:0——窗口矮时输入区不被压缩
+ （压缩会挤压 textarea/autoSize 计算高度 → 输入框视觉跳变），
+ 纵向空间全让给上方消息列表（flex:1 min-0）内部滚动。 */}
       <div
         style={{
           display: "grid",
           gap: 8,
           paddingTop: 12,
           borderTop: `1px solid ${t.border}`,
+          flexShrink: 0,
         }}
       >
         {/* ：composer 上方
@@ -3868,8 +3908,12 @@ function RoomChat(props: RoomChatProps) {
             }}
           >
             <ReplyOutlined style={{ color: PRIMARY, flexShrink: 0 }} />
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#666" }}>
-              回复 <b>{replyTo.sender}</b>
+            <span
+              style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#666" }}
+              // 15.14 命名约定：正文短名（display_name 优先），完整 MXID 走悬停。
+              title={replyTo.sender}
+            >
+              回复 <b>{senderShortName(replyTo.sender, room)}</b>
               {replyTo.body ? <>：{replyTo.body.slice(0, 80)}</> : null}
             </span>
             <antd.Button
@@ -4206,9 +4250,12 @@ function RoomChat(props: RoomChatProps) {
         ) : null}
       </div>
 
-      {/* 窄屏线程：钉钉式 Drawer 弹出 */}
+      {/* 窄屏线程：钉钉式 Drawer 弹出。
+ 15.14：仅「用户在窄屏下显式打开」的话题才自动弹 Drawer（ref 门控）——
+ 宽屏打开/持久化恢复的话题在窗口收窄时不弹（防鬼影），点消息话题
+ 图标可重新打开。 */}
       <antd.Drawer
-        open={!isWide && threadPanelBody !== null}
+        open={!isWide && threadPanelBody !== null && threadOpenedInNarrowRef.current}
         onClose={() => setActiveThread(null)}
         title={
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>

@@ -297,6 +297,34 @@ html[data-wb-fx="light"] .wb-live-dot,
 html[data-wb-fx="light"] .wb-loop-dot.running {
   animation-play-state: paused !important;
 }
+/* 多行截断（跨 Chromium 版本安全的通用写法）。
+ 15.14 根因：内联 display:-webkit-box + -webkit-line-clamp 在 Chromium 154
+ 计算为 flow-root（盒模型损坏）——在 grid 容器内与 overflow:hidden 叠加时
+ 行高塌 0（看板已完成列 20 卡全变细条，真盘实证）。标准 block +
+ max-height 兜底：旧版无 line-clamp 属性时退化为「硬截断不夹中间」，
+ 新版（Chromium 135+ 标准化 line-clamp）行为一致。类挂在 <div> 上
+ （非内联 style），全仓 8 处 -webkit-box 统一迁移。 */
+.wb-clamp-1, .wb-clamp-2, .wb-clamp-3 {
+  display: block;
+  overflow: hidden;
+  word-break: break-word;
+  line-clamp: 2;
+}
+.wb-clamp-1 { line-clamp: 1; max-height: 1.6em; }
+.wb-clamp-2 { max-height: 3.2em; }
+.wb-clamp-3 { line-clamp: 3; max-height: 4.8em; }
+/* antd Tabs 导航条：溢出时可横滚（鼠标滚轮横滚由全局 wheel 委托驱动，
+ 见 index.tsx 模块级 listener）。滚动条隐藏（与顶栏自写 tab 条同款
+ scrollbar-width:none + webkit 伪元素）。 */
+.wb-main .ant-tabs-nav-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.wb-main .ant-tabs-nav-wrap::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}
 `;
   document.head.appendChild(style);
 }
@@ -351,6 +379,49 @@ if (typeof window !== "undefined") {
   };
   window.addEventListener("focus", onWbFxReread);
   document.addEventListener("visibilitychange", onWbFxReread);
+}
+
+// 插件内所有「纯横向滚动条」（顶栏 tab 条 / 视图切换 / 技能 tab 条 /
+// antd Tabs nav……）统一支持鼠标滚轮横滚（15.14 点名：「顶部 tab
+// 可以用鼠标滚动，其他 tab 也是」）。
+// 委托实现（capture 阶段挂 document，一次覆盖全部 tab 条）：
+//  1. 只认插件渲染区（.wb-main / .wb-offline-page）内的目标——console
+//     本体与宿主聊天页零影响；
+//  2. 从事件目标向上找最近的「可横滚且不可纵滚」祖先：
+//     overflow-x auto/scroll + scrollWidth 超宽 + scrollHeight 不超高。
+//     纵向可滚的容器（消息流 / 看板卡区 / 页面）一律不劫持——滚给它们
+//     自己（防「滚轮想滚消息结果在滚 tab」的事故）；
+//  3. 边缘放行：已到横滚边界且滚轮方向继续往外 → 不 preventDefault，
+//     交回页面纵向滚动（与桌面端「滚到头穿透」手感一致）。
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "wheel",
+    (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; // 已横滚输入不劫持
+      const target = e.target as HTMLElement | null;
+      if (!target || !target.closest(".wb-main, .wb-offline-page")) return;
+      let el: HTMLElement | null = target;
+      while (el && el !== document.body) {
+        const s = getComputedStyle(el);
+        const hScroll =
+          (s.overflowX === "auto" || s.overflowX === "scroll") &&
+          el.scrollWidth > el.clientWidth + 4;
+        const vScroll =
+          (s.overflowY === "auto" || s.overflowY === "scroll") &&
+          el.scrollHeight > el.clientHeight + 4;
+        if (hScroll && !vScroll) {
+          const atStart = el.scrollLeft <= 0;
+          const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+          if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return;
+          el.scrollLeft += e.deltaY;
+          e.preventDefault();
+          return;
+        }
+        el = el.parentElement;
+      }
+    },
+    { passive: false, capture: true },
+  );
 }
 
 // 宿主聊天审批卡定制渲染（Phase 4 审批流）：

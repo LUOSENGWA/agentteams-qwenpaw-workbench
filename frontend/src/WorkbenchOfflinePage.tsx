@@ -68,9 +68,12 @@ export default function WorkbenchOfflinePage() {
         <div style={bannerBox}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{tr("本地离线模式")}</div>
           <div style={{ marginTop: 4, fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
-            {tr("QwenPaw 服务端未连接——数据接口（会话 / 聊天 / 工作流 / 产物）不可用。")}{" "}
+            {tr("本机无 QwenPaw 服务端——数据接口（会话 / 聊天 / 工作流 / 产物）不可用。")}{" "}
             {tr(
-              "连接配置可先填写并保存（本地留存、凭据脱敏）；安装并启动 QwenPaw 服务端后，可在 Web 控制台经「备份与恢复 → 导入」应用此配置。",
+              "连接配置可先填写并保存（本地留存、凭据脱敏）。点「连接测试」会真实拨号探测每个地址：",
+            )}{" "}
+            {tr(
+              "① 不可达=地址/网络问题；② 可达但未启用跨域（CORS）=浏览器直拨被拦。修复=在远程服务端配置 QWENPAW_CORS_ORIGINS（上游开关已存在），或在该服务端前配同源反代。",
             )}
           </div>
         </div>

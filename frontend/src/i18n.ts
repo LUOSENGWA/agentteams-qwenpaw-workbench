@@ -11,6 +11,21 @@ const DICT: Record<string, { en: string }> = {
   "聊天": { en: "Chat" },
   "团队管理": { en: "Team Management" },
   "更多": { en: "More" },
+  // ── 15.14 增补（离线模式 / 技能中心 / 首页）──
+  "本地离线模式": { en: "Local Offline Mode" },
+  "本地配置加载失败": { en: "Failed to load local config" },
+  "载入中…": { en: "Loading…" },
+  "本机无 QwenPaw 服务端——数据接口（会话 / 聊天 / 工作流 / 产物）不可用。": {
+    en: "No QwenPaw server on this device — data APIs (chats / rooms / workflows / artifacts) are unavailable.",
+  },
+  "连接配置可先填写并保存（本地留存、凭据脱敏）。点「连接测试」会真实拨号探测每个地址：": {
+    en: "You can fill in and save the connection config now (kept locally, credentials redacted). Tapping \"Connectivity test\" really dials each address:",
+  },
+  "① 不可达=地址/网络问题；② 可达但未启用跨域（CORS）=浏览器直拨被拦。修复=在远程服务端配置 QWENPAW_CORS_ORIGINS（上游开关已存在），或在该服务端前配同源反代。": {
+    en: "① Unreachable = address/network issue; ② reachable but cross-origin (CORS) not enabled = browser direct dial blocked. Fix: set QWENPAW_CORS_ORIGINS on the remote server (the upstream switch already exists), or put a same-origin reverse proxy in front of it.",
+  },
+  "使用方": { en: "Used by" },
+  "项目进展与任务拓扑": { en: "Project progress & task topology" },
   // ── 远端团队知识库 / 群名搜索 / 通知跳转 / 首页快捷）──
   "远端团队知识库": { en: "Remote team KB" },
   "本机宿主 Agent": { en: "Local host agent" },

@@ -503,9 +503,97 @@ function handleImport(init: RequestInit | undefined): Record<string, unknown> {
   return { ok: true, restart: "none", config: redactConfig(data) };
 }
 
-// ── POST /config/test（离线=全部不可达；响应形态对齐 ConfigTestResponse）
+// ── POST /config/test（离线=真拨号诊断；响应形态对齐 ConfigTestResponse）
+//
+// 15.14：此前离线对每个地址恒报「无法探测该地址」——真机端（有网、无
+// 本地服务端）输远程 QwenPaw 地址后无从判断「为什么联不通」。改为真实
+// 两步探测，诚实分层归因：
+//   ① no-cors 探测 = 纯网络可达性（DNS/路由/TCP/TLS）。no-cors 模式对
+//      「到达服务器但跨域被拦」不抛错（返回 opaque），对「网络不可达」
+//      抛 TypeError → 可据此区分「地址不通」与「通了但跨域」。
+//   ② cors 探测 = 服务端是否启用跨域（CORS）。QwenPaw 上游内置 CORS
+//      开关 QWENPAW_CORS_ORIGINS（默认空=关闭；桌面 Tauri 客户端即靠它
+//      跨域直拨，qwenpaw/tauri/env.py）。未配置时实测零 CORS 头（无
+//      Access-Control-Allow-Origin，OPTIONS 预检 405）→ 跨域直拨被浏览器
+//      拦死。探测失败即提示「远程服务端配置 QWENPAW_CORS_ORIGINS +
+//      确认已装本插件」（10/14 根因报告定案）。
+// 这样「输入地址联不通」从笼统话术变成可定位的诊断。
 
-function handleTest(init: RequestInit | undefined): Record<string, unknown> {
+function withTimeout(ms: number): AbortSignal {
+  const c = new AbortController();
+  setTimeout(() => c.abort(), ms);
+  return c.signal;
+}
+
+async function probeUrl(
+  url: string,
+): Promise<Record<string, unknown>> {
+  const t0 = Date.now();
+  // ① 纯网络可达性（no-cors：到达即 resolve，不可达才 reject）。
+  let reachable = false;
+  try {
+    await fetch(url, {
+      mode: "no-cors",
+      method: "GET",
+      cache: "no-store",
+      redirect: "follow",
+      signal: withTimeout(6000),
+    });
+    reachable = true;
+  } catch {
+    return {
+      url,
+      ok: false,
+      http_ok: false,
+      ms: null,
+      detail:
+        "地址不可达（DNS 解析失败 / 网络不通 / 连接被拒 / TLS 失败 / 6s 超时）",
+      auth: "none",
+      challenge: "",
+    };
+  }
+  // ② 跨域可用性（cors：服务端无 CORS 头 → 预检 405/403 → reject）。
+  let corsOk = false;
+  let status: number | null = null;
+  try {
+    const res = await fetch(url, {
+      mode: "cors",
+      method: "GET",
+      cache: "no-store",
+      signal: withTimeout(6000),
+    });
+    status = res.status;
+    corsOk = res.ok;
+  } catch {
+    corsOk = false;
+  }
+  const ms = Date.now() - t0;
+  if (corsOk) {
+    return {
+      url,
+      ok: true,
+      http_ok: true,
+      ms,
+      detail: `可达且已启用跨域（HTTP ${status}）——可远程直拨（仍需有效凭据）`,
+      auth: "none",
+      challenge: "",
+    };
+  }
+  return {
+    url,
+    ok: false,
+    http_ok: status !== null,
+    ms,
+    detail:
+      "地址可达，但远程 QwenPaw 服务端未启用跨域（CORS），浏览器直拨被拦（预检被拒）。修复=在远程服务端启动环境配置 QWENPAW_CORS_ORIGINS=本设备 origin（上游官方机制，桌面客户端同款）并重启；同时确认远程服务端已安装本插件",
+    auth: "none",
+    challenge: "",
+  };
+}
+
+async function handleTest(
+  init: RequestInit | undefined,
+): Promise<Record<string, unknown>> {
   let body: Record<string, unknown> = {};
   try {
     const b = init?.body;
@@ -522,28 +610,26 @@ function handleTest(init: RequestInit | undefined): Record<string, unknown> {
       .map(addressUrl)
       .filter((u) => u.length > 0);
   const sgCfg = isObj(cfg.sglang) ? cfg.sglang : {};
-  const rows = (urls: string[]) =>
-    urls.map((url) => ({
-      url,
-      ok: false,
-      http_ok: false,
-      ms: null,
-      detail: "本地离线模式——无服务端运行时，无法探测该地址",
-      auth: "none",
-      challenge: "",
-    }));
+  // 每域并行探测（Promise.all），响应形态与在线 ConfigTestResponse 同形。
+  const rows = (urls: string[]) => urls.map((u) => probeUrl(u));
   const pinnedOf = (entries: unknown): string | null => {
     const list = asList(entries).map(addressUrl).filter((u) => u.length > 0);
     if (mode === "lan") return list[0] ?? null;
     if (mode === "wan") return list[1] ?? list[0] ?? null;
     return null;
   };
+  const [matrix, controller, sglang, gateway] = await Promise.all([
+    Promise.all(rows(urlsOf(body.matrix, cfg.matrix_homeservers))),
+    Promise.all(rows(urlsOf(body.controller, cfg.controller_urls))),
+    Promise.all(rows(urlsOf(body.sglang, sgCfg.urls))),
+    Promise.all(rows(urlsOf(body.gateway, cfg.gateway_admin_urls))),
+  ]);
   return {
     ok: true,
-    matrix: rows(urlsOf(body.matrix, cfg.matrix_homeservers)),
-    controller: rows(urlsOf(body.controller, cfg.controller_urls)),
-    sglang: rows(urlsOf(body.sglang, sgCfg.urls)),
-    gateway: rows(urlsOf(body.gateway, cfg.gateway_admin_urls)),
+    matrix,
+    controller,
+    sglang,
+    gateway,
     effective: {
       matrix: pickAddress(asList(cfg.matrix_homeservers), mode),
       controller: pickAddress(asList(cfg.controller_urls), mode),

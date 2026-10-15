@@ -41,13 +41,21 @@ function EffectiveBadge({ url, label }: { url?: string; label: string }) {
 
   return (
     <span
+      // 15.14：长 URL 会撑破窄容器（320/340 实盘实证横溢）——
+      // inline-block + max-width 100% 钳制，URL 内 break-all 断行。
       style={{
+        display: "inline-block",
+        maxWidth: "100%",
         fontSize: 12,
         color: "#52c41a",
         background: "rgba(82,196,26,0.1)",
         padding: "2px 8px",
         borderRadius: 6,
         marginLeft: 8,
+        marginTop: 4,
+        verticalAlign: "top",
+        wordBreak: "break-all",
+        lineHeight: 1.5,
       }}
     >
       {label}生效：{url}
@@ -357,7 +365,8 @@ function AddrAuthEditor({
         onChange={(t: "none" | "basic" | "bearer") =>
           onChange({ ...value, type: t, stored: false })
         }
-        style={{ width: 300, maxWidth: "100%" }}
+        // 15.14：固定 300px → 流体（容器内全宽，上限 420 防宽屏拉太长）。
+        style={{ width: "100%", maxWidth: 420 }}
         options={[
           { value: "none", label: tr("使用服务自身认证（内网默认，留空即用；选此项=清除该地址已存凭据）") },
           { value: "basic", label: tr("Basic 认证（公网网关 Basic 门，如 Caddy）") },
@@ -365,7 +374,8 @@ function AddrAuthEditor({
         ]}
       />
       {value.type === "basic" ? (
-        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        // 15.14：固定 150/180 → 等宽流体（各 flex:1，窄容器同宽不挤破）。
+        <div style={{ display: "flex", gap: 6, marginTop: 4, maxWidth: 420 }}>
           <antd.Input
             size="small"
             placeholder={tr("用户名（与网关一致）")}
@@ -374,7 +384,7 @@ function AddrAuthEditor({
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               onChange({ ...value, username: e.target.value })
             }
-            style={{ width: 150 }}
+            style={{ flex: 1, minWidth: 0 }}
           />
           {/* 已存密码不回显字面量——空框+占位提示
  「已保存·留空保持不变」，消除拼接覆盖真密码的路径。 */}
@@ -388,7 +398,7 @@ function AddrAuthEditor({
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               onChange({ ...value, password: e.target.value })
             }
-            style={{ width: 180 }}
+            style={{ flex: 1, minWidth: 0 }}
           />
         </div>
       ) : null}
@@ -403,7 +413,8 @@ function AddrAuthEditor({
           onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
             onChange({ ...value, token: e.target.value })
           }
-          style={{ marginTop: 4, width: 330, maxWidth: "100%" }}
+          // 15.14：固定 330px → 流体（同认证类型选择器，上限 420）。
+          style={{ marginTop: 4, width: "100%", maxWidth: 420 }}
         />
       ) : null}
     </div>
