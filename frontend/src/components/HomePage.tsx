@@ -21,7 +21,7 @@ import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import { useWbViewport } from "../WbViewportContext";
 import LOGO_URL from "../lib/logo";
-import { formatChatTime, formatTimeShort } from "../util";
+import { formatChatTime, formatTimeShort, sevColor as sevColorOf } from "../util";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -754,12 +754,7 @@ function HomePage(props: HomePageProps) {
                   item.body,
                 );
                 const sev = sevMatch?.[1]?.toUpperCase() || "MEDIUM";
-                const sevColor =
-                  sev === "CRITICAL" || sev === "HIGH"
-                    ? "#ff4d4f"
-                    : sev === "LOW"
-                      ? "#52c41a"
-                      : "#fa8c16";
+                const sevColor = sevColorOf(sev);
                 const when = formatTimeShort(item.ts * 1000);
                 const workerShort = (item.sender.split(":")[0] || "")
                   .replace(/^@/, "");

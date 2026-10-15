@@ -10,6 +10,7 @@ import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { sevColor } from "../util";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -47,13 +48,6 @@ function agentteamsDetails(
   };
 }
 
-const SEV_COLOR: Record<string, string> = {
-  CRITICAL: "#f5222d",
-  HIGH: "#f5222d",
-  MEDIUM: "#fa8c16",
-  LOW: "#52c41a",
-};
-
 export default function ApprovalCard({
   approval,
   onResolved,
@@ -90,7 +84,7 @@ export default function ApprovalCard({
   };
 
   const sev = String(approval.severity || "MEDIUM").toUpperCase();
-  const color = SEV_COLOR[sev] || "#fa8c16";
+  const color = sevColor(sev);
   const at = agentteamsDetails(approval);
 
   return (
