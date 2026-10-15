@@ -2266,5 +2266,11 @@ sys.stdout.buffer.write(b"===GZB1===\n" + blob.encode("ascii")
         "require_token": _kb_require_token,
         "docker": _kb_docker,
         "docker_available": _kb_docker_available,
+        # #87 团队共享文件域（team_files_api）复用面：
+        "exec_full": _kb_exec_full,
+        "find_list": _kb_find_list,
+        "is_sensitive": _kb_is_sensitive,
+        "tar_entries": _kb_tar_entries,
+        "max_file": _KB_MAX_FILE,
     }
     return router, _kb_shared

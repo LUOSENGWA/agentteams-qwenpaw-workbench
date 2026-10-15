@@ -394,6 +394,13 @@ const DICT: Record<string, { en: string }> = {
   },
   "循环任务": { en: "Loop tasks" },
   "已发送 {n} 个文件": { en: "{n} file(s) sent" },
+  // ── #87 团队共享文件引用 ──
+  "引用工作区文件": { en: "Reference workspace files" },
+  "返回上级": { en: "Up one level" },
+  "团队共享根目录": { en: "Team shared root" },
+  "此目录暂无文件": { en: "No files in this directory" },
+  "已选 {n} 个文件": { en: "{n} file(s) selected" },
+  "插入引用": { en: "Insert reference" },
   "保存": { en: "Save" },
   "返回": { en: "Back" },
   "发送": { en: "Send" },

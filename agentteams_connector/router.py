@@ -10,6 +10,8 @@ Frontend plugin fetches these same-origin endpoints (no CORS):
 - ``POST /agentteams-proxy/login`` Matrix m.login.password
 - ``POST /agentteams-proxy/selfcheck/{level}`` L0/L1/L2/all
 - ``GET /agentteams-proxy/health`` backend liveness + version
+- ``GET /agentteams-proxy/team-files`` team shared dir listing (#87, L1)
+- ``GET /agentteams-proxy/team-file`` team shared file text preview (#87, L1)
 - ``{METHOD}/{agentteams-proxy}/{matrix|controller}/{path}`` forwarded
 
 Auto-failover: addresses are ordered lists (LAN first, WAN second). Every
@@ -1054,6 +1056,7 @@ from .routers import (  # noqa: E402
     live_api,
     matrix_api,
     status_api,
+    team_files_api,
     teams_api,
 )
 
@@ -1081,6 +1084,13 @@ def build_router() -> APIRouter:
         _kb_ws_cache, _kb_docker_ok_cache, _kb_inflight
     )
     router.include_router(_kb_router)
+    # #87 团队共享文件（列取/单文件读）——可变状态由装配方创建
+    # 显式传入（build_router 每建一次全新，测试隔离随之成立）。
+    _tf_state: Dict[str, Any] = {"probe": {}, "shared": {},
+                                 "workers": {"data": None, "ts": 0.0}}
+    router.include_router(
+        team_files_api.build_team_files_router(_kb_shared, _tf_state)
+    )
     router.include_router(live_api.build_live_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
