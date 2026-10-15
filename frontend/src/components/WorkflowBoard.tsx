@@ -655,9 +655,10 @@ function DagTopo(props: {
                       whiteSpace: narrow ? "normal" : "nowrap",
                       wordBreak: narrow ? "break-word" : undefined,
                     }}
+                    // 15.14：正文短名（MXID→localpart），全名走 title 悬停。
                     title={nodeLabel(n)}
                   >
-                    {nodeLabel(n)}
+                    {nodeLabelUi(n)}
                   </p>
                   <p
                     style={{
@@ -797,12 +798,7 @@ function TopoTaskDetailRow(props: {
           />
           {td.summary ? (
             <div
-              style={{
-                overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-              }}
+              className="wb-clamp-2"
               title={td.summary}
             >
               {td.summary}
@@ -819,6 +815,16 @@ function TopoTaskDetailRow(props: {
 }
 
 /** 节点显示名：task 优先，否则 subagent/name/id。 */
+/** MXID → 显示短名（命名约定：UI 正文用名字，完整 MXID 走 title 悬停）。
+ `@tech-writer:example.org` → `tech-writer`。
+ 只认 @开头且含 : 的串（真 MXID 形态）——普通任务名不误伤。 */
+function mxidShort(s: string): string {
+  const t = s.trim();
+  if (!t.startsWith("@")) return t;
+  const at = t.indexOf(":", 1);
+  return at > 0 ? t.slice(1, at) : t.slice(1);
+}
+
 function nodeLabel(n: WorkflowNode): string {
   const task = typeof n.task === "string" ? n.task.trim() : "";
   if (task) return task;
@@ -826,7 +832,14 @@ function nodeLabel(n: WorkflowNode): string {
   if (sub) return sub;
   const name = typeof n.name === "string" ? n.name.trim() : "";
   if (name) return name;
-  return typeof n.id === "string" ? n.id : "节点";
+  // 空串 id 兜底（15.14 真盘：节点 id 为空时旧逻辑返回 ""→ 卡标题行
+  // 塌 0 高的诱因之一）——恒返回非空显示值。
+  return typeof n.id === "string" && n.id.trim() ? n.id : "节点";
+}
+
+/** 显示用短名：nodeLabel 的值若为 MXID → 短名（title 悬停仍走原名）。 */
+function nodeLabelUi(n: WorkflowNode): string {
+  return mxidShort(nodeLabel(n));
 }
 
 
@@ -1204,26 +1217,32 @@ function BoardCard(props: {
         background: t.cardBg,
         display: "grid",
         gap: 4,
-        // 溢出兜底：任何内容（worker/项目名/deps tag）不超出卡片容器。
-        overflow: "hidden",
         minWidth: 0,
+        // 15.14 根因：卡容器 overflow:hidden + display:grid → grid 项
+        // min-height:auto 塌 0（CSS 规范：overflow≠visible 时 min-height
+        // 自动尺寸归零）。真盘实证：Chromium 154 下 20 卡列每卡塌 18px
+        // 细条（标题/项目名行 0 高，只剩 tag 行）= 真机「挤在一起」。
+        // 去掉容器 overflow——标题/项目名各自的 clamp div 自带
+        // overflow:hidden 限高，tag 行 flexWrap，无需容器再兜底；
+        // 横向由 grid 单列 232px + minWidth:0 钳制，不会撑破。
+        // flexShrink:0——看板卡区（flex column）内卡高恒=内容高。
+        flexShrink: 0,
       }}
     >
       <div
+        // 15.14：clamp 走全局标准类（.wb-clamp-2，block+max-height，
+        // 跨 Chromium 版本安全）——内联 -webkit-box 在 Chromium 154
+        // 计算为 flow-root（盒模型损坏）是细条塌缩的另一半根因。
+        className="wb-clamp-2"
         style={{
           fontWeight: 600,
           fontSize: 12.5,
           lineHeight: 1.3,
           color: t.text,
-          // 限高：标题最多 2 行（卡高封顶，看板列一屏可看更多卡）；
-          // 全文走 title 悬停，不丢信息。
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-          wordBreak: "break-word",
           cursor: taskId && onOpenDetail ? "pointer" : "default",
         }}
+        // 15.14 命名约定：正文显示短名（nodeLabelUi，MXID→localpart），
+        // 完整 MXID/原文走 title 悬停（nodeLabel 原值），不丢信息。
         title={
           taskId && onOpenDetail
             ? `${nodeLabel(node)}（点击巡检：明细/依赖/状态转换/tracing）`
@@ -1233,19 +1252,16 @@ function BoardCard(props: {
           taskId && onOpenDetail ? () => onOpenDetail(taskId, task.runId) : undefined
         }
       >
-        {nodeLabel(node)}
+        {nodeLabelUi(node)}
       </div>
       <div
+        className="wb-clamp-2"
         style={{
           fontSize: 11.5,
           color: t.textSecondary,
           // 窄屏项目名换行（2 行封顶，不 ellipsis 截断）。
           whiteSpace: "normal",
-          wordBreak: "break-word",
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
+          lineHeight: 1.3,
         }}
         title={task.projectTitle}
       >
@@ -1544,15 +1560,18 @@ function BoardColumnsView(props: {
               />
               {tr(col.zh)}（{colTasks.length}）
             </div>
-            {/* 卡区 = 列高 − 头行（flex:1 + min-0），内容超出列内纵向滚。 */}
+            {/* 卡区 = 列高 − 头行（flex:1 + min-0），内容超出列内纵向滚。
+ 15.14：grid→flex column——grid 定高容器在「卡片数 × 卡高 > 容器高」时
+ auto 行参与收缩计算（行塌 18px 细条，20 卡列实证）；flex 子项
+ flex:0 0 auto 恒不缩，卡高=内容高，列滚动，彻底免疫。 */}
             <div
               style={{
-                display: "grid",
+                display: "flex",
+                flexDirection: "column",
                 gap: 8,
                 flex: 1,
                 minHeight: 0,
                 marginTop: 8,
-                alignContent: "start",
                 overflowY: "auto",
                 overflowX: "hidden",
               }}

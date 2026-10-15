@@ -523,16 +523,13 @@ function MessageSearch(props: MessageSearchProps) {
                   {formatChatTime(item.origin_server_ts)}
                 </span>
               </div>
+              {/* 15.14：clamp 走全局标准类（跨 Chromium 版本安全）。 */}
               <div
+                className="wb-clamp-3"
                 style={{
                   fontSize: 12.5,
                   color: t.text,
-                  display: "-webkit-box",
-                  WebkitLineClamp: 3,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
                   whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
                 }}
               >
                 {highlightParts(item.body, termRef.current)}

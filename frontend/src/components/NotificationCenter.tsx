@@ -436,16 +436,13 @@ function NotificationCenter(props: {
                   </span>
                 </div>
                 <div
+                  // 15.14：clamp 走全局标准类（跨 Chromium 版本安全）。
+                  className="wb-clamp-2"
                   style={{
                     fontSize: 12.5,
                     color: t.textSecondary,
                     marginTop: 2,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
                     whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
                   }}
                 >
                   {a.body}
@@ -557,16 +554,12 @@ function NotificationCenter(props: {
                   </span>
                 </div>
                 <div
+                  className="wb-clamp-2"
                   style={{
                     fontSize: 12.5,
                     color: t.textSecondary,
                     marginTop: 2,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
                     whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
                   }}
                 >
                   {m.body}
@@ -689,17 +682,14 @@ function NotificationCenter(props: {
                         {formatChatTime(ev.created_at)}
                       </span>
                     </div>
+                    {/* 15.14：展开=全文（无 clamp 类），收起=wb-clamp-2。 */}
                     <div
+                      className={isExpanded ? undefined : "wb-clamp-2"}
                       style={{
                         fontSize: 12.5,
                         color: t.textSecondary,
                         marginTop: 2,
-                        display: "-webkit-box",
-                        WebkitLineClamp: isExpanded ? undefined : 2,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
                         whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
                       }}
                     >
                       {ev.body}
