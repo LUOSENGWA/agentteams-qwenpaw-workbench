@@ -10,6 +10,8 @@
 import { cachedRequest, invalidateTags } from "./requestCache";
 import { publishApprovalCount } from "./approvalsStore";
 import { tryOfflineConfigEndpoint } from "./offlineBackend";
+import { FILE_REFS_CONTENT_KEY, parseFileRefs } from "./lib/file-refs";
+import type { FileRef } from "./lib/file-refs";
 
 export async function requestJson(
   path: string,
@@ -784,6 +786,9 @@ export interface RoomMessage {
   /** 聊天内 workflow 卡片载荷（content.agentteams.workflow 自定义字段，
  * ；结构与 sync_watcher _track_workflow 消费同一事件）。 */
   workflow?: WorkflowCardPayload | null;
+  /** 团队共享文件引用（#87，content.com.agentteams.file_refs）——
+ * 收信侧渲染文件 chip，点击经 team-file 端点预览。 */
+  file_refs?: FileRef[];
 }
 
 // ── 聊天内 workflow 卡片──────────────────────────────
@@ -2860,6 +2865,8 @@ export async function fetchRoomMessages(
       }
       // workflow 卡片载荷透传（规则 1：content 键存在且为对象）。
       const rawWorkflow = content["agentteams.workflow"];
+      // 团队共享文件引用（#87）——容错解析（信封/裸数组/畸形丢弃）。
+      const refs = parseFileRefs(content[FILE_REFS_CONTENT_KEY]);
       return {
         event_id: eventId0,
         sender: String(ev.sender || ""),
@@ -2876,6 +2883,7 @@ export async function fetchRoomMessages(
           redacted || typeof info.size !== "number" ? undefined : info.size,
         reply: redacted ? undefined : reply,
         workflow: redacted ? null : (isWorkflowPayload(rawWorkflow) ? rawWorkflow : null),
+        file_refs: redacted || refs.length === 0 ? undefined : refs,
         ...(editedBy ? { edited: true } : {}),
         ...(redacted ? { redacted: true } : {}),
       };
@@ -3038,15 +3046,78 @@ function buildMentionHtml(body: string, mentions: SendMention[]): string {
   return html;
 }
 
+// ── 团队共享文件（#87 聊天引用工作区文件 · 数据面）──────────────
+// 后端 = GET /agentteams-proxy/team-files|team-file（Controller Docker
+// 代理 × admin token；team→worker 容器→shared 根，见 team_files_api）。
+export interface TeamFileEntry {
+  /** 裸名（目录/文件）。 */
+  name: string;
+  /** shared 根相对键（目录导航用）。 */
+  key: string;
+  /** true=目录（或符号链接目录），可进入。 */
+  isPrefix: boolean;
+  /** 文件字节数（目录恒 0）。 */
+  size: number;
+}
+
+/** 列取团队共享目录一层（非递归）；prefix 为空=根。 */
+export async function fetchTeamFiles(
+  team: string,
+  prefix = "",
+): Promise<TeamFileEntry[]> {
+  const q = new URLSearchParams({ team });
+  if (prefix) q.set("prefix", prefix);
+  const data = await requestJson(
+    `/agentteams-proxy/team-files?${q.toString()}`,
+  );
+  return Array.isArray(data) ? (data as TeamFileEntry[]) : [];
+}
+
+/** 读团队共享单文件文本预览（二进制/超大/敏感由后端 415/413/404 拒绝）。 */
+export async function fetchTeamFileText(
+  team: string,
+  key: string,
+): Promise<string> {
+  const q = new URLSearchParams({ team, key });
+  const host = window.QwenPaw.host;
+  const path = `/agentteams-proxy/team-file?${q.toString()}`;
+  const res = host.fetch
+    ? await host.fetch(path)
+    : await fetch(host.getApiUrl(path), {
+        headers: host.getApiToken()
+          ? { Authorization: `Bearer ${host.getApiToken()}` }
+          : {},
+      });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const p = JSON.parse(await res.text()) as Record<string, unknown>;
+      if (typeof p.detail === "string") detail = p.detail;
+    } catch {
+      /* 非 JSON 错误体——仅带状态码 */
+    }
+    throw new Error(
+      detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`,
+    );
+  }
+  return await res.text();
+}
+
 export async function sendRoomMessage(
   roomId: string,
   body: string,
   replyTo?: { event_id: string; sender: string; body: string },
   threadRoot?: string,
   mentions?: SendMention[],
+  extraContent?: Record<string, unknown>,
 ): Promise<{ event_id: string }> {
   const txn = `wb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const content: Record<string, unknown> = { msgtype: "m.text", body };
+  // 自定义 content 键并入（#87 file_refs 信封）——独立于 mentions/线程
+  // 分支，互不覆盖。
+  if (extraContent) {
+    for (const [k, v] of Object.entries(extraContent)) content[k] = v;
+  }
   if (mentions && mentions.length > 0) {
     content["format"] = "org.matrix.custom.html";
     content["formatted_body"] = buildMentionHtml(body, mentions);

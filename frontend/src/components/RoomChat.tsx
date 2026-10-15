@@ -17,6 +17,8 @@ import { useMediaObjectUrl } from "../useMediaObjectUrl";
 import { MxcAvatar } from "../MxcAvatar";
 import MdText from "./MdText";
 import { FilePreview, type PreviewFile } from "./FilePreview";
+import { FileRefPicker } from "./FileRefPicker";
+import type { FileRef } from "../lib/file-refs";
 import { ActionBtn } from "./ActionBtn";
 import MessageSearch from "./MessageSearch";
 import MemberDetail from "./MemberDetail";
@@ -77,6 +79,8 @@ const EyeOutlined = icon("EyeOutlined");
 const FileOutlined = icon("FileOutlined");
 const ReplyOutlined = icon("ReplyOutlined");
 const PaperClipOutlined = icon("PaperClipOutlined");
+const FileTextOutlined = icon("FileTextOutlined");
+const LinkOutlined = icon("LinkOutlined");
 
 // ── UI 常量（与 WorkbenchPage 视觉一致）──────────────────────────────
 const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
@@ -1101,9 +1105,13 @@ function MessageBody({
   onOpenProject,
   onWorkflowIntervened,
   live,
+  fileRefTeam,
 }: {
   msg: RoomMessage;
   mine: boolean;
+  /** 当前房间的 team 名（#87 文件引用 chip 点击预览走 team-file 端点；
+ * 非团队房间/推不出 team 时缺省，chip 不渲染）。 */
+  fileRefTeam?: string | null;
   onApprovalAction?: (
     msg: RoomMessage,
     action: "approve" | "deny",
@@ -1513,6 +1521,53 @@ function MessageBody({
           {tr("已编辑")}
         </span>
       ) : null}
+      {/* 团队共享文件引用（#87）——chip 行；点击经 team-file 端点
+ * 预览（复用 m.file 分支同款 previewFile 状态 + FilePreview，
+ * apiPath 走 host.fetch 带鉴权）。纯引用消息（body 空）也渲染。 */}
+      {msg.file_refs && msg.file_refs.length > 0 && fileRefTeam ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 4,
+            marginTop: msg.body ? 6 : 0,
+          }}
+        >
+          {msg.file_refs.map((r) => {
+            const apiPath = `/agentteams-proxy/team-file?team=${encodeURIComponent(
+              fileRefTeam,
+            )}&key=${encodeURIComponent(r.key)}`;
+            return (
+              <antd.Tag
+                key={r.key}
+                color="blue"
+                style={{
+                  cursor: "pointer",
+                  marginInlineEnd: 0,
+                  fontSize: 12,
+                  maxWidth: 240,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                onClick={() =>
+                  setPreviewFile({
+                    name: r.name,
+                    url: apiPath,
+                    apiPath,
+                    size: r.size,
+                    needsFetch: true,
+                  })
+                }
+              >
+                <FileTextOutlined style={{ marginRight: 4 }} />
+                {r.name}
+              </antd.Tag>
+            );
+          })}
+        </div>
+      ) : null}
+      <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />
     </div>
   );
 }
@@ -1541,11 +1596,13 @@ interface RoomChatProps {
   /** 是否允许发消息；false 时整个输入区替换为居中提示条（Element 同款语义）。 */
   canSend?: boolean;
   /** 发送文本消息；replyTo 非空时作为引用回复发送；threadRoot 非空时
- * 作为线程回复（m.thread）发送到该线程。 */
+ * 作为线程回复（m.thread）发送到该线程；fileRefs 非空时把团队共享
+ * 文件引用（#87）挂到出站 content（com.agentteams.file_refs 信封）。 */
   onSend?: (
     text: string,
     replyTo?: { event_id: string; sender: string; body: string },
     threadRoot?: string,
+    fileRefs?: FileRef[],
   ) => Promise<void> | void;
   /** 发送文件/图片（上传 → m.file/m.image 消息）。 */
   onSendFiles?: (files: File[]) => Promise<void> | void;
@@ -1704,6 +1761,16 @@ function RoomChat(props: RoomChatProps) {
     return m;
   }, [liveWorkflows]);
   const [draft, setDraft] = React.useState("");
+  // #87 团队共享文件引用——team 名从房间名推导（Controller 建团队房间
+  // 命名 "Team: <name>"，provisioner 实锤）；推不出=非团队房间→
+  // 引用按钮隐藏、chip 不渲染。
+  const teamName = React.useMemo(() => {
+    const m = /^Team:\s*(.+)$/.exec(room?.name || "");
+    const n = m ? m[1].trim() : "";
+    return n || null;
+  }, [room?.name]);
+  const [fileRefs, setFileRefs] = React.useState<FileRef[]>([]);
+  const [refPickerOpen, setRefPickerOpen] = React.useState(false);
   // 编辑模式（Element 同款——banner「正在编辑此消息」+
   // 输入框预填原文；发送=m.replace 替换，Esc/✕ 取消）。
   const [editing, setEditing] = React.useState<{
@@ -2135,9 +2202,17 @@ function RoomChat(props: RoomChatProps) {
     }
   }, [draft, draftKey]);
 
+  // #87：切房间即清已选引用与选择器——引用键是 team 作用域，
+  // 跨房间（跨 team）带着走会挂到错误的 team-file 端点上。
+  React.useEffect(() => {
+    setFileRefs([]);
+    setRefPickerOpen(false);
+  }, [room?.room_id]);
+
   const handleSend = React.useCallback(async () => {
     const text = draft.trim();
-    if (!text) return;
+    // #87：纯引用消息（无文本）也可发——空文本 + 无引用才拦截。
+    if (!text && fileRefs.length === 0) return;
     // 编辑模式优先（发送=m.replace 替换，不走新消息链）。
     if (editing) {
       if (!onSendEdit) return;
@@ -2153,10 +2228,12 @@ function RoomChat(props: RoomChatProps) {
     }
     if (!onSend) return;
     const replying = replyTo;
+    const refs = fileRefs.length ? fileRefs : undefined;
     try {
-      await onSend(text, replying || undefined);
+      await onSend(text, replying || undefined, undefined, refs);
       setDraft("");
       setReplyTo(null);
+      setFileRefs([]);
       // 自己发的消息不算"新消息"——未读线随发送下移。
       setReadTs(Date.now());
       // 滚动到底部
@@ -2166,9 +2243,9 @@ function RoomChat(props: RoomChatProps) {
         }
       });
     } catch {
-      /* {tr("发送失败")}保留草稿 */
+      /* {tr("发送失败")}保留草稿与已选引用 */
     }
-  }, [draft, onSend, onSendEdit, replyTo, editing]);
+  }, [draft, fileRefs, onSend, onSendEdit, replyTo, editing]);
 
   // 审批动作：发带 @Worker 的审批命令 + 本地标记已处理。
   // 此前裸发 /approval approve（无 @）——群房间
@@ -2903,16 +2980,18 @@ function RoomChat(props: RoomChatProps) {
   // 15.14：发送按钮常显（真机反馈「输入框发送按钮要加回来」）——空输入时
   // disabled（不发），不再随 draft 有无消失（旧写法 draft.trim()?…:null
   // 让空态整块消失，移动端误以为「没有发送键」）。
+  // #87：有已选引用时（即使文本空）发送键可用。
+  const canComposerSend = !!(draft.trim() || fileRefs.length > 0);
   const composerSendBtn = (
     <antd.Button
       size={narrow ? "small" : undefined}
       loading={sending}
-      disabled={!draft.trim()}
+      disabled={!canComposerSend}
       onClick={() => void handleSend()}
       style={{
-        backgroundColor: draft.trim() ? PRIMARY : undefined,
-        borderColor: draft.trim() ? PRIMARY : undefined,
-        color: draft.trim() ? "#fff" : undefined,
+        backgroundColor: canComposerSend ? PRIMARY : undefined,
+        borderColor: canComposerSend ? PRIMARY : undefined,
+        color: canComposerSend ? "#fff" : undefined,
       }}
     >
       {tr("发送")}
@@ -3503,6 +3582,7 @@ function RoomChat(props: RoomChatProps) {
                                 ? (liveByRunId.get(msg.workflow.runId) ?? null)
                                 : null
                             }
+                            fileRefTeam={teamName}
                           />
                         </BubbleBoundary>
                         <ReactionChips
@@ -4075,6 +4155,41 @@ function RoomChat(props: RoomChatProps) {
                 })}
               </div>
             ) : null}
+            {/* #87 已选引用 chip 行（发送前可单个移除）——有选中才占行。 */}
+            {fileRefs.length > 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 4,
+                  padding: "4px 4px 0",
+                }}
+              >
+                {fileRefs.map((r) => (
+                  <antd.Tag
+                    key={r.key}
+                    color="blue"
+                    closable
+                    style={{
+                      marginInlineEnd: 0,
+                      fontSize: 12,
+                      maxWidth: 220,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    onClose={(e: { preventDefault: () => void }) => {
+                      e.preventDefault();
+                      setFileRefs((prev) =>
+                        prev.filter((x) => x.key !== r.key),
+                      );
+                    }}
+                  >
+                    {r.name}
+                  </antd.Tag>
+                ))}
+              </div>
+            ) : null}
             {/* 输入框 + 按钮：窄屏 附件(左)|输入框(自动增高≤5行)|发送(右) 同行；宽屏输入框整行。
       拖拽手柄已删——改 autoSize 随内容自动增高（1~5 行封顶），无需手动拖；表情按钮已删。 */}
             <div style={{ display: narrow ? "flex" : "block", alignItems: "flex-end", gap: narrow ? 6 : 0 }}>
@@ -4176,6 +4291,19 @@ function RoomChat(props: RoomChatProps) {
                       : tr("运行中")}
                   </span>
                 </span>
+              </WbTooltip>
+            ) : null}
+            {/* #87 引用工作区文件：仅团队房间（房间名 "Team: <name>"
+ 推得出 team）显示——按钮与附件同款 text 形态。 */}
+            {teamName ? (
+              <WbTooltip title={tr("引用工作区文件")}>
+                <antd.Button
+                  type="text"
+                  size="small"
+                  icon={<LinkOutlined />}
+                  aria-label={tr("引用工作区文件")}
+                  onClick={() => setRefPickerOpen(true)}
+                />
               </WbTooltip>
             ) : null}
             {/* 附件/发送：宽屏在此操作行；窄屏已内联到输入框行（上）。表情按钮已删。 */}
@@ -4423,6 +4551,21 @@ function RoomChat(props: RoomChatProps) {
           ) : null}
         </div>
       </antd.Modal>
+
+      {/* #87 团队共享文件引用选择器（仅 Team: 房间；确认合并进已选，去重 by key）。 */}
+      {teamName ? (
+        <FileRefPicker
+          open={refPickerOpen}
+          team={teamName}
+          onClose={() => setRefPickerOpen(false)}
+          onConfirm={(refs) =>
+            setFileRefs((prev) => [
+              ...prev,
+              ...refs.filter((r) => !prev.some((p) => p.key === r.key)),
+            ])
+          }
+        />
+      ) : null}
 
       {/* 成员详情卡：身份/角色 + 房间内最近消息 + DM */}
       {detailMxid && room ? (

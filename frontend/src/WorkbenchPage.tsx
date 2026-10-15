@@ -56,6 +56,7 @@ import {
 
 import TeamOverview from "./components/TeamOverview";
 import LOGO_URL from "./lib/logo";
+import { buildFileRefsContent, type FileRef } from "./lib/file-refs";
 import HomePage from "./components/HomePage";
 import WorkflowBoard, { WfView } from "./components/WorkflowBoard";
 import Artifacts from "./components/Artifacts";
@@ -1845,6 +1846,7 @@ export default function WorkbenchPage() {
       text: string,
       replyTo?: { event_id: string; sender: string; body: string },
       threadRoot?: string,
+      fileRefs?: FileRef[],
     ) => {
       if (!activeRoom) return;
       // 乐观回显：先本地插入 pending 消息，成功后 refresh 拉正式事件替换；
@@ -1859,6 +1861,7 @@ export default function WorkbenchPage() {
         msgtype: "m.text",
         origin_server_ts: Date.now(),
         pending: true,
+        ...(fileRefs && fileRefs.length > 0 ? { file_refs: fileRefs } : {}),
         ...(replyTo?.event_id
           ? { reply: replyTo }
           : threadRoot
@@ -1881,6 +1884,8 @@ export default function WorkbenchPage() {
           replyTo,
           threadRoot,
           mentionList,
+          // #87 文件引用并入 content（envelope 键，服务端透传；无引用=空对象）。
+          buildFileRefsContent(fileRefs),
         );
         await refreshMessages(activeRoom);
       } catch (e) {
