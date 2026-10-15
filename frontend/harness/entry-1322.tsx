@@ -16,7 +16,7 @@ const React: typeof ReactNS = host.React;
 import WorkflowBoard from "../src/components/WorkflowBoard";
 import TeamOverview from "../src/components/TeamOverview";
 import SkillCenter from "../src/components/SkillCenter";
-import { GraphCard } from "../src/components/KnowledgeBase";
+import { GraphCard } from "../src/kb/GraphCard";
 
 /* ── ：onlyTeam 矩阵团队隔离 ──────────────────────────────────────── */
 function F1Section() {
