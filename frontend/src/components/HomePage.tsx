@@ -494,6 +494,10 @@ function HomePage(props: HomePageProps) {
               : config?.matrix?.user_id
                 ? tr("Controller L2 授权范围")
                 : tr("Controller 未接入")}
+            {/* 15.15：首页可见插件版本（页头版本行竖屏被 !narrow 隐藏，
+ 手机上无处可查版本；构建期注入 __PLUGIN_VERSION__，与页头同源）。 */}
+            {" · v"}
+            {__PLUGIN_VERSION__}
           </div>
         </div>
         <div style={{ fontSize: 12, color: t.textSecondary, marginTop: 2 }}>

@@ -1329,6 +1329,9 @@ function BoardCard(props: {
 // 列高实测推导（BoardColumnsView 的 ResizeObserver：约束底 − 看板顶），
 // 随屏幕高度伸缩；BOARD_CARD_CAP_PX 仅作首次测量前的初始/回退值（≈3 卡）。
 const BOARD_CARD_CAP_PX = 330;
+// 15.15 三档布局模式（横屏回归修复）：stacked=竖屏堆叠、grid2=两列定宽
+// +3 卡限高滚（横屏）、jira=250px 横滚（桌面）；按实测容器宽 500/950 断点。
+type BoardMode = "stacked" | "grid2" | "jira";
 function BoardColumnsView(props: {
   events: WorkflowEvent[];
   t: ReturnType<typeof useThemeColors>;
@@ -1337,8 +1340,9 @@ function BoardColumnsView(props: {
 }) {
   const { events, t, onTaskDone, onOpenDetail } = props;
   const tr = useT();
-  // 窄屏（容器宽 < 800）单列纵向堆叠——判定与聊天单栏同源。
-  const { narrow } = useWbViewport();
+  // WbViewport 容器宽快照（翻转时刻值）——仅作 mode 初值；正源=wrapRef
+  // 实测宽（手机旋转 376↔667 不触发 narrow 翻转，快照会过期）。
+  const { width: vw } = useWbViewport();
   // 列内时间序：按 (项目 ts 新→旧, 原节点序) 稳定排序。
   const tasksByCol = React.useMemo(() => {
     const tsOf = new Map(events.map((e) => [e.runId, e.ts || 0]));
@@ -1366,6 +1370,10 @@ function BoardColumnsView(props: {
   // 列永不压缩，宽度不足时横向滑（移动端看板通用交互）。
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const [colH, setColH] = React.useState<number>(BOARD_CARD_CAP_PX);
+  // 15.15 布局模式：初值取快照，RO 回调按实测宽纠偏（0 宽早退防误翻）。
+  const [mode, setMode] = React.useState<BoardMode>(() =>
+    vw < 500 ? "stacked" : vw < 950 ? "grid2" : "jira",
+  );
   React.useEffect(() => {
     const compute = () => {
       const wrap = wrapRef.current;
@@ -1393,6 +1401,10 @@ function BoardColumnsView(props: {
       const top = Math.max(64, rect.top);
       const avail = Math.max(320, bottom - top);
       setColH((prev) => (prev === avail ? prev : avail));
+      // 模式随实测宽切换（正源；旋转不触发 narrow 翻转，快照会过期）。
+      const m: BoardMode =
+        rect.width < 500 ? "stacked" : rect.width < 950 ? "grid2" : "jira";
+      setMode((prev) => (prev === m ? prev : m));
     };
     compute();
     window.addEventListener("resize", compute);
@@ -1411,132 +1423,72 @@ function BoardColumnsView(props: {
     };
   }, []);
 
-  // 窄屏（移动看板标准布局，Trello/Jira mobile 同款）：状态列纵向堆叠、
-  // 全宽；列内任务卡=固定宽（165px）横向滚动行 + snap。
-  // 两版旧布局的问题：2×4 网格在 376px 下每列仅 ~170px，卡被挤成竖条；
-  // 单列全宽则 348px 卡过宽。固定卡宽 + 横滚是移动端任务看板的通用解
-  // （卡保持可读宽，列不再变细，>2 张卡时横向滑动=原生手势）。
-  // 测量 effect 对本分支无副作用（wrapRef 未挂载 → compute 早退）。
-  if (narrow) {
-    return (
-      <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
-        {BOARD_COLUMNS.map((col) => {
-          const colTasks = tasksByCol.get(col.key) || [];
-          return (
-            <div
-              key={col.key}
-              style={{
-                border: `1px solid ${t.border}`,
-                borderRadius: 10,
-                background: t.cardBg,
-                padding: 8,
-                boxSizing: "border-box",
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontWeight: 700,
-                  fontSize: 12.5,
-                  color: col.color,
-                  marginBottom: colTasks.length > 0 ? 8 : 0,
-                }}
-              >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: col.color,
-                    flexShrink: 0,
-                  }}
-                />
-                {tr(col.zh)}（{colTasks.length}）
-              </div>
-              {colTasks.length === 0 ? null : (
-                // 横向滚动卡行：固定卡宽 165px（~2 张半可见=滚动暗示），
-                // snap 对齐（proximity=轻扫不锁死，与原生列表手感一致）。
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    minWidth: 0,
-                    overflowX: "auto",
-                    overflowY: "hidden",
-                    paddingBottom: 2,
-                    scrollSnapType: "x proximity",
-                  }}
-                >
-                  {colTasks.map((task) => (
-                    <div
-                      key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
-                      style={{
-                        flex: "0 0 165px",
-                        width: 165,
-                        minWidth: 0,
-                        scrollSnapAlign: "start",
-                      }}
-                    >
-                      <BoardCard
-                        task={task}
-                        t={t}
-                        onTaskDone={onTaskDone}
-                        onOpenDetail={
-                          onOpenDetail
-                            ? (tid) => onOpenDetail(tid, task.runId)
-                            : undefined
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
+﻿  // ── 三布局（15.15 横屏回归修复）──────────────────────────────────
+  // 按实测容器宽 W 分流（初值=WbViewport 快照，RO 回调纠偏：手机旋转
+  // 376↔667 不触发 narrow 翻转，快照会过期，实测宽是唯一正源）：
+  // stacked（W<500，竖屏手机 376）：状态列纵向堆叠全宽 + 列内 165px 卡行
+  //   横滚 + snap（15.11 移动看板布局，竖屏验过，不动）；
+  // grid2（500≤W<950，横屏手机 667 / 平板竖屏 / 中间宽度）：两列定宽网格
+  //   minmax(0,1fr)（列=容器半宽，永不压缩、不横滑）+ 每列卡区限高
+  //   min(40vh,320px)≈3 卡、超出列内纵向滚（=恢复 3c93a10「看板 2 列 3
+  //   卡滚」）。15.13 曾把 ≥800 一律改 Jira 250px 横滚，但横屏手机
+  //   667<800 恒 narrow → 被卷进竖屏堆叠布局 = 本次「横屏被搞烂」根因；
+  // jira（W≥950，桌面宽屏）：8 列固定 250px 横滚 + 列等高（实测可用高）
+  //   + 卡区列内纵滚（15.13 起，桌面验过，不动）。
+  const wrapperStyle: React.CSSProperties =
+    mode === "jira"
+      ? {
+          display: "flex",
+          gap: 10,
+          minWidth: 0,
+          overflowX: "auto",
+          overflowY: "hidden",
+          paddingBottom: 4,
+          scrollSnapType: "x proximity",
+        }
+      : mode === "grid2"
+        ? {
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+            gap: 8,
+            minWidth: 0,
+          }
+        : { display: "grid", gap: 8, minWidth: 0 };
 
-  // 横屏/宽屏统一 = Jira/Trello 标准看板：列固定 250px 不压缩，
-  // 8 列放不满/放不下都横向滑（列等高 = 实测可用高），卡区列内纵向滚。
-  // 中间宽度（800-950）旧 4×2 每列 ~190px 挤竖条的根因即「列宽按比例
-  // 压缩」——固定列宽后该宽度带只少显示几列（横滑补），不再挤。
   return (
-    <div
-      ref={wrapRef}
-      style={{
-        display: "flex",
-        gap: 10,
-        minWidth: 0,
-        overflowX: "auto",
-        overflowY: "hidden",
-        paddingBottom: 4,
-        scrollSnapType: "x proximity",
-      }}
-    >
+    <div ref={wrapRef} style={wrapperStyle}>
       {BOARD_COLUMNS.map((col) => {
         const colTasks = tasksByCol.get(col.key) || [];
         return (
           <div
             key={col.key}
-            style={{
-              flex: "0 0 250px",
-              width: 250,
-              height: colH,
-              boxSizing: "border-box",
-              border: `1px solid ${t.border}`,
-              borderRadius: 10,
-              background: t.cardBg,
-              padding: 8,
-              minWidth: 0,
-              display: "flex",
-              flexDirection: "column",
-              scrollSnapAlign: "start",
-            }}
+            style={
+              mode === "jira"
+                ? {
+                    flex: "0 0 250px",
+                    width: 250,
+                    height: colH,
+                    boxSizing: "border-box",
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 10,
+                    background: t.cardBg,
+                    padding: 8,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    scrollSnapAlign: "start",
+                  }
+                : {
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 10,
+                    background: t.cardBg,
+                    padding: 8,
+                    boxSizing: "border-box",
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                  }
+            }
           >
             <div
               style={{
@@ -1547,6 +1499,7 @@ function BoardColumnsView(props: {
                 fontSize: 12.5,
                 color: col.color,
                 flexShrink: 0,
+                marginBottom: colTasks.length > 0 ? 8 : 0,
               }}
             >
               <span
@@ -1560,36 +1513,101 @@ function BoardColumnsView(props: {
               />
               {tr(col.zh)}（{colTasks.length}）
             </div>
-            {/* 卡区 = 列高 − 头行（flex:1 + min-0），内容超出列内纵向滚。
- 15.14：grid→flex column——grid 定高容器在「卡片数 × 卡高 > 容器高」时
- auto 行参与收缩计算（行塌 18px 细条，20 卡列实证）；flex 子项
- flex:0 0 auto 恒不缩，卡高=内容高，列滚动，彻底免疫。 */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                flex: 1,
-                minHeight: 0,
-                marginTop: 8,
-                overflowY: "auto",
-                overflowX: "hidden",
-              }}
-            >
-              {colTasks.map((task) => (
-                <BoardCard
-                  key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
-                  task={task}
-                  t={t}
-                  onTaskDone={onTaskDone}
-                  onOpenDetail={
-                    onOpenDetail
-                      ? (tid) => onOpenDetail(tid, task.runId)
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
+            {colTasks.length === 0 ? null : mode === "stacked" ? (
+              // 堆叠卡行：固定卡宽 165px（~2 张半可见=滚动暗示），
+              // snap 对齐（proximity=轻扫不锁死，与原生列表手感一致）。
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  minWidth: 0,
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                  paddingBottom: 2,
+                  scrollSnapType: "x proximity",
+                }}
+              >
+                {colTasks.map((task) => (
+                  <div
+                    key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
+                    style={{
+                      flex: "0 0 165px",
+                      width: 165,
+                      minWidth: 0,
+                      scrollSnapAlign: "start",
+                    }}
+                  >
+                    <BoardCard
+                      task={task}
+                      t={t}
+                      onTaskDone={onTaskDone}
+                      onOpenDetail={
+                        onOpenDetail
+                          ? (tid) => onOpenDetail(tid, task.runId)
+                          : undefined
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : mode === "grid2" ? (
+              // grid2 卡区：限高 ~3 卡（min(40vh,320px)），超出列内纵向滚
+              // （3c93a10「2 列 3 卡滚」机制原样恢复）。
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  minWidth: 0,
+                  maxHeight: "min(40vh, 320px)",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                }}
+              >
+                {colTasks.map((task) => (
+                  <BoardCard
+                    key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
+                    task={task}
+                    t={t}
+                    onTaskDone={onTaskDone}
+                    onOpenDetail={
+                      onOpenDetail
+                        ? (tid) => onOpenDetail(tid, task.runId)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              // jira 卡区 = 列高 − 头行（flex:1 + min-0），超出列内纵滚。
+              // 15.14：grid→flex column——grid 定高容器在「卡片数 × 卡高
+              // > 容器高」时 auto 行参与收缩（行塌 18px 细条，20 卡列
+              // 实证）；flex 子项恒不缩，卡高=内容高，列滚动，免疫。
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                }}
+              >
+                {colTasks.map((task) => (
+                  <BoardCard
+                    key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
+                    task={task}
+                    t={t}
+                    onTaskDone={onTaskDone}
+                    onOpenDetail={
+                      onOpenDetail
+                        ? (tid) => onOpenDetail(tid, task.runId)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
