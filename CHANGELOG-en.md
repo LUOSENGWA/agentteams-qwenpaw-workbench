@@ -3,6 +3,25 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.17 (2026-10-15 - 15.x optimization batch: chat file refs + three monolith splits + approval color convergence)
+
+**This batch = the beta 15.x UI / performance / tech-debt cleanup batch (nightly autonomous batch, package 1 = safe batch): 1 new feature (#87 chat references to team shared-workspace files) + three frontend monolith splits (CrdManage / KB / board layout) + approval-severity color single-source convergence.**
+
+**Added**
+- **Chat references to team shared-workspace files (#87)**: the chat composer can `@`-reference files in the team shared workspace (FileRefPicker + connector `/team-files` endpoint); a reference renders as a file badge and is attached on send; the receiver can open it — closing the "reference a workspace file directly in chat" collaboration loop.
+
+**Tech-debt cleanup (three monolith splits, behavior-preserving)**
+- **CrdManage (team management) 2540 -> 353L**: split into 15 `crdmanage/` modules (pure leaves types/helpers/FieldLabel <- 4 hooks <- 8 render components <- main assembly layer), one-way dependency, no cycles; word-for-word moves + anchor-located + full identifier audit (0 UNEXPLAINED); the main file is now a thin "props -> 4 hooks -> JSX" assembly layer.
+- **Knowledge base (KB) 3162 -> 142L**: two-column KB containerized + split into 9 modules (useKbColHeight equal-height containerization); smoke 160 asserts green.
+- **Board layout-mode extracted to a pure module**: the landscape/portrait layout decision is now a pure function module + breakpoint-regression smoke (the anti-regression guard for the 15.15 landscape fix; 667<800 no longer falls into the portrait stacked layout).
+
+**Fixed**
+- **Approval severity color single-source (P1-6)**: SEV_COLOR was copy-pasted in NotificationCenter + ApprovalCard, and HomePage inlined a `#ff4d4f` drift for the same CRITICAL/HIGH semantic -> extracted to `util.ts` as the single source (CRITICAL/HIGH = `#f5222d` antd error red / MEDIUM orange / LOW green); all three approval-severity consumers now use `sevColor()` (per-consumer fallback preserved: NotificationCenter gray, ApprovalCard/HomePage orange).
+
+**Verification**: tsc 0 · vite build 1,860kB · i18n full key set · crdmanageHelpers smoke SMOKE_OK (esbuild transform, fixed a script defect) · kbLayout2d smoke 160 green · portrait+landscape x touch+mouse spot-check, team-management + workflow pages zero regression
+
+---
+
 ## 0.5.0-beta.15.16 (2026-10-15 - audit panel A7: consumes the upstream #1270 durable audit store)
 
 **New "Audit" tab — reads the Controller's durable audit store (upstream #1270 `GET /api/v1/audit`, MinIO JSONL append-only, covering every entry point: dashboard / CLI / API)**
