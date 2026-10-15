@@ -18,20 +18,13 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
-import { formatChatTime } from "../util";
+import { formatChatTime, sevColor } from "../util";
 
 const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 
 const PRIMARY = "var(--app-accent, #FF7F16)";
-
-const SEV_COLOR: Record<string, string> = {
-  CRITICAL: "#f5222d",
-  HIGH: "#f5222d",
-  MEDIUM: "#fa8c16",
-  LOW: "#52c41a",
-};
 
 /** 通知中心：宿主 /console/inbox 事件流聚合。
  * 与 OS 通知/MenuBar 铃铛同一事件源（useOsNotifyPoller 同款端点）。
@@ -251,8 +244,6 @@ function NotificationCenter(props: {
       /* 静默 */
     }
   };
-
-  const sevColor = (sev: string) => SEV_COLOR[String(sev || "").toUpperCase()] || "#888";
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -601,7 +592,7 @@ function NotificationCenter(props: {
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {events.map((ev, idx) => {
-            const sev = sevColor(ev.severity);
+            const sev = sevColor(ev.severity, "#888");
             const isExpanded = expandedId === ev.id;
             // 房间跳转能力区分——宿主事件多数无 room_id（审批/cron/
             // 记忆等本机事件），带 room_id 的点击即跳（行为保留）。
