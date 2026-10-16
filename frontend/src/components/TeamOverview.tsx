@@ -178,9 +178,10 @@ function GroupCard({
             style={{
               fontWeight: 600,
               fontSize: 15,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              // 房间名自动换行防省略号丢信息（行尾时间/收藏/⋯随 inline
+              // 流续排）；卡片高度动态随行数。
+              whiteSpace: "normal",
+              wordBreak: "break-word",
             }}
           >
             {room.name}
@@ -260,11 +261,10 @@ function GroupCard({
                 fontSize: 11,
                 color: t.textSecondary,
                 marginTop: 2,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                // 多项目名自动换行（不 ellipsis 截断）；卡高随内容。
+                whiteSpace: "normal",
+                wordBreak: "break-word",
               }}
-              title={projectTitles.join("、")}
             >
               <span style={{ display: "inline-flex", verticalAlign: "-1px", marginRight: 3 }}>
                 <FolderIcon size={10} />
@@ -437,9 +437,9 @@ function DmCard({
           style={{
             fontWeight: 600,
             fontSize: 14,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            // DM 名自动换行防省略号丢信息（行尾收藏/⋯随 inline 流续排）。
+            whiteSpace: "normal",
+            wordBreak: "break-word",
           }}
         >
           {otherName}
@@ -616,14 +616,14 @@ function InviteSection(props: {
                 style={{
                   fontWeight: 600,
                   fontSize: 14,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  // 邀请房间名自动换行防省略号丢信息。
+                  whiteSpace: "normal",
+                  wordBreak: "break-word",
                 }}
               >
                 {inv.name}
               </div>
-              <div style={{ fontSize: 12, color: t.textSecondary, whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: 12, color: t.textSecondary, whiteSpace: "normal", wordBreak: "break-word" }}>
                 {tr("邀请人：")} {inviterName}
                 {inv.inviter_ts ? ` · ${formatChatTime(inv.inviter_ts)}` : ""}
               </div>

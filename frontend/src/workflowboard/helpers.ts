@@ -197,16 +197,13 @@ export const TERMINAL_NODE_STATUSES = ["completed", "revision", "blocked", "canc
 
 /** 看板容器（B7，13.14 「项目看板改成两行四列，
  * 每个看板显示三个卡片，再多滚动 col，时间排序要做好」）：
- * - 宽屏/横屏：Jira/Trello 标准看板——8 状态列固定 250px 不压缩、
- *   看板横向滚动、列等高（=容器可用高实测）、卡区列内纵向滚动
- *   （中间宽度不再把列压成竖条；放不下一屏时横向滑出余列）；
- * - 窄屏（容器 < 800）：单列全宽纵向堆叠 + 卡行横向滑动（移动端看板交互）；
+ * - W≥500（横屏/平板/桌面宽屏，15.19 起含宽屏——jira 250px 横滚档退役）：
+ *   两列定宽网格 minmax(0,1fr)（列=容器半宽永不压缩、整板不横滑）+
+ *   每列卡区限高 min(40vh,320px)≈3 卡、超出列内纵向滚动；
+ * - W<500（竖屏手机）：单列全宽纵向堆叠 + 卡行横向滑动（移动端看板交互）；
  * - 列内显式时间排序：项目活动 ts 新→旧（看板恒时间序——项目级 sortBy
  *   是列表/轨道视图语义，不应扰动看板列内顺序；旧版列内顺序=events
  *   传入序，受 sortBy 影响，「时间排序」不成立）。 */
-// 列高实测推导（BoardColumnsView 的 ResizeObserver：约束底 − 看板顶），
-// 随屏幕高度伸缩；BOARD_CARD_CAP_PX 仅作首次测量前的初始/回退值（≈3 卡）。
-export const BOARD_CARD_CAP_PX = 330;
 
 /** replan 种子：当前 DAG 节点 → 任务数组（taskId/title/assignedTo/dependsOn，
  * 省略 status——上游 normalizeReplanTasks 对已存在 taskId 继承旧状态）。

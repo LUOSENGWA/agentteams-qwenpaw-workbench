@@ -1,5 +1,6 @@
 // WorkflowBoard 巨石拆分 · 看板视图（第四视图）：看板卡（BoardCard）+ 看板容器
-// （BoardColumnsView，三档布局 stacked/grid2/jira + 列高实测）。
+// （BoardColumnsView，两档布局 stacked/grid2——15.19 起 jira 横滚档退役，
+// 宽屏与中间宽度同为两列三行）。
 // 横竖屏断点与 pointer 逻辑逐字搬移，行为零变。
 
 import type { WorkflowEvent } from "../api";
@@ -15,7 +16,6 @@ import {
   nodeLabelUi,
   BOARD_COLUMNS,
   boardTasksFromEvents,
-  BOARD_CARD_CAP_PX,
   type BoardTask,
   type BoardCol,
 } from "./helpers";
@@ -159,10 +159,11 @@ export function BoardCard(props: {
   );
 }
 
-// 15.15 三档布局模式（横屏回归修复）：判定收敛进纯模块 boardMode.ts
-// （断点回归护栏——本次横屏被搞烂的根因就是断点误判：横屏手机 667px 曾
-// 因 <800 恒 narrow 落进竖屏堆叠）。stacked=竖屏堆叠、grid2=两列定宽+3 卡
-// 限高滚（横屏）、jira=250px 横滚（桌面）；按实测容器宽 500/950 断点。
+// 15.15 布局模式（横屏回归修复）：判定收敛进纯模块 boardMode.ts
+// （断点回归护栏——横屏被搞烂的根因是断点误判：横屏手机 667px 曾因 <800
+// 恒 narrow 落进竖屏堆叠）。15.19 起两档：stacked=竖屏堆叠（<500）、
+// grid2=两列定宽+3 卡限高滚（≥500，含桌面宽屏——jira 250px 横滚档退役：
+// 整板 2000px 窄窗右列被裁、250px 列内卡文字 3 行+被裁切）。
 export function BoardColumnsView(props: {
   events: WorkflowEvent[];
   t: ReturnType<typeof useThemeColors>;
@@ -193,15 +194,10 @@ export function BoardColumnsView(props: {
     return m;
   }, [events]);
 
-  // （13.15 「每个看板要等高 + 随屏幕高度动态调整」）：列高由
-  // 容器可用高实测推导（约束底 − 看板顶）。
-  // 横屏/中间宽度（800-950，手机横屏常落此带）旧 4×2 网格每列仅
-  // ~190px → 卡挤成竖条。改 **Jira/Trello 标准看板**：列固定 250px +
-  // 看板横向滚动 + 列等高（=可用高）+ 列内卡区纵向滚——所有宽度同一布局，
-  // 列永不压缩，宽度不足时横向滑（移动端看板通用交互）。
+  // 布局容器（RO 实测宽正源）。15.19 起列高等高测量退役（仅 jira 档消费，
+  // jira 已退）——grid2 列高=内容高（卡区限高 min(40vh,320px) 内滚）。
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
-  const [colH, setColH] = React.useState<number>(BOARD_CARD_CAP_PX);
-  // 15.15 布局模式：初值取快照，RO 回调按实测宽纠偏（0 宽早退防误翻）。
+  // 布局模式：初值取 WbViewport 快照，RO 回调按实测宽纠偏（0 宽早退防误翻）。
   const [mode, setMode] = React.useState<BoardMode>(() =>
     boardModeForWidth(vw),
   );
@@ -213,25 +209,6 @@ export function BoardColumnsView(props: {
       // keep-alive 隐藏 tab（0 宽）不测量——RO 会在再次可见（0→N 尺寸
       // 变化）时重触发，届时拿到正确布局。
       if (rect.width <= 0) return;
-      // // 可用高 = 约束底 − 看板顶，**全部实测**（旧版用 innerHeight-240 估算
-      // 页面头高，系统性偏大 → 列高超出容器 → 整页滚动）。
-      // 约束底 = 最近的可滚动祖先容器底（无则视口底）。
-      let bottom =
-        (typeof window !== "undefined" ? window.innerHeight : 900) - 12;
-      let anc: HTMLElement | null = wrap.parentElement;
-      while (anc && anc !== document.body) {
-        const ov = window.getComputedStyle(anc).overflowY;
-        if ((ov === "auto" || ov === "scroll") && anc.clientHeight > 0) {
-          bottom = anc.getBoundingClientRect().bottom - 6;
-          break;
-        }
-        anc = anc.parentElement;
-      }
-      // 看板顶（视口坐标；夹 ≥64 防容器已内滚时的负值放大估算——新显 tab
-      // 时容器 scrollTop=0，测量即准）。
-      const top = Math.max(64, rect.top);
-      const avail = Math.max(320, bottom - top);
-      setColH((prev) => (prev === avail ? prev : avail));
       // 模式随实测宽切换（正源；旋转不触发 narrow 翻转，快照会过期）。
       const m = boardModeForWidth(rect.width);
       setMode((prev) => (prev === m ? prev : m));
@@ -253,37 +230,26 @@ export function BoardColumnsView(props: {
     };
   }, []);
 
-﻿  // ── 三布局（15.15 横屏回归修复）──────────────────────────────────
+  // ── 两布局（15.15 横屏回归修复；15.19 退 jira 档）─────────────────
   // 按实测容器宽 W 分流（初值=WbViewport 快照，RO 回调纠偏：手机旋转
   // 376↔667 不触发 narrow 翻转，快照会过期，实测宽是唯一正源）：
   // stacked（W<500，竖屏手机 376）：状态列纵向堆叠全宽 + 列内 165px 卡行
   //   横滚 + snap（15.11 移动看板布局，竖屏验过，不动）；
-  // grid2（500≤W<950，横屏手机 667 / 平板竖屏 / 中间宽度）：两列定宽网格
-  //   minmax(0,1fr)（列=容器半宽，永不压缩、不横滑）+ 每列卡区限高
-  //   min(40vh,320px)≈3 卡、超出列内纵向滚（=恢复 3c93a10「看板 2 列 3
-  //   卡滚」）。15.13 曾把 ≥800 一律改 Jira 250px 横滚，但横屏手机
-  //   667<800 恒 narrow → 被卷进竖屏堆叠布局 = 本次「横屏被搞烂」根因；
-  // jira（W≥950，桌面宽屏）：8 列固定 250px 横滚 + 列等高（实测可用高）
-  //   + 卡区列内纵滚（15.13 起，桌面验过，不动）。
+  // grid2（W≥500，横屏手机 667 / 平板 / 中间宽度 / 桌面宽屏）：两列定宽
+  //   网格 minmax(0,1fr)（列=容器半宽，永不压缩、不横滑）+ 每列卡区限高
+  //   min(40vh,320px)≈3 卡、超出列内纵向滚（=3c93a10「看板 2 列 3 卡滚」）。
+  //   15.13 曾把 ≥800 一律改 Jira 250px 横滚（jira 档），但 8×250=2000px
+  //   整板只有很宽窗口放得下、稍窄右列被裁，且 250px 列内卡文字 3 行+
+  //   被裁切 → 15.19 宽屏一并回 grid2。
   const wrapperStyle: React.CSSProperties =
-    mode === "jira"
+    mode === "grid2"
       ? {
-          display: "flex",
-          gap: 10,
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+          gap: 8,
           minWidth: 0,
-          overflowX: "auto",
-          overflowY: "hidden",
-          paddingBottom: 4,
-          scrollSnapType: "x proximity",
         }
-      : mode === "grid2"
-        ? {
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-            gap: 8,
-            minWidth: 0,
-          }
-        : { display: "grid", gap: 8, minWidth: 0 };
+      : { display: "grid", gap: 8, minWidth: 0 };
 
   return (
     <div ref={wrapRef} style={wrapperStyle}>
@@ -292,33 +258,16 @@ export function BoardColumnsView(props: {
         return (
           <div
             key={col.key}
-            style={
-              mode === "jira"
-                ? {
-                    flex: "0 0 250px",
-                    width: 250,
-                    height: colH,
-                    boxSizing: "border-box",
-                    border: `1px solid ${t.border}`,
-                    borderRadius: 10,
-                    background: t.cardBg,
-                    padding: 8,
-                    minWidth: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    scrollSnapAlign: "start",
-                  }
-                : {
-                    border: `1px solid ${t.border}`,
-                    borderRadius: 10,
-                    background: t.cardBg,
-                    padding: 8,
-                    boxSizing: "border-box",
-                    minWidth: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                  }
-            }
+            style={{
+              border: `1px solid ${t.border}`,
+              borderRadius: 10,
+              background: t.cardBg,
+              padding: 8,
+              boxSizing: "border-box",
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
           >
             <div
               style={{
@@ -380,45 +329,15 @@ export function BoardColumnsView(props: {
                   </div>
                 ))}
               </div>
-            ) : mode === "grid2" ? (
+            ) : (
               // grid2 卡区：限高 ~3 卡（min(40vh,320px)），超出列内纵向滚
-              // （3c93a10「2 列 3 卡滚」机制原样恢复）。
+              // （3c93a10「2 列 3 卡滚」机制；15.19 起 W≥500 的唯一形态）。
               <div
                 style={{
                   display: "grid",
                   gap: 8,
                   minWidth: 0,
                   maxHeight: "min(40vh, 320px)",
-                  overflowY: "auto",
-                  overflowX: "hidden",
-                }}
-              >
-                {colTasks.map((task) => (
-                  <BoardCard
-                    key={`${task.runId}-${String(task.node.id || nodeLabel(task.node))}`}
-                    task={task}
-                    t={t}
-                    onTaskDone={onTaskDone}
-                    onOpenDetail={
-                      onOpenDetail
-                        ? (tid) => onOpenDetail(tid, task.runId)
-                        : undefined
-                    }
-                  />
-                ))}
-              </div>
-            ) : (
-              // jira 卡区 = 列高 − 头行（flex:1 + min-0），超出列内纵滚。
-              // 15.14：grid→flex column——grid 定高容器在「卡片数 × 卡高
-              // > 容器高」时 auto 行参与收缩（行塌 18px 细条，20 卡列
-              // 实证）；flex 子项恒不缩，卡高=内容高，列滚动，免疫。
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                  flex: 1,
-                  minHeight: 0,
                   overflowY: "auto",
                   overflowX: "hidden",
                 }}
