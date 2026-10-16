@@ -225,6 +225,20 @@ function ChatLayoutDiagCard({
     const main = document.querySelector(".wb-main") as HTMLElement | null;
     if (main) {
       out.push(`容器 .wb-main = ${main.clientWidth} × ${main.clientHeight}px`);
+      // 15.18：父链每层 clientWidth（2412px 横屏误判窄屏根因修——定位哪层变窄
+      // 把 visible 拉低；最窄层决定窄/宽判定）。
+      const chain: string[] = [];
+      let cel: HTMLElement | null = main;
+      while (cel) {
+        const cls =
+          cel.className && typeof cel.className === "string"
+            ? "." + cel.className.trim().split(/\s+/).slice(0, 1).join(".")
+            : "";
+        chain.push(`${cel.tagName.toLowerCase()}${cls}=${cel.clientWidth}`);
+        if (cel.tagName === "BODY") break;
+        cel = cel.parentElement;
+      }
+      out.push(`父链(最窄层定判定): ${chain.join(" ← ")}`);
     }
     if (layout) {
       out.push(
@@ -2480,22 +2494,37 @@ export default function WorkbenchPage() {
       setNarrow(isNarrowLayout(qw, qh));
     };
     const measure = () => {
+      // 15.18 2412px 横屏误判窄屏根因修：首帧 main 未 layout（clientWidth=0），
+      // 读 0 会把正确初值（按 innerWidth 算的真值）翻成窄屏；Desktop OS 窗口模式
+      // RO/resize 不重触发 → 卡死竖屏。0 值不 setState——等 layout 后的 RO/切 tab/
+      // 焦点恢复重测（那时 clientWidth 已是真值），初值本就是 innerWidth 真值。
+      const main = mainRef.current;
+      if (!main || main.clientWidth === 0) return;
       let visible = window.innerWidth;
-      let el: HTMLElement | null = mainRef.current;
+      let el: HTMLElement | null = main;
       while (el) {
         if (el.clientWidth < visible) visible = el.clientWidth;
         el = el.parentElement;
       }
+      if (visible === 0) return; // 防御：父链任一层为 0 = 未 layout
       const tp = threadPanelRef.current;
       qe = tp.open ? visible - tp.width : visible;
       qw = visible;
-      qh = mainRef.current?.clientHeight ?? window.innerHeight;
+      qh = main.clientHeight || window.innerHeight;
       qd = true;
       if (!raf) raf = requestAnimationFrame(apply); // rAF 合并
     };
     measure();
     measureRef.current = measure;
     window.addEventListener("resize", measure);
+    // 15.18：窗口焦点恢复 / 页面转可见时强制重测——防「OS 窗口 resize 不触发
+    // resize 事件 → 判定卡 stale」（这两刻 DOM 已 layout，能取真可见宽）。
+    const onWinFocus = () => measure();
+    const onVis = () => {
+      if (document.visibilityState === "visible") measure();
+    };
+    window.addEventListener("focus", onWinFocus);
+    document.addEventListener("visibilitychange", onVis);
     let ro: ResizeObserver | null = null;
     if (mainRef.current && typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver(measure);
@@ -2509,10 +2538,17 @@ export default function WorkbenchPage() {
     }
     return () => {
       window.removeEventListener("resize", measure);
+      window.removeEventListener("focus", onWinFocus);
+      document.removeEventListener("visibilitychange", onVis);
       ro?.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
   }, []);
+  // 15.18：切 tab 强制重测窄/宽——切换时 DOM 已 layout（clientWidth 真值）。
+  // 三重保险防「Desktop OS 窗口 resize 不触发 → 判定卡 stale」（2412px 误判）。
+  React.useEffect(() => {
+    measureRef.current();
+  }, [tab]);
  // shell 高度改为
   // 容器相对（Element 模型）——12.x 起用 calc(100vh-64px) 经验值，但宿主
   // 是 Desktop OS 窗口（OsAppHost .content：flex:1 + overflow:auto 定高
