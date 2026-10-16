@@ -489,15 +489,14 @@ function Artifacts(props: ArtifactsProps) {
               >
                 <span
                   // flex:1 + minWidth:0 让名称在行内可收缩（缺了它 flex 项
-                  // 按内容宽不缩，长项目名把整行撑出容器）；窄屏换行显全名，
-                  // 宽屏保持单行 ellipsis（Tooltip 兜底）。
+                  // 按内容宽不缩，长项目名把整行撑出容器）；左栏可拖宽，
+                  // 名称任何宽度自动换行防省略号丢信息（Tooltip 附带
+                  // project_id 供排障）。
                   style={{
                     flex: 1,
                     minWidth: 0,
-                    overflow: narrow ? "visible" : "hidden",
-                    textOverflow: narrow ? "clip" : "ellipsis",
-                    whiteSpace: narrow ? "normal" : "nowrap",
-                    wordBreak: narrow ? "break-word" : undefined,
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
                   }}
                 >
                   {dispName}
@@ -562,8 +561,9 @@ function Artifacts(props: ArtifactsProps) {
           // 两行排版 + antd Tooltip——
           // ① 原生 title 在 rc-tree 节点里不生效（用户真机验证），改 antd Tooltip
           // （portal 渲染，即时显示，不受树节点包装影响）；
-          // ② 房间名单独占一行（260px 全宽给名字），计数下沉第二行灰字；
-          // ③ 左栏可拖拽调宽（见下），长房间名可放宽到 480px 基本不用截断。
+          // ② 房间名单独占一行（左栏全宽给名字），计数下沉第二行灰字；
+          // ③ 左栏可拖拽调宽（见下），房间名任何宽度自动换行显全名
+          // （不 ellipsis 截断）。
           title: (
             <div style={{ lineHeight: 1.35, minWidth: 0 }}>
               <WbTooltip title={src} mouseEnterDelay={0.2}>
@@ -571,11 +571,8 @@ function Artifacts(props: ArtifactsProps) {
                   style={{
                     display: "block",
                     minWidth: 0,
-                    // 窄屏换行显全名（房间名长，截断丢信息）；宽屏单行 ellipsis。
-                    overflow: narrow ? "visible" : "hidden",
-                    textOverflow: narrow ? "clip" : "ellipsis",
-                    whiteSpace: narrow ? "normal" : "nowrap",
-                    wordBreak: narrow ? "break-word" : undefined,
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
                   }}
                 >
                   {src}

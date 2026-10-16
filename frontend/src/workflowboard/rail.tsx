@@ -47,8 +47,8 @@ export function ProjectRail(props: {
             onClick={() => onSelect(ev.runId)}
             style={{
               cursor: "pointer",
-              // compact 单卡（≈40px ≤ 48px）：标题 1 行 + 元信息 1 行，
-              // drill-in 列表一屏 ≥5 卡。
+              // 卡片高度动态=内容高（无固定高）：项目名自动换行，行随拖宽
+              // 变化——与项目卡视图项目名同款换行（不 ellipsis 丢信息）。
               padding: "4px 12px",
               borderBottom: `1px solid ${t.border}`,
               borderLeft: active ? `3px solid ${meta.color}` : "3px solid transparent",
@@ -61,9 +61,9 @@ export function ProjectRail(props: {
                 fontWeight: 600,
                 lineHeight: 1.25,
                 color: t.text,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                // 自动换行防省略号（长名/长 URL 断词）；列拖窄不溢出。
+                whiteSpace: "normal",
+                wordBreak: "break-word",
               }}
             >
               {ev.title}
@@ -72,11 +72,11 @@ export function ProjectRail(props: {
               style={{
                 marginTop: 2,
                 display: "flex",
+                flexWrap: "wrap",
                 gap: 6,
                 alignItems: "center",
                 fontSize: 11,
                 lineHeight: 1.25,
-                whiteSpace: "nowrap",
                 color: t.textSecondary,
               }}
             >
