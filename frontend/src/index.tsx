@@ -304,15 +304,23 @@ html[data-wb-fx="light"] .wb-loop-dot.running {
  max-height 兜底：旧版无 line-clamp 属性时退化为「硬截断不夹中间」，
  新版（Chromium 135+ 标准化 line-clamp）行为一致。类挂在 <div> 上
  （非内联 style），全仓 8 处 -webkit-box 统一迁移。 */
+/* N 行 clamp（15.14 引入全局类以脱离内联 -webkit-box；15.20 根因修复：
+   line-clamp 三件套（-webkit-box + box-orient + -webkit-line-clamp）缺一
+   即整条失效——旧版只配 display:block + line-clamp + max-height，实测
+   浏览器只执行 overflow:hidden + max-height，N 行之后再多露出
+   (max-height − N×line-height) 的半行残字（看板卡项目名「整e」半行
+   泄漏即此）。三件套是标准 line-clamp 实现组合（类 CSS 完整规则，非
+   15.14 撞过的 React 内联样式），max-height 退役（clamp 自身控高，
+   半行泄漏的载体）。 */
 .wb-clamp-1, .wb-clamp-2, .wb-clamp-3 {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-word;
-  line-clamp: 2;
 }
-.wb-clamp-1 { line-clamp: 1; max-height: 1.6em; }
-.wb-clamp-2 { max-height: 3.2em; }
-.wb-clamp-3 { line-clamp: 3; max-height: 4.8em; }
+.wb-clamp-1 { -webkit-line-clamp: 1; line-clamp: 1; }
+.wb-clamp-2 { -webkit-line-clamp: 2; line-clamp: 2; }
+.wb-clamp-3 { -webkit-line-clamp: 3; line-clamp: 3; }
 /* antd Tabs 导航条：溢出时可横滚（鼠标滚轮横滚由全局 wheel 委托驱动，
  见 index.tsx 模块级 listener）。滚动条隐藏（与顶栏自写 tab 条同款
  scrollbar-width:none + webkit 伪元素）。 */
