@@ -234,11 +234,16 @@ function ChatLayoutDiagCard({
           cel.className && typeof cel.className === "string"
             ? "." + cel.className.trim().split(/\s+/).slice(0, 1).join(".")
             : "";
-        chain.push(`${cel.tagName.toLowerCase()}${cls}=${cel.clientWidth}`);
+        // 0 宽层标注：宿主 compat 层 display:contents（不产生 box）恒 0，
+        // measure 已跳过 0 层；标注出来供复发时直接定位。
+        const w = cel.clientWidth;
+        chain.push(
+          `${cel.tagName.toLowerCase()}${cls}=${w}${w === 0 ? "(0宽·不计)" : ""}`,
+        );
         if (cel.tagName === "BODY") break;
         cel = cel.parentElement;
       }
-      out.push(`父链(最窄层定判定): ${chain.join(" ← ")}`);
+      out.push(`父链(最窄非零层定判定): ${chain.join(" ← ")}`);
     }
     if (layout) {
       out.push(
@@ -2494,19 +2499,22 @@ export default function WorkbenchPage() {
       setNarrow(isNarrowLayout(qw, qh));
     };
     const measure = () => {
-      // 15.18 2412px 横屏误判窄屏根因修：首帧 main 未 layout（clientWidth=0），
-      // 读 0 会把正确初值（按 innerWidth 算的真值）翻成窄屏；Desktop OS 窗口模式
-      // RO/resize 不重触发 → 卡死竖屏。0 值不 setState——等 layout 后的 RO/切 tab/
-      // 焦点恢复重测（那时 clientWidth 已是真值），初值本就是 innerWidth 真值。
       const main = mainRef.current;
-      if (!main || main.clientWidth === 0) return;
+      if (!main || main.clientWidth === 0) return; // main 未 layout，等 RO 重测
+      // 2412px 横屏误判窄屏真根因（宿主 CSS 实锤）：宿主 console 的插件挂载
+      // 兼容层 .compatContent 是 display:contents——不产生 box，clientWidth 恒 0。
+      // 父链 min 若把 0 层算进去 → visible 恒 0 → 判定被钉死（15.17 直接 setState
+      // 成窄屏；初值再对也被覆盖）。0-box 不约束子元素布局 → 遍历跳过 clientWidth=0
+      // 的层，visible = 父链非零层 ∪ 视口宽的最小值（窗口任意尺寸都得真值，随 resize
+      // 跟随；不再依赖初值正确性）。
       let visible = window.innerWidth;
       let el: HTMLElement | null = main;
       while (el) {
-        if (el.clientWidth < visible) visible = el.clientWidth;
+        const cw = el.clientWidth;
+        if (cw > 0 && cw < visible) visible = cw;
         el = el.parentElement;
       }
-      if (visible === 0) return; // 防御：父链任一层为 0 = 未 layout
+      if (visible === 0) return; // 防御：连 main 都无宽 = 未 layout
       const tp = threadPanelRef.current;
       qe = tp.open ? visible - tp.width : visible;
       qw = visible;
