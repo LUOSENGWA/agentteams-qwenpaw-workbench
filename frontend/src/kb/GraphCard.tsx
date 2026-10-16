@@ -7,6 +7,7 @@ import type * as ReactNS from "react";
 import Graph3D from "../components/Graph3D";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { useWbViewport } from "../WbViewportContext";
 import {
   EMPTY_POS_MAP,
   EMPTY_SIZE_MAP,
@@ -46,8 +47,6 @@ interface GraphModel {
   outbound: Map<string, LinkRef[]>;
 }
 
-const GRAPH_H = 420;
-
 // export=UI harness 测试缝（ui-harness-1322 ：选点持久性），非公共 API。
 export function GraphCard(props: {
   graph: { nodes: GraphNodeLike[]; edges: { source: string; target: string; target_anchor?: string | null }[] } | null;
@@ -60,6 +59,11 @@ export function GraphCard(props: {
   const { graph, loading, error, onOpenNode, agentLegend } = props;
   const t = useThemeColors();
   const tr = useT();
+  // 窄屏（容器 <800）降高：3D 480→300 / 2D 420→280——之前固定高在手机上
+  // 占满整屏，页面无法滚动（15.21 批真机反馈）。
+  const { narrow } = useWbViewport();
+  const GRAPH_H = narrow ? 280 : 420;
+  const GRAPH3D_H = narrow ? 300 : 480;
   const [hoverId, setHoverId] = React.useState("");
 
   // 2D 图统一命中测试。svg 层 mousemove 测试（chip 矩形优先，其次 8px 外扩
@@ -101,6 +105,7 @@ export function GraphCard(props: {
     // 12.12：拖拽中悬停停更（平移由 onSvgPanMove 处理——原实现 move 未接线，
     // 「鼠标无法拖动」根因）。
     if (dragRef.current) return;
+    if (Date.now() - lastTouchRef.current < 800) return; // 触屏拖动期间防 mouse 模拟
     const cx = e.clientX;
     const cy = e.clientY;
     cancelAnimationFrame(hitRafRef.current);
@@ -121,15 +126,10 @@ export function GraphCard(props: {
       }
     });
   };
-  const handleGraphClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    // v3：拖拽（平移）后的 click 不当事件处理。
-    if (dragMovedRef.current) {
-      dragMovedRef.current = false;
-      return;
-    }
-    const pt = clientToView(e.clientX, e.clientY);
-    if (pt) hitNodeRef.current = hitTestNode(pt.x, pt.y);
-    const node = hitNodeRef.current;
+  // 点选语义（mouse click 与 touch tap 共用）：view 坐标。
+  const selectAt = (vx: number, vy: number) => {
+    const node = hitTestNode(vx, vy);
+    hitNodeRef.current = node;
     if (!node) {
       setSelectedId("");
       if (focusRef.current) applyFocus(null); // 点空白=退出聚焦
@@ -149,8 +149,20 @@ export function GraphCard(props: {
     setSelectedId(node.id);
     onOpenNode(node);
   };
+  const handleGraphClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    // v3：拖拽（平移）后的 click 不当事件处理。
+    if (dragMovedRef.current) {
+      dragMovedRef.current = false;
+      return;
+    }
+    // 触屏 tap 后浏览器会补发 mouse 事件——touch 刚结束 800ms 内忽略，防双发。
+    if (Date.now() - lastTouchRef.current < 800) return;
+    const pt = clientToView(e.clientX, e.clientY);
+    if (pt) selectAt(pt.x, pt.y);
+  };
   // v4：双击=聚焦（hub=簇，非 hub=节点+一度邻接邻域）；单击语义不变。
   const handleGraphDblClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (Date.now() - lastTouchRef.current < 800) return; // 触屏双击走 tap 路径
     const pt = clientToView(e.clientX, e.clientY);
     if (!pt) return;
     const node = hitTestNode(pt.x, pt.y);
@@ -370,6 +382,7 @@ export function GraphCard(props: {
   // 拖拽平移（位移 <4px 视为单击，click 处理保留）。
   const onSvgPanDown = (e: React.MouseEvent<SVGSVGElement>) => {
     if (e.button !== 0) return;
+    if (Date.now() - lastTouchRef.current < 800) return; // 触屏拖动期间防 mouse 模拟
     cancelAnim();
     cancelAnimationFrame(hitRafRef.current); // 12.12：拖拽优先，停掉悬停 rAF
     dragRef.current = { startX: e.clientX, startY: e.clientY, vb0: { ...vbRef.current }, moved: false };
@@ -394,6 +407,127 @@ export function GraphCard(props: {
   const onSvgPanUp = () => {
     dragRef.current = null;
     setPanning(false);
+  };
+  // ── 2D 触屏手势（15.21 批）：单指拖动=平移 / 双指捏合=缩放 /
+  // tap=点选 / 双击=聚焦。CSS touch-action:none（svg 已设）挡住浏览器
+  // 默认页面滚动/捏合，故合成 touch 事件无需 preventDefault。
+  const lastTouchRef = React.useRef(0);
+  const lastTapRef = React.useRef<{ x: number; y: number; t: number } | null>(null);
+  const touchRef = React.useRef<{
+    mode: "idle" | "pan" | "pinch";
+    t0: number;
+    sx: number;
+    sy: number;
+    vb0: RadialView | null;
+    moved: boolean;
+    pd0: number;
+    pvb0: RadialView | null;
+    pax: number;
+    pay: number;
+  }>({ mode: "idle", t0: 0, sx: 0, sy: 0, vb0: null, moved: false, pd0: 0, pvb0: null, pax: 0, pay: 0 });
+  const onSvgTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
+    lastTouchRef.current = Date.now();
+    cancelAnim();
+    const st = touchRef.current;
+    if (e.touches.length === 2) {
+      // 双指：pinch（基线=手势起点的距离/中点/vb，每帧绝对计算不累加）。
+      const a = e.touches[0];
+      const b = e.touches[1];
+      const pt = clientToView((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+      st.mode = "pinch";
+      st.pd0 = Math.max(8, Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY));
+      st.pvb0 = { ...vbRef.current };
+      st.pax = pt ? pt.x : vbRef.current.minX + vbRef.current.width / 2;
+      st.pay = pt ? pt.y : vbRef.current.minY + vbRef.current.height / 2;
+      st.moved = true;
+      if (!panning) setPanning(true);
+    } else if (e.touches.length === 1) {
+      const p = e.touches[0];
+      st.mode = "idle";
+      st.t0 = Date.now();
+      st.sx = p.clientX;
+      st.sy = p.clientY;
+      st.vb0 = { ...vbRef.current };
+      st.moved = false;
+    }
+  };
+  const onSvgTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    const st = touchRef.current;
+    if (st.mode === "pinch" && e.touches.length >= 2) {
+      const a = e.touches[0];
+      const b = e.touches[1];
+      const dist = Math.max(8, Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY));
+      const v0 = st.pvb0;
+      if (!v0) return;
+      // 捏开=dist 增大=放大=w 缩小（与 wheel 同式：中点 view 坐标锚定）。
+      const w1 = v0.width * (st.pd0 / dist);
+      const h1 = v0.height * (st.pd0 / dist);
+      const fx = (st.pax - v0.minX) / v0.width;
+      const fy = (st.pay - v0.minY) / v0.height;
+      setVb(clampZoomView({ minX: st.pax - fx * w1, minY: st.pay - fy * h1, width: w1, height: h1 }, view));
+      return;
+    }
+    if (e.touches.length !== 1) return;
+    const p = e.touches[0];
+    if (st.mode === "idle") {
+      if (Math.hypot(p.clientX - st.sx, p.clientY - st.sy) > 4) {
+        st.mode = "pan";
+        st.moved = true;
+        if (!panning) setPanning(true);
+      } else {
+        return;
+      }
+    }
+    if (st.mode === "pan") {
+      const v0 = st.vb0;
+      if (!v0) return;
+      const svg = svgRef.current;
+      let scale = v0.width / Math.max(1, svg?.getBoundingClientRect().width || 1);
+      const ctm = svg?.getScreenCTM && svg.getScreenCTM();
+      if (ctm && ctm.a) scale = 1 / ctm.a;
+      setVb({ ...v0, minX: v0.minX - (p.clientX - st.sx) * scale, minY: v0.minY - (p.clientY - st.sy) * scale });
+    }
+  };
+  const onSvgTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
+    const st = touchRef.current;
+    lastTouchRef.current = Date.now();
+    if (st.mode === "pinch") {
+      if (e.touches.length === 1) {
+        // 剩一指：从当前 vb 继续平移（防 tap 误判）。
+        const p = e.touches[0];
+        st.mode = "idle";
+        st.sx = p.clientX;
+        st.sy = p.clientY;
+        st.vb0 = { ...vbRef.current };
+        st.moved = true;
+        return;
+      }
+      st.mode = "idle";
+      setPanning(false);
+      return;
+    }
+    if (e.touches.length === 0) {
+      const wasTap = st.mode === "idle" && !st.moved && Date.now() - st.t0 < 400;
+      st.mode = "idle";
+      setPanning(false);
+      if (!wasTap || !e.changedTouches[0]) return;
+      const ct = e.changedTouches[0];
+      const now = Date.now();
+      const lt = lastTapRef.current;
+      const isDbl = Boolean(lt && now - lt.t < 320 && Math.hypot(ct.clientX - lt.x, ct.clientY - lt.y) < 24);
+      if (isDbl) {
+        // 双击=聚焦（触屏无 dblclick 事件，tap 对实现）。
+        lastTapRef.current = null;
+        const pt = clientToView(ct.clientX, ct.clientY);
+        if (!pt) return;
+        const node = hitTestNode(pt.x, pt.y);
+        if (node) applyFocus(hubSet.has(node.id) ? { kind: "sector", hubId: node.id } : { kind: "node", id: node.id });
+        return;
+      }
+      lastTapRef.current = { x: ct.clientX, y: ct.clientY, t: now };
+      const pt = clientToView(ct.clientX, ct.clientY);
+      if (pt) selectAt(pt.x, pt.y);
+    }
   };
   const focusLabel = focus && graph
     ? (graph.nodes.find((nd) => (focus.kind === "sector" ? nd.id === focus.hubId : nd.id === focus.id))?.name ?? "簇")
@@ -661,9 +795,10 @@ export function GraphCard(props: {
     <antd.Card
       size="small"
       title={
-        <span style={{ fontSize: 13 }}>
+        <span style={{ fontSize: 13, maxWidth: "50%" }} title={tr("知识图谱（wikilink 引用网络）")}>
           {tr("知识图谱（wikilink 引用网络）")}
-          {graph ? (
+          {/* 窄屏隐藏节点/边计数：header 只留标题+切换钮，防 extra 被挤没。 */}
+          {graph && !narrow ? (
             <antd.Typography.Text
               type="secondary"
               style={{ fontSize: 12, marginLeft: 8 }}
@@ -677,41 +812,46 @@ export function GraphCard(props: {
       }
       extra={
         <antd.Space size={8}>
-          <antd.Space size={10} style={{ fontSize: 11 }}>
-            {legendEntries.map((l) => (
-              <span
-                key={l.key}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                }}
-              >
+          {/* 窄屏隐藏图例（挪到 2D body 内）：之前 extra 无 flexWrap，
+              图例+Segmented+收起超手机屏宽 → Segmented（3D/2D 切换）
+              被挤没，切 2D 后回不去 3D（15.21 批真机反馈）。 */}
+          {!narrow ? (
+            <antd.Space size={10} style={{ fontSize: 11 }}>
+              {legendEntries.map((l) => (
+                <span
+                  key={l.key}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 3,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: l.color,
+                      display: "inline-block",
+                    }}
+                  />
+                  {l.label}
+                </span>
+              ))}
+              {!agentLegend ? (
                 <span
                   style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: l.color,
-                    display: "inline-block",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 3,
+                    color: t.textSecondary,
                   }}
-                />
-                {l.label}
-              </span>
-            ))}
-            {!agentLegend ? (
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 3,
-                  color: t.textSecondary,
-                }}
-              >
-                → {tr("引用方向")}
-              </span>
-            ) : null}
-          </antd.Space>
+                >
+                  → {tr("引用方向")}
+                </span>
+              ) : null}
+            </antd.Space>
+          ) : null}
           <antd.Segmented
             size="small"
             value={viewMode}
@@ -756,11 +896,51 @@ export function GraphCard(props: {
                 onOpenNode={onOpenNode}
                 onExit3D={() => switchViewMode("2d")}
                 onSelect={setSelectedId}
+                height={GRAPH3D_H}
               />
               {panel}
             </>
           ) : (
           <div style={{ position: "relative" }}>
+            {/* 窄屏图例（header 不展示图例时兜底，2D 视图内展示）。 */}
+            {narrow ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "2px 10px",
+                  fontSize: 11,
+                  marginBottom: 4,
+                }}
+              >
+                {legendEntries.map((l) => (
+                  <span
+                    key={l.key}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 3,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: l.color,
+                        display: "inline-block",
+                      }}
+                    />
+                    {l.label}
+                  </span>
+                ))}
+                {!agentLegend ? (
+                  <span style={{ color: t.textSecondary }}>
+                    → {tr("引用方向")}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             <div
               style={{
                 fontSize: 12,
@@ -823,6 +1003,10 @@ export function GraphCard(props: {
                 setPanning(false);
                 if (svgRef.current) svgRef.current.style.cursor = "grab";
               }}
+              onTouchStart={onSvgTouchStart}
+              onTouchMove={onSvgTouchMove}
+              onTouchEnd={onSvgTouchEnd}
+              onTouchCancel={onSvgTouchEnd}
             >
               <defs>
                 <marker
