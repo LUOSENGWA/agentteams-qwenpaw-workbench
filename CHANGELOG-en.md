@@ -3,6 +3,18 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.20 (2026-10-16 - board wide screen 3-col 2-row + card height grows with content)
+
+**This batch = another board layout adjustment (wide screens >= 950px become 3 columns x 2 rows; mid widths keep 2x3; portrait keeps 1x6) + a root-cause fix for board cards being vertically compressed/clipped (card heights now grow with their content; text is no longer cut off mid-line).**
+
+**Fixed**
+- **Board cards vertically compressed / clipped (root fix)**: the card body (project-title row) used a 2-line clamp style, but that clamp silently did not take effect in current browsers - it degraded to a fixed max-height with overflow hidden, leaking a partial third line below the clamp (the half-cut "... " text visible in the report screenshots). The clamp classes now use the proper line-clamp implementation (benefiting all 8 usages site-wide - no more partial-line leaks). Additionally, the board card project-title row now shows its full text, so the card height grows with its content and nothing is occluded at any width; the in-column vertical scroll kicks in beyond about 3 cards per column (about 2 on wide screens). The portrait 1-column 6-row mode shares this fix.
+- **Board wide screen 3-col 2-row**: wide screens (window >= 950px) used the 2-column layout; they now use a 3-column grid with the per-column card area capped at about 2 cards - columns are 1/3 of the container width, so cards are wider and wrap into fewer lines. Mid widths (500-949px) keep 2 columns x 3 cards, and portrait (<500px) keeps the 1-column 6-row stack. The 500/950 breakpoints are covered by unit-test guards.
+
+**Verification**: tsc 0 · vite build · 393 backend tests · 0 i18n missing · sensitive scan 0 · breakpoint smoke on 18 widths
+
+---
+
 ## 0.5.0-beta.15.19 (2026-10-16 - board wide screen back to 2-col 3-row + left-rail name wrapping)
 
 **This batch = board layout adjustment (the wide-screen 6-column single-row horizontal scroll is replaced by the 2-column 3-row layout, fixing clipped right-side columns and clipped card text) + left-rail name auto-wrapping on three pages (project/room names are no longer cut by ellipsis; card heights grow with the content).**
