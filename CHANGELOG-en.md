@@ -3,6 +3,22 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.21 (2026-10-16 - 2D graph touch gestures + narrow-screen height/toggle fixes + DAG wheel zoom)
+
+**This batch = finger interaction for the 2D knowledge graph (two-finger pinch zoom / one-finger pan / tap select / double-tap focus) + two narrow-screen (phone) fixes for the knowledge graph (the 3D/2D toggle getting squeezed out of the viewport, and the graph being too tall to scroll the page) + mouse wheel zoom for the workflow dependency graph.**
+
+**Added**
+- **Touch gestures on the 2D knowledge graph**: the 2D view was mouse-only before (wheel zoom / drag / click). It now works with fingers too - two-finger pinch zoom (anchored on the pinch midpoint), one-finger drag to pan, tap to select a node (same semantics as a mouse click: neighbor highlight / details / open file, tap a cluster root to focus, tap blank to deselect), and double-tap to focus a node's neighborhood.
+- **Mouse wheel zoom on the dependency graph**: the workflow dependency graph could only be zoomed via the toolbar +/- buttons or two-finger pinch. Mouse wheel now zooms as well (anchored on the cursor, same 0.4-2.0 range as pinch), complementing the existing drag-pan and pinch for full desktop and touch coverage.
+
+**Fixed**
+- **3D/2D toggle squeezed out of view on narrow screens**: on phones, the legend, the node/edge count and the 3D/2D segmented control all shared the card header row and did not fit - the toggle was pushed off-screen, so after switching from 3D to 2D you could not get back to 3D. On narrow screens the legend and the count now move out of the header (the legend shows inside the 2D view), so the toggle is always visible.
+- **Knowledge graph too tall on narrow screens**: the fixed graph heights (3D 480px / 2D 420px) took up most of a phone screen, leaving the page unable to scroll. On narrow screens the graph is now shorter (3D 300px / 2D 280px) and the page scrolls normally.
+
+**Verification**: tsc 0 · vite build · pytest 393 · i18n 0 missing · sensitive scan 0 · 8 smoke suites
+
+---
+
 ## 0.5.0-beta.15.20 (2026-10-16 - board wide screen 3-col 2-row + card height grows with content)
 
 **This batch = another board layout adjustment (wide screens >= 950px become 3 columns x 2 rows; mid widths keep 2x3; portrait keeps 1x6) + a root-cause fix for board cards being vertically compressed/clipped (card heights now grow with their content; text is no longer cut off mid-line).**
