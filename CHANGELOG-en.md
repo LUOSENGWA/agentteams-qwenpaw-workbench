@@ -3,6 +3,24 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.18 (2026-10-16 - landscape misjudgment fix + KB / skill-center simplification + board monolith split)
+
+**This batch = root-cause fix for "landscape wide screen misjudged as portrait" (a 2412px landscape Desktop OS window was judged portrait single-column, stretching every page) + product simplification (KB remote-only / skill-center keeps upload only) + WorkflowBoard monolith split (N-07).**
+
+**Fixed**
+- **Landscape wide screen misjudged as portrait (root-cause fix)**: the plugin's first frame read the container width before layout completed (0px) and flipped the correct "wide" initial value to portrait; in Desktop OS window mode the resize observer never re-fired -> the judgment stayed stuck in portrait single-column (artifacts / workflow topology / chat / team management all stretched). Fix: do not update the judgment while the width is not ready (0px) — wait for the real post-layout value; plus "force re-measure on tab switch" and "force re-measure on window focus return" as double safety nets. The self-check diagnostics card now prints the per-layer clientWidth of the whole parent chain — if it recurs, one screen identifies the layer dragging the visible width below the threshold.
+
+**Simplification (product decision)**
+- **Knowledge base is remote-only**: the "local host agent" fallback view and the "re-probe" button are removed; only the remote team KB remains (Controller reads Worker container workspaces directly). When the remote is unavailable (no token / L2 user / no workers), a top-of-page configuration guide is shown instead of falling back to local.
+- **Skill center drops the "skill catalog" card**: the catalog list / search / download is no longer rendered (low real-world value in team ops); only the "Upload skill (zip)" and "Create custom skill" entries remain. The Worker skill-assignment matrix is unaffected (it still reads the catalog data layer for source tags).
+
+**Tech-debt cleanup**
+- **WorkflowBoard (board) 4449 -> 759L**: split into 7 `workflowboard/` modules (DagTopo 607 / BoardView 446 / blocks 418 / panels 359 / timeline 174 / rail 137 / helpers 232 / types 28); external contract unchanged (default export + named `WfView`); behavior-preserving (pure moves).
+
+**Verification**: tsc 0 - vite build 503 modules - sensitive-info scan 0
+
+---
+
 ## 0.5.0-beta.15.17 (2026-10-15 - 15.x optimization batch: chat file refs + three monolith splits + approval color convergence)
 
 **This batch = the beta 15.x UI / performance / tech-debt cleanup batch (nightly autonomous batch, package 1 = safe batch): 1 new feature (#87 chat references to team shared-workspace files) + three frontend monolith splits (CrdManage / KB / board layout) + approval-severity color single-source convergence.**

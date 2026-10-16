@@ -43,6 +43,14 @@ const DICT: Record<string, { en: string }> = {
   "审计读取要求 L1（admin/manager）或 L2（团队负责人/本团队 human）。worker 身份被 Controller 默认拒绝。": {
     en: "Reading audit requires L1 (admin/manager) or L2 (team leader / human of this team). Worker identities are denied by the Controller by default.",
   },
+  // ── 15.18 增补（知识库纯远端 / 技能中心简化）──
+  "远端团队知识库不可用": { en: "Remote team KB unavailable" },
+  "远端团队知识库需要 L1（管理员）凭据——配置页填写 Controller 管理员 token 后重新进入知识库即可加载。L2 用户没有该 token，此视图不可用（向管理员申请 L1 凭据）。": {
+    en: "The remote team KB requires L1 (admin) credentials — fill in the Controller admin token on the Settings page, then re-enter the KB to load it. L2 users do not have that token, so this view is unavailable (request L1 credentials from an admin).",
+  },
+  "① 技能上传（POST /api/v1/skills）": {
+    en: "① Skill Upload (POST /api/v1/skills)",
+  },
   // ── 15.14 增补（离线模式 / 技能中心 / 首页）──
   "本地离线模式": { en: "Local Offline Mode" },
   "本地配置加载失败": { en: "Failed to load local config" },
