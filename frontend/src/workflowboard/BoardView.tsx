@@ -1,6 +1,7 @@
 // WorkflowBoard 巨石拆分 · 看板视图（第四视图）：看板卡（BoardCard）+ 看板容器
-// （BoardColumnsView，两档布局 stacked/grid2——15.19 起 jira 横滚档退役，
-// 宽屏与中间宽度同为两列三行）。
+// （BoardColumnsView，三档布局 stacked/grid2/grid3——15.19 起 jira 横滚档
+// 退役；15.20 宽屏 ≥950 改三列两行 grid3，中间宽度两列三行 grid2，
+// 竖屏 <500 一列六行 stacked）。
 // 横竖屏断点与 pointer 逻辑逐字搬移，行为零变。
 
 import type { WorkflowEvent } from "../api";
@@ -72,9 +73,9 @@ export function BoardCard(props: {
       }}
     >
       <div
-        // 15.14：clamp 走全局标准类（.wb-clamp-2，block+max-height，
-        // 跨 Chromium 版本安全）——内联 -webkit-box 在 Chromium 154
-        // 计算为 flow-root（盒模型损坏）是细条塌缩的另一半根因。
+        // 15.14：clamp 走全局标准类（.wb-clamp-2）；15.20 该类已补
+        // -webkit-box 三件套真 clamp（旧版 block+max-height 半行泄漏已修）。
+        // 标题=节点短名，两行封顶足够，全文走 title 悬停。
         className="wb-clamp-2"
         style={{
           fontWeight: 600,
@@ -97,12 +98,14 @@ export function BoardCard(props: {
         {nodeLabelUi(node)}
       </div>
       <div
-        className="wb-clamp-2"
+        // 15.20：项目名全文展示（原 wb-clamp-2 两行封顶=「卡片被纵向
+        // 压缩遮挡」主诉）——卡高随内容动态长，列卡区限高+列内纵滚兜底；
+        // 列宽变化时行尾自然回折。
         style={{
           fontSize: 11.5,
           color: t.textSecondary,
-          // 窄屏项目名换行（2 行封顶，不 ellipsis 截断）。
           whiteSpace: "normal",
+          wordBreak: "break-word",
           lineHeight: 1.3,
         }}
         title={task.projectTitle}
@@ -161,9 +164,11 @@ export function BoardCard(props: {
 
 // 15.15 布局模式（横屏回归修复）：判定收敛进纯模块 boardMode.ts
 // （断点回归护栏——横屏被搞烂的根因是断点误判：横屏手机 667px 曾因 <800
-// 恒 narrow 落进竖屏堆叠）。15.19 起两档：stacked=竖屏堆叠（<500）、
-// grid2=两列定宽+3 卡限高滚（≥500，含桌面宽屏——jira 250px 横滚档退役：
-// 整板 2000px 窄窗右列被裁、250px 列内卡文字 3 行+被裁切）。
+// 恒 narrow 落进竖屏堆叠）。15.20 起三档：stacked=竖屏堆叠一列六行
+// （<500）、grid2=两列三行（500–949，横屏手机/平板/中间宽度）、
+// grid3=三列两行（≥950 桌面宽屏——15.19 曾把宽屏并入 grid2，15.20 按
+// 定案宽屏要三列两行：列更宽、卡文字行数更少）。jira 250px 横滚档自
+// 15.19 退役，不再恢复。
 export function BoardColumnsView(props: {
   events: WorkflowEvent[];
   t: ReturnType<typeof useThemeColors>;
@@ -230,26 +235,34 @@ export function BoardColumnsView(props: {
     };
   }, []);
 
-  // ── 两布局（15.15 横屏回归修复；15.19 退 jira 档）─────────────────
+  // ── 三布局（15.15 横屏回归修复；15.19 退 jira 档；15.20 宽屏 grid3）──
   // 按实测容器宽 W 分流（初值=WbViewport 快照，RO 回调纠偏：手机旋转
   // 376↔667 不触发 narrow 翻转，快照会过期，实测宽是唯一正源）：
   // stacked（W<500，竖屏手机 376）：状态列纵向堆叠全宽 + 列内 165px 卡行
   //   横滚 + snap（15.11 移动看板布局，竖屏验过，不动）；
-  // grid2（W≥500，横屏手机 667 / 平板 / 中间宽度 / 桌面宽屏）：两列定宽
-  //   网格 minmax(0,1fr)（列=容器半宽，永不压缩、不横滑）+ 每列卡区限高
-  //   min(40vh,320px)≈3 卡、超出列内纵向滚（=3c93a10「看板 2 列 3 卡滚」）。
-  //   15.13 曾把 ≥800 一律改 Jira 250px 横滚（jira 档），但 8×250=2000px
-  //   整板只有很宽窗口放得下、稍窄右列被裁，且 250px 列内卡文字 3 行+
-  //   被裁切 → 15.19 宽屏一并回 grid2。
+  // grid2（500≤W<950，横屏手机 667 / 平板 / 中间宽度）：两列定宽网格
+  //   minmax(0,1fr)（列=容器半宽，永不压缩、不横滑）+ 每列卡区限高
+  //   min(40vh,320px)≈3 卡、超出列内纵向滚（=3c93a10「看板 2 列 3 卡滚」）；
+  // grid3（W≥950，桌面宽屏）：三列定宽网格 repeat(3,minmax(0,1fr))
+  //   （列=容器 1/3 宽）+ 每列卡区限高 min(30vh,260px)≈2 卡、超出列内
+  //   纵向滚（15.20「宽屏三列两行」定案）。
   const wrapperStyle: React.CSSProperties =
-    mode === "grid2"
+    mode === "grid3"
       ? {
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+          gridTemplateColumns:
+            "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)",
           gap: 8,
           minWidth: 0,
         }
-      : { display: "grid", gap: 8, minWidth: 0 };
+      : mode === "grid2"
+        ? {
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+            gap: 8,
+            minWidth: 0,
+          }
+        : { display: "grid", gap: 8, minWidth: 0 };
 
   return (
     <div ref={wrapRef} style={wrapperStyle}>
@@ -330,14 +343,17 @@ export function BoardColumnsView(props: {
                 ))}
               </div>
             ) : (
-              // grid2 卡区：限高 ~3 卡（min(40vh,320px)），超出列内纵向滚
-              // （3c93a10「2 列 3 卡滚」机制；15.19 起 W≥500 的唯一形态）。
+              // grid2/grid3 卡区：限高 ~3 卡（grid2 min(40vh,320px)）或
+              // ~2 卡（grid3 min(30vh,260px)），超出列内纵向滚。卡高=
+              // 内容高（flexShrink:0 + 项目名 15.20 起全文展示，卡随内容
+              // 动态长），列限高只控「一屏几卡」，不再压卡。
               <div
                 style={{
                   display: "grid",
                   gap: 8,
                   minWidth: 0,
-                  maxHeight: "min(40vh, 320px)",
+                  maxHeight:
+                    mode === "grid3" ? "min(30vh, 260px)" : "min(40vh, 320px)",
                   overflowY: "auto",
                   overflowX: "hidden",
                 }}
