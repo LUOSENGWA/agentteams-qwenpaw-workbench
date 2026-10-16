@@ -257,7 +257,6 @@ export default function SkillCenter({
   const [mcpEditWorker, setMcpEditWorker] = React.useState("");
   const [mcpDraft, setMcpDraft] = React.useState<McpServerInfo[]>([]);
   const [mcpSaving, setMcpSaving] = React.useState(false);
-  const [catalogSearch, setCatalogSearch] = React.useState("");
   // 防刷屏（用户报告「技能中心刷屏」）：MCP 空行默认收起。
   const [showAllMcp, setShowAllMcp] = React.useState(false);
   const mcpWithCount = React.useMemo(
@@ -450,42 +449,6 @@ export default function SkillCenter({
       setUpBusy(false);
     }
   }, [upTeam, upMode, upFile, upName, upDesc, upBody, tr, loadCatalog, loadWorkers]);
-  const downloadSkill = React.useCallback(
-    async (name: string) => {
-      const host = window.QwenPaw?.host;
-      if (!host || typeof host.fetch !== "function") return;
-      // 团队层技能需带 ?team=（服务端同日录 scope 规则）；L1 全局视图不带。
-      const q = l2 && l2Team ? `?team=${encodeURIComponent(l2Team)}` : "";
-      try {
-        const resp = await host.fetch(
-          `/agentteams-proxy/controller/api/v1/skills/${encodeURIComponent(name)}/download${q}`,
-        );
-        if (resp.status === 404) {
-          antd.message.info(
-            tr("当前 Controller 版本不支持技能下载（上游端点待合并）"),
-          );
-          return;
-        }
-        if (!resp.ok) {
-          antd.message.error(`HTTP ${resp.status}`);
-          return;
-        }
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${name}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 4000);
-      } catch (e) {
-        antd.message.error(e instanceof Error ? e.message : tr("下载失败"));
-      }
-    },
-    [tr, l2, l2Team],
-  );
-
   // 技能列 = 目录（如可用）∪ 已分配并集（目录不可用时的降级全集）。
   const skillColumns = React.useMemo(() => {
     const set = new Set<string>();
@@ -573,15 +536,6 @@ export default function SkillCenter({
     }
   }, [mcpEditWorker, mcpDraft, tr]);
 
-  const filteredCatalog = (st.catalog || []).filter((s) => {
-    if (!catalogSearch.trim()) return true;
-    const q = catalogSearch.toLowerCase();
-    return (
-      s.name.toLowerCase().includes(q) ||
-      (s.description || "").toLowerCase().includes(q)
-    );
-  });
-
   return (
     // minmax(0,1fr) 钉轨道：隐式 auto 轨按 item min-content 撑宽（技能矩阵
     // 宽内容 702px > 窄容器 400px → 卡溢出弹窗被裁；.wb-main 全局 grid 锁轨
@@ -632,103 +586,22 @@ export default function SkillCenter({
         </div>
       ) : null}
 
-      {/* ① 技能目录（#1268 已合 main，旧 Controller 404 占位） */}
+      {/* ① 技能上传（15.18：技能目录块删除——方案 B「目录上传/下载没意义」；
+          只保留技能上传/新建入口。目录数据层（catalog/loadCatalog/catalogByName）
+          保留供 ② 矩阵来源标签；catalogSearch/filteredCatalog/目录列表/下载已删。） */}
       {showCatalog ? (
       <antd.Card
         size="small"
-        title={tr("① 技能目录（只读 · 上游 /api/v1/skills）")}
-        // 竖屏（376 点名）：extra 横排「搜索+上传+新建」超宽 → 工具条移入
-        // 卡身纵向堆叠（搜索整行 + 两钮等宽行）；宽屏保持 extra 横排。
-        extra={
-          !narrow && st.catalog !== undefined ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <antd.Input
-                size="small"
-                style={{ width: 180 }}
-                allowClear
-                placeholder={tr("搜索名称/描述")}
-                value={catalogSearch}
-                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setCatalogSearch(e.target.value)}
-              />
-              {/* 技能包上传 / 自定义新建（POST /api/v1/skills）。 */}
-              <antd.Button size="small" onClick={() => openUpload("zip")}>
-                {tr("上传技能（zip）")}
-              </antd.Button>
-              <antd.Button size="small" type="primary" ghost onClick={() => openUpload("new")}>
-                {tr("新建自定义技能")}
-              </antd.Button>
-            </div>
-          ) : undefined
-        }
+        title={tr("① 技能上传（POST /api/v1/skills）")}
       >
-        {narrow && st.catalog !== undefined ? (
-          <div style={{ display: "grid", gap: 8, marginBottom: 10, minWidth: 0 }}>
-            <antd.Input
-              size="small"
-              allowClear
-              placeholder={tr("搜索名称/描述")}
-              value={catalogSearch}
-              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setCatalogSearch(e.target.value)}
-            />
-            <div style={{ display: "flex", gap: 8 }}>
-              <antd.Button size="small" style={{ flex: 1 }} onClick={() => openUpload("zip")}>
-                {tr("上传技能（zip）")}
-              </antd.Button>
-              <antd.Button size="small" type="primary" ghost style={{ flex: 1 }} onClick={() => openUpload("new")}>
-                {tr("新建自定义技能")}
-              </antd.Button>
-            </div>
-          </div>
-        ) : null}
-        {st.catalog === null ? (
-          <antd.Spin />
-        ) : st.catalog === undefined ? (
-          <antd.Alert
-            type="info"
-            showIcon
-            message={st.catalogNote || tr("技能目录 API 待上游合并")}
-          />
-        ) : (
-          <div style={{ display: "grid", gap: 6 }}>
-            {filteredCatalog.map((s) => (
-              <div
-                key={`${s.source}-${s.name}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "5px 10px",
-                  border: `1px solid ${t.border}`,
-                  borderRadius: 6,
-                  minWidth: 0,
-                }}
-              >
-                <span style={{ fontWeight: 600, minWidth: 0 }}>{s.name}</span>
-                <antd.Tag color={s.source === "builtin" ? "blue" : "purple"} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
-                  {s.source}
-                </antd.Tag>
-                {/* 描述已从目录行移除（376 竖屏）——完整详情走分配卡「详情」弹窗。 */}
-                <span style={{ flex: 1 }} />
-                {(s.source === "team" || s.source === "shared") ? (
-                  <antd.Button
-                    size="small"
-                    type="link"
-                    style={{ padding: 0, fontSize: 12 }}
-                    onClick={() => void downloadSkill(s.name)}
-                  >
-                    {tr("下载")}
-                  </antd.Button>
-                ) : null}
-                <span style={{ color: t.textSecondary, fontSize: 11 }}>
-                  {tr("使用方 {n}", { n: (s.agents || []).length })}
-                </span>
-              </div>
-            ))}
-            {!filteredCatalog.length && (
-              <antd.Empty description={tr("无匹配技能")} />
-            )}
-          </div>
-        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <antd.Button size="small" onClick={() => openUpload("zip")}>
+            {tr("上传技能（zip）")}
+          </antd.Button>
+          <antd.Button size="small" type="primary" ghost onClick={() => openUpload("new")}>
+            {tr("新建自定义技能")}
+          </antd.Button>
+        </div>
       </antd.Card>
       ) : null}
 
