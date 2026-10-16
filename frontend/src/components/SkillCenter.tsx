@@ -2,9 +2,9 @@
  * 🧩 技能中心（，技能中心与 MCP 实施方案 v0.1）。
  *
  * 三节（L1 admin 视角，插件以 admin token 操作 Controller）：
- * ① 技能目录（#1268 已合 main）——GET /api/v1/skills，
- * Controller < 合并版本（如 v1.2.3 验证实盘）→ 404 → 占位卡；升级后自动点亮。
- * 契约：{skills:[{name,description?,source,agents?}],total}。
+ * ① 技能上传——POST /api/v1/skills（zip 上传 / 新建自定义技能）。
+ * 15.18 方案 B：只读技能目录卡已删（与 ② 矩阵重复）；目录数据层
+ * （catalog/loadCatalog）保留供 ② 矩阵取来源标签。
  * ② Worker 技能分配矩阵（P1，v1.2.3 立即可用）——行=Worker，
  * 列=技能（目录可用=目录 ∪ 已分配；否则=已分配并集）。
  * 勾选 → PUT /workers/{name} {skills:[...]}（整字段替换语义）。
@@ -549,8 +549,8 @@ export default function SkillCenter({
         <WbTooltip
           title={tr(
             l2
-            ? "团队技能/MCP 的统一管理面（L2 我的团队视角）：技能目录（本团队，只读）+ Worker 技能分配（可写 skills）+ MCP Servers（只读，写权限待上游 elevated capability 设计）。身份=Matrix token，L2 路径不走 admin token。频道接入见「团队管理 → 频道」。"
-            : "团队技能/MCP 的统一管理面：技能目录（只读）+ Worker 技能分配矩阵 + MCP Servers。L1（admin）可写；L2/Leader 写操作被 Controller 拒绝时明确提示。频道接入见「团队管理 → 频道」。",
+            ? "团队技能/MCP 的统一管理面（L2 我的团队视角）：技能上传（本团队）+ Worker 技能分配（可写 skills）+ MCP Servers（只读，写权限待上游 elevated capability 设计）。身份=Matrix token，L2 路径不走 admin token。频道接入见「团队管理 → 频道」。"
+            : "团队技能/MCP 的统一管理面：技能上传（zip/新建）+ Worker 技能分配矩阵 + MCP Servers。L1（admin）可写；L2/Leader 写操作被 Controller 拒绝时明确提示。频道接入见「团队管理 → 频道」。",
           )}
         >
           <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
