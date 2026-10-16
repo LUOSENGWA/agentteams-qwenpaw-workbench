@@ -80,6 +80,37 @@ export function DagTopo(props: {
     setPanX(0);
     setPanY(0);
   }, [narrow, contentSize, graphW]);
+  // 滚轮缩放（native non-passive——React 合成 onWheel 是 passive，
+  // preventDefault 无效）：每格 ×/÷1.12，光标位置锚定（与双指捏合
+  // 中点锚定同式：screen = content×zoom + pan → pan′ = m − (m − pan)×k）。
+  const zoomRef = React.useRef(zoom);
+  zoomRef.current = zoom;
+  const panXRef = React.useRef(panX);
+  panXRef.current = panX;
+  const panYRef = React.useRef(panY);
+  panYRef.current = panY;
+  const clampZoomRef = React.useRef(clampZoom);
+  clampZoomRef.current = clampZoom;
+  React.useEffect(() => {
+    const el = graphRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      userZoomedRef.current = true; // 手动缩放 → auto-fit 不再覆盖
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const z = zoomRef.current;
+      const z1 = clampZoomRef.current(z * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+      if (z1 === z) return;
+      const k = z1 / z;
+      setZoom(z1);
+      setPanX(mx - (mx - panXRef.current) * k);
+      setPanY(my - (my - panYRef.current) * k);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
   // 触屏手势（pinch-zoom / pan）：Pointer Events 统一 touch+mouse；
   // 基线存 ref，每帧从手势起点绝对计算（不累加 delta，无漂移）。
   const pointersRef = React.useRef<Map<number, { x: number; y: number }>>(new Map());
