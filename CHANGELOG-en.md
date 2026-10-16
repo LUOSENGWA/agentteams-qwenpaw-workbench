@@ -3,6 +3,18 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.19 (2026-10-16 - board wide screen back to 2-col 3-row + left-rail name wrapping)
+
+**This batch = board layout adjustment (the wide-screen 6-column single-row horizontal scroll is replaced by the 2-column 3-row layout, fixing clipped right-side columns and clipped card text) + left-rail name auto-wrapping on three pages (project/room names are no longer cut by ellipsis; card heights grow with the content).**
+
+**Fixed**
+- **Board wide screen back to 2-column 3-row**: the wide screen (window >= 950px) used a 6-column single-row layout (8 columns fixed at 250px with horizontal scroll) — the full board needs 2000px, so only very wide windows show all columns; slightly narrower windows clip the right-side columns (e.g. "Done") out of view, and inside a 250px column card text wraps to 3+ lines and gets clipped. Wide screens now use the same 2-column 3-row layout as mid widths (columns = half the container width, no board-level horizontal scroll, each column capped at about 3 cards with in-column vertical scroll) — wider windows mean wider columns, so cards are no longer cramped and the board is never clipped. The 2-column 3-row and the portrait single-column layouts were already correct and are unchanged.
+- **Left-rail name auto-wrapping on three pages**: names in the left rails of the chat page (group / DM / invite cards), the artifacts page (projects / rooms), and the workflow topology & card views were single-line with ellipsis — the rails are drag-resizable, but no width showed the full name. These names now wrap, so the full name is visible at any width and card heights grow with the wrapped lines (the project-card view's project name already wrapped; the three rails now use the same wrapping). Message preview rows and file-name detail rows keep the single-line style.
+
+**Verification**: tsc 0 · vite build · 393 backend tests · 0 i18n missing · sensitive scan 0
+
+---
+
 ## 0.5.0-beta.15.18 (2026-10-16 - landscape misjudgment fix + KB / skill-center simplification + board monolith split)
 
 **This batch = root-cause fix for "landscape wide screen misjudged as portrait" (a 2412px landscape Desktop OS window was judged portrait single-column, stretching every page) + product simplification (KB remote-only / skill-center keeps upload only) + WorkflowBoard monolith split (N-07).**
