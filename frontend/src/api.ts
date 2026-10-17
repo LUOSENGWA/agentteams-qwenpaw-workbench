@@ -2305,6 +2305,19 @@ export interface WorkerInfo {
   /** env 是否可编辑（1.2.5+；L1/manager=true，L2=false，旧 Controller=undefined
  * → 前端一律不渲染 env 段，优雅降级）。 */
   envEditable?: boolean;
+  /** LLM 调优（AgentTeams 1.2.5+，顶层回显，omitempty=未设置不显；
+   * 留空=继承团队默认/registry 默认。写=PUT /workers/{name} 字段级 diff，
+   * L1-only。分组：startup（重建容器生效）/ stream（热更新）。 */
+  llmMaxRetries?: string;
+  llmBackoffBase?: string;
+  llmBackoffCap?: string;
+  llmMaxConcurrent?: string;
+  llmMaxQpm?: string;
+  llmRateLimitPause?: string;
+  llmRateLimitJitter?: string;
+  llmAcquireTimeout?: string;
+  llmStreamFirstContentTimeout?: string;
+  llmStreamIdleTimeout?: string;
 }
 
 export interface TeamInfo {
@@ -2325,6 +2338,19 @@ export interface TeamInfo {
   peerMentions?: boolean;
   /** 团队级 spawn 子代理默认模型（TeamResponse.subagentModel 透传）。 */
   subagentModel?: string;
+  /** 团队级 LLM 调优默认（AgentTeams 1.2.5+，TeamSpec llm* 顶层回显，
+   * omitempty=未设不显；Worker 未设时继承此团队默认，再回退 registry。
+   * 写=PUT /teams/{name} 指针语义（不发=不动/""=清除/值=覆盖）。 */
+  llmMaxRetries?: string;
+  llmBackoffBase?: string;
+  llmBackoffCap?: string;
+  llmMaxConcurrent?: string;
+  llmMaxQpm?: string;
+  llmRateLimitPause?: string;
+  llmRateLimitJitter?: string;
+  llmAcquireTimeout?: string;
+  llmStreamFirstContentTimeout?: string;
+  llmStreamIdleTimeout?: string;
 }
 
 export interface HumanInfo {

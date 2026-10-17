@@ -6,6 +6,8 @@ import type * as ReactNS from "react";
 
 import type { AdminData, TeamInfo } from "../api";
 import { modelVerdictText, validateModelValue } from "../modelUnion";
+import LlmTuningFields from "../components/LlmTuningFields";
+import { findLlmTuningError, type LlmTuningKey } from "../lib/llm-tuning";
 import type { ThemeColors } from "../theme";
 import { CloseIcon, WarnIcon } from "../components/icons";
 import SkillCenter from "../components/SkillCenter";
@@ -166,6 +168,32 @@ subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型
           <span style={{ fontSize: 11 }}>
             {tr("peerMentions（团队成员可互 @）")}
           </span>
+        </div>
+        {/* 团队级 LLM 调优（1.2.5 TeamSpec llm*，Worker 未设时继承此默认）。
+  字段网格复用 LlmTuningFields（与 Worker 面板同源同序）；保存=字段级
+  diff（未改不发 / ""=清除 / 值=覆盖），随下方「保存」的 updateTeam 落盘。 */}
+        <antd.Divider style={{ margin: "8px 0 6px" }}>
+          {tr("团队 LLM 调优（成员未单独设置时继承）")}
+        </antd.Divider>
+        <LlmTuningFields
+          values={cfg.llm}
+          onChange={(key: LlmTuningKey, value: string) =>
+            setCfg({ ...cfg, llm: { ...cfg.llm, [key]: value } })
+          }
+          disabled={cfgBusy}
+        />
+        {(() => {
+          const e = findLlmTuningError(cfg.llm);
+          return e ? (
+            <div style={{ fontSize: 11, color: "#e5484d" }}>
+              {tr("{label}：{message}", { label: e.label, message: e.message })}
+            </div>
+          ) : null;
+        })()}
+        <div style={{ fontSize: 10, color: t.textSecondary }}>
+          {tr(
+            "留空 = 不设置（成员继承 QwenPaw registry 默认）。保存仅发送改动的字段；「重试与限流」改动需重建容器生效，「流式超时」即时生效。",
+          )}
         </div>
         <div style={{ fontSize: 11, color: t.textSecondary }}>
           {tr(

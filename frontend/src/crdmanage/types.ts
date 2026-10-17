@@ -3,6 +3,7 @@
 // 提升为具名 interface——纯类型层，运行时零变化）。
 
 import type { AdminData } from "../api";
+import type { LlmTuningRecord } from "../lib/llm-tuning";
 
 /** 翻译函数（useT() 返回签名）。 */
 export type TrFn = (s: string, vars?: Record<string, string | number>) => string;
@@ -132,6 +133,9 @@ export interface TeamCfgForm {
   heartbeatEvery: string;
   peerMentions: boolean;
   subagentModel: string;
+  /** 团队级 LLM 调优 draft（10 字段，留空=继承 registry；保存=字段级 diff，
+   * ""=清除覆盖。基线 llmBase 在 useTeamCrd 独立持有）。 */
+  llm: LlmTuningRecord;
 }
 
 /** 批量模型画笔（两把独立画笔：Leader 批 / Workers 批）。 */

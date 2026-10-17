@@ -35,6 +35,7 @@ import SkillCenter from "./SkillCenter";
 import WorkerRuntimeConfig from "./WorkerRuntimeConfig";
 import WorkerEnvPanel from "./WorkerEnvPanel";
 import WorkerCodingCliPanel from "./WorkerCodingCliPanel";
+import WorkerLlmTuningPanel from "./WorkerLlmTuningPanel";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -392,6 +393,8 @@ function WorkerManageInfo({
   const [envOpen, setEnvOpen] = React.useState(false);
   // 竖屏：Coding CLI（1.2.5+ #1360）同款抽屉。
   const [cliOpen, setCliOpen] = React.useState(false);
+  // 竖屏：LLM 调优（1.2.5+，L1-only 可编辑）同款抽屉。
+  const [llmOpen, setLlmOpen] = React.useState(false);
   // 运行时版本（node-version 端点：Controller docker 代理容器内 exec 探测
   // qwenpaw/openclaw 实际版本；后端 10min 缓存。L1 only——无 token 不拨号，
   // 显占位。宿主 QwenPaw 版本 ≠ worker 内版本（2.2.2 vs 2.2.1 实锤），
@@ -672,6 +675,16 @@ function WorkerManageInfo({
             {tr("Coding CLI")}
           </antd.Button>
         ) : null}
+        {/* 竖屏：LLM 调优入口=紧凑按钮（1.2.5+，L1 可编辑 / L2 只读降级）。 */}
+        {narrow ? (
+          <antd.Button
+            size="small"
+            icon={<SettingsIcon size={12} />}
+            onClick={() => setLlmOpen(true)}
+          >
+            {tr("LLM 调优")}
+          </antd.Button>
+        ) : null}
       </div>
       {/* ：Worker 运行配置（上游 #1231 消费）——
  默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。
@@ -721,6 +734,21 @@ function WorkerManageInfo({
           <WorkerCodingCliPanel
             sheet
             worker={worker}
+            onChanged={() => invalidateTags(["admin"])}
+          />
+        </NarrowSheet>
+      ) : null}
+      {/* ：LLM 调优（AgentTeams 1.2.5+，L1-only 可编辑）竖屏同款抽屉。 */}
+      {narrow ? (
+        <NarrowSheet
+          open={llmOpen}
+          title={tr("LLM 调优（重试与限流 / 流式超时）")}
+          onClose={() => setLlmOpen(false)}
+        >
+          <WorkerLlmTuningPanel
+            sheet
+            worker={worker}
+            l1={l1}
             onChanged={() => invalidateTags(["admin"])}
           />
         </NarrowSheet>
@@ -952,6 +980,15 @@ function WorkerRow({
   L2=只读降级，探测惰性不后台轮询）。 */}
               <WorkerCodingCliPanel
                 worker={adminWorker}
+                onChanged={() => invalidateTags(["admin"])}
+              />
+              {/* ：LLM 调优（AgentTeams 1.2.5+）宽屏内联卡，x=33 段头轨对齐。
+  L1-only 可编辑（checkScopedWorkerUpdate forbidden L2/L3）；L2=只读降级；
+  挂载 key={name} 重挂载（编辑态随卸载清零，同 dashboard）。 */}
+              <WorkerLlmTuningPanel
+                key={`llm-${adminWorker.name}`}
+                worker={adminWorker}
+                l1={l1}
                 onChanged={() => invalidateTags(["admin"])}
               />
             </>

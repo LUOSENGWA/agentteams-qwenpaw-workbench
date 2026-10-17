@@ -30,6 +30,12 @@ import {
   type TrFn,
   type WorkerRow,
 } from "./types";
+import {
+  diffLlmTuning,
+  findLlmTuningError,
+  pickLlmTuning,
+  type LlmTuningRecord,
+} from "../lib/llm-tuning";
 import { useModelCatalog } from "./useModelCatalog";
 
 const host = window.QwenPaw.host;
@@ -395,7 +401,11 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     heartbeatEvery: "",
     peerMentions: true,
     subagentModel: "",
+    llm: pickLlmTuning(null),
   });
+  /** 团队 LLM 调优基线（打开弹窗时从团队现值取）——保存时 diff 用，
+   * 与 cfg.llm（draft）分离：空闲跟随、有编辑不动（同 Worker 面板语义）。 */
+  const [llmBase, setLlmBase] = React.useState<LlmTuningRecord | null>(null);
   const [cfgRows, setCfgRows] = React.useState<WorkerRow[]>([]);
   const [cfgBusy, setCfgBusy] = React.useState(false);
 
@@ -407,7 +417,10 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       heartbeatEvery: team.heartbeatEvery || "",
       peerMentions: team.peerMentions !== false,
       subagentModel: team.subagentModel || "",
+      llm: pickLlmTuning(team),
     });
+    // 团队 LLM 调优基线（现值）——保存 diff 用（""=清除/未改不发）。
+    setLlmBase(pickLlmTuning(team));
     // 预填每个成员的当前模型（admin workers 同源），diff 用于保存时只发改动
     setCfgRows(
       team.workerMembers?.length
@@ -501,6 +514,20 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       // null=清空/继承 Worker 主模型；值=覆盖）。与 heartbeatEvery 同 UX。
       subagentModel: cfg.subagentModel.trim() || null,
     };
+    // 团队级 LLM 调优：字段级 diff（未改不发 / ""=清除 / 值=覆盖），与
+    // Worker llm* 同指针语义（源码 resource_handler.go UpdateTeam 逐字段
+    // `if req.LlmX != nil`）。先整组校验，再并入 body。
+    if (llmBase) {
+      const llmErr = findLlmTuningError(cfg.llm);
+      if (llmErr) {
+        antd.message.error(
+          tr("{label}：{message}", { label: llmErr.label, message: llmErr.message }),
+        );
+        return;
+      }
+      const llmDiff = diffLlmTuning(llmBase, cfg.llm);
+      for (const [k, v] of Object.entries(llmDiff)) body[k] = v;
+    }
     // 成员：源响应含 workerMembers 或用户添加了行 → 全量替换（未改动=发同列表 no-op）；
     // 源响应无该字段（旧版本）且无新增行 → 不发（避免误清空）
     if (cfgTeam.workerMembers || cfgRows.length) {
@@ -603,7 +630,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       return;
     }
     void proceedCfg();
-  }, [cfgTeam, cfg, cfgRows, workerNames, onRefresh, tr, catalog.modelCandidates]);
+  }, [cfgTeam, cfg, cfgRows, llmBase, workerNames, onRefresh, tr, catalog.modelCandidates]);
 
   // 删团队前快照 → 删除成功后 6s「撤销」
   // toast → 点撤销按快照重建（createTeam 原字段回写）。诚实语义=重建

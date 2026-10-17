@@ -2124,6 +2124,52 @@ const DICT: Record<string, { en: string }> = {
     en: "Auto-retry when an LLM call fails (throttling / timeout / 5xx). When off, failures surface immediately.",
   },
   "最大重试次数": { en: "Max retries" },
+  // ── LLM 调优面板（1.2.5 WorkerSpec llm* 字段，移植 dashboard #146）──
+  "LLM 调优": { en: "LLM tuning" },
+  "LLM 调优（重试与限流 / 流式超时）": { en: "LLM tuning (retry & rate limit / stream timeout)" },
+  "LLM 调优参数": { en: "LLM tuning parameters" },
+  "LLM 调优参数（Worker 覆盖团队默认）": { en: "LLM tuning (Worker overrides team defaults)" },
+  "重试与限流（启动期生效，保存后需重建容器）": {
+    en: "Retry & rate limit (applied at startup; requires container rebuild after save)",
+  },
+  "流式超时（热更新，保存后立即生效）": {
+    en: "Stream timeout (hot update; takes effect immediately after save)",
+  },
+  "退避基数": { en: "Backoff base" },
+  "退避上限": { en: "Backoff cap" },
+  "最大并发请求数": { en: "Max concurrent requests" },
+  "每分钟最大请求数": { en: "Max requests per minute" },
+  "限流暂停": { en: "Rate-limit pause" },
+  "限流抖动": { en: "Rate-limit jitter" },
+  "获取许可超时": { en: "Acquire permit timeout" },
+  "首段输出超时": { en: "First-content timeout" },
+  "输出中断超时": { en: "Stream idle timeout" },
+  "默认 {v}": { en: "default {v}" },
+  "须为非负数字（整数或小数）": { en: "Must be a non-negative number (integer or decimal)" },
+  "{label}：{message}": { en: "{label}: {message}" },
+  "保存改动": { en: "Save changes" },
+  "撤销": { en: "Revert" },
+  "已保存（启动期参数需重建容器生效）": {
+    en: "Saved (startup parameters require a container rebuild to take effect)",
+  },
+  "当前账号无权限读取该 Worker（需 L1）": {
+    en: "The current account cannot read this Worker (L1 required)",
+  },
+  "只读：LLM 调优为 L1（管理员）操作，当前账号不可编辑": {
+    en: "Read-only: LLM tuning is an L1 (admin) operation; the current account cannot edit it",
+  },
+  "未读到该 Worker 的 LLM 调优参数（Controller 升级后自动开放）": {
+    en: "Could not read LLM tuning for this Worker (available after a Controller upgrade)",
+  },
+  "留空表示不设置：先继承团队默认，再回退 QwenPaw 默认。「重试与限流」改动需重建容器生效；「流式超时」即时生效。": {
+    en: "Leave blank to unset: inherits team defaults, then falls back to QwenPaw defaults. 'Retry & rate limit' changes require a container rebuild; 'Stream timeout' applies immediately.",
+  },
+  "团队 LLM 调优（成员未单独设置时继承）": {
+    en: "Team LLM tuning (inherited by members that do not set their own)",
+  },
+  "留空 = 不设置（成员继承 QwenPaw registry 默认）。保存仅发送改动的字段；「重试与限流」改动需重建容器生效，「流式超时」即时生效。": {
+    en: "Blank = unset (members inherit the QwenPaw registry defaults). Save sends only changed fields; 'Retry & rate limit' changes require a container rebuild, 'Stream timeout' applies immediately.",
+  },
   "连续失败最多重试几次（llm_max_retries）。": {
     en: "How many times to retry consecutive failures (llm_max_retries).",
   },

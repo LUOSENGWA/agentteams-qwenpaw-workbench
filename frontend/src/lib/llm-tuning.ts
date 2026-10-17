@@ -1,0 +1,114 @@
+// LLM 调优参数（移植自 dashboard #146 缺口 3，SC/agentteams-dashboard
+// src/lib/llm-tuning.ts——纯逻辑，零 UI 依赖，可单测）。
+//
+// 数据面：AgentTeams Controller WorkerSpec / TeamSpec 的 llm* 字段
+// （agentteams-controller/api/v1beta1/types.go；响应顶层 camelCase，
+// workerToResponse 回显，omitempty=未设置不显）。插件经
+// GET /agents/proxy…/workers/{name} 读、PUT /workers/{name} 写。
+//
+// 归属层级：Worker 覆盖 → 团队默认 → QwenPaw registry 兜底。
+// 两组语义（1.2.5 源码实读 resource_handler.go / types.go）：
+//   · startup：QwenPaw 启动期读取，改后需重建容器才生效（spec-hash 驱动）。
+//   · stream ：热更新，运行时每次流式请求重读，无需重启（QwenPaw >= 2.2.1）。
+//
+// 值语义（对齐上游指针语义）：PUT 请求 llm* 为 *string——
+//   不传（nil）= 不动；""（空串）= 清除（回退团队/registry 默认）；
+//   非空 = 覆盖。数值须为非负整数或小数。
+//
+// 权限：llm* 全字段 L1-only（checkScopedWorkerUpdate 明确 forbidden
+// 「LLM tuning is a decision-layer field」；L2/L3 → 403）。
+//
+// label/unit/group-label 为中文源文本=tr() 键，组件渲染时 tr() 包裹
+// （i18n.ts 全量注册 en 键）；lib 本身保持纯逻辑不引 React/i18n。
+
+export type LlmTuningGroup = "startup" | "stream";
+
+export type LlmTuningKey =
+  | "llmMaxRetries"
+  | "llmBackoffBase"
+  | "llmBackoffCap"
+  | "llmMaxConcurrent"
+  | "llmMaxQpm"
+  | "llmRateLimitPause"
+  | "llmRateLimitJitter"
+  | "llmAcquireTimeout"
+  | "llmStreamFirstContentTimeout"
+  | "llmStreamIdleTimeout";
+
+export interface LlmTuningField {
+  key: LlmTuningKey;
+  /** 中文源文本（tr() 键），组件渲染时 tr(label)。 */
+  label: string;
+  group: LlmTuningGroup;
+  /** 单位（tr() 键，可选）。 */
+  unit?: string;
+  /** QwenPaw registry 默认值（来自上游字段注释；stream 组上游未给固定默认）。 */
+  registryDefault?: string;
+}
+
+/** 组标题（tr() 键）。 */
+export const LLM_TUNING_GROUP_LABELS: Record<LlmTuningGroup, string> = {
+  startup: "重试与限流（启动期生效，保存后需重建容器）",
+  stream: "流式超时（热更新，保存后立即生效）",
+};
+
+export const LLM_TUNING_FIELDS: readonly LlmTuningField[] = [
+  { key: "llmMaxRetries", label: "最大重试次数", group: "startup", registryDefault: "3" },
+  { key: "llmBackoffBase", label: "退避基数", group: "startup", unit: "秒", registryDefault: "1" },
+  { key: "llmBackoffCap", label: "退避上限", group: "startup", unit: "秒", registryDefault: "10" },
+  { key: "llmMaxConcurrent", label: "最大并发请求数", group: "startup", registryDefault: "10" },
+  { key: "llmMaxQpm", label: "每分钟最大请求数", group: "startup", registryDefault: "600" },
+  { key: "llmRateLimitPause", label: "限流暂停", group: "startup", unit: "秒", registryDefault: "5" },
+  { key: "llmRateLimitJitter", label: "限流抖动", group: "startup", unit: "秒", registryDefault: "1" },
+  { key: "llmAcquireTimeout", label: "获取许可超时", group: "startup", unit: "秒", registryDefault: "300" },
+  { key: "llmStreamFirstContentTimeout", label: "首段输出超时", group: "stream", unit: "秒" },
+  { key: "llmStreamIdleTimeout", label: "输出中断超时", group: "stream", unit: "秒" },
+] as const;
+
+export type LlmTuningValues = Partial<Record<LlmTuningKey, string>>;
+export type LlmTuningRecord = Record<LlmTuningKey, string>;
+
+const NON_NEGATIVE_NUMBER = /^\d+(\.\d+)?$/;
+
+/** 空串合法（= 回退默认）；否则须为非负整数或小数。返回错误文案（tr 键）或 null。 */
+export function validateLlmTuningValue(value: string): string | null {
+  const v = value.trim();
+  if (v === "") return null;
+  if (!NON_NEGATIVE_NUMBER.test(v)) return "须为非负数字（整数或小数）";
+  return null;
+}
+
+/** 从 Worker/Team 记录提取全部字段（缺省 / 非字符串 → 空串）。 */
+export function pickLlmTuning(
+  record: LlmTuningValues | null | undefined,
+): LlmTuningRecord {
+  const out = {} as LlmTuningRecord;
+  for (const field of LLM_TUNING_FIELDS) {
+    const value = record?.[field.key];
+    out[field.key] = typeof value === "string" ? value : "";
+  }
+  return out;
+}
+
+/** 字段级 diff：仅收集发生变化的键；清空（→ ''）同样计入（= 清除覆盖）。 */
+export function diffLlmTuning(
+  current: LlmTuningRecord,
+  draft: LlmTuningRecord,
+): LlmTuningValues {
+  const diff: LlmTuningValues = {};
+  for (const field of LLM_TUNING_FIELDS) {
+    if (draft[field.key] !== current[field.key]) diff[field.key] = draft[field.key];
+  }
+  return diff;
+}
+
+/** 校验整组，返回第一个非法字段（按字段顺序）。 */
+export function findLlmTuningError(
+  draft: LlmTuningRecord,
+): { key: LlmTuningKey; label: string; message: string } | null {
+  for (const field of LLM_TUNING_FIELDS) {
+    const message = validateLlmTuningValue(draft[field.key]);
+    if (message) return { key: field.key, label: field.label, message };
+  }
+  return null;
+}
