@@ -38,6 +38,7 @@ import {
   fetchCodingCliLatest,
   httpErrorStatus,
   httpErrorDetail,
+  type CliSettingsResponse,
   type CodingCliId,
   type CodingCliProbeItem,
   type SettingsObject,
@@ -189,16 +190,6 @@ function rowsFromItems(items: CodingCliProbeItem[]): CliRowState[] {
   });
 }
 
-function getModelName(settings: SettingsObject): string {
-  const model = settings.model;
-  if (typeof model === "string") return model;
-  if (model && typeof model === "object" && !Array.isArray(model) && !isRedacted(model)) {
-    const name = (model as SettingsObject).name;
-    if (typeof name === "string") return name;
-  }
-  return "";
-}
-
 function collectRedacted(
   obj: SettingsObject,
   path: string[] = [],
@@ -227,44 +218,45 @@ function assignPath(target: SettingsObject, path: string[], value: SettingsValue
   cursor[path[path.length - 1]] = value;
 }
 
-function mergePatch(target: SettingsObject, patch: SettingsObject) {
-  for (const [key, value] of Object.entries(patch)) {
-    const current = target[key];
-    if (
-      value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      !isRedacted(value) &&
-      current &&
-      typeof current === "object" &&
-      !Array.isArray(current) &&
-      !isRedacted(current)
-    ) {
-      mergePatch(current as SettingsObject, value as SettingsObject);
-    } else {
-      target[key] = value;
+/** 深拷贝（settings 是纯 JSON，含 redacted 哨兵对象，JSON 往返安全）。 */
+function deepCopySettings(obj: SettingsObject): SettingsObject {
+  return JSON.parse(JSON.stringify(obj)) as SettingsObject;
+}
+
+/** 叶子级 diff（draft vs base）→ merge-patch。跳过 redacted（secret 另行
+ * 处理）；object 递归下钻；array/标量按 JSON 比较，变更则整节点替换。 */
+function diffSettings(base: SettingsObject, draft: SettingsObject): SettingsObject {
+  const patch: SettingsObject = {};
+  const keys = new Set([...Object.keys(base), ...Object.keys(draft)]);
+  for (const key of keys) {
+    const b = base[key];
+    const d = draft[key];
+    if (isRedacted(b) || isRedacted(d)) continue;
+    const bIsObj = !!b && typeof b === "object" && !Array.isArray(b);
+    const dIsObj = !!d && typeof d === "object" && !Array.isArray(d);
+    if (bIsObj && dIsObj) {
+      const sub = diffSettings(b as SettingsObject, d as SettingsObject);
+      if (Object.keys(sub).length > 0) patch[key] = sub;
+    } else if (JSON.stringify(b) !== JSON.stringify(d)) {
+      patch[key] = d;
     }
   }
+  return patch;
 }
 
-function hasRedactedPlaceholder(value: SettingsValue): boolean {
-  if (isRedacted(value)) return true;
-  if (Array.isArray(value)) return value.some((item) => hasRedactedPlaceholder(item));
-  if (value && typeof value === "object") {
-    return Object.values(value).some((item) => hasRedactedPlaceholder(item));
+/** secret 补丁：每个 redacted 路径 → 用户新值 / "***"（保留现有）/ 省略（无值）。 */
+function buildSecretPatch(
+  base: SettingsObject,
+  secretDraft: Record<string, string>,
+): SettingsObject {
+  const patch: SettingsObject = {};
+  for (const { path, has_value } of collectRedacted(base)) {
+    const joined = path.join(".");
+    const edited = secretDraft[joined] ?? "";
+    if (edited !== "") assignPath(patch, path, edited);
+    else if (has_value) assignPath(patch, path, SENTINEL);
   }
-  return false;
-}
-
-function previewJson(settings: SettingsObject): string {
-  return JSON.stringify(
-    settings,
-    (_key, value) => {
-      if (isRedacted(value)) return value.has_value ? "***" : null;
-      return value;
-    },
-    2,
-  );
+  return patch;
 }
 function useCodingCliPanel({
   worker,
@@ -283,7 +275,7 @@ function useCodingCliPanel({
   const [loadError, setLoadError] = React.useState("");
   const [readOnly, setReadOnly] = React.useState(false);
   const [selected, setSelected] = React.useState<CodingCliId>("qwen-code");
-  const [settings, setSettings] = React.useState<SettingsObject | null>(null);
+  const [settings, setSettings] = React.useState<CliSettingsResponse | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [modelName, setModelName] = React.useState("");
   const [secrets, setSecrets] = React.useState<Record<string, string>>({});
@@ -349,15 +341,10 @@ function useCodingCliPanel({
       setSelected(cli);
       setSettingsOpen(true);
       setSettings(null);
-      setModelName("");
-      setSecrets({});
-      setJsonPatch("");
       try {
         const json = await getCliSettings(worker.name, cli);
         if (cancelledRef.current || reqId !== settingsReqRef.current) return;
-        setSettings(json && typeof json === "object" ? json : {});
-        setModelName(getModelName(json && typeof json === "object" ? json : {}));
-        setSecrets({});
+        setSettings(json);
       } catch (e) {
         if (cancelledRef.current || reqId !== settingsReqRef.current) return;
         if (httpErrorStatus(e) === 403) {
@@ -376,58 +363,37 @@ function useCodingCliPanel({
     [worker.name, tr],
   );
 
-  const saveSettings = React.useCallback(async () => {
-    if (!settings || busy || readOnly) return;
-    const diff: SettingsObject = {};
-    if (modelName !== getModelName(settings)) {
-      assignPath(diff, ["model", "name"], modelName);
-    }
-    for (const field of collectRedacted(settings)) {
-      const key = field.path.join(".");
-      const typed = (secrets[key] ?? "").trim();
-      if (typed) assignPath(diff, field.path, typed);
-      else if (field.has_value) assignPath(diff, field.path, SENTINEL);
-    }
-    const patchText = jsonPatch.trim();
-    if (patchText) {
-      let parsed: unknown;
+  // 保存（15.26 F4② 网络传输优化）：patch 由结构化树表单算出（叶子级 diff
+  // + secret 补丁，只发变更）。PUT 响应已含 merged+redacted settings → 直接
+  // 回写本地基线，免再 GET 重拉（省一次全量读）。
+  const saveSettings = React.useCallback(
+    async (patch: SettingsObject) => {
+      if (busy || readOnly) return;
+      if (!patch || Object.keys(patch).length === 0) {
+        setMsg({ kind: "ok", text: tr("无改动") });
+        return;
+      }
+      setBusy(true);
+      setMsg(null);
       try {
-        parsed = JSON.parse(patchText) as unknown;
-      } catch {
-        setMsg({ kind: "err", text: tr("补丁不是合法 JSON") });
-        return;
+        const resp = await putCliSettings(worker.name, selected, patch);
+        setMsg({ kind: "ok", text: tr("已保存") });
+        if (resp && resp.settings) setSettings(resp);
+        else await loadSettings(selected);
+        onChanged?.();
+      } catch (e) {
+        if (httpErrorStatus(e) === 403) {
+          setReadOnly(true);
+          setMsg({ kind: "err", text: tr("当前角色仅可查看，不能修改编码 CLI") });
+        } else {
+          setMsg({ kind: "err", text: httpErrorDetail(e) || tr("保存失败") });
+        }
+      } finally {
+        setBusy(false);
       }
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        setMsg({ kind: "err", text: tr("补丁须为 JSON 对象") });
-        return;
-      }
-      if (hasRedactedPlaceholder(parsed as SettingsObject)) {
-        setMsg({
-          kind: "err",
-          text: tr("补丁不能包含脱敏占位，请填写真实密钥或留空由密钥栏保留"),
-        });
-        return;
-      }
-      mergePatch(diff, parsed as SettingsObject);
-    }
-    if (Object.keys(diff).length === 0) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      await putCliSettings(worker.name, selected, diff);
-      setMsg({ kind: "ok", text: tr("已保存") });
-      await loadSettings(selected);
-      onChanged?.();
-    } catch (e) {
-      if (httpErrorStatus(e) === 403) setReadOnly(true);
-      setMsg({
-        kind: "err",
-        text: httpErrorDetail(e) || tr("保存失败"),
-      });
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, jsonPatch, loadSettings, modelName, onChanged, readOnly, secrets, selected, settings, tr, worker.name]);
+    },
+    [busy, loadSettings, onChanged, readOnly, selected, tr, worker.name],
+  );
 
   const pollTask = React.useCallback(
     async (cli: CodingCliId, taskId: string) => {
@@ -598,10 +564,6 @@ function useCodingCliPanel({
     setSelected,
     settings,
     settingsOpen,
-    modelName,
-    setModelName,
-    secrets,
-    setSecrets,
     versionTag,
     setVersionTag,
     busy,
@@ -609,8 +571,6 @@ function useCodingCliPanel({
     setMsg,
     appliedPreset,
     suggestion,
-    jsonPatch,
-    setJsonPatch,
     uninstallTarget,
     setUninstallTarget,
     loadSettings,
@@ -621,6 +581,195 @@ function useCodingCliPanel({
     t,
   };
 }
+/** 结构化全设置表单（15.26 F4②）：递归渲染 settings 树——
+ * redacted→密码框（留空=保留）/ object→分组下钻 / array→JSON 文本 /
+ * 标量→类型化输入。免硬编码 per-CLI schema（动态渲染任意 CLI 的字段），
+ * 保存=叶子级 diff + secret 补丁（网络传输只发变更）。 */
+function SettingsTreeEditor({
+  base,
+  readOnly,
+  busy,
+  onSave,
+}: {
+  base: SettingsObject;
+  readOnly: boolean;
+  busy: boolean;
+  onSave: (patch: SettingsObject) => void;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  const [draft, setDraft] = React.useState<SettingsObject>(() =>
+    deepCopySettings(base),
+  );
+  const [secretDraft, setSecretDraft] = React.useState<Record<string, string>>({});
+  // base 变化（切 CLI / 保存回写）→ 重置草稿（对齐最新基线）。
+  const baseRef = React.useRef(base);
+  React.useEffect(() => {
+    if (base !== baseRef.current) {
+      baseRef.current = base;
+      setDraft(deepCopySettings(base));
+      setSecretDraft({});
+    }
+  }, [base]);
+
+  const setAtPath = (path: string[], value: SettingsValue) => {
+    setDraft((prev) => {
+      const next = deepCopySettings(prev);
+      assignPath(next, path, value);
+      return next;
+    });
+  };
+
+  const dirty =
+    Object.keys(diffSettings(base, draft)).length > 0 ||
+    Object.entries(secretDraft).some(([, v]) => v !== "");
+
+  const handleSave = () => {
+    const patch: SettingsObject = { ...diffSettings(base, draft) };
+    Object.assign(patch, buildSecretPatch(base, secretDraft));
+    onSave(patch);
+  };
+
+  const renderNode = (value: SettingsValue, path: string[]): ReactNS.ReactNode => {
+    if (isRedacted(value)) {
+      const joined = path.join(".");
+      return (
+        <antd.Input.Password
+          value={secretDraft[joined] ?? ""}
+          onChange={(e: { target: { value: string } }) =>
+            setSecretDraft((p) => ({ ...p, [joined]: e.target.value }))}
+          placeholder={
+            value.has_value ? tr("已保存，留空保留；输入=替换") : tr("未设置；输入=设置")
+          }
+          disabled={readOnly}
+          size="small"
+          style={{ maxWidth: 300 }}
+        />
+      );
+    }
+    if (Array.isArray(value)) {
+      return (
+        <antd.Input.TextArea
+          value={JSON.stringify(value, null, 2)}
+          onChange={(e: { target: { value: string } }) => {
+            try {
+              const raw = e.target.value.trim();
+              const parsed = raw === "" ? [] : JSON.parse(raw);
+              if (Array.isArray(parsed)) setAtPath(path, parsed);
+            } catch {
+              /* 解析失败=不更新草稿（保留上次有效值） */
+            }
+          }}
+          disabled={readOnly}
+          autoSize={{ minRows: 2, maxRows: 8 }}
+          style={{ fontFamily: "monospace", fontSize: 11, maxWidth: 460 }}
+        />
+      );
+    }
+    if (value && typeof value === "object") {
+      const entries = Object.entries(value as SettingsObject);
+      if (entries.length === 0) {
+        return (
+          <span style={{ fontSize: 11, color: t.textSecondary }}>(空对象)</span>
+        );
+      }
+      return (
+        <div
+          style={{
+            display: "grid",
+            gap: 4,
+            paddingLeft: 8,
+            borderLeft: `2px solid ${t.border}`,
+          }}
+        >
+          {entries.map(([k, v]) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: t.textSecondary,
+                  minWidth: 110,
+                  fontFamily: "monospace",
+                }}
+              >
+                {k}
+              </span>
+              {renderNode(v, [...path, k])}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (typeof value === "boolean") {
+      return (
+        <antd.Switch
+          checked={value}
+          onChange={(c: boolean) => setAtPath(path, c)}
+          disabled={readOnly}
+          size="small"
+        />
+      );
+    }
+    if (typeof value === "number") {
+      return (
+        <antd.InputNumber
+          value={value}
+          onChange={(v: number | null) => setAtPath(path, v ?? 0)}
+          disabled={readOnly}
+          size="small"
+          style={{ width: 140 }}
+        />
+      );
+    }
+    if (value === null || value === undefined) {
+      return <span style={{ fontSize: 11, color: t.textSecondary }}>null</span>;
+    }
+    return (
+      <antd.Input
+        value={String(value)}
+        onChange={(e: { target: { value: string } }) => setAtPath(path, e.target.value)}
+        disabled={readOnly}
+        size="small"
+        style={{ maxWidth: 460, fontFamily: "monospace", fontSize: 11 }}
+      />
+    );
+  };
+
+  const topEntries = Object.entries(base);
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {topEntries.length === 0 ? (
+        <div style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("配置为空——套下方模板，或直接编辑字段后保存。")}
+        </div>
+      ) : (
+        topEntries.map(([k, v]) => (
+          <div key={k} style={{ display: "grid", gap: 3 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{k}</span>
+            {renderNode(v, [k])}
+          </div>
+        ))
+      )}
+      {!readOnly ? (
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <antd.Button
+            type="primary"
+            size="small"
+            disabled={!dirty || busy}
+            loading={busy}
+            onClick={handleSave}
+          >
+            {tr("保存改动")}
+          </antd.Button>
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {dirty ? tr("有未保存改动") : tr("无改动")}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function CodingCliPanelBody({
   s,
 }: {
@@ -662,7 +811,6 @@ function CodingCliPanelBody({
   }
 
   const selectedInstalled = s.items.some((c) => c.id === s.selected && c.installed);
-  const redacted = s.settings ? collectRedacted(s.settings) : [];
 
   return (
     <>
@@ -793,83 +941,20 @@ function CodingCliPanelBody({
           }}
         >
           <div style={{ fontSize: 11, color: t.textSecondary }}>
-            {CLI_LABEL[s.selected]} settings
+            {CLI_LABEL[s.selected]} settings（结构化表单 · 只保存改动）
           </div>
-          <div style={{ display: "grid", gap: 3 }}>
-            <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("模型名")}</span>
-            <antd.Input
-              size="small"
-              style={{ fontFamily: "monospace" }}
-              value={s.modelName}
-              disabled={s.readOnly}
-              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                s.setModelName(e.target.value)
-              }
+          {s.settings.settings && Object.keys(s.settings.settings).length > 0 ? (
+            <SettingsTreeEditor
+              base={s.settings.settings}
+              readOnly={s.readOnly}
+              busy={s.busy}
+              onSave={(patch) => void s.saveSettings(patch)}
             />
-          </div>
-          {redacted.map((field) => {
-            const key = field.path.join(".");
-            return (
-              <div key={key} style={{ display: "grid", gap: 3 }}>
-                <span style={{ fontSize: 11, color: t.textSecondary }}>
-                  {key}
-                  {field.has_value ? tr("（已保存，留空保留）") : ""}
-                </span>
-                <antd.Input.Password
-                  size="small"
-                  value={s.secrets[key] ?? ""}
-                  placeholder={field.has_value ? tr("已保存") : ""}
-                  disabled={s.readOnly}
-                  onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                    s.setSecrets((prev) => ({ ...prev, [key]: e.target.value }))
-                  }
-                />
-              </div>
-            );
-          })}
-          <div style={{ display: "grid", gap: 3 }}>
-            <span style={{ fontSize: 11, color: t.textSecondary }}>
-              {tr("当前配置（只读）")}
-            </span>
-            <pre
-              style={{
-                maxHeight: 160,
-                overflow: "auto",
-                background: t.mode === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
-                borderRadius: 4,
-                padding: 6,
-                fontFamily: "monospace",
-                fontSize: 11,
-                margin: 0,
-              }}
-            >
-              {previewJson(s.settings)}
-            </pre>
-          </div>
-          <div style={{ display: "grid", gap: 3 }}>
-            <span style={{ fontSize: 11, color: t.textSecondary }}>
-              {tr("可选 JSON 补丁（同键以补丁为准）")}
-            </span>
-            <antd.Input.TextArea
-              rows={4}
-              style={{ fontFamily: "monospace", fontSize: 12 }}
-              placeholder={'{"mcp":{"enabled":true}}'}
-              value={s.jsonPatch}
-              disabled={s.readOnly}
-              onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
-                s.setJsonPatch(e.target.value)
-              }
-            />
-          </div>
-          <antd.Button
-            size="small"
-            type="primary"
-            disabled={s.busy || s.readOnly}
-            loading={s.busy}
-            onClick={() => void s.saveSettings()}
-          >
-            {tr("保存配置")}
-          </antd.Button>
+          ) : (
+            <div style={{ fontSize: 11, color: t.textSecondary }}>
+              {tr("配置为空——装当前 CLI 后，或套下方模板生成初始配置。")}
+            </div>
+          )}
         </div>
       ) : null}
 

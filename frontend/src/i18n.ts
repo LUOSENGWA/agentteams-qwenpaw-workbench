@@ -89,14 +89,18 @@ const DICT: Record<string, { en: string }> = {
   "单 Worker": { en: "Single Worker" },
   "批量": { en: "Batch" },
   "检查更新": { en: "Check for updates" },
-  "批量轻探各 qwenpaw Worker 的当前运行时版本与就地升级可用性。": {
-    en: "Light-probe each qwenpaw Worker's current runtime version and in-place upgrade availability.",
+  "当前=各 Worker 容器内 QwenPaw 运行时版（首查探一次后缓存），最新=单次查询，逐 Worker 匹配。": {
+    en: "Current = each Worker's in-container QwenPaw runtime version (probed once then cached); latest = single query; matched per Worker.",
   },
   "选择要升级的 Worker（仅 qwenpaw 可就地升级）": {
     en: "Select the Workers to upgrade (qwenpaw only supports in-place upgrade)",
   },
   "可就地升级": { en: "In-place upgrade available" },
   "不支持就地升级": { en: "In-place upgrade not supported" },
+  "可升级": { en: "Update available" },
+  "最新": { en: "Latest" },
+  "未知版本": { en: "Unknown version" },
+  "（缓存）": { en: " (cached)" },
   "批量升级（{n}）": { en: "Batch upgrade ({n})" },
   "顺序执行（一次一个 worker，避免容器重启互扰）。": {
     en: "Runs sequentially (one worker at a time, to avoid container-restart interference).",
@@ -2184,8 +2188,8 @@ const DICT: Record<string, { en: string }> = {
   "未读到该 Worker 的 LLM 调优参数（Controller 升级后自动开放）": {
     en: "Could not read LLM tuning for this Worker (available after a Controller upgrade)",
   },
-  "留空表示不设置：先继承团队默认，再回退 QwenPaw 默认。「重试与限流」改动需重建容器生效；「流式超时」即时生效。": {
-    en: "Leave blank to unset: inherits team defaults, then falls back to QwenPaw defaults. 'Retry & rate limit' changes require a container rebuild; 'Stream timeout' applies immediately.",
+  "已预填当前生效值（Worker 覆盖 → 团队默认 → QwenPaw 默认）。修改即写入该 Worker 覆盖；改回继承值则清除覆盖。「重试与限流」改动需重建容器生效；「流式超时」即时生效。": {
+    en: "Prefilled with the current effective value (Worker override → team default → QwenPaw default). Editing writes a Worker override; reverting to the inherited value clears it. 'Retry & rate limit' changes require a container rebuild; 'Stream timeout' applies immediately.",
   },
   "团队 LLM 调优（成员未单独设置时继承）": {
     en: "Team LLM tuning (inherited by members that do not set their own)",
@@ -2445,6 +2449,17 @@ const DICT: Record<string, { en: string }> = {
   "（已保存，留空保留）": { en: "(saved — leave empty to keep)" },
   "当前配置（只读）": { en: "Current settings (read-only)" },
   "可选 JSON 补丁（同键以补丁为准）": { en: "Optional JSON patch (patch wins on same key)" },
+  "settings（结构化表单 · 只保存改动）": { en: "settings (structured form · saves only changes)" },
+  "已保存，留空保留；输入=替换": { en: "Saved — leave empty to keep; enter to replace" },
+  "未设置；输入=设置": { en: "Not set; enter to set" },
+  "配置为空——套下方模板，或直接编辑字段后保存。": {
+    en: "Settings empty — apply a preset below, or edit fields and save.",
+  },
+  "配置为空——装当前 CLI 后，或套下方模板生成初始配置。": {
+    en: "Settings empty — install the current CLI first, or apply a preset to generate initial settings.",
+  },
+  "有未保存改动": { en: "Unsaved changes" },
+  "无改动": { en: "No changes" },
   "场景模板（只写模型名，工具链/MCP 需确认）· 当前 CLI：{c}": {
     en: "Scenario presets (write model name only; toolchain/MCP need confirmation) · current CLI: {c}",
   },

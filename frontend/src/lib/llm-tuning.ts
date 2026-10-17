@@ -102,6 +102,53 @@ export function diffLlmTuning(
   return diff;
 }
 
+/** 空记录（全字段空串）。 */
+export function emptyLlmTuning(): LlmTuningRecord {
+  const out = {} as LlmTuningRecord;
+  for (const field of LLM_TUNING_FIELDS) out[field.key] = "";
+  return out;
+}
+
+/** 继承值（团队默认 → registry 兜底）：worker 无覆盖时逐级继承到的值。 */
+export function inheritedLlmTuning(team: LlmTuningRecord): LlmTuningRecord {
+  const out = {} as LlmTuningRecord;
+  for (const field of LLM_TUNING_FIELDS) {
+    out[field.key] = team[field.key] || field.registryDefault || "";
+  }
+  return out;
+}
+
+/** 当前生效值（Worker 覆盖 → 团队默认 → registry 兜底）：worker 此刻实际在用。 */
+export function resolveEffectiveLlmTuning(
+  override: LlmTuningRecord,
+  team: LlmTuningRecord,
+): LlmTuningRecord {
+  const inherited = inheritedLlmTuning(team);
+  const out = {} as LlmTuningRecord;
+  for (const field of LLM_TUNING_FIELDS) {
+    out[field.key] = override[field.key] || inherited[field.key];
+  }
+  return out;
+}
+
+/** 字段级写 diff（生效值预填 + override 语义）：
+ *  desired=用户编辑后的显示值；newOverride=(desired===继承值 ? "" : desired)
+ *  （改回继承值=清除覆盖，不写冗余）；仅收集 newOverride≠当前 worker 覆盖的键。 */
+export function diffLlmTuningToOverride(
+  draft: LlmTuningRecord,
+  team: LlmTuningRecord,
+  override: LlmTuningRecord,
+): LlmTuningValues {
+  const inherited = inheritedLlmTuning(team);
+  const diff: LlmTuningValues = {};
+  for (const field of LLM_TUNING_FIELDS) {
+    const desired = draft[field.key];
+    const newOverride = desired === inherited[field.key] ? "" : desired;
+    if (newOverride !== override[field.key]) diff[field.key] = newOverride;
+  }
+  return diff;
+}
+
 /** 校验整组，返回第一个非法字段（按字段顺序）。 */
 export function findLlmTuningError(
   draft: LlmTuningRecord,

@@ -25,11 +25,14 @@ import {
   httpErrorStatus,
   httpErrorDetail,
   type WorkerInfo,
+  type TeamInfo,
 } from "../api";
 import {
-  diffLlmTuning,
+  emptyLlmTuning,
   findLlmTuningError,
   pickLlmTuning,
+  resolveEffectiveLlmTuning,
+  diffLlmTuningToOverride,
   type LlmTuningKey,
   type LlmTuningRecord,
   type LlmTuningValues,
@@ -65,7 +68,10 @@ function WorkerLlmTuningPanel({
   const [open, setOpen] = React.useState(sheet === true);
   const [loading, setLoading] = React.useState(true);
   const [loadErr, setLoadErr] = React.useState("");
-  const [current, setCurrent] = React.useState<LlmTuningRecord | null>(null);
+  // override=worker 显式覆盖（写基线）；team=团队 llm* 默认；draft=用户编辑
+  // （预填=生效值 override→team→registry）。三者齐备才能算 diff。
+  const [override, setOverride] = React.useState<LlmTuningRecord | null>(null);
+  const [team, setTeam] = React.useState<LlmTuningRecord | null>(null);
   const [draft, setDraft] = React.useState<LlmTuningRecord | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
@@ -78,8 +84,23 @@ function WorkerLlmTuningPanel({
         `workers/${encodeURIComponent(name)}`,
       );
       const picked = pickLlmTuning(w as LlmTuningValues | null);
-      setCurrent(picked);
-      setDraft(picked);
+      // 团队默认（AgentTeams 1.2.5+；无团队/旧 Controller/读失败 → 空，回退
+      // registry 默认）。读团队失败不阻塞面板——生效值退化为 worker→registry。
+      let teamRec = emptyLlmTuning();
+      const teamName = w.team;
+      if (teamName) {
+        try {
+          const tm = await fetchControllerJson<TeamInfo>(
+            `teams/${encodeURIComponent(teamName)}`,
+          );
+          teamRec = pickLlmTuning(tm as LlmTuningValues | null);
+        } catch {
+          /* 团队读取失败 → 回退 registry 默认 */
+        }
+      }
+      setOverride(picked);
+      setTeam(teamRec);
+      setDraft(resolveEffectiveLlmTuning(picked, teamRec));
     } catch (e) {
       setLoadErr(
         e instanceof Error
@@ -109,16 +130,18 @@ function WorkerLlmTuningPanel({
   }, []);
 
   const handleSave = React.useCallback(async () => {
-    if (!current || !draft || saving || !l1) return;
+    if (!override || !team || !draft || saving || !l1) return;
     if (findLlmTuningError(draft)) return;
-    const diff = diffLlmTuning(current, draft);
+    const diff = diffLlmTuningToOverride(draft, team, override);
     if (Object.keys(diff).length === 0) return;
     setSaving(true);
     setMsg(null);
     try {
       await updateWorker(name, diff);
-      setCurrent((prev) => (prev ? { ...prev, ...diff } : prev));
-      setDraft((prev) => (prev ? { ...prev, ...diff } : prev));
+      const nextOverride = { ...override, ...diff };
+      setOverride(nextOverride);
+      // 保存后生效值 = 新 override → 继承；同步 draft（字段回到新生效值）。
+      setDraft(resolveEffectiveLlmTuning(nextOverride, team));
       setMsg({ ok: true, text: tr("已保存（启动期参数需重建容器生效）") });
       onChanged?.();
     } catch (e) {
@@ -129,14 +152,14 @@ function WorkerLlmTuningPanel({
     } finally {
       setSaving(false);
     }
-  }, [current, draft, saving, l1, name, tr, onChanged]);
+  }, [override, team, draft, saving, l1, name, tr, onChanged]);
 
   // 卡片外框（宽屏内联）；sheet 模式去外框（NarrowSheet 自带标题）。
   const body = (
     <div style={{ display: "grid", gap: 10 }}>
       {loading ? (
         <antd.Skeleton active title={false} paragraph={{ rows: 4 }} />
-      ) : loadErr || !current || !draft ? (
+      ) : loadErr || !override || !team || !draft ? (
         <antd.Alert
           type="warning"
           showIcon
@@ -175,7 +198,7 @@ function WorkerLlmTuningPanel({
           />
           <div style={{ fontSize: 10, color: t.textSecondary }}>
             {tr(
-              "留空表示不设置：先继承团队默认，再回退 QwenPaw 默认。「重试与限流」改动需重建容器生效；「流式超时」即时生效。",
+              "已预填当前生效值（Worker 覆盖 → 团队默认 → QwenPaw 默认）。修改即写入该 Worker 覆盖；改回继承值则清除覆盖。「重试与限流」改动需重建容器生效；「流式超时」即时生效。",
             )}
           </div>
           {(() => {
@@ -194,7 +217,7 @@ function WorkerLlmTuningPanel({
                 loading={saving}
                 disabled={
                   !!findLlmTuningError(draft) ||
-                  Object.keys(diffLlmTuning(current, draft)).length === 0
+                  Object.keys(diffLlmTuningToOverride(draft, team, override)).length === 0
                 }
                 onClick={() => void handleSave()}
               >
@@ -204,10 +227,11 @@ function WorkerLlmTuningPanel({
             <antd.Button
               size="small"
               disabled={
-                saving || Object.keys(diffLlmTuning(current, draft)).length === 0
+                saving ||
+                Object.keys(diffLlmTuningToOverride(draft, team, override)).length === 0
               }
               onClick={() => {
-                setDraft(current);
+                setDraft(resolveEffectiveLlmTuning(override, team));
                 setMsg(null);
               }}
             >

@@ -90,6 +90,16 @@ _CHECKER = "/opt/agentteams/scripts/check_qwenpaw_upgrade.py"
 _UPGRADER = "/opt/agentteams/scripts/upgrade_qwenpaw_runtime.sh"
 _VENV = "/opt/venv/qwenpaw"
 
+# ── latest 版本（检查更新轻路径，15.26 简化）─────────────────────────
+# 「检查更新」= 当前(容器内 qwenpaw 运行时版) vs 最新稳定版 逐 worker 匹配。
+# 注意 image tag（如 v1.2.5）是 AgentTeams 镜像版，≠qwenpaw 运行时版
+# （如 2.2.1），不能拿它比 PyPI qwenpaw latest（恒误判可升级）。
+# latest=最新稳定版（PyPI info.version，非预发布），服务端拉取（浏览器
+# 内网常连不上外网 registry），10min 缓存 + 断网回退旧缓存（stale）。
+_PYPY_LATEST_URL = "https://pypi.org/pypi/qwenpaw/json"
+_LATEST_TTL = 600.0  # 10 分钟
+_latest_cache: Dict[str, Any] = {"version": None, "fetched_at": 0.0}
+
 
 def _check_cmd(version: str, verify: bool) -> str:
     extra = " --download" if verify else ""
@@ -235,6 +245,59 @@ def build_upgrade_router() -> APIRouter:
             raise HTTPException(
                 status_code=400,
                 detail=f"仅支持 qwenpaw 运行时升级（当前 runtime={runtime}）")
+
+    @router.get("/upgrade/latest")
+    async def upgrade_latest(request: Request) -> Dict[str, Any]:
+        """最新稳定 qwenpaw 版本（单次 PyPI 查询，10min 缓存）。
+
+        L1 only（与 check/run/status 同域门控：运行时升级面板是 L1 面）。
+        供「检查更新」轻路径：前端拿 worker image tag（当前版本）逐 worker
+        与 latest 匹配，免 N×docker exec。断网时回退旧缓存（stale 标记）。
+        """
+        token = _token_or_none(config_mod.load_config())
+        if not token:
+            raise HTTPException(
+                status_code=403,
+                detail="需要 Controller 管理员 token（L1）才能执行升级操作")
+        now = time.time()
+        cached = _latest_cache.get("version")
+        if cached and (now - float(_latest_cache.get("fetched_at") or 0.0)) < _LATEST_TTL:
+            return {
+                "latest": cached, "source": "pypi", "cached": True,
+                "fetched_at": _latest_cache.get("fetched_at"),
+            }
+        version: Optional[str] = None
+        err = ""
+        try:
+            async with GatedAsyncClient(timeout=20.0) as client:
+                r = await client.get(_PYPY_LATEST_URL)
+            if r.status_code != 200:
+                err = f"PyPI {r.status_code}"
+            else:
+                info = (r.json() or {}).get("info") or {}
+                version = str(info.get("version") or "").strip() or None
+                if not version:
+                    err = "PyPI 响应无 version"
+        except Exception as exc:  # noqa: BLE001 - 断网/DNS/超时
+            err = f"请求失败：{exc}"
+        if version:
+            _latest_cache["version"] = version
+            _latest_cache["fetched_at"] = now
+            return {
+                "latest": version, "source": "pypi", "cached": False,
+                "fetched_at": now,
+            }
+        # PyPI 失败（非 200 / 无 version / 断网）→ 有旧缓存则回退 stale。
+        if cached:
+            logger.warning("upgrade/latest PyPI 不可达(%s)，回退缓存", err)
+            return {
+                "latest": cached, "source": "pypi", "cached": True,
+                "stale": True,
+                "fetched_at": _latest_cache.get("fetched_at"),
+                "error": f"PyPI 不可达（{err}），回退缓存",
+            }
+        raise HTTPException(
+            status_code=502, detail=f"无法查询最新版本：{err or 'PyPI 不可达'}")
 
     @router.get("/upgrade/check")
     async def upgrade_check(request: Request) -> Dict[str, Any]:

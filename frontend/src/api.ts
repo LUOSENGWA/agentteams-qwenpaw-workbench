@@ -659,6 +659,17 @@ export interface UpgradeLightCheck {
   supported: boolean;
 }
 
+/** 最新稳定 qwenpaw 版本（单次 PyPI 查询，后端 10min 缓存）。
+ * 「检查更新」轻路径正源：前端用 worker image tag 作当前版本逐 worker 匹配。 */
+export interface UpgradeLatest {
+  latest: string;
+  source?: string;
+  cached?: boolean;
+  stale?: boolean;
+  fetched_at?: number | null;
+  error?: string;
+}
+
 /** 完整预检：checker --json 透传。 */
 export interface UpgradeFullCheck {
   worker: string;
@@ -709,6 +720,15 @@ export async function fetchUpgradeLightCheck(
     undefined,
     35000,
   )) as UpgradeLightCheck;
+}
+
+/** 最新稳定 qwenpaw 版本（单次查询，后端缓存）。「检查更新」轻路径用。 */
+export async function fetchUpgradeLatest(): Promise<UpgradeLatest> {
+  return (await requestJson(
+    "/agentteams-proxy/upgrade/latest",
+    undefined,
+    30000,
+  )) as UpgradeLatest;
 }
 
 export async function fetchUpgradeCheck(
@@ -836,6 +856,17 @@ export type SettingsValue =
 
 export type SettingsObject = { [k: string]: SettingsValue };
 
+/** coding-cli settings 端点响应=wrapper（TOP-LEVEL KEYS
+ * [cli, exists, path, settings]）——`settings` 子树才是配置文件的真树
+ * （脱敏哨兵在树内）。前端必须 unwrap 到 `.settings` 作树，diff/secret
+ * 补丁按「配置文件相对路径」发（controller 对真树 deep-merge）。 */
+export interface CliSettingsResponse {
+  cli: string;
+  path: string;
+  exists: boolean;
+  settings: SettingsObject;
+}
+
 export interface CodingCliInstallTask {
   task_id: string;
   cli: string;
@@ -867,24 +898,31 @@ export async function listCodingCli(name: string): Promise<CodingCliProbeItem[]>
 export async function getCliSettings(
   name: string,
   cli: CodingCliId,
-): Promise<SettingsObject> {
-  return (await requestJson(
+): Promise<CliSettingsResponse> {
+  const r = (await requestJson(
     `${CLI_BASE(name)}/${encodeURIComponent(cli)}/settings`,
     undefined,
     30000,
-  )) as SettingsObject;
+  )) as CliSettingsResponse;
+  // 防御：无 settings 键（旧 controller / 异常）→ 空树（unwrap 不炸）。
+  return r && typeof r === "object" && r.settings
+    ? r
+    : { cli, path: "", exists: false, settings: {} };
 }
 
 export async function putCliSettings(
   name: string,
   cli: CodingCliId,
   patch: SettingsObject,
-): Promise<SettingsObject> {
-  return (await requestJson(
+): Promise<CliSettingsResponse> {
+  const r = (await requestJson(
     `${CLI_BASE(name)}/${encodeURIComponent(cli)}/settings`,
     { method: "PUT", body: JSON.stringify(patch) },
     30000,
-  )) as SettingsObject;
+  )) as CliSettingsResponse;
+  return r && typeof r === "object" && r.settings
+    ? r
+    : { cli, path: "", exists: true, settings: patch };
 }
 
 export async function startCodingCliInstall(

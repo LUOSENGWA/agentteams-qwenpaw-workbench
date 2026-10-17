@@ -2,6 +2,7 @@ import type * as ReactNS from "react";
 
 import {
   fetchUpgradeCheck,
+  fetchUpgradeLatest,
   fetchUpgradeLightCheck,
   fetchUpgradeStatus,
   httpErrorStatus,
@@ -10,6 +11,7 @@ import {
   UPGRADE_TERMINAL_STATES,
   type UpgradeFullCheck,
   type UpgradeGate,
+  type UpgradeLatest,
   type UpgradeLightCheck,
   type UpgradeRunHandle,
   type UpgradeStatusResult,
@@ -35,6 +37,45 @@ interface WorkerItem {
   runtime?: string;
   state?: string;
   phase?: string;
+}
+
+/** 当前 qwenpaw 运行时版（容器内 importlib.metadata 读）→ 模块级缓存。
+ * image tag（如 v1.2.5）是 AgentTeams 镜像版，≠qwenpaw 运行时版（如
+ * 2.2.1），不能拿它比 PyPI qwenpaw latest（恒误判「可升级」）。升级目标
+ * =qwenpaw 版，故 current 正源=容器内 qwenpaw 版（探测一次缓存，后续秒回）。 */
+const qwenpawVersionCache = new Map<string, string>();
+
+/** 「检查更新」单 worker 匹配结果（当前 qwenpaw 运行时版 vs 最新稳定版）。 */
+interface UpgradeCheckResult {
+  current: string | null; // 容器内 qwenpaw 版；未探测到=null
+  latest: string;
+  status: "up-to-date" | "available" | "unknown";
+}
+
+/** PEP440 简式版本比较（数字段逐位；预发布后缀视为低于同号正式版）。
+ * 返回 -1/0/1（a<b/a==b/a>b）。非数字段按 0 处理。 */
+function compareVersions(a: string, b: string): number {
+  const norm = (v: string): number[] =>
+    v
+      .replace(/^[v=]+/, "")
+      .split(/[.+-]/)
+      .slice(0, 4)
+      .map((s) => {
+        const n = parseInt(s, 10);
+        return isNaN(n) ? 0 : n;
+      });
+  const A = norm(a);
+  const B = norm(b);
+  const len = Math.max(A.length, B.length);
+  for (let i = 0; i < len; i++) {
+    const x = A[i] ?? 0;
+    const y = B[i] ?? 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  // 同号：带预发布后缀（含字母）的视为较低。
+  const pre = (v: string) => /[A-Za-z]/.test(v);
+  if (pre(a) !== pre(b)) return pre(a) ? -1 : 1;
+  return 0;
 }
 
 /** 门控状态 → Tag 色（checker 六态保守映射）。 */
@@ -206,7 +247,12 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
     fn: async () => {
       if (!job) return;
       try {
-        setStatus(await fetchUpgradeStatus(job.worker, job.job_id));
+        const s = await fetchUpgradeStatus(job.worker, job.job_id);
+        setStatus(s);
+        const st = (s.state as Record<string, unknown> | undefined)?.state as
+          | string
+          | undefined;
+        if (st === "success") qwenpawVersionCache.delete(job.worker);
       } catch {
         /* 瞬态失败（容器重启中）保留上次状态，下一轮再试 */
       }
@@ -591,8 +637,10 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
 
   const [selected, setSelected] = React.useState<string[]>([]);
   const [lightMap, setLightMap] = React.useState<
-    Record<string, UpgradeLightCheck | null>
+    Record<string, UpgradeCheckResult | null>
   >({});
+  const [latestInfo, setLatestInfo] = React.useState<UpgradeLatest | null>(null);
+  const [checkErr, setCheckErr] = React.useState<string | null>(null);
   const [checking, setChecking] = React.useState(false);
   const [checkDone, setCheckDone] = React.useState(false);
   const [version, setVersion] = React.useState("");
@@ -609,21 +657,52 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
     [workers],
   );
 
-  // 检查更新：逐 worker 轻探（顺序，避拨号风暴；worker 数量有限）。
+  // 检查更新（15.26 简化）：最新=单次 PyPI 查询（后端 10min 缓存）；
+  // 当前=各 worker 容器内 qwenpaw 运行时版（探测一次后模块级缓存，后续秒回）。
+  // 取代旧「每次全量 N×docker exec」——只有未缓存的 worker 才探一次。
   const doCheckAll = React.useCallback(async () => {
     if (qwenpawWorkers.length === 0) return;
     setChecking(true);
     setCheckDone(false);
-    const results: Record<string, UpgradeLightCheck | null> = {};
+    setCheckErr(null);
+    let latest = "";
+    try {
+      const info = await fetchUpgradeLatest();
+      latest = info.latest || "";
+      setLatestInfo(info);
+      if (info.stale) setCheckErr(info.error || null);
+    } catch (e) {
+      setCheckErr(
+        e instanceof Error ? `查询最新版本失败：${e.message}` : "查询最新版本失败",
+      );
+    }
+    // 未缓存的 worker 探一次当前 qwenpaw 版（限并发 5 并行，一次性）。
+    const missing = qwenpawWorkers.filter((w) => !qwenpawVersionCache.has(w.name));
+    const CONC = 5;
+    for (let i = 0; i < missing.length; i += CONC) {
+      const batch = missing.slice(i, i + CONC);
+      await Promise.all(
+        batch.map(async (w) => {
+          try {
+            const lc = await fetchUpgradeLightCheck(w.name);
+            if (lc.current) qwenpawVersionCache.set(w.name, lc.current);
+          } catch {
+            /* 探测失败→该 worker 当前版未知（不阻塞其他） */
+          }
+        }),
+      );
+    }
+    const results: Record<string, UpgradeCheckResult | null> = {};
     for (const w of qwenpawWorkers) {
-      try {
-        results[w.name] = await fetchUpgradeLightCheck(w.name);
-      } catch {
+      const current = qwenpawVersionCache.get(w.name) || null;
+      if (!current || !latest) {
+        results[w.name] = { current, latest: latest || "", status: "unknown" };
+      } else {
+        const c = compareVersions(current, latest);
         results[w.name] = {
-          worker: w.name,
-          container: `agentteams-worker-${w.name}`,
-          current: null,
-          supported: false,
+          current,
+          latest,
+          status: c < 0 ? "available" : "up-to-date",
         };
       }
     }
@@ -667,6 +746,11 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
         try {
           const s = await fetchUpgradeStatus(j.worker, j.job_id);
           setJobStatus((prev) => ({ ...prev, [j.worker]: s }));
+          // 升级成功→当前 qwenpaw 版已变，清缓存（下次检查重新探测真值）。
+          const st = (s.state as Record<string, unknown> | undefined)?.state as
+            | string
+            | undefined;
+          if (st === "success") qwenpawVersionCache.delete(j.worker);
         } catch {
           /* 瞬态失败（容器重启中）保留上次状态，下一轮再试 */
         }
@@ -696,8 +780,19 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
           {tr("检查更新")}
         </antd.Button>
         <span style={{ fontSize: 12, color: t.textSecondary }}>
-          {tr("批量轻探各 qwenpaw Worker 的当前运行时版本与就地升级可用性。")}
+          {tr(
+            "当前=各 Worker 容器内 QwenPaw 运行时版（首查探一次后缓存），最新=单次查询，逐 Worker 匹配。",
+          )}
         </span>
+        {latestInfo?.latest ? (
+          <antd.Tag color="processing">
+            {tr("最新")} {latestInfo.latest}
+            {latestInfo.cached ? tr("（缓存）") : ""}
+          </antd.Tag>
+        ) : null}
+        {checkErr ? (
+          <antd.Tag color="warning">{checkErr}</antd.Tag>
+        ) : null}
       </div>
 
       {/* Worker 多选（qwenpaw 可选，其他运行时禁用） */}
@@ -736,9 +831,15 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
         }}
       />
 
-      {/* 检查更新结果 */}
+      {/* 检查更新结果（响应式卡片网格：卡片随屏宽自动换行排列，不整行占位） */}
       {checking || checkDone ? (
-        <div style={{ display: "grid", gap: 6 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+          }}
+        >
           {qwenpawWorkers.map((w) => {
             const lc = lightMap[w.name];
             return (
@@ -781,11 +882,18 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
                         color: t.text,
                       }}
                     >
-                      {tr("当前")} {lc.current || "—"}
+                      {lc.current || tr("未知")}
+                      {lc.status === "available" && lc.latest
+                        ? ` → ${lc.latest}`
+                        : ""}
                     </span>
-                    <antd.Tag color={lc.supported ? "success" : "warning"}>
-                      {lc.supported ? tr("可就地升级") : tr("不支持就地升级")}
-                    </antd.Tag>
+                    {lc.status === "available" ? (
+                      <antd.Tag color="error">{tr("可升级")}</antd.Tag>
+                    ) : lc.status === "up-to-date" ? (
+                      <antd.Tag color="success">{tr("最新")}</antd.Tag>
+                    ) : (
+                      <antd.Tag color="warning">{tr("未知版本")}</antd.Tag>
+                    )}
                   </>
                 ) : null}
               </div>
@@ -826,9 +934,15 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
         </span>
       </div>
 
-      {/* 逐 worker job 跟踪 */}
+      {/* 逐 worker job 跟踪（响应式卡片网格，随屏宽排列） */}
       {jobEntries.length > 0 ? (
-        <div style={{ display: "grid", gap: 8 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+          }}
+        >
           {jobEntries.map(([w, j], idx) => {
             const st = (jobStatus[j.worker]?.state as
               | Record<string, unknown>

@@ -313,3 +313,87 @@ def test_status_missing_404(client):
                        "job_id": "upg-1786445000-abc123"})
     assert r.status_code == 404
     assert r.json()["detail"] == "job_not_found"
+
+
+# ── U12-U16 检查更新最新稳定版（/upgrade/latest，15.26 简化）────────
+import agentteams_connector.routers.upgrade_api as _upg  # noqa: E402
+
+
+def _reset_latest_cache():
+    _upg._latest_cache["version"] = None
+    _upg._latest_cache["fetched_at"] = 0.0
+
+
+def test_latest_no_token_403(client):
+    _reset_latest_cache()
+    tc, state = client
+    state["data"]["controller_token"] = ""
+    r = tc.get("/upgrade/latest")
+    assert r.status_code == 403, r.text
+    _reset_latest_cache()
+
+
+def test_latest_ok(client):
+    _reset_latest_cache()
+    tc, _ = client
+    _FakeClient.get_spec = {
+        "pypi.org/pypi/qwenpaw/json": (200, {"info": {"version": "2.2.2"}}),
+    }
+    r = tc.get("/upgrade/latest")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["latest"] == "2.2.2"
+    assert d["source"] == "pypi"
+    assert d["cached"] is False
+    _reset_latest_cache()
+
+
+def test_latest_cached_within_ttl(client):
+    _reset_latest_cache()
+    tc, _ = client
+    _FakeClient.get_spec = {
+        "pypi.org/pypi/qwenpaw/json": (200, {"info": {"version": "2.2.2"}}),
+    }
+    tc.get("/upgrade/latest")  # 首次拉取
+    calls_after_first = sum(1 for i in _FakeClient.instances for c in i.calls
+                            if "pypi.org" in c[1])
+    r = tc.get("/upgrade/latest")  # 缓存命中 → 不再拨 PyPI
+    assert r.status_code == 200
+    assert r.json()["cached"] is True
+    calls_after_second = sum(1 for i in _FakeClient.instances for c in i.calls
+                             if "pypi.org" in c[1])
+    assert calls_after_second == calls_after_first, "缓存命中却仍拨 PyPI"
+    _reset_latest_cache()
+
+
+def test_latest_stale_fallback_on_outage(client):
+    _reset_latest_cache()
+    tc, _ = client
+    # 先建立缓存
+    _FakeClient.get_spec = {
+        "pypi.org/pypi/qwenpaw/json": (200, {"info": {"version": "2.2.2"}}),
+    }
+    tc.get("/upgrade/latest")
+    # 强制缓存过期 → 触发重新拉取（否则早返缓存分支，测不到回退路径）
+    _upg._latest_cache["fetched_at"] = 0.0
+    # PyPI 断网（502）→ 回退旧缓存 + stale 标记
+    _FakeClient.get_spec = {
+        "pypi.org/pypi/qwenpaw/json": (502, None),
+    }
+    r = tc.get("/upgrade/latest")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["latest"] == "2.2.2"
+    assert d.get("stale") is True
+    _reset_latest_cache()
+
+
+def test_latest_no_cache_and_outage_502(client):
+    _reset_latest_cache()
+    tc, _ = client
+    _FakeClient.get_spec = {
+        "pypi.org/pypi/qwenpaw/json": (503, None),
+    }
+    r = tc.get("/upgrade/latest")
+    assert r.status_code == 502, r.text
+    _reset_latest_cache()
