@@ -11,7 +11,6 @@ import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
 import { formatTimeOfDay } from "../util";
 import { WbTooltip } from "./WbTooltip";
-import CodingRunsPanel from "./CodingRunsPanel";
 import RuntimeUpgradePanel from "./RuntimeUpgradePanel";
 
 
@@ -698,8 +697,9 @@ function OpsPanel({
         </div>
       ) : null}
 
-      {/* 编码执行记录（1.2.5 coding-runs 只读段，自含 404/空态） */}
-      <CodingRunsPanel refreshTick={refreshTick} />
+      {/* 编码执行记录已迁出运维页 → WorkerChats 抽屉「Coding CLI」tab
+  （per-worker，10/17：coding CLI 会话归 worker 会话区）。
+  CodingRunsPanel 文件保留（WorkerCodingRuns 复用其导出渲染件）。 */}
 
       {/* 运行时升级（1.2.5 预检+两阶段就地升级，自含 404 降级态） */}
       <RuntimeUpgradePanel refreshTick={refreshTick} />

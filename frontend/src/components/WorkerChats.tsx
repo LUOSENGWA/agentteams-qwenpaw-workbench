@@ -45,6 +45,7 @@ import {
 } from "../api";
 import MdText from "./MdText";
 import WorkerSessionDot from "./WorkerSessionDot";
+import WorkerCodingRuns from "./WorkerCodingRuns";
 import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
 import { copyText } from "../util";
@@ -511,8 +512,10 @@ function WorkerChats({
   const [chats, setChats] = React.useState<WorkerChatSpec[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // QwenPaw 会话页同款 Active/Archived 双 tab。
-  const [tab, setTab] = React.useState<"active" | "archived">("active");
+  // QwenPaw 会话页同款 Active/Archived 双 tab + Coding CLI tab
+  //（10/17 反馈：coding CLI 会话归 worker 会话区——同抽屉第三 tab，
+  // 数据源 = Controller /coding-runs 按 worker 过滤，只读）。
+  const [tab, setTab] = React.useState<"active" | "archived" | "coding">("active");
 
   // 卡片列表排序（Table sorter 的卡片等价物；
   // 默认最后活动倒序 = QwenPaw 会话页默认）。
@@ -1125,35 +1128,45 @@ function WorkerChats({
           </>
         )}
         <div style={{ flex: 1 }} />
-        <antd.Select
-          size="small"
-          style={{ width: 128 }}
-          value={sortKey}
-          onChange={(v: "updated" | "created" | "name") => setSortKey(v)}
-          options={[
-            { value: "updated", label: tr("最后活动 ↓") },
-            { value: "created", label: tr("创建 ↓") },
-            { value: "name", label: tr("名称 A-Z") },
-          ]}
-        />
-        <antd.Button size="small" onClick={() => void load()} loading={loading}>
-          {tr("刷新")}
-        </antd.Button>
+        {/* 排序/刷新只对聊天会话 tab 有意义（Coding CLI tab 自带刷新）。 */}
+        {tab !== "coding" ? (
+          <antd.Select
+            size="small"
+            style={{ width: 128 }}
+            value={sortKey}
+            onChange={(v: "updated" | "created" | "name") => setSortKey(v)}
+            options={[
+              { value: "updated", label: tr("最后活动 ↓") },
+              { value: "created", label: tr("创建 ↓") },
+              { value: "name", label: tr("名称 A-Z") },
+            ]}
+          />
+        ) : null}
+        {tab !== "coding" ? (
+          <antd.Button size="small" onClick={() => void load()} loading={loading}>
+            {tr("刷新")}
+          </antd.Button>
+        ) : null}
       </div>
 
       <antd.Tabs
         size="small"
         activeKey={tab}
         onChange={(k: string) => {
-          setTab(k === "archived" ? "archived" : "active");
+          setTab(k === "archived" ? "archived" : k === "coding" ? "coding" : "active");
           setOpenId(null);
         }}
         items={[
           { key: "active", label: `${tr("活跃")} (${active.length})` },
           { key: "archived", label: `${tr("已归档")} (${archived.length})` },
+          { key: "coding", label: tr("Coding CLI") },
         ]}
       />
 
+      {/* Coding CLI tab：该 worker 的执行记录（与聊天会话同一抽屉，10/17）。 */}
+      {tab === "coding" ? (
+        <WorkerCodingRuns worker={sel} />
+      ) : (
       <div ref={cwrapRef} style={{ minWidth: 0 }}>
         {loading && chats.length === 0 ? (
           <antd.Spin size="small" />
@@ -1269,6 +1282,7 @@ function WorkerChats({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

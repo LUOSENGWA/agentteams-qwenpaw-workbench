@@ -26,7 +26,7 @@ const FileTextIcon = pick("FileTextOutlined");
 /** run-YYYYMMDD-HHMMSS.log → "YYYY-MM-DD HH:MM:SS"。文件名是容器本地钟，
  * 时区不可知——上游设计原则「时间未知则不伪造」，此处原样展示文件名时间。 */
 const RUN_FILE = /^run-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.log$/;
-function timeFromRunFile(run: string): string {
+export function timeFromRunFile(run: string): string {
   const m = RUN_FILE.exec(run);
   if (!m) return run;
   return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}`;
@@ -44,12 +44,12 @@ function timeFromIso(iso?: string): string {
 }
 
 /** 列表行时间：优先 started_at（记录里的 UTC，可转本地）；无则文件名时间。 */
-function displayTime(r: CodingRun): string {
+export function displayTime(r: CodingRun): string {
   return r.started_at ? timeFromIso(r.started_at) : timeFromRunFile(r.run);
 }
 
 /** 状态 → antd Tag 色（保守映射，未知值回退 default，不臆造）。 */
-function statusVariant(status?: string): "success" | "error" | "warning" | "default" {
+export function statusVariant(status?: string): "success" | "error" | "warning" | "default" {
   if (!status) return "default";
   const s = status.toLowerCase();
   if (s === "ok" || s === "success" || s === "done" || s === "completed") return "success";
@@ -59,7 +59,7 @@ function statusVariant(status?: string): "success" | "error" | "warning" | "defa
 }
 
 /** exit_code 指针语义：0 合法须显示；null/undefined 显示占位。 */
-function showExit(code?: number | null): string {
+export function showExit(code?: number | null): string {
   return code == null ? "—" : String(code);
 }
 
@@ -70,8 +70,9 @@ function fmtBytes(n?: number | null): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** 详情抽屉（Modal）：打开即按 run 拉 json 封装（meta + prompt + transcript）。 */
-function CodingRunDetailModal({
+/** 详情抽屉（Modal）：打开即按 run 拉 json 封装（meta + prompt + transcript）。
+ * export 供 WorkerChats 的 Coding CLI tab 复用（同一数据源同一渲染）。 */
+export function CodingRunDetailModal({
   run,
   onClose,
 }: {
