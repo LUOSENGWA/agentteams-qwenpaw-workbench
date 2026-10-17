@@ -917,6 +917,36 @@ export async function getCliInstallTask(
   )) as CodingCliInstallTask;
 }
 
+/** 检查更新：宿主侧查 npm registry latest（走插件后端，非浏览器直连）。
+ *  clis = 逗号分隔子集（空=全部 3 个）；逐 CLI 失败降级为该项 error。
+ *  L1 only（无 token 403 → 抛错，面板 catch 后逐 CLI 显不可达）。 */
+export interface CodingCliLatestItem {
+  cli: string;
+  npm_package: string;
+  latest?: string | null;
+  registry?: string;
+  checked_at?: number;
+  error?: string;
+}
+export interface CodingCliLatestResult {
+  items: Record<string, CodingCliLatestItem>;
+  registry?: string;
+}
+export async function fetchCodingCliLatest(
+  clis?: string,
+  refresh = 0,
+): Promise<CodingCliLatestResult> {
+  const q = new URLSearchParams();
+  if (clis) q.set("clis", clis);
+  if (refresh) q.set("refresh", String(refresh));
+  const qs = q.toString();
+  return (await requestJson(
+    `/agentteams-proxy/coding-cli/latest${qs ? "?" + qs : ""}`,
+    undefined,
+    25000,
+  )) as CodingCliLatestResult;
+}
+
 /** 按 worker 过滤 coding runs（list 全量 + 客户端过滤 worker 字段；
  * 服务端无 per-worker 过滤参数，见 1.2.5 源码 ListCodingRuns）。 */
 export async function listCodingRunsByWorker(

@@ -1051,6 +1051,7 @@ async def _ctl_json(method: str, url: str, token: str,
 from .routers import (  # noqa: E402
     approval_api,
     cluster_info_api,
+    coding_cli_latest_api,
     config_api,
     gateway_api,
     kb_api,
@@ -1104,6 +1105,9 @@ def build_router() -> APIRouter:
     # 节点版本域（per-node AgentTeams 镜像 tag + docker exec 运行时版本探测；
     # L1 only；须在 catch-all 之前）。
     router.include_router(node_version_api.build_node_version_router())
+    # coding CLI 检查更新域（宿主 server-side 查 npm registry latest；
+    # L1 only + clis 白名单；须在 catch-all 之前）。
+    router.include_router(coding_cli_latest_api.build_coding_cli_latest_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     return router

@@ -19,7 +19,10 @@
  * - 授权：写 admin/manager-only（L2/Leader → 403 → 整面只读）；
  *   404 = 旧 Controller（整段隐藏，优雅降级，同 env 面板）；
  *   502 = 容器不可达 / 503 = 部署模式不支持容器内管理（embedded 才可）。
- * - 零后端新端点：走 /agentteams-proxy/controller catch-all 透传。
+ * - 管控面走 /agentteams-proxy/controller catch-all 透传；
+ *   「检查更新」走宿主端点 /agentteams-proxy/coding-cli/latest
+ *   （后端 server-side 查 npm registry latest——浏览器在内网可能连不上外网
+ *    registry，故不直连；升级仍 = 发 install 指令，无新机制）。
  *
  * 纪律：React/antd 取宿主（window.QwenPaw.host）；i18n 全量注册 en 键；
  * 破坏性操作（卸载）二次确认。
@@ -32,6 +35,7 @@ import {
   putCliSettings,
   startCodingCliInstall,
   getCliInstallTask,
+  fetchCodingCliLatest,
   httpErrorStatus,
   httpErrorDetail,
   type CodingCliId,
@@ -59,18 +63,6 @@ const CLI_LABEL: Record<CodingCliId, string> = {
   opencode: "OpenCode",
   qoder: "Qoder",
 };
-
-// CLI id → npm 包名（正源 = 上游 worker_coding_cli.go CliSpec.NpmPackage）。
-// 用于「检查更新」best-effort 拉 registry latest（容器 npm 镜像源可能不同，
-// 仅作提示，不可达时优雅降级，用户仍可手动填 tag 升级）。
-const CLI_NPM_PACKAGE: Record<CodingCliId, string> = {
-  "qwen-code": "@qwen-code/qwen-code",
-  opencode: "opencode-ai",
-  qoder: "@qoder-ai/qodercli",
-};
-
-const LATEST_BASE = "https://registry.npmjs.org/";
-const LATEST_TIMEOUT_MS = 12000;
 
 interface LatestInfo {
   checking: boolean;
@@ -100,25 +92,6 @@ function compareVersions(a?: string, b?: string): number {
   const aPre = a && a.indexOf("-") >= 0 ? 1 : 0;
   const bPre = b && b.indexOf("-") >= 0 ? 1 : 0;
   return bPre - aPre;
-}
-
-/** best-effort 拉某 CLI 的 registry latest 版本号（小载荷 /latest）。 */
-async function fetchNpmLatest(pkg: string): Promise<string> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), LATEST_TIMEOUT_MS);
-  try {
-    // pkg 形如 "@scope/name" 或 "name"，直接作 path（@ 与 / 原样，npm registry 接受）。
-    const res = await fetch(`${LATEST_BASE}${pkg}/latest`, {
-      cache: "no-store",
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const j = (await res.json()) as { version?: string };
-    if (!j.version) throw new Error("no version");
-    return j.version;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /** 已装 CLI 的 registry latest 指示徽标（best-effort；不可达优雅降级）。 */
@@ -586,23 +559,29 @@ function useCodingCliPanel({
     [busy, loadSettings, onChanged, readOnly, selected, settingsOpen, tr, worker.name],
   );
 
-  // 检查更新：对所有已装 CLI 顺序拉 registry latest（best-effort；
-  // 失败仅标记该 CLI，不影响其他；容器 npm 镜像源可能不同，仅提示）。
+  // 检查更新：一次请求让宿主后端查全部已装 CLI 的 registry latest
+  // （走 /agentteams-proxy/coding-cli/latest，非浏览器直连——操作机内网
+  // 可能连不上外网 registry）。失败仅标记该 CLI，不影响其他。
   const checkUpdates = React.useCallback(async () => {
     const installed = items.filter((c) => c.installed);
     if (installed.length === 0) return;
     const next: Record<string, LatestInfo> = { ...latestInfo };
-    for (const c of installed) {
-      next[c.id] = { checking: true };
-      setLatestInfo({ ...next });
-      try {
-        const latest = await fetchNpmLatest(CLI_NPM_PACKAGE[c.id]);
-        next[c.id] = { checking: false, latest };
-      } catch {
-        next[c.id] = { checking: false, error: "unreachable" };
+    for (const c of installed) next[c.id] = { checking: true };
+    setLatestInfo({ ...next });
+    try {
+      const res = await fetchCodingCliLatest(
+        installed.map((c) => c.id).join(","),
+      );
+      for (const c of installed) {
+        const it = res.items?.[c.id];
+        if (it?.latest) next[c.id] = { checking: false, latest: it.latest };
+        else next[c.id] = { checking: false, error: it?.error || "unreachable" };
       }
-      setLatestInfo({ ...next });
+    } catch {
+      // 403（无 L1）/网络失败 → 全部显不可达（仍可手动填 tag 升级）。
+      for (const c of installed) next[c.id] = { checking: false, error: "unreachable" };
     }
+    setLatestInfo({ ...next });
   }, [items, latestInfo]);
 
   return {
