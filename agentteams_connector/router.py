@@ -1055,6 +1055,7 @@ from .routers import (  # noqa: E402
     kb_api,
     live_api,
     matrix_api,
+    node_version_api,
     status_api,
     team_files_api,
     teams_api,
@@ -1097,6 +1098,9 @@ def build_router() -> APIRouter:
     # 内置 agentteams-upgrade 插件；无服务实例 404 → 前端降级空态）。
     # 须在 catch-all 之前（固定路径优先）。
     router.include_router(upgrade_api.build_upgrade_router())
+    # 节点版本域（per-node AgentTeams 镜像 tag + docker exec 运行时版本探测；
+    # L1 only；须在 catch-all 之前）。
+    router.include_router(node_version_api.build_node_version_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     return router

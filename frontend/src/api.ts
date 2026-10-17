@@ -744,6 +744,36 @@ export async function fetchCodingRunDetail(
   )) as CodingRunDetail;
 }
 
+// ── 节点版本（per-node AgentTeams 镜像 tag + 运行时版本 exec 探测）────
+// 10/17 需求：「v1.2.5 是 AgentTeams 版本，不是运行时版本，当前 QwenPaw
+// 版本是 2.2.1，还要覆盖其他运行时的版本显示。」
+// 数据面 = 插件后端 GET /node-version/{name}（L1 only；后端经 Controller
+// /docker/ 代理容器内 exec 探测 qwenpaw/openclaw 版本，10min 缓存；
+// 宿主 QwenPaw 版本 ≠ worker 内版本，必须 per-node 探测）。
+export interface NodeVersion {
+  kind: "worker" | "manager";
+  name: string;
+  runtime?: string;
+  /** AgentTeams 发布版本（Worker/Manager 镜像 tag，去 v 前缀）。 */
+  agentteams_version?: string;
+  image?: string;
+  /** 容器内运行时实际版本（qwenpaw/openclaw；探测失败 null）。 */
+  runtime_version?: string | null;
+  runtime_version_error?: string;
+  probed_at?: number;
+}
+
+export async function fetchNodeVersion(
+  name: string,
+  refresh = false,
+): Promise<NodeVersion> {
+  const q = refresh ? "?refresh=1" : "";
+  return (await requestJson(
+    `/agentteams-proxy/node-version/${encodeURIComponent(name)}${q}`,
+    undefined,
+    30000,
+  )) as NodeVersion;
+}
 /** L1 管理员验证结果。 */
 export interface VerifyAdminResult {
   ok: boolean;
