@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>ui-harness-cli</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+// 宿主 mock（同 page-env.html 模式）+ Coding CLI 数据面 mock。
+// scen: full | l2 | 404 | fail
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+  },
+};
+
+const scen =
+  new URLSearchParams(location.search).get("scen") || "full";
+
+window.__INSTALLS__ = [];   // {cli, action, version?}
+window.__SETTINGS_PUTS__ = []; // {cli, patch}
+window.__TASK_CALLS__ = 0;
+window.__LIST_CALLS__ = 0;
+window.__TASK_STATE__ = "running"; // 驱动可改为 done/failed
+
+function okJson(data, status) {
+  const s = JSON.stringify(data);
+  return {
+    ok: true,
+    status: status || 200,
+    text: async () => s,
+    json: async () => data,
+  };
+}
+function errJson(status, detail) {
+  const s = JSON.stringify({ detail });
+  return {
+    ok: false,
+    status,
+    text: async () => s,
+    json: async () => JSON.parse(s),
+  };
+}
+
+const LIST_BODY = {
+  "qwen-code": {
+    cli: "qwen-code",
+    installed: true,
+    version: "0.25.0",
+    auth: { configured: true, method: "apiKey" },
+  },
+  opencode: { cli: "opencode", installed: false, auth: null },
+  qoder: { cli: "qoder", installed: false, auth: { configured: false } },
+};
+
+const SETTINGS_BODY = {
+  model: { name: "m1" },
+  security: { auth: { apiKey: { redacted: true, has_value: true } } },
+  tools: { useRipgrep: true },
+};
+
+const origFetch = window.fetch.bind(window);
+window.fetch = (url, opts) => {
+  const u = String(url);
+  const m = opts || {};
+  const method = (m.method || "GET").toUpperCase();
+  const B = "/agentteams-proxy/controller/api/v1/workers/w1/coding-cli";
+
+  if (u === B) {
+    window.__LIST_CALLS__ += 1;
+    if (scen === "404") return Promise.resolve(errJson(404, "not found"));
+    return Promise.resolve(okJson(LIST_BODY));
+  }
+
+  if (u === B + "/qwen-code/settings" && method === "GET") {
+    return Promise.resolve(okJson(SETTINGS_BODY));
+  }
+  if (u === B + "/qwen-code/settings" && method === "PUT") {
+    if (scen === "l2") return Promise.resolve(errJson(403, "forbidden"));
+    const patch = JSON.parse(m.body);
+    window.__SETTINGS_PUTS__.push({ cli: "qwen-code", patch });
+    return Promise.resolve(okJson({}));
+  }
+
+  if (u === B + "/opencode/install" && method === "POST") {
+    const req = JSON.parse(m.body);
+    window.__INSTALLS__.push({
+      cli: "opencode",
+      action: req.action,
+      version: req.version,
+    });
+    return Promise.resolve(okJson({ task_id: "T1", state: "running" }, 202));
+  }
+
+  if (u === B + "/qwen-code/install" && method === "POST") {
+    const req = JSON.parse(m.body);
+    window.__INSTALLS__.push({
+      cli: "qwen-code",
+      action: req.action,
+      version: req.version,
+    });
+    return Promise.resolve(okJson({ task_id: "T2", state: "running" }, 202));
+  }
+
+  if (/\/install\/T[12]$/.test(u) && method === "GET") {
+    window.__TASK_CALLS__ += 1;
+    const state = window.__TASK_STATE__;
+    return Promise.resolve(
+      okJson({
+        task_id: u.split("/").pop(),
+        state,
+        exit_code: state === "done" ? 0 : undefined,
+        stderr_tail: state === "failed" ? "boom: no network" : undefined,
+      }),
+    );
+  }
+
+  return origFetch(url, opts);
+};
+</script>
+<script src="/harness/bundle-cli.js"></script>
+</body>
+</html>

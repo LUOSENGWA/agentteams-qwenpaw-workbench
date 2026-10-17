@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>ui-harness-settings-auth</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+// 宿主 mock（同 page-env.html 模式）+ 设置页数据面 mock。
+// verify-admin 恒失败（断言错误锚定用）；其余端点 404 降级。
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+  },
+};
+
+window.__VERIFY_CALLS__ = [];
+
+function okJson(data, status) {
+  const s = JSON.stringify(data);
+  return {
+    ok: true,
+    status: status || 200,
+    text: async () => s,
+    json: async () => data,
+  };
+}
+function errJson(status, detail) {
+  const s = JSON.stringify({ detail });
+  return {
+    ok: false,
+    status,
+    text: async () => s,
+    json: async () => JSON.parse(s),
+  };
+}
+
+const CFG = {
+  matrix_homeservers: [],
+  controller_urls: [],
+  controller_token: "",
+  matrix: { user_id: "", access_token: "", device_id: "" },
+  configPath: "/app/working.secret/agentteams-qwenpaw-workbench/config.json",
+  configSavedAt: 1750000000,
+  configWritable: true,
+  config_rev: "harness",
+  config_health: { state: "ok" },
+};
+
+const origFetch = window.fetch.bind(window);
+window.fetch = (url, opts) => {
+  const u = String(url);
+  const m = opts || {};
+  const method = (m.method || "GET").toUpperCase();
+
+  if (u === "/agentteams-proxy/config" && method === "GET") {
+    return Promise.resolve(okJson(CFG));
+  }
+  if (u === "/agentteams-proxy/config/verify-admin" && method === "POST") {
+    const body = JSON.parse(m.body || "{}");
+    window.__VERIFY_CALLS__.push(body);
+    const src = body.admin_username || body.admin_password ? "higress" : "controller";
+    return Promise.resolve(
+      okJson({
+        ok: false,
+        error: `harness-fail-${src}`,
+      }),
+    );
+  }
+  // 其余端点：404 降级（组件均有降级路径）。
+  return Promise.resolve(errJson(404, "harness: not mocked"));
+};
+</script>
+<script src="/harness/bundle-settings.js"></script>
+</body>
+</html>
