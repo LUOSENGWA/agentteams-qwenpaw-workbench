@@ -39,6 +39,56 @@ interface LogLine {
 /** Docker 日志时间戳（UTC ISO，如 2026-08-14T03:22:11.123Z）→ 本地 MM-DD HH:MM:SS。
  此前 slice(11,19) 显示 UTC 裸时分秒（比本地慢 8 小时且无日期）——
  「日志时间看不清是哪天」，加日期+转本地。解析失败回退原 slice。 */
+/** 集群版本卡（AgentTeams / Higress，与状态卡同款式）。 */
+function VersionStatCard({
+  label,
+  value,
+  sub,
+  t,
+}: {
+  label: string;
+  value?: string | null;
+  sub?: string | null;
+  t: { border: string; cardBg: string; textSecondary: string };
+}) {
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        borderRadius: 8,
+        border: `1px solid ${t.border}`,
+        background: t.cardBg,
+      }}
+    >
+      <div style={{ fontSize: 11, color: t.textSecondary }}>{label}</div>
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={value || "—"}
+      >
+        {value || "—"}
+        {sub ? (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 400,
+              color: t.textSecondary,
+              marginLeft: 6,
+            }}
+          >
+            {sub}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function fmtLogTime(ts: string): string {
   const d = new Date(ts);
   if (isNaN(d.getTime())) return ts.slice(11, 19);
@@ -65,6 +115,15 @@ function OpsPanel({
   const tr = useT();
   const [status, setStatus] = React.useState<ClusterStatus | null>(null);
   const [statusLoading, setStatusLoading] = React.useState(false);
+  // 集群版本（/cluster-info：AgentTeams=controller 镜像 tag，
+  // Higress=三级源探测）。后端 10min 缓存 → 前端仅挂载 + 手动刷新时取，
+  // 不进 1s 轮询（慢变事实，不打无谓请求）。
+  const [clusterInfo, setClusterInfo] = React.useState<{
+    agentteams_version?: string | null;
+    higress_version?: string | null;
+    higress_version_source?: string | null;
+    higress_version_error?: string;
+  } | null>(null);
   const [component, setComponent] = React.useState("controller");
   const [logs, setLogs] = React.useState<LogLine[]>([]);
   const [logsLoading, setLogsLoading] = React.useState(false);
@@ -85,6 +144,19 @@ function OpsPanel({
       );
     } finally {
       setStatusLoading(false);
+    }
+  }, []);
+
+  // 集群版本取数：失败静默降级（版本卡显 "—"）——不弹错打扰
+  // 主状态视图（版本是附加信息，不该阻断集群状态）。
+  const refreshClusterInfo = React.useCallback(async () => {
+    try {
+      const data = (await requestJson(
+        "/agentteams-proxy/cluster-info",
+      )) as NonNullable<typeof clusterInfo>;
+      setClusterInfo(data);
+    } catch {
+      /* 降级空态（后端 403/探测失败字段 null） */
     }
   }, []);
 
@@ -280,6 +352,11 @@ function OpsPanel({
     }
   }, [visibleLogs, autoScroll]);
 
+  // 集群版本：ops tab 激活时取一次（后端 10min 缓存，无轮询必要）。
+  React.useEffect(() => {
+    if (opsActive) void refreshClusterInfo();
+  }, [opsActive, refreshClusterInfo]);
+
   const statusEntries = React.useMemo(
     () =>
       status && typeof status === "object"
@@ -314,11 +391,14 @@ function OpsPanel({
               size="small"
               icon={<ReloadIcon />}
               loading={statusLoading}
-              onClick={() => void refreshStatus()}
+              onClick={() => {
+                void refreshStatus();
+                void refreshClusterInfo();
+              }}
             />
           </WbTooltip>
         </div>
-        {statusEntries.length === 0 ? (
+        {statusEntries.length === 0 && !clusterInfo ? (
           <antd.Empty
             description={statusLoading ? tr("加载中…") : tr("暂无状态数据")}
             image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
@@ -331,6 +411,27 @@ function OpsPanel({
               gap: 10,
             }}
           >
+            {clusterInfo ? (
+              <>
+                <VersionStatCard
+                  label={tr("AgentTeams 版本")}
+                  value={clusterInfo.agentteams_version}
+                  t={{ border: t.border, cardBg: t.cardBg, textSecondary: t.textSecondary }}
+                />
+                <VersionStatCard
+                  label={tr("Higress 版本")}
+                  value={clusterInfo.higress_version}
+                  sub={
+                    clusterInfo.higress_version_source
+                      ? tr("来源：{s}", { s: clusterInfo.higress_version_source === "file" ? "集群容器配置" : "集群容器环境变量" })
+                      : clusterInfo.higress_version_error
+                        ? tr("探测失败")
+                        : null
+                  }
+                  t={{ border: t.border, cardBg: t.cardBg, textSecondary: t.textSecondary }}
+                />
+              </>
+            ) : null}
             {statusEntries.map(([key, value]) => {
               const display =
                 value === null || value === undefined

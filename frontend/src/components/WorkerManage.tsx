@@ -3,7 +3,6 @@ import type * as ReactNS from "react";
 
 import {
   CheckpointUnavailableError,
-  fetchControllerVersion,
   fetchNodeVersion,
   fetchWorkerCheckpointGraph,
   fetchWorkerCheckpointStatus,
@@ -14,7 +13,6 @@ import {
   type AdminData,
   type CheckpointGraphResponse,
   type CheckpointStatusResponse,
-  type ControllerVersion,
   type ManagerInfo,
   type NodeVersion,
   type SpawnNode,
@@ -1858,57 +1856,9 @@ export function ManagerTable({
   );
 }
 
-/** 团队管理页头：AgentTeams 版本徽章。
- * 版本正源优先级（10/17 用户纠偏：v1.2.5 是 AgentTeams 版本，不是
- * 运行时版本；源码构建 /api/v1/version 回 "dev" 会误导）：
- * 1) 节点镜像 tag（Manager 优先 / Worker 兜底，imageTag 去 registry
- *    前缀）——实盘发布版本，源码构建也准（CRD image 恒带 tag）。
- * 2) 回退 /api/v1/version 端点值（仅当无镜像信息且值非 dev）。
- * L1-only（代理需 controller token）；无 admin 数据且端点 404 → 不渲染。 */
-function ControllerVersionBadge({
-  hasToken,
-  admin,
-}: {
-  hasToken?: boolean;
-  admin?: AdminData | null;
-}) {
-  const tr = useT();
-  const [v, setV] = React.useState<ControllerVersion | null>(null);
-  React.useEffect(() => {
-    if (!hasToken) return;
-    let alive = true;
-    void fetchControllerVersion()
-      .then((d) => {
-        if (alive) setV(d);
-      })
-      .catch(() => {
-        if (alive) setV(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [hasToken]);
-  const nodeTag =
-    imageTag(admin?.managers?.[0]?.image) ||
-    imageTag(admin?.workers?.[0]?.image) ||
-    "";
-  const version =
-    nodeTag ||
-    (v && v.controller && v.controller !== "dev" ? v.controller : "");
-  if (!version) return null;
-  return (
-    <WbTooltip
-      title={tr(
-        "AgentTeams 版本 = 节点镜像 tag（Manager/Worker CRD image 正源）。容器内运行时实际版本（QwenPaw/OpenClaw）看 Worker 详情「运行时版本」",
-      )}
-    >
-      <span style={{ fontSize: 11, color: "#888", cursor: "help", whiteSpace: "nowrap" }}>
-        AgentTeams {version}
-        {v?.kubeMode ? ` · ${v.kubeMode}` : ""}
-      </span>
-    </WbTooltip>
-  );
-}
+// AgentTeams 集群版本徽章已迁至运维页「集群状态」卡（/cluster-info 统一
+// 正源，15.25 用户定案）——此处不再重复显示，避免双显源漂移（W7）。
+// per-node 版本仍见 Worker 详情「AgentTeams 版本」列（节点镜像 tag）。
 
 interface WorkerManageProps {
   teams: WorkerTreeTeam[];
@@ -2133,7 +2083,6 @@ function WorkerManage(props: WorkerManageProps) {
         </WbTooltip>
         <span style={{ color: "#bbb", fontSize: 11 }}>{tr("自动刷新 30 秒")}</span>
         <div style={{ flex: 1 }} />
-        <ControllerVersionBadge hasToken={!!hasToken} />
         {refresh ? (
           <WbTooltip title={tr("刷新")}>
             <antd.Button

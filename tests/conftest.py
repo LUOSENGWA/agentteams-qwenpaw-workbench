@@ -24,7 +24,9 @@ _DOMAIN_MODULES = (
     "agentteams_connector.routers.kb_api",
     "agentteams_connector.routers.live_api",
     "agentteams_connector.routers.approval_api",
+    "agentteams_connector.routers.cluster_info_api",
     "agentteams_connector.routers.node_version_api",
+    "agentteams_connector.routers.upgrade_api",
 )
 
 

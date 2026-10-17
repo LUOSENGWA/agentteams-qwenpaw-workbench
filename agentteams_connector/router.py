@@ -1050,6 +1050,7 @@ async def _ctl_json(method: str, url: str, token: str,
 # 共享名，循环导入解析时本模块须已具备这些名）。
 from .routers import (  # noqa: E402
     approval_api,
+    cluster_info_api,
     config_api,
     gateway_api,
     kb_api,
@@ -1094,6 +1095,8 @@ def build_router() -> APIRouter:
         team_files_api.build_team_files_router(_kb_shared, _tf_state)
     )
     router.include_router(live_api.build_live_router())
+    # 集群信息域（AgentTeams/Higress 版本，L1 only；须在 catch-all 之前）。
+    router.include_router(cluster_info_api.build_cluster_info_router())
     # 运行时升级域（同宿主回环代理 /api/upgrade/*；1.2.5+ worker 镜像
     # 内置 agentteams-upgrade 插件；无服务实例 404 → 前端降级空态）。
     # 须在 catch-all 之前（固定路径优先）。

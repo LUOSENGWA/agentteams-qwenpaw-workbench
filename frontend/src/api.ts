@@ -621,11 +621,18 @@ export function imageTag(image?: string): string {
   return i > 0 ? rest.slice(i + 1) : rest;
 }
 
-// 同宿主 QwenPaw 实例内置 agentteams-upgrade 插件（1.2.5+ worker 镜像），
-// 插件后端经 127.0.0.1 回环代理（/agentteams-proxy/upgrade/*）。无该
-// 服务的实例（旧镜像/非 worker 宿主）恒 404 → 调用方降级空态。
-// check 恒 200（网络/索引问题落 errors[]）；run=202 job handle（破坏性，
-// UI 须二次确认）；status 读 on-disk job 状态（跨容器重启可读）。
+// ── 运行时升级（per-worker，15.25 docker exec 重接）────────────────
+// 10/17 实锤：worker 容器运行时未加载 agentteams-upgrade 插件（v1.2.5
+// 打包缺口 _prepare_default_plugins 漏接线）→ 旧 127.0.0.1 回环代理
+// 恒 404。重接 = 插件后端 docker exec 镜像内置 CLI（checker/upgrade
+// 脚本，正源同上游插件消费路径）。
+// 数据面 = 插件后端 /upgrade/{check,run,status}（L1 only；worker 必填）。
+// check：version 缺省=轻探（当前版本+脚本可用性）；带 version=完整 gate
+//   检查（checker --json）。run=202 job handle（破坏性，UI 二次确认；
+//   容器将重启、在跑任务中断、失败自动回滚）。status=state-file
+//   on-disk 真相源（跨容器重启可读）。
+// QwenPaw only：runtime != qwenpaw → 400（后端门控，UI 同步提示）。
+
 export type UpgradeGateStatus =
   | "PASS"
   | "FAIL"
@@ -635,94 +642,120 @@ export type UpgradeGateStatus =
   | "ERROR";
 
 export interface UpgradeGate {
+  id: string;
+  name: string;
   status: UpgradeGateStatus;
-  evidence: string;
+  evidence?: string;
+  advice?: string;
 }
 
-export interface UpgradeCandidate {
+/** 轻探（无 version）：当前版本 + 升级脚本可用性。 */
+export interface UpgradeLightCheck {
+  worker: string;
+  container: string;
+  current?: string | null;
+  checker?: string;
+  upgrader?: string;
+  supported: boolean;
+}
+
+/** 完整预检：checker --json 透传。 */
+export interface UpgradeFullCheck {
+  worker: string;
+  container: string;
   version: string;
-  prerelease: boolean;
-  published_at?: string | null;
-  gates: { C1: UpgradeGate; C2: UpgradeGate; C3: UpgradeGate; C4: UpgradeGate };
-  upgradeable: boolean;
-  recommended: boolean;
+  check?: {
+    target?: string;
+    overall?: string;
+    exit_code?: number;
+    checks?: UpgradeGate[];
+  } | null;
+  raw?: string | null;
 }
 
-export interface UpgradeCheckResult {
-  current: string;
-  current_source?: string;
-  checked_at?: string;
-  index?: string;
-  candidates: UpgradeCandidate[];
-  errors: string[];
-}
-
-// job 状态机（runner.py）：running|boot-check-passed|recovering 为进行中；
-// success|rolled_back|rollback_failed|precheck_failed 为终态。
-export type UpgradeJobState =
-  | "running"
-  | "boot-check-passed"
-  | "recovering"
-  | "success"
-  | "rolled_back"
-  | "rollback_failed"
-  | "precheck_failed";
-
-export const UPGRADE_TERMINAL_STATES: readonly UpgradeJobState[] = [
+/** job 状态机（runner.py）：终态集合（其余视为进行中继续轮询）。 */
+export const UPGRADE_TERMINAL_STATES: readonly string[] = [
   "success",
   "rolled_back",
   "rollback_failed",
   "precheck_failed",
+  "failed",
 ];
 
-export interface UpgradeJob {
+export interface UpgradeRunHandle {
   job_id: string;
-  state: UpgradeJobState;
-  exit_code?: number | null;
-  current?: string;
-  target?: string;
-  phase?: string;
-  started_at?: string;
-  finished_at?: string;
-  log_tail?: string[];
+  worker: string;
+  container: string;
+  version: string;
+  state: string;
+  detail?: string;
 }
 
-export async function fetchUpgradeCheck(opts?: {
-  verify?: boolean;
-  includePrerelease?: boolean;
-}): Promise<UpgradeCheckResult> {
-  const q = new URLSearchParams();
-  if (opts?.verify) q.set("verify", "true");
-  if (opts?.includePrerelease) q.set("include_prerelease", "true");
-  const qs = q.toString();
+/** status：state-file（任意 JSON，runner 写入）+ pending.json。 */
+export interface UpgradeStatusResult {
+  worker: string;
+  container: string;
+  job_id?: string | null;
+  state?: Record<string, unknown> | null;
+  pending?: Record<string, unknown> | null;
+}
+
+export async function fetchUpgradeLightCheck(
+  worker: string,
+): Promise<UpgradeLightCheck> {
+  const q = `?worker=${encodeURIComponent(worker)}`;
   return (await requestJson(
-    `/agentteams-proxy/upgrade/check${qs ? `?${qs}` : ""}`,
+    `/agentteams-proxy/upgrade/check${q}`,
     undefined,
-    opts?.verify ? 300000 : 35000,
-  )) as UpgradeCheckResult;
+    35000,
+  )) as UpgradeLightCheck;
 }
 
-/** 触发升级（破坏性：两阶段编排器重启容器、失败自动回滚）。
- * 409=已有 job 在跑（detail 含 job_id）/ 400=校验拒绝 / 501=mode 保留位。 */
-export async function runUpgrade(version: string): Promise<UpgradeJob> {
+export async function fetchUpgradeCheck(
+  worker: string,
+  version: string,
+  verify = false,
+): Promise<UpgradeFullCheck> {
+  const q = new URLSearchParams();
+  q.set("worker", worker);
+  q.set("version", version);
+  if (verify) q.set("verify", "1");
+  return (await requestJson(
+    `/agentteams-proxy/upgrade/check?${q.toString()}`,
+    undefined,
+    verify ? 300000 : 150000,
+  )) as UpgradeFullCheck;
+}
+
+/** 触发升级（破坏性：两阶段编排，容器重启、失败自动回滚）。
+ * 400=校验拒绝（含「仅支持 qwenpaw 运行时」）/ 502=容器不可达。 */
+export async function runUpgrade(
+  worker: string,
+  version: string,
+): Promise<UpgradeRunHandle> {
   return (await requestJson(
     "/agentteams-proxy/upgrade/run",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version }),
+      body: JSON.stringify({ worker, version }),
     },
     65000,
-  )) as UpgradeJob;
+  )) as UpgradeRunHandle;
 }
 
-export async function fetchUpgradeStatus(jobId?: string): Promise<UpgradeJob> {
-  const q = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+export async function fetchUpgradeStatus(
+  worker: string,
+  jobId?: string,
+): Promise<UpgradeStatusResult> {
+  const q = new URLSearchParams();
+  q.set("worker", worker);
+  if (jobId) q.set("job_id", jobId);
   return (await requestJson(
-    `/agentteams-proxy/upgrade/status${q}`,
+    `/agentteams-proxy/upgrade/status?${q.toString()}`,
     undefined,
     20000,
-  )) as UpgradeJob;
+  )) as UpgradeStatusResult;
 }
 
 /** 单条 run 详情，固定 ?format=json（transcript 在 output.transcript；

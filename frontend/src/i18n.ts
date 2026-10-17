@@ -37,6 +37,36 @@ const DICT: Record<string, { en: string }> = {
   "Runner": { en: "Runner" },
   // ── 运行时升级（1.2.5 #1364/#1343 消费）──
   "运行时升级": { en: "Runtime Upgrade" },
+  "目标": { en: "target" },
+  "Worker 容器内 QwenPaw 运行时就地升级（两阶段编排、失败自动回滚）。当前仅支持 qwenpaw 运行时。触发升级会重启目标容器并中断在跑任务，需二次确认。": {
+    en: "In-container QwenPaw runtime in-place upgrade (two-phase orchestration, auto rollback on failure). Currently supports the qwenpaw runtime only. Triggering an upgrade restarts the target container and interrupts running tasks; a second confirmation is required.",
+  },
+  "就地升级当前仅支持 qwenpaw 运行时（其他运行时请走镜像重建升级）。": {
+    en: "In-place upgrade currently supports the qwenpaw runtime only (other runtimes: upgrade via image rebuild).",
+  },
+  "需要 Controller 管理员 token（L1）才能执行运行时升级": {
+    en: "A Controller admin token (L1) is required to run runtime upgrades",
+  },
+  "选择要升级的 Worker": { en: "Select the Worker to upgrade" },
+  "仅 qwenpaw 可就地升级": { en: "qwenpaw only" },
+  "该 Worker 镜像不支持就地升级（需 1.2.5+ 镜像，含内置升级脚本）。": {
+    en: "This Worker image does not support in-place upgrade (requires a 1.2.5+ image with the built-in upgrade scripts).",
+  },
+  "目标版本，如 2.3.0": { en: "Target version, e.g. 2.3.0" },
+  "附加 wheel 可达性检查（从 PyPI 下载，耗时更长）": {
+    en: "Also verify wheel reachability (downloads from PyPI, slower)",
+  },
+  "验证 wheel 可达": { en: "Verify wheel reachable" },
+  "预检": { en: "Pre-check" },
+  "预检失败": { en: "Pre-check failed" },
+  "预检输出解析失败，原始输出：": { en: "Failed to parse pre-check output. Raw output:" },
+  "已停止跟踪": { en: "tracking stopped" },
+  "状态详情（state-file）": { en: "State details (state-file)" },
+  "等待状态文件（容器升级/重启中…）": { en: "Waiting for the state file (container upgrading/restarting…)" },
+  "预检未通过（FAIL），不建议继续。": { en: "Pre-check failed (FAIL). Continuing is not recommended." },
+  "升级将两阶段就地执行并重启该 Worker 容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。": {
+    en: "The upgrade runs in-place in two phases and restarts this Worker container; running tasks are interrupted in the meantime. A failed boot self-check rolls back to the previous version automatically.",
+  },
   "本宿主 QwenPaw 运行时的预检与就地升级（两阶段编排、失败自动回滚）。预检只读；触发升级会重启容器并可能中断在跑任务，需二次确认。": {
     en: "Preflight and in-place upgrade of this host's QwenPaw runtime (two-phase orchestration with automatic rollback on failure). Preflight is read-only; triggering an upgrade restarts the container and may interrupt running tasks, so it requires confirmation.",
   },
@@ -884,6 +914,10 @@ const DICT: Record<string, { en: string }> = {
   "大小": { en: "Size" },
   "操作": { en: "Actions" },
   "集群状态": { en: "Cluster status" },
+  "Higress 版本": { en: "Higress version" },
+  "来源：{s}": { en: "source: {s}" },
+  "集群容器配置": { en: "cluster container file" },
+  "集群容器环境变量": { en: "cluster container env" },
   "组件日志": { en: "Component logs" },
   "自动滚动": { en: "Auto-scroll" },
   "暂停": { en: "Pause" },
@@ -2371,6 +2405,14 @@ const DICT: Record<string, { en: string }> = {
   },
   "获取（在部署宿主机执行后复制，切到上方「L1 管理面」模式粘进 ① Controller 认证字段）：": {
     en: "Obtain (run on the deployment host, copy the output, switch to the \"L1 admin plane\" mode above and paste into the ① Controller auth field):",
+  },
+  // ── WorkerChats Coding CLI tab（coding CLI 会话归 worker 会话区）──
+  "该 Worker 的编码 CLI 一次性执行记录与原始日志（只读）": {
+    en: "One-shot coding CLI runs and raw logs for this Worker (read-only)",
+  },
+  "该 Worker 暂无编码执行记录": { en: "No coding runs for this Worker yet" },
+  "选择 Worker 后显示其 Coding CLI 执行记录": {
+    en: "Select a Worker to show its Coding CLI runs",
   },
 };
 
