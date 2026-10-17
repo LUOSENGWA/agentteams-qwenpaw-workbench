@@ -3,6 +3,22 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.25（2026-10-17 · 集群版本卡 + 逐 Worker 运行时升级重接 + LLM 调优面板 + 运行时批量升级 + Coding CLI 检查更新/升级 + 编码执行记录归 Worker 会话）
+
+本批 = 消费 AgentTeams 1.2.5 三块新能力（集群版本可观测 / 运行时在线升级 / LLM 调优）的插件侧 + 编码 CLI 管理面增强。
+
+**新增**
+- **集群版本卡（运维页，新端点 `/cluster-info`，L1 only + 10 分钟缓存）**：运维页状态网格上方新增两张版本卡，显示集群两套系统的**真实版本**——「AgentTeams 版本」= agentteams-controller **镜像 tag**（发布版本；`/api/v1/version` 硬编码返回 `dev`，不可用，故走镜像 tag 正源）；「Higress 版本」= 三级探测（容器内 `/etc/higress_version` 文件 → `HIGRESS_VERSION` env → null），**绝不猜**——探测不到显示「—」（悬停看原因，不报错；Higress 无 console REST 版本端点，404 已核）。同时移除团队管理页头的版本徽章（单一信息源，避免两处漂移）。
+- **逐 Worker 运行时升级重接（修 v1.2.5 打包缺口）**：原设计代理容器内 `agentteams-upgrade` 插件（127.0.0.1 回环），但 v1.2.5 的 `_prepare_default_plugins` 从未注册该插件（打包缺口，镜像内已核）→ 回环恒 404，结构性死路。现重接为**直接 `docker exec` 内置升级脚本**：「检查更新」= 轻探（当前运行时版本 + 检查脚本可用性，venv python 执行——系统 python 缺 `qwenpaw_worker` 包，已核）；「触发升级」= 分离执行 `upgrade_qwenpaw_runtime.sh --phase pre-restart`（显式绝对路径 `--state-file`/`--pending-file`——docker exec 的 env ≠ app 进程 env，默认路径会把 pending.json 弄成孤儿）；「状态」读磁盘 state 文件 + pending.json（真值，重启后仍存）。**QwenPaw-only 门控**：非 qwenpaw runtime 的 Worker 明确返回 400（带原因）。worker/version/job_id 在拼命令前正则校验（注入面收口）。17 单测（L1 门 / 轻探·全探 / 检查器缺失 404 / qwenpaw-only 400 / 注入 400 零拨号 / run 分离命令形状 / 状态解析 / job_not_found 404）。
+- **LLM 调优面板（Worker 级 + 团队默认，双层，AgentTeams 1.2.5+）**：把 dashboard 的 LLM 调优搬进工作台，覆盖继承链全层（Worker 覆盖 → 团队默认 → QwenPaw registry 默认）。10 个 `llm*` 字段，字段级 diff PUT（省略 = 保留 / 空串 = 清除回落 / 值 = 覆盖）；**全字段 L1 only**（L2/L3 账号整段只读，不报错）；2 个 stream 字段热生效（不重建容器）、8 个 startup 字段投影进 env 需容器重建才生效（界面标注）。Worker 详情「LLM 调优」卡（宽屏内联 + 竖屏 sheet，**可折叠**——默认收起、首次展开才惰性加载省请求，与同轨「运行配置 / 环境变量与网关探测 / Coding CLI」段头 x=33 轨对齐）；团队管理 CRD 编辑弹窗「团队 LLM 调优」段（同款字段网格，字段级 diff 并入团队更新体，整组校验）。
+- **运行时批量升级（运维页「运行时升级」面板新增「批量」模式）**：面板顶部加「单 Worker｜批量」切换（单 Worker 原流程不动）。批量模式可多选 qwenpaw Worker——点「检查更新」逐个轻探各 Worker 当前运行时版本与就地升级可用性（顺序执行，避免拨号风暴）；填目标版本后「批量升级」按**顺序**触发（一次一个 Worker，避免容器重启互扰），逐个跟踪 job 状态（阶段 / 起止 / 日志尾部），启动自检失败自动回滚——与单 Worker 同款两阶段语义，触发前二次确认。
+- **Coding CLI 检查更新 + 升级（Worker 详情 Coding CLI 段）**：段头新增「检查更新」——由**插件后端（宿主）** server-side 查各 CLI 的 npm registry 最新版本（新端点 `/coding-cli/latest`，L1 only + clis 白名单 + 固定 npmjs base 防 SSRF + 5 分钟缓存），**不再让浏览器直连 registry**（操作机在内网可能连不上外网 registry；宿主也连不上时逐项优雅降级为「registry 不可达」，仍可手动填 tag 升级）。每个已装 CLI 的版本徽标旁显示「有更新 → X」/「已是最新」/「registry 最新 X」。已装 CLI 新增「升级」按钮（按所选版本 tag 重装，空 = latest）；版本输入框改为「版本 tag（安装/升级）」语义。**升级仍是发一条 install 指令（消费上游 1.2.5 #1360），无新机制。**
+- **编码执行记录归入 Worker 会话区**：运维页移除「编码执行记录」段；Worker 会话抽屉新增第三个 tab「Coding CLI」——与 Active / Archived 会话并列，按当前 Worker 过滤其编码 CLI 执行记录（1.2.5+ 只读 transcript），30 秒可见门控静默轮询（切走即停），点开任意一条看完整日志。数据源与渲染件同运维页同源复用（不漂移）。
+
+**验证**：tsc 0 · vite build 单文件 1,960 kB · pytest 429/429 · i18n 门 1661 键 0 缺 0 重 · 敏感扫 0 · 三源版本一致（15.25）· dist 校验（含 `coding-cli/latest`、`0.5.0-beta.15.25`×2、浏览器直连 registry URL 已删）· 新端点单测：`/cluster-info`（镜像 tag 正源 / 三级 Higress 探测 / L1 门 / 缓存）+ `/upgrade` 重接（17 例）+ `/coding-cli/latest`（8 例：L1 门 / 成功 / 白名单 400 / 缓存 / refresh / registry 500 降级 / 非 JSON 降级 / 子集）
+
+---
+
 ## 0.5.0-beta.15.24（2026-10-17 · 逐节点运行时版本 + 设置页两套认证分家 + Coding CLI 管理）
 
 **新增**
