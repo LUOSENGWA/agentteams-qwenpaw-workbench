@@ -35,6 +35,7 @@ import {
   type LlmTuningValues,
 } from "../lib/llm-tuning";
 import LlmTuningFields from "./LlmTuningFields";
+import { BrainIcon } from "./icons";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
 
@@ -59,6 +60,9 @@ function WorkerLlmTuningPanel({
   const tr = useT();
   const t = useThemeColors();
   const name = worker.name;
+  // 可收起/展开菜单（对齐 Coding CLI 段头家族）：宽屏默认收起，
+  // sheet（竖屏弹窗）默认展开（sheet 由 NarrowSheet 承载，无折叠头）。
+  const [open, setOpen] = React.useState(sheet === true);
   const [loading, setLoading] = React.useState(true);
   const [loadErr, setLoadErr] = React.useState("");
   const [current, setCurrent] = React.useState<LlmTuningRecord | null>(null);
@@ -89,11 +93,15 @@ function WorkerLlmTuningPanel({
     }
   }, [name, tr]);
 
-  // 延迟一个宏任务调用 load（避开 effect 同步阶段 setState 链，同 dashboard）。
+  // 惰性加载：首次展开才拉（折叠态不发起 GET /workers/{name}；多 worker 卡
+  // 聚合时省无谓请求）。加载一次后折叠/展开不重拉（保留编辑态）。
+  const loadedRef = React.useRef(false);
   React.useEffect(() => {
+    if (!open || loadedRef.current) return;
+    loadedRef.current = true;
     const timer = setTimeout(() => void load(), 0);
     return () => clearTimeout(timer);
-  }, [load]);
+  }, [open, load]);
 
   const onField = React.useCallback((key: LlmTuningKey, value: string) => {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -223,18 +231,61 @@ function WorkerLlmTuningPanel({
 
   if (sheet) return <>{body}</>;
 
+  // 收起态：紧凑段头（▸ + 图标 + 标题），点击展开（x=33 段头轨对齐 Coding CLI）。
+  if (!open) {
+    return (
+      <div
+        style={{
+          margin: "4px 0 4px 22px",
+          border: `1px solid ${t.border}`,
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 10px",
+            cursor: "pointer",
+          }}
+          onClick={() => setOpen(true)}
+        >
+          <span style={{ width: 12, fontSize: 10, color: "#888" }}>▸</span>
+          <BrainIcon size={13} />
+          <span style={{ fontWeight: 600, fontSize: 12 }}>{tr("LLM 调优")}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
+        margin: "4px 0 4px 22px",
         border: `1px solid ${t.border}`,
         borderRadius: 8,
         background: t.cardBg,
-        padding: 12,
+        padding: 10,
         display: "grid",
         gap: 10,
       }}
     >
-      <div style={{ fontWeight: 600, fontSize: 13 }}>{tr("LLM 调优")}</div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          cursor: "pointer",
+        }}
+        onClick={() => setOpen(false)}
+        title={tr("收起")}
+      >
+        <span style={{ width: 12, fontSize: 10, color: "#888" }}>▾</span>
+        <BrainIcon size={13} />
+        <span style={{ fontWeight: 600, fontSize: 12 }}>{tr("LLM 调优")}</span>
+      </div>
       {body}
     </div>
   );

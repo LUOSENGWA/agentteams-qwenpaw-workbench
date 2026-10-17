@@ -60,6 +60,134 @@ const CLI_LABEL: Record<CodingCliId, string> = {
   qoder: "Qoder",
 };
 
+// CLI id → npm 包名（正源 = 上游 worker_coding_cli.go CliSpec.NpmPackage）。
+// 用于「检查更新」best-effort 拉 registry latest（容器 npm 镜像源可能不同，
+// 仅作提示，不可达时优雅降级，用户仍可手动填 tag 升级）。
+const CLI_NPM_PACKAGE: Record<CodingCliId, string> = {
+  "qwen-code": "@qwen-code/qwen-code",
+  opencode: "opencode-ai",
+  qoder: "@qoder-ai/qodercli",
+};
+
+const LATEST_BASE = "https://registry.npmjs.org/";
+const LATEST_TIMEOUT_MS = 12000;
+
+interface LatestInfo {
+  checking: boolean;
+  latest?: string;
+  error?: string;
+}
+
+/** 宽松版本号比较（仅数字段；prerelease 视为低于同号）。解析失败=0（未知）。 */
+function compareVersions(a?: string, b?: string): number {
+  const parse = (v?: string): number[] | null => {
+    if (!v) return null;
+    const core = v.split("-")[0].split("+")[0];
+    const parts = core.split(".").map((x) => parseInt(x, 10));
+    if (parts.some((n) => Number.isNaN(n))) return null;
+    return parts;
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  if (!pa || !pb) return 0;
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  // 同号：prerelease 低于正式版。
+  const aPre = a && a.indexOf("-") >= 0 ? 1 : 0;
+  const bPre = b && b.indexOf("-") >= 0 ? 1 : 0;
+  return bPre - aPre;
+}
+
+/** best-effort 拉某 CLI 的 registry latest 版本号（小载荷 /latest）。 */
+async function fetchNpmLatest(pkg: string): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LATEST_TIMEOUT_MS);
+  try {
+    // pkg 形如 "@scope/name" 或 "name"，直接作 path（@ 与 / 原样，npm registry 接受）。
+    const res = await fetch(`${LATEST_BASE}${pkg}/latest`, {
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j = (await res.json()) as { version?: string };
+    if (!j.version) throw new Error("no version");
+    return j.version;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 已装 CLI 的 registry latest 指示徽标（best-effort；不可达优雅降级）。 */
+function LatestBadge({
+  info,
+  installed,
+  tr,
+}: {
+  info?: LatestInfo;
+  installed?: string;
+  tr: (k: string, v?: Record<string, string | number>) => string;
+}) {
+  if (!info) return null;
+  if (info.checking) {
+    return (
+      <antd.Tag
+        color="processing"
+        style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
+      >
+        {tr("检查更新中…")}
+      </antd.Tag>
+    );
+  }
+  if (info.error) {
+    return (
+      <antd.Tag
+        style={{
+          marginInlineEnd: 0,
+          fontSize: 10,
+          lineHeight: "16px",
+          opacity: 0.7,
+        }}
+      >
+        {tr("registry 不可达（手动填 tag 仍可升级）")}
+      </antd.Tag>
+    );
+  }
+  if (!info.latest) return null;
+  const cmp = compareVersions(installed, info.latest);
+  if (cmp < 0) {
+    return (
+      <antd.Tag
+        color="gold"
+        style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
+      >
+        {tr("有更新 → {v}", { v: info.latest })}
+      </antd.Tag>
+    );
+  }
+  if (cmp === 0) {
+    return (
+      <antd.Tag
+        color="success"
+        style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
+      >
+        {tr("已是最新")}
+      </antd.Tag>
+    );
+  }
+  // 无法比较（版本号非标准）→ 仅提示 registry latest。
+  return (
+    <antd.Tag
+      style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
+    >
+      {tr("registry 最新 {v}", { v: info.latest })}
+    </antd.Tag>
+  );
+}
+
 const SENTINEL = "***";
 const POLL_MS = 1500;
 const POLL_MAX_MS = 5 * 60 * 1000;
@@ -193,6 +321,10 @@ function useCodingCliPanel({
   const [suggestion, setSuggestion] = React.useState<CodingCliPreset | null>(null);
   const [jsonPatch, setJsonPatch] = React.useState("");
   const [uninstallTarget, setUninstallTarget] = React.useState<CodingCliId | null>(null);
+  // 检查更新：各已装 CLI 的 registry latest（best-effort；容器镜像源可能不同）。
+  const [latestInfo, setLatestInfo] = React.useState<
+    Record<string, LatestInfo>
+  >({});
   const pollRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = React.useRef(false);
   const settingsReqRef = React.useRef(0);
@@ -454,6 +586,25 @@ function useCodingCliPanel({
     [busy, loadSettings, onChanged, readOnly, selected, settingsOpen, tr, worker.name],
   );
 
+  // 检查更新：对所有已装 CLI 顺序拉 registry latest（best-effort；
+  // 失败仅标记该 CLI，不影响其他；容器 npm 镜像源可能不同，仅提示）。
+  const checkUpdates = React.useCallback(async () => {
+    const installed = items.filter((c) => c.installed);
+    if (installed.length === 0) return;
+    const next: Record<string, LatestInfo> = { ...latestInfo };
+    for (const c of installed) {
+      next[c.id] = { checking: true };
+      setLatestInfo({ ...next });
+      try {
+        const latest = await fetchNpmLatest(CLI_NPM_PACKAGE[c.id]);
+        next[c.id] = { checking: false, latest };
+      } catch {
+        next[c.id] = { checking: false, error: "unreachable" };
+      }
+      setLatestInfo({ ...next });
+    }
+  }, [items, latestInfo]);
+
   return {
     open,
     setOpen,
@@ -461,6 +612,8 @@ function useCodingCliPanel({
     items,
     loadError,
     load,
+    latestInfo,
+    checkUpdates,
     readOnly,
     selected,
     setSelected,
@@ -572,6 +725,13 @@ function CodingCliPanelBody({
               >
                 {cli.installed ? cli.version || tr("已安装") : tr("未安装")}
               </antd.Tag>
+              {cli.installed ? (
+                <LatestBadge
+                  info={s.latestInfo[cli.id]}
+                  installed={cli.version}
+                  tr={tr}
+                />
+              ) : null}
               {cli.authConfigured ? (
                 <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}>
                   {tr("鉴权已配置")}
@@ -592,6 +752,14 @@ function CodingCliPanelBody({
                     onClick={() => void s.loadSettings(cli.id)}
                   >
                     {tr("编辑配置")}
+                  </antd.Button>
+                  <antd.Button
+                    size="small"
+                    type="text"
+                    disabled={s.busy || s.readOnly}
+                    onClick={() => void s.runInstall(cli.id, "install")}
+                  >
+                    {tr("升级")}
                   </antd.Button>
                   <antd.Button
                     size="small"
@@ -618,13 +786,13 @@ function CodingCliPanelBody({
         ))}
       </div>
 
-      {/* 安装版本（可选，install 生效；空=latest）。 */}
+      {/* 版本 tag（安装/升级均生效；可填具体 tag 探测，空=latest）。 */}
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("安装版本（可选）")}</span>
+        <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("版本 tag（安装/升级）")}</span>
         <antd.Input
           size="small"
-          style={{ width: 150, fontFamily: "monospace" }}
-          placeholder={tr("默认 latest")}
+          style={{ width: 170, fontFamily: "monospace" }}
+          placeholder={tr("如 0.25.0；空=latest")}
           value={s.versionTag}
           disabled={s.readOnly}
           onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => s.setVersionTag(e.target.value)}
@@ -903,6 +1071,14 @@ function WorkerCodingCliPanel({
           </span>
         )}
         <div style={{ flex: 1 }} />
+        <antd.Button
+          size="small"
+          type="text"
+          disabled={s.state !== "ready" || s.busy}
+          onClick={() => void s.checkUpdates()}
+        >
+          {tr("检查更新")}
+        </antd.Button>
         <antd.Button
           size="small"
           type="text"

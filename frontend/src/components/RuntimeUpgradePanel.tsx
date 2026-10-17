@@ -106,6 +106,8 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
   const [running, setRunning] = React.useState(false);
   const [job, setJob] = React.useState<UpgradeRunHandle | null>(null);
   const [status, setStatus] = React.useState<UpgradeStatusResult | null>(null);
+  // 模式：单 Worker（原流程）｜ 批量（多选 + 检查更新 + 顺序触发）。
+  const [mode, setMode] = React.useState<"single" | "batch">("single");
 
   // workers 目录（L1；403=未配 token → 引导空态）。
   const loadWorkers = React.useCallback(async (silent = false) => {
@@ -242,7 +244,16 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
             ⓘ
           </span>
         </WbTooltip>
-        {light?.current && (
+        <antd.Segmented
+          size="small"
+          value={mode}
+          onChange={(v: string | number) => setMode(v as "single" | "batch")}
+          options={[
+            { label: tr("单 Worker"), value: "single" },
+            { label: tr("批量"), value: "batch" },
+          ]}
+        />
+        {mode === "single" && light?.current ? (
           <span
             style={{
               fontSize: 12,
@@ -252,7 +263,7 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
           >
             {tr("当前")} {light.current}
           </span>
-        )}
+        ) : null}
         <div style={{ flex: 1 }} />
         <WbTooltip title={tr("刷新")}>
           <antd.Button
@@ -287,6 +298,8 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
         />
       ) : null}
 
+      {mode === "single" ? (
+      <>
       {/* Worker 选择 */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         <antd.Select
@@ -555,6 +568,346 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
             showIcon
             message={tr(
               "升级将两阶段就地执行并重启该 Worker 容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。",
+            )}
+          />
+        </div>
+      </antd.Modal>
+      </>
+      ) : (
+        <BatchBody workers={workers} />
+      )}
+    </div>
+  );
+}
+
+/** 批量运行时升级（多选 qwenpaw worker）：
+ *  检查更新（批量轻探→每 worker 当前版本+可否就地升级）
+ *  + 顺序触发升级（一次一个，避容器重启互扰）+ 逐 worker job 跟踪。
+ *  自包含 state，与单 Worker 流程隔离。 */
+function BatchBody({ workers }: { workers: WorkerItem[] }) {
+  const t = useThemeColors();
+  const tr = useT();
+  const opsActive = useTabActive("ops");
+
+  const [selected, setSelected] = React.useState<string[]>([]);
+  const [lightMap, setLightMap] = React.useState<
+    Record<string, UpgradeLightCheck | null>
+  >({});
+  const [checking, setChecking] = React.useState(false);
+  const [checkDone, setCheckDone] = React.useState(false);
+  const [version, setVersion] = React.useState("");
+  const [confirming, setConfirming] = React.useState(false);
+  const [triggering, setTriggering] = React.useState(false);
+  const [jobs, setJobs] = React.useState<Record<string, UpgradeRunHandle>>({});
+  const [jobStatus, setJobStatus] = React.useState<
+    Record<string, UpgradeStatusResult | null>
+  >({});
+  const [seqIdx, setSeqIdx] = React.useState(-1);
+
+  const qwenpawWorkers = React.useMemo(
+    () => workers.filter((w) => w.runtime === "qwenpaw"),
+    [workers],
+  );
+
+  // 检查更新：逐 worker 轻探（顺序，避拨号风暴；worker 数量有限）。
+  const doCheckAll = React.useCallback(async () => {
+    if (qwenpawWorkers.length === 0) return;
+    setChecking(true);
+    setCheckDone(false);
+    const results: Record<string, UpgradeLightCheck | null> = {};
+    for (const w of qwenpawWorkers) {
+      try {
+        results[w.name] = await fetchUpgradeLightCheck(w.name);
+      } catch {
+        results[w.name] = {
+          worker: w.name,
+          container: `agentteams-worker-${w.name}`,
+          current: null,
+          supported: false,
+        };
+      }
+    }
+    setLightMap(results);
+    setChecking(false);
+    setCheckDone(true);
+  }, [qwenpawWorkers]);
+
+  // 顺序批量升级：一次触发一个，某 worker 触发失败即停（不继续）。
+  const doBatchUpgrade = React.useCallback(async () => {
+    if (selected.length === 0 || !version.trim()) return;
+    setConfirming(false);
+    setTriggering(true);
+    for (let i = 0; i < selected.length; i++) {
+      const w = selected[i];
+      setSeqIdx(i);
+      try {
+        const j = await runUpgrade(w, version.trim());
+        setJobs((prev) => ({ ...prev, [w]: j }));
+      } catch (e) {
+        antd.message.error(
+          `${w}：${e instanceof Error ? e.message : tr("触发失败")}`,
+        );
+        break;
+      }
+    }
+    setTriggering(false);
+    setSeqIdx(-1);
+  }, [selected, version, tr]);
+
+  const jobEntries = Object.entries(jobs);
+  const anyJobActive = jobEntries.some(([, j]) => {
+    const st = (jobStatus[j.worker]?.state as Record<string, unknown> | undefined)
+      ?.state as string | undefined;
+    return st === undefined || !UPGRADE_TERMINAL_STATES.includes(st);
+  });
+
+  usePoller({
+    fn: async () => {
+      for (const j of Object.values(jobs)) {
+        try {
+          const s = await fetchUpgradeStatus(j.worker, j.job_id);
+          setJobStatus((prev) => ({ ...prev, [j.worker]: s }));
+        } catch {
+          /* 瞬态失败（容器重启中）保留上次状态，下一轮再试 */
+        }
+      }
+    },
+    intervalMs: 5000,
+    active: opsActive && jobEntries.length > 0 && anyJobActive,
+    minPokeMs: 3000,
+  });
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {/* 检查更新 */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <antd.Button
+          onClick={() => void doCheckAll()}
+          loading={checking}
+          disabled={qwenpawWorkers.length === 0}
+        >
+          {tr("检查更新")}
+        </antd.Button>
+        <span style={{ fontSize: 12, color: t.textSecondary }}>
+          {tr("批量轻探各 qwenpaw Worker 的当前运行时版本与就地升级可用性。")}
+        </span>
+      </div>
+
+      {/* Worker 多选（qwenpaw 可选，其他运行时禁用） */}
+      <antd.Select
+        mode="multiple"
+        style={{ width: "100%", maxWidth: 520 }}
+        placeholder={tr("选择要升级的 Worker（仅 qwenpaw 可就地升级）")}
+        value={selected}
+        onChange={(v: string[]) => setSelected(v)}
+        showSearch
+        optionFilterProp="label"
+        options={workers.map((w) => ({
+          value: w.name,
+          label: w.name,
+          disabled: w.runtime !== "qwenpaw",
+        }))}
+        optionRender={(opt: { value?: string; label?: ReactNS.ReactNode }) => {
+          const w = workers.find((x) => x.name === opt.value);
+          if (!w) return opt.label as ReactNS.ReactNode;
+          return (
+            <span>
+              {w.name}
+              <span
+                style={{
+                  marginLeft: 8,
+                  fontSize: 11,
+                  color: w.runtime === "qwenpaw" ? t.textSecondary : "#e5484d",
+                }}
+              >
+                {w.runtime === "qwenpaw"
+                  ? w.runtime
+                  : `${w.runtime || "unknown"}（${tr("仅 qwenpaw 可就地升级")}）`}
+              </span>
+            </span>
+          );
+        }}
+      />
+
+      {/* 检查更新结果 */}
+      {checking || checkDone ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          {qwenpawWorkers.map((w) => {
+            const lc = lightMap[w.name];
+            return (
+              <div
+                key={w.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: `1px solid ${t.border}`,
+                  background: t.cardBg,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 12,
+                    flex: "1 1 auto",
+                    minWidth: 0,
+                  }}
+                >
+                  {w.name}
+                </span>
+                {checking && !lc ? (
+                  <antd.Skeleton
+                    active
+                    title={false}
+                    paragraph={false}
+                    style={{ width: 120 }}
+                  />
+                ) : lc ? (
+                  <>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "ui-monospace, monospace",
+                        color: t.text,
+                      }}
+                    >
+                      {tr("当前")} {lc.current || "—"}
+                    </span>
+                    <antd.Tag color={lc.supported ? "success" : "warning"}>
+                      {lc.supported ? tr("可就地升级") : tr("不支持就地升级")}
+                    </antd.Tag>
+                  </>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {/* 目标版本 + 批量升级 */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <antd.Input
+          style={{ width: 200, fontFamily: "ui-monospace, monospace" }}
+          placeholder={tr("目标版本，如 2.3.0")}
+          value={version}
+          onChange={(e: { target: { value: string } }) =>
+            setVersion(String(e.target.value || ""))}
+          allowClear
+        />
+        <antd.Button
+          type="primary"
+          danger
+          icon={<CloudSyncIcon />}
+          disabled={selected.length === 0 || !version.trim() || triggering}
+          loading={triggering}
+          onClick={() => setConfirming(true)}
+        >
+          {tr("批量升级（{n}）", { n: selected.length })}
+        </antd.Button>
+        <span style={{ fontSize: 12, color: t.textSecondary }}>
+          {tr("顺序执行（一次一个 worker，避免容器重启互扰）。")}
+        </span>
+      </div>
+
+      {/* 逐 worker job 跟踪 */}
+      {jobEntries.length > 0 ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          {jobEntries.map(([w, j], idx) => {
+            const st = (jobStatus[j.worker]?.state as
+              | Record<string, unknown>
+              | undefined)?.state as string | undefined;
+            return (
+              <div
+                key={w}
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  border: `1px solid ${t.border}`,
+                  background: t.cardBg,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {w}
+                </span>
+                <antd.Badge
+                  status={jobStateVariant(st)}
+                  text={
+                    <span
+                      style={{
+                        fontFamily: "ui-monospace, monospace",
+                        fontSize: 11,
+                      }}
+                    >
+                      {j.job_id}
+                    </span>
+                  }
+                />
+                {st ? <antd.Tag color={jobStateVariant(st)}>{st}</antd.Tag> : null}
+                <span style={{ fontSize: 12, color: t.textSecondary }}>
+                  {tr("目标")} <b style={{ color: t.text }}>{j.version}</b>
+                </span>
+                {idx === seqIdx && triggering ? (
+                  <antd.Tag color="processing">{tr("触发中")}</antd.Tag>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {/* 破坏性二次确认 */}
+      <antd.Modal
+        open={confirming}
+        title={tr("确认触发批量运行时升级？")}
+        onCancel={() => setConfirming(false)}
+        onOk={() => void doBatchUpgrade()}
+        okText={tr("确认升级")}
+        okButtonProps={{ danger: true, loading: triggering }}
+        cancelText={tr("取消")}
+      >
+        <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
+          <span>
+            {tr("Worker（{n} 个）", { n: selected.length })}：
+            {selected.join("、")}
+          </span>
+          <span>
+            {tr("目标版本")}：
+            <b style={{ fontFamily: "ui-monospace, monospace" }}>
+              {version.trim()}
+            </b>
+          </span>
+          <antd.Alert
+            type="warning"
+            showIcon
+            message={tr(
+              "将按顺序对每个 Worker 两阶段就地升级并重启容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。",
             )}
           />
         </div>
