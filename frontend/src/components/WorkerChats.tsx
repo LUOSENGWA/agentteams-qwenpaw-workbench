@@ -512,9 +512,9 @@ function WorkerChats({
   const [chats, setChats] = React.useState<WorkerChatSpec[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // QwenPaw 会话页同款 Active/Archived 双 tab + Coding CLI tab
-  //（10/17 反馈：coding CLI 会话归 worker 会话区——同抽屉第三 tab，
-  // 数据源 = Controller /coding-runs 按 worker 过滤，只读）。
+  // QwenPaw 会话页同款 Active/Archived 双 tab + Coding CLI tab。
+  // coding CLI 会话归 worker 会话区——同抽屉第三 tab，
+  // 数据源 = Controller /coding-runs 按 worker 过滤，只读。
   const [tab, setTab] = React.useState<"active" | "archived" | "coding">("active");
 
   // 卡片列表排序（Table sorter 的卡片等价物；
