@@ -2283,6 +2283,95 @@ const DICT: Record<string, { en: string }> = {
   "团队 / 工作流等数据来自 Controller，显示正常；但聊天、通知、@提醒与任务状态同步需要 Matrix 账号。在「配置」页完成 Matrix 登录后功能即补齐。": {
     en: "Team / workflow data from the Controller renders normally, but chat, notifications, @-mentions and task status sync require a Matrix account. Sign in on the Settings page to unlock the full feature set.",
   },
+  // ── AgentTeams 版本语义（15.24 T2：镜像 tag 正源）──
+  "AgentTeams 版本": { en: "AgentTeams version" },
+  "AgentTeams 版本 = 节点镜像 tag（Manager/Worker CRD image 正源）。容器内运行时实际版本（QwenPaw/OpenClaw）看 Worker 详情「运行时版本」": {
+    en: "AgentTeams version = node image tag (authoritative source: Manager/Worker CRD image). The actual in-container runtime version (QwenPaw/OpenClaw) is shown under \"Runtime version\" in the Worker details.",
+  },
+  // ── 设置页：Controller token 与 Higress 认证分家（15.24）──
+  "L1 管理面（Controller 管理员 token）": { en: "L1 admin plane (Controller admin token)" },
+  "② Higress Console 认证（模型面：alias/提供商/路由）——独立认证系统，与 ① Controller 认证互不相关": {
+    en: "② Higress Console auth (model plane: aliases / providers / routes) — an independent auth system, unrelated to ① Controller auth",
+  },
+  "Higress Console 自己的账号体系（admin 账号+密码），与 Controller 认证互不相关、可各自独立配置。即使某部署中两者恰好同值，它们仍是两个不同系统的凭证——不可互相替代。": {
+    en: "Higress Console has its own account system (admin account + password), unrelated to Controller auth and configurable independently. Even if both happen to be the same value in some deployment, they are credentials of two different systems — not interchangeable.",
+  },
+  "Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。两套独立的 L1 认证：① Controller 管理员 token（L1 管理面模式内配置）——CRD 管理（入职/建队/改配/删除）+ 全部 Worker/Team 状态视图（Controller 唯一凭证，无接口获取——上游安全设计，部署管理员提供，粘贴一次永久记住）；② Higress 账号+密码（下方独立段配置，与 L1/L2 模式无关）——建 Higress Console 会话（模型下拉 alias 层）。两者是不同系统的凭证，互不替代、可同时配置。": {
+    en: "Matrix login (L2): view teams this account can access + project operations (start / pause / artifacts) — enough for daily use. Two independent L1 auths: ① Controller admin token (configured in L1 admin mode) — CRD management (onboard / create team / edit / delete) + all Worker/Team status views (the Controller's only credential, no endpoint issues it — upstream security design; provided by the deployment admin, paste once and it is remembered forever); ② Higress account + password (configured in the standalone section below, independent of L1/L2 mode) — establishes a Higress Console session (model dropdown alias layer). They are credentials of different systems, not interchangeable, and can be configured together.",
+  },
+  // ── Coding CLI 面板（1.2.5 #1360 消费）──
+  "Coding CLI": { en: "Coding CLI" },
+  "Coding CLI（安装/升级/settings）": { en: "Coding CLI (install / upgrade / settings)" },
+  "加载失败：{e}": { en: "Load failed: {e}" },
+  "加载 settings 失败": { en: "Failed to load settings" },
+  "加载 settings…": { en: "Loading settings…" },
+  "{cli} 任务完成": { en: "{cli} task finished" },
+  "先安装当前 CLI，再套用场景模板": { en: "Install the current CLI first, then apply a scenario preset" },
+  "共享卷：{v}": { en: "Shared volume: {v}" },
+  "MCP：{v}": { en: "MCP: {v}" },
+  "产物：{v}": { en: "Artifacts: {v}" },
+  // ── Coding CLI 面板（1.2.5 #1360 消费，续）──
+  "编码 CLI 探测中（容器内逐 CLI 跑 --version，有 exec 成本）…": {
+    en: "Probing coding CLIs (runs --version inside the container per CLI — has exec cost)…",
+  },
+  "该 Worker 的编码 CLI 管理暂不可用，升级 AgentTeams 后自动生效。": {
+    en: "Coding CLI management for this Worker is not available yet; it activates automatically after upgrading AgentTeams.",
+  },
+  "当前角色仅可查看，不能修改编码 CLI": { en: "Your role can only view coding CLIs, not modify them" },
+  "当前角色仅可查看，不能修改编码 CLI。": { en: "Your role can only view coding CLIs, not modify them." },
+  "已安装": { en: "Installed" },
+  "未安装": { en: "Not installed" },
+  "鉴权已配置": { en: "Auth configured" },
+  "容器重建后需重新安装；已保存的鉴权可保留": {
+    en: "Reinstallation required after container rebuild; saved auth is retained",
+  },
+  "编辑配置": { en: "Edit settings" },
+  "卸载": { en: "Uninstall" },
+  "安装": { en: "Install" },
+  "安装版本（可选）": { en: "Install version (optional)" },
+  "默认 latest": { en: "default: latest" },
+  "模型名": { en: "Model name" },
+  "（已保存，留空保留）": { en: "(saved — leave empty to keep)" },
+  "当前配置（只读）": { en: "Current settings (read-only)" },
+  "可选 JSON 补丁（同键以补丁为准）": { en: "Optional JSON patch (patch wins on same key)" },
+  "场景模板（只写模型名，工具链/MCP 需确认）· 当前 CLI：{c}": {
+    en: "Scenario presets (write model name only; toolchain/MCP need confirmation) · current CLI: {c}",
+  },
+  "建议清单（需人工确认，未写入 Worker CR）": {
+    en: "Suggestion list (human confirmation required; not written to the Worker CR)",
+  },
+  "工具链：{v}": { en: "Toolchain: {v}" },
+  "工具链说明：{v}": { en: "Toolchain note: {v}" },
+  "环境变量：{v}": { en: "Env vars: {v}" },
+  "架构注意：{v}": { en: "Architecture note: {v}" },
+  "确认卸载": { en: "Confirm uninstall" },
+  "将从该 Worker 容器卸载 {cli}。安装状态会丢失，已保存的鉴权可保留。": {
+    en: "This uninstalls {cli} from the Worker container. Install state is lost; saved auth is retained.",
+  },
+  "网络错误": { en: "Network error" },
+  "退出码 {c}": { en: "Exit code {c}" },
+  "安装失败": { en: "Install failed" },
+  "查询任务失败": { en: "Failed to query the task" },
+  "安装仍在进行，请稍后刷新": { en: "Install still in progress — refresh later" },
+  "安装请求未返回任务 ID": { en: "Install request returned no task ID" },
+  "该 CLI 已有安装任务进行中": { en: "An install task for this CLI is already running" },
+  "当前部署模式不支持容器内安装与配置（embedded 才可执行）": {
+    en: "This deployment mode does not support in-container install/config (embedded only)",
+  },
+  "无法在该 Worker 容器内执行管理命令": {
+    en: "Cannot run management commands inside this Worker container",
+  },
+  "安装请求失败": { en: "Install request failed" },
+  "已套用 {n}": { en: "Applied {n}" },
+  "套用模板失败": { en: "Failed to apply preset" },
+  "补丁不是合法 JSON": { en: "Patch is not valid JSON" },
+  "补丁须为 JSON 对象": { en: "Patch must be a JSON object" },
+  "补丁不能包含脱敏占位，请填写真实密钥或留空由密钥栏保留": {
+    en: "Patch must not contain redaction placeholders — enter the real secret, or leave the key field empty to keep the saved one",
+  },
+  "获取（在部署宿主机执行后复制，切到上方「L1 管理面」模式粘进 ① Controller 认证字段）：": {
+    en: "Obtain (run on the deployment host, copy the output, switch to the \"L1 admin plane\" mode above and paste into the ① Controller auth field):",
+  },
 };
 
 type Lang = "zh" | "en";

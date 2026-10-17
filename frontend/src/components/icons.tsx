@@ -132,6 +132,24 @@ export function BoxIcon({ size = 14, style, className }: IconProps) {
   );
 }
 
+/** 💻 代码括号（lucide code，stroke 式同 BoxIcon）。
+ * export CodeIcon */
+export function CodeIcon({ size = 14, style, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
+      className={className}
+      aria-hidden
+    >
+      <polyline points="16 18 22 12 16 6" stroke="currentColor" stroke-width="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+      <polyline points="8 6 2 12 8 18" stroke="currentColor" stroke-width="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
 /** 🔍 搜索（HarmonyOS ic_public_search）。
  * export SearchIcon */
 export const SearchIcon = makeFilled([

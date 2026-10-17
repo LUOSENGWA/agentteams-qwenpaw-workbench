@@ -481,6 +481,11 @@ const SettingsTab = React.memo(function SettingsTab({
   );
   const [verifying, setVerifying] = React.useState(false);
   const [verifyRes, setVerifyRes] = React.useState<VerifyAdminResult | null>(null);
+  // 验证来源标记（10/17 用户：admin token 认证与 Higress 认证是两回事——
+  // 错误回报各归各自块，不共享锚点）。
+  const [verifySource, setVerifySource] = React.useState<
+    "controller" | "higress" | null
+  >(null);
   // 可选模块：集群负载（L1 专属）
   const [sglangEnabled, setSglangEnabled] = React.useState(false);
   // SGLang 双地址（内网/外网）——与 matrix/controller 同构。
@@ -899,6 +904,11 @@ const SettingsTab = React.memo(function SettingsTab({
     }) => {
       setVerifying(true);
       setVerifyRes(null);
+      setVerifySource(
+        body.admin_username || body.admin_password
+          ? "higress"
+          : "controller",
+      );
       try {
         const res = await verifyAdmin(body);
         setVerifyRes(res);
@@ -1497,7 +1507,7 @@ const SettingsTab = React.memo(function SettingsTab({
               }}
             >
               <antd.Radio value="matrix">{tr("Matrix 登录（L2，默认）")}</antd.Radio>
-              <antd.Radio value="token">{tr("L1 管理面（token / Higress）")}</antd.Radio>
+              <antd.Radio value="token">{tr("L1 管理面（Controller 管理员 token）")}</antd.Radio>
             </antd.Radio.Group>
           ) : (
             <antd.Segmented
@@ -1511,7 +1521,7 @@ const SettingsTab = React.memo(function SettingsTab({
               }}
               options={[
                 { label: tr("Matrix 登录（L2，默认）"), value: "matrix" },
-                { label: tr("L1 管理面（token / Higress）"), value: "token" },
+                { label: tr("L1 管理面（Controller 管理员 token）"), value: "token" },
               ]}
             />
           )}
@@ -1589,12 +1599,45 @@ const SettingsTab = React.memo(function SettingsTab({
                   </div>
                 ) : null}
               </div>
+              {/* ② Higress Console 认证已移至下方独立段（10/17 用户：两套认证是两回事）。 */}
+              {verifyRes && !verifyRes.ok && verifySource === "controller" ? (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#cf1322",
+                    background: "rgba(245,34,45,0.08)",
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                  }}
+                >
+                  {tr("验证失败：{err}", { err: verifyRes.error || "" })}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div
+              style={{
+                fontSize: 12,
+                color: "#888",
+                marginBottom: 6,
+                background: t.toolBg,
+                padding: "6px 10px",
+                borderRadius: 6,
+              }}
+            >
+              {tr("使用当前登录的 Matrix 账号，无需 token。注意：Controller 的 Matrix 认证只接受权限等级 2（level 2）的 Human 账号——level 1 的 admin 账号会 401，请改用管理员 token 模式，或让部署管理员把该 Human 改为 level 2（权限自检可见当前账号等级）。")}
+            </div>
+          )}
+          {/* ② Higress Console 认证——独立认证系统（10/17 用户：admin token 认证
+     与 Higress 认证是两回事——不再隶属 L1 管理面模式；模型面 alias/提供商/路由
+     与 Controller 认证模式无关，独立配置）。 */}
+          <div style={{ display: "grid", gap: 10, marginTop: 14, padding: "10px 12px", border: "1px solid rgba(128,128,128,0.18)", borderRadius: 8 }}>
               <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: t.hoverBg, borderRadius: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>
-                  {tr("② Higress Console 认证（模型面：alias/提供商/路由）——独立系统")}
+                  {tr("② Higress Console 认证（模型面：alias/提供商/路由）——独立认证系统，与 ① Controller 认证互不相关")}
                 </div>
                 <div style={{ fontSize: 11.5, color: "#888", lineHeight: 1.6 }}>
-                  {tr("Higress Console 自己的账号体系（admin 账号+密码），与 Controller 认证互不相关、可各自独立配置。")}
+                  {tr("Higress Console 自己的账号体系（admin 账号+密码），与 Controller 认证互不相关、可各自独立配置。即使某部署中两者恰好同值，它们仍是两个不同系统的凭证——不可互相替代。")}
                 </div>
                 <antd.Input
                   placeholder={tr("admin 账号（如 admin）")}
@@ -1643,7 +1686,7 @@ const SettingsTab = React.memo(function SettingsTab({
                   </span>
                 </div>
               </div>
-              {verifyRes && !verifyRes.ok ? (
+              {verifyRes && !verifyRes.ok && verifySource === "higress" ? (
                 <div
                   style={{
                     fontSize: 12,
@@ -1724,7 +1767,7 @@ const SettingsTab = React.memo(function SettingsTab({
                     {tr("L1 账号/密码验证通过 = 已持有网关 Console 会话（模型下拉的 alias 可用）。但 Worker 运行配置的 L1 字段（并发限流/上下文管理/shell 组等）与 CRD 管理还需要 Controller 管理员 token——另一套凭证，密码不替代 token。")}
                   </span>
                   <span>
-                    {tr("获取（在部署宿主机执行后复制，粘进上方 ① 字段）：")}
+                    {tr("获取（在部署宿主机执行后复制，切到上方「L1 管理面」模式粘进 ① Controller 认证字段）：")}
                     <code
                       style={{
                         background: t.toolBg,
@@ -1739,23 +1782,9 @@ const SettingsTab = React.memo(function SettingsTab({
                   </span>
                 </div>
               ) : null}
-            </div>
-          ) : (
-            <div
-              style={{
-                fontSize: 12,
-                color: "#888",
-                marginBottom: 6,
-                background: t.toolBg,
-                padding: "6px 10px",
-                borderRadius: 6,
-              }}
-            >
-              {tr("使用当前登录的 Matrix 账号，无需 token。注意：Controller 的 Matrix 认证只接受权限等级 2（level 2）的 Human 账号——level 1 的 admin 账号会 401，请改用管理员 token 模式，或让部署管理员把该 Human 改为 level 2（权限自检可见当前账号等级）。")}
-            </div>
-          )}
+          </div>
           <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>
-            {tr("Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。L1 两块独立配置：① Controller 管理员 token——CRD 管理（入职/建队/改配/删除）+ 全部 Worker/Team 状态视图（Controller 唯一凭证，无接口获取——上游安全设计，部署管理员提供，粘贴一次永久记住）；② Higress 账号+密码——另建 Higress Console 会话（模型下拉 alias 层），与 ① 互不替代、可同时配置。")}
+            {tr("Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。两套独立的 L1 认证：① Controller 管理员 token（L1 管理面模式内配置）——CRD 管理（入职/建队/改配/删除）+ 全部 Worker/Team 状态视图（Controller 唯一凭证，无接口获取——上游安全设计，部署管理员提供，粘贴一次永久记住）；② Higress 账号+密码（下方独立段配置，与 L1/L2 模式无关）——建 Higress Console 会话（模型下拉 alias 层）。两者是不同系统的凭证，互不替代、可同时配置。")}
           </div>
         </div>
         <StartupPrefRow />

@@ -1,9 +1,10 @@
-import { BookmarkIcon, TeamIcon, HistoryIcon, WarnIcon, MessageIcon as ChatIcon, SettingsIcon, WrenchIcon } from "./icons";
+import { BookmarkIcon, TeamIcon, HistoryIcon, WarnIcon, MessageIcon as ChatIcon, SettingsIcon, WrenchIcon, CodeIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import {
   CheckpointUnavailableError,
   fetchControllerVersion,
+  fetchNodeVersion,
   fetchWorkerCheckpointGraph,
   fetchWorkerCheckpointStatus,
   imageTag,
@@ -15,6 +16,7 @@ import {
   type CheckpointStatusResponse,
   type ControllerVersion,
   type ManagerInfo,
+  type NodeVersion,
   type SpawnNode,
   type WorkerSpawnGroup,
   type WorkerTreeTeam,
@@ -34,6 +36,7 @@ import WorkerResourcePanel from "./WorkerResourcePanel";
 import SkillCenter from "./SkillCenter";
 import WorkerRuntimeConfig from "./WorkerRuntimeConfig";
 import WorkerEnvPanel from "./WorkerEnvPanel";
+import WorkerCodingCliPanel from "./WorkerCodingCliPanel";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -114,6 +117,17 @@ const RUNTIME_TAG_COLOR: Record<string, string> = {
   hermes: "purple",
   openhuman: "cyan",
   "deepseek-harness": "magenta",
+};
+
+/** 运行时显示名（运行时版本标签用；CRD runtime 值 → 产品名）。
+ * copaw=legacy 兼容名，实际跑 QwenPaw 引擎，标注「（legacy）」。 */
+const RUNTIME_LABELS: Record<string, string> = {
+  qwenpaw: "QwenPaw",
+  copaw: "QwenPaw（legacy）",
+  openclaw: "OpenClaw",
+  hermes: "Hermes",
+  openhuman: "OpenHuman",
+  "deepseek-harness": "DeepSeek Harness",
 };
 
 /** 状态一致性：容器 running + CRD 状态非异常 = 一致（容器行可隐藏）。
@@ -378,6 +392,31 @@ function WorkerManageInfo({
   const [rcOpen, setRcOpen] = React.useState(false);
   // 竖屏：环境变量与网关探测（1.2.5+，envEditable=true 才渲染）同款抽屉。
   const [envOpen, setEnvOpen] = React.useState(false);
+  // 竖屏：Coding CLI（1.2.5+ #1360）同款抽屉。
+  const [cliOpen, setCliOpen] = React.useState(false);
+  // 运行时版本（node-version 端点：Controller docker 代理容器内 exec 探测
+  // qwenpaw/openclaw 实际版本；后端 10min 缓存。L1 only——无 token 不拨号，
+  // 显占位。宿主 QwenPaw 版本 ≠ worker 内版本（2.2.2 vs 2.2.1 实锤），
+  // 必须 per-node 探测，不可拿宿主值冒充。）
+  const [nodeVer, setNodeVer] = React.useState<NodeVersion | null>(null);
+  const [nodeVerErr, setNodeVerErr] = React.useState("");
+  React.useEffect(() => {
+    if (!l1) return;
+    let alive = true;
+    setNodeVer(null);
+    setNodeVerErr("");
+    fetchNodeVersion(worker.name)
+      .then((d) => {
+        if (alive) setNodeVer(d);
+      })
+      .catch((e) => {
+        if (alive)
+          setNodeVerErr(e instanceof Error ? e.message : tr("探测失败"));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [l1, worker.name, tr]);
   const meta = phaseMeta(worker.phase);
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const busy = acting != null;
@@ -438,10 +477,11 @@ function WorkerManageInfo({
         <Item label={tr("Worker 状态")} value={<antd.Tag color={meta.color} style={{ margin: 0 }}>{meta.label}</antd.Tag>} />
         <Item label={tr("团队")} value={worker.team || "—"} />
         <Item label={tr("角色")} value={worker.role || "—"} />
-        {/* 运行时版本=Worker 镜像 tag（WorkerResponse.image 正源；
-  tooltip 悬停看完整镜像；旧 Controller 无字段 = —）。 */}
+        {/* AgentTeams 版本=Worker 镜像 tag（WorkerResponse.image 正源；
+  10/17 用户纠偏：v1.2.5 是 AgentTeams 发布版本，不是运行时版本——
+  旧标签「运行时版本」已改名；tooltip 悬停看完整镜像）。 */}
         <Item
-          label={tr("运行时版本")}
+          label={tr("AgentTeams 版本")}
           value={
             worker.image ? (
               <WbTooltip
@@ -456,6 +496,34 @@ function WorkerManageInfo({
                 </antd.Tag>
               </WbTooltip>
             ) : "—"
+          }
+        />
+        {/* 运行时版本=容器内运行时实际版本（node-version 端点 exec 探测；
+  覆盖 qwenpaw/copaw/openclaw/hermes/deepseek-harness 全 runtime 族——
+  探测链 qwenpaw 包元数据优先、openclaw --version 兜底）。L1 only；
+  探测失败/非 L1 → —（tooltip 带原因）。 */}
+        <Item
+          label={tr("运行时版本")}
+          value={
+            !l1 ? (
+              "—"
+            ) : nodeVer ? (
+              nodeVer.runtime_version ? (
+                <antd.Tag color="green" style={{ margin: 0, fontSize: 11 }}>
+                  {RUNTIME_LABELS[nodeVer.runtime || ""] || nodeVer.runtime} {nodeVer.runtime_version}
+                </antd.Tag>
+              ) : (
+                <WbTooltip title={nodeVer.runtime_version_error || tr("未知")}>
+                  <span style={{ color: "#999", cursor: "help" }}>—</span>
+                </WbTooltip>
+              )
+            ) : nodeVerErr ? (
+              <WbTooltip title={nodeVerErr}>
+                <span style={{ color: "#999", cursor: "help" }}>—</span>
+              </WbTooltip>
+            ) : (
+              <span style={{ color: "#999" }}>…</span>
+            )
           }
         />
         <Item label={tr("模型")} value={worker.model || "—"} wide />
@@ -595,12 +663,25 @@ function WorkerManageInfo({
             {tr("环境变量")}
           </antd.Button>
         ) : null}
+        {/* 竖屏：Coding CLI 入口=紧凑按钮（1.2.5+ #1360；admin 侧渲染——
+  L2 打开后面板自行 403 降级只读，与宽屏同语义）。 */}
+        {narrow ? (
+          <antd.Button
+            size="small"
+            icon={<CodeIcon size={12} />}
+            onClick={() => setCliOpen(true)}
+          >
+            {tr("Coding CLI")}
+          </antd.Button>
+        ) : null}
       </div>
       {/* ：Worker 运行配置（上游 #1231 消费）——
  默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。
- 竖屏（narrow）：内联 → 竖屏友好弹窗（上方紧凑按钮 → NarrowSheet
- 底部抽屉；面板 sheet=true 去卡片外框/自动展开，内容与懒加载逻辑不变）；
- 宽屏：保持内联。 */}
+ 宽屏内联卡已移至 WorkerRow 展开区（段头对齐：本容器带 30+2+10=42px
+ 偏移，卡留在里面段头会被顶到 x=75，与资源管理/检查点/工具执行安全的
+  x=33 轨错位——10/17 用户「四个菜单没有水平对齐」根因）。
+ 竖屏（narrow）：紧凑按钮 → NarrowSheet 底部抽屉（fixed 定位弹窗，
+ 容器内渲染无碍；面板 sheet=true 去卡片外框/自动展开）。 */}
       {narrow ? (
         <NarrowSheet
           open={rcOpen}
@@ -614,36 +695,37 @@ function WorkerManageInfo({
             onOpenSettings={onOpenSettings}
           />
         </NarrowSheet>
-      ) : (
-        <WorkerRuntimeConfig
-          name={worker.name}
-          l1={l1}
-          onOpenSettings={onOpenSettings}
-        />
-      )}
+      ) : null}
       {/* ：Worker 环境变量 + 网关探测（AgentTeams 1.2.5+ #1306）。
   envEditable=true 才渲染（L2=遮蔽 false / 旧 Controller=undefined，
-  两者隐藏——优雅降级）；竖屏同款抽屉，宽屏内联。保存后容器重建
-  生效——面板内有二次确认与明示。 */}
-      {worker.envEditable === true ? (
-        narrow ? (
-          <NarrowSheet
-            open={envOpen}
-            title={tr("环境变量与网关探测")}
-            onClose={() => setEnvOpen(false)}
-          >
-            <WorkerEnvPanel
-              sheet
-              worker={worker}
-              onChanged={() => invalidateTags(["admin"])}
-            />
-          </NarrowSheet>
-        ) : (
+  两者隐藏——优雅降级）；宽屏内联卡同移 WorkerRow（段头对齐）；
+  竖屏同款抽屉。保存后容器重建生效——面板内有二次确认与明示。 */}
+      {worker.envEditable === true && narrow ? (
+        <NarrowSheet
+          open={envOpen}
+          title={tr("环境变量与网关探测")}
+          onClose={() => setEnvOpen(false)}
+        >
           <WorkerEnvPanel
+            sheet
             worker={worker}
             onChanged={() => invalidateTags(["admin"])}
           />
-        )
+        </NarrowSheet>
+      ) : null}
+      {/* ：Coding CLI（AgentTeams 1.2.5+ #1360）竖屏同款抽屉。 */}
+      {narrow ? (
+        <NarrowSheet
+          open={cliOpen}
+          title={tr("Coding CLI（安装/升级/settings）")}
+          onClose={() => setCliOpen(false)}
+        >
+          <WorkerCodingCliPanel
+            sheet
+            worker={worker}
+            onChanged={() => invalidateTags(["admin"])}
+          />
+        </NarrowSheet>
       ) : null}
     </div>
   );
@@ -850,6 +932,32 @@ function WorkerRow({
               onOpenSettings={onOpenSettings}
             />
           ) : null}
+          {/* 段头对齐（10/17 用户）：运行配置/环境变量宽屏内联卡从
+  WorkerManageInfo 42px 偏移容器移到此——与下方资源管理/检查点/
+  工具执行安全同一条 x=33 段头轨（chevron 槽 12 + 图标 13 + 标题 12/600）。
+  narrow 走 WorkerManageInfo 内的紧凑按钮 + NarrowSheet，不受影响。 */}
+          {adminWorker && !narrow ? (
+            <>
+              <WorkerRuntimeConfig
+                name={adminWorker.name}
+                l1={l1}
+                onOpenSettings={onOpenSettings}
+              />
+              {adminWorker.envEditable === true ? (
+                <WorkerEnvPanel
+                  worker={adminWorker}
+                  onChanged={() => invalidateTags(["admin"])}
+                />
+              ) : null}
+              {/* ：Coding CLI（AgentTeams 1.2.5+ #1360）宽屏内联卡，
+  x=33 段头轨对齐（同款视觉家族；404 旧 Controller=面板内横幅，
+  L2=只读降级，探测惰性不后台轮询）。 */}
+              <WorkerCodingCliPanel
+                worker={adminWorker}
+                onChanged={() => invalidateTags(["admin"])}
+              />
+            </>
+          ) : null}
           {/* ：per-Worker 资源管理
  （技能/MCP/频道/工具 四页签，就地编辑）。
  技能/MCP 改为技能中心同款可编辑卡直接嵌入
@@ -966,7 +1074,10 @@ function CheckpointCard({
 
   const nodes = state.kind === "ok" ? state.graph.nodes.slice(0, 5) : [];
   return (
-    <div style={{ marginLeft: 30, fontSize: 12 }}>
+    // 段头对齐（10/17 用户）：与卡片族同一 x=33 轨——无卡片边框，
+    // marginLeft 23 + paddingLeft 10 = 33（卡片族 = margin 22 + border 1
+    // + padding 10）；chevron 槽 12 / 图标 13 / gap 6 / 标题 12/600 同规格。
+    <div style={{ marginLeft: 23, fontSize: 12 }}>
       <div
         style={{
           display: "flex",
@@ -974,12 +1085,12 @@ function CheckpointCard({
           gap: 6,
           cursor: gated ? "not-allowed" : "pointer",
           color: gated ? "#bbb" : "#888",
-          padding: "2px 0",
+          padding: "2px 0 2px 10",
         }}
         onClick={() => !gated && setOpen((v) => !v)}
       >
-        <span style={{ fontSize: 11 }}>{open ? "▾" : "▸"}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><BookmarkIcon size={12} /> {tr("检查点")}</span>
+        <span style={{ width: 12, fontSize: 10, flexShrink: 0 }}>{open ? "▾" : "▸"}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BookmarkIcon size={13} /> {tr("检查点")}</span>
         {gated ? (
           <span style={{ fontSize: 11, color: "#bbb" }}>{tr("仅 QwenPaw 运行时可用")}</span>
         ) : null}
@@ -1714,11 +1825,24 @@ export function ManagerTable({
             },
           },
           {
-            title: tr("版本"),
+            title: tr("AgentTeams 版本"),
             dataIndex: "version",
             width: W.version,
+            /* 10/17 用户纠偏：ManagerResponse.version 实为镜像全串——
+  列名改「AgentTeams 版本」+ 显 tag（imageTag 去 registry 前缀），
+  悬停看完整镜像。容器内运行时版本在展开详情面板。 */
             render: (v: string) => (
-              <ExpandableText text={v} title={tr("版本")} />
+              <WbTooltip
+                title={
+                  <span style={{ fontFamily: "monospace", wordBreak: "break-all", maxWidth: 320 }}>
+                    {v}
+                  </span>
+                }
+              >
+                <span style={{ fontFamily: "monospace", fontSize: 11, cursor: "help" }}>
+                  {v ? imageTag(v) : "—"}
+                </span>
+              </WbTooltip>
             ),
           },
           {
@@ -1734,13 +1858,20 @@ export function ManagerTable({
   );
 }
 
-/** 团队管理页头：AgentTeams Controller 版本徽章。
- * 数据源 = GET /api/v1/version（60s 缓存）。源码构建回 controller="dev"
- *（上游未注入版本号，与 dashboard 关于页同款行为）——照实显示；
- * 各节点真实发布版本 = 镜像 tag（Worker 详情「运行时版本」/ Manager 表
- *「版本」列），tooltip 指路。L1-only（代理需 controller token）；
- * 旧 Controller 无端点 404 / 失败 → 不渲染（不显占位）。 */
-function ControllerVersionBadge({ hasToken }: { hasToken?: boolean }) {
+/** 团队管理页头：AgentTeams 版本徽章。
+ * 版本正源优先级（10/17 用户纠偏：v1.2.5 是 AgentTeams 版本，不是
+ * 运行时版本；源码构建 /api/v1/version 回 "dev" 会误导）：
+ * 1) 节点镜像 tag（Manager 优先 / Worker 兜底，imageTag 去 registry
+ *    前缀）——实盘发布版本，源码构建也准（CRD image 恒带 tag）。
+ * 2) 回退 /api/v1/version 端点值（仅当无镜像信息且值非 dev）。
+ * L1-only（代理需 controller token）；无 admin 数据且端点 404 → 不渲染。 */
+function ControllerVersionBadge({
+  hasToken,
+  admin,
+}: {
+  hasToken?: boolean;
+  admin?: AdminData | null;
+}) {
   const tr = useT();
   const [v, setV] = React.useState<ControllerVersion | null>(null);
   React.useEffect(() => {
@@ -1757,16 +1888,23 @@ function ControllerVersionBadge({ hasToken }: { hasToken?: boolean }) {
       alive = false;
     };
   }, [hasToken]);
-  if (!v || !v.controller) return null;
+  const nodeTag =
+    imageTag(admin?.managers?.[0]?.image) ||
+    imageTag(admin?.workers?.[0]?.image) ||
+    "";
+  const version =
+    nodeTag ||
+    (v && v.controller && v.controller !== "dev" ? v.controller : "");
+  if (!version) return null;
   return (
     <WbTooltip
       title={tr(
-        "AgentTeams Controller 版本（/api/v1/version 端点值；源码构建显示 dev。各节点实际发布版本看 Worker 详情「运行时版本」与 Manager 表「版本」列的镜像 tag）",
+        "AgentTeams 版本 = 节点镜像 tag（Manager/Worker CRD image 正源）。容器内运行时实际版本（QwenPaw/OpenClaw）看 Worker 详情「运行时版本」",
       )}
     >
       <span style={{ fontSize: 11, color: "#888", cursor: "help", whiteSpace: "nowrap" }}>
-        AgentTeams {v.controller}
-        {v.kubeMode ? ` · ${v.kubeMode}` : ""}
+        AgentTeams {version}
+        {v?.kubeMode ? ` · ${v.kubeMode}` : ""}
       </span>
     </WbTooltip>
   );

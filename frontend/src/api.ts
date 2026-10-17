@@ -774,6 +774,125 @@ export async function fetchNodeVersion(
     30000,
   )) as NodeVersion;
 }
+
+// ── Worker Coding CLI 管理面（上游 1.2.5 #1360/#1377；消费侧对齐
+// dashboard worker-coding-cli-panel）────────────────────────────────
+// 数据面 = Controller /api/v1/workers/{name}/coding-cli[/{cli}/…]。
+// 探测=listCLIs（per-CLI installed/version/auth）；settings=GET/PUT
+// （深合并 + *** 哨兵保留密钥）；install=POST 202 task_id → 轮询
+// GET /install/{task_id}（running/done/failed）。503=非 embedded /
+// 502=容器不可达 / 403=写拒绝（整面只读）/ 404=端点不存在（旧版）。
+export type CodingCliId = "qwen-code" | "opencode" | "qoder";
+
+export interface CodingCliProbeItem {
+  cli: CodingCliId;
+  installed: boolean;
+  version?: string;
+  auth?: { configured?: boolean; method?: string } | null;
+  error?: string;
+}
+
+export type SettingsValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { redacted: true; has_value: boolean }
+  | { [k: string]: SettingsValue }
+  | SettingsValue[];
+
+export type SettingsObject = { [k: string]: SettingsValue };
+
+export interface CodingCliInstallTask {
+  task_id: string;
+  cli: string;
+  action: string;
+  version?: string;
+  state: "running" | "done" | "failed";
+  exit_code?: number;
+  /** Controller 快照字段 = stderr_tail（1.2.5 源码实读）。 */
+  stderr_tail?: string;
+  pkg?: string;
+}
+
+const CLI_BASE = (name: string) =>
+  `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(
+    name,
+  )}/coding-cli`;
+
+export async function listCodingCli(name: string): Promise<CodingCliProbeItem[]> {
+  const body = (await requestJson(CLI_BASE(name), undefined, 30000)) as Record<
+    string,
+    CodingCliProbeItem
+  >;
+  if (!body || typeof body !== "object") return [];
+  return Object.values(body).filter(
+    (v): v is CodingCliProbeItem => !!v && typeof v === "object",
+  );
+}
+
+export async function getCliSettings(
+  name: string,
+  cli: CodingCliId,
+): Promise<SettingsObject> {
+  return (await requestJson(
+    `${CLI_BASE(name)}/${encodeURIComponent(cli)}/settings`,
+    undefined,
+    30000,
+  )) as SettingsObject;
+}
+
+export async function putCliSettings(
+  name: string,
+  cli: CodingCliId,
+  patch: SettingsObject,
+): Promise<SettingsObject> {
+  return (await requestJson(
+    `${CLI_BASE(name)}/${encodeURIComponent(cli)}/settings`,
+    { method: "PUT", body: JSON.stringify(patch) },
+    30000,
+  )) as SettingsObject;
+}
+
+export async function startCodingCliInstall(
+  name: string,
+  cli: CodingCliId,
+  action: "install" | "uninstall",
+  version?: string,
+): Promise<{ task_id: string }> {
+  return (await requestJson(
+    `${CLI_BASE(name)}/${encodeURIComponent(cli)}/install`,
+    {
+      method: "POST",
+      body: JSON.stringify(version ? { action, version } : { action }),
+    },
+    30000,
+  )) as { task_id: string };
+}
+
+export async function getCliInstallTask(
+  name: string,
+  cli: CodingCliId,
+  taskId: string,
+): Promise<CodingCliInstallTask> {
+  return (await requestJson(
+    `${CLI_BASE(name)}/${encodeURIComponent(cli)}/install/${encodeURIComponent(
+      taskId,
+    )}`,
+    undefined,
+    30000,
+  )) as CodingCliInstallTask;
+}
+
+/** 按 worker 过滤 coding runs（list 全量 + 客户端过滤 worker 字段；
+ * 服务端无 per-worker 过滤参数，见 1.2.5 源码 ListCodingRuns）。 */
+export async function listCodingRunsByWorker(
+  worker: string,
+): Promise<CodingRun[]> {
+  const all = await listCodingRuns();
+  return all.filter((r) => (r.worker || "") === worker);
+}
+
 /** L1 管理员验证结果。 */
 export interface VerifyAdminResult {
   ok: boolean;
