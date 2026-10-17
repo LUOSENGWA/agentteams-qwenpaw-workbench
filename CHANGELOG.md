@@ -3,6 +3,20 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.24（2026-10-17 · 逐节点运行时版本 + 设置页两套认证分家 + Coding CLI 管理）
+
+**新增**
+- **Worker「运行时版本」改为容器内实测（逐节点探测）**：团队管理页展开任意 Worker，「运行时版本」现在显示该 Worker 容器内实际运行的运行时版本（如 QwenPaw 2.2.1、OpenClaw x.y）——由 Controller 代理容器内执行 `--version` 探测（10 分钟缓存），覆盖 qwenpaw / openclaw 等 runtime 族。宿主上的 QwenPaw 版本与容器内可能不同（如宿主 2.2.2 vs 容器 2.2.1），所以必须逐节点探测而不是读宿主。原「运行时版本」标签显示的其实是 Worker 镜像 tag，语义不准——现在拆成两项：「AgentTeams 版本」= Worker 镜像 tag（CRD image 正源，悬停看完整镜像引用），「运行时版本」= 容器内运行时实测版本。Manager 表的「版本」列同步改名并显示 tag。旧版本 Controller 不提供探测时显示「—」（悬停看原因，不报错）。
+- **Coding CLI 管理（Worker 详情新段，AgentTeams 1.2.5+）**：逐 Worker 管理 qwen-code / opencode / qoder 三个编码 CLI——安装（可钉版本，空=latest）、升级、卸载（二次确认），长任务在目标 Worker 容器内执行，面板自动轮询至完成（失败显示 stderr 尾部）。设置编辑：改模型名、填密钥（读回服务端脱敏永不回显，留空=保留已存值）、可选 JSON deep-merge 补丁。内置六个场景 preset（前端/后端/数据/iOS/嵌入式/最小形态）——套用只写模型名等 settings patch；工具链共享卷、环境变量、MCP 只生成「建议清单」需人工确认，绝不自动执行。L2 账号整段只读；旧版本 Controller 显示升级提示（不报错）。
+- **设置页两套 L1 认证分家**：Controller 管理员 token（L1 管理面）与 Higress Console 账号+密码（模型面）是两个独立系统的凭证，原先 Higress 段嵌在「L1 管理面」单选模式里，切到 Matrix 登录（L2）就整段隐藏，看起来像一套体系。现在 Higress 段改为独立段——与 L1/L2 模式无关常显，标题与说明明确「即使某部署中两者恰好同值，它们仍是两个不同系统的凭证——不可互相替代」，验证失败回报各归各段（Controller 失败报 Controller 段、Higress 失败报 Higress 段）。
+
+**改进**
+- **Worker 详情五段段头对齐**：「运行配置 / 环境变量与网关探测 / Coding CLI / 资源管理 / 工具执行安全」五段图标-标题间距统一，折叠/展开两态标题 x 位置不漂移（段头 x=33 轨）。
+
+**验证**：tsc 0 · vite build 单文件 1,927 kB · pytest 412/412 · i18n 门 1589 键 0 缺 0 重 · 敏感扫 0 · 节点版本端点 10 单测全绿（镜像 tag 正源 / exec 探测 / 缓存 / L1-only 403）
+
+---
+
 ## 0.5.0-beta.15.23（2026-10-17 · Worker 详情版本显示 + 拓扑段对齐）
 
 **新增**

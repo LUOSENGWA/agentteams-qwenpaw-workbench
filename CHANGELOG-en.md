@@ -1,7 +1,21 @@
 # Changelog
 
 Version history of agentteams-qwenpaw-workbench.
-中文版：[CHANGELOG.md](CHANGELOG.md)
+Chinese version: [CHANGELOG.md](CHANGELOG.md)
+
+## 0.5.0-beta.15.24 (2026-10-17 - Per-node runtime version + settings auth split + coding CLI management)
+
+**Added**
+- **Worker "Runtime version" is now measured in-container (per-node probe)**: expanding any Worker in Team Management now shows the runtime version actually running inside that Worker's container (e.g. QwenPaw 2.2.1, OpenClaw x.y) — probed by the Controller executing `--version` inside the container (10-minute cache), covering the qwenpaw / openclaw runtime family. The QwenPaw version on the host can differ from the one in the container (e.g. host 2.2.2 vs container 2.2.1), so it must be probed per node rather than read from the host. The old "Runtime version" label actually showed the Worker image tag, which was semantically wrong — it is now split into two items: "AgentTeams version" = the Worker image tag (authoritative CRD image source; hover for the full image reference) and "Runtime version" = the measured in-container runtime version. The Manager table's "Version" column is renamed and shows the tag accordingly. Older Controllers without the probe show "—" (hover for the reason; no error).
+- **Coding CLI management (new section in Worker details, AgentTeams 1.2.5+)**: manage the three coding CLIs (qwen-code / opencode / qoder) per Worker — install (version pin optional, empty = latest), upgrade, uninstall (with confirmation). Long-running tasks execute inside the target Worker container; the panel polls automatically until completion (showing the stderr tail on failure). Settings editing: change the model name, enter secrets (read-back is server-side redacted and never echoed; leave empty to keep the saved value), and an optional JSON deep-merge patch. Six built-in scenario presets (frontend / backend / data / iOS / embedded / minimal) — applying one writes only the settings patch (e.g. model name); shared toolchain volumes, env vars and MCP are rendered as a human-confirm suggestion list and are never auto-applied. L2 accounts get the whole section read-only; older Controllers show an upgrade hint (no error).
+- **Settings page: the two L1 auth systems are now separate**: the Controller admin token (L1 admin plane) and the Higress Console account + password (model plane) are credentials of two independent systems. The Higress section used to live inside the "L1 admin plane" radio branch, so switching to Matrix login (L2) hid it entirely, making them look like one system. The Higress section is now standalone — always visible regardless of L1/L2 mode — with its heading and description stating that "even if the values happen to be the same in a deployment, they are credentials of two different systems — not interchangeable", and verify failures are reported to their own section (Controller failures in the Controller block, Higress failures in the Higress block).
+
+**Improved**
+- **Worker detail section-header alignment**: the five sections (Runtime config / Env & gateway probe / Coding CLI / Resource management / Tool execution security) now share the same icon-title gap, so the title x-position no longer drifts between collapsed and expanded states (x=33 track).
+
+**Verified**: tsc 0 · single-file vite build 1,927 kB · pytest 412/412 · i18n gate 1589 keys, 0 missing, 0 duplicates · sensitive scan 0 · node-version endpoint 10 unit tests green (image-tag source / exec probe / cache / L1-only 403)
+
+---
 
 ## 0.5.0-beta.15.23 (2026-10-17 - Worker detail version display + topology section alignment)
 
