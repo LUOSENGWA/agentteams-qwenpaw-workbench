@@ -597,6 +597,30 @@ export async function listCodingRuns(): Promise<CodingRun[]> {
 }
 
 // ── 运行时升级（1.2.5 #1364/#1343：两阶段编排器 + 预检门控）─────────
+/** Controller 版本端点（GET /api/v1/version，认证中间件放行任意已认证请求）。
+ * 源码构建回 controller="dev"（上游未注入版本号，dashboard 关于页同款行为）
+ * ——照实显示，tooltip 指向各节点真实发布版本（镜像 tag，见 imageTag）。 */
+export interface ControllerVersion {
+  controller?: string;
+  kubeMode?: string;
+}
+
+export async function fetchControllerVersion(): Promise<ControllerVersion> {
+  return cachedRequest<ControllerVersion>("controller/version", 60000, async () =>
+    (await requestJson("/agentteams-proxy/controller/api/v1/version")) as ControllerVersion,
+  );
+}
+
+/** 镜像引用解析版本 tag：先切最后一个 '/' 再取最后 ':' 之后的段
+ * （registry:5000/foo/bar:1.0 不取成端口）；无 tag（localhost 无标签等）
+ * 原样返回仓库名。 */
+export function imageTag(image?: string): string {
+  if (!image) return "";
+  const rest = image.slice(image.lastIndexOf("/") + 1);
+  const i = rest.lastIndexOf(":");
+  return i > 0 ? rest.slice(i + 1) : rest;
+}
+
 // 同宿主 QwenPaw 实例内置 agentteams-upgrade 插件（1.2.5+ worker 镜像），
 // 插件后端经 127.0.0.1 回环代理（/agentteams-proxy/upgrade/*）。无该
 // 服务的实例（旧镜像/非 worker 宿主）恒 404 → 调用方降级空态。
@@ -2060,6 +2084,10 @@ export interface WorkerInfo {
   state: string;
   model: string;
   runtime: string;
+  /** 自定义 Docker 镜像（WorkerResponse.image；发布部署 = 带发布 tag 的
+   * 运行时镜像，如 …agentteams-qwenpaw-worker:v1.2.5——运行时版本正源，
+   * 取 tag 用 imageTag()；旧 Controller 无字段 = undefined）。 */
+  image?: string;
   containerState: string;
   matrixUserID: string;
   roomID: string;

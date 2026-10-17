@@ -414,6 +414,10 @@ const DICT: Record<string, { en: string }> = {
     en: "Room creation reported success but the room is missing from the room list (homeserver config may be misaligned). Check settings and retry.",
   },
   "自动刷新 30 秒": { en: "Auto-refresh 30s" },
+  "运行时版本": { en: "Runtime version" },
+  "AgentTeams Controller 版本（/api/v1/version 端点值；源码构建显示 dev。各节点实际发布版本看 Worker 详情「运行时版本」与 Manager 表「版本」列的镜像 tag）": {
+    en: "AgentTeams Controller version (value of the /api/v1/version endpoint; source builds show 'dev'). For each node's actual release, see the image tag in the Worker detail's 'Runtime version' and the Manager table's 'Version' column.",
+  },
   // （F4：SGLang 卡「要手动刷新才更新」观感真根因=标注
   // 误导——卡片标「自动刷新 1 秒」但数据源是 SGLang 侧快照发布，服务端
   // 默认 15s 才出新值，数字冻结 14s 被误判卡死、手动刷新又读同一快照。

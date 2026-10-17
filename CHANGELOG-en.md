@@ -3,6 +3,17 @@
 Version history of agentteams-qwenpaw-workbench.
 中文版：[CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.23 (2026-10-17 - Worker detail version display + topology section alignment)
+
+**Added**
+- **Worker "Runtime version"**: expanding any Worker in Team management now shows a "Runtime version" field in the info grid - the version tag of the Worker's running image (e.g. v1.2.5); hover for the full image reference (registry path + tag). Shows "—" (no error) on older Controller versions that do not provide the field.
+- **Team management page "AgentTeams version" badge**: the page header now shows the AgentTeams Controller version (value of the /api/v1/version endpoint; source builds show "dev") and deployment mode; hover explains where to see each node's actual release version (Worker detail "Runtime version" / Manager table "Version" column).
+
+**Improved**
+- **Worker detail topology section alignment**: the four sections "Runtime config / Environment variables & gateway probe / Resource management / Tool execution security" are unified into the same card-row style - left edge, border radius and icon x-position aligned row by row, and collapsed/expanded section header titles use a consistent font size, so the topology reads more rigorously.
+
+---
+
 ## 0.5.0-beta.15.22 (2026-10-17 - AgentTeams 1.2.5 adaptation + standalone-mode two-axis host contract)
 
 **This batch = adapting to the new AgentTeams 1.2.5 capabilities (three things that were previously only visible from the command line are now inspectable/operable from the UI): (1) a Coding Runs viewer - every delegated coding CLI execution is now reviewable; (2) a Runtime Upgrade panel - preflight, in-place upgrade, and live progress tracking for this host's QwenPaw runtime; (3) Worker environment variables & gateway probe - per-worker custom env editing plus one-click model/MCP gateway connectivity probes.**

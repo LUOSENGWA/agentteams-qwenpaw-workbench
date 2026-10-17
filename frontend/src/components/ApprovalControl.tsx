@@ -203,11 +203,16 @@ function LevelCardGrid({
 function ApprovalControl({
   workerName,
   runtime,
+  workerDetail,
 }: {
   workerName: string;
   /** ：Worker runtime——非 qwenpaw 时禁用四档
    * 卡 + 说明（审批是 QwenPaw 独有面，服务端 400；提前挡住不撞 400）。 */
   runtime?: string;
+  /** Worker 详情上下文（团队管理拓扑展开区）：与其他管理段（运行配置/
+   * 环境变量/资源管理）同款卡片外壳 + 12px 折叠槽位——图标 x 位置逐行
+   * 对齐，拓扑关系视觉严谨。房间成员卡等独立上下文不传（原样式）。 */
+  workerDetail?: boolean;
 }) {
   const tr = useT();
   const t = useThemeColors(); 
@@ -324,21 +329,35 @@ function ApprovalControl({
     [level, tr, workerName],
   );
 
+  // Worker 详情上下文 = 与运行配置/环境变量/资源管理同款卡片外壳
+  // （22px 左缩进 + 同款边框圆角）；独立上下文（房间成员卡）= 原轻边框。
+  const shellStyle: ReactNS.CSSProperties = workerDetail
+    ? {
+        margin: "4px 0 4px 22px",
+        border: "1px solid rgba(127,127,127,0.25)",
+        borderRadius: 8,
+      }
+    : {};
+  const innerStyle: ReactNS.CSSProperties = workerDetail
+    ? { padding: "8px 10px", fontSize: 12 }
+    : {
+        padding: "8px 10px",
+        border: `1px solid rgba(0,0,0,0.06)`,
+        borderRadius: 8,
+        fontSize: 12,
+      };
+
   if (gated) {
     // D4 #2：非 qwenpaw 运行时——禁用卡 + 说明（不渲染四档、不拨号）。
     return (
-      <div>
-        <div
-          style={{
-            padding: "8px 10px",
-            border: `1px solid rgba(0,0,0,0.06)`,
-            borderRadius: 8,
-            fontSize: 12,
-          }}
-        >
-          <span style={{ color: "#bbb" }}>
-            {tr("工具执行安全")}（{runtime}）
-          </span>
+      <div style={shellStyle}>
+        <div style={innerStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {workerDetail ? <span style={{ width: 12, fontSize: 10, flexShrink: 0 }} /> : null}
+            <span style={{ color: "#bbb", fontWeight: 600 }}>
+              {tr("工具执行安全")}（{runtime}）
+            </span>
+          </div>
           <RuntimeNotice runtime={runtime} compact />
         </div>
       </div>
@@ -346,26 +365,26 @@ function ApprovalControl({
   }
 
   return (
-    <div>
-      <div
-        style={{
-          padding: "8px 10px",
-          border: `1px solid rgba(0,0,0,0.06)`,
-          borderRadius: 8,
-          fontSize: 12,
-        }}
-      >
+    <div style={shellStyle}>
+      <div style={innerStyle}>
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 8,
+            gap: workerDetail ? 6 : 8,
             flexWrap: "wrap",
             marginBottom: 6,
           }}
         >
-          <span title={tr("QwenPaw 原生「工具执行安全」四模式（设置页同款）")}>
-            <LevelIcon lv="AUTO" size={15} />{" "}
+          {workerDetail ? (
+            // 12px 折叠槽位——与上方卡片行 ▸/▾ 同宽，图标 x 逐行对齐。
+            <span style={{ width: 12, fontSize: 10, flexShrink: 0 }} />
+          ) : null}
+          <span
+            title={tr("QwenPaw 原生「工具执行安全」四模式（设置页同款）")}
+            style={{ fontWeight: 600, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            <LevelIcon lv="AUTO" size={13} />
             {tr("工具执行安全")}
           </span>
           <span

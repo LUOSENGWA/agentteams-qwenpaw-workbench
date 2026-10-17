@@ -951,7 +951,8 @@ function WorkerRuntimeConfig({
         )}
         {sheet ? null : <SettingsIcon size={13} />}
         {sheet ? null : (
-          <span style={{ fontWeight: 600, fontSize: 12.5 }}>{tr("运行配置")}</span>
+          // 段头标题字号恒 12（折叠/展开一致，与资源管理段头同款）。
+          <span style={{ fontWeight: 600, fontSize: 12 }}>{tr("运行配置")}</span>
         )}
         <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
           qwenpaw

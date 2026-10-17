@@ -3,14 +3,17 @@ import type * as ReactNS from "react";
 
 import {
   CheckpointUnavailableError,
+  fetchControllerVersion,
   fetchWorkerCheckpointGraph,
   fetchWorkerCheckpointStatus,
+  imageTag,
   postController,
   requestJson,
   updateManagerModel,
   type AdminData,
   type CheckpointGraphResponse,
   type CheckpointStatusResponse,
+  type ControllerVersion,
   type ManagerInfo,
   type SpawnNode,
   type WorkerSpawnGroup,
@@ -435,6 +438,26 @@ function WorkerManageInfo({
         <Item label={tr("Worker 状态")} value={<antd.Tag color={meta.color} style={{ margin: 0 }}>{meta.label}</antd.Tag>} />
         <Item label={tr("团队")} value={worker.team || "—"} />
         <Item label={tr("角色")} value={worker.role || "—"} />
+        {/* 运行时版本=Worker 镜像 tag（WorkerResponse.image 正源；
+  tooltip 悬停看完整镜像；旧 Controller 无字段 = —）。 */}
+        <Item
+          label={tr("运行时版本")}
+          value={
+            worker.image ? (
+              <WbTooltip
+                title={
+                  <span style={{ fontFamily: "monospace", wordBreak: "break-all", maxWidth: 320 }}>
+                    {worker.image}
+                  </span>
+                }
+              >
+                <antd.Tag style={{ margin: 0, fontSize: 11, cursor: "help" }}>
+                  {imageTag(worker.image)}
+                </antd.Tag>
+              </WbTooltip>
+            ) : "—"
+          }
+        />
         <Item label={tr("模型")} value={worker.model || "—"} wide />
         <Item
           label={tr("容器状态")}
@@ -880,7 +903,7 @@ function WorkerRow({
             <CheckpointCard workerName={group.worker_name} runtime={rowRuntime} />
           ) : null}
           {group.worker_name ? (
-            <ApprovalControl workerName={group.worker_name} />
+            <ApprovalControl workerName={group.worker_name} workerDetail />
           ) : null}
         </>
       ) : null}
@@ -1711,6 +1734,44 @@ export function ManagerTable({
   );
 }
 
+/** 团队管理页头：AgentTeams Controller 版本徽章。
+ * 数据源 = GET /api/v1/version（60s 缓存）。源码构建回 controller="dev"
+ *（上游未注入版本号，与 dashboard 关于页同款行为）——照实显示；
+ * 各节点真实发布版本 = 镜像 tag（Worker 详情「运行时版本」/ Manager 表
+ *「版本」列），tooltip 指路。L1-only（代理需 controller token）；
+ * 旧 Controller 无端点 404 / 失败 → 不渲染（不显占位）。 */
+function ControllerVersionBadge({ hasToken }: { hasToken?: boolean }) {
+  const tr = useT();
+  const [v, setV] = React.useState<ControllerVersion | null>(null);
+  React.useEffect(() => {
+    if (!hasToken) return;
+    let alive = true;
+    void fetchControllerVersion()
+      .then((d) => {
+        if (alive) setV(d);
+      })
+      .catch(() => {
+        if (alive) setV(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [hasToken]);
+  if (!v || !v.controller) return null;
+  return (
+    <WbTooltip
+      title={tr(
+        "AgentTeams Controller 版本（/api/v1/version 端点值；源码构建显示 dev。各节点实际发布版本看 Worker 详情「运行时版本」与 Manager 表「版本」列的镜像 tag）",
+      )}
+    >
+      <span style={{ fontSize: 11, color: "#888", cursor: "help", whiteSpace: "nowrap" }}>
+        AgentTeams {v.controller}
+        {v.kubeMode ? ` · ${v.kubeMode}` : ""}
+      </span>
+    </WbTooltip>
+  );
+}
+
 interface WorkerManageProps {
   teams: WorkerTreeTeam[];
   admin: AdminData | null;
@@ -1934,6 +1995,7 @@ function WorkerManage(props: WorkerManageProps) {
         </WbTooltip>
         <span style={{ color: "#bbb", fontSize: 11 }}>{tr("自动刷新 30 秒")}</span>
         <div style={{ flex: 1 }} />
+        <ControllerVersionBadge hasToken={!!hasToken} />
         {refresh ? (
           <WbTooltip title={tr("刷新")}>
             <antd.Button

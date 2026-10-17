@@ -308,7 +308,8 @@ function WorkerEnvPanel({
         )}
         {sheet ? null : <SettingsIcon size={13} />}
         {sheet ? null : (
-          <span style={{ fontWeight: 600, fontSize: 12.5 }}>
+          // 段头标题字号恒 12（折叠/展开一致，与运行配置/资源管理段头同款）。
+          <span style={{ fontWeight: 600, fontSize: 12 }}>
             {tr("环境变量与网关探测")}
           </span>
         )}
