@@ -42,3 +42,6 @@ ACCEPTANCE-*.md
 .qwen/
 state/
 BOARD_GRID2_WRAP_TODO.md
+frontend/harness/bundle-cr.js
+frontend/harness/bundle-upg.js
+frontend/harness/bundle-env.js

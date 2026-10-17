@@ -121,7 +121,8 @@ const SIDEBAR_ICON: ReactNS.ReactNode = hostReact
   : LOGO_ICON;
 
 import WorkbenchPage from "./WorkbenchPage";
-import WorkbenchOfflinePage from "./WorkbenchOfflinePage";
+import StandaloneConfigPage from "./StandaloneConfigPage";
+import { isLocalHost } from "./hostEnv";
 import ApprovalCard from "./components/ApprovalCard";
 import { fetchRoomApprovals, requestJson } from "./api";
 import { getApprovalCount, subscribeApprovalCount } from "./approvalsStore";
@@ -457,12 +458,14 @@ try {
   console.warn("[agentteams-qwenpaw-workbench] chat.approval.render unavailable:", e);
 }
 
-// 入口分流：本地插件宿主（QP.host.isOffline）挂离线页（数据域不挂载，
-// 配置域走 localStorage 模拟层）；console 宿主照旧挂全量工作台。
-// 分流在渲染时读 host 标志——同一份产物两端通用，console 路径零改动。
+// 入口分流（两轴模型，hostEnv.ts）：轴 A 独立宿主（kind='local'，旧 shell
+// 回退 isOffline）挂独立配置页（数据域不挂载，配置域走 localStorage 模拟
+// 层）；caps.net 端侧桥落地后 local+数据面可达改挂完整工作台（P2）。
+// console/远端宿主（server）照旧挂全量工作台。分流在渲染时读 host 标志——
+// 同一份产物两端通用，console 路径零改动。
 function WorkbenchEntry() {
-  return (window.QwenPaw.host as { isOffline?: boolean }).isOffline
-    ? React.createElement(WorkbenchOfflinePage)
+  return isLocalHost()
+    ? React.createElement(StandaloneConfigPage)
     : React.createElement(WorkbenchPage);
 }
 

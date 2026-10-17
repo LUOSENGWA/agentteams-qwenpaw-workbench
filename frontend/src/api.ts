@@ -9,7 +9,8 @@
 // 走 TTL+在飞去重+标签失效+LRU（requestCache.ts）；写面（POST/DELETE）不包。
 import { cachedRequest, invalidateTags } from "./requestCache";
 import { publishApprovalCount } from "./approvalsStore";
-import { tryOfflineConfigEndpoint } from "./offlineBackend";
+import { tryLocalConfigEndpoint } from "./localConfigBackend";
+import { isLocalHost } from "./hostEnv";
 import { FILE_REFS_CONTENT_KEY, parseFileRefs } from "./lib/file-refs";
 import type { FileRef } from "./lib/file-refs";
 
@@ -19,12 +20,12 @@ export async function requestJson(
   timeoutMs?: number,
 ): Promise<unknown> {
   const host = window.QwenPaw.host;
-  // 本地离线模式（本地插件宿主 shell，QP.host.isOffline）——配置域走
-  // localStorage 模拟层（脱敏/合并语义对齐服务端连接器）；未命中的端点
-  // 放行宿主 fetch → 受控 503（离线页入口级不挂载数据页，不会拨号）。
-  // console 宿主无 isOffline 字段 → 本分支恒 false，在线路径零改动。
-  if ((host as { isOffline?: boolean }).isOffline) {
-    const emu = tryOfflineConfigEndpoint(path, init);
+  // 独立宿主（轴 A kind='local'，hostEnv.ts；旧 shell 回退 isOffline）——
+  // 配置域走 localStorage 模拟层（脱敏/合并语义对齐服务端连接器）；未命中
+  // 的端点放行宿主 fetch → 受控 503（独立配置页入口级不挂载数据页，不会拨号）。
+  // console/远端宿主（server）→ 本分支恒 false，在线路径零改动。
+  if (isLocalHost()) {
+    const emu = tryLocalConfigEndpoint(path, init);
     if (emu !== null) return await emu;
   }
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -526,6 +527,197 @@ export async function fetchAuditEvents(
     undefined,
     30000,
   )) as AuditPage;
+}
+
+// ── 编码执行记录（Coding Runs；上游 1.2.5 #1365/#1381 只读端点）──────
+// 数据面 = Controller GET /api/v1/coding-runs（controller token 鉴权，
+// L1 全量 / L2 本团队前缀，过滤在服务端）。一次委托编码任务跑完 CLI 后
+// 把原始日志 tee 到对象存储，这里供人工回看「委托的编码任务做了什么」。
+// 与聊天区的 QwenPaw 会话上下文不是同一数据面（那是 Agent 会话，这是
+// coding CLI 执行记录）。404 / 空数组 = 旧 Controller 或无可读记录 →
+// 调用方空态，不报错。
+//
+// list 为 v2 契约：runs.jsonl 补元数据（cli/worker/status/exit_code/
+// started_at/ended_at/log_bytes），未记录的 run 退回基础字段。exit_code 用
+// 指针语义（0 是合法值须显示，未知省略）。时间未知则不伪造——started_at
+// 来自记录（UTC），缺失时仅能从 run-YYYYMMDD-HHMMSS.log 文件名取容器钟。
+export interface CodingRun {
+  task_id: string;
+  run: string;
+  team?: string;
+  cli?: string;
+  worker?: string;
+  status?: string;
+  exit_code?: number | null;
+  started_at?: string;
+  ended_at?: string;
+  log_bytes?: number | null;
+}
+
+export interface CodingRunDetail {
+  task_id: string;
+  run: string;
+  team?: string;
+  meta: {
+    cli?: string;
+    worker?: string;
+    runner?: string;
+    status?: string;
+    reason?: string;
+    exit_code?: number | null;
+    timeout_secs?: number | null;
+    started_at?: string;
+    ended_at?: string;
+    log_bytes?: number | null;
+    prompt_file?: string;
+    prompt_sha256?: string;
+  };
+  input: {
+    prompt_summary?: string;
+    prompt_sha256?: string;
+    prompt?: string;
+    prompt_available: boolean;
+  };
+  output: {
+    transcript: string;
+    status?: string;
+    exit_code?: number | null;
+  };
+}
+
+export async function listCodingRuns(): Promise<CodingRun[]> {
+  const res = (await requestJson(
+    "/agentteams-proxy/controller/api/v1/coding-runs",
+    undefined,
+    30000,
+  )) as CodingRun[] | { runs?: CodingRun[] } | null;
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  return res.runs ?? [];
+}
+
+// ── 运行时升级（1.2.5 #1364/#1343：两阶段编排器 + 预检门控）─────────
+// 同宿主 QwenPaw 实例内置 agentteams-upgrade 插件（1.2.5+ worker 镜像），
+// 插件后端经 127.0.0.1 回环代理（/agentteams-proxy/upgrade/*）。无该
+// 服务的实例（旧镜像/非 worker 宿主）恒 404 → 调用方降级空态。
+// check 恒 200（网络/索引问题落 errors[]）；run=202 job handle（破坏性，
+// UI 须二次确认）；status 读 on-disk job 状态（跨容器重启可读）。
+export type UpgradeGateStatus =
+  | "PASS"
+  | "FAIL"
+  | "WARN"
+  | "SKIP"
+  | "NOT_RUN"
+  | "ERROR";
+
+export interface UpgradeGate {
+  status: UpgradeGateStatus;
+  evidence: string;
+}
+
+export interface UpgradeCandidate {
+  version: string;
+  prerelease: boolean;
+  published_at?: string | null;
+  gates: { C1: UpgradeGate; C2: UpgradeGate; C3: UpgradeGate; C4: UpgradeGate };
+  upgradeable: boolean;
+  recommended: boolean;
+}
+
+export interface UpgradeCheckResult {
+  current: string;
+  current_source?: string;
+  checked_at?: string;
+  index?: string;
+  candidates: UpgradeCandidate[];
+  errors: string[];
+}
+
+// job 状态机（runner.py）：running|boot-check-passed|recovering 为进行中；
+// success|rolled_back|rollback_failed|precheck_failed 为终态。
+export type UpgradeJobState =
+  | "running"
+  | "boot-check-passed"
+  | "recovering"
+  | "success"
+  | "rolled_back"
+  | "rollback_failed"
+  | "precheck_failed";
+
+export const UPGRADE_TERMINAL_STATES: readonly UpgradeJobState[] = [
+  "success",
+  "rolled_back",
+  "rollback_failed",
+  "precheck_failed",
+];
+
+export interface UpgradeJob {
+  job_id: string;
+  state: UpgradeJobState;
+  exit_code?: number | null;
+  current?: string;
+  target?: string;
+  phase?: string;
+  started_at?: string;
+  finished_at?: string;
+  log_tail?: string[];
+}
+
+export async function fetchUpgradeCheck(opts?: {
+  verify?: boolean;
+  includePrerelease?: boolean;
+}): Promise<UpgradeCheckResult> {
+  const q = new URLSearchParams();
+  if (opts?.verify) q.set("verify", "true");
+  if (opts?.includePrerelease) q.set("include_prerelease", "true");
+  const qs = q.toString();
+  return (await requestJson(
+    `/agentteams-proxy/upgrade/check${qs ? `?${qs}` : ""}`,
+    undefined,
+    opts?.verify ? 300000 : 35000,
+  )) as UpgradeCheckResult;
+}
+
+/** 触发升级（破坏性：两阶段编排器重启容器、失败自动回滚）。
+ * 409=已有 job 在跑（detail 含 job_id）/ 400=校验拒绝 / 501=mode 保留位。 */
+export async function runUpgrade(version: string): Promise<UpgradeJob> {
+  return (await requestJson(
+    "/agentteams-proxy/upgrade/run",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version }),
+    },
+    65000,
+  )) as UpgradeJob;
+}
+
+export async function fetchUpgradeStatus(jobId?: string): Promise<UpgradeJob> {
+  const q = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+  return (await requestJson(
+    `/agentteams-proxy/upgrade/status${q}`,
+    undefined,
+    20000,
+  )) as UpgradeJob;
+}
+
+/** 单条 run 详情，固定 ?format=json（transcript 在 output.transcript；
+ * 字节透传的 text/plain 默认形态 requestJson 无法解析，故取 json 封装）。 */
+export async function fetchCodingRunDetail(
+  taskID: string,
+  run: string,
+  team?: string,
+): Promise<CodingRunDetail> {
+  const q = new URLSearchParams();
+  q.set("format", "json");
+  if (team) q.set("team", team);
+  return (await requestJson(
+    `/agentteams-proxy/controller/api/v1/coding-runs/${encodeURIComponent(
+      taskID,
+    )}/runs/${encodeURIComponent(run)}?${q.toString()}`,
+    undefined,
+    30000,
+  )) as CodingRunDetail;
 }
 
 /** L1 管理员验证结果。 */
@@ -1897,6 +2089,12 @@ export interface WorkerInfo {
  * undefined（降级为仅按 runtime 判定，可接受）。
  */
   runtimeDeprecated?: boolean;
+  /** Worker 环境变量（spec.env 透传，AgentTeams 1.2.5+；
+ * L2 账号被服务端遮蔽 → 不存在；旧 Controller 无字段 → undefined）。 */
+  env?: Record<string, string>;
+  /** env 是否可编辑（1.2.5+；L1/manager=true，L2=false，旧 Controller=undefined
+ * → 前端一律不渲染 env 段，优雅降级）。 */
+  envEditable?: boolean;
 }
 
 export interface TeamInfo {
@@ -2025,6 +2223,30 @@ export const updateWorkerModel = (name: string, model: string) =>
  * 只发非空字段（PUT 合并语义同上）；model/soul 任意组合。 */
 export const updateWorker = (name: string, body: Record<string, unknown>) =>
   controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, body);
+
+/** Worker 网关身份探测（POST /api/v1/workers/{name}/gateway-probe，
+ * AgentTeams 1.2.5+ #1306，L1/manager only）。
+ * 服务端只用 CRD 已持久化的模型/MCP 端点 + worker 持久身份拨号网关
+ * （不接受调用方 URL/token——无提权面）。正常恒 HTTP 200 + 结果对象；
+ * 403 无权限 / 409 worker 未设模型或身份不可用 / 501 provider-specific
+ * 探测不支持 / 503 gateway 未配置 = 显式错误码（httpErrorStatus 取）。 */
+export interface GatewayProbeResult {
+  success: boolean;
+  message: string;
+  latencyMs: number;
+  consumer: string;
+  kind: "model" | "mcp";
+}
+export const probeWorkerGateway = (
+  name: string,
+  kind: "model" | "mcp",
+  server?: string,
+) =>
+  controllerRequest(
+    "POST",
+    `/workers/${encodeURIComponent(name)}/gateway-probe`,
+    kind === "mcp" && server ? { kind, server } : { kind },
+  ) as Promise<GatewayProbeResult>;
 /** 更新 Manager 模型。PUT /managers/{name} 同为合并语义
  * （Controller UpdateManager：if req.Model != "" 才写 spec，其余 spec 不动；
  * resource_handler.go 源码实锤）——只发 {model}，provider 保持原值/默认。 */

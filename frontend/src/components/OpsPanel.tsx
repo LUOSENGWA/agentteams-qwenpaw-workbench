@@ -11,6 +11,8 @@ import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
 import { formatTimeOfDay } from "../util";
 import { WbTooltip } from "./WbTooltip";
+import CodingRunsPanel from "./CodingRunsPanel";
+import RuntimeUpgradePanel from "./RuntimeUpgradePanel";
 
 
 const host = window.QwenPaw.host;
@@ -594,6 +596,12 @@ function OpsPanel({
           )}
         </div>
       ) : null}
+
+      {/* 编码执行记录（1.2.5 coding-runs 只读段，自含 404/空态） */}
+      <CodingRunsPanel refreshTick={refreshTick} />
+
+      {/* 运行时升级（1.2.5 预检+两阶段就地升级，自含 404 降级态） */}
+      <RuntimeUpgradePanel refreshTick={refreshTick} />
 
       {/* 组件日志 */}
       <div>

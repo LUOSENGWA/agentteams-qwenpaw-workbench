@@ -1058,6 +1058,7 @@ from .routers import (  # noqa: E402
     status_api,
     team_files_api,
     teams_api,
+    upgrade_api,
 )
 
 
@@ -1092,6 +1093,10 @@ def build_router() -> APIRouter:
         team_files_api.build_team_files_router(_kb_shared, _tf_state)
     )
     router.include_router(live_api.build_live_router())
+    # 运行时升级域（同宿主回环代理 /api/upgrade/*；1.2.5+ worker 镜像
+    # 内置 agentteams-upgrade 插件；无服务实例 404 → 前端降级空态）。
+    # 须在 catch-all 之前（固定路径优先）。
+    router.include_router(upgrade_api.build_upgrade_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     return router

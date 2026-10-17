@@ -11,6 +11,101 @@ const DICT: Record<string, { en: string }> = {
   "聊天": { en: "Chat" },
   "团队管理": { en: "Team Management" },
   "更多": { en: "More" },
+  // ── 编码执行记录（Coding Runs，1.2.5 #1365/#1381 只读端点消费）──
+  "编码执行记录": { en: "Coding Runs" },
+  "编码 CLI 一次性执行记录与原始日志（只读，Controller /api/v1/coding-runs）。与聊天区的会话上下文不是同一数据源。": {
+    en: "One-shot coding CLI runs and their raw logs (read-only, Controller /api/v1/coding-runs). Not the same data source as the chat session context.",
+  },
+  "{n} 条": { en: "{n} run(s)" },
+  "当前 Controller 版本未提供编码执行记录（升级后自动开放）。": {
+    en: "This Controller version does not expose coding runs (available after upgrade).",
+  },
+  "暂无编码执行记录": { en: "No coding runs" },
+  "退出 {code}": { en: "exit {code}" },
+  "读取执行记录…": { en: "Loading run…" },
+  "读取失败": { en: "Failed to read" },
+  "退出码": { en: "Exit code" },
+  "开始": { en: "Started" },
+  "结束": { en: "Ended" },
+  "日志": { en: "Log" },
+  "原因": { en: "Reason" },
+  "输入（prompt）": { en: "Input (prompt)" },
+  "（本次执行未记录输入）": { en: "(No input recorded for this run)" },
+  "输出（原始日志）": { en: "Output (raw log)" },
+  "（无日志内容）": { en: "(No log content)" },
+  "CLI": { en: "CLI" },
+  "Runner": { en: "Runner" },
+  // ── 运行时升级（1.2.5 #1364/#1343 消费）──
+  "运行时升级": { en: "Runtime Upgrade" },
+  "本宿主 QwenPaw 运行时的预检与就地升级（两阶段编排、失败自动回滚）。预检只读；触发升级会重启容器并可能中断在跑任务，需二次确认。": {
+    en: "Preflight and in-place upgrade of this host's QwenPaw runtime (two-phase orchestration with automatic rollback on failure). Preflight is read-only; triggering an upgrade restarts the container and may interrupt running tasks, so it requires confirmation.",
+  },
+  "当前宿主未提供运行时升级服务（需 1.2.5+ worker 镜像内置升级插件）。": {
+    en: "This host does not provide the runtime upgrade service (requires the built-in upgrade plugin in 1.2.5+ worker images).",
+  },
+  "暂无可升级版本": { en: "No upgradeable versions" },
+  "预检存在告警（不影响已有结论）": {
+    en: "Preflight warnings (do not affect existing conclusions)",
+  },
+  "确认触发运行时升级？": { en: "Confirm runtime upgrade?" },
+  "目标版本": { en: "Target version" },
+  "升级将两阶段就地执行并重启容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。": {
+    en: "The upgrade runs in-place in two phases and restarts the container; running tasks will be interrupted. If the boot check fails, it rolls back to the previous version automatically.",
+  },
+  "确认升级": { en: "Upgrade" },
+  "触发升级失败": { en: "Failed to start upgrade" },
+  "升级到此版本": { en: "Upgrade to this version" },
+  "预发布": { en: "Prerelease" },
+  "推荐": { en: "Recommended" },
+  "C1 版本解析": { en: "C1 version resolution" },
+  "C2 依赖钉定": { en: "C2 pinned dependencies" },
+  "C3 兼容补丁": { en: "C3 compat patch" },
+  "C4 可选依赖": { en: "C4 optional deps" },
+  // ── Worker 环境变量 + 网关探测（1.2.5 #1306 消费，L1/manager only）──
+  "环境变量与网关探测": { en: "Env Variables & Gateway Probe" },
+  "环境变量": { en: "Env Variables" },
+  "键名不可为空": { en: "Key cannot be empty" },
+  "键名须匹配 [A-Za-z_][A-Za-z0-9_]*": {
+    en: "Key must match [A-Za-z_][A-Za-z0-9_]*",
+  },
+  "系统保留键，不可编辑：{k}": {
+    en: "System-reserved key, not editable: {k}",
+  },
+  "键名重复：{k}": { en: "Duplicate key: {k}" },
+  "已保存——Worker 容器将重建以应用新环境变量（进行中的任务可能中断）": {
+    en: "Saved — the Worker container will be recreated to apply the new environment (running tasks may be interrupted)",
+  },
+  "环境变量需要管理员或 Manager 权限": {
+    en: "Editing environment variables requires admin or manager access",
+  },
+  "清空全部环境变量？": { en: "Clear all environment variables?" },
+  "保存后该 Worker 的全部自定义环境变量将被清除，容器将重建（进行中的任务可能中断）。": {
+    en: "All custom environment variables of this Worker will be removed and the container recreated (running tasks may be interrupted).",
+  },
+  "确认清空": { en: "Clear" },
+  "自定义环境变量（整块替换语义：删除=从新 map 移除；保存后容器重建生效，进行中的任务可能中断）。系统保留键不可编辑。": {
+    en: "Custom environment variables (whole-map replacement: removing a row deletes the key; saving triggers container recreation and may interrupt running tasks). System-reserved keys cannot be edited.",
+  },
+  "当前无自定义环境变量": { en: "No custom environment variables" },
+  "（空值）": { en: "(empty)" },
+  "添加": { en: "Add" },
+  "键名（如 MY_VAR）": { en: "Key (e.g. MY_VAR)" },
+  "值（可空）": { en: "Value (may be empty)" },
+  "网关探测": { en: "Gateway Probe" },
+  "用该 Worker 已保存的模型/MCP 配置与身份向网关发一次最小请求，验证 Consumer 授权、路由与上游连通。不改动任何配置。": {
+    en: "Sends one minimal request to the gateway using this Worker's saved model/MCP configuration and identity to verify Consumer authorization, routing and upstream connectivity. Changes no configuration.",
+  },
+  "探测模型网关": { en: "Probe Model Gateway" },
+  "（该 Worker 未设置模型）": { en: "(no model set for this Worker)" },
+  "选择 MCP 端点": { en: "Select MCP endpoint" },
+  "探测 MCP": { en: "Probe MCP" },
+  "该 Worker 无用户自定义 MCP": { en: "No user-defined MCP on this Worker" },
+  "请先选择要探测的 MCP 端点": {
+    en: "Select the MCP endpoint to probe first",
+  },
+  "探测成功": { en: "Probe succeeded" },
+  "探测失败": { en: "Probe failed" },
+  "{consumer} · {ms} ms": { en: "{consumer} · {ms} ms" },
   // ── 审计（A7，#1270 GET /api/v1/audit 消费）──
   "审计": { en: "Audit" },
   "审计日志": { en: "Audit Log" },
@@ -51,12 +146,12 @@ const DICT: Record<string, { en: string }> = {
   "① 技能上传（POST /api/v1/skills）": {
     en: "① Skill Upload (POST /api/v1/skills)",
   },
-  // ── 15.14 增补（离线模式 / 技能中心 / 首页）──
-  "本地离线模式": { en: "Local Offline Mode" },
+  // ── 15.14 增补（技能中心 / 首页）＋ 独立模式（两轴契约，取代 15.12 离线模式）──
+  "独立模式（本机独立宿主）": { en: "Standalone mode (local host)" },
   "本地配置加载失败": { en: "Failed to load local config" },
   "载入中…": { en: "Loading…" },
-  "本机无 QwenPaw 服务端——数据接口（会话 / 聊天 / 工作流 / 产物）不可用。": {
-    en: "No QwenPaw server on this device — data APIs (chats / rooms / workflows / artifacts) are unavailable.",
+  "本机无 QwenPaw 服务端（独立宿主）——数据接口（会话 / 聊天 / 工作流 / 产物）暂不可用。": {
+    en: "No QwenPaw server on this device (standalone host) — data APIs (chats / rooms / workflows / artifacts) are currently unavailable.",
   },
   "连接配置可先填写并保存（本地留存、凭据脱敏）。点「连接测试」会真实拨号探测每个地址：": {
     en: "You can fill in and save the connection config now (kept locally, credentials redacted). Tapping \"Connectivity test\" really dials each address:",

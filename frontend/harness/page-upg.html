@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>ui-harness-upg</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+  },
+};
+
+// scen: list（默认：2 候选 + 告警）/ 404（无服务）
+window.__UPG_SCENARIO__ =
+  new URLSearchParams(location.search).get("scen") || "list";
+// run 响应（默认 202 job；409=已有 job）
+window.__UPG_RUN_RESPONSE__ = {
+  status: 202,
+  body: {
+    job_id: "job-abc-123",
+    state: "running",
+    current: "1.2.4",
+    target: "1.2.5",
+    phase: "pre-restart",
+    started_at: "2026-10-17T00:00:00Z",
+  },
+};
+
+function okJson(data) {
+  const s = JSON.stringify(data);
+  return {
+    ok: true,
+    status: 200,
+    text: async () => s,
+    json: async () => data,
+  };
+}
+function resp(status, data) {
+  const s = JSON.stringify(data);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => s,
+    json: async () => data,
+  };
+}
+
+window.fetch = async (url, init) => {
+  const u = String(url);
+  const method = String((init && init.method) || "GET").toUpperCase();
+  if (u.includes("/agentteams-proxy/upgrade/check")) {
+    if (window.__UPG_SCENARIO__ === "404") {
+      return resp(404, { detail: "upgrade service unavailable" });
+    }
+    return okJson({
+      current: "1.2.4",
+      current_source: "dist-info",
+      checked_at: "2026-10-17T00:00:00Z",
+      index: "https://pypi.example/simple/qwenpaw-worker/",
+      candidates: [
+        {
+          version: "1.2.5",
+          prerelease: false,
+          published_at: "2026-10-15T10:00:00Z",
+          gates: {
+            C1: { status: "PASS", evidence: "resolved 1.2.5" },
+            C2: { status: "PASS", evidence: "pins ok" },
+            C3: { status: "NOT_RUN", evidence: "pass verify=true to download wheel" },
+            C4: { status: "SKIP", evidence: "opt-in (check-deps)" },
+          },
+          upgradeable: true,
+          recommended: true,
+        },
+        {
+          version: "1.3.0",
+          prerelease: true,
+          published_at: "2026-10-16T10:00:00Z",
+          gates: {
+            C1: { status: "FAIL", evidence: "unresolved pin X" },
+            C2: { status: "PASS", evidence: "pins ok" },
+            C3: { status: "NOT_RUN", evidence: "not run" },
+            C4: { status: "SKIP", evidence: "opt-in" },
+          },
+          upgradeable: false,
+          recommended: false,
+        },
+      ],
+      errors: ["index note: mirror latency high"],
+    });
+  }
+  if (u.includes("/agentteams-proxy/upgrade/run")) {
+    const r = window.__UPG_RUN_RESPONSE__;
+    if (r.status === 202) {
+      // 202：ok 语义上 202 是成功，requestJson 按 !response.ok 判定 → 202 ok=true
+      return {
+        ok: true,
+        status: 202,
+        text: async () => JSON.stringify(r.body),
+        json: async () => r.body,
+      };
+    }
+    return resp(r.status, r.body);
+  }
+  if (u.includes("/agentteams-proxy/upgrade/status")) {
+    return okJson({
+      job_id: "job-abc-123",
+      state: "boot-check-passed",
+      exit_code: null,
+      current: "1.2.4",
+      target: "1.2.5",
+      phase: "boot-check",
+      started_at: "2026-10-17T00:00:00Z",
+      finished_at: "",
+      log_tail: ["[phase] pre-restart done", "[boot] qwenpaw ready on :8088", "[ok] settle 65s"],
+    });
+  }
+  return resp(404, { detail: "not found (harness)" });
+};
+</script>
+<script src="/harness/bundle-upg.js"></script>
+</body>
+</html>

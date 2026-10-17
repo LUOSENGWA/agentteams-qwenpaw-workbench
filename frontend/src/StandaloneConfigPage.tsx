@@ -1,11 +1,14 @@
-/* 本地离线模式入口页（本地插件宿主 shell，QP.host.isOffline）：
+/* 独立模式入口页（轴 A 宿主形态 kind='local'，见 hostEnv.ts）：
  * 数据域（会话/聊天/工作流/产物）整体不挂载——结构上消除 503 拨号与
  * 刷屏 toast；配置域（SettingsTab）保留可用，数据走 localStorage 模拟层
- * （offlineBackend.ts，脱敏/合并语义对齐服务端连接器）。
+ * （localConfigBackend.ts，脱敏/合并语义对齐服务端连接器）。
  *
- * 本地宿主 shell 无任何网络路径到 QwenPaw 服务端，故此处不设「重试连接」
- * 入口——连接恢复只能由用户在设备侧完成（安装并启动服务端后，经 Web
- * 控制台「备份与恢复 → 导入」应用此本地留存配置）。 */
+ * 独立宿主当前无端侧网络桥（host.env.caps.net=false），数据面不可达，
+ * 故此处不设「重试连接」入口——连接配置本地留存，端侧桥落地后（P2）
+ * 或经服务端 Web 控制台「备份与恢复 → 导入」应用。
+ *
+ * 命名纪律：本页是「独立」档位（宿主形态），不是「离线」——数据面可达性
+ * 是另一轴；caps.net 为 true 且数据面探针可达后入口分流改挂完整工作台。 */
 import type * as ReactNS from "react";
 
 import { useThemeColors } from "./theme";
@@ -16,7 +19,7 @@ import SettingsTab from "./components/SettingsTab";
 const host = window.QwenPaw.host;
 const React = host.React;
 
-export default function WorkbenchOfflinePage() {
+export default function StandaloneConfigPage() {
   const tr = useT();
   const t = useThemeColors();
   const [config, setConfig] = React.useState<WorkbenchConfig | null>(null);
@@ -66,9 +69,9 @@ export default function WorkbenchOfflinePage() {
     >
       <div style={{ padding: "12px 16px 0" }}>
         <div style={bannerBox}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{tr("本地离线模式")}</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{tr("独立模式（本机独立宿主）")}</div>
           <div style={{ marginTop: 4, fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
-            {tr("本机无 QwenPaw 服务端——数据接口（会话 / 聊天 / 工作流 / 产物）不可用。")}{" "}
+            {tr("本机无 QwenPaw 服务端（独立宿主）——数据接口（会话 / 聊天 / 工作流 / 产物）暂不可用。")}{" "}
             {tr(
               "连接配置可先填写并保存（本地留存、凭据脱敏）。点「连接测试」会真实拨号探测每个地址：",
             )}{" "}

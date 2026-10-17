@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>ui-harness-env</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+// 宿主 mock：React/antd 实例 + 空壳 API（entry 直接挂组件）。
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+  },
+};
+
+// PUT /workers/w1 与 gateway-probe 的记录 + 响应。
+window.__LAST_PUT__ = null;
+window.__LAST_PROBE__ = null;
+
+function okJson(data) {
+  const s = JSON.stringify(data);
+  return {
+    ok: true,
+    status: 200,
+    text: async () => s,
+    json: async () => data,
+  };
+}
+function errJson(status, detail) {
+  const s = JSON.stringify({ detail });
+  return {
+    ok: false,
+    status,
+    text: async () => s,
+    json: async () => ({ detail }),
+  };
+}
+
+// 探针：记录 antd 静态 Modal.confirm 是否被调用（S3 二次确认诊断）。
+window.__CONFIRM_CALLED__ = false;
+{
+  const orig = window.antd.Modal.confirm.bind(window.antd.Modal);
+  window.antd.Modal.confirm = (...args) => {
+    window.__CONFIRM_CALLED__ = true;
+    return orig(...args);
+  };
+}
+
+window.fetch = async (url, init) => {
+  const u = String(url);
+  const method = (init && init.method) || "GET";
+  if (method === "PUT" && u === "/agentteams-proxy/controller/api/v1/workers/w1") {
+    const body = JSON.parse(init.body);
+    window.__LAST_PUT__ = body;
+    // WorkerResponse 形态：env 读回 = 落盘值（空 map 经 omitempty 不回传）。
+    const env = body.env && Object.keys(body.env).length ? body.env : undefined;
+    return okJson({ name: "w1", worker_name: "w1", ...(env ? { env } : {}) });
+  }
+  if (method === "POST" && u.includes("/gateway-probe")) {
+    const body = JSON.parse(init.body);
+    window.__LAST_PROBE__ = body;
+    if (body.kind === "model") {
+      return okJson({
+        success: true,
+        message: "Worker identity verified through gateway",
+        latencyMs: 42,
+        consumer: "worker-w1",
+        kind: "model",
+      });
+    }
+    if (body.kind === "mcp") {
+      return errJson(
+        400,
+        "select a saved MCP endpoint on the configured gateway under /mcp-servers/",
+      );
+    }
+  }
+  return errJson(404, "not found (harness)");
+};
+</script>
+<script src="/harness/bundle-env.js"></script>
+</body>
+</html>

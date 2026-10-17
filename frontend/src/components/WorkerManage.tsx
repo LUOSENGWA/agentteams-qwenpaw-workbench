@@ -30,6 +30,7 @@ import WorkerResourcePanel from "./WorkerResourcePanel";
 
 import SkillCenter from "./SkillCenter";
 import WorkerRuntimeConfig from "./WorkerRuntimeConfig";
+import WorkerEnvPanel from "./WorkerEnvPanel";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -372,6 +373,8 @@ function WorkerManageInfo({
   const { narrow } = useWbViewport();
   // 竖屏：运行配置改底部抽屉弹窗（narrow 下不内联撑长列表）。
   const [rcOpen, setRcOpen] = React.useState(false);
+  // 竖屏：环境变量与网关探测（1.2.5+，envEditable=true 才渲染）同款抽屉。
+  const [envOpen, setEnvOpen] = React.useState(false);
   const meta = phaseMeta(worker.phase);
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const busy = acting != null;
@@ -558,6 +561,17 @@ function WorkerManageInfo({
             {tr("运行配置")}
           </antd.Button>
         ) : null}
+        {/* 竖屏：环境变量与网关探测入口=紧凑按钮（1.2.5+ envEditable
+  才渲染；L2/旧 Controller 隐藏——与下方内联面板同一门控）。 */}
+        {narrow && worker.envEditable === true ? (
+          <antd.Button
+            size="small"
+            icon={<SettingsIcon size={12} />}
+            onClick={() => setEnvOpen(true)}
+          >
+            {tr("环境变量")}
+          </antd.Button>
+        ) : null}
       </div>
       {/* ：Worker 运行配置（上游 #1231 消费）——
  默认折叠，展开内懒加载；非 qwenpaw runtime 由面板 400 门自解释。
@@ -584,6 +598,30 @@ function WorkerManageInfo({
           onOpenSettings={onOpenSettings}
         />
       )}
+      {/* ：Worker 环境变量 + 网关探测（AgentTeams 1.2.5+ #1306）。
+  envEditable=true 才渲染（L2=遮蔽 false / 旧 Controller=undefined，
+  两者隐藏——优雅降级）；竖屏同款抽屉，宽屏内联。保存后容器重建
+  生效——面板内有二次确认与明示。 */}
+      {worker.envEditable === true ? (
+        narrow ? (
+          <NarrowSheet
+            open={envOpen}
+            title={tr("环境变量与网关探测")}
+            onClose={() => setEnvOpen(false)}
+          >
+            <WorkerEnvPanel
+              sheet
+              worker={worker}
+              onChanged={() => invalidateTags(["admin"])}
+            />
+          </NarrowSheet>
+        ) : (
+          <WorkerEnvPanel
+            worker={worker}
+            onChanged={() => invalidateTags(["admin"])}
+          />
+        )
+      ) : null}
     </div>
   );
 }

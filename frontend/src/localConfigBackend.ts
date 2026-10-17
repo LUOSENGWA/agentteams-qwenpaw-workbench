@@ -1,25 +1,29 @@
 /**
- * 本地离线模式——配置域模拟层（localStorage）。
+ * 独立宿主（轴 A kind='local'）——配置域模拟层（localStorage）。
  *
  * 本地插件宿主 shell（pluginhost/host.js）无服务端运行时：Python 连接器不运行，
- * 所有 /agentteams-proxy/* 数据接口是受控 503（{detail, code:"OFFLINE"}）。
+ * 所有 /agentteams-proxy/* 数据接口是受控 503（数据面不可达）。
  * 本层用 localStorage 模拟**配置域**（GET/PUT /config、export/import、test、
  * verify-admin），脱敏/合并/凭据态语义逐条移植自服务端
  * agentteams_connector/config.py（redact / merge_address_entries /
  * credential_state / persisted_credential_kinds / update_config 字段规则），
- * 保证离线填存的配置与服务端在线态同形——导出后可在服务端 Web 控制台
+ * 保证独立模式填存的配置与服务端在线态同形——导出后可在服务端 Web 控制台
  * 「备份与恢复 → 导入」应用。
  *
- * 数据域（rooms/chat/admin/sglang 等）不模拟：离线页（WorkbenchOfflinePage）
+ * 数据域（rooms/chat/admin/sglang 等）不模拟：独立页（StandaloneConfigPage）
  * 入口级不挂载数据页，结构性零拨号。api.ts requestJson 是唯一接入点——
- * QP.host.isOffline 为真时先试本层，命中返回模拟响应；未命中放行
- * （仍走宿主受控 503）。console 宿主无 isOffline 字段 → 本层整体旁路。
+ * hostKind() === 'local' 时先试本层，命中返回模拟响应；未命中放行
+ * （仍走宿主受控 503）。console 宿主（server）→ 本层整体旁路。
  *
- * 注意：本文件零 import（宿主 blob-URL 执行环境禁 module 导入，
- * 构建守卫 no-module-imports-guard 强制）。
+ * 命名纪律：「独立」只指宿主形态（轴 A）；连通性（数据面可达与否）是另一轴，
+ * 不由本层判定（hostEnv.ts / P2 qpwNet 落地后由数据面探针判定）。
  */
 
-const OFFLINE_KEY = "agentteams-qwenpaw-workbench:offline-config";
+import { isLocalHost } from "./hostEnv";
+
+// 历史键名含 "offline"（15.12 期命名）——localStorage 持久化标识，不改值
+// （改了会丢已填存的配置）；概念上这是「独立宿主配置域」的存储键。
+const LOCAL_CONFIG_KEY = "agentteams-qwenpaw-workbench:offline-config";
 
 interface OfflineState {
   // 修订号（单调递增；GET 以字符串回传，PUT 原样回传——本地单写者，
@@ -263,7 +267,7 @@ function persistedCredentialKinds(entries: unknown): string[] {
 
 function readState(): OfflineState {
   try {
-    const raw = window.localStorage.getItem(OFFLINE_KEY);
+    const raw = window.localStorage.getItem(LOCAL_CONFIG_KEY);
     if (raw) {
       const p = JSON.parse(raw) as unknown;
       if (isObj(p) && isObj(p.config)) {
@@ -282,7 +286,7 @@ function readState(): OfflineState {
 
 function writeState(state: OfflineState): void {
   try {
-    window.localStorage.setItem(OFFLINE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(state));
   } catch {
     throw new Error(
       "本地配置保存失败——设备 localStorage 不可用或配额已满（清理后重试）",
@@ -316,7 +320,7 @@ function buildGetResponse(): Record<string, unknown> {
     controller: pickAddress(asList(cfg.controller_urls), mode),
     gateway: pickAddress(asList(cfg.gateway_admin_urls), mode),
   };
-  out.configPath = "local-storage://" + OFFLINE_KEY;
+  out.configPath = "local-storage://" + LOCAL_CONFIG_KEY;
   out.configSavedAt = state.savedAt;
   out.configWritable = true;
   out.config_rev = state.rev > 0 ? String(state.rev) : null;
@@ -503,9 +507,9 @@ function handleImport(init: RequestInit | undefined): Record<string, unknown> {
   return { ok: true, restart: "none", config: redactConfig(data) };
 }
 
-// ── POST /config/test（离线=真拨号诊断；响应形态对齐 ConfigTestResponse）
+// ── POST /config/test（独立宿主=真拨号诊断；响应形态对齐 ConfigTestResponse）
 //
-// 15.14：此前离线对每个地址恒报「无法探测该地址」——真机端（有网、无
+// 15.14：此前独立模式对每个地址恒报「无法探测该地址」——真机端（有网、无
 // 本地服务端）输远程 QwenPaw 地址后无从判断「为什么联不通」。改为真实
 // 两步探测，诚实分层归因：
 //   ① no-cors 探测 = 纯网络可达性（DNS/路由/TCP/TLS）。no-cors 模式对
@@ -645,33 +649,28 @@ async function handleTest(
   };
 }
 
-// ── POST /config/verify-admin（离线无法连接验证 → 可读错误） ──────────
+// ── POST /config/verify-admin（独立宿主无服务端 → 无法验证，可读错误） ──
 
 function handleVerifyAdmin(): Record<string, unknown> {
   return {
     ok: false,
     error:
-      "本地离线模式——无法连接服务端验证。连接配置可先填写并保存（本地留存），连上服务端后再验证应用",
+      "独立模式——无法连接服务端验证。连接配置可先填写并保存（本地留存），连上服务端后再验证应用",
   };
 }
 
-// ── 入口：requestJson 离线拦截（命中配置域端点 → 模拟响应） ──────────
-
-function isOfflineHost(): boolean {
-  const host = (window as unknown as { QwenPaw?: { host?: unknown } }).QwenPaw
-    ?.host;
-  return isObj(host) && host.isOffline === true;
-}
+// ── 入口：requestJson 独立宿主拦截（命中配置域端点 → 模拟响应） ──────────
 
 /**
- * 命中离线模拟端点 → 返回响应 Promise（错误经 throw 传递，形态同
+ * 命中独立宿主配置域模拟端点 → 返回响应 Promise（错误经 throw 传递，形态同
  * requestJson 的 HTTP 错误）；未命中 → null（调用方放行宿主 fetch）。
+ * 轴 A 判定（host.env.kind='local'，旧 shell 回退 isOffline）见 hostEnv.ts。
  */
-export function tryOfflineConfigEndpoint(
+export function tryLocalConfigEndpoint(
   path: string,
   init?: RequestInit,
 ): Promise<unknown> | null {
-  if (!isOfflineHost()) return null;
+  if (!isLocalHost()) return null;
   const p = path && path.charAt(0) === "/" ? path : "/" + path;
   const method = (asStr(init?.method) || "GET").toUpperCase();
   if (p === "/agentteams-proxy/config" && method === "GET") {
