@@ -382,7 +382,8 @@ function ApprovalControl({
           ) : null}
           <span
             title={tr("QwenPaw 原生「工具执行安全」四模式（设置页同款）")}
-            style={{ fontWeight: 600, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}
+            // gap 6 = 卡片族段头图标-标题间距（段头对齐：标题 x=70 轨）。
+            style={{ fontWeight: 600, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}
           >
             <LevelIcon lv="AUTO" size={13} />
             {tr("工具执行安全")}

@@ -296,7 +296,8 @@ function WorkerEnvPanel({
         gap: 8,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {/* gap 6 = 折叠态同款（段头对齐：折叠/展开两态图标 x 不漂移）。 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {sheet ? null : (
           <span
             style={{ width: 12, fontSize: 10, color: "#888", cursor: "pointer" }}

@@ -936,7 +936,8 @@ function WorkerRuntimeConfig({
         gap: 10,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {/* gap 6 = 折叠态同款（段头对齐：折叠/展开两态图标 x 不漂移）。 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {/* 展开态补收起抓手（原展开后无法收起）。
  sheet 模式隐藏抓手/图标/标题——Modal 头已带标题与关闭钮，
  仅留 qwenpaw 标签 + 右侧动作钮（刷新/重置/保存）。 */}
