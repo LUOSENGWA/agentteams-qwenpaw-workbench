@@ -3,6 +3,26 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.26（2026-10-17 · 检查更新简化 + Coding CLI 结构化设置表单 + 设置响应解包修正 + LLM 调优生效值预填）
+
+本批 = 15.25 使用反馈 4 件（检查更新太慢 / Worker 不占整行 / LLM 调优要预填当前值 / Coding CLI 设置要结构化 + 守 L1/L2 分权）。
+
+**改进**
+- **检查更新简化（运维页「运行时升级」批量模式）**：原「检查更新」= 每次对每个 Worker 逐个 `docker exec` 轻探（N 个 = N×延迟，慢的根因）。现改为——**当前版本** = 各 Worker 容器内 qwenpaw 运行时版（首次探一次后**模块级缓存**，后续检查秒回，不再逐次 exec）；**最新稳定版** = 单次 PyPI 查询（**新端点 `GET /upgrade/latest`**，L1 only，服务端 10 分钟缓存，断网回退旧缓存并标 `stale`）。逐 Worker 本地版本比较（`compareVersions`）出「最新 / 可升级 / 未知」状态。**关键定案**：Worker 镜像 tag（如 `v1.2.5`）是 AgentTeams 镜像版，≠qwenpaw 运行时版（如 `2.2.1`），拿镜像 tag 比 PyPI qwenpaw latest 恒误判「可升级」——故当前版本正源是容器内 qwenpaw 版（`/upgrade/latest` 实测 PyPI 最新 `2.2.2`、集群容器内 `2.2.1`）。升级成功后自动清该 Worker 缓存（版本已变，下次重探真值）。
+- **Coding CLI 结构化全设置表单（Worker 详情 Coding CLI 段）**：原设置编辑 = 模型名输入 + 密钥栏 + **自由 JSON 补丁**（松散式）。现新增**结构化树编辑器**——递归渲染 settings 树：脱敏密钥 → 密码框（留空=保留已存 / 输入=替换）、对象 → 分组下钻、数组 → JSON 文本、标量 → 类型化输入（布尔开关 / 数字 / 字符串）。**免硬编码各 CLI schema**（qwen-code / opencode / qoder 的 settings 是各自 CLI 自有 JSON，无固定 schema，动态渲染任意字段）。**网络传输减**：保存只发**叶子级 diff 补丁**（只发改动的字段）+ **PUT 响应直接复用**返回的合并后 settings（免再 GET 重拉一次全量）。只读态（L2）整表单禁用。
+
+**修正**
+- **Coding CLI settings 响应解包（wrapper-unwrap，真 bug）**：settings 端点真实响应是 **wrapper** `{cli, exists, path, settings}`（`settings` 子树才是配置文件的真树，脱敏哨兵在树内），而非裸树。旧代码把 wrapper 当树用 → ① 模型名恒读空（读 `wrapper.model` 而非 `wrapper.settings.model`）② 密钥字段路径多一层 `settings.` 前缀（会把密钥写到错误嵌套）。现 unwrap 到 `.settings` 作树，diff/密钥补丁按「配置文件相对路径」发（Controller 对真树 deep-merge）。GET/PUT 两端加防御（无 `settings` 键 → 空树，不炸）。
+
+**LLM 调优**
+- **生效值预填（Worker 详情「LLM 调优」卡）**：原只显示 Worker **显式覆盖**（未设 = 空 = 灰显 registry 默认）。现展开时拉该 Worker 所属团队 → **解析当前生效值**（Worker 覆盖 → 团队默认 → QwenPaw registry 兜底）预填进字段（看到的是实际生效值，非默认）。写语义改字段级：改值 = 写 Worker 覆盖；改回继承值 = 清除覆盖（不写冗余）；不动 = 无 diff。拉团队失败不阻塞（退化为 Worker → registry 两级）。
+
+**分权（查 Controller 源码定案，无需改前端）**：Coding CLI 面由**服务端强制**——L1（admin/manager）全量 + 读写；L2（team leader）仅自己团队 scope + **只读**（settings PUT / install 返 403）；L3（human）同 L2 团队 scope。前端保持「假设可写 + 403 → 整面只读」既有模式（已正确）。
+
+**验证**：tsc 0 · vite build 单文件 1,965 kB · pytest 434/434（含新增 `/upgrade/latest` 5 例：L1 门 / 成功 / 缓存命中不重复拨号 / 断网回退 stale / 无缓存断网 502）· i18n 门 1672 键 0 缺 0 重 · 敏感扫 0（源码 diff 0 个人标识 / 0 内网 IP；dist 0 内网 IP）· 三源版本一致（15.26）。
+
+---
+
 ## 0.5.0-beta.15.25（2026-10-17 · 集群版本卡 + 逐 Worker 运行时升级重接 + LLM 调优面板 + 运行时批量升级 + Coding CLI 检查更新/升级 + 编码执行记录归 Worker 会话）
 
 本批 = 消费 AgentTeams 1.2.5 三块新能力（集群版本可观测 / 运行时在线升级 / LLM 调优）的插件侧 + 编码 CLI 管理面增强。

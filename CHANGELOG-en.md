@@ -3,6 +3,26 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.26 (2026-10-17 - Simplified check-for-updates + structured coding-CLI settings form + settings-response unwrap fix + LLM-tuning effective-value prefill)
+
+This batch = the four 15.25 acceptance-feedback items (check-for-updates too slow / Workers should not occupy a full row / LLM tuning should prefill the current value / coding-CLI settings should be structured + keep L1/L2 separation).
+
+**Improved**
+- **Simplified check-for-updates (Ops "Runtime upgrade" batch mode)**: the old "Check for updates" ran a `docker exec` light-probe per Worker on every check (N Workers = N× latency — the root cause of the slowness). Now: **current version** = each Worker's in-container qwenpaw runtime version (probed once, then **module-cached** — re-checks are instant, no per-check exec); **latest stable** = a single PyPI query (**new `GET /upgrade/latest`** endpoint, L1-only, server-side 10-minute cache, falls back to the stale cache on outage). Workers are compared locally (`compareVersions`) into "Latest / Update available / Unknown" states. **Key decision**: the Worker image tag (e.g. `v1.2.5`) is the AgentTeams image version, NOT the qwenpaw runtime (e.g. `2.2.1`) — comparing the image tag against the PyPI qwenpaw latest always mis-fires "update available", so the current-version source is the in-container qwenpaw version (verified live: PyPI latest `2.2.2`, cluster in-container `2.2.1`). After a successful upgrade the Worker's cache entry is cleared (version changed, so the next check re-probes the truth).
+- **Structured coding-CLI full-settings form (Worker details, Coding CLI section)**: the old settings editor was a model-name input + secret fields + a **free-form JSON patch** (loose). Now a **structured tree editor** renders the settings tree recursively: redacted secrets → password field (leave empty = keep stored / enter = replace), object → nested group, array → JSON text, scalar → typed input (boolean switch / number / string). **No per-CLI schema hardcoding** (qwen-code / opencode / qoder settings are each CLI's own JSON with no fixed schema; any field renders dynamically). **Network transfer reduced**: saving sends only the **leaf-level diff patch** (changed fields only) and **reuses the PUT response's merged settings** (no extra GET re-fetch). The whole form is disabled in read-only mode (L2).
+
+**Fixed**
+- **Coding-CLI settings-response unwrap (wrapper-unwrap, real bug)**: the settings endpoint actually returns a **wrapper** `{cli, exists, path, settings}` (the `settings` subtree is the real config-file tree, with the redaction sentinels inside it), not a bare tree. The old code treated the wrapper as the tree → ① model name always read empty (it read `wrapper.model`, not `wrapper.settings.model`); ② secret-field paths carried a spurious `settings.` prefix (secrets would have been written to the wrong nesting). Now the code unwraps to `.settings` as the tree, and diff/secret patches are sent config-file-relative (the controller deep-merges the real tree). Defensive fallbacks on both GET/PUT (a missing `settings` key → empty tree, no crash).
+
+**LLM tuning**
+- **Effective-value prefill (Worker details, "LLM tuning" card)**: the panel previously showed only the Worker's **explicit overrides** (unset = empty = greyed registry default). Now, on expand, it fetches the Worker's team and **resolves the current effective value** (Worker override → team default → QwenPaw registry fallback), prefilling the fields with the actual in-use values rather than defaults. Write semantics are per-field: editing a value writes a Worker override; reverting to the inherited value clears the override (no redundant write); no change = no diff. A team-fetch failure does not block (falls back to the two-level Worker → registry resolution).
+
+**Permissions (decided from controller source; no frontend change needed)**: the coding-CLI surface is enforced **server-side** — L1 (admin/manager) full scope + read/write; L2 (team leader) own-team scope + **read-only** (settings PUT / install return 403); L3 (human) same own-team scope. The frontend keeps its existing "assume-writable + 403 → read-only" pattern (already correct).
+
+**Verification**: tsc 0 · vite build single file 1,965 kB · pytest 434/434 (incl. 5 new `/upgrade/latest` tests: L1 gate / success / cache-hit no re-dial / outage stale-fallback / no-cache outage 502) · i18n gate 1672 keys 0 missing 0 dup · secret-scan 0 (source diff 0 personal identifiers / 0 internal IPs; dist 0 internal IPs) · three-source version consistent (15.26).
+
+---
+
 ## 0.5.0-beta.15.25 (2026-10-17 - Cluster version cards + per-worker runtime upgrade rewire + LLM tuning panels + batch runtime upgrade + coding CLI check-for-updates/upgrade + coding runs moved to Worker sessions)
 
 This batch = the plugin side consuming AgentTeams 1.2.5's three new capabilities (cluster version observability / in-place runtime upgrade / LLM tuning) + coding-CLI management surface enhancements.
