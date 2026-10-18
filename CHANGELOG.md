@@ -3,6 +3,25 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.27（2026-10-18 · 运行时环境变量预填充 + 检查更新 v3（批量+缓存）+ 目标版本表格 + Coding CLI 模型列表选择）
+
+本批 = 15.26 使用反馈 4 件（QwenPaw 运行时环境变量没预填充 / 检查更新还是很慢 + 选版本应该有个表格 / Coding CLI 设置没接入 + 模型选择应该像 Worker 那样有列表）+ 全量交叉检查。
+
+**新增**
+- **运行时环境变量预填充（Worker 详情「环境变量」段）**：新增只读端点 `GET /workers/{name}/runtime-env`（L1 only），经 Controller Docker API 代理 `docker exec` 读**容器 PID 1 实际生效环境**（`/proc/1/environ`，命令固定常量零注入面）。**根因**：Controller `GET /workers/{name}` 详情响应**不回显 `env` 键**（实盘 v1.2.5 实测 detail keys 无 `env`，写路径 `PUT env` 可用）→ 原「自定义变量」区恒空，误判「没配置」。面板新增**「运行时环境」只读区**（懒加载：首次展开才拨号）：展示 QwenPaw_* / AGENTTEAMS_* / 镜像内置 + 已保存自定义变量的**实际生效值**（预填充正源），**敏感键默认脱敏**（`TOKEN/SECRET/GATEWAY_KEY/PASSWORD/…` → 前 4+…+后 4），勾选「显示明文」才 `?reveal=1` 拉明文；支持键名过滤 + 分组（QwenPaw / 平台注入 / 其他）+ 刷新。「自定义变量」区补注：Controller 当前不回显已保存值，保存后以运行时环境为准（容器重建生效）。
+- **检查更新 v3（运维页「运行时升级」，一次调用全量本地匹配，冷 6s / 暖 8ms）**：新增 `GET /upgrade/check-all`（L1 only）——服务端对全部 Worker **`asyncio.gather` 真并行轻探**（semaphore 限并发 10）读容器内 qwenpaw 运行时版 + 拉 PyPI 最新稳定版，**逐 Worker 服务端 10 分钟缓存**（升级 run 启动后逐 Worker 失效）+ **worker 列表 60s 缓存**（29-worker 集群该端点实测 2–2.9s，缓存后重复点击三重全命中）。探测命令**廉价化**：主路径读 `qwenpaw-*.dist-info/METADATA` 的 `Version:`（**不起 Python venv**，真机 0.84s vs venv-importlib 2.37s；dist-info 缺失时回退 venv-python），glob 置于双引号外（引号内不展开）。**冷启动 41.6s → 5.9s（7×），暖态 0.008s（8ms）**。前端「检查更新」= **单次调用** + 本地 `compareVersions` 匹配（最新 / 可升级 / 未知 + 逐 Worker 探测失败降级不阻塞整体）；**二次点击 = 命中缓存零 exec（毫秒级）**。运维 tab 激活后**后台延迟 3s 预取**（让出首帧），让首次点击大概率也快。单 Worker 轻探（`/upgrade/check`）与 check-all **共享同一份探测缓存**。取代 15.26 的「N×前端逐 Worker 轻探」。
+- **目标版本表格（版本选择，替代自由文本输入）**：新增 `GET /upgrade/versions`（L1 only）——PyPI `releases` 字典按上传时间倒序取前 30 条，每项 `{version, upload_time, size, prerelease, yanked, is_latest}`（预发布判定按版本段匹配 `a/alpha/b/beta/c/rc/dev/pre/preview`，post-release 不算），**与 `/upgrade/latest` 同一份 PyPI 缓存**（零额外网络往返）。前端 `VersionTablePicker`（antd.Table 单选行 + 版本/发布时间/大小/标记四列）替换两处目标版本自由输入；「自定义版本（高级）」保留为任意 tag 兜底。
+
+**改进**
+- **Coding CLI 模型列表选择（Worker 详情 Coding CLI 段）**：设置树编辑器新增**模型专行**——与 Worker 模型选择**同一正源** `useModelUnionOptions`（候选 = SGLang 在服 ∪ 当前在用 ∪ 网关 alias 分组）的 `AutoComplete`（列表点选 + 自由输入兜底），**写前校验** `validateModelValue`（路径/URL/空格=error 阻止保存，不在在服列表=warn 放行提示）。保存时按 diff 写入 `model.name`（留空=清除覆盖回退 CLI 默认），**保存摘要回读**（动了模型=明示新值 / 已清除）。CLI 卡片行内新增**模型徽标**（settings 加载后显示当前生效模型，与 Worker 模型列徽标语义一致）。**清理**：删除声明后从未使用的 `modelName` 死 state（15.26 遗留）。
+
+**修正**
+- **pytest 缓存隔离扩域**：`upgrade_api` 新增模块级 `_probe_cache`（轻探 10min 缓存）后，同 Worker 名的相邻测试会命中上一测缓存（如 `test_check_light` 后 `test_check_light_unsupported_image` 拿到旧 HAS/HAS）——`conftest._clear_module_caches` 从「仅 router 模块」扩到「router + 全部域模块」的 `*_cache` dict，自动纳入未来新增的模块级缓存。
+
+**验证**：tsc 0 · vite build 单文件 1,978 kB · **pytest 447/447**（+13 新：check-all 200/缓存零 exec+worker 列表缓存/run 失效/PyPI 降级/versions 倒序+预发布+撤回/断网 502/runtime-env 200+脱敏+reveal+403+400/轻探共享缓存）· i18n 门 1696 键 0 缺 0 重 · 敏感扫 0 · 三源版本一致（15.27）· 真机 E2E（29 worker 集群）：check-all 冷 5.9s（原 41.6s）/暖 8ms，29/29 探测到版本；versions 10ms 返回 30 行（最新 2.2.2 + 预发布 2.2.2b6…）；runtime-env 真机脱敏+reveal。
+
+---
+
 ## 0.5.0-beta.15.26（2026-10-17 · 检查更新简化 + Coding CLI 结构化设置表单 + 设置响应解包修正 + LLM 调优生效值预填）
 
 本批 = 15.25 使用反馈 4 件（检查更新太慢 / Worker 不占整行 / LLM 调优要预填当前值 / Coding CLI 设置要结构化 + 守 L1/L2 分权）。

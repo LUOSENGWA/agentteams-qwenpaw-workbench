@@ -108,15 +108,26 @@ def _real_config_sentinel():
 
 @pytest.fixture(autouse=True)
 def _clear_module_caches():
+    # 15.27：upgrade_api 引入模块级 _probe_cache（轻探 10min 缓存）——
+    # 同 worker 名的相邻测试会命中上一测的缓存（如 test_check_light 后
+    # test_check_light_unsupported_image 拿到旧 HAS/HAS）。缓存清理从
+    # 「仅 router 模块」扩到「router + 全部域模块」的 *_cache dict。
     try:
         from agentteams_connector import router as router_mod
 
-        for name in dir(router_mod):
-            if not name.endswith("_cache"):
-                continue
-            cache = getattr(router_mod, name, None)
-            if isinstance(cache, dict):
-                cache.clear()
+        mods = [router_mod]
+        for mod_name in _DOMAIN_MODULES:
+            try:
+                mods.append(importlib.import_module(mod_name))
+            except Exception:  # noqa: BLE001 - 域缺失时跳过
+                pass
+        for mod in mods:
+            for name in dir(mod):
+                if not name.endswith("_cache"):
+                    continue
+                cache = getattr(mod, name, None)
+                if isinstance(cache, dict):
+                    cache.clear()
     except Exception:  # noqa: BLE001 - 清理失败不影响被测目标
         pass
     yield

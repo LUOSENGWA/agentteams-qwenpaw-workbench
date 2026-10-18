@@ -1108,6 +1108,9 @@ def build_router() -> APIRouter:
     # coding CLI 检查更新域（宿主 server-side 查 npm registry latest；
     # L1 only + clis 白名单；须在 catch-all 之前）。
     router.include_router(coding_cli_latest_api.build_coding_cli_latest_router())
+    # 15.27 Worker 运行时环境（PID 1 env 预填充正源，只读 L1）。
+    from .routers import runtime_env_api
+    router.include_router(runtime_env_api.build_runtime_env_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     return router

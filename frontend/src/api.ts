@@ -657,10 +657,10 @@ export interface UpgradeLightCheck {
   checker?: string;
   upgrader?: string;
   supported: boolean;
+  cached?: boolean;
 }
 
-/** 最新稳定 qwenpaw 版本（单次 PyPI 查询，后端 10min 缓存）。
- * 「检查更新」轻路径正源：前端用 worker image tag 作当前版本逐 worker 匹配。 */
+/** 最新稳定 qwenpaw 版本（单次 PyPI 查询，后端 10min 缓存）。 */
 export interface UpgradeLatest {
   latest: string;
   source?: string;
@@ -668,6 +668,68 @@ export interface UpgradeLatest {
   stale?: boolean;
   fetched_at?: number | null;
   error?: string;
+}
+
+/** 批量检查更新（15.27）：一次调用=全部 worker 当前版+latest 本地匹配。
+ * 当前版=服务端批量轻探（10min 缓存）——「检查更新」二次点击零 exec。 */
+export interface UpgradeCheckAllWorker {
+  name: string;
+  image?: string;
+  runtime?: string;
+  skipped?: boolean;
+  current?: string | null;
+  checker?: string;
+  upgrader?: string;
+  supported?: boolean;
+  cached?: boolean;
+  error?: string;
+}
+
+export interface UpgradeCheckAll {
+  workers: UpgradeCheckAllWorker[];
+  latest: string | null;
+  source?: string;
+  cached?: boolean;
+  stale?: boolean;
+  fetched_at?: number | null;
+  error?: string;
+}
+
+/** qwenpaw release 列表（版本表格数据源；PyPI releases 倒序 ≤30）。 */
+export interface UpgradeVersionRow {
+  version: string;
+  upload_time: string;
+  size: number;
+  prerelease: boolean;
+  yanked: boolean;
+  is_latest: boolean;
+}
+
+export interface UpgradeVersions {
+  versions: UpgradeVersionRow[];
+  latest: string;
+  source?: string;
+  cached?: boolean;
+  stale?: boolean;
+  fetched_at?: number | null;
+  error?: string;
+}
+
+/** Worker 运行时环境变量（容器 PID 1 实际生效 env，只读；15.27 预填充正源）。 */
+export interface WorkerRuntimeEnvEntry {
+  key: string;
+  value: string;
+  masked: boolean;
+  sensitive: boolean;
+  group: "qwenpaw" | "platform" | "other";
+}
+
+export interface WorkerRuntimeEnv {
+  worker: string;
+  count: number;
+  reveal: boolean;
+  fetched_at: number;
+  env: WorkerRuntimeEnvEntry[];
 }
 
 /** 完整预检：checker --json 透传。 */
@@ -722,13 +784,45 @@ export async function fetchUpgradeLightCheck(
   )) as UpgradeLightCheck;
 }
 
-/** 最新稳定 qwenpaw 版本（单次查询，后端缓存）。「检查更新」轻路径用。 */
+/** 最新稳定 qwenpaw 版本（单次查询，后端缓存）。 */
 export async function fetchUpgradeLatest(): Promise<UpgradeLatest> {
   return (await requestJson(
     "/agentteams-proxy/upgrade/latest",
     undefined,
     30000,
   )) as UpgradeLatest;
+}
+
+/** 批量检查更新（一次调用全量 worker 当前版+latest；服务端 10min 缓存）。
+ * 「检查更新」主路径 + tab 激活后台预取（二次点击毫秒级）。 */
+export async function fetchUpgradeCheckAll(): Promise<UpgradeCheckAll> {
+  return (await requestJson(
+    "/agentteams-proxy/upgrade/check-all",
+    undefined,
+    60000,
+  )) as UpgradeCheckAll;
+}
+
+/** qwenpaw release 列表（版本表格；后端随 latest 同一 PyPI 缓存）。 */
+export async function fetchUpgradeVersions(): Promise<UpgradeVersions> {
+  return (await requestJson(
+    "/agentteams-proxy/upgrade/versions",
+    undefined,
+    30000,
+  )) as UpgradeVersions;
+}
+
+/** Worker 运行时环境变量（PID 1 env 预填充正源，只读；reveal=明文）。 */
+export async function fetchWorkerRuntimeEnv(
+  worker: string,
+  reveal?: boolean,
+): Promise<WorkerRuntimeEnv> {
+  const q = reveal ? "?reveal=1" : "";
+  return (await requestJson(
+    `/agentteams-proxy/workers/${encodeURIComponent(worker)}/runtime-env${q}`,
+    undefined,
+    30000,
+  )) as WorkerRuntimeEnv;
 }
 
 export async function fetchUpgradeCheck(

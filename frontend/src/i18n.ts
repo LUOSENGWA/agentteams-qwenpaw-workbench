@@ -52,7 +52,6 @@ const DICT: Record<string, { en: string }> = {
   "该 Worker 镜像不支持就地升级（需 1.2.5+ 镜像，含内置升级脚本）。": {
     en: "This Worker image does not support in-place upgrade (requires a 1.2.5+ image with the built-in upgrade scripts).",
   },
-  "目标版本，如 2.3.0": { en: "Target version, e.g. 2.3.0" },
   "附加 wheel 可达性检查（从 PyPI 下载，耗时更长）": {
     en: "Also verify wheel reachability (downloads from PyPI, slower)",
   },
@@ -2506,6 +2505,48 @@ const DICT: Record<string, { en: string }> = {
   "选择 Worker 后显示其 Coding CLI 执行记录": {
     en: "Select a Worker to show its Coding CLI runs",
   },
+  // 15.27 批（运行时 env 预填 + 版本表格 + Coding CLI 模型选择 + check-all）：
+  "QwenPaw": { en: "QwenPaw" },
+  "发布时间": { en: "Released" },
+  "如 2.3.0（表格未列出的 tag）": {
+    en: "e.g. 2.3.0 (a tag not listed in the table)",
+  },
+  "容器 PID 1 实际生效环境（含 QwenPaw_* / AGENTTEAMS_* / 镜像内置 + 已保存自定义变量）。敏感键默认脱敏；自定义变量保存并容器重建后在此生效。": {
+    en: "Environment actually in effect in the container (PID 1) — includes QwenPaw_* / AGENTTEAMS_* / image defaults + saved custom variables. Sensitive keys are masked by default; saved custom variables appear here after the container is recreated.",
+  },
+  "容器实际生效环境变量（只读预填充）": {
+    en: "Effective container environment (read-only)",
+  },
+  "已保存（模型={m}）": { en: "Saved (model={m})" },
+  "已保存（模型覆盖已清除，回退 CLI 默认）": {
+    en: "Saved (model override cleared — falls back to CLI default)",
+  },
+  "平台注入": { en: "Platform-injected" },
+  "当前=各 Worker 容器内 QwenPaw 运行时版（服务端 10min 缓存 + tab 激活后台预取），最新=PyPI（缓存），逐 Worker 本地匹配——二次点击毫秒级。": {
+    en: "Current = QwenPaw runtime version inside each Worker container (server-side 10-min cache + background prefetch on tab activation); latest = PyPI (cached); matched per Worker locally — a second click is instant.",
+  },
+  "无匹配项": { en: "No matches" },
+  "显示明文（敏感键）": { en: "Show plaintext (sensitive keys)" },
+  "暂无版本列表（PyPI 不可达且无缓存）": {
+    en: "No version list available (PyPI unreachable and no cache)",
+  },
+  "未选择（建议 {v}）": { en: "Not selected (suggested: {v})" },
+  "标记": { en: "Flags" },
+  "检查更新失败": { en: "Update check failed" },
+  "注意：Controller 当前不回显已保存的自定义变量（保存=整块替换写 CRD）——已保存值以下方「运行时环境」为准（容器重建后生效）。": {
+    en: "Note: the Controller currently does not echo back saved custom variables (save = whole-map replace on the CRD) — consult the “Runtime environment” section below for saved values (effective after container recreation).",
+  },
+  "点击展开 / 收起": { en: "Click to expand / collapse" },
+  "版本列表加载失败": { en: "Failed to load version list" },
+  "版本表": { en: "Version table" },
+  "留空=清除覆盖（跟随 CLI 默认）": {
+    en: "Empty = clear override (follow CLI default)",
+  },
+  "自定义版本（高级）": { en: "Custom version (advanced)" },
+  "设为目标": { en: "Set as target" },
+  "读取运行时环境失败": { en: "Failed to read runtime environment" },
+  "过滤键名…": { en: "Filter key name…" },
+  "运行时环境": { en: "Runtime environment" },
 };
 
 type Lang = "zh" | "en";

@@ -2,20 +2,21 @@ import type * as ReactNS from "react";
 
 import {
   fetchUpgradeCheck,
-  fetchUpgradeLatest,
+  fetchUpgradeCheckAll,
   fetchUpgradeLightCheck,
   fetchUpgradeStatus,
   httpErrorStatus,
   requestJson,
   runUpgrade,
   UPGRADE_TERMINAL_STATES,
+  type UpgradeCheckAll,
   type UpgradeFullCheck,
   type UpgradeGate,
-  type UpgradeLatest,
   type UpgradeLightCheck,
   type UpgradeRunHandle,
   type UpgradeStatusResult,
 } from "../api";
+import VersionTablePicker from "./VersionTablePicker";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { usePoller } from "../usePoller";
@@ -50,6 +51,7 @@ interface UpgradeCheckResult {
   current: string | null; // 容器内 qwenpaw 版；未探测到=null
   latest: string;
   status: "up-to-date" | "available" | "unknown";
+  error?: string; // 探测失败原因（worker 级降级，不阻塞整体）
 }
 
 /** PEP440 简式版本比较（数字段逐位；预发布后缀视为低于同号正式版）。
@@ -409,17 +411,14 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
       {/* 目标版本 + 预检 */}
       {selected && light?.supported ? (
         <div style={{ display: "grid", gap: 10 }}>
+          <VersionTablePicker
+            value={version}
+            onChange={(v) => {
+              setVersion(v);
+              setFull(null);
+            }}
+          />
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <antd.Input
-              style={{ width: 200, fontFamily: "ui-monospace, monospace" }}
-              placeholder={tr("目标版本，如 2.3.0")}
-              value={version}
-              onChange={(e: { target: { value: string } }) => {
-                setVersion(String(e.target.value || ""));
-                setFull(null);
-              }}
-              allowClear
-            />
             <antd.Checkbox
               checked={verify}
               onChange={(e: { target: { checked: boolean } }) =>
@@ -639,7 +638,7 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
   const [lightMap, setLightMap] = React.useState<
     Record<string, UpgradeCheckResult | null>
   >({});
-  const [latestInfo, setLatestInfo] = React.useState<UpgradeLatest | null>(null);
+  const [latestInfo, setLatestInfo] = React.useState<UpgradeCheckAll | null>(null);
   const [checkErr, setCheckErr] = React.useState<string | null>(null);
   const [checking, setChecking] = React.useState(false);
   const [checkDone, setCheckDone] = React.useState(false);
@@ -657,59 +656,77 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
     [workers],
   );
 
-  // 检查更新（15.26 简化）：最新=单次 PyPI 查询（后端 10min 缓存）；
-  // 当前=各 worker 容器内 qwenpaw 运行时版（探测一次后模块级缓存，后续秒回）。
-  // 取代旧「每次全量 N×docker exec」——只有未缓存的 worker 才探一次。
+  // 检查更新（15.27 定案「读到现在版本→本机匹配」）：单次
+  // check-all = 服务端批量轻探（10min 缓存）+ latest（PyPI 10min 缓存）
+  // → 逐 worker 本地匹配。二次点击=命中缓存零 exec（毫秒级）；tab 激活
+  // 后台预取（下方 effect）让首次点击大概率也快。
   const doCheckAll = React.useCallback(async () => {
     if (qwenpawWorkers.length === 0) return;
     setChecking(true);
     setCheckDone(false);
     setCheckErr(null);
-    let latest = "";
     try {
-      const info = await fetchUpgradeLatest();
-      latest = info.latest || "";
-      setLatestInfo(info);
-      if (info.stale) setCheckErr(info.error || null);
-    } catch (e) {
-      setCheckErr(
-        e instanceof Error ? `查询最新版本失败：${e.message}` : "查询最新版本失败",
-      );
-    }
-    // 未缓存的 worker 探一次当前 qwenpaw 版（限并发 5 并行，一次性）。
-    const missing = qwenpawWorkers.filter((w) => !qwenpawVersionCache.has(w.name));
-    const CONC = 5;
-    for (let i = 0; i < missing.length; i += CONC) {
-      const batch = missing.slice(i, i + CONC);
-      await Promise.all(
-        batch.map(async (w) => {
-          try {
-            const lc = await fetchUpgradeLightCheck(w.name);
-            if (lc.current) qwenpawVersionCache.set(w.name, lc.current);
-          } catch {
-            /* 探测失败→该 worker 当前版未知（不阻塞其他） */
-          }
-        }),
-      );
-    }
-    const results: Record<string, UpgradeCheckResult | null> = {};
-    for (const w of qwenpawWorkers) {
-      const current = qwenpawVersionCache.get(w.name) || null;
-      if (!current || !latest) {
-        results[w.name] = { current, latest: latest || "", status: "unknown" };
-      } else {
-        const c = compareVersions(current, latest);
-        results[w.name] = {
-          current,
-          latest,
-          status: c < 0 ? "available" : "up-to-date",
-        };
+      const d = await fetchUpgradeCheckAll();
+      setLatestInfo(d);
+      if (d.stale) setCheckErr(d.error || null);
+      const latest = d.latest || "";
+      const results: Record<string, UpgradeCheckResult | null> = {};
+      for (const w of qwenpawWorkers) {
+        const row = d.workers.find((x) => x.name === w.name);
+        const current = row?.current ?? null;
+        if (current) qwenpawVersionCache.set(w.name, current);
+        if (!current || !latest || row?.error) {
+          results[w.name] = {
+            current,
+            latest,
+            status: "unknown",
+            error: row?.error || (!latest ? d.error : undefined),
+          };
+        } else {
+          const c = compareVersions(current, latest);
+          results[w.name] = {
+            current,
+            latest,
+            status: c < 0 ? "available" : "up-to-date",
+          };
+        }
       }
+      setLightMap(results);
+    } catch (e) {
+      setCheckErr(e instanceof Error ? e.message : tr("检查更新失败"));
+    } finally {
+      setChecking(false);
+      setCheckDone(true);
     }
-    setLightMap(results);
-    setChecking(false);
-    setCheckDone(true);
-  }, [qwenpawWorkers]);
+  }, [qwenpawWorkers, tr]);
+
+  // 15.27 后台预取：ops tab 激活且模块缓存未全覆盖 → 延迟 3s 预取一次
+  // check-all（让出 tab 切换首帧；命中=服务端 10min 缓存零 exec）。
+  // 「检查更新」点击=读缓存本地匹配，不再 N×拨号。
+  React.useEffect(() => {
+    if (!opsActive || qwenpawWorkers.length === 0) return;
+    const covered = qwenpawWorkers.filter((w) =>
+      qwenpawVersionCache.has(w.name),
+    ).length;
+    if (covered === qwenpawWorkers.length) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void fetchUpgradeCheckAll()
+        .then((d) => {
+          if (cancelled) return;
+          for (const row of d.workers) {
+            if (row.current) qwenpawVersionCache.set(row.name, row.current);
+          }
+        })
+        .catch(() => {
+          /* 预取失败静默——点击「检查更新」时真实调用兜底 */
+        });
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [opsActive, qwenpawWorkers]);
 
   // 顺序批量升级：一次触发一个，某 worker 触发失败即停（不继续）。
   const doBatchUpgrade = React.useCallback(async () => {
@@ -781,7 +798,7 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
         </antd.Button>
         <span style={{ fontSize: 12, color: t.textSecondary }}>
           {tr(
-            "当前=各 Worker 容器内 QwenPaw 运行时版（首查探一次后缓存），最新=单次查询，逐 Worker 匹配。",
+            "当前=各 Worker 容器内 QwenPaw 运行时版（服务端 10min 缓存 + tab 激活后台预取），最新=PyPI（缓存），逐 Worker 本地匹配——二次点击毫秒级。",
           )}
         </span>
         {latestInfo?.latest ? (
@@ -894,6 +911,13 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
                     ) : (
                       <antd.Tag color="warning">{tr("未知版本")}</antd.Tag>
                     )}
+                    {lc.error ? (
+                      <WbTooltip title={lc.error}>
+                        <antd.Tag color="warning" style={{ marginInlineEnd: 0 }}>
+                          {tr("探测失败")}
+                        </antd.Tag>
+                      </WbTooltip>
+                    ) : null}
                   </>
                 ) : null}
               </div>
@@ -902,7 +926,8 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
         </div>
       ) : null}
 
-      {/* 目标版本 + 批量升级 */}
+      {/* 目标版本（表格选择，15.27）+ 批量升级 */}
+      <VersionTablePicker value={version} onChange={setVersion} />
       <div
         style={{
           display: "flex",
@@ -911,14 +936,6 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
           flexWrap: "wrap",
         }}
       >
-        <antd.Input
-          style={{ width: 200, fontFamily: "ui-monospace, monospace" }}
-          placeholder={tr("目标版本，如 2.3.0")}
-          value={version}
-          onChange={(e: { target: { value: string } }) =>
-            setVersion(String(e.target.value || ""))}
-          allowClear
-        />
         <antd.Button
           type="primary"
           danger

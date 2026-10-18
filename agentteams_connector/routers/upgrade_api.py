@@ -35,6 +35,7 @@ QwenPaw only（用户点名提示）：worker CRD ``runtime != qwenpaw`` →
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 import uuid
@@ -75,14 +76,24 @@ _WRESOLVE = (
 _CHECK_PY = "/opt/venv/qwenpaw/bin/python3"
 
 # 当前版本探测（qwenpaw venv 优先，copaw 回退）。
+# 15.27 廉价化：主路径读 dist-info METADATA（不起 Python venv，真机实测
+# 0.84s vs venv-python 2.37s——「检查更新」批量探 29 worker 冷启动
+# 41s→~3s 的关键）。glob 必须在双引号外（"$d"/lib/python3*/…，引号内
+# 不展开 glob）。dist-info 缺失（dev 安装）时回退 venv-python importlib。
 _CURRENT_CMD = (
-    _WRESOLVE
-    + 'v=""; '
-    'for p in /opt/venv/qwenpaw/bin/python3 /opt/venv/copaw/bin/python3; do '
-    '  [ -x "$p" ] || continue; '
-    '  v=$("$p" -c \'import importlib.metadata as m;'
-    'print(m.version("qwenpaw"))\' 2>/dev/null) && break; '
+    'v=""; '
+    'for d in /opt/venv/qwenpaw /opt/venv/copaw; do '
+    '  v=$(cat "$d"/lib/python3*/site-packages/qwenpaw-*.dist-info/'
+    'METADATA 2>/dev/null | grep -m1 "^Version:" | sed "s/^Version: *//"); '
+    '  [ -n "$v" ] && break; '
     "done; "
+    'if [ -z "$v" ]; then '
+    '  for p in /opt/venv/qwenpaw/bin/python3 /opt/venv/copaw/bin/python3; do '
+    '    [ -x "$p" ] || continue; '
+    '    v=$("$p" -c \'import importlib.metadata as m;'
+    'print(m.version("qwenpaw"))\' 2>/dev/null) && break; '
+    "  done; "
+    'fi; '
     'printf "%s" "$v"'
 )
 
@@ -90,15 +101,124 @@ _CHECKER = "/opt/agentteams/scripts/check_qwenpaw_upgrade.py"
 _UPGRADER = "/opt/agentteams/scripts/upgrade_qwenpaw_runtime.sh"
 _VENV = "/opt/venv/qwenpaw"
 
-# ── latest 版本（检查更新轻路径，15.26 简化）─────────────────────────
+# ── PyPI 元数据（latest + release 列表共用一次抓取，15.27 扩展）─────
 # 「检查更新」= 当前(容器内 qwenpaw 运行时版) vs 最新稳定版 逐 worker 匹配。
 # 注意 image tag（如 v1.2.5）是 AgentTeams 镜像版，≠qwenpaw 运行时版
 # （如 2.2.1），不能拿它比 PyPI qwenpaw latest（恒误判可升级）。
-# latest=最新稳定版（PyPI info.version，非预发布），服务端拉取（浏览器
-# 内网常连不上外网 registry），10min 缓存 + 断网回退旧缓存（stale）。
+# 服务端拉取（浏览器内网常连不上外网 registry），10min 缓存 + 断网回退
+# 旧缓存（stale）。缓存体 = {version: 最新稳定版, releases: {v: {
+# upload_time, size, yanked}}, fetched_at}（PyPI /pypi/qwenpaw/json 的
+# info.version + releases 字典）——版本表格（/upgrade/versions）与
+# latest（/upgrade/latest）同源，一次网络往返两用。
 _PYPY_LATEST_URL = "https://pypi.org/pypi/qwenpaw/json"
 _LATEST_TTL = 600.0  # 10 分钟
-_latest_cache: Dict[str, Any] = {"version": None, "fetched_at": 0.0}
+_latest_cache: Dict[str, Any] = {
+    "version": None, "releases": None, "fetched_at": 0.0}
+
+# 预发布判定：任一版本段形如 [数字]*{a|alpha|b|beta|c|rc|dev|pre|preview}[数字]*
+# （覆盖 2.3.0rc1 / 1.2.5b2 / rc1 / preview 等；post-release 不算预发布）。
+_PRE_TAG_RE = re.compile(
+    r"^\d*(?:a|alpha|b|beta|c|rc|dev|pre|preview)\d*$", re.IGNORECASE)
+
+
+def _is_prerelease(version: str) -> bool:
+    for seg in re.split(r"[.\-+]", version):
+        if _PRE_TAG_RE.match(seg):
+            return True
+    return False
+
+
+# 逐 worker 轻探结果缓存（10min TTL；upgrade run 启动后逐 worker 失效）。
+# 「检查更新」二次点击=命中缓存零 exec（服务端本地匹配，毫秒级）。
+_probe_cache: Dict[str, Dict[str, Any]] = {}
+_PROBE_TTL = 600.0
+
+# worker 列表短缓存（60s TTL）：check-all 每次点击都拉 /api/v1/workers，
+# 而该端点在 29-worker 集群上实测 2–2.9s（controller 侧查询开销）——缓存
+# 后重复点击=worker 列表+探测+PyPI 三重全命中=纯本地匹配（毫秒级）。
+# 60s 内 worker 增删对「检查更新」视图可忽略（前端另有实时 worker 列表）。
+_worker_list_cache: Dict[str, Any] = {"items": None, "at": 0.0}
+_WORKER_LIST_TTL = 60.0
+
+
+async def _fetch_worker_list(token: str) -> list:
+    """worker 列表（60s TTL 缓存；失败不缓存、抛 502）。"""
+    now = time.time()
+    if _worker_list_cache.get("items") is not None and \
+            (now - float(_worker_list_cache.get("at") or 0.0)) < _WORKER_LIST_TTL:
+        return _worker_list_cache["items"]
+    st, r, err = await _ctl_call(token, "GET", "/api/v1/workers?limit=40")
+    if st != 200 or r is None:
+        raise HTTPException(
+            status_code=502, detail=f"worker 列表查询失败：{err}")
+    body = r.json() if hasattr(r, "json") else {}
+    items = body.get("workers") if isinstance(body, dict) else body
+    if not isinstance(items, list):
+        items = []
+    _worker_list_cache["items"] = items
+    _worker_list_cache["at"] = now
+    return items
+
+
+async def _fetch_pypi() -> Dict[str, Any]:
+    """PyPI qwenpaw 元数据（TTL 缓存；断网回退旧缓存）。
+
+    返回 {data, from_cache, stale, error}：
+    data={version, releases}|None；stale=True=断网回退旧缓存。
+    """
+    now = time.time()
+    cached_version = _latest_cache.get("version")
+    if cached_version and (
+            now - float(_latest_cache.get("fetched_at") or 0.0)) < _LATEST_TTL:
+        return {"data": {"version": cached_version,
+                         "releases": _latest_cache.get("releases") or {}},
+                "from_cache": True, "stale": False, "error": ""}
+    data: Optional[Dict[str, Any]] = None
+    err = ""
+    try:
+        async with GatedAsyncClient(timeout=20.0) as client:
+            r = await client.get(_PYPY_LATEST_URL)
+        if r.status_code != 200:
+            err = f"PyPI {r.status_code}"
+        else:
+            body = r.json() or {}
+            info = body.get("info") or {}
+            version = str(info.get("version") or "").strip() or None
+            releases_raw = body.get("releases") or {}
+            releases: Dict[str, Dict[str, Any]] = {}
+            for v, files in releases_raw.items():
+                files = list(files or [])
+                if not files:
+                    continue
+                f0 = files[0] or {}
+                releases[str(v)] = {
+                    "upload_time": str(
+                        f0.get("upload_time_iso_8601")
+                        or f0.get("upload_time") or "")[:10],
+                    "size": int(f0.get("size") or 0),
+                    "yanked": bool(f0.get("yanked")),
+                }
+            if version:
+                data = {"version": version, "releases": releases}
+            else:
+                err = "PyPI 响应无 version"
+    except Exception as exc:  # noqa: BLE001 - 断网/DNS/超时
+        err = f"请求失败：{exc}"
+    if data:
+        _latest_cache["version"] = data["version"]
+        _latest_cache["releases"] = data["releases"]
+        _latest_cache["fetched_at"] = now
+        return {"data": data, "from_cache": False, "stale": False,
+                "error": ""}
+    # PyPI 失败（非 200 / 无 version / 断网）→ 有旧缓存则回退 stale。
+    if cached_version:
+        logger.warning("pypi 元数据不可达(%s)，回退缓存", err)
+        return {"data": {"version": cached_version,
+                         "releases": _latest_cache.get("releases") or {}},
+                "from_cache": True, "stale": True,
+                "error": f"PyPI 不可达（{err}），回退缓存"}
+    return {"data": None, "from_cache": False, "stale": False,
+            "error": err or "PyPI 不可达"}
 
 
 def _check_cmd(version: str, verify: bool) -> str:
@@ -164,37 +284,117 @@ def _new_job_id() -> str:
     return f"upg-{int(time.time())}-{uuid.uuid4().hex[:6]}"
 
 
+async def _ctl_call(token: str, method: str, path: str,
+                    json_body: Optional[dict] = None,
+                    timeout: float = 25.0):
+    """controller 地址 failover → (status, response|None, err)。
+
+    模块级（15.27 提级）：runtime_env_api 等只读域同通道复用。
+    """
+    urls = [u.rstrip("/") for u in _ordered_addresses(
+        config_mod.load_config(), "controller")]
+    if not urls:
+        return 0, None, "未配置 Controller 地址"
+    last_err = ""
+    for b in urls:
+        try:
+            headers = _headers_for(
+                config_mod.load_config(), "controller", b,
+                {"Authorization": f"Bearer {token}"})
+            async with GatedAsyncClient(timeout=timeout,
+                                        verify=False) as client:
+                if method == "POST":
+                    r = await client.post(
+                        f"{b}{path}", json=json_body, headers=headers)
+                else:
+                    r = await client.get(f"{b}{path}", headers=headers)
+        except Exception as exc:  # noqa: BLE001 - try next address
+            last_err = f"请求失败：{exc}"
+            continue
+        if r.status_code < 500:
+            return r.status_code, r, ""
+        last_err = f"Controller {r.status_code}"
+    return 0, None, last_err or "请求失败"
+
+
+async def _exec(token: str, container: str, cmd: str,
+                detach: bool = False,
+                timeout: float = 60.0) -> Tuple[int, str]:
+    """docker exec（attach 读 stdout / detached 后台存活）→ (status, text)。
+
+    模块级（15.27 提级）：runtime_env_api 等只读域同通道复用。
+    """
+    st1, r1, err = await _ctl_call(
+        token, "POST",
+        f"/docker/v1.41/containers/{container}/exec",
+        json_body={"Cmd": ["sh", "-c", cmd],
+                   "AttachStdout": True, "AttachStderr": True,
+                   "Detach": detach},
+        timeout=timeout)
+    if st1 in (403, 404):
+        raise HTTPException(
+            status_code=502,
+            detail=f"容器 {container} Docker API {st1}"
+                   "（容器不存在或 L1 鉴权失败）")
+    if st1 != 200 and st1 != 201:
+        raise HTTPException(status_code=502, detail=err or f"Docker {st1}")
+    eid = ((r1.json() or {}).get("Id")) if r1 is not None else None
+    if not eid:
+        raise HTTPException(status_code=502, detail="exec 创建无 Id")
+    st2, r2, err2 = await _ctl_call(
+        token, "POST", f"/docker/v1.41/exec/{eid}/start",
+        json_body={"Detach": detach, "Tty": False}, timeout=timeout)
+    if st2 != 200:
+        raise HTTPException(status_code=502, detail=err2 or f"exec {st2}")
+    if detach:
+        return st2, ""
+    raw = r2.content if r2 is not None else b""
+    return st2, _parse_exec_stream(raw)
+
+
+async def _light_probe(token: str, worker: str,
+                       semaphore: Optional[asyncio.Semaphore] = None
+                       ) -> Dict[str, Any]:
+    """轻探：当前 qwenpaw 运行时版 + checker/upgrader 脚本可用性。
+
+    命中未过期缓存 → 零 exec 直接返回（cached=True）；否则 exec 一次并
+    缓存 10min。check-all 批量并发走 semaphore；单 worker 轻探直接调。
+    失败（exec/容器错误）抛 HTTPException，不缓存。
+    """
+    now = time.time()
+    hit = _probe_cache.get(worker)
+    if hit and (now - float(hit.get("at") or 0.0)) < _PROBE_TTL:
+        return {**hit, "cached": True}
+
+    async def _do() -> Dict[str, Any]:
+        container = f"agentteams-worker-{worker}"
+        st, text = await _exec(
+            token, container,
+            _CURRENT_CMD + "; printf '\\n'; "
+            f'[ -f {_CHECKER} ] && printf "HAS\\n" || printf "NONE\\n"; '
+            f'[ -f {_UPGRADER} ] && printf "HAS\\n" || printf "NONE\\n"',
+            timeout=60.0)
+        parts = [p.strip() for p in text.strip().splitlines()]
+        return {
+            "current": parts[0] if len(parts) > 0 and parts[0] else None,
+            "checker": parts[1] if len(parts) > 1 else None,
+            "upgrader": parts[2] if len(parts) > 2 else None,
+            "supported": bool(parts) and bool(parts[0])
+            and len(parts) > 2 and parts[1] == "HAS" and parts[2] == "HAS",
+            "at": time.time(),
+        }
+
+    if semaphore is not None:
+        async with semaphore:
+            result = await _do()
+    else:
+        result = await _do()
+    _probe_cache[worker] = result
+    return {**result, "cached": False}
+
+
 def build_upgrade_router() -> APIRouter:
     router = APIRouter()
-
-    async def _ctl_call(token: str, method: str, path: str,
-                        json_body: Optional[dict] = None,
-                        timeout: float = 25.0):
-        """controller 地址 failover → (status, response|None, err)。"""
-        urls = [u.rstrip("/") for u in _ordered_addresses(
-            config_mod.load_config(), "controller")]
-        if not urls:
-            return 0, None, "未配置 Controller 地址"
-        last_err = ""
-        for b in urls:
-            try:
-                headers = _headers_for(
-                    config_mod.load_config(), "controller", b,
-                    {"Authorization": f"Bearer {token}"})
-                async with GatedAsyncClient(timeout=timeout,
-                                            verify=False) as client:
-                    if method == "POST":
-                        r = await client.post(
-                            f"{b}{path}", json=json_body, headers=headers)
-                    else:
-                        r = await client.get(f"{b}{path}", headers=headers)
-            except Exception as exc:  # noqa: BLE001 - try next address
-                last_err = f"请求失败：{exc}"
-                continue
-            if r.status_code < 500:
-                return r.status_code, r, ""
-            last_err = f"Controller {r.status_code}"
-        return 0, None, last_err or "请求失败"
 
     async def _worker_runtime(token: str, worker: str) -> str:
         """worker CRD runtime（qwenpaw only 门控正源）。"""
@@ -207,37 +407,6 @@ def build_upgrade_router() -> APIRouter:
         runtime = str((data or {}).get("runtime") or "")
         return runtime
 
-    async def _exec(token: str, container: str, cmd: str,
-                    detach: bool = False,
-                    timeout: float = 60.0) -> Tuple[int, str]:
-        """docker exec（attach 读 stdout / detached 后台存活）→ (status, text)。"""
-        st1, r1, err = await _ctl_call(
-            token, "POST",
-            f"/docker/v1.41/containers/{container}/exec",
-            json_body={"Cmd": ["sh", "-c", cmd],
-                       "AttachStdout": True, "AttachStderr": True,
-                       "Detach": detach},
-            timeout=timeout)
-        if st1 in (403, 404):
-            raise HTTPException(
-                status_code=502,
-                detail=f"容器 {container} Docker API {st1}"
-                       "（容器不存在或 L1 鉴权失败）")
-        if st1 != 200 and st1 != 201:
-            raise HTTPException(status_code=502, detail=err or f"Docker {st1}")
-        eid = ((r1.json() or {}).get("Id")) if r1 is not None else None
-        if not eid:
-            raise HTTPException(status_code=502, detail="exec 创建无 Id")
-        st2, r2, err2 = await _ctl_call(
-            token, "POST", f"/docker/v1.41/exec/{eid}/start",
-            json_body={"Detach": detach, "Tty": False}, timeout=timeout)
-        if st2 != 200:
-            raise HTTPException(status_code=502, detail=err2 or f"exec {st2}")
-        if detach:
-            return st2, ""
-        raw = r2.content if r2 is not None else b""
-        return st2, _parse_exec_stream(raw)
-
     async def _guard_qwenpaw(token: str, worker: str) -> None:
         """QwenPaw only 门控（用户点名：非 qwenpaw 明确拒绝并提示）。"""
         runtime = await _worker_runtime(token, worker)
@@ -248,56 +417,145 @@ def build_upgrade_router() -> APIRouter:
 
     @router.get("/upgrade/latest")
     async def upgrade_latest(request: Request) -> Dict[str, Any]:
-        """最新稳定 qwenpaw 版本（单次 PyPI 查询，10min 缓存）。
+        """最新稳定 qwenpaw 版本（PyPI info.version，10min 缓存）。
 
         L1 only（与 check/run/status 同域门控：运行时升级面板是 L1 面）。
-        供「检查更新」轻路径：前端拿 worker image tag（当前版本）逐 worker
-        与 latest 匹配，免 N×docker exec。断网时回退旧缓存（stale 标记）。
+        当前版本不走此端点——check/check-all 轻探经容器 exec 读 qwenpaw
+        运行时版（image tag ≠ qwenpaw 运行时版，不能拿 tag 匹配）。
+        断网时回退旧缓存（stale 标记）。
         """
         token = _token_or_none(config_mod.load_config())
         if not token:
             raise HTTPException(
                 status_code=403,
                 detail="需要 Controller 管理员 token（L1）才能执行升级操作")
-        now = time.time()
-        cached = _latest_cache.get("version")
-        if cached and (now - float(_latest_cache.get("fetched_at") or 0.0)) < _LATEST_TTL:
-            return {
-                "latest": cached, "source": "pypi", "cached": True,
-                "fetched_at": _latest_cache.get("fetched_at"),
+        meta = await _fetch_pypi()
+        data = meta["data"]
+        if not data:
+            raise HTTPException(
+                status_code=502,
+                detail=f"无法查询最新版本：{meta['error']}")
+        out: Dict[str, Any] = {
+            "latest": data["version"], "source": "pypi",
+            "cached": meta["from_cache"],
+            "fetched_at": _latest_cache.get("fetched_at"),
+        }
+        if meta["stale"]:
+            out["stale"] = True
+            out["error"] = meta["error"]
+        return out
+
+    @router.get("/upgrade/versions")
+    async def upgrade_versions(request: Request) -> Dict[str, Any]:
+        """qwenpaw release 列表（版本表格数据源）。
+
+        L1 only。PyPI releases 字典按上传时间倒序取前 30 条；每项
+        {version, upload_time, size, prerelease, yanked, is_latest}——
+        前端 antd.Table 点选目标版本（默认锚定 latest），替代自由文本
+        输入（自定义 tag 走前端高级兜底输入）。与 /upgrade/latest 同一
+        PyPI 缓存（零额外网络往返）。
+        """
+        token = _token_or_none(config_mod.load_config())
+        if not token:
+            raise HTTPException(
+                status_code=403,
+                detail="需要 Controller 管理员 token（L1）才能执行升级操作")
+        meta = await _fetch_pypi()
+        data = meta["data"]
+        if not data:
+            raise HTTPException(
+                status_code=502,
+                detail=f"无法查询版本列表：{meta['error']}")
+        latest = data["version"]
+        rows = []
+        for v, info in (data.get("releases") or {}).items():
+            rows.append({
+                "version": v,
+                "upload_time": info.get("upload_time") or "",
+                "size": int(info.get("size") or 0),
+                "prerelease": _is_prerelease(v),
+                "yanked": bool(info.get("yanked")),
+                "is_latest": v == latest,
+            })
+        rows.sort(key=lambda r: (r["upload_time"], r["version"]),
+                  reverse=True)
+        out: Dict[str, Any] = {
+            "versions": rows[:30],
+            "latest": latest,
+            "source": "pypi",
+            "cached": meta["from_cache"],
+            "fetched_at": _latest_cache.get("fetched_at"),
+        }
+        if meta["stale"]:
+            out["stale"] = True
+            out["error"] = meta["error"]
+        return out
+
+    @router.get("/upgrade/check-all")
+    async def upgrade_check_all(request: Request) -> Dict[str, Any]:
+        """批量检查更新：一次调用=全部 worker 当前版+latest 本地匹配。
+
+        设计（15.27 定案「读到现在版本→本机匹配」）：
+        - 当前版本：服务端批量轻探（并发 10，逐 worker 失败不阻塞整体）
+          + 10min 服务端缓存——二次「检查更新」= 零 exec 毫秒级；
+        - latest：PyPI 10min 缓存（断网 stale 回退；latest 缺失时
+          worker 侧仍返回，匹配列前端降级）；
+        - 匹配在服务端响应组装+前端展示完成，浏览器零轮询。
+        L1 only。
+        """
+        token = _token_or_none(config_mod.load_config())
+        if not token:
+            raise HTTPException(
+                status_code=403,
+                detail="需要 Controller 管理员 token（L1）才能执行升级操作")
+        items = await _fetch_worker_list(token)
+        meta = await _fetch_pypi()
+        sem = asyncio.Semaphore(10)
+        # 先按 items 顺序建全部 row（输出序不变）；非 qwenpaw 行标 skipped，
+        # qwenpaw（含 runtime 缺省）行待探。
+        rows: list[Dict[str, Any]] = []
+        probe_idx: list[int] = []
+        for w in items:
+            w = w or {}
+            name = str(w.get("name") or "")
+            if not _NAME_RE.match(name):
+                continue
+            runtime = str(w.get("runtime") or "")
+            row: Dict[str, Any] = {
+                "name": name,
+                "image": w.get("image") or "",
+                "runtime": runtime,
             }
-        version: Optional[str] = None
-        err = ""
-        try:
-            async with GatedAsyncClient(timeout=20.0) as client:
-                r = await client.get(_PYPY_LATEST_URL)
-            if r.status_code != 200:
-                err = f"PyPI {r.status_code}"
+            rows.append(row)
+            if runtime and runtime != "qwenpaw":
+                row["skipped"] = True
             else:
-                info = (r.json() or {}).get("info") or {}
-                version = str(info.get("version") or "").strip() or None
-                if not version:
-                    err = "PyPI 响应无 version"
-        except Exception as exc:  # noqa: BLE001 - 断网/DNS/超时
-            err = f"请求失败：{exc}"
-        if version:
-            _latest_cache["version"] = version
-            _latest_cache["fetched_at"] = now
-            return {
-                "latest": version, "source": "pypi", "cached": False,
-                "fetched_at": now,
-            }
-        # PyPI 失败（非 200 / 无 version / 断网）→ 有旧缓存则回退 stale。
-        if cached:
-            logger.warning("upgrade/latest PyPI 不可达(%s)，回退缓存", err)
-            return {
-                "latest": cached, "source": "pypi", "cached": True,
-                "stale": True,
-                "fetched_at": _latest_cache.get("fetched_at"),
-                "error": f"PyPI 不可达（{err}），回退缓存",
-            }
-        raise HTTPException(
-            status_code=502, detail=f"无法查询最新版本：{err or 'PyPI 不可达'}")
+                probe_idx.append(len(rows) - 1)
+        # 关键（15.27 修「检查更新慢」真根）：gather 并行探测（sem 限并发
+        # 10），而非 for 循环逐个 await（=串行，29 worker 冷探 41s）。
+        # 并行后冷探 ≈ ceil(29/10)×0.8s ≈ 3s；暖态命中缓存=0 exec 毫秒级。
+        if probe_idx:
+            async def _probe_one(idx: int) -> None:
+                row = rows[idx]
+                try:
+                    row.update(await _light_probe(token, row["name"], sem))
+                except HTTPException as exc:
+                    row["error"] = str(exc.detail or exc)
+            await asyncio.gather(*[_probe_one(i) for i in probe_idx])
+        out: Dict[str, Any] = {
+            "workers": rows,
+            "latest": meta["data"]["version"] if meta["data"] else None,
+            "source": "pypi",
+            "cached": meta["from_cache"],
+            "fetched_at": _latest_cache.get("fetched_at"),
+        }
+        if meta["stale"]:
+            out["stale"] = True
+        if not out["latest"]:
+            out["error"] = meta["error"] or "PyPI 不可达（无缓存）"
+        elif meta["stale"]:
+            out["error"] = meta["error"]
+        return out
 
     @router.get("/upgrade/check")
     async def upgrade_check(request: Request) -> Dict[str, Any]:
@@ -345,22 +603,16 @@ def build_upgrade_router() -> APIRouter:
                 "raw": None if data else text[:2000],
             }
             return payload
-        # 轻探：当前版本 + 脚本存在性。
-        st, text = await _exec(
-            token, container,
-            _CURRENT_CMD + "; printf '\\n'; "
-            f'[ -f {_CHECKER} ] && printf "HAS\\n" || printf "NONE\\n"; '
-            f'[ -f {_UPGRADER} ] && printf "HAS\\n" || printf "NONE\\n"',
-            timeout=60.0)
-        parts = text.strip().splitlines()
+        # 轻探：当前版本 + 脚本存在性（共享 check-all 缓存：命中=零 exec）。
+        probe = await _light_probe(token, worker)
         return {
             "worker": worker,
             "container": container,
-            "current": parts[0].strip() if parts else None,
-            "checker": parts[1].strip() if len(parts) > 1 else None,
-            "upgrader": parts[2].strip() if len(parts) > 2 else None,
-            "supported": bool(parts) and parts[0].strip()
-            and len(parts) > 2 and parts[1] == "HAS" and parts[2] == "HAS",
+            "current": probe.get("current"),
+            "checker": probe.get("checker"),
+            "upgrader": probe.get("upgrader"),
+            "supported": probe.get("supported", False),
+            "cached": probe.get("cached", False),
         }
 
     @router.post("/upgrade/run", status_code=202)
@@ -392,6 +644,9 @@ def build_upgrade_router() -> APIRouter:
         st, text = await _exec(
             token, container, _run_cmd(version, job_id),
             detach=True, timeout=30.0)
+        # 升级启动=当前版即将变化：逐 worker 失效轻探缓存（防 10min 内
+        # 「检查更新」回显升级前的旧版本）。
+        _probe_cache.pop(worker, None)
         logger.info("upgrade run: worker=%s version=%s job=%s",
                     worker, version, job_id)
         return {

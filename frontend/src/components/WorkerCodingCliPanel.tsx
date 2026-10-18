@@ -53,6 +53,11 @@ import {
 } from "../codingCliPresets";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
+import {
+  modelVerdictText,
+  useModelUnionOptions,
+  validateModelValue,
+} from "../modelUnion";
 import { CodeIcon } from "./icons";
 
 const host = window.QwenPaw.host;
@@ -205,6 +210,28 @@ function collectRedacted(
   return out;
 }
 
+/** 按路径读 settings 值（assignPath 的对称只读版）。 */
+function getAtPath(obj: SettingsObject | null | undefined, path: string[]): unknown {
+  let cur: unknown = obj;
+  for (const p of path) {
+    if (cur && typeof cur === "object" && p in (cur as Record<string, unknown>)) {
+      cur = (cur as Record<string, unknown>)[p];
+    } else {
+      return undefined;
+    }
+  }
+  return cur;
+}
+
+/** AutoComplete options（modelUnion 的三组或平铺；结构类型避免耦合）。 */
+type ModelOptions =
+  | Array<{ value: string; label?: ReactNS.ReactNode }>
+  | Array<{
+      value: string;
+      label: ReactNS.ReactNode;
+      options: Array<{ value: string; label?: ReactNS.ReactNode }>;
+    }>;
+
 function assignPath(target: SettingsObject, path: string[], value: SettingsValue) {
   let cursor = target;
   for (let i = 0; i < path.length - 1; i++) {
@@ -277,7 +304,6 @@ function useCodingCliPanel({
   const [selected, setSelected] = React.useState<CodingCliId>("qwen-code");
   const [settings, setSettings] = React.useState<CliSettingsResponse | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
-  const [modelName, setModelName] = React.useState("");
   const [secrets, setSecrets] = React.useState<Record<string, string>>({});
   const [versionTag, setVersionTag] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -377,7 +403,19 @@ function useCodingCliPanel({
       setMsg(null);
       try {
         const resp = await putCliSettings(worker.name, selected, patch);
-        setMsg({ kind: "ok", text: tr("已保存") });
+        // 保存摘要回读（15.27）：动了模型=明示新值（留空=已清除）——
+        // 对齐「像管理 worker 那样容易管理」：每次保存一眼确认生效值。
+        const m = (patch.model as { name?: string } | undefined)?.name;
+        if (m !== undefined) {
+          setMsg({
+            kind: "ok",
+            text: m
+              ? tr("已保存（模型={m}）", { m })
+              : tr("已保存（模型覆盖已清除，回退 CLI 默认）"),
+          });
+        } else {
+          setMsg({ kind: "ok", text: tr("已保存") });
+        }
         if (resp && resp.settings) setSettings(resp);
         else await loadSettings(selected);
         onChanged?.();
@@ -590,11 +628,22 @@ function SettingsTreeEditor({
   readOnly,
   busy,
   onSave,
+  modelValue,
+  onModelChange,
+  modelOptions,
+  modelCandidates,
 }: {
   base: SettingsObject;
   readOnly: boolean;
   busy: boolean;
   onSave: (patch: SettingsObject) => void;
+  /** 模型专行（15.27：同 Worker 模型选择的列表选择）。undefined=不启用
+   * （树内 model 键照常渲染）；启用后 model 顶层键从树中摘出，由此行
+   * 管理（draft 在父组件），保存时按 diff 写入 patch.model={name}。 */
+  modelValue?: string;
+  onModelChange?: (v: string) => void;
+  modelOptions?: ModelOptions;
+  modelCandidates?: string[];
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -627,6 +676,31 @@ function SettingsTreeEditor({
   const handleSave = () => {
     const patch: SettingsObject = { ...diffSettings(base, draft) };
     Object.assign(patch, buildSecretPatch(base, secretDraft));
+    // 模型专行：draft 在父组件——此处按 base diff 写入 patch.model={name}
+    // （空串=清除覆盖，回退 CLI 默认）。写前校验同 Worker 模型选择
+    // （路径/URL/空格=error 阻止；不在在服列表=warn 放行提示）。
+    if (modelValue !== undefined && onModelChange) {
+      const v = (modelValue ?? "").trim();
+      const baseModel =
+        typeof getAtPath(base, ["model", "name"]) === "string"
+          ? (getAtPath(base, ["model", "name"]) as string)
+          : "";
+      if (v !== baseModel) patch.model = { name: v };
+      if (v) {
+        const verdict = validateModelValue(v, modelCandidates ?? []);
+        if (verdict.level === "error") {
+          antd.message.error(
+            modelVerdictText(tr, verdict, v, modelCandidates ?? []),
+          );
+          return;
+        }
+        if (verdict.level === "warn") {
+          antd.message.warning(
+            modelVerdictText(tr, verdict, v, modelCandidates ?? []),
+          );
+        }
+      }
+    }
     onSave(patch);
   };
 
@@ -735,10 +809,32 @@ function SettingsTreeEditor({
     );
   };
 
-  const topEntries = Object.entries(base);
+  const modelRowEnabled = modelValue !== undefined && !!onModelChange;
+  const topEntries = Object.entries(base).filter(
+    ([k]) => !(modelRowEnabled && k === "model"),
+  );
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      {topEntries.length === 0 ? (
+      {/* 模型专行（15.27）：同 Worker 模型选择——列表选择（SGLang 在服 ∪
+       * 在用 ∪ 网关 alias）+ 自由输入兜底 + 写前校验。 */}
+      {modelRowEnabled ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: t.text, minWidth: 44 }}>
+            {tr("模型")}
+          </span>
+          <antd.AutoComplete
+            size="small"
+            style={{ flex: 1, maxWidth: 460, fontFamily: "monospace", fontSize: 11 }}
+            value={modelValue}
+            options={modelOptions}
+            allowClear
+            placeholder={tr("留空=清除覆盖（跟随 CLI 默认）")}
+            disabled={readOnly}
+            onChange={(v: string) => onModelChange(v || "")}
+          />
+        </div>
+      ) : null}
+      {topEntries.length === 0 && !modelRowEnabled ? (
         <div style={{ fontSize: 11, color: t.textSecondary }}>
           {tr("配置为空——套下方模板，或直接编辑字段后保存。")}
         </div>
@@ -776,6 +872,24 @@ function CodingCliPanelBody({
   s: ReturnType<typeof useCodingCliPanel>;
 }) {
   const { tr, t } = s;
+
+  // 模型列表选择（15.27，同 Worker 模型选择正源）：候选 = SGLang 在服 ∪
+  // 在用（当前 CLI 的 model.name）∪ 网关 alias；写前校验同款。hook 仅在
+  // 卡片展开时挂载（惰性，无后台轮询）。
+  const settingsModel: string = React.useMemo(() => {
+    const m = (s.settings?.settings as Record<string, unknown> | undefined)
+      ?.model as Record<string, unknown> | undefined;
+    return typeof m?.name === "string" ? m.name : "";
+  }, [s.settings]);
+  const union = useModelUnionOptions(
+    settingsModel ? [settingsModel] : [],
+    tr,
+  );
+  const [modelDraft, setModelDraft] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    // settings 加载/切 CLI/保存回写 → 模型草稿重置为当前生效值。
+    setModelDraft(settingsModel);
+  }, [s.settings, settingsModel]);
 
   if (s.state === "loading") {
     return (
@@ -864,6 +978,15 @@ function CodingCliPanelBody({
                   {tr("鉴权已配置")}
                 </antd.Tag>
               ) : null}
+              {/* 当前 CLI 的生效模型（settings 加载后；同 Worker 模型列的徽标语义）。 */}
+              {cli.id === s.selected && s.settingsOpen && s.settings && settingsModel ? (
+                <antd.Tag
+                  color="blue"
+                  style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
+                >
+                  {tr("模型")} {settingsModel}
+                </antd.Tag>
+              ) : null}
               {cli.authConfigured && !cli.installed ? (
                 <span style={{ fontSize: 11, color: t.mode === "dark" ? "#faad14" : "#d46b08" }}>
                   {tr("容器重建后需重新安装；已保存的鉴权可保留")}
@@ -948,6 +1071,10 @@ function CodingCliPanelBody({
               base={s.settings.settings}
               readOnly={s.readOnly}
               busy={s.busy}
+              modelValue={modelDraft ?? ""}
+              onModelChange={setModelDraft}
+              modelOptions={union.options}
+              modelCandidates={union.candidates}
               onSave={(patch) => void s.saveSettings(patch)}
             />
           ) : (

@@ -6,6 +6,10 @@
  * - env 读：GET /workers[/{name}] 回 `env` + `envEditable`。L2 账号被遮蔽
  *   （env=nil、envEditable=false）；旧 Controller 无字段（undefined）——
  *   两者一律不渲染本段（优雅降级，不显空占位）。
+ *   ⚠️ 实盘勘误（10/17 实测 v1.2.5）：detail GET 响应实际**不回显 env**
+ *   （keys 无 env，写路径 PUT 可用）→ 自定义变量区读到空≠未配置；
+ *   「实际生效值」正源 = 本面板「运行时环境」区（容器 PID 1 /proc/1/
+ *   environ，插件端点 /workers/{name}/runtime-env，只读 L1）。
  * - env 写：PUT /workers/{name} 带 `env` = **整块替换**（不发该键=不动；
  *   `{}` = 清空全部）。键须匹配 ^[A-Za-z_][A-Za-z0-9_]*$；系统保留键
  *   （AGENTTEAMS_WORKER_CR_NAME / AGENTTEAMS_WORKER_ROLE /
@@ -29,10 +33,13 @@ import type * as ReactNS from "react";
 import {
   updateWorker,
   probeWorkerGateway,
+  fetchWorkerRuntimeEnv,
   httpErrorStatus,
   httpErrorDetail,
   type WorkerInfo,
   type GatewayProbeResult,
+  type WorkerRuntimeEnv,
+  type WorkerRuntimeEnvEntry,
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
@@ -120,6 +127,41 @@ function WorkerEnvPanel({
     text: string;
     sub?: string;
   } | null>(null);
+
+  // 运行时环境（容器 PID 1 实际生效 env，只读；15.27「QwenPaw 运行时
+  // 环境变量预填充」正源——Controller detail GET 不回显 spec.env，此处
+  // 读容器真实环境）。懒加载：首次展开才拉（有 exec 成本）。
+  const [rteOpen, setRteOpen] = React.useState(false);
+  const [rte, setRte] = React.useState<WorkerRuntimeEnv | null>(null);
+  const [rteLoading, setRteLoading] = React.useState(false);
+  const [rteError, setRteError] = React.useState("");
+  const [rteReveal, setRteReveal] = React.useState(false);
+  const [rteQuery, setRteQuery] = React.useState("");
+  const [rteGroup, setRteGroup] = React.useState<
+    "all" | "qwenpaw" | "platform" | "other"
+  >("all");
+
+  const loadRte = React.useCallback(
+    async (reveal: boolean) => {
+      setRteLoading(true);
+      setRteError("");
+      try {
+        const d = await fetchWorkerRuntimeEnv(worker.name, reveal);
+        setRte(d);
+        setRteReveal(d.reveal);
+      } catch (e) {
+        setRteError(httpErrorDetail(e) || tr("读取运行时环境失败"));
+      } finally {
+        setRteLoading(false);
+      }
+    },
+    [worker.name, tr],
+  );
+
+  // 首次展开 → 懒拉（reveal 默认 false=脱敏）。
+  React.useEffect(() => {
+    if (rteOpen && !rte && !rteLoading) void loadRte(false);
+  }, [rteOpen, rte, rteLoading, loadRte]);
 
   // 空闲（无本地编辑）时数据源更新 → 跟随 re-baseline（他人改过 env 时
   // 视图同步；有本地编辑时不动，防覆盖未保存输入）。
@@ -349,6 +391,11 @@ function WorkerEnvPanel({
         {rows.length === 0 ? (
           <div style={{ fontSize: 12, color: t.textSecondary }}>
             {tr("当前无自定义环境变量")}
+            <div style={{ fontSize: 11 }}>
+              {tr(
+                "注意：Controller 当前不回显已保存的自定义变量（保存=整块替换写 CRD）——已保存值以下方「运行时环境」为准（容器重建后生效）。",
+              )}
+            </div>
           </div>
         ) : (
           rows.map((r, i) => (
@@ -428,6 +475,166 @@ function WorkerEnvPanel({
           <div style={{ fontSize: 11, color: "#cf1322" }}>{addErr}</div>
         ) : null}
       </div>
+
+      {/* 运行时环境（容器 PID 1 实际生效 env，只读；预填充正源）。
+          Controller detail GET 不回显 spec.env——自定义区读到空≠未配置，
+          实际生效值以此区为准（QwenPaw_* / AGENTTEAMS_* / 镜像内置 + 自定义）。 */}
+      <antd.Divider style={{ margin: "4px 0" }}>{tr("运行时环境")}</antd.Divider>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          flexWrap: "wrap",
+          cursor: "pointer",
+        }}
+        onClick={() => setRteOpen((v) => !v)}
+      >
+        <span style={{ width: 12, fontSize: 10, color: "#888" }}>
+          {rteOpen ? "▾" : "▸"}
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 600 }}>
+          {tr("容器实际生效环境变量（只读预填充）")}
+        </span>
+        {rte ? (
+          <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10 }}>
+            {rte.count}
+          </antd.Tag>
+        ) : null}
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("点击展开 / 收起")}
+        </span>
+      </div>
+      {rteOpen ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr(
+              "容器 PID 1 实际生效环境（含 QwenPaw_* / AGENTTEAMS_* / 镜像内置 + 已保存自定义变量）。敏感键默认脱敏；自定义变量保存并容器重建后在此生效。",
+            )}
+          </div>
+          <div
+            style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}
+          >
+            <antd.Input
+              size="small"
+              style={{ width: 190, fontFamily: "monospace" }}
+              placeholder={tr("过滤键名…")}
+              value={rteQuery}
+              allowClear
+              onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                setRteQuery(ev.target.value)}
+            />
+            <antd.Select
+              size="small"
+              style={{ width: 130 }}
+              value={rteGroup}
+              onChange={(v: "all" | "qwenpaw" | "platform" | "other") =>
+                setRteGroup(v)}
+              options={[
+                { value: "all", label: tr("全部") },
+                { value: "qwenpaw", label: tr("QwenPaw") },
+                { value: "platform", label: tr("平台注入") },
+                { value: "other", label: tr("其他") },
+              ]}
+            />
+            <antd.Button
+              size="small"
+              type="text"
+              loading={rteLoading}
+              onClick={() => void loadRte(rteReveal)}
+            >
+              {tr("刷新")}
+            </antd.Button>
+            {rte && rte.env.some((e) => e.sensitive) ? (
+              <antd.Checkbox
+                checked={rteReveal}
+                onClick={(ev: { stopPropagation: () => void }) =>
+                  ev.stopPropagation()}
+                onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                  void loadRte(!!ev.target.checked)}
+              >
+                {tr("显示明文（敏感键）")}
+              </antd.Checkbox>
+            ) : null}
+          </div>
+          {rteError ? (
+            <antd.Alert type="error" showIcon message={rteError} />
+          ) : null}
+          {rteLoading && !rte ? (
+            <antd.Skeleton active title={false} paragraph={{ rows: 4 }} />
+          ) : null}
+          {rte && !rteLoading ? (
+            <div
+              style={{
+                display: "grid",
+                gap: 3,
+                maxHeight: 320,
+                overflowY: "auto",
+                border: `1px solid ${t.border}`,
+                borderRadius: 6,
+                padding: 6,
+              }}
+            >
+              {(() => {
+                const q = rteQuery.trim().toLowerCase();
+                const filtered = rte.env.filter((e) => {
+                  if (rteGroup !== "all" && e.group !== rteGroup) return false;
+                  if (q && !e.key.toLowerCase().includes(q)) return false;
+                  return true;
+                });
+                if (filtered.length === 0) {
+                  return (
+                    <div style={{ fontSize: 11, color: t.textSecondary }}>
+                      {tr("无匹配项")}
+                    </div>
+                  );
+                }
+                return filtered.map((e) => (
+                  <div
+                    key={e.key}
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        flexShrink: 0,
+                        maxWidth: "45%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={e.key}
+                    >
+                      {e.key}
+                    </span>
+                    <span style={{ color: t.textSecondary }}>=</span>
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        color: e.masked ? "#cf1322" : t.text,
+                      }}
+                      title={e.value}
+                    >
+                      {e.value === "" ? tr("（空值）") : e.value}
+                    </span>
+                  </div>
+                ));
+              })()}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* 网关探测 */}
       <antd.Divider style={{ margin: "4px 0" }}>{tr("网关探测")}</antd.Divider>
