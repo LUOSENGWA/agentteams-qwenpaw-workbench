@@ -14,13 +14,12 @@ frontend/.vite/
 # 构建工具副产物（npm lock 为正主）
 frontend/pnpm-lock.yaml
 frontend/yarn.lock
-# 本地归档（旧组件留底，不入库）
-archive/*.tsx
+# 本地归档（旧交付物/旧组件留底，整目录不入库）
+archive/
 
 # ZIP 构建产物（不进 git——代码可重建 ZIP；
 # 根目录=最新 + archive/=归档，纯本地目录约定）
 agentteams-qwenpaw-workbench-*.zip
-archive/*.zip
 dist/*.map
 archive/beta2_surgery.py
 GITHUB-RELEASE/
