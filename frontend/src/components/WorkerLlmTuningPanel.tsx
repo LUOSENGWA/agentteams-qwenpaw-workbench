@@ -21,6 +21,7 @@ import type * as ReactNS from "react";
 
 import {
   fetchControllerJson,
+  fetchWorkerRuntimeEnv,
   updateWorker,
   httpErrorStatus,
   httpErrorDetail,
@@ -28,6 +29,7 @@ import {
   type TeamInfo,
 } from "../api";
 import {
+  LLM_TUNING_FIELDS,
   emptyLlmTuning,
   findLlmTuningError,
   pickLlmTuning,
@@ -68,10 +70,12 @@ function WorkerLlmTuningPanel({
   const [open, setOpen] = React.useState(sheet === true);
   const [loading, setLoading] = React.useState(true);
   const [loadErr, setLoadErr] = React.useState("");
-  // override=worker 显式覆盖（写基线）；team=团队 llm* 默认；draft=用户编辑
-  // （预填=生效值 override→team→registry）。三者齐备才能算 diff。
+  // override=worker 显式覆盖（写基线）；team=团队 llm* 默认；
+  // envEffective=容器 env 实际值（stream 组预填层，runtime-env 实读）；
+  // draft=用户编辑（预填=生效值 override→team→env→registry）。
   const [override, setOverride] = React.useState<LlmTuningRecord | null>(null);
   const [team, setTeam] = React.useState<LlmTuningRecord | null>(null);
+  const [envEffective, setEnvEffective] = React.useState<LlmTuningValues | null>(null);
   const [draft, setDraft] = React.useState<LlmTuningRecord | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
@@ -88,6 +92,10 @@ function WorkerLlmTuningPanel({
       // registry 默认）。读团队失败不阻塞面板——生效值退化为 worker→registry。
       let teamRec = emptyLlmTuning();
       const teamName = w.team;
+      // stream 组预填层（15.28）：容器 PID 1 env 实际值（entrypoint 默认
+      // 300s / controller hot-apply 覆写）。与团队读并行；失败不阻塞
+      // （403=L2 只读 / 旧 Controller 404 → 走原三层链）。
+      const envPromise = fetchWorkerRuntimeEnv(name).catch(() => null);
       if (teamName) {
         try {
           const tm = await fetchControllerJson<TeamInfo>(
@@ -98,9 +106,19 @@ function WorkerLlmTuningPanel({
           /* 团队读取失败 → 回退 registry 默认 */
         }
       }
+      const envRes = await envPromise;
+      const envEff: LlmTuningValues = {};
+      if (envRes?.env) {
+        for (const f of LLM_TUNING_FIELDS) {
+          if (!f.envKey) continue;
+          const e = envRes.env.find((x) => x.key === f.envKey);
+          if (e && e.value && !e.masked) envEff[f.key] = e.value;
+        }
+      }
       setOverride(picked);
       setTeam(teamRec);
-      setDraft(resolveEffectiveLlmTuning(picked, teamRec));
+      setEnvEffective(envEff);
+      setDraft(resolveEffectiveLlmTuning(picked, teamRec, envEff));
     } catch (e) {
       setLoadErr(
         e instanceof Error
@@ -132,7 +150,7 @@ function WorkerLlmTuningPanel({
   const handleSave = React.useCallback(async () => {
     if (!override || !team || !draft || saving || !l1) return;
     if (findLlmTuningError(draft)) return;
-    const diff = diffLlmTuningToOverride(draft, team, override);
+    const diff = diffLlmTuningToOverride(draft, team, override, envEffective ?? undefined);
     if (Object.keys(diff).length === 0) return;
     setSaving(true);
     setMsg(null);
@@ -141,7 +159,21 @@ function WorkerLlmTuningPanel({
       const nextOverride = { ...override, ...diff };
       setOverride(nextOverride);
       // 保存后生效值 = 新 override → 继承；同步 draft（字段回到新生效值）。
-      setDraft(resolveEffectiveLlmTuning(nextOverride, team));
+      // stream 组保存后 env 会 hot-apply → 同步刷新 env 层（读回真值）。
+      setDraft(resolveEffectiveLlmTuning(nextOverride, team, envEffective ?? undefined));
+      void fetchWorkerRuntimeEnv(name)
+        .then((envRes) => {
+          const envEff: LlmTuningValues = {};
+          if (envRes?.env) {
+            for (const f of LLM_TUNING_FIELDS) {
+              if (!f.envKey) continue;
+              const e = envRes.env.find((x) => x.key === f.envKey);
+              if (e && e.value && !e.masked) envEff[f.key] = e.value;
+            }
+          }
+          setEnvEffective(envEff);
+        })
+        .catch(() => undefined);
       setMsg({ ok: true, text: tr("已保存（启动期参数需重建容器生效）") });
       onChanged?.();
     } catch (e) {
@@ -152,7 +184,7 @@ function WorkerLlmTuningPanel({
     } finally {
       setSaving(false);
     }
-  }, [override, team, draft, saving, l1, name, tr, onChanged]);
+  }, [override, team, draft, saving, l1, name, tr, onChanged, envEffective]);
 
   // 卡片外框（宽屏内联）；sheet 模式去外框（NarrowSheet 自带标题）。
   const body = (
@@ -217,7 +249,7 @@ function WorkerLlmTuningPanel({
                 loading={saving}
                 disabled={
                   !!findLlmTuningError(draft) ||
-                  Object.keys(diffLlmTuningToOverride(draft, team, override)).length === 0
+                  Object.keys(diffLlmTuningToOverride(draft, team, override, envEffective ?? undefined)).length === 0
                 }
                 onClick={() => void handleSave()}
               >
@@ -228,10 +260,12 @@ function WorkerLlmTuningPanel({
               size="small"
               disabled={
                 saving ||
-                Object.keys(diffLlmTuningToOverride(draft, team, override)).length === 0
+                Object.keys(diffLlmTuningToOverride(draft, team, override, envEffective ?? undefined)).length === 0
               }
               onClick={() => {
-                setDraft(resolveEffectiveLlmTuning(override, team));
+                setDraft(
+                  resolveEffectiveLlmTuning(override, team, envEffective ?? undefined),
+                );
                 setMsg(null);
               }}
             >

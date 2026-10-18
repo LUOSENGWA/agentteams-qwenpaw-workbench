@@ -3,6 +3,22 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.28（2026-10-18 · LLM 流式超时预填真值 + Coding CLI 空配置可设 + 运行时升级单模式退役（团队分组+当前版本+可升级标记）+ 场景模板撤除）
+
+本批 = 15.27 使用反馈 6 件：LLM 调优两个流式超时字段没预填充当前值 / Coding CLI 配置为空时无法设置 / 目标版本菜单要默认收起 / 选 Worker 要按团队排列并显示当前版本和是否可升级 / 单独升级去掉（批量选一个=单独）/ 场景模板撤除（正式承载待 AgentCom 成熟后放团队管理）。
+
+**修复**
+- **LLM 调优「首段输出超时 / 输出中断超时」预填充真值（Worker 详情「LLM 调优」段）**：这两字段在 Worker 覆盖与团队默认都为空时由 worker-entrypoint 的 `AGENTTEAMS_LLM_STREAM_TIMEOUT_S` 兜底（实盘 300s，controller 覆写时 hot-apply 进容器 env），原预填链只有 Worker→团队→registry 三层、stream 组无 registry 固定默认 → 恒空。新增**第四层「运行时 env 实际生效值」**：展开面板时经 `GET /workers/{name}/runtime-env`（15.27 端点，只读脱敏）实读 `QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT / _IDLE_TIMEOUT` 容器实际值并入预填链（worker 覆盖 → 团队 → env 实际值 → registry 兜底）；保存后自动重读 env（hot-apply 生效回读真值）。拉取失败（L2 只读 / 旧 Controller）优雅回退原三层。逻辑门 8 断言全绿（覆盖优先级 / diff 免冗余 / startup 组不受影响）。
+- **Coding CLI 配置为空时也能设置（Worker 详情「编码 CLI」段）**：容器重建后 CLI 重装不生成 `~/.qwen/settings.json`（controller 契约 `exists:false, settings:{}`），原空态只有提示文案、模型行被隐藏 →「已经安装了也无法设置」。**空配置也渲染结构化编辑器**：模型行常显（列表选择 + 自由输入），**填模型名保存即 PUT merge 创建 settings 文件**（controller 端 read-modify-merge + 原子写，空文件可创建）；其他字段建后在表单自然出现。配套文案改为「尚无配置文件——填模型名并保存即创建」。
+
+**改进**
+- **运行时升级「目标版本」默认收起（运维页）**：版本表格不再挂载即展开 + 即发 PyPI 代理请求——首行只显示「目标版本」+ 已选版本 tag + 「版本表」按钮，点击展开选版本（首次展开才拉列表，「刷新」手动重拉）；收起态保留「刷新」入口。
+- **选 Worker 升级按团队排列 + 行内显示当前版本与是否可升级**：多选下拉改为**按团队分组列表**（controller `/workers` 的 `team` 字段分组，空=未分组，组间按团队名排序）；每行 = 复选框 + Worker 名 + **当前 qwenpaw 运行时版**（「检查更新」探测结果直接合入行内，未探测前用缓存秒回）+ **可升级 / 最新 / 未知版本**标记（→ 目标版本提示）。勾选即参与批量升级——**选一个就是单独升级**。
+- **单独升级模式退役**：「单 Worker / 批量」切换移除，统一为上述团队分组列表（单 Worker 的轻探/预检 gate 段随之退役——批量流的 check-all + 二次确认已覆盖其能力面；逐 worker job 跟踪卡片保留）。
+- **Coding CLI 场景模板撤除**：六场景 preset 按钮 + 建议清单区移除（场景模板的正式承载在 AgentCom 团队管理成熟后）；`codingCliPresets.ts` 六场景数据与 applyPreset 链路一并删除（-250 行）。
+
+**验证**：tsc 0 · vite build 单文件 1,956 kB · **pytest 447/447**（零回归）· i18n 门 1685 键 0 缺 0 重 0 空（清理 14 个模板死键 + 新增 3 键）· LLM env 层逻辑门 8/8（esbuild 真代码）· 敏感扫 0 · 版本三源一致（15.28）。
+
 ## 0.5.0-beta.15.27（2026-10-18 · 运行时环境变量预填充 + 检查更新 v3（批量+缓存）+ 目标版本表格 + Coding CLI 模型列表选择）
 
 本批 = 15.26 使用反馈 4 件（QwenPaw 运行时环境变量没预填充 / 检查更新还是很慢 + 选版本应该有个表格 / Coding CLI 设置没接入 + 模型选择应该像 Worker 那样有列表）+ 全量交叉检查。

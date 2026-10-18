@@ -48,7 +48,10 @@ export default function VersionTablePicker({
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [latest, setLatest] = React.useState("");
-  const [open, setOpen] = React.useState(true);
+  // 15.28：默认收起（点击展开选择版本）——收起态
+  // 只显示「目标版本」+ 已选 tag + 版本表按钮；首次展开才拉版本表
+  // （省挂载即发的 PyPI 代理请求）。
+  const [open, setOpen] = React.useState(false);
   const [custom, setCustom] = React.useState("");
 
   const load = React.useCallback(() => {
@@ -63,9 +66,14 @@ export default function VersionTablePicker({
       .finally(() => setLoading(false));
   }, [tr]);
 
+  // 首次展开才拉（后续展开不重拉；「刷新」按钮手动重拉）。
+  const loadedRef = React.useRef(false);
   React.useEffect(() => {
-    load();
-  }, [load]);
+    if (open && !loadedRef.current) {
+      loadedRef.current = true;
+      load();
+    }
+  }, [open, load]);
 
   const isKnown = (v: string) => rows?.some((r) => r.version === v) ?? false;
 
@@ -96,13 +104,22 @@ export default function VersionTablePicker({
         {error ? (
           <antd.Tag color="warning">{error}</antd.Tag>
         ) : null}
+        {open ? (
+          <antd.Button
+            size="small"
+            type="text"
+            loading={loading}
+            onClick={() => load()}
+          >
+            {tr("刷新")}
+          </antd.Button>
+        ) : null}
         <antd.Button
           size="small"
           type="text"
-          loading={loading}
-          onClick={() => (open ? load() : setOpen(true))}
+          onClick={() => setOpen(!open)}
         >
-          {open ? tr("刷新") : tr("版本表")}
+          {open ? tr("收起") : tr("版本表")}
         </antd.Button>
       </div>
 

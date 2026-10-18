@@ -1,18 +1,13 @@
 import type * as ReactNS from "react";
 
 import {
-  fetchUpgradeCheck,
   fetchUpgradeCheckAll,
-  fetchUpgradeLightCheck,
   fetchUpgradeStatus,
   httpErrorStatus,
   requestJson,
   runUpgrade,
   UPGRADE_TERMINAL_STATES,
   type UpgradeCheckAll,
-  type UpgradeFullCheck,
-  type UpgradeGate,
-  type UpgradeLightCheck,
   type UpgradeRunHandle,
   type UpgradeStatusResult,
 } from "../api";
@@ -38,6 +33,8 @@ interface WorkerItem {
   runtime?: string;
   state?: string;
   phase?: string;
+  /** 所属团队（controller /workers 列表回显；空=未分组）。 */
+  team?: string;
 }
 
 /** 当前 qwenpaw 运行时版（容器内 importlib.metadata 读）→ 模块级缓存。
@@ -80,33 +77,6 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** 门控状态 → Tag 色（checker 六态保守映射）。 */
-function gateVariant(g: UpgradeGate): "success" | "error" | "warning" | "default" {
-  switch (g.status) {
-    case "PASS":
-      return "success";
-    case "FAIL":
-    case "ERROR":
-      return "error";
-    case "WARN":
-      return "warning";
-    case "SKIP":
-    case "NOT_RUN":
-    default:
-      return "default";
-  }
-}
-
-function fmtTime(iso?: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return String(iso);
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(
-    d.getHours(),
-  )}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
 /** job 状态变体（state-file state 字段；未知值→default）。 */
 function jobStateVariant(s?: string): "processing" | "success" | "error" | "warning" | "default" {
   switch (s) {
@@ -128,9 +98,10 @@ function jobStateVariant(s?: string): "processing" | "success" | "error" | "warn
   }
 }
 
-/** 运行时升级段（运维页内，15.25 per-worker 重接）。
- * 流程：选 Worker（QwenPaw only 提示）→ 轻探当前版本 → 填目标版本
- * 预检（checker gates）→ 二次确认触发（破坏性：容器重启）→ job 跟踪。 */
+/** 运行时升级段（运维页内，15.25 per-worker 重接；15.28 单模式退役）。
+ * 流程：Worker 列表按团队分组（行内当前版本+可否升级）→ 检查更新
+ * （check-all 批量轻探）→ 勾选（选一个=单独升级）→ 选目标版本
+ * → 二次确认触发（破坏性：容器重启）→ 顺序执行 + 逐 worker job 跟踪。 */
 function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
   const t = useThemeColors();
   const tr = useT();
@@ -138,19 +109,6 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
 
   const [workers, setWorkers] = React.useState<WorkerItem[]>([]);
   const [workersError, setWorkersError] = React.useState("");
-  const [selected, setSelected] = React.useState<string>("");
-  const [light, setLight] = React.useState<UpgradeLightCheck | null>(null);
-  const [lightLoading, setLightLoading] = React.useState(false);
-  const [version, setVersion] = React.useState("");
-  const [verify, setVerify] = React.useState(false);
-  const [full, setFull] = React.useState<UpgradeFullCheck | null>(null);
-  const [fullLoading, setFullLoading] = React.useState(false);
-  const [confirming, setConfirming] = React.useState(false);
-  const [running, setRunning] = React.useState(false);
-  const [job, setJob] = React.useState<UpgradeRunHandle | null>(null);
-  const [status, setStatus] = React.useState<UpgradeStatusResult | null>(null);
-  // 模式：单 Worker（原流程）｜ 批量（多选 + 检查更新 + 顺序触发）。
-  const [mode, setMode] = React.useState<"single" | "batch">("single");
 
   // workers 目录（L1；403=未配 token → 引导空态）。
   const loadWorkers = React.useCallback(async (silent = false) => {
@@ -181,95 +139,6 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
     void loadWorkers(true);
   }, [refreshTick, loadWorkers]);
 
-  // 选中 worker → 轻探（当前版本 + 脚本可用性），重置下游状态。
-  const onPickWorker = React.useCallback((name: string) => {
-    setSelected(name);
-    setLight(null);
-    setFull(null);
-    setVersion("");
-    setJob(null);
-    setStatus(null);
-    setLightLoading(true);
-    fetchUpgradeLightCheck(name)
-      .then((d) => {
-        setLight(d);
-      })
-      .catch((e) => {
-        setLight({
-          worker: name,
-          container: `agentteams-worker-${name}`,
-          current: null,
-          supported: false,
-        });
-        if (e instanceof Error && e.message) {
-          setWorkersError(e.message);
-        }
-      })
-      .finally(() => setLightLoading(false));
-  }, []);
-
-  // 预检（完整 gate 检查）。
-  const doCheck = React.useCallback(async () => {
-    if (!selected || !version.trim()) return;
-    setFullLoading(true);
-    try {
-      const d = await fetchUpgradeCheck(selected, version.trim(), verify);
-      setFull(d);
-    } catch (e) {
-      antd.message.error(e instanceof Error ? e.message : tr("预检失败"));
-    } finally {
-      setFullLoading(false);
-    }
-  }, [selected, version, verify, tr]);
-
-  // 触发升级（破坏性）。
-  const doUpgrade = React.useCallback(async () => {
-    if (!selected || !version.trim()) return;
-    setConfirming(false);
-    setRunning(true);
-    try {
-      const j = await runUpgrade(selected, version.trim());
-      setJob(j);
-      setStatus(null);
-    } catch (e) {
-      antd.message.error(e instanceof Error ? e.message : tr("触发升级失败"));
-    } finally {
-      setRunning(false);
-    }
-  }, [selected, version, tr]);
-
-  // job 状态轮询（5s；终态即停；容器重启窗口内 404/超时静默重试）。
-  const jobStateStr =
-    (status?.state as Record<string, unknown> | undefined)?.state as
-      | string
-      | undefined;
-  const jobActive = !!job && (jobStateStr === undefined ||
-    !UPGRADE_TERMINAL_STATES.includes(jobStateStr));
-  usePoller({
-    fn: async () => {
-      if (!job) return;
-      try {
-        const s = await fetchUpgradeStatus(job.worker, job.job_id);
-        setStatus(s);
-        const st = (s.state as Record<string, unknown> | undefined)?.state as
-          | string
-          | undefined;
-        if (st === "success") qwenpawVersionCache.delete(job.worker);
-      } catch {
-        /* 瞬态失败（容器重启中）保留上次状态，下一轮再试 */
-      }
-    },
-    intervalMs: 5000,
-    active: opsActive && jobActive,
-    minPokeMs: 3000,
-  });
-
-  const gates = full?.check?.checks || [];
-  const overall = full?.check?.overall || "";
-  const precheckFailed = overall === "FAIL";
-  const canRun =
-    !!light?.supported && version.trim().length > 0 && !running;
-
   return (
     <div>
       {/* 段头 */}
@@ -292,36 +161,13 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
             ⓘ
           </span>
         </WbTooltip>
-        <antd.Segmented
-          size="small"
-          value={mode}
-          onChange={(v: string | number) => setMode(v as "single" | "batch")}
-          options={[
-            { label: tr("单 Worker"), value: "single" },
-            { label: tr("批量"), value: "batch" },
-          ]}
-        />
-        {mode === "single" && light?.current ? (
-          <span
-            style={{
-              fontSize: 12,
-              fontFamily: "ui-monospace, monospace",
-              color: t.textSecondary,
-            }}
-          >
-            {tr("当前")} {light.current}
-          </span>
-        ) : null}
         <div style={{ flex: 1 }} />
         <WbTooltip title={tr("刷新")}>
           <antd.Button
             type="text"
             size="small"
             icon={<ReloadIcon />}
-            onClick={() => {
-              void loadWorkers(false);
-              if (selected) onPickWorker(selected);
-            }}
+            onClick={() => void loadWorkers(false)}
           />
         </WbTooltip>
       </div>
@@ -346,281 +192,7 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
         />
       ) : null}
 
-      {mode === "single" ? (
-      <>
-      {/* Worker 选择 */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <antd.Select
-          style={{ minWidth: 260 }}
-          placeholder={tr("选择要升级的 Worker")}
-          value={selected || undefined}
-          onChange={onPickWorker}
-          showSearch
-          optionFilterProp="label"
-          options={workers.map((w) => ({
-            value: w.name,
-            label: w.name,
-            disabled: w.runtime !== "qwenpaw",
-          }))}
-          optionRender={(opt: { value?: string; label?: ReactNS.ReactNode }) => {
-            const w = workers.find((x) => x.name === opt.value);
-            if (!w) return opt.label as ReactNS.ReactNode;
-            return (
-              <span>
-                {w.name}
-                <span
-                  style={{
-                    marginLeft: 8,
-                    fontSize: 11,
-                    color: w.runtime === "qwenpaw"
-                      ? t.textSecondary
-                      : "#e5484d",
-                  }}
-                >
-                  {w.runtime === "qwenpaw"
-                    ? w.runtime
-                    : `${w.runtime || "unknown"}（${tr("仅 qwenpaw 可就地升级")}）`}
-                </span>
-              </span>
-            );
-          }}
-        />
-        {light ? (
-          light.supported ? (
-            <span style={{ fontSize: 12, color: t.textSecondary, alignSelf: "center" }}>
-              {tr("当前")}：
-              <b style={{ fontFamily: "ui-monospace, monospace", color: t.text }}>
-                {light.current || "—"}
-              </b>
-            </span>
-          ) : (
-            <antd.Alert
-              type="warning"
-              showIcon
-              message={tr(
-                "该 Worker 镜像不支持就地升级（需 1.2.5+ 镜像，含内置升级脚本）。",
-              )}
-              style={{ alignSelf: "center" }}
-            />
-          )
-        ) : lightLoading ? (
-          <antd.Skeleton active title={false} paragraph={false} style={{ width: 120 }} />
-        ) : null}
-      </div>
-
-      {/* 目标版本 + 预检 */}
-      {selected && light?.supported ? (
-        <div style={{ display: "grid", gap: 10 }}>
-          <VersionTablePicker
-            value={version}
-            onChange={(v) => {
-              setVersion(v);
-              setFull(null);
-            }}
-          />
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <antd.Checkbox
-              checked={verify}
-              onChange={(e: { target: { checked: boolean } }) =>
-                setVerify(!!e.target.checked)}
-            >
-              <WbTooltip title={tr("附加 wheel 可达性检查（从 PyPI 下载，耗时更长）")}>
-                <span>{tr("验证 wheel 可达")}</span>
-              </WbTooltip>
-            </antd.Checkbox>
-            <antd.Button
-              onClick={() => void doCheck()}
-              loading={fullLoading}
-              disabled={!version.trim()}
-            >
-              {tr("预检")}
-            </antd.Button>
-            <antd.Button
-              type="primary"
-              danger
-              icon={<CloudSyncIcon />}
-              disabled={!canRun}
-              loading={running}
-              onClick={() => setConfirming(true)}
-            >
-              {tr("升级到此版本")}
-            </antd.Button>
-          </div>
-
-          {/* 预检 gate 结果 */}
-          {full ? (
-            full.check ? (
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  border: `1px solid ${t.border}`,
-                  background: t.cardBg,
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <antd.Tag
-                    color={
-                      full.check.overall === "PASS"
-                        ? "success"
-                        : full.check.overall === "FAIL"
-                          ? "error"
-                          : "warning"
-                    }
-                  >
-                    {full.check.overall}
-                  </antd.Tag>
-                  <span style={{ fontSize: 12, color: t.textSecondary }}>
-                    {full.check.target || version}
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {gates.map((g) => (
-                    <WbTooltip
-                      key={g.id}
-                      title={`${g.name}：${g.evidence || "—"}${g.advice ? `\n${g.advice}` : ""}`}
-                    >
-                      <antd.Tag color={gateVariant(g)} style={{ cursor: "help" }}>
-                        {g.id} {g.status}
-                      </antd.Tag>
-                    </WbTooltip>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <antd.Alert
-                type="warning"
-                showIcon
-                message={tr("预检输出解析失败，原始输出：")}
-                description={
-                  <pre style={{ margin: 0, fontSize: 11, whiteSpace: "pre-wrap" }}>
-                    {full.raw || "—"}
-                  </pre>
-                }
-              />
-            )
-          ) : null}
-
-          {/* job 跟踪 */}
-          {job ? (
-            <div
-              style={{
-                padding: 12,
-                borderRadius: 8,
-                border: `1px solid ${t.border}`,
-                background: t.cardBg,
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <antd.Badge
-                  status={jobStateVariant(jobStateStr)}
-                  text={
-                    <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 13 }}>
-                      {job.job_id}
-                    </span>
-                  }
-                />
-                {jobStateStr && (
-                  <antd.Tag color={jobStateVariant(jobStateStr)}>{jobStateStr}</antd.Tag>
-                )}
-                <span style={{ fontSize: 12, color: t.textSecondary }}>
-                  {tr("目标")}：
-                  <b style={{ color: t.text }}>{job.version}</b>
-                </span>
-                {!!(status?.state as Record<string, unknown> | undefined)?.updated_at && (
-                  <span style={{ fontSize: 11, color: t.textSecondary }}>
-                    {fmtTime(String((status?.state as Record<string, unknown>).updated_at))}
-                  </span>
-                )}
-                <div style={{ flex: 1 }} />
-                {!jobActive && (
-                  <antd.Tag color={jobStateVariant(jobStateStr)}>
-                    {tr("已停止跟踪")}
-                  </antd.Tag>
-                )}
-              </div>
-              {/* state-file 全量（runner 任意字段，折叠 JSON 展示） */}
-              {status?.state ? (
-                <details>
-                  <summary style={{ fontSize: 12, cursor: "pointer", color: t.textSecondary }}>
-                    {tr("状态详情（state-file）")}
-                  </summary>
-                  <pre
-                    style={{
-                      margin: "6px 0 0",
-                      padding: 8,
-                      borderRadius: 6,
-                      background: "#0d1117",
-                      color: "#c9d1d9",
-                      fontFamily: "ui-monospace, monospace",
-                      fontSize: 11,
-                      lineHeight: 1.5,
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      maxHeight: 200,
-                      overflowY: "auto",
-                    }}
-                  >
-                    {JSON.stringify(
-                      { state: status.state, pending: status.pending },
-                      null,
-                      2,
-                    )}
-                  </pre>
-                </details>
-              ) : null}
-              {!status && jobActive && (
-                <span style={{ fontSize: 12, color: t.textSecondary }}>
-                  {tr("等待状态文件（容器升级/重启中…）")}
-                </span>
-              )}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* 破坏性二次确认 */}
-      <antd.Modal
-        open={confirming}
-        title={tr("确认触发运行时升级？")}
-        onCancel={() => setConfirming(false)}
-        onOk={() => void doUpgrade()}
-        okText={tr("确认升级")}
-        okButtonProps={{ danger: true, loading: running }}
-        cancelText={tr("取消")}
-      >
-        <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
-          <span>
-            {tr("Worker")}：<b>{selected}</b>
-          </span>
-          <span>
-            {tr("目标版本")}：
-            <b style={{ fontFamily: "ui-monospace, monospace" }}>{version.trim()}</b>
-          </span>
-          {precheckFailed ? (
-            <antd.Alert
-              type="error"
-              showIcon
-              message={tr("预检未通过（FAIL），不建议继续。")}
-            />
-          ) : null}
-          <antd.Alert
-            type="warning"
-            showIcon
-            message={tr(
-              "升级将两阶段就地执行并重启该 Worker 容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。",
-            )}
-          />
-        </div>
-      </antd.Modal>
-      </>
-      ) : (
         <BatchBody workers={workers} />
-      )}
     </div>
   );
 }
@@ -655,6 +227,27 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
     () => workers.filter((w) => w.runtime === "qwenpaw"),
     [workers],
   );
+
+  // 团队分组（15.28：按 team 字段分组，空=未分组），
+  // 组间按团队名、组内保持目录序。
+  const teamGroups = React.useMemo(() => {
+    const m = new Map<string, WorkerItem[]>();
+    for (const w of qwenpawWorkers) {
+      const g = w.team || tr("未分组");
+      const arr = m.get(g) || [];
+      arr.push(w);
+      m.set(g, arr);
+    }
+    return Array.from(m.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0], "zh"),
+    );
+  }, [qwenpawWorkers, tr]);
+
+  const toggleWorker = React.useCallback((name: string) => {
+    setSelected((prev) =>
+      prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name],
+    );
+  }, []);
 
   // 检查更新（15.27 定案「读到现在版本→本机匹配」）：单次
   // check-all = 服务端批量轻探（10min 缓存）+ latest（PyPI 10min 缓存）
@@ -812,119 +405,96 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
         ) : null}
       </div>
 
-      {/* Worker 多选（qwenpaw 可选，其他运行时禁用） */}
-      <antd.Select
-        mode="multiple"
-        style={{ width: "100%", maxWidth: 520 }}
-        placeholder={tr("选择要升级的 Worker（仅 qwenpaw 可就地升级）")}
-        value={selected}
-        onChange={(v: string[]) => setSelected(v)}
-        showSearch
-        optionFilterProp="label"
-        options={workers.map((w) => ({
-          value: w.name,
-          label: w.name,
-          disabled: w.runtime !== "qwenpaw",
-        }))}
-        optionRender={(opt: { value?: string; label?: ReactNS.ReactNode }) => {
-          const w = workers.find((x) => x.name === opt.value);
-          if (!w) return opt.label as ReactNS.ReactNode;
-          return (
-            <span>
-              {w.name}
-              <span
-                style={{
-                  marginLeft: 8,
-                  fontSize: 11,
-                  color: w.runtime === "qwenpaw" ? t.textSecondary : "#e5484d",
-                }}
-              >
-                {w.runtime === "qwenpaw"
-                  ? w.runtime
-                  : `${w.runtime || "unknown"}（${tr("仅 qwenpaw 可就地升级")}）`}
+      {/* Worker 选择（15.28：按团队分组；行内显示当前版本 + 可否升级——
+       * 「检查更新」探测结果直接合入本列表，选一个=单独升级）。 */}
+      {teamGroups.length > 0 ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          {teamGroups.map(([teamName, list]) => (
+            <div
+              key={teamName}
+              style={{
+                border: `1px solid ${t.border}`,
+                borderRadius: 8,
+                background: t.cardBg,
+                padding: "6px 10px",
+                display: "grid",
+                gap: 4,
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 600, color: t.textSecondary }}>
+                {teamName}
               </span>
-            </span>
-          );
-        }}
-      />
-
-      {/* 检查更新结果（响应式卡片网格：卡片随屏宽自动换行排列，不整行占位） */}
-      {checking || checkDone ? (
-        <div
-          style={{
-            display: "grid",
-            gap: 8,
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-          }}
-        >
-          {qwenpawWorkers.map((w) => {
-            const lc = lightMap[w.name];
-            return (
-              <div
-                key={w.name}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: `1px solid ${t.border}`,
-                  background: t.cardBg,
-                  flexWrap: "wrap",
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "ui-monospace, monospace",
-                    fontSize: 12,
-                    flex: "1 1 auto",
-                    minWidth: 0,
-                  }}
-                >
-                  {w.name}
-                </span>
-                {checking && !lc ? (
-                  <antd.Skeleton
-                    active
-                    title={false}
-                    paragraph={false}
-                    style={{ width: 120 }}
-                  />
-                ) : lc ? (
-                  <>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontFamily: "ui-monospace, monospace",
-                        color: t.text,
-                      }}
-                    >
-                      {lc.current || tr("未知")}
-                      {lc.status === "available" && lc.latest
-                        ? ` → ${lc.latest}`
-                        : ""}
+              {list.map((w) => {
+                const lc = lightMap[w.name];
+                const current =
+                  lc?.current ?? qwenpawVersionCache.get(w.name) ?? null;
+                return (
+                  <div
+                    key={w.name}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <antd.Checkbox
+                      checked={selected.includes(w.name)}
+                      onChange={() => toggleWorker(w.name)}
+                    />
+                    <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+                      {w.name}
                     </span>
-                    {lc.status === "available" ? (
-                      <antd.Tag color="error">{tr("可升级")}</antd.Tag>
-                    ) : lc.status === "up-to-date" ? (
-                      <antd.Tag color="success">{tr("最新")}</antd.Tag>
+                    {checking && !current ? (
+                      <antd.Skeleton
+                        active
+                        title={false}
+                        paragraph={false}
+                        style={{ width: 120 }}
+                      />
                     ) : (
-                      <antd.Tag color="warning">{tr("未知版本")}</antd.Tag>
+                      <>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontFamily: "ui-monospace, monospace",
+                            color: t.text,
+                          }}
+                        >
+                          {current || tr("未知")}
+                          {lc && lc.status === "available" && lc.latest
+                            ? ` → ${lc.latest}`
+                            : ""}
+                        </span>
+                        {lc ? (
+                          lc.status === "available" ? (
+                            <antd.Tag color="error">{tr("可升级")}</antd.Tag>
+                          ) : lc.status === "up-to-date" ? (
+                            <antd.Tag color="success">{tr("最新")}</antd.Tag>
+                          ) : (
+                            <antd.Tag color="warning">{tr("未知版本")}</antd.Tag>
+                          )
+                        ) : null}
+                        {lc?.error ? (
+                          <WbTooltip title={lc.error}>
+                            <antd.Tag color="warning" style={{ marginInlineEnd: 0 }}>
+                              {tr("探测失败")}
+                            </antd.Tag>
+                          </WbTooltip>
+                        ) : null}
+                      </>
                     )}
-                    {lc.error ? (
-                      <WbTooltip title={lc.error}>
-                        <antd.Tag color="warning" style={{ marginInlineEnd: 0 }}>
-                          {tr("探测失败")}
-                        </antd.Tag>
-                      </WbTooltip>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            );
-          })}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
-      ) : null}
+      ) : (
+        <div style={{ fontSize: 12, color: t.textSecondary }}>
+          {tr("无 qwenpaw 运行时 Worker（就地升级仅支持 qwenpaw）")}
+        </div>
+      )}
 
       {/* 目标版本（表格选择，15.27）+ 批量升级 */}
       <VersionTablePicker value={version} onChange={setVersion} />

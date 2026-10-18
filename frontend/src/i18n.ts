@@ -2412,10 +2412,6 @@ const DICT: Record<string, { en: string }> = {
   "加载 settings 失败": { en: "Failed to load settings" },
   "加载 settings…": { en: "Loading settings…" },
   "{cli} 任务完成": { en: "{cli} task finished" },
-  "先安装当前 CLI，再套用场景模板": { en: "Install the current CLI first, then apply a scenario preset" },
-  "共享卷：{v}": { en: "Shared volume: {v}" },
-  "MCP：{v}": { en: "MCP: {v}" },
-  "产物：{v}": { en: "Artifacts: {v}" },
   // ── Coding CLI 面板（1.2.5 #1360 消费，续）──
   "编码 CLI 探测中（容器内逐 CLI 跑 --version，有 exec 成本）…": {
     en: "Probing coding CLIs (runs --version inside the container per CLI — has exec cost)…",
@@ -2451,24 +2447,8 @@ const DICT: Record<string, { en: string }> = {
   "settings（结构化表单 · 只保存改动）": { en: "settings (structured form · saves only changes)" },
   "已保存，留空保留；输入=替换": { en: "Saved — leave empty to keep; enter to replace" },
   "未设置；输入=设置": { en: "Not set; enter to set" },
-  "配置为空——套下方模板，或直接编辑字段后保存。": {
-    en: "Settings empty — apply a preset below, or edit fields and save.",
-  },
-  "配置为空——装当前 CLI 后，或套下方模板生成初始配置。": {
-    en: "Settings empty — install the current CLI first, or apply a preset to generate initial settings.",
-  },
   "有未保存改动": { en: "Unsaved changes" },
   "无改动": { en: "No changes" },
-  "场景模板（只写模型名，工具链/MCP 需确认）· 当前 CLI：{c}": {
-    en: "Scenario presets (write model name only; toolchain/MCP need confirmation) · current CLI: {c}",
-  },
-  "建议清单（需人工确认，未写入 Worker CR）": {
-    en: "Suggestion list (human confirmation required; not written to the Worker CR)",
-  },
-  "工具链：{v}": { en: "Toolchain: {v}" },
-  "工具链说明：{v}": { en: "Toolchain note: {v}" },
-  "环境变量：{v}": { en: "Env vars: {v}" },
-  "架构注意：{v}": { en: "Architecture note: {v}" },
   "确认卸载": { en: "Confirm uninstall" },
   "将从该 Worker 容器卸载 {cli}。安装状态会丢失，已保存的鉴权可保留。": {
     en: "This uninstalls {cli} from the Worker container. Install state is lost; saved auth is retained.",
@@ -2487,8 +2467,6 @@ const DICT: Record<string, { en: string }> = {
     en: "Cannot run management commands inside this Worker container",
   },
   "安装请求失败": { en: "Install request failed" },
-  "已套用 {n}": { en: "Applied {n}" },
-  "套用模板失败": { en: "Failed to apply preset" },
   "补丁不是合法 JSON": { en: "Patch is not valid JSON" },
   "补丁须为 JSON 对象": { en: "Patch must be a JSON object" },
   "补丁不能包含脱敏占位，请填写真实密钥或留空由密钥栏保留": {
@@ -2532,6 +2510,15 @@ const DICT: Record<string, { en: string }> = {
   },
   "未选择（建议 {v}）": { en: "Not selected (suggested: {v})" },
   "标记": { en: "Flags" },
+  "尚无配置文件——在下方填模型名并保存即创建（其他字段建后在表单出现）。": {
+    en: "No config file yet — fill in the model name below and save to create it (other fields appear in the form afterwards).",
+  },
+  "尚无配置文件——填模型名并保存即创建。": {
+    en: "No config file yet — fill in the model name and save to create it.",
+  },
+  "无 qwenpaw 运行时 Worker（就地升级仅支持 qwenpaw）": {
+    en: "No qwenpaw-runtime workers (in-place upgrade only supports qwenpaw)",
+  },
   "检查更新失败": { en: "Update check failed" },
   "注意：Controller 当前不回显已保存的自定义变量（保存=整块替换写 CRD）——已保存值以下方「运行时环境」为准（容器重建后生效）。": {
     en: "Note: the Controller currently does not echo back saved custom variables (save = whole-map replace on the CRD) — consult the “Runtime environment” section below for saved values (effective after container recreation).",

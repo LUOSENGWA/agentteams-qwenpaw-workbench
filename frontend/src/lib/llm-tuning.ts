@@ -6,7 +6,10 @@
 // workerToResponse 回显，omitempty=未设置不显）。插件经
 // GET /agents/proxy…/workers/{name} 读、PUT /workers/{name} 写。
 //
-// 归属层级：Worker 覆盖 → 团队默认 → QwenPaw registry 兜底。
+// 归属层级：Worker 覆盖 → 团队默认 → 运行时 env 实际生效值 → registry 兜底。
+// env 层（15.28）：stream 组两字段无 registry 固定默认，实际值由
+// worker-entrypoint 的 AGENTTEAMS_LLM_STREAM_TIMEOUT_S 兜底（controller
+// 覆写时 hot-apply 进容器 env）——预填正源 = runtime-env 端点实读。
 // 两组语义（1.2.5 源码实读 resource_handler.go / types.go）：
 //   · startup：QwenPaw 启动期读取，改后需重建容器才生效（spec-hash 驱动）。
 //   · stream ：热更新，运行时每次流式请求重读，无需重启（QwenPaw >= 2.2.1）。
@@ -44,6 +47,9 @@ export interface LlmTuningField {
   unit?: string;
   /** QwenPaw registry 默认值（来自上游字段注释；stream 组上游未给固定默认）。 */
   registryDefault?: string;
+  /** 运行时 env 变量名（可选）：worker/team 均无值时，以容器 PID 1 env
+   * 实际值兜底预填（entrypoint 默认 300s；controller hot-apply 覆写）。 */
+  envKey?: string;
 }
 
 /** 组标题（tr() 键）。 */
@@ -61,8 +67,8 @@ export const LLM_TUNING_FIELDS: readonly LlmTuningField[] = [
   { key: "llmRateLimitPause", label: "限流暂停", group: "startup", unit: "秒", registryDefault: "5" },
   { key: "llmRateLimitJitter", label: "限流抖动", group: "startup", unit: "秒", registryDefault: "1" },
   { key: "llmAcquireTimeout", label: "获取许可超时", group: "startup", unit: "秒", registryDefault: "300" },
-  { key: "llmStreamFirstContentTimeout", label: "首段输出超时", group: "stream", unit: "秒" },
-  { key: "llmStreamIdleTimeout", label: "输出中断超时", group: "stream", unit: "秒" },
+  { key: "llmStreamFirstContentTimeout", label: "首段输出超时", group: "stream", unit: "秒", envKey: "QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT" },
+  { key: "llmStreamIdleTimeout", label: "输出中断超时", group: "stream", unit: "秒", envKey: "QWENPAW_LLM_STREAM_IDLE_TIMEOUT" },
 ] as const;
 
 export type LlmTuningValues = Partial<Record<LlmTuningKey, string>>;
@@ -109,21 +115,29 @@ export function emptyLlmTuning(): LlmTuningRecord {
   return out;
 }
 
-/** 继承值（团队默认 → registry 兜底）：worker 无覆盖时逐级继承到的值。 */
-export function inheritedLlmTuning(team: LlmTuningRecord): LlmTuningRecord {
+/** 继承值（团队默认 → 运行时 env 实际值 → registry 兜底）：worker 无覆盖
+ * 时逐级继承到的值。envEffective=按字段 key 映射的容器 env 实际值
+ * （runtime-env 端点实读；可选，拉取失败=走原三层链）。 */
+export function inheritedLlmTuning(
+  team: LlmTuningRecord,
+  envEffective?: LlmTuningValues,
+): LlmTuningRecord {
   const out = {} as LlmTuningRecord;
   for (const field of LLM_TUNING_FIELDS) {
-    out[field.key] = team[field.key] || field.registryDefault || "";
+    out[field.key] =
+      team[field.key] || envEffective?.[field.key] || field.registryDefault || "";
   }
   return out;
 }
 
-/** 当前生效值（Worker 覆盖 → 团队默认 → registry 兜底）：worker 此刻实际在用。 */
+/** 当前生效值（Worker 覆盖 → 团队默认 → env 实际值 → registry 兜底）：
+ * worker 此刻实际在用。 */
 export function resolveEffectiveLlmTuning(
   override: LlmTuningRecord,
   team: LlmTuningRecord,
+  envEffective?: LlmTuningValues,
 ): LlmTuningRecord {
-  const inherited = inheritedLlmTuning(team);
+  const inherited = inheritedLlmTuning(team, envEffective);
   const out = {} as LlmTuningRecord;
   for (const field of LLM_TUNING_FIELDS) {
     out[field.key] = override[field.key] || inherited[field.key];
@@ -133,13 +147,15 @@ export function resolveEffectiveLlmTuning(
 
 /** 字段级写 diff（生效值预填 + override 语义）：
  *  desired=用户编辑后的显示值；newOverride=(desired===继承值 ? "" : desired)
- *  （改回继承值=清除覆盖，不写冗余）；仅收集 newOverride≠当前 worker 覆盖的键。 */
+ *  （改回继承值=清除覆盖，不写冗余）；仅收集 newOverride≠当前 worker 覆盖的键。
+ *  envEffective 同 inheritedLlmTuning（stream 组 env 实际值层）。 */
 export function diffLlmTuningToOverride(
   draft: LlmTuningRecord,
   team: LlmTuningRecord,
   override: LlmTuningRecord,
+  envEffective?: LlmTuningValues,
 ): LlmTuningValues {
-  const inherited = inheritedLlmTuning(team);
+  const inherited = inheritedLlmTuning(team, envEffective);
   const diff: LlmTuningValues = {};
   for (const field of LLM_TUNING_FIELDS) {
     const desired = draft[field.key];

@@ -3,6 +3,22 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.28 (2026-10-18 - LLM stream-timeout prefill from live env + coding-CLI editable when config empty + runtime-upgrade single mode retired (team-grouped picker with current version + upgradable badge) + scene presets removed)
+
+This batch = 15.27 acceptance feedback (6 items: the two LLM stream-timeout fields still not prefilled / coding-CLI "config empty" not settable even when the CLI is installed / target-version menu should collapse by default / the worker picker should be grouped by team and show current version + upgradable status / drop the single-upgrade mode (picking one worker in batch = single) / scene presets are not the right shape (remove for now; AgentCom will carry them in team management once mature)).
+
+**Fixed**
+- **LLM tuning now prefills "first-content timeout" / "stream idle timeout" with the live value**: when neither the Worker override nor the team default is set, the worker-entrypoint `AGENTTEAMS_LLM_STREAM_TIMEOUT_S` fallback (300s in the live cluster; controller hot-applies overrides into container env) was the real source — the old prefill chain (worker → team → registry) had no registry default for the stream group, so the two fields were always blank. A fourth layer, the **runtime env actual value**, reads `QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT` / `_IDLE_TIMEOUT` via the read-only `/workers/{name}/runtime-env` endpoint (15.27) and joins the chain (worker → team → live env → registry); after save it re-reads env (hot-apply truth). Graceful fallback to the original three layers on fetch failure (L2 read-only / older controller). 8-assertion logic gate on the real TS.
+- **Coding CLI is editable when the config file is empty**: a container rebuild leaves the CLI installed but `~/.qwen/settings.json` absent (controller contract: `exists:false, settings:{}`), and the old empty state hid the model row — "installed but cannot configure". The structured editor now renders even on empty config: the model row (list picker + free text) is always visible, and **saving a model name PUT-merges to create the settings file** (controller read-modify-merge + atomic write); other fields appear in the form afterwards.
+
+**Improved**
+- **Target-version menu collapsed by default** (ops page): the version table no longer mounts open and fires its PyPI proxy request immediately — the row shows "Target version" + the picked version tag + a "Version table" button; expanding on first click fetches the list ("Refresh" re-fetches).
+- **Worker upgrade picker grouped by team with current version + upgradable badge**: the multi-select became a **team-grouped list** (controller `/workers` `team` field; ungrouped last; team names sorted), each row = checkbox + worker name + **current qwenpaw runtime version** (check-updates probe results merged in-line; cached instant before probing) + **upgradable / latest / unknown** badge (with → target hint). Checking a row enrolls it in the batch run — **checking one is a single upgrade**.
+- **Single-upgrade mode retired**: the "single / batch" switch is gone; the team-grouped list is the only path (its per-worker light-check / gate section went with it — the batch flow's check-all + confirmation covers the capability surface; per-worker job tracking cards are kept).
+- **Coding CLI scene presets removed**: the six scene buttons and the suggestion list are gone (scene presets are not the right shape here — their proper home is AgentCom's team management once it matures); the preset data and applyPreset chain were deleted (-250 lines).
+
+**Verified**: tsc 0 · vite build single-file 1,956 kB · **pytest 447/447** (zero regressions) · i18n gate 1685 keys, 0 missing / 0 duplicate / 0 empty (14 dead preset keys cleaned, 3 added) · LLM env-layer logic gate 8/8 (esbuild on the real TS) · sensitive scan 0 · version sources consistent (15.28).
+
 ## 0.5.0-beta.15.27 (2026-10-18 - runtime env-var prefill + check-for-updates v3 (batch + cache) + target-version table + coding-CLI model list picker)
 
 This batch = 15.26 usage feedback (4 items: QwenPaw runtime env vars not prefilled / check-for-updates still slow + the version picker should be a table / coding-CLI settings not integrated + model picker should be a list like the Worker's) + a full cross-check.

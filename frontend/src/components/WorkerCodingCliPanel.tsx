@@ -46,10 +46,8 @@ import {
 } from "../api";
 import {
   CODING_CLI_IDS,
-  CODING_CLI_PRESETS,
   isRedacted,
   localizedText,
-  type CodingCliPreset,
 } from "../codingCliPresets";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
@@ -308,8 +306,6 @@ function useCodingCliPanel({
   const [versionTag, setVersionTag] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [appliedPreset, setAppliedPreset] = React.useState<string | null>(null);
-  const [suggestion, setSuggestion] = React.useState<CodingCliPreset | null>(null);
   const [jsonPatch, setJsonPatch] = React.useState("");
   const [uninstallTarget, setUninstallTarget] = React.useState<CodingCliId | null>(null);
   // 检查更新：各已装 CLI 的 registry latest（best-effort；容器镜像源可能不同）。
@@ -534,35 +530,6 @@ function useCodingCliPanel({
     [busy, pollTask, readOnly, tr, versionTag, worker.name],
   );
 
-  const applyPreset = React.useCallback(
-    async (preset: CodingCliPreset) => {
-      if (busy || readOnly) return;
-      const patch = preset.settings_patch ?? {};
-      if (Object.keys(patch).length === 0) {
-        setAppliedPreset(preset.id);
-        setSuggestion(preset);
-        setMsg({ kind: "ok", text: tr("已套用 {n}", { n: localizedText(preset.name) }) });
-        return;
-      }
-      setBusy(true);
-      setMsg(null);
-      try {
-        await putCliSettings(worker.name, selected, { ...patch } as SettingsObject);
-        setAppliedPreset(preset.id);
-        setSuggestion(preset);
-        setMsg({ kind: "ok", text: tr("已套用 {n}", { n: localizedText(preset.name) }) });
-        if (settingsOpen) await loadSettings(selected);
-        onChanged?.();
-      } catch (e) {
-        if (httpErrorStatus(e) === 403) setReadOnly(true);
-        setMsg({ kind: "err", text: httpErrorDetail(e) || tr("套用模板失败") });
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, loadSettings, onChanged, readOnly, selected, settingsOpen, tr, worker.name],
-  );
-
   // 检查更新：一次请求让宿主后端查全部已装 CLI 的 registry latest
   // （走 /agentteams-proxy/coding-cli/latest，非浏览器直连——操作机内网
   // 可能连不上外网 registry）。失败仅标记该 CLI，不影响其他。
@@ -607,14 +574,11 @@ function useCodingCliPanel({
     busy,
     msg,
     setMsg,
-    appliedPreset,
-    suggestion,
     uninstallTarget,
     setUninstallTarget,
     loadSettings,
     saveSettings,
     runInstall,
-    applyPreset,
     tr,
     t,
   };
@@ -815,6 +779,13 @@ function SettingsTreeEditor({
   );
   return (
     <div style={{ display: "grid", gap: 10 }}>
+      {/* 空配置引导（15.28）：文件不存在=正常空态（controller 契约
+       * exists:false）——模型行常显，填模型名保存即创建文件。 */}
+      {Object.keys(base).length === 0 && modelRowEnabled ? (
+        <div style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("尚无配置文件——在下方填模型名并保存即创建（其他字段建后在表单出现）。")}
+        </div>
+      ) : null}
       {/* 模型专行（15.27）：同 Worker 模型选择——列表选择（SGLang 在服 ∪
        * 在用 ∪ 网关 alias）+ 自由输入兜底 + 写前校验。 */}
       {modelRowEnabled ? (
@@ -836,7 +807,7 @@ function SettingsTreeEditor({
       ) : null}
       {topEntries.length === 0 && !modelRowEnabled ? (
         <div style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("配置为空——套下方模板，或直接编辑字段后保存。")}
+          {tr("尚无配置文件——填模型名并保存即创建。")}
         </div>
       ) : (
         topEntries.map(([k, v]) => (
@@ -1066,92 +1037,22 @@ function CodingCliPanelBody({
           <div style={{ fontSize: 11, color: t.textSecondary }}>
             {CLI_LABEL[s.selected]} settings（结构化表单 · 只保存改动）
           </div>
-          {s.settings.settings && Object.keys(s.settings.settings).length > 0 ? (
-            <SettingsTreeEditor
-              base={s.settings.settings}
-              readOnly={s.readOnly}
-              busy={s.busy}
-              modelValue={modelDraft ?? ""}
-              onModelChange={setModelDraft}
-              modelOptions={union.options}
-              modelCandidates={union.candidates}
-              onSave={(patch) => void s.saveSettings(patch)}
-            />
-          ) : (
-            <div style={{ fontSize: 11, color: t.textSecondary }}>
-              {tr("配置为空——装当前 CLI 后，或套下方模板生成初始配置。")}
-            </div>
-          )}
+          {/* 15.28：空配置（容器重建/未建文件）也渲染编辑器——模型行常显，
+           * 填模型名保存即 PUT merge 创建 settings 文件（容器重建后 CLI 已装
+           * 但配置文件缺失）；场景模板已撤（AgentCom 成熟后放团队管理）。 */}
+          <SettingsTreeEditor
+            base={s.settings.settings && Object.keys(s.settings.settings).length > 0 ? s.settings.settings : {}}
+            readOnly={s.readOnly}
+            busy={s.busy}
+            modelValue={modelDraft ?? ""}
+            onModelChange={setModelDraft}
+            modelOptions={union.options}
+            modelCandidates={union.candidates}
+            onSave={(patch) => void s.saveSettings(patch)}
+          />
         </div>
       ) : null}
 
-      {/* 场景 preset（六场景；空 patch 的 p-gencode=只标记不写）。 */}
-      <div style={{ display: "grid", gap: 4 }}>
-        <span style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("场景模板（只写模型名，工具链/MCP 需确认）· 当前 CLI：{c}", {
-            c: CLI_LABEL[s.selected],
-          })}
-        </span>
-        {!selectedInstalled ? (
-          <span style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("先安装当前 CLI，再套用场景模板")}
-          </span>
-        ) : null}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {CODING_CLI_PRESETS.map((p) => (
-            <antd.Button
-              key={p.id}
-              size="small"
-              type={s.appliedPreset === p.id ? "primary" : "default"}
-              disabled={s.busy || s.readOnly || !selectedInstalled}
-              onClick={() => void s.applyPreset(p)}
-            >
-              {localizedText(p.name)}
-            </antd.Button>
-          ))}
-        </div>
-      </div>
-
-      {/* 建议清单（human_confirm 项只列不执行）。 */}
-      {s.suggestion ? (
-        <div
-          style={{
-            border: `1px solid ${t.border}`,
-            borderRadius: 6,
-            padding: 8,
-            display: "grid",
-            gap: 3,
-            fontSize: 11,
-          }}
-        >
-          <span style={{ color: t.textSecondary }}>
-            {tr("建议清单（需人工确认，未写入 Worker CR）")}
-          </span>
-          {s.suggestion.toolchain.shared_volume ? (
-            <span>{tr("共享卷：{v}", { v: s.suggestion.toolchain.shared_volume })}</span>
-          ) : null}
-          {s.suggestion.toolchain.install ? (
-            <span>{tr("工具链：{v}", { v: localizedText(s.suggestion.toolchain.install) })}</span>
-          ) : null}
-          {s.suggestion.toolchain.env && Object.keys(s.suggestion.toolchain.env).length > 0 ? (
-            <span>
-              {tr("环境变量：{v}", { v: Object.keys(s.suggestion.toolchain.env).join(", ") })}
-            </span>
-          ) : null}
-          {s.suggestion.toolchain.note ? (
-            <span>{tr("工具链说明：{v}", { v: localizedText(s.suggestion.toolchain.note) })}</span>
-          ) : null}
-          {s.suggestion.mcp.suggested.length > 0 ? (
-            <span>{tr("MCP：{v}", { v: s.suggestion.mcp.suggested.join("；") })}</span>
-          ) : null}
-          {s.suggestion.artifacts?.note ? (
-            <span>{tr("产物：{v}", { v: s.suggestion.artifacts.note })}</span>
-          ) : null}
-          {s.suggestion.arch_note ? (
-            <span>{tr("架构注意：{v}", { v: localizedText(s.suggestion.arch_note) })}</span>
-          ) : null}
-        </div>
-      ) : null}
 
       {s.msg ? (
         <div
