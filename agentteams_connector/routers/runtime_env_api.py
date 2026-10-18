@@ -23,6 +23,7 @@ Controller GET /workers/{name} 响应结构不暴露 env 键（detail keys
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from typing import Any, Dict
@@ -71,7 +72,18 @@ def build_runtime_env_router() -> APIRouter:
             raise HTTPException(status_code=400, detail="worker 名称非法")
         reveal = request.query_params.get("reveal") == "1"
         container = f"agentteams-worker-{worker}"
-        st, text = await _exec(token, container, _CMD, timeout=30.0)
+        # docker exec attach 流读取偶发竞态（实测 ~10% 空读、偶发小连发）：
+        # /proc/1/environ 对运行中容器必非空，空输出=传输层丢帧而非真无 env
+        # （否则 LLM 调优 stream 组预填随读成败抖动 → 用户见「有的有有的没有」）。
+        # 空输出带短退避重试（≤3 次）；_exec 的 502（容器不存在/鉴权）直接抛，
+        # 不进重试（只有 200+空 才重试）。
+        text = ""
+        for _attempt in range(3):
+            _st, text = await _exec(token, container, _CMD, timeout=30.0)
+            if text.strip():
+                break
+            if _attempt < 2:
+                await asyncio.sleep(0.2)
         entries: list[Dict[str, Any]] = []
         for line in text.splitlines():
             if "=" not in line:

@@ -2175,6 +2175,7 @@ const DICT: Record<string, { en: string }> = {
   "{label}：{message}": { en: "{label}: {message}" },
   "保存改动": { en: "Save changes" },
   "撤销": { en: "Revert" },
+  "导出": { en: "Export" },
   "已保存（启动期参数需重建容器生效）": {
     en: "Saved (startup parameters require a container rebuild to take effect)",
   },
@@ -2480,6 +2481,26 @@ const DICT: Record<string, { en: string }> = {
   "未设置；输入=设置": { en: "Not set; enter to set" },
   "有未保存改动": { en: "Unsaved changes" },
   "无改动": { en: "No changes" },
+  "以下为该 CLI 常用字段（预填起点，可编辑）——保存即创建配置文件；高级字段用下方 JSON 补丁补充。": {
+    en: "Common fields for this CLI (pre-filled starting point, editable) — saving creates the config file; add advanced fields via the JSON patch below.",
+  },
+  "尚无配置文件——填模型名并保存即创建；高级字段用下方 JSON 补丁补充。": {
+    en: "No config file yet — enter a model name and save to create it; add advanced fields via the JSON patch below.",
+  },
+  "JSON 补丁（可选，任意字段；同键以补丁为准，如 mcp / tools）": {
+    en: "JSON patch (optional, any field; patch wins on same key, e.g. mcp / tools)",
+  },
+  "JSON 补丁格式非法（未应用）": { en: "Invalid JSON patch format (not applied)" },
+  "JSON 补丁须为对象（未应用）": { en: "JSON patch must be an object (not applied)" },
+  "Qwen Code 0.25.1 已知行为：settings 的 model 可能仍请求默认模型（qwen3.7-max），自定义网关无此模型时报 403——headless 建议 per-run -m <model> 指定。": {
+    en: "Qwen Code 0.25.1 known behavior: the settings model may still request the default model (qwen3.7-max); on a custom gateway without that model this is a 403 — for headless, pass -m <model> per run.",
+  },
+  "OpenCode 1.19.0 只读项目级 <workspace>/.config/opencode/opencode.json；本面板写全局 ~/.config/opencode/，对 opencode run --dir 可能不生效——headless 的 provider 配置需放项目级。": {
+    en: "OpenCode 1.19.0 reads only the project-level <workspace>/.config/opencode/opencode.json; this panel writes the global ~/.config/opencode/, which may not take effect for `opencode run --dir` — put headless provider config at the project level.",
+  },
+  "Qoder 鉴权走环境变量 QODER_PERSONAL_ACCESS_TOKEN（非 settings）；本表单管 model / tools / mcp。": {
+    en: "Qoder authenticates via the QODER_PERSONAL_ACCESS_TOKEN env var (not settings); this form manages model / tools / mcp.",
+  },
   "确认卸载": { en: "Confirm uninstall" },
   "将从该 Worker 容器卸载 {cli}。安装状态会丢失，已保存的鉴权可保留。": {
     en: "This uninstalls {cli} from the Worker container. Install state is lost; saved auth is retained.",

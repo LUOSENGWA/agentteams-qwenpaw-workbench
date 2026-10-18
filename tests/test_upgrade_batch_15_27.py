@@ -335,6 +335,53 @@ def test_runtime_env_reveal(client):
     assert gw["value"] == "abcdef1234567890abcdef1234567890abcd"
 
 
+def test_runtime_env_empty_retry_recovers(client, monkeypatch):
+    """docker exec attach 流偶发空读（竞态）→ 带短退避重试，最终非空（15.30）。
+
+    前 2 次返回空（模拟丢帧）、第 3 次真值 → 端点返回 5 条而非 0。
+    直接 monkeypatch _exec（绕过 HTTP mock 的无状态帧），sleep 打快。
+    """
+    import agentteams_connector.routers.runtime_env_api as reapi
+    tc, _ = client
+    calls = {"n": 0}
+
+    async def flaky_exec(token, container, cmd, timeout=30.0):
+        calls["n"] += 1
+        return (200, "") if calls["n"] < 3 else (200, ENV_RAW)
+
+    async def _fast_sleep(_s):
+        return None
+
+    monkeypatch.setattr(reapi, "_exec", flaky_exec)
+    monkeypatch.setattr(reapi.asyncio, "sleep", _fast_sleep)
+    r = tc.get("/workers/w-qp1/runtime-env")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["count"] == 5, d
+    assert calls["n"] == 3  # 空→空→真值
+
+
+def test_runtime_env_empty_persist_graceful(client, monkeypatch):
+    """持续空（≤3 次后放弃）→ 优雅返回 count=0，不 5xx、不无限循环。"""
+    import agentteams_connector.routers.runtime_env_api as reapi
+    tc, _ = client
+    calls = {"n": 0}
+
+    async def always_empty(token, container, cmd, timeout=30.0):
+        calls["n"] += 1
+        return 200, ""
+
+    async def _fast_sleep(_s):
+        return None
+
+    monkeypatch.setattr(reapi, "_exec", always_empty)
+    monkeypatch.setattr(reapi.asyncio, "sleep", _fast_sleep)
+    r = tc.get("/workers/w-qp1/runtime-env")
+    assert r.status_code == 200, r.text
+    assert r.json()["count"] == 0
+    assert calls["n"] == 3  # 恰好 3 次，不更多
+
+
 def test_runtime_env_no_token_403(client):
     tc, state = client
     state["data"]["controller_token"] = ""

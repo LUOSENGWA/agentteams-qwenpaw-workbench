@@ -46,6 +46,8 @@ import {
 } from "../api";
 import {
   CODING_CLI_IDS,
+  CODING_CLI_SEEDS,
+  CODING_CLI_WARNINGS,
   isRedacted,
 } from "../codingCliPresets";
 import { useT } from "../i18n";
@@ -659,6 +661,62 @@ function useCodingCliPanel({
  * redacted→密码框（留空=保留）/ object→分组下钻 / array→JSON 文本 /
  * 标量→类型化输入。免硬编码 per-CLI schema（动态渲染任意 CLI 的字段），
  * 保存=叶子级 diff + secret 补丁（网络传输只发变更）。 */
+/** 深合并补丁（patch 优先；对象递归下钻，数组/标量整节点替换）。 */
+function deepMergePatch(
+  target: SettingsObject,
+  patch: SettingsObject,
+): SettingsObject {
+  const out: SettingsObject = { ...target };
+  for (const [k, v] of Object.entries(patch)) {
+    if (
+      v && typeof v === "object" && !Array.isArray(v) &&
+      out[k] && typeof out[k] === "object" && !Array.isArray(out[k])
+    ) {
+      out[k] = deepMergePatch(out[k] as SettingsObject, v as SettingsObject);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+/** 按路径删键（seed-secret 从 draft-diff 剔除后改走 secret 补丁）。 */
+function removePath(obj: SettingsObject, path: string[]): void {
+  let cur: unknown = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (cur && typeof cur === "object" && path[i] in (cur as Record<string, unknown>)) {
+      cur = (cur as Record<string, unknown>)[path[i]];
+    } else return;
+  }
+  if (cur && typeof cur === "object") delete (cur as Record<string, unknown>)[path[path.length - 1]];
+}
+
+/** 15.30：剥离 patch 里"用户没填的可选字段空串"——base 该处非空=用户主动
+ * 清空（保留 ""=清除语义）；base 该处无值/空=seed 预填的可选字段留空
+ * （不写空串，配置保持干净）。对象递归下钻，深度对齐 base。 */
+function stripEmptyLeavesNotInBase(
+  patch: SettingsObject,
+  base: SettingsObject,
+): SettingsObject {
+  const out: SettingsObject = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (typeof v === "string" && v === "") {
+      const bv = getAtPath(base, [k]);
+      // base 该处是非空串 → 用户主动清空 → 保留 ""（清除）；否则丢弃。
+      if (typeof bv === "string" && bv !== "") out[k] = v;
+      continue;
+    }
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const subBase = (getAtPath(base, [k]) || {}) as SettingsObject;
+      const sub = stripEmptyLeavesNotInBase(v as SettingsObject, subBase);
+      if (Object.keys(sub).length > 0) out[k] = sub;
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 function SettingsTreeEditor({
   base,
   readOnly,
@@ -669,6 +727,8 @@ function SettingsTreeEditor({
   modelOptions,
   modelCandidates,
   objectModel,
+  seed,
+  seedSecrets,
 }: {
   base: SettingsObject;
   readOnly: boolean;
@@ -684,22 +744,39 @@ function SettingsTreeEditor({
   modelCandidates?: string[];
   /** 15.29：model 以对象 {name} 写（qwen-code 现行格式）；false=扁平字符串。 */
   objectModel?: boolean;
+  /** 15.30：空态模板（base 空时自动预填成结构化表单起点）；不含 model。 */
+  seed?: SettingsObject;
+  /** 15.30：模板中的密钥路径（渲染为密码框 + 空值保存时丢弃）。 */
+  seedSecrets?: string[];
 }) {
   const t = useThemeColors();
   const tr = useT();
-  const [draft, setDraft] = React.useState<SettingsObject>(() =>
-    deepCopySettings(base),
+  const seedSecretSet = React.useMemo(
+    () => new Set(seedSecrets ?? []),
+    [seedSecrets],
   );
+  // 空态（base 空）+ 有模板 → 预填模板（结构化表单起点）；否则用真实内容。
+  const initDraft = React.useCallback((): SettingsObject => {
+    const empty = Object.keys(base).length === 0;
+    const tpl = seed && Object.keys(seed).length > 0 ? seed : null;
+    return deepCopySettings(empty && tpl ? tpl : base);
+  }, [base, seed]);
+  const [draft, setDraft] = React.useState<SettingsObject>(initDraft);
   const [secretDraft, setSecretDraft] = React.useState<Record<string, string>>({});
+  // 15.30：可选 JSON 补丁（任意字段逃逸口，同 dashboard；同键以补丁为准）。
+  const [jsonPatch, setJsonPatch] = React.useState("");
+  const [jsonErr, setJsonErr] = React.useState("");
   // base 变化（切 CLI / 保存回写）→ 重置草稿（对齐最新基线）。
   const baseRef = React.useRef(base);
   React.useEffect(() => {
     if (base !== baseRef.current) {
       baseRef.current = base;
-      setDraft(deepCopySettings(base));
+      setDraft(initDraft());
       setSecretDraft({});
+      setJsonPatch("");
+      setJsonErr("");
     }
-  }, [base]);
+  }, [base, initDraft]);
 
   const setAtPath = (path: string[], value: SettingsValue) => {
     setDraft((prev) => {
@@ -711,12 +788,42 @@ function SettingsTreeEditor({
 
   const dirty =
     Object.keys(diffSettings(base, draft)).length > 0 ||
-    Object.entries(secretDraft).some(([, v]) => v !== "");
+    Object.entries(secretDraft).some(([, v]) => v !== "") ||
+    jsonPatch.trim() !== "";
 
   const handleSave = () => {
-    const patch: SettingsObject = { ...diffSettings(base, draft) };
-    Object.assign(patch, buildSecretPatch(base, secretDraft));
-    // 模型专行：draft 在父组件——按 base diff 写入。15.29 格式定案：
+    // 1) 叶子级 diff（redacted 跳过，secret 另行处理）。
+    let patch: SettingsObject = { ...diffSettings(base, draft) };
+    // 2) seed-secret 路径（点分串 → 段数组）：从 diff 剔除，改走 secret
+    //    补丁（空值丢弃，不写空密钥——base 空时无现有密钥，跳过=不建空 key）。
+    for (const joined of seedSecrets ?? []) removePath(patch, joined.split("."));
+    // 3) base 既有 redacted（保存回写后可能存在；"***"=保留）。**深合并**——
+    //    浅 Object.assign 会把 secret 与同层非 secret 字段（qwen-code
+    //    security.auth 的 apiKey + baseUrl）互相覆盖，编辑同层字段时丢改动。
+    patch = deepMergePatch(patch, buildSecretPatch(base, secretDraft));
+    // 4) seed-secret 新值（用户输入才写；空=跳过）。
+    for (const joined of seedSecrets ?? []) {
+      const v = (secretDraft[joined] ?? "").trim();
+      if (v) assignPath(patch, joined.split("."), v);
+    }
+    // 5) JSON 补丁（可选，同键以补丁为准，深合并 patch 优先）；非法即阻止。
+    const jp = jsonPatch.trim();
+    if (jp) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(jp);
+      } catch {
+        setJsonErr(tr("JSON 补丁格式非法（未应用）"));
+        return;
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        setJsonErr(tr("JSON 补丁须为对象（未应用）"));
+        return;
+      }
+      patch = deepMergePatch(patch, parsed as SettingsObject);
+      setJsonErr("");
+    }
+    // 6) 模型专行：draft 在父组件——按 base diff 写入。15.29 格式定案：
     // qwen-code 现行 settings.json 的 model 是**对象 {name}**（官方
     // 文档「New Configuration Format」+ dashboard 同款写法实证；旧扁平
     // 字符串格式由 CLI 自动迁移）；opencode/qoder 用扁平字符串
@@ -750,19 +857,25 @@ function SettingsTreeEditor({
         }
       }
     }
-    onSave(patch);
+    // 7) 剥离未填的可选字段空串（seed 预填留空不写；base 非空主动清空保留）。
+    onSave(stripEmptyLeavesNotInBase(patch, base));
   };
 
   const renderNode = (value: SettingsValue, path: string[]): ReactNS.ReactNode => {
-    if (isRedacted(value)) {
+    // redacted（服务端脱敏）或 seed-secret（模板里的密钥，draft 里是普通串）
+    // → 密码框（留空=不写/保留）。
+    if (isRedacted(value) || seedSecretSet.has(path.join("."))) {
       const joined = path.join(".");
+      const hasValue = isRedacted(value)
+        ? value.has_value
+        : Boolean(typeof value === "string" && value);
       return (
         <antd.Input.Password
-          value={secretDraft[joined] ?? ""}
+          value={secretDraft[joined] ?? (typeof value === "string" ? value : "")}
           onChange={(e: { target: { value: string } }) =>
             setSecretDraft((p) => ({ ...p, [joined]: e.target.value }))}
           placeholder={
-            value.has_value ? tr("已保存，留空保留；输入=替换") : tr("未设置；输入=设置")
+            hasValue ? tr("已保存，留空保留；输入=替换") : tr("未设置；输入=设置")
           }
           disabled={readOnly}
           size="small"
@@ -859,16 +972,24 @@ function SettingsTreeEditor({
   };
 
   const modelRowEnabled = modelValue !== undefined && !!onModelChange;
-  const topEntries = Object.entries(base).filter(
+  // 15.30：树从 draft 渲染（结构+值都反映编辑）——原从 base 渲染导致
+  // ① base 空时无字段（"没结构化表单"）② 输入框受控于 base，编辑不反映
+  // （value 绑 base 但 onChange 写 draft）。draft=base/seed 深拷贝，首帧
+  // 与 base 渲染一致，编辑后真实反映。
+  const topEntries = Object.entries(draft).filter(
     ([k]) => !(modelRowEnabled && k === "model"),
   );
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      {/* 空配置引导（15.28）：文件不存在=正常空态（controller 契约
-       * exists:false）——模型行常显，填模型名保存即创建文件。 */}
-      {Object.keys(base).length === 0 && modelRowEnabled ? (
+      {/* 空配置引导（15.28/15.30）：base 空 + seed 预填 → 常用字段表单；
+       * base 空 + 无 seed（opencode/qoder）→ 仅模型行 + JSON 补丁。 */}
+      {Object.keys(base).length === 0 && Object.keys(draft).length > 0 ? (
         <div style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("尚无配置文件——在下方填模型名并保存即创建（其他字段建后在表单出现）。")}
+          {tr("以下为该 CLI 常用字段（预填起点，可编辑）——保存即创建配置文件；高级字段用下方 JSON 补丁补充。")}
+        </div>
+      ) : Object.keys(base).length === 0 && modelRowEnabled ? (
+        <div style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("尚无配置文件——填模型名并保存即创建；高级字段用下方 JSON 补丁补充。")}
         </div>
       ) : null}
       {/* 模型专行（15.27）：同 Worker 模型选择——列表选择（SGLang 在服 ∪
@@ -902,6 +1023,28 @@ function SettingsTreeEditor({
           </div>
         ))
       )}
+      {/* 15.30：JSON 补丁（任意字段逃逸口，同 dashboard；同键以补丁为准）。 */}
+      {!readOnly ? (
+        <div style={{ display: "grid", gap: 3 }}>
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("JSON 补丁（可选，任意字段；同键以补丁为准，如 mcp / tools）")}
+          </span>
+          <antd.Input.TextArea
+            value={jsonPatch}
+            onChange={(e: { target: { value: string } }) => {
+              setJsonPatch(e.target.value);
+              if (jsonErr) setJsonErr("");
+            }}
+            autoSize={{ minRows: 2, maxRows: 8 }}
+            placeholder={'{"mcp": {"enabled": true}}'}
+            disabled={busy}
+            style={{ fontFamily: "monospace", fontSize: 11, maxWidth: 460 }}
+          />
+          {jsonErr ? (
+            <span style={{ fontSize: 11, color: "#e5484d" }}>{tr(jsonErr)}</span>
+          ) : null}
+        </div>
+      ) : null}
       {!readOnly ? (
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <antd.Button
@@ -1130,9 +1273,18 @@ function CodingCliPanelBody({
           <div style={{ fontSize: 11, color: t.textSecondary }}>
             {CLI_LABEL[s.selected]} settings（结构化表单 · 只保存改动）
           </div>
-          {/* 15.28：空配置（容器重建/未建文件）也渲染编辑器——模型行常显，
-           * 填模型名保存即 PUT merge 创建 settings 文件（容器重建后 CLI 已装
-           * 但配置文件缺失）；场景模板已撤（AgentCom 成熟后放团队管理）。 */}
+          {/* 15.30：已知坑告警（配置写了但不生效的坑前置——coding-cli SKILL 实证）。 */}
+          {CODING_CLI_WARNINGS[s.selected] ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              message={tr(CODING_CLI_WARNINGS[s.selected])}
+              style={{ padding: "3px 8px", fontSize: 11 }}
+            />
+          ) : null}
+          {/* 15.28/15.30：空配置也渲染编辑器——base 空 + seed 预填常用字段
+           *（结构化表单起点），保存即 PUT merge 创建 settings 文件；JSON 补丁
+           * 补任意高级字段。模型行常显（qwen-code=对象{name}，其余=扁平串）。 */}
           <SettingsTreeEditor
             base={s.settings.settings && Object.keys(s.settings.settings).length > 0 ? s.settings.settings : {}}
             readOnly={s.readOnly}
@@ -1142,6 +1294,8 @@ function CodingCliPanelBody({
             modelOptions={union.options}
             modelCandidates={union.candidates}
             objectModel={s.selected === "qwen-code"}
+            seed={CODING_CLI_SEEDS[s.selected].template}
+            seedSecrets={CODING_CLI_SEEDS[s.selected].secretPaths}
             onSave={(patch) => void s.saveSettings(patch)}
           />
         </div>
