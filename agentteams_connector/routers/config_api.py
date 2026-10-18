@@ -28,6 +28,29 @@ from ..router import (
 )
 
 
+def _export_gate(request: Request) -> None:
+    """完整备份（含明文凭据）端点 /config/export 与 /config/import 的门。
+
+    安全背景：宿主 QwenPaw 鉴权可被关掉（本地自用常态）且 8088 绑 0.0.0.0，
+    此时「同源本地」前提不成立——匿名局域网请求可 GET 拿到整集群
+    controller_token 等明文凭据（P0）。故完整备份通道用独立门密码保护：
+    客户端须带 X-Export-Password 头，服务端 salted-SHA-256 校验。**未设
+    密码默认拒绝**（secure-by-default：真正关掉洞，而非等用户补设）。
+    脱敏端点 /config（展示面）不受此门影响。
+    """
+    if not config_mod.has_export_password():
+        raise HTTPException(
+            status_code=403,
+            detail="尚未设置完整备份密码——请先在设置里设置，再导出/导入（含凭据）",
+        )
+    provided = request.headers.get("X-Export-Password", "")
+    if not config_mod.verify_export_password(provided):
+        raise HTTPException(
+            status_code=403,
+            detail="完整备份密码错误",
+        )
+
+
 def build_config_router() -> APIRouter:
     """config 域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
@@ -263,20 +286,24 @@ def build_config_router() -> APIRouter:
     # 导出返回含明文凭据的完整配置，导入校验 → 备份当前态 → 覆盖。
 
     @router.get("/config/export")
-    async def config_export() -> Dict[str, Any]:
+    async def config_export(request: Request) -> Dict[str, Any]:
         """完整配置导出（含明文凭据）。
 
- 同源本地、面向用户自己的备份用途——输出即落盘同形的完整配置对象，
- 原样复制保存；换环境/装包/配置丢失后贴回 /config/import 即还原。
+ 需 X-Export-Password 门密码（_export_gate）——宿主鉴权可关 + 8088
+ 绑 0.0.0.0 时防匿名局域网 dump 整集群凭据（P0）。面向用户自己的备份
+ 用途：输出即落盘同形的完整配置对象，原样复制保存；换环境/装包/配置
+ 丢失后贴回 /config/import 即还原。
  """
+        _export_gate(request)
         return config_mod.load_config()
 
     @router.post("/config/import")
     async def config_import(request: Request) -> Dict[str, Any]:
         """完整配置导入（覆盖式恢复）。
 
- 同源本地、面向用户自己的备份用途（与 GET /config/export 一对）。
- 流程：① schema 级校验（顶层 dict + 关键键类型 + 无脱敏占位符，
+ 需 X-Export-Password 门密码（_export_gate）。覆盖式恢复=高敏操作，
+ 同 export 一并门控。面向用户自己的备份用途（与 GET /config/export
+ 一对）。流程：① schema 级校验（顶层 dict + 关键键类型 + 无脱敏占位符，
  失败 400 可读错误、零落盘）→ ② 先自动备份当前配置（config.bak.json，
  备份失败即中止不覆盖）→ ③ 原子覆盖（save_config 内置写后回读验证，
  备份保持为覆盖前恢复点）→ ④ 身份变更自动重启同步（同 PUT /config）。
@@ -284,6 +311,7 @@ def build_config_router() -> APIRouter:
  返回 restart: "none"=已 live 生效（同步自动重启）/ "page"=建议刷新
  workbench 页面确认生效。
  """
+        _export_gate(request)
         try:
             data = await request.json()
         except Exception:  # noqa: BLE001
@@ -341,6 +369,37 @@ def build_config_router() -> APIRouter:
             "restart": restart,
             "config": config_mod.redact(config_mod.load_config()),
         }
+
+    # ── 完整备份门密码（export/import 的独立门，P0 安全硬化）─────────
+    # 宿主鉴权可关 + 8088 绑 0.0.0.0 → 「同源本地」前提可被匿名局域网
+    # 请求绕过。门密码 hash 存独立 export_key.json（不在 config.json 内），
+    # 设置一次后 export/import 须带 X-Export-Password 头；未设=默认拒绝。
+    @router.get("/config/export-password-status")
+    async def export_password_status() -> Dict[str, Any]:
+        """完整备份是否已设门密码（前端据此决定是否弹密码输入）。"""
+        return {"has_password": config_mod.has_export_password()}
+
+    @router.post("/config/export-password")
+    async def set_export_password(request: Request) -> Dict[str, Any]:
+        """设置/修改完整备份门密码（≥8 位）。body: {"password": "..."}。"""
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail="请求体不是合法 JSON")
+        password = body.get("password") if isinstance(body, dict) else None
+        try:
+            config_mod.set_export_password(password)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except IOError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return {"ok": True, "has_password": True}
+
+    @router.delete("/config/export-password")
+    async def clear_export_password() -> Dict[str, Any]:
+        """清除门密码（幂等）——清除后 export/import 重新默认拒绝。"""
+        config_mod.clear_export_password()
+        return {"ok": True, "has_password": False}
 
     @router.post("/config/test")
     async def config_test(patch: ConfigTestRequest) -> Dict[str, Any]:

@@ -2370,6 +2370,37 @@ const DICT: Record<string, { en: string }> = {
     en: "Paste the full JSON from 'Export config (with credentials)'. Import validates it and auto-backs up the current config before overwriting.",
   },
   "导入": { en: "Import" },
+  // 完整备份门密码（P0：宿主鉴权可关 + 8088 绑 0.0.0.0 → 防匿名局域网 dump 凭据）
+  "完整备份密码": { en: "Backup password" },
+  "已设置": { en: "Set" },
+  "未设置（导出/导入暂不可用）": {
+    en: "Not set (export/import unavailable)",
+  },
+  "设置密码": { en: "Set password" },
+  "修改密码": { en: "Change password" },
+  "清除密码": { en: "Clear password" },
+  "设置完整备份密码": { en: "Set backup password" },
+  "输入完整备份密码": { en: "Enter backup password" },
+  "新密码（至少 8 位）": { en: "New password (at least 8 characters)" },
+  "再次输入新密码": { en: "Re-enter new password" },
+  "两次输入的密码不一致": {
+    en: "The two passwords do not match",
+  },
+  "完整备份密码已设置": { en: "Backup password set" },
+  "完整备份密码已清除（导出/导入将重新要求先设置）": {
+    en: "Backup password cleared (export/import will require setting it again)",
+  },
+  "清除失败": { en: "Failed to clear" },
+  "请先设置完整备份密码（见下方「备份与恢复」）": {
+    en: "Please set a backup password first (see 'Backup & Restore' below)",
+  },
+  "读取备份密码状态失败": {
+    en: "Failed to read backup password status",
+  },
+  "请输入完整备份密码": { en: "Please enter the backup password" },
+  "备份密码保护「含凭据导出/导入」通道（本机 8088 若可被局域网访问，防匿名 dump 整集群凭据）。密码仅存哈希、不出现在备份文件里；设置一次即可，导出/导入时输入。": {
+    en: "The backup password protects the 'export/import with credentials' channel (guards against anonymous LAN dumping of cluster credentials if this host's 8088 is reachable). Only a hash is stored — it never appears in the backup file. Set it once; enter it when exporting/importing.",
+  },
   // 登录态/凭据失效横幅
   "Matrix 登录已失效": { en: "Matrix login expired" },
   "你的 Matrix 访问令牌已被服务器拒绝（通常是密码修改、设备被移除或管理员重置）。@提到我、通知与任务状态更新不可用——请重新登录后恢复。": {

@@ -23,6 +23,10 @@ from agentteams_connector import config as config_mod
 from agentteams_connector import selfcheck as selfcheck_mod
 from agentteams_connector.router import build_router
 
+# 完整备份门密码（import 恢复通道 P0 门控）——测试先设密码 + 带头。
+_EXPORT_PW = "audit-export-pw-123"
+_EXPORT_HDR = {"X-Export-Password": _EXPORT_PW}
+
 
 @pytest.fixture()
 def tmp_config(monkeypatch, tmp_path):
@@ -275,6 +279,8 @@ def test_put_config_force_persist_409_then_import_recovers(client, tmp_config):
     )
     assert r.status_code == 409
     # 恢复通道=import（绕过 update_config 守卫，自带备份回滚点）。
+    # P0 门控：先设门密码，import 带头。
+    config_mod.set_export_password(_EXPORT_PW)
     r2 = client.post(
         "/config/import",
         json={
@@ -282,6 +288,7 @@ def test_put_config_force_persist_409_then_import_recovers(client, tmp_config):
             "admin_password": "recovered",
             "controller_urls": [],
         },
+        headers=_EXPORT_HDR,
     )
     assert r2.status_code == 200
     on_disk = json.loads(tmp_config.read_text(encoding="utf-8"))

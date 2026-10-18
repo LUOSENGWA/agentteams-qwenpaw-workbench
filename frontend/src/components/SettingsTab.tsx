@@ -6,6 +6,9 @@ import {
   entryUrl,
   exportFullConfig,
   importFullConfig,
+  exportPasswordStatus,
+  setExportPassword,
+  clearExportPassword,
   verifyAdmin,
   httpErrorStatus,
   type VerifyAdminResult,
@@ -552,6 +555,17 @@ const SettingsTab = React.memo(function SettingsTab({
   const [importOpen, setImportOpen] = React.useState(false);
   const [importText, setImportText] = React.useState("");
   const [importing, setImporting] = React.useState(false);
+  // 完整备份门密码（P0：宿主鉴权可关 + 8088 绑 0.0.0.0 → 防匿名局域网
+  // dump 整集群凭据）。pwHas=是否已设；exportPwOpen/exportPw=导出前密码
+  // 输入弹窗；importPw=导入弹窗内的密码字段；setPwOpen/setPw/setPwConfirm=
+  // 设置/修改密码弹窗。
+  const [pwHas, setPwHas] = React.useState<boolean | null>(null);
+  const [exportPwOpen, setExportPwOpen] = React.useState(false);
+  const [exportPw, setExportPw] = React.useState("");
+  const [importPw, setImportPw] = React.useState("");
+  const [setPwOpen, setSetPwOpen] = React.useState(false);
+  const [setPw, setSetPw] = React.useState("");
+  const [setPwConfirm, setSetPwConfirm] = React.useState("");
 
   const downloadJson = React.useCallback(
     (filename: string, data: unknown) => {
@@ -606,16 +620,78 @@ const SettingsTab = React.memo(function SettingsTab({
     [onConfigChange],
   );
 
-  // 完整配置导出（含凭据）→ 弹窗全文本。
+  // 完整配置导出（含凭据）→ 门密码校验 → 弹窗全文本。
+  // P0：宿主鉴权可关 + 8088 绑 0.0.0.0 → 导出含整集群明文凭据，须门密码。
   const exportFull = React.useCallback(async () => {
     try {
-      const cfg = await exportFullConfig();
+      const st = await exportPasswordStatus();
+      setPwHas(st.has_password);
+      if (!st.has_password) {
+        message.warning(tr("请先设置完整备份密码（见下方「备份与恢复」）"));
+        return;
+      }
+      setExportPw("");
+      setExportPwOpen(true);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : tr("读取备份密码状态失败"));
+    }
+  }, [tr]);
+
+  // 输入门密码后真正执行导出。
+  const doExportWithPw = React.useCallback(async () => {
+    if (!exportPw) {
+      message.warning(tr("请输入完整备份密码"));
+      return;
+    }
+    setExportPwOpen(false);
+    try {
+      const cfg = await exportFullConfig(exportPw);
       setExportText(JSON.stringify(cfg, null, 2));
       setExportOpen(true);
+      setExportPw("");
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("导出失败"));
     }
+  }, [exportPw, tr]);
+
+  // 设置/修改门密码（≥8 位，两次输入一致）。
+  const openSetPw = React.useCallback(() => {
+    setSetPw("");
+    setSetPwConfirm("");
+    setSetPwOpen(true);
+  }, []);
+
+  const doSetPw = React.useCallback(async () => {
+    if (setPw !== setPwConfirm) {
+      message.warning(tr("两次输入的密码不一致"));
+      return;
+    }
+    try {
+      await setExportPassword(setPw);
+      setPwHas(true);
+      setSetPwOpen(false);
+      message.success(tr("完整备份密码已设置"));
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : tr("设置失败"));
+    }
+  }, [setPw, setPwConfirm, tr]);
+
+  const clearPw = React.useCallback(async () => {
+    try {
+      await clearExportPassword();
+      setPwHas(false);
+      message.success(tr("完整备份密码已清除（导出/导入将重新要求先设置）"));
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : tr("清除失败"));
+    }
   }, [tr]);
+
+  // 组件挂载时读一次门密码状态（驱动「已设置/未设置」显示）。
+  React.useEffect(() => {
+    void exportPasswordStatus()
+      .then((st) => setPwHas(st.has_password))
+      .catch(() => setPwHas(null));
+  }, []);
 
   // 复制兜底：navigator.clipboard 不可用（宿主 webview 差异）→ execCommand。
   const copySettingText = React.useCallback(
@@ -664,9 +740,13 @@ const SettingsTab = React.memo(function SettingsTab({
       message.error(tr("导入失败（JSON 格式错误？）"));
       return;
     }
+    if (!importPw) {
+      message.warning(tr("请输入完整备份密码"));
+      return;
+    }
     setImporting(true);
     try {
-      const res = await importFullConfig(parsed);
+      const res = await importFullConfig(parsed, importPw);
       message.success(
         res.restart === "none"
           ? tr("配置已导入（同步已自动重启）")
@@ -674,13 +754,14 @@ const SettingsTab = React.memo(function SettingsTab({
       );
       setImportOpen(false);
       setImportText("");
+      setImportPw("");
       onConfigChange();
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("导入失败"));
     } finally {
       setImporting(false);
     }
-  }, [importText, tr, onConfigChange]);
+  }, [importText, importPw, tr, onConfigChange]);
 
   const exportDiagnostic = React.useCallback(async () => {
     try {
@@ -1980,7 +2061,102 @@ const SettingsTab = React.memo(function SettingsTab({
         <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
           {tr("导出含密码/token 的完整配置 JSON，存到安全位置；换环境/重装插件后粘贴回来导入即快速还原，不必重填。导入前会先自动备份当前配置。注意：此导出含明文凭据，勿粘贴到公开渠道。")}
         </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            paddingTop: 8,
+            borderTop: `1px solid ${t.border}`,
+          }}
+        >
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("完整备份密码")}:{" "}
+            {pwHas
+              ? tr("已设置")
+              : pwHas === false
+                ? tr("未设置（导出/导入暂不可用）")
+                : "…"}
+          </span>
+          <antd.Button size="small" onClick={() => openSetPw()}>
+            {pwHas ? tr("修改密码") : tr("设置密码")}
+          </antd.Button>
+          {pwHas && (
+            <antd.Button size="small" danger onClick={() => void clearPw()}>
+              {tr("清除密码")}
+            </antd.Button>
+          )}
+        </div>
+        <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
+          {tr("备份密码保护「含凭据导出/导入」通道（本机 8088 若可被局域网访问，防匿名 dump 整集群凭据）。密码仅存哈希、不出现在备份文件里；设置一次即可，导出/导入时输入。")}
+        </div>
       </div>
+
+      {/* 导出前门密码输入 */}
+      <antd.Modal
+        title={tr("输入完整备份密码")}
+        open={exportPwOpen}
+        onCancel={() => setExportPwOpen(false)}
+        width={420}
+        footer={[
+          <antd.Button key="cancel" onClick={() => setExportPwOpen(false)}>
+            {tr("取消")}
+          </antd.Button>,
+          <antd.Button
+            key="ok"
+            type="primary"
+            onClick={() => void doExportWithPw()}
+          >
+            {tr("导出")}
+          </antd.Button>,
+        ]}
+      >
+        <antd.Input.Password
+          value={exportPw}
+          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+            setExportPw(e.target.value)
+          }
+          onPressEnter={() => void doExportWithPw()}
+          placeholder={tr("完整备份密码")}
+          autoFocus
+        />
+      </antd.Modal>
+
+      {/* 设置/修改门密码 */}
+      <antd.Modal
+        title={tr("设置完整备份密码")}
+        open={setPwOpen}
+        onCancel={() => setSetPwOpen(false)}
+        width={420}
+        footer={[
+          <antd.Button key="cancel" onClick={() => setSetPwOpen(false)}>
+            {tr("取消")}
+          </antd.Button>,
+          <antd.Button key="ok" type="primary" onClick={() => void doSetPw()}>
+            {tr("保存")}
+          </antd.Button>,
+        ]}
+      >
+        <div style={{ display: "grid", gap: 10 }}>
+          <antd.Input.Password
+            value={setPw}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setSetPw(e.target.value)
+            }
+            placeholder={tr("新密码（至少 8 位）")}
+            autoFocus
+          />
+          <antd.Input.Password
+            value={setPwConfirm}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setSetPwConfirm(e.target.value)
+            }
+            onPressEnter={() => void doSetPw()}
+            placeholder={tr("再次输入新密码")}
+          />
+        </div>
+      </antd.Modal>
 
       <antd.Modal
         title={tr("导出配置（含凭据）")}
@@ -2024,6 +2200,14 @@ const SettingsTab = React.memo(function SettingsTab({
         <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 8 }}>
           {tr("粘贴「导出配置（含凭据）」得到的 JSON 全文。导入会校验并先自动备份当前配置，再覆盖。")}
         </div>
+        <antd.Input.Password
+          value={importPw}
+          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+            setImportPw(e.target.value)
+          }
+          placeholder={tr("完整备份密码")}
+          style={{ marginBottom: 8 }}
+        />
         <antd.Input.TextArea
           value={importText}
           onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>

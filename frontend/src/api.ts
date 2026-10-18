@@ -1122,10 +1122,17 @@ export async function testAddresses(
 /** 完整配置导出（含明文凭据）——用户自己的
  * 备份用途（换环境/装包后 10 秒还原）。返回落盘同形的完整配置对象，原文
  * JSON 化即可复制保存；与 GET /config 的脱敏输出（展示面）区分。
- * 注意：返回含凭据——只可保存到可信位置。 */
-export async function exportFullConfig(): Promise<Record<string, unknown>> {
+ * 注意：返回含凭据——只可保存到可信位置。
+ * 需 exportPassword（门密码，X-Export-Password 头）——宿主鉴权可关 + 8088
+ * 绑 0.0.0.0 时防匿名局域网 dump 整集群凭据（P0）。 */
+export async function exportFullConfig(
+  exportPassword?: string,
+): Promise<Record<string, unknown>> {
+  const headers: Record<string, string> = {};
+  if (exportPassword) headers["X-Export-Password"] = exportPassword;
   return (await requestJson(
     "/agentteams-proxy/config/export",
+    { headers },
   )) as Record<string, unknown>;
 }
 
@@ -1140,12 +1147,47 @@ export interface ConfigImportResult {
 }
 export async function importFullConfig(
   config: unknown,
+  exportPassword?: string,
 ): Promise<ConfigImportResult> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (exportPassword) headers["X-Export-Password"] = exportPassword;
   return (await requestJson("/agentteams-proxy/config/import", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(config),
   })) as ConfigImportResult;
+}
+
+/** 完整备份门密码状态（是否已设）。 */
+export interface ExportPasswordStatus {
+  has_password: boolean;
+}
+export async function exportPasswordStatus(): Promise<ExportPasswordStatus> {
+  return (await requestJson(
+    "/agentteams-proxy/config/export-password-status",
+  )) as ExportPasswordStatus;
+}
+
+/** 设置/修改完整备份门密码（≥8 位）。 */
+export async function setExportPassword(
+  password: string,
+): Promise<{ ok: boolean; has_password: boolean }> {
+  return (await requestJson("/agentteams-proxy/config/export-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  })) as { ok: boolean; has_password: boolean };
+}
+
+/** 清除完整备份门密码。 */
+export async function clearExportPassword(): Promise<{
+  ok: boolean;
+  has_password: boolean;
+}> {
+  return (await requestJson(
+    "/agentteams-proxy/config/export-password",
+    { method: "DELETE" },
+  )) as { ok: boolean; has_password: boolean };
 }
 
 // ── Team data (page shells render these; adapters fill them) ───────────

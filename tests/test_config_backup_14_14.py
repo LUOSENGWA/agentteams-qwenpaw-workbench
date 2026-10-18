@@ -31,6 +31,10 @@ from agentteams_connector import selfcheck as selfcheck_mod
 from agentteams_connector import sync_watcher as sync_watcher_mod
 from agentteams_connector.router import build_router
 
+# 完整备份门密码（P0 门控）——export/import 测试须先设密码 + 带头。
+EXPORT_PW = "test-export-pw-123"
+EXPORT_HDR = {"X-Export-Password": EXPORT_PW}
+
 # 身份变更测试断言 sync_watcher.restart 调用（fixture 假实现追加）。
 _restart_calls: List[str] = []
 
@@ -167,6 +171,7 @@ def test_export_full_config_while_get_config_stays_redacted(client):
     """导出含真实凭据值；GET /config 仍是 ***（两通道互不串扰）。"""
     tc = client
     with tc:
+        config_mod.set_export_password(EXPORT_PW)
         config_mod.update_config(
             {
                 "controller_token": "real-token-123",
@@ -178,7 +183,7 @@ def test_export_full_config_while_get_config_stays_redacted(client):
                 },
             }
         )
-        r_exp = tc.get("/config/export")
+        r_exp = tc.get("/config/export", headers=EXPORT_HDR)
         r_cfg = tc.get("/config")
     assert r_exp.status_code == 200
     exp = r_exp.json()
@@ -200,10 +205,11 @@ def test_import_validation_failures_400_and_zero_write(client):
     """schema 失败 → 400 可读错误；现有配置零改动。"""
     tc = client
     with tc:
+        config_mod.set_export_password(EXPORT_PW)
         config_mod.update_config({"controller_token": "keep-me"})
 
         # 顶层非对象
-        r1 = tc.post("/config/import", json=["a", "list"])
+        r1 = tc.post("/config/import", json=["a", "list"], headers=EXPORT_HDR)
         assert r1.status_code == 400
         assert "JSON 对象" in r1.json()["detail"]
 
@@ -211,6 +217,7 @@ def test_import_validation_failures_400_and_zero_write(client):
         r2 = tc.post(
             "/config/import",
             json={"matrix_homeservers": "http://x", "controller_token": "t"},
+            headers=EXPORT_HDR,
         )
         assert r2.status_code == 400
         d2 = r2.json()["detail"]
@@ -218,7 +225,7 @@ def test_import_validation_failures_400_and_zero_write(client):
         assert "list" in d2
 
         # 无已知配置键（包裹结构）
-        r3 = tc.post("/config/import", json={"foo": 1})
+        r3 = tc.post("/config/import", json={"foo": 1}, headers=EXPORT_HDR)
         assert r3.status_code == 400
         assert "未识别任何配置键" in r3.json()["detail"]
 
@@ -226,6 +233,7 @@ def test_import_validation_failures_400_and_zero_write(client):
         r4 = tc.post(
             "/config/import",
             json={"controller_token": "***", "matrix_homeservers": []},
+            headers=EXPORT_HDR,
         )
         assert r4.status_code == 400
         assert "***" in r4.json()["detail"]
@@ -234,7 +242,7 @@ def test_import_validation_failures_400_and_zero_write(client):
         r5 = tc.post(
             "/config/import",
             content=b"not json",
-            headers={"Content-Type": "application/json"},
+            headers={**EXPORT_HDR, "Content-Type": "application/json"},
         )
         assert r5.status_code == 400
 
@@ -246,6 +254,7 @@ def test_import_success_overwrites_and_keeps_pre_import_backup(client):
     """成功导入 → 主文件=导入值；备份=覆盖前状态（回滚点）；响应脱敏。"""
     tc = client
     with tc:
+        config_mod.set_export_password(EXPORT_PW)
         config_mod.update_config(
             {
                 "controller_token": "old-token",
@@ -268,6 +277,7 @@ def test_import_success_overwrites_and_keeps_pre_import_backup(client):
                     "device_id": "new-dev",
                 },
             },
+            headers=EXPORT_HDR,
         )
     assert r.status_code == 200
     body = r.json()
@@ -290,9 +300,11 @@ def test_import_wrapped_body_unwrapped(client):
     """{"config": {...}} 包裹（PUT 同形）→ 拆包后正常导入。"""
     tc = client
     with tc:
+        config_mod.set_export_password(EXPORT_PW)
         r = tc.post(
             "/config/import",
             json={"config": {"address_mode": "wan", "controller_token": "w-tok"}},
+            headers=EXPORT_HDR,
         )
     assert r.status_code == 200
     main_disk = json.loads(config_mod._CONFIG_PATH.read_text(encoding="utf-8"))
@@ -304,6 +316,7 @@ def test_import_identity_change_restarts_sync(client):
     """matrix.user_id 变更 → 同步自动重启（restart="none"）。"""
     tc = client
     with tc:
+        config_mod.set_export_password(EXPORT_PW)
         config_mod.update_config(
             {
                 "matrix": {
@@ -322,7 +335,111 @@ def test_import_identity_change_restarts_sync(client):
                     "device_id": "d2",
                 }
             },
+            headers=EXPORT_HDR,
         )
     assert r.status_code == 200
     assert r.json()["restart"] == "none"
     assert "config.import" in _restart_calls
+
+
+# ── 5) 完整备份门密码（P0：宿主鉴权可关 + 8088 绑 0.0.0.0 → 防匿名 dump）──
+
+
+def test_export_without_password_refused_secure_by_default(client):
+    """未设门密码 → export/import 默认拒绝（403）——真正关掉洞，而非
+  等用户补设。脱敏端点 /config 不受门影响（仍 200）。"""
+    tc = client
+    with tc:
+        config_mod.update_config({"controller_token": "secret-1"})
+        r_exp = tc.get("/config/export")
+        r_imp = tc.post("/config/import", json={"controller_token": "x"})
+        r_red = tc.get("/config")
+    assert r_exp.status_code == 403
+    assert "尚未设置" in r_exp.json()["detail"]
+    assert r_imp.status_code == 403
+    assert r_red.status_code == 200  # 脱敏展示面不被门拦
+
+
+def test_export_wrong_password_refused(client):
+    """设了密码但头错/空 → 403（不泄露是「未设」还是「错」之外的信息）。"""
+    tc = client
+    with tc:
+        config_mod.set_export_password(EXPORT_PW)
+        config_mod.update_config({"controller_token": "secret-1"})
+        r_wrong = tc.get(
+            "/config/export", headers={"X-Export-Password": "wrong-password-9"}
+        )
+        r_empty = tc.get("/config/export", headers={"X-Export-Password": ""})
+        r_none = tc.get("/config/export")
+    for r in (r_wrong, r_empty, r_none):
+        assert r.status_code == 403
+
+
+def test_export_password_endpoints_set_status_clear(client):
+    """门密码端点：set（<8 位 400）→ status true → clear → status false。"""
+    tc = client
+    with tc:
+        # 未设
+        assert tc.get("/config/export-password-status").json() == {
+            "has_password": False
+        }
+        # 过短 → 400
+        r_short = tc.post(
+            "/config/export-password", json={"password": "short"}
+        )
+        assert r_short.status_code == 400
+        # 正常设置
+        r_set = tc.post(
+            "/config/export-password", json={"password": EXPORT_PW}
+        )
+        assert r_set.status_code == 200
+        assert r_set.json()["has_password"] is True
+        assert tc.get("/config/export-password-status").json() == {
+            "has_password": True
+        }
+        # 设置后门控放行（正确头）
+        r_ok = tc.get("/config/export", headers=EXPORT_HDR)
+        assert r_ok.status_code == 200
+        # 清除
+        r_clr = tc.delete("/config/export-password")
+        assert r_clr.status_code == 200
+        assert r_clr.json()["has_password"] is False
+        assert tc.get("/config/export-password-status").json() == {
+            "has_password": False
+        }
+        # 清除后重新默认拒绝
+        assert tc.get("/config/export").status_code == 403
+
+
+def test_export_output_never_contains_password_material(client):
+    """门密码只存哈希、且 hash 在独立文件（不在 config.json）→ 导出
+  输出绝不含密码/哈希材料。"""
+    tc = client
+    with tc:
+        config_mod.set_export_password(EXPORT_PW)
+        config_mod.update_config({"controller_token": "secret-1"})
+        exp = tc.get("/config/export", headers=EXPORT_HDR).json()
+    key = json.loads(config_mod._export_key_path().read_text(encoding="utf-8"))
+    # 导出体不含明文密码，也不含哈希/salt 材料
+    assert EXPORT_PW not in json.dumps(exp, ensure_ascii=False)
+    assert key["hash"] not in json.dumps(exp, ensure_ascii=False)
+    assert key["salt"] not in json.dumps(exp, ensure_ascii=False)
+    # 哈希文件本身不含明文
+    raw = config_mod._export_key_path().read_text(encoding="utf-8")
+    assert EXPORT_PW not in raw
+
+
+def test_import_requires_password(client):
+    """import（覆盖式恢复=高敏）同门控：无密码 403，正确密码 200。"""
+    tc = client
+    with tc:
+        config_mod.set_export_password(EXPORT_PW)
+        r_no = tc.post("/config/import", json={"controller_token": "x"})
+        assert r_no.status_code == 403
+        r_ok = tc.post(
+            "/config/import",
+            json={"controller_token": "imported-tok"},
+            headers=EXPORT_HDR,
+        )
+    assert r_ok.status_code == 200
+    assert config_mod.load_config()["controller_token"] == "imported-tok"

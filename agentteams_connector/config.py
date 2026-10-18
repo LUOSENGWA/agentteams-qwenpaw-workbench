@@ -15,8 +15,11 @@ No manual profile switching.
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import logging
+import secrets
 import threading
 import time
 from collections import deque
@@ -39,6 +42,11 @@ except Exception:  # noqa: BLE001 - allow import in isolation for linting
 
 _CONFIG_DIR = Path(_SECRET_DIR) / "agentteams-qwenpaw-workbench"
 _CONFIG_PATH = _CONFIG_DIR / "config.json"
+# 完整备份（含明文凭据）的导出/导入门密码——salted SHA-256 哈希，存独立文件
+# （**不在 config.json 内** → /config/export 返回的完整配置天然不含它，
+# /config/import 覆盖 config.json 也不会清掉它）。每装机一份主密钥：换环境
+# 还原时目标机用自己的门密码，备份文件本身只是数据。
+_EXPORT_KEY_PATH = _CONFIG_DIR / "export_key.json"
 
 _lock = threading.Lock()
 # load_config 读缓存（进程内单进程安全：同 _lock 保护；键=文件 mtime+size，
@@ -445,6 +453,86 @@ def _config_bak_path() -> Path:
  （config.json 旁的 config.bak.json；测试 monkeypatch 主文件路径时自动
  跟随，零额外注入点）。"""
     return _CONFIG_PATH.with_name("config.bak.json")
+
+
+def _export_key_path() -> Path:
+    """门密码哈希文件路径——从 _CONFIG_PATH 派生（测试 monkeypatch 主
+ 文件路径时自动跟随，零额外注入点）。"""
+    return _CONFIG_PATH.with_name("export_key.json")
+
+
+def _hash_export_password(password: str, salt: str) -> str:
+    """salted SHA-256（salt:password）——本地门控强度足够（单用户、非
+ 高并发撞库场景），不落明文。"""
+    return hashlib.sha256(
+        (salt + ":" + password).encode("utf-8"),
+    ).hexdigest()
+
+
+def has_export_password() -> bool:
+    """是否已设置完整备份的门密码（export_key.json 存在且可解析出 hash）。"""
+    p = _export_key_path()
+    if not p.exists():
+        return False
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return False
+    return bool(data.get("hash")) and bool(data.get("salt"))
+
+
+def set_export_password(password: str) -> None:
+    """设置（或修改）完整备份的门密码——新 salt + SHA-256 落盘 600。
+ 空/过短密码拒绝（门控强度下限 8 位）。"""
+    if not isinstance(password, str) or len(password) < 8:
+        raise ValueError("导出密码至少 8 位")
+    import os as _os
+
+    salt = secrets.token_hex(16)
+    data = {"salt": salt, "hash": _hash_export_password(password, salt)}
+    _ensure_dir()
+    p = _export_key_path()
+    tmp = p.with_name(p.name + ".tmp")
+    try:
+        tmp.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        tmp.replace(p)
+        try:
+            _os.chmod(p, 0o600)
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception as exc:  # noqa: BLE001
+        raise IOError(f"导出密码写入失败：{exc}") from exc
+
+
+def clear_export_password() -> None:
+    """清除门密码（删除 export_key.json；幂等）。"""
+    try:
+        _export_key_path().unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def verify_export_password(password: str) -> bool:
+    """校验门密码——常量时间比较（hmac.compare_digest）防时序侧漏。
+ 未设置密码返回 False（调用方据此区分「未设」与「错」）。"""
+    if not isinstance(password, str):
+        return False
+    p = _export_key_path()
+    if not p.exists():
+        return False
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        salt = data.get("salt", "")
+        expected = data.get("hash", "")
+    except Exception:  # noqa: BLE001
+        return False
+    if not salt or not expected:
+        return False
+    actual = _hash_export_password(password, salt)
+    return hmac.compare_digest(actual, expected)
 
 
 def _atomic_write_config(path: Path, data: Dict[str, Any]) -> None:
