@@ -10,9 +10,17 @@
  * S3 full：qwen-code 卸载二次确认 modal → POST uninstall → done
  * S4 full：settings 编辑（模型名改 + redacted 密钥留空=*** 哨兵）
  * S5 full：JSON 补丁（非法=报错 / 合法=合并入 diff）
- * S6 full：preset p-gencode（空 patch）→ 只标记不 PUT
  * S7 l2：PUT 403 → 只读横幅 + 错误消息
  * S8 404：GET 404 → 「暂不可用」横幅
+ * S9 routes：15.31 modelProviders 路由卡片 ×2 + 添加按钮 + model 对象
+ *    name 子键跳过提示 + 专行读 name + 改路由 baseUrl → patch 含
+ *    modelProviders（model 未动不进 patch + redacted 哨兵 ***）
+ * S10 seed：15.31 空态 seed 预填（theme/approvalMode/阈值/envKey/路由卡）
+ *    + 填模型名保存 → patch 零脏字段（空串/空数组/空对象全剥离）
+ *
+ * 15.31 修陈旧门：① mock GET 响应改真实 API 形状（原裸 settings 对象被
+ * getCliSettings 防御解包成空树 → S4 起全盲）② S6 preset 断言删除
+ *（场景模板 15.28 已退役，按钮不存在=点击必超时）。
  * 全程 pageerror 零容忍。
  *
  * 运行：cd frontend && node scripts/ui-harness-cli.mjs
@@ -104,7 +112,7 @@ const t1 = await bodyText();
 assert("S1c Qwen Code 行 + 版本 0.25.0", t1.includes("Qwen Code") && t1.includes("0.25.0"), t1);
 assert("S1d 鉴权已配置徽标", t1.includes("鉴权已配置"), t1);
 assert("S1e OpenCode / Qoder 未安装", t1.includes("OpenCode") && t1.includes("Qoder") && t1.includes("未安装"), t1);
-assert("S1f 安装版本输入（默认 latest）", (await page.getByPlaceholder("默认 latest").count()) === 1);
+assert("S1f 安装版本输入（空=latest）", (await page.getByPlaceholder("如 0.25.0；空=latest").count()) === 1);
 
 // ── S2：opencode 安装（202 task → 轮询 → done → 重拉）──────────
 const listBefore = await page.evaluate(() => window.__LIST_CALLS__);
@@ -143,9 +151,18 @@ assert("S3c 卸载任务完成", (await bodyText()).includes("任务完成"));
 
 // ── S4：settings 编辑（模型名 + redacted 哨兵）─────────────────
 await page.getByRole("button", { name: /编辑配置/ }).first().click();
-await sleep(400);
+await page
+  .waitForFunction(
+    () => document.body.innerText.includes("settings（结构化表单 · 只保存改动）"),
+    { timeout: 4000 },
+  )
+  .catch(() => {});
 const t4 = await bodyText();
-assert("S4a settings 编辑器打开（模型名 m1）", t4.includes("模型名"), t4);
+assert(
+  "S4a settings 编辑器打开（结构化表单标题）",
+  t4.includes("settings（结构化表单 · 只保存改动）"),
+  t4,
+);
 // React 受控 input 标准改值（native setter + input 事件）
 const setModelName = (v) =>
   page.evaluate((val) => {
@@ -165,7 +182,7 @@ const m1Count = await page.evaluate(() =>
 );
 assert("S4b 模型名输入框 m1", m1Count === 1, String(m1Count));
 assert("S4b2 改模型名 m1->m2", (await setModelName("m2")) === true);
-await page.getByRole("button", { name: /保存配置/ }).click();
+await page.getByRole("button", { name: /保存改动/ }).click();
 await sleep(400);
 const puts = await page.evaluate(() => window.__SETTINGS_PUTS__);
 assert(
@@ -180,13 +197,16 @@ assert("S4d 已保存消息", (await bodyText()).includes("已保存"));
 // ── S5：JSON 补丁（非法 / 合法）────────────────────────────────
 await page.getByRole("button", { name: /编辑配置/ }).first().click();
 await sleep(300);
-const patchArea = page.locator("textarea").last();
+// 15.31：排除 antd AutoComplete/Select 的隐藏 textarea（name=hiddenTextarea，
+// aria-hidden）——模型行/路由卡新增后 .last() 会命中它导致 fill 超时。
+const patchArea = page.locator("textarea:not([name=hiddenTextarea])").last();
 await patchArea.fill("[1,2]");
-await page.getByRole("button", { name: /保存配置/ }).click();
+await page.getByRole("button", { name: /保存改动/ }).click();
 await sleep(300);
-assert("S5a 补丁须为 JSON 对象", (await bodyText()).includes("补丁须为 JSON 对象"));
+// 15.31：数组补丁的报错文案（原断言字符串「补丁须为 JSON 对象」早已陈旧）。
+assert("S5a 补丁须为对象（数组被拒）", (await bodyText()).includes("JSON 补丁须为对象"));
 await patchArea.fill('{"mcp":{"enabled":true}}');
-await page.getByRole("button", { name: /保存配置/ }).click();
+await page.getByRole("button", { name: /保存改动/ }).click();
 await sleep(400);
 const puts2 = await page.evaluate(() => window.__SETTINGS_PUTS__);
 const last = puts2[puts2.length - 1];
@@ -196,14 +216,109 @@ assert(
   JSON.stringify(puts2),
 );
 
-// ── S6：preset p-gencode（空 patch 只标记）─────────────────────
-const putsBefore = await page.evaluate(() => window.__SETTINGS_PUTS__.length);
-await page.getByRole("button", { name: /通用 Coding/ }).first().click();
-await sleep(300);
-const t6 = await bodyText();
-const putsAfter = await page.evaluate(() => window.__SETTINGS_PUTS__.length);
-assert("S6a 已套用消息", t6.includes("已套用 通用 Coding（最小形态）"), t6);
-assert("S6b 空 patch 不 PUT", putsAfter === putsBefore, `${putsBefore} -> ${putsAfter}`);
+// ── S9：routes 场景（15.31：modelProviders 路由卡片 + model 对象 name 跳过）──
+await page.goto(`http://127.0.0.1:${port}/harness/page-cli.html?scen=routes`);
+await sleep(500);
+await page.getByText("Coding CLI（安装/升级/settings）", { exact: true }).first().click();
+await sleep(500);
+await page.getByRole("button", { name: /编辑配置/ }).first().click();
+await page
+  .waitForFunction(
+    () => document.body.innerText.includes("openai · 1 号路由"),
+    { timeout: 4000 },
+  )
+  .catch(() => {});
+const t9 = await bodyText();
+assert(
+  "S9a modelProviders 路由卡片 ×2（openai · #1/#2）",
+  t9.includes("openai · 1 号路由") && t9.includes("openai · 2 号路由"),
+  t9,
+);
+assert("S9b 添加模型路由按钮", (await page.getByRole("button", { name: /添加模型路由/ }).count()) >= 1);
+assert("S9c model 对象 name 子键由专行管理提示", t9.includes("← 由上方「模型」行管理"), t9);
+const m1c9 = await page.evaluate(() =>
+  [...document.querySelectorAll("input")].filter((i) => i.value === "m1").length,
+);
+assert("S9d 模型专行读对象 name=m1", m1c9 === 1, String(m1c9));
+// 改路由 #1 的 baseUrl → 保存 → patch 含 modelProviders 变更（model 未动=不进 patch）
+await page.evaluate(() => {
+  const inputs = [...document.querySelectorAll("input")];
+  const el = inputs.find((i) => i.value === "http://a:1/v1");
+  if (!el) return false;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  setter.call(el, "http://a:1/v2");
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
+});
+await page.getByRole("button", { name: /保存改动/ }).click();
+await sleep(500);
+const puts9 = await page.evaluate(() => window.__SETTINGS_PUTS__);
+const last9 = puts9[puts9.length - 1];
+assert(
+  "S9e patch 含 modelProviders 变更（http://a:1/v2）",
+  last9 && JSON.stringify(last9.patch.modelProviders).includes("http://a:1/v2"),
+  JSON.stringify(puts9),
+);
+assert(
+  "S9f model 未动不进 patch + redacted 哨兵 ***",
+  last9 && !("model" in last9.patch) && last9.patch.security?.auth?.apiKey === "***",
+  JSON.stringify(last9),
+);
+
+// ── S10：seed 场景（15.31：空态 seed 预填 + 零脏字段保存）──────
+await page.goto(`http://127.0.0.1:${port}/harness/page-cli.html?scen=seed`);
+await sleep(500);
+await page.getByText("Coding CLI（安装/升级/settings）", { exact: true }).first().click();
+await sleep(500);
+await page.getByRole("button", { name: /编辑配置/ }).first().click();
+await page
+  .waitForFunction(
+    () => document.body.innerText.includes("Qwen Dark"),
+    { timeout: 4000 },
+  )
+  .catch(() => {});
+const t10 = await bodyText();
+// 15.31：seed 预填值在 input 的 value 里（不在 innerText）→ 查 input 值集合。
+const seedVals = await page.evaluate(() =>
+  [...document.querySelectorAll("input")].map((i) => i.value).filter(Boolean),
+);
+assert(
+  "S10a seed 预填可见（theme/approvalMode/阈值/envKey 在 input 值）",
+  seedVals.includes("Qwen Dark") &&
+    seedVals.includes("auto") &&
+    seedVals.includes("0.85") &&
+    seedVals.includes("OPENAI_API_KEY"),
+  JSON.stringify(seedVals) + " | body: " + t10.slice(0, 200),
+);
+assert("S10b seed 路由卡片 #1", t10.includes("openai · 1 号路由"), t10);
+assert("S10c 空态提示不出现（seed 有内容）", !t10.includes("尚无配置文件"), t10);
+// 15.31：模型专行 = antd AutoComplete，搜索 input 的 class 稳定为
+// ant-select-selection-search-input（占位不落 input 属性，不能按 placeholder 找）。
+// Playwright fill 对 React 受控组件可靠（自动派发正确事件）。
+const modelInput = page.locator("input.ant-select-selection-search-input").first();
+assert("S10d-pre 模型专行输入框可定位", (await modelInput.count()) === 1, "count=" + (await modelInput.count()));
+await modelInput.fill("m-new");
+await page.getByRole("button", { name: /保存改动/ }).click();
+await sleep(500);
+const puts10 = await page.evaluate(() => window.__SETTINGS_PUTS__);
+const last10 = puts10[puts10.length - 1];
+assert("S10d model 对象合并（name + 子字段）",
+  last10 && last10.patch.model?.name === "m-new" && last10.patch.model?.maxToolCalls === -1,
+  JSON.stringify(last10));
+assert(
+  "S10e 零脏字段（无 fastModel/language/空 id/permissions/mcpServers）",
+  last10 &&
+    !("fastModel" in last10.patch) &&
+    !("permissions" in last10.patch) &&
+    !("mcpServers" in last10.patch) &&
+    last10.patch.model && !("reasoningEffort" in last10.patch.model) &&
+    (last10.patch.modelProviders?.openai?.[0]?.envKey === "OPENAI_API_KEY" &&
+      !("id" in (last10.patch.modelProviders?.openai?.[0] || {}))),
+  JSON.stringify(last10),
+);
+assert("S10f general 只剩 enableAutoUpdate",
+  last10 && JSON.stringify(last10.patch.general) === JSON.stringify({ enableAutoUpdate: false }),
+  JSON.stringify(last10));
 
 // ── S7：l2 只读 ────────────────────────────────────────────────
 await page.goto(`http://127.0.0.1:${port}/harness/page-cli.html?scen=l2`);
@@ -222,7 +337,7 @@ await page.evaluate(() => {
   setter.call(el, "m9");
   el.dispatchEvent(new Event("input", { bubbles: true }));
 });
-await page.getByRole("button", { name: /保存配置/ }).click();
+await page.getByRole("button", { name: /保存改动/ }).click();
 await sleep(400);
 const t7 = await bodyText();
 assert("S7a 403 错误消息", t7.includes("当前角色仅可查看，不能修改编码 CLI"), t7);

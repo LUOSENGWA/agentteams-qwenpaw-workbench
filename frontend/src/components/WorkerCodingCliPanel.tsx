@@ -279,8 +279,13 @@ function assignPath(target: SettingsObject, path: string[], value: SettingsValue
   for (let i = 0; i < path.length - 1; i++) {
     const key = path[i];
     const child = cursor[key];
-    if (!child || typeof child !== "object" || Array.isArray(child) || isRedacted(child)) {
-      cursor[key] = {};
+    // 15.31：穿过数组的路径（modelProviders.openai[i].field）——原实现把
+    // Array 当「非 object」腐蚀成 {}（路由卡编辑 → openai:{"0":{...}}，丢数组
+    // 结构）。数组是合法容器，保留；仅当 child 缺失/非法时按下一键创建
+    // （数字索引→数组，其余→对象）。
+    const isContainer = !!child && typeof child === "object" && !isRedacted(child);
+    if (!isContainer) {
+      cursor[key] = /^\d+$/.test(path[i + 1]) ? [] : {};
     }
     cursor = cursor[key] as SettingsObject;
   }
@@ -290,6 +295,20 @@ function assignPath(target: SettingsObject, path: string[], value: SettingsValue
 /** 深拷贝（settings 是纯 JSON，含 redacted 哨兵对象，JSON 往返安全）。 */
 function deepCopySettings(obj: SettingsObject): SettingsObject {
   return JSON.parse(JSON.stringify(obj)) as SettingsObject;
+}
+
+/** 读模型名（双向兼容：qwen-code 对象 {name} / opencode·qoder 扁平串）。
+ * 15.31：提取为共享助手——模型行的 dirty 判定与 handleSave 的 base 比对
+ * 必须同口径（15.27 模型行漏接 dirty → 只改模型名时保存钮恒 disabled，改不动）。 */
+function modelNameOf(settings: SettingsObject | null | undefined): string {
+  if (!settings) return "";
+  const m = (settings as Record<string, unknown>).model;
+  if (typeof m === "string") return m;
+  if (m && typeof m === "object" && !Array.isArray(m)) {
+    const n = (m as Record<string, unknown>).name;
+    if (typeof n === "string") return n;
+  }
+  return "";
 }
 
 /** 叶子级 diff（draft vs base）→ merge-patch。跳过 redacted（secret 另行
@@ -707,6 +726,45 @@ function stripEmptyLeavesNotInBase(
       if (typeof bv === "string" && bv !== "") out[k] = v;
       continue;
     }
+    if (Array.isArray(v) && v.length === 0) {
+      // 与空串同语义：base 该处是非空数组 → 用户主动清空 → 保留 []
+      // （清除）；否则（seed 预填的空数组）丢弃，不写脏字段。
+      const bv = getAtPath(base, [k]);
+      if (Array.isArray(bv) && bv.length > 0) out[k] = v;
+      continue;
+    }
+    if (Array.isArray(v)) {
+      // 15.31：数组在 diff 里是整节点替换（patch 里是全量新数组）→ 逐元素
+      // 按对应 base 元素剥离：seed 预填的空串叶子（id/name/baseUrl）无 base 值
+      // → 丢；整条全新且剥空 = seed 噪音 → 从数组移除；base 有的字段主动清空
+      // （""）保留。不递归会把空态路由条目 {id:"",name:"",baseUrl:""} 原样写盘。
+      const baseArr = getAtPath(base, [k]);
+      const strippedArr: SettingsValue[] = [];
+      (v as SettingsValue[]).forEach((el, i) => {
+        if (el && typeof el === "object" && !Array.isArray(el)) {
+          const baseEl = Array.isArray(baseArr) ? baseArr[i] : undefined;
+          const baseIsObj =
+            baseEl && typeof baseEl === "object" && !Array.isArray(baseEl);
+          const stripped = stripEmptyLeavesNotInBase(
+            el as SettingsObject,
+            (baseIsObj ? baseEl : {}) as SettingsObject,
+          );
+          if (!baseIsObj && Object.keys(stripped).length === 0) return;
+          strippedArr.push(stripped);
+        } else {
+          strippedArr.push(el);
+        }
+      });
+      // 剥空成 [] 且 base 也无此数组 = seed 噪音 → 连 key 一起丢（零脏字段）。
+      if (
+        strippedArr.length === 0 &&
+        !(Array.isArray(baseArr) && baseArr.length > 0)
+      ) {
+        continue;
+      }
+      out[k] = strippedArr;
+      continue;
+    }
     if (v && typeof v === "object" && !Array.isArray(v)) {
       const subBase = (getAtPath(base, [k]) || {}) as SettingsObject;
       const sub = stripEmptyLeavesNotInBase(v as SettingsObject, subBase);
@@ -790,10 +848,17 @@ function SettingsTreeEditor({
     });
   };
 
+  // 15.31：模型行参与 dirty——15.27 引入模型行时漏接此判定，只改模型名
+  // （树字段未动）时 diffSettings 空 → 保存钮恒 disabled、改不动（回归）。
+  const modelDirty =
+    modelValue !== undefined &&
+    (modelValue ?? "").trim() !== modelNameOf(base);
+
   const dirty =
     Object.keys(diffSettings(base, draft)).length > 0 ||
     Object.entries(secretDraft).some(([, v]) => v !== "") ||
-    jsonPatch.trim() !== "";
+    jsonPatch.trim() !== "" ||
+    modelDirty;
 
   const handleSave = () => {
     // 1) 叶子级 diff（redacted 跳过，secret 另行处理）。
@@ -837,13 +902,7 @@ function SettingsTreeEditor({
     // （路径/URL/空格=error 阻止；不在在服列表=warn 放行）。
     if (modelValue !== undefined && onModelChange) {
       const v = (modelValue ?? "").trim();
-      const bm = getAtPath(base, ["model"]);
-      const baseModel =
-        typeof bm === "string"
-          ? bm
-          : bm && typeof bm === "object" && typeof (bm as Record<string, unknown>).name === "string"
-            ? ((bm as Record<string, unknown>).name as string)
-            : "";
+      const baseModel = modelNameOf(base);
       if (v !== baseModel) {
         if (objectModel) {
           // 15.31：model 对象——{name} 与树内子字段 diff 深合并
@@ -1217,16 +1276,12 @@ function CodingCliPanelBody({
   // 15.29：双格式兼容读——CLI 原生 settings.json 的 model 是**字符串**
   // （controller 测试夹具 "model":"updated" 实证），早期对象格式
   // （{name}，dashboard 同款写法）也兼容读。
-  const settingsModel: string = React.useMemo(() => {
-    const m = (s.settings?.settings as Record<string, unknown> | undefined)
-      ?.model;
-    if (typeof m === "string") return m;
-    if (m && typeof m === "object") {
-      const n = (m as Record<string, unknown>).name;
-      if (typeof n === "string") return n;
-    }
-    return "";
-  }, [s.settings]);
+  // 15.31：模型名读取收敛到 modelNameOf（对象{name}/扁平串双格式），与
+  // 模型行 dirty 判定、handleSave base 比对同一口径（三处不漂移）。
+  const settingsModel: string = React.useMemo(
+    () => modelNameOf(s.settings?.settings),
+    [s.settings],
+  );
   const union = useModelUnionOptions(
     settingsModel ? [settingsModel] : [],
     tr,

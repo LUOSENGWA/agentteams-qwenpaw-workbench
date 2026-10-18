@@ -61,10 +61,47 @@ const LIST_BODY = {
   qoder: { cli: "qoder", installed: false, auth: { configured: false } },
 };
 
+// 真实 API 形状（{cli,path,exists,settings}）——15.31 修：原裸 settings
+// 对象被 getCliSettings 防御解包成空树，S4 断言全盲。
 const SETTINGS_BODY = {
-  model: { name: "m1" },
-  security: { auth: { apiKey: { redacted: true, has_value: true } } },
-  tools: { useRipgrep: true },
+  cli: "qwen-code",
+  path: "~/.qwen/settings.json",
+  exists: true,
+  settings: {
+    model: { name: "m1" },
+    security: { auth: { apiKey: { redacted: true, has_value: true } } },
+    tools: { useRipgrep: true },
+  },
+};
+
+// 15.31 场景：seed=空态（全新 CLI）；routes=15.31 全结构（model 对象 +
+// modelProviders 路由数组 + 各顶层段）。
+const SETTINGS_SEED_BODY = { cli: "qwen-code", path: "", exists: false, settings: {} };
+const SETTINGS_ROUTES_BODY = {
+  cli: "qwen-code",
+  path: "~/.qwen/settings.json",
+  exists: true,
+  settings: {
+    model: { name: "m1", reasoningEffort: "high", generationConfig: { timeout: 120000 } },
+    fastModel: "m-fast",
+    modelProviders: {
+      openai: [
+        { id: "q1", name: "One", envKey: "OPENAI_API_KEY", baseUrl: "http://a:1/v1" },
+        { id: "q2", name: "Two", envKey: "OPENAI_API_KEY", baseUrl: "http://b:2/v1" },
+      ],
+    },
+    tools: { approvalMode: "auto", shell: { defaultTimeoutMs: 120000 } },
+    permissions: { allow: ["Bash"], ask: [], deny: [] },
+    context: { autoCompactThreshold: 0.85 },
+    mcp: { allowed: ["srv1"], excluded: [] },
+    security: {
+      folderTrust: { enabled: false },
+      auth: { selectedType: "openai", apiKey: { redacted: true, has_value: true } },
+    },
+    telemetry: { enabled: false },
+    general: { enableAutoUpdate: false },
+    ui: { theme: "Qwen Dark" },
+  },
 };
 
 const origFetch = window.fetch.bind(window);
@@ -81,7 +118,13 @@ window.fetch = (url, opts) => {
   }
 
   if (u === B + "/qwen-code/settings" && method === "GET") {
-    return Promise.resolve(okJson(SETTINGS_BODY));
+    const body =
+      scen === "seed"
+        ? SETTINGS_SEED_BODY
+        : scen === "routes"
+          ? SETTINGS_ROUTES_BODY
+          : SETTINGS_BODY;
+    return Promise.resolve(okJson(body));
   }
   if (u === B + "/qwen-code/settings" && method === "PUT") {
     if (scen === "l2") return Promise.resolve(errJson(403, "forbidden"));
