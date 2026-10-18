@@ -3,6 +3,34 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.31（2026-10-18 · Coding CLI 三 CLI settings 表单按官方 schema 全量补齐 + 废弃凭据字段迁移 + 3 个真实 bug 修复 + UI harness 重做）
+
+使用反馈：Qwen Code 的 settings **只看到 security / auth / selectedType / JSON 补丁**几个字段，「应该会有很多设置吧」。定位 = 15.30 的 seed 模板只有 3 个字段，且凭据字段 `security.auth.apiKey/baseUrl` **官方已标 Deprecated**（0.25.x「New Configuration Format」）。本批把三个 CLI 的 settings 表单按**官方 schema 全量补齐**（字段来源全部实读官方文档，不猜），凭据迁到正位，并在过程中用重做的 UI harness 揪出 **3 个真实 bug**（2 个存量回归 + 1 个本批引入）。
+
+**新增**
+- **三 CLI 空态结构化表单按官方 schema 全量补齐**（`codingCliPresets.ts`，字段来源实证）：
+  - **qwen-code**（qwenlm.github.io settings + model-providers 两页全字段表）：`model`（reasoningEffort/maxToolCalls/generationConfig）、`fastModel`、`modelProviders`（凭据正位）、`tools`（approvalMode/shell）、`permissions`（allow/ask/deny）、`context`（autoCompactThreshold）、`mcp`（allowed/excluded）、`mcpServers`、`security`（folderTrust/auth.selectedType）、`telemetry`、`general`、`ui`。
+  - **opencode**（opencode.ai/docs/config）：`$schema`/`small_model`/`permission`（edit/bash/webfetch）/`tools`/`mcp`；provider 走 JSON 补丁（项目级才生效的坑保留告警）。
+  - **qoder**（docs.qoder.com/cli/settings，qwen-code 同源三层配置）：`outputStyle`/`language`/`ui`（theme/autoThemeSwitching/maxTurns）/`tools`（useRipgrep/shell）/`security`（folderTrust/disableYoloMode）/`mcp`/`mcpServers`。
+- **JSON 补丁占位按 CLI 定制**（`patchPlaceholder`）：qwen-code 给 `env` 块 + 模型生成参数示例，opencode 给 provider 示例，qoder 给 mcpServers 示例——把「这个 CLI 最常需要补丁的字段」前置到输入框。
+
+**改进**
+- **凭据从废弃字段迁到正位**：qwen-code 不再预填 `security.auth.apiKey`（Deprecated）。API Key 走 **`modelProviders[].envKey` + 顶层 `env` 块**（JSON 补丁写 `{"env":{"OPENAI_API_KEY":"sk-..."}}`）或容器 `~/.qwen/.env`——官方 Model Providers 文档定案。新增**废弃字段检测**：base 里出现非空 `security.auth.apiKey/baseUrl`（含读回的 redacted 形态）→ 红 Alert 提示迁移路径（脱敏值不误报、空串不误报）。
+- **`modelProviders` 路由数组改结构化卡片**：原来是整数组 JSON 文本框（「只看到 security/auth」的直接原因之一）。现每 provider 下的模型路由 = 独立卡片（`id`/`name`/`envKey`/`baseUrl`/`wireApi` 表单 + 增删），`envKey` 按 provider 推荐默认值（openai/anthropic/gemini）——「添加路由」从手敲 JSON 变成点选填表。
+- **qwen-code `model` 对象 `name` 子键归模型专行管**：树内跳过 `name`（留「← 由上方『模型』行管理」提示行），避免与模型专行双源；保存时 `{name}` 与树内子字段（reasoningEffort/generationConfig）**深合并**（原直覆会丢树里改的子字段）。
+- **i18n 修复**：`{cli} settings（结构化表单…）`标题原是硬编码中文（英文模式显中文）→ 改模板键；3 条 CLI 告警文案与新源文本对齐；+7 键（1724 键 0 缺 0 重）。
+
+**修复（3 个真实 bug，均由重做的 UI harness 实证）**
+- **【回归，15.27 引入】只改模型名时保存钮恒 disabled**：15.27 加「模型专行」时，模型值只接进 `handleSave`、**漏接编辑器的 `dirty` 判定** → 只改模型名（树字段没动）时 `diffSettings` 为空 → 「无改动」+ 保存钮禁用，**改不动模型**。抽 `modelNameOf()` 助手（对象 `{name}`/扁平串双格式），让 `settingsModel`（读）/`dirty`（判定）/`handleSave`（base 比对）**三处同一口径**，`modelDirty` 并入 `dirty`。
+- **【本批引入】`assignPath` 把数组腐蚀成对象**：15.31 路由卡的路径要**穿过数组**（`modelProviders.openai[i].field`），原 `assignPath` 遇 `child` 是 Array 判「非 object」→ `cursor[key]={}` **把整个路由数组覆盖成对象**（`openai:{"0":{...}}`，丢数组结构）。数组是合法容器：保留；仅当中间节点缺失/非法时按**下一键**创建（数字索引→数组、其余→对象）。
+- **【本批引入】`stripEmptyLeavesNotInBase` 不递归数组元素**：原只处理「空数组/对象/空串」顶层形态，**数组元素内的对象不剥** → 空态保存时 seed 路由条目 `{id:"",name:"",baseUrl:""}` 原样写盘（脏字段）。现逐元素按对应 base 元素剥离（base 有值的字段主动清空 `""` 保留清除语义；全新条目剥空则移除；剥空成 `[]` 且 base 无此数组则连 key 丢——零脏字段）。
+
+**验证**
+- **UI harness `ui-harness-cli.mjs` 重做并转真**（此前 15.30 树编辑器重构后已陈旧、红着没人察觉）：mock GET 响应改真实 `{cli,path,exists,settings}` 形状（原裸 settings 对象被 `getCliSettings` 防御解包成空树 → S4 起全盲）；删 15.28 已退役的 S6 preset 断言；修选择器（保存钮「保存改动」/模型占位/版本占位/JSON 补丁 textarea 排除 antd 隐藏 textarea/模型行走 `input.ant-select-selection-search-input`+Playwright fill）；**+S9**（routes：路由卡片 ×2 + 添加 + model.name 专行提示 + 专行读对象 name + 改路由 → patch 含 modelProviders + redacted 哨兵）+**S10**（seed：预填可见于 input 值 + 保存零脏字段 + model 对象合并）= **36/36 绿、pageerror 0**。
+- **纯函数门**（真源码提取执行，非复制）：strip 7 + strip 数组元素 4 + assignPath 4 = **15/15 全绿**。
+- **真机 E2E**（本地生产 android-dev，唯一装 qwen-code 的 Worker）：空态 seed 全量保存 → 读回全字段零脏字段；路由完整 + env key 读回脱敏（在盘）；废弃字段检测函数对 redacted/干净/明文三态判定正确；最终态 = model `qwen3.6-27b-fp8` + 路由→本地 SGLang 7113 + `envKey`/`env`，废弃字段已清。
+- tsc 0（含 noUnused 门）· vite build 1,977 kB（514 模块）· **pytest 456/456** · i18n 1724 键 0 缺 0 重 · 敏感扫 0 · 版本三源 15.31（`test_version_consistency` 门抓到漏 bump 的 `frontend/package.json`，已补）。
+
 ## 0.5.0-beta.15.30（2026-10-18 · 流式超时预填充读空重试 + Coding CLI settings 空态结构化表单真修（含 2 个存量渲染/合并 bug）+ 三 CLI 已知坑告警）
 
 本批 = 15.29 使用反馈 3 件：① LLM 调优「首段输出超时 / 输出中断超时」**有的 Worker 预填充当前值、有的没有**；② Qwen Code settings **还是没法用**（没有结构化表单）；③ 另两个 coding CLI（opencode / qoder）配置**覆盖了吗**？三件全部按层归因、单点修复。
