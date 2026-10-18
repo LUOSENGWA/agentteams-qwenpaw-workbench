@@ -5,7 +5,7 @@ Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
 ## 0.5.0-beta.15.32 (2026-10-18 - coding-CLI settings forms completed: field-catalog driven + bilingual zh/en + modelProviders marked as Higress-managed)
 
-Acceptance feedback: the three CLI settings forms are "still not complete enough". This batch upgrades the forms to be **field-catalog driven** — the documented field list (type + bilingual zh/en labels) is registered in a catalog, so **fields that are not yet set also appear in the form (as empty states)**, and only the fields you actually change and save are written to the config file. The forms are also **bilingual (zh/en, auto-switching with host language)**.
+The three CLI settings forms are upgraded to be **field-catalog driven** — the documented field list (type + bilingual zh/en labels) is registered in a catalog, so **fields that are not yet set also appear in the form (as empty states)**, and only the fields you actually change and save are written to the config file. The forms are also **bilingual (zh/en, auto-switching with host language)**.
 
 **Added**
 - **Complete settings forms (field-catalog driven)**: qwen-code covers the bulk of the fields editable in the Web Shell's in-browser Settings page (~100 fields across model subfields, model family, context, tools, memory, agents, mcp, security, serve, advanced, experimental); opencode (server/shell/per-tool toggles/image attachments/per-action permission/compaction, etc.); qoder (outputStyle/language/full ui/model subfields/tools/full security/statusLine). Fields outside the catalog remain reachable via the JSON patch.
@@ -17,7 +17,7 @@ Acceptance feedback: the three CLI settings forms are "still not complete enough
 
 ## 0.5.0-beta.15.31 (2026-10-18 - coding-CLI settings forms for all 3 CLIs completed to the full official schema + deprecated credential-field migration + 3 real-bug fixes + UI harness rebuilt)
 
-Acceptance feedback: Qwen Code's settings show **only a few fields — security / auth / selectedType / JSON patch** — "there should be a lot more settings". Root cause: the 15.30 seed template carried just 3 fields, and its credential fields `security.auth.apiKey/baseUrl` are **marked Deprecated** by the official docs (the 0.25.x "New Configuration Format"). This batch completes the settings forms for all three CLIs to the **full official schema** (every field read from the official docs, none guessed), moves credentials to the canonical location, and — in the process — uses the rebuilt UI harness to surface **3 real bugs** (2 latent regressions + 1 introduced by this batch).
+The settings forms for all three CLIs are completed to the **full official schema** (every field read from the official docs, none guessed), credentials move to the canonical location, and the rebuilt UI harness surfaces **3 real bugs** in the process (2 latent regressions + 1 introduced by this batch). Background: Qwen Code's settings previously showed **only a few fields — security / auth / selectedType / JSON patch** — because the 15.30 seed template carried just 3 fields, and its credential fields `security.auth.apiKey/baseUrl` are **marked Deprecated** by the official docs (the 0.25.x "New Configuration Format").
 
 **Added**
 - **Full official-schema empty-state forms for all 3 CLIs** (`codingCliPresets.ts`; every field verified against the official docs):

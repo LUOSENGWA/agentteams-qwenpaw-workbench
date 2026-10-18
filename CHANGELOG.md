@@ -5,7 +5,7 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ## 0.5.0-beta.15.32（2026-10-18 · Coding CLI 设置表单完整化：字段目录驱动 + 中英自适应 + modelProviders 标注 Higress 托管）
 
-使用反馈：三 CLI 的 settings 表单「还是不够全」。本批把表单升级为**字段目录驱动**——官方文档字段清单（类型 + 中英双语文案）登记为目录，**未设置的字段也在表单里显示（空态）**，只有你实际改动并保存的项才写入配置文件；表单同时做**中英自适应**。
+三 CLI 的 settings 表单升级为**字段目录驱动**——官方文档字段清单（类型 + 中英双语文案）登记为目录，**未设置的字段也在表单里显示（空态）**，只有你实际改动并保存的项才写入配置文件；表单同时做**中英自适应**。
 
 **新增**
 - **完整设置表单（字段目录驱动）**：qwen-code 覆盖 Web Shell 浏览器内 Settings 页可改字段的主体（约 100 项——model 子字段、模型族、context、tools、memory、agents、mcp、security、serve、advanced、experimental 等）；opencode（server/shell/tools 逐项开关/图片附件/permission 逐项/compaction 等）；qoder（outputStyle/language/ui 全项/model 子字段/tools/security 全项/statusLine）。目录外的字段仍可用 JSON 补丁兜底。
@@ -17,7 +17,7 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ## 0.5.0-beta.15.31（2026-10-18 · Coding CLI 三 CLI settings 表单按官方 schema 全量补齐 + 废弃凭据字段迁移 + 3 个真实 bug 修复 + UI harness 重做）
 
-使用反馈：Qwen Code 的 settings **只看到 security / auth / selectedType / JSON 补丁**几个字段，「应该会有很多设置吧」。定位 = 15.30 的 seed 模板只有 3 个字段，且凭据字段 `security.auth.apiKey/baseUrl` **官方已标 Deprecated**（0.25.x「New Configuration Format」）。本批把三个 CLI 的 settings 表单按**官方 schema 全量补齐**（字段来源全部实读官方文档，不猜），凭据迁到正位，并在过程中用重做的 UI harness 揪出 **3 个真实 bug**（2 个存量回归 + 1 个本批引入）。
+三个 CLI 的 settings 表单按**官方 schema 全量补齐**（字段来源全部实读官方文档，不猜），凭据迁到正位，并在过程中用重做的 UI harness 揪出 **3 个真实 bug**（2 个存量回归 + 1 个本批引入）。背景：此前 Qwen Code 的 settings 只显 security / auth / selectedType / JSON 补丁几个字段——15.30 的 seed 模板只有 3 个字段，且凭据字段 `security.auth.apiKey/baseUrl` **官方已标 Deprecated**（0.25.x「New Configuration Format」）。
 
 **新增**
 - **三 CLI 空态结构化表单按官方 schema 全量补齐**（`codingCliPresets.ts`，字段来源实证）：
@@ -495,7 +495,7 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 ## 0.5.0-beta.14.34（2026-10-09 · 「401 逼重填密码」根治批——预期态显形 + 刷新可感知）
 
-**14.33 安装后反馈三件：① 设置页显示「固定外网 + 已保存」，但 401 逼着重填密码，而 controller 测试明明能连上——排查确认：basic 密码本身是好的（外网 18:40 重存后 7 条 URL 全 200），根因是自检 L2「Controller projects (L2)」恒 401 红叉——该检查走 Matrix token 路径，上游只放行 level-2/3 账号，level-1 管理员恒 401（与外网 Basic 账密无关），而 L1 管理员 token 权威源同刻 200（「controller 能连上」）；旧实现 L1 在 L2 之后探测、无法判预期态，红 ❌「HTTP 401」被读成「密码错」→ 反复重填。② SGLang 刷新感知仍差。③ 「快照 0 秒前」标签要删。本批三件根治：L2 预期态显形（L1 可用时该 401 是设计使然 → ⚠️ 琥珀 + 明示「与 Basic 账密无关，无需重填」）/ config/test 同组交叉核对（同族另一地址 200 可达时 401 行明示「更可能是隧道瞬断，不一定是密码错」）/ SGLang 双卡删 age 文字改脉冲点（每帧亮一次）+ 首页卡补状态标签与吞吐**
+**14.33 批三件修复：① 设置页显示「固定外网 + 已保存」，但 401 逼着重填密码，而 controller 测试明明能连上——排查确认：basic 密码本身是好的（外网 18:40 重存后 7 条 URL 全 200），根因是自检 L2「Controller projects (L2)」恒 401 红叉——该检查走 Matrix token 路径，上游只放行 level-2/3 账号，level-1 管理员恒 401（与外网 Basic 账密无关），而 L1 管理员 token 权威源同刻 200（「controller 能连上」）；旧实现 L1 在 L2 之后探测、无法判预期态，红 ❌「HTTP 401」被读成「密码错」→ 反复重填。② SGLang 刷新感知仍差。③ 「快照 0 秒前」标签要删。本批三件根治：L2 预期态显形（L1 可用时该 401 是设计使然 → ⚠️ 琥珀 + 明示「与 Basic 账密无关，无需重填」）/ config/test 同组交叉核对（同族另一地址 200 可达时 401 行明示「更可能是隧道瞬断，不一定是密码错」）/ SGLang 双卡删 age 文字改脉冲点（每帧亮一次）+ 首页卡补状态标签与吞吐**
 
 ### 修复
 
