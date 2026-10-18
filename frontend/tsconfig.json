@@ -5,6 +5,8 @@
     "moduleResolution": "bundler",
     "jsx": "react",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,

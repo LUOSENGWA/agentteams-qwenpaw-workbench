@@ -132,10 +132,6 @@ export function RemoteKbView(props: {
   // 修：teams 拉取挪到 mount 无条件（下方 effect）；scopedAgents 语义改为
   // 「kbTeam 非空但团队未落地 = 空列表（宁空勿错）」——teams 落地后
   // scopedAgents 变化会重新触发默认选择 effect，秒级收敛到记忆/leader。
-  const teamWorkerNames = React.useMemo(() => {
-    const t = kbTeams.find((x) => x.team_name === kbTeam);
-    return t ? (t.workers || []).map((w) => w.worker_name).filter(Boolean) : [];
-  }, [kbTeams, kbTeam]);
   const scopedAgents = React.useMemo(() => {
     if (!kbTeam) return agents; // 「全部团队」= 全量（显式选择）
     const t = kbTeams.find((x) => x.team_name === kbTeam);

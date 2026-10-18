@@ -534,7 +534,6 @@ async function probeUrl(
 ): Promise<Record<string, unknown>> {
   const t0 = Date.now();
   // ① 纯网络可达性（no-cors：到达即 resolve，不可达才 reject）。
-  let reachable = false;
   try {
     await fetch(url, {
       mode: "no-cors",
@@ -543,7 +542,6 @@ async function probeUrl(
       redirect: "follow",
       signal: withTimeout(6000),
     });
-    reachable = true;
   } catch {
     return {
       url,

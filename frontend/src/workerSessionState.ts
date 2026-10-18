@@ -125,19 +125,7 @@ function workerSessionState(
   });
 }
 
-/** 房间级活动指示（房间头/房间卡专用，非 per-Worker 语义）：
- * 任一 Worker 正在该房间 typing → running；否则按房间最后活动（任何
- * 发送者）→ done。**per-Worker 灯一律走 workerSessionState（per-sender）。** */
-function roomWorkerState(
-  room: SessionRoomLike,
-  workerMxids: ReadonlySet<string>,
-  now: number = Date.now(),
-): WorkerSessionState {
-  for (const m of room.typing || [])
-    if (workerMxids.has(m)) return "running";
-  if (room.last_ts && now - room.last_ts <= DONE_WINDOW_MS) return "done";
-  return "idle";
-}
+
 
 /** 从团队树收集全部 Worker MXID（L2 / 未配 token 的 room-fallback 源同款）。 */
 function collectWorkerMxids(

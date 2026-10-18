@@ -9,8 +9,6 @@
  *
  * 命名纪律：本页是「独立」档位（宿主形态），不是「离线」——数据面可达性
  * 是另一轴；caps.net 为 true 且数据面探针可达后入口分流改挂完整工作台。 */
-import type * as ReactNS from "react";
-
 import { useThemeColors } from "./theme";
 import { useT } from "./i18n";
 import { requestJson, type WorkbenchConfig } from "./api";

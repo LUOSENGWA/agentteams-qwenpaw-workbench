@@ -131,11 +131,6 @@ export function invalidateTags(tags: string[]): void {
   }
 }
 
-/** 删除单键。 */
-function invalidateKey(key: string): void {
-  store.delete(key);
-}
-
 /** 缓存统计（size=当前条目数）。 */
 export function cacheStats(): RequestCacheStats {
   return {

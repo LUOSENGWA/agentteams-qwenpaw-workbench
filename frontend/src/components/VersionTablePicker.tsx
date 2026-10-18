@@ -151,7 +151,7 @@ export default function VersionTablePicker({
                   title: tr("版本"),
                   dataIndex: "version",
                   width: 130,
-                  render: (v: string, r: UpgradeVersionRow) => (
+                  render: (v: string, _r: UpgradeVersionRow) => (
                     <span style={{ fontFamily: "monospace", fontSize: 12 }}>
                       {v}
                     </span>

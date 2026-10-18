@@ -2519,6 +2519,22 @@ const DICT: Record<string, { en: string }> = {
   "无 qwenpaw 运行时 Worker（就地升级仅支持 qwenpaw）": {
     en: "No qwenpaw-runtime workers (in-place upgrade only supports qwenpaw)",
   },
+  "选择要升级的 Worker（按团队分组；选一个=单独升级）": {
+    en: "Select workers to upgrade (grouped by team; one = single upgrade)",
+  },
+  "写入慢，读回验证是否已生效…": {
+    en: "Slow write — reading back to verify it took effect…",
+  },
+  "已生效（写入慢，读回确认模型={m}）": {
+    en: "Applied (slow write, read-back confirms model={m})",
+  },
+  "已生效（写入慢，读回确认）": { en: "Applied (slow write, read-back confirms)" },
+  "保存超时且读回未见生效——请刷新重试": {
+    en: "Save timed out and read-back shows no effect — refresh and retry",
+  },
+  "保存超时，读回失败——请重试": {
+    en: "Save timed out and read-back failed — retry",
+  },
   "检查更新失败": { en: "Update check failed" },
   "注意：Controller 当前不回显已保存的自定义变量（保存=整块替换写 CRD）——已保存值以下方「运行时环境」为准（容器重建后生效）。": {
     en: "Note: the Controller currently does not echo back saved custom variables (save = whole-map replace on the CRD) — consult the “Runtime environment” section below for saved values (effective after container recreation).",

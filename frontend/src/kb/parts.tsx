@@ -4,7 +4,7 @@
 import { CloseIcon, DocIcon, FolderIcon, LinkIcon } from "../components/icons";
 import type * as ReactNS from "react";
 
-import type { KbDirItem, KbFileItem } from "../api";
+import type { KbDirItem } from "../api";
 import { formatDateShort, formatDateTime, formatSize, formatTimeShort } from "../util";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";

@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 """AgentTeams QwenPaw Workbench backend plugin entry point.
 
-Registered capabilities (v0.5.0-beta.12):
+Registered capabilities (introduced v0.5.0-beta.12, current surface):
 
 - ``register_http_router`` → ``/agentteams-proxy/*`` (config/login/连通性/
  selfcheck L0-L4/Matrix 代理/Controller 透传/workflow-events/teams-sync/
- 房间 SSE/DM/上传/通知/sglang-loads)
+ 房间 SSE/DM/上传/通知/sglang-loads/upgrade/matrix-auth/admin/token)
 - ``register_slash_command("selfcheck")`` → run L0-L2 from the chat input
 - ``register_tool("agentteams_qwenpaw_workbench_status")`` → agent 工具：查询当前
  登录用户的团队/房间/Worker 树状态（overview|rooms|teams；默认关闭）
+- ``register_startup_hook`` / ``register_shutdown_hook`` (多对) → 背景钩子：
+ 后台地址自动重排（外/内网切换）、宿主收件箱审批桥、Matrix 代理保活、
+ 配置权限收紧（600）。详见各 hook 内注释。
 
 The frontend entry (``dist/index.js``) renders the workbench page at
 ``/apps/agentteams-qwenpaw-workbench``.

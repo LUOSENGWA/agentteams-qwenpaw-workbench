@@ -1,6 +1,5 @@
 import type * as ReactNS from "react";
 import { useT } from "../i18n";
-import { useThemeColors } from "../theme";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;

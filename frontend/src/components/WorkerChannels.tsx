@@ -36,7 +36,6 @@ import {
   type WorkerChannelConfig,
   type ChannelSchema,
   fetchWorkerChannels,
-  fetchWorkerChannelTypes,
   fetchWorkerChannelSchemas,
   fetchWorkerChannel,
   putWorkerChannel,

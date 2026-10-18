@@ -155,7 +155,7 @@ function fmtRfc3339(v: string): string {
 }
 
 /** 树形连线：行首缩进 + 竖线 + 横线（经典树视觉）。 */
-function TreeLine({ depth, isLast }: { depth: number; isLast: boolean }) {
+function TreeLine({ depth, isLast: _isLast }: { depth: number; isLast: boolean }) {
   const segs: ReactNS.ReactNode[] = [];
   for (let d = 0; d < depth; d++) {
     segs.push(

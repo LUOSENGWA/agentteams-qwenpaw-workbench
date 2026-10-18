@@ -15,7 +15,6 @@ import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
-const antd = host.antd;
 
 const STATE_COLOR: Record<WorkerSessionState, string> = {
   running: "#3b82f6",

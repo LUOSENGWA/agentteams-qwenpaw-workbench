@@ -327,10 +327,8 @@ function groupTurns(msgs: WorkerChatMessage[]): DetailItem[] {
 /** 步骤行：工具（名+参数/输出单行预览，失败 ❌）/ 思考 💭 / 中间文本 💬 / 媒体。 */
 function StepLine({
   e,
-  tr,
 }: {
   e: Extracted;
-  tr: (k: string, v?: Record<string, string | number>) => string;
 }) {
   const t = useThemeColors(); 
   return (
@@ -479,7 +477,7 @@ function StepsCollapse({
           }}
         >
           {items.map(({ i, e }) => (
-            <StepLine key={i} e={e} tr={tr} />
+            <StepLine key={i} e={e} />
           ))}
         </div>
       ) : null}
@@ -1045,7 +1043,6 @@ function WorkerChats({
                           <StepLine
                             key={j}
                             e={{ role: e.role, type: e.type, parts: [p] }}
-                            tr={tr}
                           />
                         ) : p.kind === "media" ? (
                           <div key={j} style={{ margin: "4px 0" }}>

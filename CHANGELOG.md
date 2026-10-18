@@ -3,6 +3,22 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.29（2026-10-18 · Coding CLI「设置了也没用」格式根因修 + 运行时升级选择改回团队分组下拉 + tsconfig 死代码门 + 全量屎山清理）
+
+本批 = 15.28 使用反馈 2 件（选 Worker 升级的菜单要**放在下拉菜单里**按团队排列，在菜单里直接看见当前版本/可升级到最新版/是否可更新；Qwen Code settings **还是没法用**）+ 全量屎山交叉检查（对照 10-07 外部审计清单逐项复核）。
+
+**修复**
+- **Coding CLI「设置了也没用」——model 写入格式根因 + 超时误报失败**：① **model 格式根因**：qwen-code 现行 `~/.qwen/settings.json` 的 `model` 是**对象 `{name}`**（官方「New Configuration Format」文档实证；早期扁平字符串由 CLI 自动迁移），而 opencode/qoder 是**扁平字符串**（controller 测试夹具 `"model":"updated"` 实证）。原代码统一写 `{name}` 对象 → opencode/qoder 读不到（反之亦然），「保存成功但没生效」。改为**按 CLI 区分**：`qwen-code` 写 `{name}`、其余写扁平字符串；**读取双向兼容**（string / `{name}` 都认）。② **超时误报**：controller 的 settings 写入是同步链（exec 读 → merge → mkdir → archive 写 → exec mv → **同步审计落盘 MinIO**），慢盘/审计尾延迟下实测**响应 240s+**（文件本身数秒内已写完）。原前端 30s 超时先放弃 → 用户看到「失败」但文件其实已写（状态不一致）。现超时 30s→180s，且**超时≠失败**：捕获 `isTimeout` 后**读回验证**（逐顶层键比对是否已反映，secret 哨兵 `***` 跳过），已反映=按成功处理并回写基线，未反映=如实报错——不假装成功。
+- **运行时升级「选 Worker」改回下拉菜单（撤销 15.28 平铺卡片列）**：15.28 把多选下拉改成了**按团队分组的平铺卡片列**（使用反馈：「要按团队排列，但还是放在下拉菜单里面，而不是就这么列出来」）。改回 **`antd.Select` 多选下拉 + 按团队分组（`options` 分组）**，**每个菜单项行内直接显示** Worker 名 + 当前 qwenpaw 运行时版 `→ 可升级到最新版` + 可升级/最新/未知版本/探测失败标记（「检查更新」探测结果合入菜单项）；`showSearch` + `optionFilterProp="label"` 可搜索，`maxTagCount="responsive"` 自适应。选一个 = 单独升级。
+
+**改进**
+- **tsconfig 开启 `noUnusedLocals` + `noUnusedParameters`（死代码门，不靠纪律靠门）**：此前「干净靠纪律」——新门首跑即抓出 **37 处真死变量/参数/局部**（import、state、函数、未用形参），逐一清理：真死删、签名语义保留的形参用 `_` 前缀。从此新增死代码 tsc 直接红。
+- **全量屎山清理（对照 10-07 外部审计逐项复核，registry 优先于审计清单）**：① **7 个死脚手架文件**（`harness/entry-1322/1323/1324.tsx` + `page-*.html` + `archive/MermaidDagView-13.24.tsx`，零引用）`git rm`；② **13 个零调用假公共 API** 函数删除（memory 取数簇 5 件无 UI 承载 / upgrade 单探 3 件被 check-all 取代 / team-file 2 件被新端点取代 / controller-version / agent-id-list / channel-types）——**但 `fetchProjectsWorkflow` 被 api.ts 内部 `loadWorkflowProjectsRaw` 自引用，tsc 门当场抓回恢复**（零调用 grep 排除 api.ts 自身漏了内部自引用——门的价值实证）；③ **6 个孤儿导出类型**删除（Memory 系列 / ControllerVersion / Upgrade 单探 3 件 / UpgradeGate 系列），共享类型（`MemorySection`/`TeamsRoomsResponse`）保留；④ **15 个根目录旧 ZIP 归档**到 `archive/`；⑤ **`PREEMBED-EXEMPT.md` 豁免清单优先**——审计误标 `sendInboxNotify`(P1 预留) / `fetchTeamsRooms`(P2 历史替代) 为死码，**registry 在册绝不删**（外部审计没读豁免清单的疏漏）。
+- **docs 同步 + 版本三源对齐**：`plugin.py` 模块 docstring 能力清单补全（注册了 4 组 startup/shutdown 背景钩子：地址自动重排 / 收件箱审批桥 / Matrix 代理保活 / 配置权限 600，原只列 3 个用户面能力）；**修复 15.28 漏 bump 的 Python 源**（plugin.json/package.json=15.28 但 `__init__.py` 还停 15.27，三源一致性门正确抓出）——三源统一 15.29。
+- **181 审计性能项复核（结论：多为已解决/非真问题，不打地鼠）**：① 「4 处永活轮询」→ 已被统一 `usePoller` 门控体系解决（内置 `!document.hidden`，文档隐藏即停，注释自证「后台零负载」；剩余 always-on 都是合法根级件 index backstop / authPoller 会话保活）；② 「无虚拟滚动」→ 三个最长列表都已 bounded（RoomChat 服务端 `limit`+load-more 前插 / KB 文件 `limit=80`+`maxHeight` / 版本表 ≤30 行），上虚拟滚动库=高风险大改换零收益，**知道什么时候停**。
+
+**验证**：tsc 0（含新 noUnused 门）· vite build 单文件 1,958 kB · **pytest 447/447**（零回归）· i18n 门 1692 键 · 敏感扫 0 · 版本三源一致（15.29）· 真机 E2E：qwen-code settings `model:{name}` 写入 → 读回 `{'name':...}` 一致（对象格式正确落盘），超时读回验证链成立。
+
 ## 0.5.0-beta.15.28（2026-10-18 · LLM 流式超时预填真值 + Coding CLI 空配置可设 + 运行时升级单模式退役（团队分组+当前版本+可升级标记）+ 场景模板撤除）
 
 本批 = 15.27 使用反馈 6 件：LLM 调优两个流式超时字段没预填充当前值 / Coding CLI 配置为空时无法设置 / 目标版本菜单要默认收起 / 选 Worker 要按团队排列并显示当前版本和是否可升级 / 单独升级去掉（批量选一个=单独）/ 场景模板撤除（正式承载待 AgentCom 成熟后放团队管理）。

@@ -5,7 +5,6 @@ import { WbTooltip } from "../WbTooltip";
 
 const host = window.QwenPaw.host;
 const React = host.React;
-const antd = host.antd;
 
 /** QwenPaw console Form.Item 行等价物（label + ⓘ tooltip 左 / 控件右，
  * 垂直堆叠行——Agent Config 页的呈现语言）。 */

@@ -23,7 +23,7 @@
 // 尾延迟 6-9s，每个浏览器窗口各打一份）」退役——改单端点 /workers-status
 // （后端连接器侧 30s 后台单点扫描 + 聚合缓存，多窗口共享），每 tick 仅 1 请求。
 
-import { fetchWorkerChats, fetchWorkersStatus } from "./api";
+import { fetchWorkersStatus } from "./api";
 import { usePoller } from "./usePoller";
 
 /** Per-Worker session 状态聚合（chats 全量 session 归约）。 */
@@ -34,35 +34,12 @@ interface WorkerChatStatusAgg {
   lastUpdated: number;
 }
 
-/** 单 Worker 的 /chats → 聚合。502/404/网络错误 → null（调用方保旧值）。 */
-async function fetchWorkerChatStatusAgg(
-  name: string,
-): Promise<WorkerChatStatusAgg | null> {
-  let chats;
-  try {
-    chats = await fetchWorkerChats(name);
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(chats)) return null;
-  let running = false;
-  let lastUpdated = 0;
-  for (const c of chats) {
-    if (c && typeof c === "object") {
-      if (c.status === "running") running = true;
-      const ts = c.updated_at ? Date.parse(c.updated_at) : NaN;
-      if (Number.isFinite(ts) && ts > lastUpdated) lastUpdated = ts;
-    }
-  }
-  return { running, lastUpdated };
-}
-
 const POLL_MS = 30_000;
 
 // 退役说明：旧 pollAll 逐 worker 扇出
 // （并发 4，~25 路，尾延迟 6-9s，每窗口各打一份）已替换为单端点
-// /workers-status（后端后台单点扫描 + 聚合缓存）。fetchWorkerChatStatusAgg
-// 保留（export 契约不变，供其他调用方）。
+// /workers-status（后端后台单点扫描 + 聚合缓存）。逐 worker 的
+// fetchWorkerChatStatusAgg 已随之删除（无调用方）。
 
 /**
  * 轮询 hook：names（worker 名集合，随团队树变化）→ name → 聚合状态。

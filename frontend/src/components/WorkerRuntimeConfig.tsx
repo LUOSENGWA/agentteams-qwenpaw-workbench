@@ -590,7 +590,6 @@ function WorkerRuntimeConfig({
       };
       const e = (k: string): EditVal | undefined =>
         ctxEdits[k] === null || ctxEdits[k] === undefined ? undefined : ctxEdits[k];
-      let bad: string | null = null;
       // 词元估算除数（实盘 4.0——可为小数，正数即可）。
       {
         const v = e("token_count_estimate_divisor");
@@ -914,16 +913,12 @@ function WorkerRuntimeConfig({
   }
 
   const lv = cfg ? parseLoop(cfg.loop) : null;
+  const remeCfg = cfg?.reme_light_memory_config;
+  const adbpgCfg = cfg?.adbpg_memory_config;
   const labelStyle: ReactNS.CSSProperties = {
     fontSize: 12,
     color: "rgba(127,127,127,0.95)",
   };
-  const remeCfg = cfg?.reme_light_memory_config;
-  const adbpgCfg = cfg?.adbpg_memory_config;
-  const hasMem =
-    (remeCfg && typeof remeCfg === "object" && Object.keys(remeCfg as Rc).length > 0) ||
-    (adbpgCfg && typeof adbpgCfg === "object" && Object.keys(adbpgCfg as Rc).length > 0);
-
   return (
     <div
       style={{

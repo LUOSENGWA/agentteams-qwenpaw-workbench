@@ -901,7 +901,7 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
     const detail = body.split("\n").slice(1).join("\n").trim();
     return { firstLine, name: toolNameOf(body), head, status, rest, detail };
   }, [body, tr]);
-  const { firstLine, name, head, status, rest, detail } = derived;
+  const { firstLine, name, status, rest, detail } = derived;
   const statusIcon = status === "ok" ? (
     <CheckIcon size={12} style={{ color: "#30a46c" }} />
   ) : status === "fail" ? (
@@ -1743,7 +1743,6 @@ function RoomChat(props: RoomChatProps) {
     sessionState,
     workerMxids,
     workerSessionByMxid,
-    workers,
     onOpenProject,
     onWorkflowIntervened,
     onOpenProjectFiles,

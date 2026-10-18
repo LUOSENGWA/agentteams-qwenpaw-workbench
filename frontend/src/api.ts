@@ -64,9 +64,13 @@ export async function requestJson(
     const aborted =
       e instanceof DOMException && e.name === "AbortError";
     if (aborted) {
-      throw new Error(
+      const err = new Error(
         `请求超时（${Math.round((timeoutMs || 0) / 1000)}s）——网络或后端冷启动中，稍后点刷新重试`,
       );
+      // 15.29 标记：超时≠失败（服务端可能仍在完成写——coding-cli settings
+      // 同步写尾延迟可达分钟级），调用方可读回验证而非直接报失败。
+      (err as Error & { isTimeout?: boolean }).isTimeout = true;
+      throw err;
     }
     throw e;
   }
@@ -597,20 +601,6 @@ export async function listCodingRuns(): Promise<CodingRun[]> {
 }
 
 // ── 运行时升级（1.2.5 #1364/#1343：两阶段编排器 + 预检门控）─────────
-/** Controller 版本端点（GET /api/v1/version，认证中间件放行任意已认证请求）。
- * 源码构建回 controller="dev"（上游未注入版本号，dashboard 关于页同款行为）
- * ——照实显示，tooltip 指向各节点真实发布版本（镜像 tag，见 imageTag）。 */
-export interface ControllerVersion {
-  controller?: string;
-  kubeMode?: string;
-}
-
-export async function fetchControllerVersion(): Promise<ControllerVersion> {
-  return cachedRequest<ControllerVersion>("controller/version", 60000, async () =>
-    (await requestJson("/agentteams-proxy/controller/api/v1/version")) as ControllerVersion,
-  );
-}
-
 /** 镜像引用解析版本 tag：先切最后一个 '/' 再取最后 ':' 之后的段
  * （registry:5000/foo/bar:1.0 不取成端口）；无 tag（localhost 无标签等）
  * 原样返回仓库名。 */
@@ -632,43 +622,6 @@ export function imageTag(image?: string): string {
 //   容器将重启、在跑任务中断、失败自动回滚）。status=state-file
 //   on-disk 真相源（跨容器重启可读）。
 // QwenPaw only：runtime != qwenpaw → 400（后端门控，UI 同步提示）。
-
-export type UpgradeGateStatus =
-  | "PASS"
-  | "FAIL"
-  | "WARN"
-  | "SKIP"
-  | "NOT_RUN"
-  | "ERROR";
-
-export interface UpgradeGate {
-  id: string;
-  name: string;
-  status: UpgradeGateStatus;
-  evidence?: string;
-  advice?: string;
-}
-
-/** 轻探（无 version）：当前版本 + 升级脚本可用性。 */
-export interface UpgradeLightCheck {
-  worker: string;
-  container: string;
-  current?: string | null;
-  checker?: string;
-  upgrader?: string;
-  supported: boolean;
-  cached?: boolean;
-}
-
-/** 最新稳定 qwenpaw 版本（单次 PyPI 查询，后端 10min 缓存）。 */
-export interface UpgradeLatest {
-  latest: string;
-  source?: string;
-  cached?: boolean;
-  stale?: boolean;
-  fetched_at?: number | null;
-  error?: string;
-}
 
 /** 批量检查更新（15.27）：一次调用=全部 worker 当前版+latest 本地匹配。
  * 当前版=服务端批量轻探（10min 缓存）——「检查更新」二次点击零 exec。 */
@@ -732,20 +685,6 @@ export interface WorkerRuntimeEnv {
   env: WorkerRuntimeEnvEntry[];
 }
 
-/** 完整预检：checker --json 透传。 */
-export interface UpgradeFullCheck {
-  worker: string;
-  container: string;
-  version: string;
-  check?: {
-    target?: string;
-    overall?: string;
-    exit_code?: number;
-    checks?: UpgradeGate[];
-  } | null;
-  raw?: string | null;
-}
-
 /** job 状态机（runner.py）：终态集合（其余视为进行中继续轮询）。 */
 export const UPGRADE_TERMINAL_STATES: readonly string[] = [
   "success",
@@ -771,26 +710,6 @@ export interface UpgradeStatusResult {
   job_id?: string | null;
   state?: Record<string, unknown> | null;
   pending?: Record<string, unknown> | null;
-}
-
-export async function fetchUpgradeLightCheck(
-  worker: string,
-): Promise<UpgradeLightCheck> {
-  const q = `?worker=${encodeURIComponent(worker)}`;
-  return (await requestJson(
-    `/agentteams-proxy/upgrade/check${q}`,
-    undefined,
-    35000,
-  )) as UpgradeLightCheck;
-}
-
-/** 最新稳定 qwenpaw 版本（单次查询，后端缓存）。 */
-export async function fetchUpgradeLatest(): Promise<UpgradeLatest> {
-  return (await requestJson(
-    "/agentteams-proxy/upgrade/latest",
-    undefined,
-    30000,
-  )) as UpgradeLatest;
 }
 
 /** 批量检查更新（一次调用全量 worker 当前版+latest；服务端 10min 缓存）。
@@ -823,22 +742,6 @@ export async function fetchWorkerRuntimeEnv(
     undefined,
     30000,
   )) as WorkerRuntimeEnv;
-}
-
-export async function fetchUpgradeCheck(
-  worker: string,
-  version: string,
-  verify = false,
-): Promise<UpgradeFullCheck> {
-  const q = new URLSearchParams();
-  q.set("worker", worker);
-  q.set("version", version);
-  if (verify) q.set("verify", "1");
-  return (await requestJson(
-    `/agentteams-proxy/upgrade/check?${q.toString()}`,
-    undefined,
-    verify ? 300000 : 150000,
-  )) as UpgradeFullCheck;
 }
 
 /** 触发升级（破坏性：两阶段编排，容器重启、失败自动回滚）。
@@ -1009,10 +912,14 @@ export async function putCliSettings(
   cli: CodingCliId,
   patch: SettingsObject,
 ): Promise<CliSettingsResponse> {
+  // 15.29：超时 30s→180s——服务端同步写（exec 读→merge→mkdir→archive
+  // 写→exec mv→同步审计落盘）在慢盘/审计尾延迟下实测 240s+ 才完成
+  // （写本身数秒内已成功）；短超时=客户端先放弃，用户看到「失败」但
+  // 文件其实已写（状态不一致）。配合 saveSettings 的读回验证兜底。
   const r = (await requestJson(
     `${CLI_BASE(name)}/${encodeURIComponent(cli)}/settings`,
     { method: "PUT", body: JSON.stringify(patch) },
-    30000,
+    180000,
   )) as CliSettingsResponse;
   return r && typeof r === "object" && r.settings
     ? r
@@ -2068,7 +1975,8 @@ export async function fetchWorkflowProjects(
 /** 项目+工作流取数聚合（连接器侧缓存/
  * 后台刷；前端 1 请求取原始件，装配仍在本地）。
  * force=true → 带 ?refresh=1，
- * 连接器无视 TTL 触发后台补扫（仍零等待返回当前快照，响应字段不变）。 */
+ * 连接器无视 TTL 触发后台补扫（仍零等待返回当前快照，响应字段不变）。
+ * 内部消费方：loadWorkflowProjectsRaw（工作流板取数正源）。 */
 export async function fetchProjectsWorkflow(
   force = false,
 ): Promise<{
@@ -2716,12 +2624,6 @@ export function fetchWorkerChannels(
 ): Promise<Record<string, WorkerChannelConfig>> {
   return controllerRequest("GET", channelBase(name)) as Promise<
     Record<string, WorkerChannelConfig>
-  >;
-}
-/** 频道类型名列表（env 过滤后）。 */
-export function fetchWorkerChannelTypes(name: string): Promise<string[]> {
-  return controllerRequest("GET", `${channelBase(name)}/types`) as Promise<
-    string[]
   >;
 }
 /** 插件频道表单 schema（内置频道无条目）。 */
@@ -4316,165 +4218,14 @@ export async function fetchWorkerCheckpointStatus(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// W3 知识库①——宿主 ReMe 记忆（零新后端）。
-//
-// 「知识库」= ReMe 长期记忆（memory/ 每日卡 + digest/ personal·procedure·wiki
-// + wikilink 图谱），「知识图谱」= 记忆卡 wikilink 引用网络（非实体-关系 KG）。
-// 全部走 host.fetch（自动注入 Authorization + X-Agent-Id），不新增插件路由：
-// GET /agents/{id}/memory/graph 图谱快照（2.1.0+ API）
-// GET /agents/{id}/memory/status 运行时状态（2.1.0+）
-// POST /agents/{id}/memory/reindex 重建索引（2.1.0+，可耗时数分钟）
-// GET /workspace/memory?section= 文件列表（copaw 时代既有）
-// GET /workspace/memory/{path}?section= 文件内容
-// 宿主 <2.1 时 graph/status/reindex 404 → 组件降级（文件浏览仍可用）。
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface MemoryGraphNode {
-  id: string;
-  path: string;
-  name: string;
-  description: string;
-  indexed: boolean;
-  virtual?: boolean;
-  section?: "daily" | "digest" | null;
-  relative_path?: string | null;
-}
-
-export interface MemoryGraphEdge {
-  source: string;
-  target: string;
-  target_anchor?: string | null;
-}
-
-export interface MemoryGraphSnapshot {
-  version: number;
-  nodes: MemoryGraphNode[];
-  edges: MemoryGraphEdge[];
-}
-
-export interface MemoryRuntimeStatus {
-  worker: {
-    status: "idle" | "busy" | "stopping" | "error";
-    queue_pending: number;
-    tasks_running: number;
-  };
-  auto_memory: { enabled: boolean; interval: number };
-  tasks?: unknown[];
-  recent?: { last_error?: string | null };
-  reindexing?: boolean;
-}
-
-export interface MemoryStatusResponse {
-  components: Record<string, Record<string, unknown>>;
-  components_total: string;
-  process_rss: string;
-  runtime: MemoryRuntimeStatus;
-}
-
-export interface MemoryFileItem {
-  filename: string;
-  path?: string;
-  size: number;
-  created_time?: string;
-  modified_time?: string;
-}
-
+// W3 知识库——宿主 ReMe 记忆类型。15.29 屎山清理：memory 取数簇函数已退役
+// （无 UI 承载），仅保留 MemorySection 段语义（kb/types.ts 在用）。
 export type MemorySection = "daily" | "digest";
 
-/** 宿主 agent 列表（getSelectedAgentId 运行时缺失时的 agentId 兜底源）。
- * cachedRequest 包裹（kb/agent-ids，60s）——
- * KnowledgeBase 等多处取数合并为一次。 */
-export async function fetchAgentIdList(): Promise<string[]> {
-  return cachedRequest("kb/agent-ids", 60000, async () => {
-    const raw = (await requestJson("/agents")) as Record<string, unknown>;
-    const agents = Array.isArray(raw.agents) ? raw.agents : [];
-    return agents
-      .map((a) => {
-        const o = a as Record<string, unknown>;
-        return String(o.id ?? "");
-      })
-      .filter(Boolean);
-  });
-}
-
-export async function fetchMemoryGraph(
-  agentId: string,
-): Promise<MemoryGraphSnapshot> {
-  const raw = (await requestJson(
-    `/agents/${encodeURIComponent(agentId)}/memory/graph`,
-  )) as Record<string, unknown>;
-  return {
-    version: typeof raw.version === "number" ? raw.version : 1,
-    nodes: Array.isArray(raw.nodes)
-      ? (raw.nodes as MemoryGraphNode[])
-      : [],
-    edges: Array.isArray(raw.edges) ? (raw.edges as MemoryGraphEdge[]) : [],
-  };
-}
-
-export async function fetchMemoryStatus(
-  agentId: string,
-): Promise<MemoryStatusResponse> {
-  const raw = (await requestJson(
-    `/agents/${encodeURIComponent(agentId)}/memory/status`,
-  )) as Record<string, unknown>;
-  const runtime = (raw.runtime ?? {}) as MemoryRuntimeStatus;
-  return {
-    components:
-      (raw.components as Record<string, Record<string, unknown>>) ?? {},
-    components_total: String(raw.components_total ?? ""),
-    process_rss: String(raw.process_rss ?? ""),
-    runtime: {
-      worker: runtime.worker ?? {
-        status: "idle",
-        queue_pending: 0,
-        tasks_running: 0,
-      },
-      auto_memory: runtime.auto_memory ?? { enabled: false, interval: 0 },
-      tasks: runtime.tasks,
-      recent: runtime.recent,
-      reindexing: Boolean(runtime.reindexing),
-    },
-  };
-}
-
-/** 触发重建索引（可能耗时数分钟，fire-and-forget；进度轮询 status.reindexing）。 */
-export async function reindexMemory(agentId: string): Promise<void> {
-  await requestJson(
-    `/agents/${encodeURIComponent(agentId)}/memory/reindex`,
-    { method: "POST" },
-  );
-}
-
-export async function listMemoryFiles(
-  section: MemorySection,
-): Promise<MemoryFileItem[]> {
-  const raw = await requestJson(`/workspace/memory?section=${section}`);
-  if (!Array.isArray(raw)) return [];
-  return raw.map((f) => {
-    const o = f as Record<string, unknown>;
-    return {
-      filename: String(o.filename ?? o.path ?? ""),
-      path: o.path != null ? String(o.path) : undefined,
-      size: typeof o.size === "number" ? o.size : 0,
-      created_time: o.created_time != null ? String(o.created_time) : undefined,
-      modified_time: o.modified_time != null
-        ? String(o.modified_time)
-        : undefined,
-    };
-  });
-}
-
-export async function loadMemoryFile(
-  memoryPath: string,
-  section: MemorySection,
-): Promise<string> {
-  const raw = (await requestJson(
-    `/workspace/memory/${memoryPath.split("/").map(encodeURIComponent).join("/")}?section=${section}`,
-  )) as Record<string, unknown>;
-  return String(raw.content ?? "");
-}
+// 15.29 屎山清理：旧 memory 取数簇（fetchMemoryGraph/fetchMemoryStatus/
+// reindexMemory/listMemoryFiles/loadMemoryFile）与 fetchAgentIdList 全零
+// 引用（无 memory UI 承载、KB 已改走 getSelectedAgentId 正源）→ 退役。
+// 类型 MemorySection 保留（kb/types.ts 在用的「daily|digest」段语义）。
 
 // ── 技能管理 ──
 

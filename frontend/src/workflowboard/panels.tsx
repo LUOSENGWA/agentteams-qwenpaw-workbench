@@ -7,14 +7,13 @@ import { type WorkflowEvent, cancelTask } from "../api";
 import ArtifactLines from "../components/ArtifactLines";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { UserIcon, PauseIcon, PlayIcon, CheckIcon, TodoIcon } from "../components/icons";
+import { UserIcon } from "../components/icons";
 import { WorkflowEventsTimeline } from "../components/WorkflowEventsTimeline";
 import {
   statusMeta,
   fmtTime,
   TERMINAL_NODE_STATUSES,
   nodeLabel,
-  replanSeedJson,
 } from "./helpers";
 import { InterventionActions, InterruptsBlock, LoopBlock } from "./blocks";
 import { ProjectTimeline } from "./timeline";

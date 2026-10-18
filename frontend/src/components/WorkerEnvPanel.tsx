@@ -37,9 +37,7 @@ import {
   httpErrorStatus,
   httpErrorDetail,
   type WorkerInfo,
-  type GatewayProbeResult,
   type WorkerRuntimeEnv,
-  type WorkerRuntimeEnvEntry,
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";

@@ -1,5 +1,4 @@
 import { PulseIcon } from "./icons";
-import type * as ReactNS from "react";
 
 import {
   fetchProjectTransitionEvents,
@@ -10,7 +9,6 @@ import { usePoller } from "../usePoller";
 
 const host = window.QwenPaw.host;
 const React = host.React;
-const antd = host.antd;
 
 /** 转换引擎状态词汇（task-transitions.json 契约值）→ 颜色。
  * 未知状态回退灰（新状态上线不炸 UI）。 */

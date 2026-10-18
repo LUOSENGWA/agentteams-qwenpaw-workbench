@@ -47,7 +47,6 @@ import {
 import {
   CODING_CLI_IDS,
   isRedacted,
-  localizedText,
 } from "../codingCliPresets";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
@@ -221,6 +220,48 @@ function getAtPath(obj: SettingsObject | null | undefined, path: string[]): unkn
   return cur;
 }
 
+/** 15.29：超时错误识别（requestJson 标记 isTimeout）。 */
+function isTimeoutError(e: unknown): boolean {
+  return !!(e && typeof e === "object" && "isTimeout" in e && (e as { isTimeout?: boolean }).isTimeout);
+}
+
+/** 15.29：patch 的 model 值（字符串格式 / 兼容旧 {name} 对象）。 */
+function modelOfPatch(patch: SettingsObject): string | undefined {
+  const m = patch.model;
+  if (typeof m === "string") return m;
+  if (m && typeof m === "object") {
+    const n = (m as Record<string, unknown>).name;
+    if (typeof n === "string") return n;
+  }
+  return undefined;
+}
+
+/** 15.29：读回验证——patch 各顶层键是否已反映在回读 settings 中。
+ *  secret 哨兵（"***"=保留）与回读脱敏值不可比 → 跳过；env 子树同
+ * 深比较（值相等才算反映）。宁可判「未反映」（报错重试）也不假成功。 */
+function patchReflectedInSettings(
+  patch: SettingsObject,
+  settings: SettingsObject | undefined | null,
+): boolean {
+  if (!settings || typeof settings !== "object") return false;
+  for (const [k, v] of Object.entries(patch)) {
+    if (typeof v === "string" && v === "***") continue; // 保留哨兵
+    const cur = settings[k];
+    if (k === "model") {
+      const cm =
+        typeof cur === "string" ? cur
+        : cur && typeof cur === "object" && typeof (cur as Record<string, unknown>).name === "string"
+          ? ((cur as Record<string, unknown>).name as string)
+          : "";
+      const pm = modelOfPatch({ model: v });
+      if (cm !== (pm ?? "")) return false;
+      continue;
+    }
+    if (JSON.stringify(cur) !== JSON.stringify(v)) return false;
+  }
+  return true;
+}
+
 /** AutoComplete options（modelUnion 的三组或平铺；结构类型避免耦合）。 */
 type ModelOptions =
   | Array<{ value: string; label?: ReactNS.ReactNode }>
@@ -302,11 +343,9 @@ function useCodingCliPanel({
   const [selected, setSelected] = React.useState<CodingCliId>("qwen-code");
   const [settings, setSettings] = React.useState<CliSettingsResponse | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
-  const [secrets, setSecrets] = React.useState<Record<string, string>>({});
   const [versionTag, setVersionTag] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [jsonPatch, setJsonPatch] = React.useState("");
   const [uninstallTarget, setUninstallTarget] = React.useState<CodingCliId | null>(null);
   // 检查更新：各已装 CLI 的 registry latest（best-effort；容器镜像源可能不同）。
   const [latestInfo, setLatestInfo] = React.useState<
@@ -401,7 +440,7 @@ function useCodingCliPanel({
         const resp = await putCliSettings(worker.name, selected, patch);
         // 保存摘要回读（15.27）：动了模型=明示新值（留空=已清除）——
         // 对齐「像管理 worker 那样容易管理」：每次保存一眼确认生效值。
-        const m = (patch.model as { name?: string } | undefined)?.name;
+        const m = modelOfPatch(patch);
         if (m !== undefined) {
           setMsg({
             kind: "ok",
@@ -419,6 +458,39 @@ function useCodingCliPanel({
         if (httpErrorStatus(e) === 403) {
           setReadOnly(true);
           setMsg({ kind: "err", text: tr("当前角色仅可查看，不能修改编码 CLI") });
+        } else if (isTimeoutError(e)) {
+          // 15.29：超时≠失败。服务端同步写可能已在客户端放弃后完成
+          // （慢盘/审计尾延迟，写本身数秒内已成功）→ 读回验证：已反映
+          // =按成功处理（回写基线）；未反映=如实报错，不假装成功。
+          setMsg({
+            kind: "ok",
+            text: tr("写入慢，读回验证是否已生效…"),
+          });
+          try {
+            const rb = await getCliSettings(worker.name, selected);
+            const reflected = patchReflectedInSettings(patch, rb?.settings);
+            if (reflected) {
+              if (rb) setSettings(rb);
+              const m = modelOfPatch(patch);
+              setMsg({
+                kind: "ok",
+                text: m
+                  ? tr("已生效（写入慢，读回确认模型={m}）", { m })
+                  : tr("已生效（写入慢，读回确认）"),
+              });
+              onChanged?.();
+            } else {
+              setMsg({
+                kind: "err",
+                text: tr("保存超时且读回未见生效——请刷新重试"),
+              });
+            }
+          } catch (e2) {
+            setMsg({
+              kind: "err",
+              text: httpErrorDetail(e2) || tr("保存超时，读回失败——请重试"),
+            });
+          }
         } else {
           setMsg({ kind: "err", text: httpErrorDetail(e) || tr("保存失败") });
         }
@@ -596,6 +668,7 @@ function SettingsTreeEditor({
   onModelChange,
   modelOptions,
   modelCandidates,
+  objectModel,
 }: {
   base: SettingsObject;
   readOnly: boolean;
@@ -603,11 +676,14 @@ function SettingsTreeEditor({
   onSave: (patch: SettingsObject) => void;
   /** 模型专行（15.27：同 Worker 模型选择的列表选择）。undefined=不启用
    * （树内 model 键照常渲染）；启用后 model 顶层键从树中摘出，由此行
-   * 管理（draft 在父组件），保存时按 diff 写入 patch.model={name}。 */
+   * 管理（draft 在父组件），保存时按 diff 写入 model（15.29 格式：
+   * objectModel=true 写 {name}，否则写扁平字符串）。 */
   modelValue?: string;
   onModelChange?: (v: string) => void;
   modelOptions?: ModelOptions;
   modelCandidates?: string[];
+  /** 15.29：model 以对象 {name} 写（qwen-code 现行格式）；false=扁平字符串。 */
+  objectModel?: boolean;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -640,16 +716,25 @@ function SettingsTreeEditor({
   const handleSave = () => {
     const patch: SettingsObject = { ...diffSettings(base, draft) };
     Object.assign(patch, buildSecretPatch(base, secretDraft));
-    // 模型专行：draft 在父组件——此处按 base diff 写入 patch.model={name}
-    // （空串=清除覆盖，回退 CLI 默认）。写前校验同 Worker 模型选择
-    // （路径/URL/空格=error 阻止；不在在服列表=warn 放行提示）。
+    // 模型专行：draft 在父组件——按 base diff 写入。15.29 格式定案：
+    // qwen-code 现行 settings.json 的 model 是**对象 {name}**（官方
+    // 文档「New Configuration Format」+ dashboard 同款写法实证；旧扁平
+    // 字符串格式由 CLI 自动迁移）；opencode/qoder 用扁平字符串
+    // （controller 测试夹具 "model":"updated" 实证）。读取双向兼容
+    // （settingsModel 同时认 string / {name}）。空串=清除覆盖，merge
+    // 直覆，回退 CLI 默认。写前校验同 Worker 模型选择
+    // （路径/URL/空格=error 阻止；不在在服列表=warn 放行）。
     if (modelValue !== undefined && onModelChange) {
       const v = (modelValue ?? "").trim();
+      const bm = getAtPath(base, ["model"]);
       const baseModel =
-        typeof getAtPath(base, ["model", "name"]) === "string"
-          ? (getAtPath(base, ["model", "name"]) as string)
-          : "";
-      if (v !== baseModel) patch.model = { name: v };
+        typeof bm === "string"
+          ? bm
+          : bm && typeof bm === "object" && typeof (bm as Record<string, unknown>).name === "string"
+            ? ((bm as Record<string, unknown>).name as string)
+            : "";
+      if (v !== baseModel)
+        patch.model = objectModel ? { name: v } : v;
       if (v) {
         const verdict = validateModelValue(v, modelCandidates ?? []);
         if (verdict.level === "error") {
@@ -847,10 +932,18 @@ function CodingCliPanelBody({
   // 模型列表选择（15.27，同 Worker 模型选择正源）：候选 = SGLang 在服 ∪
   // 在用（当前 CLI 的 model.name）∪ 网关 alias；写前校验同款。hook 仅在
   // 卡片展开时挂载（惰性，无后台轮询）。
+  // 15.29：双格式兼容读——CLI 原生 settings.json 的 model 是**字符串**
+  // （controller 测试夹具 "model":"updated" 实证），早期对象格式
+  // （{name}，dashboard 同款写法）也兼容读。
   const settingsModel: string = React.useMemo(() => {
     const m = (s.settings?.settings as Record<string, unknown> | undefined)
-      ?.model as Record<string, unknown> | undefined;
-    return typeof m?.name === "string" ? m.name : "";
+      ?.model;
+    if (typeof m === "string") return m;
+    if (m && typeof m === "object") {
+      const n = (m as Record<string, unknown>).name;
+      if (typeof n === "string") return n;
+    }
+    return "";
   }, [s.settings]);
   const union = useModelUnionOptions(
     settingsModel ? [settingsModel] : [],
@@ -895,7 +988,7 @@ function CodingCliPanelBody({
     );
   }
 
-  const selectedInstalled = s.items.some((c) => c.id === s.selected && c.installed);
+
 
   return (
     <>
@@ -1048,6 +1141,7 @@ function CodingCliPanelBody({
             onModelChange={setModelDraft}
             modelOptions={union.options}
             modelCandidates={union.candidates}
+            objectModel={s.selected === "qwen-code"}
             onSave={(patch) => void s.saveSettings(patch)}
           />
         </div>
@@ -1103,7 +1197,7 @@ function WorkerCodingCliPanel({
   onChanged?: () => void;
 }) {
   const s = useCodingCliPanel({ worker, sheet, onChanged });
-  const { tr, t } = s;
+  const { tr } = s;
 
   if (!s.open) {
     return (

@@ -31,7 +31,7 @@ export const NARROW_MAX_W = 800;
  * 唯一判定。当前 = 容器可见宽 < NARROW_MAX_W（与聊天单栏同判据）。
  * 要按竖屏/长宽比增强：在此加 `|| h > w`（长宽比优先）。
  */
-export function isNarrowLayout(w: number, h: number): boolean {
+export function isNarrowLayout(w: number, _h: number): boolean {
   return w < NARROW_MAX_W;
 }
 
