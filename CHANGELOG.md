@@ -3,6 +3,18 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.32（2026-10-18 · Coding CLI 设置表单完整化：字段目录驱动 + 中英自适应 + modelProviders 标注 Higress 托管）
+
+使用反馈：三 CLI 的 settings 表单「还是不够全」。本批把表单升级为**字段目录驱动**——官方文档字段清单（类型 + 中英双语文案）登记为目录，**未设置的字段也在表单里显示（空态）**，只有你实际改动并保存的项才写入配置文件；表单同时做**中英自适应**。
+
+**新增**
+- **完整设置表单（字段目录驱动）**：qwen-code 覆盖 Web Shell 浏览器内 Settings 页可改字段的主体（约 100 项——model 子字段、模型族、context、tools、memory、agents、mcp、security、serve、advanced、experimental 等）；opencode（server/shell/tools 逐项开关/图片附件/permission 逐项/compaction 等）；qoder（outputStyle/language/ui 全项/model 子字段/tools/security 全项/statusLine）。目录外的字段仍可用 JSON 补丁兜底。
+- **表单中英自适应**：字段标签、分组标题、输入提示均带中英双语，随宿主语言自动切换。
+
+**改进**
+- **qwen-code `modelProviders` 标注「由 Higress 网关管理（默认跟 Worker）」**：空态表单不再预填路由卡片；文件已有 `modelProviders` 时显示托管提示，路由卡片保留可编辑（网关行为以实际部署为准）。
+- **空态 seed 收缩为「有预填意义」的少数项**（模型请求超时 / 审批模式 / 压缩阈值 / 主题 / 自动更新），不再把 CLI 默认值全量写进配置文件。
+
 ## 0.5.0-beta.15.31（2026-10-18 · Coding CLI 三 CLI settings 表单按官方 schema 全量补齐 + 废弃凭据字段迁移 + 3 个真实 bug 修复 + UI harness 重做）
 
 使用反馈：Qwen Code 的 settings **只看到 security / auth / selectedType / JSON 补丁**几个字段，「应该会有很多设置吧」。定位 = 15.30 的 seed 模板只有 3 个字段，且凭据字段 `security.auth.apiKey/baseUrl` **官方已标 Deprecated**（0.25.x「New Configuration Format」）。本批把三个 CLI 的 settings 表单按**官方 schema 全量补齐**（字段来源全部实读官方文档，不猜），凭据迁到正位，并在过程中用重做的 UI harness 揪出 **3 个真实 bug**（2 个存量回归 + 1 个本批引入）。

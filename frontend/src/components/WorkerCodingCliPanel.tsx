@@ -48,10 +48,13 @@ import {
   CODING_CLI_IDS,
   CODING_CLI_SEEDS,
   CODING_CLI_WARNINGS,
+  FIELD_CATALOG,
+  SECTION_LABELS,
   isRedacted,
   qwenDeprecatedAuthFields,
+  type FieldSpec,
 } from "../codingCliPresets";
-import { useT } from "../i18n";
+import { useLang, useT } from "../i18n";
 import { useThemeColors } from "../theme";
 import {
   modelVerdictText,
@@ -789,6 +792,7 @@ function SettingsTreeEditor({
   seed,
   seedSecrets,
   patchPlaceholder,
+  catalog,
 }: {
   base: SettingsObject;
   readOnly: boolean;
@@ -810,9 +814,16 @@ function SettingsTreeEditor({
   seedSecrets?: string[];
   /** 15.31：JSON 补丁占位示例（按 CLI 最高频补丁需求定制）。 */
   patchPlaceholder?: string;
+  /** 15.32：字段目录（FIELD_CATALOG[cli]）——目录内字段即使用户文件未设置
+   * 也渲染（空态控件，用户操作才写 draft → 保存才落盘）；目录不是白名单，
+   * 未收录键原样自由渲染。undefined=不启用目录（纯内容驱动，旧行为）。 */
+  catalog?: Record<string, FieldSpec>;
 }) {
   const t = useThemeColors();
   const tr = useT();
+  const lang = useLang();
+  /** 15.32：目录字段双语文案（spec 自带 zh/en，不走 DICT）。 */
+  const specLabel = (s: FieldSpec): string => (lang === "en" ? s.en : s.zh);
   const seedSecretSet = React.useMemo(
     () => new Set(seedSecrets ?? []),
     [seedSecrets],
@@ -1021,10 +1032,17 @@ function SettingsTreeEditor({
   }
 
   const renderNode = (
-    value: SettingsValue,
+    value: SettingsValue | undefined,
     path: string[],
     skipKey?: string,
   ): ReactNS.ReactNode => {
+    // 15.32：catalog 前缀键文件未设置（undefined）但目录内有更深键 →
+    // 展开为空对象（渲染子字段空态），避免落底显示 "null"。
+    if (value === undefined && catalog) {
+      if (Object.keys(catalog).some((k) => k.startsWith(path.join(".") + "."))) {
+        value = {};
+      }
+    }
     // redacted（服务端脱敏）或 seed-secret（模板里的密钥，draft 里是普通串）
     // → 密码框（留空=不写/保留）。
     if (isRedacted(value) || seedSecretSet.has(path.join("."))) {
@@ -1070,12 +1088,54 @@ function SettingsTreeEditor({
       );
     }
     if (value && typeof value === "object") {
-      const entries = Object.entries(value as SettingsObject);
-      if (entries.length === 0) {
+      const entries = Object.entries(value as SettingsObject).filter(
+        ([k]) => k !== skipKey,
+      );
+      // 15.32：catalog 驱动——目录内子键文件未设置的也显示（空态控件，
+      // 用户操作才写 draft，不操作不落盘）。
+      const prefix = path.join(".");
+      const catChildren = catalog
+        ? Object.keys(catalog)
+            .filter((k) => k.startsWith(prefix + "."))
+            .map((k) => k.slice(prefix.length + 1))
+            .filter((k) => !entries.some(([ek]) => ek === k))
+        : [];
+      if (entries.length === 0 && catChildren.length === 0) {
         return (
           <span style={{ fontSize: 11, color: t.textSecondary }}>(空对象)</span>
         );
       }
+      // 叶子行标签：有 spec=双语文案+key 副行；无 spec=裸 key（原样）。
+      const labelFor = (leafKey: string) => {
+        const spec = catalog?.[`${prefix}.${leafKey}`];
+        return spec ? (
+          <span
+            style={{
+              minWidth: 150,
+              fontSize: 11,
+              color: t.textSecondary,
+              lineHeight: 1.35,
+              display: "grid",
+            }}
+          >
+            {specLabel(spec)}
+            <span style={{ fontFamily: "monospace", fontSize: 10, opacity: 0.7 }}>
+              {leafKey}
+            </span>
+          </span>
+        ) : (
+          <span
+            style={{
+              fontSize: 11,
+              color: t.textSecondary,
+              minWidth: 110,
+              fontFamily: "monospace",
+            }}
+          >
+            {leafKey}
+          </span>
+        );
+      };
       return (
         <div
           style={{
@@ -1104,25 +1164,74 @@ function SettingsTreeEditor({
               </span>
             </div>
           ) : null}
-          {entries
-            .filter(([k]) => k !== skipKey)
-            .map(([k, v]) => (
+          {entries.map(([k, v]) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {labelFor(k)}
+              {renderNode(v, [...path, k])}
+            </div>
+          ))}
+          {/* 15.32：目录内未设置字段（空态起点）。 */}
+          {catChildren.map((k) => {
+            const spec = catalog?.[`${prefix}.${k}`];
+            if (!spec) return null;
+            return (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: t.textSecondary,
-                    minWidth: 110,
-                    fontFamily: "monospace",
-                  }}
-                >
-                  {k}
-                </span>
-                {renderNode(v, [...path, k])}
+                {labelFor(k)}
+                {renderNode(undefined, [...path, k])}
               </div>
-            ))}
+            );
+          })}
         </div>
       );
+    }
+    // 15.32：catalog 驱动叶子——有 spec 按 spec 控件渲染（空态=默认空
+    // 控件；用户操作才写 draft，不操作不落盘）。无 spec=原样通用渲染。
+    const leafSpec: FieldSpec | undefined = catalog?.[path.join(".")];
+    if (leafSpec) {
+      switch (leafSpec.type) {
+        case "bool":
+          return (
+            <antd.Switch
+              checked={value === true}
+              onChange={(c: boolean) => setAtPath(path, c)}
+              disabled={readOnly}
+              size="small"
+            />
+          );
+        case "number":
+          return (
+            <antd.InputNumber
+              value={typeof value === "number" ? value : undefined}
+              onChange={(v: number | null) => setAtPath(path, v ?? 0)}
+              disabled={readOnly}
+              size="small"
+              style={{ width: 140 }}
+            />
+          );
+        case "enum":
+          return (
+            <antd.AutoComplete
+              value={typeof value === "string" ? value : ""}
+              onChange={(v: string) => setAtPath(path, v)}
+              options={(leafSpec.options ?? []).map((o) => ({ value: o }))}
+              disabled={readOnly}
+              size="small"
+              style={{ width: 220, fontFamily: "monospace", fontSize: 11 }}
+            />
+          );
+        default:
+          return (
+            <antd.Input
+              value={typeof value === "string" ? value : ""}
+              onChange={(e: { target: { value: string } }) =>
+                setAtPath(path, e.target.value)}
+              placeholder={leafSpec.hint || undefined}
+              disabled={readOnly}
+              size="small"
+              style={{ maxWidth: 460, fontFamily: "monospace", fontSize: 11 }}
+            />
+          );
+      }
     }
     if (typeof value === "boolean") {
       return (
@@ -1166,10 +1275,20 @@ function SettingsTreeEditor({
   // 与 base 渲染一致，编辑后真实反映。
   // 15.31：model 扁平串（opencode/qoder）整体摘出（专行管）；
   // 对象（qwen-code 现行 {name,...}）保留渲染子字段（name 子键跳过）。
-  const topEntries = Object.entries(draft).filter(
+  const draftTopEntries = Object.entries(draft).filter(
     ([k, v]) =>
       !(modelRowEnabled && k === "model" && !(v && typeof v === "object" && !Array.isArray(v))),
   );
+  // 15.32：catalog 顶层键文件未设置的也显示（空态起点，不操作不落盘）。
+  const catTopKeys = catalog
+    ? Object.keys(catalog)
+        .filter((k) => !k.includes("."))
+        .filter((k) => !draftTopEntries.some(([ek]) => ek === k))
+    : [];
+  const topEntries: Array<[string, SettingsValue | undefined]> = [
+    ...draftTopEntries,
+    ...catTopKeys.map((k) => [k, undefined] as [string, SettingsValue | undefined]),
+  ];
   // 空态提示（15.31）：树无条目 + 模型专行也为空（或无专行）才提示。
   // model 对象（qwen-code {name,...}）留在 topEntries 渲染（树不空）；
   // model 扁平串（opencode/qoder）被专行摘出——专行已有值时不再误报
@@ -1181,7 +1300,7 @@ function SettingsTreeEditor({
        * base 空 + 无 seed（opencode/qoder）→ 仅模型行 + JSON 补丁。 */}
       {Object.keys(base).length === 0 && Object.keys(draft).length > 0 ? (
         <div style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("以下为该 CLI 常用字段（预填起点，可编辑）——保存即创建配置文件；高级字段用下方 JSON 补丁补充。")}
+          {tr("以下为该 CLI 完整设置表单（字段目录驱动）——未设置项显示为空态，只有你改动并保存的项才写入配置文件；未列出的高级字段用下方 JSON 补丁补充。")}
         </div>
       ) : Object.keys(base).length === 0 && modelRowEnabled ? (
         <div style={{ fontSize: 11, color: t.textSecondary }}>
@@ -1212,12 +1331,30 @@ function SettingsTreeEditor({
           {tr("尚无配置文件——填模型名并保存即创建。")}
         </div>
       ) : (
-        topEntries.map(([k, v]) => (
-          <div key={k} style={{ display: "grid", gap: 3 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{k}</span>
-            {renderNode(v, [k], modelRowEnabled && k === "model" ? "name" : undefined)}
-          </div>
-        ))
+        topEntries.map(([k, v]) => {
+          // 15.32：顶层分组双语标题（SECTION_LABELS），无词条回退裸键名。
+          const section = SECTION_LABELS[k];
+          const sectionTitle = section
+            ? lang === "en"
+              ? section.en
+              : section.zh
+            : k;
+          return (
+            <div key={k} style={{ display: "grid", gap: 3 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>
+                {sectionTitle}
+              </span>
+              {/* 15.32：modelProviders 由 Higress 网关托管（默认跟 Worker）——
+               * 仅对 qwen-code 且文件已有该键时提示；下方路由卡片保留可编辑。 */}
+              {k === "modelProviders" ? (
+                <span style={{ fontSize: 11, color: t.textSecondary }}>
+                  {tr("modelProviders 由 Higress 网关管理，默认跟 Worker——一般无需在此配置；已有路由仍可在下方查看/调整。")}
+                </span>
+              ) : null}
+              {renderNode(v, [k], modelRowEnabled && k === "model" ? "name" : undefined)}
+            </div>
+          );
+        })
       )}
       {/* 15.30：JSON 补丁（任意字段逃逸口，同 dashboard；同键以补丁为准）。 */}
       {!readOnly ? (
@@ -1506,6 +1643,7 @@ function CodingCliPanelBody({
             seed={CODING_CLI_SEEDS[s.selected].template}
             seedSecrets={CODING_CLI_SEEDS[s.selected].secretPaths}
             patchPlaceholder={CODING_CLI_SEEDS[s.selected].patchPlaceholder}
+            catalog={FIELD_CATALOG[s.selected]}
             onSave={(patch) => void s.saveSettings(patch)}
           />
         </div>

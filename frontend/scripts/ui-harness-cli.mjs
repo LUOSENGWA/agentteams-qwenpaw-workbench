@@ -235,6 +235,8 @@ assert(
   t9,
 );
 assert("S9b 添加模型路由按钮", (await page.getByRole("button", { name: /添加模型路由/ }).count()) >= 1);
+// 15.32：文件已有 modelProviders → section 级 Higress 托管提示出现（尾句判定）。
+assert("S9b2 Higress 托管 section 提示出现", t9.includes("已有路由仍可在下方查看/调整"), t9.slice(0, 300));
 assert("S9c model 对象 name 子键由专行管理提示", t9.includes("← 由上方「模型」行管理"), t9);
 const m1c9 = await page.evaluate(() =>
   [...document.querySelectorAll("input")].filter((i) => i.value === "m1").length,
@@ -282,16 +284,31 @@ const t10 = await bodyText();
 const seedVals = await page.evaluate(() =>
   [...document.querySelectorAll("input")].map((i) => i.value).filter(Boolean),
 );
+// 15.32：modelProviders 由 Higress 网关管理（默认跟 Worker）→ 空态不预填
+// 路由（无 envKey 输入框）；断言 seed 预填值 + envKey 缺席。
 assert(
-  "S10a seed 预填可见（theme/approvalMode/阈值/envKey 在 input 值）",
+  "S10a seed 预填可见（theme/approvalMode/阈值）+ envKey 缺席（Higress 托管）",
   seedVals.includes("Qwen Dark") &&
     seedVals.includes("auto") &&
     seedVals.includes("0.85") &&
-    seedVals.includes("OPENAI_API_KEY"),
+    !seedVals.includes("OPENAI_API_KEY"),
   JSON.stringify(seedVals) + " | body: " + t10.slice(0, 200),
 );
-assert("S10b seed 路由卡片 #1", t10.includes("openai · 1 号路由"), t10);
+// section 提示尾句独特（warning 横幅同前缀但无此尾句）→ 按尾句判定。
+assert(
+  "S10b 空态无路由卡片且无 section Higress 提示（仅文件已有 modelProviders 时）",
+  !t10.includes("openai · 1 号路由") &&
+    !t10.includes("已有路由仍可在下方查看/调整"),
+  t10.slice(0, 300),
+);
 assert("S10c 空态提示不出现（seed 有内容）", !t10.includes("尚无配置文件"), t10);
+// 15.32：catalog 驱动空态——目录内未设置字段渲染双语标签（zh/en 自适应）。
+assert(
+  "S10c2 catalog 空态字段可见（推理强度/fastModel 标签）",
+  (t10.includes("推理强度") || t10.includes("Reasoning effort")) &&
+    (t10.includes("快速模型") || t10.includes("Fast model")),
+  t10.slice(0, 300),
+);
 // 15.31：模型专行 = antd AutoComplete，搜索 input 的 class 稳定为
 // ant-select-selection-search-input（占位不落 input 属性，不能按 placeholder 找）。
 // Playwright fill 对 React 受控组件可靠（自动派发正确事件）。
@@ -302,18 +319,20 @@ await page.getByRole("button", { name: /保存改动/ }).click();
 await sleep(500);
 const puts10 = await page.evaluate(() => window.__SETTINGS_PUTS__);
 const last10 = puts10[puts10.length - 1];
-assert("S10d model 对象合并（name + 子字段）",
-  last10 && last10.patch.model?.name === "m-new" && last10.patch.model?.maxToolCalls === -1,
+// 15.32：seed 收缩——model 只预填 generationConfig.timeout；合并后
+// patch.model = {generationConfig:{timeout:120000}, name:"m-new"}。
+assert("S10d model 对象合并（name + generationConfig）",
+  last10 && last10.patch.model?.name === "m-new" &&
+    last10.patch.model?.generationConfig?.timeout === 120000,
   JSON.stringify(last10));
 assert(
-  "S10e 零脏字段（无 fastModel/language/空 id/permissions/mcpServers）",
+  "S10e 零脏字段（无 fastModel/language/permissions/mcpServers/modelProviders）",
   last10 &&
     !("fastModel" in last10.patch) &&
     !("permissions" in last10.patch) &&
     !("mcpServers" in last10.patch) &&
-    last10.patch.model && !("reasoningEffort" in last10.patch.model) &&
-    (last10.patch.modelProviders?.openai?.[0]?.envKey === "OPENAI_API_KEY" &&
-      !("id" in (last10.patch.modelProviders?.openai?.[0] || {}))),
+    !("modelProviders" in last10.patch) &&
+    last10.patch.model && !("reasoningEffort" in last10.patch.model),
   JSON.stringify(last10),
 );
 assert("S10f general 只剩 enableAutoUpdate",

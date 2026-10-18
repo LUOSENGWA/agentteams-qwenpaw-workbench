@@ -2615,6 +2615,12 @@ const DICT: Record<string, { en: string }> = {
   "读取运行时环境失败": { en: "Failed to read runtime environment" },
   "过滤键名…": { en: "Filter key name…" },
   "运行时环境": { en: "Runtime environment" },
+  "modelProviders 由 Higress 网关管理，默认跟 Worker——一般无需在此配置；已有路由仍可在下方查看/调整。": {
+    en: "modelProviders is managed by the Higress gateway (defaults to the Worker) — usually no configuration needed here; existing routes can still be viewed/adjusted below.",
+  },
+  "以下为该 CLI 完整设置表单（字段目录驱动）——未设置项显示为空态，只有你改动并保存的项才写入配置文件；未列出的高级字段用下方 JSON 补丁补充。": {
+    en: "Full settings form for this CLI (field-catalog driven) — unset fields show as empty states; only fields you change and save are written to the config file; use the JSON patch below for advanced fields not listed.",
+  },
 };
 
 type Lang = "zh" | "en";
