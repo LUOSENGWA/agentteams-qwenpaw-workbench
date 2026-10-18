@@ -23,10 +23,9 @@ Controller GET /workers/{name} 响应结构不暴露 env 键（detail keys
 """
 from __future__ import annotations
 
-import asyncio
 import re
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -39,6 +38,53 @@ _SENSITIVE_RE = re.compile(
     r"(TOKEN|SECRET|GATEWAY_KEY|PASSWORD|PASSWD|CREDENTIAL|API_KEY|AUTH)",
     re.IGNORECASE)
 _CMD = "head -c 65536 /proc/1/environ | tr '\\0' '\\n' | sort"
+
+# 15.30：docker exec attach 流对某些 worker（如 sysdev-lead）会**间歇挂起
+# ~20-30s 且成串突发**（实测：连读 12 次 3 次挂 20s+、55 的读 1.3s）。
+# 单纯快重试对 30s 挂起无效且更糟（3×30s 拖垮面板）。治 flaky 形态：
+# ① exec cap 8s（正常 1.3s，挂起 8s 快速失败而非 30s）
+# ② 120s TTL 缓存（env 值只在容器重建 / llm stream hot-apply 时变；
+#    首次成功后面板免疫 flaky，参考 upgrade_api._probe_cache 先例）
+# ③ stale 回退（fresh 失败但有历史缓存 → 返旧值，不返空/不挂——
+#    预填充链永远拿到真值而非退化为 registry 默认 30s）
+# ④ ?fresh=1 绕过缓存（保存后确认 hot-applied 真值）。
+_ENV_CACHE_TTL = 120.0
+_ENV_EXEC_TIMEOUT = 8.0
+# worker -> (fetched_at, raw_text)；存 raw（未脱敏），渲染时按 reveal 脱敏。
+_env_cache: Dict[str, Tuple[float, str]] = {}
+
+
+def _env_cache_clear() -> None:
+    """测试用：清空 TTL 缓存（避免用例间串扰）。"""
+    _env_cache.clear()
+
+
+def _render_env(worker: str, reveal: bool, text: str,
+                cached_at: float, stale: bool) -> Dict[str, Any]:
+    entries: list[Dict[str, Any]] = []
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        k = k.strip()
+        if not k:
+            continue
+        sensitive = bool(_SENSITIVE_RE.search(k))
+        entries.append({
+            "key": k,
+            "value": v if (reveal or not sensitive) else _mask(v),
+            "masked": sensitive and not reveal,
+            "sensitive": sensitive,
+            "group": _group(k),
+        })
+    return {
+        "worker": worker,
+        "count": len(entries),
+        "reveal": reveal,
+        "fetched_at": cached_at,
+        "stale": stale,
+        "env": entries,
+    }
 
 
 def _mask(value: str) -> str:
@@ -71,41 +117,38 @@ def build_runtime_env_router() -> APIRouter:
         if not _NAME_RE.match(worker):
             raise HTTPException(status_code=400, detail="worker 名称非法")
         reveal = request.query_params.get("reveal") == "1"
+        fresh = request.query_params.get("fresh") == "1"
         container = f"agentteams-worker-{worker}"
-        # docker exec attach 流读取偶发竞态（实测 ~10% 空读、偶发小连发）：
-        # /proc/1/environ 对运行中容器必非空，空输出=传输层丢帧而非真无 env
-        # （否则 LLM 调优 stream 组预填随读成败抖动 → 用户见「有的有有的没有」）。
-        # 空输出带短退避重试（≤3 次）；_exec 的 502（容器不存在/鉴权）直接抛，
-        # 不进重试（只有 200+空 才重试）。
-        text = ""
-        for _attempt in range(3):
-            _st, text = await _exec(token, container, _CMD, timeout=30.0)
-            if text.strip():
-                break
-            if _attempt < 2:
-                await asyncio.sleep(0.2)
-        entries: list[Dict[str, Any]] = []
-        for line in text.splitlines():
-            if "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            k = k.strip()
-            if not k:
-                continue
-            sensitive = bool(_SENSITIVE_RE.search(k))
-            entries.append({
-                "key": k,
-                "value": v if (reveal or not sensitive) else _mask(v),
-                "masked": sensitive and not reveal,
-                "sensitive": sensitive,
-                "group": _group(k),
-            })
-        return {
-            "worker": worker,
-            "count": len(entries),
-            "reveal": reveal,
-            "fetched_at": time.time(),
-            "env": entries,
-        }
+        now = time.time()
+
+        # ① 命中未过期缓存 → 零 exec 直接返回（flaky 免疫；env 值 120s 内不变）。
+        cached = _env_cache.get(worker)
+        if cached and not fresh and (now - cached[0]) < _ENV_CACHE_TTL:
+            return _render_env(worker, reveal, cached[1], cached[0], stale=False)
+
+        # ② fresh 尝试（exec cap 8s，挂起快速失败而非 30s）。
+        text: str | None = None
+        try:
+            _st, raw = await _exec(token, container, _CMD,
+                                   timeout=_ENV_EXEC_TIMEOUT)
+            if raw.strip():
+                text = raw
+        except HTTPException:
+            text = None  # 502/挂起 → 走 stale 回退（见 ③）
+
+        # ③ fresh 成功 → 更新缓存 + 返回真值。
+        if text is not None:
+            _env_cache[worker] = (now, text)
+            return _render_env(worker, reveal, text, now, stale=False)
+
+        # ④ fresh 失败/空 + 有历史缓存 → stale 回退（返旧值，不返空/不挂——
+        #    预填充链永远拿到真值，不退化为 registry 默认 30s）。
+        if cached:
+            return _render_env(worker, reveal, cached[1], cached[0], stale=True)
+
+        # ⑤ 无缓存且 fresh 失败 → 诚实 502（前端回退 registry 默认）。
+        raise HTTPException(
+            status_code=502,
+            detail="读取运行时环境失败（容器不可达或 exec 超时）")
 
     return router

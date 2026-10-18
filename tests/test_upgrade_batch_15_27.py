@@ -154,9 +154,11 @@ def client(monkeypatch):
     _FakeClient.get_spec = {}
     _FakeClient.write_spec = {}
     import agentteams_connector.routers.upgrade_api as _upg
+    import agentteams_connector.routers.runtime_env_api as _re
     _upg._latest_cache.update({"version": None, "releases": None,
                                "fetched_at": 0.0})
     _upg._probe_cache.clear()
+    _re._env_cache_clear()
     patch_shared_name(monkeypatch, "GatedAsyncClient",
                       lambda *a, **k: _FakeClient(*a, **k))
 
@@ -335,51 +337,96 @@ def test_runtime_env_reveal(client):
     assert gw["value"] == "abcdef1234567890abcdef1234567890abcd"
 
 
-def test_runtime_env_empty_retry_recovers(client, monkeypatch):
-    """docker exec attach 流偶发空读（竞态）→ 带短退避重试，最终非空（15.30）。
+def test_runtime_env_cache_hit_no_reexec(client, monkeypatch):
+    """15.30：首次读填充缓存；TTL 内再读=缓存命中，零 _exec（flaky 免疫）。"""
+    import agentteams_connector.routers.runtime_env_api as reapi
+    tc, _ = client
+    calls = {"n": 0}
 
-    前 2 次返回空（模拟丢帧）、第 3 次真值 → 端点返回 5 条而非 0。
-    直接 monkeypatch _exec（绕过 HTTP mock 的无状态帧），sleep 打快。
+    async def ok_exec(token, container, cmd, timeout=8.0):
+        calls["n"] += 1
+        return (200, ENV_RAW)
+
+    monkeypatch.setattr(reapi, "_exec", ok_exec)
+    r1 = tc.get("/workers/w-qp1/runtime-env")
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["count"] == 5
+    assert calls["n"] == 1
+    r2 = tc.get("/workers/w-qp1/runtime-env")  # TTL 内 → 缓存命中
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["count"] == 5
+    assert r2.json()["stale"] is False
+    assert calls["n"] == 1  # 未再 exec
+
+
+def test_runtime_env_stale_fallback_on_exec_fail(client, monkeypatch):
+    """15.30：缓存过期后 fresh 挂起(502) → stale 回退返旧值（不 502/不返空）。
+
+    先填缓存，再把 _ENV_CACHE_TTL 归零（强制过期）+ _exec 改抛 502
+    （模拟 docker exec 挂起 30s 被 cap 成快速失败）→ 应返缓存旧值 stale=true。
     """
     import agentteams_connector.routers.runtime_env_api as reapi
     tc, _ = client
-    calls = {"n": 0}
 
-    async def flaky_exec(token, container, cmd, timeout=30.0):
-        calls["n"] += 1
-        return (200, "") if calls["n"] < 3 else (200, ENV_RAW)
+    async def ok_exec(token, container, cmd, timeout=8.0):
+        return (200, ENV_RAW)
 
-    async def _fast_sleep(_s):
-        return None
+    monkeypatch.setattr(reapi, "_exec", ok_exec)
+    r1 = tc.get("/workers/w-qp1/runtime-env")
+    assert r1.status_code == 200 and r1.json()["count"] == 5
 
-    monkeypatch.setattr(reapi, "_exec", flaky_exec)
-    monkeypatch.setattr(reapi.asyncio, "sleep", _fast_sleep)
-    r = tc.get("/workers/w-qp1/runtime-env")
-    assert r.status_code == 200, r.text
-    d = r.json()
-    assert d["count"] == 5, d
-    assert calls["n"] == 3  # 空→空→真值
+    # 强制缓存过期 + fresh 挂起
+    monkeypatch.setattr(reapi, "_ENV_CACHE_TTL", 0.0)
+
+    async def hang_exec(token, container, cmd, timeout=8.0):
+        raise reapi.HTTPException(status_code=502, detail="Docker 0")
+
+    monkeypatch.setattr(reapi, "_exec", hang_exec)
+    r2 = tc.get("/workers/w-qp1/runtime-env")
+    assert r2.status_code == 200, r2.text  # 不 502
+    d = r2.json()
+    assert d["count"] == 5  # stale 旧值
+    assert d["stale"] is True
 
 
-def test_runtime_env_empty_persist_graceful(client, monkeypatch):
-    """持续空（≤3 次后放弃）→ 优雅返回 count=0，不 5xx、不无限循环。"""
+def test_runtime_env_no_cache_fail_502(client, monkeypatch):
+    """15.30：无缓存且 fresh 失败 → 诚实 502（前端回退 registry 默认）。"""
     import agentteams_connector.routers.runtime_env_api as reapi
     tc, _ = client
-    calls = {"n": 0}
 
-    async def always_empty(token, container, cmd, timeout=30.0):
-        calls["n"] += 1
-        return 200, ""
+    async def hang_exec(token, container, cmd, timeout=8.0):
+        raise reapi.HTTPException(status_code=502, detail="Docker 0")
 
-    async def _fast_sleep(_s):
-        return None
-
-    monkeypatch.setattr(reapi, "_exec", always_empty)
-    monkeypatch.setattr(reapi.asyncio, "sleep", _fast_sleep)
+    monkeypatch.setattr(reapi, "_exec", hang_exec)
     r = tc.get("/workers/w-qp1/runtime-env")
-    assert r.status_code == 200, r.text
-    assert r.json()["count"] == 0
-    assert calls["n"] == 3  # 恰好 3 次，不更多
+    assert r.status_code == 502, r.text
+
+
+def test_runtime_env_fresh_bypasses_cache(client, monkeypatch):
+    """15.30：?fresh=1 绕过缓存（保存后确认 hot-applied 真值）。"""
+    import agentteams_connector.routers.runtime_env_api as reapi
+    tc, _ = client
+    ENV_999 = ENV_RAW.replace(
+        "QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT=300",
+        "QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT=999")
+
+    async def exec_300(token, container, cmd, timeout=8.0):
+        return (200, ENV_RAW)
+
+    monkeypatch.setattr(reapi, "_exec", exec_300)
+    r1 = tc.get("/workers/w-qp1/runtime-env")
+    assert r1.json()["env"][0]["value"] == "300" or True  # 顺序不定，仅确认 200
+    assert r1.status_code == 200
+
+    async def exec_999(token, container, cmd, timeout=8.0):
+        return (200, ENV_999)
+
+    monkeypatch.setattr(reapi, "_exec", exec_999)
+    r2 = tc.get("/workers/w-qp1/runtime-env", params={"fresh": "1"})
+    assert r2.status_code == 200
+    vals = [e["value"] for e in r2.json()["env"]
+            if e["key"] == "QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT"]
+    assert vals == ["999"], vals  # fresh 取到 hot-applied 新值，非缓存 300
 
 
 def test_runtime_env_no_token_403(client):

@@ -161,7 +161,8 @@ function WorkerLlmTuningPanel({
       // 保存后生效值 = 新 override → 继承；同步 draft（字段回到新生效值）。
       // stream 组保存后 env 会 hot-apply → 同步刷新 env 层（读回真值）。
       setDraft(resolveEffectiveLlmTuning(nextOverride, team, envEffective ?? undefined));
-      void fetchWorkerRuntimeEnv(name)
+      // 15.30：fresh=true 绕 120s 缓存实读 hot-applied 真值（首次加载走缓存）。
+      void fetchWorkerRuntimeEnv(name, false, true)
         .then((envRes) => {
           const envEff: LlmTuningValues = {};
           if (envRes?.env) {

@@ -682,6 +682,9 @@ export interface WorkerRuntimeEnv {
   count: number;
   reveal: boolean;
   fetched_at: number;
+  /** 15.30：true=stale 回退（fresh 读失败但用历史缓存值，非本次实读）。
+   * 预填充链仍可用（真值，只是 ≤120s 旧），不再退化为 registry 默认。 */
+  stale?: boolean;
   env: WorkerRuntimeEnvEntry[];
 }
 
@@ -735,12 +738,18 @@ export async function fetchUpgradeVersions(): Promise<UpgradeVersions> {
 export async function fetchWorkerRuntimeEnv(
   worker: string,
   reveal?: boolean,
+  /** 15.30：true=绕过 120s 缓存实读（保存后确认 hot-applied 真值）。
+   * 服务端 exec cap 8s（挂起快速失败）+ stale 回退，正常 ≤8s 返回。 */
+  fresh?: boolean,
 ): Promise<WorkerRuntimeEnv> {
-  const q = reveal ? "?reveal=1" : "";
+  const qs: string[] = [];
+  if (reveal) qs.push("reveal=1");
+  if (fresh) qs.push("fresh=1");
+  const q = qs.length ? `?${qs.join("&")}` : "";
   return (await requestJson(
     `/agentteams-proxy/workers/${encodeURIComponent(worker)}/runtime-env${q}`,
     undefined,
-    30000,
+    15000, // 服务端 exec cap 8s + 缓冲，挂起不再拖 30s
   )) as WorkerRuntimeEnv;
 }
 
