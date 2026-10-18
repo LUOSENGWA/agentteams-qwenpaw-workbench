@@ -49,6 +49,7 @@ import {
   CODING_CLI_SEEDS,
   CODING_CLI_WARNINGS,
   isRedacted,
+  qwenDeprecatedAuthFields,
 } from "../codingCliPresets";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
@@ -729,6 +730,7 @@ function SettingsTreeEditor({
   objectModel,
   seed,
   seedSecrets,
+  patchPlaceholder,
 }: {
   base: SettingsObject;
   readOnly: boolean;
@@ -748,6 +750,8 @@ function SettingsTreeEditor({
   seed?: SettingsObject;
   /** 15.30：模板中的密钥路径（渲染为密码框 + 空值保存时丢弃）。 */
   seedSecrets?: string[];
+  /** 15.31：JSON 补丁占位示例（按 CLI 最高频补丁需求定制）。 */
+  patchPlaceholder?: string;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -840,8 +844,19 @@ function SettingsTreeEditor({
           : bm && typeof bm === "object" && typeof (bm as Record<string, unknown>).name === "string"
             ? ((bm as Record<string, unknown>).name as string)
             : "";
-      if (v !== baseModel)
-        patch.model = objectModel ? { name: v } : v;
+      if (v !== baseModel) {
+        if (objectModel) {
+          // 15.31：model 对象——{name} 与树内子字段 diff 深合并
+          // （直覆会丢用户在树里改的 reasoningEffort/generationConfig）。
+          const existing =
+            patch.model && typeof patch.model === "object" && !Array.isArray(patch.model)
+              ? (patch.model as SettingsObject)
+              : {};
+          patch.model = { ...existing, name: v };
+        } else {
+          patch.model = v;
+        }
+      }
       if (v) {
         const verdict = validateModelValue(v, modelCandidates ?? []);
         if (verdict.level === "error") {
@@ -861,7 +876,96 @@ function SettingsTreeEditor({
     onSave(stripEmptyLeavesNotInBase(patch, base));
   };
 
-  const renderNode = (value: SettingsValue, path: string[]): ReactNS.ReactNode => {
+  // 15.31：modelProviders[provider] 是「路由数组」——每条目结构化卡片
+  // （id/name/envKey/baseUrl 表单 + 增删），不再整数组 JSON 文本。
+  // providerId → 推荐 envKey（官方文档默认值）。
+  const ENV_KEY_BY_PROVIDER: Record<string, string> = {
+    openai: "OPENAI_API_KEY",
+    anthropic: "ANTHROPIC_API_KEY",
+    gemini: "GEMINI_API_KEY",
+  };
+
+  function renderModelProviderList(
+    path: string[],
+    items: SettingsValue[],
+  ): ReactNS.ReactNode {
+    const providerId = path[1];
+    const skeleton = (): SettingsObject => ({
+      id: "",
+      name: "",
+      envKey: ENV_KEY_BY_PROVIDER[providerId] ?? "API_KEY",
+      baseUrl: "",
+      ...(providerId === "openai" ? { wireApi: "" } : {}),
+    });
+    return (
+      <div
+        style={{
+          display: "grid",
+          gap: 6,
+          paddingLeft: 8,
+          borderLeft: `2px solid ${t.border}`,
+        }}
+      >
+        {items.length === 0 ? (
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("尚无模型路由——点下方「添加模型路由」。")}
+          </span>
+        ) : null}
+        {items.map((item, idx) => (
+          <div
+            key={idx}
+            style={{
+              border: `1px dashed ${t.border}`,
+              borderRadius: 6,
+              padding: 6,
+              display: "grid",
+              gap: 4,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary }}>
+                {tr("{provider} · {n} 号路由", { provider: providerId, n: idx + 1 })}
+              </span>
+              <div style={{ flex: 1 }} />
+              {!readOnly && items.length > 1 ? (
+                <antd.Button
+                  size="small"
+                  type="text"
+                  danger
+                  onClick={() =>
+                    setAtPath(path, items.filter((_, j) => j !== idx))
+                  }
+                >
+                  {tr("删除")}
+                </antd.Button>
+              ) : null}
+            </div>
+            {item && typeof item === "object" && !Array.isArray(item) ? (
+              renderNode(item, [...path, String(idx)])
+            ) : (
+              <span style={{ fontSize: 11, color: t.textSecondary }}>
+                {tr("（非法条目——用下方 JSON 补丁修正）")}
+              </span>
+            )}
+          </div>
+        ))}
+        {!readOnly ? (
+          <antd.Button
+            size="small"
+            onClick={() => setAtPath(path, [...items, skeleton()])}
+          >
+            {tr("＋ 添加模型路由")}
+          </antd.Button>
+        ) : null}
+      </div>
+    );
+  }
+
+  const renderNode = (
+    value: SettingsValue,
+    path: string[],
+    skipKey?: string,
+  ): ReactNS.ReactNode => {
     // redacted（服务端脱敏）或 seed-secret（模板里的密钥，draft 里是普通串）
     // → 密码框（留空=不写/保留）。
     if (isRedacted(value) || seedSecretSet.has(path.join("."))) {
@@ -884,6 +988,10 @@ function SettingsTreeEditor({
       );
     }
     if (Array.isArray(value)) {
+      // 15.31：modelProviders 的路由数组 → 结构化卡片（非 JSON 文本）。
+      if (path.length === 2 && path[0] === "modelProviders") {
+        return renderModelProviderList(path, value as SettingsValue[]);
+      }
       return (
         <antd.Input.TextArea
           value={JSON.stringify(value, null, 2)}
@@ -918,8 +1026,10 @@ function SettingsTreeEditor({
             borderLeft: `2px solid ${t.border}`,
           }}
         >
-          {entries.map(([k, v]) => (
-            <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* 15.31：model 对象的 name 子键由上方模型专行管——
+           * 树内跳过（避免双源），留提示行。 */}
+          {skipKey ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span
                 style={{
                   fontSize: 11,
@@ -928,11 +1038,30 @@ function SettingsTreeEditor({
                   fontFamily: "monospace",
                 }}
               >
-                {k}
+                {skipKey}
               </span>
-              {renderNode(v, [...path, k])}
+              <span style={{ fontSize: 11, color: t.textSecondary }}>
+                {tr("← 由上方「模型」行管理")}
+              </span>
             </div>
-          ))}
+          ) : null}
+          {entries
+            .filter(([k]) => k !== skipKey)
+            .map(([k, v]) => (
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: t.textSecondary,
+                    minWidth: 110,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  {k}
+                </span>
+                {renderNode(v, [...path, k])}
+              </div>
+            ))}
         </div>
       );
     }
@@ -976,9 +1105,19 @@ function SettingsTreeEditor({
   // ① base 空时无字段（"没结构化表单"）② 输入框受控于 base，编辑不反映
   // （value 绑 base 但 onChange 写 draft）。draft=base/seed 深拷贝，首帧
   // 与 base 渲染一致，编辑后真实反映。
+  // 15.31：model 扁平串（opencode/qoder）整体摘出（专行管）；
+  // 对象（qwen-code 现行 {name,...}）保留渲染子字段（name 子键跳过）。
   const topEntries = Object.entries(draft).filter(
-    ([k]) => !(modelRowEnabled && k === "model"),
+    ([k, v]) =>
+      !(modelRowEnabled && k === "model" && !(v && typeof v === "object" && !Array.isArray(v))),
   );
+  // 空态提示（15.31）：树无条目 + 无「会占位」的内容。model 对象
+  // （qwen-code 现行 {name,...}）留在 topEntries 渲染；model 扁平串
+  // （opencode/qoder）被专行摘出——专行空且树空才提示。
+  const emptyTreeHint =
+    !modelRowEnabled ||
+    !draft.model ||
+    typeof draft.model === "string";
   return (
     <div style={{ display: "grid", gap: 10 }}>
       {/* 空配置引导（15.28/15.30）：base 空 + seed 预填 → 常用字段表单；
@@ -1011,7 +1150,7 @@ function SettingsTreeEditor({
           />
         </div>
       ) : null}
-      {topEntries.length === 0 && !modelRowEnabled ? (
+      {topEntries.length === 0 && emptyTreeHint ? (
         <div style={{ fontSize: 11, color: t.textSecondary }}>
           {tr("尚无配置文件——填模型名并保存即创建。")}
         </div>
@@ -1019,7 +1158,7 @@ function SettingsTreeEditor({
         topEntries.map(([k, v]) => (
           <div key={k} style={{ display: "grid", gap: 3 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{k}</span>
-            {renderNode(v, [k])}
+            {renderNode(v, [k], modelRowEnabled && k === "model" ? "name" : undefined)}
           </div>
         ))
       )}
@@ -1036,7 +1175,7 @@ function SettingsTreeEditor({
               if (jsonErr) setJsonErr("");
             }}
             autoSize={{ minRows: 2, maxRows: 8 }}
-            placeholder={'{"mcp": {"enabled": true}}'}
+            placeholder={patchPlaceholder || '{"mcp": {"enabled": true}}'}
             disabled={busy}
             style={{ fontFamily: "monospace", fontSize: 11, maxWidth: 460 }}
           />
@@ -1271,7 +1410,7 @@ function CodingCliPanelBody({
           }}
         >
           <div style={{ fontSize: 11, color: t.textSecondary }}>
-            {CLI_LABEL[s.selected]} settings（结构化表单 · 只保存改动）
+            {tr("{cli} settings（结构化表单 · 只保存改动）", { cli: CLI_LABEL[s.selected] })}
           </div>
           {/* 15.30：已知坑告警（配置写了但不生效的坑前置——coding-cli SKILL 实证）。 */}
           {CODING_CLI_WARNINGS[s.selected] ? (
@@ -1281,6 +1420,23 @@ function CodingCliPanelBody({
               message={tr(CODING_CLI_WARNINGS[s.selected])}
               style={{ padding: "3px 8px", fontSize: 11 }}
             />
+          ) : null}
+          {/* 15.31：废弃字段检测（security.auth.apiKey/baseUrl → 迁 modelProviders+env）。 */}
+          {s.selected === "qwen-code" ? (
+            (() => {
+              const dep = qwenDeprecatedAuthFields(s.settings?.settings);
+              if (dep.length === 0) return null;
+              return (
+                <antd.Alert
+                  type="error"
+                  showIcon
+                  message={tr("检测到已废弃字段 {fields}——Qwen Code 已弃用 security.auth.apiKey/baseUrl，请改用 modelProviders（envKey）+ env 块（JSON 补丁）或容器 ~/.qwen/.env，然后删除这些字段。", {
+                    fields: dep.join(", "),
+                  })}
+                  style={{ padding: "3px 8px", fontSize: 11 }}
+                />
+              );
+            })()
           ) : null}
           {/* 15.28/15.30：空配置也渲染编辑器——base 空 + seed 预填常用字段
            *（结构化表单起点），保存即 PUT merge 创建 settings 文件；JSON 补丁
@@ -1296,6 +1452,7 @@ function CodingCliPanelBody({
             objectModel={s.selected === "qwen-code"}
             seed={CODING_CLI_SEEDS[s.selected].template}
             seedSecrets={CODING_CLI_SEEDS[s.selected].secretPaths}
+            patchPlaceholder={CODING_CLI_SEEDS[s.selected].patchPlaceholder}
             onSave={(patch) => void s.saveSettings(patch)}
           />
         </div>

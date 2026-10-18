@@ -2476,7 +2476,7 @@ const DICT: Record<string, { en: string }> = {
   "（已保存，留空保留）": { en: "(saved — leave empty to keep)" },
   "当前配置（只读）": { en: "Current settings (read-only)" },
   "可选 JSON 补丁（同键以补丁为准）": { en: "Optional JSON patch (patch wins on same key)" },
-  "settings（结构化表单 · 只保存改动）": { en: "settings (structured form · saves only changes)" },
+  "{cli} settings（结构化表单 · 只保存改动）": { en: "{cli} settings (structured form · saves only changes)" },
   "已保存，留空保留；输入=替换": { en: "Saved — leave empty to keep; enter to replace" },
   "未设置；输入=设置": { en: "Not set; enter to set" },
   "有未保存改动": { en: "Unsaved changes" },
@@ -2492,14 +2492,27 @@ const DICT: Record<string, { en: string }> = {
   },
   "JSON 补丁格式非法（未应用）": { en: "Invalid JSON patch format (not applied)" },
   "JSON 补丁须为对象（未应用）": { en: "JSON patch must be an object (not applied)" },
-  "Qwen Code 0.25.1 已知行为：settings 的 model 可能仍请求默认模型（qwen3.7-max），自定义网关无此模型时报 403——headless 建议 per-run -m <model> 指定。": {
-    en: "Qwen Code 0.25.1 known behavior: the settings model may still request the default model (qwen3.7-max); on a custom gateway without that model this is a 403 — for headless, pass -m <model> per run.",
+  "Qwen Code 0.25.x 已知行为：settings 的 model 可能仍请求默认模型（qwen3.7-max），自定义网关无此模型时报 403——headless 建议 per-run -m <model> 指定。API Key 请写 env 块（JSON 补丁）或 ~/.qwen/.env，不要写已废弃的 security.auth.apiKey。": {
+    en: "Qwen Code 0.25.x known behavior: the settings model may still request the default model (qwen3.7-max); on a custom gateway without that model this is a 403 — for headless, pass -m <model> per run. Put the API key in the env block (JSON patch) or ~/.qwen/.env — do not use the deprecated security.auth.apiKey.",
   },
-  "OpenCode 1.19.0 只读项目级 <workspace>/.config/opencode/opencode.json；本面板写全局 ~/.config/opencode/，对 opencode run --dir 可能不生效——headless 的 provider 配置需放项目级。": {
-    en: "OpenCode 1.19.0 reads only the project-level <workspace>/.config/opencode/opencode.json; this panel writes the global ~/.config/opencode/, which may not take effect for `opencode run --dir` — put headless provider config at the project level.",
+  "OpenCode 1.19.x 只读项目级 <workspace>/.config/opencode/opencode.json；本面板写全局 ~/.config/opencode/，对 opencode run --dir 可能不生效——provider 配置需放项目级。": {
+    en: "OpenCode 1.19.x reads only the project-level <workspace>/.config/opencode/opencode.json; this panel writes the global ~/.config/opencode/, which may not take effect for `opencode run --dir` — put provider config at the project level.",
   },
-  "Qoder 鉴权走环境变量 QODER_PERSONAL_ACCESS_TOKEN（非 settings）；本表单管 model / tools / mcp。": {
-    en: "Qoder authenticates via the QODER_PERSONAL_ACCESS_TOKEN env var (not settings); this form manages model / tools / mcp.",
+  "Qoder 账号登录走 QODER_PERSONAL_ACCESS_TOKEN env（非 settings）；BYOK 自定义模型走 /model 向导。本表单管 model / tools / mcp / permissions。": {
+    en: "Qoder account login goes through the QODER_PERSONAL_ACCESS_TOKEN env var (not settings); BYOK custom models go through the /model wizard. This form manages model / tools / mcp / permissions.",
+  },
+  // ── 15.31（三 CLI 结构化表单按官方 schema 全量补齐）──
+  "尚无模型路由——点下方「添加模型路由」。": {
+    en: "No model routes yet — click \"Add model route\" below.",
+  },
+  "{provider} · {n} 号路由": { en: "{provider} · route #{n}" },
+  "（非法条目——用下方 JSON 补丁修正）": {
+    en: "(invalid entry — fix via the JSON patch below)",
+  },
+  "＋ 添加模型路由": { en: "+ Add model route" },
+  "← 由上方「模型」行管理": { en: "← managed by the Model row above" },
+  "检测到已废弃字段 {fields}——Qwen Code 已弃用 security.auth.apiKey/baseUrl，请改用 modelProviders（envKey）+ env 块（JSON 补丁）或容器 ~/.qwen/.env，然后删除这些字段。": {
+    en: "Deprecated field detected: {fields}. Qwen Code has deprecated security.auth.apiKey/baseUrl — use modelProviders (envKey) + the env block (JSON patch) or the container's ~/.qwen/.env, then remove these fields.",
   },
   "确认卸载": { en: "Confirm uninstall" },
   "将从该 Worker 容器卸载 {cli}。安装状态会丢失，已保存的鉴权可保留。": {
