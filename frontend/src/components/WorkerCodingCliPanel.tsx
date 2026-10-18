@@ -1170,13 +1170,11 @@ function SettingsTreeEditor({
     ([k, v]) =>
       !(modelRowEnabled && k === "model" && !(v && typeof v === "object" && !Array.isArray(v))),
   );
-  // 空态提示（15.31）：树无条目 + 无「会占位」的内容。model 对象
-  // （qwen-code 现行 {name,...}）留在 topEntries 渲染；model 扁平串
-  // （opencode/qoder）被专行摘出——专行空且树空才提示。
-  const emptyTreeHint =
-    !modelRowEnabled ||
-    !draft.model ||
-    typeof draft.model === "string";
+  // 空态提示（15.31）：树无条目 + 模型专行也为空（或无专行）才提示。
+  // model 对象（qwen-code {name,...}）留在 topEntries 渲染（树不空）；
+  // model 扁平串（opencode/qoder）被专行摘出——专行已有值时不再误报
+  // 「尚无配置文件」（判值用专行的 modelValue，不用 draft.model 形态）。
+  const emptyTreeHint = !modelRowEnabled || !(modelValue ?? "").trim();
   return (
     <div style={{ display: "grid", gap: 10 }}>
       {/* 空配置引导（15.28/15.30）：base 空 + seed 预填 → 常用字段表单；
