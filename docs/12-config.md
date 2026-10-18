@@ -107,3 +107,16 @@ token 获取路径与生产一致（`docker exec agentteams-controller cat /var/
 - 只在**本机**存储（浏览器 localStorage + 插件后端本机配置）——浏览器零凭据原则：页面 JS 永远不直接持有 Matrix/Controller 凭据直连外部，一切经宿主进程内代理
 - token 无接口可获取（上游安全设计），由部署管理员线下提供；两条供给路：UI 获取命令 + 粘贴（存插件后端本机配置），或宿主 env `AGENTTEAMS_CONTROLLER_TOKEN`（见「token 获取命令」节）。token **值永不进浏览器**——前端只可见来源标记（`tokenSource=config`/`env`）
 - admin 密码 / Console 会话同样只存本机；导出配置一律脱敏为 `***`（导入不覆盖已存凭据）
+
+## 完整备份的门密码（v0.5.0-beta.15.29 起，P0 安全硬化）
+
+**「备份与恢复」的含凭据导出/导入**（`GET /config/export` / `POST /config/import`）会返回**含明文 controller_token / Matrix token / admin 密码**的完整配置——这是「换环境 10 秒还原」用的通道，区别于上面的脱敏导出（`GET /config`，永远 `***`）。
+
+因为宿主 QwenPaw 的鉴权**可以关掉**（本地自用常态）且 8088 **绑 `0.0.0.0`**，此时「同源=本地」的前提不成立——**匿名局域网请求可直接 `GET /config/export` 拿到整集群明文凭据**（P0）。故完整备份通道加独立**门密码**：
+
+- 设置：UI「备份与恢复」卡 → 设置密码（≥8 位），或 `POST /config/export-password {password}`。状态查询 `GET /config/export-password-status`，清除 `DELETE /config/export-password`。
+- **未设密码 = 默认拒绝（secure-by-default）**：`export`/`import` 一律 403「尚未设置完整备份密码」。这不是「先放行再补设」，而是**真正关掉洞**——不设密码就用不了含凭据备份。
+- 已设：请求须带 `X-Export-Password` 头，服务端 salted-SHA-256（`hmac.compare_digest` 常量时间比较）校验；错/空/缺 = 403。
+- **密码材料永不进备份文件**：门密码只存**独立** `export_key.json`（salt + 哈希，`0600`），**不在 `config.json` 内** → 导出输出天然不含明文密码/哈希/salt；`import` 覆盖 `config.json` 也不会清掉 `export_key.json`（每装机一份主密钥，换环境还原时目标机用自己的门密码）。
+- **脱敏端点 `GET /config`（展示面）不受门影响**——日常看配置不需要密码。
+- 本机独立宿主（轴 A `kind='local'`，localStorage 模拟层）无服务端凭据暴露，不走此门；门只作用于在线服务端连接器。

@@ -107,3 +107,16 @@ Token retrieval is identical to production (`docker exec agentteams-controller c
 - Stored **on this machine only** (browser localStorage + the plugin backend's local config) — zero-credential principle: page JavaScript never holds Matrix/Controller credentials directly; everything goes through the in-host in-process proxy
 - The token has no API to fetch it (upstream security design); the deployment admin provides it offline; two supply paths: UI fetch command + paste (stored in the connector's local config) or the host env `AGENTTEAMS_CONTROLLER_TOKEN` (see "Token fetch command" above). The token **value never reaches the browser** — the frontend only ever sees the source marker (`tokenSource=config`/`env`)
 - The admin password / Console session are also local-only; config exports always redact them as `***` (import never overwrites stored credentials)
+
+## Full-backup gate password (v0.5.0-beta.15.29+, P0 hardening)
+
+**The credential-bearing export/import in "Backup & Restore"** (`GET /config/export` / `POST /config/import`) returns the **full config including plaintext controller_token / Matrix token / admin password** — the "restore in 10 seconds after switching environments" channel, distinct from the redacted export above (`GET /config`, always `***`).
+
+Because the host QwenPaw's auth **can be turned off** (the local-self-use norm) and 8088 **binds `0.0.0.0`**, the "same-origin = local" premise breaks — **an anonymous LAN request can `GET /config/export` and grab the whole cluster's plaintext credentials** (P0). So the full-backup channel has an independent **gate password**:
+
+- Set it: "Backup & Restore" card → set a password (≥8 chars), or `POST /config/export-password {password}`. Status `GET /config/export-password-status`, clear `DELETE /config/export-password`.
+- **No password set = refused by default (secure-by-default)**: `export`/`import` return 403 "no backup password set". This is not "allow first, set later" — it **actually closes the hole**; without a password you cannot use credential-bearing backup.
+- If set: requests must carry the `X-Export-Password` header; the server verifies with salted-SHA-256 (`hmac.compare_digest`, constant-time); wrong/empty/missing = 403.
+- **Password material never enters the backup file**: the gate password is stored **only** in a separate `export_key.json` (salt + hash, `0600`), **not inside `config.json`** → the export output naturally contains no plaintext password / hash / salt; `import` overwriting `config.json` also does not clear `export_key.json` (one master key per machine; when restoring to a new environment, the target machine uses its own gate password).
+- **The redacted endpoint `GET /config` (display surface) is not gated** — viewing config day-to-day needs no password.
+- The standalone local host (axis A `kind='local'`, the localStorage simulation layer) has no server-side credential exposure and does not use this gate; the gate applies only to the online server connector.
