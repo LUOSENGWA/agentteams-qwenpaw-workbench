@@ -3,6 +3,21 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.36 (2026-10-19 - team management portrait overflow fix: manage-entry row wraps, zero overflow on narrow screens)
+
+Addresses fielding feedback: in team management, after expanding a worker, the manage entries (runtime config / environment variables & gateway probe / coding CLI / LLM tuning / resources) "were not laid out well in portrait and ran past the container edge".
+
+**Fixed**
+- **Manage-entry row overflowing the container in portrait**: in narrow mode the worker manage-info area renders five entries (wake/sleep + runtime config + env vars + coding CLI + LLM tuning) in a single non-wrapping flex row. The buttons' total min-content width is 461px, while a 390px phone viewport leaves only 274px of container width — the "Coding CLI" button's right edge exceeded the container by 69px and "LLM tuning" by 170px (measured in the DOM). The row now wraps (at 390px it naturally breaks into 3+2 rows with every button fully visible and tappable); the wide-screen single-row layout is unchanged.
+- **Audit pages restored**: an earlier hygiene commit stripped the empty arrow-function parameter lists (`() => {}` became `=> {}`) from the inline scripts of `dev-overflow.html` / `dev-split.html`, leaving the two overflow-audit pages uncompilable. Restored as-is.
+
+**Added**
+- **Expanded-area overflow audit page** (`dev-manage-overflow.html`): the previous audit page only rendered the collapsed team tree, so the worker expanded area (manage info + the five section cards / entry rows) was blind. The new page covers both modes — narrow compact-button rows / wide inline cards — with per-entry probes (row clientWidth vs scrollWidth vs container right edge) plus a full out-of-bounds element scan, quantifiable across many widths in one run.
+
+**Verification**
+- **DOM overflow scan at 6 viewports (390/480/600/768/800/1024): manage-entry rows all at zero** (before: 390px overflowed 187px, 480px 97px; after: every row's right edge ≤ container right edge, wide-screen 800/1024 inline-card sections show no regression)
+- tsc 0 | vite build 514 modules | pytest 456/456 | staged-diff sensitive scan 0
+
 ## 0.5.0-beta.15.35 (2026-10-19 - coding-CLI settings cards: dynamic layout/sizing fixes, zero overflow on narrow screens)
 
 Addresses the fielding feedback: the 15.34 section cards "did not dynamically adjust their layout, size and content — some content overflowed the container and the cards looked rough overall". Each item fixed and verified by quantified DOM overflow scans at 5 viewport widths (390/500/700/1000/1280).
