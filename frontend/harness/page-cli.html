@@ -132,6 +132,24 @@ window.fetch = (url, opts) => {
     window.__SETTINGS_PUTS__.push({ cli: "qwen-code", patch });
     return Promise.resolve(okJson({}));
   }
+  // 15.33：opencode settings 路由（真实 API 对任意 CLI 可读写——卡片化后
+  // 展开 opencode 卡即自动 GET；原 mock 只有 qwen-code，切卡必 404）。
+  if (u === B + "/opencode/settings" && method === "GET") {
+    return Promise.resolve(
+      okJson({
+        cli: "opencode",
+        path: "~/.config/opencode/opencode.json",
+        exists: true,
+        settings: { model: "m-oc", snapshot: true },
+      }),
+    );
+  }
+  if (u === B + "/opencode/settings" && method === "PUT") {
+    if (scen === "l2") return Promise.resolve(errJson(403, "forbidden"));
+    const patch = JSON.parse(m.body);
+    window.__SETTINGS_PUTS__.push({ cli: "opencode", patch });
+    return Promise.resolve(okJson({}));
+  }
 
   if (u === B + "/opencode/install" && method === "POST") {
     const req = JSON.parse(m.body);

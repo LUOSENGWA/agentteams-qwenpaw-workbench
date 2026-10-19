@@ -3165,6 +3165,21 @@ export default function WorkbenchPage() {
         .wb-main .wb-safe-bottom {
           padding-bottom: max(8px, env(safe-area-inset-bottom));
         }
+        /* ══ Coding CLI 卡片触屏层（15.33：卡片化收放）══
+   竖屏 NarrowSheet portal 在 body（.wb-main 作用域外）→ .wbc-narrow
+   镜像，与 antd 双前缀双写同款手法。 */
+        .wbc-narrow { -webkit-tap-highlight-color: transparent; }
+        @media (any-pointer: coarse) {
+          .wbc-narrow .wb-touch-lg { position: relative; }
+          .wbc-narrow .wb-touch-lg::before {
+            content: "";
+            position: absolute;
+            top: -10px; left: -10px; right: -10px; bottom: -10px;
+          }
+        }
+        /* sheet 内 small 按钮（表单「保存改动」等）触屏高度底线 32px
+   （antd small=24px 低于触控底线；仅窄 sheet 内放大，宽屏内联不变）。 */
+        .wbc-narrow .ant-btn-sm, .wbc-narrow .qwenpaw-btn-sm { min-height: 32px; }
         /* 6) 纯触屏设备（hover:none）：hover-only 装饰态不渲染
   （hover 显现的操作按钮改常显——T5 逐处收口后统一由该类控制）。 */
         @media (hover: none) {

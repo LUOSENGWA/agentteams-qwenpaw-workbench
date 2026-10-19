@@ -368,6 +368,9 @@ function useCodingCliPanel({
   const [selected, setSelected] = React.useState<CodingCliId>("qwen-code");
   const [settings, setSettings] = React.useState<CliSettingsResponse | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  // 15.33：卡片收放（手风琴：至多一卡展开；null=全收）。展开卡=动作行 +
+  // settings 表单；收起保留 settings 缓存 → 重开同卡零请求。
+  const [expanded, setExpanded] = React.useState<CodingCliId | null>(null);
   const [versionTag, setVersionTag] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -447,6 +450,23 @@ function useCodingCliPanel({
       }
     },
     [worker.name, tr],
+  );
+
+  // 15.33：点卡头=收放（手风琴）。展开=选中该 CLI + 按需拉 settings
+  // （缓存归属按响应自带 cli 字段判定——miss 才拉，切卡不盲拉）；
+  // 收起只隐藏不取消（settingsOpen 保留 → 重开同卡零请求）。
+  const expandToggle = React.useCallback(
+    (cli: CodingCliId) => {
+      if (expanded === cli) {
+        setExpanded(null);
+        return;
+      }
+      setExpanded(cli);
+      if (settings === null || settings.cli !== cli) {
+        void loadSettings(cli);
+      }
+    },
+    [expanded, settings, loadSettings],
   );
 
   // 保存（15.26 F4② 网络传输优化）：patch 由结构化树表单算出（叶子级 diff
@@ -666,6 +686,8 @@ function useCodingCliPanel({
     setSelected,
     settings,
     settingsOpen,
+    expanded,
+    expandToggle,
     versionTag,
     setVersionTag,
     busy,
@@ -1470,110 +1492,9 @@ function CodingCliPanelBody({
         </div>
       ) : null}
 
-      {/* CLI 行（点名字=选中，settings 操作随选）。 */}
-      <div style={{ display: "grid", gap: 6 }}>
-        {s.items.map((cli) => (
-          <div
-            key={cli.id}
-            style={{
-              border: `1px solid ${s.selected === cli.id ? (t.mode === "dark" ? "#4096ff" : "#91caff") : t.border}`,
-              borderRadius: 6,
-              padding: "5px 8px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-                onClick={() => {
-                  s.setSelected(cli.id);
-                  s.setMsg(null);
-                }}
-              >
-                {CLI_LABEL[cli.id]}
-              </span>
-              <antd.Tag
-                color={cli.installed ? "green" : "default"}
-                style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
-              >
-                {cli.installed ? cli.version || tr("已安装") : tr("未安装")}
-              </antd.Tag>
-              {cli.installed ? (
-                <LatestBadge
-                  info={s.latestInfo[cli.id]}
-                  installed={cli.version}
-                  tr={tr}
-                />
-              ) : null}
-              {cli.authConfigured ? (
-                <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}>
-                  {tr("鉴权已配置")}
-                </antd.Tag>
-              ) : null}
-              {/* 当前 CLI 的生效模型（settings 加载后；同 Worker 模型列的徽标语义）。 */}
-              {cli.id === s.selected && s.settingsOpen && s.settings && settingsModel ? (
-                <antd.Tag
-                  color="blue"
-                  style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
-                >
-                  {tr("模型")} {settingsModel}
-                </antd.Tag>
-              ) : null}
-              {cli.authConfigured && !cli.installed ? (
-                <span style={{ fontSize: 11, color: t.mode === "dark" ? "#faad14" : "#d46b08" }}>
-                  {tr("容器重建后需重新安装；已保存的鉴权可保留")}
-                </span>
-              ) : null}
-              <div style={{ flex: 1 }} />
-              {cli.installed ? (
-                <>
-                  <antd.Button
-                    size="small"
-                    type="text"
-                    disabled={s.busy || s.readOnly}
-                    onClick={() => void s.loadSettings(cli.id)}
-                  >
-                    {tr("编辑配置")}
-                  </antd.Button>
-                  <antd.Button
-                    size="small"
-                    type="text"
-                    disabled={s.busy || s.readOnly}
-                    onClick={() => void s.runInstall(cli.id, "install")}
-                  >
-                    {tr("升级")}
-                  </antd.Button>
-                  <antd.Button
-                    size="small"
-                    type="text"
-                    danger
-                    disabled={s.busy || s.readOnly}
-                    onClick={() => s.setUninstallTarget(cli.id)}
-                  >
-                    {tr("卸载")}
-                  </antd.Button>
-                </>
-              ) : (
-                <antd.Button
-                  size="small"
-                  type="text"
-                  disabled={s.busy || s.readOnly}
-                  onClick={() => void s.runInstall(cli.id, "install")}
-                >
-                  {tr("安装")}
-                </antd.Button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* 版本 tag（安装/升级均生效；可填具体 tag 探测，空=latest）。 */}
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      {/* 15.33：版本 tag（安装/升级均生效；可填具体 tag 探测，空=latest）。
+       * 三卡共用 → 保持全局单行（harness S1f count=1 判据不变）。 */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("版本 tag（安装/升级）")}</span>
         <antd.Input
           size="small"
@@ -1585,69 +1506,215 @@ function CodingCliPanelBody({
         />
       </div>
 
-      {/* settings 编辑器（选中 CLI）。 */}
-      {s.settingsOpen && !s.settings ? (
-        <div style={{ fontSize: 11, color: t.textSecondary }}>{tr("加载 settings…")}</div>
-      ) : null}
-      {s.settingsOpen && s.settings ? (
-        <div
-          style={{
-            border: `1px solid ${t.border}`,
-            borderRadius: 6,
-            padding: 8,
-            display: "grid",
-            gap: 6,
-          }}
-        >
-          <div style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("{cli} settings（结构化表单 · 只保存改动）", { cli: CLI_LABEL[s.selected] })}
-          </div>
-          {/* 15.30：已知坑告警（配置写了但不生效的坑前置——coding-cli SKILL 实证）。 */}
-          {CODING_CLI_WARNINGS[s.selected] ? (
-            <antd.Alert
-              type="warning"
-              showIcon
-              message={tr(CODING_CLI_WARNINGS[s.selected])}
-              style={{ padding: "3px 8px", fontSize: 11 }}
-            />
-          ) : null}
-          {/* 15.31：废弃字段检测（security.auth.apiKey/baseUrl → 迁 modelProviders+env）。 */}
-          {s.selected === "qwen-code" ? (
-            (() => {
-              const dep = qwenDeprecatedAuthFields(s.settings?.settings);
-              if (dep.length === 0) return null;
-              return (
-                <antd.Alert
-                  type="error"
-                  showIcon
-                  message={tr("检测到已废弃字段 {fields}——Qwen Code 已弃用 security.auth.apiKey/baseUrl，请改用 modelProviders（envKey）+ env 块（JSON 补丁）或容器 ~/.qwen/.env，然后删除这些字段。", {
-                    fields: dep.join(", "),
-                  })}
-                  style={{ padding: "3px 8px", fontSize: 11 }}
-                />
-              );
-            })()
-          ) : null}
-          {/* 15.28/15.30：空配置也渲染编辑器——base 空 + seed 预填常用字段
-           *（结构化表单起点），保存即 PUT merge 创建 settings 文件；JSON 补丁
-           * 补任意高级字段。模型行常显（qwen-code=对象{name}，其余=扁平串）。 */}
-          <SettingsTreeEditor
-            base={s.settings.settings && Object.keys(s.settings.settings).length > 0 ? s.settings.settings : {}}
-            readOnly={s.readOnly}
-            busy={s.busy}
-            modelValue={modelDraft ?? ""}
-            onModelChange={setModelDraft}
-            modelOptions={union.options}
-            modelCandidates={union.candidates}
-            objectModel={s.selected === "qwen-code"}
-            seed={CODING_CLI_SEEDS[s.selected].template}
-            seedSecrets={CODING_CLI_SEEDS[s.selected].secretPaths}
-            patchPlaceholder={CODING_CLI_SEEDS[s.selected].patchPlaceholder}
-            catalog={FIELD_CATALOG[s.selected]}
-            onSave={(patch) => void s.saveSettings(patch)}
-          />
-        </div>
-      ) : null}
+      {/* 15.33：CLI 卡片网格（卡片化收放）——auto-fit 自适应排列：
+       * 宽屏 3 列 / 中屏 2 列 / 窄屏 1 列（wbc-narrow 全局 CSS 强制 1 列）。
+       * 卡=一个 CLI；点卡头=收放（手风琴：至多一卡展开）；展开卡通栏
+       * （1 / -1）容纳动作行 + settings 表单。
+       * 触屏：卡头 ≥44px 目标 + userSelect none（防双击选中）；
+       * 鼠标：cursor pointer + chevron 指示，无 hover-only 信息。 */}
+      <div
+        style={{
+          display: "grid",
+          gap: 8,
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+        }}
+      >
+        {s.items.map((cli) => {
+          const isExp = s.expanded === cli.id;
+          // settings 归属按响应自带 cli 字段判定（防上一张卡的陈旧数据
+          // 显示到本卡——切卡 fetch 窗口期的防串卡门）。
+          const acc =
+            s.settings && s.settings.cli === cli.id ? s.settings : null;
+          return (
+            <div
+              key={cli.id}
+              style={{
+                gridColumn: isExp ? "1 / -1" : undefined,
+                minWidth: 0,
+                border: `1px solid ${isExp ? (t.mode === "dark" ? "#4096ff" : "#91caff") : t.border}`,
+                borderRadius: 8,
+                background: isExp
+                  ? t.mode === "dark"
+                    ? "rgba(64, 150, 255, 0.07)"
+                    : "rgba(145, 204, 255, 0.10)"
+                  : undefined,
+                overflow: "hidden",
+              }}
+            >
+              {/* 卡头：点=收放（touch ≥44 目标 / mouse cursor+chevron）。 */}
+              <div
+                onClick={() => s.expandToggle(cli.id)}
+                title={tr("点击展开 / 收起")}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  minHeight: 44,
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  userSelect: "none",
+                }}
+              >
+                <span style={{ width: 12, fontSize: 11, color: "#888" }}>
+                  {isExp ? "▾" : "▸"}
+                </span>
+                <span
+                  style={{ fontFamily: "monospace", fontSize: 13, fontWeight: 600 }}
+                >
+                  {CLI_LABEL[cli.id]}
+                </span>
+                <antd.Tag
+                  color={cli.installed ? "green" : "default"}
+                  style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
+                >
+                  {cli.installed ? cli.version || tr("已安装") : tr("未安装")}
+                </antd.Tag>
+                {cli.installed ? (
+                  <LatestBadge
+                    info={s.latestInfo[cli.id]}
+                    installed={cli.version}
+                    tr={tr}
+                  />
+                ) : null}
+                {cli.authConfigured ? (
+                  <antd.Tag
+                    style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
+                  >
+                    {tr("鉴权已配置")}
+                  </antd.Tag>
+                ) : null}
+                {/* 当前 CLI 生效模型（仅当该卡 settings 在缓存时显示）。 */}
+                {isExp && acc && settingsModel ? (
+                  <antd.Tag
+                    color="blue"
+                    style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}
+                  >
+                    {tr("模型")} {settingsModel}
+                  </antd.Tag>
+                ) : null}
+              </div>
+              {isExp ? (
+                <div style={{ padding: "2px 12px 10px", display: "grid", gap: 8 }}>
+                  {/* 动作行（触屏：middle 32px + wb-touch-lg 命中区扩 ≥44）。 */}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    {cli.installed ? (
+                      <>
+                        <antd.Button
+                          size="middle"
+                          className="wb-touch-lg"
+                          disabled={s.busy || s.readOnly}
+                          onClick={() => void s.runInstall(cli.id, "install")}
+                        >
+                          {tr("升级")}
+                        </antd.Button>
+                        <antd.Button
+                          size="middle"
+                          danger
+                          className="wb-touch-lg"
+                          disabled={s.busy || s.readOnly}
+                          onClick={() => s.setUninstallTarget(cli.id)}
+                        >
+                          {tr("卸载")}
+                        </antd.Button>
+                      </>
+                    ) : (
+                      <antd.Button
+                        size="middle"
+                        className="wb-touch-lg"
+                        disabled={s.busy || s.readOnly}
+                        onClick={() => void s.runInstall(cli.id, "install")}
+                      >
+                        {tr("安装")}
+                      </antd.Button>
+                    )}
+                    {cli.authConfigured && !cli.installed ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: t.mode === "dark" ? "#faad14" : "#d46b08",
+                        }}
+                      >
+                        {tr("容器重建后需重新安装；已保存的鉴权可保留")}
+                      </span>
+                    ) : null}
+                  </div>
+                  {/* 15.30：已知坑告警（配置写了但不生效的坑前置——
+                   * coding-cli SKILL 实证）。 */}
+                  {CODING_CLI_WARNINGS[cli.id] ? (
+                    <antd.Alert
+                      type="warning"
+                      showIcon
+                      message={tr(CODING_CLI_WARNINGS[cli.id])}
+                      style={{ padding: "3px 8px", fontSize: 11 }}
+                    />
+                  ) : null}
+                  {/* 15.31：废弃字段检测（以本卡归属的 settings 为源）。 */}
+                  {cli.id === "qwen-code" ? (
+                    (() => {
+                      const dep = qwenDeprecatedAuthFields(acc?.settings);
+                      if (dep.length === 0) return null;
+                      return (
+                        <antd.Alert
+                          type="error"
+                          showIcon
+                          message={tr("检测到已废弃字段 {fields}——Qwen Code 已弃用 security.auth.apiKey/baseUrl，请改用 modelProviders（envKey）+ env 块（JSON 补丁）或容器 ~/.qwen/.env，然后删除这些字段。", {
+                            fields: dep.join(", "),
+                          })}
+                          style={{ padding: "3px 8px", fontSize: 11 }}
+                        />
+                      );
+                    })()
+                  ) : null}
+                  {/* settings 表单（15.28/15.30：空配置也渲染编辑器——
+                   * base 空 + seed 预填常用字段，保存即 PUT merge 创建文件；
+                   * 15.32：完整字段清单 FIELD_CATALOG 驱动）。 */}
+                  {s.settingsOpen && !acc ? (
+                    <div style={{ fontSize: 11, color: t.textSecondary }}>
+                      {tr("加载 settings…")}
+                    </div>
+                  ) : null}
+                  {s.settingsOpen && acc ? (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontSize: 11, color: t.textSecondary }}>
+                        {tr("{cli} settings（结构化表单 · 只保存改动）", {
+                          cli: CLI_LABEL[cli.id],
+                        })}
+                      </div>
+                      <SettingsTreeEditor
+                        base={
+                          acc.settings && Object.keys(acc.settings).length > 0
+                            ? acc.settings
+                            : {}
+                        }
+                        readOnly={s.readOnly}
+                        busy={s.busy}
+                        modelValue={modelDraft ?? ""}
+                        onModelChange={setModelDraft}
+                        modelOptions={union.options}
+                        modelCandidates={union.candidates}
+                        objectModel={cli.id === "qwen-code"}
+                        seed={CODING_CLI_SEEDS[cli.id].template}
+                        seedSecrets={CODING_CLI_SEEDS[cli.id].secretPaths}
+                        patchPlaceholder={CODING_CLI_SEEDS[cli.id].patchPlaceholder}
+                        catalog={FIELD_CATALOG[cli.id]}
+                        onSave={(patch) => void s.saveSettings(patch)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
 
 
       {s.msg ? (

@@ -3,6 +3,25 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.33（2026-10-19 · Coding CLI 面板卡片化收放 + 自适应排列 + 触屏/鼠标双适配）
+
+Coding CLI 面板（安装/升级/settings）从「三行列表 + 单 settings 区」重构为**卡片式收放**——每个 CLI 一张卡，点卡头展开即见该 CLI 的 actions（安装/升级/卸载）+ settings 结构化表单，再点收起；**手风琴**语义（同时至多一张卡展开，展开另一张自动收起前一张）。三 CLI 的 settings 字段**全覆盖确认**（qwen-code 107 / opencode 36 / qoder 21，官方 schema 驱动，15.31/15.32 已落，本批复核对齐）。
+
+**新增**
+- **卡片式收放**：每个 CLI = 一张卡。卡头 = CLI 名 + 安装状态/版本/更新/鉴权徽标（点=展开/收起，chevron 指示）；展开卡通栏显示该 CLI 的 actions 行 + settings 表单。原来独立的「编辑配置」按钮退役——**展开即见表单**（展开时自动按需拉 settings，已缓存则零请求）。
+- **手风琴交互**：点某张卡头展开时，若另一张卡已展开则自动收起——任意时刻至多一张卡展开，长表单不叠罗汉。
+- **自适应排列**：卡网格 `repeat(auto-fit, minmax(260px, 1fr))`——宽屏 3 列、中屏 2 列、窄屏 1 列，随容器宽度自动重排，无需断点硬编码。
+- **触屏/鼠标双适配**：卡头 ≥44px 触控目标 + `userSelect:none`（防触屏双击选中文字）；actions 按钮 middle 尺寸 + `wb-touch-lg`（命中区扩到 ≥44，视觉尺寸不变）；竖屏 NarrowSheet 内 small 按钮高度底线 32px、去 tap 高亮灰闪。鼠标路径零变化（cursor pointer + chevron，无 hover-only 信息）。
+
+**改进**
+- **settings 归属防串卡**：展开卡显示的 settings 按响应自带 `cli` 字段归属判定，切卡 fetch 窗口期内不显示上一张卡的陈旧数据。
+- **收起保留缓存**：收起卡只隐藏 DOM 不丢弃已拉取的 settings——重开同卡零请求。
+- **三 CLI 覆盖确认**：qwen-code 107 字段 / opencode 36 / qoder 21（官方 schema 全量，目录驱动空态也显），与 dashboard 同源不漂移。
+
+**验证**
+- tsc 0（noUnused）| vite build 514 modules | i18n 门 1726 键 0 缺失 0 重复 | pytest 456/456（含版本三源对齐——修复 15.32 漏升 connector 的存量漂移）
+- ui-harness-cli **44/44**（新增 S11 卡片化 6 断言：初始全收 / 卡头点击=展开+自动拉 / 手风琴切卡 / 再点收起 / 窄视口 390px 单列 / 宽视口 1280px 多列；mock 补 opencode settings 路由——真实 API 对任意 CLI 可读写，原 mock 只有 qwen-code）
+
 ## 0.5.0-beta.15.32（2026-10-18 · Coding CLI 设置表单完整化：字段目录驱动 + 中英自适应 + modelProviders 标注 Higress 托管）
 
 三 CLI 的 settings 表单升级为**字段目录驱动**——官方文档字段清单（类型 + 中英双语文案）登记为目录，**未设置的字段也在表单里显示（空态）**，只有你实际改动并保存的项才写入配置文件；表单同时做**中英自适应**。

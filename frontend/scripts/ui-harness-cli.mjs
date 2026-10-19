@@ -17,6 +17,13 @@
  *    modelProviders（model 未动不进 patch + redacted 哨兵 ***）
  * S10 seed：15.31 空态 seed 预填（theme/approvalMode/阈值/envKey/路由卡）
  *    + 填模型名保存 → patch 零脏字段（空串/空数组/空对象全剥离）
+ * S11 卡片化（15.33）：初始全收 / 卡头点击=展开+自动拉 settings /
+ *    手风琴切卡（展开 B 收起 A）/ 再点收起 / 窄视口 390px 单列 /
+ *    宽视口 1280px 多列（auto-fit minmax 自适应）
+ *
+ * 15.33 卡片化适配：动作钮（安装/升级/卸载）与 settings 表单都在卡体内，
+ * 旧「编辑配置」钮退役——场景改用「点 CLI 卡头」展开；mock 补 opencode
+ * settings 路由（真实 API 对任意 CLI 可读写，原 mock 只有 qwen-code）。
  *
  * 15.31 修陈旧门：① mock GET 响应改真实 API 形状（原裸 settings 对象被
  * getCliSettings 防御解包成空树 → S4 起全盲）② S6 preset 断言删除
@@ -115,7 +122,10 @@ assert("S1e OpenCode / Qoder 未安装", t1.includes("OpenCode") && t1.includes(
 assert("S1f 安装版本输入（空=latest）", (await page.getByPlaceholder("如 0.25.0；空=latest").count()) === 1);
 
 // ── S2：opencode 安装（202 task → 轮询 → done → 重拉）──────────
+// 15.33 卡片化：动作钮在卡体内 → 先点 OpenCode 卡头展开（展开即自动拉 settings）。
 const listBefore = await page.evaluate(() => window.__LIST_CALLS__);
+await page.getByText("OpenCode", { exact: true }).first().click();
+await sleep(300);
 await page.getByRole("button", { name: /安\s*装/ }).first().click();
 await sleep(300);
 const installsAfter = await page.evaluate(() => window.__INSTALLS__);
@@ -133,6 +143,10 @@ const listAfter = await page.evaluate(() => window.__LIST_CALLS__);
 assert("S2c done 后重拉列表", listAfter > listBefore, `before=${listBefore} after=${listAfter}`);
 
 // ── S3：qwen-code 卸载二次确认 ─────────────────────────────────
+// 15.33：手风琴切卡——点 Qwen Code 卡头展开（OpenCode 卡自动收起），
+// 卸载钮随卡体出现。
+await page.getByText("Qwen Code", { exact: true }).first().click();
+await sleep(300);
 await page.getByRole("button", { name: /卸\s*载/ }).first().click();
 await sleep(300);
 const modalVisible = await page.getByText("确认卸载").first().isVisible().catch(() => false);
@@ -150,7 +164,8 @@ await sleep(2200);
 assert("S3c 卸载任务完成", (await bodyText()).includes("任务完成"));
 
 // ── S4：settings 编辑（模型名 + redacted 哨兵）─────────────────
-await page.getByRole("button", { name: /编辑配置/ }).first().click();
+// 15.33：Qwen Code 卡在 S3 已展开（展开即自动拉 settings）→ 表单已渲染，
+// 无「编辑配置」钮可点。
 await page
   .waitForFunction(
     () => document.body.innerText.includes("settings（结构化表单 · 只保存改动）"),
@@ -195,8 +210,7 @@ assert(
 assert("S4d 已保存消息", (await bodyText()).includes("已保存"));
 
 // ── S5：JSON 补丁（非法 / 合法）────────────────────────────────
-await page.getByRole("button", { name: /编辑配置/ }).first().click();
-await sleep(300);
+// 15.33：表单自 S4 保持打开（卡体不卸载，仅收起时隐藏）→ 无需再点。
 // 15.31：排除 antd AutoComplete/Select 的隐藏 textarea（name=hiddenTextarea，
 // aria-hidden）——模型行/路由卡新增后 .last() 会命中它导致 fill 超时。
 const patchArea = page.locator("textarea:not([name=hiddenTextarea])").last();
@@ -221,7 +235,8 @@ await page.goto(`http://127.0.0.1:${port}/harness/page-cli.html?scen=routes`);
 await sleep(500);
 await page.getByText("Coding CLI（安装/升级/settings）", { exact: true }).first().click();
 await sleep(500);
-await page.getByRole("button", { name: /编辑配置/ }).first().click();
+// 15.33：展开 Qwen Code 卡（展开即自动拉 settings → 路由卡随表单渲染）。
+await page.getByText("Qwen Code", { exact: true }).first().click();
 await page
   .waitForFunction(
     () => document.body.innerText.includes("openai · 1 号路由"),
@@ -272,7 +287,8 @@ await page.goto(`http://127.0.0.1:${port}/harness/page-cli.html?scen=seed`);
 await sleep(500);
 await page.getByText("Coding CLI（安装/升级/settings）", { exact: true }).first().click();
 await sleep(500);
-await page.getByRole("button", { name: /编辑配置/ }).first().click();
+// 15.33：展开 Qwen Code 卡（空态 seed 表单随展开渲染）。
+await page.getByText("Qwen Code", { exact: true }).first().click();
 await page
   .waitForFunction(
     () => document.body.innerText.includes("Qwen Dark"),
@@ -344,7 +360,8 @@ await page.goto(`http://127.0.0.1:${port}/harness/page-cli.html?scen=l2`);
 await sleep(500);
 await page.getByText("Coding CLI（安装/升级/settings）", { exact: true }).first().click();
 await sleep(500);
-await page.getByRole("button", { name: /编辑配置/ }).first().click();
+// 15.33：展开 Qwen Code 卡（GET 不受 l2 限制；保存时 PUT 才 403）。
+await page.getByText("Qwen Code", { exact: true }).first().click();
 await sleep(400);
 await page.evaluate(() => {
   const inputs = [...document.querySelectorAll("input")];
@@ -373,6 +390,80 @@ assert(
   t8.includes("该 Worker 的编码 CLI 管理暂不可用，升级 AgentTeams 后自动生效。"),
   t8,
 );
+
+// ── S11：卡片化收放（15.33：手风琴 + 自适应排列）────────────────
+await page.goto(`http://127.0.0.1:${port}/harness/page-cli.html?scen=full`);
+await sleep(500);
+await page.getByText("Coding CLI（安装/升级/settings）", { exact: true }).first().click();
+await sleep(500);
+// a) 初始三卡全收（无 settings 表单）。
+const t11a0 = await bodyText();
+assert(
+  "S11a0 初始全收（三卡名可见、无 settings 表单）",
+  t11a0.includes("Qwen Code") && t11a0.includes("OpenCode") && t11a0.includes("Qoder") &&
+    !t11a0.includes("settings（结构化表单"),
+  t11a0,
+);
+// b) 点 Qwen Code 卡头 → 展开 + 自动拉 settings → 表单出现。
+await page.getByText("Qwen Code", { exact: true }).first().click();
+await page
+  .waitForFunction(
+    () => document.body.innerText.includes("Qwen Code settings（结构化表单"),
+    { timeout: 4000 },
+  )
+  .catch(() => {});
+const t11a = await bodyText();
+assert(
+  "S11a 展开即出表单（卡头点击=展开+自动拉 settings）",
+  t11a.includes("Qwen Code settings（结构化表单 · 只保存改动）"),
+  t11a,
+);
+// c) 手风琴：点 OpenCode 卡头 → OpenCode 展开、Qwen Code 收起。
+await page.getByText("OpenCode", { exact: true }).first().click();
+await page
+  .waitForFunction(
+    () => document.body.innerText.includes("OpenCode settings（结构化表单"),
+    { timeout: 4000 },
+  )
+  .catch(() => {});
+const t11c = await bodyText();
+assert(
+  "S11c 手风琴切卡（OpenCode 展开 + Qwen Code 收起）",
+  t11c.includes("OpenCode settings（结构化表单") &&
+    !t11c.includes("Qwen Code settings（结构化表单"),
+  t11c,
+);
+// d) 再点 OpenCode 卡头 → 收起（全收）。
+await page.getByText("OpenCode", { exact: true }).first().click();
+await sleep(300);
+const t11d = await bodyText();
+assert(
+  "S11d 再点收起（全收，无 settings 表单）",
+  !t11d.includes("settings（结构化表单"),
+  t11d,
+);
+// e) 窄视口（390px 手机）：auto-fit minmax(260px,1fr) 退化为单列。
+await page.setViewportSize({ width: 390, height: 844 });
+await sleep(400);
+const cardCols = await page.evaluate(() => {
+  const els = [...document.querySelectorAll("div")].filter(
+    (d) => (d.style.gridTemplateColumns || "").includes("auto-fit"),
+  );
+  if (!els.length) return -1;
+  return getComputedStyle(els[0]).gridTemplateColumns.split(" ").length;
+});
+assert("S11e 窄视口 390px 单列（auto-fit → 1 轨）", cardCols === 1, `cols=${cardCols}`);
+// f) 宽视口（1280px）：≥2 列（自适应排列生效）。
+await page.setViewportSize({ width: 1280, height: 900 });
+await sleep(400);
+const cardColsW = await page.evaluate(() => {
+  const els = [...document.querySelectorAll("div")].filter(
+    (d) => (d.style.gridTemplateColumns || "").includes("auto-fit"),
+  );
+  if (!els.length) return -1;
+  return getComputedStyle(els[0]).gridTemplateColumns.split(" ").length;
+});
+assert("S11f 宽视口 1280px 多列（≥2 轨）", cardColsW >= 2, `cols=${cardColsW}`);
 
 // ── 收尾：pageerror 零容忍 ─────────────────────────────────────
 assert("P0 全程无 pageerror", pageErrors.length === 0, pageErrors.join(" | "));

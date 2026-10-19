@@ -3,6 +3,25 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.33 (2026-10-19 - coding-CLI panel reworked into collapsible cards + adaptive layout + touch/mouse support)
+
+The coding-CLI panel (install / upgrade / settings) is reworked from "three-row list + single settings area" into **collapsible cards** — one card per CLI; clicking a card header expands it to show that CLI's actions (install / upgrade / uninstall) + the structured settings form, clicking again collapses it; **accordion** semantics (at most one card expanded at a time — expanding another auto-collapses the previous one). Settings-field **coverage for all three CLIs confirmed** (qwen-code 107 / opencode 36 / qoder 21, official-schema driven, landed in 15.31/15.32, re-verified here).
+
+**Added**
+- **Collapsible cards**: one card per CLI. Card header = CLI name + installed/version/update/auth badges (click = expand/collapse, with a chevron); the expanded card spans full width and shows that CLI's actions row + settings form. The former standalone "edit settings" button is retired — **expanding reveals the form** (settings are fetched on demand when expanding; zero requests if already cached).
+- **Accordion interaction**: clicking a card header while another card is expanded auto-collapses the previous one — at most one card is open at any time, so long forms never stack.
+- **Adaptive layout**: the card grid uses `repeat(auto-fit, minmax(260px, 1fr))` — 3 columns on wide screens, 2 on medium, 1 on narrow, reflowing automatically with container width and no hard-coded breakpoints.
+- **Touch + mouse support**: card header ≥44px touch target + `userSelect:none` (no accidental double-tap text selection on touch); action buttons at middle size + `wb-touch-lg` (hit area enlarged to ≥44 without changing visual size); in the portrait NarrowSheet, small buttons get a 32px height floor and the tap highlight flash is removed. Mouse path is unchanged (cursor pointer + chevron, no hover-only information).
+
+**Improved**
+- **Settings attribution, no cross-card bleed**: the settings shown for an expanded card are attributed by the `cli` field carried in the response, so a previous card's stale data never shows during the cross-card fetch window.
+- **Cache kept on collapse**: collapsing a card only hides the DOM, it does not drop the fetched settings — reopening the same card costs zero requests.
+- **All-3-CLIs coverage confirmed**: qwen-code 107 fields / opencode 36 / qoder 21 (full official schema, catalog-driven, empty states also rendered), same source as the dashboard.
+
+**Verification**
+- tsc 0 (noUnused) | vite build 514 modules | i18n gate 1726 keys, 0 missing 0 dup | pytest 456/456 (incl. three-source version alignment — fixing the 15.32 leftover where the connector version was not bumped)
+- ui-harness-cli **44/44** (new S11 card-ification, 6 assertions: initial all-collapsed / header-click = expand + auto-fetch / accordion switch / re-click to collapse / narrow 390px single column / wide 1280px multi-column; mock gains an opencode settings route — the real API serves any CLI, the old mock only had qwen-code)
+
 ## 0.5.0-beta.15.32 (2026-10-18 - coding-CLI settings forms completed: field-catalog driven + bilingual zh/en + modelProviders marked as Higress-managed)
 
 The three CLI settings forms are upgraded to be **field-catalog driven** — the documented field list (type + bilingual zh/en labels) is registered in a catalog, so **fields that are not yet set also appear in the form (as empty states)**, and only the fields you actually change and save are written to the config file. The forms are also **bilingual (zh/en, auto-switching with host language)**.
