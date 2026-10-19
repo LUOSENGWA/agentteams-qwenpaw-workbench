@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>manage-overflow-audit</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f0f0f0; }
+  /* 审计视口：?w= 指定（默认 390 = iPhone 竖屏），overflow: visible 让溢出看得见 */
+  #audit-viewport { background: #fff; position: relative; }
+  .wb-main {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 12px 20px;
+    height: 900px;
+    overflow: hidden;
+    min-height: 400px;
+    background: #fff;
+  }
+  .wb-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-width: 100%;
+    padding-top: 12px;
+  }
+  /* 与 WorkbenchPage scoped CSS 同步（防回归：审计页必须带同一套防撑链） */
+  .wb-main .ant-row,
+  .wb-main .ant-row .ant-col,
+  .wb-main .ant-card,
+  .wb-main .ant-card-body { min-width: 0; max-width: 100%; }
+  .wb-main .ant-select { min-width: 0; }
+  .wb-main [style*="display:grid"],
+  .wb-main [style*="display: grid"] { grid-template-columns: minmax(0, 1fr); }
+  .wb-main .ant-card-head-title { min-width: 0; }
+  /* 700px 断点规则 —— 真实页面走 @media，审计页窗口宽 → 用 .force-portrait 复刻 */
+  .force-portrait .wb-main { padding: 8px 10px 12px !important; gap: 8px !important; }
+  .force-portrait .wb-main .ant-row > .ant-col { flex: 0 0 100% !important; max-width: 100% !important; }
+  .force-portrait .wb-main .ant-card-body { padding: 10px !important; }
+  .force-portrait .wb-main .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .force-portrait .wb-main pre, .force-portrait .wb-main code { white-space: pre-wrap; word-break: break-all; }
+  #scan-out {
+    width: 760px; margin: 16px; padding: 12px; background: #111; color: #7fff7f;
+    font: 12px/1.5 monospace; white-space: pre-wrap; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+<div id="audit-viewport">
+  <div id="root"></div>
+</div>
+<pre id="scan-out">scanning…</pre>
+<script type="module">
+import React from "react";
+import { createRoot } from "react-dom/client";
+import * as antdNs from "antd";
+
+// 审计保真：mock matchMedia 为固定视口宽（antd xs/sm/md/lg 断点走 matchMedia）。
+const AUDIT_W = parseInt(new URLSearchParams(location.search).get("w") || "390", 10);
+document.getElementById("audit-viewport").style.width = AUDIT_W + "px";
+if (AUDIT_W >= 576) document.getElementById("audit-viewport").classList.add("force-portrait");
+const origMM = window.matchMedia.bind(window);
+window.matchMedia = (q) => {
+  const m = origMM(q);
+  const minM = q.match(/min-width:\s*([0-9.]+)px/);
+  const maxM = q.match(/max-width:\s*([0-9.]+)px/);
+  let matches = m.matches;
+  if (minM) matches = AUDIT_W >= parseFloat(minM[1]);
+  else if (maxM) matches = AUDIT_W <= parseFloat(maxM[1]);
+  return {
+    ...m,
+    matches,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  };
+};
+
+window.QwenPaw = {
+  host: {
+    React,
+    antd: antdNs.default ?? antdNs,
+    useTheme: () => "light",
+    useLocale: () => "zh-CN",
+    fetch: async () => { throw new Error("audit: no network"); },
+  },
+};
+
+// ── fixture：WorkerManage 展开区五段（运行配置/环境变量/Coding CLI/LLM 调优/资源管理）──
+const workerInfo = {
+  name: "sysdev-lead", phase: "Ready", state: "Running",
+  model: "qwen3.6-27b-fp8", runtime: "qwenpaw", containerState: "running",
+  matrixUserID: "@sysdev-lead:matrix.local", roomID: "!room123:matrix.local",
+  team: "sysdev", role: "leader", message: "", version: "1.2.5",
+  envEditable: true,
+  mcpServers: [{ name: "teamharness", url: "http://127.0.0.1:8765/mcp", transport: "http" }],
+};
+const ADMIN = { workers: [workerInfo], teams: [], humans: [], managers: [] };
+const TEAMS = [{
+  team_name: "sysdev",
+  room_id: "!sysdev_room:matrix.local",
+  workers: [{
+    worker_name: "sysdev-lead", mxid: "@sysdev-lead:matrix.local",
+    role: "leader", spawns: [], phase: "Ready",
+    room_id: "!room123:matrix.local", runtime: "qwenpaw",
+  }],
+}];
+
+const { default: WorkerManage } = await import("./src/components/WorkerManage");
+const { WbViewportProvider } = await import("./src/WbViewportContext");
+
+// 真实 app 的 narrow = 容器可见宽 < 800（WorkbenchPage 实测下发）。
+// 审计页容器宽 = AUDIT_W（视口即容器）→ 同判据。
+const VP = { width: AUDIT_W, height: 844, narrow: AUDIT_W < 800 };
+
+const root = createRoot(document.getElementById("root"));
+root.render(
+  React.createElement(
+    WbViewportProvider,
+    { value: VP },
+    React.createElement(
+      "div",
+      { className: "wb-main" },
+      React.createElement("div", { className: "wb-content" },
+        React.createElement(WorkerManage, {
+          teams: TEAMS,
+          admin: ADMIN,
+          hasToken: true,
+          l1TokenMode: true,
+          myUserId: "@admin:matrix.local",
+          treeSource: "controller-workers",
+          onDm: () => {},
+          onOpenSettings: () => {},
+          onRefreshTree: () => {},
+          onRefreshAdmin: () => {},
+        }),
+      ),
+    ),
+  ),
+);
+
+// ── 展开 Worker 行（点击行 → WorkerManageInfo + 五段内联卡/紧凑按钮）──
+setTimeout(() => {
+  const vp = document.getElementById("audit-viewport");
+  const row = [...vp.querySelectorAll("div")]
+    .filter((d) => d.style.cursor === "pointer" && (d.textContent || "").includes("sysdev-lead"))
+    .pop();
+  if (row) row.click();
+  else document.getElementById("scan-out").textContent = "EXPAND FAIL: row not found";
+}, 800);
+
+// ── 溢出扫描（渲染结果到页面，SDK 无 evaluate，靠 snapshot 读）──
+setTimeout(() => {
+  const vp = document.getElementById("audit-viewport");
+  const content = vp.querySelector(".wb-content");
+  const contentRight = content ? content.getBoundingClientRect().right : Infinity;
+  const contentLeft = content ? content.getBoundingClientRect().left : 0;
+  // 越界元素：right 边超出 .wb-content 右边界（"超出容器"的直接证据）
+  const beyond = [];
+  vp.querySelectorAll("*").forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0) return;
+    if (r.right > contentRight + 2) {
+      const cs = getComputedStyle(el);
+      if (cs.overflowX === "auto" || cs.overflowX === "scroll") return;
+      const cls = (el.className && el.className.toString ? el.className.toString() : "").trim().split(/\s+/).slice(0, 2).join(".");
+      beyond.push(
+        `right=${Math.round(r.right)}(+${Math.round(r.right - contentRight)}) w=${Math.round(r.width)} ${el.tagName.toLowerCase()}.${cls} :: ${((el.textContent || "").trim().slice(0, 30)) || "(empty)"}`,
+      );
+    }
+  });
+  // 管理入口行探针：每个入口按钮 → 其父 flex 行的 scrollWidth vs clientWidth
+  const labels = ["唤醒", "休眠", "运行配置", "环境变量", "Coding CLI", "LLM 调优", "资源管理"];
+  const rows = new Map();
+  vp.querySelectorAll("button").forEach((b) => {
+    const t = (b.textContent || "").trim();
+    for (const lab of labels) {
+      if (t.includes(lab) && !rows.has(lab)) {
+        let rowEl = b.parentElement;
+        let hops = 0;
+        while (rowEl && rowEl !== content && hops < 5) {
+          if (getComputedStyle(rowEl).display === "flex") break;
+          rowEl = rowEl.parentElement; hops++;
+        }
+        if (rowEl) {
+          const rr = rowEl.getBoundingClientRect();
+          rows.set(lab, `x=${Math.round(rr.left)} right=${Math.round(rr.right)}(+${Math.round(rr.right - contentRight)}) cw=${rowEl.clientWidth} sw=${rowEl.scrollWidth} wrap=${getComputedStyle(rowEl).flexWrap}`);
+        }
+      }
+    }
+  });
+  // 最宽 min-content：按 scrollWidth 排序 top15（找撑宽源头叶子）
+  const widest = [...vp.querySelectorAll("*")]
+    .filter((el) => el.scrollWidth > 250)
+    .map((el) => {
+      const cls = (el.className && el.className.toString ? el.className.toString() : "").trim().split(/\s+/).slice(0, 2).join(".");
+      return { sw: el.scrollWidth, cls, tag: el.tagName.toLowerCase(), text: (el.textContent || "").trim().slice(0, 30) };
+    })
+    .sort((a, b) => b.sw - a.sw)
+    .slice(0, 15)
+    .map((x) => `sw=${x.sw} ${x.tag}.${x.cls} :: ${x.text || "(empty)"}`);
+  // 底部 Collapse 面板态（确认收起面板是否 display:none）
+  const collapses = [...vp.querySelectorAll(".ant-collapse-content")]
+    .map((c) => `${c.classList.contains("ant-collapse-content-inactive") ? "closed" : "OPEN"} disp=${getComputedStyle(c).display} sw=${c.scrollWidth}`);
+  // 表格祖先链探针（底部三表为何在 DOM 且有尺寸）
+  let tableChain = "(no table found)";
+  const tb = [...vp.querySelectorAll("table")].find((t) => (t.textContent || "").includes("暂无团队记录"));
+  if (tb) {
+    const chain = [];
+    let el = tb;
+    for (let i = 0; i < 20 && el; i++) {
+      const cs = getComputedStyle(el);
+      const cls = (el.className && el.className.toString ? el.className.toString() : "").trim().split(/\s+/).slice(0, 3).join(".");
+      const head = el.querySelector ? el.querySelector(".ant-card-head-title, .ant-collapse-header") : null;
+      const headTxt = head ? ` head="${(head.textContent || "").trim().slice(0, 24)}"` : "";
+      const prev = el.previousElementSibling && i > 3 ? ` prev="${(el.previousElementSibling.textContent || "").trim().slice(0, 20)}"` : "";
+      chain.push(`${el.tagName.toLowerCase()}.${cls}${headTxt}${prev}`);
+      el = el.parentElement;
+    }
+    tableChain = chain.join("\n  <- ");
+  }
+  const out = document.getElementById("scan-out");
+  out.textContent =
+    `AUDIT viewport=${AUDIT_W}px mode=${VP.narrow ? "NARROW(compact-buttons)" : "WIDE(inline-cards)"} contentLeft=${Math.round(contentLeft)} contentRight=${Math.round(contentRight)}\n` +
+    `=== COLLAPSE PANELS ===\n${collapses.join(" | ") || "(none)"}\n` +
+    `=== TABLE ANCESTOR CHAIN ===\n${tableChain}\n` +
+    `=== MANAGE ENTRY ROWS ===\n` +
+    (labels.map((l) => `${l}: ${rows.get(l) || "(not rendered)"}`).join("\n") || "(none)") +
+    `\n=== BEYOND content-right (${beyond.length}) ===\n` +
+    (beyond.slice(0, 25).join("\n") || "NONE") +
+    `\n=== WIDEST (scrollWidth>250, top15) ===\n` +
+    widest.join("\n");
+}, 3000);
+</script>
+</body>
+</html>

@@ -614,7 +614,9 @@ function WorkerManageInfo({
           />
         </div>
       ) : null}
-      <div style={{ display: "flex", gap: 6 }}>
+      {/* 竖屏：五按钮 min-content 461px > 390px 容器 274px（10/19 用户反馈实测
+          +187px 溢出）→ 允许换行（两行 3+2）；宽屏单行不受影响。 */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {sleeping ? (
           <WbTooltip title={tr("唤醒 {name}", { name: worker.name })}>
             <antd.Button
