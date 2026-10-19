@@ -48,54 +48,13 @@ const DICT: Record<string, { en: string }> = {
     en: "A Controller admin token (L1) is required to run runtime upgrades",
   },
   "选择要升级的 Worker": { en: "Select the Worker to upgrade" },
-  "仅 qwenpaw 可就地升级": { en: "qwenpaw only" },
-  "该 Worker 镜像不支持就地升级（需 1.2.5+ 镜像，含内置升级脚本）。": {
-    en: "This Worker image does not support in-place upgrade (requires a 1.2.5+ image with the built-in upgrade scripts).",
-  },
-  "附加 wheel 可达性检查（从 PyPI 下载，耗时更长）": {
-    en: "Also verify wheel reachability (downloads from PyPI, slower)",
-  },
-  "验证 wheel 可达": { en: "Verify wheel reachable" },
   "预检": { en: "Pre-check" },
-  "预检失败": { en: "Pre-check failed" },
-  "预检输出解析失败，原始输出：": { en: "Failed to parse pre-check output. Raw output:" },
-  "已停止跟踪": { en: "tracking stopped" },
-  "状态详情（state-file）": { en: "State details (state-file)" },
-  "等待状态文件（容器升级/重启中…）": { en: "Waiting for the state file (container upgrading/restarting…)" },
-  "预检未通过（FAIL），不建议继续。": { en: "Pre-check failed (FAIL). Continuing is not recommended." },
-  "升级将两阶段就地执行并重启该 Worker 容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。": {
-    en: "The upgrade runs in-place in two phases and restarts this Worker container; running tasks are interrupted in the meantime. A failed boot self-check rolls back to the previous version automatically.",
-  },
-  "本宿主 QwenPaw 运行时的预检与就地升级（两阶段编排、失败自动回滚）。预检只读；触发升级会重启容器并可能中断在跑任务，需二次确认。": {
-    en: "Preflight and in-place upgrade of this host's QwenPaw runtime (two-phase orchestration with automatic rollback on failure). Preflight is read-only; triggering an upgrade restarts the container and may interrupt running tasks, so it requires confirmation.",
-  },
-  "当前宿主未提供运行时升级服务（需 1.2.5+ worker 镜像内置升级插件）。": {
-    en: "This host does not provide the runtime upgrade service (requires the built-in upgrade plugin in 1.2.5+ worker images).",
-  },
-  "暂无可升级版本": { en: "No upgradeable versions" },
-  "预检存在告警（不影响已有结论）": {
-    en: "Preflight warnings (do not affect existing conclusions)",
-  },
-  "确认触发运行时升级？": { en: "Confirm runtime upgrade?" },
   "目标版本": { en: "Target version" },
-  "升级将两阶段就地执行并重启容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。": {
-    en: "The upgrade runs in-place in two phases and restarts the container; running tasks will be interrupted. If the boot check fails, it rolls back to the previous version automatically.",
-  },
   "确认升级": { en: "Upgrade" },
-  "触发升级失败": { en: "Failed to start upgrade" },
-  "升级到此版本": { en: "Upgrade to this version" },
   // ── 运行时升级·批量（多选 qwenpaw worker + 检查更新 + 顺序触发）──
   "单 Worker": { en: "Single Worker" },
   "批量": { en: "Batch" },
   "检查更新": { en: "Check for updates" },
-  "当前=各 Worker 容器内 QwenPaw 运行时版（首查探一次后缓存），最新=单次查询，逐 Worker 匹配。": {
-    en: "Current = each Worker's in-container QwenPaw runtime version (probed once then cached); latest = single query; matched per Worker.",
-  },
-  "选择要升级的 Worker（仅 qwenpaw 可就地升级）": {
-    en: "Select the Workers to upgrade (qwenpaw only supports in-place upgrade)",
-  },
-  "可就地升级": { en: "In-place upgrade available" },
-  "不支持就地升级": { en: "In-place upgrade not supported" },
   "可升级": { en: "Update available" },
   "最新": { en: "Latest" },
   "未知版本": { en: "Unknown version" },
@@ -113,10 +72,6 @@ const DICT: Record<string, { en: string }> = {
   },
   "预发布": { en: "Prerelease" },
   "推荐": { en: "Recommended" },
-  "C1 版本解析": { en: "C1 version resolution" },
-  "C2 依赖钉定": { en: "C2 pinned dependencies" },
-  "C3 兼容补丁": { en: "C3 compat patch" },
-  "C4 可选依赖": { en: "C4 optional deps" },
   // ── Worker 环境变量 + 网关探测（1.2.5 #1306 消费，L1/manager only）──
   "环境变量与网关探测": { en: "Env Variables & Gateway Probe" },
   "环境变量": { en: "Env Variables" },
@@ -220,12 +175,7 @@ const DICT: Record<string, { en: string }> = {
   // ── 远端团队知识库 / 群名搜索 / 通知跳转 / 首页快捷）──
   "远端团队知识库": { en: "Remote team KB" },
   "本机宿主 Agent": { en: "Local host agent" },
-  "读集群 Worker 的远端知识库（只读；管理员见全部团队，L2 见自己团队）": {
-    en: "Read workers' remote KB across the cluster (read-only; admin sees all teams, L2 sees own team)",
-  },
-  "读本机 QwenPaw Agent 的记忆库": { en: "Read this machine's QwenPaw agent memory" },
   "重新检测": { en: "Re-detect" },
-  "远端团队知识库不可用，当前为本机宿主知识库": { en: "Remote team KB unavailable; showing local host KB" },
   "远端未找到 Worker 容器（Controller 未接入？）": { en: "No worker containers found (Controller not connected?)" },
   "团队 Agent": { en: "Team agents" },
   "聚合团队": { en: "Aggregate team" },
@@ -280,9 +230,7 @@ const DICT: Record<string, { en: string }> = {
   "无变更": { en: "No changes" },
   "Worker 配置（审批模式）": { en: "Worker settings (approval mode)" },
   "改名失败": { en: "Rename failed" },
-  "远端团队知识库需要 L1（管理员）凭据——配置页填写 Controller 管理员 token 后点「重新检测」。L2 用户没有该 token，此视图不可用（保持本机知识库，或向管理员申请 L1 凭据）": { en: "Remote team KB requires L1 (admin) credentials — fill the Controller admin token on the settings page, then re-detect. L2 users don't have that token; this view is unavailable (keep the local KB or request L1 credentials from the admin)" },
   "未分组": { en: "Ungrouped" },
-  "本机宿主 QwenPaw": { en: "Local host QwenPaw" },
   "群 / 会话": { en: "Rooms / Chats" },
   "点击直达": { en: "Click to open" },
   "打开该房间": { en: "Open this room" },
@@ -301,49 +249,23 @@ const DICT: Record<string, { en: string }> = {
   // ── 知识库（W3①）──
   "知识库": { en: "Knowledge" },
   "当前 Agent": { en: "Current Agent" },
-  "重建索引": { en: "Reindex" },
-  "正在重建索引…": { en: "Reindexing…" },
   "自动记忆": { en: "Auto-memory" },
   "开": { en: "on" },
   "关": { en: "off" },
-  "每 N 轮": { en: "every N turns" },
-  "记忆 worker": { en: "Memory worker" },
-  "忙碌": { en: "busy" },
-  "停止中": { en: "stopping" },
   "错误": { en: "Error" },
   "参数": { en: "Args" },
   "Agent Loop": { en: "Agent Loop" },
   "默认": { en: "default" },
   "Higress 内置 alias（需配路由映射）": { en: "Higress built-in alias (route mapping required)" },
-  "进程内存": { en: "Process memory" },
-  "最近错误": { en: "Last error" },
-  "图谱/状态 API 需宿主 2.1.0+（当前 404），仅文件浏览可用": {
-    en: "Graph/status API requires host 2.1.0+ (currently 404); file browsing only",
-  },
   "知识图谱（wikilink 引用网络）": { en: "Knowledge graph (wikilink network)" },
   "N 节点 · M 边": { en: "N nodes · M edges" },
   "记忆文件": { en: "Memory files" },
-  "个人偏好": { en: "Personal" },
-  "操作流程": { en: "Procedures" },
-  "Wiki 知识": { en: "Wiki" },
   "其他": { en: "Other" },
-  "每日记忆": { en: "Daily memory" },
   "点击左侧文件查看内容": { en: "Click a file on the left to preview" },
   "该节点为虚拟根节点，不可打开": { en: "This is a virtual root node and cannot be opened" },
-  "节点缺少文件路径，无法打开": { en: "Node has no file path to open" },
-  "索引重建失败": { en: "Reindex failed" },
-  "确认重建记忆索引？": { en: "Rebuild the memory index?" },
-  "会重新扫描当前 Agent 的全部记忆文件（memory/ + digest/）。大库耗时数分钟，期间检索可能不完整。": {
-    en: "Rescans all of this agent's memory files (memory/ + digest/). Large libraries take minutes; search may be incomplete meanwhile.",
-  },
   "重建": { en: "Rebuild" },
-  "索引重建完成": { en: "Reindex completed" },
   "暂无图谱数据": { en: "No graph data" },
-  "宿主环境不可用（无法获取当前 Agent）": {
-    en: "Host unavailable (cannot resolve current agent)",
-  },
   "展开": { en: "Expand" },
-  "拖动调整输入框高度": { en: "Drag to resize the input box" },
   "拖动调整产物树宽度": { en: "Drag to resize the artifacts tree" },
   "连通性测试": { en: "Connectivity test" },
   "连通性测试失败": { en: "Connectivity test failed" },
@@ -402,12 +324,6 @@ const DICT: Record<string, { en: string }> = {
   "SGLang 地址凭据（通常不需要）": { en: "SGLang address credential (usually not needed)" },
   "SGLang 通常不需要凭据（本地推理服务自身无认证）——仅当访问地址经公网网关 Basic 门时填写，默认留空。": {
     en: "SGLang usually needs no credential (a local inference service has no auth of its own) — fill only when the address is behind a public gateway Basic door; leave empty by default.",
-  },
-  "该地址走公网入口：请填 Basic 用户名/密码或 API Key（与网关一致）": {
-    en: "This address uses the public entry: fill Basic username/password or API key (matching the gateway)",
-  },
-  "凭据只存本机 config.json，不回显、不进日志、不上传。": {
-    en: "Credential is stored only in the local config.json; never echoed, logged, or uploaded.",
   },
   "事件流：已连接": { en: "Event stream: connected" },
   "事件流：已断开——自动重连中（上次断开 {time}）": {
@@ -471,9 +387,6 @@ const DICT: Record<string, { en: string }> = {
   },
   "自动刷新 30 秒": { en: "Auto-refresh 30s" },
   "运行时版本": { en: "Runtime version" },
-  "AgentTeams Controller 版本（/api/v1/version 端点值；源码构建显示 dev。各节点实际发布版本看 Worker 详情「运行时版本」与 Manager 表「版本」列的镜像 tag）": {
-    en: "AgentTeams Controller version (value of the /api/v1/version endpoint; source builds show 'dev'). For each node's actual release, see the image tag in the Worker detail's 'Runtime version' and the Manager table's 'Version' column.",
-  },
   // （F4：SGLang 卡「要手动刷新才更新」观感真根因=标注
   // 误导——卡片标「自动刷新 1 秒」但数据源是 SGLang 侧快照发布，服务端
   // 默认 15s 才出新值，数字冻结 14s 被误判卡死、手动刷新又读同一快照。
@@ -527,14 +440,6 @@ const DICT: Record<string, { en: string }> = {
   "刷新": { en: "Refresh" },
   "加载中…": { en: "Loading…" },
   "模型网关路由": { en: "Model gateway routes" },
-  "Controller /api/v1/gateway/ai-routes（只读路由目录：路由名=网关 /v1 入口，非模型 ID；上游 provider+权重；被授权 consumer。token 模式 L1 可读，L2 无权限）": {
-    en: "Controller /api/v1/gateway/ai-routes (read-only route catalog: route name = gateway /v1 entry, NOT a model ID; upstream provider + weight; authorized consumers. Readable by L1 in token mode; L2 has no access)",
-  },
-  "仅 L1 管理员可见（Controller 路由目录，token 鉴权）": {
-    en: "Visible to L1 admins only (Controller route catalog, token-authenticated)",
-  },
-  "模型网关目录获取失败": { en: "Failed to load model gateway catalog" },
-  "暂无 AI 路由（网关未配置路由）": { en: "No AI routes (gateway has none configured)" },
   "授权 consumer": { en: "Authorized consumers" },
   "频道接入 API 不可用（Controller 版本较低）": {
     en: "Channel API unavailable (Controller version too low)",
@@ -849,9 +754,6 @@ const DICT: Record<string, { en: string }> = {
   "上游 Controller 无 UpdateHuman API（dashboard 的 updateHuman 是死代码）——这里生成「内嵌 apiserver merge-patch」命令，复制到运行 Controller 的宿主机执行。执行完回本页点刷新即可核对生效。上游 Human PUT 端点合并后此处自动升级为一键 PUT。": {
     en: "The upstream Controller has no UpdateHuman API (the dashboard's updateHuman is dead code) — this generates an embedded-apiserver merge-patch command to run on the host running the Controller. After running it, come back and refresh to verify. Once upstream PR candidate P-HUMANS-PUT merges, this upgrades to one-click PUT automatically.",
   },
-  "粘贴服务器端 /var/run/agentteams/cli-token 文件内容（一次性，保存后不再需要）": {
-    en: "Paste the server /var/run/agentteams/cli-token file content (one-time, remembered after saving)",
-  },
   "Matrix 登录（L2，默认）": { en: "Matrix login (L2, default)" },
   // ── ──
   "① Controller 认证（管理面：CRD/全量视图/日志）": {
@@ -859,9 +761,6 @@ const DICT: Record<string, { en: string }> = {
   },
   "Controller 只认 SA token 与 Matrix token（Matrix 路径只放行 L2/L3 只读，L1 明确 401，无密码登录端点）——admin 能力只能来自管理员 token。": {
     en: "Controller only accepts SA tokens and Matrix tokens (the Matrix path allows L2/L3 read-only; L1 explicitly 401s; there is no password login endpoint) — admin capability can only come from the admin token.",
-  },
-  "② Higress Console 认证（模型面：alias/提供商/路由）——独立系统": {
-    en: "② Higress Console auth (model plane: alias / providers / routes) — separate system",
   },
   "Higress Console 自己的账号体系（admin 账号+密码），与 Controller 认证互不相关、可各自独立配置。": {
     en: "Higress Console has its own account system (admin username + password), unrelated to Controller auth — each can be configured independently.",
@@ -871,9 +770,6 @@ const DICT: Record<string, { en: string }> = {
   },
   "使用当前登录的 Matrix 账号，无需 token。注意：Controller 的 Matrix 认证只接受权限等级 2（level 2）的 Human 账号——level 1 的 admin 账号会 401，请改用管理员 token 模式，或让部署管理员把该 Human 改为 level 2（权限自检可见当前账号等级）。": {
     en: "Uses the logged-in Matrix account, no token needed. Note: the Controller's Matrix auth only accepts Human accounts with permissionLevel=2 — a level-1 admin account gets 401. Use admin-token mode, or ask the deploy admin to set that Human to level 2 (the permission self-check shows the current level).",
-  },
-  "Controller 地址（可选——全量团队视图才需要）": {
-    en: "Controller URL (optional — needed for full team view)",
   },
   // ── ──
   "Controller L1 全量": { en: "Controller L1 full" },
@@ -1006,9 +902,6 @@ const DICT: Record<string, { en: string }> = {
   "暂无工作流事件——Agent 执行任务时会在这里聚合": {
     en: "No workflow events — they aggregate here as Agents work",
   },
-  "暂无拓扑数据——Agent 以 DAG 模式（workflow_run nodes）执行任务后这里会显示依赖树": {
-    en: "No topology data — the dependency tree appears after Agents run DAG-mode tasks (workflow_run nodes)",
-  },
   "已有 {n} 个项目，但任务图（nodes）全空——多为 planning 状态：项目刚建、任务在群聊 @mention 协调，未登记进 Controller 的任务 DAG": {
     en: "{n} project(s) listed but the task graph (nodes) is empty — usually planning state: tasks are coordinated via @mentions in the room, not yet registered in the Controller DAG",
   },
@@ -1045,9 +938,6 @@ const DICT: Record<string, { en: string }> = {
   "Higress Console（透传）": { en: "Higress Console (passthrough)" },
   "Controller 只读目录（#1242）": { en: "Controller read-only catalog (#1242)" },
   "数据不可用": { en: "Data unavailable" },
-  "本页面为只读视图——路由/提供商编辑请使用 Higress Console 或 dashboard 模型管理面": {
-    en: "Read-only view — edit routes/providers in the Higress Console or the dashboard models admin",
-  },
   "路由目录为空——检查 Higress 是否已配置 AI 路由": {
     en: "Route catalog is empty — check whether Higress has AI routes configured",
   },
@@ -1087,12 +977,6 @@ const DICT: Record<string, { en: string }> = {
   "节点（{n}）": { en: "Nodes ({n})" },
   "产物 {a} · 状态转换 {b}": { en: "Deliverables {a} · transitions {b}" },
   "验收": { en: "Acceptance" },
-  "项目列表/项目卡片/看板/DAG 拓扑四种视图；项目卡片与拓扑为左侧项目列表+右侧详情（对齐 dashboard 任务看板「项目」区）；看板列映射与 dashboard 同源（workflow API）": {
-    en: "Four views: Project list / Project cards / Board / DAG Topology. Cards & Topology are a project list (left) + detail (right), aligned with the dashboard task board 'Projects' section; board column mapping shares the dashboard source (workflow API)",
-  },
-  "节点依赖成环或无根节点，无法渲染树形（请检查 nodes dependsOn）": {
-    en: "Circular dependencies or no root node — cannot render tree (check nodes dependsOn)",
-  },
   "Worker": { en: "Worker" },
   "角色": { en: "Role" },
   "模型": { en: "Model" },
@@ -1284,9 +1168,6 @@ const DICT: Record<string, { en: string }> = {
   "暂无看板数据——Agent 以 DAG 模式（workflow_run nodes）执行任务后这里会显示任务看板": {
     en: "No board data yet — shown once agents run tasks in DAG mode (workflow_run nodes)",
   },
-  "事件/卡片/看板/树状拓扑四种视图；看板列映射与 dashboard 任务看板同源（workflow API）": {
-    en: "Four views: events / cards / board / topo tree; board column mapping uses the same workflow API as the dashboard task board",
-  },
   // ── workflow 卡片──
   "参与 Worker": { en: "Workers" },
   "执行步骤": { en: "Steps" },
@@ -1304,9 +1185,6 @@ const DICT: Record<string, { en: string }> = {
   "交付物": { en: "Deliverable" },
   "项目文件（任务结果/任务书/交付物，产物端点 产物端点）": {
     en: "Project files (task result/spec/deliverables via 产物端点 artifact API)",
-  },
-  "该房间暂无关联项目——项目群里出现任务后，这里会显示任务文件（结果/任务书/交付物）": {
-    en: "No linked project in this room yet — task files (result/spec/deliverables) appear once tasks show up",
   },
   "项目暂无已声明的文件（任务完成并产出结果后会显示）": {
     en: "No files declared yet — shown after tasks produce results",
@@ -1599,20 +1477,8 @@ const DICT: Record<string, { en: string }> = {
   "入链 · {n}": { en: "Incoming · {n}" },
   "未解析引用（对应文件不存在）": { en: "Unresolved reference (file not found)" },
   // 技能 tab（宿主 Agent，参考 QwenPaw SkillPool）
-  "管理当前 QwenPaw 宿主 Agent（你正在对话的本机助手）的技能，改动即时生效": {
-    en: "Manage skills of the current QwenPaw host agent (the local assistant you chat with); changes apply immediately",
-  },
-  "远端团队 Worker 技能只读展示见「Worker 管理」tab；团队侧技能上传/应用 =  功能线（待上游 PR）": {
-    en: "Remote team worker skills are read-only in the Team Management tab; team-side skill upload/apply =  feature line (upstream PR pending)",
-  },
   "上传技能（zip）": { en: "Upload skill (zip)" },
   "上传失败": { en: "Upload failed" },
-  "删除技能「{name}」？（仅已禁用可删）": {
-    en: "Delete skill “{name}”? (only disabled skills can be deleted)",
-  },
-  "SKILL.md 全文（YAML frontmatter + 正文）": {
-    en: "Full SKILL.md (YAML frontmatter + body)",
-  },
   // DirNode 目录树（早期遗留补登记）
   "工作区目录（点文件夹展开）": {
     en: "Workspace directories (click a folder to expand)",
@@ -1662,12 +1528,6 @@ const DICT: Record<string, { en: string }> = {
   "未命中": { en: "not matched" },
   "期望": { en: "expected" },
   "选择 Worker（已有 CR）": { en: "Select worker (existing CR)" },
-  "模型（留空=跟随集群默认；下拉=在服模型∪在用模型）": {
-    en: "Model (empty = cluster default; dropdown = serving ∪ in-use)",
-  },
-  "模型（留空=不改；新建跟随集群默认；下拉=在服∪在用）": {
-    en: "Model (empty = keep; new follows cluster default; dropdown = serving ∪ in-use)",
-  },
   "模型（留空=不改；下拉=在服∪在用模型，provider 不变）": {
     en: "Model (empty = keep; dropdown = serving ∪ in-use, provider unchanged)",
   },
@@ -1745,7 +1605,6 @@ const DICT: Record<string, { en: string }> = {
   "③ MCP Servers（L1 可写 · PUT 合并语义 · mcpServers 整字段替换）": { en: "③ MCP Servers (L1 writable · PUT merge semantics · mcpServers full-field replace)" },
   "二维码已失效，请重新生成": { en: "QR code expired, please regenerate" },
   "仍要保存": { en: "Save anyway" },
-  "使用方 {n}": { en: "Used by {n}" },
   "保存（热加载）": { en: "Save (hot reload)" },
   "停用": { en: "Disable" },
   "健康": { en: "Healthy" },
@@ -1787,11 +1646,9 @@ const DICT: Record<string, { en: string }> = {
   "技能目录 API 待上游合并": { en: "Skill catalog API awaiting upstream merge" },
   "技能目录 API 待上游合并——合并并升级后本节自动点亮": { en: "Skill catalog API awaiting upstream merge — activates after merge + upgrade" },
   "技能目录加载失败：{m}": { en: "Failed to load skill catalog: {m}" },
-  "搜索名称/描述": { en: "Search name/description" },
   "无 MCP": { en: "No MCP" },
   "无 Worker": { en: "No workers" },
   "无 Worker（admin token 未配置？）": { en: "No workers (admin token not configured?)" },
-  "无匹配技能": { en: "No matching skills" },
   "无权限修改该 Worker 的 MCP（当前角色被 Controller 拒绝）": { en: "No permission to modify this worker's MCP (rejected by Controller for current role)" },
   "无权限修改该 Worker 的技能（当前角色被 Controller 拒绝；L2 自服务仅白名单字段）": { en: "No permission to modify this worker's skills (rejected by Controller for current role; L2 self-service is whitelist-only)" },
   "无频道配置": { en: "No channel config" },
@@ -1816,24 +1673,18 @@ const DICT: Record<string, { en: string }> = {
   "（留空=不带前缀）": { en: "(leave empty = no prefix)" },
 
   // ── L1 双轨（Controller token / Higress Console 账号，两块独立）+ 网关 alias + 运行时 ──
-  "两块凭据互相独立、各管一个系统（不是二选一）：": { en: "Two independent credentials, each for its own system (not an either/or):" },
   /* ：
  术语纠偏——「Controller 数据面」是 Higress 的平面词汇误用到 Controller 上
  （Controller 只有管理 API，没有数据面；数据面=Higress 6867）；「Console
  会话」补 Higress 前缀防与 QwenPaw console 混淆。 */
-  "① Controller 管理员 token——Controller 管理 API 的唯一凭证（CRD 管理/全量视图）。Controller 只认 SA token 与 Matrix token：Matrix 路径只放行 level-2/3（只读），level-1（admin）明确 401，且无任何密码登录端点——dashboard 能「admin 账密进门」同样是部署期把该 token 注入服务端 env，浏览器用户从不输入它。": { en: "① Controller admin token — the ONLY credential for the Controller admin API (CRD management / full views). The Controller accepts only SA tokens and Matrix tokens: the Matrix path admits level-2/3 (read-only) and explicitly rejects level-1 (admin) with 401, and there is no password login endpoint at all — the dashboard's \"admin account + password gets you in\" works because its deployer injected this token into the server env; browser users never type it." },
-  "② Higress 账号+密码——Higress Console 的账号（模型 alias 面，独立系统）。它恰好与 Matrix @admin 同源（部署时同一对账密注册两处），但不是 Controller 凭证、也不改变 Controller 权限。": { en: "② Higress account + password — the account of Higress Console (model-alias side, a separate system). It happens to be the same pair as the Matrix @admin account (both are seeded from the same credentials at deploy time), but it is NOT a Controller credential and does not change Controller permissions." },
   "① Controller 管理员 token": { en: "① Controller admin token" },
-  "② Higress Console 会话（模型面）——admin 账号+密码": { en: "② Higress Console session (model side) — admin account + password" },
   "admin 账号（如 admin）": { en: "admin account (e.g. admin)" },
-  "admin 密码（留空=保持现有）": { en: "admin password (empty = keep existing)" },
   "验证": { en: "Verify" },
   "验证通过（{mode}）": { en: "Verified ({mode})" },
   "admin 账号密码（Higress Console 会话已持有）": { en: "admin account + password (Higress Console session held)" },
   "管理员 token": { en: "admin token" },
   "验证失败：{err}": { en: "Verification failed: {err}" },
   "验证通过后自动保存（仅建立 Higress Console 会话；与 Controller token 无关，两者可同时配置）": { en: "Saved automatically once verification passes (establishes only the Higress Console session; independent of the Controller token — the two can be configured together)" },
-  "Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。L1 两块独立配置：① Controller 管理员 token——CRD 管理（入职/建队/改配/删除）+ 全部 Worker/Team 状态视图（Controller 唯一凭证，无接口获取——上游安全设计，部署管理员提供，粘贴一次永久记住）；② Higress 账号+密码——另建 Higress Console 会话（模型下拉 alias 层），与 ① 互不替代、可同时配置。": { en: "Matrix login (L2): view your accessible teams + project actions (start/pause/artifacts) — enough for daily use. L1 = two independent configurations: ① Controller admin token — CRD management (onboarding/team create/reconfigure/delete) + full Worker/Team views (the Controller's only credential; no API to fetch it — upstream security design — provided by the deployment admin, paste once and it is remembered forever); ② Higress account + password — opens a Higress Console session (model-dropdown alias layer); neither replaces the other and both can be configured together." },
   "Higress alias（路由可解析）": { en: "Higress alias (route resolvable)" },
   "在服+在用": { en: "Serving + in use" },
   "模型（留空=跟随集群默认；下拉=在服∪在用∪Higress alias）": { en: "Model (empty = cluster default; dropdown = serving ∪ in-use ∪ Higress alias)" },
@@ -1910,7 +1761,6 @@ const DICT: Record<string, { en: string }> = {
   // 存量缺键补齐（CrdManage/模型设置 12.2-12.3 遗留，i18n 全量核对抓出）。
   "Higress alias 自检：{n} 条路由 / 0 个可解析 alias——精确匹配（EXACT/EQUAL）且 provider 存在的路由才会进模型下拉；若路由已配仍为 0，检查模型匹配规则是否为「精确匹配」": { en: "Higress alias self-check: {n} route(s) / 0 resolvable alias(es) — only EXACT/EQUAL routes with an existing provider reach the model dropdown; if routes exist but it is still 0, check that the model matching rule is set to exact match" },
   "Higress alias 自检：{n} 条路由 / {m} 个可解析 alias（模型下拉可见）": { en: "Higress alias self-check: {n} route(s) / {m} resolvable alias(es) (visible in the model dropdown)" },
-  "L1 管理面（token / Higress）": { en: "L1 management (token / Higress)" },
   "Leader (team_leader)": { en: "Leader (team_leader)" },
   "Manager 模型已保存（重启容器后生效）": { en: "Manager model saved (takes effect after the container restarts)" },
   "SOUL（可选，多行，worker≤150 行）": { en: "SOUL (optional, multi-line, worker ≤150 lines)" },
@@ -2025,15 +1875,6 @@ const DICT: Record<string, { en: string }> = {
   "Legacy · 建议升级 QwenPaw": {
     en: "Legacy · upgrade to QwenPaw recommended",
   },
-  "该 Worker 的运行时为 {rt}，以下 QwenPaw 独有功能已禁用：": {
-    en: "This worker runs on {rt}; the following QwenPaw-only features are disabled:",
-  },
-  "知识库文件视图仅支持 QwenPaw 运行时（当前：{rt}）。该 Worker 的知识文件请在其所在房间或容器内查看。": {
-    en: "The knowledge file view only supports the QwenPaw runtime (current: {rt}). See this worker's room or container for its knowledge files.",
-  },
-  "会话窗（worker chats）仅支持 QwenPaw 运行时的 Worker（当前：{rt}）。": {
-    en: "The session window (worker chats) only supports QwenPaw workers (current: {rt}).",
-  },
   "仅 QwenPaw 运行时可用": {
     en: "Only available on the QwenPaw runtime",
   },
@@ -2067,9 +1908,6 @@ const DICT: Record<string, { en: string }> = {
   "编辑整块 JSON": { en: "Edit full JSON" },
   "loop": { en: "loop" },
   "loop 不是合法 JSON": { en: "loop is not valid JSON" },
-  "loop 为整块替换语义——保存后整个 loop 对象以此 JSON 为准；loop 变更将通知团队 Leader。": {
-    en: "loop is replaced wholesale — saving overwrites the whole loop object with this JSON; loop changes notify the team Leader.",
-  },
   "审批级别": { en: "Approval level" },
   "长期记忆": { en: "Long-term memory" },
   "上下文后端": { en: "Context backend" },
@@ -2095,9 +1933,6 @@ const DICT: Record<string, { en: string }> = {
     en: "L2 can only see chats in Matrix rooms it has joined; this note also appears when the Controller lacks the chats endpoint or the current account has no access to this worker. This section activates automatically after upgrading the Controller.",
   },
   "会话加载失败": { en: "Failed to load chats" },
-  "当前账号在此 Worker 的可见范围内没有会话（L2 仅自己所在房间）": {
-    en: "No chats in this worker for the current account (L2 sees only its own rooms)",
-  },
   "Agent 上下文视图——可能含压缩历史与未发送的工具调用/输出，与实发房间消息不同。": {
     en: "Agent context view - may include compacted history and unsent tool calls/output; distinct from sent room messages.",
   },
@@ -2137,12 +1972,6 @@ const DICT: Record<string, { en: string }> = {
   },
   "设置失败：当前 Controller 审批端点有上游路径缺陷（502，修复待合入并重建）；旧端点不可用——{detail}": {
     en: "Save failed: the Controller approval endpoint has an upstream path defect (502; fix pending merge and rebuild) and the legacy endpoint is unavailable — {detail}",
-  },
-  "单次任务允许的最大 LLM 迭代轮数（max_iters）。越大越能啃硬任务，越慢越贵。": {
-    en: "Max LLM iterations per task (max_iters). Higher tackles harder tasks but is slower and costlier.",
-  },
-  "单次 shell 命令超时（秒）。L1-only 键，本面板只读。": {
-    en: "Per-shell-command timeout (seconds). L1-only key; read-only here.",
   },
   "{n} 秒": { en: "{n}s" },
   "启用自动重试": { en: "Enable auto-retry" },
@@ -2209,21 +2038,6 @@ const DICT: Record<string, { en: string }> = {
     en: "Exponential backoff cap (llm_backoff_cap); must be >= the backoff base.",
   },
   "长期记忆后端": { en: "Memory backend" },
-  "memory_manager_backend——L1 键，本面板只读展示。": {
-    en: "memory_manager_backend - L1 key; shown read-only here.",
-  },
-  "context_manager_backend——L1 键，本面板只读展示。": {
-    en: "context_manager_backend - L1 key; shown read-only here.",
-  },
-  "approval_level——由审批端点（#1216）管理，本面板只读（PUT 会被服务端 400 拒绝）。": {
-    en: "approval_level - managed by the approval endpoint (#1216); read-only here (PUT is rejected with 400).",
-  },
-  "reme_light_memory_config——记忆参数高风险，仅展示不开放编辑。": {
-    en: "reme_light_memory_config - high-risk memory params; display only, not editable.",
-  },
-  "adbpg_memory_config——记忆参数高风险，仅展示不开放编辑。": {
-    en: "adbpg_memory_config - high-risk memory params; display only, not editable.",
-  },
   // ── ──
   "L1-only 字段——当前账号没有 Controller 管理 token：L1 账号/密码登录只建立网关 Console 会话（与 Controller token 是两套凭证），无 token 时 L1 字段不可写（PUT 403）。获取 token 与配置方法见「设置」页。": {
     en: "L1-only fields — the current account has no Controller admin token: L1 account/password login only creates the gateway Console session (a different credential from the Controller token); without the token, L1 fields are read-only (PUT 403). See the Settings page for how to obtain and configure the token.",
@@ -2231,9 +2045,6 @@ const DICT: Record<string, { en: string }> = {
   "去设置": { en: "Open Settings" },
   "L1 账号/密码验证通过 = 已持有网关 Console 会话（模型下拉的 alias 可用）。但 Worker 运行配置的 L1 字段（并发限流/上下文管理/shell 组等）与 CRD 管理还需要 Controller 管理员 token——另一套凭证，密码不替代 token。": {
     en: "L1 account/password verified = gateway Console session held (model dropdown aliases available). Worker runtime L1 fields (rate limiting / context management / shell group, etc.) and CRD management still require the Controller admin token — a separate credential the password does not replace.",
-  },
-  "获取（在部署宿主机执行后复制，粘进上方 ① 字段）：": {
-    en: "To obtain (run on the deployment host, copy, paste into the ① field above):",
   },
   "会话列表需要 Controller 管理员 token（当前账号未配置或不可达）": {
     en: "Session list requires the Controller admin token (not configured for the current account, or unreachable)",
@@ -2279,9 +2090,6 @@ const DICT: Record<string, { en: string }> = {
   "运行时已装载（物化层——实际可调用；分配层空而这里非空 = 团队层自动物化/内置恢复/镜像自带）": {
     en: "Loaded at runtime (materialization layer — actually callable; assignment layer empty while this is not = team-layer auto-materialization / builtin recovery / image-bundled)",
   },
-  "分配层为空但物化层非空——技能由团队层自动物化/内置恢复/镜像自带，非显式分配，属预期": {
-    en: "Assignment layer is empty but the materialization layer is not — skills come from team-layer auto-materialization / builtin recovery / image bundling, not explicit assignment; expected",
-  },
   "首次打开加载频道编辑器…": { en: "Loading channel editor on first open…" },
   "首次打开加载工具面板…": { en: "Loading tools panel on first open…" },
   "资源管理": { en: "Resources" },
@@ -2312,9 +2120,6 @@ const DICT: Record<string, { en: string }> = {
   "扫描通过": { en: "scan passed" },
   "扫描有警告": { en: "scan warned" },
   "扫描跳过": { en: "scan skipped" },
-  "当前 Controller 版本不支持技能下载（上游端点待合并）": {
-    en: "This Controller version does not support skill download yet (upstream endpoint pending)",
-  },
   "前端 {f} · 连接器 {b}": { en: "UI {f} · connector {b}" },
   // ── per-worker 技能（物化层字段补全 + preload 开关）
   // 与拓扑「N人」右侧齿轮团队配置入口 ──
@@ -2423,9 +2228,6 @@ const DICT: Record<string, { en: string }> = {
   },
   // ── AgentTeams 版本语义（15.24 T2：镜像 tag 正源）──
   "AgentTeams 版本": { en: "AgentTeams version" },
-  "AgentTeams 版本 = 节点镜像 tag（Manager/Worker CRD image 正源）。容器内运行时实际版本（QwenPaw/OpenClaw）看 Worker 详情「运行时版本」": {
-    en: "AgentTeams version = node image tag (authoritative source: Manager/Worker CRD image). The actual in-container runtime version (QwenPaw/OpenClaw) is shown under \"Runtime version\" in the Worker details.",
-  },
   // ── 设置页：Controller token 与 Higress 认证分家（15.24）──
   "L1 管理面（Controller 管理员 token）": { en: "L1 admin plane (Controller admin token)" },
   "② Higress Console 认证（模型面：alias/提供商/路由）——独立认证系统，与 ① Controller 认证互不相关": {
@@ -2459,7 +2261,6 @@ const DICT: Record<string, { en: string }> = {
   "容器重建后需重新安装；已保存的鉴权可保留": {
     en: "Reinstallation required after container rebuild; saved auth is retained",
   },
-  "编辑配置": { en: "Edit settings" },
   "卸载": { en: "Uninstall" },
   "安装": { en: "Install" },
   "升级": { en: "Upgrade" },
@@ -2473,18 +2274,12 @@ const DICT: Record<string, { en: string }> = {
   "已是最新": { en: "Up to date" },
   "registry 最新 {v}": { en: "Registry latest {v}" },
   "模型名": { en: "Model name" },
-  "（已保存，留空保留）": { en: "(saved — leave empty to keep)" },
-  "当前配置（只读）": { en: "Current settings (read-only)" },
-  "可选 JSON 补丁（同键以补丁为准）": { en: "Optional JSON patch (patch wins on same key)" },
   "{cli} settings（结构化表单 · 只保存改动）": { en: "{cli} settings (structured form · saves only changes)" },
   "已保存，留空保留；输入=替换": { en: "Saved — leave empty to keep; enter to replace" },
   "未设置；输入=设置": { en: "Not set; enter to set" },
   "有未保存改动": { en: "Unsaved changes" },
   "无改动": { en: "No changes" },
   "此分区有未保存改动": { en: "Unsaved changes in this section" },
-  "以下为该 CLI 常用字段（预填起点，可编辑）——保存即创建配置文件；高级字段用下方 JSON 补丁补充。": {
-    en: "Common fields for this CLI (pre-filled starting point, editable) — saving creates the config file; add advanced fields via the JSON patch below.",
-  },
   "尚无配置文件——填模型名并保存即创建；高级字段用下方 JSON 补丁补充。": {
     en: "No config file yet — enter a model name and save to create it; add advanced fields via the JSON patch below.",
   },
@@ -2493,12 +2288,6 @@ const DICT: Record<string, { en: string }> = {
   },
   "JSON 补丁格式非法（未应用）": { en: "Invalid JSON patch format (not applied)" },
   "JSON 补丁须为对象（未应用）": { en: "JSON patch must be an object (not applied)" },
-  "Qwen Code 0.25.x 已知行为：settings 的 model 可能仍请求默认模型（qwen3.7-max），自定义网关无此模型时报 403——headless 建议 per-run -m <model> 指定。API Key 请写 env 块（JSON 补丁）或 ~/.qwen/.env，不要写已废弃的 security.auth.apiKey。": {
-    en: "Qwen Code 0.25.x known behavior: the settings model may still request the default model (qwen3.7-max); on a custom gateway without that model this is a 403 — for headless, pass -m <model> per run. Put the API key in the env block (JSON patch) or ~/.qwen/.env — do not use the deprecated security.auth.apiKey.",
-  },
-  "OpenCode 1.19.x 只读项目级 <workspace>/.config/opencode/opencode.json；本面板写全局 ~/.config/opencode/，对 opencode run --dir 可能不生效——provider 配置需放项目级。": {
-    en: "OpenCode 1.19.x reads only the project-level <workspace>/.config/opencode/opencode.json; this panel writes the global ~/.config/opencode/, which may not take effect for `opencode run --dir` — put provider config at the project level.",
-  },
   "Qoder 账号登录走 QODER_PERSONAL_ACCESS_TOKEN env（非 settings）；BYOK 自定义模型走 /model 向导。本表单管 model / tools / mcp / permissions。": {
     en: "Qoder account login goes through the QODER_PERSONAL_ACCESS_TOKEN env var (not settings); BYOK custom models go through the /model wizard. This form manages model / tools / mcp / permissions.",
   },
@@ -2533,11 +2322,6 @@ const DICT: Record<string, { en: string }> = {
     en: "Cannot run management commands inside this Worker container",
   },
   "安装请求失败": { en: "Install request failed" },
-  "补丁不是合法 JSON": { en: "Patch is not valid JSON" },
-  "补丁须为 JSON 对象": { en: "Patch must be a JSON object" },
-  "补丁不能包含脱敏占位，请填写真实密钥或留空由密钥栏保留": {
-    en: "Patch must not contain redaction placeholders — enter the real secret, or leave the key field empty to keep the saved one",
-  },
   "获取（在部署宿主机执行后复制，切到上方「L1 管理面」模式粘进 ① Controller 认证字段）：": {
     en: "Obtain (run on the deployment host, copy the output, switch to the \"L1 admin plane\" mode above and paste into the ① Controller auth field):",
   },
@@ -2576,9 +2360,6 @@ const DICT: Record<string, { en: string }> = {
   },
   "未选择（建议 {v}）": { en: "Not selected (suggested: {v})" },
   "标记": { en: "Flags" },
-  "尚无配置文件——在下方填模型名并保存即创建（其他字段建后在表单出现）。": {
-    en: "No config file yet — fill in the model name below and save to create it (other fields appear in the form afterwards).",
-  },
   "尚无配置文件——填模型名并保存即创建。": {
     en: "No config file yet — fill in the model name and save to create it.",
   },

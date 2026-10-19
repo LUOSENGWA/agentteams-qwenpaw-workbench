@@ -511,24 +511,6 @@ export function WrenchIcon({ size = 14, style, className }: IconProps) {
   );
 }
 
-/** 🌐 地球/网络（手写 stroke，HarmonyOS 无对应件）。 */
-export function GlobeIcon({ size = 14, style, className }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
-      className={className}
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
-<ellipse cx="12" cy="12" rx="4" ry="9" stroke="currentColor" stroke-width="1.3" fill="none"/>
-<path d="M3.5 9h17M3.5 15h17" stroke="currentColor" stroke-width="1.3"/>
-    </svg>
-  );
-}
-
 /** 👑 皇冠/Leader（手写 stroke，HarmonyOS 无对应件）。 */
 export function CrownIcon({ size = 14, style, className }: IconProps) {
   return (

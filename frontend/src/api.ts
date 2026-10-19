@@ -3546,28 +3546,15 @@ export async function sendReaction(
   )) as { event_id: string };
 }
 
-/** 发送文件/图片消息（m.file / m.image）。 */
-export async function sendRoomFile(
+/** Matrix 消息发送公共样板（本文件 4 条 m.room.message 路径共用）：
+ * PUT /rooms/{roomId}/send/m.room.message/{txn} + 成功后失效审批队列缓存。
+ * txnPrefix 保留原各调用点前缀（wb / wb-apr / wb-edit）供日志辨识。 */
+async function sendMatrixMessage(
   roomId: string,
-  opts: {
-    mxcUri: string;
-    filename: string;
-    msgtype: "m.file" | "m.image";
-    mimetype?: string;
-    size?: number;
-  },
+  content: Record<string, unknown>,
+  opts: { txnPrefix?: string } = {},
 ): Promise<{ event_id: string }> {
-  const txn = `wb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const content: Record<string, unknown> = {
-    msgtype: opts.msgtype,
-    body: opts.filename,
-    url: opts.mxcUri,
-    filename: opts.filename,
-    info: {
-      mimetype: opts.mimetype || "application/octet-stream",
-      size: opts.size || 0,
-    },
-  };
+  const txn = `${opts.txnPrefix ?? "wb"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const res = (await requestJson(
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
     {
@@ -3580,6 +3567,30 @@ export async function sendRoomFile(
   // 缓冲的异步 resolve 窗口由各面板既有的「立即+延迟」重拉覆盖）。
   invalidateTags(["room-approvals"]);
   return res;
+}
+
+/** 发送文件/图片消息（m.file / m.image）。 */
+export async function sendRoomFile(
+  roomId: string,
+  opts: {
+    mxcUri: string;
+    filename: string;
+    msgtype: "m.file" | "m.image";
+    mimetype?: string;
+    size?: number;
+  },
+): Promise<{ event_id: string }> {
+  const content: Record<string, unknown> = {
+    msgtype: opts.msgtype,
+    body: opts.filename,
+    url: opts.mxcUri,
+    filename: opts.filename,
+    info: {
+      mimetype: opts.mimetype || "application/octet-stream",
+      size: opts.size || 0,
+    },
+  };
+  return sendMatrixMessage(roomId, content);
 }
 
 /** ：
@@ -3684,7 +3695,6 @@ export async function sendRoomMessage(
   mentions?: SendMention[],
   extraContent?: Record<string, unknown>,
 ): Promise<{ event_id: string }> {
-  const txn = `wb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const content: Record<string, unknown> = { msgtype: "m.text", body };
   // 自定义 content 键并入（#87 file_refs 信封）——独立于 mentions/线程
   // 分支，互不覆盖。
@@ -3717,18 +3727,7 @@ export async function sendRoomMessage(
       },
     };
   }
-  const res = (await requestJson(
-    `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(content),
-    },
-  )) as { event_id: string };
-  // 审批命令已发出 → 队列缓存即刻失效（各面板下次取数即回源；后端
-  // 缓冲的异步 resolve 窗口由各面板既有的「立即+延迟」重拉覆盖）。
-  invalidateTags(["room-approvals"]);
-  return res;
+  return sendMatrixMessage(roomId, content);
 }
 
 /** 审批命令带 @Worker（真机反馈：无 @ 的
@@ -3744,7 +3743,6 @@ export async function sendApprovalCommand(
   cmd: string,
   replyTo?: { event_id: string; sender: string; body: string },
 ): Promise<{ event_id: string }> {
-  const txn = `wb-apr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const local = (targetMxid.split(":")[0] || targetMxid).replace(/^@/, "");
   const content: Record<string, unknown> = {
     msgtype: "m.text",
@@ -3765,18 +3763,7 @@ export async function sendApprovalCommand(
       },
     };
   }
-  const res = (await requestJson(
-    `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(content),
-    },
-  )) as { event_id: string };
-  // 审批命令已发出 → 队列缓存即刻失效（各面板下次取数即回源；后端
-  // 缓冲的异步 resolve 窗口由各面板既有的「立即+延迟」重拉覆盖）。
-  invalidateTags(["room-approvals"]);
-  return res;
+  return sendMatrixMessage(roomId, content, { txnPrefix: "wb-apr" });
 }
 
 /** 编辑自己的消息（Element 同款标注编辑，CS-API m.replace）：
@@ -3788,25 +3775,13 @@ export async function sendRoomMessageEdit(
   originalEventId: string,
   body: string,
 ): Promise<{ event_id: string }> {
-  const txn = `wb-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const content: Record<string, unknown> = {
     msgtype: "m.text",
     body: `[edit] ${body}`,
     "m.new_content": { msgtype: "m.text", body },
     "m.relates_to": { rel_type: "m.replace", event_id: originalEventId },
   };
-  const res = (await requestJson(
-    `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(content),
-    },
-  )) as { event_id: string };
-  // 审批命令已发出 → 队列缓存即刻失效（各面板下次取数即回源；后端
-  // 缓冲的异步 resolve 窗口由各面板既有的「立即+延迟」重拉覆盖）。
-  invalidateTags(["room-approvals"]);
-  return res;
+  return sendMatrixMessage(roomId, content, { txnPrefix: "wb-edit" });
 }
 
 /** 撤回自己的消息（redaction，CS-API 标准端点）：

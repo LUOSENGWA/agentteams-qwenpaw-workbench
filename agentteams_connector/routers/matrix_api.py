@@ -57,13 +57,20 @@ def build_matrix_router() -> APIRouter:
             raise HTTPException(status_code=401, detail="未登录，请先在配置页登录")
 
         try:
-            # 同步 matrix_client 调用 to_thread 化——避免冻结
-            # 宿主事件循环（原实现直调同步 httpx，最长 20s）。
-            rooms = (
-                await asyncio.to_thread(
-                    matrix_client.joined_rooms, homeserver, token
+            # 上游调用 async 化 + 4s deadline（原实现同步 httpx 20s 超时；
+            # 叠加逐房 members 同步拨号经 8 槽闸门串行化，76 房实测 21.9s，
+            # 退化时远超 120s——本次修复的根因）。
+            async with GatedAsyncClient(timeout=4.0, verify=False) as client:
+                resp = await client.get(
+                    f"{homeserver.rstrip('/')}/_matrix/client/v3/joined_rooms",
+                    headers=_headers_for(cfg, "matrix", homeserver,
+                        {"Authorization": f"Bearer {token}"}),
                 )
-            ).get("joined_rooms", [])
+            if resp.status_code >= 400:
+                raise matrix_client.MatrixError(
+                    f"joined_rooms HTTP {resp.status_code}"
+                )
+            rooms = resp.json().get("joined_rooms") or []
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(
                 status_code=502,
@@ -76,7 +83,8 @@ def build_matrix_router() -> APIRouter:
             homeserver,
         )
 
-        sem = asyncio.Semaphore(10)
+        # 并发 12（×2 请求/房 = 24，恰为 GatedAsyncClient 总闸上限）。
+        sem = asyncio.Semaphore(12)
 
         async def _room_info(room_id: str) -> Dict[str, Any]:
             entry: Dict[str, Any] = {
@@ -90,10 +98,19 @@ def build_matrix_router() -> APIRouter:
             # 75 房叠加 WAN 实测 11.3s。best-effort 容错与日志语义不变。
             async def _members() -> None:
                 try:
-                    members = await asyncio.to_thread(
-                        matrix_client.joined_members, homeserver, token, room_id
-                    )
-                    joined = members.get("joined") or {}
+                    # 同步拨号改 async + 4s deadline：原 to_thread 路径经
+                    # sync_dial_slot（8 槽）串行化，是 76 房 21.9s 的主因。
+                    async with GatedAsyncClient(timeout=4.0, verify=False) as client:
+                        resp = await client.get(
+                            f"{homeserver.rstrip('/')}/_matrix/client/v3/rooms/{room_id}/joined_members",
+                            headers=_headers_for(cfg, "matrix", homeserver,
+                                {"Authorization": f"Bearer {token}"}),
+                        )
+                    if resp.status_code != 200:
+                        raise RuntimeError(
+                            f"joined_members HTTP {resp.status_code}"
+                        )
+                    joined = resp.json().get("joined") or {}
                     entry["members"] = joined
                     entry["member_count"] = len(joined)
                 except Exception as exc:  # noqa: BLE001 - best-effort
@@ -132,8 +149,26 @@ def build_matrix_router() -> APIRouter:
                 entry["name_fallback"] = True
             return entry
 
-        entries = await asyncio.gather(*(_room_info(r) for r in rooms))
-        result = list(entries)
+        # 端点整体 deadline 10s：超时取消未完成任务、返回已完成的部分
+        # 结果（best-effort 语义与原 best-effort 容错一致，但端点整体有界：
+        # 最坏 4s(joined_rooms) + 10s(fanout) ≈ 14s << 120s）。
+        tasks = [asyncio.create_task(_room_info(r)) for r in rooms]
+        done, pending = await asyncio.wait(tasks, timeout=10.0)
+        for t in pending:
+            t.cancel()
+        result: List[Dict[str, Any]] = []
+        for t in done:
+            try:
+                result.append(t.result())
+            except Exception as exc:  # noqa: BLE001 - 单房失败不拖垮整体
+                logger.warning("teams/rooms: room task failed: %s", exc)
+        if pending:
+            logger.warning(
+                "teams/rooms: 10s deadline reached, %d/%d rooms incomplete "
+                "(partial results returned)",
+                len(pending),
+                len(rooms),
+            )
 
         all_members: Dict[str, Dict[str, Any]] = {}
         for entry in result:
@@ -488,6 +523,11 @@ def build_matrix_router() -> APIRouter:
 
         async def gen():
             try:
+                # 即时首块：宿主 ResponseCompressionMiddleware 将
+                # http.response.start（headers）扣到首个 body chunk 才发出
+                # （宿主层根因，建议给宿主开 issue）；无此块时 headers
+                # 要等 15s 心跳才到，客户端表现为 45s 无响应。
+                yield ": connected\n\n"
                 while True:
                     try:
                         event = await _asyncio.wait_for(queue.get(), timeout=15.0)
