@@ -3,6 +3,24 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.34（2026-10-19 · Coding CLI settings 第二层卡片化：分区卡收放 + 当前值摘要 + 自适应排列）
+
+Coding CLI 的 settings 表单从「一长条字段列表」升级为**分区卡**——每个顶层分组（模型/上下文/通用/工具/安全/…）一张可收放卡，与 15.33 的 CLI 卡同构。卡头 = 分组标题 + **当前值摘要**（配置文件/模板里的现有值一瞥可见，收起状态不丢信息）+ **未保存改动点**（该分区有未保存改动时亮起）；**有内容的分区默认展开、空分区默认收起**——现有配置一眼全见，目录空分区不再占屏。每张卡**独立收放**（非手风琴——settings 场景常需两组同看对照改）。
+
+**新增**
+- **分区卡收放**：settings 表单内每个顶层分组 = 一张卡。点卡头展开/收起（chevron 指示，`role=button` + `aria-expanded`，读屏可辨）；任意多卡可同时展开，互不影响。
+- **卡头当前值摘要（预填当前值）**：卡头显示该分组的现有叶子值（至多 2 项 +「+N」，单行截断）——如 `useRipgrep=true`、`auth.apiKey=•••`（脱敏值显示为 •••）；空分区不显摘要。展开后表单字段值同样预填自当前配置文件。
+- **分区未保存改动点**：改动某分区的任意字段（含模型专行）→ 该卡头亮橙色圆点，保存后熄灭——长表单里一眼定位改过哪里。
+- **自适应排列**：分区卡网格 `repeat(auto-fit, minmax(300px, 1fr))`——宽屏多列、竖屏/窄屏自动单列，与 CLI 卡同款 auto-fit 无断点。
+- **触屏/鼠标双适配**：分区卡头 ≥44px 触控目标 + `userSelect:none`；鼠标 cursor pointer + chevron，无 hover-only 信息。
+
+**修复**
+- **字段目录的分组整组漏渲染**：15.32 起顶层分组仅取「无点分的目录顶层键」，而 context/general/ui/modelFamily/goals/memory/agents/mcp/serve/advanced/experimental 等分组在目录里只有点分键（如 `context.autoCompactThreshold`）——**这些分组在文件未设置时整组不显示**。现顶层分组 = 目录键 ∪ 点分键前缀，全组补显（qwen-code 21 组、opencode/qoder 同款逻辑）。
+
+**验证**
+- tsc 0（noUnused）| vite build | i18n 门 1727 键 0 缺失 0 重复 | pytest 456/456
+- ui-harness-cli **50/50**（新增 S12 分区卡 6 断言：有内容分区默认展开 / 空分区默认收起 / 卡头当前值摘要 / 点卡头展开 / 再点收起 / 字段改动 → 分区未保存改动点）
+
 ## 0.5.0-beta.15.33（2026-10-19 · Coding CLI 面板卡片化收放 + 自适应排列 + 触屏/鼠标双适配）
 
 Coding CLI 面板（安装/升级/settings）从「三行列表 + 单 settings 区」重构为**卡片式收放**——每个 CLI 一张卡，点卡头展开即见该 CLI 的 actions（安装/升级/卸载）+ settings 结构化表单，再点收起；**手风琴**语义（同时至多一张卡展开，展开另一张自动收起前一张）。三 CLI 的 settings 字段**全覆盖确认**（qwen-code 107 / opencode 36 / qoder 21，官方 schema 驱动，15.31/15.32 已落，本批复核对齐）。

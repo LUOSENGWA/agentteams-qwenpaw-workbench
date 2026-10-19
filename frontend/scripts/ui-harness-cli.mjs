@@ -20,6 +20,9 @@
  * S11 卡片化（15.33）：初始全收 / 卡头点击=展开+自动拉 settings /
  *    手风琴切卡（展开 B 收起 A）/ 再点收起 / 窄视口 390px 单列 /
  *    宽视口 1280px 多列（auto-fit minmax 自适应）
+ * S12 分区卡（15.34）：settings 分组卡片化收放（独立 state，非手风琴）/
+ *    有内容分区默认展开、目录空分区收起 / 卡头当前值摘要（useRipgrep=true）/
+ *    点卡头展开-收起 / 字段改动 → 分区未保存改动点（aria-label 断言）
  *
  * 15.33 卡片化适配：动作钮（安装/升级/卸载）与 settings 表单都在卡体内，
  * 旧「编辑配置」钮退役——场景改用「点 CLI 卡头」展开；mock 补 opencode
@@ -197,7 +200,7 @@ const m1Count = await page.evaluate(() =>
 );
 assert("S4b 模型名输入框 m1", m1Count === 1, String(m1Count));
 assert("S4b2 改模型名 m1->m2", (await setModelName("m2")) === true);
-await page.getByRole("button", { name: /保存改动/ }).click();
+await page.getByRole("button", { name: "保存改动", exact: true }).click();
 await sleep(400);
 const puts = await page.evaluate(() => window.__SETTINGS_PUTS__);
 assert(
@@ -215,12 +218,12 @@ assert("S4d 已保存消息", (await bodyText()).includes("已保存"));
 // aria-hidden）——模型行/路由卡新增后 .last() 会命中它导致 fill 超时。
 const patchArea = page.locator("textarea:not([name=hiddenTextarea])").last();
 await patchArea.fill("[1,2]");
-await page.getByRole("button", { name: /保存改动/ }).click();
+await page.getByRole("button", { name: "保存改动", exact: true }).click();
 await sleep(300);
 // 15.31：数组补丁的报错文案（原断言字符串「补丁须为 JSON 对象」早已陈旧）。
 assert("S5a 补丁须为对象（数组被拒）", (await bodyText()).includes("JSON 补丁须为对象"));
 await patchArea.fill('{"mcp":{"enabled":true}}');
-await page.getByRole("button", { name: /保存改动/ }).click();
+await page.getByRole("button", { name: "保存改动", exact: true }).click();
 await sleep(400);
 const puts2 = await page.evaluate(() => window.__SETTINGS_PUTS__);
 const last = puts2[puts2.length - 1];
@@ -267,7 +270,7 @@ await page.evaluate(() => {
   el.dispatchEvent(new Event("input", { bubbles: true }));
   return true;
 });
-await page.getByRole("button", { name: /保存改动/ }).click();
+await page.getByRole("button", { name: "保存改动", exact: true }).click();
 await sleep(500);
 const puts9 = await page.evaluate(() => window.__SETTINGS_PUTS__);
 const last9 = puts9[puts9.length - 1];
@@ -331,7 +334,7 @@ assert(
 const modelInput = page.locator("input.ant-select-selection-search-input").first();
 assert("S10d-pre 模型专行输入框可定位", (await modelInput.count()) === 1, "count=" + (await modelInput.count()));
 await modelInput.fill("m-new");
-await page.getByRole("button", { name: /保存改动/ }).click();
+await page.getByRole("button", { name: "保存改动", exact: true }).click();
 await sleep(500);
 const puts10 = await page.evaluate(() => window.__SETTINGS_PUTS__);
 const last10 = puts10[puts10.length - 1];
@@ -373,7 +376,7 @@ await page.evaluate(() => {
   setter.call(el, "m9");
   el.dispatchEvent(new Event("input", { bubbles: true }));
 });
-await page.getByRole("button", { name: /保存改动/ }).click();
+await page.getByRole("button", { name: "保存改动", exact: true }).click();
 await sleep(400);
 const t7 = await bodyText();
 assert("S7a 403 错误消息", t7.includes("当前角色仅可查看，不能修改编码 CLI"), t7);
@@ -464,6 +467,73 @@ const cardColsW = await page.evaluate(() => {
   return getComputedStyle(els[0]).gridTemplateColumns.split(" ").length;
 });
 assert("S11f 宽视口 1280px 多列（≥2 轨）", cardColsW >= 2, `cols=${cardColsW}`);
+
+// ── S12：分区卡（15.34：settings 分组卡片化收放 + 当前值摘要 + 自适应）──
+await page.goto(`http://127.0.0.1:${port}/harness/page-cli.html?scen=full`);
+await sleep(500);
+await page.getByText("Coding CLI（安装/升级/settings）", { exact: true }).first().click();
+await sleep(500);
+await page.getByText("Qwen Code", { exact: true }).first().click();
+await page
+  .waitForFunction(
+    () => document.body.innerText.includes("Qwen Code settings（结构化表单"),
+    { timeout: 4000 },
+  )
+  .catch(() => {});
+// a) 有内容分区（文件值）默认展开：工具（Tools）卡体含 useRipgrep 字段。
+const t12a = await bodyText();
+assert(
+  "S12a 有内容分区默认展开（Tools 卡显 useRipgrep 字段）",
+  t12a.includes("工具（Tools）") && t12a.includes("useRipgrep"),
+  t12a.slice(0, 500),
+);
+// b) 目录空分区默认收起：通用（General）卡头可见、enableAutoUpdate 字段不在 DOM。
+assert(
+  "S12b 空分区默认收起（General 卡头可见、enableAutoUpdate 不在 DOM）",
+  t12a.includes("通用（General）") && !t12a.includes("enableAutoUpdate"),
+  t12a.slice(0, 500),
+);
+// c) 当前值摘要（预填当前值）：Tools 卡头显 useRipgrep=true。
+assert(
+  "S12c 卡头当前值摘要（useRipgrep=true）",
+  t12a.includes("useRipgrep=true"),
+  t12a.slice(0, 800),
+);
+// d) 点通用（General）卡头展开 → enableAutoUpdate 出现。
+await page
+  .locator('[role="button"][aria-expanded="false"]')
+  .filter({ hasText: "通用（General）" })
+  .first()
+  .click();
+await sleep(200);
+const t12d = await bodyText();
+assert(
+  "S12d 点卡头展开（enableAutoUpdate 出现）",
+  t12d.includes("enableAutoUpdate"),
+  t12d.slice(0, 800),
+);
+// e) 再点收起 → 消失。
+await page
+  .locator('[role="button"][aria-expanded="true"]')
+  .filter({ hasText: "通用（General）" })
+  .first()
+  .click();
+await sleep(200);
+const t12e = await bodyText();
+assert(
+  "S12e 再点收起（enableAutoUpdate 消失）",
+  !t12e.includes("enableAutoUpdate"),
+  t12e.slice(0, 800),
+);
+// f) 改 Tools 分区字段（useRipgrep 开关）→ 分区未保存改动点出现。
+await page.locator('[role="switch"]').first().click();
+await sleep(200);
+const dirtyDots = await page.locator('[aria-label="有未保存改动"]').count();
+assert(
+  "S12f 字段改动 → 分区未保存改动点",
+  dirtyDots >= 1,
+  `dots=${dirtyDots}`,
+);
 
 // ── 收尾：pageerror 零容忍 ─────────────────────────────────────
 assert("P0 全程无 pageerror", pageErrors.length === 0, pageErrors.join(" | "));

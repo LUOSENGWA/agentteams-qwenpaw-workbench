@@ -702,6 +702,51 @@ function useCodingCliPanel({
     t,
   };
 }
+
+/** 15.34：分区卡默认展开判定——分区有内容（文件值 / seed 预填）=展开，
+ * 纯目录空分区（文件未设置）=收起。draft 是 base/seed 深拷贝，两态同源。 */
+function hasContentValue(v: SettingsValue | undefined): boolean {
+  if (v === undefined || v === null) return false;
+  if (typeof v !== "object") return true;
+  if (Array.isArray(v)) return v.length > 0;
+  return Object.keys(v).length > 0;
+}
+
+/** 15.34：分区卡头「当前值摘要」——收集叶子 k=v（预填当前值，收起也可见）：
+ * redacted → ••• / 数组 → [N] / 标量原样 / skipKey 跳过（model.name 由专行管）。
+ * 返回 [[相对路径, 显示值]]；顶层标量分区返回 [["", 值]]。 */
+function collectLeafPairs(
+  v: SettingsValue | undefined,
+  skipKey?: string,
+): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const walk = (val: SettingsValue | undefined, rel: string) => {
+    if (isRedacted(val)) {
+      out.push([rel, "•••"]);
+      return;
+    }
+    if (val === undefined) return;
+    if (val === null) {
+      out.push([rel, "null"]);
+      return;
+    }
+    if (Array.isArray(val)) {
+      out.push([rel, `[${val.length}]`]);
+      return;
+    }
+    if (typeof val === "object") {
+      for (const [ck, cv] of Object.entries(val as SettingsObject)) {
+        if (ck === skipKey) continue;
+        walk(cv, rel ? `${rel}.${ck}` : ck);
+      }
+      return;
+    }
+    out.push([rel, String(val)]);
+  };
+  walk(v, "");
+  return out;
+}
+
 /** 结构化全设置表单（15.26 F4②）：递归渲染 settings 树——
  * redacted→密码框（留空=保留）/ object→分组下钻 / array→JSON 文本 /
  * 标量→类型化输入。免硬编码 per-CLI schema（动态渲染任意 CLI 的字段），
@@ -861,6 +906,10 @@ function SettingsTreeEditor({
   // 15.30：可选 JSON 补丁（任意字段逃逸口，同 dashboard；同键以补丁为准）。
   const [jsonPatch, setJsonPatch] = React.useState("");
   const [jsonErr, setJsonErr] = React.useState("");
+
+  // 15.34：分区卡收放（每分区独立 state，非手风琴——settings 常需多组同看）；
+  // 无显式 state → 默认 = 分区有内容（文件值/seed 预填）时展开、空分区收起。
+  const [sectionOpen, setSectionOpen] = React.useState<Record<string, boolean>>({});
   // base 变化（切 CLI / 保存回写）→ 重置草稿（对齐最新基线）。
   const baseRef = React.useRef(base);
   React.useEffect(() => {
@@ -870,6 +919,8 @@ function SettingsTreeEditor({
       setSecretDraft({});
       setJsonPatch("");
       setJsonErr("");
+      // 15.34：分区收放显式态一并清（默认展开判定随新基线重算）。
+      setSectionOpen({});
     }
   }, [base, initDraft]);
 
@@ -1301,11 +1352,18 @@ function SettingsTreeEditor({
     ([k, v]) =>
       !(modelRowEnabled && k === "model" && !(v && typeof v === "object" && !Array.isArray(v))),
   );
-  // 15.32：catalog 顶层键文件未设置的也显示（空态起点，不操作不落盘）。
+  // 15.32：catalog 顶层分组文件未设置的也显示（空态起点，不操作不落盘）。
+  // 15.34 修：顶层=目录键本身（无点）∪ 点分键的前缀（context.* → context）
+  // ——原 filter(!includes(".")) 漏掉只有点分键的分组（context/general/ui/
+  // modelFamily/goals/memory/agents/mcp/serve/advanced/experimental 整组不渲染）。
   const catTopKeys = catalog
-    ? Object.keys(catalog)
-        .filter((k) => !k.includes("."))
-        .filter((k) => !draftTopEntries.some(([ek]) => ek === k))
+    ? Array.from(
+        new Set(
+          Object.keys(catalog).flatMap((k) =>
+            k.includes(".") ? [k.split(".")[0]] : [k],
+          ),
+        ),
+      ).filter((k) => !draftTopEntries.some(([ek]) => ek === k))
     : [];
   const topEntries: Array<[string, SettingsValue | undefined]> = [
     ...draftTopEntries,
@@ -1353,30 +1411,142 @@ function SettingsTreeEditor({
           {tr("尚无配置文件——填模型名并保存即创建。")}
         </div>
       ) : (
-        topEntries.map(([k, v]) => {
-          // 15.32：顶层分组双语标题（SECTION_LABELS），无词条回退裸键名。
-          const section = SECTION_LABELS[k];
-          const sectionTitle = section
-            ? lang === "en"
-              ? section.en
-              : section.zh
-            : k;
-          return (
-            <div key={k} style={{ display: "grid", gap: 3 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>
-                {sectionTitle}
-              </span>
-              {/* 15.32：modelProviders 由 Higress 网关托管（默认跟 Worker）——
-               * 仅对 qwen-code 且文件已有该键时提示；下方路由卡片保留可编辑。 */}
-              {k === "modelProviders" ? (
-                <span style={{ fontSize: 11, color: t.textSecondary }}>
-                  {tr("modelProviders 由 Higress 网关管理，默认跟 Worker——一般无需在此配置；已有路由仍可在下方查看/调整。")}
-                </span>
-              ) : null}
-              {renderNode(v, [k], modelRowEnabled && k === "model" ? "name" : undefined)}
-            </div>
-          );
-        })
+        /* 15.34：分区卡——每个顶层分组一张可收放卡（独立收放，非手风琴：
+         * settings 常需多组同看）。卡头 = 标题 + 当前值摘要（预填当前值，
+         * 收起也一瞥可见）+ 未保存改动点；有内容默认展开、目录空分区收起。
+         * auto-fit 自适应排列：宽屏多列 / 窄屏（竖屏 sheet）单列。
+         * 触屏：卡头 ≥44px 目标 + userSelect none + role=button +
+         * aria-expanded（读屏可辨）；鼠标：cursor pointer + chevron。 */
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          }}
+        >
+          {topEntries.map(([k, v]) => {
+            // 15.32：顶层分组双语标题（SECTION_LABELS），无词条回退裸键名。
+            const section = SECTION_LABELS[k];
+            const sectionTitle = section
+              ? lang === "en"
+                ? section.en
+                : section.zh
+              : k;
+            const skipName = modelRowEnabled && k === "model";
+            const open = sectionOpen[k] ?? hasContentValue(draft[k]);
+            const toggle = () =>
+              setSectionOpen((p) => ({
+                ...p,
+                [k]: !(p[k] ?? hasContentValue(draft[k])),
+              }));
+            const pairs = collectLeafPairs(v, skipName ? "name" : undefined);
+            const secDirty =
+              Object.keys(diffSettings(base, draft)).includes(k) ||
+              (k === "model" && modelRowEnabled && modelDirty);
+            return (
+              <div
+                key={k}
+                style={{
+                  minWidth: 0,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 8,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={open}
+                  onClick={toggle}
+                  onKeyDown={(e: { key: string; preventDefault(): void }) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggle();
+                    }
+                  }}
+                  title={tr("点击展开 / 收起")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    minHeight: 44,
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  <span style={{ width: 12, fontSize: 11, color: "#888" }}>
+                    {open ? "▾" : "▸"}
+                  </span>
+                  {/* 无词条的裸键分区：标题即键名（monospace 区分），
+                   * 不再重复渲染第二份键名。 */}
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: t.text,
+                      fontFamily: section ? undefined : "monospace",
+                    }}
+                  >
+                    {sectionTitle}
+                  </span>
+                  {/* 15.34：当前值摘要（预填当前值）——收起状态一瞥可知现状；
+                   * 至多 2 对 + 「+N」，单行截断（wb-clamp-1）。 */}
+                  {pairs.length > 0 ? (
+                    <span
+                      className="wb-clamp-1"
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: 10,
+                        fontFamily: "monospace",
+                        color: t.textSecondary,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {pairs
+                        .slice(0, 2)
+                        .map(([pk, pv]) => (pk ? `${pk}=${pv}` : pv))
+                        .join(" · ")}
+                      {pairs.length > 2 ? ` · +${pairs.length - 2}` : ""}
+                    </span>
+                  ) : null}
+                  {pairs.length === 0 ? <div style={{ flex: 1 }} /> : null}
+                  {/* 分区级未保存改动点（模型专行改动也计入 model 分区）。 */}
+                  {secDirty ? (
+                    <span
+                      aria-label={tr("有未保存改动")}
+                      title={tr("此分区有未保存改动")}
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        background: "#d48806",
+                        display: "inline-block",
+                        flexShrink: 0,
+                      }}
+                    />
+                  ) : null}
+                </div>
+                {open ? (
+                  <div style={{ padding: "2px 10px 10px", display: "grid", gap: 4 }}>
+                    {/* 15.32：modelProviders 由 Higress 网关托管（默认跟 Worker）
+                     * ——提示；下方路由卡片保留可编辑。 */}
+                    {k === "modelProviders" ? (
+                      <span style={{ fontSize: 11, color: t.textSecondary }}>
+                        {tr("modelProviders 由 Higress 网关管理，默认跟 Worker——一般无需在此配置；已有路由仍可在下方查看/调整。")}
+                      </span>
+                    ) : null}
+                    {renderNode(v, [k], skipName ? "name" : undefined)}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       )}
       {/* 15.30：JSON 补丁（任意字段逃逸口，同 dashboard；同键以补丁为准）。 */}
       {!readOnly ? (

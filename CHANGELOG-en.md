@@ -3,6 +3,24 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.34 (2026-10-19 - coding-CLI settings second-level cards: section cards with current-value summary + adaptive layout)
+
+The coding-CLI settings form is upgraded from "one long field list" to **section cards** — one collapsible card per top-level group (Model / Context / General / Tools / Security / ...), isomorphic to the 15.33 CLI cards. Card header = group title + **current-value summary** (the values already present in the config file / seed template, visible at a glance even while collapsed) + **unsaved-changes dot** (lit when that section has unsaved edits); **sections with content are expanded by default, empty ones collapsed** — existing configuration is visible at a glance while catalog-only empty sections no longer occupy the screen. Each card toggles **independently** (not an accordion — settings work often means comparing two groups while editing).
+
+**Added**
+- **Section cards**: every top-level group in the settings form is a card. Click the header to expand/collapse (chevron, `role=button` + `aria-expanded`, screen-reader friendly); any number of cards can be open at once.
+- **Header current-value summary**: the header shows the group's existing leaf values (up to 2 + "+N", single-line clamp) — e.g. `useRipgrep=true`, `auth.apiKey=•••` (redacted values render as •••); empty sections show no summary. Expanded form fields are likewise pre-filled from the current config file.
+- **Per-section unsaved-changes dot**: editing any field in a section (including the dedicated model row) lights an orange dot on that card's header; it clears after saving.
+- **Adaptive layout**: the section grid uses `repeat(auto-fit, minmax(300px, 1fr))` — multiple columns on wide screens, a single column on portrait/narrow, same auto-fit approach as the CLI cards, no hard-coded breakpoints.
+- **Touch + mouse support**: section card headers get a ≥44px touch target + `userSelect:none`; mouse gets cursor pointer + chevron with no hover-only information.
+
+**Fixed**
+- **Catalog groups silently missing**: since 15.32 the top-level group list only took dot-free catalog keys, while groups such as context / general / ui / modelFamily / goals / memory / agents / mcp / serve / advanced / experimental are only defined via dotted keys (e.g. `context.autoCompactThreshold`) — **those groups did not render at all when absent from the config file**. Top-level groups are now catalog keys ∪ dotted-key prefixes, so every group renders (21 groups for qwen-code; same logic for opencode / qoder).
+
+**Verification**
+- tsc 0 (noUnused) | vite build | i18n gate 1727 keys, 0 missing, 0 duplicates | pytest 456/456
+- ui-harness-cli **50/50** (new S12 section-card suite, 6 assertions: content section expanded by default / empty section collapsed by default / header current-value summary / header click expands / second click collapses / field edit → per-section unsaved-changes dot)
+
 ## 0.5.0-beta.15.33 (2026-10-19 - coding-CLI panel reworked into collapsible cards + adaptive layout + touch/mouse support)
 
 The coding-CLI panel (install / upgrade / settings) is reworked from "three-row list + single settings area" into **collapsible cards** — one card per CLI; clicking a card header expands it to show that CLI's actions (install / upgrade / uninstall) + the structured settings form, clicking again collapses it; **accordion** semantics (at most one card expanded at a time — expanding another auto-collapses the previous one). Settings-field **coverage for all three CLIs confirmed** (qwen-code 107 / opencode 36 / qoder 21, official-schema driven, landed in 15.31/15.32, re-verified here).

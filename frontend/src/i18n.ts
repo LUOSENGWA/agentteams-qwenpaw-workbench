@@ -2481,6 +2481,7 @@ const DICT: Record<string, { en: string }> = {
   "未设置；输入=设置": { en: "Not set; enter to set" },
   "有未保存改动": { en: "Unsaved changes" },
   "无改动": { en: "No changes" },
+  "此分区有未保存改动": { en: "Unsaved changes in this section" },
   "以下为该 CLI 常用字段（预填起点，可编辑）——保存即创建配置文件；高级字段用下方 JSON 补丁补充。": {
     en: "Common fields for this CLI (pre-filled starting point, editable) — saving creates the config file; add advanced fields via the JSON patch below.",
   },
