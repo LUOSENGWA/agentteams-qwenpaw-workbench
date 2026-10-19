@@ -1133,7 +1133,7 @@ function SettingsTreeEditor({
           }
           disabled={readOnly}
           size="small"
-          style={{ maxWidth: 300 }}
+          style={{ flex: "1 1 200px", maxWidth: 300 }}
         />
       );
     }
@@ -1156,7 +1156,12 @@ function SettingsTreeEditor({
           }}
           disabled={readOnly}
           autoSize={{ minRows: 2, maxRows: 8 }}
-          style={{ fontFamily: "monospace", fontSize: 11, maxWidth: 460 }}
+          style={{
+            flex: "1 1 200px",
+            maxWidth: 460,
+            fontFamily: "monospace",
+            fontSize: 11,
+          }}
         />
       );
     }
@@ -1184,7 +1189,8 @@ function SettingsTreeEditor({
         return spec ? (
           <span
             style={{
-              minWidth: 150,
+              flex: "0 1 auto",
+              minWidth: 0,
               fontSize: 11,
               color: t.textSecondary,
               lineHeight: 1.35,
@@ -1192,7 +1198,14 @@ function SettingsTreeEditor({
             }}
           >
             {specLabel(spec)}
-            <span style={{ fontFamily: "monospace", fontSize: 10, opacity: 0.7 }}>
+            <span
+              style={{
+                fontFamily: "monospace",
+                fontSize: 10,
+                opacity: 0.7,
+                overflowWrap: "anywhere",
+              }}
+            >
               {leafKey}
             </span>
           </span>
@@ -1201,7 +1214,9 @@ function SettingsTreeEditor({
             style={{
               fontSize: 11,
               color: t.textSecondary,
-              minWidth: 110,
+              flex: "0 1 110px",
+              minWidth: 0,
+              overflowWrap: "anywhere",
               fontFamily: "monospace",
             }}
           >
@@ -1215,6 +1230,7 @@ function SettingsTreeEditor({
             display: "grid",
             gap: 4,
             paddingLeft: 8,
+            gridTemplateColumns: "minmax(0, 1fr)",
             borderLeft: `2px solid ${t.border}`,
           }}
         >
@@ -1238,7 +1254,16 @@ function SettingsTreeEditor({
             </div>
           ) : null}
           {entries.map(([k, v]) => (
-            <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+                key={k}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px 8px",
+                  flexWrap: "wrap",
+                  minWidth: 0,
+                }}
+              >
               {labelFor(k)}
               {renderNode(v, [...path, k])}
             </div>
@@ -1248,7 +1273,16 @@ function SettingsTreeEditor({
             const spec = catalog?.[`${prefix}.${k}`];
             if (!spec) return null;
             return (
-              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div
+                key={k}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px 8px",
+                  flexWrap: "wrap",
+                  minWidth: 0,
+                }}
+              >
                 {labelFor(k)}
                 {renderNode(undefined, [...path, k])}
               </div>
@@ -1278,7 +1312,7 @@ function SettingsTreeEditor({
               onChange={(v: number | null) => setAtPath(path, v ?? 0)}
               disabled={readOnly}
               size="small"
-              style={{ width: 140 }}
+              style={{ flex: "0 1 140px", minWidth: 90 }}
             />
           );
         case "enum":
@@ -1289,7 +1323,12 @@ function SettingsTreeEditor({
               options={(leafSpec.options ?? []).map((o) => ({ value: o }))}
               disabled={readOnly}
               size="small"
-              style={{ width: 220, fontFamily: "monospace", fontSize: 11 }}
+              style={{
+                flex: "1 1 220px",
+                maxWidth: 320,
+                fontFamily: "monospace",
+                fontSize: 11,
+              }}
             />
           );
         default:
@@ -1301,7 +1340,12 @@ function SettingsTreeEditor({
               placeholder={leafSpec.hint || undefined}
               disabled={readOnly}
               size="small"
-              style={{ maxWidth: 460, fontFamily: "monospace", fontSize: 11 }}
+              style={{
+                flex: "1 1 200px",
+                maxWidth: 460,
+                fontFamily: "monospace",
+                fontSize: 11,
+              }}
             />
           );
       }
@@ -1375,7 +1419,7 @@ function SettingsTreeEditor({
   // 「尚无配置文件」（判值用专行的 modelValue，不用 draft.model 形态）。
   const emptyTreeHint = !modelRowEnabled || !(modelValue ?? "").trim();
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div style={{ display: "grid", gap: 10, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {/* 空配置引导（15.28/15.30）：base 空 + seed 预填 → 常用字段表单；
        * base 空 + 无 seed（opencode/qoder）→ 仅模型行 + JSON 补丁。 */}
       {Object.keys(base).length === 0 && Object.keys(draft).length > 0 ? (
@@ -1421,7 +1465,9 @@ function SettingsTreeEditor({
           style={{
             display: "grid",
             gap: 8,
-            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+            alignItems: "start",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(min(300px, 100%), 1fr))",
           }}
         >
           {topEntries.map(([k, v]) => {
@@ -1532,7 +1578,14 @@ function SettingsTreeEditor({
                   ) : null}
                 </div>
                 {open ? (
-                  <div style={{ padding: "2px 10px 10px", display: "grid", gap: 4 }}>
+                  <div
+                    style={{
+                      padding: "2px 10px 10px",
+                      display: "grid",
+                      gap: 4,
+                      gridTemplateColumns: "minmax(0, 1fr)",
+                    }}
+                  >
                     {/* 15.32：modelProviders 由 Higress 网关托管（默认跟 Worker）
                      * ——提示；下方路由卡片保留可编辑。 */}
                     {k === "modelProviders" ? (
@@ -1550,7 +1603,13 @@ function SettingsTreeEditor({
       )}
       {/* 15.30：JSON 补丁（任意字段逃逸口，同 dashboard；同键以补丁为准）。 */}
       {!readOnly ? (
-        <div style={{ display: "grid", gap: 3 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 3,
+            gridTemplateColumns: "minmax(0, 1fr)",
+          }}
+        >
           <span style={{ fontSize: 11, color: t.textSecondary }}>
             {tr("JSON 补丁（可选，任意字段；同键以补丁为准，如 mcp / tools）")}
           </span>
@@ -1686,7 +1745,7 @@ function CodingCliPanelBody({
         style={{
           display: "grid",
           gap: 8,
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
         }}
       >
         {s.items.map((cli) => {

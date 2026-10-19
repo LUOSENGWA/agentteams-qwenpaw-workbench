@@ -3,6 +3,24 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.35 (2026-10-19 - coding-CLI settings cards: dynamic layout/sizing fixes, zero overflow on narrow screens)
+
+Addresses the fielding feedback: the 15.34 section cards "did not dynamically adjust their layout, size and content — some content overflowed the container and the cards looked rough overall". Each item fixed and verified by quantified DOM overflow scans at 5 viewport widths (390/500/700/1000/1280).
+
+**Fixed**
+- **Field controls overflowing section cards on narrow screens**: field rows were fixed-label + fixed-control non-wrapping rows, so on narrow cards (~300px portrait) the combined width exceeded the container — at 390px the Model card overflowed by 123px and the Tools card by 100px, controls clipped into slivers. Rows now wrap, labels size to content, and controls are elastic (`flex: 1 1 200px`) — **on wide screens label and control share a row and the control stretches with the card; on narrow screens the control wraps under the label at full width** (the standard mobile form pattern). Long monospace field names may break anywhere and no longer force row width.
+- **300px minimum card width bursting very narrow containers**: at a 390px viewport the panel content is only ~280px, and the `minmax(300px, 1fr)` track floor of 300px exceeded the container, overflowing the whole card by 20px. Now `minmax(min(300px, 100%), 1fr)` — tracks may shrink below 300px when the container is smaller (unchanged at ≥300px).
+- **Layout/size chain completed**: the settings editor root, object containers, section card bodies and the JSON-patch container all use `minmax(0, 1fr)` tracks (preventing grid items' `min-width:auto` from pushing content past the container); field rows get `min-width: 0` + `flex-wrap`.
+
+**Improved**
+- **Section cards at natural height, top-aligned**: `align-items: start` — tall (9-field) and short (1-field) cards in the same row are no longer stretched to equal height; the dead space under short cards is gone and 2/3-column layouts look tidy.
+- **Form sizing follows the container**: text inputs 200px elastic basis (wraps to full width when narrow, up to 460px when wide), enum selects 220px elastic, number inputs shrinkable — one codebase stays fully usable from a 390px phone to a 1280px desktop with no hard-coded breakpoints.
+
+**Verification**
+- **DOM overflow scan at 5 viewports (390/500/700/1000/1280) = 0** (before: 390 +123/+100px, 500 +33/+10px, 1000 +12px, 1280 +12px, 390 CLI card +8px)
+- tsc 0 (noUnused) | vite build | i18n gate 1727 keys | pytest 456/456
+- ui-harness-cli **50/50** (full S1–S12 regression: card toggles / section cards / current-value summary / change dots / adaptive layout / touch all unaffected)
+
 ## 0.5.0-beta.15.34 (2026-10-19 - coding-CLI settings second-level cards: section cards with current-value summary + adaptive layout)
 
 The coding-CLI settings form is upgraded from "one long field list" to **section cards** — one collapsible card per top-level group (Model / Context / General / Tools / Security / ...), isomorphic to the 15.33 CLI cards. Card header = group title + **current-value summary** (the values already present in the config file / seed template, visible at a glance even while collapsed) + **unsaved-changes dot** (lit when that section has unsaved edits); **sections with content are expanded by default, empty ones collapsed** — existing configuration is visible at a glance while catalog-only empty sections no longer occupy the screen. Each card toggles **independently** (not an accordion — settings work often means comparing two groups while editing).
