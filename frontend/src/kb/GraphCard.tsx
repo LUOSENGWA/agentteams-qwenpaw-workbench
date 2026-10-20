@@ -1,7 +1,6 @@
 // KB 图谱卡（QC-164 阶段 1 自 components/KnowledgeBase.tsx 纯搬移；
 // 3D three.js 代码整体搬移、未动一行）。
 
-import { TargetIcon } from "../components/icons";
 import type * as ReactNS from "react";
 
 import Graph3D from "../components/Graph3D";
@@ -14,10 +13,19 @@ import {
   clampZoomView,
   clusterGridLayout,
   focusView,
-  textWidthUnits,
 } from "./layout2d";
 import type { FocusTarget, RadialView } from "./layout2d";
 import type { GraphNodeLike } from "./types";
+import {
+  GRAPH_ROOT_COLOR,
+  GRAPH_DIRECT_COLOR,
+  GRAPH_FILE_LIGHT,
+  GRAPH_FILE_DARK,
+  buildGraphModel,
+} from "./GraphCardShared";
+import { GraphDetailPanel } from "./GraphCardPanel";
+import { useGraphPanTouch } from "./GraphCardTouch";
+import { Graph2DView } from "./GraphCardSvg2d";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -32,21 +40,6 @@ const antd = host.antd;
  * - 点节点选中：邻接高亮、其余变暗，详情面板=入边/出边列表+打开文件；
  * - 边箭头=引用方向；图例=三级+方向。
  * 聚合图谱（agentLegend 提供）保留 按 Agent 着色。 */
-const GRAPH_ROOT_COLOR = "#FF7F16"; // QwenPaw --graph-3d-root
-const GRAPH_DIRECT_COLOR = "#389E5C"; // QwenPaw --graph-3d-direct
-const GRAPH_FILE_LIGHT = "#71665E"; // QwenPaw --graph-3d-file
-const GRAPH_FILE_DARK = "#A29A92";
-
-type LinkRef = { id: string; anchor?: string | null };
-
-interface GraphModel {
-  rootIds: Set<string>;
-  directIds: Set<string>;
-  neighbors: Map<string, Set<string>>;
-  inbound: Map<string, LinkRef[]>;
-  outbound: Map<string, LinkRef[]>;
-}
-
 // export=UI harness 测试缝（ui-harness-1322 ：选点持久性），非公共 API。
 export function GraphCard(props: {
   graph: { nodes: GraphNodeLike[]; edges: { source: string; target: string; target_anchor?: string | null }[] } | null;
@@ -379,192 +372,37 @@ export function GraphCard(props: {
     const cy = vb0.minY + vb0.height / 2;
     animateTo(clampZoomView({ minX: cx - w1 / 2, minY: cy - h1 / 2, width: w1, height: h1 }, view), 160);
   }, [animateTo, view]);
-  // 拖拽平移（位移 <4px 视为单击，click 处理保留）。
-  const onSvgPanDown = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return;
-    if (Date.now() - lastTouchRef.current < 800) return; // 触屏拖动期间防 mouse 模拟
-    cancelAnim();
-    cancelAnimationFrame(hitRafRef.current); // 12.12：拖拽优先，停掉悬停 rAF
-    dragRef.current = { startX: e.clientX, startY: e.clientY, vb0: { ...vbRef.current }, moved: false };
-    dragMovedRef.current = false;
-  };
-  const onSvgPanMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const d = dragRef.current;
-    if (!d) return;
-    const dx = e.clientX - d.startX;
-    const dy = e.clientY - d.startY;
-    if (!d.moved && Math.hypot(dx, dy) < 4) return;
-    d.moved = true;
-    dragMovedRef.current = true;
-    const svg = svgRef.current;
-    if (!svg) return;
-    let scale = d.vb0.width / Math.max(1, svg.getBoundingClientRect().width);
-    const ctm = svg.getScreenCTM && svg.getScreenCTM();
-    if (ctm && ctm.a) scale = 1 / ctm.a;
-    if (!panning) setPanning(true);
-    setVb({ ...d.vb0, minX: d.vb0.minX - dx * scale, minY: d.vb0.minY - dy * scale });
-  };
-  const onSvgPanUp = () => {
-    dragRef.current = null;
-    setPanning(false);
-  };
-  // ── 2D 触屏手势（15.21 批）：单指拖动=平移 / 双指捏合=缩放 /
-  // tap=点选 / 双击=聚焦。CSS touch-action:none（svg 已设）挡住浏览器
-  // 默认页面滚动/捏合，故合成 touch 事件无需 preventDefault。
   const lastTouchRef = React.useRef(0);
-  const lastTapRef = React.useRef<{ x: number; y: number; t: number } | null>(null);
-  const touchRef = React.useRef<{
-    mode: "idle" | "pan" | "pinch";
-    t0: number;
-    sx: number;
-    sy: number;
-    vb0: RadialView | null;
-    moved: boolean;
-    pd0: number;
-    pvb0: RadialView | null;
-    pax: number;
-    pay: number;
-  }>({ mode: "idle", t0: 0, sx: 0, sy: 0, vb0: null, moved: false, pd0: 0, pvb0: null, pax: 0, pay: 0 });
-  const onSvgTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
-    lastTouchRef.current = Date.now();
-    cancelAnim();
-    const st = touchRef.current;
-    if (e.touches.length === 2) {
-      // 双指：pinch（基线=手势起点的距离/中点/vb，每帧绝对计算不累加）。
-      const a = e.touches[0];
-      const b = e.touches[1];
-      const pt = clientToView((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
-      st.mode = "pinch";
-      st.pd0 = Math.max(8, Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY));
-      st.pvb0 = { ...vbRef.current };
-      st.pax = pt ? pt.x : vbRef.current.minX + vbRef.current.width / 2;
-      st.pay = pt ? pt.y : vbRef.current.minY + vbRef.current.height / 2;
-      st.moved = true;
-      if (!panning) setPanning(true);
-    } else if (e.touches.length === 1) {
-      const p = e.touches[0];
-      st.mode = "idle";
-      st.t0 = Date.now();
-      st.sx = p.clientX;
-      st.sy = p.clientY;
-      st.vb0 = { ...vbRef.current };
-      st.moved = false;
-    }
-  };
-  const onSvgTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
-    const st = touchRef.current;
-    if (st.mode === "pinch" && e.touches.length >= 2) {
-      const a = e.touches[0];
-      const b = e.touches[1];
-      const dist = Math.max(8, Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY));
-      const v0 = st.pvb0;
-      if (!v0) return;
-      // 捏开=dist 增大=放大=w 缩小（与 wheel 同式：中点 view 坐标锚定）。
-      const w1 = v0.width * (st.pd0 / dist);
-      const h1 = v0.height * (st.pd0 / dist);
-      const fx = (st.pax - v0.minX) / v0.width;
-      const fy = (st.pay - v0.minY) / v0.height;
-      setVb(clampZoomView({ minX: st.pax - fx * w1, minY: st.pay - fy * h1, width: w1, height: h1 }, view));
-      return;
-    }
-    if (e.touches.length !== 1) return;
-    const p = e.touches[0];
-    if (st.mode === "idle") {
-      if (Math.hypot(p.clientX - st.sx, p.clientY - st.sy) > 4) {
-        st.mode = "pan";
-        st.moved = true;
-        if (!panning) setPanning(true);
-      } else {
-        return;
-      }
-    }
-    if (st.mode === "pan") {
-      const v0 = st.vb0;
-      if (!v0) return;
-      const svg = svgRef.current;
-      let scale = v0.width / Math.max(1, svg?.getBoundingClientRect().width || 1);
-      const ctm = svg?.getScreenCTM && svg.getScreenCTM();
-      if (ctm && ctm.a) scale = 1 / ctm.a;
-      setVb({ ...v0, minX: v0.minX - (p.clientX - st.sx) * scale, minY: v0.minY - (p.clientY - st.sy) * scale });
-    }
-  };
-  const onSvgTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
-    const st = touchRef.current;
-    lastTouchRef.current = Date.now();
-    if (st.mode === "pinch") {
-      if (e.touches.length === 1) {
-        // 剩一指：从当前 vb 继续平移（防 tap 误判）。
-        const p = e.touches[0];
-        st.mode = "idle";
-        st.sx = p.clientX;
-        st.sy = p.clientY;
-        st.vb0 = { ...vbRef.current };
-        st.moved = true;
-        return;
-      }
-      st.mode = "idle";
-      setPanning(false);
-      return;
-    }
-    if (e.touches.length === 0) {
-      const wasTap = st.mode === "idle" && !st.moved && Date.now() - st.t0 < 400;
-      st.mode = "idle";
-      setPanning(false);
-      if (!wasTap || !e.changedTouches[0]) return;
-      const ct = e.changedTouches[0];
-      const now = Date.now();
-      const lt = lastTapRef.current;
-      const isDbl = Boolean(lt && now - lt.t < 320 && Math.hypot(ct.clientX - lt.x, ct.clientY - lt.y) < 24);
-      if (isDbl) {
-        // 双击=聚焦（触屏无 dblclick 事件，tap 对实现）。
-        lastTapRef.current = null;
-        const pt = clientToView(ct.clientX, ct.clientY);
-        if (!pt) return;
-        const node = hitTestNode(pt.x, pt.y);
-        if (node) applyFocus(hubSet.has(node.id) ? { kind: "sector", hubId: node.id } : { kind: "node", id: node.id });
-        return;
-      }
-      lastTapRef.current = { x: ct.clientX, y: ct.clientY, t: now };
-      const pt = clientToView(ct.clientX, ct.clientY);
-      if (pt) selectAt(pt.x, pt.y);
-    }
-  };
+  const {
+    onSvgPanDown,
+    onSvgPanMove,
+    onSvgPanUp,
+    onSvgTouchStart,
+    onSvgTouchMove,
+    onSvgTouchEnd,
+  } = useGraphPanTouch({
+    dragRef,
+    dragMovedRef,
+    lastTouchRef,
+    vbRef,
+    svgRef,
+    hitRafRef,
+    panning,
+    setPanning,
+    setVb,
+    cancelAnim,
+    view,
+    clientToView,
+    hitTestNode,
+    selectAt,
+    applyFocus,
+    hubSet,
+  });
   const focusLabel = focus && graph
     ? (graph.nodes.find((nd) => (focus.kind === "sector" ? nd.id === focus.hubId : nd.id === focus.id))?.name ?? "簇")
     : "簇";
   const inFocus = (id: string): boolean => focusSet ? focusSet.has(id) : true;
-  const model = React.useMemo((): GraphModel | null => {
-    if (!graph) return null;
-    const rootIds = new Set(
-      graph.nodes
-        .filter((n) => n.id.startsWith("virtual:"))
-        .map((n) => n.id),
-    );
-    const directIds = new Set<string>();
-    const neighbors = new Map<string, Set<string>>();
-    const inbound = new Map<string, LinkRef[]>();
-    const outbound = new Map<string, LinkRef[]>();
-    const seenIO = new Set<string>();
-    graph.edges.forEach((e) => {
-      if (rootIds.has(e.source)) directIds.add(e.target);
-      if (!neighbors.has(e.source)) neighbors.set(e.source, new Set());
-      neighbors.get(e.source)!.add(e.target);
-      if (!neighbors.has(e.target)) neighbors.set(e.target, new Set());
-      neighbors.get(e.target)!.add(e.source);
-      const ikey = `${e.source}\u0000${e.target}\u0000${e.target_anchor ?? ""}`;
-      if (!seenIO.has(`o:${ikey}`)) {
-        seenIO.add(`o:${ikey}`);
-        if (!outbound.has(e.source)) outbound.set(e.source, []);
-        outbound.get(e.source)!.push({ id: e.target, anchor: e.target_anchor });
-      }
-      if (!seenIO.has(`i:${ikey}`)) {
-        seenIO.add(`i:${ikey}`);
-        if (!inbound.has(e.target)) inbound.set(e.target, []);
-        inbound.get(e.target)!.push({ id: e.source, anchor: e.target_anchor });
-      }
-    });
-    return { rootIds, directIds, neighbors, inbound, outbound };
-  }, [graph]);
+  const model = React.useMemo(() => buildGraphModel(graph), [graph]);
 
   const nameOf = (id: string): string =>
     graph?.nodes.find((n) => n.id === id)?.name || id;
@@ -612,183 +450,16 @@ export function GraphCard(props: {
     ? (graph?.nodes.find((n) => n.id === hoverId) || null)
     : null;
   const infoNode = hoverNode || sel;
-
   const panel = sel ? (
-
-              <div
-                style={{
-                  marginTop: 8,
-                  border: `1px solid ${t.border}`,
-                  borderRadius: 8,
-                  padding: "8px 12px",
-                  background: t.hoverBg,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: 6,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: "50%",
-                      background: nodeColor(sel),
-                      display: "inline-block",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: 10.5,
-                      lineHeight: "18px",
-                      padding: "0 7px",
-                      borderRadius: 9,
-                      border: `1px solid ${
-                        isRoot(sel)
-                          ? "#722ed1"
-                          : sel.resolved === false
-                          ? "#faad14"
-                          : "#52c41a"
-                      }`,
-                      color: isRoot(sel)
-                        ? "#722ed1"
-                        : sel.resolved === false
-                        ? "#faad14"
-                        : "#52c41a",
-                      flexShrink: 0,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {isRoot(sel)
-                      ? tr("分类根")
-                      : sel.resolved === false
-                      ? tr("未解析链接")
-                      : tr("已索引文件")}
-                  </span>
-                  <span
-                    style={{ fontWeight: 600, fontSize: 12.5 }}
-                    title={sel.id}
-                  >
-                    {sel.name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: t.textSecondary,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {sel.id}
-                  </span>
-                  <span style={{ flex: 1 }} />
-                  {!isRoot(sel) && sel.resolved !== false ? (
-                    <antd.Button
-                      size="small"
-                      onClick={() => onOpenNode(sel)}
-                    >
-                      {tr("打开 Markdown")}
-                    </antd.Button>
-                  ) : null}
-                  <antd.Button
-                    size="small"
-                    type="text"
-                    onClick={() => setSelectedId("")}
-                  >
-                    {tr("关闭")}
-                  </antd.Button>
-                </div>
-                {sel.description ? (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: t.textSecondary,
-                      marginBottom: 6,
-                    }}
-                  >
-                    {sel.description}
-                  </div>
-                ) : null}
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 24,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: t.textSecondary,
-                        marginBottom: 3,
-                      }}
-                    >
-                      {tr("出链 · {n}", {
-                        n: (model?.outbound.get(sel.id) || []).length,
-                      })}
-                    </div>
-                    {(model?.outbound.get(sel.id) || []).map((it) => (
-                      <div
-                        key={`${it.id}:${it.anchor ?? ""}`}
-                        onClick={() => setSelectedId(it.id)}
-                        style={{
-                          cursor: "pointer",
-                          fontSize: 12,
-                          lineHeight: "20px",
-                        }}
-                        title={it.id}
-                    >
-                      {nameOf(it.id)} →
-                        {it.anchor ? (
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: t.textSecondary,
-                            }}
-                          >
-                            #{it.anchor}
-                          </span>
-                        ) : null}
-                    </div>
-                    ))}
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: t.textSecondary,
-                        marginBottom: 3,
-                      }}
-                    >
-                      {tr("入链 · {n}", {
-                        n: (model?.inbound.get(sel.id) || []).length,
-                      })}
-                    </div>
-                    {(model?.inbound.get(sel.id) || []).map((it) => (
-                      <div
-                        key={it.id}
-                        onClick={() => setSelectedId(it.id)}
-                        style={{
-                          cursor: "pointer",
-                          fontSize: 12,
-                          lineHeight: "20px",
-                        }}
-                        title={it.id}
-                      >
-                        ← {nameOf(it.id)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
+    <GraphDetailPanel
+      sel={sel}
+      nodeColor={nodeColor}
+      isRoot={isRoot}
+      model={model}
+      nameOf={nameOf}
+      onOpenNode={onOpenNode}
+      onPick={setSelectedId}
+    />
   ) : null;
 
   return (
@@ -901,304 +572,49 @@ export function GraphCard(props: {
               {panel}
             </>
           ) : (
-          <div style={{ position: "relative" }}>
-            {/* 窄屏图例（header 不展示图例时兜底，2D 视图内展示）。 */}
-            {narrow ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "2px 10px",
-                  fontSize: 11,
-                  marginBottom: 4,
-                }}
-              >
-                {legendEntries.map((l) => (
-                  <span
-                    key={l.key}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 3,
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        background: l.color,
-                        display: "inline-block",
-                      }}
-                    />
-                    {l.label}
-                  </span>
-                ))}
-                {!agentLegend ? (
-                  <span style={{ color: t.textSecondary }}>
-                    → {tr("引用方向")}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-            <div
-              style={{
-                fontSize: 12,
-                color: t.textSecondary,
-                marginBottom: 4,
-                minHeight: 18,
-              }}
-            >
-              {focus ? (
-                <antd.Button
-                  size="small"
-                  type="link"
-                  style={{ padding: 0, height: "auto", fontSize: 12 }}
-                  onClick={() => applyFocus(null)}
-                >
-                  <TargetIcon size={11} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {focusLabel} · 退出
-                </antd.Button>
-              ) : null}
-              {infoNode
-                ? `${infoNode.name}${infoNode.description ? ` — ${infoNode.description}` : ""}`
-                : tr("点节点查看 · 滚轮缩放 · 拖拽平移 · 点簇根聚焦 · 双击节点邻域 · Esc 退出")}
-            </div>
-            <div style={{ position: "absolute", right: 0, top: 0, zIndex: 2 }}>
-              <antd.Button size="small" onClick={() => zoomBy(1 / 1.5)} title="放大" aria-label="放大">
-                +
-              </antd.Button>
-              <antd.Button size="small" onClick={() => zoomBy(1.5)} title="缩小" aria-label="缩小">
-                −
-              </antd.Button>
-              <antd.Button
-                size="small"
-                onClick={() => {
-                  setFocus(null);
-                  animateTo(view, 320);
-                }}
-                title="复位视野"
-                aria-label="复位视野"
-              >
-                ⟳
-              </antd.Button>
-            </div>
-            <svg
-              ref={svgRef}
-              viewBox={`${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`}
-              width="100%"
-              height={GRAPH_H}
-              style={{ display: "block", touchAction: "none", cursor: panning ? "grabbing" : "grab" }}
-              onClick={handleGraphClick}
-              onDoubleClick={handleGraphDblClick}
-              onMouseMove={(e) => {
-                onSvgPanMove(e);
-                handleGraphMove(e);
-              }}
-              onMouseDown={onSvgPanDown}
-              onMouseUp={onSvgPanUp}
-              onMouseLeave={() => {
-                setHoverId("");
-                hitNodeRef.current = null;
-                dragRef.current = null;
-                setPanning(false);
-                if (svgRef.current) svgRef.current.style.cursor = "grab";
-              }}
-              onTouchStart={onSvgTouchStart}
-              onTouchMove={onSvgTouchMove}
-              onTouchEnd={onSvgTouchEnd}
-              onTouchCancel={onSvgTouchEnd}
-            >
-              <defs>
-                <marker
-                  id="gvarrow"
-                  viewBox="0 -3 6 6"
-                  refX="5"
-                  refY="0"
-                  markerWidth="5"
-                  markerHeight="6"
-                  orient="auto"
-                >
-                  <path d="M0,-3L6,0L0,3" fill={t.textSecondary} opacity={0.45} />
-                </marker>
-                <marker
-                  id="gvarrow-active"
-                  viewBox="0 -3 6 6"
-                  refX="5"
-                  refY="0"
-                  markerWidth="5"
-                  markerHeight="6"
-                  orient="auto"
-                >
-                  <path d="M0,-3L6,0L0,3" fill={GRAPH_ROOT_COLOR} />
-                </marker>
-              </defs>
-              {/* ③ 簇块虚线框（簇分离视觉锚，替代 v3 扇区边界弧）。 */}
-              {layout
-                ? layout.blocks.map((b) => {
-                    const hubNode =
-                      graph.nodes.find((n) => n.id === b.hubId) || {
-                        id: b.hubId,
-                        name: "",
-                      };
-                    return (
-                      <rect
-                        key={`blk-${b.hubId}`}
-                        x={b.minX}
-                        y={b.minY}
-                        width={b.w}
-                        height={b.h}
-                        rx={16}
-                        fill={nodeColor(hubNode)}
-                        fillOpacity={0.045}
-                        stroke={nodeColor(hubNode)}
-                        strokeOpacity={0.3}
-                        strokeWidth={1}
-                        strokeDasharray="4 5"
-                      />
-                    );
-                  })
-                : null}
-              {/* ②a 簇内边：节点级（chip 之下；箭头止于 chip 边界）。 */}
-              {graph.edges.map((e, i) => {
-                const sa = layout?.sectorOf.get(e.source) ?? e.source;
-                const sb = layout?.sectorOf.get(e.target) ?? e.target;
-                if (sa !== sb) return null; // 跨簇边走下面的 hub 线层
-                const a = posById.get(e.source);
-                const b = posById.get(e.target);
-                if (!a || !b) return null;
-                const tb = sizeById.get(e.target) || { w: 44, h: 26 };
-                const dx = b.x - a.x;
-                const dy = b.y - a.y;
-                const d = Math.max(Math.sqrt(dx * dx + dy * dy), 0.1);
-                const ux = dx / d;
-                const uy = dy / d;
-                // 终点裁剪到目标 chip 矩形边界（+3px 间距），箭头不埋进 chip。
-                const tx =
-                  Math.abs(ux) > 1e-6 ? (tb.w / 2 + 3) / Math.abs(ux) : Infinity;
-                const ty =
-                  Math.abs(uy) > 1e-6 ? (tb.h / 2 + 3) / Math.abs(uy) : Infinity;
-                const tEnd = Math.min(tx, ty, d);
-                const x2 = b.x - ux * tEnd;
-                const y2 = b.y - uy * tEnd;
-                const active =
-                  Boolean(selectedId) &&
-                  (e.source === selectedId || e.target === selectedId);
-                const dim = Boolean(selectedId) && !active;
-                // 聚焦淡出：两端都在聚焦集内=全不透明，否则 0.12。
-                const fdim =
-                  inFocus(e.source) && inFocus(e.target) ? 1 : 0.12;
-                return (
-                  <line
-                    key={i}
-                    x1={a.x}
-                    y1={a.y}
-                    x2={x2}
-                    y2={y2}
-                    stroke={active ? GRAPH_ROOT_COLOR : t.border}
-                    strokeOpacity={(active ? 0.9 : dim ? 0.08 : 0.5) * fdim}
-                    strokeWidth={active ? 1.6 : 1}
-                    markerEnd={
-                      active
-                        ? "url(#gvarrow-active)"
-                        : "url(#gvarrow)"
-                    }
-                  />
-                );
-              })}
-              {/* ②b 跨簇边：簇对去重后 hub→hub 块级单线（v4 毛球治理）。 */}
-              {crossHubEdges.map(({ a, b, k }) => {
-                const pa = posById.get(a);
-                const pb = posById.get(b);
-                if (!pa || !pb) return null;
-                const hubA = graph.nodes.find((n) => n.id === a);
-                const fdim = inFocus(a) && inFocus(b) ? 1 : 0.15;
-                return (
-                  <line
-                    key={`x-${k}`}
-                    x1={pa.x}
-                    y1={pa.y}
-                    x2={pb.x}
-                    y2={pb.y}
-                    stroke={hubA ? nodeColor(hubA) : t.border}
-                    strokeOpacity={0.22 * fdim}
-                    strokeWidth={1.4}
-                  />
-                );
-              })}
-              {/* ① 节点=矩形 chip（标签恒显，网格保证不重叠；hover=描边加粗）。 */}
-              {graph.nodes.map((node) => {
-                const p = posById.get(node.id);
-                const s = sizeById.get(node.id);
-                if (!p || !s) return null;
-                const hub = hubSet.has(node.id);
-                const hovered = hoverId === node.id;
-                const selected = selectedId === node.id;
-                const dim = dimmed(node.id);
-                const fd = inFocus(node.id) ? 1 : 0.1;
-                // P1：截断用 CJK 加权宽逐字累加估（与 chipWidth 同口径），
-                // 不再一律 / FONT_W——否则 CJK 截断过晚、文字溢出 rect。
-                let usedW = 0;
-                let maxChars = 0;
-                for (let ci = 0; ci < node.name.length; ci += 1) {
-                  const cw = textWidthUnits(node.name[ci]);
-                  if (usedW + cw > s.w - 14) break;
-                  usedW += cw;
-                  maxChars = ci + 1;
-                }
-                maxChars = Math.max(3, maxChars);
-                const shown =
-                  node.name.length > maxChars
-                    ? `${node.name.slice(0, maxChars - 1)}…`
-                    : node.name;
-                return (
-                  <g
-                    key={node.id}
-                    transform={`translate(${p.x},${p.y})`}
-                    style={{
-                      opacity: dim ? 0.24 : fd,
-                      pointerEvents: "none",
-                    }}
-                  >
-                    <rect
-                      x={-s.w / 2}
-                      y={-s.h / 2}
-                      width={s.w}
-                      height={s.h}
-                      rx={s.h / 2}
-                      fill={nodeColor(node)}
-                      fillOpacity={
-                        dim ? 0.06 : hovered || selected ? 0.32 : hub ? 0.22 : 0.13
-                      }
-                      stroke={
-                        selected
-                          ? GRAPH_ROOT_COLOR
-                          : hovered
-                            ? t.text
-                            : nodeColor(node)
-                      }
-                      strokeOpacity={dim ? 0.15 : hovered || selected ? 1 : 0.75}
-                      strokeWidth={selected ? 2 : hovered ? 1.8 : hub ? 1.4 : 1}
-                    />
-                    <text
-                      y={4}
-                      textAnchor="middle"
-                      fontSize={hub ? 11.5 : 11}
-                      fontWeight={hub || isDirect(node) ? 600 : 400}
-                      fill={selected ? GRAPH_ROOT_COLOR : t.text}
-                      style={{ paintOrder: "stroke" }}
-                      stroke={t.cardBg}
-                      strokeWidth={3}
-                      strokeLinejoin="round"
-                    >
-                      {shown}
-                    </text>
-                    <title>{node.name}</title>
-                  </g>
-                );
-              })}
-            </svg>
-            {panel}
-          </div>
+          <Graph2DView
+            graph={graph}
+            layout={layout}
+            posById={posById}
+            sizeById={sizeById}
+            crossHubEdges={crossHubEdges}
+            nodeColor={nodeColor}
+            hubSet={hubSet}
+            isDirect={isDirect}
+            hoverId={hoverId}
+            selectedId={selectedId}
+            setHoverId={setHoverId}
+            dimmed={dimmed}
+            inFocus={inFocus}
+            vb={vb}
+            panning={panning}
+            view={view}
+            focus={focus}
+            focusLabel={focusLabel}
+            infoNode={infoNode}
+            legendEntries={legendEntries}
+            agentLegend={agentLegend}
+            narrow={narrow}
+            GRAPH_H={GRAPH_H}
+            svgRef={svgRef}
+            hitNodeRef={hitNodeRef}
+            dragRef={dragRef}
+            setPanning={setPanning}
+            setFocus={setFocus}
+            animateTo={animateTo}
+            applyFocus={applyFocus}
+            zoomBy={zoomBy}
+            onSvgPanDown={onSvgPanDown}
+            onSvgPanMove={onSvgPanMove}
+            onSvgPanUp={onSvgPanUp}
+            handleGraphMove={handleGraphMove}
+            handleGraphClick={handleGraphClick}
+            handleGraphDblClick={handleGraphDblClick}
+            onSvgTouchStart={onSvgTouchStart}
+            onSvgTouchMove={onSvgTouchMove}
+            onSvgTouchEnd={onSvgTouchEnd}
+            panel={panel}
+          />
           )
         )
       ) : null}
