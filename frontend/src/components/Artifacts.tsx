@@ -1,29 +1,38 @@
-import { BoxIcon, ClipIcon, WarnIcon } from "./icons";
+import { BoxIcon, WarnIcon } from "./icons";
 import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { FilePreview, type PreviewFile } from "./FilePreview";
-import { ActionBtn } from "./ActionBtn";
 import {
-  downloadViaHost,
-  resolveFileTarget,
-  resolvePluginUrl,
   fetchArtifacts,
   fetchProjectSummaries,
   fetchProjectWorkflow,
-  getCachedRooms,
-  projectActivityTs,
+  resolveFileTarget,
+  resolvePluginUrl,
   httpErrorStatus,
   httpErrorDetail,
   type Artifact,
-  type WorkflowTaskDetail,
 } from "../api";
 import { invalidateTags } from "../requestCache";
-import { formatSize } from "../util";
 import { WbTooltip } from "./WbTooltip";
-import WbTableFade from "./WbTableFade";
 import { useWbViewport } from "../WbViewportContext";
+import {
+  PRIMARY,
+  KIND_META,
+  artifactDownloadUrl,
+  artifactKind,
+  kindOf,
+  projectTs,
+  type ArtifactKind,
+  type FileEntry,
+  type ProjectMeta,
+  type ProjectSummary,
+  type TaskDetail,
+} from "./ArtifactsShared";
+import { buildArtifactsTree } from "./ArtifactsTree";
+import { FileListBlock } from "./ArtifactsFileList";
+import { useTreeColWidth } from "./ArtifactsTreeCol";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -33,173 +42,6 @@ const EmptyIcon = (() => null) as unknown as ReactNS.FC<Record<string, unknown>>
 const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
   (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
 const ReloadIcon = pick("ReloadOutlined");
-const DownloadIcon = pick("DownloadOutlined");
-const EyeIcon = pick("EyeOutlined");
-const ImageIcon = pick("FileImageOutlined");
-const TextIcon = pick("FileTextOutlined");
-const FileIcon = pick("FileOutlined");
-const CodeIcon = pick("CodeOutlined");
-const DataIcon = pick("DatabaseOutlined");
-
-const PRIMARY = "var(--app-accent, #FF7F16)";
-
-// ── 正源类型（端点已合并；Controller 升级后自动生效）──
-// 字段 1:1 对齐 Go projectSummary（核对 6 字段；本次补
-// name/created_at/updated_at/worker_count——排序/筛选需要时间戳与团队）。
-interface ProjectSummary {
-  project_id: string;
-  title: string;
-  status: string;
-  plan_type?: string;
-  team_id?: string;
-  mode?: string;
-  name?: string;
-  created_at?: number;
-  updated_at?: number;
-  worker_count?: number;
-}
-
-// 局部类型提升为 api.ts 共享类型（群内项目文件面板与
-// 产物 tab 同源同型）；组件内渲染代码经别名零改动。旧局部
-// WorkflowResponse 的 nodes 字段本文件无读取点（grep 核实），随提升移除。
-type TaskDetail = WorkflowTaskDetail; // 组件内渲染代码零改动别名
-
-/** 正源产物下载 URL（项目产物端点，query path 透传）。 */
-function artifactDownloadUrl(
-  projectId: string,
-  taskId: string,
-  path: string,
-): string {
-  return (
-    `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}` +
-    `/tasks/${encodeURIComponent(taskId)}/artifact?path=${encodeURIComponent(path)}`
-  );
-}
-
-// ── 工具函数 ──────────────────────────────────────────────
-/**
- * 项目时间戳（排序/树标题共用）。上游 ListProjects 的
- * projectSummary 目前不含时间戳字段（v1.2.3 实测全无 created_at/
- * updated_at；meta.json 有 UpdatedAt string 未映射进列表——上游候选
- * PR 已记）。字段优先（number/string 都认，上游补字段后自动生效）→
- * 缺失用 project_id 内嵌日期近似（YYYYMMDD 段）→ 都没有 = 0。
- * 曾直接取不存在的字段 → 全 0 排序空转（交付前自查发现）。
- */
-/** workflow 详情富化元数据（时间多源需要项目房间 id）。 */
-interface ProjectMeta {
-  /** 项目来源房间（workflow meta.source_room_id，项目专用群）。 */
-  roomId?: string;
-  /** workflow meta.updated_at（omitempty，仅生命周期写 API 写过才有）。 */
-  updatedAt?: string;
-}
-
-/**
- * 项目时间戳（排序/树标题共用）。上游 ListProjects 的
- * projectSummary 目前不含时间戳字段（v1.2.3 实测全无 created_at/
- * updated_at；meta.json 有 UpdatedAt string 未映射进列表——上游候选
- * PR 已记）。起走 api.ts projectActivityTs 多源：
- * 真实字段（列表/workflow 详情，上游补字段后自动生效）→ 项目房间
- * 最后消息（roomsCache 零额外请求）→ project_id 内嵌日期近似 → 0。
- */
-function projectTs(
-  p: {
-    project_id?: string;
-    updated_at?: unknown;
-    created_at?: unknown;
-  },
-  meta?: ProjectMeta,
-): number {
-  const raw: unknown = p.updated_at ?? p.created_at ?? meta?.updatedAt;
-  let realTs = 0;
-  if (raw) {
-    const t = typeof raw === "string" ? Date.parse(raw) : Number(raw);
-    if (t && !Number.isNaN(t)) realTs = t;
-  }
-  return projectActivityTs(realTs, meta?.roomId || "", p.project_id || "");
-}
-
-function formatTime(ts: number): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  if (sameDay) return `${hh}:${mm}`;
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`;
-}
-
-function truncateFilename(name: string): string {
-  if (name.length <= 19) return name;
-  const dot = name.lastIndexOf(".");
-  if (dot > 0 && dot >= name.length - 8) {
-    return `${name.slice(0, 15)}…${name.slice(dot)}`;
-  }
-  return `${name.slice(0, 15)}…${name.slice(-4)}`;
-}
-
-
-function extOf(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
-}
-
-type ArtifactKind = "image" | "document" | "data" | "code" | "other";
-
-const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"]);
-const DOC_EXT = new Set([
-  "md", "markdown", "txt", "log", "pdf", "doc", "docx", "xlsx", "xls",
-  "pptx", "ppt", "rtf", "html", "htm",
-]);
-const DATA_EXT = new Set(["json", "csv", "tsv", "yaml", "yml", "xml", "sql"]);
-const CODE_EXT = new Set([
-  "py", "ts", "tsx", "js", "jsx", "go", "rs", "sh", "bash", "java", "c",
-  "cpp", "h", "hpp", "css", "scss", "toml", "ini", "conf",
-]);
-
-function kindOf(name: string, isImage = false): ArtifactKind {
-  if (isImage) return "image";
-  const ext = extOf(name);
-  if (IMAGE_EXT.has(ext)) return "image";
-  if (DOC_EXT.has(ext)) return "document";
-  if (DATA_EXT.has(ext)) return "data";
-  if (CODE_EXT.has(ext)) return "code";
-  return "other";
-}
-
-function artifactKind(a: Artifact): ArtifactKind {
-  return kindOf(a.filename || a.body, a.msgtype === "m.image");
-}
-
-const KIND_META: Record<ArtifactKind, { label: string; icon: ReactNS.ReactNode }> = {
-  image: { label: "图片", icon: <ImageIcon style={{ color: PRIMARY }} /> },
-  document: { label: "文档", icon: <TextIcon style={{ color: "#1677ff" }} /> },
-  data: { label: "数据", icon: <DataIcon style={{ color: "#52c41a" }} /> },
-  code: { label: "代码", icon: <CodeIcon style={{ color: "#722ed1" }} /> },
-  other: { label: "其他", icon: <FileIcon style={{ color: "#999" }} /> },
-};
-
-/** 统一文件条目（正源产物 / 房间附件共用渲染）。 */
-interface FileEntry {
-  key: string;
-  name: string;
-  kind: ArtifactKind;
-  size: number | null;
-  source: string; // 项目名 / 房间名
-  time: number;
-  sender: string;
-  /** MIME（文件名无扩展时预览靠它识别 md——修 RAW 不渲染）。 */
-  mimeType?: string;
-  /** 正源：项目产物下载参数。 */
-  projectId?: string;
-  taskId?: string;
-  artifactPath?: string;
-  /** fallback：mxc 直链。 */
-  mxcUrl?: string;
-}
 
 interface ArtifactsProps {
   rooms?: { room_id: string; name: string }[];
@@ -441,167 +283,20 @@ function Artifacts(props: ArtifactsProps) {
   );
 
   // ── 树 ──
-  const treeData = React.useMemo(() => {
-    const statusColor: Record<string, string> = {
-      completed: "#52c41a",
-      in_progress: "#1677ff",
-      "in-progress": "#1677ff",
-      blocked: "#f5222d",
-      revision: "#fa8c16",
-    };
-    const projectNodes = visibleProjects.map((p) => {
-      const tasks = tasksByProject[p.project_id] || [];
-      const dispName = p.title || p.name || p.project_id;
-      const meta = metaByProject[p.project_id];
-      const ts = projectTs(p, meta);
-      // 时间标签规则（）：真实来源（字段/已加入的项目房间
-      // last_ts）显完整时间；仅 id 近似日期时只显 MM-DD，不挂 00:00 噪音。
-      const hasReal = Boolean(p.updated_at || p.created_at || meta?.updatedAt);
-      const roomKnown = Boolean(
-        meta?.roomId &&
-          (getCachedRooms()?.rooms?.some(
-            (r) => r.room_id === meta?.roomId,
-          ) ||
-            false),
-      );
-      const tsLabel =
-        hasReal || roomKnown
-          ? formatTime(ts)
-          : ts
-            ? formatTime(ts).split(" ")[0]
-            : "";
-      return {
-        key: `proj:${p.project_id}`,
-        // 两行标题——第 1 行 名称+状态 tag；第 2 行 团队·更新时间
-        // （配合顶部筛选/排序控件，让排序结果在树上可感知）。
-        title: (
-          <div style={{ lineHeight: 1.35, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-              {/* antd Tooltip 显全名（原生 title 在树节点里不生效）；
- 名称 ≠ project_id 时 tooltip 附带 id（id 是寻址键，排障要用）。 */}
-              <WbTooltip
-                title={
-                  (p.title || p.name) && p.project_id !== dispName
-                    ? `${dispName}（${p.project_id}）`
-                    : dispName
-                }
-                mouseEnterDelay={0.2}
-              >
-                <span
-                  // flex:1 + minWidth:0 让名称在行内可收缩（缺了它 flex 项
-                  // 按内容宽不缩，长项目名把整行撑出容器）；左栏可拖宽，
-                  // 名称任何宽度自动换行防省略号丢信息（Tooltip 附带
-                  // project_id 供排障）。
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    whiteSpace: "normal",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {dispName}
-                </span>
-              </WbTooltip>
-              <antd.Tag
-                color={statusColor[p.status] || "default"}
-                style={{ margin: 0, fontSize: 11, flexShrink: 0 }}
-              >
-                {p.status || "?"}
-              </antd.Tag>
-            </div>
-            {(p.team_id || ts) ? (
-              <div style={{ fontSize: 11, color: "#999" }}>
-                {p.team_id || ""}
-                {p.team_id && ts ? " · " : ""}
-                {tsLabel}
-              </div>
-            ) : null}
-          </div>
-        ),
-        children: tasks.map((t) => {
-          const files = projectFiles.filter(
-            (f) => f.projectId === p.project_id && f.taskId === t.task_id,
-          );
-          return {
-            key: `task:${p.project_id}:${t.task_id}`,
-            title: (
-              <span>
-                {t.task_id.slice(0, 12)}…
-                <span style={{ color: "#999", fontSize: 12 }}>（{files.length}）</span>
-              </span>
-            ),
-            children: files.map((f) => ({
-              key: f.key,
-              title: (
-                // 窄屏：全名 + 换行（truncate 截断在 376px 下信息丢失）；宽屏保持截断。
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                  {KIND_META[f.kind].icon}
-                  <span style={{ fontSize: 12, wordBreak: narrow ? "break-word" : undefined }}>
-                    {narrow ? f.name : truncateFilename(f.name)}
-                  </span>
-                </span>
-              ),
-              isLeaf: true,
-            })),
-          };
-        }),
-      };
-    });
-    // 附件分支：类型 → 房间
-    const kinds: ArtifactKind[] = ["image", "document", "data", "code", "other"];
-    const attachNodes = kinds.map((k) => {
-      const inKind = attachmentFiles.filter((f) => f.kind === k);
-      const srcCounts = new Map<string, number>();
-      for (const f of inKind) srcCounts.set(f.source, (srcCounts.get(f.source) || 0) + 1);
-      return {
-        key: `kind:${k}`,
-        title: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{KIND_META[k].icon} {KIND_META[k].label}（{inKind.length}）</span>,
-        children: Array.from(srcCounts.entries()).map(([src, cnt]) => ({
-          key: `asrc:${k}:${src}`,
-          // 两行排版 + antd Tooltip——
-          // ① 原生 title 在 rc-tree 节点里不生效（用户真机验证），改 antd Tooltip
-          // （portal 渲染，即时显示，不受树节点包装影响）；
-          // ② 房间名单独占一行（左栏全宽给名字），计数下沉第二行灰字；
-          // ③ 左栏可拖拽调宽（见下），房间名任何宽度自动换行显全名
-          // （不 ellipsis 截断）。
-          title: (
-            <div style={{ lineHeight: 1.35, minWidth: 0 }}>
-              <WbTooltip title={src} mouseEnterDelay={0.2}>
-                <span
-                  style={{
-                    display: "block",
-                    minWidth: 0,
-                    whiteSpace: "normal",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  {src}
-                </span>
-              </WbTooltip>
-              <div style={{ fontSize: 11, color: "#999" }}>
-                {cnt} {tr("个文件")}
-              </div>
-            </div>
-          ),
-          isLeaf: true,
-        })),
-      };
-    });
-    return [
-      {
-        key: "projects",
-        title: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><BoxIcon size={13} /> {tr("项目产物")}（{projectFiles.length}）{projectsLoading ? "…" : ""}</span>,
-        children: projectNodes.length
-          ? projectNodes
-          : [{ key: "proj:empty", title: <span style={{ color: "#bbb", fontSize: 12 }}>{projectsLoading ? tr("加载中…") : tr("暂无已登记项目——经 projectflow 登记的项目会显示在这里")}</span>, isLeaf: true }],
-      },
-      {
-        key: "attachments",
-        title: <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><ClipIcon size={13} /> {tr("房间附件")}（{attachmentFiles.length}）</span>,
-        children: attachNodes,
-      },
-    ];
-  }, [visibleProjects, tasksByProject, metaByProject, projectFiles, attachmentFiles, projectsLoading, narrow]);
+  const treeData = React.useMemo(
+    () =>
+      buildArtifactsTree({
+        visibleProjects,
+        tasksByProject,
+        metaByProject,
+        projectFiles,
+        attachmentFiles,
+        projectsLoading,
+        narrow,
+        tr,
+      }),
+    [visibleProjects, tasksByProject, metaByProject, projectFiles, attachmentFiles, projectsLoading, narrow],
+  );
 
   // ── 右列表（按选中节点推导）──
   const visibleFiles = React.useMemo(() => {
@@ -708,48 +403,12 @@ function Artifacts(props: ArtifactsProps) {
   // 左栏（产物树）宽度可拖拽——200–480px，默认 260，localStorage 持久化
   // （话题面板同款交互）。拖拽期直接改 DOM（教训：高频交互不进
   // React 渲染循环），松手才提交 state + 持久化。
-  const [treeColW, setTreeColW] = React.useState(() => {
-    const v = Number(localStorage.getItem("agentteams-qwenpaw-workbench:artifacts-tree-w"));
-    return Number.isFinite(v) && v >= 200 && v <= 480 ? Math.round(v) : 260;
-  });
-  const [treeColDragging, setTreeColDragging] = React.useState(false);
-  const treeColRef = React.useRef<HTMLDivElement | null>(null);
-  const onTreeColDown = React.useCallback(
-    (e: ReactNS.MouseEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startW = treeColRef.current?.clientWidth || treeColW;
-      setTreeColDragging(true);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      const onMove = (ev: MouseEvent) => {
-        const next = Math.min(
-          480,
-          Math.max(200, Math.round(startW + (ev.clientX - startX))),
-        );
-        if (treeColRef.current) treeColRef.current.style.width = `${next}px`;
-      };
-      const onUp = (ev: MouseEvent) => {
-        const next = Math.min(
-          480,
-          Math.max(200, Math.round(startW + (ev.clientX - startX))),
-        );
-        setTreeColW(next);
-        localStorage.setItem(
-          "agentteams-qwenpaw-workbench:artifacts-tree-w",
-          String(next),
-        );
-        setTreeColDragging(false);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-      };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    },
-    [treeColW],
-  );
+  const {
+    w: treeColW,
+    dragging: treeColDragging,
+    ref: treeColRef,
+    onDown: onTreeColDown,
+  } = useTreeColWidth();
 
   // 窄屏 drill-in：钻进的文件列表标题（返回条右侧显示）。
   const listTitle = React.useMemo(() => {
@@ -797,175 +456,14 @@ function Artifacts(props: ArtifactsProps) {
     />
   );
 
-  // 窄/宽共用：文件列表（空态 / 表格）。同 treeEl，宽屏右栏渲染同一元素。
-  const fileListBlock =
-    visibleFiles.length === 0 ? (
-      <antd.Empty
-        description={
-          selectedKey === "projects"
-            ? tr("暂无项目产物——已登记项目的任务交付物会显示在这里（未登记项目只走下方房间附件扫描）")
-            : tr("该分类下还没有文件")
-        }
-      />
-    ) : (
-      <WbTableFade>
-        <antd.Table
-          rowKey="key"
-          size="small"
-          pagination={false}
-          // 竖屏：容器固定屏宽、不横滚（此前 scroll.x:max-content 横滚=每列被横拖）——
-          // 窄屏隐藏次要列(来源/发送者/时间)只留 文件/类型/大小/操作 4 列 +
-          // tableLayout:fixed 铺满屏宽 + 文件名自动换行。宽屏保持原样(横滚)。
-          scroll={narrow ? undefined : { x: "max-content" }}
-          tableLayout={narrow ? "fixed" : undefined}
-          dataSource={visibleFiles}
-          columns={[
-            {
-              title: tr("文件"),
-              dataIndex: "name",
-              render: (_: unknown, f: FileEntry) => (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  {/* 窄屏：类型移到图标下方（省横向给文件名换行）；宽屏仅图标。 */}
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                    {KIND_META[f.kind].icon}
-                    {narrow ? (
-                      <span style={{ fontSize: 10, color: t.textSecondary, lineHeight: 1 }}>
-                        {KIND_META[f.kind].label}
-                      </span>
-                    ) : null}
-                  </div>
-                  <WbTooltip title={f.name} tap={false} >
-                    <a
-                      // 窄屏自动换行（不横滚/不截断），宽屏保持单行 ellipsis。
-                      style={{ overflow: narrow ? "visible" : "hidden", textOverflow: narrow ? "clip" : "ellipsis", whiteSpace: narrow ? "normal" : "nowrap", wordBreak: narrow ? "break-word" : undefined, maxWidth: narrow ? "none" : 300 }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        void openPreview(f);
-                      }}
-                    >
-                      {truncateFilename(f.name)}
-                    </a>
-                  </WbTooltip>
-                </div>
-              ),
-            },
-            // 类型列：窄屏隐藏（已移入文件列图标下方）；宽屏保留。
-            ...(narrow
-              ? []
-              : [
-                  {
-                    title: tr("类型"),
-                    dataIndex: "kind",
-                    width: 80,
-                    render: (k: ArtifactKind) => (
-                      <antd.Tag style={{ margin: 0 }} color={k === "image" ? "orange" : k === "document" ? "blue" : k === "data" ? "green" : k === "code" ? "purple" : undefined}>
-                        {KIND_META[k].label}
-                      </antd.Tag>
-                    ),
-                  },
-                ]),
-            // 窄屏隐藏次要列（省宽度给文件名换行）
-            ...(narrow
-              ? []
-              : [
-                  {
-                    title: tr("来源"),
-                    dataIndex: "source",
-                    width: 170,
-                    ellipsis: true,
-                  },
-                ]),
-            {
-              title: tr("大小"),
-              dataIndex: "size",
-              width: narrow ? 62 : 90,
-              render: (v: number | null) => formatSize(v) || "—",
-            },
-            // 发送者/时间：窄屏隐藏次要列
-            ...(narrow
-              ? []
-              : [
-                  {
-                    title: tr("发送者"),
-                    dataIndex: "sender",
-                    width: 110,
-                    render: (v: string) =>
-                      (v.split(":")[0] || v || "").replace(/^@/, ""),
-                  },
-                  {
-                    title: tr("时间"),
-                    dataIndex: "time",
-                    width: 120,
-                    render: (v: number) => (v ? formatTime(v) : "—"),
-                  },
-                ]),
-            {
-              title: tr("操作"),
-              key: "actions",
-              width: narrow ? 108 : 176,
-              render: (_: unknown, f: FileEntry) => {
-                // mxc/正源 → apiPath（host.fetch blob 下载，带鉴权）；
-                // http 直链 → 原样导航。裸插件路径落 SPA 兜底（index.html 壳），
-                // 解析后 /api 路径裸导航带不了鉴权头会 401——两条都不通。
-                const target = f.mxcUrl
-                  ? resolveFileTarget(f.mxcUrl)
-                  : f.projectId && f.taskId && f.artifactPath
-                    ? (() => {
-                        const p = artifactDownloadUrl(
-                          f.projectId,
-                          f.taskId,
-                          f.artifactPath,
-                        );
-                        return { url: resolvePluginUrl(p), apiPath: p };
-                      })()
-                    : { url: "" };
-                const previewable =
-                  !!target.url &&
-                  (f.kind === "image" ||
-                    f.kind === "document" ||
-                    f.kind === "data" ||
-                    f.kind === "code");
-                // 行内动作按钮统一 ActionBtn（图标+文字+可见规格）。
-                // 窄屏：查看/下载纵向排列（省横向给文件名换行）。
-                return (
-                  <div style={{ display: "flex", flexDirection: narrow ? "column" : "row", gap: 4, alignItems: narrow ? "stretch" : "center" }}>
-                    {previewable ? (
-                      <ActionBtn
-                        icon={<EyeIcon />}
-                        label={tr("查看")}
-                        onClick={() => void openPreview(f)}
-                      />
-                    ) : null}
-                    <ActionBtn
-                      icon={<DownloadIcon />}
-                      label={tr("下载")}
-                      href={target.apiPath ? undefined : target.url || undefined}
-                      download={f.name}
-                      disabled={!target.url}
-                      onClick={
-                        target.apiPath
-                          ? (e) => {
-                              e.preventDefault();
-                              void (async () => {
-                                const ok = await downloadViaHost(
-                                  target.apiPath as string,
-                                  f.name,
-                                );
-                                if (!ok)
-                                  antd.message.error("下载失败，请稍后重试");
-                              })();
-                            }
-                          : undefined
-                      }
-                    />
-                  </div>
-                );
-              },
-            },
-          ]}
-        />
-      </WbTableFade>
-    );
+  const fileListBlock = (
+    <FileListBlock
+      visibleFiles={visibleFiles}
+      selectedKey={selectedKey}
+      narrow={narrow}
+      onOpen={openPreview}
+    />
+  );
 
   return (
     // 高度链容器化（RoomChat 同款）：tabpane 已定高（height:100% min-0）→
