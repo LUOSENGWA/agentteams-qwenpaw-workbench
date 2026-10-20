@@ -1,6 +1,19 @@
-import { SendIcon, MessageIcon, SearchIcon, BellIcon, NotesIcon, BoltIcon, SettingsIcon, UserIcon, UsersIcon, TodoIcon, BotIcon, ShieldIcon, CheckIcon, CloseIcon, BoxIcon, TopologyIcon } from "./icons";
+import {
+  SendIcon,
+  MessageIcon,
+  TopologyIcon,
+  SearchIcon,
+  BellIcon,
+  NotesIcon,
+  BoltIcon,
+  SettingsIcon,
+  UserIcon,
+  UsersIcon,
+  TodoIcon,
+  BotIcon,
+  BoxIcon,
+} from "./icons";
 import type * as ReactNS from "react";
-
 import {
   fetchArtifacts,
   fetchRoomApprovals,
@@ -21,14 +34,23 @@ import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import { useWbViewport } from "../WbViewportContext";
 import { logoUrl as LOGO_URL } from "../lib/logo";
-import { formatChatTime, formatTimeShort, sevColor as sevColorOf } from "../util";
+import { formatChatTime } from "../util";
+import {
+  CARD_RADIUS,
+  PRIMARY,
+  memberName,
+  workflowStats,
+  workerStats,
+  type NewTaskTarget,
+} from "./HomePageShared";
+import { QuickBtn } from "./HomePageQuick";
+import { ApprovalsCard } from "./HomePageApprovals";
+import { SglangCard } from "./HomePageSglang";
+import { NewTaskModal } from "./HomePageNewTask";
 
 const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
-
-const PRIMARY = "var(--app-accent, #FF7F16)";
-const CARD_RADIUS = 10;
 
 interface HomePageProps {
   rooms: TeamRoom[];
@@ -47,65 +69,6 @@ interface HomePageProps {
   inboxUnread?: number;
   /** ：全局搜索快捷入口（搜消息和群聊）。 */
   onGlobalSearch?: () => void;
-}
-
-/** 发起任务候选：各团队 Leader（入口 B）+ Manager（入口 A，跨团队）。 */
-interface NewTaskTarget {
-  key: string;
-  label: string;
-  team: string;
-  mxid: string;
-  /** Manager 行标「跨团队」；Leader 行空。 */
-  crossTeam?: boolean;
-}
-
-/** 成员显示名：display_name 优先，否则 MXID localpart。 */
-function memberName(room: TeamRoom, mxid: string): string {
-  const m = room.members?.[mxid];
-  if (m?.display_name) return m.display_name;
-  const lp = mxid.startsWith("@") ? mxid.slice(1).split(":")[0] : mxid;
-  return lp || mxid;
-}
-
-/** 状态分组统计（与 WorkflowBoard STATUS_COLOR 口径一致）。 */
-function workflowStats(events: WorkflowEvent[]): {
-  running: number;
-  blocked: number;
-  done: number;
-} {
-  let running = 0;
-  let blocked = 0;
-  let done = 0;
-  for (const ev of events) {
-    const s = String(ev.status || "").toLowerCase();
-    if (s === "running" || s === "in_progress" || s === "in-progress") {
-      running += 1;
-    } else if (s === "blocked") {
-      blocked += 1;
-    } else if (s === "completed" || s === "done") {
-      done += 1;
-    }
-  }
-  return { running, blocked, done };
-}
-
-/** Worker 角色计数（领/工/审）。 */
-function workerStats(tree: WorkerTreeTeam[]): {
-  leaders: number;
-  workers: number;
-  critics: number;
-} {
-  let leaders = 0;
-  let workers = 0;
-  let critics = 0;
-  for (const team of tree) {
-    for (const w of team.workers) {
-      if (w.role === "leader") leaders += 1;
-      else if (w.role === "critic") critics += 1;
-      else if (w.role === "worker") workers += 1;
-    }
-  }
-  return { leaders, workers, critics };
 }
 
 /** 首页 = 全局总览（进门先看卡片，团队/群聊才是第二个 tab）。 */
@@ -362,91 +325,6 @@ function HomePage(props: HomePageProps) {
     marginTop: 2,
   };
 
-  // 快捷操作（文字+emoji，零 antdIcons 依赖）。
-  // 快捷操作卡配色——accent 品牌浅底，底/边/字从主色派生
-  // （原 #FFF3E8/#FFD9B3/#c2410c/#9a3412 是 accent 的固定橙衍生，
-  // 宿主换主色时这层不跟）。color-mix 保证任意主色下派生。
-  // 深色模式：浅底白 mix 在暗页=亮斑 →
-  // 改 accent 对透明混色（黑底透出）+ 标签用亮向 accent（暗底可读）。
-  const dark = t.mode === "dark";
-  const quickCard = {
-    background: dark
-      ? "color-mix(in srgb, var(--app-accent, #FF7F16) 13%, transparent)"
-      : "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, white)",
-    border: `1px solid ${
-      dark
-        ? "color-mix(in srgb, var(--app-accent, #FF7F16) 32%, transparent)"
-        : "color-mix(in srgb, var(--app-accent, #FF7F16) 28%, white)"
-    }`,
-  };
-  const quickBtn = (
-    icon: ReactNS.ReactNode,
-    label: string,
-    desc: string,
-    onClick: () => void,
-  ): ReactNS.ReactElement => (
-    <div
-      onClick={onClick}
-      style={{
-        flex: 1,
-        // border-box：content-box 时 min-width 140 + padding 28 + border 2
-        // = 最小盒 170，窄屏 2 列 grid 的 1fr 轨被 item min 撑开整体溢出。
-        boxSizing: "border-box",
-        minWidth: 140,
-        cursor: "pointer",
-        borderRadius: CARD_RADIUS,
-        ...quickCard,
-        padding: "12px 14px",
-        transition: "box-shadow .2s",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.boxShadow =
-          "0 2px 8px color-mix(in srgb, var(--app-accent, #FF7F16) 25%, transparent)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.boxShadow = "none";
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          height: 24,
-          // 图标=主色（浅色档用深向 accent 保对比；深色档用亮向=主色提亮）
-          color: dark
-            ? "color-mix(in srgb, var(--app-accent, #FF7F16) 70%, white)"
-            : "var(--app-accent, #c2410c)",
-        }}
-      >
-        {icon}
-      </div>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 700,
-          // 深色档：accent 70%+white=亮向主色（暗底可读）；浅色档原样
-          color: dark
-            ? "color-mix(in srgb, var(--app-accent, #FF7F16) 70%, white)"
-            : "var(--app-accent, #c2410c)",
-          marginTop: 4,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 10.5,
-          // 描述色：浅色档=主色 70% + 深棕（任意主色下足够深可读）；
-          // 深色档=次级文字 token（t.textSecondary，暗页标准灰）
-          color: dark ? t.textSecondary : "color-mix(in srgb, var(--app-accent, #9a3412) 70%, #3a2410)",
-          marginTop: 2,
-        }}
-      >
-        {desc}
-      </div>
-    </div>
-  );
-
   // 两种排序语义分开——团队卡=未读优先再按活跃（动作导向）；
   // 最近动态=严格时间序（此前按未读排，全 0 未读时顺序任意=观感无时间序）。
   const roomsByUnread = [...rooms].sort(
@@ -519,51 +397,54 @@ function HomePage(props: HomePageProps) {
             flexWrap: narrow ? undefined : "wrap",
           }}
         >
-          {quickBtn(
-            <SendIcon size={20} />,
-            tr("发起任务"),
-            tr("选 Leader 派发新任务"),
-            openNewTask,
-          )}
-          {quickBtn(
-            <MessageIcon size={20} />,
-            tr("打开群聊"),
-            unreadTotal > 0 ? tr("有 {n} 条未读", { n: unreadTotal }) : tr("进入团队群聊"),
-            () => onGotoTab("chat"),
-          )}
-          {quickBtn(
-            <TopologyIcon size={20} />,
-            tr("工作流"),
-            tr("项目进展与任务拓扑"),
-            () => onGotoTab("workflow"),
-          )}
-          {quickBtn(
-            <SearchIcon size={20} />,
-            tr("全局搜索"),
-            tr("搜消息和群聊"),
-            () => onGlobalSearch?.(),
-          )}
-          {quickBtn(
-            <BellIcon size={20} />,
-            tr("通知中心"),
-            inboxUnread > 0 ? tr("有 {n} 条通知", { n: inboxUnread }) : tr("审批与房间 @你"),
-            () => onGotoTab("inbox"),
-          )}
-          {quickBtn(
-            <NotesIcon size={20} />,
-            tr("知识库"),
-            tr("团队知识一屏览"),
-            () => onGotoTab("knowledge"),
-          )}
-          {quickBtn(
-            <BoltIcon size={20} />,
-            tr("技能中心"),
-            tr("团队技能与 MCP 矩阵"),
-            () => onGotoTab("team"),
-          )}
-          {quickBtn(<SettingsIcon size={20} />, tr("快速配置"), tr("检查连接与自检"), () =>
-            onGotoTab("settings"),
-          )}
+          <QuickBtn
+            icon={<SendIcon size={20} />}
+            label={tr("发起任务")}
+            desc={tr("选 Leader 派发新任务")}
+            onClick={openNewTask}
+          />
+          <QuickBtn
+            icon={<MessageIcon size={20} />}
+            label={tr("打开群聊")}
+            desc={unreadTotal > 0 ? tr("有 {n} 条未读", { n: unreadTotal }) : tr("进入团队群聊")}
+            onClick={() => onGotoTab("chat")}
+          />
+          <QuickBtn
+            icon={<TopologyIcon size={20} />}
+            label={tr("工作流")}
+            desc={tr("项目进展与任务拓扑")}
+            onClick={() => onGotoTab("workflow")}
+          />
+          <QuickBtn
+            icon={<SearchIcon size={20} />}
+            label={tr("全局搜索")}
+            desc={tr("搜消息和群聊")}
+            onClick={() => onGlobalSearch?.()}
+          />
+          <QuickBtn
+            icon={<BellIcon size={20} />}
+            label={tr("通知中心")}
+            desc={inboxUnread > 0 ? tr("有 {n} 条通知", { n: inboxUnread }) : tr("审批与房间 @你")}
+            onClick={() => onGotoTab("inbox")}
+          />
+          <QuickBtn
+            icon={<NotesIcon size={20} />}
+            label={tr("知识库")}
+            desc={tr("团队知识一屏览")}
+            onClick={() => onGotoTab("knowledge")}
+          />
+          <QuickBtn
+            icon={<BoltIcon size={20} />}
+            label={tr("技能中心")}
+            desc={tr("团队技能与 MCP 矩阵")}
+            onClick={() => onGotoTab("team")}
+          />
+          <QuickBtn
+            icon={<SettingsIcon size={20} />}
+            label={tr("快速配置")}
+            desc={tr("检查连接与自检")}
+            onClick={() => onGotoTab("settings")}
+          />
         </div>
       </div>
 
@@ -714,142 +595,7 @@ function HomePage(props: HomePageProps) {
         </antd.Col>
       </antd.Row>
 
-      {/* 审批卡（房间审批源 /room-approvals=Worker Tool Guard 真实队列，
- 30s 轮询；弃宿主 push-messages 死源） */}
-      <antd.Row gutter={[12, 12]}>
-        <antd.Col span={24}>
-          <antd.Card style={cardStyle} styles={{ body: cardBody }}>
-            {/* 空态压缩为单行细条（此前空态也占整卡高度） */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><ShieldIcon size={14} /> {tr("待审批")}</span>
-                {approvals.length > 0 && (
-                  <span
-                    style={{
-                      display: "inline-block",
-                      marginLeft: 8,
-                      minWidth: 18,
-                      textAlign: "center",
-                      fontSize: 11,
-                      color: "#fff",
-                      background: "#fa8c16",
-                      borderRadius: 9,
-                      padding: "0 6px",
-                      lineHeight: "18px",
-                    }}
-                  >
-                    {approvals.length}
-                  </span>
-                )}
-              </div>
-              {approvals.length === 0 ? (
-                <div style={{ fontSize: 11, color: t.textSecondary, flex: 1 }}>
-                  {tr("暂无待审批请求")} · {tr("Worker 请求审批时会桌面通知提醒")}
-                </div>
-              ) : null}
-            </div>
-            {approvals.length === 0 ? null : (
-
-              approvals.map((item) => {
-                // 房间审批源是纯文本消息——severity/tool 从 body 解析
-                // （RoomChat parseApproval 同款正则）。
-                const sevMatch = /Severity\s*[:：]\s*(?:🔴|🟡|🟢|🟠)?\s*([A-Za-z]+)/i.exec(
-                  item.body,
-                );
-                const toolMatch = /Tool\s*[:：]\s*`?([^`\n*]+?)`?[\s*]*(?:$|\n)/i.exec(
-                  item.body,
-                );
-                const sev = sevMatch?.[1]?.toUpperCase() || "MEDIUM";
-                const sevColor = sevColorOf(sev);
-                const when = formatTimeShort(item.ts * 1000);
-                const workerShort = (item.sender.split(":")[0] || "")
-                  .replace(/^@/, "");
-                const toolName = toolMatch?.[1]?.trim() || "";
-                const summary = (item.body || "")
-                  .replace(/\*\*/g, "")
-                  .replace(/\s+/g, " ")
-                  .trim();
-                const key = item.event_id || item.room_id;
-                return (
-                  <div
-                    key={key}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      background: t.hoverBg,
-                      marginTop: 8,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: sevColor,
-                        flexShrink: 0,
-                        width: 34,
-                      }}
-                    >
-                      {sev}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: t.text,
-                        flexShrink: 0,
-                        maxWidth: 180,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={toolName || item.room_name}
-                    >
-                      {toolName || item.room_name || item.room_id}
-                    </span>
-                    <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
-                      @{workerShort} · {when}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: t.textSecondary,
-                        flex: 1,
-                        minWidth: 120,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={summary}
-                    >
-                      {summary.slice(0, 80)}
-                    </span>
-                    <antd.Button
-                      size="small"
-                      type="primary"
-                      loading={approvalBusy === key}
-                      onClick={() => void handleApproval("approve", item)}
-                    >
-                      <CheckIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("批准")}
-                    </antd.Button>
-                    <antd.Button
-                      size="small"
-                      danger
-                      loading={approvalBusy === key}
-                      onClick={() => void handleApproval("deny", item)}
-                    >
-                      <CloseIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("拒绝")}
-                    </antd.Button>
-                  </div>
-                );
-              })
-            )}
-          </antd.Card>
-        </antd.Col>
-      </antd.Row>
+      <ApprovalsCard approvals={approvals} busy={approvalBusy} onAction={handleApproval} />
 
       {/* 第二行：最近动态（左宽）/ 右列=产物+集群负载堆叠（重排） */}
       <antd.Row gutter={[12, 12]} style={{ marginTop: 0 }}>
@@ -997,98 +743,13 @@ function HomePage(props: HomePageProps) {
                 })()}
               </div>
             </antd.Card>
-          {config?.sglang?.enabled && (
-  <antd.Card style={cardStyle} styles={{ body: cardBody }}>
-                <div
-                  style={{ cursor: "pointer" }}
-                  onClick={() => onGotoTab("ops")}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                      集群负载
-                    </span>
-                    {/* 刷新脉冲（14.34）——每收到一帧快照亮一次
-  （remount key=sgLocalAt 重放动画）：空闲数值不变时也能
-  肉眼看出「正在刷新」，取代恒显 0 的 age 文字。 */}
-                    {sglang.loaded ? (
-                      <span
-                        key={sgLocalAt}
-                        title={tr("每收到一帧负载快照亮一次——正在实时刷新")}
-                        style={{
-                          display: "inline-block",
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "#52c41a",
-                          animation: "wbSgTick 0.9s ease-out",
-                        }}
-                      />
-                    ) : null}
-                  </div>
-                  {!sglang.loaded ? (
-                    <div
-                      style={{ fontSize: 11, color: t.textSecondary, marginTop: 6 }}
-                    >
-                      {tr("暂无负载数据")}
-                    </div>
-                  ) : (
-                    <>
-                    <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
-                      {sglang.ranks.map((r) => {
-                        const busy = r.num_running_reqs + r.num_waiting_reqs;
-                        return (
-                        <div
-                          key={r.dp_rank}
-                          style={{
-                            border: `1px solid ${t.border}`,
-                            borderRadius: 8,
-                            padding: "8px 12px",
-                            minWidth: 140,
-                            maxWidth: "100%",
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: t.text }}>
-                              DP {r.dp_rank}
-                            </span>
-                            {/* 状态标签——空闲/运行/排队一眼分辨（对齐 OpsPanel 卡）。 */}
-                            <antd.Tag
-                              color={busy === 0 ? "green" : r.num_waiting_reqs > 0 ? "orange" : "blue"}
-                              style={{ margin: 0, fontSize: 10, lineHeight: "16px", padding: "0 5px" }}
-                            >
-                              {busy === 0
-                                ? tr("空闲")
-                                : r.num_waiting_reqs > 0
-                                  ? tr("排队")
-                                  : tr("运行中")}
-                            </antd.Tag>
-                          </div>
-                          <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 2 }}>
-                            {tr("运行 {a} · 排队 {b}", {
-                              a: r.num_running_reqs,
-                              b: r.num_waiting_reqs,
-                            })}
-                          </div>
-                          {/* 吞吐——请求数不变时推理仍可能在全速跑，
-  tok/s 跳动=「在干活」的第二重可感知信号。0 显「—」。 */}
-                          <div style={{ fontSize: 10, color: t.textSecondary, marginTop: 1 }}>
-                            {tr("吞吐")}{" "}
-                            {r.gen_throughput > 0
-                              ? `${Math.round(r.gen_throughput)} tok/s`
-                              : "—"}
-                          </div>
-                        </div>
-                        );
-                      })}
-                    </div>
-                    <div style={{ fontSize: 10, color: t.textSecondary, marginTop: 4 }}>
-                      {tr("自动刷新（活跃 1s / 稳定 5s）")}
-                    </div>
-                    </>
-                  )}
-                </div>
-              </antd.Card>
-)}
+          {sglangEnabled && (
+            <SglangCard
+              sglang={sglang}
+              sgLocalAt={sgLocalAt}
+              onOpen={() => onGotoTab("ops")}
+            />
+          )}
           </div>
         </antd.Col>
 
@@ -1096,103 +757,18 @@ function HomePage(props: HomePageProps) {
 
       
 
-      {/* 发起任务 · 选择 Leader（入口 B Leader 默认 / 入口 A Manager 跨团队） */}
-      <antd.Modal
+      <NewTaskModal
         open={newTaskOpen}
-        title={tr("发起任务 · 选择 Leader")}
-        onCancel={() => setNewTaskOpen(false)}
-        footer={
-          <antd.Space>
-            <antd.Button onClick={() => setNewTaskOpen(false)}>
-              {tr("取消")}
-            </antd.Button>
-            <antd.Button
-              type="primary"
-              disabled={!newTaskSel}
-              onClick={() => {
-                const tgt = newTaskTargets.find((x) => x.key === newTaskSel);
-                if (tgt) {
-                  onDm?.(tgt.mxid);
-                  setNewTaskOpen(false);
-                }
-              }}
-            >
-              {tr("发起任务")}
-            </antd.Button>
-          </antd.Space>
-        }
-      >
-        {treeSource === "room-fallback" ? (
-          <antd.Alert
-            type="info"
-            showIcon
-            style={{ marginBottom: 10 }}
-            message={tr(
-              "团队 Leader 列表不可用（Controller 未接入）——以下为 Manager 入口（跨团队）",
-            )}
-          />
-        ) : null}
-        {newTaskTargets.length === 0 ? (
-          <div style={{ fontSize: 12, color: t.textSecondary, padding: "8px 0" }}>
-            {tr("未找到 Leader（团队结构未加载或 Controller 未接入）。请先到配置页检查 Controller 连接，再重新打开本弹窗。")}
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            {newTaskTargets.map((tgt) => {
-              const sel = newTaskSel === tgt.key;
-              return (
-                <div
-                  key={tgt.key}
-                  onClick={() => setNewTaskSel(tgt.key)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    border: `1px solid ${sel ? PRIMARY : t.border}`,
-                    background: sel ? `color-mix(in srgb, ${PRIMARY} 8%, transparent)` : "transparent",
-                    borderRadius: 8,
-                    padding: "10px 12px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: "50%",
-                      border: `2px solid ${sel ? PRIMARY : t.border}`,
-                      background: sel ? PRIMARY : "transparent",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
-                      {tgt.label}
-                      {tgt.crossTeam ? (
-                        <span style={{ fontSize: 10, color: PRIMARY, marginLeft: 8 }}>
-                          {tr("跨团队入口")}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: t.textSecondary,
-                        marginTop: 2,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {tgt.team} · {tgt.mxid}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </antd.Modal>
+        targets={newTaskTargets}
+        sel={newTaskSel}
+        treeSource={treeSource}
+        onSel={setNewTaskSel}
+        onClose={() => setNewTaskOpen(false)}
+        onConfirm={(tgt) => {
+          onDm?.(tgt.mxid);
+          setNewTaskOpen(false);
+        }}
+      />
     </div>
   );
 }
