@@ -38,6 +38,26 @@ function makeFilled(paths: string[], displayName: string) {
   return Cmp;
 }
 
+/** 手写 stroke 图标工厂（24 viewBox，svg 壳统一；内层 JSX 逐图标原样传入）。 */
+function mkIcon(inner: ReactNS.ReactNode, displayName: string) {
+  function Cmp({ size = 14, style, className }: IconProps) {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
+        className={className}
+        aria-hidden
+      >
+        {inner}
+      </svg>
+    );
+  }
+  Cmp.displayName = displayName;
+  return Cmp;
+}
+
 
 /** 拓扑（DAG）：1 根节点 → 2 子节点，连线 + 圆点（非层级树——
  * 子节点之间无连线，留「可汇合」语义）。 */
@@ -618,16 +638,8 @@ export function PlayIcon({ size = 14, style, className }: IconProps) {
 }
 
 /** 💭 思考气泡（手写，HarmonyOS 无对应件）。 */
-export function ThoughtIcon({ size = 14, style, className }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
-      className={className}
-      aria-hidden
-    >
+export const ThoughtIcon = mkIcon(
+  <>
       <path
         d="M7 4h10a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4h-1v3.5a3.5 3.5 0 0 1-3.5 3.5H6a3 3 0 0 1-3-3V8a4 4 0 0 1 4-4z"
         stroke="currentColor"
@@ -638,21 +650,13 @@ export function ThoughtIcon({ size = 14, style, className }: IconProps) {
       <circle cx="8.5" cy="10" r="1.1" fill="currentColor" />
       <circle cx="12" cy="10" r="1.1" fill="currentColor" />
       <circle cx="15.5" cy="10" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
+  </>,
+  "ThoughtIcon"
+);
 
 /** 🔇 静音（bell-off，手写，HarmonyOS 无对应件）。 */
-export function BellOffIcon({ size = 14, style, className }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
-      className={className}
-      aria-hidden
-    >
+export const BellOffIcon = mkIcon(
+  <>
       <path
         d="M8.6 4.2A6 6 0 0 1 18 9v3.2l1.5 3.1a1 1 0 0 1-.9 1.5H14M6.3 6.6A6 6 0 0 0 6 9v5l-1.8 3.3a.8.8 0 0 0 .7 1.2h10M10 19.5a2 2 0 0 0 4 0"
         stroke="currentColor"
@@ -662,21 +666,13 @@ export function BellOffIcon({ size = 14, style, className }: IconProps) {
         strokeLinejoin="round"
       />
       <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
+  </>,
+  "BellOffIcon"
+);
 
 /** 🔖 书签（手写，HarmonyOS 无对应件）。 */
-export function BookmarkIcon({ size = 14, style, className }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
-      className={className}
-      aria-hidden
-    >
+export const BookmarkIcon = mkIcon(
+  <>
       <path
         d="M6.5 4.5h11a1 1 0 0 1 1 1v15l-6.5-4-6.5 4v-15a1 1 0 0 1 1-1z"
         stroke="currentColor"
@@ -684,21 +680,13 @@ export function BookmarkIcon({ size = 14, style, className }: IconProps) {
         fill="none"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
+  </>,
+  "BookmarkIcon"
+);
 
 /** ☆ 空心星（手写，HarmonyOS 无对应件；实心用 StarIcon）。 */
-export function StarOutlineIcon({ size = 14, style, className }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
-      className={className}
-      aria-hidden
-    >
+export const StarOutlineIcon = mkIcon(
+  <>
       <path
         d="M12 3.6l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8L12 3.6z"
         stroke="currentColor"
@@ -706,9 +694,9 @@ export function StarOutlineIcon({ size = 14, style, className }: IconProps) {
         fill="none"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
+  </>,
+  "StarOutlineIcon"
+);
 
 
 // 信息提示（ApprovalControl 头）/ 聚焦（KnowledgeBase 焦点退出）
