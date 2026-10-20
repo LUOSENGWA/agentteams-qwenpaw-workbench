@@ -1,9 +1,24 @@
 import type * as ReactNS from "react";
 import * as THREE from "three";
-import SpriteText from "three-spritetext";
-import ForceGraph3DImpl, { type ForceGraph3DInstance } from "3d-force-graph";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import type { ForceGraph3DInstance } from "3d-force-graph";
+import {
+  alphaMinFor,
+  ENGINE_CREDIT,
+  fitGraphModel,
+  nodeRadius,
+  PICK_RADIUS_COEF,
+  PICK_RADIUS_MAX,
+  PICK_RADIUS_MIN,
+} from "./Graph3DShared";
+import type {
+  G3DControls,
+  G3DGraph,
+  G3DState,
+  NodeVisual,
+} from "./Graph3DShared";
+import { useGraph3DEngine } from "./Graph3DEngine";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -32,230 +47,6 @@ const antd = host.antd;
  * three-spritetext (MIT, Jay Weisskopf)——包内 THIRD-PARTY-NOTICES.md。
  */
 
-interface G3DNodeInput {
-  id: string;
-  name: string;
-  virtual?: boolean;
-  category?: string;
-  agent?: string;
-  /** d3-force 运行时写入的布局坐标（引擎跑过即有值）。 */
-  x?: number;
-  y?: number;
-  z?: number;
-}
-interface G3DLinkInput {
-  source: string;
-  target: string;
-}
-
-const ENGINE_CREDIT = "3d-force-graph (MIT) + three.js (MIT)";
-
-// ── 相机适配（QwenPaw 2.2 MemoryGraphView 逐行移植，开源，
-// 出处已在文件头注明）。官方三处调用时机：
-// ① 建图后 rAF 立即 fit（0ms）——初始视角不再卡默认远位（「无限远」
-// 根因：此前版本只有 onEngineStop fit，引擎收敛前相机停在默认位，
-// fog 把远处节点全吞掉）
-// ② 引擎收敛 onEngineStop → 平滑 480ms 重 fit
-// ③ resize → 220ms 重 fit（仅无选中态）
-// 算法：包围盒中心 target + 视角半径 viewRadius（距 target 最远节点，
-// 下限 30）→ distance = viewRadius / tan(fov/2) × 0.92 → 沿当前视线
-// 方向把相机平移到 distance 处并 lookAt target；同步收紧 zoom 上下限
-// 与 far 平面（官方 applyGraphZoomLimits 同式）。
-// ──
-const GRAPH_ZOOM_MIN_DISTANCE_FLOOR = 78;
-const GRAPH_ZOOM_MIN_DISTANCE_RATIO = 0.72;
-const GRAPH_ZOOM_MAX_DISTANCE_FLOOR = 420;
-const GRAPH_ZOOM_MAX_DISTANCE_CEILING = 3600;
-const GRAPH_ZOOM_MAX_DISTANCE_MULTIPLIER = 1.8;
-const GRAPH_ZOOM_MIN_DISTANCE_CAP = 240; // 近景锁定上限（见 applyGraphZoomLimits 注释）
-// 拾取球半径（世界单位）= clamp(相机到 fit 中心距离 × 系数, MIN, MAX)。
-// 系数 0.055：fit 距离处 ≈ 0.033×画面高（15–30px 直径级命中区）。
-const PICK_RADIUS_COEF = 0.055;
-const PICK_RADIUS_MIN = 12;
-const PICK_RADIUS_MAX = 34;
-
-// 自持点击层阈值——3D「点不动」根因修复。库（three-graph-renderer
-// Scene）鼠标拖拽判定无距离阈值：pointerdown 后任意 pointermove（1px 手抖
-// 即触发）置 isPointerDragging，pointerup 时 clickAfterDrag(false) 静默
-// 吞掉点击 → onNodeClick 不触发。容器自行判定「真点击」并手动 raycast
-// 节点拾取球反查命中（与库 hover 同一几何，手感一致）。
-const CLICK_TAP_MAX_MOVE_PX = 5;
-const CLICK_TAP_MAX_MS = 500;
-const CLICK_DEDUP_MS = 200;
-
-// ── 物理收敛（，）──
-// 「首访拖动卡」根因（dist 实证）：库 d3AlphaMin 默认 0 → alpha 阈值永不
-// 触发，引擎 tick 到 cooldownTicks(160) 硬停——2070 节点每 tick ~8ms
-// 物理与 orbit 交互/渲染竞争（60fps 下 ~2.7s 卡顿窗口），引擎停后即
-// 顺滑（与「过一会/切走再切回就顺了」完全吻合）。
-// 修复 = warmup 前置 + 启用 alpha 阈值：首帧后即 1-2 帧内停引擎。
-// 布局形态不变：warmup 与 live 是同一段 tick 序列（同轨迹），只改
-// 「首帧前跑多少 tick / 尾部截断点」；力参数与 dashboard 孪生保持
-// 同值（charge -50 / link 38/0.52 / decay 0.038），仅收敛时机为本
-// 组件 专属。
-// 同步阻塞成本（容器 CPU 实测 d3-force-3d 同参基准）：2070 节点
-// ≈0.95s / 300 节点 ≈0.13s / 40 节点 ≈8ms——「布局计算中」遮罩下的
-// 一次性成本，换交互期零物理竞争。
-const WARMUP_TICKS_CAP = 200;
-// 自适应收敛阈值：大图 alpha 0.01 截断（该处每 tick 漂移已亚像素级，
-// 比 0.001 省 ~0.5s 主线程阻塞）；小图（≤500 节点）保留 0.001 全精度
-// ——179 tick 成本 ≤0.15s，无理由牺牲。
-const LARGE_GRAPH_NODE_THRESHOLD = 500;
-const alphaMinFor = (nodeCount: number): number =>
-  nodeCount > LARGE_GRAPH_NODE_THRESHOLD ? 0.01 : 0.001;
-
-function applyGraphZoomLimits(graph: ForceGraph3DInstance, fitDistance: number): void {
-  const controls = graph.controls() as {
-    minDistance: number;
-    maxDistance: number;
-  };
-  // 官方式 minDistance = max(78, fit×0.72) 对大图会把近景锁死
-  // （fit 1000+ → min 720+，放大极限不够）；官方记忆图小无感。
-  // 修正：近景锁定封顶 GRAPH_ZOOM_MIN_DISTANCE_CAP（官方下限 78 起，
-  // 大图最多锁到 240——仍可贴近读节点标签/环）。
-  controls.minDistance = Math.max(
-    GRAPH_ZOOM_MIN_DISTANCE_FLOOR,
-    Math.min(
-      fitDistance * GRAPH_ZOOM_MIN_DISTANCE_RATIO,
-      GRAPH_ZOOM_MIN_DISTANCE_CAP,
-    ),
-  );
-  controls.maxDistance = Math.max(
-    fitDistance,
-    Math.min(
-      GRAPH_ZOOM_MAX_DISTANCE_CEILING,
-      Math.max(
-        GRAPH_ZOOM_MAX_DISTANCE_FLOOR,
-        fitDistance * GRAPH_ZOOM_MAX_DISTANCE_MULTIPLIER,
-      ),
-    ),
-  );
-  const camera = graph.camera() as unknown as THREE.PerspectiveCamera;
-  const requiredFarPlane = controls.maxDistance * 1.6;
-  if (camera.far < requiredFarPlane) {
-    camera.far = requiredFarPlane;
-    camera.updateProjectionMatrix();
-  }
-}
-
-function fitGraphModel(
-  graph: ForceGraph3DInstance,
-  nodes: G3DNodeInput[],
-  duration: number,
-  targetRef?: { current: { x: number; y: number; z: number } | null },
-): void {
-  const positioned = nodes.filter(
-    (n) =>
-      Number.isFinite(n.x) &&
-      Number.isFinite(n.y) &&
-      Number.isFinite(n.z),
-  );
-  if (positioned.length < 2) {
-    if (targetRef) targetRef.current = null;
-    if (nodes.length < 2) {
-      applyGraphZoomLimits(
-        graph,
-        GRAPH_ZOOM_MIN_DISTANCE_FLOOR / GRAPH_ZOOM_MIN_DISTANCE_RATIO,
-      );
-    }
-    graph.zoomToFit(duration, 64);
-    return;
-  }
-  const bounds = positioned.reduce(
-    (cur, n) => ({
-      maxX: Math.max(cur.maxX, Number(n.x)),
-      maxY: Math.max(cur.maxY, Number(n.y)),
-      maxZ: Math.max(cur.maxZ, Number(n.z)),
-      minX: Math.min(cur.minX, Number(n.x)),
-      minY: Math.min(cur.minY, Number(n.y)),
-      minZ: Math.min(cur.minZ, Number(n.z)),
-    }),
-    {
-      maxX: -Infinity,
-      maxY: -Infinity,
-      maxZ: -Infinity,
-      minX: Infinity,
-      minY: Infinity,
-      minZ: Infinity,
-    },
-  );
-  const target = {
-    x: (bounds.minX + bounds.maxX) / 2,
-    y: (bounds.minY + bounds.maxY) / 2,
-    z: (bounds.minZ + bounds.maxZ) / 2,
-  };
-  if (targetRef) targetRef.current = { ...target };
-  const camera = graph.camera() as unknown as THREE.PerspectiveCamera;
-  const viewRadius = Math.max(
-    ...positioned.map(
-      (n) =>
-        Math.hypot(
-          Number(n.x) - target.x,
-          Number(n.y) - target.y,
-          Number(n.z) - target.z,
-        ),
-    ),
-    30,
-  );
-  const distance =
-    (viewRadius / Math.tan((camera.fov * Math.PI) / 360)) * 0.92;
-  applyGraphZoomLimits(graph, distance);
-  const currentCamera = graph.cameraPosition();
-  const offset = {
-    x: currentCamera.x - target.x,
-    y: currentCamera.y - target.y,
-    z: currentCamera.z - target.z,
-  };
-  const offsetLength =
-    Math.hypot(offset.x, offset.y, offset.z) || 1;
-  graph.cameraPosition(
-    {
-      x: target.x + (offset.x / offsetLength) * distance,
-      y: target.y + (offset.y / offsetLength) * distance,
-      z: target.z + (offset.z / offsetLength) * distance,
-    },
-    target,
-    duration,
-  );
-}
-
-/** 节点半径——QwenPaw graphNodeRadius 同值。 */
-function nodeRadius(n: G3DNodeInput, isRoot: boolean, isDirect: boolean, degree: number): number {
-  if (isRoot) return 4.8;
-  if (isDirect) return 3.55;
-  if (n.virtual) return 2.55;
-  return Math.min(3.35, 2.7 + Math.sqrt(degree) * 0.24);
-}
-
-/** 选中/静音态直接操作 material 所需的引用与基准值
- * （QwenPaw GraphNodeVisual 同结构）。 */
-interface NodeVisual {
-  coreMat: THREE.MeshStandardMaterial;
-  orbit: THREE.Mesh;
-  orbitMat: THREE.MeshBasicMaterial;
-  glow: THREE.Mesh;
-  glowMat: THREE.MeshBasicMaterial;
-  /** 拾取放大球（单位球几何，scale=当前拾取半径，随相机距离自适应）。 */
-  pick: THREE.Mesh;
-  baseColor: string;
-  isRoot: boolean;
-  isDirect: boolean;
-  isVirtual: boolean;
-}
-
-interface G3DGraph {
-  nodes: G3DNodeInput[];
-  links: G3DLinkInput[];
-  colorFor: (n: G3DNodeInput) => string;
-  isRoot: (n: G3DNodeInput) => boolean;
-  isDirect: (n: G3DNodeInput) => boolean;
-  onOpenNode: (n: G3DNodeInput) => void;
-  /** 选中状态外抛（详情面板双视图共享）。 */
-  onSelect?: (id: string) => void;
-  onExit3D: () => void;
-  height?: number;
-}
-
 function Graph3D(props: G3DGraph) {
   const {
     nodes,
@@ -271,7 +62,7 @@ function Graph3D(props: G3DGraph) {
   const t = useThemeColors();
   const tr = useT();
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const graphRef = React.useRef<any>(null);
+  const graphRef = React.useRef<ForceGraph3DInstance | null>(null);
   const [ready, setReady] = React.useState(false);
   // 换数据（切 KB agent）= 又一次
   // warmup 同步阻塞（大图 ~1s）——无遮罩=无解释的 UI 冻结。双 rAF 先
@@ -471,7 +262,7 @@ function Graph3D(props: G3DGraph) {
   );
 
   // 闭包读最新值（accessor 不随 React 重渲染重建）。
-  const stateRef = React.useRef({
+  const stateRef = React.useRef<G3DState>({
     palette,
     colorFor,
     isRoot,
@@ -516,146 +307,6 @@ function Graph3D(props: G3DGraph) {
     new Map<string, NodeVisual>(),
   );
 
-  const buildNodeVisual = (
-    n: G3DNodeInput,
-  ): { obj: THREE.Group; visual: NodeVisual } => {
-    const s = stateRef.current;
-    const p = s.palette;
-    const root = s.isRoot(n);
-    const direct = s.isDirect(n);
-    const deg = s.degree.get(n.id) || 0;
-    const radius = nodeRadius(n, root, direct, deg);
-    const segments = s.nodeCount > 220 ? 14 : 24;
-    const obj = new THREE.Group();
-    const baseColor = s.colorFor(n);
-
-    // 核心球（MeshStandardMaterial + 自发光同色——QwenPaw 原值）。
-    const coreMat = new THREE.MeshStandardMaterial({
-      color: baseColor,
-      emissive: new THREE.Color(baseColor),
-      emissiveIntensity: root ? 0.14 : direct ? 0.07 : 0.03,
-      metalness: root || direct ? 0.08 : 0.035,
-      opacity: n.virtual ? 0.74 : 1,
-      roughness: root ? 0.38 : direct ? 0.46 : 0.58,
-      transparent: Boolean(n.virtual),
-      wireframe: Boolean(n.virtual) && !root,
-    });
-    const core = new THREE.Mesh(
-      new THREE.SphereGeometry(
-        radius,
-        segments,
-        Math.max(10, segments - 6),
-      ),
-      coreMat,
-    );
-    obj.add(core);
-
- // 拾取放大球（引入，改自适应——命中区还是太小）。
-    // 可见球半径只有 2.55–4.8 世界单位（link distance 72），而团队合并
-    // 图谱（100+ 节点）fit 后 viewRadius 大，节点屏幕占比远小于官方
-    // 单 agent 记忆图谱（10–40 节点）——同半径不同图规模=屏幕尺寸不同。
-    // 官方在它的图规模下"点得中"，靠不了照抄半径，靠的是目标在屏幕上
-    // 恒有足够像素。这里：单位球几何 + scale 随相机距离联动
-    // （updatePickScales），保证屏幕命中区恒定 ≈15–30px，缩放/换图
-    // 都自适应。material.visible=false = 不渲染，但 mesh 对
-    // THREE.Raycaster 仍可见；force-graph hover/click 走
-    // intersectingObjects(recursive) + getGraphObj 父级回溯到节点组。
-    // 半径 clamp[12,34]：34 < 典型邻节点间距（link 72）→ 不互抢。
-    const pickMat = new THREE.MeshBasicMaterial({ visible: false });
-    const pick = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 10, 7),
-      pickMat,
-    );
-    pick.scale.setScalar(PICK_RADIUS_MIN);
-    // 自持点击层 raycast 命中后由此反查节点 id。
-    pick.userData.nodeId = n.id;
-    obj.add(pick);
-
-    // root 轨道环（QwenPaw 同款 Torus）。
-    const orbitMat = new THREE.MeshBasicMaterial({
-      color: p.root,
-      depthWrite: false,
-      opacity: root ? 0.42 : 0,
-      transparent: true,
-    });
-    const orbit = new THREE.Mesh(
-      new THREE.TorusGeometry(
-        radius * 1.43,
-        radius * 0.035,
-        8,
-        44,
-      ),
-      orbitMat,
-    );
-    orbit.rotation.set(
-      Math.PI * 0.38,
-      Math.PI * 0.12,
-      Math.PI * 0.08,
-    );
-    orbit.visible = root;
-    obj.add(orbit);
-
-    // 光晕（选中时点亮——QwenPaw glow 同机制）。
-    const glowMat = new THREE.MeshBasicMaterial({
-      color: p.active,
-      depthWrite: false,
-      opacity: 0,
-      side: THREE.BackSide,
-      transparent: true,
-    });
-    const glow = new THREE.Mesh(
-      new THREE.SphereGeometry(radius * 1.28, 18, 12),
-      glowMat,
-    );
-    glow.visible = false;
-    obj.add(glow);
-
- // 标签——与 dashboard 知识库 3D 同标准：全节点标注（验收「每个点都有
-    // 标题」；旧官方条件 count<=42 || root || deg>=4 废弃，双端对齐）。
-    // SpriteText(text, textHeight世界单位, color)；fontSize=76 是
-    // 画布分辨率（清晰度），不是字号（混淆了两者）。
-    {
-      const raw = String(n.name);
-      const text =
-        raw.length > 22 ? `${raw.slice(0, 21)}…` : raw;
-      const label = new SpriteText(
-        text,
-        root ? 4.3 : 3.7,
-        p.label,
-      );
-      label.backgroundColor = root
-        ? p.labelBackground
-        : "transparent";
-      label.borderColor = p.labelBorder;
-      label.borderRadius = 1.1;
-      label.borderWidth = root ? 0.14 : 0;
-      label.fontFace =
-        "Inter, ui-sans-serif, system-ui, sans-serif";
-      label.fontSize = 76;
-      label.fontWeight = root ? "650" : "560";
-      label.padding = root ? [1.05, 0.68] : [0.32, 0.1];
-      label.position.set(0, -(radius + 3.6), 0);
-      label.renderOrder = 4;
-      obj.add(label);
-    }
-
-    return {
-      obj,
-      visual: {
-        coreMat,
-        orbit,
-        orbitMat,
-        glow,
-        glowMat,
-        pick,
-        baseColor,
-        isRoot: root,
-        isDirect: direct,
-        isVirtual: Boolean(n.virtual),
-      },
-    };
-  };
-
   const graphData = React.useMemo(() => {
     const s = stateRef.current;
     const nd = nodes.map((n) => {
@@ -694,452 +345,32 @@ function Graph3D(props: G3DGraph) {
   }, [graphData]);
 
   // 挂载 3D 图（一次）；数据变化时换 graphData。
-  React.useEffect(() => {
-    const el = containerRef.current;
-    if (!el || nodes.length === 0) return;
-    try {
-      const cv = document.createElement("canvas");
-      const gl =
-        cv.getContext("webgl2") || cv.getContext("webgl");
-      if (!gl) {
-        setWebglFail(true);
-        return;
-      }
-    } catch {
-      setWebglFail(true);
-      return;
-    }
-    let cancelled = false;
-    const p = stateRef.current.palette;
-    // 容器 = 3d 独占 DOM（零 React 子节点）。
-    try {
-      el.replaceChildren();
-    } catch {
-      /* noop */
-    }
-
-    try {
-      // 节点点击激活（root=相机聚焦不选中；其余=切换选中+开预览）。
-      // 库 onNodeClick 与自持点击层共用此出口。
-      const handleNodeActivate = (n: G3DNodeInput) => {
-        if (stateRef.current.isRoot(n)) {
-          // root 大球不再是"点了没反应"的最大目标——
-          // 官方 onNodeClick=focusGraphNode 同款：相机聚焦到 root
-          // （centerAt 600ms 平滑），不选中。
-          try {
-            graphRef.current?.centerAt(n.x, n.y, n.z, 600);
-          } catch {
-            /* noop */
-          }
-          return;
-        }
-        const next = selIdRef.current === n.id ? "" : n.id;
-        setSelectedId(next);
-        onSelect?.(next);
-        // 点文件节点直接开预览（2D 同款）。改为
- // 「点选+面板按钮」后点没反应——再选中才开，再次点击仅取消选中。
-        if (next) stateRef.current.onOpenNode(n);
-      };
-
-      // 实例类型化（tsc 对照 d.ts 验证链式调用）。
-      const graph = new ForceGraph3DImpl(el, {
-        controlType: "orbit",
- // 混合 GPU 机器优先独显（真机
-        // 卡顿面——核显跑 2070 节点 4 灯 MeshStandard 场景 fillrate 吃
-        // 紧）。antialias 保持（库默认 true；关掉球体边缘锯齿=可见
-        // 劣化，不偿失）。
-        rendererConfig: {
-          powerPreference: "high-performance",
-        },
-      })
-        .width(Math.max(1, el.clientWidth || 960))
-        .height(height)
-        .backgroundColor(p.surface)
-        .numDimensions(3)
-        .nodeId("id")
-        // 自绘节点（官方 extend=false 替换默认）+ nodeOpacity
-        // **必须数字**（L1168 直接乘，函数=NaN 全隐形）。
-        .nodeRelSize(1)
-        .nodeVal((n: any) => n.val)
-        .nodeOpacity(1)
-        .nodeResolution(24)
-        .nodeColor(() => "#ffffff")
-        .nodeThreeObject((n: any) => {
-          nodeVisualsRef.current.delete(n.id);
-          const { obj, visual } = buildNodeVisual(n);
-          nodeVisualsRef.current.set(n.id, visual);
-          return obj;
-        })
-        .nodeThreeObjectExtend(false)
-        // 官方同款：禁内置 HTML tooltip（自绘标签已覆盖）。
-        .nodeLabel(() => "")
-        .linkOpacity(0.64)
-        .linkResolution(4)
-        .linkColor(() =>
-          p.isDark
-            ? "rgba(255,255,255,0.55)"
-            : "rgba(0,0,0,0.42)",
-        )
-        .linkDirectionalArrowRelPos(0.94)
-        .linkDirectionalArrowLength(4.2)
-        .linkDirectionalArrowResolution(10)
-        .linkDirectionalArrowColor(() =>
-          p.isDark
-            ? "rgba(255,255,255,0.6)"
-            : "rgba(0,0,0,0.5)",
-        )
-        // 官方双向边曲率 ±0.12（单向 0）。
-        .linkCurvature((l: any) => (l._bi ? 0.12 : 0))
-        .enableNodeDrag(false)
-        .enableNavigationControls(true)
- // 物理——力参数与 dashboard 知识库 3D 图谱定值同值（见下方
- // charge/link 设置）；收敛时机 重构（见 WARMUP_TICKS_CAP /
-        // alphaMinFor 注释）：同轨迹，只改首帧前/尾部截断点。
-        .d3AlphaDecay(0.038)
-        .d3VelocityDecay(0.3)
- // 启用 alpha 停引擎阈值
-        // （库默认 0 = 永不触发 → tick 到 cooldownTicks 硬停，首访
-        // 2.7s 卡顿窗口根因）。
-        .d3AlphaMin(alphaMinFor(nodes.length))
-        // warmup 前置：循环内由 d3AlphaMin 阈值自动截断（大图 ~120
-        // tick / 小图 ~179 tick），200 上限仅兜底——首帧即带近收敛
-        // 布局，交互期引擎 1-2 帧内停。
-        .warmupTicks(WARMUP_TICKS_CAP)
-        .cooldownTicks(160)
-        .graphData({ nodes: [], links: [] })
-        // 点击激活逻辑抽成共享函数——库 onNodeClick（静止点击）与
-        // 自持点击层（被吞点击补位）走同一出口，行为完全一致。
-        .onNodeClick((n: any) => {
-          markGraphActivity(); // 选中视觉变更需帧；稳态暂停中点击须先恢复
-          libClickRef.current = {
-            id: n.id,
-            t: performance.now(),
-          };
-          handleNodeActivate(n);
-        })
-        .onNodeHover((n: any) => {
-          // hover 视觉反馈（提亮+glow）——可见的"对准了"提示。
-          const prev = hoverIdRef.current;
-          const next = n && !stateRef.current.isRoot(n) ? n.id : "";
-          if (prev !== next) {
-            if (prev) applyHoverVisual(prev, false);
-            if (next) applyHoverVisual(next, true);
-            hoverIdRef.current = next;
-          }
-          el.style.cursor = next ? "pointer" : "default";
-        })
-        .onBackgroundClick(() => {
-          markGraphActivity(); // 取消选中的视觉变更需帧
-          setSelectedId("");
-          onSelect?.("");
-        });
-
-      // 相机——官方原值（fov 44 / near 0.1 / far CEILING*1.6；
-      // zoom 上下限由 fitGraphModel 的 applyGraphZoomLimits 动态收紧）。
-      const camera: any = graph.camera();
-      camera.fov = 44;
-      camera.near = 0.1;
-      camera.far = GRAPH_ZOOM_MAX_DISTANCE_CEILING * 1.6;
-      camera.updateProjectionMatrix();
-      const controls: any = graph.controls();
-      controls.minDistance = GRAPH_ZOOM_MIN_DISTANCE_FLOOR;
-      controls.maxDistance = GRAPH_ZOOM_MAX_DISTANCE_CEILING;
- // 渲染像素比封顶 1.5——库初始化
-      // 固定 min(2, devicePixelRatio)：2x/3x 真机上 1242×480 画布=
-      // 248/508 万物理像素，fillrate 为 1x 的 2.5/6.3 倍（真机 GPU
-      // 卡顿面）。1.5 封顶：2x 机省 44% 像素、3x 机省 78%；节点球/
-      // 标签在 1.5 下仍清晰（dpr2 截图对照自证）。后续 setSize 沿用
-      // 当前 pixelRatio，一次设置即持久（库仅 init 时调过一次）。
-      try {
-        graph.renderer().setPixelRatio(
-          Math.min(window.devicePixelRatio || 1, 1.5),
-        );
-      } catch {
-        /* noop */
-      }
-      // 相机移动（缩放/平移/旋转 tween/fit tween）→ 拾取球
-      // 半径自适应（屏幕命中区恒定）。
-      controls.addEventListener("change", updatePickScales);
-
-      // 雾——官方原值。
-      graph.scene().fog = new THREE.FogExp2(
-        new THREE.Color(p.surface).getHex(),
-        p.isDark ? 0.00085 : 0.0016,
-      );
-      // 四灯组——官方 createGraphLights 原值。
-      const lights: THREE.Light[] = [];
-      const ambient = new THREE.AmbientLight(
-        "#ffffff",
-        p.isDark ? 1.45 : 1.25,
-      );
-      const hemi = new THREE.HemisphereLight(
-        "#ffffff",
-        "#8899bb",
-        p.isDark ? 1.22 : 1.05,
-      );
-      const key = new THREE.DirectionalLight(
-        "#ffffff",
-        p.isDark ? 2.7 : 2.3,
-      );
-      key.position.set(110, 150, 190);
-      const fill = new THREE.DirectionalLight(
-        "#ffffff",
-        p.isDark ? 1.08 : 0.82,
-      );
-      fill.position.set(-120, -55, -90);
-      lights.push(ambient, hemi, key, fill);
-      lights.forEach((l) => graph.scene().add(l));
-      graph.renderer().toneMappingExposure = p.isDark
-        ? 1.1
-        : 0.98;
-      // 物理力——收紧值与 dashboard 知识库 3D 图谱定值同款（双端同值）：
-      // charge -50 / 距离 38 / 强度 0.52（两轮收紧终值；原官方 -108/72/0.46
-      // 与 -60/44/0.5 均废弃；不设 collide 同官方）。
-      graph.d3Force("charge")?.strength?.(-50);
-      const linkForce: any = graph.d3Force("link");
-      linkForce?.distance?.(38);
-      linkForce?.strength?.(0.52);
-
-      // 数据灌入 + 官方双 fit：rAF 立即 fit（初始视角根治「无限远」）
-      // + 引擎收敛 onEngineStop 平滑 480ms 重 fit。
-      graph.graphData(graphData);
-      let fitTimer = 0;
-      window.requestAnimationFrame(() => {
-        if (!cancelled && graphRef.current === graph) {
-          fitGraphModel(
-            graph,
-            graphData.nodes,
-            0,
-            fitTargetRef,
-          );
-          updatePickScales();
-        }
-      });
-      graph.onEngineStop(() => {
-        if (cancelled) return;
-        handleGraphEngineStop(); // 引擎收敛 → 800ms 无活动后稳态暂停
-        window.clearTimeout(fitTimer);
-        fitTimer = window.setTimeout(
-          () => {
-            if (!cancelled) {
-              markGraphActivity(); // 60ms 后 480ms 重 fit——tween 期间须保持帧
-              fitGraphModel(
-                graph,
-                graphData.nodes,
-                480,
-                fitTargetRef,
-              );
-              updatePickScales();
-            }
-          },
-          60,
-        );
-      });
-      graphRef.current = graph;
-      setReady(true);
-
-      // 可见性门控——3d-force-graph 渲染循环
-      // 与物理冷却无关，挂载后即 60fps 永续（实测切走后仍 2340 draw calls/s）。
-      // 容器不可见（rc-tabs 保活切走/收起）或页面隐藏 → vis 位暂停。
-      // vis 位并入双位状态机
-      // （pauseBitsRef）——idle 位（稳态自动暂停）见组件级状态机注释。
-      const setVisPaused = (p: boolean) => {
-        const s = pauseBitsRef.current;
-        const becameVisible = !p && s.vis;
-        s.vis = p;
-        if (becameVisible) {
-          // 切回可见 = 用户活动：清 idle 位立即恢复（对齐 .7「显示即
-          // 恢复」语义，保 KB 回访 ≤1.3s 不依赖 RO 时序；回访后若引擎
-          // 已收敛，800ms 再进 idle 暂停）。注意 visTimer 2s 轮询在
-          // 稳态可见时 p 恒 false 且 s.vis 已 false → 不走此分支，
-          // 不会周期性唤醒已暂停的图。
-          markGraphActivity();
-        }
-        // 物理状态无条件同步（幂等，want===pp 时直接返回）——
-        // RO 常先于 IO 触发（实测回访 37.9ms vs 45.0ms）：RO→
-        // markGraphActivity 先清 idle（此刻 vis 位尚 true，want 仍
-        // true，不恢复）；随后 IO→setVisPaused(false) 的
-        // becameVisible 分支只走 markGraphActivity，而 idle 已 false
-        // → 不碰 physicallyPaused → 死锁（实测回访首帧拖到 visTimer
-        // 2s 轮询才恢复，1196–2080ms）。补此调用：vis/idle 全 false
-        // → want false → 立即 resume。
-        applyGraphPause();
-      };
-      const syncAnimState = () => setVisPaused(!graphVisible());
-      const io = new IntersectionObserver(
-        (entries) => {
-          if (!entries.some((e) => e.isIntersecting)) setVisPaused(true);
-          else syncAnimState();
-        },
-        { threshold: 0 },
-      );
-      io.observe(el);
-      document.addEventListener("visibilitychange", syncAnimState);
-      // 兜底复查：visibility:hidden / display 变化未必触发 IO
-      // （本地 DOM 状态检查，非网络拨号；5s 档足够）。
-      const visTimer = window.setInterval(syncAnimState, 5000);
-      syncAnimState();
-
-      // 相机活动（orbit/zoom/pan/autoRotate/fit tween 收尾）→ 恢复 + 重排。
-      const onControlsChange = () => markGraphActivity();
-      controls.addEventListener("change", onControlsChange);
-      // 指针进入/移动 canvas：hover raycast 在库帧循环内执行，停帧即停摆
-      // ——指针一进来必须恢复帧循环（移动持续重排 re-pause）。
-      const onPointerOver = () => markGraphActivity();
-      el.addEventListener("pointerenter", onPointerOver);
-      el.addEventListener("pointermove", onPointerOver);
-
-      // resize → 官方 resizeAndFit：改尺寸 + 220ms 重 fit
-      // （有选中态不重 fit——官方同款保护选中视角）。
-      // 隐藏容器（display:none →
-      // rect 0）跳过 resize——旧式 `b.width || 960` 会在切走瞬间把
-      // 1242x480 缓冲重分配成 960x480（实测），切回再改回 → 双份
-      // WebGL 缓冲 churn 落进切换帧。恢复可见时 RO 以真实尺寸触发。
-      let resizeFrame = 0;
-      const ro = new ResizeObserver(() => {
-        if (!graphVisible()) return;
-        markGraphActivity();
-        const b = el.getBoundingClientRect();
-        graph.width(Math.max(1, Math.round(b.width || 960)));
-        graph.height(height);
-        window.cancelAnimationFrame(resizeFrame);
-        resizeFrame = window.requestAnimationFrame(() => {
-          if (!selIdRef.current) {
-            fitGraphModel(
-              graph,
-              graphDataRef.current.nodes,
-              220,
-              fitTargetRef,
-            );
-            updatePickScales();
-          }
-        });
-      });
-      ro.observe(el);
-
-      // 自持点击层（根因修复「3D 点不动」——库鼠标拖拽判定无距离
-      // 阈值，1px 手抖即吞点击；详见文件头 CLICK_TAP_* 常量注释）。
-      // 容器自行记录 pointerdown/up：位移 <5px 且 <500ms = 真点击 →
-      // raycast 节点拾取球（PICK 球，与库 hover 同一几何）反查命中 →
-      // 走 handleNodeActivate。库监听同元素更早注册先派发：静止点击库
-      // 已回调 → CLICK_DEDUP_MS 窗口内跳过，双路不重复。
-      let pressInfo:
-        | { x: number; y: number; t: number; pid: number }
-        | null = null;
-      const onSelfPointerDown = (ev: PointerEvent) => {
-        if (ev.button !== 0) return;
-        markGraphActivity(); // 按下 = 交互开始（拖拽旋转/长按）
-        pressInfo = {
-          x: ev.clientX,
-          y: ev.clientY,
-          t: performance.now(),
-          pid: ev.pointerId,
-        };
-      };
-      const onSelfPointerUp = (ev: PointerEvent) => {
-        if (!pressInfo || ev.pointerId !== pressInfo.pid) return;
-        const moved = Math.hypot(
-          ev.clientX - pressInfo.x,
-          ev.clientY - pressInfo.y,
-        );
-        const held = performance.now() - pressInfo.t;
-        pressInfo = null;
-        if (
-          moved > CLICK_TAP_MAX_MOVE_PX ||
-          held > CLICK_TAP_MAX_MS
-        )
-          return; // 真拖拽（旋转视角）/长按——不是点击
-        if (
-          performance.now() - libClickRef.current.t <
-          CLICK_DEDUP_MS
-        )
-          return; // 库已派发（静止点击）
-        const g = graphRef.current;
-        const cam = g?.camera?.() as
-          | THREE.PerspectiveCamera
-          | undefined;
-        if (!g || !cam) return;
-        const rect = el.getBoundingClientRect();
-        const ndc = new THREE.Vector2(
-          ((ev.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
-          -((ev.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
-        );
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(ndc, cam);
-        const pickMeshes: THREE.Object3D[] = [];
-        nodeVisualsRef.current.forEach((v) => pickMeshes.push(v.pick));
-        const hits = raycaster.intersectObjects(pickMeshes, false);
-        const hitId = hits.length
-          ? ((hits[0].object.userData.nodeId as string) || "")
-          : "";
-        if (!hitId) return;
-        const node = graphDataRef.current.nodes.find(
-          (nd) => nd.id === hitId,
-        );
-        if (node) handleNodeActivate(node);
-      };
-      el.addEventListener("pointerdown", onSelfPointerDown);
-      el.addEventListener("pointerup", onSelfPointerUp);
-
-      return () => {
-        cancelled = true;
-        window.clearTimeout(fitTimer);
-        window.cancelAnimationFrame(resizeFrame);
-        const pb = pauseBitsRef.current;
-        if (pb.rePauseTimer) {
-          window.clearTimeout(pb.rePauseTimer);
-          pb.rePauseTimer = 0;
-        }
-        pb.idle = false;
-        ro.disconnect();
-        io.disconnect();
-        document.removeEventListener("visibilitychange", syncAnimState);
-        window.clearInterval(visTimer);
-        el.removeEventListener("pointerdown", onSelfPointerDown);
-        el.removeEventListener("pointerup", onSelfPointerUp);
-        el.removeEventListener("pointerenter", onPointerOver);
-        el.removeEventListener("pointermove", onPointerOver);
-        try {
-          (graph.controls?.() as any)?.removeEventListener?.(
-            "change",
-            updatePickScales,
-          );
-          (graph.controls?.() as any)?.removeEventListener?.(
-            "change",
-            onControlsChange,
-          );
-        } catch {
-          /* noop */
-        }
-        try {
-          graph._destructor?.();
-        } catch {
-          /* noop */
-        }
-        // _destructor 不清 DOM——canvas/navInfo 残留会撞 React
-        // 协调（历史修复的根因）。官方 container.replaceChildren() 同款。
-        try {
-          el.replaceChildren();
-        } catch {
-          /* noop */
-        }
-        graphRef.current = null;
-        setReady(false);
-      };
-    } catch (e) {
-      // 引擎异常 → 降级 2D 不炸 tab（历史修复）。
-      try {
-        el.replaceChildren();
-      } catch {
-        /* noop */
-      }
-      setInitError(
-        e instanceof Error ? e.message : String(e),
-      );
-      return undefined;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useGraph3DEngine({
+    containerRef,
+    nodes,
+    height,
+    stateRef,
+    nodeVisualsRef,
+    graphRef,
+    fitTargetRef,
+    selIdRef,
+    libClickRef,
+    hoverIdRef,
+    pauseBitsRef,
+    graphData,
+    graphDataRef,
+    setWebglFail,
+    setInitError,
+    setReady,
+    setSelectedId,
+    onSelect,
+    updatePickScales,
+    applyHoverVisual,
+    markGraphActivity,
+    applyGraphPause,
+    graphVisible,
+    handleGraphEngineStop,
+  });
 
   // 数据变化 → 换图 + 重新 fit（选中态清空、visual 表由
   // nodeThreeObject accessor 重建）。
@@ -1265,7 +496,7 @@ function Graph3D(props: G3DGraph) {
     if (!g) return;
     if (autoRotate) markGraphActivity(); // 稳态暂停中开启须先恢复帧循环
     try {
-      const controls = g.controls?.();
+      const controls = g.controls?.() as G3DControls;
       if (controls) controls.autoRotate = Boolean(autoRotate);
     } catch {
       /* noop */
@@ -1280,9 +511,17 @@ function Graph3D(props: G3DGraph) {
     markGraphActivity(); // 240ms zoom tween——tween 期间须保持帧
     try {
       const cam = g.camera?.();
-      const controls = g.controls?.();
+      const controls = g.controls?.() as G3DControls;
       const target = controls?.target || { x: 0, y: 0, z: 0 };
-      g.cameraPosition(
+      // d.ts 声明 cameraPosition(position, lookAt?, transitionMs?)，
+      // 原调用把 240 传第二参（any 时代历史调用；runtime 1.80.0 行为
+      // 不变）——局部结构断言保原调用逐字。
+      (g as unknown as {
+        cameraPosition: (
+          p: { x: number; y: number; z: number },
+          ms?: number,
+        ) => void;
+      }).cameraPosition(
         {
           x: target.x + (cam.position.x - target.x) * factor,
           y: target.y + (cam.position.y - target.y) * factor,
