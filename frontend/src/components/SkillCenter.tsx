@@ -20,12 +20,10 @@
  * 原「🎯 技能」tab 更名「宿主技能」（host agent 技能管理，本插件
  * 专用，与团队技能矩阵不同维度）。
  */
-import { BoltIcon, CloseIcon } from "./icons";
-import type * as ReactNS from "react";
 
+import type * as ReactNS from "react";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import {
   type WorkerInfo,
   type TeamInfo,
@@ -39,52 +37,22 @@ import {
   fetchWorkerSkills,
   setWorkerSkillPreload,
   httpErrorStatus,
-  // 团队技能包上传
-  // （POST /api/v1/skills，multipart zip；经连接器 multipart 透传）。
   uploadTeamSkill,
 } from "../api";
 import { strToU8, zipSync } from "fflate";
 import { invalidateTags } from "../requestCache";
+import { BoltIcon } from "./icons";
 import { WbTooltip } from "./WbTooltip";
 import { useWbViewport } from "../WbViewportContext";
-
-/** ：Worker 行按 team 分组
- * （保持原始相对序；无 team 的归「未分组」殿后）。 */
-function groupWorkersByTeam(
-  workers: WorkerInfo[],
-): { team: string; workers: WorkerInfo[] }[] {
-  const order: string[] = [];
-  const m = new Map<string, WorkerInfo[]>();
-  for (const w of workers) {
-    const key = w.team || "\u0000";
-    if (!m.has(key)) {
-      m.set(key, []);
-      order.push(key);
-    }
-    m.get(key)!.push(w);
-  }
-  // 未分组殿后（稳定：先分组、组内原序）。
-  order.sort((a, b) => {
-    if (a === "\u0000") return 1;
-    if (b === "\u0000") return -1;
-    return 0;
-  });
-  return order.map((team) => ({
-    team: team === "\u0000" ? "" : team,
-    workers: m.get(team)!,
-  }));
-}
+import type { MatrixState, SkillDetail } from "./SkillCenterShared";
+import { SkillMatrix } from "./SkillCenterMatrix";
+import { McpCard, McpEditDrawer } from "./SkillCenterMcp";
+import { UploadSkillModal, SkillDetailModal } from "./SkillCenterModals";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-interface MatrixState {
-  workers: WorkerInfo[];
-  loading: boolean;
-  catalog: SkillCatalogItem[] | null | undefined; // null=加载中；[]=已加载空；undefined=404 不可用
-  catalogNote: string; // 404 时的说明
-}
 
 /**
  * （L2 双模式——调研 P0 + 上游设计文档
@@ -148,15 +116,7 @@ export default function SkillCenter({
   // 技能详情弹窗（卡面去描述后，完整 description/source/version 的唯一入口
   // = 分配卡与物化层行的「详情」按钮，376 竖屏）。显示模型 = 目录项
   // 与物化层项的公共字段超集（两边结构不同，统一收敛到这个视图模型）。
-  const [detailSkill, setDetailSkill] = React.useState<{
-    name: string;
-    description?: string;
-    source?: string;
-    version?: string;
-    runtimes?: string[];
-    agents?: string[];
-    channels?: string[];
-  } | null>(null);
+  const [detailSkill, setDetailSkill] = React.useState<SkillDetail | null>(null);
   const [matrix, setMatrix] = React.useState<Record<string, string[]>>({});
   // 服务端基线（脏检测用——矩阵相对基线有改动才显「保存」）。
   const [baseMatrix, setBaseMatrix] = React.useState<Record<string, string[]>>({});
@@ -605,738 +565,84 @@ export default function SkillCenter({
       </antd.Card>
       ) : null}
 
-      {/* ② Worker 技能分配矩阵（P1，立即可用）
- ：
- 宽表（行=Worker × 列=技能 checkbox，技能 10+ 即横向溢出）→ 按
- Worker 紧凑行：默认收起只显已分配技能标签（最多 3 + N）；点行
- 展开该 Worker 的完整技能勾选区（名称+来源标签+描述两行截断），
- 只保存该 Worker 的技能。脏检测（矩阵 vs 服务端基线）：有改动显
- 「未保存」橙标，展开区底部出 重置/保存（保存成功基线推进）。 */}
       {showMatrix ? (
-      <antd.Card
-        size="small"
-        extra={
-          onlyWorker ? (
-            <antd.Button
-              size="small"
-              onClick={() => {
-                void loadWorkers();
-                void loadCatalog();
-              }}
-              loading={st.loading}
-            >
-              {tr("刷新")}
-            </antd.Button>
-          ) : undefined
-        }
-        title={
-          l2
-            ? tr("② Worker 技能分配（L2 我的团队 · 仅 skills 可写 · PUT 合并语义）")
-            : tr("② Worker 技能分配矩阵（L1 可写 · PUT 合并语义 · skills 整字段替换）")
-        }
-      >
-        {workersView.length ? (
-          <div style={{ display: "grid", gap: 6 }}>
-            {/* ：onlyTeam（团队配置弹窗内嵌）
- 矩阵只渲染该团队 Worker——旧分支误用 st.workers 全量=跨团队泄漏
- （「团队技能（目录/分配矩阵/MCP）就只管这个团队的」）。 */}
-            {(onlyWorker
-              ? [{ team: "", workers: workersView }]
-              : groupWorkersByTeam(onlyTeam ? workersView : st.workers)
-            ).map((tg) => (
-              <div key={tg.team || "ungrouped"}>
-                {/* 团队分组头（组内 Worker 卡原渲染）。
- 拓扑嵌入（onlyWorker）→ 组头不出。
- 团队配置嵌入（onlyTeam）→ 单团队组头冗余不出。 */}
-                {!onlyWorker && !onlyTeam ? (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "2px 2px 0",
-                  }}
-                >
-                  <span style={{ fontWeight: 700, fontSize: 12, color: t.text }}>
-                    {tg.team ? tg.team : tr("未分组")}
-                  </span>
-                  <span style={{ color: t.textSecondary, fontSize: 11 }}>
-                    {tr("{n} Worker", { n: tg.workers.length })}
-                  </span>
-                  <div style={{ flex: 1, height: 1, background: t.border }} />
-                </div>
-                ) : null}
-                <div style={{ display: "grid", gap: 6, marginTop: 4 }}>
-                {tg.workers.map((w) => {
-              const assigned = matrix[w.name] || [];
-              const base = baseMatrix[w.name] || [];
-              const dirty =
-                assigned.length !== base.length ||
-                assigned.some((s) => !base.includes(s));
-              const expanded = expandedWorker === w.name;
-              const mat = matByWorker[w.name];
-              return (
-                <div
-                  key={w.name}
-                  style={{
-                    border: `1px solid ${t.border}`,
-                    borderRadius: 8,
-                    background: t.cardBg,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "7px 10px",
-                      flexWrap: "wrap",
-                      cursor: "pointer",
-                    }}
-                    onClick={() => setExpandedWorker(expanded ? null : w.name)}
-                    title={tr("点行展开/收起该 Worker 的技能编辑")}
-                  >
-                    <span style={{ fontWeight: 600, fontSize: 12.5 }}>{w.name}</span>
-                    <span style={{ color: t.textSecondary, fontSize: 11 }}>
-                      {w.team || "—"} · {w.role || "worker"}
-                    </span>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        gap: 4,
-                        flexWrap: "wrap",
-                        flex: 1,
-                        minWidth: 0,
-                      }}
-                    >
-                      {assigned.length ? (
-                        assigned.slice(0, 3).map((s) => (
-                          <antd.Tag key={s} style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                            {s}
-                          </antd.Tag>
-                        ))
-                      ) : Array.isArray(mat) && mat.length ? (
-                        // 分配层空但物化层非空——
-                        // 「未分配但可调用」的可视化真相（团队层自动物化/
-                        // builtin 恢复/镜像自带不写 spec.skills）。
-                        <WbTooltip
-                          title={tr(
-                            "未显式分配（CRD 分配层为空），但运行时已装载 {n} 个技能（团队层物化/内置恢复/镜像自带）——展开行查看明细",
-                            { n: mat.length },
-                          )}
-                        >
-                          <antd.Tag color="cyan" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                            {tr("运行时已装载 {n}", { n: mat.length })}
-                          </antd.Tag>
-                        </WbTooltip>
-                      ) : (
-                        <span style={{ color: t.textSecondary, fontSize: 11 }}>
-                          {tr("暂无技能分配")}
-                        </span>
-                      )}
-                      {assigned.length > 3 ? (
-                        <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                          +{assigned.length - 3}
-                        </antd.Tag>
-                      ) : null}
-                    </span>
-                    {dirty ? (
-                      <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
-                        {tr("未保存")}
-                      </antd.Tag>
-                    ) : null}
-                    <antd.Button
-                      size="small"
-                      type="text"
-                      style={{ flexShrink: 0 }}
-                      onClick={(e: ReactNS.MouseEvent) => {
-                        e.stopPropagation();
-                        setExpandedWorker(expanded ? null : w.name);
-                      }}
-                    >
-                      {expanded ? tr("收起") : tr("编辑技能")} {expanded ? "▴" : "▾"}
-                    </antd.Button>
-                  </div>
-                  {expanded ? (
-                    <div
-                      style={{
-                        border: `1px solid ${t.border}`,
-                        borderTop: "none",
-                        padding: 10,
-                        background: t.popoverBg,
-                      }}
-                    >
-                      {/* 物化层明细（runtime 实际
- 装载，懒加载首展即拉；404/403 版本/权限门占位）。 */}
-                      {mat === "loading" ? (
-                        <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 8 }}>
-                          {tr("运行时技能加载中…")}
-                        </div>
-                      ) : mat === "err" ? (
-                        <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 8 }}>
-                          {tr(
-                            "运行时技能列表不可用（Controller 未含该端点或当前身份无权限——分配层不受影响）",
-                          )}
-                        </div>
-                      ) : Array.isArray(mat) && mat.length ? (
-                        <div
-                          style={{
-                            marginBottom: 10,
-                            padding: "6px 8px",
-                            borderRadius: 6,
-                            background: t.cardBg,
-                            border: `1px solid ${t.border}`,
-                          }}
-                        >
-                          <div style={{ fontSize: 11, color: t.textSecondary, marginBottom: 4 }}>
-                            {tr(
-                              "运行时已装载（物化层——实际可调用；分配层空而这里非空 = 团队层自动物化/内置恢复/镜像自带）",
-                            )}
-                          </div>
-                          {/* per-worker 技能一等公民——
- 光杆 Tag → 逐技能行：来源 / 描述 / 启用态 /
- 分配态 / **预加载开关**（PUT preload，worker
- 侧热加载）。 */}
-                          <div style={{ display: "grid", gap: 4 }}>
-                            {mat.map((s) => {
-                              const inAssigned = assigned.includes(s.name);
-                              const busy = !!preloadBusy[`${w.name}::${s.name}`];
-                              const disabled = s.enabled === false;
-                              return (
-                                <div
-                                  key={s.name}
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    padding: "3px 6px",
-                                    borderRadius: 6,
-                                    border: `1px solid ${t.border}`,
-                                    background: t.cardBg,
-                                  }}
-                                >
-                                  <span
-                                    title={disabled ? tr("已禁用") : tr("启用中")}
-                                    style={{
-                                      width: 6,
-                                      height: 6,
-                                      borderRadius: 3,
-                                      flexShrink: 0,
-                                      background: disabled ? "#bbb" : "#52c41a",
-                                    }}
-                                  />
-                                  {s.emoji ? (
-                                    <span style={{ fontSize: 12, flexShrink: 0 }}>
-                                      {s.emoji}
-                                    </span>
-                                  ) : null}
-                                  <span
-                                    style={{
-                                      fontWeight: 600,
-                                      fontSize: 11.5,
-                                      flex: 1,
-                                      minWidth: 0,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                    title={s.name}
-                                  >
-                                    {s.name}
-                                  </span>
-                                  {/* 行内描述已去（376 竖屏）——完整详情走「详情」弹窗。 */}
-                                  <antd.Button
-                                    size="small"
-                                    type="text"
-                                    style={{ flexShrink: 0, padding: "0 4px", fontSize: 11 }}
-                                    onClick={(e: ReactNS.MouseEvent) => {
-                                      e.stopPropagation();
-                                      setDetailSkill({
-                                        name: s.name,
-                                        description: s.description,
-                                        source: s.source,
-                                        version: s.version_text,
-                                        channels: s.channels,
-                                      });
-                                    }}
-                                  >
-                                    {tr("详情")}
-                                  </antd.Button>
-                                  {s.source ? (
-                                    <antd.Tag
-                                      style={{ marginInlineEnd: 0, fontSize: 10 }}
-                                      title={tr("物化来源（worker 实际装载渠道）")}
-                                    >
-                                      {s.source}
-                                    </antd.Tag>
-                                  ) : null}
-                                  <antd.Tag
-                                    color={inAssigned ? "blue" : "cyan"}
-                                    style={{ marginInlineEnd: 0, fontSize: 10 }}
-                                    title={
-                                      inAssigned
-                                        ? tr("已分配 + 已物化")
-                                        : tr("仅物化（未显式分配）")
-                                    }
-                                  >
-                                    {inAssigned ? tr("已分配") : tr("仅物化")}
-                                  </antd.Tag>
-                                  {/* ：preload 是物化层
-  QwenPaw 独有面（常驻 system prompt，仅 qwenpaw 装载）——非 qwenpaw 禁用开关
-  + 说明；分配层 CRD 视图（已分配/物化标签）照读不受影响。 */}
-                                  <WbTooltip
-                                    title={
-                                      isQwenpawOnlyDisabled(w.runtime)
-                                        ? tr("预加载仅支持 QwenPaw 运行时的 Worker（当前：{rt}）", { rt: w.runtime })
-                                        : tr(
-                                            "预加载：技能全文常驻该 Worker 每个会话的 system prompt（有 per-session token 成本；QwenPaw ≥ 2.2.1；worker 侧热加载无需重启）",
-                                          )
-                                    }
-                                  >
-                                    <span
-                                      style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
-                                    >
-                                      <span style={{ fontSize: 10.5, color: t.textSecondary }}>
-                                        {tr("预加载")}
-                                      </span>
-                                      <antd.Switch
-                                        size="small"
-                                        checked={!!s.preload}
-                                        loading={busy}
-                                        disabled={busy || isQwenpawOnlyDisabled(w.runtime)}
-                                        onChange={(v: boolean) =>
-                                          void togglePreload(w.name, s, v)
-                                        }
-                                      />
-                                    </span>
-                                  </WbTooltip>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : null}
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
-                          gap: 6,
-                        }}
-                      >
-                        {skillColumns.map((s) => {
-                          const on = assigned.includes(s);
-                          const item = catalogByName.get(s);
-                          return (
-                            <div
-                              key={s}
-                              onClick={() => toggleSkill(w.name, s, !on)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                padding: "5px 8px",
-                                borderRadius: 6,
-                                border: `1px solid ${on ? "rgba(22,119,255,0.5)" : t.border}`,
-                                background: on ? "rgba(22,119,255,0.06)" : t.cardBg,
-                                cursor: "pointer",
-                                minWidth: 0,
-                              }}
-                            >
-                              <antd.Checkbox
-                                checked={on}
-                                style={{ flexShrink: 0 }}
-                                onClick={(e: ReactNS.MouseEvent) => e.stopPropagation()}
-                                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                                  toggleSkill(w.name, s, e.target.checked)
-                                }
-                              />
-                              <div
-                                style={{
-                                  flex: 1,
-                                  minWidth: 0,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                <span
-                                  style={{ fontWeight: 600, fontSize: 12 }}
-                                  title={s}
-                                >
-                                  {s}
-                                </span>
-                                <antd.Tag
-                                  color={item?.source === "builtin" ? "blue" : "purple"}
-                                  style={{
-                                    marginInlineEnd: 0,
-                                    fontSize: 10,
-                                    lineHeight: "16px",
-                                    marginLeft: 4,
-                                  }}
-                                >
-                                  {item?.source || "custom"}
-                                </antd.Tag>
-                              </div>
-                              {/* 卡面描述已去（376 竖屏）——完整详情走弹窗。 */}
-                              <antd.Button
-                                size="small"
-                                type="text"
-                                style={{ flexShrink: 0, padding: "0 4px", fontSize: 11 }}
-                                onClick={(e: ReactNS.MouseEvent) => {
-                                  e.stopPropagation();
-                                  setDetailSkill(item || null);
-                                }}
-                              >
-                                {tr("详情")}
-                              </antd.Button>
-                            </div>
-                          );
-                        })}
-                        {!skillColumns.length ? (
-                          <div
-                            style={{
-                              color: t.textSecondary,
-                              fontSize: 12,
-                              gridColumn: "1 / -1",
-                            }}
-                          >
-                            {tr("暂无可用技能列表（目录未点亮且尚无已分配技能）")}
-                          </div>
-                        ) : null}
-                      </div>
-                      {dirty ? (
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            marginTop: 10,
-                            justifyContent: "flex-end",
-                          }}
-                        >
-                          <antd.Button
-                            size="small"
-                            onClick={() =>
-                              setMatrix((prev) => ({ ...prev, [w.name]: [...base] }))
-                            }
-                          >
-                            {tr("重置为当前值")}
-                          </antd.Button>
-                          <antd.Button
-                            size="small"
-                            type="primary"
-                            loading={savingRow === w.name}
-                            onClick={() => void saveWorkerSkills(w.name)}
-                          >
-                            {tr("保存")}
-                          </antd.Button>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              );
-                })}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <antd.Empty
-            description={
-              st.loading
-                ? tr("加载中…")
-                : l2
-                  ? tr("无 Worker（L2 可见范围=我的团队）")
-                  : tr("无 Worker（admin token 未配置？）")
-            }
-          />
-        )}
-      </antd.Card>
+        <SkillMatrix
+          l2={l2}
+          onlyWorker={onlyWorker}
+          onlyTeam={onlyTeam}
+          workersView={workersView}
+          workers={st.workers}
+          loading={st.loading}
+          matrix={matrix}
+          setMatrix={setMatrix}
+          baseMatrix={baseMatrix}
+          expandedWorker={expandedWorker}
+          setExpandedWorker={setExpandedWorker}
+          matByWorker={matByWorker}
+          skillColumns={skillColumns}
+          catalogByName={catalogByName}
+          toggleSkill={toggleSkill}
+          onDetail={setDetailSkill}
+          preloadBusy={preloadBusy}
+          togglePreload={togglePreload}
+          savingRow={savingRow}
+          onSave={(w) => void saveWorkerSkills(w)}
+          onRefresh={() => {
+            void loadWorkers();
+            void loadCatalog();
+          }}
+        />
       ) : null}
 
-      {/* ③ MCP Servers（P1）
- （L2 只读——l2-worker-scoped-write.md 契约：
- mcpServers 对默认 L2 关闭（网关 bearer key 注入每条条目，L2
- 可控 URL 会外泄它）→ elevated capability 设计落地前只读。 */}
       {showMcp ? (
-      <antd.Card
-        size="small"
-        title={
-          l2
-            ? tr("③ MCP Servers（L2 只读 · 写权限待上游 elevated capability 设计）")
-            : tr("③ MCP Servers（L1 可写 · PUT 合并语义 · mcpServers 整字段替换）")
-        }
-      >
-        {st.workers.length ? (
-          <div style={{ display: "grid", gap: 8 }}>
-            {mcpVisible.map((w) => {
-              const list = mcpMap[w.name] || [];
-              // 竖屏修复（376 点名「编辑按钮超出容器」）：行 wrap +
-              // 名称可收缩 + tag 组 flex:1 换行（长 url 不再把编辑钮
-              // 顶出容器）+ 编辑钮 flexShrink:0。
-              return (
-                <div
-                  key={w.name}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: "6px 10px",
-                    padding: "8px 10px",
-                    border: `1px solid ${t.border}`,
-                    borderRadius: 6,
-                    minWidth: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      minWidth: narrow ? 0 : 180,
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {w.name}
-                  </span>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, minWidth: 0, flex: 1 }}>
-                    {list.length ? (
-                      list.map((m, i) => (
-                        <antd.Tag
-                          key={`${m.name}-${i}`}
-                          color="cyan"
-                          style={{
-                            marginInlineEnd: 0,
-                            maxWidth: "100%",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {m.name}
-                          {m.url ? ` · ${m.url}` : ""}
-                          {m.transport ? ` · ${m.transport}` : ""}
-                        </antd.Tag>
-                      ))
-                    ) : (
-                      <span style={{ color: t.textSecondary, fontSize: 12 }}>{tr("无 MCP")}</span>
-                    )}
-                  </div>
-                  {!l2 ? (
-                    <antd.Button
-                      size="small"
-                      style={{ flexShrink: 0 }}
-                      onClick={() => openMcpEdit(w.name)}
-                    >
-                      {tr("编辑")}
-                    </antd.Button>
-                  ) : null}
-                </div>
-              );
-            })}
-            {!onlyWorker && mcpWithCount ? (
-              <div style={{ marginTop: 6, fontSize: 12 }}>
-                <antd.Button
-                  size="small"
-                  type="link"
-                  style={{ padding: 0 }}
-                  onClick={() => setShowAllMcp((v) => !v)}
-                >
-                  {showAllMcp
-                    ? tr("显示 {n} 个无 MCP 的 Worker", { n: st.workers.length - mcpWithCount })
-                    : tr("已隐藏 {n} 个无 MCP 的 Worker", { n: st.workers.length - mcpWithCount })}
-                </antd.Button>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <antd.Empty description={st.loading ? tr("加载中…") : tr("无 Worker")} />
-        )}
-      </antd.Card>
+        <McpCard
+          l2={l2}
+          narrow={narrow}
+          workers={st.workers}
+          loading={st.loading}
+          mcpMap={mcpMap}
+          mcpVisible={mcpVisible}
+          mcpWithCount={mcpWithCount}
+          onlyWorker={onlyWorker}
+          showAllMcp={showAllMcp}
+          onToggleShowAll={() => setShowAllMcp((v) => !v)}
+          onEdit={openMcpEdit}
+        />
       ) : null}
 
       {/* 上传技能包 / 新建自定义技能（团队层写入）。 */}
-      <antd.Modal
+      <UploadSkillModal
         open={upOpen}
-        title={upMode === "zip" ? tr("上传技能包（zip）") : tr("新建自定义技能")}
-        onCancel={() => setUpOpen(false)}
-        onOk={() => void submitUpload()}
-        confirmLoading={upBusy}
-        okText={tr("上传")}
-        cancelText={tr("取消")}
-        destroyOnClose
-      >
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12 }}>{tr("目标团队")}</span>
-            <antd.Select
-              size="small"
-              style={{ minWidth: 200 }}
-              value={upTeam || undefined}
-              onChange={(v: string) => setUpTeam(v)}
-              options={teamChoices.map((t) => ({ value: t, label: t }))}
-              placeholder={tr("选择团队")}
-            />
-          </div>
-          {upMode === "zip" ? (
-            <input
-              type="file"
-              accept=".zip,application/zip"
-              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                setUpFile(e.target.files?.[0] || null)
-              }
-            />
-          ) : (
-            <>
-              <antd.Input
-                size="small"
-                placeholder={tr("技能名（小写字母/数字/连字符）")}
-                value={upName}
-                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                  setUpName(e.target.value)
-                }
-              />
-              <antd.Input
-                size="small"
-                placeholder={tr("描述（可选）")}
-                value={upDesc}
-                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                  setUpDesc(e.target.value)
-                }
-              />
-              <antd.Input.TextArea
-                rows={7}
-                placeholder={tr("SKILL.md 正文（指令内容）")}
-                value={upBody}
-                onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
-                  setUpBody(e.target.value)
-                }
-              />
-            </>
-          )}
-          <div style={{ fontSize: 11.5, color: t.textSecondary }}>
-            {tr("上传进入该团队技能层；L1 可任意团队，L2 限本团队。上传经 skillscan 扫描（截拦即报原因）。")}
-          </div>
-        </div>
-      </antd.Modal>
+        mode={upMode}
+        team={upTeam}
+        teams={teamChoices}
+        name={upName}
+        desc={upDesc}
+        body={upBody}
+        busy={upBusy}
+        onClose={() => setUpOpen(false)}
+        onSubmit={() => void submitUpload()}
+        onTeamChange={(v) => setUpTeam(v)}
+        onFileChange={(f) => setUpFile(f)}
+        onNameChange={(v) => setUpName(v)}
+        onDescChange={(v) => setUpDesc(v)}
+        onBodyChange={(v) => setUpBody(v)}
+      />
 
       {/* 技能详情弹窗（卡面去描述后的唯一完整信息入口，376 竖屏）。 */}
-      <antd.Modal
-        title={detailSkill ? detailSkill.name : ""}
-        open={Boolean(detailSkill)}
-        onCancel={() => setDetailSkill(null)}
-        footer={null}
-        width="min(calc(100vw - 48px), 480px)"
-        destroyOnClose
-      >
-        {detailSkill ? (
-          <div style={{ display: "grid", gap: 10, fontSize: 12.5 }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-              <antd.Tag color={detailSkill.source === "builtin" ? "blue" : "purple"}>
-                {detailSkill.source}
-              </antd.Tag>
-              {detailSkill.version ? (
-                <span style={{ color: t.textSecondary }}>
-                  {tr("版本")} {detailSkill.version}
-                </span>
-              ) : null}
-              {detailSkill.runtimes?.length ? (
-                <span style={{ color: t.textSecondary }}>
-                  {tr("运行时")} {detailSkill.runtimes.join(", ")}
-                </span>
-              ) : null}
-              {detailSkill.channels?.length ? (
-                <span style={{ color: t.textSecondary }}>
-                  {tr("装载渠道")} {detailSkill.channels.join(", ")}
-                </span>
-              ) : null}
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                {tr("描述")}
-              </div>
-              <div style={{ lineHeight: 1.6, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-                {detailSkill.description || tr("（无描述）")}
-              </div>
-            </div>
-            {detailSkill.agents?.length ? (
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  {tr("使用方")}（{detailSkill.agents.length}）
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                  {detailSkill.agents.map((a) => (
-                    <antd.Tag key={a} style={{ marginInlineEnd: 0 }}>
-                      {a}
-                    </antd.Tag>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </antd.Modal>
+      <SkillDetailModal
+        detail={detailSkill}
+        onClose={() => setDetailSkill(null)}
+      />
 
-      <antd.Drawer
-        title={mcpEditWorker ? tr("编辑 MCP Servers：{w}", { w: mcpEditWorker }) : ""}
-        open={Boolean(mcpEditWorker)}
-        onClose={() => setMcpEditWorker("")}
-        width={520}
-        destroyOnClose
-      >
-        <div style={{ display: "grid", gap: 10 }}>
-          {mcpDraft.map((m, i) => (
-            <div key={i} style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1.4fr 0.8fr 36px" }}>
-              <antd.Input
-                size="small"
-                value={String(m.name ?? "")}
-                placeholder={tr("name（必填）")}
-                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                  setMcpDraft((prev) => prev.map((p, j) => (j === i ? { ...p, name: e.target.value } : p)))
-                }
-              />
-              <antd.Input
-                size="small"
-                value={String(m.url ?? "")}
-                placeholder="url"
-                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                  setMcpDraft((prev) => prev.map((p, j) => (j === i ? { ...p, url: e.target.value } : p)))
-                }
-              />
-              <antd.Input
-                size="small"
-                value={String(m.transport ?? "")}
-                placeholder={tr("transport（http/sse）")}
-                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                  setMcpDraft((prev) => prev.map((p, j) => (j === i ? { ...p, transport: e.target.value } : p)))
-                }
-              />
-              <antd.Button
-                size="small"
-                danger
-                type="text"
-                onClick={() => setMcpDraft((prev) => prev.filter((_, j) => j !== i))}
-              >
-                <CloseIcon size={12} />
-              </antd.Button>
-            </div>
-          ))}
-          <antd.Button
-            size="small"
-            onClick={() => setMcpDraft((prev) => [...prev, { name: "", url: "" }])}
-          >
-            {tr("添加 MCP")}
-          </antd.Button>
-          <antd.Space>
-            <antd.Button type="primary" loading={mcpSaving} onClick={() => void saveMcp()}>
-              {tr("保存")}
-            </antd.Button>
-            <antd.Button onClick={() => setMcpEditWorker("")}>{tr("取消")}</antd.Button>
-          </antd.Space>
-        </div>
-      </antd.Drawer>
+      <McpEditDrawer
+        editWorker={mcpEditWorker}
+        setEditWorker={setMcpEditWorker}
+        draft={mcpDraft}
+        setDraft={setMcpDraft}
+        saving={mcpSaving}
+        onSave={() => void saveMcp()}
+      />
     </div>
   );
 }
