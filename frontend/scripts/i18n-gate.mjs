@@ -9,22 +9,37 @@
  * key 提取必须排除 setStr/xxStr 等后缀误匹配（lookbehind 边界）。
  *
  * 用法：node scripts/i18n-gate.mjs（frontend/ 目录外任意位置，自解析 src/）
+ *
+ * 字典面 = i18n.ts + i18n/domains/*.ts 并集（域拆分后字典字面量在域文件，
+ * i18n.ts 只做合并；键格式断言与历次同口径）。
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = join(root, "src");
 
-const i18n = readFileSync(join(srcDir, "i18n.ts"), "utf8");
-const keys = [...i18n.matchAll(/^\s*"([^"]+)"\s*:\s*\{\s*en:/gm)].map((m) => m[1]);
+const dictFiles = [join(srcDir, "i18n.ts")];
+const domainDir = join(srcDir, "i18n", "domains");
+if (existsSync(domainDir)) {
+  dictFiles.push(
+    ...readdirSync(domainDir)
+      .filter((f) => f.endsWith(".ts"))
+      .sort()
+      .map((f) => join(domainDir, f)),
+  );
+}
+const keys = dictFiles.flatMap((f) =>
+  [...readFileSync(f, "utf8").matchAll(/^\s*"([^"]+)"\s*:\s*\{\s*en:/gm)].map((m) => m[1]),
+);
 const dictKeys = new Set(keys);
 const dups = keys.length - dictKeys.size;
 
 function walk(dir, out) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
+    if (dir === srcDir && name === "i18n") continue; // 字典文件本体不参与使用面
     const st = statSync(p);
     if (st.isDirectory()) walk(p, out);
     else if (/\.(ts|tsx)$/.test(name) && name !== "i18n.ts") out.push(p);
