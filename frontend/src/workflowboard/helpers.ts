@@ -29,7 +29,7 @@ export const STATUS_COLOR: Record<string, string> = {
 };
 
 // 状态中文标签（cancelled→已取消；其余原样）。
-export const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL: Record<string, string> = {
   cancelled: "已取消",
   canceled: "已取消",
 };
@@ -80,7 +80,7 @@ export function secTitleStyle(t: ThemeColors): ReactNS.CSSProperties {
 /** MXID → 显示短名（命名约定：UI 正文用名字，完整 MXID 走 title 悬停）。
  `@tech-writer:example.org` → `tech-writer`。
  只认 @开头且含 : 的串（真 MXID 形态）——普通任务名不误伤。 */
-export function mxidShort(s: string): string {
+function mxidShort(s: string): string {
   const t = s.trim();
   if (!t.startsWith("@")) return t;
   const at = t.indexOf(":", 1);
@@ -118,7 +118,7 @@ export type BoardCol =
   | "cancelled"
   | "unknown";
 
-export function workflowStatusToTaskStatus(status?: string): BoardCol {
+function workflowStatusToTaskStatus(status?: string): BoardCol {
   switch (status) {
     case "pending":
     case "planned":

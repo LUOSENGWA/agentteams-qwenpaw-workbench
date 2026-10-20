@@ -116,7 +116,7 @@ export function httpErrorDetail(e: unknown): string {
   return m ? m[1] : e.message;
 }
 
-export interface SelfCheckItem {
+interface SelfCheckItem {
   name: string;
   ok: boolean;
   // 14.34：预期态（结构性 401 等）——非故障，前端显 ⚠️ 琥珀而非 ❌ 红。
@@ -205,13 +205,13 @@ export async function fetchSglangModels(): Promise<string[]> {
 
 // 地址条目 = 纯 URL（服务原生认证，内网默认形态）或
 // {url, auth?}（显式覆盖凭据——公网网关 Basic 门 / API key 门）。
-export interface AddressAuth {
+interface AddressAuth {
   type: "basic" | "bearer";
   username?: string;
   password?: string;
   token?: string;
 }
-export interface AddressEntryObj {
+interface AddressEntryObj {
   url: string;
   auth?: AddressAuth;
 }
@@ -328,7 +328,7 @@ export async function fetchAuthStatus(): Promise<AuthStatus | null> {
 
 /** 网关面（Higress Console）列表响应——
  * available=false = 无 Console 会话/不可达（前端优雅降级，非错误）。 */
-export interface GatewayListResponse {
+interface GatewayListResponse {
   available: boolean;
   data: Record<string, unknown> | unknown[] | null;
   reason?: string;
@@ -373,7 +373,7 @@ export async function fetchGatewayAiProviders(
 // 与 dashboard models-section 同款字段形状（serializeProviderForm /
 // serializeRouteForm 语义），经后端 /gateway/* POST 透传到 Higress Console
 // /v1/ai/providers、/v1/ai/routes。写失败时返回 {available:false, detail}。
-export interface GatewayMutationResponse {
+interface GatewayMutationResponse {
   available: boolean;
   data: unknown;
   reason?: string;
@@ -458,7 +458,7 @@ export async function deleteGatewayAiRoute(
 // 即可读，token 模式 L1 也能用（结构性数据面）。是「路由目录」非「模型目录」：
 // name=网关 /v1 入口名（非模型 ID），一条路由可服务多个模型；upstreams=上游
 // provider 及权重；allowedConsumers=被授权在该路由上的 consumer。
-export interface GatewayRouteUpstream {
+interface GatewayRouteUpstream {
   provider: string;
   weight?: number;
 }
@@ -501,13 +501,13 @@ export interface AuditEvent {
   detail?: string;
 }
 
-export interface AuditPage {
+interface AuditPage {
   events: AuditEvent[];
   /** 仅当页满（可能还有后续）时存在。keyset 分页（timestamp,seq）。 */
   cursor?: string;
 }
 
-export interface AuditQuery {
+interface AuditQuery {
   team?: string;
   kind?: string;
   from?: string; // RFC3339
@@ -625,7 +625,7 @@ export function imageTag(image?: string): string {
 
 /** 批量检查更新（15.27）：一次调用=全部 worker 当前版+latest 本地匹配。
  * 当前版=服务端批量轻探（10min 缓存）——「检查更新」二次点击零 exec。 */
-export interface UpgradeCheckAllWorker {
+interface UpgradeCheckAllWorker {
   name: string;
   image?: string;
   runtime?: string;
@@ -658,7 +658,7 @@ export interface UpgradeVersionRow {
   is_latest: boolean;
 }
 
-export interface UpgradeVersions {
+interface UpgradeVersions {
   versions: UpgradeVersionRow[];
   latest: string;
   source?: string;
@@ -669,7 +669,7 @@ export interface UpgradeVersions {
 }
 
 /** Worker 运行时环境变量（容器 PID 1 实际生效 env，只读；15.27 预填充正源）。 */
-export interface WorkerRuntimeEnvEntry {
+interface WorkerRuntimeEnvEntry {
   key: string;
   value: string;
   masked: boolean;
@@ -873,7 +873,7 @@ export interface CliSettingsResponse {
   settings: SettingsObject;
 }
 
-export interface CodingCliInstallTask {
+interface CodingCliInstallTask {
   task_id: string;
   cli: string;
   action: string;
@@ -968,7 +968,7 @@ export async function getCliInstallTask(
 /** 检查更新：宿主侧查 npm registry latest（走插件后端，非浏览器直连）。
  *  clis = 逗号分隔子集（空=全部 3 个）；逐 CLI 失败降级为该项 error。
  *  L1 only（无 token 403 → 抛错，面板 catch 后逐 CLI 显不可达）。 */
-export interface CodingCliLatestItem {
+interface CodingCliLatestItem {
   cli: string;
   npm_package: string;
   latest?: string | null;
@@ -976,7 +976,7 @@ export interface CodingCliLatestItem {
   checked_at?: number;
   error?: string;
 }
-export interface CodingCliLatestResult {
+interface CodingCliLatestResult {
   items: Record<string, CodingCliLatestItem>;
   registry?: string;
 }
@@ -1041,17 +1041,17 @@ export async function verifyAdmin(body: {
 
 /** 连通性测试结构化诊断（点击展开详情）——
  外网 DPI 问题定位锚点：TLS 栈指纹（Python/OpenSSL 版本）+ 分步耗时 + 全栈 traceback。 */
-export interface ProbeDiagStep {
+interface ProbeDiagStep {
   name: string;
   ok: boolean;
   ms: number;
   detail: string;
 }
-export interface ProbeDiagError {
+interface ProbeDiagError {
   message: string;
   traceback: string;
 }
-export interface ProbeDiagEnv {
+interface ProbeDiagEnv {
   python: string;
   openssl: string;
   httpx: string;
@@ -1149,7 +1149,7 @@ export async function exportFullConfig(
  * 后端流程：schema 校验（失败 400 可读错误）→ 自动备份当前配置 → 原子覆盖。
  * restart: "none"=已 live 生效（Matrix 身份变更已自动重启同步）/
  * "page"=建议刷新 workbench 页面确认生效。 */
-export interface ConfigImportResult {
+interface ConfigImportResult {
   ok: boolean;
   restart: "none" | "page";
   config: WorkbenchConfig;
@@ -1168,7 +1168,7 @@ export async function importFullConfig(
 }
 
 /** 完整备份门密码状态（是否已设）。 */
-export interface ExportPasswordStatus {
+interface ExportPasswordStatus {
   has_password: boolean;
 }
 export async function exportPasswordStatus(): Promise<ExportPasswordStatus> {
@@ -1238,7 +1238,7 @@ export interface InviteRoom {
   inviter_ts?: number;
 }
 
-export interface TeamsRoomsResponse {
+interface TeamsRoomsResponse {
   ok: boolean;
   rooms: TeamRoom[];
   /** 待接受邀请（Element 同款邀请区数据源）。 */
@@ -1521,7 +1521,7 @@ export interface SearchResultItem {
   origin_server_ts: number;
 }
 
-export interface SearchPage {
+interface SearchPage {
   ok: boolean;
   count: number;
   next_batch: string;
@@ -1587,7 +1587,7 @@ export async function fetchEventContext(
   };
 }
 
-export interface MarkReadResult {
+interface MarkReadResult {
   ok: boolean;
   marked: number;
   skipped: number;
@@ -1652,7 +1652,7 @@ export interface WorkflowInterrupt {
 
 /** 任务状态转换审计单条（task meta history 数组，TeamHarness 转换引擎写入）。
  * 形状对齐 controller taskTransition（#1230 巡检契约）。 */
-export interface TaskTransition {
+interface TaskTransition {
   ts: string;
   from?: string;
   to: string;
@@ -1978,7 +1978,7 @@ export interface WorkflowTaskDetail {
 
 /** 单项目 workflow 明细响应（tasks_detail + 时间多源元数据；
  * index signature 保留——旧消费者按 [k: string]: unknown 读取扩展字段）。 */
-export interface WorkflowDetailResponse {
+interface WorkflowDetailResponse {
   tasks_detail?: WorkflowTaskDetail[];
   source_room_id?: string;
   updated_at?: string;
@@ -2028,7 +2028,7 @@ export async function fetchWorkflowProjects(
  * force=true → 带 ?refresh=1，
  * 连接器无视 TTL 触发后台补扫（仍零等待返回当前快照，响应字段不变）。
  * 内部消费方：loadWorkflowProjectsRaw（工作流板取数正源）。 */
-export async function fetchProjectsWorkflow(
+async function fetchProjectsWorkflow(
   force = false,
 ): Promise<{
   projects: Record<string, unknown>[];
@@ -2487,7 +2487,7 @@ export interface HumanInfo {
 }
 
 /** 员工入职响应——initialPassword 只在创建时返回一次。 */
-export interface CreateHumanResponse extends HumanInfo {
+interface CreateHumanResponse extends HumanInfo {
   email?: string;
   initialPassword?: string;
   rooms?: string[];
@@ -2587,7 +2587,7 @@ export const updateWorker = (name: string, body: Record<string, unknown>) =>
  * （不接受调用方 URL/token——无提权面）。正常恒 HTTP 200 + 结果对象；
  * 403 无权限 / 409 worker 未设模型或身份不可用 / 501 provider-specific
  * 探测不支持 / 503 gateway 未配置 = 显式错误码（httpErrorStatus 取）。 */
-export interface GatewayProbeResult {
+interface GatewayProbeResult {
   success: boolean;
   message: string;
   latencyMs: number;
@@ -2647,7 +2647,7 @@ export type WorkerChannelConfig = Record<string, unknown> & {
 };
 /** 插件频道表单 schema（QwenPaw /channels/schemas：config_fields 元数据）。
  * 内置频道无 schema 条目 → 通用键值编辑器兜底。 */
-export interface ChannelSchemaField {
+interface ChannelSchemaField {
   key?: string;
   name?: string;
   label?: string;
@@ -2875,7 +2875,7 @@ export interface WorkerChatMessage {
   content: unknown;
   status?: string;
 }
-export interface WorkerChatDetail {
+interface WorkerChatDetail {
   messages?: WorkerChatMessage[];
   status?: string;
 }
@@ -2908,7 +2908,7 @@ export function fetchWorkerChatStatus(
 /** Worker 状态聚合响应——后端 30s 后台单点
  * 扫描 + 聚合缓存（多窗口共享）；scanAt=最近成功扫描时刻（epoch 秒），
  * scanning=后台补扫进行中（本次响应为上轮快照）。 */
-export interface WorkersStatusResponse {
+interface WorkersStatusResponse {
   workers: Record<string, { running: boolean; lastUpdated: number }>;
   scanAt: number;
   scanning: boolean;
@@ -2956,7 +2956,7 @@ export function fetchWorkerLoopStatusBySession(
     `/workers/${encodeURIComponent(name)}/loops/status?${q.toString()}`,
   ) as Promise<WorkerLoopStatus>;
 }
-export interface WorkerLoopGateConfig {
+interface WorkerLoopGateConfig {
   id: string;
   type: string;
   enabled?: boolean;
@@ -3599,7 +3599,7 @@ export async function sendRoomFile(
  * @localpart），缺任何一层都可能被群房间 _require_mention 静默丢弃
  * （Worker 收不到）。命名 SendMention——与旧 RoomMention（@提及通知
  * feed，fetchRoomMentions）区分，同文件重名会接口合并成超集。 */
-export interface SendMention {
+interface SendMention {
   mxid: string;
   /** MXID localpart（@ 后的可读名，body 里实际出现的文本）。 */
   localpart: string;
@@ -3655,36 +3655,6 @@ export async function fetchTeamFiles(
     `/agentteams-proxy/team-files?${q.toString()}`,
   );
   return Array.isArray(data) ? (data as TeamFileEntry[]) : [];
-}
-
-/** 读团队共享单文件文本预览（二进制/超大/敏感由后端 415/413/404 拒绝）。 */
-export async function fetchTeamFileText(
-  team: string,
-  key: string,
-): Promise<string> {
-  const q = new URLSearchParams({ team, key });
-  const host = window.QwenPaw.host;
-  const path = `/agentteams-proxy/team-file?${q.toString()}`;
-  const res = host.fetch
-    ? await host.fetch(path)
-    : await fetch(host.getApiUrl(path), {
-        headers: host.getApiToken()
-          ? { Authorization: `Bearer ${host.getApiToken()}` }
-          : {},
-      });
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const p = JSON.parse(await res.text()) as Record<string, unknown>;
-      if (typeof p.detail === "string") detail = p.detail;
-    } catch {
-      /* 非 JSON 错误体——仅带状态码 */
-    }
-    throw new Error(
-      detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`,
-    );
-  }
-  return await res.text();
 }
 
 export async function sendRoomMessage(
@@ -3854,7 +3824,7 @@ export interface RoomPowerInfo {
 }
 
 // ── Worker 工具执行安全（QwenPaw 原生 approval_level 四模式）────
-export interface ApprovalItem {
+interface ApprovalItem {
   agent: string;
   container: string;
   kind: string;
@@ -3863,7 +3833,7 @@ export interface ApprovalItem {
   error: string;
 }
 
-export interface ApprovalListResponse {
+interface ApprovalListResponse {
   items: ApprovalItem[];
   levels: string[];
 }
@@ -3877,7 +3847,7 @@ export async function fetchApprovalList(
   )) as ApprovalListResponse;
 }
 
-export interface ApprovalSetResult {
+interface ApprovalSetResult {
   ok: boolean;
   agent: string;
   level: string;
@@ -4004,7 +3974,7 @@ export interface InboxEvent {
   created_at: number;
 }
 
-export interface InboxPage {
+interface InboxPage {
   events: InboxEvent[];
   total?: number;
   unread_count?: number;
@@ -4091,17 +4061,17 @@ export async function fetchMemberMessages(
 
 // ── 项目干预时间线 + Worker 检查点（端点，合并部署后生效）──────────
 
-export interface ProjectHistorySnapshot {
+interface ProjectHistorySnapshot {
   /** unixNano 文件名；字符串——19 位纳秒超出 JS 安全整数。 */
   timestamp: string;
 }
 
-export interface ProjectHistoryResponse {
+interface ProjectHistoryResponse {
   project_id: string;
   snapshots: ProjectHistorySnapshot[];
 }
 
-export interface CheckpointNode {
+interface CheckpointNode {
   ref: string;
   kind: string; // auto | snap | pre-restore | sha
   session_key: string;
@@ -4362,7 +4332,7 @@ export interface KbDirItem {
   symlink?: boolean;
 }
 
-export interface KbTree {
+interface KbTree {
   agent: string;
   workspace: string;
   files: KbFileItem[];
@@ -4371,20 +4341,20 @@ export interface KbTree {
   count: number;
 }
 
-export interface KbDirList {
+interface KbDirList {
   agent: string;
   dir: string;
   files: KbFileItem[];
   dirs: KbDirItem[];
 }
 
-export interface KbFileContent {
+interface KbFileContent {
   path: string;
   size: number;
   content: string;
 }
 
-export interface KbGraphData {
+interface KbGraphData {
   agent: string;
   nodes: { id: string; name: string; category: string; virtual: boolean }[];
   edges: { source: string; target: string }[];

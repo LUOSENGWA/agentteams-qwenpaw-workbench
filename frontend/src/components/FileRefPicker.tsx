@@ -31,7 +31,7 @@ interface FileRefPickerProps {
 }
 
 /** 进入目录时的下一 prefix（键为相对当前 prefix，拼接而非替换）。 */
-export function computeRefPrefix(current: string, relativeKey: string): string {
+function computeRefPrefix(current: string, relativeKey: string): string {
   const cleanRel = relativeKey.endsWith("/")
     ? relativeKey.slice(0, -1)
     : relativeKey;
@@ -40,7 +40,7 @@ export function computeRefPrefix(current: string, relativeKey: string): string {
 }
 
 /** 上级目录 prefix（根为 ''）。 */
-export function parentRefPrefix(current: string): string {
+function parentRefPrefix(current: string): string {
   const trimmed = current.endsWith("/") ? current.slice(0, -1) : current;
   const parts = trimmed.split("/");
   parts.pop();

@@ -13,7 +13,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface UseAccessMatrixArgs {
+interface UseAccessMatrixArgs {
   /** 当前人员列表（矩阵行源 = CRD 原值）。 */
   humans: AdminData["humans"];
   tr: TrFn;

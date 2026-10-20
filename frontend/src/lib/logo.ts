@@ -7,6 +7,4 @@
  * 单文件（blob URL 执行，无 base URL，外部资源文件加载不了，见 vite.config.ts
  * no-module-imports-guard 头注）。
  */
-import logoUrl from "../assets/agentteams-logo.svg?inline";
-
-export default logoUrl;
+export { default as logoUrl } from "../assets/agentteams-logo.svg?inline";

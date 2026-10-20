@@ -663,7 +663,7 @@ function InviteSection(props: {
   );
 }
 
-export interface TeamOverviewProps {
+interface TeamOverviewProps {
   rooms: TeamRoom[]; // 数据由父组件通过 api.ts fetchTeamsSync 获取（14.x 起 sync 为唯一房间源）
   /** 待接受邀请（独立区块，不受群/私聊过滤影响）。 */
   invites?: InviteRoom[];

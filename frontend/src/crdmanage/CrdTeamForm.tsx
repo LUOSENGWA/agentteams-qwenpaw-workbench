@@ -17,7 +17,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface CrdTeamFormProps {
+interface CrdTeamFormProps {
   tForm: TeamForm;
   setTForm: ReactNS.Dispatch<ReactNS.SetStateAction<TeamForm>>;
   workerRows: WorkerRow[];

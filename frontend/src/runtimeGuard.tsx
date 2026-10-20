@@ -56,5 +56,3 @@ export function RuntimeNotice({
     />
   );
 }
-
-export default RuntimeNotice;

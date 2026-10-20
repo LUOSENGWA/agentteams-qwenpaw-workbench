@@ -21,7 +21,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface UseModelCatalogArgs {
+interface UseModelCatalogArgs {
   /** 在服 Workers（候选「在用」层 = 其已用模型）。 */
   workers: AdminData["workers"];
   tr: TrFn;

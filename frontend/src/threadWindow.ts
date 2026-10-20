@@ -7,7 +7,7 @@
 // （本地放出，无网络往返；与历史分页「从服务端拉」独立）。
 
 /** 最小消息形状（结构子集；泛型 T 保留调用方具体类型）。 */
-export interface ThreadMsg {
+interface ThreadMsg {
   event_id: string;
   reply?: { event_id?: string } | null;
 }

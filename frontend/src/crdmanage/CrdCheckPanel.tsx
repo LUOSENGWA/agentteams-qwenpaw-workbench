@@ -13,7 +13,7 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 
-export interface CrdCheckPanelProps {
+interface CrdCheckPanelProps {
   tCheck: TCheckState | null;
   startTeamCheck: (rows: { name: string; sentModel: string }[]) => void;
   tr: TrFn;

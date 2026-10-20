@@ -20,7 +20,7 @@ import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import { useWbViewport } from "../WbViewportContext";
-import LOGO_URL from "../lib/logo";
+import { logoUrl as LOGO_URL } from "../lib/logo";
 import { formatChatTime, formatTimeShort, sevColor as sevColorOf } from "../util";
 
 const host = window.QwenPaw.host;

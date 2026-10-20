@@ -17,11 +17,6 @@ export interface FileRef {
   size?: number;
 }
 
-/** 事件 content 上的信封。 */
-export interface FileRefsPayload {
-  refs: FileRef[];
-}
-
 const MAX_REFS = 20;
 const MAX_NAME_LENGTH = 256;
 

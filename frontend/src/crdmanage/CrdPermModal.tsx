@@ -13,7 +13,7 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 
-export interface CrdPermModalProps {
+interface CrdPermModalProps {
   permHuman: HumanInfo | null;
   permForm: PermForm;
   permCmd: string;

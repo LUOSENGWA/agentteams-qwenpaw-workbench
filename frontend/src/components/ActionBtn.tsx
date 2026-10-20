@@ -15,7 +15,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface ActionBtnProps {
+interface ActionBtnProps {
   /** 图标（antdIcon 节点，可空但 label 必填）。 */
   icon?: ReactNS.ReactNode;
   /** 按钮文字（必填——统一不再做纯图标动作按钮）。 */

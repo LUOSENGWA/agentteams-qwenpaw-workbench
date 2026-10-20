@@ -15,7 +15,7 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 
-export interface CrdWorkerFormProps {
+interface CrdWorkerFormProps {
   nw: NwForm;
   setNw: ReactNS.Dispatch<ReactNS.SetStateAction<NwForm>>;
   doCreateWorker: () => void | Promise<void>;

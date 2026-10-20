@@ -15,7 +15,7 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 
-export interface CrdAccessMatrixProps {
+interface CrdAccessMatrixProps {
   humans: AdminData["humans"];
   teams: AdminData["teams"];
   accessOf: (h: HumanInfo) => string[];

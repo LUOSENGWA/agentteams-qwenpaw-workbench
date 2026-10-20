@@ -21,7 +21,7 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 
-export interface CrdCfgModalProps {
+interface CrdCfgModalProps {
   cfgTeam: TeamInfo | null;
   cfgOpen: boolean;
   cfg: TeamCfgForm;

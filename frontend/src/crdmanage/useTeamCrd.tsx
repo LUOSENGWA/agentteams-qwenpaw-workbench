@@ -42,7 +42,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface UseTeamCrdArgs {
+interface UseTeamCrdArgs {
   /** 当前管理数据团队列表（配置弹窗/撤销/删除的数据源）。 */
   teams: AdminData["teams"];
   /** 在服 Workers（建队行初始化 + 行内新建 Worker 校验）。 */

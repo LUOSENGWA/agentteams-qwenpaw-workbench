@@ -38,7 +38,7 @@ export type LlmTuningKey =
   | "llmStreamFirstContentTimeout"
   | "llmStreamIdleTimeout";
 
-export interface LlmTuningField {
+interface LlmTuningField {
   key: LlmTuningKey;
   /** 中文源文本（tr() 键），组件渲染时 tr(label)。 */
   label: string;
@@ -118,7 +118,7 @@ export function emptyLlmTuning(): LlmTuningRecord {
 /** 继承值（团队默认 → 运行时 env 实际值 → registry 兜底）：worker 无覆盖
  * 时逐级继承到的值。envEffective=按字段 key 映射的容器 env 实际值
  * （runtime-env 端点实读；可选，拉取失败=走原三层链）。 */
-export function inheritedLlmTuning(
+function inheritedLlmTuning(
   team: LlmTuningRecord,
   envEffective?: LlmTuningValues,
 ): LlmTuningRecord {

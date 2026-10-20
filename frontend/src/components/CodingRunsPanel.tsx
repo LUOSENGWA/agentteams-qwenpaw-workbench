@@ -26,7 +26,7 @@ const FileTextIcon = pick("FileTextOutlined");
 /** run-YYYYMMDD-HHMMSS.log → "YYYY-MM-DD HH:MM:SS"。文件名是容器本地钟，
  * 时区不可知——上游设计原则「时间未知则不伪造」，此处原样展示文件名时间。 */
 const RUN_FILE = /^run-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.log$/;
-export function timeFromRunFile(run: string): string {
+function timeFromRunFile(run: string): string {
   const m = RUN_FILE.exec(run);
   if (!m) return run;
   return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}`;

@@ -27,22 +27,10 @@ import type { SettingsObject } from "./api";
 export const CODING_CLI_IDS = ["qwen-code", "opencode", "qoder"] as const;
 export type CodingCliId = (typeof CODING_CLI_IDS)[number];
 
-export function isCodingCliId(value: string): value is CodingCliId {
-  return (CODING_CLI_IDS as readonly string[]).includes(value);
-}
-
-export type Localized = string | { "zh-CN": string; "en-US"?: string };
-
 export type Redacted = { redacted: true; has_value: boolean };
 
 // 值层不递归（嵌套对象/数组一律 unknown 化——settings 是任意 JSON，
 // 深合并由 controller 执行，前端不需要值级类型）。
-export function localizedText(value: Localized | null | undefined): string {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  return value["zh-CN"] || value["en-US"] || "";
-}
-
 export function isRedacted(value: unknown): value is Redacted {
   return !!value && typeof value === "object" && (value as Redacted).redacted === true;
 }
@@ -53,7 +41,7 @@ export function isRedacted(value: unknown): value is Redacted {
 
 /** 控件类型：bool=Switch / number=InputNumber / text=Input /
  * path=Input（路径占位）/ enum=AutoComplete（候选可自由输入）。 */
-export type FieldControl = "bool" | "number" | "text" | "path" | "enum";
+type FieldControl = "bool" | "number" | "text" | "path" | "enum";
 
 export interface FieldSpec {
   /** 中文标签（zh 模式显示）。 */
@@ -339,7 +327,7 @@ export const SECTION_LABELS: Record<string, { zh: string; en: string }> = {
  * 由 Higress 网关管理（默认跟 Worker）——模板不再含该段，凭据由
  * 网关侧管；容器内直连场景用 env 块（JSON 补丁）或 ~/.qwen/.env。
  */
-export interface CodingCliSeed {
+interface CodingCliSeed {
   /** 空态模板。渲染为结构化表单起点（完整字段由 FIELD_CATALOG 驱动）。 */
   template: SettingsObject;
   /** 模板中的密钥路径（渲染为密码框 + 空值保存时丢弃）。 */

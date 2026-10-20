@@ -16,7 +16,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface CrdHumanTableCardProps {
+interface CrdHumanTableCardProps {
   humans: AdminData["humans"];
   openPerm: (r: HumanInfo) => void;
   doDeleteHuman: (name: string) => void | Promise<void>;
@@ -134,7 +134,7 @@ export function CrdHumanTableCard({
   );
 }
 
-export interface CrdTeamTableCardProps {
+interface CrdTeamTableCardProps {
   teams: AdminData["teams"];
   openCfg: (r: TeamInfo) => void;
   doDeleteTeam: (name: string) => void | Promise<void>;

@@ -98,7 +98,7 @@ export function copyText(x: string, onResult: (ok: boolean) => void): void {
 // 红 #f5222d（antd 5 error），MEDIUM = 橙，LOW = 绿。此前 SEV_COLOR 在
 // NotificationCenter / ApprovalCard 各持一份、HomePage 又内联 #ff4d4f 漂移 →
 // 统一到此。未知 severity 的回退色由调用方定（sevColor 第二参，默认橙 #fa8c16）。
-export const SEV_COLOR: Record<string, string> = {
+const SEV_COLOR: Record<string, string> = {
   CRITICAL: "#f5222d",
   HIGH: "#f5222d",
   MEDIUM: "#fa8c16",

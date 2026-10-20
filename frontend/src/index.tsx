@@ -18,7 +18,7 @@
  * also remove a plugins-group left by earlier plugin versions.
  */
 import type * as ReactNS from "react";
-import LOGO_URL from "./lib/logo";
+import { logoUrl as LOGO_URL } from "./lib/logo";
 
 // ——
 // 宿主 menu.add/registerRoutes 的 icon 接受 ReactNode（console types.ts

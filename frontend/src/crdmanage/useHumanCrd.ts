@@ -18,7 +18,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface UseHumanCrdArgs {
+interface UseHumanCrdArgs {
   onRefresh: CrdManageProps["onRefresh"];
   tr: TrFn;
 }

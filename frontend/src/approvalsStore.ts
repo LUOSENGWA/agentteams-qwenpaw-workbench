@@ -49,10 +49,3 @@ export function subscribeApprovalCount(fn: () => void): () => void {
     _subs.delete(fn);
   };
 }
-
-/** 测试辅助：重置。 */
-export function __resetApprovalCountStore(): void {
-  _count = 0;
-  _at = 0;
-  _subs.clear();
-}

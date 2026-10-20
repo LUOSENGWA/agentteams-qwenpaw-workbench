@@ -16,7 +16,7 @@ export const EMPTY_SIZE_MAP = new Map<string, { w: number; h: number }>();
 export interface RadialView { minX: number; minY: number; width: number; height: number }
 
 /** 簇块包围盒（渲染虚线框 + 聚焦视野）。 */
-export interface ClusterBlock { hubId: string; minX: number; minY: number; w: number; h: number }
+interface ClusterBlock { hubId: string; minX: number; minY: number; w: number; h: number }
 
 // 几何常量（双端同值——dashboard 镜像时逐字对齐，勿单端调参）。
 export const KB2D = {
@@ -91,7 +91,7 @@ export function chipWidth(label: string): number {
   return Math.min(KB2D.MAX_W, Math.max(KB2D.MIN_W, Math.round(w)));
 }
 
-export interface ClusterLayout {
+interface ClusterLayout {
   /** 节点 id → chip 中心。 */
   pos: Map<string, { x: number; y: number }>;
   /** 节点 id → chip 尺寸（渲染 rect）。 */

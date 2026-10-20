@@ -9,7 +9,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-export interface CrdHumanFormProps {
+interface CrdHumanFormProps {
   hForm: HumanForm;
   setHForm: ReactNS.Dispatch<ReactNS.SetStateAction<HumanForm>>;
   hBusy: boolean;

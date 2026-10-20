@@ -17,13 +17,7 @@
  * console 宿主两者皆无 → server（在线路径零改动）。
  */
 
-export type HostKind = "server" | "local" | "desktop";
-
-export interface HostCaps {
-  net: boolean;
-  secureStore: boolean;
-  notify: boolean;
-}
+type HostKind = "server" | "local" | "desktop";
 
 interface QwenPawHostLike {
   kind?: unknown;
@@ -47,19 +41,6 @@ export function hostKind(): HostKind {
     return host.kind;
   }
   return host.isOffline === true ? "local" : "server";
-}
-
-/** 轴 B 端侧能力位；旧 shell 无 env → 全 false（无桥，诚实降级）。 */
-export function hostCaps(): HostCaps {
-  const host = hostObj();
-  const raw = host && typeof host.caps === "object" && host.caps !== null
-    ? (host.caps as Record<string, unknown>)
-    : null;
-  return {
-    net: raw ? raw.net === true : false,
-    secureStore: raw ? raw.secureStore === true : false,
-    notify: raw ? raw.notify === true : false,
-  };
 }
 
 /** 轴 A === local：端侧独立宿主（含旧 shell isOffline 回退）。 */

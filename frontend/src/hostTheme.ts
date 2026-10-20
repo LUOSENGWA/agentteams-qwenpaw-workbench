@@ -123,7 +123,7 @@ function readAccentFromCssVars(): {
 /** 首帧同步主题：CSS 变量可得 → 直接构造（亮/暗槽同值——:root 变量是
  * 宿主当前生效主题，模式已解析，hostAccentForMode 两种模式取同一生效色）；
  * 不可得 → null（调用方走 fetch 异步路径，行为与 14.19 及以前一致）。 */
-export function syncHostTheme(): HostTheme | null {
+function syncHostTheme(): HostTheme | null {
   const v = readAccentFromCssVars();
   if (!v) return null;
   const dark: HostThemeDark = {

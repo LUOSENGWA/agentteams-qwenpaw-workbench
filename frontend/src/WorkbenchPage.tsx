@@ -55,7 +55,7 @@ import {
 } from "./WbViewportContext";
 
 import TeamOverview from "./components/TeamOverview";
-import LOGO_URL from "./lib/logo";
+import { logoUrl as LOGO_URL } from "./lib/logo";
 import { buildFileRefsContent, type FileRef } from "./lib/file-refs";
 import HomePage from "./components/HomePage";
 import WorkflowBoard, { WfView } from "./components/WorkflowBoard";

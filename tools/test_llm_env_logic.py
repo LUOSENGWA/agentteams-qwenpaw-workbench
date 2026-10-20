@@ -12,9 +12,13 @@
   a8 startup 组不受 env 层影响
 """
 import json
+import logging
 import os
 import subprocess
 import sys
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger("agentteams.tools.llm_env_logic")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONT = os.path.join(ROOT, "frontend")
@@ -73,7 +77,7 @@ if n.returncode != 0:
 out = json.loads(n.stdout.strip().splitlines()[-1])
 fails = [k for k, v in out.items() if not v]
 for k in sorted(out):
-    print(("PASS " if out[k] else "FAIL ") + k)
+    logger.info(("PASS " if out[k] else "FAIL ") + k)
 if fails:
     sys.exit(f"{len(fails)} assertions failed: {fails}")
-print(f"LLM ENV LOGIC GATE: PASS ({len(out)}/{len(out)})")
+logger.info("LLM ENV LOGIC GATE: PASS (%d/%d)", len(out), len(out))

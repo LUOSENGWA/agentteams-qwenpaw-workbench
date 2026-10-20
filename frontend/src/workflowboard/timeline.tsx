@@ -143,7 +143,7 @@ export function ProjectTimeline({ projectId, teamId }: { projectId: string; team
 }
 
 /** 单份快照关键字段展示（raw meta JSON）。 */
-export function SnapshotDetail({ raw }: { raw: Record<string, unknown> }) {
+function SnapshotDetail({ raw }: { raw: Record<string, unknown> }) {
   const tr = useT();
   const rows: [string, unknown][] = [
     [tr("状态"), raw.status],
