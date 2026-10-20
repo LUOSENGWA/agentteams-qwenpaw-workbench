@@ -359,6 +359,8 @@ function ModelsTab() {
             columns={routeColumns}
             dataSource={routeRows}
             pagination={routeRows.length > 10 ? { pageSize: 10 } : false}
+            // 5 列自然宽 > 窄容器 → 表内横滚（设计内，同 .wb-table-fade-r 档）。
+            scroll={{ x: 640 }}
             locale={{ emptyText: tr("暂无 AI 路由") }}
           />
           {source === "console" ? (

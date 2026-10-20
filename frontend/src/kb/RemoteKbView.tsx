@@ -513,9 +513,29 @@ export function RemoteKbView(props: {
       <antd.Card
         size="small"
         title={
-          <span style={{ fontSize: 13 }}>
-            {tr("团队 Agent")}
-            <antd.Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+          // 窄容器下副文案 ellipsis 截断（卡头 title 盒固定宽，内联长文
+          // 字会撑出视口右缘）——标题行恒单行，「团队 Agent」不可截。
+          <span
+            style={{
+              fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              minWidth: 0,
+              width: "100%",
+            }}
+          >
+            <span style={{ whiteSpace: "nowrap" }}>{tr("团队 Agent")}</span>
+            <antd.Typography.Text
+              type="secondary"
+              style={{
+                fontSize: 12,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {tr("远端 · Controller Docker API 直读容器工作区（只读）")}
             </antd.Typography.Text>
           </span>

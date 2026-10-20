@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>alltabs-overflow-audit</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f0f0f0; }
+  #audit-viewport { background: #fff; position: relative; }
+  #scan-out {
+    width: 920px; margin: 16px; padding: 12px; background: #111; color: #7fff7f;
+    font: 12px/1.5 monospace; white-space: pre-wrap; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+<div id="audit-viewport">
+  <div id="root"></div>
+</div>
+<pre id="scan-out">scanning…</pre>
+<script type="module">
+import React from "react";
+import { createRoot } from "react-dom/client";
+import * as antdNs from "antd";
+import * as antdIconsNs from "@ant-design/icons";
+
+// ── 参数：?tab=<key>&w=<width>&touch=1 ──
+const qs = new URLSearchParams(location.search);
+const TAB = qs.get("tab") || "home";
+const AUDIT_W = parseInt(qs.get("w") || "390", 10);
+
+// ── 审计视口 = 真实插件容器宽（window.innerWidth 等价）──
+document.getElementById("audit-viewport").style.width = AUDIT_W + "px";
+
+// ── 触屏 44px 档复现：?touch=1 → html.wb-touch（与 index.tsx 模块级
+// matchMedia 检测同款类；桌面 chromium 探针无 coarse 指针，手动加类
+// 复现 44px 全局档，配 TOUCH_CSS 镜像测量达标率）──
+if (qs.get("touch") === "1") {
+  document.documentElement.classList.add("wb-touch");
+}
+
+// ── 审计保真：mock matchMedia 为固定视口宽（antd xs/sm/md/lg 断点走 matchMedia；
+// 与 dev-manage-overflow.html 同款）──
+const origMM = window.matchMedia.bind(window);
+window.matchMedia = (q) => {
+  const m = origMM(q);
+  const minM = q.match(/min-width:\s*([0-9.]+)px/);
+  const maxM = q.match(/max-width:\s*([0-9.]+)px/);
+  let matches = m.matches;
+  if (minM) matches = AUDIT_W >= parseFloat(minM[1]);
+  else if (maxM) matches = AUDIT_W <= parseFloat(maxM[1]);
+  return {
+    ...m,
+    matches,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  };
+};
+
+// ── mock 数据（长名/长值 = 溢出应力源；凭据位一律占位假值）──
+const CONFIG = {
+  matrix_homeservers: ["http://127.0.0.1:8008", "https://matrix.example.com"],
+  controller_urls: ["http://127.0.0.1:8700", "https://ctl.example.com"],
+  controller_token: "mock-ctl-token",
+  matrix: { user_id: "@user1:matrix.local", access_token: "mock-matrix-token", device_id: "MOCK0001" },
+  effective: { matrix: "http://127.0.0.1:8008", controller: "http://127.0.0.1:8700", gateway: "http://127.0.0.1:8080" },
+  sglang: { enabled: true, urls: ["http://127.0.0.1:30000"] },
+  admin_username: "mock-admin",
+  gateway_admin_urls: ["http://127.0.0.1:8001"],
+  configPath: "/mock/config.yaml",
+  configSavedAt: 1789000000,
+  configWritable: true,
+  controllerTokenSource: "config",
+  address_mode: "auto",
+  console_session: "active",
+};
+const LONG_ROOM_NAME = "项目群-全链路回归测试长项目名溢出验证-001";
+const MEMBERS = {
+  "@user1:matrix.local": { display_name: "用户一" },
+  "@sysdev-lead:matrix.local": { display_name: "sysdev-lead" },
+  "@sysdev-w1:matrix.local": { display_name: "sysdev-w1" },
+};
+const ROOMS = [
+  { room_id: "!proj-001:matrix.local", name: LONG_ROOM_NAME, member_count: 3, members: MEMBERS, unread: 2, unread_highlight: 1, typing: ["@sysdev-w1:matrix.local"], last_ts: 1789000000100, last_body: "这是一条比较长的最后消息摘要文本，用来验证聊天列表在窄屏下的截断与换行行为是否正常工作。", last_sender: "@sysdev-w1:matrix.local" },
+  { room_id: "!proj-002:matrix.local", name: "项目群-压力测试-02", member_count: 4, members: MEMBERS, unread: 0, last_ts: 1789000000200, last_body: "收到", last_sender: "@sysdev-lead:matrix.local" },
+  { room_id: "!dm-001:matrix.local", name: "用户一与 sysdev-lead 的私聊房间-超长成员名组合", member_count: 2, members: MEMBERS, unread: 5, last_ts: 1789000000300, last_body: "ping", last_sender: "@user1:matrix.local" },
+];
+const INVITES = [
+  { room_id: "!inv-001:matrix.local", name: "项目群-邀请测试长房间名溢出验证", inviter: "@manager1:matrix.local", inviter_ts: 1789000000400 },
+];
+const WORKFLOW_EVENTS = [
+  {
+    runId: "proj-001", title: "全链路回归测试长标题项目名溢出验证", status: "running",
+    summary: "长摘要文本：验证工作流卡片在 390 竖屏下的截断行为与按钮排布。",
+    coordinator: "sysdev-lead", room_id: "!proj-001:matrix.local", room_name: LONG_ROOM_NAME,
+    sender: "@sysdev-lead:matrix.local", ts: 1789000000500, team_id: "sysdev",
+    plan_type: "dag",
+    nodes: [
+      { id: "t1", name: "需求拆解与任务规划（长节点名验证）", status: "done", subagent: "sysdev-lead", dependsOn: [] },
+      { id: "t2", name: "编码实现", status: "running", subagent: "sysdev-w1", dependsOn: ["t1"] },
+      { id: "t3", name: "测试与验收", status: "pending", subagent: "sysdev-w2", dependsOn: ["t2"] },
+    ],
+  },
+  {
+    runId: "proj-002", title: "压力测试-02", status: "done",
+    summary: "已完成。",
+    coordinator: "sysdev-lead", room_id: "!proj-002:matrix.local", room_name: "项目群-压力测试-02",
+    sender: "@sysdev-lead:matrix.local", ts: 1789000000600, team_id: "sysdev",
+    nodes: [
+      { id: "t1", name: "压测脚本", status: "done", subagent: "sysdev-w1", dependsOn: [] },
+    ],
+  },
+];
+const PROJECTS_WORKFLOW = {
+  projects: [
+    { project_id: "proj-001", team_id: "sysdev", title: "全链路回归测试长标题项目名溢出验证", status: "running" },
+    { project_id: "proj-002", team_id: "sysdev", title: "压力测试-02", status: "done" },
+  ],
+  workflows: {
+    "proj-001": {
+      title: "全链路回归测试长标题项目名溢出验证", status: "running",
+      summary: "长摘要文本：验证工作流卡片在 390 竖屏下的截断行为与按钮排布。",
+      nodes: [
+        { id: "t1", name: "需求拆解与任务规划（长节点名验证）", status: "done", assignee: "sysdev-lead" },
+        { id: "t2", name: "编码实现", status: "running", assignee: "sysdev-w1" },
+        { id: "t3", name: "测试与验收", status: "pending", assignee: "sysdev-w2" },
+      ],
+      edges: [{ source: "t1", target: "t2" }, { source: "t2", target: "t3" }],
+      interrupts: [], tasks_detail: [
+        { task_id: "t1", title: "需求拆解与任务规划（长节点名验证）", status: "done", assigned_to: "sysdev-lead" },
+        { task_id: "t2", title: "编码实现", status: "running", assigned_to: "sysdev-w1" },
+        { task_id: "t3", title: "测试与验收", status: "pending", assigned_to: "sysdev-w2" },
+      ],
+    },
+    "proj-002": {
+      title: "压力测试-02", status: "done", summary: "已完成。",
+      nodes: [{ id: "t1", name: "压测脚本", status: "done", assignee: "sysdev-w1" }],
+      edges: [], interrupts: [], tasks_detail: [
+        { task_id: "t1", title: "压测脚本", status: "done", assigned_to: "sysdev-w1" },
+      ],
+    },
+  },
+  projectsStatus: 200,
+  projectsError: "",
+};
+const WORKER_TREE = [{
+  team_name: "sysdev",
+  room_id: "!sysdev_room:matrix.local",
+  workers: [
+    { worker_name: "sysdev-lead", mxid: "@sysdev-lead:matrix.local", role: "leader", spawns: [], phase: "Ready", room_id: "!room-lead:matrix.local", runtime: "qwenpaw" },
+    { worker_name: "sysdev-w1-very-long-worker-name-for-overflow-check", mxid: "@sysdev-w1:matrix.local", role: "worker", spawns: [], phase: "Ready", room_id: "!room-w1:matrix.local", runtime: "qwenpaw" },
+    { worker_name: "sysdev-w2", mxid: "@sysdev-w2:matrix.local", role: "worker", spawns: [], phase: "Stopped", room_id: "!room-w2:matrix.local", runtime: "qwenpaw" },
+  ],
+}];
+const ADMIN_WORKERS = [
+  { name: "sysdev-lead", phase: "Ready", state: "Running", model: "qwen3.6-27b-fp8", runtime: "qwenpaw", containerState: "running", matrixUserID: "@sysdev-lead:matrix.local", roomID: "!room-lead:matrix.local", team: "sysdev", role: "leader", message: "", version: "1.2.5", envEditable: true, mcpServers: [{ name: "teamharness", url: "http://127.0.0.1:8765/mcp", transport: "http" }] },
+  { name: "sysdev-w1-very-long-worker-name-for-overflow-check", phase: "Ready", state: "Running", model: "qwen3.6-27b-fp8-very-long-model-name-overflow", runtime: "qwenpaw", containerState: "running", matrixUserID: "@sysdev-w1:matrix.local", roomID: "!room-w1:matrix.local", team: "sysdev", role: "worker", message: "", version: "1.2.5", envEditable: true, mcpServers: [] },
+  { name: "sysdev-w2", phase: "Stopped", state: "Stopped", model: "qwen3.6-27b-fp8", runtime: "qwenpaw", containerState: "exited", matrixUserID: "@sysdev-w2:matrix.local", roomID: "!room-w2:matrix.local", team: "sysdev", role: "worker", message: "", version: "1.2.4", envEditable: false, mcpServers: [] },
+];
+const ADMIN = {
+  workers: ADMIN_WORKERS,
+  teams: [{ name: "sysdev", phase: "Running", leaderName: "sysdev-lead", readyWorkers: 2, totalWorkers: 3, workerNames: ["sysdev-lead", "sysdev-w1", "sysdev-w2"] }],
+  humans: [{ name: "user1", displayName: "用户一", permissionLevel: 1, accessibleTeams: ["sysdev"], matrixUserID: "@user1:matrix.local" }],
+  managers: [{ name: "manager1", model: "qwen3.6-plus", runtime: "qwenpaw", phase: "Running", mxid: "@manager1:matrix.local" }],
+};
+const KB_AGENTS = [
+  { name: "sysdev-lead", container: "mock-c1", state: "running", kind: "worker", team: "sysdev", role: "leader", runtime: "qwenpaw" },
+  { name: "manager1", container: "mock-c2", state: "running", kind: "manager", runtime: "qwenpaw" },
+];
+const KB_TREE = {
+  agent: "sysdev-lead",
+  workspace: "/app/working/workspaces/sysdev-lead",
+  files: [
+    { path: "MEMORY.md", name: "MEMORY.md", size: 4210, mtime: 1789000000, category: "profile" },
+    { path: "memory/2026-01-01/a-very-long-memory-note-file-name-for-overflow-check.md", name: "a-very-long-memory-note-file-name-for-overflow-check.md", size: 812, mtime: 1789000000, category: "daily" },
+    { path: "digest/topic.md", name: "topic.md", size: 333, mtime: 1789000000, category: "digest" },
+  ],
+  dirs: [
+    { path: "memory", name: "memory", isdir: true, category: "daily" },
+    { path: "digest", name: "digest", isdir: true, category: "digest" },
+  ],
+  count: 3,
+};
+const KB_GRAPH = {
+  agent: "sysdev-lead",
+  nodes: [
+    { id: "MEMORY.md", name: "MEMORY.md", category: "profile", virtual: false },
+    { id: "memory/x", name: "memory/x", category: "daily", virtual: false },
+    { id: "digest/t", name: "digest/t", category: "digest", virtual: false },
+    { id: "virtual-root", name: "root", category: "virtual", virtual: true },
+  ],
+  edges: [
+    { source: "virtual-root", target: "MEMORY.md" },
+    { source: "MEMORY.md", target: "memory/x" },
+    { source: "virtual-root", target: "digest/t" },
+  ],
+  file_count: 3,
+};
+const INBOX_EVENTS = [
+  { id: "ev-1", agent_id: "sysdev-w1", source_type: "worker", source_id: "sysdev-w1", event_type: "task_status", status: "pending", severity: "warning", title: "任务需要人工审批：执行 rm -rf 目录清理操作（长标题验证）", body: "Worker 请求批准工具调用：rm -rf /tmp/build-cache（HITL 审批卡窄屏布局验证长文本）", read: false, created_at: 1789000000100 },
+  { id: "ev-2", agent_id: "manager1", source_type: "manager", source_id: "manager1", event_type: "mention", status: "unread", severity: "info", title: "@你 提到了你", body: "请看一下工作流卡片的溢出验证结果", read: false, created_at: 1789000000200 },
+  { id: "ev-3", agent_id: "sysdev-lead", source_type: "worker", source_id: "sysdev-lead", event_type: "task_completed", status: "done", severity: "info", title: "任务完成", body: "回归测试通过", read: true, created_at: 1789000000300 },
+];
+const MENTIONS = [
+  { room_id: "!proj-002:matrix.local", room_name: "项目群-压力测试-02", event_id: "$m1", sender: "@sysdev-lead:matrix.local", body: "@user1 请看一下压力测试结果（长文本 @提醒卡片窄屏验证）", ts: 1789000000400 },
+];
+const APPROVALS = [
+  { room_id: "!room-w1:matrix.local", room_name: "sysdev-w1 任务房间", event_id: "$a1", sender: "@sysdev-w1:matrix.local", body: "🛡️ Approval Required: execute shell command rm -rf /tmp/cache（审批卡窄屏布局）", ts: 1789000000500, kind: "approval", approve_cmd: "/approve", deny_cmd: "/deny" },
+];
+const ARTIFACT_ITEMS = [
+  { event_id: "$f1", room_id: "!proj-001:matrix.local", room_name: LONG_ROOM_NAME, sender: "@sysdev-w1:matrix.local", ts: 1789000000600, msgtype: "m.file", url: "mxc://mock/f1", filename: "regression-report-2026-01-01-full-link-very-long-file-name.pdf", body: "回归测试报告", mimetype: "application/pdf", size: 2048576 },
+  { event_id: "$f2", room_id: "!proj-002:matrix.local", room_name: "项目群-压力测试-02", sender: "@sysdev-w1:matrix.local", ts: 1789000000700, msgtype: "m.image", url: "mxc://mock/f2", filename: "screenshot.png", body: "压测截图", mimetype: "image/png", size: 40960 },
+];
+const AUDIT_EVENTS = [
+  { ts: "2026-10-19T08:00:00Z", kind: "approval_level", actor: "user1", target: "sysdev-w1", targetTeam: "sysdev", action: "set", before: ["L1"], after: ["L2"], detail: "长 detail 文本：验证审计表在窄屏下的列截断与横向滚动行为是否符合预期。" },
+  { ts: "2026-10-19T08:01:00Z", kind: "capability", actor: "user1", target: "sysdev-lead", targetTeam: "sysdev", action: "grant", capability: "docker.exec", detail: "" },
+  { ts: "2026-10-19T08:02:00Z", kind: "channel", actor: "manager1", target: "room-lead", action: "create", detail: "" },
+  { ts: "2026-10-19T08:03:00Z", kind: "source", actor: "system", target: "team-sysdev", action: "update", detail: "team yaml re-apply：workers 全量替换" },
+];
+const CLUSTER_STATUS = {
+  controller: "running",
+  workers_total: 3,
+  workers_ready: 2,
+  teams: 1,
+  uptime_seconds: 86400,
+  version: "1.2.5",
+  last_reconcile: "2026-10-19T07:59:00Z",
+};
+const LOG_LINES = [
+  { timestamp: "2026-10-19T07:58:00.000Z", level: "info", component: "controller", message: "reconcile team sysdev ok（worker=3 ready=2）" },
+  { timestamp: "2026-10-19T07:59:00.000Z", level: "error", component: "higress", message: "upstream sglang rank1 health-check failed: connection refused to 127.0.0.1:30001 (mock)" },
+  { timestamp: "2026-10-19T08:00:00.000Z", level: "info", component: "controller", message: "minio sync ok: 42 objects (agent.json x3, team.yaml x1, ...)" },
+];
+const SGLANG_LOADS = {
+  ok: true,
+  timestamp: "2026-10-19T08:00:00Z",
+  accelerator: "RTX PRO 5000 Blackwell",
+  num_accelerators: 2,
+  version: "0.4.7",
+  ranks: [
+    { dp_rank: 0, snapshot_ts: 1789000000, num_running_reqs: 2, num_waiting_reqs: 0, num_used_tokens: 48211, num_total_tokens: 48211, pool_total_tokens: 262144, max_running_requests: 64, token_usage: 0.184, utilization: 0.31, cache_hit_rate: 0.72, gen_throughput: 42.5, mem_weight_gb: 18.2, mem_kv_gb: 41.1, mem_graph_gb: 2.4, mem_token_capacity: 1.1e6 },
+    { dp_rank: 1, snapshot_ts: 1789000000, num_running_reqs: 0, num_waiting_reqs: 0, num_used_tokens: 0, num_total_tokens: 0, pool_total_tokens: 262144, max_running_requests: 64, token_usage: 0, utilization: 0, cache_hit_rate: 0, gen_throughput: 0, mem_weight_gb: 18.2, mem_kv_gb: 41.1, mem_graph_gb: 2.4, mem_token_capacity: 1.1e6 },
+  ],
+};
+const GATEWAY_ROUTES = [
+  { name: "qwen-local-very-long-route-name-overflow-check", matchType: "EXACT", modelPredicates: ["qwen3.6-27b-fp8"], provider: "sglang-local" },
+  { name: "qwen-plus", matchType: "EXACT", modelPredicates: ["qwen3.6-plus"], provider: "sglang-local" },
+  { name: "default-ai-route", matchType: "EQUAL", modelPredicates: ["deepseek-v4-flash"], provider: "openai-compat" },
+];
+const GATEWAY_PROVIDERS = [
+  { name: "sglang-local", type: "openai" },
+  { name: "openai-compat", type: "openai" },
+];
+
+// ── host.fetch mock：按路径路由返回预置 JSON（Response 形态，与真实宿主
+// 桥同接口）；未命中 = 404（组件走自身降级分支，渲染空态/错误态 DOM——
+// 空态布局同样是审计对象）──
+const ROUTES = [
+  [/^\/config\/theme$/, () => ({})],
+  [/^\/agentteams-proxy\/auth-status$/, () => ({ matrix_token: "valid", console_session: "active", controller_token: "config" })],
+  [/^\/agentteams-proxy\/config$/, () => CONFIG],
+  [/^\/agentteams-proxy\/teams\/(sync|rooms)$/, () => ({ ok: true, rooms: ROOMS, invites: INVITES, muted_rooms: [], user_id: CONFIG.matrix.user_id, worker_tree: WORKER_TREE })],
+  [/^\/agentteams-proxy\/teams\/structure$/, () => ({ ok: true, tree: WORKER_TREE, source: "controller" })],
+  [/^\/agentteams-proxy\/projects-workflow$/, () => PROJECTS_WORKFLOW],
+  [/^\/agentteams-proxy\/workflow\/events$/, () => ({ ok: true, events: WORKFLOW_EVENTS })],
+  [/^\/agentteams-proxy\/artifacts/, () => ({ items: ARTIFACT_ITEMS })],
+  [/^\/agentteams-proxy\/kb\/agents$/, () => ({ agents: KB_AGENTS })],
+  [/^\/agentteams-proxy\/kb\/[^/?]+\/tree$/, () => KB_TREE],
+  [/^\/agentteams-proxy\/kb\/[^/?]+\/graph$/, () => KB_GRAPH],
+  [/^\/agentteams-proxy\/kb\/[^/?]+\/ls/, () => ({ agent: "sysdev-lead", dir: "", files: [], dirs: [] })],
+  [/^\/(agentteams-proxy\/)?console\/inbox\/events/, () => ({ events: INBOX_EVENTS, total: INBOX_EVENTS.length, unread_count: 2 })],
+  [/^\/agentteams-proxy\/room-mentions/, () => ({ mentions: MENTIONS })],
+  [/^\/agentteams-proxy\/room-approvals/, () => ({ approvals: APPROVALS })],
+  [/^\/agentteams-proxy\/controller\/api\/v1\/status$/, () => CLUSTER_STATUS],
+  [/^\/agentteams-proxy\/cluster-info$/, () => ({ agentteams_version: "v1.2.5", higress_version: "2.1.4", higress_version_source: "file" })],
+  [/^\/agentteams-proxy\/docker-logs\//, () => ({ lines: LOG_LINES })],
+  [/^\/agentteams-proxy\/sglang\/loads$/, () => SGLANG_LOADS],
+  [/^\/agentteams-proxy\/sglang\/models$/, () => ({ models: ["qwen3.6-27b-fp8", "qwen3.6-plus"] })],
+  [/^\/agentteams-proxy\/controller\/api\/v1\/audit/, () => ({ events: AUDIT_EVENTS })],
+  [/^\/agentteams-proxy\/gateway\/ai-routes$/, () => ({ available: true, data: { code: 0, data: { routes: GATEWAY_ROUTES } } })],
+  [/^\/agentteams-proxy\/gateway\/ai-providers$/, () => ({ available: true, data: { code: 0, data: { providers: GATEWAY_PROVIDERS } } })],
+  [/^\/agentteams-proxy\/controller\/api\/v1\/gateway\/ai-routes$/, () => ({ routes: [{ name: "qwen-local", upstreams: [{ provider: "sglang-local", weight: 1 }], allowedConsumers: ["user1"] }] })],
+  [/^\/agentteams-proxy\/controller\/api\/v1\/workers(\?|$)/, () => ({ workers: ADMIN_WORKERS })],
+  [/^\/agentteams-proxy\/controller\/api\/v1\/teams(\?|$)/, () => ({ teams: ADMIN.teams })],
+  [/^\/agentteams-proxy\/controller\/api\/v1\/humans(\?|$)/, () => ({ humans: ADMIN.humans })],
+  [/^\/agentteams-proxy\/controller\/api\/v1\/managers(\?|$)/, () => ({ managers: ADMIN.managers })],
+  [/^\/agentteams-proxy\/controller\/api\/v1\/projects(\?|$)/, () => ({ projects: PROJECTS_WORKFLOW.projects, total: PROJECTS_WORKFLOW.projects.length })],
+  [/^\/agentteams-proxy\/workers-status$/, () => ({ workers: [] })],
+  [/^\/agentteams-proxy\/notify/, () => ({ ok: true, unread: 0 })],
+  [/^\/agentteams-proxy\/health$/, () => ({ ok: true, version: "0.5.0-beta.15.36" })],
+  [/^\/agentteams-proxy\/(upgrade|coding-runs|selfcheck|dm|login|matrix|config\/)/, () => ({ ok: true })],
+];
+
+const FETCH_LOG = [];
+async function mockFetch(path, init) {
+  const url = String(path || "").split("?")[0];
+  const full = String(path || "");
+  FETCH_LOG.push(full);
+  for (const [re, bodyFn] of ROUTES) {
+    if (re.test(full) || re.test(url)) {
+      const body = bodyFn(full);
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+  return new Response(JSON.stringify({ detail: "audit-mock: no route " + url }), {
+    status: 404,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+window.QwenPaw = {
+  host: {
+    React,
+    antd: antdNs.default ?? antdNs,
+    antdIcons: antdIconsNs,
+    useTheme: () => "light",
+    useLocale: () => "zh-CN",
+    getApiUrl: (p) => p,
+    getApiToken: () => "mock-token",
+    fetch: mockFetch,
+    kind: "server",
+    isOffline: false,
+    caps: { net: true, secureStore: true, notify: false },
+    env: { kind: "server", caps: { net: true, secureStore: true, notify: false } },
+  },
+};
+
+// ── 组件导入（host mock 必须先就位——各组件模块顶层读 window.QwenPaw.host）──
+const { default: HomePage } = await import("./src/components/HomePage");
+const { default: TeamOverview } = await import("./src/components/TeamOverview");
+const { default: RoomChat } = await import("./src/components/RoomChat");
+const { default: NotificationCenter } = await import("./src/components/NotificationCenter");
+const { default: WorkflowBoard } = await import("./src/components/WorkflowBoard");
+const { default: Artifacts } = await import("./src/components/Artifacts");
+const { default: WorkerManage } = await import("./src/components/WorkerManage");
+const { default: KnowledgeBase } = await import("./src/components/KnowledgeBase");
+const { default: OpsPanel } = await import("./src/components/OpsPanel");
+const { default: AuditLog } = await import("./src/components/AuditLog");
+const { default: ModelsTab } = await import("./src/ModelsTab");
+const { default: SettingsTab } = await import("./src/components/SettingsTab");
+const { WbViewportProvider, NARROW_MAX_W } = await import("./src/WbViewportContext");
+const { setActiveTab } = await import("./src/tabActivity");
+
+// 活跃 tab 单源 → 各组件 usePoller 的 active 门控（rc-tabs 保活同款语义）
+setActiveTab(TAB);
+
+// 审计 viewport = 容器可见宽（真实页 = min(window, main父链)；dev 页两者相等）
+const VP = { width: AUDIT_W, height: 844, narrow: AUDIT_W < NARROW_MAX_W };
+
+const noop = () => {};
+const CHAT_SPLIT_W = 300; // WorkbenchPage 默认值（160..480 clamp）
+const chatWide = AUDIT_W >= NARROW_MAX_W; // min(win,cont) >= 800
+
+const MESSAGES = [
+  { event_id: "$c1", sender: "@sysdev-lead:matrix.local", body: "开始全链路回归测试。第一步：拉取最新代码并执行完整门（tsc / vite build / pytest / 敏感扫描 / i18n 一致性），任何一项失败立即上报并附错误原文。", msgtype: "m.text", origin_server_ts: 1789000001000 },
+  { event_id: "$c2", sender: "@sysdev-w1:matrix.local", body: "收到。tsc --noEmit 通过（0 错误）。vite build 成功，产物 1.02MB（gzip 338KB）。pytest 456 用例全绿。继续敏感扫描……\n\n这里故意写一段很长的无空格字符串验证 pre 区域换行行为：abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789-very-long-token-like-string-for-wrap-check", msgtype: "m.text", origin_server_ts: 1789000002000, reactions: { "👍": 1 } },
+  { event_id: "$c3", sender: "@sysdev-w1:matrix.local", body: "regression-report.pdf", msgtype: "m.file", url: "mxc://mock/f1", origin_server_ts: 1789000003000, filename: "regression-report-2026-01-01-full-link-very-long-file-name.pdf", mimetype: "application/pdf", size: 2048576, info: { size: 2048576 } },
+  { event_id: "$c4", sender: "@sysdev-lead:matrix.local", body: "报告收到，测试通过。", msgtype: "m.text", origin_server_ts: 1789000004000 },
+];
+
+/** 各 tab 渲染器（mock 数据注入，仿 WorkbenchPage 同 tab 的 children 装配） */
+const TAB_RENDER = {
+  home() {
+    return React.createElement(HomePage, {
+      rooms: ROOMS,
+      config: CONFIG,
+      workflowEvents: WORKFLOW_EVENTS,
+      workerTree: WORKER_TREE,
+      managers: ADMIN.managers,
+      onOpenRoom: noop,
+      onGotoTab: noop,
+      onDm: noop,
+      treeSource: "controller-workers",
+      inboxUnread: 2,
+      onGlobalSearch: noop,
+    });
+  },
+  chat() {
+    const listEl = React.createElement(TeamOverview, {
+      rooms: ROOMS,
+      invites: INVITES,
+      loading: false,
+      user_id: CONFIG.matrix.user_id,
+      workerSessionByRoom: {},
+      workerMxids: new Set(),
+      roomProjectNames: { "!proj-001:matrix.local": ["全链路回归测试长标题项目名溢出验证"] },
+      workerRoleByMxid: { "@sysdev-lead:matrix.local": "Leader", "@sysdev-w1:matrix.local": "Worker", "@manager1:matrix.local": "Manager" },
+      onOpenRoom: noop,
+      onRefresh: noop,
+      onInviteSettled: noop,
+      onDm: noop,
+      onGlobalSearch: noop,
+      onMarkAllRead: noop,
+      markingAllRead: false,
+    });
+    if (!chatWide) {
+      // 窄屏单栏：仅房间列表（真实页 <800 语义）
+      return listEl;
+    }
+    // 宽屏分栏：列表 + 拖柄 + RoomChat（WorkbenchPage chatTabChildren 同款结构）
+    return React.createElement("div", { style: { display: "flex", height: "100%", minHeight: 0 } },
+      React.createElement("div", {
+        style: { position: "relative", width: CHAT_SPLIT_W, flexShrink: 0, minWidth: 0, overflowY: "auto", overscrollBehavior: "contain", borderRight: "1px solid #e5e7eb" },
+      }, listEl),
+      React.createElement("div", { style: { width: 5, flexShrink: 0, cursor: "col-resize", background: "transparent" } }),
+      React.createElement("div", { style: { flex: 1, minWidth: 0, position: "relative", minHeight: 0 } },
+        React.createElement(RoomChat, {
+          room: ROOMS[0],
+          messages: MESSAGES,
+          liveWorkflows: [],
+          loading: false,
+          sending: false,
+          hasMore: false,
+          onLoadOriginal: noop,
+          pendingOriginalId: null,
+          user_id: CONFIG.matrix.user_id,
+          errorNote: "",
+          onSend: noop,
+          onSendApproval: noop,
+          onSendFiles: noop,
+          onSendEdit: noop,
+          onRedact: noop,
+          onLeaveRoom: noop,
+          onRenameRoom: noop,
+          muted: false,
+          onToggleMute: noop,
+          onReact: noop,
+          onThreadPanelLayout: noop,
+          onDm: noop,
+          headerPrefix: null,
+          onBack: noop,
+          onNewTask: noop,
+          onOpenWorkerChats: noop,
+          onLoadMore: noop,
+          loadingMore: false,
+          onPoll: noop,
+          jumpToEventId: null,
+          onJumpHandled: noop,
+          memberRoles: { "@sysdev-lead:matrix.local": "Leader", "@sysdev-w1:matrix.local": "Worker" },
+          memberWorkerNames: { "@sysdev-w1:matrix.local": "sysdev-w1" },
+          workerBadge: undefined,
+          sessionState: undefined,
+          workerMxids: new Set(["@sysdev-w1:matrix.local"]),
+          workerSessionByMxid: {},
+          workers: ADMIN_WORKERS,
+          activityProject: WORKFLOW_EVENTS[0],
+          onOpenProject: noop,
+          onWorkflowIntervened: noop,
+          onOpenProjectFiles: noop,
+        }),
+      ),
+    );
+  },
+  inbox() {
+    return React.createElement(NotificationCenter, {
+      onUnreadCount: noop,
+      onGotoApprovals: noop,
+      onGotoRoom: noop,
+      refreshTick: 1,
+      invites: INVITES,
+      onGotoInvites: noop,
+    });
+  },
+  workflow() {
+    return React.createElement(WorkflowBoard, {
+      events: WORKFLOW_EVENTS,
+      loading: false,
+      onRefresh: noop,
+      highlightRunId: undefined,
+      source: "controller",
+      view: "list",
+      onViewChange: noop,
+      topoRun: "proj-001",
+      onTopoRunChange: noop,
+    });
+  },
+  artifacts() {
+    return React.createElement(Artifacts, { rooms: ROOMS, onBack: noop });
+  },
+  team() {
+    return React.createElement(WorkerManage, {
+      teams: WORKER_TREE,
+      admin: ADMIN,
+      treeLoading: false,
+      adminLoading: false,
+      adminFailCount: 0,
+      onRefreshTree: noop,
+      onRefreshAdmin: noop,
+      onDm: noop,
+      onOpenSettings: noop,
+      hasToken: true,
+      activeRef: { current: true },
+      treeSource: "controller-workers",
+      workerSessionByName: {},
+      myUserId: CONFIG.matrix.user_id,
+      l1TokenMode: true,
+    });
+  },
+  knowledge() {
+    return React.createElement(KnowledgeBase, { refreshTick: 1 });
+  },
+  selfcheck() {
+    // SelfCheckTab 是 WorkbenchPage.tsx 文件内组件（L303，未导出）——
+    // dev 页无法 import 真实组件，渲染占位说明（扫描器据此标记「不可渲染」）。
+    return React.createElement("div", {
+      style: { padding: 24, color: "#888", fontSize: 13, border: "1px dashed #ccc", borderRadius: 8 },
+    }, "SELF-CHECK TAB: 不可渲染占位 —— SelfCheckTab 为 WorkbenchPage.tsx 文件内组件（L303，未导出），dev 页无法 import 真实组件。布局=grid maxWidth:760 + Space 按钮组 + 结果表；需 live 验证。");
+  },
+  ops() {
+    return React.createElement(OpsPanel, { refreshTick: 1 });
+  },
+  audit() {
+    return React.createElement(AuditLog, { hasToken: true });
+  },
+  models() {
+    return React.createElement(ModelsTab);
+  },
+  settings() {
+    return React.createElement(SettingsTab, {
+      onLoginSuccess: noop,
+      config: CONFIG,
+      configLoadState: "ready",
+      onRetryConfig: noop,
+      onConfigChange: noop,
+      chatForceWide: false,
+      onChatForceWideChange: noop,
+      sseState: { status: "connected", since: 1789000000000 },
+    });
+  },
+};
+
+const TABS_WITH_RENDER = Object.keys(TAB_RENDER).filter((k) => k !== "selfcheck");
+
+// ── 布局壳：.wb-main（真实 inline 样式）+ scoped CSS（WorkbenchPage L3014
+// 全量同步，防撑链/断点/浮层/触屏层/tab 渐隐）+ 极简 header/tab 栏复刻 ──
+const SCOPED_CSS = `
+        .wb-main .ant-row,
+        .wb-main .ant-row .ant-col,
+        .wb-main .ant-card,
+        .wb-main .ant-card-body,
+        .wb-main .qwenpaw-row,
+        .wb-main .qwenpaw-row .qwenpaw-col,
+        .wb-main .qwenpaw-card,
+        .wb-main .qwenpaw-card-body { min-width: 0; max-width: 100%; }
+        .wb-main .ant-select,
+        .wb-main .qwenpaw-select { min-width: 0; }
+        .wb-main .ant-tabs-content-holder,
+        .wb-main .qwenpaw-tabs-content-holder { flex: 1; min-height: 0; }
+        .wb-main .ant-tabs-content,
+        .wb-main .qwenpaw-tabs-content { height: 100%; }
+        .wb-main .ant-tabs-tabpane-active,
+        .wb-main .qwenpaw-tabs-tabpane-active { height: 100%; min-height: 0; overflow-y: auto; }
+        @media (max-width: 575px) {
+          .wb-main .ant-row > .ant-col,
+          .wb-main .qwenpaw-row > .qwenpaw-col {
+            flex: 0 0 100% !important;
+            max-width: 100% !important;
+          }
+        }
+        .wb-main [style*="display:grid"],
+        .wb-main [style*="display: grid"] { grid-template-columns: minmax(0, 1fr); }
+        .wb-main .ant-card-head-title { min-width: 0; }
+        @media (max-width: 700px) {
+          .wb-main { padding: 8px 10px 12px !important; gap: 8px !important; }
+          .wb-main .ant-card-body { padding: 10px !important; }
+          .wb-main .ant-table-cell { padding-left: 6px !important; padding-right: 6px !important; }
+          .wb-main .ant-table-thead > tr > th { padding-left: 6px !important; padding-right: 6px !important; }
+          .wb-main .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+          .wb-main pre, .wb-main code { white-space: pre-wrap; word-break: break-all; }
+        }
+        .ant-modal, .qwenpaw-modal { max-width: calc(100vw - 16px) !important; }
+        .ant-drawer-content-wrapper, .qwenpaw-drawer-content-wrapper { max-width: 100vw !important; }
+        .wbc-narrow .wbc-cfgrow { grid-template-columns: 1fr !important; gap: 4px !important; }
+        .wbc-narrow .ant-select, .wbc-narrow .qwenpaw-select,
+        .wbc-narrow .ant-input, .wbc-narrow .qwenpaw-input,
+        .wbc-narrow .ant-input-affix-wrapper, .wbc-narrow .qwenpaw-input-affix-wrapper,
+        .wbc-narrow .ant-input-number, .wbc-narrow .qwenpaw-input-number,
+        .wbc-narrow .ant-picker, .wbc-narrow .qwenpaw-picker { max-width: 100% !important; }
+        .wbc-narrow .ant-slider { margin: 6px 8px 2px !important; }
+        .wbc-narrow [style*="display:grid"],
+        .wbc-narrow [style*="display: grid"] { grid-template-columns: minmax(0, 1fr); }
+        .wbc-narrow .ant-tabs-nav-wrap, .wbc-narrow .qwenpaw-tabs-nav-wrap {
+          overflow-x: auto !important;
+          overflow-y: hidden !important;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+          touch-action: pan-x;
+          overscroll-behavior-x: contain;
+        }
+        .wbc-narrow .ant-tabs-nav-wrap::-webkit-scrollbar,
+        .wbc-narrow .qwenpaw-tabs-nav-wrap::-webkit-scrollbar { display: none; }
+        .wbc-narrow .ant-tabs-nav-list, .wbc-narrow .qwenpaw-tabs-nav-list { flex-wrap: nowrap !important; }
+        .wbc-narrow .ant-tabs-tab, .wbc-narrow .qwenpaw-tabs-tab { white-space: nowrap !important; }
+        .wbc-narrow .ant-card, .wbc-narrow .qwenpaw-card,
+        .wbc-narrow .ant-card-body, .wbc-narrow .qwenpaw-card-body { max-width: 100% !important; }
+        .wb-main button, .wb-main a, .wb-main [role="button"],
+        .wb-main .ant-btn, .wb-main .qwenpaw-btn,
+        .wb-main .ant-select, .wb-main .qwenpaw-select { touch-action: manipulation; }
+        .wb-main { -webkit-tap-highlight-color: transparent; }
+        .wb-main .ant-table-body, .wb-main .qwenpaw-table-body,
+        .wb-main [class*="-tabs-tabpane"] { overscroll-behavior: contain; }
+        @media (any-pointer: coarse) {
+          .wb-main .wb-touch-lg { position: relative; }
+          .wb-main .wb-touch-lg::before {
+            content: "";
+            position: absolute;
+            top: -10px; left: -10px; right: -10px; bottom: -10px;
+          }
+        }
+        .wb-main .wb-safe-bottom {
+          padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+        .wbc-narrow { -webkit-tap-highlight-color: transparent; }
+        @media (any-pointer: coarse) {
+          .wbc-narrow .wb-touch-lg { position: relative; }
+          .wbc-narrow .wb-touch-lg::before {
+            content: "";
+            position: absolute;
+            top: -10px; left: -10px; right: -10px; bottom: -10px;
+          }
+        }
+        .wbc-narrow .ant-btn-sm, .wbc-narrow .qwenpaw-btn-sm { min-height: 32px; }
+        @media (hover: none) {
+          .wb-main .wb-hover-only-action { opacity: 1 !important; }
+        }
+        .wb-main .wb-tabs-fade-both {
+          -webkit-mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+        }
+        .wb-main .wb-tabs-fade-l {
+          -webkit-mask-image: linear-gradient(90deg, transparent, #000 20px);
+          mask-image: linear-gradient(90deg, transparent, #000 20px);
+        }
+        .wb-main .wb-tabs-fade-r {
+          -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+          mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent);
+        }
+        .wb-main .wb-tabs-fade-none {
+          -webkit-mask-image: none;
+          mask-image: none;
+        }
+        .wb-main .wb-table-fade-r { position: relative; }
+        .wb-main .wb-table-fade-r::after {
+          content: "";
+          position: absolute;
+          top: 0; right: 0;
+          width: 16px;
+          bottom: 17px;
+          background: linear-gradient(90deg, transparent, rgba(128,128,128,0.12));
+          pointer-events: none;
+        }
+`;
+
+// ── 触屏 44px 全局档镜像（index.tsx WB_STYLE_ID 的 .wb-touch 规则同源；
+// ?touch=1 时随 SCOPED_CSS 一起注入，供桌面探针测量 44px 达标率。
+// dev 页主 tab 栏是自写按钮非 antd Tabs，.ant-tabs-tab 只覆盖 tab 内
+// antd Tabs；真实宿主主 tab 栏是 antd Tabs（wb-main-tabs），live 侧覆盖）──
+const TOUCH_CSS = `
+.wb-touch .ant-btn:not(.ant-btn-sm),
+.wb-touch .qwenpaw-btn:not(.qwenpaw-btn-sm) { min-height: 44px; }
+.wb-touch .ant-btn-icon-only:not(.ant-btn-sm),
+.wb-touch .qwenpaw-btn-icon-only:not(.qwenpaw-btn-sm) { min-width: 44px; }
+.wb-touch .ant-tabs-tab,
+.wb-touch .qwenpaw-tabs-tab { min-height: 44px; }
+.wb-touch .ant-segmented,
+.wb-touch .qwenpaw-segmented,
+.wb-touch .ant-segmented-item,
+.wb-touch .qwenpaw-segmented-item { min-height: 40px; }
+.wb-touch .ant-input:not(.ant-input-sm),
+.wb-touch .qwenpaw-input:not(.qwenpaw-input-sm),
+.wb-touch .ant-select:not(.ant-select-sm) .ant-select-selector,
+.wb-touch .qwenpaw-select:not(.qwenpaw-select-sm) .qwenpaw-select-selector {
+  min-height: 44px;
+}
+.wb-touch .ant-switch,
+.wb-touch .qwenpaw-switch { position: relative; }
+.wb-touch .ant-switch::before,
+.wb-touch .qwenpaw-switch::before {
+  content: "";
+  position: absolute;
+  top: -11px; left: -6px; right: -6px; bottom: -11px;
+}
+.wb-touch .ant-switch-small::before,
+.wb-touch .qwenpaw-switch-small::before {
+  top: -14px; bottom: -14px;
+}
+`;
+
+const TAB_LABELS = [
+  ["home", "首页"], ["chat", "聊天"], ["inbox", "通知"], ["workflow", "工作流"],
+  ["artifacts", "产物"], ["team", "团队管理"], ["knowledge", "知识库"],
+  ["selfcheck", "自检"], ["ops", "运维"], ["models", "模型"], ["settings", "配置"],
+];
+
+// ErrorBoundary——单 tab 渲染失败不炸整页（捕获异常原文进扫描输出）
+const PAGE_ERRORS = [];
+class AuditBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err, info) {
+    PAGE_ERRORS.push((err && (err.message || String(err))) + " | " + ((info && info.componentStack) || "").slice(0, 200));
+  }
+  render() {
+    if (this.state.err) {
+      return React.createElement("div", { style: { padding: 24, color: "#c00", fontSize: 13, border: "1px solid #c00", borderRadius: 8 } },
+        "RENDER ERROR: " + (this.state.err.message || String(this.state.err)));
+    }
+    return this.props.children;
+  }
+}
+
+const el = (tag, props, ...kids) => React.createElement(tag, props, ...kids);
+
+const tabBarBtn = (key, label) => {
+  const active = TAB === key;
+  return el("button", {
+    key,
+    "data-tabkey": key,
+    style: {
+      border: "none", background: "transparent", cursor: "pointer",
+      padding: AUDIT_W < 800 ? "5px 9px" : "9px 14px",
+      fontSize: 13.5, whiteSpace: "nowrap",
+      color: active ? "#FF7F16" : "#6b7280",
+      fontWeight: active ? 700 : 400,
+      borderBottom: `2px solid ${active ? "#FF7F16" : "transparent"}`,
+      display: "inline-flex", alignItems: "center", gap: 6,
+    },
+  }, label);
+};
+
+// header 极简复刻（logo 位 + 标题 + 用户 chip + 登录态）——审计 tab 栏与
+// 内容区布局链；真实 header 的 WbTooltip/版本 chip 为浮层组件不占常驻布局
+const headerEl = el("header", {
+  style: {
+    flex: "0 0 auto", display: "flex", alignItems: "center", gap: 12,
+    paddingBottom: AUDIT_W < 800 ? 6 : 10, borderBottom: "1px solid #e5e7eb",
+  },
+},
+  el("div", { style: { width: AUDIT_W < 800 ? 24 : 28, height: AUDIT_W < 800 ? 24 : 28, borderRadius: 6, background: "#FF7F16", flexShrink: 0 } }),
+  el("div", { style: { minWidth: 0, flex: 1 } },
+    el("div", { style: { fontSize: AUDIT_W < 800 ? 16 : 18, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "AgentTeams Workbench"),
+  ),
+  el("div", { style: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0 } },
+    el("div", { style: { width: 28, height: 28, borderRadius: "50%", background: "#d1d5db" } }),
+    el("span", { style: { fontSize: 13, color: "#374151", whiteSpace: "nowrap" } }, "user1"),
+  ),
+);
+
+const tabBarEl = el("div", {
+  className: "wb-tabs-fade-none",
+  style: {
+    flex: "0 0 auto", display: "flex", gap: 2,
+    overflowX: "auto", scrollbarWidth: "none",
+  },
+}, ...TAB_LABELS.map(([k, l]) => tabBarBtn(k, l)));
+
+const contentEl = el("div", {
+  className: "wb-content",
+  style: {
+    flex: "1 1 auto", minHeight: 0,
+    display: "flex", flexDirection: "column",
+    overflowY: "auto", overflowX: "hidden",
+    maxWidth: "100%", paddingTop: 12,
+  },
+},
+  el(AuditBoundary, null, TAB_RENDER[TAB] ? TAB_RENDER[TAB]() : el("div", null, "UNKNOWN TAB: " + TAB)),
+);
+
+const mainEl = el("main", { className: "wb-main" },
+  el("style", null, SCOPED_CSS + TOUCH_CSS),
+  headerEl,
+  tabBarEl,
+  el("div", { style: { flex: "0 0 auto", height: 1, background: "#e5e7eb" } }),
+  contentEl,
+);
+
+const root = createRoot(document.getElementById("root"));
+root.render(
+  React.createElement(
+    WbViewportProvider,
+    { value: VP },
+    el("div", {
+      style: {
+        height: 900, width: "100%", padding: "12px 20px 16px",
+        display: "flex", flexDirection: "column", gap: 12,
+        boxSizing: "border-box", overflow: "hidden",
+      },
+    }, mainEl),
+  ),
+);
+
+// ── 溢出扫描（渲染结果进 #scan-out，运行器 snapshot 读取）──
+function scrollXAncestorOf(node, stopEl) {
+  let n = node.parentElement;
+  while (n && n !== stopEl && n !== document.body) {
+    const cs = getComputedStyle(n);
+    if (cs.overflowX === "auto" || cs.overflowX === "scroll") return n;
+    n = n.parentElement;
+  }
+  return null;
+}
+
+function clipXAncestorOf(node, stopEl) {
+  let n = node.parentElement;
+  while (n && n !== stopEl && n !== document.body) {
+    const cs = getComputedStyle(n);
+    if (cs.overflowX === "hidden" || cs.overflowX === "clip") return n;
+    n = n.parentElement;
+  }
+  return null;
+}
+
+function desc(el2) {
+  const cls = (el2.className && el2.className.toString ? el2.className.toString() : "")
+    .trim().split(/\s+/).filter((c) => c && !/^ant-|^qwenpaw-/.test(c) || /^ant-(table|tabs|card|modal|drawer|tag|btn|badge)$/.test(c)).slice(0, 3).join(".");
+  const txt = (el2.textContent || "").trim().replace(/\s+/g, " ").slice(0, 36);
+  const id = el2.id ? "#" + el2.id : "";
+  return `${el2.tagName.toLowerCase()}${id}${cls ? "." + cls : ""} :: ${txt || "(empty)"}`;
+}
+
+setTimeout(() => {
+  const vp = document.getElementById("audit-viewport");
+  const main = vp.querySelector(".wb-main");
+  const content = vp.querySelector(".wb-content");
+  const contentRect = content ? content.getBoundingClientRect() : null;
+  const contentRight = contentRect ? contentRect.right : Infinity;
+
+  const lines = [];
+  const beyondContent = [];
+  const beyondViewport = [];
+  const scrollables = [];
+
+  vp.querySelectorAll("*").forEach((elm) => {
+    const r = elm.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return;
+    const inContent = content && content.contains(elm);
+    // 边界 A：内容容器右缘
+    if (contentRect && inContent && r.right > contentRight + 2) {
+      const anc = scrollXAncestorOf(elm, content);
+      const clip = anc ? null : clipXAncestorOf(elm, content);
+      const tag2 = anc ? `FP(scroll-anc=${desc(anc).slice(0, 60)})` : clip ? "CLIPPED(overflow-x:hidden anc)" : "TRUE";
+      beyondContent.push(`${tag2} right=${Math.round(r.right)}(+${Math.round(r.right - contentRight)}) w=${Math.round(r.width)} ${desc(elm)}`);
+    }
+    // 边界 B：视口右缘（tab 栏/header/portal 外的越界）
+    // 2026-10-19 口径修正（与边界 A 对称）：overflow-x:hidden/clip 祖先会
+    // 裁切子元素——被裁掉的超出部分在视口上不可见（实例：antd Switch 的
+    // 预定位隐藏 label 用 ml:68/mr:-68 过渡定位技巧，行右对齐瞬态时可越
+    // 视口右缘但被 .wb-content 全裁，ops@768 瞬态 TRUE 即此）→ 判
+    // CLIPPED 不计 TRUE。扫描器口径变化，非改判基线（见 05 报告 §5）。
+    if (r.right > AUDIT_W + 2) {
+      const anc = scrollXAncestorOf(elm, vp);
+      const clip = anc ? null : clipXAncestorOf(elm, vp);
+      const tag2 = anc ? `FP(scroll-anc=${desc(anc).slice(0, 60)})` : clip ? "CLIPPED(overflow-x:hidden anc)" : "TRUE";
+      beyondViewport.push(`${tag2} right=${Math.round(r.right)}(+${Math.round(r.right - AUDIT_W)}) w=${Math.round(r.width)} ${desc(elm)}${inContent ? "" : " (outside-content)"}`);
+    }
+    // 设计内横滚容器量化（sw > cw）
+    const cs = getComputedStyle(elm);
+    if ((cs.overflowX === "auto" || cs.overflowX === "scroll") && elm.scrollWidth > elm.clientWidth + 2) {
+      scrollables.push(`${desc(elm).slice(0, 80)} sw=${elm.scrollWidth} cw=${elm.clientWidth}(+${elm.scrollWidth - elm.clientWidth})`);
+    }
+  });
+
+  const widest = [...vp.querySelectorAll("*")]
+    .filter((elm) => elm.scrollWidth > 250)
+    .map((elm) => {
+      const anc = scrollXAncestorOf(elm, vp);
+      return { sw: elm.scrollWidth, anc: !!anc, line: `sw=${elm.scrollWidth} ${anc ? "FP" : "TRUE"} ${desc(elm)}` };
+    })
+    .sort((a, b) => b.sw - a.sw)
+    .slice(0, 15)
+    .map((x) => x.line);
+
+  const htmlLen = (vp.querySelector("#root").innerHTML || "").length;
+  const out = [];
+  out.push(`AUDIT tab=${TAB} viewport=${AUDIT_W}px mode=${VP.narrow ? "NARROW" : "WIDE"} contentLeft=${contentRect ? Math.round(contentRect.left) : "-"} contentRight=${contentRight === Infinity ? "-" : Math.round(contentRight)} mainW=${main ? main.clientWidth : "-"}`);
+  out.push("=== RENDER ===");
+  out.push(`state=${PAGE_ERRORS.length ? "ERROR" : "OK"} rootHtmlLen=${htmlLen}${PAGE_ERRORS.length ? "\n" + PAGE_ERRORS.slice(0, 5).map((e) => "ERR: " + e.slice(0, 300)).join("\n") : ""}`);
+  out.push("=== FETCH (host.fetch 命中/404) ===");
+  const uniqPaths = [...new Set(FETCH_LOG.map((p) => p.split("?")[0]))];
+  out.push(uniqPaths.length ? uniqPaths.join(" | ") : "(none)");
+  out.push(`=== SCROLLABLE by-design (sw>cw, ${scrollables.length}) ===`);
+  out.push(scrollables.slice(0, 20).join("\n") || "(none)");
+  out.push(`=== BEYOND content-right (${beyondContent.length}) ===`);
+  out.push(beyondContent.slice(0, 40).join("\n") || "NONE");
+  out.push(`=== BEYOND viewport-right (${beyondViewport.length}) ===`);
+  out.push(beyondViewport.slice(0, 40).join("\n") || "NONE");
+  out.push("=== WIDEST (scrollWidth>250, top15) ===");
+  out.push(widest.join("\n") || "(none)");
+
+  document.getElementById("scan-out").textContent = out.join("\n");
+}, 4500);
+</script>
+</body>
+</html>

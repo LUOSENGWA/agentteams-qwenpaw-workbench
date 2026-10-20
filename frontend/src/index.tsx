@@ -334,6 +334,69 @@ html[data-wb-fx="light"] .wb-loop-dot.running {
   display: none;
   height: 0;
 }
+/* ══ 44px 触控目标全局档（.wb-touch = 入口检测挂的 html 类，见本文件
+   模块级 matchMedia 块）═══════════════════════════════════════════════
+   纯触屏/粗指针设备（平板、笔记本触屏）把主控件命中区放大到 44px——
+   移动端触控目标通行下限（Apple HIG 44pt / Material 48dp 的下界档）。
+   桌面（fine 指针 + hover）不加类 → 本段全部规则零生效。
+   与现有触屏档不叠加：.wb-touch-lg = 15.33 逐点 ::before 扩命中区
+   （视觉尺寸不变，高频路径）；.wbc-narrow .ant-btn-sm 32px = 表单内
+   小按钮地板（dense 例外）。本档只管「主控件」默认尺寸（非 sm），
+   min-height 只增不减，与逐点档共存不冲突。前缀双写（宿主 antd
+   自定义前缀分支 qwenpaw-*）。 */
+/* 非 sm 按钮 min-height 44（含图标钮宽度 44，纯图标钮方形命中区）。 */
+.wb-touch .ant-btn:not(.ant-btn-sm),
+.wb-touch .qwenpaw-btn:not(.qwenpaw-btn-sm) {
+  min-height: 44px;
+}
+.wb-touch .ant-btn-icon-only:not(.ant-btn-sm),
+.wb-touch .qwenpaw-btn-icon-only:not(.qwenpaw-btn-sm) {
+  min-width: 44px;
+}
+/* tab 条：li 层 min-height 44（内层 tab-btn 是居中 flex 行，高度跟随）。 */
+.wb-touch .ant-tabs-tab,
+.wb-touch .qwenpaw-tabs-tab {
+  min-height: 44px;
+}
+/* 分段器：外壳与 item 40+（外壳自带固定 height，min-height 覆盖后仍
+   生效——min-height ≥ height）。 */
+.wb-touch .ant-segmented,
+.wb-touch .qwenpaw-segmented,
+.wb-touch .ant-segmented-item,
+.wb-touch .qwenpaw-segmented-item {
+  min-height: 40px;
+}
+/* 独立输入 / 选择器触发盒 min-height 44（sm 尺寸是 dense 场景例外，
+   与按钮档同口径排除）。 */
+.wb-touch .ant-input:not(.ant-input-sm),
+.wb-touch .qwenpaw-input:not(.qwenpaw-input-sm),
+.wb-touch .ant-select:not(.ant-select-sm) .ant-select-selector,
+.wb-touch .qwenpaw-select:not(.qwenpaw-select-sm) .qwenpaw-select-selector {
+  min-height: 44px;
+}
+/* 开关：antd 轨道 = 元素自身背景，直接加 padding 会放大轨道（违
+   「轨道本身不动」约束）→ 同 .wb-touch-lg 手法 ::before 扩命中区
+   （默认轨道 44×22：上下各扩 11px = 44px 命中高，左右各 6px 留余量；
+   视觉尺寸/位置不变）。antd 的 switch handle 占 ::after，::before 空着。 */
+.wb-touch .ant-switch,
+.wb-touch .qwenpaw-switch {
+  position: relative;
+}
+.wb-touch .ant-switch::before,
+.wb-touch .qwenpaw-switch::before {
+  content: "";
+  position: absolute;
+  top: -11px;
+  left: -6px;
+  right: -6px;
+  bottom: -11px;
+}
+/* 小号轨道 h=16：±11 仅 38px 不够 → ±14（16+28=44）。 */
+.wb-touch .ant-switch-small::before,
+.wb-touch .qwenpaw-switch-small::before {
+  top: -14px;
+  bottom: -14px;
+}
 `;
   document.head.appendChild(style);
 }
@@ -341,6 +404,17 @@ html[data-wb-fx="light"] .wb-loop-dot.running {
 // 落盘值；旧 data-wb-calm 属性已删除，迁移后不再写）。
 if (typeof document !== "undefined") {
   document.documentElement.dataset.wbFx = "light";
+}
+
+// 触屏检测（44px 目标档）：纯触屏 / 粗指针设备（平板、笔记本触屏）→
+// html.wb-touch；全局样式表 .wb-touch 作用域规则把主控件（非 sm 按钮、
+// tab、分段、输入/选择器、开关）放大到 44px 触控目标。桌面（fine +
+// hover）不加类 → 全部规则零生效，桌面路径零改动。
+if (
+  typeof document !== "undefined" &&
+  window.matchMedia("(hover: none), (pointer: coarse)").matches
+) {
+  document.documentElement.classList.add("wb-touch");
 }
 
 // 特效档位跨页生效。 的配置驱动覆写只

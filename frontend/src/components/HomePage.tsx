@@ -389,6 +389,9 @@ function HomePage(props: HomePageProps) {
       onClick={onClick}
       style={{
         flex: 1,
+        // border-box：content-box 时 min-width 140 + padding 28 + border 2
+        // = 最小盒 170，窄屏 2 列 grid 的 1fr 轨被 item min 撑开整体溢出。
+        boxSizing: "border-box",
         minWidth: 140,
         cursor: "pointer",
         borderRadius: CARD_RADIUS,
@@ -458,6 +461,9 @@ function HomePage(props: HomePageProps) {
     <div
       style={{
         // 窄屏左右外边距收窄（20→12，屏幕侧贴一点）；宽屏保持 20。
+        // border-box：width:100% 默认 content-box 时 padding 计入外宽，
+        // 容器 <1080 的每个宽度档页头/入口卡/卡片整体右移 2×padding 溢出。
+        boxSizing: "border-box",
         padding: narrow ? "14px 12px 24px" : "16px 20px 24px",
         maxWidth: 1080,
         margin: "0 auto",
@@ -847,7 +853,9 @@ function HomePage(props: HomePageProps) {
 
       {/* 第二行：最近动态（左宽）/ 右列=产物+集群负载堆叠（重排） */}
       <antd.Row gutter={[12, 12]} style={{ marginTop: 0 }}>
-        <antd.Col xs={24} sm={16}>
+        {/* 窄容器（窗口仍 ≥576 触发 antd sm 断点）强制通宽堆叠——
+  sm=16/8 按窗口断点切，窄插件容器下右列被压到 33% 宽不可用。 */}
+        <antd.Col xs={24} sm={narrow ? 24 : 16}>
           <antd.Card style={cardStyle} styles={{ body: cardBody }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={14} /> {tr("最近动态")}</span>
@@ -936,7 +944,7 @@ function HomePage(props: HomePageProps) {
             )}
           </antd.Card>
         </antd.Col>
-        <antd.Col xs={24} sm={8}>
+        <antd.Col xs={24} sm={narrow ? 24 : 8}>
           {/* 右列=产物+集群负载堆叠（此前产物卡半空、负载独占整行） */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
   <antd.Card style={cardStyle} styles={{ body: cardBody }}>
@@ -1036,6 +1044,7 @@ function HomePage(props: HomePageProps) {
                             borderRadius: 8,
                             padding: "8px 12px",
                             minWidth: 140,
+                            maxWidth: "100%",
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

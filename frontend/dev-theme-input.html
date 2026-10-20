@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>theme-input-audit（US-006 只读审计页）</title>
+<style>
+  /* 审计壳：body 背景跟 ?theme= 走（防深色渲染时白色边缝污染截图判读）。
+     页面本体 = WorkbenchPage 自渲染的 <main class="wb-main">（自带布局样式，
+     与 index.tsx 生产入口同一组件树）。 */
+  html, body { margin: 0; padding: 0; }
+  #audit-shell { position: absolute; inset: 0; }
+  #audit-shell[data-theme="light"] { background: #f5f1ec; } /* 宿主米白底近似 */
+  #audit-shell[data-theme="dark"]  { background: #0b0b0b; }
+  /* 审计状态条（页面顶部固定 22px，不占 WorkbenchPage 布局；runner 截图时
+     clip 掉顶部 22px）。内容 = tab/theme/viewport 实参 + 渲染完成标记。 */
+  #audit-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 22px; z-index: 99999;
+    background: #111; color: #7fff7f; font: 11px/22px monospace;
+    white-space: nowrap; overflow: hidden; padding: 0 8px;
+  }
+</style>
+</head>
+<body>
+<div id="audit-bar">booting…</div>
+<div id="audit-shell"><div id="root"></div></div>
+<script type="module">
+import React from "react";
+import { createRoot } from "react-dom/client";
+import * as antdNs from "antd";
+
+// ── 审计参数 ────────────────────────────────────────────────
+// ?tab=    初始 tab（localStorage ui-state-v2 预写，WorkbenchPage 自读）
+// ?theme=  dark|light（mock host.useTheme 返回值）
+// 默认：tab=home theme=light
+const QS = new URLSearchParams(location.search);
+const TAB = QS.get("tab") || "home";
+const MODE = QS.get("theme") === "dark" ? "dark" : "light";
+const shell = document.getElementById("audit-shell");
+shell.dataset.theme = MODE;
+
+// 初始 tab 预写（WorkbenchPage 启动读 localStorage ui-state-v2.tab）。
+try {
+  localStorage.removeItem("agentteams-qwenpaw-workbench:ui-state-v2");
+  localStorage.removeItem("agentteams-qwenpaw-workbench:ui-state");
+  localStorage.removeItem("agentteams-qwenpaw-workbench:startup-pref");
+  localStorage.setItem(
+    "agentteams-qwenpaw-workbench:ui-state-v2",
+    JSON.stringify({ tab: TAB }),
+  );
+} catch { /* storage 不可用 → 默认 home，报告中标注 */ }
+
+// ── fixture 数据（审计 mock：全部为占位假值，无任何真实凭据/主机名）─────
+const MX = "@audit-worker-1:matrix.local";
+const WORKERS = [
+  {
+    name: "audit-lead", phase: "Ready", state: "Running",
+    model: "qwen-audit-27b-fp8", runtime: "qwenpaw",
+    image: "registry.local/agentteams-qwenpaw-worker:v1.2.5-audit",
+    containerState: "running", matrixUserID: MX,
+    roomID: "!r-audit-lead:matrix.local", team: "audit-team", role: "leader",
+    message: "", version: "1.2.5", envEditable: true,
+    skills: ["teamharness", "doc-review"],
+    mcpServers: [{ name: "teamharness", url: "http://127.0.0.1:8765/mcp", transport: "http" }],
+    agentStatus: "idle", env: { TZ: "Asia/Shanghai", AUDIT_VAR: "mock" },
+    llmTuning: { max_iters: 80 },
+  },
+  {
+    name: "audit-worker-a", phase: "Ready", state: "Running",
+    model: "qwen-audit-27b-fp8", runtime: "qwenpaw",
+    containerState: "running", matrixUserID: "@audit-worker-a:matrix.local",
+    roomID: "!r-audit-wa:matrix.local", team: "audit-team", role: "worker",
+    message: "", version: "1.2.5", envEditable: true,
+    mcpServers: [], agentStatus: "running", runningTaskCount: 1,
+  },
+  {
+    name: "audit-worker-b", phase: "Spawning", state: "Pending",
+    model: "qwen-audit-27b-fp8", runtime: "qwenpaw",
+    containerState: "waiting", matrixUserID: "@audit-worker-b:matrix.local",
+    roomID: "!r-audit-wb:matrix.local", team: "audit-team", role: "worker",
+    message: "starting container",
+  },
+];
+const ROOMS = [
+  {
+    room_id: "!r-proj-01:matrix.local", name: "项目群-审计样例-01",
+    member_count: 4,
+    members: {
+      [MX]: { display_name: "audit-lead" },
+      "@audit-worker-a:matrix.local": { display_name: "audit-worker-a" },
+      "@audit-user:matrix.local": { display_name: "审计用户" },
+    },
+    unread: 2, unread_highlight: 1, last_ts: 1789000000001,
+    last_body: "任务已派发，等待执行结果", last_sender: MX,
+    typing: ["audit-lead"],
+  },
+  {
+    room_id: "!r-proj-02:matrix.local", name: "项目群-审计样例-02",
+    member_count: 3,
+    members: {
+      [MX]: { display_name: "audit-lead" },
+      "@audit-user:matrix.local": { display_name: "审计用户" },
+    },
+    last_ts: 1789000000002, last_body: "第二段：代码块与长消息测试",
+    last_sender: MX,
+  },
+  {
+    room_id: "!r-proj-03:matrix.local", name: "项目群-审计样例-03",
+    member_count: 2,
+    members: { "@audit-user:matrix.local": { display_name: "审计用户" } },
+    last_ts: 1789000000003, last_body: "短消息",
+    last_sender: MX,
+  },
+];
+const CODE_TEXT =
+  "```\nexport function auditProbe() {\n  const n = 44;\n  return n >= 44 ? 'pass' : 'fail';\n}\n```";
+function msgs(roomId) {
+  const base = roomId.replace(/[^a-z0-9]/gi, "");
+  const mk = (i, sender, body, extra = {}) => ({
+    event_id: `$e-${base}-${i}`, sender, body,
+    msgtype: "m.text", origin_server_ts: 1789000000000 + i * 1000,
+    ...extra,
+  });
+  return [
+    mk(1, "@audit-user:matrix.local", "帮我审计一下这个页面的深色渲染"),
+    mk(2, MX, "收到，先跑一遍全 tab 扫描，重点看白底黑字和 44px 触控目标。"),
+    mk(3, MX, "关键判定逻辑如下：", {}),
+    mk(4, MX, CODE_TEXT),
+    mk(5, MX, "这是一条很长的消息，用来验证气泡省略、hover 操作条（复制/引用/表情反应）在深色主题下的对比度与定位是否正确，同时覆盖触屏 tap 切换路径（TOUCH_ONLY 分支）的样式渲染。".repeat(2)),
+    mk(6, "@audit-worker-a:matrix.local", "worker-a 回执：任务执行完成，结果见附件。"),
+  ];
+}
+const CONFIG = {
+  matrix_homeservers: [],
+  controller_urls: [],
+  // 占位假值——审计 fixture 非真实凭据（真实 token 永不入报告，铁律）。
+  controller_token: "audit-mock-ctl-token-placeholder",
+  matrix: { user_id: "@audit-user:matrix.local", access_token: "", device_id: "AUDIT01" },
+  admin_username: "admin",
+  admin_password: "***",
+  controllerTokenSource: "config",
+  config_health: { state: "ok", path: "/config/audit.yaml", size: 512, writable: true },
+  credential_state: { admin_password: "saved", matrix_homeservers: [], controller_urls: [] },
+  console_effects: "light",
+  sglang: { enabled: true, urls: [{ url: "http://127.0.0.1:30000" }] },
+  config_rev: "audit-rev-1",
+  address_mode: "auto",
+};
+const WF_EVENTS = [
+  {
+    runId: "run-audit-01", title: "审计项目-深色扫描", status: "running",
+    coordinator: "audit-lead", room_id: "!r-proj-01:matrix.local",
+    room_name: "项目群-审计样例-01", sender: MX, ts: 1789000000010,
+    plan_type: "dag",
+    nodes: [
+      { id: "n1", subagent: "audit-lead", task: "扫描主题令牌", dependsOn: [] },
+      { id: "n2", subagent: "audit-worker-a", task: "截图 11 tab", dependsOn: ["n1"] },
+      { id: "n3", subagent: "audit-worker-b", task: "44px 触控核验", dependsOn: ["n1"] },
+    ],
+    taskDetails: [
+      { task_id: "n1", title: "扫描主题令牌", status: "done" },
+      { task_id: "n2", title: "截图 11 tab", status: "running" },
+      { task_id: "n3", title: "44px 触控核验", status: "pending" },
+    ],
+  },
+  {
+    runId: "run-audit-02", title: "审计项目-触控矩阵", status: "done",
+    coordinator: "audit-lead", room_id: "!r-proj-02:matrix.local",
+    room_name: "项目群-审计样例-02", sender: MX, ts: 1788900000000,
+  },
+];
+const TREE = [
+  {
+    team_name: "audit-team", room_id: "!r-proj-01:matrix.local",
+    workers: [
+      { worker_name: "audit-lead", mxid: MX, role: "leader", phase: "Ready", room_id: "!r-audit-lead:matrix.local", runtime: "qwenpaw", spawns: [{ session_id: "sess-a1", name: "spawn-a1", status: "running", created_at: 1789000000000 }] },
+      { worker_name: "audit-worker-a", mxid: "@audit-worker-a:matrix.local", role: "worker", phase: "Ready", room_id: "!r-audit-wa:matrix.local", runtime: "qwenpaw", spawns: [] },
+    ],
+  },
+  {
+    team_name: "audit-team-2", room_id: "!r-proj-03:matrix.local",
+    workers: [
+      { worker_name: "audit-worker-b", mxid: "@audit-worker-b:matrix.local", role: "worker", phase: "Spawning", room_id: "!r-audit-wb:matrix.local", runtime: "qwenpaw", spawns: [] },
+    ],
+  },
+];
+const ARTIFACTS = [
+  {
+    event_id: "$art-1", room_id: "!r-proj-01:matrix.local",
+    room_name: "项目群-审计样例-01", sender: MX, ts: 1789000000020,
+    msgtype: "m.file", url: "/agentteams-proxy/media/1/art-1.txt",
+    filename: "audit-report-draft.md", body: "audit-report-draft.md",
+    mimetype: "text/markdown", size: 2048,
+  },
+  {
+    event_id: "$art-2", room_id: "!r-proj-02:matrix.local",
+    room_name: "项目群-审计样例-02", sender: MX, ts: 1789000000030,
+    msgtype: "m.image", url: "/agentteams-proxy/media/2/art-2.png",
+    filename: "dark-shot.png", body: "dark-shot.png",
+    mimetype: "image/png", size: 51200,
+  },
+];
+const SELF_CHECK = {
+  ok: true, checks: [
+    { name: "L1 配置可达", ok: true, detail: "config loaded" },
+    { name: "L1 Controller 连通", ok: true, detail: "workers=3" },
+    { name: "L2 房间可读", ok: true, detail: "rooms=3" },
+    { name: "L2 SSE 事件流", ok: false, detail: "audit mock 无事件流", hint: "dev 页为离线审计，SSE 断连属预期" },
+  ],
+};
+const GATEWAY_ENVELOPE = (inner) => ({ available: true, data: { code: 0, data: inner } });
+const AI_ROUTES = [
+  { name: "default-ai-route", matchType: "EQUAL", modelPredicates: ["deepseek-v4-flash"], provider: "openai-compat" },
+  { name: "qwen-local-audit", matchType: "EXACT", modelPredicates: ["qwen-audit-27b-fp8"], provider: "sglang-local" },
+];
+const AI_PROVIDERS = [
+  { name: "openai-compat", type: "openai" },
+  { name: "sglang-local", type: "openai" },
+];
+
+// ── host.fetch 路由表（requestJson → host.fetch 全走这里）────────────
+const ROUTES = {
+  "/config/theme": {
+    accent: "#FF7F16", accent_hover: "#FF9C4D", accent_bg: "#FFF3E8",
+    dark: { accent: "#FF9C4D", accent_bg: "#33200F", surface: "#1f1f1f" },
+  },
+  "/agentteams-proxy/health": { version: "0.5.0-beta.15.36", ok: true },
+  "/agentteams-proxy/config": CONFIG,
+  "/agentteams-proxy/auth-status": { matrix_token: "valid", console_session: "active", controller_token: "config" },
+  "/agentteams-proxy/teams/sync": {
+    ok: true, rooms: ROOMS,
+    invites: [{ room_id: "!r-inv-01:matrix.local", name: "审计邀请-01", inviter: MX, inviter_ts: 1789000000000 }],
+    muted_rooms: [], user_id: "@audit-user:matrix.local",
+  },
+  "/agentteams-proxy/teams/structure": { ok: true, source: "controller-workers", tree: TREE },
+  "/agentteams-proxy/controller/api/v1/workers": WORKERS,
+  "/agentteams-proxy/controller/api/v1/teams": [
+    { name: "audit-team", phase: "Running", leaderName: "audit-lead", readyWorkers: 1, totalWorkers: 2, workerNames: ["audit-lead", "audit-worker-a"] },
+    { name: "audit-team-2", phase: "Spawning", leaderName: "", readyWorkers: 0, totalWorkers: 1, workerNames: ["audit-worker-b"] },
+  ],
+  "/agentteams-proxy/controller/api/v1/humans": [],
+  "/agentteams-proxy/controller/api/v1/managers": [],
+  "/agentteams-proxy/controller/api/v1/status": {
+    controller: { version: "v1.2.5", state: "Running" },
+    nodes: [{ name: "node-audit", state: "Ready", gpus: 1 }],
+  },
+  "/agentteams-proxy/cluster-info": { agentteams_version: "v1.2.5-audit", higress_version: "2.1.0-audit" },
+  "/agentteams-proxy/workflow/events": { ok: true, events: WF_EVENTS },
+  "/agentteams-proxy/workflow/projects": { projects: [], total: 0 },
+  "/agentteams-proxy/artifacts": { items: ARTIFACTS },
+  "/agentteams-proxy/kb/agents": {
+    agents: [
+      { name: "audit-lead", container: "agentteams-qwenpaw-worker-audit-lead", state: "running", kind: "worker", team: "audit-team", role: "leader", runtime: "qwenpaw" },
+    ],
+  },
+  "/agentteams-proxy/controller/api/v1/gateway/ai-routes": GATEWAY_ENVELOPE({ routes: AI_ROUTES }),
+  "/agentteams-proxy/gateway/ai-routes": GATEWAY_ENVELOPE({ routes: AI_ROUTES }),
+  "/agentteams-proxy/gateway/ai-providers": GATEWAY_ENVELOPE({ providers: AI_PROVIDERS }),
+  "/agentteams-proxy/sglang/loads": {
+    ok: true, timestamp: new Date().toISOString(), accelerator: "audit-gpu",
+    num_accelerators: 1, version: "v0.5-audit",
+    ranks: [{
+      dp_rank: 0, snapshot_ts: 1789000000, num_running_reqs: 1,
+      num_waiting_reqs: 0, num_used_tokens: 12000, num_total_tokens: 12000,
+      pool_total_tokens: 200000, max_running_requests: 8,
+      token_usage: 0.06, utilization: 0.12, cache_hit_rate: 0.42,
+      gen_throughput: 30.5, mem_weight_gb: 16, mem_kv_gb: 20, mem_graph_gb: 1, mem_token_capacity: 200000,
+    }],
+  },
+  "/agentteams-proxy/sglang/models": { models: ["qwen-audit-27b-fp8"] },
+  "/agentteams-proxy/room-approvals": { approvals: [] },
+  "/agentteams-proxy/coding-runs": [],
+  "/agentteams-proxy/controller/api/v1/coding-runs": [],
+  "/agentteams-proxy/upgrade/check-all": { updates: [] },
+  "/agentteams-proxy/upgrade/versions": { versions: ["15.36-audit"] },
+  "/agentteams-proxy/matrix/search": { rooms: [] },
+  "/agentteams-proxy/matrix/mark-read": { ok: true },
+};
+// 动态路由（带路径段）
+const DYNAMIC = [
+  {
+    re: /^\/agentteams-proxy\/matrix\/rooms\/([^/]+)\/messages/,
+    make: (m) => ({ messages: msgs(decodeURIComponent(m[1])), end: `t-${m[1].length}`, start: "t-0" }),
+  },
+  {
+    re: /^\/agentteams-proxy\/kb\/([^/]+)\/tree$/,
+    make: (m) => ({
+      agent: m[1], workspace: "/ws/" + m[1],
+      files: [
+        { path: "MEMORY.md", size: 1024, mtime: 1789000000 },
+        { path: "notes/audit.md", size: 512, mtime: 1789000000 },
+      ],
+      dirs: ["notes"], count: 2,
+    }),
+  },
+  {
+    re: /^\/agentteams-proxy\/kb\/([^/]+)\/graph$/,
+    make: (m) => ({ agent: m[1], nodes: [], edges: [], file_count: 2 }),
+  },
+  {
+    re: /^\/agentteams-proxy\/selfcheck\/(l[123]|L[123])$/,
+    make: () => SELF_CHECK,
+  },
+  {
+    re: /^\/agentteams-proxy\/docker-logs\/([^?]+)/,
+    make: () => ({
+      lines: [
+        { timestamp: "2026-10-19T10:00:00.000Z", level: "info", component: "connector", message: "audit mock log line 1" },
+        { timestamp: "2026-10-19T10:00:01.000Z", level: "info", component: "worker", message: "audit mock log line 2" },
+      ],
+    }),
+  },
+];
+
+function routeLookup(path) {
+  const clean = path.split("?")[0];
+  if (ROUTES[clean] !== undefined) return ROUTES[clean];
+  for (const d of DYNAMIC) {
+    const m = clean.match(d.re);
+    if (m) return d.make(m);
+  }
+  return null;
+}
+
+// ── 宿主 mock（与 dev-manage-overflow.html 同款注入法）──────────────
+const antd = (antdNs.default ?? antdNs);
+window.QwenPaw = {
+  host: {
+    React,
+    antd,
+    useTheme: () => MODE, // ← 审计核心：主题 mock（dark/light 由 ?theme= 定）
+    useLocale: () => "zh-CN",
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+    env: { kind: "server", caps: { net: false, secureStore: false, notify: false } },
+    fetch: async (path, _init) => {
+      const body = routeLookup(String(path));
+      if (body !== null) {
+        return {
+          ok: true, status: 200,
+          json: async () => JSON.parse(JSON.stringify(body)),
+          text: async () => JSON.stringify(body),
+        };
+      }
+      return {
+        ok: false, status: 404,
+        json: async () => ({ detail: "audit mock: not found" }),
+        text: async () => JSON.stringify({ detail: "audit mock: not found" }),
+      };
+    },
+  },
+  // index.tsx 入口才用到的面（本页直接渲染 WorkbenchPage，提供空实现防误调）。
+  chat: { approval: { render: () => {} } },
+  registerRoutes: () => {}, route: { add: () => {} },
+  menu: { add: () => {}, remove: () => {} },
+};
+
+// SSE：WorkbenchPage 用原生 fetch 开 /agentteams-proxy/events 流。
+// mock = 永不结束的 keepalive 流 → sseState=connected（与真宿主等效）。
+const origFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const url = String(typeof input === "string" ? input : input.url);
+  if (url.includes("/agentteams-proxy/events")) {
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(c) {
+        c.enqueue(enc.encode(": keepalive\n\n"));
+        const t = setInterval(() => c.enqueue(enc.encode(": keepalive\n\n")), 15000);
+        stream.cancel = () => clearInterval(t);
+      },
+    });
+    return Promise.resolve({
+      ok: true, status: 200, body: stream,
+      headers: new Headers({ "content-type": "text/event-stream" }),
+    });
+  }
+  return origFetch(input, init);
+};
+
+// ── 渲染真实 WorkbenchPage（生产入口同一组件，无 props）─────────────
+const { default: WorkbenchPage } = await import("./src/WorkbenchPage");
+const root = createRoot(document.getElementById("root"));
+root.render(React.createElement(WorkbenchPage));
+
+// 渲染完成标记（runner 等这个，再等数据波落地）。
+const bar = document.getElementById("audit-bar");
+bar.textContent =
+  `AUDIT tab=${TAB} theme=${MODE} mode=mocked useTheme()=${MODE} — rendered, settling…`;
+window.setTimeout(() => {
+  bar.textContent =
+    `AUDIT tab=${TAB} theme=${MODE} — READY (data waves settled ~7s)`;
+}, 7000);
+</script>
+</body>
+</html>

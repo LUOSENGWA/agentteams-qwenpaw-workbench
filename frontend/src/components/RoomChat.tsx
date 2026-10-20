@@ -3353,12 +3353,20 @@ function RoomChat(props: RoomChatProps) {
               const sep = wantsDateSeparator(prev, msg);
               const mine = myUserId !== "" && msg.sender === myUserId;
               const isLast = idx === threadGroups.tops.length - 1;
-              const showTime = hoveredId === msg.event_id || isLast;
               // Element 同款分组——同一发送者连续消息不
               // 重复头像+名字（Element 最具辨识度的视觉特征）；日期分隔
               // 强制断组（跨天的同发送者也算新组）。
               const sameSender =
                 !sep && prev !== null && prev.sender === msg.sender;
+              // gutter 时间：hover ∥ 末行 ∥（触屏：组头行常显）——触屏无
+              // hover，tap 虽经 hoveredId 也能显时间，但 tap 的语义是
+              // 弹操作条（对消息动手）不是看时间；组头行（头像+名）常显
+              // 时间是移动端聊天通行做法，gutter 高 28px 固定不 reflow，
+              // 组内延续行照旧隐（tap 显）。
+              const showTime =
+                hoveredId === msg.event_id ||
+                isLast ||
+                (TOUCH_ONLY && !sameSender);
               // 未读线：打开房间后新到的消息（ts > readTs）第一条前插线。
               const unreadLine =
                 readTs > 0 &&

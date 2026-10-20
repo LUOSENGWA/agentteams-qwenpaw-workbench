@@ -86,6 +86,9 @@ export default function VersionTablePicker({
         padding: compact ? 8 : 10,
         display: "grid",
         gap: 6,
+        // border-box：width:100%/min(560px,100%) 默认 content-box 时 padding
+        // 计入外宽，窄容器（<560）下整盒右移 2×padding 溢出。
+        boxSizing: "border-box",
         width: compact ? "100%" : "min(560px, 100%)",
       }}
     >
@@ -131,7 +134,7 @@ export default function VersionTablePicker({
               rowKey="version"
               dataSource={rows}
               pagination={false}
-              scroll={{ y: 236 }}
+              scroll={{ y: 236, x: 440 }}
               rowSelection={{
                 type: "radio",
                 selectedRowKeys: value ? [value] : [],

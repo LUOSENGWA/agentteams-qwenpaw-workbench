@@ -719,7 +719,23 @@ function OpsPanel({
           <WbTooltip title={tr("经 Controller Docker API 代理拉容器日志（dashboard debug-log 同源；需要管理员 token）")}>
             <span style={{ color: t.textSecondary, cursor: "help", fontSize: 12 }}>ⓘ</span>
           </WbTooltip>
-          <span style={{ fontSize: 11, color: t.textSecondary }}>
+          <span
+            style={{
+              fontSize: 11,
+              color: t.textSecondary,
+              // 行项 min 宽护栏：本行固定项（标题+提示+Select 200+Segmented+
+              // Switch+刷新钮）在 768 容器仅 ~5px 余量，瞬态（如 loading
+              // 钮变宽）超 6px 即刷新钮折行、开关贴右缘，antd Switch 的
+              // 预定位隐藏 label（ml:68/mr:-68 过渡定位）被推越视口右缘
+              // （审计 ops@768 瞬态 TRUE，单格重跑不复现）。本提示是行内
+              // 唯一可变宽项：允许收缩（min 120px + ellipsis）吸收瞬态，
+              // 不折行稳定区从 ≥728 扩到 ≥638，以下折行行为不变。
+              minWidth: 120,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {tr("自动刷新 15 秒")}
             {logsUpdatedAt > 0 &&
               ` · ${tr("{n} 行 · 更新于 {time}", {
