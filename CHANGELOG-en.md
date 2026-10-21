@@ -3,6 +3,11 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.40 (2026-10-21 - session detail white-screen crash fix)
+
+**Fixed**
+- **Opening a session detail white-screened the whole plugin**: opening any session from a worker's chat list (clicking the card or its "View" button) crashed the entire plugin UI to a blank screen. The issue existed since the 14.x series and is now fixed at the root; session details open and close normally.
+
 ## 0.5.0-beta.15.39 (2026-10-21 - chat regression fix + message-stream polish)
 
 **Fixed**
