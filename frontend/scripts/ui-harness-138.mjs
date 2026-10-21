@@ -6,7 +6,7 @@
  *
  * 断言（13.7 「六项都做进去了吗 + 模板抄 QwenPaw + 词元/令牌术语」）：
  * ① 七 tab 全在（ReAct 智能体/智能体 Loop 设置/LLM 自动重试/LLM 并发限流/
- * 上下文管理/长期记忆/系统只读）
+ * 上下文管理/长期记忆/系统）
  * ② L2：ReAct tab shell 组只读；并发限流 tab 出 L1-only 警示 + 控件 disabled
  * ③ L1：ReAct tab shell 超时 InputNumber=60 / 可执行文件=/bin/sh / 自动标题 on
  * ④ L1：并发限流 5 值 2/30/5/1/60；上下文管理 backend=light、divisor=4
@@ -43,6 +43,8 @@ const clickTab = (sel, label) =>
 
 // ── ① 七 tab 全在（L2 实例）─────────────────────────────────────
 await expand("#hrc");
+// 末位 tab 期望来源：WorkerRuntimeConfigView.tsx——label = tr("系统")
+// （pane 内嵌 ApprovalControl 审批策略四档卡）。
 const tabs = [
   "ReAct 智能体",
   "智能体 Loop 设置",
@@ -50,7 +52,7 @@ const tabs = [
   "LLM 并发限流",
   "上下文管理",
   "长期记忆",
-  "系统（只读）",
+  "系统",
 ];
 for (const t of tabs) {
   const c = await page

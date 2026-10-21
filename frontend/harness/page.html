@@ -18,7 +18,7 @@ window.QwenPaw = {
     antd: window.antd,
     // api.ts 无 host.fetch 时走 fetch(host.getApiUrl(path))——同域直回（fetch 已被 mock）。
     getApiUrl: (p) => p,
-    getApiToken:  => "",
+    getApiToken: () => "",
   },
 };
 
@@ -125,15 +125,15 @@ window.fetch = async (url, init) => {
     return {
       ok: true,
       status: 200,
-      json: async  => ROUTES[key],
-      text: async  => JSON.stringify(ROUTES[key]),
+      json: async () => ROUTES[key],
+      text: async () => JSON.stringify(ROUTES[key]),
     };
   }
   return {
     ok: false,
     status: 404,
-    json: async  => ({ detail: "not found" }),
-    text: async  => JSON.stringify({ detail: "not found" }),
+    json: async () => ({ detail: "not found" }),
+    text: async () => JSON.stringify({ detail: "not found" }),
   };
 };
 </script>

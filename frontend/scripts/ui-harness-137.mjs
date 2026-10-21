@@ -4,10 +4,10 @@
  * 场景：真实 React + antd（node_modules UMD）挂载四个目标组件 + fetch mock
  * （QwenPaw 消息 JSON 结构正源：type/role/content[{text}|{data.data.name/...}]）。
  *
- * 断言（13.6 四修对应）：
- * ① 会话列表：长名省略 + 点击展开显 session_id（再点收起）
- * ② 会话详情：QwenPaw result-only 折叠——「3 步」pill 收起无子行、点开懒渲染、
- * 轮尾最终文本 markdown 直显、轮 2（无最终文本）全折叠
+ * 断言（13.6 四修对应；①② 按现行卡片列表/分组口径对齐）：
+ * ① 会话列表（卡片列表）：session_id 卡片元行常显 + 整卡点击进详情、返回列表可回
+ * ② 会话详情：工具组折叠「2 步」pill×2 收起无子行、点开懒渲染、轮尾最终文本
+ * markdown 直显、带文本 assistant（含 reasoning）独立气泡
  * ③ 运行配置：基本 tab 无滑杆、迭代门 InputNumber=80、重复保护窗口=4（window_size）、
  * 改值→保存按钮点亮（diff 生效）
  * ④ 聊天渲染：ToolBubble 状态色（❌ 红）+ 展开分区（参数/错误）、
@@ -28,22 +28,24 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 1600 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 await page.goto("http://127.0.0.1:8791/harness/page.html", { waitUntil: "load" });
-await page.waitForSelector("#hc .ant-table", { timeout: 8000 });
+// 期望来源：WorkerChats.tsx——列表由 antd Table 改为卡片列表（整卡点击进详情），
+// 以卡片「查看」link 钮作列表就绪锚点。
+await page.waitForSelector("#hc .ant-btn-link", { timeout: 8000 });
 await page.waitForTimeout(400);
 
-// ── ① WorkerChats 列表 ──────────────────────────────────────────────
-const row = page.locator("#hc .ant-table-tbody tr").first();
-await row.waitFor({ timeout: 5000 });
-// 点击会话名 → 行内展开（全名 + session_id）
-await row.locator("td").first().locator("div").first().click();
-await page.waitForTimeout(150);
-const expandedText = await row.locator("td").first().innerText();
-report("① 点击展开显 session_id", expandedText.includes("sess-abc-123"), expandedText.replace(/\n/g, " ").slice(0, 60));
-// 再点收起
-await row.locator("td").first().locator("div").first().click();
-await page.waitForTimeout(150);
-const collapsedText = await row.locator("td").first().innerText();
-report("① 再点收起", !collapsedText.includes("sess-abc-123"));
+// ── ① WorkerChats 列表（卡片列表）──────────────────────────────────
+// 期望来源：WorkerChats.tsx 卡片列表——session_id 在卡片元行常显
+// （不再有点击展开/收起交互）；整卡可点进详情，详情头「会话列表」钮返回列表。
+const card = page.locator("#hc .ant-btn-link").first().locator("xpath=../..");
+await card.waitFor({ timeout: 5000 });
+const cardText = await card.innerText();
+report("① 卡片列表常显 session_id", cardText.includes("sess-abc-123"), cardText.replace(/\n/g, " ").slice(0, 60));
+// 点卡片进详情（现行等价于旧「点击展开」），再返回列表供 ② 经「查看」重新进入
+await card.click();
+await page.waitForSelector("#hc .ant-alert", { timeout: 5000 });
+await page.locator("#hc").getByText("会话列表", { exact: true }).click();
+await page.waitForSelector("#hc .ant-btn-link", { timeout: 5000 });
+report("① 点卡片进详情/返回列表", (await page.locator("#hc .ant-btn-link").count()) >= 1);
 
 // ── ② WorkerChats 详情（result-only 折叠）───────────────────────────
 await page.locator("#hc").getByText("查看", { exact: true }).first().click();
@@ -58,17 +60,19 @@ report("② 用户气泡右对齐", ubBox && hcBox ? ubBox.x > hcBox.x + hcBox.w
 // 最终文本（轮 1 结果）直显
 const finalText = page.locator("#hc").getByText("文件内容是", { exact: false }).first();
 await finalText.waitFor({ timeout: 3000 });
-// 步骤 pill：轮 1 = reasoning+call+output = 3 步；轮 2 = 2 步
-const pill3 = page.locator("#hc").getByText("3 步", { exact: true });
+// 步骤 pill：期望来源 WorkerChatsShared.tsx groupTurns/msgKind（QwenPaw 对话框
+// 口径）——带文本的 assistant 消息（含 reasoning）独立成气泡，仅 tool/无文本
+// 消息折叠成 pill；mock 两个工具组各 call+output=2 项 → 两个「2 步」pill。
 const pill2 = page.locator("#hc").getByText("2 步", { exact: true });
-await pill3.waitFor({ timeout: 3000 });
-report("② 轮 1 折叠为「3 步」", (await pill3.count()) >= 1);
-report("② 轮 2 折叠为「2 步」", (await pill2.count()) >= 1);
+await pill2.first().waitFor({ timeout: 3000 });
+const pill2Count = await pill2.count();
+report("② 轮 1 工具组折叠为「2 步」", pill2Count >= 1, `count=${pill2Count}`);
+report("② 轮 2 工具组折叠为「2 步」", pill2Count >= 2, `count=${pill2Count}`);
 // 收起时子行不渲染（懒渲染）：read_file 步骤行不可见
 const stepVisible = await page.locator("#hc").getByText("read_file", { exact: true }).count();
 report("② 收起时步骤子行不渲染", stepVisible === 0, `count=${stepVisible}`);
-// 点开 → 懒渲染出 read_file + bash
-await pill3.click();
+// 点开第一个 pill → 懒渲染出 read_file（bash 组仍收起）
+await pill2.first().click();
 await page.waitForTimeout(200);
 const afterOpen = await page.locator("#hc").getByText("read_file", { exact: true }).count();
 report("② 点开懒渲染步骤行", afterOpen >= 1, `count=${afterOpen}`);
@@ -127,14 +131,16 @@ report("③ 未改动时保存禁用", (await saveBtn.count()) >= 1 && (await sa
 await iterInput.fill("100");
 await page.waitForTimeout(200);
 report("③ 改动后保存点亮", !(await saveBtn.first().isDisabled()));
-// 系统 tab：13.8 瘦身——只留审批级别（限速器 5 键已独立成「LLM 并发限流」tab，
-// 见 ui-harness-138）。此处断言系统 tab 含审批级别且不再含限速器行。
-await page.locator("#hrc .ant-tabs-tab").getByText("系统（只读）", { exact: true }).click();
+// 系统 tab：期望来源 WorkerRuntimeConfigView.tsx——tab label = tr("系统")，
+// pane 内嵌 ApprovalControl（与团队管理卡同源的审批策略四档卡）；锚点用其
+// 固定描述行（ApprovalControl.tsx「配置工具调用的审批策略…」）。限速器行
+// 仍不在本 tab（独立「LLM 并发限流」tab，见 ui-harness-138）。
+await page.locator("#hrc .ant-tabs-tab").getByText("系统", { exact: true }).click();
 await page.waitForTimeout(200);
 const sysPane = "#hrc .ant-tabs-tabpane-active";
-const apprRows = await page.locator(sysPane).getByText("审批级别").count();
+const apprRows = await page.locator(sysPane).getByText("配置工具调用的审批策略").count();
 const rateRows = await page.locator(sysPane).getByText("LLM 并发上限").count();
-report("③ 系统 tab 只留审批级别", apprRows >= 1 && rateRows === 0, `appr=${apprRows} rate=${rateRows}`);
+report("③ 系统 tab 内嵌审批策略控件", apprRows >= 1 && rateRows === 0, `appr=${apprRows} rate=${rateRows}`);
 
 // ── ④ RoomChat ToolBubble + MdText CodeBlock ───────────────────────
 const roomPane = page.locator("#hroom");
