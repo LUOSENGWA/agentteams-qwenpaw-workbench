@@ -3,6 +3,15 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.39 (2026-10-21 - chat regression fix + message-stream polish)
+
+**Fixed**
+- **Room composer disappeared**: opening a group/DM room incorrectly showed "You don't have permission to send messages in this room" and hid the input box, blocking sending. Fixed: the composer is back and you can type and send normally.
+
+**Improved**
+- **Jump-to-bottom button easier to tap**: when you scroll up in the message stream, the "↓" button now has a larger tap area and press feedback, so it is easier to hit and responds to presses.
+- **New-message badge capped**: in long-running conversations the "N new messages" badge is capped at 99 so it no longer grows without bound.
+
 ## 0.5.0-beta.15.38 (2026-10-20 - tech-debt batch: oversized file splits + dead code removal + duplication convergence)
 
 Pure internal code-structure refactoring (7 batches, 20 commits). UI and behavior are identical to 15.37 with zero user-visible change; the goal is maintainability (the full audit found 18 oversized files of 1,100-4,600 lines, 6 dead functions, 75 redundant exports and 10 duplication clusters - all addressed).
