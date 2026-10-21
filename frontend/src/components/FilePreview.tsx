@@ -5,16 +5,13 @@ import WbTableFade from "./WbTableFade";
 
 import { downloadViaHost, fetchFile } from "../api";
 import { parseDelimited, parseXlsx, type TableData } from "../previewTables";
+import { pickIcon } from "../lib/antdIcons";
 import MdText from "./MdText";
 
 const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
-const icons = (host.antdIcons || {}) as Record<string, ReactNS.ComponentType>;
-const EmptyIcon = (() => null) as unknown as ReactNS.FC<Record<string, unknown>>;
-const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
-  (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
-const DownloadIcon = pick("DownloadOutlined");
+const DownloadIcon = pickIcon("DownloadOutlined");
 
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"]);
 const TEXT_PREVIEW_EXT = new Set([

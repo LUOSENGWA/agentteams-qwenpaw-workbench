@@ -1,5 +1,4 @@
 import { PageIcon, CloseIcon } from "./icons";
-import type * as ReactNS from "react";
 import {
   downloadViaHost,
   fetchProjectWorkflow,
@@ -11,17 +10,14 @@ import {
 import { invalidateTags } from "../requestCache";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
+import { pickIcon } from "../lib/antdIcons";
 import { FilePreview, type PreviewFile } from "./FilePreview";
 import { ActionBtn } from "./ActionBtn";
 
 const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
-const icons = (host.antdIcons || {}) as Record<string, ReactNS.ComponentType>;
-const EmptyIcon = (() => null) as unknown as ReactNS.FC<Record<string, unknown>>;
-const pick = (name: string): ReactNS.FC<Record<string, unknown>> =>
-  (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
-const DownloadIcon = pick("DownloadOutlined");
+const DownloadIcon = pickIcon("DownloadOutlined");
 
 /** 任务文件条目（产物端点 artifact 声明：result_path/spec_path/deliverables）。 */
 interface TaskFile {

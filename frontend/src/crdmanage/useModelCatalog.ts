@@ -13,7 +13,11 @@ import {
   buildModelSelectionOptions,
   type ModelSelectionOption,
 } from "../modelCatalog";
-import { extractGatewayLists, isPathLikeModel } from "../modelUnion";
+import {
+  buildModelOptionGroups,
+  extractGatewayLists,
+  isPathLikeModel,
+} from "../modelUnion";
 import { soulBudget, soulLines } from "./helpers";
 import type { TrFn } from "./types";
 
@@ -87,45 +91,10 @@ export function useModelCatalog({ workers, tr }: UseModelCatalogArgs) {
   }, [modelOpts, workers, gatewayOpts]);
   /** AutoComplete 下拉——Higress Console 会话可用时三组（Higress alias
  * 可解析 / 内置 alias / 在服+在用）；不可用=原平铺列表。value 恒为 alias 本身。 */
-  const modelOptions = React.useMemo(() => {
-    if (!gatewayOpts || gatewayOpts.length === 0) {
-      return modelCandidates.map((m) => ({ value: m }));
-    }
-    const aliasSet = new Set(gatewayOpts.map((o) => o.alias));
-    const rest = modelCandidates
-      .filter((m) => !aliasSet.has(m))
-      .map((m) => ({ value: m }));
-    const groups: {
-      value: string;
-      label: string;
-      options: { value: string; label?: string }[];
-    }[] = [];
-    const configured = gatewayOpts.filter((o) => o.kind === "configured");
-    const builtin = gatewayOpts.filter((o) => o.kind === "builtin");
-    if (configured.length > 0) {
-      groups.push({
-        value: "gateway-configured",
-        label: tr("Higress alias（路由可解析）"),
-        options: configured.map((o) => ({
-          value: o.alias,
-          label: o.binding?.routeName
-            ? `${o.alias} → ${o.binding.routeName}/${o.binding.targetModel}`
-            : o.alias,
-        })),
-      });
-    }
-    if (builtin.length > 0) {
-      groups.push({
-        value: "gateway-builtin",
-        label: tr("Higress 内置 alias（需配路由映射）"),
-        options: builtin.map((o) => ({ value: o.alias })),
-      });
-    }
-    if (rest.length > 0) {
-      groups.push({ value: "local", label: tr("在服+在用"), options: rest });
-    }
-    return groups;
-  }, [gatewayOpts, modelCandidates, tr]);
+  const modelOptions = React.useMemo(
+    () => buildModelOptionGroups(modelCandidates, gatewayOpts, tr),
+    [gatewayOpts, modelCandidates, tr],
+  );
   /** 现有 Worker CR 的现值（行选中预填 / 保存 diff 用）。 */
   const modelOf = React.useCallback(
     (n: string) => workers.find((w) => w.name === n)?.model || "",

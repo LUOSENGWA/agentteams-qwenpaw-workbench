@@ -122,6 +122,10 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   // 不能用来判「是否钻进了详情」。
   const { narrow } = useWbViewport();
   const [detailOpen, setDetailOpen] = React.useState(false);
+  const selectAndOpen = (runId: string) => {
+    setTopoRun(runId);
+    setDetailOpen(true);
+  };
 
   // ── ：首载状态机 ──
   // 冷启动期 /projects-workflow 快照为空（后端首扫 1-3 分钟），旧行为渲染
@@ -620,10 +624,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
               fill
               events={sortedEvents}
               selected={topoEvent?.runId ?? ""}
-              onSelect={(runId) => {
-                setTopoRun(runId);
-                setDetailOpen(true);
-              }}
+              onSelect={selectAndOpen}
             />
           )
         ) : (
@@ -700,10 +701,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             fill
             events={sortedEvents}
             selected={topoEvent?.runId ?? ""}
-            onSelect={(runId) => {
-              setTopoRun(runId);
-              setDetailOpen(true);
-            }}
+            onSelect={selectAndOpen}
           />
         )
       ) : (

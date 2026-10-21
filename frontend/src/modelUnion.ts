@@ -112,8 +112,9 @@ type ModelOptionGroup = {
 };
 
 /** AutoComplete 下拉（纯函数——可测）：Higress Console 会话可用时三组（Higress alias 可
- * 解析 / 内置 alias / 在服+在用）；不可用=平铺列表。value 恒为 alias 本身。 */
-function buildModelOptionGroups(
+ * 解析 / 内置 alias / 在服+在用）；不可用=平铺列表。value 恒为 alias 本身。
+ * export：crdmanage/useModelCatalog 同款三组构建复用同一实现（不漂移）。 */
+export function buildModelOptionGroups(
   candidates: string[],
   gatewayOpts: ModelSelectionOption[] | null,
   tr: (s: string, vars?: Record<string, string | number>) => string,

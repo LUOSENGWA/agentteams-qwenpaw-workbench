@@ -272,6 +272,13 @@ function TeamOverview(props: TeamOverviewProps) {
       />
     );
   };
+  // 房间列表容器（主列表「全部」区与「团队群」区共用同款 grid 容器，
+  // 两处同形 map 收敛一处，防容器样式漂移）。
+  const renderRoomList = (list: TeamRoom[]) => (
+    <div style={{ display: "grid", gap: 12 }}>
+      {list.map((room) => renderRoomCard(room))}
+    </div>
+  );
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -407,19 +414,11 @@ function TeamOverview(props: TeamOverviewProps) {
           {/* 「全部」= Element 式单一排序混合列表（群/DM 交错，按 roomSort）。
  群/DM 过滤 = 分区展示（各自内部同序）。 */}
           {filter === "all" ? (
-            allByRecent.length > 0 ? (
-              <div style={{ display: "grid", gap: 12 }}>
-                {allByRecent.map((room) => renderRoomCard(room))}
-              </div>
-            ) : null
+            allByRecent.length > 0 ? renderRoomList(allByRecent) : null
           ) : (
             <>
               {/* 团队群 */}
-              {showGroups && groups.length > 0 ? (
-                <div style={{ display: "grid", gap: 12 }}>
-                  {groups.map((room) => renderRoomCard(room))}
-                </div>
-              ) : null}
+              {showGroups && groups.length > 0 ? renderRoomList(groups) : null}
               {/* DM 私聊
  角色改为下方 chips 筛选（不再直接
  分割列表）；默认「全部」=扁平列表（roomSort 同序）。 */}
