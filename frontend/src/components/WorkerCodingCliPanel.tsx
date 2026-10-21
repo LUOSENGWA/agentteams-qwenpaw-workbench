@@ -23,6 +23,7 @@ import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
 import { useModelUnionOptions } from "../modelUnion";
 import { CodeIcon } from "./icons";
+import { WorkerCollapseCard } from "./WorkerPanelsShared";
 import {
   CLI_LABEL,
   LatestBadge,
@@ -745,84 +746,38 @@ function WorkerCodingCliPanel({
   const s = useCodingCliPanel({ worker, sheet, onChanged });
   const { tr } = s;
 
-  if (!s.open) {
-    return (
-      <div
-        style={{
-          margin: sheet ? 0 : "4px 0 4px 22px",
-          border: sheet ? "none" : "1px solid rgba(127,127,127,0.25)",
-          borderRadius: sheet ? 0 : 8,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "5px 10px",
-            cursor: "pointer",
-          }}
-          onClick={() => s.setOpen(true)}
-        >
-          <span style={{ width: 12, fontSize: 10, color: "#888" }}>▸</span>
-          <CodeIcon size={13} />
-          <span style={{ fontWeight: 600, fontSize: 12 }}>
-            {tr("Coding CLI（安装/升级/settings）")}
-          </span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      style={{
-        margin: sheet ? 0 : "4px 0 4px 22px",
-        border: sheet ? "none" : "1px solid rgba(127,127,127,0.25)",
-        borderRadius: sheet ? 0 : 8,
-        padding: sheet ? 0 : 10,
-        display: "grid",
-        gap: 8,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {sheet ? null : (
-          <span
-            style={{ width: 12, fontSize: 10, color: "#888", cursor: "pointer" }}
-            onClick={() => s.setOpen(false)}
-            title={tr("收起")}
+    <WorkerCollapseCard
+      open={s.open}
+      sheet={sheet}
+      icon={<CodeIcon size={13} />}
+      title={tr("Coding CLI（安装/升级/settings）")}
+      onExpand={() => s.setOpen(true)}
+      onCollapse={() => s.setOpen(false)}
+      headerExtra={
+        <>
+          <div style={{ flex: 1 }} />
+          <antd.Button
+            size="small"
+            type="text"
+            disabled={s.state !== "ready" || s.busy}
+            onClick={() => void s.checkUpdates()}
           >
-            ▾
-          </span>
-        )}
-        {sheet ? null : <CodeIcon size={13} />}
-        {sheet ? null : (
-          <span style={{ fontWeight: 600, fontSize: 12 }}>
-            {tr("Coding CLI（安装/升级/settings）")}
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <antd.Button
-          size="small"
-          type="text"
-          disabled={s.state !== "ready" || s.busy}
-          onClick={() => void s.checkUpdates()}
-        >
-          {tr("检查更新")}
-        </antd.Button>
-        <antd.Button
-          size="small"
-          type="text"
-          disabled={s.state !== "ready"}
-          onClick={() => void s.load()}
-        >
-          {tr("刷新")}
-        </antd.Button>
-      </div>
-
+            {tr("检查更新")}
+          </antd.Button>
+          <antd.Button
+            size="small"
+            type="text"
+            disabled={s.state !== "ready"}
+            onClick={() => void s.load()}
+          >
+            {tr("刷新")}
+          </antd.Button>
+        </>
+      }
+    >
       <CodingCliPanelBody s={s} />
-    </div>
+    </WorkerCollapseCard>
   );
 }
 

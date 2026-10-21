@@ -63,6 +63,65 @@ export function showExit(code?: number | null): string {
   return code == null ? "—" : String(code);
 }
 
+/** 列表行（团队版 CodingRunsPanel 与单机版 WorkerCodingRuns 共用，
+ * leading/worker/team 为可选附加列；行序固定，防两文件行体漂移）。 */
+export function CodingRunRow({
+  r,
+  leading,
+  worker,
+  team,
+  onOpen,
+}: {
+  r: CodingRun;
+  leading?: ReactNS.ReactNode;
+  worker?: string;
+  team?: string;
+  onOpen: () => void;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 12px",
+        borderRadius: 8,
+        background: t.cardBg,
+        border: `1px solid ${t.border}`,
+        flexWrap: "wrap",
+      }}
+    >
+      {leading}
+      <span
+        style={{
+          fontFamily: "ui-monospace, monospace",
+          fontSize: 12,
+          color: t.text,
+        }}
+      >
+        {displayTime(r)}
+      </span>
+      <span style={{ flex: 1 }} />
+      {r.cli && <antd.Tag color="geekblue">{r.cli}</antd.Tag>}
+      {worker && (
+        <antd.Tag color="cyan" style={{ fontFamily: "ui-monospace, monospace" }}>
+          {worker}
+        </antd.Tag>
+      )}
+      {r.status && <antd.Tag color={statusVariant(r.status)}>{r.status}</antd.Tag>}
+      <span style={{ fontSize: 11, color: t.textSecondary }}>
+        {tr("退出 {code}", { code: showExit(r.exit_code) })}
+      </span>
+      {team && <antd.Tag color="default">{team}</antd.Tag>}
+      <antd.Button size="small" type="link" onClick={onOpen}>
+        {tr("查看")}
+      </antd.Button>
+    </div>
+  );
+}
+
 function fmtBytes(n?: number | null): string {
   if (n == null) return "—";
   if (n < 1024) return `${n} B`;
@@ -409,53 +468,14 @@ function CodingRunsPanel({ refreshTick = 0 }: { refreshTick?: number }) {
       ) : (
         <div style={{ display: "grid", gap: 6 }}>
           {sorted.map((r) => (
-            <div
+            <CodingRunRow
               key={`${r.task_id}/${r.run}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 12px",
-                borderRadius: 8,
-                background: t.cardBg,
-                border: `1px solid ${t.border}`,
-                flexWrap: "wrap",
-              }}
-            >
-              <FileTextIcon
-                style={{ color: t.textSecondary, fontSize: 14 }}
-              />
-              <span
-                style={{
-                  fontFamily: "ui-monospace, monospace",
-                  fontSize: 12,
-                  color: t.text,
-                }}
-              >
-                {displayTime(r)}
-              </span>
-              <span style={{ flex: 1 }} />
-              {r.cli && <antd.Tag color="geekblue">{r.cli}</antd.Tag>}
-              {r.worker && (
-                <antd.Tag color="cyan" style={{ fontFamily: "ui-monospace, monospace" }}>
-                  {r.worker}
-                </antd.Tag>
-              )}
-              {r.status && (
-                <antd.Tag color={statusVariant(r.status)}>{r.status}</antd.Tag>
-              )}
-              <span style={{ fontSize: 11, color: t.textSecondary }}>
-                {tr("退出 {code}", { code: showExit(r.exit_code) })}
-              </span>
-              {r.team && <antd.Tag color="default">{r.team}</antd.Tag>}
-              <antd.Button
-                size="small"
-                type="link"
-                onClick={() => setSelected(r)}
-              >
-                {tr("查看")}
-              </antd.Button>
-            </div>
+              r={r}
+              leading={<FileTextIcon style={{ color: t.textSecondary, fontSize: 14 }} />}
+              worker={r.worker}
+              team={r.team}
+              onOpen={() => setSelected(r)}
+            />
           ))}
         </div>
       )}

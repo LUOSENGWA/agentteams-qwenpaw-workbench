@@ -21,9 +21,8 @@ import { useThemeColors } from "../theme";
 import { usePoller } from "../usePoller";
 import {
   CodingRunDetailModal,
+  CodingRunRow,
   displayTime,
-  showExit,
-  statusVariant,
 } from "./CodingRunsPanel";
 
 const host = window.QwenPaw.host;
@@ -133,36 +132,11 @@ function WorkerCodingRuns({ worker }: { worker: string }) {
       ) : (
         <div style={{ display: "grid", gap: 6 }}>
           {sorted.map((r) => (
-            <div
+            <CodingRunRow
               key={`${r.task_id}/${r.run}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 12px",
-                borderRadius: 8,
-                background: t.cardBg,
-                border: `1px solid ${t.border}`,
-                flexWrap: "wrap",
-              }}
-            >
-              <span
-                style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: t.text }}
-              >
-                {displayTime(r)}
-              </span>
-              <span style={{ flex: 1 }} />
-              {r.cli ? <antd.Tag color="geekblue">{r.cli}</antd.Tag> : null}
-              {r.status ? (
-                <antd.Tag color={statusVariant(r.status)}>{r.status}</antd.Tag>
-              ) : null}
-              <span style={{ fontSize: 11, color: t.textSecondary }}>
-                {tr("退出 {code}", { code: showExit(r.exit_code) })}
-              </span>
-              <antd.Button size="small" type="link" onClick={() => setSelected(r)}>
-                {tr("查看")}
-              </antd.Button>
-            </div>
+              r={r}
+              onOpen={() => setSelected(r)}
+            />
           ))}
         </div>
       )}

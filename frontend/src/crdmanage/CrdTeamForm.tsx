@@ -10,7 +10,7 @@ import type { ThemeColors } from "../theme";
 import { CheckIcon, ClipIcon, CloseIcon, DocIcon, WarnIcon } from "../components/icons";
 import { WbTooltip } from "../components/WbTooltip";
 import FieldLabel from "./FieldLabel";
-import { roleSelectOptions, workerOptionLabel } from "./helpers";
+import { WorkerRowSelects } from "./WorkerRowSelects";
 import type { TeamForm, TrFn, WorkerRow } from "./types";
 
 const host = window.QwenPaw.host;
@@ -141,13 +141,15 @@ export default function CrdTeamForm({
 行内 Select flex 项 min-width:auto 撑宽，与 cfgRows
 同几何：40% 基线 + wrap 断撑链）。 */}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <antd.Select
-                    size="small"
-                    showSearch
-                    style={{ flex: "1 1 40%", minWidth: 0 }}
+                  <WorkerRowSelects
+                    tr={tr}
+                    row={row}
+                    workers={workers}
+                    workerNames={workerNames}
+                    taken={taken}
                     placeholder={tr("选择 Worker（已有 CR）")}
-                    value={row.name || undefined}
-                    onChange={(v: string) => {
+                    canRemove={workerRows.length > 1}
+                    onWorkerPick={(v: string) => {
                       // 选中即预填该 Worker CR 现值（diff 基线）
                       const mm = modelOf(v);
                       updateRow(i, {
@@ -158,30 +160,9 @@ export default function CrdTeamForm({
                         soulOpen: false,
                       });
                     }}
-                    options={workerNames
-                      .filter((n) => !taken.has(n))
-                      .map((n) => ({
-                        value: n,
-                        label: workerOptionLabel(n, workers),
-                      }))}
+                    onRolePick={(v: string) => updateRow(i, { role: v })}
+                    onRemove={() => removeRow(i)}
                   />
-                  <antd.Select
-                    size="small"
-                    style={{ width: 132 }}
-                    value={row.role}
-                    onChange={(v: string) => updateRow(i, { role: v })}
-                    options={roleSelectOptions(tr)}
-                  />
-                  {workerRows.length > 1 ? (
-                    <antd.Button
-                      size="small"
-                      type="text"
-                      danger
-                      onClick={() => removeRow(i)}
-                    >
-                      ×
-                    </antd.Button>
-                  ) : null}
                 </div>
                 {/* /：行级模型（AutoComplete + 写前校验实时提示） */}
                 <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>

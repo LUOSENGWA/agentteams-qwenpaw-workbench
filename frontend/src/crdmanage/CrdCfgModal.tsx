@@ -13,7 +13,7 @@ import { CloseIcon, WarnIcon } from "../components/icons";
 import SkillCenter from "../components/SkillCenter";
 import { WbTooltip } from "../components/WbTooltip";
 import FieldLabel from "./FieldLabel";
-import { roleSelectOptions, workerOptionLabel } from "./helpers";
+import { WorkerRowSelects } from "./WorkerRowSelects";
 import type { CfgBatchModel, TeamCfgForm, TrFn, WorkerRow } from "./types";
 
 const host = window.QwenPaw.host;
@@ -320,44 +320,27 @@ modelOptions=在服∪在用∪网关 alias，validateModelValue）。
                     {tr("名称 / 角色")}
                   </div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <antd.Select
-                    size="small"
-                    showSearch
-                    style={{ flex: "1 1 40%", minWidth: 0 }}
+                  <WorkerRowSelects
+                    tr={tr}
+                    row={row}
+                    workers={workers}
+                    workerNames={workerNames}
+                    taken={taken}
                     placeholder={tr("选择 Worker")}
-                    value={row.name || undefined}
-                    onChange={(v: string) => {
+                    extra={
+                      missingRef ? (
+                        <antd.Tag color="red">{tr("不存在")}</antd.Tag>
+                      ) : null
+                    }
+                    canRemove={cfgRows.length > 1}
+                    onWorkerPick={(v: string) => {
                       // 换 Worker = 模型重新基线到新成员的现值（防串改）
                       const mm = workers.find((w) => w.name === v)?.model || "";
                       updateCfgRow(i, { name: v, model: mm, modelOrig: mm });
                     }}
-                    options={workerNames
-                      .filter((n) => !taken.has(n))
-                      .map((n) => ({
-                        value: n,
-                        label: workerOptionLabel(n, workers),
-                      }))}
+                    onRolePick={(v: string) => updateCfgRow(i, { role: v })}
+                    onRemove={() => removeCfgRow(i)}
                   />
-                  <antd.Select
-                    size="small"
-                    style={{ width: 132 }}
-                    value={row.role}
-                    onChange={(v: string) => updateCfgRow(i, { role: v })}
-                    options={roleSelectOptions(tr)}
-                  />
-                  {missingRef ? (
-                    <antd.Tag color="red">{tr("不存在")}</antd.Tag>
-                  ) : null}
-                  {cfgRows.length > 1 ? (
-                    <antd.Button
-                      size="small"
-                      type="text"
-                      danger
-                      onClick={() => removeCfgRow(i)}
-                    >
-                      ×
-                    </antd.Button>
-                  ) : null}
                   </div>
                   {/* 模型框 240 定宽（原 1 1 100% 满宽
 =「超宽」；与 Manager 表模型列 180-240 同几何）+ 行内

@@ -42,6 +42,7 @@ import {
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
 import { SettingsIcon } from "./icons";
+import { WorkerCollapseCard } from "./WorkerPanelsShared";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -291,83 +292,37 @@ function WorkerEnvPanel({
 
   if (worker.envEditable !== true) return null;
 
-  // 折叠头（与「运行配置」卡片同款视觉家族）。
-  if (!open) {
-    return (
-      <div
-        style={{
-          margin: sheet ? 0 : "4px 0 4px 22px",
-          border: sheet ? "none" : "1px solid rgba(127,127,127,0.25)",
-          borderRadius: sheet ? 0 : 8,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "5px 10px",
-            cursor: "pointer",
-          }}
-          onClick={() => setOpen(true)}
-        >
-          <span style={{ width: 12, fontSize: 10, color: "#888" }}>▸</span>
-          <SettingsIcon size={13} />
-          <span style={{ fontWeight: 600, fontSize: 12 }}>
-            {tr("环境变量与网关探测")}
-          </span>
-          <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10 }}>
-            {Object.keys(original).length}
-          </antd.Tag>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div
-      style={{
-        margin: sheet ? 0 : "4px 0 4px 22px",
-        border: sheet ? "none" : "1px solid rgba(127,127,127,0.25)",
-        borderRadius: sheet ? 0 : 8,
-        padding: sheet ? 0 : 10,
-        display: "grid",
-        gap: 8,
-      }}
-    >
-      {/* gap 6 = 折叠态同款（段头对齐：折叠/展开两态图标 x 不漂移）。 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {sheet ? null : (
-          <span
-            style={{ width: 12, fontSize: 10, color: "#888", cursor: "pointer" }}
-            onClick={() => setOpen(false)}
-            title={tr("收起")}
+    <WorkerCollapseCard
+      open={open}
+      sheet={sheet}
+      icon={<SettingsIcon size={13} />}
+      title={tr("环境变量与网关探测")}
+      titleExtra={
+        <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10 }}>
+          {Object.keys(original).length}
+        </antd.Tag>
+      }
+      onExpand={() => setOpen(true)}
+      onCollapse={() => setOpen(false)}
+      headerExtra={
+        <>
+          <div style={{ flex: 1 }} />
+          <antd.Button size="small" type="text" onClick={resetEdits} disabled={!dirty}>
+            {tr("重置")}
+          </antd.Button>
+          <antd.Button
+            size="small"
+            type="primary"
+            disabled={!dirty}
+            loading={saving}
+            onClick={() => void save()}
           >
-            ▾
-          </span>
-        )}
-        {sheet ? null : <SettingsIcon size={13} />}
-        {sheet ? null : (
-          // 段头标题字号恒 12（折叠/展开一致，与运行配置/资源管理段头同款）。
-          <span style={{ fontWeight: 600, fontSize: 12 }}>
-            {tr("环境变量与网关探测")}
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <antd.Button size="small" type="text" onClick={resetEdits} disabled={!dirty}>
-          {tr("重置")}
-        </antd.Button>
-        <antd.Button
-          size="small"
-          type="primary"
-          disabled={!dirty}
-          loading={saving}
-          onClick={() => void save()}
-        >
-          {tr("保存")}
-        </antd.Button>
-      </div>
+            {tr("保存")}
+          </antd.Button>
+        </>
+      }
+    >
 
       {msg ? (
         <antd.Alert
@@ -693,7 +648,7 @@ function WorkerEnvPanel({
           onClose={() => setProbeRes(null)}
         />
       ) : null}
-    </div>
+    </WorkerCollapseCard>
   );
 }
 
