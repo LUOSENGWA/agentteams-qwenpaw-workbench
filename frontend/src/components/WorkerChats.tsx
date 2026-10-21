@@ -211,7 +211,7 @@ function WorkerChats({
   usePoller({
     fn: () => void refreshOpenChat(),
     intervalMs: 10000,
-    active: !!openId && useTabActive("chat"),
+    active: useTabActive("chat") && !!openId,
   });
   // SSE 事件驱动主路：refreshTick 变化（room_message 等）→ 刷新。
   // 加 300ms 合并窗——refreshTick 是全集群
