@@ -1299,6 +1299,8 @@ function RoomChat(props: RoomChatProps) {
           avatarUrl={room.members?.[detailMxid]?.avatar_url}
           role={memberRoles?.[detailMxid]}
           workerName={memberWorkerNames?.[detailMxid]}
+          onOpenChats={onOpenWorkerChats}
+          workerRuntime={workerRuntimeByMxid?.[detailMxid]}
           onMention={insertMention}
           roomId={room.room_id}
           roomName={room.name}

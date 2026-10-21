@@ -5,6 +5,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import ApprovalControl from "./ApprovalControl";
 import { formatChatTime } from "../util";
+import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -44,6 +45,10 @@ interface MemberDetailProps {
   onDm?: (mxid: string) => void;
   /** 在当前房间输入框插入 @提及（5.0.0-beta.4）。 */
   onMention?: (mxid: string) => void;
+  /** 打开该 Worker 的会话抽屉（与消息头像「查看会话」同一入口）。 */
+  onOpenChats?: (workerName: string) => void;
+  /** 该 Worker 的 runtime（「查看会话」入口可见性门控；qwenpaw 独有面）。 */
+  workerRuntime?: string;
   onClose: () => void;
 }
 
@@ -59,6 +64,8 @@ export default function MemberDetail(props: MemberDetailProps) {
     roomName,
     onDm,
     onMention,
+    onOpenChats,
+    workerRuntime,
     onClose,
   } = props;
   const t = useThemeColors();
@@ -92,6 +99,9 @@ export default function MemberDetail(props: MemberDetailProps) {
 
   const roleLabel = role ? tr(ROLE_LABEL[role] || role) : null;
   const roleColor = role ? ROLE_COLOR[role] || "#999" : "#999";
+  // 「查看会话」入口：与消息头像弹层同一功能、同一可见性门控
+  // （worker chats 是 qwenpaw 独有面，非 qwenpaw runtime 不显示）。
+  const chatsGated = !!workerName && !!onOpenChats && !isQwenpawOnlyDisabled(workerRuntime);
 
   return (
     <antd.Drawer
@@ -158,6 +168,17 @@ export default function MemberDetail(props: MemberDetailProps) {
             }}
           >
             @{tr("提及")}
+          </antd.Button>
+        ) : null}
+        {chatsGated ? (
+          <antd.Button
+            size="small"
+            onClick={() => {
+              onOpenChats(workerName);
+              onClose();
+            }}
+          >
+            <MessageIcon size={13} style={{ verticalAlign: "-2px", marginRight: 3 }} /> {tr("查看会话")}
           </antd.Button>
         ) : null}
       </div>
