@@ -397,6 +397,19 @@ html[data-wb-fx="light"] .wb-loop-dot.running {
   top: -14px;
   bottom: -14px;
 }
+/* 一键置底钮（RoomChat 主列表）：纯 div 圆无 antd Button 的 hover/active
+   状态 → 本类补状态反馈（结构=外层 44×44 命中盒 + 内层 38 视觉圆，见
+   RoomChat.tsx）：hover 微放大、active 缩放 0.95。transform 纯视觉不影响
+   布局（列内 flex 项）。 */
+.wb-jumpbottom {
+  transition: transform 0.12s ease-out;
+}
+.wb-jumpbottom:hover {
+  transform: scale(1.04);
+}
+.wb-jumpbottom:active {
+  transform: scale(0.95);
+}
 `;
   document.head.appendChild(style);
 }

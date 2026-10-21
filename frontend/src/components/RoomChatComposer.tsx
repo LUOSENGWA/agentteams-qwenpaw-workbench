@@ -29,7 +29,10 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
   const {
     room,
     sending,
-    canSend,
+    // 15.38 拆分回归修：拆分前单文件版解构带默认 `= true`（2c81f15 L1715），
+    // Composer 裸读原始 props 丢了默认 → 调用方不传时 undefined 落「无权限」分支。
+    // 与 RoomChatCore L54 同款。
+    canSend = true,
     onSendFiles,
     activityProject,
     onOpenProject,

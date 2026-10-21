@@ -903,35 +903,50 @@ function RoomChat(props: RoomChatProps) {
                   whiteSpace: "nowrap",
                 }}
               >
-                {newMsgCount} {tr("条新消息")}
+                {/* 封顶 99：长流式会话防徽章无限膨胀（>99 显「99 条新消息」）。 */}
+                {Math.min(newMsgCount, 99)} {tr("条新消息")}
               </span>
             ) : null}
             {/* 置底按钮：纯 div 圆（弃 antd Button——其 CSS 与 inline 尺寸对抗，
-      竖屏被纵向拉长）。flex:none 防 column wrapper 拉伸，38×38 恒圆。 */}
+      竖屏被纵向拉长）。flex:none 防 column wrapper 拉伸。44px 触控目标规则：
+      外层 44×44 命中盒 + 内层 38 视觉圆（恒圆）；hover/active 状态反馈走
+      全局类 .wb-jumpbottom（index.tsx 样式块）。 */}
             <div
+              className="wb-jumpbottom"
               role="button"
               aria-label={tr("回到最新消息")}
               title={tr("回到最新消息")}
               onClick={jumpToBottom}
               style={{
-                width: 38,
-                height: 38,
+                width: 44,
+                height: 44,
                 flex: "none",
                 boxSizing: "border-box",
-                borderRadius: "50%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                backgroundColor: PRIMARY,
-                color: "#fff",
-                border: `1px solid ${PRIMARY}`,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
-                fontSize: 16,
-                lineHeight: 1,
                 cursor: "pointer",
               }}
             >
-              ↓
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  boxSizing: "border-box",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: PRIMARY,
+                  color: "#fff",
+                  border: `1px solid ${PRIMARY}`,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
+                  fontSize: 16,
+                  lineHeight: 1,
+                }}
+              >
+                ↓
+              </div>
             </div>
           </div>
         ) : null}
