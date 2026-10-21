@@ -3,6 +3,49 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.38 (2026-10-20 - tech-debt batch: oversized file splits + dead code removal + duplication convergence)
+
+Pure internal code-structure refactoring (7 batches, 20 commits). UI and behavior are identical to 15.37 with zero user-visible change; the goal is maintainability (the full audit found 18 oversized files of 1,100-4,600 lines, 6 dead functions, 75 redundant exports and 10 duplication clusters - all addressed).
+
+**Improved**
+- **Dead code removed**: 6 repo-wide unreferenced functions and 2 dead types deleted; 75 redundant `export` keywords removed (module public surface unchanged); 2 `print` calls converted to `logger`; 2 export names aligned with their file names.
+- **Oversized files split**: 18 large files (1,100-4,599 lines) split into domain submodules, each with a verified "public-surface identity":
+  - Frontend API layer: 4,583 lines -> 22-line barrel + 14 domain modules, 228 public exports identity-verified
+  - i18n dictionary: 2,669 lines -> 73-line merge shell + 10 domain dictionaries, 1,616 keys identity-verified
+  - 4 backend modules: all 68 registered routes identity-verified, 456 tests unchanged
+  - 13 large component files: 1,139-4,599 lines -> shells of <=1,400 lines + domain submodules (logic hooks / rendering / constants separated by responsibility)
+- **Type hardening**: all 11 `any` annotations in the 3D graph component replaced with concrete types (0 remaining).
+- **Duplication converged**: 7 of 10 duplication clusters extracted into shared components/helpers (the other 3 analyzed as "shape-similar, logic-different" and left as-is to avoid over-engineering).
+
+**Verification**
+- Per-file non-empty-line conservation checks + public-surface set diffs empty (228 frontend exports / 68 backend routes / 1,616 dictionary keys)
+- 72-cell DOM overflow full scan x 11 rounds: 0 true overflows (identical to the 15.37 baseline)
+- tsc 0 | vite build 593 modules (2,008.60 kB / gzip 567.32 kB) | pytest 456/456 | i18n gate 1,616 keys, 0 missing, 0 dup | staged-diff sensitive scan 0
+
+## 0.5.0-beta.15.37 (2026-10-20 - full-audit fix batch: narrow-viewport overflow cleared + touch targets + room-list latency)
+
+Systematic fixes following the full audit (11 tabs x 6 widths x light/dark themes x touch/narrow cross-sections); every finding root-caused, fixed and re-verified to zero.
+
+**Fixed**
+- **Room list loading slow**: pages depending on the room list (home / chats) took 20+ seconds with many rooms (~76), hanging up to 2 minutes when the upstream slowed down. Now bounded loading: per-request time limit, parallel fetch, worst case ~14s with partial results returned on timeout instead of a full-page hang.
+- **Event-stream connection delay**: the home "events: connected" indicator could take up to 15s on slow networks / first open; the connection is now established immediately (first heartbeat no longer blocks response headers).
+- **Narrow / portrait content clipped horizontally**: 5 measured overflows cleared to zero - home SGLang status card and header row (390/480px), model gateway route table (390px), ops upgrade version table (390/480/600px), knowledge-base agent card (390px). Route and version tables scroll horizontally on narrow screens to show all columns; status card and header row wrap/truncate on narrow screens, wide-screen rendering unchanged.
+- **Ops component log row (768px mid screen)**: the auto-refresh toggle could be pushed against the right edge and the refresh button could wrap on transient layout widening. The row is now immune to transient widening (hint text can shrink), button no longer wraps.
+
+**Added**
+- **Touch tap-target size class**: on touch devices (phone / tablet), buttons, icon buttons, inputs, selects, segmented controls, tabs and switches get a unified >=44px hit area (industry-standard tap target; previously ~24px, easy to mis-tap). Switch appearance unchanged, only the vertical hit area grows; desktop (hover available) is completely unaffected.
+- **Repro audit pages**: `dev-alltabs-overflow.html` (all-tab x 6-width overflow scan, with touch repro mode `?touch=1`) and `dev-theme-input.html` (theme input / 44px probes) for future regression.
+
+**Improved**
+- **Touch chat time visibility**: on touch, the first row of a chat message group (avatar + name) always shows the time; no longer requires a tap to reveal.
+- **Dictionary and code convergence**: 111 zero-reference dead i18n entries removed (1727 -> 1616), 1 dead icon removed; 4 duplicated message-send code paths converged to a single implementation (byte-equivalent behavior, no UI change).
+
+**Verification**
+- **11 tabs x 6 widths = 72-cell DOM overflow scan: 0 true overflows** (audit baseline: 15 true overflows / 50 sources / max +76px)
+- **Touch probes (390px + touch mode): 9 buttons / 19 segmented / 13 inputs / 4 selects / 5 switches = 51/51 pass**, with no new overflows
+- **Room list measured**: 76 rooms 21.9s -> 5.8-8.6s (bounded); event stream first response 0.003s (previously ~15s)
+- tsc 0 | vite build 514 modules | pytest 456/456 | i18n gate 1616 keys, 0 missing, 0 dup | staged-diff sensitive scan 0
+
 ## 0.5.0-beta.15.36 (2026-10-19 - team management portrait overflow fix: manage-entry row wraps, zero overflow on narrow screens)
 
 Addresses fielding feedback: in team management, after expanding a worker, the manage entries (runtime config / environment variables & gateway probe / coding CLI / LLM tuning / resources) "were not laid out well in portrait and ran past the container edge".
