@@ -1,0 +1,1456 @@
+import type * as ReactNS from "react";
+
+import { SettingsIcon } from "./icons";
+import ApprovalControl from "./ApprovalControl";
+import CfgRow from "./runtimeCfg/CfgRow";
+import GateSection from "./runtimeCfg/GateSection";
+import GateParam from "./runtimeCfg/GateParam";
+import {
+  num,
+  isPosInt,
+  isPosNum,
+  parseLoop,
+  SOURCE_COLOR,
+  LOOP_TEMPLATES,
+  LOOP_GATE_DEFS,
+  type Rc,
+} from "./runtimeCfg/helpers";
+import { useWorkerRuntimeConfigCore } from "./WorkerRuntimeConfigCore";
+
+const host = window.QwenPaw.host;
+const React: typeof ReactNS = host.React;
+const antd = host.antd;
+
+export function WorkerRuntimeConfigView(props: {
+  p: Parameters<typeof useWorkerRuntimeConfigCore>[0];
+  c: ReturnType<typeof useWorkerRuntimeConfigCore>;
+}) {
+  const { p, c } = props;
+  const {
+    name,
+    l1,
+    onOpenSettings,
+    sheet,
+  } = p;
+  const {
+    tr,
+    t,
+    open,
+    setOpen,
+    cfg,
+    loading,
+    gate,
+    gateMsg,
+    iterEnabled,
+    setIterEnabled,
+    iterValue,
+    setIterValue,
+    doomEnabled,
+    setDoomEnabled,
+    doomWindow,
+    setDoomWindow,
+    doomThreshold,
+    setDoomThreshold,
+    doomStages,
+    setDoomStages,
+    rubricEnabled,
+    setRubricEnabled,
+    rubricPrompt,
+    setRubricPrompt,
+    rubricInterventions,
+    setRubricInterventions,
+    goalIters,
+    setGoalIters,
+    goalTokens,
+    setGoalTokens,
+    missionIters,
+    setMissionIters,
+    missionRetries,
+    setMissionRetries,
+    missionInstr,
+    setMissionInstr,
+    missionCmd,
+    setMissionCmd,
+    memBackend,
+    setMemBackend,
+    retryOn,
+    setRetryOn,
+    maxRetries,
+    setMaxRetries,
+    backoffBase,
+    setBackoffBase,
+    backoffCap,
+    setBackoffCap,
+    shellEdits,
+    rateEdits,
+    ctxEdits,
+    remeEdits,
+    shellSet,
+    rateSet,
+    ctxSet,
+    remeSet,
+    tmplOpen,
+    setTmplOpen,
+    tmplName,
+    setTmplName,
+    tmplCmd,
+    setTmplCmd,
+    tmplDesc,
+    setTmplDesc,
+    tmplSel,
+    setTmplSel,
+    tmplGates,
+    setTmplGates,
+    tmplBusy,
+    loopText,
+    setLoopText,
+    loopOpen,
+    setLoopOpen,
+    loops,
+    customs,
+    loopsErr,
+    loopsLoading,
+    creating,
+    setCreating,
+    newJson,
+    setNewJson,
+    busyId,
+    loopMsg,
+    setLoopMsg,
+    memOpen,
+    setMemOpen,
+    saving,
+    msg,
+    setMsg,
+    loadLoops,
+    load,
+    resetEdits,
+    dirty,
+    save,
+    createCustom,
+    createViaTemplate,
+    toggleCustom,
+    removeCustom,
+  } = c;
+
+  // 折叠头（Worker 管理展开区内的可折叠段）。
+  // （13.15 「运行配置的按钮做好看一点，和资源管理的
+  // 按钮做一样」）：text link → 与「资源管理」区块同款卡片式折叠头
+  // （▸/▾ + 图标 + 标题 + qwenpaw 标签 + 边框卡片）。
+  if (!open) {
+    return (
+      <div
+        style={{
+          margin: "4px 0 4px 22px",
+          border: "1px solid rgba(127,127,127,0.25)",
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "5px 10px",
+            cursor: "pointer",
+          }}
+          onClick={() => setOpen(true)}
+        >
+          <span style={{ width: 12, fontSize: 10, color: "#888" }}>▸</span>
+          <SettingsIcon size={13} />
+          <span style={{ fontWeight: 600, fontSize: 12 }}>{tr("运行配置")}</span>
+          <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10 }}>
+            qwenpaw
+          </antd.Tag>
+        </div>
+      </div>
+    );
+  }
+
+  const lv = cfg ? parseLoop(cfg.loop) : null;
+  const remeCfg = cfg?.reme_light_memory_config;
+  const adbpgCfg = cfg?.adbpg_memory_config;
+  const labelStyle: ReactNS.CSSProperties = {
+    fontSize: 12,
+    color: "rgba(127,127,127,0.95)",
+  };
+  return (
+    <div
+      style={{
+        // sheet（竖屏弹窗）：去卡片外框——Modal 即容器，padding 交给弹窗 body。
+        margin: sheet ? 0 : "4px 0 4px 22px",
+        border: sheet ? "none" : "1px solid rgba(127,127,127,0.25)",
+        borderRadius: sheet ? 0 : 8,
+        padding: sheet ? 0 : 10,
+        display: "grid",
+        gap: 10,
+      }}
+    >
+      {/* gap 6 = 折叠态同款（段头对齐：折叠/展开两态图标 x 不漂移）。 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        {/* 展开态补收起抓手（原展开后无法收起）。
+ sheet 模式隐藏抓手/图标/标题——Modal 头已带标题与关闭钮，
+ 仅留 qwenpaw 标签 + 右侧动作钮（刷新/重置/保存）。 */}
+        {sheet ? null : (
+          <span
+            style={{ width: 12, fontSize: 10, color: "#888", cursor: "pointer" }}
+            onClick={() => setOpen(false)}
+            title={tr("收起")}
+          >
+            ▾
+          </span>
+        )}
+        {sheet ? null : <SettingsIcon size={13} />}
+        {sheet ? null : (
+          // 段头标题字号恒 12（折叠/展开一致，与资源管理段头同款）。
+          <span style={{ fontWeight: 600, fontSize: 12 }}>{tr("运行配置")}</span>
+        )}
+        <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10.5 }}>
+          qwenpaw
+        </antd.Tag>
+        <div style={{ flex: 1 }} />
+        <antd.Button size="small" onClick={() => void load()} loading={loading}>
+          {tr("刷新")}
+        </antd.Button>
+        <antd.Button size="small" type="text" onClick={resetEdits}>
+          {tr("重置")}
+        </antd.Button>
+        <antd.Button
+          size="small"
+          type="primary"
+          disabled={!dirty}
+          loading={saving}
+          onClick={() => void save()}
+        >
+          {tr("保存")}
+        </antd.Button>
+      </div>
+
+      {msg ? (
+        <antd.Alert
+          type={msg.ok ? "success" : "error"}
+          showIcon
+          message={msg.text}
+          closable
+          onClose={() => setMsg(null)}
+        />
+      ) : null}
+
+      {gate === "404" ? (
+        <antd.Alert
+          type="info"
+          showIcon
+          message={tr("运行配置不可用")}
+          description={tr(
+            "Controller 版本未含运行配置端点，或当前账号无该 Worker 访问权（L2 仅限自己团队）。",
+          )}
+        />
+      ) : gate === "400" ? (
+        <antd.Alert
+          type="warning"
+          showIcon
+          message={tr("该 Worker 不支持运行配置")}
+          description={gateMsg || tr("仅 spec.runtime = qwenpaw 的 Worker 支持。")}
+        />
+      ) : null}
+
+ {/* ：按 QwenPaw console
+ Agent Config 页正源重构呈现——Tabs 分域 + 每域 Card + 表单项行
+ （label + tooltip 左 / 控件右）+ 滑杆带数值显示。旧版把所有字段
+ 挤进一行 flex-wrap：窄容器换行错乱、语义分组不可见。
+ 数据范围不变（L2 白名单键 + diff 只发改动键），只改呈现层。 */}
+      {cfg && !gate ? (
+        <antd.Tabs
+          size="small"
+          // 竖屏弹窗：tab 条吸顶（zIndex 高于内容），下方各域 Card 内容独立滚动
+          // （tab 条独立横向滚动）。
+          tabBarStyle={
+            // t.bg 不透明实底（cardBg 半透明会透出滚动内容）。
+            sheet ? { position: "sticky", top: 0, zIndex: 5, background: t.bg, paddingBottom: 6 } : undefined
+          }
+          items={[
+            {
+              key: "basic",
+              label: tr("ReAct 智能体"),
+              children: (
+                <antd.Card size="small" title={sheet ? undefined : tr("ReAct 智能体")} style={{ marginTop: 4 }}>
+                  {/* 六 tab 补齐：按 QwenPaw ReactAgentCard
+ 行序对齐（语言/时区/项目目录/代码能力 = QwenPaw 本机
+ 字段，Controller running-config 不暴露，不做）。
+ 13.8：shell 组与 auto_title 在 L1 下可编辑（接口实盘
+ 全在，L2 白名单外 → L2 只读）。 */}
+                  <CfgRow
+                    label={tr("最大迭代")}
+                    tip={tr("单次任务最大 LLM 迭代轮数。唯一编辑入口在 智能体 Loop 设置 → iteration 门（与 QwenPaw console 一致）；此处只读展示。")}
+                  >
+                    <span style={{ fontSize: 13 }}>
+                      {String(
+                        lv && lv.iterationMax != null
+                          ? lv.iterationMax
+                          : num(cfg.max_iters) ?? "-",
+                      )}
+                    </span>
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("Shell 超时")}
+                    tip={tr("单次 shell 命令超时（秒）。L1-only 键。")}
+                  >
+                    {l1 ? (
+                      <antd.InputNumber
+                        min={1}
+                        max={86400}
+                        style={{ width: 140 }}
+                        addonAfter={tr("秒")}
+                        disabled={!l1}
+                        value={shellEdits.shell_command_timeout != null ? Number(shellEdits.shell_command_timeout) : num(cfg.shell_command_timeout) ?? undefined}
+                        onChange={(v: number | null) =>
+                          shellSet(
+                            "shell_command_timeout",
+                            v == null ? null : String(v),
+                          )
+                        }
+                      />
+                    ) : (
+                      <span style={{ fontSize: 13 }}>
+                        {tr("{n} 秒", { n: String(num(cfg.shell_command_timeout) ?? "-") })}
+                      </span>
+                    )}
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("Shell 可执行文件")}
+                    tip={tr("shell 命令使用的可执行文件（shell_command_executable）。L1-only 键。")}
+                  >
+                    {l1 ? (
+                      <antd.Input
+                        style={{ width: 220, fontFamily: "monospace" }}
+                        value={shellEdits.shell_command_executable != null ? String(shellEdits.shell_command_executable) : String(cfg.shell_command_executable ?? "")}
+                        placeholder={tr("默认（/bin/sh）")}
+                        onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                          shellSet("shell_command_executable", ev.target.value)
+                        }
+                      />
+                    ) : (
+                      <span style={{ fontSize: 13, fontFamily: "monospace" }}>
+                        {String(cfg.shell_command_executable || tr("默认"))}
+                      </span>
+                    )}
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("自动标题")}
+                    tip={tr("会话自动标题（auto_title_config.enabled）。L1-only 键。")}
+                  >
+                    {(() => {
+                      const at = (cfg.auto_title_config && typeof cfg.auto_title_config === "object" ? cfg.auto_title_config : {}) as Rc;
+                      const cur = shellEdits.auto_title === undefined || shellEdits.auto_title === null ? at.enabled === true : shellEdits.auto_title === true;
+                      return (
+                        <antd.Switch
+                          checked={cur}
+                          disabled={!l1}
+                          onChange={(v: boolean) => shellSet("auto_title", v)}
+                        />
+                      );
+                    })()}
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("记忆后端")}
+                    tip={tr("长期记忆后端（memory_manager_backend）。remelight=轻量本地记忆，adbpg=AnalyticDB PG 向量记忆。L2 白名单键，可编辑。详见 长期记忆 tab。")}
+                  >
+                    <antd.Select
+                      style={{ width: 200 }}
+                      value={memBackend ?? String(cfg.memory_manager_backend || "remelight")}
+                      onChange={(v: string) => setMemBackend(v)}
+                      options={[
+                        { value: "remelight", label: "remelight（轻量本地）" },
+                        { value: "adbpg", label: "adbpg（AnalyticDB PG）" },
+                        { value: String(cfg.memory_manager_backend || "remelight"), label: String(cfg.memory_manager_backend || "remelight") },
+                      ].filter((o, i, a) => a.findIndex((x) => x.value === o.value) === i)}
+                    />
+                  </CfgRow>
+                </antd.Card>
+              ),
+            },
+            {
+              key: "loop",
+              label: tr("智能体 Loop 设置"),
+              children: (
+                <antd.Card size="small" title={sheet ? undefined : tr("智能体 Loop 设置")} style={{ marginTop: 4 }}>
+                  {/* （13.6 「Loop 设置抄 QwenPaw 没抄
+ 完」）：按 QwenPaw AgentLoopCard 补齐——Default 模式 gate
+ 管道（iteration/doom_loop/rubric）+ Goal/Mission 内置
+ 参数，全部 InputNumber（QwenPaw 配置面无滑杆）；13.6
+ tag 速览废弃（goal/mission 数据模型无 enabled 字段，
+ tag 恒 off 误导）；整块 JSON 保留为高级兜底。值域逐条
+ 对账 qwenpaw LoopConfig（iteration 1..500 / doom
+ window≥2 / threshold 0..1 / stages after≥1 / rubric
+ 1..10 / goal 1..500 / mission 1..100·retry 0..10）。 */}
+                  {/* （13.7 「QwenPaw 有模板的，你可以抄
+ 过来——别忘了开源项目的礼仪」）：Loop 模板——QwenPaw
+ AgentLoopCard 的「Loop 模板」区移植（出处/署名见文件
+ 顶部 LOOP_TEMPLATES 注释；模板/gate 默认值逐值保留
+ 原设计，属 QwenPaw 上游，插件仅做呈现与调用）。 */}
+                  <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid rgba(127,127,127,0.15)" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>
+                      {tr("Loop 模板")}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: t.textSecondary, marginBottom: 6 }}>
+                      {tr("选择内置模板，或添加自己的（按模板生成自定义模式）。模板设计：QwenPaw 上游。")}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                      {Object.entries(
+                        {
+                          safe: "安全运行",
+                          research: "预算研究",
+                          quality: "质量优先",
+                          blank: "空管道",
+                        } as Record<string, string>,
+                      ).map(([id, label]) => (
+                        <antd.Tag
+                          key={id}
+                          color={tmplSel === id ? "orange" : "default"}
+                          style={{ cursor: "pointer", marginInlineEnd: 0 }}
+                          onClick={() => {
+                            setTmplSel(id);
+                            const gs: Record<string, boolean> = {};
+                            for (const g of LOOP_TEMPLATES[id] || []) gs[g] = true;
+                            setTmplGates(gs);
+                          }}
+                        >
+                          {label}
+                          <span style={{ opacity: 0.6, marginLeft: 4 }}>
+                            {id}
+                          </span>
+                        </antd.Tag>
+                      ))}
+                    </div>
+                    {(LOOP_TEMPLATES[tmplSel] || []).length ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                        {(LOOP_TEMPLATES[tmplSel] || []).map((g) => (
+                          <antd.Checkbox
+                            key={g}
+                            checked={tmplGates[g] !== false}
+                            onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                              setTmplGates((p) => ({ ...p, [g]: ev.target.checked }))
+                            }
+                          >
+                            {/* id 与标题同 span：harness exact 断言按整串匹配，
+ 不与下方 GateSection 标题（纯中文）撞名。 */}
+                            <span style={{ fontSize: 11.5 }}>
+                              {LOOP_GATE_DEFS[g].title}
+                              <span style={{ fontSize: 10.5, color: t.textSecondary, marginLeft: 4 }}>{g}</span>
+                            </span>
+                          </antd.Checkbox>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11.5, color: t.textSecondary, marginBottom: 8 }}>
+                        {tr("空管道——创建后再逐个添加 gate（高级 JSON）。")}
+                      </div>
+                    )}
+                    <antd.Button size="small" onClick={() => setTmplOpen(true)}>
+                      {tr("按模板创建自定义模式")}
+                    </antd.Button>
+                  </div>
+                  <antd.Modal
+                    title={tr("按模板创建自定义 Loop 模式")}
+                    open={tmplOpen}
+                    onOk={() => void createViaTemplate()}
+                    okButtonProps={{ loading: tmplBusy }}
+                    onCancel={() => setTmplOpen(false)}
+                    destroyOnClose
+                  >
+                    <div style={{ display: "grid", gap: 8, paddingTop: 8 }}>
+                      <CfgRow label={tr("模式名")}>
+                        <antd.Input
+                          value={tmplName}
+                          placeholder="my-mode"
+                          onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => setTmplName(ev.target.value)}
+                        />
+                      </CfgRow>
+                      <CfgRow label={tr("slash 命令")}>
+                        <antd.Input
+                          value={tmplCmd}
+                          placeholder={tmplName.trim() || "custom-mode"}
+                          onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => setTmplCmd(ev.target.value)}
+                        />
+                      </CfgRow>
+                      <CfgRow label={tr("描述")}>
+                        <antd.Input
+                          value={tmplDesc}
+                          placeholder={tr("自定义 gate 管道（模板创建）")}
+                          onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => setTmplDesc(ev.target.value)}
+                        />
+                      </CfgRow>
+                      <CfgRow label={tr("起始模板")}>
+                        <antd.Select
+                          style={{ width: 220 }}
+                          value={tmplSel}
+                          onChange={(v: string) => {
+                            setTmplSel(v);
+                            const gs: Record<string, boolean> = {};
+                            for (const g of LOOP_TEMPLATES[v] || []) gs[g] = true;
+                            setTmplGates(gs);
+                          }}
+                          options={Object.keys(LOOP_TEMPLATES).map((id) => ({
+                            value: id,
+                            label: `${id}（${(LOOP_TEMPLATES[id] || []).length} gate）`,
+                          }))}
+                        />
+                      </CfgRow>
+                      <CfgRow label={tr("管道预览")}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {(LOOP_TEMPLATES[tmplSel] || [])
+                            .filter((g) => tmplGates[g] !== false)
+                            .map((g) => (
+                              <antd.Tag key={g} color="blue" style={{ marginInlineEnd: 0 }}>
+                                {LOOP_GATE_DEFS[g].title} {g}
+                              </antd.Tag>
+                            ))}
+                          {(LOOP_TEMPLATES[tmplSel] || []).filter((g) => tmplGates[g] !== false).length === 0
+                            ? tr("（空管道）")
+                            : null}
+                        </div>
+                      </CfgRow>
+                    </div>
+                  </antd.Modal>
+                  {lv ? (
+                    <div style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginBottom: 2 }}>
+                        {tr("Default 模式 · gate 管道")}
+                      </div>
+                      <GateSection
+                        title={tr("迭代限制")}
+                        tip={tr("单任务最大 LLM 迭代轮数（loop.iteration），超限终止。QwenPaw console 同款：启用开关 + 数字输入 1..500；保存时同步 legacy max_iters。")}
+                        enabled={iterEnabled !== null ? iterEnabled : lv.iterationEnabled}
+                        onEnabled={(v) => setIterEnabled(v)}
+                      >
+                        <GateParam label={tr("最大迭代")}>
+                          <antd.InputNumber
+                            style={{ width: 200 }}
+                            min={1}
+                            max={500}
+                            value={
+                              iterValue !== null && isPosInt(iterValue)
+                                ? Number(iterValue)
+                                : // （B1b：「最大迭代等窗口应该
+                                  // 被自动填入当前值，而不是空的框」）：实盘
+                                  // max_iterations=None（未显式配置）时预填
+                                  // 运行时默认 40（QwenPaw LOOP 正源默认）——
+                                  // 显示的即运行时真实生效值，保存才落库。
+                                  lv.iterationMax ?? 40
+                            }
+                            onChange={(v: number | null) =>
+                              setIterValue(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                          {lv.iterationMax == null ? (
+                            <div
+                              style={{
+                                fontSize: 10.5,
+                                color: "rgba(127,127,127,0.75)",
+                                marginTop: 2,
+                              }}
+                            >
+                              {tr("未显式配置——显示运行时默认 40，保存后落库")}
+                            </div>
+                          ) : null}
+                        </GateParam>
+                      </GateSection>
+                      <GateSection
+                        title={tr("重复保护")}
+                        tip={tr("检测滑动窗口内重复的工具调用并干预：注入提示或终止任务（loop.doom_loop）。窗口≥2，相似度 0..1。")}
+                        enabled={doomEnabled !== null ? doomEnabled : lv.doomEnabled}
+                        onEnabled={(v) => setDoomEnabled(v)}
+                      >
+                        <div style={{ display: "grid", gridTemplateColumns: sheet ? "1fr" : "1fr 1fr", gap: 6 }}>
+                          <GateParam label={tr("检测窗口")}>
+                            <antd.InputNumber
+                              style={{ width: "100%" }}
+                              min={2}
+                              value={
+                                doomWindow !== null && isPosInt(doomWindow)
+                                  ? Number(doomWindow)
+                                  : lv.doomWindow ?? undefined
+                              }
+                              onChange={(v: number | null) =>
+                                setDoomWindow(v === null || v === undefined ? null : String(v))
+                              }
+                            />
+                          </GateParam>
+                          <GateParam label={tr("相似度阈值")}>
+                            <antd.InputNumber
+                              style={{ width: "100%" }}
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={
+                                doomThreshold !== null && doomThreshold.trim() !== "" && Number.isFinite(Number(doomThreshold))
+                                  ? Number(doomThreshold)
+                                  : lv.doomThreshold ?? undefined
+                              }
+                              onChange={(v: number | null) =>
+                                setDoomThreshold(v === null || v === undefined ? null : String(v))
+                              }
+                            />
+                          </GateParam>
+                        </div>
+                        <GateParam label={tr("干预规则")}>
+                          <div style={{ display: "grid", gap: 4 }}>
+                            {(doomStages !== null ? doomStages : lv.doomStages).map((st, idx) => (
+                              <div key={idx} style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                                <antd.InputNumber
+                                  size="small"
+                                  style={{ width: 72 }}
+                                  min={1}
+                                  value={st.after ?? undefined}
+                                  onChange={(v: number | null) =>
+                                    setDoomStages((prev) =>
+                                      (prev ?? lv.doomStages).map((x, j) =>
+                                        j === idx ? { ...x, after: v === null ? null : Number(v) } : x,
+                                      ),
+                                    )
+                                  }
+                                />
+                                <antd.Select
+                                  size="small"
+                                  style={{ width: 112 }}
+                                  value={st.action}
+                                  options={[
+                                    { value: "modify_prompt", label: tr("注入提醒") },
+                                    { value: "stop", label: tr("终止任务") },
+                                  ]}
+                                  onChange={(v: "modify_prompt" | "stop") =>
+                                    setDoomStages((prev) =>
+                                      (prev ?? lv.doomStages).map((x, j) =>
+                                        j === idx ? { ...x, action: v } : x,
+                                      ),
+                                    )
+                                  }
+                                />
+                                <antd.Input
+                                  size="small"
+                                  style={{ flex: 1, minWidth: 120 }}
+                                  placeholder={tr("提示词（注入提醒必填）")}
+                                  value={st.prompt}
+                                  onChange={(e: { target: { value: string } }) =>
+                                    setDoomStages((prev) =>
+                                      (prev ?? lv.doomStages).map((x, j) =>
+                                        j === idx ? { ...x, prompt: e.target.value } : x,
+                                      ),
+                                    )
+                                  }
+                                />
+                                <antd.Button
+                                  size="small"
+                                  type="text"
+                                  danger
+                                  onClick={() =>
+                                    setDoomStages((prev) =>
+                                      (prev ?? lv.doomStages).filter((_, j) => j !== idx),
+                                    )
+                                  }
+                                >
+                                  {tr("移除")}
+                                </antd.Button>
+                              </div>
+                            ))}
+                            <antd.Button
+                              size="small"
+                              type="dashed"
+                              block
+                              onClick={() =>
+                                setDoomStages((prev) => [
+                                  ...(prev ?? lv.doomStages),
+                                  { after: 3, action: "modify_prompt", prompt: "" },
+                                ])
+                              }
+                            >
+                              {tr("添加规则")}
+                            </antd.Button>
+                          </div>
+                        </GateParam>
+                      </GateSection>
+                      <GateSection
+                        title={tr("完成质量检查")}
+                        tip={tr("完成前用 Rubric 提示词评估任务是否真正达成，未过则注入评估继续（loop.rubric，仅 in-loop 模式），最多干预 1..10 次。")}
+                        enabled={rubricEnabled !== null ? rubricEnabled : lv.rubricEnabled}
+                        onEnabled={(v) => setRubricEnabled(v)}
+                      >
+                        <GateParam label={tr("Rubric 提示词")}>
+                          <antd.Input.TextArea
+                            rows={2}
+                            style={{ width: "100%", fontSize: 11.5 }}
+                            value={rubricPrompt !== null ? rubricPrompt : lv.rubricPrompt}
+                            onChange={(e: { target: { value: string } }) => setRubricPrompt(e.target.value)}
+                          />
+                        </GateParam>
+                        <GateParam label={tr("最大干预次数")}>
+                          <antd.InputNumber
+                            style={{ width: 120 }}
+                            min={1}
+                            max={10}
+                            value={
+                              rubricInterventions !== null && isPosInt(rubricInterventions)
+                                ? Number(rubricInterventions)
+                                : lv.rubricInterventions ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setRubricInterventions(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                      </GateSection>
+
+                      <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 2px" }}>
+                        {tr("Goal 模式 · 内置参数")}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: sheet ? "1fr" : "1fr 1fr", gap: 6 }}>
+                        <GateParam label={tr("最大迭代")}>
+                          <antd.InputNumber
+                            style={{ width: "100%" }}
+                            min={1}
+                            max={500}
+                            value={
+                              goalIters !== null && isPosInt(goalIters)
+                                ? Number(goalIters)
+                                : lv.goalMaxIters ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setGoalIters(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                        <GateParam label={tr("词元预算")}>
+                          <antd.InputNumber
+                            style={{ width: "100%" }}
+                            min={1}
+                            value={
+                              goalTokens !== null && isPosInt(goalTokens)
+                                ? Number(goalTokens)
+                                : lv.goalMaxTokens ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setGoalTokens(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                      </div>
+
+                      <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 2px" }}>
+                        {tr("Mission 模式 · 内置参数")}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: sheet ? "1fr" : "1fr 1fr", gap: 6 }}>
+                        <GateParam label={tr("最大迭代")}>
+                          <antd.InputNumber
+                            style={{ width: "100%" }}
+                            min={1}
+                            max={100}
+                            value={
+                              missionIters !== null && isPosInt(missionIters)
+                                ? Number(missionIters)
+                                : lv.missionMaxIters ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setMissionIters(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                        <GateParam label={tr("每个 Story 最大重试次数")}>
+                          <antd.InputNumber
+                            style={{ width: "100%" }}
+                            min={0}
+                            max={10}
+                            value={
+                              missionRetries !== null && /^\d+$/.test(missionRetries)
+                                ? Number(missionRetries)
+                                : lv.missionMaxRetries ?? undefined
+                            }
+                            onChange={(v: number | null) =>
+                              setMissionRetries(v === null || v === undefined ? null : String(v))
+                            }
+                          />
+                        </GateParam>
+                      </div>
+                      <GateParam label={tr("验证说明")}>
+                        <antd.Input
+                          style={{ fontSize: 11.5 }}
+                          value={missionInstr !== null ? missionInstr : lv.missionVerifyInstructions}
+                          onChange={(e: { target: { value: string } }) => setMissionInstr(e.target.value)}
+                        />
+                      </GateParam>
+                      <GateParam label={tr("验证命令")}>
+                        <antd.Input
+                          style={{ fontSize: 11.5, fontFamily: "monospace" }}
+                          value={missionCmd !== null ? missionCmd : lv.missionVerifyCommand}
+                          onChange={(e: { target: { value: string } }) => setMissionCmd(e.target.value)}
+                        />
+                      </GateParam>
+
+                      {/* 整块 JSON = 高级兜底（显式全量替换，覆盖上方 gate 编辑）。 */}
+                      <div style={{ borderTop: "1px dashed rgba(127,127,127,0.25)", paddingTop: 6, marginTop: 4 }}>
+                        <antd.Button
+                          size="small"
+                          type="link"
+                          style={{ padding: 0, fontSize: 12 }}
+                          onClick={() => {
+                            if (loopText === null) {
+                              setLoopText(
+                                JSON.stringify(cfg.loop ?? null, null, 2),
+                              );
+                            }
+                            setLoopOpen(true);
+                          }}
+                        >
+                          {tr("高级：编辑整块 JSON")}
+                        </antd.Button>
+                        {loopOpen ? (
+                          <div>
+                            <antd.Input.TextArea
+                              rows={10}
+                              style={{
+                                fontFamily: "monospace",
+                                fontSize: 11.5,
+                                width: "100%",
+                              }}
+                              value={loopText ?? ""}
+                              onChange={(e: { target: { value: string } }) => setLoopText(e.target.value)}
+                            />
+                            <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginTop: 2 }}>
+                              {tr("loop 为整块替换语义——保存后整个 loop 对象以此 JSON 为准（覆盖上方 gate 编辑）；loop 变更将通知团队 Leader。")}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Loop 模式节：目录（GET /loops）+ 自定义 CRUD（loops/custom）。 */}
+                  <div
+                    style={{
+                      borderTop: "1px dashed rgba(127,127,127,0.25)",
+                      paddingTop: 8,
+                      display: "grid",
+                      gap: 6,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={labelStyle}>{tr("Loop 模式")}</span>
+                      <antd.Button size="small" type="link" style={{ padding: 0, fontSize: 11.5 }} onClick={() => void loadLoops()} loading={loopsLoading}>
+                        {tr("刷新")}
+                      </antd.Button>
+                      <div style={{ flex: 1 }} />
+                      <antd.Button size="small" onClick={() => setCreating((v) => !v)}>
+                        {tr("新建自定义 Loop")}
+                      </antd.Button>
+                    </div>
+                    {loopMsg ? (
+                      <antd.Alert
+                        type={loopMsg.ok ? "success" : "error"}
+                        showIcon
+                        message={loopMsg.text}
+                        closable
+                        onClose={() => setLoopMsg(null)}
+                      />
+                    ) : null}
+                    {loopsErr ? (
+                      <antd.Alert
+                        type="info"
+                        showIcon
+                        message={tr("loop 模式不可用")}
+                        description={loopsErr}
+                      />
+                    ) : (
+                      <>
+                        {loops ? (
+                          <div>
+                            <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", marginBottom: 3 }}>
+                              {tr("模式目录")}
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {loops.map((m) => (
+                                <antd.Tag
+                                  key={m.id}
+                                  color={SOURCE_COLOR[m.source || "builtin"] || "default"}
+                                  style={{ marginInlineEnd: 0, fontSize: 10.5 }}
+                                  title={m.description || m.name}
+                                >
+                                  {m.name}
+                                  {m.slash_command ? ` /${m.slash_command}` : ""}
+                                </antd.Tag>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        <div>
+                          <div style={{ fontSize: 11, color: "rgba(127,127,127,0.8)", margin: "4px 0 3px" }}>
+                            {tr("自定义 Loop")}
+                          </div>
+                          {customs && customs.length === 0 ? (
+                            <div style={{ fontSize: 11, color: "rgba(127,127,127,0.6)" }}>
+                              {tr("该 Worker 暂无自定义 loop")}
+                            </div>
+                          ) : null}
+                          {customs?.map((m) => {
+                            const gates = Array.isArray(m.gates) ? m.gates : [];
+                            const on = gates.filter((g) => g.enabled).length;
+                            return (
+                              <div
+                                key={m.id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  padding: "3px 0",
+                                  fontSize: 11.5,
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <antd.Switch
+                                  size="small"
+                                  checked={m.enabled === true}
+                                  disabled={busyId === m.id}
+                                  onChange={(v: boolean) => void toggleCustom(m, v)}
+                                />
+                                <span style={{ fontFamily: "monospace", fontWeight: 500 }}>{m.id}</span>
+                                <span style={{ color: "rgba(127,127,127,0.85)" }}>{m.name}</span>
+                                <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10 }}>
+                                  /{m.slash_command}
+                                </antd.Tag>
+                                <span style={{ fontSize: 10.5, color: "rgba(127,127,127,0.7)" }}>
+                                  {tr("门禁 {a} 个（启用 {b}）", { a: gates.length, b: on })}
+                                </span>
+                                <div style={{ flex: 1 }} />
+                                <antd.Popconfirm
+                                  title={tr("删除该自定义 loop？")}
+                                  okText={tr("确认删除")}
+                                  cancelText={tr("取消")}
+                                  onConfirm={() => void removeCustom(m)}
+                                >
+                                  <antd.Button size="small" danger disabled={busyId === m.id} loading={busyId === m.id}>
+                                    {tr("删除")}
+                                  </antd.Button>
+                                </antd.Popconfirm>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {creating ? (
+                          <div>
+                            <antd.Input.TextArea
+                              rows={8}
+                              style={{ fontFamily: "monospace", fontSize: 11.5 }}
+                              placeholder={tr("新自定义 loop 完整 JSON（字段：id / name / slash_command / enabled / gates）")}
+                              value={newJson ?? ""}
+                              onChange={(e: { target: { value: string } }) => setNewJson(e.target.value)}
+                            />
+                            <div style={{ fontSize: 10.5, color: "rgba(127,127,127,0.75)", margin: "2px 0 4px" }}>
+                              {tr("id 与 slash_command 须小写字母/数字/_/-；gates 为 {id,type,enabled,params} 数组（可空）；重名或 slash 冲突 409，管道校验失败 422。")}
+                            </div>
+                            <antd.Button
+                              size="small"
+                              type="primary"
+                              loading={busyId === "__create__"}
+                              onClick={() => void createCustom()}
+                            >
+                              {tr("创建")}
+                            </antd.Button>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </antd.Card>
+              ),
+            },
+            {
+              key: "retry",
+              label: tr("LLM 自动重试"),
+              children: (
+                <antd.Card size="small" title={sheet ? undefined : tr("LLM 自动重试")} style={{ marginTop: 4 }}>
+                  <CfgRow
+                    label={tr("启用自动重试")}
+                    tip={tr("LLM 调用失败（限流/超时/5xx）时自动重试。关闭后失败立即上抛。")}
+                  >
+                    <antd.Switch
+                      checked={
+                        retryOn !== null
+                          ? retryOn
+                          : (cfg.llm_retry_enabled === true)
+                      }
+                      onChange={(v: boolean) => setRetryOn(v)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("最大重试次数")}
+                    tip={tr("连续失败最多重试几次（llm_max_retries）。")}
+                  >
+                    <antd.InputNumber
+                      style={{ width: 160 }}
+                      min={1}
+                      disabled={retryOn === false}
+                      value={
+                        maxRetries !== null && isPosInt(maxRetries)
+                          ? Number(maxRetries)
+                          : (num(cfg.llm_max_retries) ?? undefined)
+                      }
+                      onChange={(v: number | null) =>
+                        setMaxRetries(v === null || v === undefined ? null : String(v))
+                      }
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("退避基数（秒）")}
+                    tip={tr("指数退避基数（llm_backoff_base）：第 n 次重试前等待 ≈ 基数 × 2^(n-1)。")}
+                  >
+                    <antd.InputNumber
+                      style={{ width: 160 }}
+                      min={0}
+                      step={0.5}
+                      addonAfter="s"
+                      disabled={retryOn === false}
+                      value={
+                        backoffBase !== null && isPosNum(backoffBase)
+                          ? Number(backoffBase)
+                          : (num(cfg.llm_backoff_base) ?? undefined)
+                      }
+                      onChange={(v: number | null) =>
+                        setBackoffBase(v === null || v === undefined ? null : String(v))
+                      }
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("退避上限（秒）")}
+                    tip={tr("指数退避上限（llm_backoff_cap），须 ≥ 退避基数。")}
+                  >
+                    <antd.InputNumber
+                      style={{ width: 160 }}
+                      min={0}
+                      step={0.5}
+                      addonAfter="s"
+                      disabled={retryOn === false}
+                      value={
+                        backoffCap !== null && isPosNum(backoffCap)
+                          ? Number(backoffCap)
+                          : (num(cfg.llm_backoff_cap) ?? undefined)
+                      }
+                      onChange={(v: number | null) =>
+                        setBackoffCap(v === null || v === undefined ? null : String(v))
+                      }
+                    />
+                  </CfgRow>
+                </antd.Card>
+              ),
+            },
+            // 六 tab 补齐：LLM 并发限流（QwenPaw
+            // LlmRateLimiterCard 同款 5 键，L1 可编辑 / L2 只读）。
+            {
+              key: "rate",
+              label: tr("LLM 并发限流"),
+              children: (
+                <antd.Card size="small" title={sheet ? undefined : tr("LLM 并发限流")} style={{ marginTop: 4 }}>
+                  {!l1 ? (
+                    <antd.Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 8 }}
+                      message={tr(
+                        "L1-only 字段——当前账号没有 Controller 管理 token：L1 账号/密码登录只建立网关 Console 会话（与 Controller token 是两套凭证），无 token 时 L1 字段不可写（PUT 403）。获取 token 与配置方法见「设置」页。",
+                      )}
+                      action={
+                        onOpenSettings ? (
+                          <antd.Button size="small" onClick={onOpenSettings}>
+                            {tr("去设置")}
+                          </antd.Button>
+                        ) : undefined
+                      }
+                    />
+                  ) : null}
+                  <CfgRow
+                    label={tr("LLM 并发上限")}
+                    tip={tr("LLM 同时运行数（llm_max_concurrent）。1..10000。")}
+                  >
+                    <antd.InputNumber
+                      min={1}
+                      max={10000}
+                      style={{ width: 160 }}
+                      disabled={!l1}
+                      value={rateEdits.llm_max_concurrent != null ? Number(rateEdits.llm_max_concurrent) : num(cfg.llm_max_concurrent) ?? undefined}
+                      onChange={(v: number | null) => rateSet("llm_max_concurrent", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("LLM QPM")}
+                    tip={tr("LLM 每分钟请求上限（llm_max_qpm）。0=不限制。")}
+                  >
+                    <antd.InputNumber
+                      min={0}
+                      max={1000000}
+                      style={{ width: 160 }}
+                      disabled={!l1}
+                      value={rateEdits.llm_max_qpm != null ? Number(rateEdits.llm_max_qpm) : num(cfg.llm_max_qpm) ?? undefined}
+                      onChange={(v: number | null) => rateSet("llm_max_qpm", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("限速等待")}
+                    tip={tr("触发限速时等待秒数（llm_rate_limit_pause）。")}
+                  >
+                    <antd.InputNumber
+                      min={0}
+                      max={3600}
+                      style={{ width: 160 }}
+                      addonAfter={tr("秒")}
+                      disabled={!l1}
+                      value={rateEdits.llm_rate_limit_pause != null ? Number(rateEdits.llm_rate_limit_pause) : num(cfg.llm_rate_limit_pause) ?? undefined}
+                      onChange={(v: number | null) => rateSet("llm_rate_limit_pause", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("限速抖动")}
+                    tip={tr("限速等待的随机抖动秒数（llm_rate_limit_jitter）。")}
+                  >
+                    <antd.InputNumber
+                      min={0}
+                      max={3600}
+                      style={{ width: 160 }}
+                      addonAfter={tr("秒")}
+                      disabled={!l1}
+                      value={rateEdits.llm_rate_limit_jitter != null ? Number(rateEdits.llm_rate_limit_jitter) : num(cfg.llm_rate_limit_jitter) ?? undefined}
+                      onChange={(v: number | null) => rateSet("llm_rate_limit_jitter", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("槽位获取超时")}
+                    tip={tr("获取并发槽位的超时秒数（llm_acquire_timeout）。")}
+                  >
+                    <antd.InputNumber
+                      min={1}
+                      max={3600}
+                      style={{ width: 160 }}
+                      addonAfter={tr("秒")}
+                      disabled={!l1}
+                      value={rateEdits.llm_acquire_timeout != null ? Number(rateEdits.llm_acquire_timeout) : num(cfg.llm_acquire_timeout) ?? undefined}
+                      onChange={(v: number | null) => rateSet("llm_acquire_timeout", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                </antd.Card>
+              ),
+            },
+            // 上下文管理（light_context_config 嵌套合并，
+            // L1 可编辑 / L2 只读）——字段名逐字对账实盘 GET。
+            {
+              key: "ctx",
+              label: tr("上下文管理"),
+              children: (
+                <antd.Card size="small" title={sheet ? undefined : tr("上下文管理")} style={{ marginTop: 4 }}>
+                  {!l1 ? (
+                    <antd.Alert
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 8 }}
+                      message={tr(
+                        "L1-only 字段——当前账号没有 Controller 管理 token：L1 账号/密码登录只建立网关 Console 会话（与 Controller token 是两套凭证），无 token 时 L1 字段不可写（PUT 403）。获取 token 与配置方法见「设置」页。",
+                      )}
+                      action={
+                        onOpenSettings ? (
+                          <antd.Button size="small" onClick={onOpenSettings}>
+                            {tr("去设置")}
+                          </antd.Button>
+                        ) : undefined
+                      }
+                    />
+                  ) : null}
+                  <CfgRow
+                    label={tr("上下文后端")}
+                    tip={tr("context_manager_backend——light=滚动上下文。L1-only 键。")}
+                  >
+                    <antd.Select
+                      style={{ width: 200 }}
+                      disabled={!l1}
+                      value={ctxEdits.context_manager_backend != null ? String(ctxEdits.context_manager_backend) : String(cfg.context_manager_backend || "light")}
+                      onChange={(v: string) => ctxSet("context_manager_backend", v)}
+                      options={[
+                        { value: "light", label: "light（滚动上下文）" },
+                        { value: String(cfg.context_manager_backend || "light"), label: String(cfg.context_manager_backend || "light") },
+                      ].filter((o, i, a) => a.findIndex((x) => x.value === o.value) === i)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("词元估算除数")}
+                    tip={tr("词元数估算 = 字符数 ÷ 该值（token_count_estimate_divisor）。")}
+                  >
+                    <antd.InputNumber
+                      min={0.5}
+                      max={10000}
+                      step={0.5}
+                      style={{ width: 140 }}
+                      disabled={!l1}
+                      value={ctxEdits.token_count_estimate_divisor != null ? Number(ctxEdits.token_count_estimate_divisor) : num(cfg.light_context_config && (cfg.light_context_config as Rc).token_count_estimate_divisor) ?? undefined}
+                      onChange={(v: number | null) => ctxSet("token_count_estimate_divisor", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("压缩启用")}
+                    tip={tr("上下文超阈值时自动压缩（context_compact_config.enabled）。")}
+                  >
+                    <antd.Switch
+                      disabled={!l1}
+                      checked={
+                        ctxEdits.context_compact_enabled === undefined || ctxEdits.context_compact_enabled === null
+                          ? ((cfg.light_context_config as Rc | undefined)?.context_compact_config as Rc | undefined)?.enabled === true
+                          : ctxEdits.context_compact_enabled === true
+                      }
+                      onChange={(v: boolean) => ctxSet("context_compact_enabled", v)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("压缩阈值比例")}
+                    tip={tr("上下文占用达到窗口该比例时触发压缩（compact_threshold_ratio，(0,1)）。")}
+                  >
+                    <antd.InputNumber
+                      min={0.05}
+                      max={0.99}
+                      step={0.05}
+                      style={{ width: 140 }}
+                      disabled={!l1}
+                      value={ctxEdits.compact_threshold_ratio != null ? Number(ctxEdits.compact_threshold_ratio) : num(((cfg.light_context_config as Rc | undefined)?.context_compact_config as Rc | undefined)?.compact_threshold_ratio) ?? undefined}
+                      onChange={(v: number | null) => ctxSet("compact_threshold_ratio", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("保留阈值比例")}
+                    tip={tr("压缩后保留的上下文比例（reserve_threshold_ratio，(0,1)）。")}
+                  >
+                    <antd.InputNumber
+                      min={0.05}
+                      max={0.99}
+                      step={0.05}
+                      style={{ width: 140 }}
+                      disabled={!l1}
+                      value={ctxEdits.reserve_threshold_ratio != null ? Number(ctxEdits.reserve_threshold_ratio) : num(((cfg.light_context_config as Rc | undefined)?.context_compact_config as Rc | undefined)?.reserve_threshold_ratio) ?? undefined}
+                      onChange={(v: number | null) => ctxSet("reserve_threshold_ratio", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("工具结果裁剪")}
+                    tip={tr("超长工具结果 offload 到磁盘、上下文留摘要（tool_result_pruning_config.enabled）。")}
+                  >
+                    <antd.Switch
+                      disabled={!l1}
+                      checked={
+                        ctxEdits.pruning_enabled === undefined || ctxEdits.pruning_enabled === null
+                          ? ((cfg.light_context_config as Rc | undefined)?.tool_result_pruning_config as Rc | undefined)?.enabled === true
+                          : ctxEdits.pruning_enabled === true
+                      }
+                      onChange={(v: boolean) => ctxSet("pruning_enabled", v)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("近期保留条数")}
+                    tip={tr("最近 N 条消息不裁剪（pruning_recent_n）。")}
+                  >
+                    <antd.InputNumber
+                      min={0}
+                      max={100000}
+                      style={{ width: 140 }}
+                      disabled={!l1}
+                      value={ctxEdits.pruning_recent_n != null ? Number(ctxEdits.pruning_recent_n) : num(((cfg.light_context_config as Rc | undefined)?.tool_result_pruning_config as Rc | undefined)?.pruning_recent_n) ?? undefined}
+                      onChange={(v: number | null) => ctxSet("pruning_recent_n", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("旧消息上限（字节）")}
+                    tip={tr("历史工具结果超过该大小即裁剪（pruning_old_msg_max_bytes）。")}
+                  >
+                    <antd.InputNumber
+                      min={0}
+                      max={1000000000}
+                      style={{ width: 160 }}
+                      disabled={!l1}
+                      value={ctxEdits.pruning_old_msg_max_bytes != null ? Number(ctxEdits.pruning_old_msg_max_bytes) : num(((cfg.light_context_config as Rc | undefined)?.tool_result_pruning_config as Rc | undefined)?.pruning_old_msg_max_bytes) ?? undefined}
+                      onChange={(v: number | null) => ctxSet("pruning_old_msg_max_bytes", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("近期消息上限（字节）")}
+                    tip={tr("近期工具结果超过该大小即裁剪（pruning_recent_msg_max_bytes）。")}
+                  >
+                    <antd.InputNumber
+                      min={0}
+                      max={1000000000}
+                      style={{ width: 160 }}
+                      disabled={!l1}
+                      value={ctxEdits.pruning_recent_msg_max_bytes != null ? Number(ctxEdits.pruning_recent_msg_max_bytes) : num(((cfg.light_context_config as Rc | undefined)?.tool_result_pruning_config as Rc | undefined)?.pruning_recent_msg_max_bytes) ?? undefined}
+                      onChange={(v: number | null) => ctxSet("pruning_recent_msg_max_bytes", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("offload 保留天数")}
+                    tip={tr("裁剪 offload 到磁盘的结果保留天数（offload_retention_days）。")}
+                  >
+                    <antd.InputNumber
+                      min={1}
+                      max={3650}
+                      style={{ width: 140 }}
+                      addonAfter={tr("天")}
+                      disabled={!l1}
+                      value={ctxEdits.offload_retention_days != null ? Number(ctxEdits.offload_retention_days) : num(((cfg.light_context_config as Rc | undefined)?.tool_result_pruning_config as Rc | undefined)?.offload_retention_days) ?? undefined}
+                      onChange={(v: number | null) => ctxSet("offload_retention_days", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("裁剪豁免扩展名")}
+                    tip={tr("这些扩展名的文件读取结果不裁剪（exempt_file_extensions，逗号分隔，如 .md）。")}
+                  >
+                    <antd.Input
+                      style={{ width: 220 }}
+                      disabled={!l1}
+                      value={ctxEdits.exempt_file_extensions != null ? String(ctxEdits.exempt_file_extensions) : String(((cfg.light_context_config as Rc | undefined)?.tool_result_pruning_config as unknown as { exempt_file_extensions?: string[] })?.exempt_file_extensions?.join(", ") ?? "")}
+                      placeholder=".md, .json"
+                      onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => ctxSet("exempt_file_extensions", ev.target.value)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("裁剪豁免工具")}
+                    tip={tr("这些工具的结果不裁剪（exempt_tool_names，逗号分隔）。")}
+                  >
+                    <antd.Input
+                      style={{ width: 220 }}
+                      disabled={!l1}
+                      value={ctxEdits.exempt_tool_names != null ? String(ctxEdits.exempt_tool_names) : String(((cfg.light_context_config as Rc | undefined)?.tool_result_pruning_config as unknown as { exempt_tool_names?: string[] })?.exempt_tool_names?.join(", ") ?? "")}
+                      placeholder="chat_with_agent"
+                      onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => ctxSet("exempt_tool_names", ev.target.value)}
+                    />
+                  </CfgRow>
+                </antd.Card>
+              ),
+            },
+            // 长期记忆（reme_light_memory_config——
+            // L2 白名单键，全角色可编辑核心项；embedding/目录只读展示）。
+            {
+              key: "mem",
+              label: tr("长期记忆"),
+              children: (
+                <antd.Card size="small" title={sheet ? undefined : tr("长期记忆")} style={{ marginTop: 4 }}>
+                  <CfgRow
+                    label={tr("记忆后端")}
+                    tip={tr("memory_manager_backend——remelight=轻量本地记忆，adbpg=AnalyticDB PG 向量记忆。")}
+                  >
+                    <antd.Select
+                      style={{ width: 200 }}
+                      value={memBackend ?? String(cfg.memory_manager_backend || "remelight")}
+                      onChange={(v: string) => setMemBackend(v)}
+                      options={[
+                        { value: "remelight", label: "remelight（轻量本地）" },
+                        { value: "adbpg", label: "adbpg（AnalyticDB PG）" },
+                        { value: String(cfg.memory_manager_backend || "remelight"), label: String(cfg.memory_manager_backend || "remelight") },
+                      ].filter((o, i, a) => a.findIndex((x) => x.value === o.value) === i)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("压缩时摘要")}
+                    tip={tr("上下文压缩时把被压缩内容写入长期记忆（summarize_when_compact）。")}
+                  >
+                    <antd.Switch
+                      checked={remeEdits.summarize_when_compact === undefined || remeEdits.summarize_when_compact === null ? (remeCfg as Rc | undefined)?.summarize_when_compact === true : remeEdits.summarize_when_compact === true}
+                      onChange={(v: boolean) => remeSet("summarize_when_compact", v)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("收件箱推送")}
+                    tip={tr("新记忆写入时推送到收件箱（inbox_push_enabled）。")}
+                  >
+                    <antd.Switch
+                      checked={remeEdits.inbox_push_enabled === undefined || remeEdits.inbox_push_enabled === null ? (remeCfg as Rc | undefined)?.inbox_push_enabled === true : remeEdits.inbox_push_enabled === true}
+                      onChange={(v: boolean) => remeSet("inbox_push_enabled", v)}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("自动记忆间隔（分钟）")}
+                    tip={tr("每 N 分钟把对话增量写入长期记忆（auto_memory_interval，1..1440）。")}
+                  >
+                    <antd.InputNumber
+                      min={1}
+                      max={1440}
+                      style={{ width: 140 }}
+                      addonAfter={tr("分钟")}
+                      value={remeEdits.auto_memory_interval != null ? Number(remeEdits.auto_memory_interval) : num((remeCfg as Rc | undefined)?.auto_memory_interval) ?? undefined}
+                      onChange={(v: number | null) => remeSet("auto_memory_interval", v == null ? null : String(v))}
+                    />
+                  </CfgRow>
+                  <CfgRow
+                    label={tr("Dream 定时任务")}
+                    tip={tr("定时记忆整合（dream_cron_enabled + dream_cron，cron 表达式）。")}
+                  >
+                    <antd.Space size={6}>
+                      <antd.Switch
+                        checked={remeEdits.dream_cron_enabled === undefined || remeEdits.dream_cron_enabled === null ? (remeCfg as Rc | undefined)?.dream_cron_enabled === true : remeEdits.dream_cron_enabled === true}
+                        onChange={(v: boolean) => remeSet("dream_cron_enabled", v)}
+                      />
+                      <antd.Input
+                        style={{ width: 150, fontFamily: "monospace" }}
+                        value={remeEdits.dream_cron != null ? String(remeEdits.dream_cron) : String((remeCfg as Rc | undefined)?.dream_cron ?? "")}
+                        placeholder="0 23 * * *"
+                        onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => remeSet("dream_cron", ev.target.value)}
+                      />
+                    </antd.Space>
+                  </CfgRow>
+                  <div style={{ marginTop: 6 }}>
+                    <antd.Button
+                      size="small"
+                      type="link"
+                      style={{ padding: 0, fontSize: 11.5 }}
+                      onClick={() => setMemOpen((v) => !v)}
+                    >
+                      {memOpen ? tr("隐藏配置 JSON") : tr("查看配置 JSON")}
+                    </antd.Button>
+                    {memOpen ? (
+                      <pre
+                        style={{
+                          margin: "6px 0 0",
+                          padding: 8,
+                          fontSize: 10.5,
+                          fontFamily: "monospace",
+                          background: t.toolBg,
+                          border: `1px solid ${t.border}`,
+                          borderRadius: 6,
+                          maxHeight: 180,
+                          overflow: "auto",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {JSON.stringify(
+                          {
+                            reme_light_memory_config: remeCfg ?? null,
+                            adbpg_memory_config: adbpgCfg ?? null,
+                          },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    ) : null}
+                  </div>
+                </antd.Card>
+              ),
+            },
+            {
+              key: "system",
+              // 审批级别不再只读——内嵌
+              // 与团队管理卡同源的 ApprovalControl（四档卡选择器 + 读/写
+              // 双路径回退 + L1/L2 权限 + OFF capability 提示，零新写链路）。
+              // 数据面仍走审批端点 #1216（WRC PUT 白名单本就不含
+              // approval_level，无双写）。
+              label: tr("系统"),
+              children: (
+                <div style={{ marginTop: 4 }}>
+                  <ApprovalControl workerName={name} />
+                </div>
+              ),
+            },
+          ]}
+        />
+      ) : null}
+    </div>
+  );
+}
