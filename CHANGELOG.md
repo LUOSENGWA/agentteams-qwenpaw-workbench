@@ -3,6 +3,11 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.15.41（2026-10-21 · 成员详情卡查看会话入口）
+
+**新增**
+- **成员详情卡「查看会话」按钮**：成员详情卡对 Worker 成员新增「查看会话」按钮——直接打开该 Worker 的完整会话，与聊天内点击头像的「查看会话」同一功能与显示条件。
+
 ## 0.5.0-beta.15.40（2026-10-21 · 会话详情白屏崩溃修复）
 
 **修复**

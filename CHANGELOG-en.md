@@ -3,6 +3,11 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.15.41 (2026-10-21 - session view entry on member detail card)
+
+**Added**
+- **"View Sessions" button on the member detail card**: the member detail card for worker members now has a "View Sessions" button — it opens the worker's full sessions directly, with the same behavior and visibility conditions as the "View Sessions" entry from clicking an avatar in chat.
+
 ## 0.5.0-beta.15.40 (2026-10-21 - session detail white-screen crash fix)
 
 **Fixed**
