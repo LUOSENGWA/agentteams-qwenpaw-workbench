@@ -3,6 +3,21 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16 (2026-10-22 - official release)
+
+**Merged release of sub-batches 15.1–15.41 (full mobile/portrait + touch support, local offline mode, full AgentTeams 1.2.5 feature integration, complete Coding CLI management chain, LLM tuning + runtime batch upgrades, layout audit to zero overflow, regression fixes; pytest 374→456, i18n 1,424→1,616 keys)**
+
+- **Mobile/portrait + touch support everywhere**: full dark-mode adaptation (40 hardcoded colors tiered, black-translucent texts + gray/black translucent backgrounds migrated to theme tokens) + all 58 tooltips tappable + 44px touch targets + safe-area + unified portrait detection (root-cause fix for landscape being misjudged as portrait) + compact chat header (6+ controls folded into a ⋯ menu) + 9 rounds of per-page portrait polish (chat input rebuild / workflow cluster rework / 3-tier board layout / skill-detail dialog / tab-slide root fix / chat file references / approval-color convergence) + knowledge-graph touch gestures (two-finger pinch / one-finger pan / double-tap focus + wheel zoom) + version number on the home page
+- **Local offline mode + audit panel**: data plane makes zero network calls when there is no QwenPaw backend (entry mount suppressed — the 503 banner flood is structurally gone) + config plane kept locally (masked credentials, backup/restore import) + honest two-step connection probe (reachability / CORS attributed separately) + audit tab (upstream persistent audit, L1 full / L2 own team, 3-dimension filters + keyset pagination)
+- **AgentTeams 1.2.5 integration + two-axis host contract**: worker env-var editor + gateway probe / coding-run log viewer / runtime upgrade panel (4-gate precheck + two-phase in-place upgrade) / per-worker runtime version (measured in-container) + two-axis host contract (host.env.kind + caps, consistent feature surface in standalone mode) + three-source version-consistency gate
+- **Complete Coding CLI management chain**: install / upgrade / uninstall for all 3 CLIs (qwen-code / opencode / qoder) + update check (npm registry queried host-side) + settings forms driven by the official schema (all fields, EN/ZH adaptive, empty state editable) + collapsible section cards with current-value summary (unsaved-change badge + adaptive layout) + credential migration + up-front warnings for known CLI pitfalls
+- **LLM tuning + runtime batch upgrade + cluster version card**: LLM tuning panel (worker + team default, two layers, 10 fields with hot-apply / restart-required labels) + batch runtime upgrade (team-grouped selection, inline current versions) + cluster version card (real AgentTeams + Higress versions, topology-aligned) + update check 7× faster
+- **Cardification + layout audit to zero overflow**: CLI card accordion + 11 tabs × 6 widths = 72-cell real-overflow audit at 0 + 44px touch-target probe 51/51 + 111 dead strings cleaned up + room list bounded loading (76 rooms 21.9s → 5.8–8.6s) + event stream connected instantly (~15s → 0.003s) + window-drag stutter root-caused
+- **Regression fixes + member detail card session entry**: full-page whiteout when opening a session detail (root-cause fix of a 14.x latent conditional-hook bug) / missing input box misreported as "no permission" / half-clipped board cards / narrow-screen field overflow / 3 real Coding CLI bugs (model-name save always disabled / array corruption / empty leaves not stripped) + new "View Sessions" button on the worker member detail card (same target and gate as the avatar entry)
+- **Security hardening + tech debt (no user-visible changes)**: password gate for full-config export/import (separate 0600 store, default deny) + model-format root-cause fix + 180s-timeout read-back verification + noUnused dead-code gate + dedicated tech-debt batch (18 oversized files split, 10 duplicated groups consolidated, 75 redundant exports collapsed — zero user-visible)
+
+**Verification**: tsc 0 · vite build single file 2,009.70 kB (gzip 567.63 kB, 0 import statements) · pytest 456/456 · i18n 1,616 keys 0 missing 0 dup 0 empty · harness-cli 50/50 · 137 24/24 · 138 35/35 · sensitive scan 0 (staged added lines + full chain 80b637d..HEAD messages CJK 0 / MARK 0)
+
 ## 0.5.0-beta.15.41 (2026-10-21 - session view entry on member detail card)
 
 **Added**
