@@ -3,6 +3,10 @@
 export const workflowDict: Record<string, { en: string }> = {
   // ── 第二批：产物页 / 运维 / 管理 / 工作流 / 树 ──
   "项目产物": { en: "Project Artifacts" },
+  "信号事件（SIG-*）": { en: "Signal events (SIG-*)" },
+  "Controller 未部署信号事件读取端点（#1405 只写不读；需补只读端点后此处自动出现）": {
+    en: "This Controller does not expose the signal-events read endpoint (#1405 writes only; the panel appears once the read endpoint ships).",
+  },
   "时间 新→旧": { en: "Time: newest first" },
   "时间 旧→新": { en: "Time: oldest first" },
   "名称 A→Z": { en: "Name A–Z" },

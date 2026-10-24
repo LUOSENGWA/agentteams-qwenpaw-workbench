@@ -117,6 +117,61 @@ export interface ProjectTransitionEvent {
   seq?: number;
 }
 
+/** 信号事件（#1405 S2 契约，11 字段）。事件对象由 Controller/TeamHarness
+ * 写到 OSS `teams/{team}/shared/events/{teamID}/{event_id}.json`；**#1405 只写
+ * 不读**（明确未改 GetProjectEvents），因此本前端消费的
+ * `GET /api/v1/projects/{id}/signal-events` 是待补的 Controller 只读端点。
+ * 契约与 transition events 一致：游标分页、404 = 未部署（返回 null，UI 诚实
+ * 降级，不当错误）。 */
+export interface ProjectSignalEvent {
+  event_id: string;
+  task_id: string;
+  loop_id: string | null;
+  event_type: string; // SIG-DECISION / SIG-VERDICT / SIG-MISMATCH / SIG-COMPLETE / ...
+  is_signal: boolean;
+  source_event: { origin: string; request_id: string | null };
+  ref: string;
+  fingerprint: string;
+  iteration_index: number | null;
+  payload: Record<string, unknown>;
+  occurred_at: string;
+}
+
+/** 信号事件列表（端点未部署 → null）。 */
+export async function fetchProjectSignalEvents(
+  projectId: string,
+  teamId?: string,
+  opts?: { limit?: number; cursor?: string },
+): Promise<{
+  events: ProjectSignalEvent[];
+  nextCursor?: string;
+  cursorExpired: boolean;
+} | null> {
+  const params: string[] = [];
+  if (teamId) params.push(`team=${encodeURIComponent(teamId)}`);
+  if (opts?.limit) params.push(`limit=${opts.limit}`);
+  if (opts?.cursor) params.push(`cursor=${encodeURIComponent(opts.cursor)}`);
+  const q = params.length ? `?${params.join("&")}` : "";
+  try {
+    const raw = (await requestJson(
+      `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/signal-events${q}`,
+    )) as Record<string, unknown>;
+    return {
+      events: (Array.isArray(raw.events)
+        ? raw.events
+        : []) as ProjectSignalEvent[],
+      nextCursor:
+        typeof raw.next_cursor === "string" && raw.next_cursor
+          ? raw.next_cursor
+          : undefined,
+      cursorExpired: raw.cursor_expired === true,
+    };
+  } catch (e) {
+    if (httpErrorStatus(e) === 404) return null;
+    throw e;
+  }
+}
+
 /** 任务状态转换事件流（Controller GET /api/v1/projects/{id}/events，#1233）。
  * 游标分页：limit 1..200（默认 50），next_cursor 不透明；
  * cursor_expired=true → 游标锚点已被截断/失效，调用方必须弃游标从头取。

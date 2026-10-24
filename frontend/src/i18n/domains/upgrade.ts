@@ -25,6 +25,11 @@ export const upgradeDict: Record<string, { en: string }> = {
   "（无日志内容）": { en: "(No log content)" },
   "CLI": { en: "CLI" },
   "Runner": { en: "Runner" },
+  "持续": { en: "Duration" },
+  "Tokens": { en: "Tokens" },
+  "凭证": { en: "Receipt" },
+  "工作树": { en: "Worktree" },
+  "分支": { en: "Branch" },
   // ── 运行时升级（1.2.5 #1364/#1343 消费）──
   "运行时升级": { en: "Runtime Upgrade" },
   "目标": { en: "target" },

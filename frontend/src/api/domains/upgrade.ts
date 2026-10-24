@@ -25,6 +25,12 @@ export interface CodingRun {
   started_at?: string;
   ended_at?: string;
   log_bytes?: number | null;
+  // T5 试点字段（main 的 #1365/#1381 只含前 7 项；下列字段待上游 T5 schema
+  // 扩展后出现——旧 Controller 缺省时 UI 显示「—」，不伪造）。
+  tokens?: number | null;
+  receipt?: string;
+  worktree?: string;
+  branch?: string;
 }
 
 export interface CodingRunDetail {
@@ -42,6 +48,10 @@ export interface CodingRunDetail {
     started_at?: string;
     ended_at?: string;
     log_bytes?: number | null;
+    tokens?: number | null;
+    receipt?: string;
+    worktree?: string;
+    branch?: string;
     prompt_file?: string;
     prompt_sha256?: string;
   };
