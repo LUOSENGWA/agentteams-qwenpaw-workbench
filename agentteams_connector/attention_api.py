@@ -44,6 +44,8 @@ from pydantic import BaseModel
 
 # 30s 进程内聚合缓存（GET /attention 的重复轮询不再打 controller）。
 _CACHE_TTL = 30.0
+#: 未部署（旧 controller）结果缓存更久：每 30s 重扫 N 个项目是纯浪费。
+_NOT_DEPLOYED_TTL = 120.0
 # 模块级缓存——名字以 ``_cache`` 结尾（tests/conftest 的
 # ``_clear_module_caches`` 按此约定统一清，防跨测试泄漏）。
 _attention_cache: Dict[str, Any] = {}
@@ -174,6 +176,10 @@ async def _fetch_all(include_resolved: bool) -> Dict[str, Any]:
 
     async def _one(proj: Dict[str, Any]) -> None:
         nonlocal not_deployed
+        # 404 一旦出现即整体降级：其余项目（含排队中的协程）不再发请求，
+        # 否则旧 controller 下每次轮询要顺序扫完全部项目（实测 36s）。
+        if not_deployed:
+            return
         pid = str(proj.get("project_id") or "")
         team = proj.get("team_id")
         team_q = (
@@ -198,7 +204,9 @@ async def _fetch_all(include_resolved: bool) -> Dict[str, Any]:
             not_deployed = True
             return
         if st2 != 200:
-            errors.append(f"{pid}: Controller {st2}")
+            errors.append(
+                f"{pid}: " + ("unreachable" if st2 == 0 else f"Controller {st2}")
+            )
             return
         payload = data2 if isinstance(data2, dict) else {}
         for it in payload.get("items") or []:
@@ -319,7 +327,8 @@ def build_attention_router() -> APIRouter:
                 return _with_answered(result)
         result = await _fetch_all(inc == 1)
         result["cached"] = False
-        _attention_cache[key] = (time.monotonic() + _CACHE_TTL, result)
+        ttl = _CACHE_TTL if result.get("deployed", True) else _NOT_DEPLOYED_TTL
+        _attention_cache[key] = (time.monotonic() + ttl, result)
         return _with_answered(result)
 
     @router.post("/attention/answer")
