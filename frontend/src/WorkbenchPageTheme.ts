@@ -11,6 +11,34 @@ const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 
+/** 连接器实时版本（GET /agentteams-proxy/health 的 version 字段——
+ * 后端进程实际加载的版本，单一真相源）。立即拉取一次 + 固定间隔轮询
+ * （默认 60s：插件热加载/升级后不刷页面也会跟上）。失败静默保留上次值
+ * ——回退构建期版本的决定在调用方（connectorVersion || buildVersion）。 */
+export function useConnectorVersion(intervalMs = 60_000): string {
+  const [v, setV] = React.useState("");
+  React.useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      void requestJson("/agentteams-proxy/health")
+        .then((d) => {
+          const ver = (d as { version?: string })?.version;
+          if (!cancelled && ver) setV(ver);
+        })
+        .catch(() => {
+          /* 后端不可达（未起/重启中）：保留上次值——调用方回退构建期版本 */
+        });
+    };
+    load();
+    const id = window.setInterval(load, intervalMs);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [intervalMs]);
+  return v;
+}
+
 export function useWorkbenchTheme() {
 
   const t = useThemeColors();
@@ -30,33 +58,21 @@ export function useWorkbenchTheme() {
     [t.mode, hostTokens],
   );
   const tr = useT();
-  // 插件版本：从后端 /health 读（单一真相源 = agentteams_connector/__init__.py）。
-  // 主显示改**构建
-  // 期注入版本**（vite define __PLUGIN_VERSION__，来源 package.json）——
-  // 永远等于当前 dist 的版本，不再受后端进程未随安装重启（health 滞后）
-  // 或请求失败（旧版恒显占位「…」）影响；连接器运行版本仍查 /health，
-  // 仅入 tooltip 对照说明。
-  const pluginVersion = __PLUGIN_VERSION__;
-  const [connectorVersion, setConnectorVersion] = React.useState("");
-  React.useEffect(() => {
-    let cancelled = false;
-    void requestJson("/agentteams-proxy/health")
-      .then((d) => {
-        const v = (d as { version?: string })?.version;
-        if (!cancelled && v) setConnectorVersion(v);
-      })
-      .catch(() => {
-        /* 后端不可达：tooltip 少一行对照，不影响主显示 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // 版本显示（16.11 口径）：主显示 = /health 实时版本（60s 轮询——
+  // 后端进程实际加载的版本，单一真相源 = agentteams_connector/
+  // __init__.py；旧口径「构建期常量为主」会在旧 dist 缓存时恒显旧版）。
+  // 取不到（后端未起/首载竞态/旧版无字段）→ 回退构建期注入版本
+  // （vite define __PLUGIN_VERSION__，来源 package.json = 当前 dist 版本）。
+  // 两者不一致时页头 tooltip 对照说明（前端 {build} · 连接器 {health}）。
+  const buildVersion = __PLUGIN_VERSION__;
+  const connectorVersion = useConnectorVersion(60_000);
+  const pluginVersion = connectorVersion || buildVersion;
   return {
     t,
     themeCfg,
     tr,
     pluginVersion,
     connectorVersion,
+    buildVersion,
   };
 }

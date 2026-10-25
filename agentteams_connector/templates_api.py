@@ -76,6 +76,7 @@ _ENTRY_FIELDS = (
     "file",
     "source",
     "applies_to",
+    "industry",  # domain 条目 → 所属行业（前端行业→领域级联；旧包无此字段 = 空串）
     "budget",
     "resident",
     "trigger",

@@ -30,6 +30,9 @@ export const millforgeDict: Record<string, { en: string }> = {
   "不选 = 通用": { en: "None = generic" },
   "领域（domains，多选）": { en: "Domains (multi)" },
   "不选 = 不附加领域片段": { en: "None = no domain fragments" },
+  "整队组合的领域不属于所选行业——已清空 domains（可手动补选）": {
+    en: "Combo domains don't belong to the selected industry — domains cleared (re-pick manually if needed)",
+  },
   "成员（leader/workers/critic）": { en: "Members (leader/workers/critic)" },
   "Critic": { en: "Critic" },
   "合计 {n} 个角色": { en: "{n} role(s) in total" },
@@ -156,13 +159,20 @@ export const millforgeDict: Record<string, { en: string }> = {
   },
   // ── B 折叠区（建队表单）──
   "千锻模板（可选）": { en: "Millforge template (optional)" },
-  "用千锻编译并注入新 Worker 的 SOUL（点「确认创建」时执行）": {
-    en: "Compile & inject SOUL for new workers via Millforge (runs on Create)",
+  "展开后：选源 → 选模板 →（可选）编译预览 → 选注入方式": {
+    en: "When expanded: pick source → pick template → (optional) compile preview → pick inject mode",
   },
+  "注入方式（提交建队时自动执行）": {
+    en: "Inject mode (auto-runs on team creation submit)",
+  },
+  "core 技能：成功（已挂接：{list}）": {
+    en: "core skill: OK (attached to {list})",
+  },
+  "core 技能：成功": { en: "core skill: OK" },
+  "core 技能：跳过": { en: "core skill: skipped" },
+  "core 技能：部分失败": { en: "core skill: partial failure" },
+  "core 技能：失败": { en: "core skill: failed" },
   "可不预览——提交建队时自动编译 → 注入 → 创建": {
     en: "Preview optional — submitting team creation auto-runs compile → inject → create",
-  },
-  "启用后：选源 → 选模板 →（可选）编译预览 → 选注入方式；「确认创建」时自动执行 编译（若未编译）→ 千锻注入 → 创建团队，成员 = 选中/新建的 Worker。": {
-    en: "Once enabled: pick source → pick template → (optional) compile preview → pick inject mode; submitting team creation then auto-runs compile (if not yet) → Millforge inject → create team, with members = the selected/created workers.",
   },
 };

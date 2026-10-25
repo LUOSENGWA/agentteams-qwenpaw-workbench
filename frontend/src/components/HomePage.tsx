@@ -33,6 +33,7 @@ import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import { useWbViewport } from "../WbViewportContext";
+import { useConnectorVersion } from "../WorkbenchPageTheme";
 import { logoUrl as LOGO_URL } from "../lib/logo";
 import { formatChatTime } from "../util";
 import {
@@ -89,6 +90,8 @@ function HomePage(props: HomePageProps) {
   const t = useThemeColors();
   const tr = useT();
   const { narrow } = useWbViewport();
+  // 插件版本与页头同源：/health 实时版本（60s 轮询），取不到回退构建期版本。
+  const liveVersion = useConnectorVersion();
 
   // 发起任务弹窗（选 Leader 入口——入口 B 默认 / Manager 跨团队 A）。
   const [newTaskOpen, setNewTaskOpen] = React.useState(false);
@@ -379,9 +382,10 @@ function HomePage(props: HomePageProps) {
                 ? tr("Controller L2 授权范围")
                 : tr("Controller 未接入")}
             {/* 15.15：首页可见插件版本（页头版本行竖屏被 !narrow 隐藏，
- 手机上无处可查版本；构建期注入 __PLUGIN_VERSION__，与页头同源）。 */}
+ 手机上无处可查版本）；16.11 与页头同源——/health 实时版本，取不到
+ 回退构建期注入 __PLUGIN_VERSION__。 */}
             {" · v"}
-            {__PLUGIN_VERSION__}
+            {liveVersion || __PLUGIN_VERSION__}
           </div>
         </div>
         <div style={{ fontSize: 12, color: t.textSecondary, marginTop: 2 }}>

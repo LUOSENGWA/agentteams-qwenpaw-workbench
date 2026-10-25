@@ -244,33 +244,52 @@ export function useMillforgeCore(tr: TrFn) {
   // ── B3 模板 spec（industry 单选 + domains 多选 + 整队组合 + members + lang）──
   const [spec, setSpec] = React.useState<MillforgeTemplateSpec>(EMPTY_SPEC);
   const [lang, setLang] = React.useState<"zh" | "en">("zh");
+  // 整队组合级联校验提示（组合 domains 与所选行业不符 → 清空 + 提示）。
+  const [comboWarning, setComboWarning] = React.useState("");
 
   const pickCombo = React.useCallback(
     (comboId: string) => {
-      setSpec((prev) => {
-        const combo = index?.teams.find((x) => x.id === comboId) || null;
-        if (!combo) {
-          return { ...prev, team_combo: "" };
+      const combo = index?.teams.find((x) => x.id === comboId) || null;
+      if (!combo) {
+        setComboWarning("");
+        setSpec((prev) => ({ ...prev, team_combo: "" }));
+        return;
+      }
+      const num = (v: string, dft: number) => {
+        const n = parseInt(String(v).replace(/\D/g, ""), 10);
+        return Number.isFinite(n) && n > 0 ? n : dft;
+      };
+      // 级联：组合的 domains 须属于（组合自带/当前所选）industry；
+      // INDEX 无 industry 字段（旧包）时跳过校验——诚实降级。
+      const nextIndustry = combo.industry || spec.industry || "";
+      let domains = combo.domains
+        ? combo.domains.split(",").map((x) => x.trim()).filter(Boolean)
+        : spec.domains || [];
+      let warning = "";
+      const domEntries = (index?.domain || []).filter((e) => e.id);
+      const hasIndustryInfo = domEntries.some((e) => e.industry);
+      if (nextIndustry && hasIndustryInfo && domains.length) {
+        const belonging = new Set(
+          domEntries.filter((e) => e.industry === nextIndustry).map((e) => e.id),
+        );
+        if (!domains.every((d) => belonging.has(d))) {
+          domains = [];
+          warning = tr("整队组合的领域不属于所选行业——已清空 domains（可手动补选）");
         }
-        const num = (v: string, dft: number) => {
-          const n = parseInt(String(v).replace(/\D/g, ""), 10);
-          return Number.isFinite(n) && n > 0 ? n : dft;
-        };
-        return {
-          team_combo: combo.id,
-          industry: combo.industry || prev.industry || "",
-          domains: combo.domains
-            ? combo.domains.split(",").map((x) => x.trim()).filter(Boolean)
-            : prev.domains || [],
-          members: {
-            leader: num(combo.members.leader, prev.members?.leader || 1),
-            workers: num(combo.members.workers, prev.members?.workers || 2),
-            critic: num(combo.members.critic, prev.members?.critic || 0),
-          },
-        };
+      }
+      setComboWarning(warning);
+      setSpec({
+        team_combo: combo.id,
+        industry: nextIndustry,
+        domains,
+        members: {
+          leader: num(combo.members.leader, spec.members?.leader || 1),
+          workers: num(combo.members.workers, spec.members?.workers || 2),
+          critic: num(combo.members.critic, spec.members?.critic || 0),
+        },
       });
     },
-    [index],
+    [index, spec, tr],
   );
 
   // ── B4 编译预览 ──
@@ -539,6 +558,8 @@ export function useMillforgeCore(tr: TrFn) {
     spec,
     setSpec,
     pickCombo,
+    comboWarning,
+    setComboWarning,
     lang,
     setLang,
     // B4 编译

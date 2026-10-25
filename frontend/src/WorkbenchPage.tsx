@@ -46,7 +46,7 @@ const React = host.React;
 const antd = host.antd;
 
 export default function WorkbenchPage() {
-  const { t, themeCfg, tr, pluginVersion, connectorVersion } = useWorkbenchTheme();
+  const { t, themeCfg, tr, pluginVersion, connectorVersion, buildVersion } = useWorkbenchTheme();
 
   const [config, setConfig] = React.useState<WorkbenchConfig | null>(null);
  // config 稳定镜像 ref——refreshConfig（deps=[]）
@@ -742,9 +742,9 @@ export default function WorkbenchPage() {
           {!narrow && (
             <WbTooltip
               title={
-                connectorVersion && connectorVersion !== pluginVersion
+                connectorVersion && connectorVersion !== buildVersion
                   ? tr("前端 {f} · 连接器 {b}", {
-                      f: pluginVersion,
+                      f: buildVersion,
                       b: connectorVersion,
                     })
                   : tr("插件版本 {v}", { v: pluginVersion })

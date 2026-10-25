@@ -28,7 +28,7 @@ const SECTIONS: { key: "skeletons" | "industry" | "domain" | "fragments"; label:
 ];
 
 export default function MillforgeTemplatePicker({ core, tr, t }: Props) {
-  const { spec, setSpec, pickCombo, lang, setLang, index, pack } = core;
+  const { spec, setSpec, pickCombo, comboWarning, setComboWarning, lang, setLang, index, pack } = core;
 
   const [browseSec, setBrowseSec] = React.useState<string>("industry");
   const [browseFile, setBrowseFile] = React.useState("");
@@ -80,6 +80,36 @@ export default function MillforgeTemplatePicker({ core, tr, t }: Props) {
     }));
   };
 
+  // 行业 → 领域级联：已选 industry 时 domains 只显示该行业下的域；
+  // 未选 industry 或 INDEX 无 industry 字段（旧包）→ 全显（诚实降级，不空列表）。
+  const domainEntries = (index?.domain || []).filter((e) => e.id);
+  const hasIndustryInfo = domainEntries.some((e) => e.industry);
+  const cascadedDomains =
+    spec.industry && hasIndustryInfo
+      ? domainEntries.filter((e) => e.industry === spec.industry)
+      : domainEntries;
+
+  const onIndustryChange = (v: string | undefined) => {
+    const next = v || "";
+    setSpec((prev) => {
+      // 级联：切换行业清掉不属于新行业的已选 domains。
+      let domains = prev.domains || [];
+      if (next && hasIndustryInfo) {
+        const belonging = new Set(
+          domainEntries.filter((e) => e.industry === next).map((e) => e.id),
+        );
+        domains = domains.filter((d) => belonging.has(d));
+      }
+      return { ...prev, industry: next, domains };
+    });
+    if (comboWarning) setComboWarning("");
+  };
+
+  const onDomainsChange = (v: string[]) => {
+    setSpec((prev) => ({ ...prev, domains: v }));
+    if (comboWarning) setComboWarning("");
+  };
+
   return (
     <div style={{ display: "grid", gap: 6 }}>
       {/* 整队组合（可选——选中自动填 members 比例/domains） */}
@@ -100,10 +130,13 @@ export default function MillforgeTemplatePicker({ core, tr, t }: Props) {
               label: `${c.name || c.id}（${c.industry || "—"} · L${c.members.leader || "?"}/W${c.members.workers || "?"}/C${c.members.critic || "?"}${c.experimental === "true" || c.source === "llm" ? ` · ${tr("实验")}` : ""}）`,
             }))}
           />
+          {comboWarning ? (
+            <antd.Alert type="warning" showIcon message={comboWarning} />
+          ) : null}
         </>
       ) : null}
 
-      {/* industry 单选 + domains 多选 */}
+      {/* industry 单选 + domains 多选（级联：domains 只显示所选 industry 下的域） */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 200px", display: "grid", gap: 4 }}>
           <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
@@ -115,9 +148,7 @@ export default function MillforgeTemplatePicker({ core, tr, t }: Props) {
             style={{ width: "100%" }}
             placeholder={tr("不选 = 通用")}
             value={spec.industry || undefined}
-            onChange={(v: string | undefined) =>
-              setSpec((prev) => ({ ...prev, industry: v || "" }))
-            }
+            onChange={onIndustryChange}
             options={(index?.industry || [])
               .filter((e) => e.id)
               .map((e) => ({ value: e.id, label: e.id }))}
@@ -134,10 +165,8 @@ export default function MillforgeTemplatePicker({ core, tr, t }: Props) {
             style={{ width: "100%" }}
             placeholder={tr("不选 = 不附加领域片段")}
             value={spec.domains || []}
-            onChange={(v: string[]) => setSpec((prev) => ({ ...prev, domains: v }))}
-            options={(index?.domain || [])
-              .filter((e) => e.id)
-              .map((e) => ({ value: e.id, label: e.id }))}
+            onChange={onDomainsChange}
+            options={cascadedDomains.map((e) => ({ value: e.id, label: e.id }))}
           />
         </div>
       </div>

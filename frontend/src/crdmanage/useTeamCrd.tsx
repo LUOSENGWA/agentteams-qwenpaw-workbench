@@ -57,8 +57,9 @@ interface UseTeamCrdArgs {
    * 表单成员行（workerMembers = 选中/新建的 worker 名）；null = 不参与
    * （表单行原样走）；抛错 = 中止建队（调用方已 toast）。 */
   millforgePreCreate?: (teamName: string) => Promise<WorkerRow[] | null>;
-  /** 千锻建队后置（可选）：创建成功后复位千锻段状态。 */
-  millforgePostCreate?: () => void;
+  /** 千锻建队后置（可选）：创建成功后复位千锻段状态；返回 core 技能
+   * 注入结果摘要（非 null = 成功消息里带出——C 建队流程结果可见）。 */
+  millforgePostCreate?: () => string | null;
 }
 
 export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHandle, millforgePreCreate, millforgePostCreate }: UseTeamCrdArgs) {
@@ -366,7 +367,18 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
           heartbeatEvery: tForm.heartbeatEvery.trim() || undefined,
           peerMentions: tForm.peerMentions,
         });
-        antd.message.success(tr("创建成功"));
+        // 千锻后置（B6）：复位千锻段（清 build/注入结果/自定义；源保留）；
+        // 返回 core 技能结果摘要——成功消息带出（C 建队流程结果可见）。
+        const mfNote = millforgePostCreate?.() ?? null;
+        antd.message.success(
+          mfNote ? (
+            <div style={{ lineHeight: 1.8 }}>
+              <div>{tr("创建成功")}</div>
+              <div style={{ fontSize: 12 }}>{mfNote}</div>
+            </div>
+          ) : tr("创建成功"),
+          mfNote ? 6 : undefined,
+        );
         // 创建自检：CRD 回读 + 阶段轮询（LLM 冒烟/SOUL 检查无通道，面板如实标注）。
         startTeamCheck(
           rows.map((r) => ({
@@ -376,8 +388,6 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         );
         setTForm(EMPTY_TEAM_FORM);
         setWorkerRows([{ name: "", role: "team_leader" }]);
-        // 千锻后置（B6）：复位千锻段（清 build/注入结果/自定义；源保留）。
-        millforgePostCreate?.();
         // 建队=团队结构+admin 变更 → 失效缓存再刷
         // （否则 30s TTL 内拓扑树/管理面板读旧值）。
         invalidateTags(["teams", "admin"]);

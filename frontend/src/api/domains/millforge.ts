@@ -45,6 +45,8 @@ export interface MillforgeIndexEntry {
   file: string;
   source?: string;
   applies_to?: string;
+  /** domain 条目 → 所属行业（行业→领域级联过滤；旧包 INDEX 无此字段 = 空/缺省 → 回退全显）。 */
+  industry?: string;
   budget?: string;
 }
 

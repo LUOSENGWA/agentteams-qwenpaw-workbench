@@ -105,8 +105,8 @@ export default function CrdManage(props: CrdManageProps) {
   const mfPostRef = React.useRef(mf.postCreate);
   mfPostRef.current = mf.postCreate;
   const mfPre = React.useCallback((name: string) => mfPreRef.current(name), []);
-  const mfPost = React.useCallback(() => {
-    mfPostRef.current();
+  const mfPost = React.useCallback((): string | null => {
+    return mfPostRef.current();
   }, []);
   const [mfTeam, setMfTeam] = React.useState<TeamInfo | null>(null);
   const team = useTeamCrd({

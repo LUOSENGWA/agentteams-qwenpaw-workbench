@@ -64,11 +64,23 @@ export function useMillforgeCreate(tr: TrFn, workers: WorkerInfo[]) {
     [enabled, core, workers, tr],
   );
 
-  /** 建队成功：复位千锻段（清 build/注入结果/自定义；源/pack/spec 保留）。 */
-  const postCreate = React.useCallback(() => {
+  /** 建队成功：复位千锻段（清 build/注入结果/自定义；源/pack/spec 保留）。
+   * 返回 core 技能注入结果摘要（C：建队流程结果可见——成功消息里带出
+   * ok/skipped/failed + assigned 列表；未注入 = null）。 */
+  const postCreate = React.useCallback((): string | null => {
+    const cs = core.injectResult?.core_skill;
     core.resetAfterCreate();
     setEnabled(false);
-  }, [core]);
+    if (!cs) return null;
+    if (cs.status === "ok") {
+      return cs.assigned?.length
+        ? tr("core 技能：成功（已挂接：{list}）", { list: cs.assigned.join("、") })
+        : tr("core 技能：成功");
+    }
+    if (cs.status === "skipped") return tr("core 技能：跳过");
+    const base = tr(cs.status === "partial" ? "core 技能：部分失败" : "core 技能：失败");
+    return cs.detail ? `${base} — ${cs.detail}` : base;
+  }, [core, tr]);
 
   return { core, enabled, setEnabled, preCreate, postCreate };
 }
