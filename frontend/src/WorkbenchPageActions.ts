@@ -9,6 +9,7 @@ import {
   openDm,
   redactRoomMessage,
   leaveRoom,
+  forgetRoom,
   sendRoomMessage,
   sendApprovalCommand,
   sendRoomMessageEdit,
@@ -206,19 +207,26 @@ export function useWorkbenchChatActions(ctx: WorkbenchPageActionsCtx) {
     [activeRoom, refreshMessages],
   );
 
-  /** 退出房间（leave；scope 房间会被 Controller 调和器重新邀请）。 */
-  const handleLeaveRoom = React.useCallback(async () => {
-    if (!activeRoom) return;
-    const roomName = activeRoom.name;
-    try {
-      await leaveRoom(activeRoom.room_id);
-      message.success(tr("已退出「{name}」", { name: roomName }));
-      setActiveRoom(null);
-      void refreshRooms(true, true); // force：房间立即从列表消失
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : tr("退出房间失败"));
-    }
-  }, [activeRoom, refreshRooms]);
+  /** 退出房间（leave；forget=true 再 forget 删除本地历史）。
+ * scope 房间会被 Controller 调和器重新邀请。 */
+  const handleLeaveRoom = React.useCallback(
+    async (forget?: boolean) => {
+      if (!activeRoom) return;
+      const roomName = activeRoom.name;
+      try {
+        await leaveRoom(activeRoom.room_id);
+        if (forget) await forgetRoom(activeRoom.room_id);
+        message.success(
+          forget ? tr("已退出并删除房间") : tr("已退出「{name}」", { name: roomName }),
+        );
+        setActiveRoom(null);
+        void refreshRooms(true, true); // force：房间立即从列表消失
+      } catch (e) {
+        message.error(e instanceof Error ? e.message : tr("退出房间失败"));
+      }
+    },
+    [activeRoom, refreshRooms],
+  );
 
   /** 房间重命名（m.room.name state 事件）。
  * 团队房间权限表普遍为 null（平台侧已知问题）→ 403 时展示

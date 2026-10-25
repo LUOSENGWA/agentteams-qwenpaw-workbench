@@ -5,8 +5,6 @@ import {
   ClipIcon,
   StarIcon,
   StarOutlineIcon,
-  DoorIcon,
-  TrashIcon,
   MessageIcon,
   UsersIcon,
   FolderIcon,
@@ -42,7 +40,6 @@ export function GroupCard({
   onDm,
   isFavorite = false,
   onToggleFavorite,
-  onExitRoom,
   workerMxids,
   projectTitles,
 }: {
@@ -55,8 +52,6 @@ export function GroupCard({
   /** B3：收藏态（客户端本地）。 */
   isFavorite?: boolean;
   onToggleFavorite?: (roomId: string) => void;
-  /** 5.0.0 release：房间 ⋯ 菜单（退出 / 退出并删除，Element 同款列表操作）。 */
-  onExitRoom?: (room: TeamRoom, forget: boolean) => void;
   /** 全部 Worker MXID——任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
 }) {
@@ -140,43 +135,7 @@ export function GroupCard({
             >
               {isFavorite ? <StarIcon size={15} /> : <StarOutlineIcon size={15} />}
             </span>
-            {/* 5.0.0 release：房间 ⋯ 菜单（退出/退出并删除，Element 列表操作同款） */}
-            <span
-              role="button"
-              onClick={(e) => e.stopPropagation()}
-              style={{ display: "inline-block" }}
-            >
-              <antd.Dropdown
-                trigger={["click"]}
-                menu={{
-                  items: [
-                    {
-                      key: "leave",
-                      danger: true,
-                      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
-                    },
-                    {
-                      key: "leave-forget",
-                      danger: true,
-                      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TrashIcon size={13} /> {tr("退出并删除")}</span>,
-                    },
-                  ],
-                  onClick: ({ key }: { key: string }) =>
-                    onExitRoom?.(room, key === "leave-forget"),
-                }}
-              >
-                <span
-                  style={{
-                    cursor: "pointer",
-                    fontSize: 14,
-                    opacity: 0.45,
-                    marginLeft: 2,
-                  }}
-                >
-                  ⋯
-                </span>
-              </antd.Dropdown>
-            </span>
+            {/* 房间操作（退出/退出并删除）已收口到「房间详情」Drawer。 */}
           </div>
           {/* 房间名下面显示项目名
  （数据=Controller 工作流事件 room_id→title；无项目不占行）。 */}
@@ -302,7 +261,6 @@ export function DmCard({
   onOpenRoom,
   isFavorite = false,
   onToggleFavorite,
-  onExitRoom,
   sessionState,
 }: {
   room: TeamRoom;
@@ -311,8 +269,6 @@ export function DmCard({
   /** B3：收藏态（客户端本地）。 */
   isFavorite?: boolean;
   onToggleFavorite?: (roomId: string) => void;
-  /** 5.0.0 release：房间 ⋯ 菜单（退出 / 退出并删除，Element 同款列表操作）。 */
-  onExitRoom?: (room: TeamRoom, forget: boolean) => void;
   /** 对方 Worker 的 session 状态（仅 Worker 个人房间有值）。 */
   sessionState?: WorkerSessionState;
 }) {
@@ -404,43 +360,7 @@ export function DmCard({
           >
             {isFavorite ? <StarIcon size={14} /> : <StarOutlineIcon size={14} />}
           </span>
-          {/* 5.0.0 release：房间 ⋯ 菜单（退出/退出并删除，Element 列表操作同款） */}
-          <span
-            role="button"
-            onClick={(e) => e.stopPropagation()}
-            style={{ display: "inline-block" }}
-          >
-            <antd.Dropdown
-              trigger={["click"]}
-              menu={{
-                items: [
-                  {
-                    key: "leave",
-                    danger: true,
-                    label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
-                  },
-                  {
-                    key: "leave-forget",
-                    danger: true,
-                    label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TrashIcon size={13} /> {tr("退出并删除")}</span>,
-                  },
-                ],
-                onClick: ({ key }: { key: string }) =>
-                  onExitRoom?.(room, key === "leave-forget"),
-              }}
-            >
-              <span
-                style={{
-                  cursor: "pointer",
-                  fontSize: 14,
-                  opacity: 0.45,
-                  marginLeft: 2,
-                }}
-              >
-                ⋯
-              </span>
-            </antd.Dropdown>
-          </span>
+          {/* 房间操作（退出/退出并删除）已收口到「房间详情」Drawer。 */}
         </div>
         <div
           style={{

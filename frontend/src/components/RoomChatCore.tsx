@@ -24,12 +24,10 @@ import {
   WrenchIcon,
   FolderIcon,
   SearchIcon,
-  EditIcon,
-  BellIcon,
-  DoorIcon,
   TodoIcon,
   InfoIcon,
 } from "./icons";
+import { useStickToBottom } from "./useStickToBottom";
 import {
   MSG_WINDOW_LIMIT,
   CARD_RADIUS,
@@ -58,10 +56,6 @@ export function useRoomChatCore(props: RoomChatProps) {
     onSendApproval,
     onSendEdit,
     onRedact,
-    onLeaveRoom,
-    onRenameRoom,
-    muted = false,
-    onToggleMute,
     onReact,
     onDm,
     onBack,
@@ -301,46 +295,13 @@ export function useRoomChatCore(props: RoomChatProps) {
     sender: string;
     body: string;
   } | null>(null);
-  const listRef = React.useRef<HTMLDivElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const hoverTimerRef = React.useRef<number | null>(null);
 
-  // ── ──
-  // 上翻回看历史时，右下角悬浮「↓」圆钮 + 「N 条新消息」徽章；点击平滑
-  // 滚回底部并清零。near-bottom 阈值 120px 与自动跟随共用（below = 近底）。
-  const [showJumpBottom, setShowJumpBottom] = React.useState(false);
-  const [newMsgCount, setNewMsgCount] = React.useState(0);
-  const prevMsgLenRef = React.useRef(0);
- // （13.11 置底按钮点了不置底，像滚动位置记忆问题
- // 根因）：旧模型 nearBottom 在**每次 effect 运行时现算**——点 ↓ 触发
-  // smooth 滚动（数百 ms）期间，新消息到达的 effect 跑在滚动中途
-  // （nearBottom=false）→ 按钮重新出现 + 计数清零前又被加 1 → 用户感知
-  // 「点了没用」。QwenPaw/Element 正源模型 = **显式 isAtBottom 状态 +
-  // 点击锁定（pinned）**：点击置底 = 立即（instant，不用 smooth——smooth
-  // 目标随新消息 scrollHeight 增长漂移）+ 锁定窗口内持续贴底、新消息
-  // 不重弹按钮；用户主动上翻（dist≥120）即解锁。
-  const atBottomRef = React.useRef(true);
-  const pinnedUntilRef = React.useRef(0);
- // 置底跟随 rAF 门——流式期间同一帧内
-  // 新消息 effect + ResizeObserver 可各触发多次（N 条新消息 + M 个子节点
-  // 高度变化），旧版每次同步 `el.scrollTop = el.scrollHeight`（读
-  // scrollHeight 时布局脏 → 强制同步 reflow，每帧最多 N+M 次）。现收敛为
-  // 每帧至多一次写入；已贴底（delta<2px）直接跳过写入。
-  const followRafRef = React.useRef(0);
-  const scheduleFollow = React.useCallback(() => {
-    if (followRafRef.current) return;
-    followRafRef.current = requestAnimationFrame(() => {
-      followRafRef.current = 0;
-      const el = listRef.current;
-      if (!el || !atBottomRef.current) return;
-      if (el.scrollHeight - el.scrollTop - el.clientHeight < 2) return;
-      el.scrollTop = el.scrollHeight;
-    });
-  }, []);
- // // 顶部预加载余量——旧版 40px 只在贴顶瞬间触发（贴顶才拉、拉完要滚回顶
+  // 顶部预加载余量——旧版 40px 只在贴顶瞬间触发（贴顶才拉、拉完要滚回顶
   // 再触发一次），体感「没有预加载」。现 = 视口比例余量：接近顶部即开始拉，
   // 锚恢复后继续上翻自然接力（连续分段预载）。
- // // 余量 0.25→**0.6 视口（下限 400px）**——配合父侧预取管线（下一页后台
+  // 余量 0.25→**0.6 视口（下限 400px）**——配合父侧预取管线（下一页后台
   // 常驻预取）：触发点提前 + 落地零等待，加载跟着窗口走而非被触发才追。
   const nearTop = React.useCallback((el: HTMLElement) => {
     return el.scrollTop < Math.max(400, el.clientHeight * 0.6);
@@ -354,9 +315,11 @@ export function useRoomChatCore(props: RoomChatProps) {
   // threadGroups，经 ref 桥接避免声明顺序依赖）。
   const hiddenCountRef = React.useRef(0);
   // 触碰式拉取统一入口：同步防重（autoLoadRef）+ 6s 兜底复位（成功路径
-  // 由锚 effect 的「前插检测」更快复位）。滚动/按钮/驻顶接力共用。
+  // 由 stick hook 的 onPrepend 与「数据推进即解锁」layout effect 更快复位）。
+  // 滚动/按钮/驻顶接力共用。
   // 窗口化：有被藏起消息时优先本地揭示（无网络往返、不占防重锁）；
   // 揭示干净后才真正拉更早页。
+  const autoLoadRef = React.useRef(false);
   const kickLoadMore = React.useCallback(() => {
     if (hiddenCountRef.current > 0) {
       revealWindow();
@@ -369,56 +332,55 @@ export function useRoomChatCore(props: RoomChatProps) {
     }, 6000);
     void onLoadMore?.();
   }, [revealWindow, onLoadMore]);
-  const handleListScroll = React.useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (dist < 120) {
-      atBottomRef.current = true;
-      setShowJumpBottom(false);
-      setNewMsgCount(0);
-    } else {
-      atBottomRef.current = false;
-      // 用户主动上翻 → 解除点击锁定（锁定只保护「正在追底」的瞬间）。
-      pinnedUntilRef.current = 0;
-      setShowJumpBottom(true);
-    }
-    // 接近顶部 → 预加载更早历史（Element 式无限滚动；保留顶部按钮作显式入口）。
-    if (hasMore && nearTop(el)) kickLoadMore();
-  }, [hasMore, nearTop, kickLoadMore]);
-  const jumpToBottom = React.useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    // 立即置底（instant）：smooth 的目标 scrollHeight 会随落地期间的新
-    // 消息增长而漂移，用户看着「没到底」。锁定 800ms：窗口内新消息持续
-    // 贴底跟随且不重弹按钮（下方新消息 effect 消费 pinnedUntilRef）。
-    el.scrollTop = el.scrollHeight;
-    atBottomRef.current = true;
-    pinnedUntilRef.current = Date.now() + 800;
-    setNewMsgCount(0);
-    setShowJumpBottom(false);
-  }, []);
- // DOM 高度变化跟随——
-  // messages 变化的 effect 只覆盖「消息数变」；图片加载/卡片/产物渲染
-  // 后撑高时不触发 → 贴底用户看着内容把视口顶离底部。Element 正源=
-  // ResizeObserver 观察**滚动内容**（滚动容器自身尺寸由 flex 定死，
-  // 观察容器不触发——必须观察其直接子节点：新行出现/行高变化都触发）。
-  React.useEffect(() => {
-    const el = listRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => {
-      // 贴底（含点击锁定窗口：pinned 路径恒置 atBottomRef=true）→ 跟随。
- // rAF 门——同帧多个子节点高度变化
-      // 合并为每帧一次 scrollTop 写入（旧版每回调一次同步写 = 每回调一次
-      // 强制 reflow；流式 DOM 持续增高时是主线程卡顿主要来源）。
-      if (!atBottomRef.current) return;
-      scheduleFollow();
-    });
-    for (const c of Array.from(el.children) as HTMLElement[]) {
-      ro.observe(c);
-    }
-    return () => ro.disconnect();
-  }, [room, messages, scheduleFollow]);
+
+  // 过滤无正文无附件的行（Tuwunel 历史偶见空 body 的 m.text 事件）。
+  // memo——此前每次渲染（含 hover/chatsTick 等非数据渲染）都重建数组 →
+  // threadGroups useMemo 缓存失效（每渲染 O(n²) 重跑）。messages 不变复用引用。
+  const visibleMessages = React.useMemo(
+    () =>
+      messages.filter((m) => {
+        if (!(m.body || m.url) && m.msgtype === "m.text") return false;
+        if (hideTools && m.msgtype === "m.text" && isToolMessage(m.body || "")) {
+          return false;
+        }
+        return true;
+      }),
+    [messages, hideTools],
+  );
+
+  // 线程分组（Element/Discord 式）：回复消息折叠进所回复的
+  // 消息线程，不再在顶层重复出现——「谁回复了谁的哪条」一目了然。
+  //
+  // 窗口上限（DOM 兜底）：只渲染最近 MSG_WINDOW_LIMIT 条顶层消息，
+  // 更早的经顶部「显示更早」入口（手动）/ 驻顶接力（滚近顶自动揭示）
+  // 逐段揭示——长房间 / 长滚动会话的每帧重渲染成本不再随房龄无界增长。
+  // pendingOriginal（「加载原消息」定位中）旁路——目标消息必须恒在 DOM。
+  // 目标消息被窗口藏起的回复降级为顶层、置于渲染窗首（消息序连续，
+  // 与「target 不在已载窗口」的既有行为一致）。
+  const threadGroups = React.useMemo(() => {
+    const g = groupThreads(visibleMessages);
+    return applyWindow(g.tops, g.repliesOf, windowLimit, pendingOriginal);
+  }, [visibleMessages, windowLimit, pendingOriginal]);
+  hiddenCountRef.current = threadGroups.hiddenCount;
+
+  // 贴底跟随（useStickToBottom：显式 following + rAF 批量 instant 贴底 +
+  // 未读计数 +「回到最新 N」悬浮钮，显隐 = !following && unread > 0）。
+  // 13.11「置底按钮点了不置底」根因（旧模型 nearBottom 每次 effect 现算，
+  // smooth 动画中途新消息到达 → 按钮重弹）= 显式状态 + 动画方向哨兵，
+  // 已随 hook 迁移。
+  const stick = useStickToBottom({
+    roomKey: room?.room_id || "",
+    firstId: threadGroups.tops[0]?.event_id || "",
+    contentSignal: threadGroups,
+    onScroll: (el) => {
+      // 接近顶部 → 预加载更早历史（Element 式无限滚动；保留顶部按钮作显式入口）。
+      if (hasMore && nearTop(el)) kickLoadMore();
+    },
+    onPrepend: () => {
+      autoLoadRef.current = false; // 预载完成（新数据到位）
+    },
+  });
+  const listRef = stick.listRef;
   const t = useThemeColors();
   const tr = useT();
 
@@ -577,12 +539,8 @@ export function useRoomChatCore(props: RoomChatProps) {
       setFileRefs([]);
       // 自己发的消息不算"新消息"——未读线随发送下移。
       setReadTs(Date.now());
-      // 滚动到底部
-      requestAnimationFrame(() => {
-        if (listRef.current) {
-          listRef.current.scrollTop = listRef.current.scrollHeight;
-        }
-      });
+      // 滚动到底部（instant；其后 DOM 增高的收敛由 stick hook 跟随）。
+      stick.pinToBottom();
     } catch {
       /* {tr("发送失败")}保留草稿与已选引用 */
     }
@@ -719,49 +677,19 @@ export function useRoomChatCore(props: RoomChatProps) {
     })();
   }, [messages]);
 
-  // 新消息到达自动滚到底部（仅当用户本来就在底部附近）；不在附近且
-  // 消息真的增长（排除自己发的——发送路径已主动置底，防竞态误计）→
-  // 计「N 条新消息」+ 显示置底钮（）。
+  // 新消息到达 → stick.onNewMessages（following → rAF 批量贴底 + 清零；
+  // 否则非本人消息 unread + 1 →「回到最新 N」悬浮钮）。
   // grew 判定改「末条 id 变化」——旧版用 length 增长，
   // loadMore 前插 50 条也触发 grew → 上翻加载历史被误计「1 条新消息」。
   const lastMsgIdRef = React.useRef("");
   React.useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
     const lastId = messages[messages.length - 1]?.event_id || "";
     const grew = lastId !== "" && lastId !== lastMsgIdRef.current;
     lastMsgIdRef.current = lastId;
-    // 显式 atBottom 状态 + 点击锁定窗口（见
-    // handleListScroll 注释）——落地期新消息持续贴底，不重弹按钮。
-    // 跟随用 instant（scrollTop=scrollHeight）：smooth 在消息流式增长下
-    // 目标漂移，用户感知「自动置底不灵」。
-    const pinned = Date.now() < pinnedUntilRef.current;
-    if (atBottomRef.current || pinned) {
-      atBottomRef.current = true;
- // rAF 门（与 RO 同门）——同帧多条
-      // 新消息只写一次 scrollTop，不再每条一次强制 reflow。
-      scheduleFollow();
-      setNewMsgCount(0);
-      setShowJumpBottom(false);
-      return;
-    }
+    if (!grew) return;
     const last = messages[messages.length - 1];
-    if (grew && (!last || last.sender !== user_id)) {
-      setNewMsgCount((c) => c + 1);
-      setShowJumpBottom(true);
-    }
-  }, [messages, user_id, scheduleFollow]);
-
- // // loadMore 前插更早消息时保持滚动锚——旧版前插 50 条后视口被顶到
-  // 最顶部，用户看到「历史滚不动/跳走」。检测=首条消息 id 变化（前插
-  // 特征），锚=前插前记录的 (scrollTop, scrollHeight)；恢复式：
-  // newScrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight)。
-  // useLayoutEffect（paint 前）——闪顶不可见。
-  const prevFirstIdRef = React.useRef("");
-  const scrollAnchorRef = React.useRef<{ top: number; height: number } | null>(null);
-  const roomKeyRef = React.useRef("");
-  const autoLoadRef = React.useRef(false);
-  // 锚 effect 在 threadGroups 声明之后（首条顶层消息 id 为判定信号）。
+    stick.onNewMessages(!!user_id && !!last && last.sender === user_id);
+  }, [messages, user_id, stick.onNewMessages]);
 
   // 数据推进即解锁——messages 引用变化（前插/轮询追加）
   // 说明上一轮加载已落地 → 立刻允许下一次触碰（旧版只在「前插检测」时解锁，
@@ -795,26 +723,18 @@ export function useRoomChatCore(props: RoomChatProps) {
     // 内有 autoLoadRef 防重）。
   }, [messages, pendingOriginal, hasMore, onLoadMore, nearTop, kickLoadMore]);
 
-  // 换房间：重置置底状态 + 贴底（Element 开房间即在最新消息处）。
-  // 一并重置 atBottom/pinned（换房贴底后视为在底部）。
+  // 换房间：重置消息/窗口状态（贴底由 stick hook 的 roomKey effect 负责，
+  // Element 开房间即在最新消息处）。
   React.useEffect(() => {
-    prevMsgLenRef.current = 0;
-    atBottomRef.current = true;
-    pinnedUntilRef.current = 0;
+    lastMsgIdRef.current = "";
  // 换房重置审批通知状态（新房间首批=只登记）。
     approvalsSeededRef.current = false;
     seenApprovalsRef.current.clear();
  // 审批解析缓存随房间清（防跨房残留）。
     approvalParseCacheRef.current.clear();
     pendingCacheRef.current = null;
-    setNewMsgCount(0);
-    setShowJumpBottom(false);
     // 消息窗口回初始（换房=新渲染起点，揭示进度不跨房保留）。
     setWindowLimit(MSG_WINDOW_LIMIT);
-    requestAnimationFrame(() => {
-      const el = listRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
-    });
   }, [room?.room_id]);
 
  // ── ─────────────
@@ -880,72 +800,6 @@ export function useRoomChatCore(props: RoomChatProps) {
   const mentionTargets = Object.entries(room.members || {}).filter(
     ([mxid]) => mxid !== myUserId,
   );
-  // 过滤空消息体且无附件的行（Tuwunel 历史里偶有无 body 的 m.text 事件）。
- // memo——此前每次渲染（含 hover /
-  // chatsTick 等非数据渲染）都重建数组 → threadGroups useMemo 缓存恒被
-  // 击穿（O(n²) 每渲染重跑）。messages 未变则复用引用。
-  const visibleMessages = React.useMemo(
-    () =>
-      messages.filter((m) => {
-        if (!(m.body || m.url) && m.msgtype === "m.text") return false;
-        if (hideTools && m.msgtype === "m.text" && isToolMessage(m.body || "")) {
-          return false;
-        }
-        return true;
-      }),
-    [messages, hideTools],
-  );
-
-  // 线程分组（Element/Discord 式）：回复消息归入被回复消息的线程，
-  // 不再顶层重复显示——"谁的哪条消息回复谁的"一目了然。
-  //
-  // 窗口封顶（DOM 上限）：只渲染最近 MSG_WINDOW_LIMIT 条顶层消息，更早的
-  // 由顶部「显示更早」入口（手动）/ 驻顶接力（滚近顶部自动揭示）逐步放出——
-  // 长房间/长滚动会话的重渲成本不再随房间年龄无上界增长。
-  // pendingOriginal 激活期旁路（「加载原消息」定位要求目标消息必在 DOM）。
-  // 目标消息被窗口藏起的回复降级为顶层、置于渲染窗首（消息序连续，
-  // 与「target 不在已载窗口」的既有行为一致）。
-  const threadGroups = React.useMemo(() => {
-    const g = groupThreads(visibleMessages);
-    return applyWindow(g.tops, g.repliesOf, windowLimit, pendingOriginal);
-  }, [visibleMessages, windowLimit, pendingOriginal]);
-  hiddenCountRef.current = threadGroups.hiddenCount;
-
-  // 前插滚动锚（声明位置在 threadGroups 之后：判定信号=渲染窗首条顶层
-  // 消息 id）。loadMore 前插更早消息时保持滚动锚——旧版前插 50 条后视口
-  // 被顶到最顶部，用户看到「历史滚不动/跳走」。检测=首条消息 id 变化
-  // （前插/揭示特征），锚=前插前记录的 (scrollTop, scrollHeight)；恢复式：
-  // newScrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight)。
-  // useLayoutEffect（paint 前）——闪顶不可见。
-  // 窗口化后覆盖两种「首条变更早消息」：更早的页加载（前插）与窗口揭示
-  // （首条变为更早消息）——同一锚恢复式通用：揭示时新高度在顶部生长，
-  // 视口贴底不受扰；滚在顶部时位置被推离 → 驻顶接力 effect 按滚动节奏
-  // 继续揭示。
-  React.useLayoutEffect(() => {
-    const el = listRef.current;
-    // 换房间：清锚（新房间首条 id 变化不是前插，防误恢复）。
-    const rk = room?.room_id || "";
-    if (roomKeyRef.current !== rk) {
-      roomKeyRef.current = rk;
-      prevFirstIdRef.current = "";
-      scrollAnchorRef.current = null;
-      lastMsgIdRef.current = "";
-      autoLoadRef.current = false;
-    }
-    const firstId = threadGroups.tops[0]?.event_id || "";
-    const prepended =
-      prevFirstIdRef.current !== "" &&
-      firstId !== "" &&
-      firstId !== prevFirstIdRef.current;
-    if (prepended) {
-      autoLoadRef.current = false; // 自动加载完成（新数据已到位）
-      const a = scrollAnchorRef.current;
-      if (el && a) el.scrollTop = a.top + (el.scrollHeight - a.height);
-    }
-    if (el) scrollAnchorRef.current = { top: el.scrollTop, height: el.scrollHeight };
-    prevFirstIdRef.current = firstId;
-  }, [messages, room?.room_id, threadGroups]);
-
   // 线程面板打开的 root 消息 + 回复列表。
   const activeThreadMsg = React.useMemo(() => {
     if (!activeThread) return null;
@@ -1185,39 +1039,9 @@ export function useRoomChatCore(props: RoomChatProps) {
           },
         ]
       : []),
-    ...(onRenameRoom || onToggleMute || onLeaveRoom
-      ? [{ type: "divider" as const }]
-      : []),
-    ...(onRenameRoom
-      ? [
-          {
-            key: "rename",
-            label:
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><EditIcon size={13} /> {tr("重命名房间")}</span>,
-          },
-        ]
-      : []),
-    ...(onToggleMute
-      ? [
-          {
-            key: "mute",
-            label:
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellIcon size={13} /> {muted ? tr("取消静音") : tr("静音此房间")}</span>,
-          },
-        ]
-      : []),
-    ...(onLeaveRoom
-      ? [
-          { type: "divider" as const },
-          {
-            key: "leave",
-            danger: true,
-            label:
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
-          },
-        ]
-      : []),
   ];
+  // 房间操作（重命名/静音/退出）已收口到「房间详情」Drawer；
+  // 窄屏 ⋯ 只保留导航项（成员/项目文件/搜索/房间详情/工具/发起任务）。
   const compactMenuClick = ({ key }: { key: string }) => {
     if (key === "members") setMemberPanelOpen(true);
     else if (key === "info") setRoomInfoOpen(true);
@@ -1225,19 +1049,6 @@ export function useRoomChatCore(props: RoomChatProps) {
     else if (key === "search") setSearchOpen(true);
     else if (key === "tools") setHideTools(!hideTools);
     else if (key === "newtask") onNewTask?.();
-    else if (key === "rename") openRename();
-    else if (key === "mute") void onToggleMute?.();
-    else if (key === "leave") {
-      antd.Modal.confirm({
-        title: tr("退出房间「{name}」？", { name: room.name }),
-        content:
-          tr("退出后不再接收该房间消息。系统团队房间可能被 Controller 调和器自动重新邀请；非系统房间需再次被邀请才能进入。"),
-        okText: tr("退出"),
-        okButtonProps: { danger: true },
-        cancelText: tr("返回"),
-        onOk: () => onLeaveRoom?.(),
-      });
-    }
   };
   const compactHeader = (
     <div
@@ -1316,10 +1127,6 @@ export function useRoomChatCore(props: RoomChatProps) {
     onSendApproval,
     onSendEdit,
     onRedact,
-    onLeaveRoom,
-    onRenameRoom,
-    muted,
-    onToggleMute,
     onReact,
     onDm,
     onBack,
@@ -1394,12 +1201,7 @@ export function useRoomChatCore(props: RoomChatProps) {
     setRoomInfoOpen,
     replyTo,
     setReplyTo,
-    showJumpBottom,
-    setShowJumpBottom,
-    newMsgCount,
-    setNewMsgCount,
-    windowLimit,
-    setWindowLimit,
+    stickToBottom: stick,
     jumpContext,
     setJumpContext,
     roomLoop,
@@ -1422,17 +1224,10 @@ export function useRoomChatCore(props: RoomChatProps) {
     listRef,
     fileInputRef,
     hoverTimerRef,
-    prevMsgLenRef,
-    atBottomRef,
-    pinnedUntilRef,
-    followRafRef,
-    scheduleFollow,
     nearTop,
     revealWindow,
     hiddenCountRef,
     kickLoadMore,
-    handleListScroll,
-    jumpToBottom,
     t,
     tr,
     jumpToMessage,
@@ -1447,11 +1242,6 @@ export function useRoomChatCore(props: RoomChatProps) {
     approvalsSeededRef,
     pendingCacheRef,
     approvalParseCacheRef,
-    lastMsgIdRef,
-    prevFirstIdRef,
-    scrollAnchorRef,
-    roomKeyRef,
-    autoLoadRef,
     roomWorkerName,
     roomId,
     roomSeqRef,

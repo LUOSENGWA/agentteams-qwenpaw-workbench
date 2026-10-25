@@ -148,5 +148,6 @@ export const teamDict: Record<string, { en: string }> = {
   "Moderator": { en: "Moderator" },
   "Member": { en: "Member" },
   "设置": { en: "Settings" },
+  "房间操作": { en: "Room actions" },
   "房间信息加载失败": { en: "Failed to load room details" },
 };

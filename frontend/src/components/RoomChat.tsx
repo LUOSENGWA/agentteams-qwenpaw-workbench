@@ -86,11 +86,11 @@ export interface RoomChatProps {
   onSendEdit?: (originalEventId: string, body: string) => Promise<void> | void;
   /** 撤回自己的消息（redaction）。 */
   onRedact?: (eventId: string) => Promise<void> | void;
-  /** 退出房间（顶部 ⋯ 菜单）。 */
-  onLeaveRoom?: () => Promise<void> | void;
-  /** 房间重命名（顶部 ⋯ 菜单；Element 同款能力，
+  /** 退出房间（房间详情 Drawer；forget=true 退出并删除/忘记）。 */
+  onLeaveRoom?: (forget?: boolean) => Promise<void> | void;
+  /** 房间重命名（房间详情 Drawer；Element 同款能力，
  * 权限不足时展示诊断——团队房间权限表普遍 null 为平台侧已知问题）。 */
-  onRenameRoom?: (name: string) => void;
+  onRenameRoom?: (name: string) => Promise<void> | void;
   /** 房间静音状态 + 切换（m.muted_room account data）。 */
   muted?: boolean;
   onToggleMute?: () => Promise<void> | void;
@@ -183,7 +183,6 @@ function RoomChat(props: RoomChatProps) {
     loadingMore,
     onSendFiles,
     onRedact,
-    onRenameRoom,
     onReact,
     onDm,
     onOpenWorkerChats,
@@ -225,8 +224,7 @@ function RoomChat(props: RoomChatProps) {
     roomInfoOpen,
     setRoomInfoOpen,
     setReplyTo,
-    showJumpBottom,
-    newMsgCount,
+    stickToBottom,
     jumpContext,
     liveByRunId,
     teamName,
@@ -238,8 +236,7 @@ function RoomChat(props: RoomChatProps) {
     hoverTimerRef,
     revealWindow,
     kickLoadMore,
-    handleListScroll,
-    jumpToBottom,
+    openRename,
     t,
     tr,
     jumpContextRef,
@@ -256,6 +253,8 @@ function RoomChat(props: RoomChatProps) {
     compactHeader,
     narrow,
   } = core;
+  // 房间详情刷新信号：重命名完成后 bump → RoomInfoDrawer 重拉房间信息。
+  const [roomInfoRefreshTick, setRoomInfoRefreshTick] = React.useState(0);
   return (
     <div
       style={{
@@ -311,11 +310,14 @@ function RoomChat(props: RoomChatProps) {
           >
           <div
         ref={listRef}
-        onScroll={handleListScroll}
+        onScroll={stickToBottom.handleScroll}
         style={{
           flex: 1,
           overflowY: "auto",
           overflowX: "hidden",
+          // 贴底跟随重构：关浏览器原生滚动锚，前插的视口补偿全权交给
+          // useStickToBottom 的手动锚（防两套锚定打架）。
+          overflowAnchor: "none",
           padding: "16px 4px",
           // 15.14：minHeight:300 → 0。旧值在「可用高 < 300」时强制列表
           // 300px → 穿透撑破列 → tabpane 整页滚动 → 输入框随页动。
@@ -877,9 +879,9 @@ function RoomChat(props: RoomChatProps) {
           </div>
         )}
       </div>
-        {showJumpBottom ? (
-          /* 一键置底（Element 同款）：悬浮右下，上翻时出现；
- 「N 条新消息」徽章=不在底部期间到达的非本人消息数。 */
+        {!stickToBottom.following && stickToBottom.unread > 0 ? (
+          /* 「回到最新 N」（Element 同款）：悬浮右下，上翻且有新消息时出现；
+ 点击平滑置底并清零未读；回到底部自动清零。 */
           <div
             style={{
               position: "absolute",
@@ -893,7 +895,7 @@ function RoomChat(props: RoomChatProps) {
               gap: 4,
             }}
           >
-            {newMsgCount > 0 ? (
+            {stickToBottom.unread > 0 ? (
               <span
                 style={{
                   fontSize: 11,
@@ -907,7 +909,7 @@ function RoomChat(props: RoomChatProps) {
                 }}
               >
                 {/* 封顶 99：长流式会话防徽章无限膨胀（>99 显「99 条新消息」）。 */}
-                {Math.min(newMsgCount, 99)} {tr("条新消息")}
+                {Math.min(stickToBottom.unread, 99)} {tr("条新消息")}
               </span>
             ) : null}
             {/* 置底按钮：纯 div 圆（弃 antd Button——其 CSS 与 inline 尺寸对抗，
@@ -919,7 +921,7 @@ function RoomChat(props: RoomChatProps) {
               role="button"
               aria-label={tr("回到最新消息")}
               title={tr("回到最新消息")}
-              onClick={jumpToBottom}
+              onClick={() => void stickToBottom.scrollToBottom()}
               style={{
                 width: 44,
                 height: 44,
@@ -1233,6 +1235,10 @@ function RoomChat(props: RoomChatProps) {
         roomName={room.name}
         onClose={() => setRoomInfoOpen(false)}
         onLeaveRoom={props.onLeaveRoom}
+        onRename={() => openRename()}
+        muted={props.muted}
+        onToggleMute={props.onToggleMute}
+        refreshTick={roomInfoRefreshTick}
       />
 
       {/* 重命名房间（Element 同款）+ 权限诊断 */}
@@ -1242,8 +1248,16 @@ function RoomChat(props: RoomChatProps) {
         onCancel={() => setRenameOpen(false)}
         onOk={() => {
           if (!renameValue.trim()) return;
+          const nm = renameValue.trim();
           setRenameOpen(false);
-          onRenameRoom?.(renameValue.trim());
+          // 重命名完成（成功/失败）后通知详情 Drawer 重拉房间信息。
+          return (async () => {
+            try {
+              await props.onRenameRoom?.(nm);
+            } finally {
+              setRoomInfoRefreshTick((v) => v + 1);
+            }
+          })();
         }}
         okText={tr("保存")}
         cancelText={tr("取消")}

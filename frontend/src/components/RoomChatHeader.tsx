@@ -2,18 +2,12 @@ import {
   WrenchIcon,
   FolderIcon,
   SearchIcon,
-  EditIcon,
-  BellIcon,
-  BellOffIcon,
-  DoorIcon,
   TodoIcon,
   InfoIcon,
 } from "./icons";
 import WorkerSessionDot from "./WorkerSessionDot";
 import MemberStrip from "./MemberStrip";
 import { type WorkerSessionState } from "../workerSessionState";
-import { useThemeColors } from "../theme";
-import { copyText } from "../util";
 import {PRIMARY } from "./RoomChatShared";
 import type {RoomChatProps } from "./RoomChat";
 import type {RoomChatCoreState } from "./RoomChatCore";
@@ -25,10 +19,6 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
   const { p, c } = props;
   const {
     room,
-    onLeaveRoom,
-    onRenameRoom,
-    muted,
-    onToggleMute,
     onBack,
     headerPrefix,
     onNewTask,
@@ -45,11 +35,9 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
     setHideTools,
     setMemberPanelOpen,
     setRoomInfoOpen,
-    openRename,
     tr,
     myUserId,
   } = c;
-  const t = useThemeColors();
   if (!room) {
     return null;
   }
@@ -73,38 +61,7 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
         <antd.Typography.Title level={5} style={{ margin: 0 }}>
           {room.name}
         </antd.Typography.Title>
-        {/* 房间 ID 可见（等宽小字 + 复制）——排查「消息发到哪个房间」
-  时插件内无处可查 room_id 的修复。 */}
-        <span
-          style={{
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-            fontSize: 11,
-            color: t.textSecondary,
-            maxWidth: 260,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-          title={room.room_id}
-        >
-          {room.room_id}
-        </span>
-        <antd.Button
-          size="small"
-          type="text"
-          title={tr("复制房间 ID")}
-          onClick={() =>
-            copyText(room.room_id, (ok) => {
-              if (ok) {
-                antd.message.success(tr("已复制到剪贴板"));
-              } else {
-                antd.message.error(tr("复制失败"));
-              }
-            })
-          }
-        >
-          {tr("复制")}
-        </antd.Button>
+        {/* 房间 ID 已收口到「房间详情」Drawer（标题栏不再展示）。 */}
         {/* Worker session 运行指示。
  1:1 Worker 房间 = sessionState 三态（蓝呼吸/绿/灰）；
  团队房间无 sessionState → 仅当任一 Worker 正在输入时显蓝点。 */}
@@ -178,71 +135,8 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
           title={tr("房间详情")}
           aria-label={tr("房间详情")}
         />
-        {/* 房间操作（Element 同款能力：静音 + 退出房间）。
- 静音=m.muted_room account data（跨客户端状态源；插件通知引擎
- sync_watcher 同数据源消费，静音房间不再触发 @/任务通知）。
- 退出=POST /rooms/{id}/leave——scope 房间会被 Controller 调和器
- 重新邀请（确认文案提示）。 */}
-        {onToggleMute || onLeaveRoom ? (
-          <antd.Dropdown
-            trigger={["click"]}
-            menu={{
-              items: [
-                ...(onRenameRoom
-                  ? [
-                      {
-                        key: "rename",
-                        label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><EditIcon size={13} /> {tr("重命名房间")}</span>,
-                      },
-                    ]
-                  : []),
-                ...(onRenameRoom && (onToggleMute || onLeaveRoom)
-                  ? [{ type: "divider" as const }]
-                  : []),
-                ...(onToggleMute
-                  ? [
-                      {
-                        key: "mute",
-                        label: muted
-                          ? <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellIcon size={13} /> {tr("取消静音")}</span>
-                          : <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellOffIcon size={13} /> {tr("静音此房间")}</span>,
-                      },
-                    ]
-                  : []),
-                ...(onLeaveRoom
-                  ? [
-                      { type: "divider" as const },
-                      {
-                        key: "leave",
-                        danger: true,
-                        label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
-                      },
-                    ]
-                  : []),
-              ],
-              onClick: ({ key }: { key: string }) => {
-                if (key === "rename") {
-                  openRename();
-                } else if (key === "mute") {
-                  void onToggleMute?.();
-                } else if (key === "leave") {
-                  antd.Modal.confirm({
-                    title: tr("退出房间「{name}」？", { name: room.name }),
-                    content: tr("退出后不再接收该房间消息。系统团队房间可能被 Controller 调和器自动重新邀请；非系统房间需再次被邀请才能进入。"),
-                    okText: tr("退出"),
-                    okButtonProps: { danger: true },
-                    cancelText: tr("返回"),
-                    onOk: () => onLeaveRoom?.(),
-                  });
-                }
-              },
-            }}
-          >
-            <antd.Button size="small" type="text">
-              ⋯
-            </antd.Button>
-          </antd.Dropdown>
-        ) : null}
+        {/* 房间操作（重命名/静音/退出/退出并删除）已收口到
+ 「房间详情」Drawer 的「房间操作」区块——标题栏不再设 ⋯ 菜单。 */}
         <antd.Switch
           size="small"
           checked={hideTools}

@@ -4,7 +4,15 @@
 // 退出房间复用现有 leave 链路（onLeaveRoom → handleLeaveRoom → setActiveRoom
 // (null) → RoomChat 整体卸载，本 Drawer 随条件渲染自动关闭）。
 
-import { InfoIcon, WarnIcon } from "./icons";
+import {
+  InfoIcon,
+  WarnIcon,
+  EditIcon,
+  BellIcon,
+  BellOffIcon,
+  DoorIcon,
+  TrashIcon,
+} from "./icons";
 import { fetchRoomInfo, type RoomInfo, type RoomInfoMember } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -34,12 +42,29 @@ interface RoomInfoDrawerProps {
   /** 房间列表名（info 未回时的名称兜底）。 */
   roomName: string;
   onClose: () => void;
-  /** 退出房间（二次确认后触发；复用 /matrix/rooms/{id}/leave 链路）。 */
-  onLeaveRoom?: () => void;
+  /** 退出房间（forget=true 退出并忘记；均走现有二次确认文案）。 */
+  onLeaveRoom?: (forget?: boolean) => void;
+  /** 打开重命名弹窗（复用 RoomChat 既有 Modal + 权限诊断）。 */
+  onRename?: () => void;
+  /** 静音状态 + 切换（m.muted_room account data；成功/失败 toast 由父侧负责）。 */
+  muted?: boolean;
+  onToggleMute?: () => Promise<void> | void;
+  /** 刷新信号：重命名完成后父侧 bump → 本 Drawer 重拉房间信息。 */
+  refreshTick?: number;
 }
 
 export default function RoomInfoDrawer(props: RoomInfoDrawerProps) {
-  const { open, roomId, roomName, onClose, onLeaveRoom } = props;
+  const {
+    open,
+    roomId,
+    roomName,
+    onClose,
+    onLeaveRoom,
+    onRename,
+    muted = false,
+    onToggleMute,
+    refreshTick,
+  } = props;
   const t = useThemeColors();
   const tr = useT();
   const [info, setInfo] = React.useState<RoomInfo | null>(null);
@@ -65,22 +90,28 @@ export default function RoomInfoDrawer(props: RoomInfoDrawerProps) {
     return () => {
       alive = false;
     };
-  }, [open, roomId, reloadKey]);
+  }, [open, roomId, reloadKey, refreshTick]);
 
   const roleLabel = (r: RoomInfoMember["role"]) => tr(ROLE_LABEL[r]);
-  const confirmLeave = () => {
-    antd.Modal.confirm({
-      title: tr("退出房间「{name}」？", { name: roomName }),
-      content:
-        tr("退出后不再接收该房间消息。系统团队房间可能被 Controller 调和器自动重新邀请；非系统房间需再次被邀请才能进入。"),
-      okText: tr("退出"),
-      okButtonProps: { danger: true },
-      cancelText: tr("返回"),
-      onOk: () => onLeaveRoom?.(),
-    });
-  };
 
   const name = info?.name || roomName || tr("未命名房间");
+
+  // 房间操作（自标题栏 ⋯ / 列表卡 ⋯ 收口至此）：退出 / 退出并删除
+  // （沿用现有二次确认文案）。
+  const confirmExit = (forget: boolean) => {
+    antd.Modal.confirm({
+      title: forget
+        ? tr("退出并删除「{name}」？", { name })
+        : tr("退出房间「{name}」？", { name }),
+      content: forget
+        ? tr("退出并忘记该房间：本地不再保留其历史，列表不再显示。此操作不可撤销。系统团队房间可能被 Controller 调和器自动重新邀请。")
+        : tr("退出后不再接收该房间消息。系统团队房间可能被 Controller 调和器自动重新邀请；非系统房间需再次被邀请才能进入。"),
+      okText: forget ? tr("退出并删除") : tr("退出"),
+      okButtonProps: { danger: true },
+      cancelText: tr("返回"),
+      onOk: () => onLeaveRoom?.(forget),
+    });
+  };
 
   return (
     <antd.Drawer
@@ -94,6 +125,7 @@ export default function RoomInfoDrawer(props: RoomInfoDrawerProps) {
       }
       styles={{ body: { padding: 14 } }}
       footer={
+        // 「退出房间」已上移到「房间操作」区块（含退出并删除）；footer 只留刷新。
         <div style={{ display: "flex", gap: 8 }}>
           <antd.Button
             size="small"
@@ -102,11 +134,6 @@ export default function RoomInfoDrawer(props: RoomInfoDrawerProps) {
           >
             {tr("刷新")}
           </antd.Button>
-          {onLeaveRoom ? (
-            <antd.Button size="small" danger onClick={confirmLeave}>
-              {tr("退出房间")}
-            </antd.Button>
-          ) : null}
         </div>
       }
     >
@@ -194,6 +221,54 @@ export default function RoomInfoDrawer(props: RoomInfoDrawerProps) {
               </antd.Button>
             </div>
           </div>
+
+          {/* 房间操作（收口点）：重命名 / 静音（切换）/ 退出房间 / 退出并删除
+  ——原散落在标题栏 ⋯ 与列表卡 ⋯ 的操作统一在此；按钮按 prop 在场渲染。 */}
+          {onRename || onToggleMute || onLeaveRoom ? (
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: t.textSecondary, margin: "0 0 6px" }}>
+                {tr("房间操作")}
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {onRename ? (
+                  <antd.Button size="small" block onClick={() => onRename()}>
+                    <EditIcon size={13} style={{ verticalAlign: "-2px" }} /> {tr("重命名房间")}
+                  </antd.Button>
+                ) : null}
+                {onToggleMute ? (
+                  <antd.Button
+                    size="small"
+                    block
+                    onClick={async () => {
+                      try {
+                        await onToggleMute();
+                      } finally {
+                        // 切换完成（成功/失败）后重拉房间信息，状态徽标同步。
+                        setReloadKey((k) => k + 1);
+                      }
+                    }}
+                  >
+                    {muted ? (
+                      <BellIcon size={13} style={{ verticalAlign: "-2px" }} />
+                    ) : (
+                      <BellOffIcon size={13} style={{ verticalAlign: "-2px" }} />
+                    )}{" "}
+                    {muted ? tr("取消静音") : tr("静音此房间")}
+                  </antd.Button>
+                ) : null}
+                {onLeaveRoom ? (
+                  <>
+                    <antd.Button size="small" block danger onClick={() => confirmExit(false)}>
+                      <DoorIcon size={13} style={{ verticalAlign: "-2px" }} /> {tr("退出房间")}
+                    </antd.Button>
+                    <antd.Button size="small" block danger onClick={() => confirmExit(true)}>
+                      <TrashIcon size={13} style={{ verticalAlign: "-2px" }} /> {tr("退出并删除")}
+                    </antd.Button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           {/* 主题（空显 —）。 */}
           <div style={{ display: "flex", gap: 8 }}>
