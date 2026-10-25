@@ -7,6 +7,9 @@ export const workflowDict: Record<string, { en: string }> = {
   "Controller 未部署信号事件读取端点（#1405 只写不读；需补只读端点后此处自动出现）": {
     en: "This Controller does not expose the signal-events read endpoint (#1405 writes only; the panel appears once the read endpoint ships).",
   },
+  "暂无信号事件——读取端点已接通，SIG-* 事件写入后自动出现": {
+    en: "No signal events yet — the read endpoint is live; SIG-* events appear here once written.",
+  },
   "时间 新→旧": { en: "Time: newest first" },
   "时间 旧→新": { en: "Time: oldest first" },
   "名称 A→Z": { en: "Name A–Z" },

@@ -315,7 +315,7 @@ export function WorkflowEventsTimeline(props: {
               ))}
             </div>
           )}
-          {signals.length > 0 || signalNotDeployed ? (
+          {signals.length > 0 || signalNotDeployed || (!loading && !error) ? (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>
                 {tr("信号事件（SIG-*）")}
@@ -330,6 +330,10 @@ export function WorkflowEventsTimeline(props: {
                   {tr(
                     "Controller 未部署信号事件读取端点（#1405 只写不读；需补只读端点后此处自动出现）",
                   )}
+                </div>
+              ) : signals.length === 0 ? (
+                <div style={{ color: "#999", lineHeight: 1.6 }}>
+                  {tr("暂无信号事件——读取端点已接通，SIG-* 事件写入后自动出现")}
                 </div>
               ) : (
                 <div
