@@ -292,8 +292,18 @@ export const workerDict: Record<string, { en: string }> = {
   "拓扑树（团队 → Worker → spawn）；点 Worker 行展开管理信息（Worker 状态[CRD] / 容器状态[docker，不一致时标红] / 模型 / 唤醒休眠）与检查点；底部团队/用户/Manager 全量表；自动刷新不闪页（静默+diff）": {
     en: "Topology tree (Team → Worker → spawn). Click a Worker row to expand management info (CRD status / container status [red on mismatch] / model / wake-sleep) and checkpoints; full team/user/Manager tables below; auto-refresh without page flash (silent + diff)",
   },
-  "勾选要授予/取消的团队——改动先落本地，点「生成命令」后复制到 Controller 宿主机执行才真正生效（reconcile 约 5 分钟把员工拉入/移出团队房间）。上游 PR P-HUMANS-PUT 合并后此处升级为一键保存。": {
-    en: "Check teams to grant/revoke. Changes stay local until you generate the command and run it on the Controller host (reconcile takes ~5 min to move the employee between team rooms). After upstream PR P-HUMANS-PUT merges, this becomes one-click save.",
+  "勾选要授予/取消的团队，点「保存到 Controller」直接生效（reconcile 约 5 分钟把员工拉入/移出团队房间）。旧版 Controller 无 PUT /humans 时自动回落「生成命令」（复制到 Controller 宿主机执行）。": {
+    en: "Check teams to grant/revoke, then click Save to Controller to apply (reconcile takes ~5 min to move the employee between team rooms). On older Controllers without PUT /humans it falls back to generating the command (run it on the Controller host).",
+  },
+  "保存到 Controller": { en: "Save to Controller" },
+  "当前 Controller 不支持一键保存（无 PUT /humans 端点）——已生成命令，请在 Controller 宿主机执行。": {
+    en: "This Controller does not support one-click save (no PUT /humans endpoint) — the command was generated; run it on the Controller host.",
+  },
+  "已保存 {ok} 人，失败 {fail} 人：{detail}": {
+    en: "Saved {ok}; failed {fail}: {detail}",
+  },
+  "已保存 {n} 名员工的团队授权（reconcile 约 5 分钟生效）": {
+    en: "Saved team access for {n} employee(s) (reconcile takes ~5 min)",
   },
   "团队成员（workerMembers）——保存 = 全量替换成员列表": { en: "Team members (workerMembers) — saving replaces the whole list" },
   // 团队配置窗口批量改模型（leader/workers 两批）。

@@ -81,7 +81,10 @@ export default function CrdManage(props: CrdManageProps) {
     generateAccessCmd,
     copyAccessCmd,
     accessCmd,
-  } = useAccessMatrix({ humans, tr });
+    saving: accessSaving,
+    saveMsg: accessSaveMsg,
+    saveAccess,
+  } = useAccessMatrix({ humans, tr, onSaved: onRefresh });
   const {
     gatewayOpts,
     gatewayLoaded,
@@ -262,6 +265,9 @@ export default function CrdManage(props: CrdManageProps) {
             generateAccessCmd={generateAccessCmd}
             accessCmd={accessCmd}
             copyAccessCmd={copyAccessCmd}
+            saving={accessSaving}
+            saveMsg={accessSaveMsg}
+            saveAccess={saveAccess}
             tr={tr}
             t={t}
           />

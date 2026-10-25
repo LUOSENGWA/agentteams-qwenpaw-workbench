@@ -44,6 +44,12 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
+/** 探测结果进程内缓存（key=worker 名，TTL 5 分钟）：
+ * 展开面板 = 容器内逐 CLI exec（3 次 --version），同一 Worker 反复展开/
+ * 切页不应重复付这个成本；过期先渲染旧值再后台刷新（stale-while-revalidate）。 */
+const PROBE_TTL_MS = 5 * 60 * 1000;
+const probeCache = new Map<string, { items: CliRowState[]; ts: number }>();
+
 function useCodingCliPanel({
   worker,
   sheet,
@@ -93,14 +99,29 @@ function useCodingCliPanel({
     };
   }, [stopPoll]);
 
-  const load = React.useCallback(async () => {
+  const [probedAt, setProbedAt] = React.useState(0);
+
+  const load = React.useCallback(async (force = false) => {
+    const cached = probeCache.get(worker.name);
+    if (!force && cached) {
+      // 先渲染缓存（零等待），未过期则不再打容器。
+      setItems(cached.items);
+      setProbedAt(cached.ts);
+      setState("ready");
+      if (Date.now() - cached.ts < PROBE_TTL_MS) return;
+    }
     try {
       const raw = await listCodingCli(worker.name);
       if (cancelledRef.current) return;
-      setItems(rowsFromItems(raw));
+      const rows = rowsFromItems(raw);
+      probeCache.set(worker.name, { items: rows, ts: Date.now() });
+      setItems(rows);
+      setProbedAt(Date.now());
       setState("ready");
     } catch (e) {
       if (cancelledRef.current) return;
+      // 有缓存时保留旧值（stale 优于整块报错），后台刷新失败静默。
+      if (cached) return;
       const st = httpErrorStatus(e);
       if (st === 404) {
         setState("unavailable");
@@ -372,6 +393,7 @@ function useCodingCliPanel({
     setOpen,
     state,
     items,
+    probedAt,
     loadError,
     load,
     latestInfo,
@@ -469,6 +491,34 @@ function CodingCliPanelBody({
           {tr("当前角色仅可查看，不能修改编码 CLI。")}
         </div>
       ) : null}
+
+      {/* 探测缓存提示 + 手动重探（5 分钟 TTL，过期后台刷新不阻塞）。 */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 11,
+          color: t.textSecondary,
+        }}
+      >
+        {s.probedAt ? (
+          <span>
+            {tr("探测于 {t}（缓存 5 分钟）", {
+              t: new Date(s.probedAt).toLocaleTimeString(),
+            })}
+          </span>
+        ) : null}
+        <antd.Button
+          size="small"
+          type="link"
+          style={{ padding: 0, height: "auto" }}
+          onClick={() => void s.load(true)}
+        >
+          {tr("重新探测")}
+        </antd.Button>
+      </div>
 
       {/* 15.33：版本 tag（安装/升级均生效；可填具体 tag 探测，空=latest）。
        * 三卡共用 → 保持全局单行（harness S1f count=1 判据不变）。 */}

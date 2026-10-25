@@ -24,6 +24,9 @@ interface CrdAccessMatrixProps {
   generateAccessCmd: () => void;
   copyAccessCmd: () => void;
   accessCmd: string;
+  saving: boolean;
+  saveMsg: { kind: "ok" | "err"; text: string } | null;
+  saveAccess: () => void;
   tr: TrFn;
   t: ThemeColors;
 }
@@ -37,6 +40,9 @@ toggleAccess,
 generateAccessCmd,
 copyAccessCmd,
 accessCmd,
+saving,
+saveMsg,
+saveAccess,
 tr,
 t,
 }: CrdAccessMatrixProps) {
@@ -46,14 +52,24 @@ t,
         title={tr("团队访问配置（员工 × 团队）")}
         styles={{ body: { padding: 0 } }}
         extra={
-          <antd.Button
-            size="small"
-            type="primary"
-            disabled={!Object.keys(accessChanged).length}
-            onClick={generateAccessCmd}
-          >
-            {tr("生成命令")}
-          </antd.Button>
+          <antd.Space size={6}>
+            <antd.Button
+              size="small"
+              type="primary"
+              loading={saving}
+              disabled={!Object.keys(accessChanged).length}
+              onClick={saveAccess}
+            >
+              {tr("保存到 Controller")}
+            </antd.Button>
+            <antd.Button
+              size="small"
+              disabled={!Object.keys(accessChanged).length}
+              onClick={generateAccessCmd}
+            >
+              {tr("生成命令")}
+            </antd.Button>
+          </antd.Space>
         }
       >
         <div
@@ -65,8 +81,18 @@ t,
           }}
         >
           {tr(
-            "勾选要授予/取消的团队——改动先落本地，点「生成命令」后复制到 Controller 宿主机执行才真正生效（reconcile 约 5 分钟把员工拉入/移出团队房间）。上游 PR P-HUMANS-PUT 合并后此处升级为一键保存。",
+            "勾选要授予/取消的团队，点「保存到 Controller」直接生效（reconcile 约 5 分钟把员工拉入/移出团队房间）。旧版 Controller 无 PUT /humans 时自动回落「生成命令」（复制到 Controller 宿主机执行）。",
           )}
+          {saveMsg ? (
+            <div
+              style={{
+                marginTop: 4,
+                color: saveMsg.kind === "ok" ? "#389e0d" : "#ff4d4f",
+              }}
+            >
+              {saveMsg.text}
+            </div>
+          ) : null}
         </div>
         <WbTableFade>
         <antd.Table

@@ -157,6 +157,17 @@ export const createWorker = (body: Record<string, unknown>) =>
   controllerRequest("POST", "/workers", body);
 export const deleteHuman = (name: string) =>
   controllerRequest("DELETE", `/humans/${encodeURIComponent(name)}`);
+
+/** 更新 Human 的团队授权（PUT /api/v1/humans/{name}，merge 语义：
+ * accessibleTeams 传数组 = 整表替换，省略 = 不变）。
+ * 404/405 = Controller 未含该端点（旧版）→ 调用方回落「生成命令」。 */
+export const updateHumanAccessibleTeams = (
+  name: string,
+  accessibleTeams: string[],
+) =>
+  controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, {
+    accessibleTeams,
+  });
 /** 创建团队——workerMembers 必须引用已存在的 Worker CR，且 ≥1。 */
 export const createTeam = (body: Record<string, unknown>) =>
   controllerRequest("POST", "/teams", body);
