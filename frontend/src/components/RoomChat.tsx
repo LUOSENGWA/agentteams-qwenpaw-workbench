@@ -8,6 +8,7 @@ import { FileRefPicker } from "./FileRefPicker";
 import { type FileRef } from "../lib/file-refs";
 import MessageSearch from "./MessageSearch";
 import MemberDetail from "./MemberDetail";
+import RoomInfoDrawer from "./RoomInfoDrawer";
 import {
   type WorkerInfo,
   type WorkflowEvent,
@@ -221,6 +222,8 @@ function RoomChat(props: RoomChatProps) {
     dragging,
     memberPanelOpen,
     setMemberPanelOpen,
+    roomInfoOpen,
+    setRoomInfoOpen,
     setReplyTo,
     showJumpBottom,
     newMsgCount,
@@ -1220,6 +1223,17 @@ function RoomChat(props: RoomChatProps) {
           })}
         </div>
       </antd.Drawer>
+
+      {/* 房间详情 Drawer（Element 同款：房间 ID/主题/成员角色/设置）。
+ 退出房间走现有 leave 链路（onLeaveRoom → setActiveRoom(null) →
+ 本组件条件渲染卸载，Drawer 自动关闭）。 */}
+      <RoomInfoDrawer
+        open={roomInfoOpen}
+        roomId={room.room_id}
+        roomName={room.name}
+        onClose={() => setRoomInfoOpen(false)}
+        onLeaveRoom={props.onLeaveRoom}
+      />
 
       {/* 重命名房间（Element 同款）+ 权限诊断 */}
       <antd.Modal

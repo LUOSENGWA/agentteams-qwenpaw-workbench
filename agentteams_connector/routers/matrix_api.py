@@ -514,6 +514,44 @@ def build_matrix_router() -> APIRouter:
             from_token = end
         return {"ok": True, "messages": found}
 
+    @router.get("/matrix/rooms/{room_id}/info")
+    async def room_info_endpoint(room_id: str) -> Dict[str, Any]:
+        """房间详情信息（Element 同款房间详情面板数据源）。
+
+ 聚合 matrix_client.room_info（7 个 state 事件 + joined_members）：
+ name/topic/canonical_alias/creator/join_rule/encrypted/member_count +
+ members（power level → Element 同款角色映射 owner/moderator/member）。
+ 错误映射：401 → 401（未登录/token 失效）；403/404 → 502（附 Matrix
+ 返回摘要）。
+ """
+        cfg = config_mod.load_config()
+        matrix_cfg = cfg.get("matrix") or {}
+        token = (matrix_cfg.get("access_token") or "").strip()
+        homeserver = _pick_address(cfg, "matrix")
+        if not homeserver:
+            raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
+        if not token:
+            raise HTTPException(status_code=401, detail="未登录，请先在配置页登录")
+        try:
+            # to_thread（同步 httpx，8 个上游拨号点）。
+            result = await asyncio.to_thread(
+                matrix_client.room_info, homeserver, token, room_id
+            )
+        except matrix_client.MatrixError as exc:
+            if "-> 401:" in str(exc):
+                raise HTTPException(
+                    status_code=401, detail="Matrix token 无效或已过期，请重新登录"
+                ) from exc
+            raise HTTPException(
+                status_code=502, detail=f"房间信息拉取失败：{exc}"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=502,
+                detail=f"{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
+            ) from exc
+        return {"ok": True, **result}
+
     @router.get("/events")
     async def events_stream() -> Any:
         """SSE 事件流（IM 式触发）：sync watcher 检测到 @提到我 时推送。

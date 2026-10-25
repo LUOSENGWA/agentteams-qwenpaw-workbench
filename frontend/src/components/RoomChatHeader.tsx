@@ -7,6 +7,7 @@ import {
   BellOffIcon,
   DoorIcon,
   TodoIcon,
+  InfoIcon,
 } from "./icons";
 import WorkerSessionDot from "./WorkerSessionDot";
 import MemberStrip from "./MemberStrip";
@@ -43,6 +44,7 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
     hideTools,
     setHideTools,
     setMemberPanelOpen,
+    setRoomInfoOpen,
     openRename,
     tr,
     myUserId,
@@ -167,6 +169,15 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
         >
           {tr("搜索")}
         </antd.Button>
+        {/* 房间详情入口（Element 同款 (i) 钮）→ 右侧 Drawer（房间 ID/主题/成员角色/设置）。 */}
+        <antd.Button
+          size="small"
+          type="text"
+          icon={<InfoIcon size={14} />}
+          onClick={() => setRoomInfoOpen(true)}
+          title={tr("房间详情")}
+          aria-label={tr("房间详情")}
+        />
         {/* 房间操作（Element 同款能力：静音 + 退出房间）。
  静音=m.muted_room account data（跨客户端状态源；插件通知引擎
  sync_watcher 同数据源消费，静音房间不再触发 @/任务通知）。

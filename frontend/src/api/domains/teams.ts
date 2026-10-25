@@ -328,3 +328,36 @@ export async function fetchMemberMessages(
     `/agentteams-proxy/matrix/member/messages?${params.toString()}`,
   )) as { ok: boolean; messages: MemberMessage[] };
 }
+
+// ── 房间详情（Element 同款房间详情面板 · 数据面）──────────────
+// 后端 = GET /agentteams-proxy/matrix/rooms/{roomId}/info（matrix_api，
+// 聚合 7 个房间 state 事件 + joined_members；角色映射 owner/moderator/
+// member 按 power level 100/50 阈值，Element 同款）。
+
+export interface RoomInfoMember {
+  user_id: string;
+  display_name: string;
+  avatar_url: string;
+  power_level: number;
+  role: "owner" | "moderator" | "member";
+}
+
+export interface RoomInfo {
+  room_id: string;
+  name: string;
+  topic: string;
+  canonical_alias: string;
+  creator: string;
+  join_rule: string;
+  encrypted: boolean;
+  member_count: number;
+  members: RoomInfoMember[];
+}
+
+export async function fetchRoomInfo(
+  roomId: string,
+): Promise<RoomInfo> {
+  return (await requestJson(
+    `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/info`,
+  )) as RoomInfo;
+}

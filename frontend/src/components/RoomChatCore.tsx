@@ -28,6 +28,7 @@ import {
   BellIcon,
   DoorIcon,
   TodoIcon,
+  InfoIcon,
 } from "./icons";
 import {
   MSG_WINDOW_LIMIT,
@@ -292,6 +293,8 @@ export function useRoomChatCore(props: RoomChatProps) {
   );
   // 成员面板（Element MemberList 交互：点击成员数打开）。
   const [memberPanelOpen, setMemberPanelOpen] = React.useState(false);
+  // 房间详情 Drawer（Element 同款：房间 ID/主题/成员角色/设置）。
+  const [roomInfoOpen, setRoomInfoOpen] = React.useState(false);
   // 引用回复目标（ReplyPreview 输入框上方回复条）。
   const [replyTo, setReplyTo] = React.useState<{
     event_id: string;
@@ -1095,6 +1098,8 @@ export function useRoomChatCore(props: RoomChatProps) {
     const last = messages[messages.length - 1];
     setReadTs(last ? last.origin_server_ts : Date.now());
     setMentionQuery(null);
+    // 换房关房间详情 Drawer（数据按 roomId 绑定，避免显示旧房信息）。
+    setRoomInfoOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.room_id]);
 
@@ -1162,6 +1167,11 @@ export function useRoomChatCore(props: RoomChatProps) {
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SearchIcon size={13} /> {tr("搜索")}</span>,
     },
     {
+      key: "info",
+      label:
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><InfoIcon size={13} /> {tr("房间详情")}</span>,
+    },
+    {
       key: "tools",
       label:
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><WrenchIcon size={13} /> {hideTools ? tr("显示工具") : tr("隐藏工具")}</span>,
@@ -1210,6 +1220,7 @@ export function useRoomChatCore(props: RoomChatProps) {
   ];
   const compactMenuClick = ({ key }: { key: string }) => {
     if (key === "members") setMemberPanelOpen(true);
+    else if (key === "info") setRoomInfoOpen(true);
     else if (key === "project") onOpenProjectFiles?.(room);
     else if (key === "search") setSearchOpen(true);
     else if (key === "tools") setHideTools(!hideTools);
@@ -1379,6 +1390,8 @@ export function useRoomChatCore(props: RoomChatProps) {
     setDragging,
     memberPanelOpen,
     setMemberPanelOpen,
+    roomInfoOpen,
+    setRoomInfoOpen,
     replyTo,
     setReplyTo,
     showJumpBottom,
