@@ -11,7 +11,7 @@ industry,domain,fragments}/*.md）；本地 pack = ``<config_dir>/templates/
 - I2 成功路径：clone → 只取 .md/.yaml（junk.txt 不入库）→ pack 目录 +
   meta.json（url/ref/commit/imported_at/files）；重复导入整包覆盖。
 - I3 clone 失败 → 502 + stderr 摘要；clone 超时 → 502；无 templates/ → 400；
-  templates/ 超 20MB → 400。
+  整包合计超 60MB（含 compiler/ core/）→ 400。
 - L1 GET /templates：多 pack 并列 + INDEX 四组解析字段归一；单 pack
   INDEX 损坏只标该 pack parse_error（其余照常）；无 pack → 空列表。
 - F1 文件预览：.md/.yaml 可读；扩展名外 400；../ / 绝对路径 / 反斜杠 /
@@ -272,12 +272,12 @@ def test_import_size_limit_400(client, tmp_path):
     tc, fake, repos = client
     big = repos[GH] / "templates" / "skeleton" / "big.md"
     with open(big, "wb") as f:
-        f.seek(21 * 1024 * 1024 - 1)
-        f.write(b"\0")  # 稀疏文件：st_size=21MB 不实际占盘
+        f.seek(61 * 1024 * 1024 - 1)
+        f.write(b"\0")  # 稀疏文件：st_size=61MB 不实际占盘
     try:
         r = tc.post("/templates/import", json={"url": GH, "ref": "main"})
         assert r.status_code == 400
-        assert "20MB" in r.json()["detail"]
+        assert "60MB" in r.json()["detail"]
         assert not _pack_root().exists()
     finally:
         big.unlink(missing_ok=True)
