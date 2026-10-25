@@ -21,3 +21,4 @@ export * from "./api/domains/approvals";
 export * from "./api/domains/kb";
 export * from "./api/domains/checkpoints";
 export * from "./api/domains/attention";
+export * from "./api/domains/templates";

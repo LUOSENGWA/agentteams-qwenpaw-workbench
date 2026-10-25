@@ -53,9 +53,12 @@ interface UseTeamCrdArgs {
   catalog: ReturnType<typeof useModelCatalog>;
   /** 拓扑 TeamNode 齿轮注册回调（原主组件内 `const { registerHandle } = props;`）。 */
   registerHandle: CrdManageProps["registerHandle"];
+  /** 「用此模板建队」时展开快捷操作卡（建队表单所在折叠区）——
+   * 折叠态下预填字段用户看不见。 */
+  expandShortcutCards?: () => void;
 }
 
-export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHandle }: UseTeamCrdArgs) {
+export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHandle, expandShortcutCards }: UseTeamCrdArgs) {
   // ── 创建团队（Team CRD 创建）──
   const [tForm, setTForm] = React.useState(EMPTY_TEAM_FORM);
   const [workerRows, setWorkerRows] = React.useState<WorkerRow[]>([
@@ -456,8 +459,14 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         }
         openCfg(team);
       },
+      // 千锻模板卡「用此模板建队」：展开建队表单 + 预填「模板来源」
+      // （<pack>/<id>，仅记录，不执行千锻编译器）。
+      createTeamWithTemplate: (templateSource: string) => {
+        expandShortcutCards?.();
+        setTForm((prev) => ({ ...prev, templateSource }));
+      },
     });
-  }, [registerHandle, teams, openCfg, tr]);
+  }, [registerHandle, teams, openCfg, tr, expandShortcutCards]);
 
   const updateCfgRow = React.useCallback(
     (i: number, patch: Partial<WorkerRow>) => {

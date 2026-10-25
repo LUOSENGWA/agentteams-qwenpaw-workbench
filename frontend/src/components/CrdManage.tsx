@@ -100,6 +100,8 @@ export default function CrdManage(props: CrdManageProps) {
     tr,
     catalog,
     registerHandle: props.registerHandle,
+    // 「用此模板建队」预填时展开快捷操作卡（建队表单所在折叠区）。
+    expandShortcutCards: () => setCrdCardsOpen(true),
   });
   const {
     tForm,

@@ -95,6 +95,15 @@ export default function CrdTeamForm({
               setTForm({ ...tForm, description: e.target.value })
             }
           />
+          <FieldLabel>{tr("模板来源（千锻模板 pack/id，仅记录，不执行编译器）")}</FieldLabel>
+          <antd.Input
+            size="small"
+            placeholder={tr("模板来源（千锻模板 pack/id，仅记录，不执行编译器）")}
+            value={tForm.templateSource}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setTForm({ ...tForm, templateSource: e.target.value })
+            }
+          />
           <FieldLabel>{tr("人类成员（可选，仅创建时可设）")}</FieldLabel>
           <antd.Select
             size="small"
