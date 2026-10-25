@@ -11,6 +11,8 @@ import { CheckIcon, ClipIcon, CloseIcon, DocIcon, WarnIcon } from "../components
 import { WbTooltip } from "../components/WbTooltip";
 import FieldLabel from "./FieldLabel";
 import { WorkerRowSelects } from "./WorkerRowSelects";
+import MillforgeCreateSection from "../millforge/MillforgeCreateSection";
+import type { MfCreate } from "../millforge/useMillforgeCreate";
 import type { TeamForm, TrFn, WorkerRow } from "./types";
 
 const host = window.QwenPaw.host;
@@ -38,6 +40,8 @@ interface CrdTeamFormProps {
     role: string,
     onLoaded: (text: string) => void,
   ) => void;
+  /** 千锻段（B）——折叠区状态 + pre/post 钩子由父组件持有。 */
+  millforge?: MfCreate | null;
   tr: TrFn;
   t: ThemeColors;
 }
@@ -58,6 +62,7 @@ export default function CrdTeamForm({
   modelCandidates,
   modelOf,
   loadSoulFile,
+  millforge,
   tr,
   t,
 }: CrdTeamFormProps) {
@@ -93,15 +98,6 @@ export default function CrdTeamForm({
             value={tForm.description}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setTForm({ ...tForm, description: e.target.value })
-            }
-          />
-          <FieldLabel>{tr("模板来源（千锻模板 pack/id，仅记录，不执行编译器）")}</FieldLabel>
-          <antd.Input
-            size="small"
-            placeholder={tr("模板来源（千锻模板 pack/id，仅记录，不执行编译器）")}
-            value={tForm.templateSource}
-            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-              setTForm({ ...tForm, templateSource: e.target.value })
             }
           />
           <FieldLabel>{tr("人类成员（可选，仅创建时可设）")}</FieldLabel>
@@ -268,6 +264,16 @@ export default function CrdTeamForm({
           >
             ＋ {tr("添加 Worker")}
           </antd.Button>
+          {/* 千锻模板（可选）——B：折叠区，启用后提交建队时自动 编译→注入 */}
+          {millforge ? (
+            <MillforgeCreateSection
+              mf={millforge}
+              workers={workers}
+              teamName={tForm.name}
+              tr={tr}
+              t={t}
+            />
+          ) : null}
           <FieldLabel>{tr("心跳间隔（可选，如 10m）")}</FieldLabel>
           <antd.Input
             size="small"

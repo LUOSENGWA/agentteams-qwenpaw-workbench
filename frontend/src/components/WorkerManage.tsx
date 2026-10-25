@@ -6,7 +6,6 @@ import { TeamIcon } from "./icons";
 import CrdManage, { type CrdManageHandle } from "./CrdManage";
 import MyScopeCard from "./MyScopeCard";
 import SkillCenter from "./SkillCenter";
-import TemplatesCard from "./TemplatesCard";
 import WorkerChannels from "./WorkerChannels";
 import WorkerTools from "./WorkerTools";
 import { useThemeColors } from "../theme";
@@ -154,23 +153,6 @@ function WorkerManage(props: WorkerManageProps) {
   React.useEffect(() => {
     if (!(hasToken && admin)) crdRef.current = null;
   }, [hasToken, admin]);
-
-  // 千锻模板卡「用此模板建队」→ CrdManage 建队表单预填「模板来源」
-  // （<pack>/<id>，仅记录，不执行编译器）。CrdManage 未挂载
-  // （L1 token 未配/非 admin）→ toast 诚实降级。
-  const handleTemplateCreateTeam = React.useCallback(
-    (templateSource: string) => {
-      const fn = crdRef.current?.createTeamWithTemplate;
-      if (fn) {
-        fn(templateSource);
-        return;
-      }
-      antd.message.warning(
-        tr("需要 L1 管理员（已配置 Controller token）才能打开建队表单"),
-      );
-    },
-    [tr],
-  );
 
   const items =
     hasToken && admin
@@ -335,9 +317,6 @@ function WorkerManage(props: WorkerManageProps) {
           />
         )}
       </antd.Card>
-      {/* 千锻模板卡（导入/浏览/预览/建队预填）——数据面是 agentteams-proxy
-  本地态（git clone），不依赖 Controller，登录即显示。 */}
-      <TemplatesCard onCreateTeam={handleTemplateCreateTeam} />
       {hasToken && !admin ? (
         <antd.Card size="small">
           {/* ：静默失败不再

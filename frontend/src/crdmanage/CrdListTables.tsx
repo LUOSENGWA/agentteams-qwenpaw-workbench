@@ -138,6 +138,8 @@ interface CrdTeamTableCardProps {
   teams: AdminData["teams"];
   openCfg: (r: TeamInfo) => void;
   doDeleteTeam: (name: string) => void | Promise<void>;
+  /** 「千锻注入」行操作（C）——打开千锻对话框。 */
+  onMillforge?: (r: TeamInfo) => void;
   tr: TrFn;
   t: ThemeColors;
 }
@@ -146,6 +148,7 @@ export function CrdTeamTableCard({
   teams,
   openCfg,
   doDeleteTeam,
+  onMillforge,
   tr,
   t,
 }: CrdTeamTableCardProps) {
@@ -204,12 +207,17 @@ export function CrdTeamTableCard({
     {
       title: tr("操作"),
       key: "op",
-      width: 130,
+      width: 200,
       render: (_: unknown, r: TeamInfo) => (
         <antd.Space size={4}>
           <antd.Button size="small" onClick={() => openCfg(r)}>
             {tr("配置")}
           </antd.Button>
+          {onMillforge ? (
+            <antd.Button size="small" onClick={() => onMillforge(r)}>
+              {tr("千锻注入")}
+            </antd.Button>
+          ) : null}
           <antd.Popconfirm
             title={tr("确认删除该团队？（不可恢复）")}
             okText={tr("删除")}
@@ -238,7 +246,7 @@ export function CrdTeamTableCard({
           dataSource={teams}
           pagination={false}
           tableLayout="fixed"
-          scroll={{ x: 820 }}
+          scroll={{ x: 890 }}
           locale={{ emptyText: tr("暂无团队记录") }}
         />
         </WbTableFade>

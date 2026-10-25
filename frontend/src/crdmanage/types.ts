@@ -24,14 +24,10 @@ export interface CrdManageProps {
   registerHandle?: (h: CrdManageHandle) => void;
 }
 
-/** 注册式 handle 类型（WorkerManage 拓扑齿轮 + 模板卡「用此模板建队」消费）。 */
+/** 注册式 handle 类型（WorkerManage 拓扑齿轮消费）。 */
 export interface CrdManageHandle {
   /** 按 CR 名打开配置团队弹窗；团队未加载/不存在时 toast 提示，不静默。 */
   openConfig: (teamName: string) => void;
-  /** 「千锻模板」卡「用此模板建队」→ 展开快捷操作卡并预填建队表单
-   * 「模板来源」（<pack>/<id>，仅记录，不执行千锻编译器）。
-   * 可选——未实现时调用方自行降级（toast）。 */
-  createTeamWithTemplate?: (templateSource: string) => void;
 }
 
 export const LEVEL_META: Record<number, { label: string; color: string }> = {
@@ -108,9 +104,6 @@ export interface TeamForm {
   name: string;
   teamName: string;
   description: string;
-  /** 千锻模板来源（<pack>/<id>）——「用此模板建队」预填；
-   * 仅表单记录（MVP 不执行千锻编译器、不进 createTeam 载荷）。 */
-  templateSource: string;
   humanMembers: string[];
   heartbeatEvery: string;
   peerMentions: boolean;
@@ -120,7 +113,6 @@ export const EMPTY_TEAM_FORM: TeamForm = {
   name: "",
   teamName: "",
   description: "",
-  templateSource: "",
   humanMembers: [],
   heartbeatEvery: "",
   peerMentions: true,

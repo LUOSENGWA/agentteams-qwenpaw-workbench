@@ -91,7 +91,15 @@ export async function requestJson(
     if (payload && typeof payload === "object") {
       const p = payload as Record<string, unknown>;
       if (typeof p.detail === "string") detail = p.detail;
-      else if (typeof p.message === "string") detail = p.message;
+      // 对象 detail（FastAPI HTTPException(detail=dict)——如千锻 compile 422
+      // {exit_code, stage, error, stderr_tail}）→ JSON 串（调用方可再解析）。
+      else if (typeof p.detail === "object" && p.detail !== null) {
+        try {
+          detail = JSON.stringify(p.detail);
+        } catch {
+          detail = String(p.detail);
+        }
+      } else if (typeof p.message === "string") detail = p.message;
       else if (typeof p.error === "string") detail = p.error;
       else if (typeof p.errcode === "string")
         detail = `${p.errcode}: ${String(p.error ?? "")}`.trim();

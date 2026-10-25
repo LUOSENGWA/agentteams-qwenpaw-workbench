@@ -53,12 +53,15 @@ interface UseTeamCrdArgs {
   catalog: ReturnType<typeof useModelCatalog>;
   /** 拓扑 TeamNode 齿轮注册回调（原主组件内 `const { registerHandle } = props;`）。 */
   registerHandle: CrdManageProps["registerHandle"];
-  /** 「用此模板建队」时展开快捷操作卡（建队表单所在折叠区）——
-   * 折叠态下预填字段用户看不见。 */
-  expandShortcutCards?: () => void;
+  /** 千锻建队前置（B6，可选）：团队 ID 校验后调用；返回非 null = 覆盖
+   * 表单成员行（workerMembers = 选中/新建的 worker 名）；null = 不参与
+   * （表单行原样走）；抛错 = 中止建队（调用方已 toast）。 */
+  millforgePreCreate?: (teamName: string) => Promise<WorkerRow[] | null>;
+  /** 千锻建队后置（可选）：创建成功后复位千锻段状态。 */
+  millforgePostCreate?: () => void;
 }
 
-export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHandle, expandShortcutCards }: UseTeamCrdArgs) {
+export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHandle, millforgePreCreate, millforgePostCreate }: UseTeamCrdArgs) {
   // ── 创建团队（Team CRD 创建）──
   const [tForm, setTForm] = React.useState(EMPTY_TEAM_FORM);
   const [workerRows, setWorkerRows] = React.useState<WorkerRow[]>([
@@ -288,7 +291,21 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       antd.message.warning(tr("团队 ID 不能为空"));
       return;
     }
-    const rows = workerRows.filter((r) => r.name.trim());
+    // 千锻前置（B6）：启用时编译（若未编译）→ 注入；返回值覆盖成员行
+    // （workerMembers = 选中/新建的 worker 名）；抛错 = 中止（已 toast）。
+    let mfRows: WorkerRow[] | null = null;
+    if (millforgePreCreate) {
+      setTBusy(true);
+      try {
+        mfRows = await millforgePreCreate(name);
+      } catch (e) {
+        setTBusy(false);
+        antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+        return;
+      }
+      setTBusy(false);
+    }
+    const rows = mfRows ?? workerRows.filter((r) => r.name.trim());
     const names = rows.map((r) => r.name.trim());
     if (names.length === 0) {
       antd.message.warning(tr("至少需要 1 个 Worker（且至少 1 个 team_leader）"));
@@ -359,6 +376,8 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         );
         setTForm(EMPTY_TEAM_FORM);
         setWorkerRows([{ name: "", role: "team_leader" }]);
+        // 千锻后置（B6）：复位千锻段（清 build/注入结果/自定义；源保留）。
+        millforgePostCreate?.();
         // 建队=团队结构+admin 变更 → 失效缓存再刷
         // （否则 30s TTL 内拓扑树/管理面板读旧值）。
         invalidateTags(["teams", "admin"]);
@@ -389,7 +408,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       return;
     }
     void proceed();
-  }, [tForm, workerRows, onRefresh, tr, catalog.modelCandidates, catalog.modelOf, startTeamCheck]);
+  }, [tForm, workerRows, onRefresh, tr, catalog.modelCandidates, catalog.modelOf, startTeamCheck, millforgePreCreate, millforgePostCreate]);
 
   const workerNames = workers.map((x) => x.name);
 
@@ -459,14 +478,8 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         }
         openCfg(team);
       },
-      // 千锻模板卡「用此模板建队」：展开建队表单 + 预填「模板来源」
-      // （<pack>/<id>，仅记录，不执行千锻编译器）。
-      createTeamWithTemplate: (templateSource: string) => {
-        expandShortcutCards?.();
-        setTForm((prev) => ({ ...prev, templateSource }));
-      },
     });
-  }, [registerHandle, teams, openCfg, tr, expandShortcutCards]);
+  }, [registerHandle, teams, openCfg, tr]);
 
   const updateCfgRow = React.useCallback(
     (i: number, patch: Partial<WorkerRow>) => {

@@ -16,6 +16,9 @@ import CrdAccessMatrix from "../crdmanage/CrdAccessMatrix";
 import { CrdHumanTableCard, CrdTeamTableCard } from "../crdmanage/CrdListTables";
 import CrdCfgModal from "../crdmanage/CrdCfgModal";
 import CrdPermModal from "../crdmanage/CrdPermModal";
+import MillforgeModal from "../millforge/MillforgeModal";
+import { useMillforgeCreate } from "../millforge/useMillforgeCreate";
+import type { TeamInfo } from "../api";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -93,6 +96,19 @@ export default function CrdManage(props: CrdManageProps) {
     modelOf,
     loadSoulFile,
   } = catalog;
+  // ── 千锻段（B/C/D）：core 实例供建队表单折叠区（B）持有；建队 pre/post
+  // 钩子经 ref 间接（preCreate 依赖 tForm.name，tForm 归 useTeamCrd 管——
+  // 环靠 ref 断）。行操作「千锻注入」（C）对话框独立 state。
+  const mf = useMillforgeCreate(tr, workers);
+  const mfPreRef = React.useRef(mf.preCreate);
+  mfPreRef.current = mf.preCreate;
+  const mfPostRef = React.useRef(mf.postCreate);
+  mfPostRef.current = mf.postCreate;
+  const mfPre = React.useCallback((name: string) => mfPreRef.current(name), []);
+  const mfPost = React.useCallback(() => {
+    mfPostRef.current();
+  }, []);
+  const [mfTeam, setMfTeam] = React.useState<TeamInfo | null>(null);
   const team = useTeamCrd({
     teams,
     workers,
@@ -100,8 +116,8 @@ export default function CrdManage(props: CrdManageProps) {
     tr,
     catalog,
     registerHandle: props.registerHandle,
-    // 「用此模板建队」预填时展开快捷操作卡（建队表单所在折叠区）。
-    expandShortcutCards: () => setCrdCardsOpen(true),
+    millforgePreCreate: mfPre,
+    millforgePostCreate: mfPost,
   });
   const {
     tForm,
@@ -225,6 +241,7 @@ export default function CrdManage(props: CrdManageProps) {
               modelCandidates={modelCandidates}
               modelOf={modelOf}
               loadSoulFile={loadSoulFile}
+              millforge={mf}
               tr={tr}
               t={t}
             />
@@ -283,6 +300,7 @@ export default function CrdManage(props: CrdManageProps) {
             teams={teams}
             openCfg={openCfg}
             doDeleteTeam={doDeleteTeam}
+            onMillforge={(r) => setMfTeam(r)}
             tr={tr}
             t={t}
           />
@@ -340,6 +358,15 @@ export default function CrdManage(props: CrdManageProps) {
         modelOptions={modelOptions}
         modelCandidates={modelCandidates}
         tr={tr}
+        t={t}
+      />
+
+      {/* 千锻注入对话框（C）——团队表行操作打开；注入后静默刷新管理数据 */}
+      <MillforgeModal
+        team={mfTeam}
+        workers={workers}
+        onRefresh={() => onRefresh?.(true)}
+        onClose={() => setMfTeam(null)}
         t={t}
       />
 
