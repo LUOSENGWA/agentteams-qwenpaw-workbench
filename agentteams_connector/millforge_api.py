@@ -50,6 +50,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -190,7 +191,36 @@ def _pick_pack(name: str) -> Path:
     return max(dirs, key=_ts)
 
 
+def _stage_pack(pack_dir: Path, stage: Path) -> Path:
+    """Rebuild the repo layout the compiler expects.
+
+    The import flattens ``templates/`` into the pack root (INDEX.yaml +
+    skeleton/industry/domain/fragments at top level) so the picker's
+    relative file paths stay stable, while ``millforge-compile.py`` looks
+    for ``<root>/templates/INDEX.yaml`` next to ``compiler/`` and
+    ``core/``. Stage a temporary repo-shaped tree and return the staged
+    compiler path.
+    """
+    tpl = stage / "templates"
+    tpl.mkdir(parents=True, exist_ok=True)
+    for name in ("INDEX.yaml", "skeleton", "industry", "domain", "fragments"):
+        src = pack_dir / name
+        if not src.exists():
+            continue
+        dst = tpl / name
+        if src.is_dir():
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
+    for name in ("compiler", "core"):
+        src = pack_dir / name
+        if src.is_dir():
+            shutil.copytree(src, stage / name)
+    return stage / "compiler" / "millforge-compile.py"
+
+
 def _load_build(build_id: str) -> Dict[str, Any]:
+
     if not re.fullmatch(r"[A-Za-z0-9._-]+", build_id or ""):
         raise HTTPException(status_code=404, detail="build 不存在")
     bj = _builds_dir() / build_id / "build.json"
@@ -888,9 +918,13 @@ def build_millforge_router() -> APIRouter:
             team_path.write_text(
                 json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
             )
+            stage_dir = Path(tempfile.mkdtemp(prefix="mf-stage-"))
+            staged_compiler = await asyncio.to_thread(
+                _stage_pack, pack_dir, stage_dir
+            )
             cmd = [
                 sys.executable,
-                str(compiler),
+                str(staged_compiler),
                 "compile",
                 str(team_path),
                 "--out",
@@ -926,13 +960,15 @@ def build_millforge_router() -> APIRouter:
                     capture_output=True,
                     text=True,
                     timeout=_COMPILE_TIMEOUT,
-                    cwd=str(pack_dir),
+                    cwd=str(stage_dir),
                 )
             except subprocess.TimeoutExpired as exc:
+                shutil.rmtree(stage_dir, ignore_errors=True)
                 raise HTTPException(
                     status_code=504,
                     detail=f"编译超时（{_COMPILE_TIMEOUT:.0f}s）",
                 ) from exc
+            shutil.rmtree(stage_dir, ignore_errors=True)
             out = _parse_json_stdout(proc.stdout)
             if proc.returncode != 0:
                 detail: Dict[str, Any] = {
