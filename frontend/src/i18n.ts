@@ -1,5 +1,6 @@
 import type * as ReactNS from "react";
 import { adminDict } from "./i18n/domains/admin";
+import { attentionDict } from "./i18n/domains/attention";
 import { chatDict } from "./i18n/domains/chat";
 import { credsDict } from "./i18n/domains/creds";
 import { generalDict } from "./i18n/domains/general";
@@ -16,6 +17,7 @@ const host = window.QwenPaw.host;
  * 由 i18n/domains/* 十个域字典合并（1616 键，键集与拆分前逐键恒等）。 */
 const DICT: Record<string, { en: string }> = {
   ...adminDict,
+  ...attentionDict,
   ...chatDict,
   ...credsDict,
   ...generalDict,

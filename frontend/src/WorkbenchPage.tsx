@@ -1,5 +1,6 @@
 import {
   getCachedMessages,
+  type AttentionItem,
   type AdminData,
   type RoomMessage,
   type TeamRoom,
@@ -24,7 +25,9 @@ import ProjectFiles from "./components/ProjectFiles";
 import NotificationCenter from "./components/NotificationCenter";
 import WorkerChats from "./components/WorkerChats";
 import WorkerManage from "./components/WorkerManage";
-import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, FolderIcon, HistoryIcon } from "./components/icons";
+import { AttentionBoard } from "./components/AttentionBoard";
+import { AttentionDecisionModal } from "./components/AttentionDecisionModal";
+import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, FolderIcon, HistoryIcon, TargetIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import ModelsTab from "./ModelsTab";
 import { WbTooltip } from "./components/WbTooltip";
@@ -240,6 +243,8 @@ export default function WorkbenchPage() {
     refreshWorkflow,
     hasCtlToken,
     refreshAdmin,
+    attention,
+    refreshAttention,
     onLoginSuccess,
   } = useWorkbenchData({
     activeRoom,
@@ -275,6 +280,35 @@ export default function WorkbenchPage() {
     writeUiState,
     tr,
   });
+
+  // attention 决策面（NMH §8）——顶栏 badge / 全局弹窗 /「待决策」聚合页
+  // 共用一份数据（30s 轮询在 WorkbenchPageData，hasCtlToken 门控）；
+  // 本处只管弹窗开合 + 定位 + 待答过滤。deployed=false（旧 controller）
+  // 时不显示 badge/入口（诚实降级，不报错）。
+  const [attentionOpen, setAttentionOpen] = React.useState(false);
+  const [attentionIndex, setAttentionIndex] = React.useState(0);
+  const attentionPending = React.useMemo(
+    () =>
+      (attention?.items || []).filter(
+        (it) => !it.answered_locally && !it.resolved,
+      ),
+    [attention],
+  );
+  const openAttention = React.useCallback((index: number) => {
+    setAttentionIndex(index);
+    setAttentionOpen(true);
+  }, []);
+  const openAttentionByItem = React.useCallback(
+    (item: AttentionItem) => {
+      const i = attentionPending.findIndex(
+        (it) =>
+          `${it.task_id}:${it.kind || "other"}:${it.attempt}` ===
+          `${item.task_id}:${item.kind || "other"}:${item.attempt}`,
+      );
+      openAttention(i >= 0 ? i : 0);
+    },
+    [attentionPending, openAttention],
+  );
 
   const {
     sseState,
@@ -723,6 +757,47 @@ export default function WorkbenchPage() {
           )}
         </div>
         <div style={{ flex: 1 }} />
+        {/* attention 待决策 badge——deployed 且有未答项才显示（点击开弹窗）；
+    旧 controller（404 降级）不显示，诚实降级。 */}
+        {attention?.deployed && attentionPending.length > 0 ? (
+          <WbTooltip title={`${tr("待决策")} · ${tr("点击回答")}`}>
+            <button
+              type="button"
+              onClick={() => openAttention(0)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                border: "none",
+                background:
+                  "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
+                color: PRIMARY,
+                cursor: "pointer",
+                padding: "4px 10px",
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              <TargetIcon size={14} />
+              {tr("待决策")}
+              <span
+                style={{
+                  background: PRIMARY,
+                  color: "#fff",
+                  borderRadius: 10,
+                  fontSize: 10.5,
+                  padding: "0 6px",
+                  lineHeight: "16px",
+                  fontWeight: 700,
+                }}
+              >
+                {attentionPending.length}
+              </span>
+            </button>
+          </WbTooltip>
+        ) : null}
         {config?.matrix?.user_id ? (
           <WbTooltip title={tr("点击进入配置页")}>
             <div
@@ -835,6 +910,7 @@ export default function WorkbenchPage() {
           { key: "home", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><HomeIcon size={15} /> {tr("首页")}</span> },
           { key: "chat", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={15} /> {tr("聊天")}</span> },
           { key: "inbox", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellIcon size={15} /> {tr("通知")}</span> },
+          { key: "attention", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TargetIcon size={15} /> {tr("待决策")}</span> },
           { key: "workflow", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TopologyIcon size={15} /> {tr("工作流")}</span> },
           { key: "artifacts", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BoxIcon size={15} /> {tr("产物")}</span> },
           {
@@ -994,6 +1070,21 @@ export default function WorkbenchPage() {
                 // UI 在那里；chat tab 需无激活房间才显示 TeamOverview）。
                 invites={invites}
                 onGotoInvites={gotoInvites}
+              />
+            ),
+          },
+          {
+            key: "attention",
+            label: (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <TargetIcon size={15} /> {tr("待决策")}
+              </span>
+            ),
+            children: (
+              <AttentionBoard
+                payload={attention}
+                onOpenItem={openAttentionByItem}
+                onRefresh={() => void refreshAttention(true)}
               />
             ),
           },
@@ -1160,6 +1251,16 @@ export default function WorkbenchPage() {
           />
         </antd.Drawer>
       ) : null}
+      {/* attention 决策弹窗（全局：顶栏 badge / 聚合页「回答」均打开；
+          一次一条、可上/下条；成功提交 → 静默刷新聚合 + 关闭） */}
+      <AttentionDecisionModal
+        open={attentionOpen}
+        items={attentionPending}
+        index={attentionIndex}
+        onIndexChange={setAttentionIndex}
+        onClose={() => setAttentionOpen(false)}
+        onAnswered={() => void refreshAttention(false)}
+      />
     </main>
     </WbViewportProvider>
     </antd.ConfigProvider>

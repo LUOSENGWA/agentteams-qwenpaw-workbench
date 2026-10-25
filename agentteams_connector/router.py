@@ -12,6 +12,8 @@ Frontend plugin fetches these same-origin endpoints (no CORS):
 - ``GET /agentteams-proxy/health`` backend liveness + version
 - ``GET /agentteams-proxy/team-files`` team shared dir listing (#87, L1)
 - ``GET /agentteams-proxy/team-file`` team shared file text preview (#87, L1)
+- ``GET /agentteams-proxy/attention`` attention 决策聚合（404→deployed=false 诚实降级；30s 缓存，refresh=1 绕过）
+- ``POST /agentteams-proxy/attention/answer`` 人类身份答回（DECISION 行发回任务房间；本地去重 409）
 - ``{METHOD}/{agentteams-proxy}/{matrix|controller}/{path}`` forwarded
 
 Auto-failover: addresses are ordered lists (LAN first, WAN second). Every
@@ -547,6 +549,9 @@ from .routers import (  # noqa: E402
     teams_api,
     upgrade_api,
 )
+# attention 决策域（包根模块，函数内惰性导入 router——无模块级反向依赖，
+# 位置不受 re-export 壳约束；固定路径 /attention* 在下方 catch-all 前注册）。
+from . import attention_api  # noqa: E402
 
 
 def build_router() -> APIRouter:
@@ -595,6 +600,8 @@ def build_router() -> APIRouter:
     # 15.27 Worker 运行时环境（PID 1 env 预填充正源，只读 L1）。
     from .routers import runtime_env_api
     router.include_router(runtime_env_api.build_runtime_env_router())
+    # attention 决策域（读聚合 + 人类身份答回；固定路径，须在 catch-all 前）。
+    router.include_router(attention_api.build_attention_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     return router

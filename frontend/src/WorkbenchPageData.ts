@@ -14,7 +14,9 @@ import {
   requestJson,
   setCachedRooms,
   fetchAuthStatus,
+  fetchAttention,
   type AdminData,
+  type AttentionPayload,
   type RoomMessage,
   type SpawnNode,
   type TeamRoom,
@@ -427,6 +429,56 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     config?.controller_token || config?.controllerTokenSource === "env",
   );
 
+  // attention 决策面（读聚合）——30s 静默轮询，hasCtlToken 门控（L2 用户
+  // 无 controller token，后端恒 502，轮询无意义）。badge/全局弹窗/P2「待
+  // 决策」页共用此数据源（全局数据，不绑任何 tab）。失败保旧值（网络抖动
+  // 不清已渲染数据）；deployed=false（旧 controller）→ 无 badge 无入口
+  // （诚实降级）。
+  const [attention, setAttention] = React.useState<AttentionPayload | null>(
+    null,
+  );
+  const attentionFetchingRef = React.useRef(false);
+  const refreshAttention = React.useCallback(
+    async (bypass = false) => {
+      if (attentionFetchingRef.current) return;
+      attentionFetchingRef.current = true;
+      try {
+        const payload = await fetchAttention(bypass);
+        // diff 门：30s 内数据常不变——返回原引用跳过重渲（同 rooms 约定）。
+        React.startTransition(() => {
+          setAttention((prev) =>
+            prev && JSON.stringify(prev) === JSON.stringify(payload)
+              ? prev
+              : payload,
+          );
+        });
+      } catch {
+        /* 瞬时抖动 → 保旧值（入口可见性由 deployed/数据决定，不报错） */
+      } finally {
+        attentionFetchingRef.current = false;
+      }
+    },
+    [],
+  );
+  usePoller({
+    fn: () => void refreshAttention(),
+    intervalMs: 30000,
+    active: hasCtlToken,
+    minPokeMs: 15000,
+  });
+  // hasCtlToken false→true 翻转（config 异步就绪/env 注入晚于挂载）触发首次
+  // 取数（admin armed-ref 同款语义）。
+  const attentionArmedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!hasCtlToken) {
+      attentionArmedRef.current = false;
+      return;
+    }
+    if (attentionArmedRef.current) return;
+    attentionArmedRef.current = true;
+    void refreshAttention();
+  }, [hasCtlToken, refreshAttention]);
+
   // L1 admin view: only when a Controller token is available (config or env).
   const refreshAdmin = React.useCallback(async (silent = false) => {
     if (!hasCtlToken) return;
@@ -482,12 +534,14 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     setTreeSource("");
     setAdminData(null);
     setWorkflowEvents([]);
+    setAttention(null);
     void refreshConfig();
     void refreshRooms();
     void refreshTree();
     void refreshAdmin();
     void refreshWorkflow();
-  }, [refreshConfig, refreshRooms, refreshTree, refreshAdmin, refreshWorkflow]);
+    void refreshAttention(true);
+  }, [refreshConfig, refreshRooms, refreshTree, refreshAdmin, refreshWorkflow, refreshAttention]);
   return {
     dismissMatrixNone,
     handleOpenProject,
@@ -497,6 +551,8 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     refreshWorkflow,
     hasCtlToken,
     refreshAdmin,
+    attention,
+    refreshAttention,
     onLoginSuccess,
   };
 }

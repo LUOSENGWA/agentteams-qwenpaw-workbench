@@ -20,3 +20,4 @@ export * from "./api/domains/inbox";
 export * from "./api/domains/approvals";
 export * from "./api/domains/kb";
 export * from "./api/domains/checkpoints";
+export * from "./api/domains/attention";
