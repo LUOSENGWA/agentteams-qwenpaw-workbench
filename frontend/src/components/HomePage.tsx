@@ -62,8 +62,14 @@ interface HomePageProps {
   managers?: ManagerInfo[];
   onOpenRoom: (roomId: string) => void;
   onGotoTab: (tabKey: string) => void;
-  /** 发起任务弹窗选定目标 → DM 该 Leader/Manager。 */
-  onDm?: (mxid: string, roomId?: string) => void;
+  /** 发起任务弹窗选定目标 → DM 该 Leader/Manager。
+   * name = 房间显示名（弹窗按 团队+Worker 上下文生成）；返回
+   * Promise 时「发起任务」确认钮等其落地才关窗（loading 防双击）。 */
+  onDm?: (
+    mxid: string,
+    roomId?: string,
+    name?: string,
+  ) => Promise<void> | void;
   /** 团队结构来源（）："room-fallback"=Controller 未接入——房间聚合不可当团队，Leader 列表只留 Manager 入口。 */
   treeSource?: string;
   /** ：通知中心未读数（快捷入口角标）。 */
@@ -768,8 +774,11 @@ function HomePage(props: HomePageProps) {
         treeSource={treeSource}
         onSel={setNewTaskSel}
         onClose={() => setNewTaskOpen(false)}
-        onConfirm={(tgt) => {
-          onDm?.(tgt.mxid);
+        onConfirm={async (tgt, dmName) => {
+          // 等 /dm 落地（建房+房间列表同步）才关窗——此前点确认立即
+          // 关窗、后台异步建房，用户视角「反应慢 + 无名空房间」。
+          // 失败由 handleDm toast 可见（不静默）。
+          await onDm?.(tgt.mxid, undefined, dmName);
           setNewTaskOpen(false);
         }}
       />

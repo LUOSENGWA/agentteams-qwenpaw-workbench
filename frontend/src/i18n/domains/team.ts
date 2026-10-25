@@ -129,4 +129,8 @@ export const teamDict: Record<string, { en: string }> = {
   "模板来源（千锻模板 pack/id，仅记录，不执行编译器）": {
     en: "Template source (Millforge pack/id — recorded only, compiler not executed)",
   },
+  // ── DM 房间命名 + 房间 ID 可见 ──
+  "私聊 · {name}": { en: "DM · {name}" },
+  "私聊 · {team} · {name}": { en: "DM · {team} · {name}" },
+  "复制房间 ID": { en: "Copy room ID" },
 };

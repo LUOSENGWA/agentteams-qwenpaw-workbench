@@ -302,8 +302,10 @@ export function useWorkbenchChatActions(ctx: WorkbenchPageActionsCtx) {
   }, [activeRoom, config, mutedRooms]);
 
   // Phase 2: DM entry — click a member → create-or-reuse DM → open room.
+  // name = 房间显示名（发起任务流程带团队/Worker 上下文）——后端建房
+  // 写入 m.room.name（无名空房间根因修复）；其余入口不传 = 后端缺省。
   const handleDm = React.useCallback(
-    async (mxid: string, roomId?: string) => {
+    async (mxid: string, roomId?: string, name?: string) => {
       // Worker 个人房间（CR roomID）
       // 直跳——Worker 容器无法接受 Matrix 邀请，新建 DM 房间 Worker 进不来
       // （房间建了、消息发不出去）= 死路。room_id 存在且房间在列表 → 直跳；
@@ -331,7 +333,7 @@ export function useWorkbenchChatActions(ctx: WorkbenchPageActionsCtx) {
         }
       }
       try {
-        const dm = await openDm(mxid);
+        const dm = await openDm(mxid, name);
         // 先验证房间真的出现在房间列表，再报成功——
         // 修「Worker 管理点私聊说已创建、实际没有」的假成功（房间未落地/
         // homeserver 错位时静默吞掉）。

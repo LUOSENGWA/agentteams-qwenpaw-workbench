@@ -24,26 +24,48 @@ export function NewTaskModal({
   treeSource: string;
   onSel: (v: string) => void;
   onClose: () => void;
-  onConfirm: (tgt: NewTaskTarget) => void;
+  /** 确认发起：tgt + 房间显示名。异步（等 /dm 落地）——loading 期间
+   * 按钮禁用，防双击建双房；成败由调用方 toast（失败不静默），
+   * 结束后关窗。 */
+  onConfirm: (tgt: NewTaskTarget, dmName: string) => Promise<void> | void;
 }) {
   const t = useThemeColors();
   const tr = useT();
+  const [confirming, setConfirming] = React.useState(false);
   return (
       <antd.Modal
         open={open}
         title={tr("发起任务 · 选择 Leader")}
-        onCancel={onClose}
+        onCancel={() => {
+          if (!confirming) onClose();
+        }}
         footer={
           <antd.Space>
-            <antd.Button onClick={onClose}>
+            <antd.Button
+              onClick={onClose}
+              disabled={confirming}
+            >
               {tr("取消")}
             </antd.Button>
             <antd.Button
               type="primary"
               disabled={!sel}
-              onClick={() => {
+              loading={confirming}
+              onClick={async () => {
                 const tgt = targets.find((x) => x.key === sel);
-                if (tgt) onConfirm(tgt);
+                if (!tgt || confirming) return;
+                // DM 房间显示名（后端建房写入 m.room.name——无名空房间
+                // 根因修复）：发起任务上下文 = 团队 + Worker 名；
+                // 拿不到 team 就只带 Worker 名。
+                const dmName = tgt.team
+                  ? tr("私聊 · {team} · {name}", { team: tgt.team, name: tgt.label })
+                  : tr("私聊 · {name}", { name: tgt.label });
+                setConfirming(true);
+                try {
+                  await onConfirm(tgt, dmName);
+                } finally {
+                  setConfirming(false);
+                }
               }}
             >
               {tr("发起任务")}

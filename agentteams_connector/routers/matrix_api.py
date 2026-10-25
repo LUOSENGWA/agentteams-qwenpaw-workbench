@@ -365,7 +365,8 @@ def build_matrix_router() -> APIRouter:
     async def open_dm(req: DmRequest) -> Dict[str, Any]:
         """Open (create-or-reuse) a DM room with a team member.
 
- Body: {user: target MXID or bare localpart}.
+ Body: {user: target MXID or bare localpart, name?, topic?}.
+ name/topic 透传 create_dm——建房即命名（无名空房间根因修复）。
  """
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
@@ -390,7 +391,12 @@ def build_matrix_router() -> APIRouter:
         try:
             # to_thread（同步 httpx，最长 20s）。
             result = await asyncio.to_thread(
-                matrix_client.create_dm, homeserver, token, target
+                matrix_client.create_dm,
+                homeserver,
+                token,
+                target,
+                req.name or "",
+                req.topic or "",
             )
         except matrix_client.MatrixError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc

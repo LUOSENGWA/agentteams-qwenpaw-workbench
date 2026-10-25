@@ -242,11 +242,16 @@ function mapSpawnInfo(s: Record<string, unknown>): SpawnNode {
 
 export async function openDm(
   mxidOrName: string,
+  /** 房间显示名（后端建房写入 m.room.name；缺省后端兜底  私聊 · <localpart>）。 */
+  name?: string,
 ): Promise<{ ok: boolean; target: string; room_id: string; created: boolean }> {
+  const trimmed = (name || "").trim();
   return (await requestJson("/agentteams-proxy/dm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user: mxidOrName }),
+    body: JSON.stringify(
+      trimmed ? { user: mxidOrName, name: trimmed } : { user: mxidOrName },
+    ),
   })) as { ok: boolean; target: string; room_id: string; created: boolean };
 }
 

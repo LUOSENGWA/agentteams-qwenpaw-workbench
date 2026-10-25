@@ -11,6 +11,8 @@ import {
 import WorkerSessionDot from "./WorkerSessionDot";
 import MemberStrip from "./MemberStrip";
 import { type WorkerSessionState } from "../workerSessionState";
+import { useThemeColors } from "../theme";
+import { copyText } from "../util";
 import {PRIMARY } from "./RoomChatShared";
 import type {RoomChatProps } from "./RoomChat";
 import type {RoomChatCoreState } from "./RoomChatCore";
@@ -45,6 +47,7 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
     tr,
     myUserId,
   } = c;
+  const t = useThemeColors();
   if (!room) {
     return null;
   }
@@ -68,6 +71,38 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
         <antd.Typography.Title level={5} style={{ margin: 0 }}>
           {room.name}
         </antd.Typography.Title>
+        {/* 房间 ID 可见（等宽小字 + 复制）——排查「消息发到哪个房间」
+  时插件内无处可查 room_id 的修复。 */}
+        <span
+          style={{
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+            fontSize: 11,
+            color: t.textSecondary,
+            maxWidth: 260,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={room.room_id}
+        >
+          {room.room_id}
+        </span>
+        <antd.Button
+          size="small"
+          type="text"
+          title={tr("复制房间 ID")}
+          onClick={() =>
+            copyText(room.room_id, (ok) => {
+              if (ok) {
+                antd.message.success(tr("已复制到剪贴板"));
+              } else {
+                antd.message.error(tr("复制失败"));
+              }
+            })
+          }
+        >
+          {tr("复制")}
+        </antd.Button>
         {/* Worker session 运行指示。
  1:1 Worker 房间 = sessionState 三态（蓝呼吸/绿/灰）；
  团队房间无 sessionState → 仅当任一 Worker 正在输入时显蓝点。 */}

@@ -123,15 +123,34 @@ def send_message(
     )
 
 
-def create_dm(homeserver: str, token: str, mxid: str) -> Dict[str, Any]:
+def create_dm(
+    homeserver: str,
+    token: str,
+    mxid: str,
+    name: str = "",
+    topic: str = "",
+) -> Dict[str, Any]:
     """Create (or reuse) a trusted-private DM room with *mxid*.
 
  Reuses an existing direct room from m.direct account data when present;
  otherwise POST /createRoom with preset=trusted_private_chat + invite.
  Returns {room_id, created}.
+
+ ``name``/``topic``：房间创建时的显示名与话题——缺省 ``私聊 · <localpart>``
+ / ``Direct chat with <mxid>``。根因修复：此前 createRoom 只发
+ preset/invite/is_direct，建出**无名空房间**（用户要等对方回复才知道
+ 是谁的私聊）；现在创建即命名。
+ 复用已有 DM 时：房间名为空则 PUT ``m.room.name`` 补名（best-effort，
+ 失败仅记日志不影响返回）——顺带修复之前建出来的无名房间（下次打开
+ 即命名）；已有名字（含用户重命名）不覆盖。
  """
+    localpart = mxid.lstrip("@").split(":", 1)[0] or mxid
+    room_name = (name or "").strip() or f"私聊 · {localpart}"
+    room_topic = (topic or "").strip() or f"Direct chat with {mxid}"
+
     existing = _existing_direct_room(homeserver, token, mxid)
     if existing:
+        _ensure_room_name(homeserver, token, existing, room_name)
         return {"room_id": existing, "created": False}
     created = _request(
         "POST",
@@ -142,9 +161,53 @@ def create_dm(homeserver: str, token: str, mxid: str) -> Dict[str, Any]:
             "preset": "trusted_private_chat",
             "invite": [mxid],
             "is_direct": True,
+            "name": room_name,
+            "topic": room_topic,
         },
     )
     return {"room_id": created.get("room_id", ""), "created": True}
+
+
+def _ensure_room_name(
+    homeserver: str, token: str, room_id: str, name: str
+) -> None:
+    """无名已有 DM 房间补 ``m.room.name``（best-effort，失败仅记日志）。
+
+ GET /state/m.room.name：404 = 无名事件（无名房间）→ PUT 补名；
+ 200 且名字非空 → 跳过（不覆盖已有名字）。任何一步失败只 warning，
+ 不影响 create_dm 的返回（补名是增值动作，不是 DM 打开的前提）。
+ """
+    import urllib.parse
+
+    encoded_room = urllib.parse.quote(room_id, safe="")
+    state_path = (
+        f"/_matrix/client/v3/rooms/{encoded_room}/state/m.room.name"
+    )
+    try:
+        data = _request("GET", homeserver, state_path, token)
+    except MatrixError as exc:
+        if "-> 404:" in str(exc):
+            pass  # 无名房间 → 补名
+        else:
+            logger.warning(
+                "create_dm: read room name failed %s: %s", room_id, exc
+            )
+            return
+    else:
+        if str((data or {}).get("name") or "").strip():
+            return
+    try:
+        _request(
+            "PUT",
+            homeserver,
+            state_path,
+            token,
+            json_body={"name": name},
+        )
+    except Exception as exc:  # noqa: BLE001 - best-effort 补名
+        logger.warning(
+            "create_dm: room name backfill failed %s: %s", room_id, exc
+        )
 
 
 def _existing_direct_room(
