@@ -54,8 +54,23 @@ _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _MAX_TOTAL_BYTES = 20 * 1024 * 1024  # templates/ 合计上限
 _CLONE_TIMEOUT = 90.0  # git clone 超时（s）
 _ALLOWED_EXTS = {".md", ".yaml"}  # 只导入/可预览的扩展名
-_INDEX_SECTIONS = ("skeletons", "industry", "domain", "fragments")
-_ENTRY_FIELDS = ("id", "file", "source", "applies_to", "budget")
+#: API 段名 → 真实 INDEX.yaml 段名别名（千锻用 domains/protocol；
+#: 早期草稿用 domain/fragments，两者都接受，API 对外键保持稳定）。
+_INDEX_SECTIONS = (
+    ("skeletons", ("skeletons",)),
+    ("industry", ("industry",)),
+    ("domain", ("domains", "domain")),
+    ("fragments", ("protocol", "fragments")),
+)
+_ENTRY_FIELDS = (
+    "id",
+    "file",
+    "source",
+    "applies_to",
+    "budget",
+    "resident",
+    "trigger",
+)
 
 
 def _templates_root() -> Path:
@@ -115,8 +130,12 @@ def _parse_index(pack_dir: Path) -> Dict[str, List[Dict[str, str]]]:
     if not isinstance(data, dict):
         raise ValueError("INDEX.yaml 顶层不是映射")
     out: Dict[str, List[Dict[str, str]]] = {}
-    for sec in _INDEX_SECTIONS:
-        raw = data.get(sec)
+    for sec, aliases in _INDEX_SECTIONS:
+        raw = None
+        for key in aliases:
+            if data.get(key) is not None:
+                raw = data.get(key)
+                break
         if raw is None:
             out[sec] = []
             continue

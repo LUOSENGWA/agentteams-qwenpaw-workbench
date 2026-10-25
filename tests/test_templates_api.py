@@ -445,3 +445,24 @@ def test_parse_index_mapping_form(client):
     assert idx["industry"][0]["applies_to"] == "worker, leader, critic"
     assert idx["domain"] == []
     assert idx["fragments"] == []
+
+
+def test_parse_index_real_section_names(client):
+    """千锻真实段名：domains / protocol（API 仍用 domain / fragments 键）。"""
+    real = """skeletons:
+  worker: { file: templates/skeleton/worker.md, budget: 150, source: production }
+domains:
+  mobile: { file: templates/domain/mobile.md, source: production, applies_to: [worker] }
+protocol:
+  nmh: { file: templates/fragments/nmh.md, resident: true, source: production, trigger: "常驻" }
+"""
+    tc, _, _ = client
+    _seed_pack("mf-real", index_yaml=real)
+    r = tc.get("/templates")
+    packs = {p["pack"]: p for p in r.json()["packs"]}
+    idx = packs["mf-real"]["index"]
+    assert [e["id"] for e in idx["domain"]] == ["mobile"]
+    assert idx["domain"][0]["file"] == "domain/mobile.md"
+    assert [e["id"] for e in idx["fragments"]] == ["nmh"]
+    assert idx["fragments"][0]["resident"] == "True"
+    assert idx["fragments"][0]["trigger"] == "常驻"
