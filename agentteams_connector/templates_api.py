@@ -120,13 +120,25 @@ def _parse_index(pack_dir: Path) -> Dict[str, List[Dict[str, str]]]:
         if raw is None:
             out[sec] = []
             continue
-        if not isinstance(raw, list):
-            raise ValueError(f"{sec} 段不是列表")
+        if not isinstance(raw, (list, dict)):
+            raise ValueError(f"{sec} 段既不是列表也不是映射")
         items: List[Dict[str, str]] = []
-        for it in raw:
-            if not isinstance(it, dict):
-                raise ValueError(f"{sec} 含非映射条目")
-            items.append({f: _entry_str(it.get(f)) for f in _ENTRY_FIELDS})
+        if isinstance(raw, dict):
+            # 真实 INDEX.yaml 形态：id -> {file/budget/source/applies_to}。
+            for key, it in raw.items():
+                if not isinstance(it, dict):
+                    raise ValueError(f"{sec} 含非映射条目")
+                entry = {f: _entry_str(it.get(f)) for f in _ENTRY_FIELDS}
+                entry["id"] = str(key)
+                file_ref = entry.get("file", "")
+                if file_ref.startswith("templates/"):
+                    entry["file"] = file_ref[len("templates/"):]
+                items.append(entry)
+        else:
+            for it in raw:
+                if not isinstance(it, dict):
+                    raise ValueError(f"{sec} 含非映射条目")
+                items.append({f: _entry_str(it.get(f)) for f in _ENTRY_FIELDS})
         out[sec] = items
     return out
 

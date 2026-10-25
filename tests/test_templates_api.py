@@ -408,3 +408,40 @@ def test_delete_idempotent(client):
     r = tc.delete("/templates/a%2Fb")
     assert r.status_code in (200, 400, 404)
     assert r.status_code != 500
+
+
+MAPPING_INDEX = """version: "1.0"
+skeletons:
+  coordinator:
+    file: templates/skeleton/coordinator.md
+    budget: 500
+    source: production
+industry:
+  software:
+    file: templates/industry/software.md
+    source: production
+    applies_to: [worker, leader, critic]
+"""
+
+
+def test_parse_index_mapping_form(client):
+    """真实千锻 INDEX.yaml 形态：段是 id -> 字段 的映射（不是列表）。"""
+    tc, _, _ = client
+    _seed_pack("mf-map", index_yaml=MAPPING_INDEX)
+
+    r = tc.get("/templates")
+    assert r.status_code == 200, r.text
+    packs = {p["pack"]: p for p in r.json()["packs"]}
+    pack = packs["mf-map"]
+    assert pack["parse_error"] is None
+
+    idx = pack["index"]
+    assert [e["id"] for e in idx["skeletons"]] == ["coordinator"]
+    entry = idx["skeletons"][0]
+    assert entry["file"] == "skeleton/coordinator.md"  # templates/ 前缀剥掉
+    assert entry["budget"] == "500"
+    assert entry["source"] == "production"
+    assert [e["id"] for e in idx["industry"]] == ["software"]
+    assert idx["industry"][0]["applies_to"] == "worker, leader, critic"
+    assert idx["domain"] == []
+    assert idx["fragments"] == []
