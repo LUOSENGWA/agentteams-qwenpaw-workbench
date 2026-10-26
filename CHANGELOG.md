@@ -3,6 +3,12 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.23（2026-10-26 · 千锻注入修复）
+
+**修复**
+- **千锻注入全部失败（HTTP 301 / Controller 不可达）**：`_ctl_call` 的契约是只接收 path（base 由内部按 ordered 地址拼接），但注入链路的历史调用点传的是完整 URL（`f"{base}/api/v1/..."`），入口又拼一次 base → 双 base URL（`https://h:7113https://h:7113/api/v1/...`）→ 网关回 301 或挂到超时，SOUL 更新 / 新建 Worker / core 技能全部失败。现在入口统一归一化为 path+query，兼容完整 URL 与相对路径两种形态。
+- 补回归测试 `test_ctl_call_normalizes_full_url_and_path_only`：无修复时断言复现双 base，有修复时两形态归一为同一单 base URL。
+
 ## 0.5.0-beta.16.22（2026-10-26 · Provider 预填充）
 
 **修复**

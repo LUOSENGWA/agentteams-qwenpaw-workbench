@@ -1353,3 +1353,50 @@ def test_packs_list_and_file_preview(client):
     r = tc.get("/millforge/packs/millforge/file",
                params={"path": "../../evil.md"})
     assert r.status_code == 400
+
+
+def test_ctl_call_normalizes_full_url_and_path_only(monkeypatch):
+    """回归：_ctl_call 的契约是 path-only（base 由内部 ordered 地址拼），但历史
+    调用点传的是完整 URL `f"{base}/api/v1/..."`；朴素拼接产生双 base
+    （``https://h:7113https://h:7113/api/v1/...``）→ 网关回 301 或挂到超时，
+    千锻所有 SOUL 更新 / 新建 Worker / core skill 调用全部失败。入口必须把
+    两种形态归一成同一个单 base URL。
+    """
+    import asyncio
+
+    import agentteams_connector.ctl_client as ctlmod
+
+    cfg = {
+        "controller_urls": ["http://ctrl.test:8080"],
+        "address_mode": "auto",
+        "controller_token": "test-token",
+    }
+    monkeypatch.setattr(cfgmod, "load_config", lambda: cfg)
+
+    seen: list = []
+
+    async def fake_ctl_json(method, url, token, json_body=None):
+        seen.append(url)
+        return 404, {"message": "get worker for update: not found"}, ""
+
+    monkeypatch.setattr(ctlmod, "ctl_json", fake_ctl_json)
+
+    async def run():
+        # 历史调用点形态：完整 URL
+        await mfg._ctl_call(
+            "PUT",
+            "http://ctrl.test:8080/api/v1/workers/w1",
+            "test-token",
+            json_body={"soul": "s"},
+        )
+        # 契约形态：path-only
+        await mfg._ctl_call(
+            "PUT", "/api/v1/workers/w1", "test-token", json_body={"soul": "s"}
+        )
+
+    asyncio.run(run())
+
+    assert seen == [
+        "http://ctrl.test:8080/api/v1/workers/w1",
+        "http://ctrl.test:8080/api/v1/workers/w1",
+    ], seen

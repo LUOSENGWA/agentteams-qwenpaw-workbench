@@ -529,6 +529,21 @@ async def _ctl_call(
     urls = [u.rstrip("/") for u in router_mod._ordered_addresses(cfg, "controller")]
     if not urls:
         raise HTTPException(status_code=502, detail="未配置 Controller 地址")
+    # Normalize the target to path+query. The documented contract is
+    # ``path = /api/v1/...`` (the base is prepended below), but several
+    # call sites pass a full URL ``f"{base}/api/v1/..."``. Prepending the
+    # base to that produced a double-base URL (e.g.
+    # ``https://h:7113https://h:7113/api/v1/...``) which the gateway
+    # answered with 301 / stalled until timeout — every Millforge SOUL /
+    # create / core-skill call failed. Accepting both forms fixes the old
+    # call sites and keeps this entry point robust for new ones.
+    if "://" in path:
+        from urllib.parse import urlparse as _urlparse
+
+        _parsed = _urlparse(path)
+        path = (_parsed.path or "") + (
+            f"?{_parsed.query}" if _parsed.query else ""
+        )
     if files is None:
         st, data, _text = await ctl_json(
             method, f"{urls[0]}{path}", token, json_body=json_body
