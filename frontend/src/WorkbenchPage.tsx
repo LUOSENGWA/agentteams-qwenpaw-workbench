@@ -25,7 +25,6 @@ import ProjectFiles from "./components/ProjectFiles";
 import NotificationCenter from "./components/NotificationCenter";
 import WorkerChats from "./components/WorkerChats";
 import WorkerManage from "./components/WorkerManage";
-import { AttentionBoard } from "./components/AttentionBoard";
 import { AttentionDecisionModal } from "./components/AttentionDecisionModal";
 import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, FolderIcon, HistoryIcon, TargetIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
@@ -281,10 +280,11 @@ export default function WorkbenchPage() {
     tr,
   });
 
-  // attention 决策面（NMH §8）——顶栏 badge / 全局弹窗 /「待决策」聚合页
-  // 共用一份数据（30s 轮询在 WorkbenchPageData，hasCtlToken 门控）；
-  // 本处只管弹窗开合 + 定位 + 待答过滤。deployed=false（旧 controller）
-  // 时不显示 badge/入口（诚实降级，不报错）。
+  // attention 决策面（NMH §8）——顶栏 badge / 全局弹窗 / 通知页「待决策」
+  // 子页签（10/26 原顶层聚合页并入通知页）共用一份数据（30s 轮询在
+  // WorkbenchPageData，hasCtlToken 门控）；本处只管弹窗开合 + 定位 +
+  // 待答过滤 + 子页签状态。deployed=false（旧 controller）时不显示
+  // badge/入口（诚实降级，不报错）。
   const [attentionOpen, setAttentionOpen] = React.useState(false);
   const [attentionIndex, setAttentionIndex] = React.useState(0);
   const attentionPending = React.useMemo(
@@ -308,6 +308,20 @@ export default function WorkbenchPage() {
       openAttention(i >= 0 ? i : 0);
     },
     [attentionPending, openAttention],
+  );
+  // 「待决策」子页签（通知页内）——状态提到本层：顶栏 badge 点击 =
+  // setTab("inbox") + 定位待决策子页；选择持久化进 ui-state（inboxSubTab
+  // 字段），刷新后保持（旧顶层「待决策」tab 的持久化值由 useWorkbenchUi
+  // 迁移收编到此）。
+  const [attentionSubTab, setAttentionSubTabState] = React.useState(
+    initialUi.current?.inboxSubTab === "attention",
+  );
+  const setAttentionSubTab = React.useCallback(
+    (next: boolean) => {
+      setAttentionSubTabState(next);
+      mergeUiState({ inboxSubTab: next ? "attention" : "events" });
+    },
+    [mergeUiState],
   );
 
   const {
@@ -757,13 +771,18 @@ export default function WorkbenchPage() {
           )}
         </div>
         <div style={{ flex: 1 }} />
-        {/* attention 待决策 badge——deployed 且有未答项才显示（点击开弹窗）；
+        {/* attention 待决策 badge——deployed 且有未答项才显示（点击跳
+    通知页「待决策」子页；答题走面板内「回答」开全局弹窗）；
     旧 controller（404 降级）不显示，诚实降级。 */}
         {attention?.deployed && attentionPending.length > 0 ? (
-          <WbTooltip title={`${tr("待决策")} · ${tr("点击回答")}`}>
+          <WbTooltip title={`${tr("待决策")} · ${tr("点击直达")}`}>
             <button
               type="button"
-              onClick={() => openAttention(0)}
+              onClick={() => {
+                setAttentionSubTab(true);
+                setTab("inbox");
+                scrollTabIntoView("inbox");
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -910,7 +929,6 @@ export default function WorkbenchPage() {
           { key: "home", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><HomeIcon size={15} /> {tr("首页")}</span> },
           { key: "chat", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><MessageIcon size={15} /> {tr("聊天")}</span> },
           { key: "inbox", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BellIcon size={15} /> {tr("通知")}</span> },
-          { key: "attention", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TargetIcon size={15} /> {tr("待决策")}</span> },
           { key: "workflow", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TopologyIcon size={15} /> {tr("工作流")}</span> },
           { key: "artifacts", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BoxIcon size={15} /> {tr("产物")}</span> },
           {
@@ -1070,21 +1088,13 @@ export default function WorkbenchPage() {
                 // UI 在那里；chat tab 需无激活房间才显示 TeamOverview）。
                 invites={invites}
                 onGotoInvites={gotoInvites}
-              />
-            ),
-          },
-          {
-            key: "attention",
-            label: (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <TargetIcon size={15} /> {tr("待决策")}
-              </span>
-            ),
-            children: (
-              <AttentionBoard
-                payload={attention}
-                onOpenItem={openAttentionByItem}
-                onRefresh={() => void refreshAttention(true)}
+                // 待决策子页签（10/26 原顶层 tab 并入）——数据/弹窗/
+                // 刷新链路仍在本层（全局弹窗），子页签状态持久化刷新后保持。
+                attention={attention}
+                attentionSubTab={attentionSubTab}
+                onAttentionSubTabChange={setAttentionSubTab}
+                onOpenAttentionItem={openAttentionByItem}
+                onRefreshAttention={() => void refreshAttention(true)}
               />
             ),
           },
@@ -1251,7 +1261,7 @@ export default function WorkbenchPage() {
           />
         </antd.Drawer>
       ) : null}
-      {/* attention 决策弹窗（全局：顶栏 badge / 聚合页「回答」均打开；
+      {/* attention 决策弹窗（全局：通知页「待决策」子页面板「回答」打开；
           一次一条、可上/下条；成功提交 → 静默刷新聚合 + 关闭） */}
       <AttentionDecisionModal
         open={attentionOpen}

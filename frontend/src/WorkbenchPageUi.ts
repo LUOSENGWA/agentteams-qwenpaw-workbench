@@ -30,6 +30,8 @@ export function useWorkbenchUi() {
     // skills 区块已从配置页移除 → 旧持久化 tab
     // 落地首页（不再落设置页——该页已无技能区，落家最自然）。
     skills: "home",
+    // 10/26：「待决策」顶层 tab 并入通知页 → 旧持久化值落通知页。
+    attention: "inbox",
   };
   const readUiState = (
     key: string,
@@ -43,6 +45,9 @@ export function useWorkbenchUi() {
     chatListHidden?: string;
     // 12.14：强制左右分栏开关（忽略宽度判定）。
     chatForceWide?: string;
+    // 10/26：通知页子页签（"events" 事件流 / "attention" 待决策；
+    // 「待决策」原顶层 tab 并入通知页后持久化子页签选择）。
+    inboxSubTab?: string;
   } => {
     try {
       const raw = window.localStorage.getItem(key);
@@ -76,7 +81,16 @@ export function useWorkbenchUi() {
     [mergeUiState],
   );
   const initialUi = React.useRef<
-    { tab?: string; roomId?: string; wfView?: string; wfTopo?: string } | null
+    {
+      tab?: string;
+      roomId?: string;
+      wfView?: string;
+      wfTopo?: string;
+      chatSplitW?: string;
+      chatListHidden?: string;
+      chatForceWide?: string;
+      inboxSubTab?: string;
+    } | null
   >(null);
   if (initialUi.current === null) {
     initialUi.current = readUiState(UI_STATE_KEY);
@@ -87,6 +101,9 @@ export function useWorkbenchUi() {
       initialUi.current = {
         ...initialUi.current,
         tab: UI_TAB_MIGRATION_V2[staleTab],
+        // 「待决策」并入通知页——旧 tab 持久化值落通知页并定位待决策
+        // 子页（与顶栏 badge 点击进入同落点）。
+        ...(staleTab === "attention" ? { inboxSubTab: "attention" } : null),
       };
       try {
         window.localStorage.setItem(

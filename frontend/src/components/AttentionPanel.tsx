@@ -1,6 +1,8 @@
-// P2「待决策」聚合页——与顶栏 badge/全局弹窗同一数据源（attention 聚合
-// payload），列表 + 单条详情 + 历史已回答。诚实降级：payload 未就绪 =
-// 骨架；deployed=false（旧 controller）= 明确空态（不报错）。
+// attention 决策面板（无页面外壳）——待答列表 + 单条详情 + 已回答历史。
+// 原 P2「待决策」聚合页主体抽壳（10/26 并入通知页）：通知页「待决策」子页签
+// 渲染本面板；数据=全局 attention 聚合 payload（WorkbenchPageData 30s
+// 轮询保新，本面板不再自开轮询），onOpenItem 打开全局决策弹窗（链路不变）。
+// 诚实降级：payload 未就绪 = 骨架；deployed=false（旧 controller）= 明确空态。
 
 import type * as ReactNS from "react";
 
@@ -10,8 +12,6 @@ import {
 } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { usePoller } from "../usePoller";
-import { useTabActive } from "../tabActivity";
 import { WbTooltip } from "./WbTooltip";
 import { statusVariant } from "./CodingRunsPanel";
 
@@ -41,7 +41,7 @@ function fmtTime(iso?: string): string {
   )}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-export function AttentionBoard({
+export function AttentionPanel({
   payload,
   onOpenItem,
   onRefresh,
@@ -54,17 +54,7 @@ export function AttentionBoard({
 }) {
   const t = useThemeColors();
   const tr = useT();
-  const attentionActive = useTabActive("attention");
   const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
-
-  // 本 tab 激活期再补一层 30s 静默刷新（父级全局轮询之外；rc-tabs 保活
-  // 下切回来立即有新数据——与 CodingRunsPanel 同约定）。
-  usePoller({
-    fn: () => onRefresh(),
-    intervalMs: 30000,
-    active: attentionActive,
-    minPokeMs: 15000,
-  });
 
   const items = payload?.items || [];
   const pending = React.useMemo(
@@ -86,8 +76,8 @@ export function AttentionBoard({
   // ── 降级/加载态 ──
   if (!payload) {
     return (
-      <div>
-        <BoardHeader tr={tr} onRefresh={onRefresh} countText={null} />
+      <div style={{ display: "grid", gap: 10 }}>
+        <PanelToolbar tr={tr} onRefresh={onRefresh} countText={null} />
         <div style={{ padding: 16 }}>
           <antd.Skeleton active title={false} paragraph={{ rows: 3 }} />
         </div>
@@ -96,8 +86,8 @@ export function AttentionBoard({
   }
   if (!payload.deployed) {
     return (
-      <div>
-        <BoardHeader tr={tr} onRefresh={onRefresh} countText={null} />
+      <div style={{ display: "grid", gap: 10 }}>
+        <PanelToolbar tr={tr} onRefresh={onRefresh} countText={null} />
         <div
           style={{
             padding: "14px 16px",
@@ -115,7 +105,7 @@ export function AttentionBoard({
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      <BoardHeader
+      <PanelToolbar
         tr={tr}
         onRefresh={onRefresh}
         countText={tr("{n} 条", { n: pending.length })}
@@ -405,7 +395,9 @@ function Field({ k, v }: { k: string; v: ReactNS.ReactNode }) {
   );
 }
 
-function BoardHeader({
+/** 面板工具条（原 BoardHeader 去页题——子页签已提供「待决策」语境）：
+ * ⓘ 说明 + 条数 + 手动刷新。 */
+function PanelToolbar({
   tr,
   onRefresh,
   countText,
@@ -424,7 +416,6 @@ function BoardHeader({
         flexWrap: "wrap",
       }}
     >
-      <span style={{ fontWeight: 700, fontSize: 15 }}>{tr("待决策")}</span>
       <WbTooltip
         title={tr(
           "需要人工决策的 attention 请求（读 controller 聚合；回答以当前登录身份发回任务房间）。",
