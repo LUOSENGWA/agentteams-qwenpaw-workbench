@@ -102,7 +102,7 @@ cd frontend && npm ci && npm run build
 cd .. && bash tools/pack-plugin-zip.sh
 ```
 
-（若 `npm ci` 报 EINTEGRITY：`package-lock.json` 已知 integrity 条目问题，脚本会自动处理——手动等价操作为移开 lock 重解析：`mv frontend/package-lock.json frontend/package-lock.json.broken && cd frontend && npm install`，成功后 `cd .. && mv frontend/package-lock.json.broken frontend/package-lock.json` 还原。/ If `npm ci` fails with EINTEGRITY: a known lockfile integrity entry issue — the script handles it automatically; manually, move the lock aside and re-resolve, then restore it afterwards.)
+（若 `npm ci` 报 EINTEGRITY：`package-lock.json` 个别 integrity 条目与 registry 官方值不符的已知问题——脚本会自动按报错里的 `wanted <脏值> but got <真值>` 修正 lock 对应条目后重试 `npm ci`，构建完成时还原 lock。手动等价操作：按报错把 `frontend/package-lock.json` 中对应的 wanted 值替换为 got 值，重跑 `npm ci`。/ If `npm ci` fails with EINTEGRITY: a known issue where some lockfile integrity entries disagree with the registry — the script repairs the matching lock entry using the `wanted <bad> but got <real>` pair from the error and retries `npm ci`, restoring the lock when done. Manually: replace the wanted value with the got value from the error in `frontend/package-lock.json` and re-run `npm ci`.)
 
 **两个仓库** / **Two repositories**（都可构建 / both are buildable）：
 

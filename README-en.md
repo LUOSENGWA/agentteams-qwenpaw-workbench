@@ -95,7 +95,7 @@ cd frontend && npm ci && npm run build
 cd .. && bash tools/pack-plugin-zip.sh
 ```
 
-(If `npm ci` fails with EINTEGRITY: a known lockfile integrity entry issue — the script handles it automatically; manually, move the lock aside and re-resolve: `mv frontend/package-lock.json frontend/package-lock.json.broken && cd frontend && npm install`, then restore it afterwards: `cd .. && mv frontend/package-lock.json.broken frontend/package-lock.json`.)
+(If `npm ci` fails with EINTEGRITY: a known issue where some lockfile integrity entries disagree with the registry — the script repairs the matching lock entry using the `wanted <bad> but got <real>` pair from the error and retries `npm ci`, restoring the lock when done. Manually: replace the wanted value with the got value from the error in `frontend/package-lock.json` and re-run `npm ci`.)
 
 **Two repositories** (both are buildable):
 
