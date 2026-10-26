@@ -91,7 +91,7 @@ export function StandaloneWorkerModels({
             ? tr("已保存（提示：{t}）", {
                 t: modelVerdictText(tr, verdict, value, union.candidates),
               })
-            : tr("模型已保存（重启 Worker 后生效）"),
+            : tr("模型已保存（热生效：进程内 reload；若未生效可点重启）"),
         );
         setDrafts((p) => {
           const n = { ...p };

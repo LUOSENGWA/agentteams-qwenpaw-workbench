@@ -3,6 +3,14 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.21（2026-10-26 · 模型热生效 + Worker/Manager 重启）
+
+**新增**
+- **Worker / Manager 重启按钮**：Worker 详情面板与 Manager 表新增「重启」——不用再 SSH。Controller 侧新增 `POST /api/v1/workers/{name}/restart` 与 `POST /api/v1/managers/{name}/restart`（stop + start，容器重建后配置/模型重新加载）。
+
+**修复**
+- **改模型不能热生效**：`model` 被排除在容器重建 hash 外（config-only），但主模型只写运行时配置文件、没有触发 QwenPaw 的进程内 reload，所以看起来必须重启。现在主模型与 subagent 模型一样走 `PATCH /api/agents/default/model-settings`（`active_model`），改完立即触发 agent reload，无需重启。
+
 ## 0.5.0-beta.16.20（2026-10-26 · 模型编辑带 Provider（多 Higress Provider））
 
 **修复**

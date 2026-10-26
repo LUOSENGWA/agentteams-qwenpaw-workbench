@@ -3,6 +3,14 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.21 (2026-10-26 - model hot-reload + worker/manager restart)
+
+**Added**
+- **Worker / Manager restart buttons**: the worker detail panel and the Manager table now have a Restart action — no more SSH. The Controller exposes `POST /api/v1/workers/{name}/restart` and `POST /api/v1/managers/{name}/restart` (stop + start; the container is recreated and reads its config/model fresh).
+
+**Fixed**
+- **Model changes did not take effect hot**: `model` is excluded from the container-recreation hash (config-only), but the primary model was only written to the runtime config and never triggered QwenPaw's in-process reload, so it looked like a restart was required. The reconcile now also PATCHes `active_model` through the worker's `model-settings` endpoint (same path as the subagent model), which mutates agent.json and schedules an in-process agent reload.
+
 ## 0.5.0-beta.16.20 (2026-10-26 - model editor carries the provider)
 
 **Fixed**

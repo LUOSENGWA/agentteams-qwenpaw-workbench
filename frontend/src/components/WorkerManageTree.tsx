@@ -39,6 +39,7 @@ import {
   WakeIcon,
   SleepIcon,
   MessageIcon,
+  ReloadIcon,
   phaseMeta,
   RUNTIME_TAG_COLOR,
   RUNTIME_LABELS,
@@ -274,7 +275,7 @@ function WorkerManageInfo({
   onOpenSettings,
 }: {
   worker: AdminData["workers"][number];
-  onLifecycle?: (name: string, action: "wake" | "sleep") => void;
+  onLifecycle?: (name: string, action: "wake" | "sleep" | "restart") => void;
   acting: string | null;
   /** L1 账号（controller token）→ 运行配置面板 L1-only
  * 字段可编辑；L2 只读（PUT 非白名单键会被服务端 403 拒绝）。 */
@@ -540,6 +541,18 @@ function WorkerManageInfo({
             </antd.Button>
           </WbTooltip>
         )}
+        <WbTooltip title={tr("重启 {name}（重建容器，配置/模型重新加载）", { name: worker.name })}>
+          <antd.Button
+            type="text"
+            size="small"
+            icon={<ReloadIcon style={{ color: "#1677ff" }} />}
+            disabled={busy}
+            loading={acting === `restart:${worker.name}`}
+            onClick={() => onLifecycle?.(worker.name, "restart")}
+          >
+            {tr("重启")}
+          </antd.Button>
+        </WbTooltip>
         {/* 竖屏：运行配置入口=紧凑按钮（内容进 NarrowSheet 底部抽屉，
   不再内联撑长）；宽屏 undefined → 不渲染（下方内联面板即入口）。 */}
         {narrow ? (
@@ -671,7 +684,7 @@ export function WorkerRow({
   depth: number;
   onDm?: (mxid: string, roomId?: string) => void;
   adminWorker?: AdminData["workers"][number];
-  onLifecycle?: (name: string, action: "wake" | "sleep") => void;
+  onLifecycle?: (name: string, action: "wake" | "sleep" | "restart") => void;
   acting: string | null;
   /** L1 账号 → 运行配置面板 L1-only 字段可编辑。 */
   l1?: boolean;
