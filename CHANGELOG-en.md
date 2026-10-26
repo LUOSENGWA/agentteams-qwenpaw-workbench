@@ -3,6 +3,11 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.22 (2026-10-26 - provider prefill)
+
+**Fixed**
+- **Provider was not pre-filled like the model**: the older Controller's `WorkerResponse` does not return `modelProvider`, so the field appeared empty. The dialog now uses the Controller's `modelProvider` when available and otherwise derives it from the selected alias's `binding.providerName` — the current provider is pre-filled just like the model (the rebuilt Controller's real value still wins).
+
 ## 0.5.0-beta.16.21 (2026-10-26 - model hot-reload + worker/manager restart)
 
 **Added**

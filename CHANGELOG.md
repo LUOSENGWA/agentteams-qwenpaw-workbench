@@ -3,6 +3,11 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.22（2026-10-26 · Provider 预填充）
+
+**修复**
+- **Provider 没有像 model 一样预填现值**：旧 Controller 的 `WorkerResponse` 不返回 `modelProvider`，导致弹窗里 provider 恒空。现在改为「Controller 的 `modelProvider` 优先；缺失时用所选 alias 的 `binding.providerName` 推导」——与 model 一样预填当前 provider（Controller 重建后仍以真实值为准）。
+
 ## 0.5.0-beta.16.21（2026-10-26 · 模型热生效 + Worker/Manager 重启）
 
 **新增**

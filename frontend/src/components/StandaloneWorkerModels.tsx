@@ -80,8 +80,12 @@ export function StandaloneWorkerModels({
       }
       setSaving(name);
       try {
+        const target = standalone.find((w) => w.name === name);
+        // 当前 provider：Controller 值优先；旧 Controller 不返回 modelProvider
+        // 时用 alias 的 binding.providerName 推导（与展示同一基线）。
         const current =
-          standalone.find((w) => w.name === name)?.modelProvider || "";
+          target?.modelProvider ||
+          providerForModel(union.gatewayOptions, target?.model || "");
         // 合并语义：provider 只在改动时下发（undefined = 不改）。
         const providerArg =
           provider.trim() !== current ? provider.trim() : undefined;
@@ -110,7 +114,7 @@ export function StandaloneWorkerModels({
         setSaving(null);
       }
     },
-    [standalone, union.candidates, onRefreshAdmin, tr],
+    [standalone, union.candidates, union.gatewayOptions, onRefreshAdmin, tr],
   );
 
   return (
@@ -131,9 +135,15 @@ export function StandaloneWorkerModels({
         <div style={{ display: "grid", gap: 14 }}>
           {standalone.map((w) => {
             const draft = drafts[w.name] ?? w.model ?? "";
-            const prov = provDrafts[w.name] ?? w.modelProvider ?? "";
+            // 当前 provider 基线：Controller 的 modelProvider 优先；旧
+            // Controller 不返回它时，用 alias 的 binding.providerName 推导
+            // ——与 model 一样预填现值（不是恒空）。
+            const baselineProv =
+              w.modelProvider ||
+              providerForModel(union.gatewayOptions, w.model || "");
+            const prov = provDrafts[w.name] ?? baselineProv;
             const dirty =
-              draft !== (w.model || "") || prov !== (w.modelProvider || "");
+              draft !== (w.model || "") || prov !== baselineProv;
             return (
               <div
                 key={w.name}
