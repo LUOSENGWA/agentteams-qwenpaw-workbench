@@ -1299,8 +1299,10 @@ def build_millforge_router() -> APIRouter:
                         "GET", f"{base}/api/v1/workers", token
                     )
                     skills_by: Dict[str, List[str]] = {}
+                    # The controller lists workers under "workers" (with a
+                    # "total" sibling) — not "items".
                     if st2 == 200 and isinstance(d2, dict):
-                        for w in d2.get("items") or []:
+                        for w in d2.get("workers") or []:
                             if isinstance(w, dict) and w.get("name"):
                                 skills_by[str(w["name"])] = list(
                                     w.get("skills") or []

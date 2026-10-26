@@ -452,7 +452,11 @@ class FakeCtl:
             }
             return 201, {"ok": True}
         if method == "GET" and path.endswith("/api/v1/workers"):
-            return 200, {"items": list(self.workers.values())}
+            # Mirror the real controller: workers live under "workers" with a
+            # "total" sibling (the old fake returned "items", which hid the
+            # producer/consumer key mismatch).
+            return 200, {"workers": list(self.workers.values()),
+                         "total": len(self.workers)}
         m = re.search(r"/api/v1/workers/([^/]+)$", path)
         if m:
             name = unquote(m.group(1))
