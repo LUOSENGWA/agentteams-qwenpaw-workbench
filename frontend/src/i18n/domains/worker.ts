@@ -781,4 +781,13 @@ export const workerDict: Record<string, { en: string }> = {
   "二维码状态查询连续失败 {n} 次：Controller 频道代理需 ≥40s 长轮询（iLink 状态查询会挂起约 30s），当前 5s 超时会掐断；升级 Controller 后重试。": {
     en: "QR status polling failed {n} consecutive times: the Controller channel proxy needs a ≥40s long-poll (iLink holds the status call for ~30s); the current 5s timeout aborts it. Upgrade the Controller and retry.",
   },
+  "模型 alias（留空=跟随集群默认）": {
+    en: "Model alias (empty = follow cluster default)",
+  },
+  "留空=跟随默认（Higress Provider 名）": {
+    en: "Empty = follow default (Higress provider name)",
+  },
+  "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。选 Higress configured alias 会自动回填对应 Provider。": {
+    en: "Only model + provider change (PUT merge semantics: only changed fields are sent; empty = follow the cluster default). Picking a configured Higress alias auto-fills its provider.",
+  },
 };

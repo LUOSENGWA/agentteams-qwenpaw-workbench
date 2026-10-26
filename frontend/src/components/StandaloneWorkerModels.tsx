@@ -6,9 +6,14 @@
  * 不是真实 Team CR → 拓扑齿轮 openConfig("未分组") 在 CRD 团队列表里
  * 必查不到 → 弹「团队数据未加载或团队不存在」，未分组 Worker 无路改模型。
  *
- * 本弹窗直接列 admin.workers 里 team 为空的 Worker，逐个改 model。
- * 写路径 = PUT /workers/{name} 只传 {model}（Controller 合并语义：
- * 只应用非空字段，provider 等其它字段不动；留空=跟随集群默认）。
+ * 本弹窗直接列 admin.workers 里 team 为空的 Worker，逐个改 model +
+ * modelProvider。写路径 = PUT /workers/{name}（Controller 合并语义）：
+ * 只把**改动项**放进 body，provider 等其它字段不动。
+ *
+ * 为什么必须带 provider：多 Higress Provider 部署下，Worker 的 model 只是
+ * 请求 alias，真正转发由 modelProvider（APIG Model API 名）决定。只改
+ * model 不改 provider = 仍走旧 provider（用户「选了没用」的根因）。选
+ * configured alias 时自动回填 binding.providerName；也可手动选 Provider。
  */
 import type * as ReactNS from "react";
 
@@ -16,6 +21,7 @@ import { updateWorkerModel } from "../api";
 import type { AdminData } from "../api";
 import {
   modelVerdictText,
+  providerForModel,
   useModelUnionOptions,
   validateModelValue,
 } from "../modelUnion";
@@ -50,15 +56,21 @@ export function StandaloneWorkerModels({
   );
   const union = useModelUnionOptions(usedModels, tr);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+  const [provDrafts, setProvDrafts] = React.useState<Record<string, string>>(
+    {},
+  );
   const [saving, setSaving] = React.useState<string | null>(null);
 
   // 每次打开复位草稿（不跨会话残留）。
   React.useEffect(() => {
-    if (open) setDrafts({});
+    if (open) {
+      setDrafts({});
+      setProvDrafts({});
+    }
   }, [open]);
 
   const save = React.useCallback(
-    async (name: string, value: string) => {
+    async (name: string, value: string, provider: string) => {
       const verdict = validateModelValue(value, union.candidates);
       if (verdict.level === "error") {
         antd.message.error(
@@ -68,7 +80,12 @@ export function StandaloneWorkerModels({
       }
       setSaving(name);
       try {
-        await updateWorkerModel(name, value.trim());
+        const current =
+          standalone.find((w) => w.name === name)?.modelProvider || "";
+        // 合并语义：provider 只在改动时下发（undefined = 不改）。
+        const providerArg =
+          provider.trim() !== current ? provider.trim() : undefined;
+        await updateWorkerModel(name, value.trim(), providerArg);
         antd.message.success(
           verdict.level === "warn"
             ? tr("已保存（提示：{t}）", {
@@ -81,6 +98,11 @@ export function StandaloneWorkerModels({
           delete n[name];
           return n;
         });
+        setProvDrafts((p) => {
+          const n = { ...p };
+          delete n[name];
+          return n;
+        });
         onRefreshAdmin?.(true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("保存失败"));
@@ -88,7 +110,7 @@ export function StandaloneWorkerModels({
         setSaving(null);
       }
     },
-    [union.candidates, onRefreshAdmin, tr],
+    [standalone, union.candidates, onRefreshAdmin, tr],
   );
 
   return (
@@ -96,7 +118,7 @@ export function StandaloneWorkerModels({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={620}
+      width={680}
       title={tr("未分组 Worker 模型（独立 Worker）")}
       destroyOnClose
     >
@@ -106,54 +128,96 @@ export function StandaloneWorkerModels({
           description={tr("没有未分组的 Worker")}
         />
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ display: "grid", gap: 14 }}>
           {standalone.map((w) => {
             const draft = drafts[w.name] ?? w.model ?? "";
-            const dirty = draft !== (w.model || "");
+            const prov = provDrafts[w.name] ?? w.modelProvider ?? "";
+            const dirty =
+              draft !== (w.model || "") || prov !== (w.modelProvider || "");
             return (
               <div
                 key={w.name}
-                style={{ display: "flex", alignItems: "center", gap: 8 }}
+                style={{
+                  display: "grid",
+                  gap: 6,
+                  border: `1px dashed ${t.border}`,
+                  borderRadius: 8,
+                  padding: 8,
+                }}
               >
-                <span
-                  style={{
-                    minWidth: 140,
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={w.name}
-                >
-                  {w.name}
-                </span>
-                <antd.AutoComplete
-                  size="small"
-                  style={{ flex: 1 }}
-                  value={draft}
-                  options={union.options}
-                  allowClear
-                  placeholder={tr("留空=跟随集群默认")}
-                  onChange={(val: string) =>
-                    setDrafts((p) => ({ ...p, [w.name]: val || "" }))
-                  }
-                />
-                {dirty ? (
-                  <antd.Button
-                    size="small"
-                    type="primary"
-                    loading={saving === w.name}
-                    onClick={() => void save(w.name, draft)}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      minWidth: 140,
+                      fontWeight: 600,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={w.name}
                   >
-                    {tr("保存")}
-                  </antd.Button>
-                ) : null}
+                    {w.name}
+                  </span>
+                  <antd.AutoComplete
+                    size="small"
+                    style={{ flex: 1 }}
+                    value={draft}
+                    options={union.options}
+                    allowClear
+                    placeholder={tr("模型 alias（留空=跟随集群默认）")}
+                    onChange={(val: string) => {
+                      setDrafts((p) => ({ ...p, [w.name]: val || "" }));
+                      // configured alias → 自动回填其 binding.providerName。
+                      const auto = providerForModel(
+                        union.gatewayOptions,
+                        val || "",
+                      );
+                      if (auto) {
+                        setProvDrafts((p) => ({ ...p, [w.name]: auto }));
+                      }
+                    }}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      minWidth: 140,
+                      fontSize: 12,
+                      color: t.textSecondary,
+                    }}
+                  >
+                    {tr("Provider")}
+                  </span>
+                  <antd.AutoComplete
+                    size="small"
+                    style={{ flex: 1 }}
+                    value={prov}
+                    options={union.providers.map((p) => ({
+                      value: p.name,
+                    }))}
+                    allowClear
+                    placeholder={tr("留空=跟随默认（Higress Provider 名）")}
+                    onChange={(val: string) =>
+                      setProvDrafts((p) => ({ ...p, [w.name]: val || "" }))
+                    }
+                  />
+                  {dirty ? (
+                    <antd.Button
+                      size="small"
+                      type="primary"
+                      loading={saving === w.name}
+                      onClick={() => void save(w.name, draft, prov)}
+                    >
+                      {tr("保存")}
+                    </antd.Button>
+                  ) : null}
+                </div>
               </div>
             );
           })}
           <div style={{ fontSize: 12, color: t.textSecondary }}>
             {tr(
-              "只修改 model（PUT 合并语义：provider 等其它字段不动；留空=跟随集群默认）。",
+              "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。选 Higress configured alias 会自动回填对应 Provider。",
             )}
           </div>
         </div>

@@ -3,6 +3,11 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.20（2026-10-26 · 模型编辑带 Provider（多 Higress Provider））
+
+**修复**
+- **多 Higress Provider 下选模型不生效**：Worker CR 的 `model` 只是请求 alias，真正转发由 `modelProvider`（APIG Model API 名）决定。此前模型编辑只发 `model`、provider 不动 → 换了 alias 仍走旧 provider，表现为「选了没用」。现在未分组 Worker 模型弹窗同时提供 **Provider** 选择：选 configured alias 会自动回填对应 Provider（来自 Higress alias→binding.providerName），也可手动选/清空；保存时只下发改动项（`model` + 视情况 `modelProvider`，PUT 合并语义）。
+
 ## 0.5.0-beta.16.19（2026-10-26 · 微信扫码直连 iLink，无需重建 Controller）
 
 **修复**

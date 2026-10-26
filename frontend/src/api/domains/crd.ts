@@ -17,6 +17,10 @@ export interface WorkerInfo {
   phase: string;
   state: string;
   model: string;
+  /** Worker 的 LLM provider（WorkerResponse.modelProvider = WorkerSpec.ModelProvider，
+   * Higress APIG Model API 名；空=跟随默认）。多 provider 部署下只改 model
+   * 不改 provider = 仍走旧 provider。 */
+  modelProvider?: string;
   runtime: string;
   /** 自定义 Docker 镜像（WorkerResponse.image；发布部署 = 带发布 tag 的
    * 运行时镜像，如 …agentteams-qwenpaw-worker:v1.2.5——运行时版本正源，
@@ -129,6 +133,10 @@ export interface ManagerInfo {
   phase: string;
   state: string;
   model: string;
+  /** Worker 的 LLM provider（WorkerResponse.modelProvider = WorkerSpec.ModelProvider，
+   * Higress APIG Model API 名；空=跟随默认）。多 provider 部署下只改 model
+   * 不改 provider = 仍走旧 provider。 */
+  modelProvider?: string;
   /* ManagerResponse 已有 runtime/image 字段（omitempty），前端补声明。 */
   runtime?: string;
   image?: string;
@@ -175,9 +183,19 @@ export const createTeam = (body: Record<string, unknown>) =>
 export const updateTeam = (name: string, body: Record<string, unknown>) =>
   controllerRequest("PUT", `/teams/${encodeURIComponent(name)}`, body);
 /** 更新现有 Worker 的模型（PUT /workers/{name} 合并语义——只应用非空字段，
- * 其余 spec 不动；不发 modelProvider = provider 保持原值/默认）。 */
-export const updateWorkerModel = (name: string, model: string) =>
-  controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, { model });
+ * 其余 spec 不动；modelProvider 传 undefined=不改，传值=覆盖）。。
+ * 
+ * 多 Higress provider 部署下 model 只是请求 alias，真正转发由 modelProvider
+ * （APIG Model API 名）决定；选 alias 时应同时回填/下发 provider。 */
+export const updateWorkerModel = (
+  name: string,
+  model: string,
+  modelProvider?: string,
+) =>
+  controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, {
+    model,
+    ...(modelProvider !== undefined ? { modelProvider } : {}),
+  });
 /** ：通用 Worker spec 合并更新——
  * 只发非空字段（PUT 合并语义同上）；model/soul 任意组合。 */
 export const updateWorker = (name: string, body: Record<string, unknown>) =>

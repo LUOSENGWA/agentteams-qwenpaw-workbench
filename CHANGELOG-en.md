@@ -3,6 +3,11 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.20 (2026-10-26 - model editor carries the provider)
+
+**Fixed**
+- **Model selection had no effect with multiple Higress providers**: the Worker CR's `model` is only the request alias; the actual upstream is chosen by `modelProvider` (the APIG Model API name). The editor used to send `model` only, leaving the provider on the old value, so switching aliases still hit the old provider. The standalone worker model dialog now has a **Provider** field: picking a configured alias auto-fills its provider (from Higress alias→binding.providerName), and it can also be selected/cleared manually; save sends only changed fields (`model` plus `modelProvider` when changed) under PUT merge semantics.
+
 ## 0.5.0-beta.16.19 (2026-10-26 - WeChat QR via direct iLink, no Controller rebuild)
 
 **Fixed**
