@@ -1,6 +1,7 @@
-// WorkflowBoard 巨石拆分 · 左栏项目列表（ProjectRail）+ 窄屏钻取返回条
-// （NarrowDetailBack）。
+// WorkflowBoard 巨石拆分 · 左栏项目列表（ProjectRail，拓扑视图 master-detail
+// 左栏；窄屏 drill-in 整高列表同款）。
 // 逐字自 components/WorkflowBoard.tsx 搬移；仅加 `export`。
+// 10/26：NarrowDetailBack（窄屏 card 钻取返回条）随 card 视图退役删除。
 
 import type { WorkflowEvent } from "../api";
 import { useThemeColors } from "../theme";
@@ -9,16 +10,16 @@ import { statusMeta, fmtTime } from "./helpers";
 
 const host = window.QwenPaw.host;
 const React = host.React;
-const antd = host.antd;
 
-/** 左栏项目列表（卡片/拓扑视图共用选择；排序=顶部下拉，独立滚动——
+/** 左栏项目列表（拓扑视图选择；排序=顶部下拉，独立滚动——
  * 对齐 dashboard 任务看板「项目」区 master-detail 结构）。 */
 export function ProjectRail(props: {
   events: WorkflowEvent[];
   selected: string;
   onSelect: (runId: string) => void;
   /** fill=撑满父级可用高（flex:1+minHeight:0，窄屏 drill-in 整高列表用）；
-   * 默认（宽屏 master-detail）限高=容器高（百分比对栅格行解析）。
+   * 默认（宽屏 master-detail）高=栅格区高（height:100% 对隐式单行解析），
+   * 列内独立滚动、互不带动（10/26 双栏独立滚动）。
    * 高度一律容器相对，禁 100vh（宿主为可拖拽容器，100vh≠容器高）。 */
   fill?: boolean;
 }) {
@@ -33,7 +34,7 @@ export function ProjectRail(props: {
         borderRadius: 8,
         background: t.cardBg,
         boxSizing: "border-box",
-        ...(fill ? { flex: 1, minHeight: 0 } : { maxHeight: "100%" }),
+        ...(fill ? { flex: 1, minHeight: 0 } : { height: "100%", minHeight: 0 }),
         overflowY: "auto",
       }}
     >
@@ -104,34 +105,6 @@ export function ProjectRail(props: {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/** 窄屏单栏 drill-in：详情顶部返回条（← 返回 + 项目标题）——
- * 与聊天房间紧凑头「← 返回」同一交互心智（列表 → 点进详情 → 返回列表）。 */
-export function NarrowDetailBack(props: { title: string; onBack: () => void }) {
-  const tr = useT();
-  return (
-    // flexShrink:0——drill-in 详情为纵向 flex 链，返回条恒占自身高（不被详情区挤压）。
-    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 0 }}>
-      <antd.Button size="small" onClick={props.onBack} style={{ flexShrink: 0 }}>
-        ← {tr("返回")}
-      </antd.Button>
-      <span
-        title={props.title}
-        style={{
-          flex: 1,
-          minWidth: 0,
-          fontWeight: 700,
-          fontSize: 14,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {props.title}
-      </span>
     </div>
   );
 }

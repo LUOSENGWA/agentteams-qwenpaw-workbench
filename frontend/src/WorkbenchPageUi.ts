@@ -221,15 +221,22 @@ export function useWorkbenchUi() {
   // 「mermaid」视图退役并入拓扑——旧持久化值
   // wfView="mermaid"（13.21 装过 13.21 的用户）迁移到 "topo"（拓扑内可切
   // Mermaid 样式，体验不丢）。
-  const WF_VIEW_VALUES = ["list", "card", "board", "topo"];
+  // 10/26：list/card 视图退役（只留看板/拓扑）——旧持久化值
+  // wfView="list"/"card" 兼容回退 "board"，默认视图改 "board"。
+  const WF_VIEW_VALUES = ["board", "topo"];
   const [wfMem, setWfMemState] = React.useState<{
     view: string;
     topoRun: string;
   }>(() => {
     const u = initialUi.current ?? {};
-    const savedView = u.wfView === "mermaid" ? "topo" : (u.wfView || "");
+    const savedView =
+      u.wfView === "mermaid"
+        ? "topo"
+        : u.wfView === "list" || u.wfView === "card"
+          ? "board"
+          : (u.wfView || "");
     return {
-      view: WF_VIEW_VALUES.includes(savedView) ? savedView : "list",
+      view: WF_VIEW_VALUES.includes(savedView) ? savedView : "board",
       topoRun: typeof u.wfTopo === "string" ? u.wfTopo : "",
     };
   });
