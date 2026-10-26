@@ -7,6 +7,7 @@ import CrdManage, { type CrdManageHandle } from "./CrdManage";
 import MyScopeCard from "./MyScopeCard";
 import SkillCenter from "./SkillCenter";
 import WorkerChannels from "./WorkerChannels";
+import { StandaloneWorkerModels } from "./StandaloneWorkerModels";
 import WorkerTools from "./WorkerTools";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -83,6 +84,8 @@ function WorkerManage(props: WorkerManageProps) {
     workerSessionByName,
   } = props;
   const [acting, setActing] = React.useState<string | null>(null);
+  // 「未分组」伪团队 → 独立 Worker 模型弹窗（不是 Team CR，不能走 openConfig）。
+  const [standaloneOpen, setStandaloneOpen] = React.useState(false);
   // 底部折叠区受控（默认全收起）。技能/MCP 已并入拓扑
   // 资源管理（就地编辑），此折叠区保留为跨 Worker 全量视图，不再被程序化展开。
   const [collapseKeys, setCollapseKeys] = React.useState<string[]>([]);
@@ -300,7 +303,19 @@ function WorkerManage(props: WorkerManageProps) {
                 onOpenSettings={props.onOpenSettings}
                 onTeamConfig={
                   hasToken && admin
-                    ? (name: string) => crdRef.current?.openConfig(name)
+                    ? (name: string) => {
+                        // 「未分组」是后端为无 team Worker 造的伪团队
+                        // （teams_api.py: w.team or "未分组"），不是 Team CR
+                        // → openConfig 在 CRD 团队列表查无 → 弹
+                        // 「团队数据未加载或团队不存在」。
+                        // 改开独立 Worker 模型弹窗（PUT /workers/{name}
+                        // 只传 model，合并语义）。
+                        if (name === "未分组") {
+                          setStandaloneOpen(true);
+                          return;
+                        }
+                        crdRef.current?.openConfig(name);
+                      }
                     : undefined
                 }
               />
@@ -349,6 +364,14 @@ function WorkerManage(props: WorkerManageProps) {
           onRefresh={onRefreshAdmin}
           l1TokenMode={l1TokenMode}
           registerHandle={registerCrd}
+        />
+      ) : null}
+      {hasToken && admin ? (
+        <StandaloneWorkerModels
+          workers={admin.workers}
+          open={standaloneOpen}
+          onClose={() => setStandaloneOpen(false)}
+          onRefreshAdmin={onRefreshAdmin}
         />
       ) : null}
       {items.length ? (

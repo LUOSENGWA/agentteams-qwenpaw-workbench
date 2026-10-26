@@ -120,10 +120,43 @@ interface FieldRow {
   removed?: boolean;
 }
 
+/**
+ * Per-channel keys hidden from the generic editor so the field set matches
+ * the QwenPaw Console drawer (the console hand-writes one form per built-in
+ * channel; this plugin renders config/schema keys generically and would
+ * otherwise surface framework internals the console never shows).
+ *
+ * wechat: console exposes bot_token / bot_token_file / media_dir /
+ * message_merge_* / access_control_dm|group / require_mention /
+ * no_text_debounce. It does NOT expose base_url or the legacy
+ * dm_policy / group_policy / allow_from / deny_message /
+ * dm_disabled / group_disabled.
+ *
+ * Hiding also keeps the full-config PUT from writing these keys back
+ * (buildConfig only serializes live rows).
+ */
+const CHANNEL_HIDDEN_KEYS: Record<string, ReadonlySet<string>> = {
+  wechat: new Set([
+    "base_url",
+    "dm_policy",
+    "group_policy",
+    "allow_from",
+    "deny_message",
+    "dm_disabled",
+    "group_disabled",
+  ]),
+};
+
+function isHiddenChannelKey(channel: string | undefined, key: string): boolean {
+  if (!channel) return false;
+  return CHANNEL_HIDDEN_KEYS[channel]?.has(key) === true;
+}
+
 function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
   const rows: FieldRow[] = [];
   for (const [k, v] of Object.entries(cfg)) {
     if (k === "enabled" || k === "bot_prefix" || k === "isBuiltin") continue;
+    if (isHiddenChannelKey(channel, k)) continue;
     rows.push({ key: k, value: v });
   }
   // agentteams_matrix 的
@@ -187,6 +220,11 @@ export default function WorkerChannels(props: {
   const [qrImg, setQrImg] = React.useState("");
   const [qrBusy, setQrBusy] = React.useState(false);
   const qrPollRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 连续失败计数：Controller 的频道代理是 5s 超时，而 iLink 的
+  // get_qrcode_status 是长轮询（服务端挂 ~30s）。若 Controller 未升级到
+  // 长轮询超时，每次轮询都会被掐断——必须让用户看见，而不是"扫了没反应"。
+  const qrFailCountRef = React.useRef(0);
+  const qrWarnedRef = React.useRef(false);
 
   React.useEffect(() => () => { if (qrPollRef.current) clearTimeout(qrPollRef.current); }, []);
 
@@ -203,6 +241,8 @@ export default function WorkerChannels(props: {
       clearTimeout(qrPollRef.current);
       qrPollRef.current = null;
     }
+    qrFailCountRef.current = 0;
+    qrWarnedRef.current = false;
   }, []);
 
   const load = React.useCallback(async (silent = false) => {
@@ -322,7 +362,17 @@ export default function WorkerChannels(props: {
             return;
           }
         } catch {
-          /* 单次失败继续轮询 */
+          // 单次失败继续轮询；连续失败必须可见（否则表现为"扫了没反应"）。
+          qrFailCountRef.current += 1;
+          if (qrFailCountRef.current >= 3 && !qrWarnedRef.current) {
+            qrWarnedRef.current = true;
+            antd.message.warning(
+              tr(
+                "二维码状态查询连续失败 {n} 次：Controller 频道代理需 ≥40s 长轮询（iLink 状态查询会挂起约 30s），当前 5s 超时会掐断；升级 Controller 后重试。",
+                { n: qrFailCountRef.current },
+              ),
+            );
+          }
         }
         qrPollRef.current = setTimeout(tick, 2000);
       };
@@ -438,7 +488,8 @@ export default function WorkerChannels(props: {
   // 元数据驱动的字段键集（与 rows 合并：元数据补空行，rows 里的额外键保留）。
   const metaKeys = schemaFields
     .map((f) => f.key || f.name || "")
-    .filter(Boolean) as string[];
+    .filter(Boolean)
+    .filter((k) => !isHiddenChannelKey(drawerCh, k)) as string[];
   const metaFor = (key: string) =>
     schemaFields.find((f) => (f.key || f.name) === key);
 

@@ -766,4 +766,19 @@ export const workerDict: Record<string, { en: string }> = {
   "团队数据未加载或团队不存在——请刷新后重试": {
     en: "Team data not loaded or team missing — refresh and retry",
   },
+  "未分组 Worker 模型（独立 Worker）": {
+    en: "Ungrouped worker models (standalone workers)",
+  },
+  "没有未分组的 Worker": {
+    en: "No ungrouped workers",
+  },
+  "模型已保存（重启 Worker 后生效）": {
+    en: "Model saved (takes effect after the worker restarts)",
+  },
+  "只修改 model（PUT 合并语义：provider 等其它字段不动；留空=跟随集群默认）。": {
+    en: "Only model is changed (PUT merge semantics: provider and other fields stay; empty = follow the cluster default).",
+  },
+  "二维码状态查询连续失败 {n} 次：Controller 频道代理需 ≥40s 长轮询（iLink 状态查询会挂起约 30s），当前 5s 超时会掐断；升级 Controller 后重试。": {
+    en: "QR status polling failed {n} consecutive times: the Controller channel proxy needs a ≥40s long-poll (iLink holds the status call for ~30s); the current 5s timeout aborts it. Upgrade the Controller and retry.",
+  },
 };

@@ -3,6 +3,15 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.18 (2026-10-26 - QR long-poll + standalone worker models)
+
+**Fixed**
+- **WeChat QR login could never complete**: QwenPaw's WeChat login relies on iLink `get_qrcode_status`, a long-poll that the server holds for ~30s. The plugin backend proxy read timeout (6s) and the Controller channel proxy (5s) both aborted it before it returned, so the plugin never saw `confirmed` and the phone showed "please upgrade the WeChat interface version in OpenClaw". All three hops now allow the long-poll: the plugin backend uses a 45s read timeout for `…/qrcode/status`, the Controller uses a dedicated 45s long-poll client for that route, and the QwenPaw client stays at 60s. Consecutive polling failures are now surfaced in the UI instead of being swallowed.
+- **Ungrouped (standalone) workers could not change models**: workers without a team are grouped under the pseudo-team "未分组"; its gear opened the team-config entry, which looked the name up in the CRD team list and failed with "team data not loaded or team missing" — and that dialog was the only place to edit a model. The gear now opens a standalone-worker model dialog (`PUT /workers/{name}` with `model` only; merge semantics leave provider and other fields untouched).
+- **WeChat channel fields aligned with the QwenPaw Console**: framework-internal keys the Console's WeChat drawer never shows (`base_url` / `dm_policy` / `group_policy` / `allow_from` / `deny_message` / `dm_disabled` / `group_disabled`) are hidden and no longer written back on save.
+
+**Verification**: frontend tsc 0 · vite build 2,092.65 kB single file (gzip 590.63 kB) · Controller go build/vet 0 + full server package tests green (new long-poll regression test) · plugin backend py_compile/import ok
+
 ## 0.5.0-beta.16 (2026-10-22 - official release)
 
 **Merged release of sub-batches 15.1–15.41 (full mobile/portrait + touch support, local offline mode, full AgentTeams 1.2.5 feature integration, complete Coding CLI management chain, LLM tuning + runtime batch upgrades, layout audit to zero overflow, regression fixes; pytest 374→456, i18n 1,424→1,616 keys)**

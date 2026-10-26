@@ -3,6 +3,15 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.18（2026-10-26 · 频道扫码长轮询 + 未分组 Worker 改模型）
+
+**修复**
+- **微信扫码授权卡死**：QwenPaw 的微信扫码登录依赖 iLink `get_qrcode_status` 长轮询（服务端挂起约 30s）。插件后端代理读超时（6s）与 Controller 频道代理（5s）都会在长轮询返回前掐断 → 扫码后拿不到 `confirmed`，手机端提示「请在 OpenClaw 中升级 WeChat 接口版本后再试」。现在三层放行：插件后端 `…/qrcode/status` 读超时 45s、Controller 该路由专用 45s 长轮询客户端、QwenPaw 客户端保持 60s；连续轮询失败会在界面明确提示（不再静默）。
+- **未分组（独立）Worker 改不了模型**：无 team 的 Worker 被归入伪团队「未分组」，点齿轮走团队配置入口、在 CRD 团队列表查无 → 弹「团队数据未加载或团队不存在」，而模型只能在该弹窗改。现在「未分组」齿轮打开独立的未分组 Worker 模型弹窗（`PUT /workers/{name}` 只传 `model`，合并语义，provider 等字段不动）。
+- **微信频道字段与 QwenPaw Console 对齐**：隐藏 Console 微信抽屉不展示的框架内部字段（`base_url` / `dm_policy` / `group_policy` / `allow_from` / `deny_message` / `dm_disabled` / `group_disabled`），保存时也不再回写这些键。
+
+**验证**：frontend tsc 0 · vite build 单文件 2,092.65 kB（gzip 590.63 kB）· Controller go build/vet 0 + server 包测试全绿（新增长轮询回归测试）· 插件后端 py_compile/import ok
+
 ## 0.5.0-beta.16（2026-10-22 · 正式号）
 
 **15.1–15.41 子批合并 release（移动端/竖屏+触屏全适配 + 本地离线模式 + AgentTeams 1.2.5 能力全接入 + Coding CLI 管理全链 + LLM 调优与运行时批量升级 + 卡片化布局审计清零 + 回归修复；pytest 374→456、i18n 1,424→1,616 键）**
