@@ -165,6 +165,21 @@ function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
  // （语义后才进 payload）→ 缺省行注入 false（=按发送者隔离，
   // 上游 AGENTTEAMS_MATRIX_SHARE_SESSION 默认 false 同款）。旧 runtime
   // 忽略未知键（无害）；升级后该值即生效。
+  // agentteams_matrix 展示三开关（思考 / 工具调用 / 工具结果）：插件侧
+  // channel.py 里三个键各自独立生效（show_thinking / show_tool_calls /
+  // show_tool_results）。这里缺省注入 false（=不把模型思考与工具原始输出
+  // 丢进房间，用户可逐个单独打开）。
+  if (channel === "agentteams_matrix") {
+    for (const k of [
+      "show_thinking",
+      "show_tool_calls",
+      "show_tool_results",
+    ]) {
+      if (!Object.prototype.hasOwnProperty.call(cfg, k)) {
+        rows.push({ key: k, value: false });
+      }
+    }
+  }
   if (
     channel === "agentteams_matrix" &&
     !Object.prototype.hasOwnProperty.call(cfg, "share_session_in_group")
@@ -181,11 +196,26 @@ const FIELD_LABELS: Record<string, { zh: string; en: string }> = {
     zh: "群会话共享（关=按发送者隔离，默认）",
     en: "Share one group session (off = per-sender isolation, default)",
   },
+  show_thinking: { zh: "显示思考过程", en: "Show thinking" },
+  show_tool_calls: { zh: "显示工具调用", en: "Show tool calls" },
+  show_tool_results: { zh: "显示工具结果", en: "Show tool results" },
 };
 const FIELD_TIPS: Record<string, { zh: string; en: string }> = {
   share_session_in_group: {
  zh: "群聊会话语义（#7001，AgentTeams 默认行为=隔离）：开=群内所有成员共享一个会话（旧 room-wide 行为，多人上下文互相污染）；关=每个发送者独立会话（默认，防共享上下文爆炸）。保存即时热生效；worker 重新 reconcile 时 Controller 可能按部署默认（AGENTTEAMS_MATRIX_SHARE_SESSION 环境变量）再归一。",
  en: "Group session semantics (#7001; AgentTeams decision: default isolated): ON = all group members share one session (legacy room-wide; contexts cross-pollinate); OFF = per-sender isolated sessions (default). Hot-applied on save; the Controller may re-normalize to the deployment default (AGENTTEAMS_MATRIX_SHARE_SESSION) on the next worker reconcile.",
+  },
+  show_thinking: {
+    zh: "开=把模型思考过程发到房间（可能很长，会以附件形式出现）；关=不显示（默认）。三个开关彼此独立：思考 / 工具调用 / 工具结果可分别控制。",
+    en: "ON = send the model's thinking to the room (often long; may arrive as an attachment); OFF = hidden (default). The three switches are independent: thinking / tool calls / tool results.",
+  },
+  show_tool_calls: {
+    zh: "开=把工具调用信息发到房间；关=不显示（默认）。独立于思考与工具结果。",
+    en: "ON = send tool-call info to the room; OFF = hidden (default). Independent of thinking and tool results.",
+  },
+  show_tool_results: {
+    zh: "开=把工具执行结果发到房间；关=不显示（默认）。独立于思考与工具调用。",
+    en: "ON = send tool results to the room; OFF = hidden (default). Independent of thinking and tool calls.",
   },
 };
 
