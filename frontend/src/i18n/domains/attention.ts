@@ -6,6 +6,8 @@ export const attentionDict: Record<string, { en: string }> = {
   // ── 入口（badge / tab / 空态） ──
   "待决策": { en: "Pending Decisions" },
   "点击回答": { en: "click to answer" },
+  // 房间卡徽章（L2）/ 房间页 pill（L3）共用文案（{n}=该房间待决策条数）。
+  "⏳ 待决策 {n}": { en: "⏳ Pending {n}" },
   "暂无待决策": { en: "No pending decisions" },
   "决策数据不可用（controller 端点未部署或未连接）": {
     en: "Decision data unavailable (controller endpoint not deployed or not connected)",

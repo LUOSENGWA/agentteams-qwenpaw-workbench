@@ -1,5 +1,6 @@
 import {
   getCachedMessages,
+  resolveAttentionRoom,
   type AttentionItem,
   type AdminData,
   type RoomMessage,
@@ -294,6 +295,16 @@ export default function WorkbenchPage() {
       ),
     [attention],
   );
+  // 房间卡徽章（L2）：room_id → 待决策条数（resolveAttentionRoom 解析，
+  // payload 自带 room_id 优先；解析不到的项不进任何卡片）。
+  const attentionPendingByRoom = React.useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const it of attentionPending) {
+      const rid = resolveAttentionRoom(it);
+      if (rid) m[rid] = (m[rid] || 0) + 1;
+    }
+    return m;
+  }, [attentionPending]);
   const openAttention = React.useCallback((index: number) => {
     setAttentionIndex(index);
     setAttentionOpen(true);
@@ -308,6 +319,16 @@ export default function WorkbenchPage() {
       openAttention(i >= 0 ? i : 0);
     },
     [attentionPending, openAttention],
+  );
+  // 房间页 pill（L3）点击：定位该房间第一条待决策 → 复用全局待决策弹窗。
+  const handleOpenRoomAttention = React.useCallback(
+    (room: TeamRoom) => {
+      const first = attentionPending.find(
+        (it) => resolveAttentionRoom(it) === room.room_id,
+      );
+      if (first) openAttentionByItem(first);
+    },
+    [attentionPending, openAttentionByItem],
   );
   // 「待决策」子页签（通知页内）——状态提到本层：顶栏 badge 点击 =
   // setTab("inbox") + 定位待决策子页；选择持久化进 ui-state（inboxSubTab
@@ -577,6 +598,8 @@ export default function WorkbenchPage() {
       onOpenProject={handleOpenProject}
       onWorkflowIntervened={handleWfIntervened}
       onOpenProjectFiles={openProjectFiles}
+      attentionPending={attention?.deployed ? attentionPending : undefined}
+      onOpenRoomAttention={handleOpenRoomAttention}
     />
   ) : null;
 
@@ -589,6 +612,9 @@ export default function WorkbenchPage() {
       workerSessionByRoom={workerSessionStates.byRoom}
       workerMxids={workerSessionStates.workerMxids}
       roomProjectNames={roomProjectNames}
+      attentionPendingByRoom={
+        attention?.deployed ? attentionPendingByRoom : undefined
+      }
       workerRoleByMxid={workerRoleByMxid}
  // 回调 prop 稳定化（同 RoomChat）。
       onOpenRoom={openRoom}

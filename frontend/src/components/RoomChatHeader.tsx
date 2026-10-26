@@ -9,6 +9,7 @@ import WorkerSessionDot from "./WorkerSessionDot";
 import MemberStrip from "./MemberStrip";
 import { type WorkerSessionState } from "../workerSessionState";
 import {PRIMARY } from "./RoomChatShared";
+import { resolveAttentionRoom } from "../api";
 import type {RoomChatProps } from "./RoomChat";
 import type {RoomChatCoreState } from "./RoomChatCore";
 
@@ -107,6 +108,24 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
         >
           {room.member_count} 人
         </antd.Tag>
+        {/* attention 待决策 pill（L3：点 → 全局待决策弹窗定位本房间第一条）。
+ 数据=父组件传入的 attentionPending（已过滤已答/已解决；deployed=false 不传
+ → 空=不渲染，诚实降级与顶栏 badge 同口径）。 */}
+        {(() => {
+          const attnForRoom = (p.attentionPending || []).filter(
+            (it) => resolveAttentionRoom(it) === room.room_id,
+          );
+          return attnForRoom.length > 0 ? (
+            <antd.Tag
+              color="orange"
+              style={{ margin: 0, cursor: "pointer" }}
+              title={`${tr("待决策")} · ${tr("点击直达")}`}
+              onClick={() => p.onOpenRoomAttention?.(room)}
+            >
+              {tr("⏳ 待决策 {n}", { n: attnForRoom.length })}
+            </antd.Tag>
+          ) : null;
+        })()}
         {onOpenProjectFiles ? (
           <antd.Button
             size="small"

@@ -1,5 +1,6 @@
 import type * as ReactNS from "react";
 import {
+  type AttentionItem,
   type RoomMessage,
   type TeamRoom,
 } from "../api";
@@ -169,6 +170,11 @@ export interface RoomChatProps {
   /** 正在回填的原消息 event_id（引用条显示
  * 「正在加载原消息…」；非空时停在顶部会自动续拉分页）。 */
   pendingOriginal?: string | null;
+  /** attention 待决策项（父组件已过滤已答/已解决；deployed=false 不传）——
+ * 房间标题栏 pill（L3 入口）数据源，按 room_id 匹配当前房间。 */
+  attentionPending?: AttentionItem[];
+  /** 房间标题栏 attention pill 点击 → 父组件打开全局待决策弹窗并定位该房间第一条。 */
+  onOpenRoomAttention?: (room: TeamRoom) => void;
 }
 function RoomChat(props: RoomChatProps) {
   const c = useRoomChatCore(props);

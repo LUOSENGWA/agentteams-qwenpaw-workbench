@@ -41,6 +41,8 @@ interface TeamOverviewProps {
   workerMxids?: Set<string>;
   /** 房间 room_id → 该项目名列表（房间卡名称下显示）。 */
   roomProjectNames?: Record<string, string[]>;
+  /** 房间 room_id → attention 待决策条数（房间卡琥珀徽章；deployed=false 不传）。 */
+  attentionPendingByRoom?: Record<string, number>;
   /** ：MXID → 角色标签
  * （Leader/Worker/Manager）——「私聊」视图按对象角色分区显示；
  * 无此 prop 或查不到角色时退回扁平列表（人类 DM 归「其他」）。 */
@@ -65,6 +67,7 @@ function TeamOverview(props: TeamOverviewProps) {
     workerSessionByRoom,
     workerMxids,
     roomProjectNames,
+    attentionPendingByRoom,
     workerRoleByMxid,
   } = props;
   const [filter, setFilter] = React.useState<"all" | "group" | "dm">("all");
@@ -225,6 +228,7 @@ function TeamOverview(props: TeamOverviewProps) {
         onToggleFavorite={toggleFavorite}
         workerMxids={workerMxids}
         projectTitles={roomProjectNames?.[room.room_id]}
+        attentionCount={attentionPendingByRoom?.[room.room_id]}
       />
     ) : (
       <DmCard
@@ -235,6 +239,7 @@ function TeamOverview(props: TeamOverviewProps) {
         isFavorite={isFav(room)}
         onToggleFavorite={toggleFavorite}
         sessionState={workerSessionByRoom?.[room.room_id]}
+        attentionCount={attentionPendingByRoom?.[room.room_id]}
       />
     );
   };

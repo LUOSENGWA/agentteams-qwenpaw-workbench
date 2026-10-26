@@ -42,6 +42,7 @@ export function GroupCard({
   onToggleFavorite,
   workerMxids,
   projectTitles,
+  attentionCount,
 }: {
   room: TeamRoom;
   user_id?: string;
@@ -54,6 +55,8 @@ export function GroupCard({
   onToggleFavorite?: (roomId: string) => void;
   /** 全部 Worker MXID——任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
+  /** 本房间 attention 待决策条数（>0 时 meta 行显琥珀徽章；纯信息，不加点击）。 */
+  attentionCount?: number;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -168,6 +171,15 @@ export function GroupCard({
             >
               {room.member_count} 人 {membersOpen ? "▴" : "▾"}
             </antd.Tag>
+            {/* attention 待决策徽章（L2：纯信息提示，卡片点击行为不变）。 */}
+            {attentionCount ? (
+              <antd.Tag
+                color="orange"
+                style={{ margin: 0, fontSize: 11, lineHeight: "18px" }}
+              >
+                {tr("⏳ 待决策 {n}", { n: attentionCount })}
+              </antd.Tag>
+            ) : null}
           </div>
           {/* 最后消息正文预览（72 字 + 媒体标记）。 */}
           {(() => {
@@ -262,6 +274,7 @@ export function DmCard({
   isFavorite = false,
   onToggleFavorite,
   sessionState,
+  attentionCount,
 }: {
   room: TeamRoom;
   user_id?: string;
@@ -271,6 +284,8 @@ export function DmCard({
   onToggleFavorite?: (roomId: string) => void;
   /** 对方 Worker 的 session 状态（仅 Worker 个人房间有值）。 */
   sessionState?: WorkerSessionState;
+  /** 本房间 attention 待决策条数（>0 时名称行显琥珀徽章；纯信息，不加点击）。 */
+  attentionCount?: number;
 }) {
   const other = Object.entries(room.members || {}).find(
     ([mxid]) => mxid !== user_id,
@@ -360,6 +375,21 @@ export function DmCard({
           >
             {isFavorite ? <StarIcon size={14} /> : <StarOutlineIcon size={14} />}
           </span>
+          {/* attention 待决策徽章（L2：纯信息提示，卡片点击行为不变）。 */}
+          {attentionCount ? (
+            <antd.Tag
+              color="orange"
+              style={{
+                margin: 0,
+                marginLeft: 6,
+                fontSize: 11,
+                lineHeight: "18px",
+                verticalAlign: "1px",
+              }}
+            >
+              {tr("⏳ 待决策 {n}", { n: attentionCount })}
+            </antd.Tag>
+          ) : null}
           {/* 房间操作（退出/退出并删除）已收口到「房间详情」Drawer。 */}
         </div>
         <div
