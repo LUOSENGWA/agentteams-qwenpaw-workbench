@@ -560,6 +560,7 @@ from .routers import (  # noqa: E402
     team_files_api,
     teams_api,
     upgrade_api,
+    wechat_qr_api,
 )
 # attention 决策域（包根模块，函数内惰性导入 router——无模块级反向依赖，
 # 位置不受 re-export 壳约束；固定路径 /attention* 在下方 catch-all 前注册）。
@@ -625,6 +626,9 @@ def build_router() -> APIRouter:
     # 千锻注入域（源配置/导入/编译预览/注入/prompt/parse；固定路径，
     # 须在 catch-all 前）。
     router.include_router(millforge_api.build_millforge_router())
+    # 微信 QR 状态直连（iLink 长轮询 ~31s；Controller 频道代理 5s、通用代理
+    # 6s 都会掐断）——固定路径 /wechat-qr/status 必须在 catch-all 之前注册。
+    router.include_router(wechat_qr_api.build_wechat_qr_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     return router

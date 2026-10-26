@@ -3,6 +3,11 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.19（2026-10-26 · 微信扫码直连 iLink，无需重建 Controller）
+
+**修复**
+- **微信扫码无需重建 Controller 即可用**：iLink 的 `get_qrcode_status` 是长轮询（服务端挂约 31 秒），Controller 频道代理固定 5s 会掐断。本版让**插件后端直连 iLink** 拉状态（45 秒超时），拿到 `bot_token` 后再走原有频道 `PUT` 落盘（快写，5s 足够）——即使 Controller 未升级，插件里的微信扫码也能完成授权。Controller 侧的 45s 长轮询修复（commit `290195f8`）仍建议下次发版带上，用于统一语义与其它长轮询场景。
+
 ## 0.5.0-beta.16.18（2026-10-26 · 频道扫码长轮询 + 未分组 Worker 改模型）
 
 **修复**

@@ -3,6 +3,11 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.19 (2026-10-26 - WeChat QR via direct iLink, no Controller rebuild)
+
+**Fixed**
+- **WeChat QR login works without rebuilding the Controller**: iLink's `get_qrcode_status` is a long-poll the server holds for ~31s, and the Controller's channel proxy (5s) aborts it. The plugin backend now polls iLink **directly** (45s timeout) and then writes the resulting `bot_token` through the normal channel `PUT` (a fast write; 5s is plenty). So the plugin's WeChat QR flow completes even on an un-upgraded Controller. The Controller's 45s long-poll fix (commit `290195f8`) is still worth shipping with the next release for consistent semantics and other long-poll routes.
+
 ## 0.5.0-beta.16.18 (2026-10-26 - QR long-poll + standalone worker models)
 
 **Fixed**

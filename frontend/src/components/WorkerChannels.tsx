@@ -44,6 +44,7 @@ import {
   conflictCheckWorkerChannel,
   fetchWorkerChannelQrcode,
   fetchWorkerChannelQrcodeStatus,
+  fetchWechatQrStatusDirect,
   httpErrorStatus,
 } from "../api";
 import { WbTooltip } from "./WbTooltip";
@@ -340,12 +341,20 @@ export default function WorkerChannels(props: {
       stopQrPoll();
       const tick = async () => {
         try {
-          const r = await fetchWorkerChannelQrcodeStatus(sel, drawerCh, token);
+          // 微信通道走插件后端直连 iLink（绕过 Controller 频道代理 5s /
+          // 通用代理 6s 的长轮询超时）；其它通道仍走 Controller 代理。
+          const r =
+            drawerCh === "wechat"
+              ? await fetchWechatQrStatusDirect(token)
+              : await fetchWorkerChannelQrcodeStatus(sel, drawerCh, token);
           if (r.credentials && Object.keys(r.credentials).length > 0) {
             stopQrPoll();
             setRows((prev) => {
               const next = prev.map((p) => ({ ...p }));
               for (const [k, v] of Object.entries(r.credentials || {})) {
+                // 与 Console 对齐：微信只回填 bot_token（base_url 等框架内部
+                // 字段不在抽屉展示，也不回写）。
+                if (isHiddenChannelKey(drawerCh, k)) continue;
                 const i = next.findIndex((p) => p.key === k && !p.removed);
                 if (i >= 0) next[i] = { ...next[i], value: v };
                 else next.push({ key: k, value: v });
