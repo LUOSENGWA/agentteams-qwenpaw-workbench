@@ -1021,13 +1021,16 @@ def test_inject_core_skill_zip_and_assign(client):
     assert up["form"] == {"scope": "team", "team": "skill-team"}
     zf = zipfile.ZipFile(BytesIO(data))
     names = zf.namelist()
-    assert "SKILL.md" in names
-    assert "references/protocol/nmh.md" in names
-    assert "scripts/x.sh" in names
-    skill_md = zf.read("SKILL.md").decode("utf-8")
+    # 控制器要求单个顶层技能目录（目录名 = 技能名）；根级条目会被
+    # "the zip must contain a single top-level skill directory" 400 拒。
+    assert "millforge-core/SKILL.md" in names
+    assert "millforge-core/references/protocol/nmh.md" in names
+    assert "millforge-core/scripts/x.sh" in names
+    assert all(n.split("/")[0] == "millforge-core" for n in names), names
+    skill_md = zf.read("millforge-core/SKILL.md").decode("utf-8")
     assert skill_md.startswith("---\nname: millforge-core\n")
     assert "description:" in skill_md
-    assert zf.read("references/protocol/nmh.md") == \
+    assert zf.read("millforge-core/references/protocol/nmh.md") == \
         "# NMH 协议\n".encode("utf-8")
     # worker skills 追加
     assert ctl.workers["solo-bot"]["skills"] == ["millforge-core"]

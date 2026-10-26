@@ -617,8 +617,13 @@ def _build_core_skill_zip(pack_dir: Path) -> Optional[bytes]:
         f"{body}"
     )
     buf = BytesIO()
+    # The controller's skill upload requires exactly one top-level skill
+    # directory (its name becomes the skill name); root-level entries are
+    # rejected with "the zip must contain a single top-level skill
+    # directory". Wrap every entry under ``millforge-core/``.
+    root = "millforge-core"
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("SKILL.md", skill_md)
+        z.writestr(f"{root}/SKILL.md", skill_md)
         proto = core / "protocol"
         if proto.is_dir():
             for f in sorted(proto.rglob("*")):
@@ -627,7 +632,9 @@ def _build_core_skill_zip(pack_dir: Path) -> Optional[bytes]:
                 rel = f.relative_to(core)
                 if "__pycache__" in rel.parts:
                     continue
-                z.writestr(f"references/{rel.as_posix()}", f.read_bytes())
+                z.writestr(
+                    f"{root}/references/{rel.as_posix()}", f.read_bytes()
+                )
         scripts = core / "scripts"
         if scripts.is_dir():
             for f in sorted(scripts.rglob("*")):
@@ -636,7 +643,7 @@ def _build_core_skill_zip(pack_dir: Path) -> Optional[bytes]:
                 rel = f.relative_to(scripts)
                 if "__pycache__" in rel.parts:
                     continue
-                z.writestr(f"scripts/{rel.as_posix()}", f.read_bytes())
+                z.writestr(f"{root}/scripts/{rel.as_posix()}", f.read_bytes())
     return buf.getvalue()
 
 

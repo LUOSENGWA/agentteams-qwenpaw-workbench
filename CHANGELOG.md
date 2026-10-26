@@ -7,7 +7,8 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
 **修复**
 - **千锻注入全部失败（HTTP 301 / Controller 不可达）**：`_ctl_call` 的契约是只接收 path（base 由内部按 ordered 地址拼接），但注入链路的历史调用点传的是完整 URL（`f"{base}/api/v1/..."`），入口又拼一次 base → 双 base URL（`https://h:7113https://h:7113/api/v1/...`）→ 网关回 301 或挂到超时，SOUL 更新 / 新建 Worker / core 技能全部失败。现在入口统一归一化为 path+query，兼容完整 URL 与相对路径两种形态。
-- 补回归测试 `test_ctl_call_normalizes_full_url_and_path_only`：无修复时断言复现双 base，有修复时两形态归一为同一单 base URL。
+- **core 技能上传 400（`the zip must contain a single top-level skill directory`）**：core 技能 zip 把 `SKILL.md` / `references/` / `scripts/` 平铺在包根，而控制器要求「单个顶层技能目录」（目录名即技能名，根级条目直接 400）。现在全部条目包在 `millforge-core/` 下。
+- 补回归测试 `test_ctl_call_normalizes_full_url_and_path_only`：无修复时断言复现双 base，有修复时两形态归一为同一单 base URL；I3 core-skill 测试补顶层目录断言。
 
 ## 0.5.0-beta.16.22（2026-10-26 · Provider 预填充）
 
