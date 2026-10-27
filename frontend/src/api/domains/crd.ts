@@ -1,7 +1,7 @@
 // CRD/L1-L2 管理面（controller /api/v1/workers|teams|humans|managers）：CRD CRUD + admin 聚合取数。
 
 import { controllerRequest, fetchControllerJson } from "../shared";
-import { cachedRequest } from "../../requestCache";
+import { cachedFetch } from "../../requestCache";
 
 // ── L1 全量视图（Controller API，需管理员 token）────────────────────
 
@@ -238,11 +238,12 @@ export const restartManager = (name: string) =>
 export const deleteTeam = (name: string) =>
   controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
 
-/** cachedRequest 包裹（admin/data，30s，tags
+/** cachedFetch 包裹（admin/data，TTL 30s + SWR 30s，tags
  * ["admin"]）——4 路并发取数，WorkerManage 30s 轮询与 CrdManage 失效后
- * 重取合并为一次回源。 */
+ * 重取合并为一次回源。SWR：30-60s 段先回旧值（面板零等待）+ 后台再验证；
+ * >60s 或标签失效（写操作后 invalidateTags(["admin"])）→ 等回源。 */
 export async function fetchAdminData(): Promise<AdminData> {
-  return cachedRequest(
+  return cachedFetch(
     "admin/data",
     30000,
     async () => {
@@ -263,7 +264,7 @@ export async function fetchAdminData(): Promise<AdminData> {
         managers: managers as ManagerInfo[],
       };
     },
-    { tags: ["admin"] },
+    { tags: ["admin"], swrMs: 30000 },
   );
 }
 
@@ -292,10 +293,10 @@ function fetchListSafe(url: string): Promise<unknown[]> {
  * 与 fetchAdminData 的区别：humans/managers 是 L1 管理面（L2 无权限或无意义）
  * → 失败置空不炸；workers/teams 是 L2 技能中心正源（Controller 按
  * accessibleTeams 自动 scope——standalone worker 隐藏，防探测）。 */
-/** cachedRequest 包裹（admin/l2，30s，tags
+/** cachedFetch 包裹（admin/l2，TTL 30s + SWR 30s，tags
  * ["admin"]）——L2 身份取数，与 admin/data 同标签（写失效一起清）。 */
 export async function fetchL2AdminData(): Promise<AdminData> {
-  return cachedRequest(
+  return cachedFetch(
     "admin/l2",
     30000,
     async () => {
@@ -312,6 +313,6 @@ export async function fetchL2AdminData(): Promise<AdminData> {
         managers: managers as ManagerInfo[],
       };
     },
-    { tags: ["admin"] },
+    { tags: ["admin"], swrMs: 30000 },
   );
 }

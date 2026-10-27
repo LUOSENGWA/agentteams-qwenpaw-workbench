@@ -28,7 +28,7 @@ import {
   CLI_LABEL,
   LatestBadge,
   POLL_MAX_MS,
-  POLL_MS,
+  taskPollDelayMs,
   isTimeoutError,
   modelNameOf,
   modelOfPatch,
@@ -83,6 +83,11 @@ function useCodingCliPanel({
   const pollRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = React.useRef(false);
   const settingsReqRef = React.useRef(0);
+  // R4（16.23）：卡片展开态的 ref 镜像——任务轮询选档（快档 1.5s /
+  // 慢档 30s）在 setTimeout 回调里读，不能用会过期的闭包 state。
+  // sheet 模式 open 初值即 true，同一镜像覆盖两种形态。
+  const openRef = React.useRef(open);
+  openRef.current = open;
 
   const stopPoll = React.useCallback(() => {
     if (pollRef.current) {
@@ -298,6 +303,10 @@ function useCodingCliPanel({
       const started = Date.now();
       stopPoll();
       const schedule = () => {
+        // R4（16.23）：选档——面板可见（卡片展开/sheet）+ 页面可见走
+        // 快档 1.5s；任一不可见降 30s 兜底档（每轮实时读，收/展卡片与
+        // 切 tab 都即时生效；浏览器对后台 tab 定时器本身也有节流）。
+        const delay = taskPollDelayMs(openRef.current, !document.hidden);
         pollRef.current = setTimeout(() => {
           void (async () => {
             if (cancelledRef.current) {
@@ -317,7 +326,7 @@ function useCodingCliPanel({
             }
             schedule();
           })();
-        }, POLL_MS);
+        }, delay);
       };
       schedule();
     },
