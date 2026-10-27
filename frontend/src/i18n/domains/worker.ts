@@ -683,8 +683,8 @@ export const workerDict: Record<string, { en: string }> = {
   "复位": { en: "Reset" },
   "拖动调整项目列表宽度": { en: "Drag to resize the project list" },
   /*  */
-  "正在加载…（滚到顶部自动续拉）": { en: "Loading… (auto-continues when you scroll to the top)" },
-  "开始按需加载，滚到顶部会自动继续拉取": { en: "Starts on-demand loading; auto-continues when you scroll to the top" },
+  "正在加载原消息…": { en: "Loading original message…" },
+  "开始按需加载，自动翻页定位到原消息": { en: "Starts on-demand loading; pages to the original message and jumps to it" },
   "技能": { en: "Skills" },
   "MCP": { en: "MCP" },
   "{n} Worker": { en: "{n} worker(s)" },

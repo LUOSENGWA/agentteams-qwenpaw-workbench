@@ -94,6 +94,9 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+  // R2 显式跳转：渲染窗口下界——「加载原消息」命中深层目标时抬升
+  // （旁路释放后仍罩住目标行）；单向棘轮在 RoomChatCore，切房归零。
+  const [minWindowTops, setMinWindowTops] = React.useState(0);
   // // 换房间时消息状态必须整体重置。此前 messagesRef/messagesEnd 残留**上
   // 一个房间**的数据 → refreshMessages 的 mergeMessagePages(旧房全量,
   // 新房最新页) 把两房消息混进同一窗口（「乱了」），setCachedMessages
@@ -112,6 +115,7 @@ export default function WorkbenchPage() {
     setMessagesEnd(cached ? (cached.end || "") : "");
     setHasMore(Boolean(cached?.end));
     setRoomError("");
+    setMinWindowTops(0); // R2：渲染窗口下界不跨房保留
     messagesRef.current = cached ? cached.messages : [];
   }, [activeRoom?.room_id]);
 
@@ -167,20 +171,17 @@ export default function WorkbenchPage() {
  // （13.12 「很多信息『已滚出历史』但 Element 里
   // 信息都在，看看 Element 怎么做的」）：引用条原消息不在已加载窗口时 →
   // 点「加载原消息」→ backfill 到原消息进窗口（不标死『滚出历史』）。
- // （B2 Element 式滚动化，13.14 「加载原消息能不能
-  // 滚动到哪里就自动加载，参考 Element」）：旧版 = 点一下后台 burst 连拉
-  // （500 页护栏内一口气拉完，用户看不见进度、API 突发）。新版 =
-  // 滚动驱动的分页节奏：
-  // ① 点「加载原消息」→ set pending + kickstart 一页（用户未必在顶部，
-  // 40px 触发不可依赖）；
-  // ② 之后 RoomChat 侧滚动到哪加载到哪：40px 触顶自动触发（既有）+
-  // 停在顶部时每次前插后自动续一页（新增 effect）——页面按用户
-  // 滚动节奏逐页前进，锚保持视口稳定（13.6 锚机制）；
-  // ③ 终止条件：原消息进窗口（自动定位 + 高亮，jumpToEventId 复用
-  // 搜索跳转链路）/ 触底（!hasMore → banner 落 /context 兜底）/
-  // 用户滚离顶部（停止续拉）/ 切房（pending 作废 resolve false）。
-  // hasMoreRef 退役（只写不读的死镜像——回填效果
-  // 直接读 hasMore state）。
+ // （R2 显式跳转，替换 13.14 B2 滚动接力）：旧版 = kickstart 一页
+  // + 滚到顶/前插后自动续拉（接力节奏），游标/在飞闸/空页走查边界态
+  // 导致「有时加载不出来」。新版 = 显式分页跳转：
+  // ① 点「加载原消息」→ loadOriginal 显式循环串行翻页直到目标进窗口
+  // （限页上限 ORIGINAL_PAGE_CAP，见 WorkbenchPageMessages/originalJump）；
+  // ② 命中 → 抬渲染窗口下界（minWindowTops，旁路释放后深层目标不丢）+
+  // 复用 jumpToEventId 定位 + 高亮（搜索跳转链路）；pendingOriginal
+  // 旁路保持到定位完成（onJumpHandled → finishPendingOriginalJump）；
+  // ③ 终止：目标进窗口（found）/ 到页上限或最早（exhausted → banner 落
+  // /context 定位区兜底）/ 换目标或切房（cancelled）/ 30s 停滞看门狗
+  // （cancelled，可再点）。
   const [pendingOriginalId, setPendingOriginalId] =
     React.useState<string | null>(null);
 
@@ -200,6 +201,7 @@ export default function WorkbenchPage() {
     refreshMessages,
     loadMore,
     loadOriginal,
+    finishPendingOriginalJump,
     pollMessages,
     openRoom,
     handleGlobalSearchOpenRoom,
@@ -231,6 +233,7 @@ export default function WorkbenchPage() {
     setMarkingAllRead,
     pendingOriginalId,
     setPendingOriginalId,
+    setMinWindowTops,
     setJumpToEventId,
   });
 
@@ -476,6 +479,13 @@ export default function WorkbenchPage() {
     setChatListHiddenPersist,
   });
 
+  // R2 显式跳转：跳转完成（定位高亮 / /context 兜底）→ 先释放 pending
+  // 原消息（渲染窗口旁路关闭；下界已抬升，目标行不丢），再清跳转事件。
+  const handleJumpHandledWrapped = React.useCallback(() => {
+    finishPendingOriginalJump();
+    handleJumpHandled();
+  }, [finishPendingOriginalJump, handleJumpHandled]);
+
   // 点 Tab 即刷新（用户要求，所有 top tab）：rc-tabs 内容挂载后保活不卸载，
   // 切回不会自动重取——这里按 tab 显式触发对应数据刷新。
   // 首次运行（prev===""，=挂载/恢复的初始 tab，
@@ -552,6 +562,7 @@ export default function WorkbenchPage() {
       hasMore={hasMore}
       onLoadOriginal={loadOriginal}
       pendingOriginal={pendingOriginalId}
+      minWindowTops={minWindowTops}
       user_id={config?.matrix?.user_id}
       errorNote={
         roomError === "not_found"
@@ -580,7 +591,7 @@ export default function WorkbenchPage() {
       loadingMore={loadingMore}
       onPoll={pollMessages}
       jumpToEventId={jumpToEventId}
-      onJumpHandled={handleJumpHandled}
+      onJumpHandled={handleJumpHandledWrapped}
       memberRoles={memberRoles}
       memberWorkerNames={memberWorkerNames}
       workerBadge={
