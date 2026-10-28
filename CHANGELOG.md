@@ -16,14 +16,6 @@ English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 **修复**
 - **Provider 没有像 model 一样预填现值**：旧 Controller 的 `WorkerResponse` 不返回 `modelProvider`，导致弹窗里 provider 恒空。现在改为「Controller 的 `modelProvider` 优先；缺失时用所选 alias 的 `binding.providerName` 推导」——与 model 一样预填当前 provider（Controller 重建后仍以真实值为准）。
 
-## 0.5.0-beta.16.21（2026-10-26 · 模型热生效 + Worker/Manager 重启）
-
-**新增**
-- **Worker / Manager 重启按钮**：Worker 详情面板与 Manager 表新增「重启」——不用再 SSH。Controller 侧新增 `POST /api/v1/workers/{name}/restart` 与 `POST /api/v1/managers/{name}/restart`（stop + start，容器重建后配置/模型重新加载）。
-
-**修复**
-- **改模型不能热生效**：`model` 被排除在容器重建 hash 外（config-only），但主模型只写运行时配置文件、没有触发 QwenPaw 的进程内 reload，所以看起来必须重启。现在主模型与 subagent 模型一样走 `PATCH /api/agents/default/model-settings`（`active_model`），改完立即触发 agent reload，无需重启。
-
 ## 0.5.0-beta.16.20（2026-10-26 · 模型编辑带 Provider（多 Higress Provider））
 
 **修复**
@@ -1928,7 +1920,6 @@ tsc 0 / poller 冒烟 8 断言 / i18n 1395 键 0 缺 0 重 / pytest 211（+6 新
 
 ---
 
-
 ## 0.5.0-beta.13.5（2026-09-22）
 
 **会话窗布局两修 + 产物「查看」行为修 + 运行配置面板接口全量对账（#1231 端点族 7/7 接通）**
@@ -2297,7 +2288,6 @@ tsc 0 · check-antd 交叉通过 · vite build 绿 · pytest 46/46 · 包内三�
 - **通知中心**：邀请 / 审批 / 系统事件聚合，toast + 桌面通知
 - **自检 L0-L4**：宿主 / 凭据 / 网络 / 服务 / 行为五级分层诊断
 - 构建硬守卫：裸 `import` 检查 + 敏感信息扫描入发版流程
-
 
 ---
 

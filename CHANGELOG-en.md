@@ -16,14 +16,6 @@ Chinese version: [CHANGELOG.md](CHANGELOG.md)
 **Fixed**
 - **Provider was not pre-filled like the model**: the older Controller's `WorkerResponse` does not return `modelProvider`, so the field appeared empty. The dialog now uses the Controller's `modelProvider` when available and otherwise derives it from the selected alias's `binding.providerName` — the current provider is pre-filled just like the model (the rebuilt Controller's real value still wins).
 
-## 0.5.0-beta.16.21 (2026-10-26 - model hot-reload + worker/manager restart)
-
-**Added**
-- **Worker / Manager restart buttons**: the worker detail panel and the Manager table now have a Restart action — no more SSH. The Controller exposes `POST /api/v1/workers/{name}/restart` and `POST /api/v1/managers/{name}/restart` (stop + start; the container is recreated and reads its config/model fresh).
-
-**Fixed**
-- **Model changes did not take effect hot**: `model` is excluded from the container-recreation hash (config-only), but the primary model was only written to the runtime config and never triggered QwenPaw's in-process reload, so it looked like a restart was required. The reconcile now also PATCHes `active_model` through the worker's `model-settings` endpoint (same path as the subagent model), which mutates agent.json and schedules an in-process agent reload.
-
 ## 0.5.0-beta.16.20 (2026-10-26 - model editor carries the provider)
 
 **Fixed**
@@ -1554,7 +1546,6 @@ This batch = the plugin side consuming AgentTeams 1.2.5's three new capabilities
 
 ---
 
-
 ## 0.5.0-beta.13.5 (2026-09-22)
 
 **Session window layout fixes (2) + artifact "view" behavior fix + runtime config panel endpoint reconciliation (#1231 endpoint family, 7/7 wired)**
@@ -1923,7 +1914,6 @@ In-package version triple-check consistent (plugin.json / backend / README); tsc
 - **Notification center**: aggregated invites / approvals / system events, toast + desktop notifications
 - **Self-check L0-L4**: five-tier layered diagnostics (host / credentials / network / services / behavior)
 - Build hard guards: bare-`import` check + sensitive-data scan in the release pipeline
-
 
 ---
 
