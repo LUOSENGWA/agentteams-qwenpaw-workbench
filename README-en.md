@@ -16,7 +16,7 @@ A team workbench for AgentTeams (HiClaw) clusters through QwenPaw: manage teams,
 | Home | Teams / tasks / workers / artifacts / recent activity / cluster load overview + pending-approval cards (approve/deny via the host's native approval chain) + quick actions + host-skills entry |
 | Chat | Team room chat (direct Matrix), thread panel, member detail cards, room favorites / mute / leave / delete (Element-style), "All" single timeline (group/DM interleaved), message search, `@mentions`, in-chat workflow card live refresh (controller source, 15 s, v0.5.0-beta.12.9) |
 | Notifications | Notification center (aggregated inbox of `@mentions` / task progress; click a card to jump to the room and locate the message) |
-| Workflows | Four views (list / card / board / layered DAG topology); cards & topology are a project list (left, time/status/name sort) + detail (right), the DAG is top-down layered with ready-state highlight + external-dependency note; project task graph (pause / resume / replan) + current view & selected project remembered across reloads (cards/topology master-detail rework in v0.5.0-beta.12.7) |
+| Workflows | Board / topology two views (list & card views retired, v0.5.0-beta.16.16); the topology is a left project list (time/status/name sort) + right detail with independent column scroll (v0.5.0-beta.16.16), a top-down layered DAG (ready-state highlight, external-dependency note) + project task graph (pause / resume / replan); board column mapping shared with the dashboard; current view & selected project remembered across reloads; 15 s auto-refresh while the tab is visible (stops when switched away) |
 | Artifacts | Project artifact file tree + online preview + download |
 | Team Management | Worker hierarchy tree, approval mode (4 tool-execution security levels: strict / smart / auto / off), Team / Worker / Human CRD management + team access matrix (L1), create workers while creating teams; "Channels" sub-tab (worker channel config / enable-disable / health check / restart / QR-code auth / conflict pre-check, pending the upstream channel endpoint); "Skill Center" sections (skill catalog, pending the upstream skill endpoint / Worker × skill assignment matrix / MCP servers matrix) |
 | Knowledge Base | Remote worker KB and local memory: browse, preview, download, 2D/3D knowledge graph (click a node to open the file preview directly); 2D graph zoom/pan + cluster focus + cluster separation (v0.5.0-beta.12.9) |
@@ -66,6 +66,43 @@ qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench
 - CLI: `--force` overwrites in place (see above)
 
 Configuration (Controller address/credentials) is kept in the plugin config and preferences such as favorites in browser localStorage — both survive the upgrade.
+
+## Build from Source
+
+This plugin does not guarantee a Release for every version; if you want the latest development code or to build your own derivative, you can build the installable ZIP from the public source.
+
+**Prerequisites**:
+
+- git
+- Node.js ≥ 20 (LTS; build dependencies such as vite are devDependencies — do not omit them when installing)
+- access to the npm registry (installing dependencies needs network)
+
+**Quick (recommended)**:
+
+```bash
+git clone https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench.git
+cd agentteams-qwenpaw-workbench
+bash tools/build-from-source.sh
+```
+
+The script runs it all: `npm ci` (auto-fallback to `npm install` on failure) → `npm run build` (vite emits `dist/index.js` at the repo root) → `tools/pack-plugin-zip.sh` packs the install ZIP; it prints the ZIP path, byte size, sha256 and version at the end.
+Artifact = `agentteams-qwenpaw-workbench-v<version>.zip` in the repo root (`<version>` is the `version` field of `plugin.json`).
+
+**Manual steps (equivalent to the script, for troubleshooting / customization)**:
+
+```bash
+cd frontend && npm ci && npm run build
+cd .. && bash tools/pack-plugin-zip.sh
+```
+
+(If `npm ci` fails with EINTEGRITY: a known issue where some lockfile integrity entries disagree with the registry — the script repairs the matching lock entry using the `wanted <bad> but got <real>` pair from the error and retries `npm ci`, restoring the lock when done. Manually: replace the wanted value with the got value from the error in `frontend/package-lock.json` and re-run `npm ci`.)
+
+**Two repositories** (both are buildable):
+
+- fork (contains the latest development): `git clone https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench.git`
+- official: `git clone https://github.com/agentteams-group/agentteams-qwenpaw-workbench.git`
+
+**Install**: the built ZIP is equivalent to a release ZIP — install per the Installation section above (console / CLI / Release URL, unchanged).
 
 ## Configuration
 

@@ -365,7 +365,8 @@ def build_matrix_router() -> APIRouter:
     async def open_dm(req: DmRequest) -> Dict[str, Any]:
         """Open (create-or-reuse) a DM room with a team member.
 
- Body: {user: target MXID or bare localpart}.
+ Body: {user: target MXID or bare localpart, name?, topic?}.
+ name/topic 透传 create_dm——建房即命名（无名空房间根因修复）。
  """
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
@@ -390,7 +391,12 @@ def build_matrix_router() -> APIRouter:
         try:
             # to_thread（同步 httpx，最长 20s）。
             result = await asyncio.to_thread(
-                matrix_client.create_dm, homeserver, token, target
+                matrix_client.create_dm,
+                homeserver,
+                token,
+                target,
+                req.name or "",
+                req.topic or "",
             )
         except matrix_client.MatrixError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -508,18 +514,62 @@ def build_matrix_router() -> APIRouter:
             from_token = end
         return {"ok": True, "messages": found}
 
+    @router.get("/matrix/rooms/{room_id}/info")
+    async def room_info_endpoint(room_id: str) -> Dict[str, Any]:
+        """房间详情信息（Element 同款房间详情面板数据源）。
+
+ 聚合 matrix_client.room_info（7 个 state 事件 + joined_members）：
+ name/topic/canonical_alias/creator/join_rule/encrypted/member_count +
+ members（power level → Element 同款角色映射 owner/moderator/member）。
+ 错误映射：401 → 401（未登录/token 失效）；403/404 → 502（附 Matrix
+ 返回摘要）。
+ """
+        cfg = config_mod.load_config()
+        matrix_cfg = cfg.get("matrix") or {}
+        token = (matrix_cfg.get("access_token") or "").strip()
+        homeserver = _pick_address(cfg, "matrix")
+        if not homeserver:
+            raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
+        if not token:
+            raise HTTPException(status_code=401, detail="未登录，请先在配置页登录")
+        try:
+            # to_thread（同步 httpx，8 个上游拨号点）。
+            result = await asyncio.to_thread(
+                matrix_client.room_info, homeserver, token, room_id
+            )
+        except matrix_client.MatrixError as exc:
+            if "-> 401:" in str(exc):
+                raise HTTPException(
+                    status_code=401, detail="Matrix token 无效或已过期，请重新登录"
+                ) from exc
+            raise HTTPException(
+                status_code=502, detail=f"房间信息拉取失败：{exc}"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=502,
+                detail=f"{selfcheck._classify_error(exc)}{_pinned_note(cfg)}",
+            ) from exc
+        return {"ok": True, **result}
+
     @router.get("/events")
-    async def events_stream() -> Any:
+    async def events_stream(request: Request) -> Any:
         """SSE 事件流（IM 式触发）：sync watcher 检测到 @提到我 时推送。
 
  前端 EventSource 订阅（无 Authorization header——宿主 auth 启用
  时需 allow_no_auth_hosts 或回退轮询）。心跳 comment 每 15s 保活。
+ ``?debug=1``（R1-A3）：连接期间打开 sync_watcher 诊断日志（逐广播
+ type/room/sender + room_message 跳过原因），断开自动恢复（计数制，
+ 多 debug 连接并存安全）。
  """
         import asyncio as _asyncio
 
         from .. import sync_watcher
 
         queue = sync_watcher.subscribe()
+        is_debug = request.query_params.get("debug") in ("1", "true", "yes")
+        if is_debug:
+            sync_watcher.debug_acquire()
 
         async def gen():
             try:
@@ -537,6 +587,8 @@ def build_matrix_router() -> APIRouter:
                         yield ": keepalive\n\n"
             finally:
                 sync_watcher.unsubscribe(queue)
+                if is_debug:
+                    sync_watcher.debug_release()
 
         return StreamingResponse(
             gen(),

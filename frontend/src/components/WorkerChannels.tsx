@@ -44,6 +44,7 @@ import {
   conflictCheckWorkerChannel,
   fetchWorkerChannelQrcode,
   fetchWorkerChannelQrcodeStatus,
+  fetchWechatQrStatusDirect,
   httpErrorStatus,
 } from "../api";
 import { WbTooltip } from "./WbTooltip";
@@ -120,10 +121,43 @@ interface FieldRow {
   removed?: boolean;
 }
 
+/**
+ * Per-channel keys hidden from the generic editor so the field set matches
+ * the QwenPaw Console drawer (the console hand-writes one form per built-in
+ * channel; this plugin renders config/schema keys generically and would
+ * otherwise surface framework internals the console never shows).
+ *
+ * wechat: console exposes bot_token / bot_token_file / media_dir /
+ * message_merge_* / access_control_dm|group / require_mention /
+ * no_text_debounce. It does NOT expose base_url or the legacy
+ * dm_policy / group_policy / allow_from / deny_message /
+ * dm_disabled / group_disabled.
+ *
+ * Hiding also keeps the full-config PUT from writing these keys back
+ * (buildConfig only serializes live rows).
+ */
+const CHANNEL_HIDDEN_KEYS: Record<string, ReadonlySet<string>> = {
+  wechat: new Set([
+    "base_url",
+    "dm_policy",
+    "group_policy",
+    "allow_from",
+    "deny_message",
+    "dm_disabled",
+    "group_disabled",
+  ]),
+};
+
+function isHiddenChannelKey(channel: string | undefined, key: string): boolean {
+  if (!channel) return false;
+  return CHANNEL_HIDDEN_KEYS[channel]?.has(key) === true;
+}
+
 function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
   const rows: FieldRow[] = [];
   for (const [k, v] of Object.entries(cfg)) {
     if (k === "enabled" || k === "bot_prefix" || k === "isBuiltin") continue;
+    if (isHiddenChannelKey(channel, k)) continue;
     rows.push({ key: k, value: v });
   }
   // agentteams_matrix 的
@@ -131,6 +165,21 @@ function configToRows(cfg: WorkerChannelConfig, channel?: string): FieldRow[] {
  // （语义后才进 payload）→ 缺省行注入 false（=按发送者隔离，
   // 上游 AGENTTEAMS_MATRIX_SHARE_SESSION 默认 false 同款）。旧 runtime
   // 忽略未知键（无害）；升级后该值即生效。
+  // agentteams_matrix 展示三开关（思考 / 工具调用 / 工具结果）：插件侧
+  // channel.py 里三个键各自独立生效（show_thinking / show_tool_calls /
+  // show_tool_results）。这里缺省注入 false（=不把模型思考与工具原始输出
+  // 丢进房间，用户可逐个单独打开）。
+  if (channel === "agentteams_matrix") {
+    for (const k of [
+      "show_thinking",
+      "show_tool_calls",
+      "show_tool_results",
+    ]) {
+      if (!Object.prototype.hasOwnProperty.call(cfg, k)) {
+        rows.push({ key: k, value: false });
+      }
+    }
+  }
   if (
     channel === "agentteams_matrix" &&
     !Object.prototype.hasOwnProperty.call(cfg, "share_session_in_group")
@@ -147,11 +196,26 @@ const FIELD_LABELS: Record<string, { zh: string; en: string }> = {
     zh: "群会话共享（关=按发送者隔离，默认）",
     en: "Share one group session (off = per-sender isolation, default)",
   },
+  show_thinking: { zh: "显示思考过程", en: "Show thinking" },
+  show_tool_calls: { zh: "显示工具调用", en: "Show tool calls" },
+  show_tool_results: { zh: "显示工具结果", en: "Show tool results" },
 };
 const FIELD_TIPS: Record<string, { zh: string; en: string }> = {
   share_session_in_group: {
  zh: "群聊会话语义（#7001，AgentTeams 默认行为=隔离）：开=群内所有成员共享一个会话（旧 room-wide 行为，多人上下文互相污染）；关=每个发送者独立会话（默认，防共享上下文爆炸）。保存即时热生效；worker 重新 reconcile 时 Controller 可能按部署默认（AGENTTEAMS_MATRIX_SHARE_SESSION 环境变量）再归一。",
  en: "Group session semantics (#7001; AgentTeams decision: default isolated): ON = all group members share one session (legacy room-wide; contexts cross-pollinate); OFF = per-sender isolated sessions (default). Hot-applied on save; the Controller may re-normalize to the deployment default (AGENTTEAMS_MATRIX_SHARE_SESSION) on the next worker reconcile.",
+  },
+  show_thinking: {
+    zh: "开=把模型思考过程发到房间（可能很长，会以附件形式出现）；关=不显示（默认）。三个开关彼此独立：思考 / 工具调用 / 工具结果可分别控制。",
+    en: "ON = send the model's thinking to the room (often long; may arrive as an attachment); OFF = hidden (default). The three switches are independent: thinking / tool calls / tool results.",
+  },
+  show_tool_calls: {
+    zh: "开=把工具调用信息发到房间；关=不显示（默认）。独立于思考与工具结果。",
+    en: "ON = send tool-call info to the room; OFF = hidden (default). Independent of thinking and tool results.",
+  },
+  show_tool_results: {
+    zh: "开=把工具执行结果发到房间；关=不显示（默认）。独立于思考与工具调用。",
+    en: "ON = send tool results to the room; OFF = hidden (default). Independent of thinking and tool calls.",
   },
 };
 
@@ -187,6 +251,11 @@ export default function WorkerChannels(props: {
   const [qrImg, setQrImg] = React.useState("");
   const [qrBusy, setQrBusy] = React.useState(false);
   const qrPollRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 连续失败计数：Controller 的频道代理是 5s 超时，而 iLink 的
+  // get_qrcode_status 是长轮询（服务端挂 ~30s）。若 Controller 未升级到
+  // 长轮询超时，每次轮询都会被掐断——必须让用户看见，而不是"扫了没反应"。
+  const qrFailCountRef = React.useRef(0);
+  const qrWarnedRef = React.useRef(false);
 
   React.useEffect(() => () => { if (qrPollRef.current) clearTimeout(qrPollRef.current); }, []);
 
@@ -203,6 +272,8 @@ export default function WorkerChannels(props: {
       clearTimeout(qrPollRef.current);
       qrPollRef.current = null;
     }
+    qrFailCountRef.current = 0;
+    qrWarnedRef.current = false;
   }, []);
 
   const load = React.useCallback(async (silent = false) => {
@@ -300,12 +371,20 @@ export default function WorkerChannels(props: {
       stopQrPoll();
       const tick = async () => {
         try {
-          const r = await fetchWorkerChannelQrcodeStatus(sel, drawerCh, token);
+          // 微信通道走插件后端直连 iLink（绕过 Controller 频道代理 5s /
+          // 通用代理 6s 的长轮询超时）；其它通道仍走 Controller 代理。
+          const r =
+            drawerCh === "wechat"
+              ? await fetchWechatQrStatusDirect(token)
+              : await fetchWorkerChannelQrcodeStatus(sel, drawerCh, token);
           if (r.credentials && Object.keys(r.credentials).length > 0) {
             stopQrPoll();
             setRows((prev) => {
               const next = prev.map((p) => ({ ...p }));
               for (const [k, v] of Object.entries(r.credentials || {})) {
+                // 与 Console 对齐：微信只回填 bot_token（base_url 等框架内部
+                // 字段不在抽屉展示，也不回写）。
+                if (isHiddenChannelKey(drawerCh, k)) continue;
                 const i = next.findIndex((p) => p.key === k && !p.removed);
                 if (i >= 0) next[i] = { ...next[i], value: v };
                 else next.push({ key: k, value: v });
@@ -322,7 +401,17 @@ export default function WorkerChannels(props: {
             return;
           }
         } catch {
-          /* 单次失败继续轮询 */
+          // 单次失败继续轮询；连续失败必须可见（否则表现为"扫了没反应"）。
+          qrFailCountRef.current += 1;
+          if (qrFailCountRef.current >= 3 && !qrWarnedRef.current) {
+            qrWarnedRef.current = true;
+            antd.message.warning(
+              tr(
+                "二维码状态查询连续失败 {n} 次：Controller 频道代理需 ≥40s 长轮询（iLink 状态查询会挂起约 30s），当前 5s 超时会掐断；升级 Controller 后重试。",
+                { n: qrFailCountRef.current },
+              ),
+            );
+          }
         }
         qrPollRef.current = setTimeout(tick, 2000);
       };
@@ -438,7 +527,8 @@ export default function WorkerChannels(props: {
   // 元数据驱动的字段键集（与 rows 合并：元数据补空行，rows 里的额外键保留）。
   const metaKeys = schemaFields
     .map((f) => f.key || f.name || "")
-    .filter(Boolean) as string[];
+    .filter(Boolean)
+    .filter((k) => !isHiddenChannelKey(drawerCh, k)) as string[];
   const metaFor = (key: string) =>
     schemaFields.find((f) => (f.key || f.name) === key);
 

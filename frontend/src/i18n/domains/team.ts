@@ -88,4 +88,66 @@ export const teamDict: Record<string, { en: string }> = {
   "3D 图谱初始化失败，已回退 2D": {
     en: "3D graph initialization failed; fell back to 2D",
   },
+  // ── 千锻（Millforge）模板卡：导入/浏览/预览/建队预填（MVP）──
+  "千锻模板": { en: "Millforge templates" },
+  "导入千锻（Millforge）模板库——浏览 + 建队预填（MVP，不执行编译器）": {
+    en: "Import Millforge template packs — browse + prefill team creation (MVP, compiler not executed)",
+  },
+  "导入千锻（Millforge）开源模板库（GitHub / GitCode / Gitee），浏览并在建队时预填模板来源（MVP：不执行千锻编译器）": {
+    en: "Import the open-source Millforge template library (GitHub / GitCode / Gitee), browse it, and prefill the template source when creating a team (MVP: Millforge compiler not executed)",
+  },
+  "仓库 URL（https）": { en: "Repository URL (https)" },
+  "分支 / Tag（ref）": { en: "Branch / tag (ref)" },
+  "仓库 URL 必填": { en: "Repository URL is required" },
+  "导入成功：{pack}（{n} 个文件）": { en: "Imported {pack} ({n} files)" },
+  "模板列表加载失败": { en: "Failed to load template packs" },
+  "尚未导入模板包——在上方填入千锻仓库地址（默认 GitHub，可换 GitCode / Gitee 镜像）并点导入": {
+    en: "No template packs yet — enter a Millforge repository URL above (GitHub by default; GitCode / Gitee mirrors work) and click Import",
+  },
+  "skeletons（骨架）": { en: "skeletons" },
+  "industry（行业）": { en: "industry" },
+  "domain（领域）": { en: "domain" },
+  "fragments（片段）": { en: "fragments" },
+  "适用": { en: "Applies to" },
+  "预算": { en: "Budget" },
+  "用此模板建队": { en: "Create team with this template" },
+  "删除模板包「{name}」？": { en: "Delete template pack “{name}”?" },
+  "已导入的 templates 文件将从本地移除（源仓库不受影响）。": {
+    en: "The imported templates files will be removed locally (the source repository is unaffected).",
+  },
+  "导入时间": { en: "Imported at" },
+  "INDEX 解析失败": { en: "INDEX parse failed" },
+  "（无条目）": { en: "(no entries)" },
+  "模板预览": { en: "Template preview" },
+  "读取模板文件失败": { en: "Failed to read template file" },
+  "选择左侧模板条目查看预览（只读）": {
+    en: "Select a template entry on the left to preview (read-only)",
+  },
+  "需要 L1 管理员（已配置 Controller token）才能打开建队表单": {
+    en: "An L1 admin (Controller token configured) is required to open the team-creation form",
+  },
+  "模板来源（千锻模板 pack/id，仅记录，不执行编译器）": {
+    en: "Template source (Millforge pack/id — recorded only, compiler not executed)",
+  },
+  // ── DM 房间命名 + 房间 ID 可见 ──
+  "私聊 · {name}": { en: "DM · {name}" },
+  "私聊 · {team} · {name}": { en: "DM · {team} · {name}" },
+  "复制房间 ID": { en: "Copy room ID" },
+  // ── 房间详情（Element 同款 Drawer：房间 ID/主题/成员角色/设置）──
+  "房间详情": { en: "Room details" },
+  "未命名房间": { en: "Unnamed room" },
+  "房间 ID": { en: "Room ID" },
+  "主题": { en: "Topic" },
+  "暂无成员": { en: "No members" },
+  "创建者": { en: "Creator" },
+  "加入规则": { en: "Join rule" },
+  "加密": { en: "Encryption" },
+  "已加密": { en: "Encrypted" },
+  "未加密": { en: "Not encrypted" },
+  "Owner": { en: "Owner" },
+  "Moderator": { en: "Moderator" },
+  "Member": { en: "Member" },
+  "设置": { en: "Settings" },
+  "房间操作": { en: "Room actions" },
+  "房间信息加载失败": { en: "Failed to load room details" },
 };

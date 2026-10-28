@@ -6,6 +6,11 @@
 import type * as ReactNS from "react";
 
 import type { AdminData, HumanInfo } from "../api";
+import {
+  httpErrorDetail,
+  httpErrorStatus,
+  updateHumanAccessibleTeams,
+} from "../api";
 import { copyText } from "../util";
 import type { TrFn } from "./types";
 
@@ -17,9 +22,11 @@ interface UseAccessMatrixArgs {
   /** 当前人员列表（矩阵行源 = CRD 原值）。 */
   humans: AdminData["humans"];
   tr: TrFn;
+  /** 保存成功后刷新 admin 数据（团队访问矩阵以外的人/队列表也随之更新）。 */
+  onSaved?: () => void;
 }
 
-export function useAccessMatrix({ humans, tr }: UseAccessMatrixArgs) {
+export function useAccessMatrix({ humans, tr, onSaved }: UseAccessMatrixArgs) {
   // ── 团队访问配置（员工 × 团队矩阵）──
   // 需求——「可以配置哪些员工可以访问哪些团队」。
   // 勾选只改本地 overlay（不直写）——上游 Controller REST 无 PUT humans
@@ -98,6 +105,74 @@ export function useAccessMatrix({ humans, tr }: UseAccessMatrixArgs) {
       else antd.message.warning(tr("复制失败——请手动全选复制"));
     });
   }, [accessCmd, tr]);
+
+  // ── 一键保存（PUT /api/v1/humans/{name}，merge 语义）。
+  // 旧 Controller（无 PUT → 404/405）自动回落「生成命令」；部分失败保留
+  // 未成功的 overlay，逐人报错，避免"看起来全成功"。
+  const [saving, setSaving] = React.useState(false);
+  const [saveMsg, setSaveMsg] = React.useState<{
+    kind: "ok" | "err";
+    text: string;
+  } | null>(null);
+
+  const saveAccess = React.useCallback(async () => {
+    const names = Object.keys(accessChanged);
+    if (!names.length || saving) return;
+    setSaving(true);
+    setSaveMsg(null);
+    const ok: string[] = [];
+    const failed: Array<{ name: string; error: string }> = [];
+    for (const n of names) {
+      try {
+        await updateHumanAccessibleTeams(n, accessChanged[n]);
+        ok.push(n);
+      } catch (e) {
+        const st = httpErrorStatus(e);
+        if (st === 404 || st === 405) {
+          setSaving(false);
+          generateAccessCmd();
+          setSaveMsg({
+            kind: "err",
+            text: tr(
+              "当前 Controller 不支持一键保存（无 PUT /humans 端点）——已生成命令，请在 Controller 宿主机执行。",
+            ),
+          });
+          return;
+        }
+        failed.push({
+          name: n,
+          error: httpErrorDetail(e) || (st ? `HTTP ${st}` : tr("网络错误")),
+        });
+      }
+    }
+    setSaving(false);
+    if (ok.length) {
+      setAccessOverlay((prev) => {
+        const next = { ...prev };
+        for (const n of ok) delete next[n];
+        return next;
+      });
+    }
+    if (failed.length) {
+      setSaveMsg({
+        kind: "err",
+        text: tr("已保存 {ok} 人，失败 {fail} 人：{detail}", {
+          ok: ok.length,
+          fail: failed.length,
+          detail: failed.map((f) => `${f.name}（${f.error}）`).join("；"),
+        }),
+      });
+    } else {
+      setSaveMsg({
+        kind: "ok",
+        text: tr("已保存 {n} 名员工的团队授权（reconcile 约 5 分钟生效）", {
+          n: ok.length,
+        }),
+      });
+    }
+    onSaved?.();
+  }, [accessChanged, saving, tr, generateAccessCmd, onSaved]);
+
   return {
     accessOf,
     accessChanged,
@@ -105,5 +180,8 @@ export function useAccessMatrix({ humans, tr }: UseAccessMatrixArgs) {
     generateAccessCmd,
     copyAccessCmd,
     accessCmd,
+    saving,
+    saveMsg,
+    saveAccess,
   };
 }

@@ -54,6 +54,9 @@ export function statusVariant(status?: string): "success" | "error" | "warning" 
   const s = status.toLowerCase();
   if (s === "ok" || s === "success" || s === "done" || s === "completed") return "success";
   if (s === "error" || s === "failed" || s === "fail" || s === "execution_denied") return "error";
+  // T5 状态枚举（main 的 coding-runs 尚未产出，先行兼容不炸 UI）
+  if (s === "killed") return "error";
+  if (s === "failed-budget" || s === "failed_budget" || s === "blocked") return "warning";
   if (s === "timeout" || s === "timed_out" || s === "cancelled" || s === "canceled") return "warning";
   return "default";
 }
@@ -61,6 +64,35 @@ export function statusVariant(status?: string): "success" | "error" | "warning" 
 /** exit_code 指针语义：0 合法须显示；null/undefined 显示占位。 */
 export function showExit(code?: number | null): string {
   return code == null ? "—" : String(code);
+}
+
+/** 时长（started_at→ended_at，秒）；任一缺失返回 null（不伪造）。 */
+export function runWallSeconds(r: {
+  started_at?: string;
+  ended_at?: string;
+}): number | null {
+  if (!r.started_at || !r.ended_at) return null;
+  const a = new Date(r.started_at).getTime();
+  const b = new Date(r.ended_at).getTime();
+  if (isNaN(a) || isNaN(b) || b < a) return null;
+  return Math.round((b - a) / 1000);
+}
+
+/** 秒 → 人类可读（<60s 用 s，<1h 用 m，否则 h）。 */
+export function fmtDuration(sec?: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+/** Token 用量（T5 字段；缺失返回 null，UI 不显示占位列）。 */
+export function showTokens(n?: number | null): string | null {
+  if (n == null) return null;
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(1)}k`;
 }
 
 /** 列表行（团队版 CodingRunsPanel 与单机版 WorkerCodingRuns 共用，
@@ -114,6 +146,25 @@ export function CodingRunRow({
       <span style={{ fontSize: 11, color: t.textSecondary }}>
         {tr("退出 {code}", { code: showExit(r.exit_code) })}
       </span>
+      {runWallSeconds(r) != null ? (
+        <span style={{ fontSize: 11, color: t.textSecondary }}>
+          {fmtDuration(runWallSeconds(r))}
+        </span>
+      ) : null}
+      {showTokens(r.tokens) ? (
+        <span style={{ fontSize: 11, color: t.textSecondary }}>
+          {showTokens(r.tokens)} tok
+        </span>
+      ) : null}
+      {r.branch || r.worktree ? (
+        <antd.Tag
+          color="purple"
+          style={{ fontFamily: "ui-monospace, monospace", maxWidth: 220 }}
+          title={r.worktree || r.branch}
+        >
+          {(r.branch || r.worktree || "").split("/").slice(-1)[0]}
+        </antd.Tag>
+      ) : null}
       {team && <antd.Tag color="default">{team}</antd.Tag>}
       <antd.Button size="small" type="link" onClick={onOpen}>
         {tr("查看")}
@@ -176,7 +227,24 @@ export function CodingRunDetailModal({
     [tr("开始"), m?.started_at ? timeFromIso(m.started_at) : "—"],
     [tr("结束"), m?.ended_at ? timeFromIso(m.ended_at) : "—"],
     [tr("日志"), fmtBytes(m?.log_bytes ?? run.log_bytes)],
+    [
+      tr("持续"),
+      fmtDuration(
+        runWallSeconds({
+          started_at: m?.started_at,
+          ended_at: m?.ended_at,
+        }),
+      ),
+    ],
   ];
+  const tokens = showTokens(m?.tokens ?? run.tokens);
+  if (tokens) metaRows.push([tr("Tokens"), tokens]);
+  const receipt = m?.receipt || run.receipt;
+  if (receipt) metaRows.push([tr("凭证"), receipt]);
+  const worktree = m?.worktree || run.worktree;
+  if (worktree) metaRows.push([tr("工作树"), worktree]);
+  const branch = m?.branch || run.branch;
+  if (branch) metaRows.push([tr("分支"), branch]);
   if (m?.reason) metaRows.push([tr("原因"), m.reason]);
 
   return (

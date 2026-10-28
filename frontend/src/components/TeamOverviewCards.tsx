@@ -5,8 +5,6 @@ import {
   ClipIcon,
   StarIcon,
   StarOutlineIcon,
-  DoorIcon,
-  TrashIcon,
   MessageIcon,
   UsersIcon,
   FolderIcon,
@@ -42,9 +40,9 @@ export function GroupCard({
   onDm,
   isFavorite = false,
   onToggleFavorite,
-  onExitRoom,
   workerMxids,
   projectTitles,
+  attentionCount,
 }: {
   room: TeamRoom;
   user_id?: string;
@@ -55,10 +53,10 @@ export function GroupCard({
   /** B3：收藏态（客户端本地）。 */
   isFavorite?: boolean;
   onToggleFavorite?: (roomId: string) => void;
-  /** 5.0.0 release：房间 ⋯ 菜单（退出 / 退出并删除，Element 同款列表操作）。 */
-  onExitRoom?: (room: TeamRoom, forget: boolean) => void;
   /** 全部 Worker MXID——任一 Worker 正在输入则显蓝点。 */
   workerMxids?: Set<string>;
+  /** 本房间 attention 待决策条数（>0 时 meta 行显琥珀徽章；纯信息，不加点击）。 */
+  attentionCount?: number;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -71,7 +69,10 @@ export function GroupCard({
   const groupRunning = !!workerMxids && (room.typing || []).some((m) =>
     workerMxids.has(m),
   );
+  // hover 显示 room_id（antd.Card 自带 title prop 会渲染成卡头，
+  // 必须用外层 div 的原生 title 属性）。
   return (
+    <div title={room.room_id}>
     <antd.Card
       hoverable
       onClick={() => onOpenRoom?.(room.room_id)}
@@ -137,43 +138,7 @@ export function GroupCard({
             >
               {isFavorite ? <StarIcon size={15} /> : <StarOutlineIcon size={15} />}
             </span>
-            {/* 5.0.0 release：房间 ⋯ 菜单（退出/退出并删除，Element 列表操作同款） */}
-            <span
-              role="button"
-              onClick={(e) => e.stopPropagation()}
-              style={{ display: "inline-block" }}
-            >
-              <antd.Dropdown
-                trigger={["click"]}
-                menu={{
-                  items: [
-                    {
-                      key: "leave",
-                      danger: true,
-                      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
-                    },
-                    {
-                      key: "leave-forget",
-                      danger: true,
-                      label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TrashIcon size={13} /> {tr("退出并删除")}</span>,
-                    },
-                  ],
-                  onClick: ({ key }: { key: string }) =>
-                    onExitRoom?.(room, key === "leave-forget"),
-                }}
-              >
-                <span
-                  style={{
-                    cursor: "pointer",
-                    fontSize: 14,
-                    opacity: 0.45,
-                    marginLeft: 2,
-                  }}
-                >
-                  ⋯
-                </span>
-              </antd.Dropdown>
-            </span>
+            {/* 房间操作（退出/退出并删除）已收口到「房间详情」Drawer。 */}
           </div>
           {/* 房间名下面显示项目名
  （数据=Controller 工作流事件 room_id→title；无项目不占行）。 */}
@@ -206,6 +171,15 @@ export function GroupCard({
             >
               {room.member_count} 人 {membersOpen ? "▴" : "▾"}
             </antd.Tag>
+            {/* attention 待决策徽章（L2：纯信息提示，卡片点击行为不变）。 */}
+            {attentionCount ? (
+              <antd.Tag
+                color="orange"
+                style={{ margin: 0, fontSize: 11, lineHeight: "18px" }}
+              >
+                {tr("⏳ 待决策 {n}", { n: attentionCount })}
+              </antd.Tag>
+            ) : null}
           </div>
           {/* 最后消息正文预览（72 字 + 媒体标记）。 */}
           {(() => {
@@ -288,6 +262,7 @@ export function GroupCard({
         </div>
       </div>
     </antd.Card>
+    </div>
   );
 }
 
@@ -298,8 +273,8 @@ export function DmCard({
   onOpenRoom,
   isFavorite = false,
   onToggleFavorite,
-  onExitRoom,
   sessionState,
+  attentionCount,
 }: {
   room: TeamRoom;
   user_id?: string;
@@ -307,22 +282,37 @@ export function DmCard({
   /** B3：收藏态（客户端本地）。 */
   isFavorite?: boolean;
   onToggleFavorite?: (roomId: string) => void;
-  /** 5.0.0 release：房间 ⋯ 菜单（退出 / 退出并删除，Element 同款列表操作）。 */
-  onExitRoom?: (room: TeamRoom, forget: boolean) => void;
   /** 对方 Worker 的 session 状态（仅 Worker 个人房间有值）。 */
   sessionState?: WorkerSessionState;
+  /** 本房间 attention 待决策条数（>0 时名称行显琥珀徽章；纯信息，不加点击）。 */
+  attentionCount?: number;
 }) {
   const other = Object.entries(room.members || {}).find(
     ([mxid]) => mxid !== user_id,
   );
   const t = useThemeColors();
   const tr = useT();
-  const otherName = other
-    ? memberShortName(other[0], other[1])
-    : room.name;
+  // 对方 localpart（@alice:domain → alice）——显示名回退 + 头像首字母源。
+  const otherLocalpart = other
+    ? (other[0].split(":")[0] || "").replace(/^@/, "") || other[0]
+    : "";
+  // 显示名：优先真实 m.room.name（发起任务流程写入），无名房间回退
+  // 「私聊 · <对方 localpart>」——不再显示空白。name_fallback=true 是
+  // 后端对无名房间的回退命名，不算真实房名。
+  const otherName =
+    room.name && !room.name_fallback
+      ? room.name
+      : other
+        ? tr("私聊 · {name}", { name: otherLocalpart })
+        : room.name;
+  // 头像首字母从对方名取（避免回退名「私聊 · …」首字母是「私」）。
+  const avatarInitial = (otherLocalpart || room.name || "?")
+    .slice(0, 1)
+    .toUpperCase();
   return (
     <div
       onClick={() => onOpenRoom?.(room.room_id)}
+      title={room.room_id}
       style={{
         display: "flex",
         alignItems: "center",
@@ -342,7 +332,7 @@ export function DmCard({
             size={32}
             style={{ backgroundColor: GREEN, flexShrink: 0 }}
           >
-            {otherName.slice(0, 1).toUpperCase()}
+            {avatarInitial}
           </MxcAvatar>
         );
         // 自绘 UnreadBubble（居中+含住+白描边环）。
@@ -385,43 +375,22 @@ export function DmCard({
           >
             {isFavorite ? <StarIcon size={14} /> : <StarOutlineIcon size={14} />}
           </span>
-          {/* 5.0.0 release：房间 ⋯ 菜单（退出/退出并删除，Element 列表操作同款） */}
-          <span
-            role="button"
-            onClick={(e) => e.stopPropagation()}
-            style={{ display: "inline-block" }}
-          >
-            <antd.Dropdown
-              trigger={["click"]}
-              menu={{
-                items: [
-                  {
-                    key: "leave",
-                    danger: true,
-                    label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><DoorIcon size={13} /> {tr("退出房间")}</span>,
-                  },
-                  {
-                    key: "leave-forget",
-                    danger: true,
-                    label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><TrashIcon size={13} /> {tr("退出并删除")}</span>,
-                  },
-                ],
-                onClick: ({ key }: { key: string }) =>
-                  onExitRoom?.(room, key === "leave-forget"),
+          {/* attention 待决策徽章（L2：纯信息提示，卡片点击行为不变）。 */}
+          {attentionCount ? (
+            <antd.Tag
+              color="orange"
+              style={{
+                margin: 0,
+                marginLeft: 6,
+                fontSize: 11,
+                lineHeight: "18px",
+                verticalAlign: "1px",
               }}
             >
-              <span
-                style={{
-                  cursor: "pointer",
-                  fontSize: 14,
-                  opacity: 0.45,
-                  marginLeft: 2,
-                }}
-              >
-                ⋯
-              </span>
-            </antd.Dropdown>
-          </span>
+              {tr("⏳ 待决策 {n}", { n: attentionCount })}
+            </antd.Tag>
+          ) : null}
+          {/* 房间操作（退出/退出并删除）已收口到「房间详情」Drawer。 */}
         </div>
         <div
           style={{

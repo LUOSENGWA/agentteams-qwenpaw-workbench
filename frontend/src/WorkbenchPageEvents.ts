@@ -3,6 +3,7 @@
 // 壳持有的 React state 经 ctx 传入，标识符保持原名。
 
 import {
+  appendCachedMessage,
   type RoomMessage,
   type TeamRoom,
 } from "./api";
@@ -120,7 +121,15 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
       if (!fallback) {
         fallback = createPoller({
           fn: () => {
+            // R4（16.23）：SSE 断连期唯一的数据兜底轮询——覆盖全部
+            // SSE 驱动类型：房间列表（room_list_update）+ 活动房间消息
+            // （room_message，原 RoomChat 12s 轮询退役后断连期的接替者）
+            // + 工作流（task_status，原 15s 轮询退役后的接替者）
+            // + 通知中心（mention/invite/approval）。SSE 在线时本 poller
+            // 不存在（steady-state 零轮询，全事件驱动）。
             void refreshRooms();
+            void pollMessagesRef.current();
+            void refreshWorkflow();
             setNotifyTick((t) => t + 1);
           },
           intervalMs: 60000,
@@ -328,23 +337,25 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
                 // 工作流渲染路径零改动）。房间列表预览/未读由 room_list_update
                 // 增量覆盖（13.21：10s 节流全量刷新退役）。
                 const rid = String((data as { room_id?: string }).room_id || "");
+                // 载荷解析提到房间判定外——活跃房直合与非活动房
+                // 缓存追加共用同一最小载荷（event: id/sender/ts/body/
+                // msgtype/relates_to）。
+                const evp = (data as {
+                  event?: {
+                    event_id?: string;
+                    sender?: string;
+                    ts?: number;
+                    body?: string;
+                    msgtype?: string;
+                    relates_to?: unknown;
+                  };
+                }).event;
+                const evId = String(evp?.event_id || "");
                 if (rid && rid === activeRoomRef.current?.room_id) {
-                  // 载荷直合——watcher 已附解析后的
-                  // 最小载荷（event: id/sender/ts/body/msgtype/relates_to）。
+                  // 载荷直合——watcher 已附解析后的最小载荷。
                   // 普通文本消息直接合并（零回拉——5Mbps 链路上活跃房回拉
                   // 的大头）；非文本/带关系（回复/编辑/附件）仍走 600ms
                   // 事件合并兜底拉取（行为与旧版一致）。
-                  const evp = (data as {
-                    event?: {
-                      event_id?: string;
-                      sender?: string;
-                      ts?: number;
-                      body?: string;
-                      msgtype?: string;
-                      relates_to?: unknown;
-                    };
-                  }).event;
-                  const evId = String(evp?.event_id || "");
                   if (evp && evId && evp.msgtype === "m.text" && !evp.relates_to) {
                     const known = new Set(
                       messagesRef.current.map((m) => m.event_id),
@@ -364,6 +375,22 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
                   } else {
                     // 非文本/复杂消息：兜底拉取（14.7 前的既有行为）。
                     pollSoon();
+                  }
+                } else if (rid) {
+                  // R1（16.23）：非活动房间 → 单条新消息直接追加进该房间的
+                  // 消息缓存（切回时首帧即含新消息，不必等回拉完成）。
+                  // 门控与活跃房直合同款：仅简单 m.text 且无 relates_to；
+                  // 复杂消息（附件/回复/编辑）的真相源 = 打开时的全量拉取，
+                  // 列表预览/未读由 room_list_update 增量覆盖。
+                  // 只更新打开过的房间（appendCachedMessage 内部门控）。
+                  if (evp && evId && evp.msgtype === "m.text" && !evp.relates_to) {
+                    appendCachedMessage(rid, {
+                      event_id: evId,
+                      sender: String(evp.sender || ""),
+                      body: String(evp.body || ""),
+                      msgtype: "m.text",
+                      origin_server_ts: Number(evp.ts || Date.now()),
+                    });
                   }
                 }
  // 任意房间来消息 → 递增 chatsTick → 打开的头像会话窗立即刷新

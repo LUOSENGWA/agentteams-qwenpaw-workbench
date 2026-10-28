@@ -158,6 +158,23 @@ export function fetchWorkerChannelQrcodeStatus(
   }>;
 }
 
+/** 微信二维码状态直连（插件后端 → iLink，绕过 Controller 5s 长轮询超时）。
+ *
+ * iLink 的 get_qrcode_status 是长轮询（服务端挂 ~31s）；Controller 频道代理
+ * 固定 5s、插件后端通用代理 6s，都会在返回前掐断 → 扫码后永远读不到
+ * confirmed。此端点由插件后端直连 iLink（45s），仅微信通道使用。
+ * 返回形状与 Controller 路由一致：{status, credentials}。 */
+export function fetchWechatQrStatusDirect(
+  token: string,
+): Promise<{ status: string; credentials: Record<string, unknown> | null }> {
+  return requestJson(
+    `/agentteams-proxy/wechat-qr/status?token=${encodeURIComponent(token)}`,
+  ) as Promise<{
+    status: string;
+    credentials: Record<string, unknown> | null;
+  }>;
+}
+
 // ── Worker 内置工具设置（#1255 已合 main；404 = Controller 版本门）────
 export interface WorkerToolInfo {
   name: string;

@@ -30,6 +30,8 @@ export function useWorkbenchUi() {
     // skills 区块已从配置页移除 → 旧持久化 tab
     // 落地首页（不再落设置页——该页已无技能区，落家最自然）。
     skills: "home",
+    // 10/26：「待决策」顶层 tab 并入通知页 → 旧持久化值落通知页。
+    attention: "inbox",
   };
   const readUiState = (
     key: string,
@@ -43,6 +45,9 @@ export function useWorkbenchUi() {
     chatListHidden?: string;
     // 12.14：强制左右分栏开关（忽略宽度判定）。
     chatForceWide?: string;
+    // 10/26：通知页子页签（"events" 事件流 / "attention" 待决策；
+    // 「待决策」原顶层 tab 并入通知页后持久化子页签选择）。
+    inboxSubTab?: string;
   } => {
     try {
       const raw = window.localStorage.getItem(key);
@@ -76,7 +81,16 @@ export function useWorkbenchUi() {
     [mergeUiState],
   );
   const initialUi = React.useRef<
-    { tab?: string; roomId?: string; wfView?: string; wfTopo?: string } | null
+    {
+      tab?: string;
+      roomId?: string;
+      wfView?: string;
+      wfTopo?: string;
+      chatSplitW?: string;
+      chatListHidden?: string;
+      chatForceWide?: string;
+      inboxSubTab?: string;
+    } | null
   >(null);
   if (initialUi.current === null) {
     initialUi.current = readUiState(UI_STATE_KEY);
@@ -87,6 +101,9 @@ export function useWorkbenchUi() {
       initialUi.current = {
         ...initialUi.current,
         tab: UI_TAB_MIGRATION_V2[staleTab],
+        // 「待决策」并入通知页——旧 tab 持久化值落通知页并定位待决策
+        // 子页（与顶栏 badge 点击进入同落点）。
+        ...(staleTab === "attention" ? { inboxSubTab: "attention" } : null),
       };
       try {
         window.localStorage.setItem(
@@ -204,15 +221,22 @@ export function useWorkbenchUi() {
   // 「mermaid」视图退役并入拓扑——旧持久化值
   // wfView="mermaid"（13.21 装过 13.21 的用户）迁移到 "topo"（拓扑内可切
   // Mermaid 样式，体验不丢）。
-  const WF_VIEW_VALUES = ["list", "card", "board", "topo"];
+  // 10/26：list/card 视图退役（只留看板/拓扑）——旧持久化值
+  // wfView="list"/"card" 兼容回退 "board"，默认视图改 "board"。
+  const WF_VIEW_VALUES = ["board", "topo"];
   const [wfMem, setWfMemState] = React.useState<{
     view: string;
     topoRun: string;
   }>(() => {
     const u = initialUi.current ?? {};
-    const savedView = u.wfView === "mermaid" ? "topo" : (u.wfView || "");
+    const savedView =
+      u.wfView === "mermaid"
+        ? "topo"
+        : u.wfView === "list" || u.wfView === "card"
+          ? "board"
+          : (u.wfView || "");
     return {
-      view: WF_VIEW_VALUES.includes(savedView) ? savedView : "list",
+      view: WF_VIEW_VALUES.includes(savedView) ? savedView : "board",
       topoRun: typeof u.wfTopo === "string" ? u.wfTopo : "",
     };
   });

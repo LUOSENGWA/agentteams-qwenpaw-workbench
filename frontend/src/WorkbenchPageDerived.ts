@@ -26,7 +26,8 @@ export interface WorkbenchPageDerivedCtx {
   setTab: (tab: string) => void;
   setActiveRoom: React.Dispatch<React.SetStateAction<TeamRoom | null>>;
   openRoom: (roomId: string) => boolean;
-  handleDm: (mxid: string, roomId?: string) => Promise<void>;
+  /** 打开/创建 DM；name = 房间显示名（发起任务入口带上下文透传）。 */
+  handleDm: (mxid: string, roomId?: string, name?: string) => Promise<void>;
   setGlobalSearchOpen: (v: boolean) => void;
   setJumpToEventId: (v: string | null) => void;
   refreshWorkflow: (silent?: boolean) => Promise<void>;
@@ -85,8 +86,13 @@ export function useWorkbenchDerived(ctx: WorkbenchPageDerivedCtx) {
     (tabKey: string) => setTab(tabKey),
     [setTab],
   );
+  // 不再 void 吞掉 Promise——「发起任务」弹窗确认钮要等 /dm 落地
+  // 才关窗（loading 期间禁用，失败 toast 可见）；其余入口不 await，
+  // 多返回的 Promise 对 void 型 prop 无影响（handleDm 内部全捕获，
+  // 不 reject）。
   const handleDmStable = React.useCallback(
-    (mxid: string, roomId?: string) => void handleDm(mxid, roomId),
+    (mxid: string, roomId?: string, name?: string) =>
+      handleDm(mxid, roomId, name),
     [handleDm],
   );
   const openGlobalSearch = React.useCallback(() => setGlobalSearchOpen(true), []);

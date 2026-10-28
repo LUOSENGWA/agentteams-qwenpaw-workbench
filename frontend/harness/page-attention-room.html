@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>ui-harness-attention-room</title>
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+// 宿主 mock（同 page.html 空壳）：React/antd 实例 + 空壳 API。
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+  },
+};
+</script>
+<script src="/harness/bundle-attention-room.js"></script>
+</body>
+</html>

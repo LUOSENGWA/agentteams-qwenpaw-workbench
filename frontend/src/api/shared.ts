@@ -91,7 +91,15 @@ export async function requestJson(
     if (payload && typeof payload === "object") {
       const p = payload as Record<string, unknown>;
       if (typeof p.detail === "string") detail = p.detail;
-      else if (typeof p.message === "string") detail = p.message;
+      // 对象 detail（FastAPI HTTPException(detail=dict)——如千锻 compile 422
+      // {exit_code, stage, error, stderr_tail}）→ JSON 串（调用方可再解析）。
+      else if (typeof p.detail === "object" && p.detail !== null) {
+        try {
+          detail = JSON.stringify(p.detail);
+        } catch {
+          detail = String(p.detail);
+        }
+      } else if (typeof p.message === "string") detail = p.message;
       else if (typeof p.error === "string") detail = p.error;
       else if (typeof p.errcode === "string")
         detail = `${p.errcode}: ${String(p.error ?? "")}`.trim();
@@ -203,6 +211,42 @@ export function setCachedMessages(
     end: page.end,
   });
   // 上限 20 个房间，防内存膨胀（逐最久未用=队首）
+  if (messagesCache.size > 20) {
+    const lru = messagesCache.keys().next().value;
+    if (lru) messagesCache.delete(lru);
+  }
+}
+
+/**
+ * R1（16.23）：SSE room_message → 非活动房间的单条新消息直接追加进
+ * 该房间的消息缓存（切回时首帧即含新消息，不必等回拉完成）。
+ *
+ * 约束：
+ * - 只更新**已有缓存条目**的房间（打开过）；从未打开的房间不建条目
+ *   （首次打开本就会全量拉最新页，单条浅窗反而让窗口游标以空 end 起步）；
+ * - event_id 去重（乐观回显可能已写入同一条目）；
+ * - 尾追加不动 end 游标（end 是更旧方向游标，与尾部新消息无关——
+ *   roomHistory I1 不变量不受影响）；
+ * - 调用方只对简单 m.text 且无 relates_to 的载荷调用（与活跃房直合
+ *   同款门控）——复杂消息的真相源 = 打开时的全量拉取。
+ */
+export function appendCachedMessage(
+  roomId: string,
+  msg: RoomMessage,
+): void {
+  if (!roomId || !msg || !msg.event_id) return;
+  const hit = messagesCache.get(roomId);
+  if (!hit) return;
+  if (hit.messages.some((m) => m.event_id === msg.event_id)) {
+    // 已存在（乐观回显先行写入）→ 仅刷新 LRU 次序。
+    messagesCache.delete(roomId);
+    messagesCache.set(roomId, hit);
+    return;
+  }
+  // 新数组引用（不 mutate 缓存原数组——React state 可能持有它）。
+  const next = { messages: [...hit.messages, msg], end: hit.end };
+  messagesCache.delete(roomId);
+  messagesCache.set(roomId, next);
   if (messagesCache.size > 20) {
     const lru = messagesCache.keys().next().value;
     if (lru) messagesCache.delete(lru);
