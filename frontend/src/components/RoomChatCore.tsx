@@ -587,18 +587,11 @@ export function useRoomChatCore(props: RoomChatProps) {
     [onSend, tr],
   );
 
-  // 兜底轮询：每 12s 拉一次新消息（仅在有房间时）。
- // P6：主路已切 /sync 事件驱动（后端 sync watcher → SSE
-  // room_message → WorkbenchPage 立即拉取）——本定时器降为 SSE 断连/
-  // 事件丢失的保险（与后端 60s 兜底轮询同层语义）。
- // 旧定时器 → usePoller（12s；chat tab 激活 &&
-  // 有房间 && onPoll 在场；!document.hidden 内置）。
-  usePoller({
-    fn: () => void onPoll?.(),
-    intervalMs: 12000,
- // 布尔快照（非 chat 互切不重渲）。
-    active: useTabActive("chat") && !!room && !!onPoll,
-  });
+  // R4（16.23）：12s 消息兜底轮询退役——room_message 已有 SSE 主路
+  // （watcher → room_message → 活跃房直合 / 非活动房缓存追加），steady-state
+  // 不再轮询；SSE 断连期的兜底由 WorkbenchPage 的 60s bootFallback 统一
+  // 承担（断连才启动，在线零轮询）。onPoll 仍保留在 props 面（调用方
+  // 传参与 memo deps 零改动）。
 
   // 桌面通知：新审批消息到达 → 浏览器 Notification（宿主 2.1 无 paw.notify；
   // 集群审批接宿主通知中心需上游插件审批源 PR，本版用浏览器通知兜底）。

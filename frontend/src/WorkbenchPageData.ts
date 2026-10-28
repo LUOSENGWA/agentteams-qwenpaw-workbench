@@ -391,11 +391,11 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     }
   }, []);
 
-  // 工作流 tab 自动刷新（15s，仅可见期活跃）——
-  // 对齐 dashboard 15s 轮询（useProjectWorkflow refetchInterval:15000）。
-  // 此前插件只在挂载/手动刷新/登录时拉取，任务推进时看板不自动更新
-  // 仅 workflow tab 激活或聊天消息含工作流卡片时轮询（聊天内卡片
-  // live overlay 复用 workflowEvents 正源）；页面隐藏即停（内置）。
+  // R4（16.23）：15s 工作流兜底轮询退役——task_status 已有 SSE 主路
+  // （sync_watcher _track_workflow 状态变化 → SSE task_status →
+  // WorkbenchPageEvents refreshWorkflow），steady-state 不再轮询；SSE
+  // 断连期的兜底由 WorkbenchPage 的 60s bootFallback 统一承担（断连才
+  // 启动，在线零轮询）。
   // memoize——此前每次 WP 渲染 O(n) 扫全量
   // messages（最高频渲染组件 × 消息数组大）。messages 引用只在 mergeForward
   // 换数组时变（无变化复用 prev）→ 扫描只随消息到达发生。
@@ -403,11 +403,6 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     () => tab === "chat" && messages.some((m) => m.workflow != null),
     [tab, messages],
   );
-  usePoller({
-    fn: () => void refreshWorkflow(true),
-    intervalMs: 15000,
-    active: tab === "workflow" || chatHasWfCards,
-  });
 
   // （13.12 「工作流一点开应先自动刷新，而不是等 15s
   // 自动刷新或手动刷新」）：切到工作流 tab（或聊天出现工作流卡）立即拉一次

@@ -1,7 +1,7 @@
 // 团队域（/teams/*、/dm、/matrix/rooms/*/join|leave、/team-files、/matrix/member/messages）：团队结构/spawn/房间列表/邀请/共享文件/成员消息。
 
 import { requestJson } from "../shared";
-import { cachedRequest } from "../../requestCache";
+import { cachedFetch, cachedRequest } from "../../requestCache";
 import { fetchProjectSummaries } from "./workflow";
 
 // ── Team data (page shells render these; adapters fill them) ───────────
@@ -113,13 +113,14 @@ export interface WorkerTreeTeam {
   workers: WorkerSpawnGroup[];
 }
 
-/** cachedRequest 包裹（teams/structure，15s，tags
+/** cachedFetch 包裹（teams/structure，TTL 15s + SWR 15s，tags
  * ["teams"]）——已有 force 参数透传（team tab 切回 30s 节流后走此缓存）；
- * requestJson 第 3 参 30000 超时保留。 */
+ * requestJson 第 3 参 30000 超时保留。SWR：15-30s 段先回旧树（零等待）+
+ * 后台再验证；force=true 一律跳过缓存直回源。 */
 export async function fetchTeamsStructure(
   force = false,
 ): Promise<{ ok: boolean; tree: WorkerTreeTeam[]; source: string }> {
-  return cachedRequest(
+  return cachedFetch(
     "teams/structure",
     15000,
     async () => {
@@ -131,7 +132,7 @@ export async function fetchTeamsStructure(
         30000,
       )) as { ok: boolean; tree: WorkerTreeTeam[]; source: string };
     },
-    { force, tags: ["teams"] },
+    { force, tags: ["teams"], swrMs: 15000 },
   );
 }
 
@@ -262,19 +263,20 @@ export async function fetchTeamsRooms(): Promise<TeamsRoomsResponse> {
   return (await requestJson("/agentteams-proxy/teams/rooms")) as TeamsRoomsResponse;
 }
 
-/** cachedRequest 包裹（teams/sync，15s，tags
- * ["teams"]）——已有 force 参数透传。 */
+/** cachedFetch 包裹（teams/sync，TTL 15s + SWR 15s，tags
+ * ["teams"]）——已有 force 参数透传。SWR：15-30s 段先回旧列表（零等待）+
+ * 后台再验证；force=true 一律跳过缓存直回源。 */
 export async function fetchTeamsSync(
   force = false,
 ): Promise<TeamsRoomsResponse & { elapsed?: number }> {
-  return cachedRequest(
+  return cachedFetch(
     "teams/sync",
     15000,
     async () =>
       (await requestJson(
         `/agentteams-proxy/teams/sync${force ? "?force=true" : ""}`,
       )) as TeamsRoomsResponse & { elapsed?: number },
-    { force, tags: ["teams"] },
+    { force, tags: ["teams"], swrMs: 15000 },
   );
 }
 

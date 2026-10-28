@@ -553,17 +553,23 @@ def build_matrix_router() -> APIRouter:
         return {"ok": True, **result}
 
     @router.get("/events")
-    async def events_stream() -> Any:
+    async def events_stream(request: Request) -> Any:
         """SSE 事件流（IM 式触发）：sync watcher 检测到 @提到我 时推送。
 
  前端 EventSource 订阅（无 Authorization header——宿主 auth 启用
  时需 allow_no_auth_hosts 或回退轮询）。心跳 comment 每 15s 保活。
+ ``?debug=1``（R1-A3）：连接期间打开 sync_watcher 诊断日志（逐广播
+ type/room/sender + room_message 跳过原因），断开自动恢复（计数制，
+ 多 debug 连接并存安全）。
  """
         import asyncio as _asyncio
 
         from .. import sync_watcher
 
         queue = sync_watcher.subscribe()
+        is_debug = request.query_params.get("debug") in ("1", "true", "yes")
+        if is_debug:
+            sync_watcher.debug_acquire()
 
         async def gen():
             try:
@@ -581,6 +587,8 @@ def build_matrix_router() -> APIRouter:
                         yield ": keepalive\n\n"
             finally:
                 sync_watcher.unsubscribe(queue)
+                if is_debug:
+                    sync_watcher.debug_release()
 
         return StreamingResponse(
             gen(),

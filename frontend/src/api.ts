@@ -4,7 +4,7 @@
 // 跨域共享底座 = api/shared.ts（显式具名重导出——shared 的
 // controllerRequest、teams 的 TeamsRoomsResponse 均为域间私有引用，
 // 不进 barrel 公共面——原 228 导出面逐名不变）。
-export { requestJson, httpErrorStatus, httpErrorDetail, fetchControllerJson, postController, getCachedRooms, setCachedRooms, getCachedMessages, setCachedMessages } from "./api/shared";
+export { requestJson, httpErrorStatus, httpErrorDetail, fetchControllerJson, postController, getCachedRooms, setCachedRooms, getCachedMessages, setCachedMessages, appendCachedMessage } from "./api/shared";
 export * from "./api/domains/settings";
 export * from "./api/domains/gateway";
 export * from "./api/domains/audit";

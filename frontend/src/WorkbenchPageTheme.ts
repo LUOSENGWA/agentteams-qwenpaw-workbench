@@ -3,6 +3,7 @@
 // 壳持有的 React state 经 ctx 传入，标识符保持原名。
 
 import { requestJson } from "./api";
+import { usePoller } from "./usePoller";
 import { useThemeColors } from "./theme";
 import { useHostThemeTokens } from "./hostTheme";
 import { useT } from "./i18n";
@@ -17,25 +18,30 @@ const antd = host.antd;
  * ——回退构建期版本的决定在调用方（connectorVersion || buildVersion）。 */
 export function useConnectorVersion(intervalMs = 60_000): string {
   const [v, setV] = React.useState("");
+  const mountedRef = React.useRef(true);
+  React.useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+  const load = React.useCallback(() => {
+    void requestJson("/agentteams-proxy/health")
+      .then((d) => {
+        const ver = (d as { version?: string })?.version;
+        if (mountedRef.current && ver) setV(ver);
+      })
+      .catch(() => {
+        /* 后端不可达（未起/重启中）：保留上次值——调用方回退构建期版本 */
+      });
+  }, []);
+  // 首渲立即拉一次（保持原「挂载即拉」语义；poller 首 tick 要等一个间隔）。
   React.useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      void requestJson("/agentteams-proxy/health")
-        .then((d) => {
-          const ver = (d as { version?: string })?.version;
-          if (!cancelled && ver) setV(ver);
-        })
-        .catch(() => {
-          /* 后端不可达（未起/重启中）：保留上次值——调用方回退构建期版本 */
-        });
-    };
     load();
-    const id = window.setInterval(load, intervalMs);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [intervalMs]);
+  }, [load]);
+  // R4（16.23）：裸 setInterval → usePoller——后台 tab（document.hidden）
+  // 不再每 60s 拨 /health；visibility 门控 + 回前台 catch-up 补跑均内置。
+  usePoller({ fn: load, intervalMs });
   return v;
 }
 

@@ -28,6 +28,15 @@ interface RequestCacheOptions {
   maxEntries?: number;
 }
 
+interface CachedFetchOptions extends RequestCacheOptions {
+  /**
+   * SWR 窗口（ms）：条目过期后仍在此窗内 → 立即返回旧值 + 后台再验证
+   * （stale-while-revalidate）；0/缺省 = 与 cachedRequest 同语义（过期即等
+   * 回源）。再验证失败保留旧值（不向调用方抛错）——后台任务吞异常。
+   */
+  swrMs?: number;
+}
+
 interface RequestCacheStats {
   hits: number;
   misses: number;
@@ -121,6 +130,60 @@ export function cachedRequest<T>(
 
   inflight.set(key, p);
   return p;
+}
+
+/**
+ * cachedFetch = cachedRequest + SWR（stale-while-revalidate）。
+ *
+ * 三档语义（key 约定同 cachedRequest——须含所有影响结果的参数）：
+ * 1. fresh（now < expiry，非 force）→ 直接返回缓存（零网络，hits++）；
+ * 2. 过期但仍在 SWR 窗内（expiry ≤ now < expiry + swrMs，非 force）→
+ *    **立即返回旧值**（UI 零等待）+ 后台再验证（复用 cachedRequest 的
+ *    在飞去重表，并发同 key 只发一次回源；成功覆盖写缓存，下次读拿到
+ *    新值；失败保留旧值——后台异常自吞，不向调用方抛错）；
+ * 3. 无条目 / 超出 SWR 窗 / force → 等 fetcher 完成后返回（失败原样抛，
+ *    与 cachedRequest 同语义）。
+ *
+ * 与 cachedRequest 的关系：复用同一 store/inflight 表与 stats 计数，
+ * 不另开缓存面（标签失效 / LRU / 在飞去重行为逐条一致）。
+ */
+export function cachedFetch<T>(
+  key: string,
+  ttlMs: number,
+  fetcher: () => Promise<T>,
+  opts?: CachedFetchOptions,
+): Promise<T> {
+  if (!opts?.force) {
+    const hit = store.get(key);
+    if (hit) {
+      const now = Date.now();
+      if (hit.expiry > now) {
+        // 档 1：fresh → 直接返回缓存。
+        stats.hits += 1;
+        touch(key);
+        return Promise.resolve(hit.value as T);
+      }
+      const swrMs = opts?.swrMs ?? 0;
+      if (swrMs > 0 && now < hit.expiry + swrMs) {
+        // 档 2：stale 但在 SWR 窗内 → 立即回旧值 + 后台再验证。
+        // 再验证走 force 回源（跳过读缓存），复用 inflight 去重——
+        // 并发多个调用者只触发一次回源。
+        stats.hits += 1;
+        touch(key);
+        void cachedRequest(key, ttlMs, fetcher, {
+          ...opts,
+          force: true,
+        }).catch(() => {
+          /* 再验证失败：保留旧值，不向调用方抛错 */
+        });
+        return Promise.resolve(hit.value as T);
+      }
+      // 超出 SWR 窗：惰性删除，落档 3 走回源。
+      store.delete(key);
+    }
+  }
+  // 档 3：回源（未命中/超窗/force），语义与 cachedRequest 一致。
+  return cachedRequest(key, ttlMs, fetcher, opts);
 }
 
 /** 删除任一 tag 命中的条目（标签为空的条目不受影响）。 */

@@ -281,7 +281,59 @@ def unsubscribe(q: "asyncio.Queue") -> None:
         _subscribers.remove(q)
 
 
+# ── SSE 诊断（R1-A3：GET /events?debug=1）─────────────────────────────
+# 计数 = 当前连接的 debug 连接数；>0 时逐广播输出 type/room/sender、
+# room_message 逐条输出跳过原因（「这条消息为什么没推」一眼定位）。
+# 默认关零开销；计数制避免一个 debug 连接断开把另一个的开关关掉。
+_debug_refs: int = 0
+
+
+def debug_enabled() -> bool:
+    """是否有 debug SSE 连接在场（_broadcast/room_message 门控）。"""
+    return _debug_refs > 0
+
+
+def debug_acquire() -> None:
+    """debug SSE 连接建立（router /events?debug=1 建连时调用）。"""
+    global _debug_refs
+    _debug_refs += 1
+
+
+def debug_release() -> None:
+    """debug SSE 连接断开（router finally 调用；0 处截断，不会变负）。"""
+    global _debug_refs
+    if _debug_refs > 0:
+        _debug_refs -= 1
+
+
+def room_message_broadcast_decision(
+    baseline: bool,
+    sender: str,
+) -> "Tuple[bool, str]":
+    """一条 m.room.message 是否广播 room_message SSE 触发（纯函数，可单测）。
+
+ 返回 (是否广播, 跳过原因)：
+ - baseline：首轮存量不重放；
+ - no-sender：无发送者事件无语义（前端无法归属）。
+ R1（16.23）：不再排除自己的消息——前端乐观回显与 SSE 合并按
+ event_id 去重，重复合并幂等无副作用；旧行为下非活动房间里的
+ 自己消息要切房/手动刷新才进缓存。
+ """
+    if baseline:
+        return False, "baseline"
+    if not sender:
+        return False, "no-sender"
+    return True, ""
+
+
 async def _broadcast(event: Dict[str, Any]) -> None:
+    if debug_enabled():
+        logger.debug(
+            "SSE broadcast: type=%s room=%s sender=%s",
+            event.get("type", ""),
+            event.get("room_id", ""),
+            event.get("sender", ""),
+        )
     for q in list(_subscribers):
         try:
             q.put_nowait(event)
@@ -907,17 +959,27 @@ async def _run() -> None:
                 # ⑤ 房间消息 SSE 触发（P6：12s 轮询 → /sync 事件驱动主路，
                 # IM 式）。载荷只带触发元数据不带正文——内容源 = 前端收到后
                 # 拉该房间最新消息（复用 pollMessages，附件/工作流/媒体渲染
-                # 路径零改动）。排除：基线轮（存量不重放）、
-                # 自己的消息（乐观回显路径已自行刷新）。
+                # 路径零改动）。排除：基线轮（存量不重放）、无 sender 事件。
+                # R1（16.23）：自己的消息**也**广播——旧 `sender != me`
+                # 过滤下，自己在非活动房间发的消息（乐观回显只覆盖当前
+                # 打开房间的状态）要切房/手动刷新才进消息缓存；前端按
+                # event_id 去重，重复合并幂等无副作用。
                 # 编辑事件（m.replace 带 m.new_content）**必须**广播：否则
                 # 「处理中...」占位根被编辑成正式回复后，前端一直显示旧内容、
                 # 要手动刷新才看见（前端对带 relates_to 的消息走 600ms 合并
                 # 兜底拉取，fetchRoomMessages 已聚合 m.replace 写回原消息）。
-                if (
-                    not baseline
-                    and sender
-                    and sender != me
-                ):
+                _rm_ok, _rm_reason = room_message_broadcast_decision(
+                    baseline, sender
+                )
+                if not _rm_ok:
+                    if debug_enabled():
+                        logger.debug(
+                            "room_message skip: room=%s sender=%s reason=%s",
+                            room_id,
+                            sender or "(none)",
+                            _rm_reason,
+                        )
+                else:
                     # 附最小载荷——文本消息可被前端直接
                     # 合并渲染（活跃房零回拉）；非文本/复杂消息前端仍走兜底拉取。
                     await _broadcast(
