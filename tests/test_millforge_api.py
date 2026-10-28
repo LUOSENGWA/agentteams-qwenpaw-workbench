@@ -1407,3 +1407,25 @@ def test_ctl_call_normalizes_full_url_and_path_only(monkeypatch):
         "http://ctrl.test:8080/api/v1/workers/w1",
         "http://ctrl.test:8080/api/v1/workers/w1",
     ], seen
+
+
+def test_compile_writer_member_role(client):
+    """千锻 writer 角色：members.writer > 0 → build 里出现 writer 角色。"""
+    tc, state, ctl, *_ = client
+    _import_pack(tc)
+    r = tc.post("/millforge/compile", json={
+        "team": "writer-team",
+        "template": {
+            "team_combo": "biz-market",
+            "members": {"leader": 1, "workers": 1, "writer": 1,
+                        "critic": 1},
+        },
+    })
+    assert r.status_code == 200, r.text
+    b = r.json()
+    roles = b.get("roles") or []
+    ids = [x.get("role") or x.get("id") for x in roles]
+    assert "writer" in ids, ids
+    kinds = [x.get("kind") for x in roles if x.get("kind")]
+    if kinds:
+        assert "writer" in kinds, kinds
