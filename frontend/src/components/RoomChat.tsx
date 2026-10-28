@@ -1,5 +1,6 @@
 import type * as ReactNS from "react";
 import {
+  type AttentionItem,
   type RoomMessage,
   type TeamRoom,
 } from "../api";
@@ -8,6 +9,7 @@ import { FileRefPicker } from "./FileRefPicker";
 import { type FileRef } from "../lib/file-refs";
 import MessageSearch from "./MessageSearch";
 import MemberDetail from "./MemberDetail";
+import RoomInfoDrawer from "./RoomInfoDrawer";
 import {
   type WorkerInfo,
   type WorkflowEvent,
@@ -42,6 +44,7 @@ import {
 import {ThreadIcon } from "./RoomChatThread";
 import {useRoomChatCore } from "./RoomChatCore";
 import type {RoomChatCoreState } from "./RoomChatCore";
+import { applyContextWindow } from "../jumpContextWindow";
 import {RoomChatHeader } from "./RoomChatHeader";
 import {RoomChatComposer } from "./RoomChatComposer";
 
@@ -85,11 +88,11 @@ export interface RoomChatProps {
   onSendEdit?: (originalEventId: string, body: string) => Promise<void> | void;
   /** 撤回自己的消息（redaction）。 */
   onRedact?: (eventId: string) => Promise<void> | void;
-  /** 退出房间（顶部 ⋯ 菜单）。 */
-  onLeaveRoom?: () => Promise<void> | void;
-  /** 房间重命名（顶部 ⋯ 菜单；Element 同款能力，
+  /** 退出房间（房间详情 Drawer；forget=true 退出并删除/忘记）。 */
+  onLeaveRoom?: (forget?: boolean) => Promise<void> | void;
+  /** 房间重命名（房间详情 Drawer；Element 同款能力，
  * 权限不足时展示诊断——团队房间权限表普遍 null 为平台侧已知问题）。 */
-  onRenameRoom?: (name: string) => void;
+  onRenameRoom?: (name: string) => Promise<void> | void;
   /** 房间静音状态 + 切换（m.muted_room account data）。 */
   muted?: boolean;
   onToggleMute?: () => Promise<void> | void;
@@ -157,17 +160,27 @@ export interface RoomChatProps {
  /** ：Worker 列表——头像抽屉「查看会话」
  * （WorkerChats fixedWorker 模式）的数据源。 */
   workers?: WorkerInfo[];
-  /** ：引用条「加载原消息」——
- * 链式向前分页把原消息拉进时间线；返回是否找到（找不到由 UI 落
- * /context 定位区兜底）。
- * 调用后只 kickstart 一页，其余页由
- * 滚动驱动（触顶 40px 触发 + 停顶自动续拉，见下方 useLayoutEffect）。 */
+  /** ：引用条「加载原消息」（R2 显式跳转）——
+ * 点击后串行向前分页直到原消息进入窗口（限页上限），随后走既有
+ * 定位+高亮链；返回结果（exhausted=上限内未找到，由 UI 落
+ * /context 定位区兜底；cancelled=切房/换目标/看门狗）。
+ * 不再依赖「滚到顶自动续拉」接力（其边界态是旧版「加载不出来」根因）。 */
   onLoadOriginal?: (
     eventId: string,
   ) => Promise<"found" | "exhausted" | "cancelled">;
   /** 正在回填的原消息 event_id（引用条显示
- * 「正在加载原消息…」；非空时停在顶部会自动续拉分页）。 */
+ * 「正在加载原消息…」；非空时渲染窗口旁路全量，直到定位完成
+ * （onJumpHandled）才释放——深层目标不丢）。 */
   pendingOriginal?: string | null;
+  /** （R2 显式跳转）渲染窗口下界：「加载原消息」命中后，从最新数起至少
+ * 保留该条数的顶层消息（单向棘轮：只升不降，切房由父组件重置 0）——
+ * 防止 pendingOriginal 旁路释放后渲染窗口把深层目标裁掉、拽走已定位视图。 */
+  minWindowTops?: number;
+  /** attention 待决策项（父组件已过滤已答/已解决；deployed=false 不传）——
+ * 房间标题栏 pill（L3 入口）数据源，按 room_id 匹配当前房间。 */
+  attentionPending?: AttentionItem[];
+  /** 房间标题栏 attention pill 点击 → 父组件打开全局待决策弹窗并定位该房间第一条。 */
+  onOpenRoomAttention?: (room: TeamRoom) => void;
 }
 function RoomChat(props: RoomChatProps) {
   const c = useRoomChatCore(props);
@@ -182,7 +195,6 @@ function RoomChat(props: RoomChatProps) {
     loadingMore,
     onSendFiles,
     onRedact,
-    onRenameRoom,
     onReact,
     onDm,
     onOpenWorkerChats,
@@ -221,9 +233,10 @@ function RoomChat(props: RoomChatProps) {
     dragging,
     memberPanelOpen,
     setMemberPanelOpen,
+    roomInfoOpen,
+    setRoomInfoOpen,
     setReplyTo,
-    showJumpBottom,
-    newMsgCount,
+    stickToBottom,
     jumpContext,
     liveByRunId,
     teamName,
@@ -235,8 +248,7 @@ function RoomChat(props: RoomChatProps) {
     hoverTimerRef,
     revealWindow,
     kickLoadMore,
-    handleListScroll,
-    jumpToBottom,
+    openRename,
     t,
     tr,
     jumpContextRef,
@@ -253,6 +265,14 @@ function RoomChat(props: RoomChatProps) {
     compactHeader,
     narrow,
   } = core;
+  // 房间详情刷新信号：重命名完成后 bump → RoomInfoDrawer 重拉房间信息。
+  const [roomInfoRefreshTick, setRoomInfoRefreshTick] = React.useState(0);
+  // 定位区上下文片段折叠窗：默认只渲染目标 ±2（applyContextWindow）；
+  // 新的定位上下文进来时恒复位折叠（新片段从 ±2 窗开始，不继承旧展开态）。
+  const [jumpContextExpanded, setJumpContextExpanded] = React.useState(false);
+  React.useEffect(() => {
+    setJumpContextExpanded(false);
+  }, [jumpContext]);
   return (
     <div
       style={{
@@ -308,11 +328,16 @@ function RoomChat(props: RoomChatProps) {
           >
           <div
         ref={listRef}
-        onScroll={handleListScroll}
+        onScroll={stickToBottom.handleScroll}
         style={{
           flex: 1,
           overflowY: "auto",
           overflowX: "hidden",
+          // R2 前插锚定：容器保持浏览器原生滚动锚（overflow-anchor: auto
+          // 默认）作第一道防线；顶部动态块（加载按钮/错误条/最早标记，见下）
+          // 设 overflow-anchor: none 排除出锚定候选，浏览器才会选消息行做
+          // 锚点；useStickToBottom 的锚定元素层兜底原生未覆盖的边界
+          // （内容未溢出等），两层合成、无手工 scrollHeight 差值补偿。
           padding: "16px 4px",
           // 15.14：minHeight:300 → 0。旧值在「可用高 < 300」时强制列表
           // 300px → 穿透撑破列 → tabpane 整页滚动 → 输入框随页动。
@@ -364,13 +389,22 @@ function RoomChat(props: RoomChatProps) {
               background: "rgba(250,140,22,0.08)",
               color: "#fa8c16",
               fontSize: 13,
+              // R2：顶部可控动态块——排除出原生滚动锚候选（内容随时增删，
+              // 若被选为锚点，前插时浏览器锚到它 = 视图钉在顶部）。
+              overflowAnchor: "none",
             }}
           >
             <WarnIcon size={13} style={{ verticalAlign: "-2px" }} /> {errorNote}
           </div>
         ) : null}
         {hasMore || threadGroups.hiddenCount > 0 ? (
-          <div style={{ textAlign: "center", paddingBottom: 12 }}>
+          <div
+            style={{
+              textAlign: "center",
+              paddingBottom: 12,
+              overflowAnchor: "none", // R2：同上，动态块不配做锚点
+            }}
+          >
             {/* 预载中显形（自动预载与手动共用同一状态）；窗口揭示
                 无网络往返，按钮即时放出更早消息。 */}
             {loadingMore ? (
@@ -401,6 +435,7 @@ function RoomChat(props: RoomChatProps) {
               color: t.textSecondary,
               paddingBottom: 8,
               opacity: 0.7,
+              overflowAnchor: "none", // R2：同上，动态块不配做锚点
             }}
           >
             {tr("已到最早的消息")}
@@ -874,9 +909,9 @@ function RoomChat(props: RoomChatProps) {
           </div>
         )}
       </div>
-        {showJumpBottom ? (
-          /* 一键置底（Element 同款）：悬浮右下，上翻时出现；
- 「N 条新消息」徽章=不在底部期间到达的非本人消息数。 */
+        {!stickToBottom.following && stickToBottom.unread > 0 ? (
+          /* 「回到最新 N」（Element 同款）：悬浮右下，上翻且有新消息时出现；
+ 点击平滑置底并清零未读；回到底部自动清零。 */
           <div
             style={{
               position: "absolute",
@@ -890,7 +925,7 @@ function RoomChat(props: RoomChatProps) {
               gap: 4,
             }}
           >
-            {newMsgCount > 0 ? (
+            {stickToBottom.unread > 0 ? (
               <span
                 style={{
                   fontSize: 11,
@@ -904,7 +939,7 @@ function RoomChat(props: RoomChatProps) {
                 }}
               >
                 {/* 封顶 99：长流式会话防徽章无限膨胀（>99 显「99 条新消息」）。 */}
-                {Math.min(newMsgCount, 99)} {tr("条新消息")}
+                {Math.min(stickToBottom.unread, 99)} {tr("条新消息")}
               </span>
             ) : null}
             {/* 置底按钮：纯 div 圆（弃 antd Button——其 CSS 与 inline 尺寸对抗，
@@ -916,7 +951,7 @@ function RoomChat(props: RoomChatProps) {
               role="button"
               aria-label={tr("回到最新消息")}
               title={tr("回到最新消息")}
-              onClick={jumpToBottom}
+              onClick={() => void stickToBottom.scrollToBottom()}
               style={{
                 width: 44,
                 height: 44,
@@ -953,7 +988,10 @@ function RoomChat(props: RoomChatProps) {
           </div>
 
       {/* 搜索跳转定位区（修复）：目标事件不在已加载窗口时，展示
- /context 前后文片段 + 高亮目标 + 关闭；点击结果后滚动至此。 */}
+ /context 前后文片段 + 高亮目标 + 关闭；点击结果后滚动至此。
+ 16.23 霸屏修复：片段容器限高 40vh + 内部自滚，默认只渲染目标 ±2 条
+（applyContextWindow），其余收在「展开全部上下文」按钮后——全量
+ /context 片段不再把正常消息列表挤出屏幕。 */}
       {jumpContext ? (
         <div
           ref={jumpContextRef}
@@ -964,71 +1002,100 @@ function RoomChat(props: RoomChatProps) {
             background: "color-mix(in srgb, var(--app-accent, #FF7F16) 5%, transparent)",
             marginBottom: 8,
             animation: "wbJumpIn 0.3s ease-out",
+            // 霸屏修复：片段高度封顶 + 内部滚动；flexShrink:0 保证纵向
+            // 空间紧张时由上方消息列表（flex:1 min-0）让位，而非压扁本区。
+            maxHeight: "40vh",
+            overflowY: "auto",
+            flexShrink: 0,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 6,
-            }}
-          >
-            <span style={{ fontSize: 12, fontWeight: 700, color: PRIMARY }}>
-              <PinIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("搜索定位")}
-            </span>
-            <span style={{ fontSize: 11.5, color: t.textSecondary, flex: 1 }}>
-              {tr("目标消息不在已加载范围，显示前后文片段")}
-            </span>
-            <antd.Button
-              size="small"
-              type="text"
-              onClick={clearJumpContext}
-              style={{ fontSize: 12 }}
-            >
-              <CloseIcon size={12} />
-            </antd.Button>
-          </div>
-          {jumpContext.events.map((m) => {
-            const isTarget = m.event_id === jumpContext.highlightId;
+          {(() => {
+            const jcWin = applyContextWindow(
+              jumpContext.events,
+              jumpContext.highlightId,
+              jumpContextExpanded,
+            );
             return (
-              <div
-                key={m.event_id}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  marginBottom: 4,
-                  fontSize: 12.5,
-                  background: isTarget ? "color-mix(in srgb, var(--app-accent, #FF7F16) 12%, transparent)" : t.bubbleOther,
-                  border: isTarget
-                    ? `1px solid ${PRIMARY}`
-                    : "1px solid transparent",
-                  wordBreak: "break-word",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
+              <>
                 <div
                   style={{
-                    color: t.textSecondary,
-                    fontSize: 11.5,
-                    marginBottom: 2,
                     display: "flex",
-                    gap: 6,
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 6,
                   }}
                 >
-                  <span style={{ fontWeight: 600, color: t.text }}>
-                    {senderShortName(m.sender, room)}
+                  <span style={{ fontSize: 12, fontWeight: 700, color: PRIMARY }}>
+                    <PinIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("搜索定位")}
                   </span>
-                  {isTarget ? (
-                    <span style={{ color: PRIMARY, fontWeight: 700 }}>●</span>
+                  <span style={{ fontSize: 11.5, color: t.textSecondary, flex: 1 }}>
+                    {tr("目标消息不在已加载范围，显示前后文片段")}
+                  </span>
+                  {jcWin.hiddenCount > 0 ? (
+                    <antd.Button
+                      size="small"
+                      type="link"
+                      onClick={() => setJumpContextExpanded(!jumpContextExpanded)}
+                      style={{ fontSize: 12, flex: "none" }}
+                    >
+                      {jumpContextExpanded
+                        ? tr("收起")
+                        : tr("展开全部上下文")} (
+                      {jumpContext.events.length} {tr("条")})
+                    </antd.Button>
                   ) : null}
+                  <antd.Button
+                    size="small"
+                    type="text"
+                    onClick={clearJumpContext}
+                    style={{ fontSize: 12 }}
+                  >
+                    <CloseIcon size={12} />
+                  </antd.Button>
                 </div>
-                <div style={{ color: t.text }}>
-                  {m.body.slice(0, 600)}
-                </div>
-              </div>
+                {jcWin.events.map((m) => {
+                  const isTarget = m.event_id === jumpContext.highlightId;
+                  return (
+                    <div
+                      key={m.event_id}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        marginBottom: 4,
+                        fontSize: 12.5,
+                        background: isTarget ? "color-mix(in srgb, var(--app-accent, #FF7F16) 12%, transparent)" : t.bubbleOther,
+                        border: isTarget
+                          ? `1px solid ${PRIMARY}`
+                          : "1px solid transparent",
+                        wordBreak: "break-word",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: t.textSecondary,
+                          fontSize: 11.5,
+                          marginBottom: 2,
+                          display: "flex",
+                          gap: 6,
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, color: t.text }}>
+                          {senderShortName(m.sender, room)}
+                        </span>
+                        {isTarget ? (
+                          <span style={{ color: PRIMARY, fontWeight: 700 }}>●</span>
+                        ) : null}
+                      </div>
+                      <div style={{ color: t.text }}>
+                        {m.body.slice(0, 600)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
             );
-          })}
+          })()}
         </div>
       ) : null}
 
@@ -1221,6 +1288,21 @@ function RoomChat(props: RoomChatProps) {
         </div>
       </antd.Drawer>
 
+      {/* 房间详情 Drawer（Element 同款：房间 ID/主题/成员角色/设置）。
+ 退出房间走现有 leave 链路（onLeaveRoom → setActiveRoom(null) →
+ 本组件条件渲染卸载，Drawer 自动关闭）。 */}
+      <RoomInfoDrawer
+        open={roomInfoOpen}
+        roomId={room.room_id}
+        roomName={room.name}
+        onClose={() => setRoomInfoOpen(false)}
+        onLeaveRoom={props.onLeaveRoom}
+        onRename={() => openRename()}
+        muted={props.muted}
+        onToggleMute={props.onToggleMute}
+        refreshTick={roomInfoRefreshTick}
+      />
+
       {/* 重命名房间（Element 同款）+ 权限诊断 */}
       <antd.Modal
         title={tr("重命名房间")}
@@ -1228,8 +1310,16 @@ function RoomChat(props: RoomChatProps) {
         onCancel={() => setRenameOpen(false)}
         onOk={() => {
           if (!renameValue.trim()) return;
+          const nm = renameValue.trim();
           setRenameOpen(false);
-          onRenameRoom?.(renameValue.trim());
+          // 重命名完成（成功/失败）后通知详情 Drawer 重拉房间信息。
+          return (async () => {
+            try {
+              await props.onRenameRoom?.(nm);
+            } finally {
+              setRoomInfoRefreshTick((v) => v + 1);
+            }
+          })();
         }}
         okText={tr("保存")}
         cancelText={tr("取消")}

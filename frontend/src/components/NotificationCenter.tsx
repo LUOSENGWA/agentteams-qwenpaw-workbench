@@ -8,11 +8,14 @@ import {
   fetchRoomMentions,
   markInboxRead,
   sendApprovalCommand,
+  type AttentionItem,
+  type AttentionPayload,
   type InboxEvent,
   type InviteRoom,
   type RoomApproval,
   type RoomMention,
 } from "../api";
+import { AttentionPanel } from "./AttentionPanel";
 import { senderShort } from "./MessageSearch";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -44,9 +47,32 @@ function NotificationCenter(props: {
   invites?: InviteRoom[];
   /** 跳团队概览处理邀请（chat tab + 无激活房间 → 邀请区可见）。 */
   onGotoInvites?: () => void;
+  // ── 待决策子页签（10/26 并入通知页；原顶层「待决策」tab 退役）──
+  /** attention 聚合 payload（全局轮询源在 WorkbenchPageData）。 */
+  attention?: AttentionPayload | null;
+  /** 当前子页签是否=待决策（状态提到 WorkbenchPage：顶栏 badge 点击
+   * 落点 + ui-state 持久化，刷新后保持）。 */
+  attentionSubTab?: boolean;
+  /** 子页签切换（通知事件流 ↔ 待决策）。 */
+  onAttentionSubTabChange?: (next: boolean) => void;
+  /** 面板「回答」→ 打开全局决策弹窗并定位到该条。 */
+  onOpenAttentionItem?: (item: AttentionItem) => void;
+  /** 面板手动刷新（绕过 30s 服务端缓存）。 */
+  onRefreshAttention?: () => void;
 }) {
-  const { onUnreadCount, onGotoApprovals, onGotoRoom, refreshTick, invites, onGotoInvites } =
-    props;
+  const {
+    onUnreadCount,
+    onGotoApprovals,
+    onGotoRoom,
+    refreshTick,
+    invites,
+    onGotoInvites,
+    attention,
+    attentionSubTab,
+    onAttentionSubTabChange,
+    onOpenAttentionItem,
+    onRefreshAttention,
+  } = props;
   const t = useThemeColors();
   const tr = useT();
   // 房间通知（团队房间 @提到我，Matrix 侧——宿主 inbox 事件
@@ -210,6 +236,15 @@ function NotificationCenter(props: {
   // 已含 loadApprovals）。弃用宿主 push-messages
   // 队列（远程 Worker 审批在该进程内，本机队列恒 0——首页没有）。
 
+  // 待决策子页签计数（与顶栏 badge 同过滤口径：本地已答/已解决不计）。
+  const attentionPendingCount = React.useMemo(
+    () =>
+      (attention?.items || []).filter(
+        (it) => !it.answered_locally && !it.resolved,
+      ).length,
+    [attention],
+  );
+
   const markAll = async () => {
     setMarking(true);
     try {
@@ -247,6 +282,27 @@ function NotificationCenter(props: {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
+      {/* 子页签：通知（事件流）/ 待决策 N（attention；10/26 原顶层 tab 并入）。
+ 状态提到 WorkbenchPage（顶栏 badge 点击落点 + ui-state 持久化刷新后保持），
+ 本组件纯消费。事件流各段（审批/邀请/房间通知/宿主通知）轮询不随子页签
+ 停——切到待决策期间未读计数照常累计。 */}
+      <antd.Tabs
+        size="small"
+        activeKey={attentionSubTab ? "attention" : "events"}
+        onChange={(k: string) => onAttentionSubTabChange?.(k === "attention")}
+        items={[
+          { key: "events", label: tr("通知") },
+          { key: "attention", label: `${tr("待决策")} (${attentionPendingCount})` },
+        ]}
+      />
+      {attentionSubTab ? (
+        <AttentionPanel
+          payload={attention ?? null}
+          onOpenItem={(item) => onOpenAttentionItem?.(item)}
+          onRefresh={() => onRefreshAttention?.()}
+        />
+      ) : (
+        <>
       {/* 顶部工具条 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <antd.Typography.Title level={4} style={{ margin: 0 }}>
@@ -739,6 +795,8 @@ function NotificationCenter(props: {
         </div>
       )}
       </div>
+        </>
+      )}
     </div>
   );
 }

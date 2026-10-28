@@ -22,7 +22,7 @@ export interface WorkflowBoardProps {
   onTopoRunChange?: (runId: string) => void;
 }
 
-/** ：13.21 曾加第 5 项「mermaid」独立
- * 视图——与拓扑依赖图同结构（并入拓扑：「不需要新开第 5 项，把
- * 拓扑的依赖图优化就好」）→ mermaid 退役为拓扑视图内的图样式切换。 */
-export type WfView = "list" | "card" | "board" | "topo";
+/** 10/26：工作流只留看板/拓扑两视图——list/card 退役；
+ * 旧持久化值（list/card/mermaid）由 WorkbenchPageUi 的 wfMem 初始化
+ * 兼容回退（list/card→board，mermaid→topo）。 */
+export type WfView = "board" | "topo";

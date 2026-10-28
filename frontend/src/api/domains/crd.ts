@@ -1,7 +1,7 @@
 // CRD/L1-L2 管理面（controller /api/v1/workers|teams|humans|managers）：CRD CRUD + admin 聚合取数。
 
 import { controllerRequest, fetchControllerJson } from "../shared";
-import { cachedRequest } from "../../requestCache";
+import { cachedFetch } from "../../requestCache";
 
 // ── L1 全量视图（Controller API，需管理员 token）────────────────────
 
@@ -17,6 +17,10 @@ export interface WorkerInfo {
   phase: string;
   state: string;
   model: string;
+  /** Worker 的 LLM provider（WorkerResponse.modelProvider = WorkerSpec.ModelProvider，
+   * Higress APIG Model API 名；空=跟随默认）。多 provider 部署下只改 model
+   * 不改 provider = 仍走旧 provider。 */
+  modelProvider?: string;
   runtime: string;
   /** 自定义 Docker 镜像（WorkerResponse.image；发布部署 = 带发布 tag 的
    * 运行时镜像，如 …agentteams-qwenpaw-worker:v1.2.5——运行时版本正源，
@@ -129,6 +133,10 @@ export interface ManagerInfo {
   phase: string;
   state: string;
   model: string;
+  /** Worker 的 LLM provider（WorkerResponse.modelProvider = WorkerSpec.ModelProvider，
+   * Higress APIG Model API 名；空=跟随默认）。多 provider 部署下只改 model
+   * 不改 provider = 仍走旧 provider。 */
+  modelProvider?: string;
   /* ManagerResponse 已有 runtime/image 字段（omitempty），前端补声明。 */
   runtime?: string;
   image?: string;
@@ -157,6 +165,17 @@ export const createWorker = (body: Record<string, unknown>) =>
   controllerRequest("POST", "/workers", body);
 export const deleteHuman = (name: string) =>
   controllerRequest("DELETE", `/humans/${encodeURIComponent(name)}`);
+
+/** 更新 Human 的团队授权（PUT /api/v1/humans/{name}，merge 语义：
+ * accessibleTeams 传数组 = 整表替换，省略 = 不变）。
+ * 404/405 = Controller 未含该端点（旧版）→ 调用方回落「生成命令」。 */
+export const updateHumanAccessibleTeams = (
+  name: string,
+  accessibleTeams: string[],
+) =>
+  controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, {
+    accessibleTeams,
+  });
 /** 创建团队——workerMembers 必须引用已存在的 Worker CR，且 ≥1。 */
 export const createTeam = (body: Record<string, unknown>) =>
   controllerRequest("POST", "/teams", body);
@@ -164,9 +183,19 @@ export const createTeam = (body: Record<string, unknown>) =>
 export const updateTeam = (name: string, body: Record<string, unknown>) =>
   controllerRequest("PUT", `/teams/${encodeURIComponent(name)}`, body);
 /** 更新现有 Worker 的模型（PUT /workers/{name} 合并语义——只应用非空字段，
- * 其余 spec 不动；不发 modelProvider = provider 保持原值/默认）。 */
-export const updateWorkerModel = (name: string, model: string) =>
-  controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, { model });
+ * 其余 spec 不动；modelProvider 传 undefined=不改，传值=覆盖）。。
+ * 
+ * 多 Higress provider 部署下 model 只是请求 alias，真正转发由 modelProvider
+ * （APIG Model API 名）决定；选 alias 时应同时回填/下发 provider。 */
+export const updateWorkerModel = (
+  name: string,
+  model: string,
+  modelProvider?: string,
+) =>
+  controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, {
+    model,
+    ...(modelProvider !== undefined ? { modelProvider } : {}),
+  });
 /** ：通用 Worker spec 合并更新——
  * 只发非空字段（PUT 合并语义同上）；model/soul 任意组合。 */
 export const updateWorker = (name: string, body: Record<string, unknown>) =>
@@ -204,11 +233,12 @@ export const updateManagerModel = (name: string, model: string) =>
 export const deleteTeam = (name: string) =>
   controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
 
-/** cachedRequest 包裹（admin/data，30s，tags
+/** cachedFetch 包裹（admin/data，TTL 30s + SWR 30s，tags
  * ["admin"]）——4 路并发取数，WorkerManage 30s 轮询与 CrdManage 失效后
- * 重取合并为一次回源。 */
+ * 重取合并为一次回源。SWR：30-60s 段先回旧值（面板零等待）+ 后台再验证；
+ * >60s 或标签失效（写操作后 invalidateTags(["admin"])）→ 等回源。 */
 export async function fetchAdminData(): Promise<AdminData> {
-  return cachedRequest(
+  return cachedFetch(
     "admin/data",
     30000,
     async () => {
@@ -229,7 +259,7 @@ export async function fetchAdminData(): Promise<AdminData> {
         managers: managers as ManagerInfo[],
       };
     },
-    { tags: ["admin"] },
+    { tags: ["admin"], swrMs: 30000 },
   );
 }
 
@@ -258,10 +288,10 @@ function fetchListSafe(url: string): Promise<unknown[]> {
  * 与 fetchAdminData 的区别：humans/managers 是 L1 管理面（L2 无权限或无意义）
  * → 失败置空不炸；workers/teams 是 L2 技能中心正源（Controller 按
  * accessibleTeams 自动 scope——standalone worker 隐藏，防探测）。 */
-/** cachedRequest 包裹（admin/l2，30s，tags
+/** cachedFetch 包裹（admin/l2，TTL 30s + SWR 30s，tags
  * ["admin"]）——L2 身份取数，与 admin/data 同标签（写失效一起清）。 */
 export async function fetchL2AdminData(): Promise<AdminData> {
-  return cachedRequest(
+  return cachedFetch(
     "admin/l2",
     30000,
     async () => {
@@ -278,6 +308,6 @@ export async function fetchL2AdminData(): Promise<AdminData> {
         managers: managers as ManagerInfo[],
       };
     },
-    { tags: ["admin"] },
+    { tags: ["admin"], swrMs: 30000 },
   );
 }

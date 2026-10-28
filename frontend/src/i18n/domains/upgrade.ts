@@ -25,6 +25,11 @@ export const upgradeDict: Record<string, { en: string }> = {
   "（无日志内容）": { en: "(No log content)" },
   "CLI": { en: "CLI" },
   "Runner": { en: "Runner" },
+  "持续": { en: "Duration" },
+  "Tokens": { en: "Tokens" },
+  "凭证": { en: "Receipt" },
+  "工作树": { en: "Worktree" },
+  "分支": { en: "Branch" },
   // ── 运行时升级（1.2.5 #1364/#1343 消费）──
   "运行时升级": { en: "Runtime Upgrade" },
   "目标": { en: "target" },
@@ -75,6 +80,10 @@ export const upgradeDict: Record<string, { en: string }> = {
   "编码 CLI 探测中（容器内逐 CLI 跑 --version，有 exec 成本）…": {
     en: "Probing coding CLIs (runs --version inside the container per CLI — has exec cost)…",
   },
+  "探测于 {t}（缓存 5 分钟）": {
+    en: "Probed at {t} (cached for 5 min)",
+  },
+  "重新探测": { en: "Probe again" },
   "该 Worker 的编码 CLI 管理暂不可用，升级 AgentTeams 后自动生效。": {
     en: "Coding CLI management for this Worker is not available yet; it activates automatically after upgrading AgentTeams.",
   },

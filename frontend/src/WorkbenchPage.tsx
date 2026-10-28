@@ -1,5 +1,7 @@
 import {
   getCachedMessages,
+  resolveAttentionRoom,
+  type AttentionItem,
   type AdminData,
   type RoomMessage,
   type TeamRoom,
@@ -24,7 +26,8 @@ import ProjectFiles from "./components/ProjectFiles";
 import NotificationCenter from "./components/NotificationCenter";
 import WorkerChats from "./components/WorkerChats";
 import WorkerManage from "./components/WorkerManage";
-import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, FolderIcon, HistoryIcon } from "./components/icons";
+import { AttentionDecisionModal } from "./components/AttentionDecisionModal";
+import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, FolderIcon, HistoryIcon, TargetIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import ModelsTab from "./ModelsTab";
 import { WbTooltip } from "./components/WbTooltip";
@@ -43,7 +46,7 @@ const React = host.React;
 const antd = host.antd;
 
 export default function WorkbenchPage() {
-  const { t, themeCfg, tr, pluginVersion, connectorVersion } = useWorkbenchTheme();
+  const { t, themeCfg, tr, pluginVersion, connectorVersion, buildVersion } = useWorkbenchTheme();
 
   const [config, setConfig] = React.useState<WorkbenchConfig | null>(null);
  // config 稳定镜像 ref——refreshConfig（deps=[]）
@@ -91,6 +94,9 @@ export default function WorkbenchPage() {
   React.useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+  // R2 显式跳转：渲染窗口下界——「加载原消息」命中深层目标时抬升
+  // （旁路释放后仍罩住目标行）；单向棘轮在 RoomChatCore，切房归零。
+  const [minWindowTops, setMinWindowTops] = React.useState(0);
   // // 换房间时消息状态必须整体重置。此前 messagesRef/messagesEnd 残留**上
   // 一个房间**的数据 → refreshMessages 的 mergeMessagePages(旧房全量,
   // 新房最新页) 把两房消息混进同一窗口（「乱了」），setCachedMessages
@@ -109,6 +115,7 @@ export default function WorkbenchPage() {
     setMessagesEnd(cached ? (cached.end || "") : "");
     setHasMore(Boolean(cached?.end));
     setRoomError("");
+    setMinWindowTops(0); // R2：渲染窗口下界不跨房保留
     messagesRef.current = cached ? cached.messages : [];
   }, [activeRoom?.room_id]);
 
@@ -164,20 +171,17 @@ export default function WorkbenchPage() {
  // （13.12 「很多信息『已滚出历史』但 Element 里
   // 信息都在，看看 Element 怎么做的」）：引用条原消息不在已加载窗口时 →
   // 点「加载原消息」→ backfill 到原消息进窗口（不标死『滚出历史』）。
- // （B2 Element 式滚动化，13.14 「加载原消息能不能
-  // 滚动到哪里就自动加载，参考 Element」）：旧版 = 点一下后台 burst 连拉
-  // （500 页护栏内一口气拉完，用户看不见进度、API 突发）。新版 =
-  // 滚动驱动的分页节奏：
-  // ① 点「加载原消息」→ set pending + kickstart 一页（用户未必在顶部，
-  // 40px 触发不可依赖）；
-  // ② 之后 RoomChat 侧滚动到哪加载到哪：40px 触顶自动触发（既有）+
-  // 停在顶部时每次前插后自动续一页（新增 effect）——页面按用户
-  // 滚动节奏逐页前进，锚保持视口稳定（13.6 锚机制）；
-  // ③ 终止条件：原消息进窗口（自动定位 + 高亮，jumpToEventId 复用
-  // 搜索跳转链路）/ 触底（!hasMore → banner 落 /context 兜底）/
-  // 用户滚离顶部（停止续拉）/ 切房（pending 作废 resolve false）。
-  // hasMoreRef 退役（只写不读的死镜像——回填效果
-  // 直接读 hasMore state）。
+ // （R2 显式跳转，替换 13.14 B2 滚动接力）：旧版 = kickstart 一页
+  // + 滚到顶/前插后自动续拉（接力节奏），游标/在飞闸/空页走查边界态
+  // 导致「有时加载不出来」。新版 = 显式分页跳转：
+  // ① 点「加载原消息」→ loadOriginal 显式循环串行翻页直到目标进窗口
+  // （限页上限 ORIGINAL_PAGE_CAP，见 WorkbenchPageMessages/originalJump）；
+  // ② 命中 → 抬渲染窗口下界（minWindowTops，旁路释放后深层目标不丢）+
+  // 复用 jumpToEventId 定位 + 高亮（搜索跳转链路）；pendingOriginal
+  // 旁路保持到定位完成（onJumpHandled → finishPendingOriginalJump）；
+  // ③ 终止：目标进窗口（found）/ 到页上限或最早（exhausted → banner 落
+  // /context 定位区兜底）/ 换目标或切房（cancelled）/ 30s 停滞看门狗
+  // （cancelled，可再点）。
   const [pendingOriginalId, setPendingOriginalId] =
     React.useState<string | null>(null);
 
@@ -197,6 +201,7 @@ export default function WorkbenchPage() {
     refreshMessages,
     loadMore,
     loadOriginal,
+    finishPendingOriginalJump,
     pollMessages,
     openRoom,
     handleGlobalSearchOpenRoom,
@@ -228,6 +233,7 @@ export default function WorkbenchPage() {
     setMarkingAllRead,
     pendingOriginalId,
     setPendingOriginalId,
+    setMinWindowTops,
     setJumpToEventId,
   });
 
@@ -240,6 +246,8 @@ export default function WorkbenchPage() {
     refreshWorkflow,
     hasCtlToken,
     refreshAdmin,
+    attention,
+    refreshAttention,
     onLoginSuccess,
   } = useWorkbenchData({
     activeRoom,
@@ -275,6 +283,70 @@ export default function WorkbenchPage() {
     writeUiState,
     tr,
   });
+
+  // attention 决策面（NMH §8）——顶栏 badge / 全局弹窗 / 通知页「待决策」
+  // 子页签（10/26 原顶层聚合页并入通知页）共用一份数据（30s 轮询在
+  // WorkbenchPageData，hasCtlToken 门控）；本处只管弹窗开合 + 定位 +
+  // 待答过滤 + 子页签状态。deployed=false（旧 controller）时不显示
+  // badge/入口（诚实降级，不报错）。
+  const [attentionOpen, setAttentionOpen] = React.useState(false);
+  const [attentionIndex, setAttentionIndex] = React.useState(0);
+  const attentionPending = React.useMemo(
+    () =>
+      (attention?.items || []).filter(
+        (it) => !it.answered_locally && !it.resolved,
+      ),
+    [attention],
+  );
+  // 房间卡徽章（L2）：room_id → 待决策条数（resolveAttentionRoom 解析，
+  // payload 自带 room_id 优先；解析不到的项不进任何卡片）。
+  const attentionPendingByRoom = React.useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const it of attentionPending) {
+      const rid = resolveAttentionRoom(it);
+      if (rid) m[rid] = (m[rid] || 0) + 1;
+    }
+    return m;
+  }, [attentionPending]);
+  const openAttention = React.useCallback((index: number) => {
+    setAttentionIndex(index);
+    setAttentionOpen(true);
+  }, []);
+  const openAttentionByItem = React.useCallback(
+    (item: AttentionItem) => {
+      const i = attentionPending.findIndex(
+        (it) =>
+          `${it.task_id}:${it.kind || "other"}:${it.attempt}` ===
+          `${item.task_id}:${item.kind || "other"}:${item.attempt}`,
+      );
+      openAttention(i >= 0 ? i : 0);
+    },
+    [attentionPending, openAttention],
+  );
+  // 房间页 pill（L3）点击：定位该房间第一条待决策 → 复用全局待决策弹窗。
+  const handleOpenRoomAttention = React.useCallback(
+    (room: TeamRoom) => {
+      const first = attentionPending.find(
+        (it) => resolveAttentionRoom(it) === room.room_id,
+      );
+      if (first) openAttentionByItem(first);
+    },
+    [attentionPending, openAttentionByItem],
+  );
+  // 「待决策」子页签（通知页内）——状态提到本层：顶栏 badge 点击 =
+  // setTab("inbox") + 定位待决策子页；选择持久化进 ui-state（inboxSubTab
+  // 字段），刷新后保持（旧顶层「待决策」tab 的持久化值由 useWorkbenchUi
+  // 迁移收编到此）。
+  const [attentionSubTab, setAttentionSubTabState] = React.useState(
+    initialUi.current?.inboxSubTab === "attention",
+  );
+  const setAttentionSubTab = React.useCallback(
+    (next: boolean) => {
+      setAttentionSubTabState(next);
+      mergeUiState({ inboxSubTab: next ? "attention" : "events" });
+    },
+    [mergeUiState],
+  );
 
   const {
     sseState,
@@ -407,6 +479,13 @@ export default function WorkbenchPage() {
     setChatListHiddenPersist,
   });
 
+  // R2 显式跳转：跳转完成（定位高亮 / /context 兜底）→ 先释放 pending
+  // 原消息（渲染窗口旁路关闭；下界已抬升，目标行不丢），再清跳转事件。
+  const handleJumpHandledWrapped = React.useCallback(() => {
+    finishPendingOriginalJump();
+    handleJumpHandled();
+  }, [finishPendingOriginalJump, handleJumpHandled]);
+
   // 点 Tab 即刷新（用户要求，所有 top tab）：rc-tabs 内容挂载后保活不卸载，
   // 切回不会自动重取——这里按 tab 显式触发对应数据刷新。
   // 首次运行（prev===""，=挂载/恢复的初始 tab，
@@ -483,6 +562,7 @@ export default function WorkbenchPage() {
       hasMore={hasMore}
       onLoadOriginal={loadOriginal}
       pendingOriginal={pendingOriginalId}
+      minWindowTops={minWindowTops}
       user_id={config?.matrix?.user_id}
       errorNote={
         roomError === "not_found"
@@ -511,7 +591,7 @@ export default function WorkbenchPage() {
       loadingMore={loadingMore}
       onPoll={pollMessages}
       jumpToEventId={jumpToEventId}
-      onJumpHandled={handleJumpHandled}
+      onJumpHandled={handleJumpHandledWrapped}
       memberRoles={memberRoles}
       memberWorkerNames={memberWorkerNames}
       workerBadge={
@@ -529,6 +609,8 @@ export default function WorkbenchPage() {
       onOpenProject={handleOpenProject}
       onWorkflowIntervened={handleWfIntervened}
       onOpenProjectFiles={openProjectFiles}
+      attentionPending={attention?.deployed ? attentionPending : undefined}
+      onOpenRoomAttention={handleOpenRoomAttention}
     />
   ) : null;
 
@@ -541,6 +623,9 @@ export default function WorkbenchPage() {
       workerSessionByRoom={workerSessionStates.byRoom}
       workerMxids={workerSessionStates.workerMxids}
       roomProjectNames={roomProjectNames}
+      attentionPendingByRoom={
+        attention?.deployed ? attentionPendingByRoom : undefined
+      }
       workerRoleByMxid={workerRoleByMxid}
  // 回调 prop 稳定化（同 RoomChat）。
       onOpenRoom={openRoom}
@@ -708,9 +793,9 @@ export default function WorkbenchPage() {
           {!narrow && (
             <WbTooltip
               title={
-                connectorVersion && connectorVersion !== pluginVersion
+                connectorVersion && connectorVersion !== buildVersion
                   ? tr("前端 {f} · 连接器 {b}", {
-                      f: pluginVersion,
+                      f: buildVersion,
                       b: connectorVersion,
                     })
                   : tr("插件版本 {v}", { v: pluginVersion })
@@ -723,6 +808,52 @@ export default function WorkbenchPage() {
           )}
         </div>
         <div style={{ flex: 1 }} />
+        {/* attention 待决策 badge——deployed 且有未答项才显示（点击跳
+    通知页「待决策」子页；答题走面板内「回答」开全局弹窗）；
+    旧 controller（404 降级）不显示，诚实降级。 */}
+        {attention?.deployed && attentionPending.length > 0 ? (
+          <WbTooltip title={`${tr("待决策")} · ${tr("点击直达")}`}>
+            <button
+              type="button"
+              onClick={() => {
+                setAttentionSubTab(true);
+                setTab("inbox");
+                scrollTabIntoView("inbox");
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                border: "none",
+                background:
+                  "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
+                color: PRIMARY,
+                cursor: "pointer",
+                padding: "4px 10px",
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              <TargetIcon size={14} />
+              {tr("待决策")}
+              <span
+                style={{
+                  background: PRIMARY,
+                  color: "#fff",
+                  borderRadius: 10,
+                  fontSize: 10.5,
+                  padding: "0 6px",
+                  lineHeight: "16px",
+                  fontWeight: 700,
+                }}
+              >
+                {attentionPending.length}
+              </span>
+            </button>
+          </WbTooltip>
+        ) : null}
         {config?.matrix?.user_id ? (
           <WbTooltip title={tr("点击进入配置页")}>
             <div
@@ -994,6 +1125,13 @@ export default function WorkbenchPage() {
                 // UI 在那里；chat tab 需无激活房间才显示 TeamOverview）。
                 invites={invites}
                 onGotoInvites={gotoInvites}
+                // 待决策子页签（10/26 原顶层 tab 并入）——数据/弹窗/
+                // 刷新链路仍在本层（全局弹窗），子页签状态持久化刷新后保持。
+                attention={attention}
+                attentionSubTab={attentionSubTab}
+                onAttentionSubTabChange={setAttentionSubTab}
+                onOpenAttentionItem={openAttentionByItem}
+                onRefreshAttention={() => void refreshAttention(true)}
               />
             ),
           },
@@ -1160,6 +1298,16 @@ export default function WorkbenchPage() {
           />
         </antd.Drawer>
       ) : null}
+      {/* attention 决策弹窗（全局：通知页「待决策」子页面板「回答」打开；
+          一次一条、可上/下条；成功提交 → 静默刷新聚合 + 关闭） */}
+      <AttentionDecisionModal
+        open={attentionOpen}
+        items={attentionPending}
+        index={attentionIndex}
+        onIndexChange={setAttentionIndex}
+        onClose={() => setAttentionOpen(false)}
+        onAnswered={() => void refreshAttention(false)}
+      />
     </main>
     </WbViewportProvider>
     </antd.ConfigProvider>

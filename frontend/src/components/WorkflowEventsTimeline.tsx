@@ -1,7 +1,9 @@
 import { PulseIcon } from "./icons";
 
 import {
+  fetchProjectSignalEvents,
   fetchProjectTransitionEvents,
+  type ProjectSignalEvent,
   type ProjectTransitionEvent,
 } from "../api";
 import { useT } from "../i18n";
@@ -23,6 +25,32 @@ const STATUS_COLOR: Record<string, string> = {
   blocked: "#fa541c",
   cancelled: "#ff4d4f",
 };
+
+/** 信号事件类型 → 颜色（未知回退灰，新类型上线不炸 UI）。 */
+const SIGNAL_COLOR: Record<string, string> = {
+  "SIG-DECISION": "#1677ff",
+  "SIG-VERDICT": "#722ed1",
+  "SIG-MISMATCH": "#ff4d4f",
+  "SIG-COMPLETE": "#52c41a",
+  "SIG-ARTIFACT": "#13c2c2",
+  "SIG-ATTENTION": "#fa8c16",
+};
+
+/** 信号事件一行摘要：优先 from→to/action，其次 reason/ref。 */
+function signalSummary(ev: ProjectSignalEvent): string {
+  const p = (ev.payload || {}) as Record<string, unknown>;
+  const bits: string[] = [];
+  if (p.from_status || p.to_status) {
+    bits.push(`${String(p.from_status ?? "?")}→${String(p.to_status ?? "?")}`);
+  }
+  if (p.action) bits.push(String(p.action));
+  if (p.reason) bits.push(String(p.reason).slice(0, 80));
+  if (!bits.length && ev.ref) bits.push(ev.ref.split("/").slice(-2).join("/"));
+  if (!bits.length && ev.source_event?.request_id) {
+    bits.push(String(ev.source_event.request_id));
+  }
+  return bits.join(" · ");
+}
 
 /** ISO → HH:mm:ss（本地时区；解析失败原样截尾）。 */
 function fmtTime(ts: string): string {
@@ -71,6 +99,9 @@ export function WorkflowEventsTimeline(props: {
   const [notDeployed, setNotDeployed] = React.useState(false);
   const [events, setEvents] = React.useState<ProjectTransitionEvent[]>([]);
   const [truncated, setTruncated] = React.useState(false);
+  // 信号事件（#1405；Controller 只写不读——该读取端点未部署时诚实降级）
+  const [signals, setSignals] = React.useState<ProjectSignalEvent[]>([]);
+  const [signalNotDeployed, setSignalNotDeployed] = React.useState(false);
   // 尾游标（当前已加载到的位置；轮询从此增量取）。
   const tailCursorRef = React.useRef<string>("");
   const loadingRef = React.useRef(false);
@@ -115,12 +146,31 @@ export function WorkflowEventsTimeline(props: {
     setError("");
   }, [projectId, teamId]);
 
+  /** 信号事件单页加载（200 条；端点 404 = 未部署，保持 transitions 可用）。 */
+  const loadSignals = React.useCallback(async () => {
+    try {
+      const resp = await fetchProjectSignalEvents(projectId, teamId, {
+        limit: 200,
+      });
+      if (resp === null) {
+        setSignalNotDeployed(true);
+        setSignals([]);
+        return;
+      }
+      setSignalNotDeployed(false);
+      setSignals(resp.events);
+    } catch {
+      // 信号面失败不影响转换事件面（两者独立数据源）。
+    }
+  }, [projectId, teamId]);
+
   const refresh = React.useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
     try {
       await loadAll();
+      await loadSignals();
     } catch (e) {
       if (!loadingRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
@@ -128,7 +178,7 @@ export function WorkflowEventsTimeline(props: {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [loadAll]);
+  }, [loadAll, loadSignals]);
 
   // 打开时首载；关闭重置（下次展开重新拉，数据面小、不做缓存层）。
   React.useEffect(() => {
@@ -136,6 +186,7 @@ export function WorkflowEventsTimeline(props: {
     let stopped = false;
     setLoading(true);
     loadAll({ stopped })
+      .then(() => loadSignals())
       .catch((e: unknown) => {
         if (!stopped) setError(e instanceof Error ? e.message : String(e));
       })
@@ -145,7 +196,7 @@ export function WorkflowEventsTimeline(props: {
     return () => {
       stopped = true;
     };
-  }, [open, loadAll]);
+  }, [open, loadAll, loadSignals]);
  // 旧定时器 → usePoller（20s；active=open——
   // 收起时停；!document.hidden 内置）。
   usePoller({
@@ -264,6 +315,85 @@ export function WorkflowEventsTimeline(props: {
               ))}
             </div>
           )}
+          {signals.length > 0 || signalNotDeployed || (!loading && !error) ? (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>
+                {tr("信号事件（SIG-*）")}
+                {signals.length > 0 ? (
+                  <span style={{ color: "#888", fontWeight: 400 }}>
+                    {tr("（{n} 条）", { n: signals.length })}
+                  </span>
+                ) : null}
+              </div>
+              {signalNotDeployed ? (
+                <div style={{ color: "#999", lineHeight: 1.6 }}>
+                  {tr(
+                    "Controller 未部署信号事件读取端点（#1405 只写不读；需补只读端点后此处自动出现）",
+                  )}
+                </div>
+              ) : signals.length === 0 ? (
+                <div style={{ color: "#999", lineHeight: 1.6 }}>
+                  {tr("暂无信号事件——读取端点已接通，SIG-* 事件写入后自动出现")}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    maxHeight: 240,
+                    overflow: "auto",
+                  }}
+                >
+                  {[...signals].reverse().map((ev, i) => (
+                    <div
+                      key={`${ev.event_id}-${i}`}
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "baseline",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: "#888",
+                          fontVariantNumeric: "tabular-nums",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {fmtTime(ev.occurred_at)}
+                      </span>
+                      <span
+                        style={{
+                          color: SIGNAL_COLOR[ev.event_type] || "#999",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {ev.event_type}
+                      </span>
+                      <span
+                        style={{ color: "#555", maxWidth: 460 }}
+                        title={signalSummary(ev)}
+                      >
+                        {signalSummary(ev)}
+                      </span>
+                      {ev.iteration_index != null ? (
+                        <span style={{ color: "#888" }}>
+                          #{ev.iteration_index}
+                        </span>
+                      ) : null}
+                      {ev.task_id ? (
+                        <span style={{ color: "#888", fontFamily: "monospace" }}>
+                          {ev.task_id}
+                        </span>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

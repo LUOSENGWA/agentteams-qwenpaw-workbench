@@ -70,9 +70,16 @@ class LoginRequest(BaseModel):
 
 
 class DmRequest(BaseModel):
-    """DM open request — only the target MXID/localpart is needed."""
+    """DM open request — target MXID/localpart + optional display name/topic.
+
+ ``name``/``topic`` 缺省由 create_dm 兜底（私聊 · <localpart> /
+ Direct chat with <mxid>）；调用方（前端发起任务流程）传带上下文的
+ 显示名，建房即命名。旧前端不传 = 后端缺省（向后兼容）。
+ """
 
     user: str = Field(min_length=1)
+    name: str = ""
+    topic: str = ""
 
 
 class SearchRequest(BaseModel):

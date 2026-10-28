@@ -3,6 +3,38 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.23（2026-10-26 · 千锻注入修复）
+
+**修复**
+- **千锻注入全部失败（HTTP 301 / Controller 不可达）**：`_ctl_call` 的契约是只接收 path（base 由内部按 ordered 地址拼接），但注入链路的历史调用点传的是完整 URL（`f"{base}/api/v1/..."`），入口又拼一次 base → 双 base URL（`https://h:7113https://h:7113/api/v1/...`）→ 网关回 301 或挂到超时，SOUL 更新 / 新建 Worker / core 技能全部失败。现在入口统一归一化为 path+query，兼容完整 URL 与相对路径两种形态。
+- **core 技能上传 400（`the zip must contain a single top-level skill directory`）**：core 技能 zip 把 `SKILL.md` / `references/` / `scripts/` 平铺在包根，而控制器要求「单个顶层技能目录」（目录名即技能名，根级条目直接 400）。现在全部条目包在 `millforge-core/` 下。
+- **core 技能挂接报「无 skills 数据」**：挂接前用 `GET /api/v1/workers` 读各 Worker 的已分配技能，但控制器返回的键是 `"workers"`（附带 `total`），代码读的是 `"items"` → 名单为空 → 每个 Worker 都被判「无 skills 数据」。改为读 `"workers"`；同时修正单测假 controller（它此前返回 `"items"`，与真实不符，所以漏检）。
+- 补回归测试 `test_ctl_call_normalizes_full_url_and_path_only`：无修复时断言复现双 base，有修复时两形态归一为同一单 base URL；I3 core-skill 测试补顶层目录断言。
+
+## 0.5.0-beta.16.22（2026-10-26 · Provider 预填充）
+
+**修复**
+- **Provider 没有像 model 一样预填现值**：旧 Controller 的 `WorkerResponse` 不返回 `modelProvider`，导致弹窗里 provider 恒空。现在改为「Controller 的 `modelProvider` 优先；缺失时用所选 alias 的 `binding.providerName` 推导」——与 model 一样预填当前 provider（Controller 重建后仍以真实值为准）。
+
+## 0.5.0-beta.16.20（2026-10-26 · 模型编辑带 Provider（多 Higress Provider））
+
+**修复**
+- **多 Higress Provider 下选模型不生效**：Worker CR 的 `model` 只是请求 alias，真正转发由 `modelProvider`（APIG Model API 名）决定。此前模型编辑只发 `model`、provider 不动 → 换了 alias 仍走旧 provider，表现为「选了没用」。现在未分组 Worker 模型弹窗同时提供 **Provider** 选择：选 configured alias 会自动回填对应 Provider（来自 Higress alias→binding.providerName），也可手动选/清空；保存时只下发改动项（`model` + 视情况 `modelProvider`，PUT 合并语义）。
+
+## 0.5.0-beta.16.19（2026-10-26 · 微信扫码直连 iLink，无需重建 Controller）
+
+**修复**
+- **微信扫码无需重建 Controller 即可用**：iLink 的 `get_qrcode_status` 是长轮询（服务端挂约 31 秒），Controller 频道代理固定 5s 会掐断。本版让**插件后端直连 iLink** 拉状态（45 秒超时），拿到 `bot_token` 后再走原有频道 `PUT` 落盘（快写，5s 足够）——即使 Controller 未升级，插件里的微信扫码也能完成授权。Controller 侧的 45s 长轮询修复（commit `290195f8`）仍建议下次发版带上，用于统一语义与其它长轮询场景。
+
+## 0.5.0-beta.16.18（2026-10-26 · 频道扫码长轮询 + 未分组 Worker 改模型）
+
+**修复**
+- **微信扫码授权卡死**：QwenPaw 的微信扫码登录依赖 iLink `get_qrcode_status` 长轮询（服务端挂起约 30s）。插件后端代理读超时（6s）与 Controller 频道代理（5s）都会在长轮询返回前掐断 → 扫码后拿不到 `confirmed`，手机端提示「请在 OpenClaw 中升级 WeChat 接口版本后再试」。现在三层放行：插件后端 `…/qrcode/status` 读超时 45s、Controller 该路由专用 45s 长轮询客户端、QwenPaw 客户端保持 60s；连续轮询失败会在界面明确提示（不再静默）。
+- **未分组（独立）Worker 改不了模型**：无 team 的 Worker 被归入伪团队「未分组」，点齿轮走团队配置入口、在 CRD 团队列表查无 → 弹「团队数据未加载或团队不存在」，而模型只能在该弹窗改。现在「未分组」齿轮打开独立的未分组 Worker 模型弹窗（`PUT /workers/{name}` 只传 `model`，合并语义，provider 等字段不动）。
+- **微信频道字段与 QwenPaw Console 对齐**：隐藏 Console 微信抽屉不展示的框架内部字段（`base_url` / `dm_policy` / `group_policy` / `allow_from` / `deny_message` / `dm_disabled` / `group_disabled`），保存时也不再回写这些键。
+
+**验证**：frontend tsc 0 · vite build 单文件 2,092.65 kB（gzip 590.63 kB）· Controller go build/vet 0 + server 包测试全绿（新增长轮询回归测试）· 插件后端 py_compile/import ok
+
 ## 0.5.0-beta.16（2026-10-22 · 正式号）
 
 **15.1–15.41 子批合并 release（移动端/竖屏+触屏全适配 + 本地离线模式 + AgentTeams 1.2.5 能力全接入 + Coding CLI 管理全链 + LLM 调优与运行时批量升级 + 卡片化布局审计清零 + 回归修复；pytest 374→456、i18n 1,424→1,616 键）**
@@ -1888,7 +1920,6 @@ tsc 0 / poller 冒烟 8 断言 / i18n 1395 键 0 缺 0 重 / pytest 211（+6 新
 
 ---
 
-
 ## 0.5.0-beta.13.5（2026-09-22）
 
 **会话窗布局两修 + 产物「查看」行为修 + 运行配置面板接口全量对账（#1231 端点族 7/7 接通）**
@@ -2257,7 +2288,6 @@ tsc 0 · check-antd 交叉通过 · vite build 绿 · pytest 46/46 · 包内三�
 - **通知中心**：邀请 / 审批 / 系统事件聚合，toast + 桌面通知
 - **自检 L0-L4**：宿主 / 凭据 / 网络 / 服务 / 行为五级分层诊断
 - 构建硬守卫：裸 `import` 检查 + 敏感信息扫描入发版流程
-
 
 ---
 

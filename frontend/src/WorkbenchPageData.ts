@@ -14,7 +14,9 @@ import {
   requestJson,
   setCachedRooms,
   fetchAuthStatus,
+  fetchAttention,
   type AdminData,
+  type AttentionPayload,
   type RoomMessage,
   type SpawnNode,
   type TeamRoom,
@@ -389,11 +391,11 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     }
   }, []);
 
-  // 工作流 tab 自动刷新（15s，仅可见期活跃）——
-  // 对齐 dashboard 15s 轮询（useProjectWorkflow refetchInterval:15000）。
-  // 此前插件只在挂载/手动刷新/登录时拉取，任务推进时看板不自动更新
-  // 仅 workflow tab 激活或聊天消息含工作流卡片时轮询（聊天内卡片
-  // live overlay 复用 workflowEvents 正源）；页面隐藏即停（内置）。
+  // R4（16.23）：15s 工作流兜底轮询退役——task_status 已有 SSE 主路
+  // （sync_watcher _track_workflow 状态变化 → SSE task_status →
+  // WorkbenchPageEvents refreshWorkflow），steady-state 不再轮询；SSE
+  // 断连期的兜底由 WorkbenchPage 的 60s bootFallback 统一承担（断连才
+  // 启动，在线零轮询）。
   // memoize——此前每次 WP 渲染 O(n) 扫全量
   // messages（最高频渲染组件 × 消息数组大）。messages 引用只在 mergeForward
   // 换数组时变（无变化复用 prev）→ 扫描只随消息到达发生。
@@ -401,11 +403,6 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     () => tab === "chat" && messages.some((m) => m.workflow != null),
     [tab, messages],
   );
-  usePoller({
-    fn: () => void refreshWorkflow(true),
-    intervalMs: 15000,
-    active: tab === "workflow" || chatHasWfCards,
-  });
 
   // （13.12 「工作流一点开应先自动刷新，而不是等 15s
   // 自动刷新或手动刷新」）：切到工作流 tab（或聊天出现工作流卡）立即拉一次
@@ -426,6 +423,56 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
   const hasCtlToken = Boolean(
     config?.controller_token || config?.controllerTokenSource === "env",
   );
+
+  // attention 决策面（读聚合）——30s 静默轮询，hasCtlToken 门控（L2 用户
+  // 无 controller token，后端恒 502，轮询无意义）。badge/全局弹窗/P2「待
+  // 决策」页共用此数据源（全局数据，不绑任何 tab）。失败保旧值（网络抖动
+  // 不清已渲染数据）；deployed=false（旧 controller）→ 无 badge 无入口
+  // （诚实降级）。
+  const [attention, setAttention] = React.useState<AttentionPayload | null>(
+    null,
+  );
+  const attentionFetchingRef = React.useRef(false);
+  const refreshAttention = React.useCallback(
+    async (bypass = false) => {
+      if (attentionFetchingRef.current) return;
+      attentionFetchingRef.current = true;
+      try {
+        const payload = await fetchAttention(bypass);
+        // diff 门：30s 内数据常不变——返回原引用跳过重渲（同 rooms 约定）。
+        React.startTransition(() => {
+          setAttention((prev) =>
+            prev && JSON.stringify(prev) === JSON.stringify(payload)
+              ? prev
+              : payload,
+          );
+        });
+      } catch {
+        /* 瞬时抖动 → 保旧值（入口可见性由 deployed/数据决定，不报错） */
+      } finally {
+        attentionFetchingRef.current = false;
+      }
+    },
+    [],
+  );
+  usePoller({
+    fn: () => void refreshAttention(),
+    intervalMs: 30000,
+    active: hasCtlToken,
+    minPokeMs: 15000,
+  });
+  // hasCtlToken false→true 翻转（config 异步就绪/env 注入晚于挂载）触发首次
+  // 取数（admin armed-ref 同款语义）。
+  const attentionArmedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!hasCtlToken) {
+      attentionArmedRef.current = false;
+      return;
+    }
+    if (attentionArmedRef.current) return;
+    attentionArmedRef.current = true;
+    void refreshAttention();
+  }, [hasCtlToken, refreshAttention]);
 
   // L1 admin view: only when a Controller token is available (config or env).
   const refreshAdmin = React.useCallback(async (silent = false) => {
@@ -482,12 +529,14 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     setTreeSource("");
     setAdminData(null);
     setWorkflowEvents([]);
+    setAttention(null);
     void refreshConfig();
     void refreshRooms();
     void refreshTree();
     void refreshAdmin();
     void refreshWorkflow();
-  }, [refreshConfig, refreshRooms, refreshTree, refreshAdmin, refreshWorkflow]);
+    void refreshAttention(true);
+  }, [refreshConfig, refreshRooms, refreshTree, refreshAdmin, refreshWorkflow, refreshAttention]);
   return {
     dismissMatrixNone,
     handleOpenProject,
@@ -497,6 +546,8 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     refreshWorkflow,
     hasCtlToken,
     refreshAdmin,
+    attention,
+    refreshAttention,
     onLoginSuccess,
   };
 }

@@ -1,6 +1,8 @@
 // WorkflowBoard 巨石拆分 · 面板层：任务取消 Modal（TaskCancelModal）/ 任务巡检
-// Drawer（TaskInspectionDrawer）/ 单事件卡（EventCard）。
+// Drawer（TaskInspectionDrawer）。
 // 逐字自 components/WorkflowBoard.tsx 搬移；仅加 `export`。
+// 10/26：EventCard（card 视图单事件卡）随 card 视图退役删除；其独占的
+// ProjectTimeline（timeline.tsx）/WorkflowEventsTimeline/干预三块引用一并移除。
 
 import type * as ReactNS from "react";
 import { type WorkflowEvent, cancelTask } from "../api";
@@ -8,15 +10,11 @@ import ArtifactLines from "../components/ArtifactLines";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { UserIcon } from "../components/icons";
-import { WorkflowEventsTimeline } from "../components/WorkflowEventsTimeline";
 import {
   statusMeta,
-  fmtTime,
   TERMINAL_NODE_STATUSES,
   nodeLabel,
 } from "./helpers";
-import { InterventionActions, InterruptsBlock, LoopBlock } from "./blocks";
-import { ProjectTimeline } from "./timeline";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -267,92 +265,5 @@ export function TaskInspectionDrawer(props: {
         />
       ) : null}
     </antd.Drawer>
-  );
-}
-
-/** 卡片视图：单事件卡片（title/status/summary/coordinator/steps 行）。 */
-export function EventCard({
-  ev,
-  t,
-  onIntervention,
-}: {
-  ev: WorkflowEvent;
-  t: ReturnType<typeof useThemeColors>;
-  onIntervention?: () => void;
-}) {
-  const tr = useT();
-  const st = statusMeta(ev.status);
-  const steps = (ev.steps || []).slice(0, 8);
-  return (
-    <antd.Card
-      size="small"
-      style={{ borderRadius: 10 }}
-      title={
-        <span>
-          {ev.title || tr("未命名任务")}
-          <antd.Tag color={st.color} style={{ marginLeft: 8 }}>
-            {st.label}
-          </antd.Tag>
-        </span>
-      }
-      extra={
-        <span style={{ fontSize: 12, color: t.textSecondary }}>
-          {fmtTime(ev.ts)}
-        </span>
-      }
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          marginBottom: 8,
-        }}
-      >
-        <InterventionActions ev={ev} onDone={onIntervention} />
-      </div>
-      <InterruptsBlock
-        interrupts={ev.interrupts || []}
-        pauseReason={ev.pause_reason}
-        tasks={ev.taskDetails}
-      />
-      {ev.loop ? <LoopBlock loop={ev.loop} /> : null}
-      {ev.runId ? <ProjectTimeline projectId={ev.runId} teamId={ev.team_id} /> : null}
-      {/* 任务状态转换事件流（#1233 events 端点）——与干预时间线并列。 */}
-      {ev.runId ? <WorkflowEventsTimeline projectId={ev.runId} teamId={ev.team_id} /> : null}
-      {ev.summary ? (
-        <div
-          style={{
-            fontSize: 13,
-            color: t.textSecondary,
-            marginBottom: 8,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-          title={ev.summary}
-        >
-          {ev.summary}
-        </div>
-      ) : null}
-      {ev.coordinator ? (
-        <div style={{ fontSize: 12, color: t.textSecondary, marginBottom: 4 }}>
-          协调者：{ev.coordinator.split(":")[0].replace(/^@/, "")}
-        </div>
-      ) : null}
-      {steps.length > 0 ? (
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {steps.map((s, i) => {
-            const row = typeof s === "string" ? { name: s } : (s as Record<string, unknown>);
-            const name = String(row.name || row.id || `步骤 ${i + 1}`);
-            const stt = statusMeta(String(row.status || ""));
-            return (
-              <antd.Tag key={i} color={stt.color} style={{ margin: 0, fontSize: 11 }}>
-                {name}
-              </antd.Tag>
-            );
-          })}
-        </div>
-      ) : null}
-    </antd.Card>
   );
 }

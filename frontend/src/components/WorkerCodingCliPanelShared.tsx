@@ -120,7 +120,22 @@ export function LatestBadge({
 
 const SENTINEL = "***";
 export const POLL_MS = 1500;
+/** R4（16.23）：任务轮询慢档——面板不可见（卡片收起）或页面隐藏时的
+ * 兜底间隔（任务本身不停，只降观察频率；5min 上限语义不变）。 */
+export const POLL_HIDDEN_MS = 30 * 1000;
 export const POLL_MAX_MS = 5 * 60 * 1000;
+
+/**
+ * R4（16.23）：任务轮询间隔选档（纯函数，可 node 单测）。
+ * 面板可见（卡片展开/sheet）且页面可见 → 快档 1.5s（安装体验：进度
+ * 秒级反馈）；任一不可见 → 慢档 30s 兜底（后台 tab 不再 1.5s 打点）。
+ */
+export function taskPollDelayMs(
+  panelVisible: boolean,
+  pageVisible: boolean,
+): number {
+  return panelVisible && pageVisible ? POLL_MS : POLL_HIDDEN_MS;
+}
 
 export type LoadState = "loading" | "ready" | "unavailable" | "error";
 

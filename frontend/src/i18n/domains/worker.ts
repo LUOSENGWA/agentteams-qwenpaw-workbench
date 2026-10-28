@@ -292,8 +292,18 @@ export const workerDict: Record<string, { en: string }> = {
   "拓扑树（团队 → Worker → spawn）；点 Worker 行展开管理信息（Worker 状态[CRD] / 容器状态[docker，不一致时标红] / 模型 / 唤醒休眠）与检查点；底部团队/用户/Manager 全量表；自动刷新不闪页（静默+diff）": {
     en: "Topology tree (Team → Worker → spawn). Click a Worker row to expand management info (CRD status / container status [red on mismatch] / model / wake-sleep) and checkpoints; full team/user/Manager tables below; auto-refresh without page flash (silent + diff)",
   },
-  "勾选要授予/取消的团队——改动先落本地，点「生成命令」后复制到 Controller 宿主机执行才真正生效（reconcile 约 5 分钟把员工拉入/移出团队房间）。上游 PR P-HUMANS-PUT 合并后此处升级为一键保存。": {
-    en: "Check teams to grant/revoke. Changes stay local until you generate the command and run it on the Controller host (reconcile takes ~5 min to move the employee between team rooms). After upstream PR P-HUMANS-PUT merges, this becomes one-click save.",
+  "勾选要授予/取消的团队，点「保存到 Controller」直接生效（reconcile 约 5 分钟把员工拉入/移出团队房间）。旧版 Controller 无 PUT /humans 时自动回落「生成命令」（复制到 Controller 宿主机执行）。": {
+    en: "Check teams to grant/revoke, then click Save to Controller to apply (reconcile takes ~5 min to move the employee between team rooms). On older Controllers without PUT /humans it falls back to generating the command (run it on the Controller host).",
+  },
+  "保存到 Controller": { en: "Save to Controller" },
+  "当前 Controller 不支持一键保存（无 PUT /humans 端点）——已生成命令，请在 Controller 宿主机执行。": {
+    en: "This Controller does not support one-click save (no PUT /humans endpoint) — the command was generated; run it on the Controller host.",
+  },
+  "已保存 {ok} 人，失败 {fail} 人：{detail}": {
+    en: "Saved {ok}; failed {fail}: {detail}",
+  },
+  "已保存 {n} 名员工的团队授权（reconcile 约 5 分钟生效）": {
+    en: "Saved team access for {n} employee(s) (reconcile takes ~5 min)",
   },
   "团队成员（workerMembers）——保存 = 全量替换成员列表": { en: "Team members (workerMembers) — saving replaces the whole list" },
   // 团队配置窗口批量改模型（leader/workers 两批）。
@@ -673,8 +683,8 @@ export const workerDict: Record<string, { en: string }> = {
   "复位": { en: "Reset" },
   "拖动调整项目列表宽度": { en: "Drag to resize the project list" },
   /*  */
-  "正在加载…（滚到顶部自动续拉）": { en: "Loading… (auto-continues when you scroll to the top)" },
-  "开始按需加载，滚到顶部会自动继续拉取": { en: "Starts on-demand loading; auto-continues when you scroll to the top" },
+  "正在加载原消息…": { en: "Loading original message…" },
+  "开始按需加载，自动翻页定位到原消息": { en: "Starts on-demand loading; pages to the original message and jumps to it" },
   "技能": { en: "Skills" },
   "MCP": { en: "MCP" },
   "{n} Worker": { en: "{n} worker(s)" },
@@ -755,5 +765,29 @@ export const workerDict: Record<string, { en: string }> = {
   },
   "团队数据未加载或团队不存在——请刷新后重试": {
     en: "Team data not loaded or team missing — refresh and retry",
+  },
+  "未分组 Worker 模型（独立 Worker）": {
+    en: "Ungrouped worker models (standalone workers)",
+  },
+  "没有未分组的 Worker": {
+    en: "No ungrouped workers",
+  },
+  "模型已保存（重启 Worker 后生效）": {
+    en: "Model saved (takes effect after the worker restarts)",
+  },
+  "只修改 model（PUT 合并语义：provider 等其它字段不动；留空=跟随集群默认）。": {
+    en: "Only model is changed (PUT merge semantics: provider and other fields stay; empty = follow the cluster default).",
+  },
+  "二维码状态查询连续失败 {n} 次：Controller 频道代理需 ≥40s 长轮询（iLink 状态查询会挂起约 30s），当前 5s 超时会掐断；升级 Controller 后重试。": {
+    en: "QR status polling failed {n} consecutive times: the Controller channel proxy needs a ≥40s long-poll (iLink holds the status call for ~30s); the current 5s timeout aborts it. Upgrade the Controller and retry.",
+  },
+  "模型 alias（留空=跟随集群默认）": {
+    en: "Model alias (empty = follow cluster default)",
+  },
+  "留空=跟随默认（Higress Provider 名）": {
+    en: "Empty = follow default (Higress provider name)",
+  },
+  "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。选 Higress configured alias 会自动回填对应 Provider。": {
+    en: "Only model + provider change (PUT merge semantics: only changed fields are sent; empty = follow the cluster default). Picking a configured Higress alias auto-fills its provider.",
   },
 };

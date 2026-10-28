@@ -3,6 +3,13 @@
 export const workflowDict: Record<string, { en: string }> = {
   // ── 第二批：产物页 / 运维 / 管理 / 工作流 / 树 ──
   "项目产物": { en: "Project Artifacts" },
+  "信号事件（SIG-*）": { en: "Signal events (SIG-*)" },
+  "Controller 未部署信号事件读取端点（#1405 只写不读；需补只读端点后此处自动出现）": {
+    en: "This Controller does not expose the signal-events read endpoint (#1405 writes only; the panel appears once the read endpoint ships).",
+  },
+  "暂无信号事件——读取端点已接通，SIG-* 事件写入后自动出现": {
+    en: "No signal events yet — the read endpoint is live; SIG-* events appear here once written.",
+  },
   "时间 新→旧": { en: "Time: newest first" },
   "时间 旧→新": { en: "Time: oldest first" },
   "名称 A→Z": { en: "Name A–Z" },
@@ -14,19 +21,11 @@ export const workflowDict: Record<string, { en: string }> = {
     en: "No project artifacts yet — deliverables of registered project tasks appear here (unregistered projects only via the room-attachment scan below)",
   },
   "该分类下还没有文件": { en: "No files in this category" },
-  "协调者": { en: "Coordinator" },
-  "步骤": { en: "Steps" },
   "任务": { en: "Task" },
-  "未命名任务": { en: "Untitled task" },
-  "暂无工作流事件——Agent 执行任务时会在这里聚合": {
-    en: "No workflow events — they aggregate here as Agents work",
-  },
   "已有 {n} 个项目，但任务图（nodes）全空——多为 planning 状态：项目刚建、任务在群聊 @mention 协调，未登记进 Controller 的任务 DAG": {
     en: "{n} project(s) listed but the task graph (nodes) is empty — usually planning state: tasks are coordinated via @mentions in the room, not yet registered in the Controller DAG",
   },
   "项目": { en: "Projects" },
-  "项目列表": { en: "Project list" },
-  "项目卡片": { en: "Project cards" },
   "事件": { en: "Events" },
   "卡片": { en: "Cards" },
   "任务巡检": { en: "Task inspection" },
@@ -81,9 +80,6 @@ export const workflowDict: Record<string, { en: string }> = {
   "暂无模型网关数据": { en: "No model gateway data" },
   "拓扑": { en: "Topology" },
   "请选择左侧项目": { en: "Select a project on the left" },
-  "暂无任务——项目可能还在 planning（Coordinator 起草计划中），任务登记后会显示任务卡": {
-    en: "No tasks yet — the project may still be planning (Coordinator drafting); task cards appear once tasks are registered",
-  },
   "暂无拓扑数据——本项目可能还在 planning（Coordinator 起草计划中），计划生成后请重试": {
     en: "No topology data yet — this project may still be planning; retry after the plan is generated",
   },

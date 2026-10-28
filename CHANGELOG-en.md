@@ -3,6 +3,38 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.23 (2026-10-26 - Millforge inject fix)
+
+**Fixed**
+- **Every Millforge injection failed (HTTP 301 / Controller unreachable)**: `_ctl_call` takes a path only (the base is prepended from the ordered address list), but the injection call sites historically passed a full URL (`f"{base}/api/v1/..."`). Prepending the base again produced a double-base URL (`https://h:7113https://h:7113/api/v1/...`) that the gateway answered with 301 or stalled until timeout, so SOUL updates, worker creation and core-skill attach all failed. The entry point now normalizes the target to path+query, accepting both full URLs and path-only strings.
+- **Core-skill upload returned 400 (`the zip must contain a single top-level skill directory`)**: the core-skill zip put `SKILL.md` / `references/` / `scripts/` at the archive root while the controller requires exactly one top-level skill directory (its name becomes the skill name; root-level entries are rejected). Every entry is now wrapped under `millforge-core/`.
+- **Core-skill attach reported "no skills data" for every worker**: the attach step read assigned skills from `GET /api/v1/workers`, but the controller lists workers under `"workers"` (with a `total` sibling) while the code looked at `"items"`, so the map stayed empty. Read `"workers"` instead; the fake controller in the tests is corrected too (it returned `"items"`, which hid the mismatch).
+- Added the regression test `test_ctl_call_normalizes_full_url_and_path_only` (fails on the double-base URL, passes with both forms normalized) and tightened the I3 core-skill test to assert the single top-level directory.
+
+## 0.5.0-beta.16.22 (2026-10-26 - provider prefill)
+
+**Fixed**
+- **Provider was not pre-filled like the model**: the older Controller's `WorkerResponse` does not return `modelProvider`, so the field appeared empty. The dialog now uses the Controller's `modelProvider` when available and otherwise derives it from the selected alias's `binding.providerName` — the current provider is pre-filled just like the model (the rebuilt Controller's real value still wins).
+
+## 0.5.0-beta.16.20 (2026-10-26 - model editor carries the provider)
+
+**Fixed**
+- **Model selection had no effect with multiple Higress providers**: the Worker CR's `model` is only the request alias; the actual upstream is chosen by `modelProvider` (the APIG Model API name). The editor used to send `model` only, leaving the provider on the old value, so switching aliases still hit the old provider. The standalone worker model dialog now has a **Provider** field: picking a configured alias auto-fills its provider (from Higress alias→binding.providerName), and it can also be selected/cleared manually; save sends only changed fields (`model` plus `modelProvider` when changed) under PUT merge semantics.
+
+## 0.5.0-beta.16.19 (2026-10-26 - WeChat QR via direct iLink, no Controller rebuild)
+
+**Fixed**
+- **WeChat QR login works without rebuilding the Controller**: iLink's `get_qrcode_status` is a long-poll the server holds for ~31s, and the Controller's channel proxy (5s) aborts it. The plugin backend now polls iLink **directly** (45s timeout) and then writes the resulting `bot_token` through the normal channel `PUT` (a fast write; 5s is plenty). So the plugin's WeChat QR flow completes even on an un-upgraded Controller. The Controller's 45s long-poll fix (commit `290195f8`) is still worth shipping with the next release for consistent semantics and other long-poll routes.
+
+## 0.5.0-beta.16.18 (2026-10-26 - QR long-poll + standalone worker models)
+
+**Fixed**
+- **WeChat QR login could never complete**: QwenPaw's WeChat login relies on iLink `get_qrcode_status`, a long-poll that the server holds for ~30s. The plugin backend proxy read timeout (6s) and the Controller channel proxy (5s) both aborted it before it returned, so the plugin never saw `confirmed` and the phone showed "please upgrade the WeChat interface version in OpenClaw". All three hops now allow the long-poll: the plugin backend uses a 45s read timeout for `…/qrcode/status`, the Controller uses a dedicated 45s long-poll client for that route, and the QwenPaw client stays at 60s. Consecutive polling failures are now surfaced in the UI instead of being swallowed.
+- **Ungrouped (standalone) workers could not change models**: workers without a team are grouped under the pseudo-team "未分组"; its gear opened the team-config entry, which looked the name up in the CRD team list and failed with "team data not loaded or team missing" — and that dialog was the only place to edit a model. The gear now opens a standalone-worker model dialog (`PUT /workers/{name}` with `model` only; merge semantics leave provider and other fields untouched).
+- **WeChat channel fields aligned with the QwenPaw Console**: framework-internal keys the Console's WeChat drawer never shows (`base_url` / `dm_policy` / `group_policy` / `allow_from` / `deny_message` / `dm_disabled` / `group_disabled`) are hidden and no longer written back on save.
+
+**Verification**: frontend tsc 0 · vite build 2,092.65 kB single file (gzip 590.63 kB) · Controller go build/vet 0 + full server package tests green (new long-poll regression test) · plugin backend py_compile/import ok
+
 ## 0.5.0-beta.16 (2026-10-22 - official release)
 
 **Merged release of sub-batches 15.1–15.41 (full mobile/portrait + touch support, local offline mode, full AgentTeams 1.2.5 feature integration, complete Coding CLI management chain, LLM tuning + runtime batch upgrades, layout audit to zero overflow, regression fixes; pytest 374→456, i18n 1,424→1,616 keys)**
@@ -1514,7 +1546,6 @@ This batch = the plugin side consuming AgentTeams 1.2.5's three new capabilities
 
 ---
 
-
 ## 0.5.0-beta.13.5 (2026-09-22)
 
 **Session window layout fixes (2) + artifact "view" behavior fix + runtime config panel endpoint reconciliation (#1231 endpoint family, 7/7 wired)**
@@ -1883,7 +1914,6 @@ In-package version triple-check consistent (plugin.json / backend / README); tsc
 - **Notification center**: aggregated invites / approvals / system events, toast + desktop notifications
 - **Self-check L0-L4**: five-tier layered diagnostics (host / credentials / network / services / behavior)
 - Build hard guards: bare-`import` check + sensitive-data scan in the release pipeline
-
 
 ---
 

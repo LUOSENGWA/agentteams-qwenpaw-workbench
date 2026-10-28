@@ -1,6 +1,6 @@
 import { CheckIcon, UsersIcon, MessageIcon, StarIcon, SearchIcon } from "./icons";
 import type * as ReactNS from "react";
-import { leaveRoom, forgetRoom, type InviteRoom, type TeamRoom } from "../api";
+import { type InviteRoom, type TeamRoom } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { WbTooltip } from "./WbTooltip";
@@ -41,6 +41,8 @@ interface TeamOverviewProps {
   workerMxids?: Set<string>;
   /** 房间 room_id → 该项目名列表（房间卡名称下显示）。 */
   roomProjectNames?: Record<string, string[]>;
+  /** 房间 room_id → attention 待决策条数（房间卡琥珀徽章；deployed=false 不传）。 */
+  attentionPendingByRoom?: Record<string, number>;
   /** ：MXID → 角色标签
  * （Leader/Worker/Manager）——「私聊」视图按对象角色分区显示；
  * 无此 prop 或查不到角色时退回扁平列表（人类 DM 归「其他」）。 */
@@ -65,6 +67,7 @@ function TeamOverview(props: TeamOverviewProps) {
     workerSessionByRoom,
     workerMxids,
     roomProjectNames,
+    attentionPendingByRoom,
     workerRoleByMxid,
   } = props;
   const [filter, setFilter] = React.useState<"all" | "group" | "dm">("all");
@@ -111,39 +114,7 @@ function TeamOverview(props: TeamOverviewProps) {
     }
   }, []);
   // 未读房间数（一键全部已读按钮显隐）。
-  // 5.0.0 release：房间离开/删除（Element 同款列表操作）。
-  // 退出=CS-API leave；删除=forget（须先 leave）。系统团队房间退出后
-  // 可能被 Controller 调和器自动重新邀请（确认文案提示）。
-  const doRoomExit = React.useCallback(
-    (room: TeamRoom, forget: boolean) => {
-      const doIt = async () => {
-        try {
-          await leaveRoom(room.room_id);
-          if (forget) await forgetRoom(room.room_id);
-          antd.message.success(
-            forget ? tr("已退出并删除房间") : tr("已退出房间"),
-          );
-          onRefresh?.();
-        } catch (e) {
-          antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
-        }
-      };
-      antd.Modal.confirm({
-        title: forget
-          ? tr("退出并删除「{name}」？", { name: room.name })
-          : tr("退出房间「{name}」？", { name: room.name }),
-        content: forget
-          ? tr("退出并忘记该房间：本地不再保留其历史，列表不再显示。此操作不可撤销。系统团队房间可能被 Controller 调和器自动重新邀请。")
-          : tr("退出后不再接收该房间消息。系统团队房间可能被 Controller 调和器自动重新邀请；非系统房间需再次被邀请才能进入。"),
-        okText: forget ? tr("退出并删除") : tr("退出"),
-        okButtonProps: { danger: true },
-        cancelText: tr("返回"),
-        onOk: () => doIt(),
-      });
-    },
-    [onRefresh, tr],
-  );
-
+  // 房间操作（退出/退出并删除）已收口到「房间详情」Drawer。
   const unreadRoomCount = rooms.filter(
     (r) => (r.unread || 0) > 0 || (r.unread_highlight || 0) > 0,
   ).length;
@@ -255,9 +226,9 @@ function TeamOverview(props: TeamOverviewProps) {
         onDm={onDm}
         isFavorite={isFav(room)}
         onToggleFavorite={toggleFavorite}
-        onExitRoom={doRoomExit}
         workerMxids={workerMxids}
         projectTitles={roomProjectNames?.[room.room_id]}
+        attentionCount={attentionPendingByRoom?.[room.room_id]}
       />
     ) : (
       <DmCard
@@ -267,8 +238,8 @@ function TeamOverview(props: TeamOverviewProps) {
         onOpenRoom={onOpenRoom}
         isFavorite={isFav(room)}
         onToggleFavorite={toggleFavorite}
-        onExitRoom={doRoomExit}
         sessionState={workerSessionByRoom?.[room.room_id]}
+        attentionCount={attentionPendingByRoom?.[room.room_id]}
       />
     );
   };

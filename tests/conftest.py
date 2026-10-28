@@ -27,6 +27,9 @@ _DOMAIN_MODULES = (
     "agentteams_connector.routers.cluster_info_api",
     "agentteams_connector.routers.node_version_api",
     "agentteams_connector.routers.upgrade_api",
+    # 包根域模块（attention 决策面；_attention_cache 30s 聚合缓存纳入
+    # 逐测清空 + rebind 同步，与 routers/ 域同待遇）。
+    "agentteams_connector.attention_api",
 )
 
 

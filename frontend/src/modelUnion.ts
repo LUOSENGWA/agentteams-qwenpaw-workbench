@@ -163,8 +163,25 @@ interface ModelUnionState {
   gatewayAvailable: boolean;
   /** 网关 alias 拉取是否完成（false=仍在加载，提示不显示）。 */
   gatewayLoaded: boolean;
+  /** 网关原始选项（含 alias→binding.providerName）——选 alias 时回填 provider。 */
+  gatewayOptions: ModelSelectionOption[];
+  /** Higress LLM Provider 列表（provider 下拉；无会话=空）。 */
+  providers: LlmProviderLite[];
   /** 重新拉取 SGLang 在服列表（弹窗打开时刷新用）。 */
   refetchSglang: () => void;
+}
+
+/** alias → Higress providerName（仅 configured binding；builtin/local → ""）。
+ *
+ * Worker/Manager CR 的 model 是请求 alias，真正转发由 modelProvider（APIG
+ * Model API 名）决定。多 provider 部署下只改 model 不改 provider = 仍走旧
+ * provider（用户「选了没用」的根因）。 */
+export function providerForModel(
+  options: ModelSelectionOption[],
+  model: string,
+): string {
+  const hit = options.find((o) => o.alias === model.trim());
+  return hit?.binding?.providerName || "";
 }
 
 /** ：
@@ -224,6 +241,7 @@ export function useModelUnionOptions(
   const [gatewayOpts, setGatewayOpts] = React.useState<
     ModelSelectionOption[] | null
   >(null);
+  const [providers, setProviders] = React.useState<LlmProviderLite[]>([]);
   const [gatewayLoaded, setGatewayLoaded] = React.useState(false);
 
   const loadSglang = React.useCallback(() => {
@@ -241,6 +259,7 @@ export function useModelUnionOptions(
         ]);
         if (!routes.available || !providers.available) {
           setGatewayOpts(null); // 无 Higress Console 会话=正常降级（token 模式）
+          setProviders([]);
           return;
         }
         // 共享解包（原 ad-hoc 提取漏信封+错键=alias 恒空根因）。
@@ -249,8 +268,10 @@ export function useModelUnionOptions(
           providers.data,
         );
         setGatewayOpts(buildModelSelectionOptions(routesList, providersList));
+        setProviders(providersList);
       } catch {
         setGatewayOpts(null); // 不可达/网络错误 → 与无会话同路径
+        setProviders([]);
       } finally {
         setGatewayLoaded(true);
       }
@@ -276,6 +297,8 @@ export function useModelUnionOptions(
   return {
     candidates,
     options,
+    gatewayOptions: gatewayOpts || [],
+    providers,
     gatewayAvailable: Boolean(gatewayOpts && gatewayOpts.length > 0),
     gatewayLoaded,
     refetchSglang: loadSglang,

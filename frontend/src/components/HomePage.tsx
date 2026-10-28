@@ -33,6 +33,7 @@ import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
 import { useWbViewport } from "../WbViewportContext";
+import { useConnectorVersion } from "../WorkbenchPageTheme";
 import { logoUrl as LOGO_URL } from "../lib/logo";
 import { formatChatTime } from "../util";
 import {
@@ -61,8 +62,14 @@ interface HomePageProps {
   managers?: ManagerInfo[];
   onOpenRoom: (roomId: string) => void;
   onGotoTab: (tabKey: string) => void;
-  /** 发起任务弹窗选定目标 → DM 该 Leader/Manager。 */
-  onDm?: (mxid: string, roomId?: string) => void;
+  /** 发起任务弹窗选定目标 → DM 该 Leader/Manager。
+   * name = 房间显示名（弹窗按 团队+Worker 上下文生成）；返回
+   * Promise 时「发起任务」确认钮等其落地才关窗（loading 防双击）。 */
+  onDm?: (
+    mxid: string,
+    roomId?: string,
+    name?: string,
+  ) => Promise<void> | void;
   /** 团队结构来源（）："room-fallback"=Controller 未接入——房间聚合不可当团队，Leader 列表只留 Manager 入口。 */
   treeSource?: string;
   /** ：通知中心未读数（快捷入口角标）。 */
@@ -89,6 +96,8 @@ function HomePage(props: HomePageProps) {
   const t = useThemeColors();
   const tr = useT();
   const { narrow } = useWbViewport();
+  // 插件版本与页头同源：/health 实时版本（60s 轮询），取不到回退构建期版本。
+  const liveVersion = useConnectorVersion();
 
   // 发起任务弹窗（选 Leader 入口——入口 B 默认 / Manager 跨团队 A）。
   const [newTaskOpen, setNewTaskOpen] = React.useState(false);
@@ -379,9 +388,10 @@ function HomePage(props: HomePageProps) {
                 ? tr("Controller L2 授权范围")
                 : tr("Controller 未接入")}
             {/* 15.15：首页可见插件版本（页头版本行竖屏被 !narrow 隐藏，
- 手机上无处可查版本；构建期注入 __PLUGIN_VERSION__，与页头同源）。 */}
+ 手机上无处可查版本）；16.11 与页头同源——/health 实时版本，取不到
+ 回退构建期注入 __PLUGIN_VERSION__。 */}
             {" · v"}
-            {__PLUGIN_VERSION__}
+            {liveVersion || __PLUGIN_VERSION__}
           </div>
         </div>
         <div style={{ fontSize: 12, color: t.textSecondary, marginTop: 2 }}>
@@ -764,8 +774,11 @@ function HomePage(props: HomePageProps) {
         treeSource={treeSource}
         onSel={setNewTaskSel}
         onClose={() => setNewTaskOpen(false)}
-        onConfirm={(tgt) => {
-          onDm?.(tgt.mxid);
+        onConfirm={async (tgt, dmName) => {
+          // 等 /dm 落地（建房+房间列表同步）才关窗——此前点确认立即
+          // 关窗、后台异步建房，用户视角「反应慢 + 无名空房间」。
+          // 失败由 handleDm toast 可见（不静默）。
+          await onDm?.(tgt.mxid, undefined, dmName);
           setNewTaskOpen(false);
         }}
       />

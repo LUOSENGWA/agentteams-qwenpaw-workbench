@@ -9,7 +9,7 @@ explicit homeserver so profiles can switch without touching client state.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -95,6 +95,108 @@ def joined_members(homeserver: str, token: str, room_id: str) -> Dict[str, Any]:
     )
 
 
+def room_info(homeserver: str, token: str, room_id: str) -> Dict[str, Any]:
+    """房间详情信息（Element 同款房间详情面板数据源）。
+
+ 聚合 7 个房间 state 事件（name/topic/canonical_alias/create/
+ join_rules/encryption/power_levels）+ joined_members，返回
+ ``{room_id, name, topic, canonical_alias, creator, join_rule,
+ encrypted, member_count, members[]}``（members 含 power_level +
+ 角色）。
+
+ state 事件 404 = 无该事件（按空处理，best-effort）；joined_members
+ 404/403 = 房间不存在/未加入，硬错抛 MatrixError（路由层 502 附
+ Matrix 摘要）。401（token 失效）原样上抛（路由层 401）。
+
+ 角色映射（Element 同款）：power_level >= 100 → owner，>= 50 →
+ moderator，否则 member。power level 取 m.room.power_levels.users
+ [user_id]，缺省 users_default；权限表缺失（404）或 content 为
+ null（Controller 建队房间权限表 null 实锤）→ 全员 0。成员按
+ power level 降序、名字升序排列（owner 在前）。
+ """
+    import urllib.parse
+
+    encoded_room = urllib.parse.quote(room_id, safe="")
+    base = f"/_matrix/client/v3/rooms/{encoded_room}"
+
+    def _state(event_type: str) -> Optional[Dict[str, Any]]:
+        """读单个 state 事件；404 = 无该事件（返回 None），其余错误上抛。"""
+        try:
+            data = _request(
+                "GET", homeserver, f"{base}/state/{event_type}", token
+            )
+        except MatrixError as exc:
+            if "-> 404:" in str(exc):
+                return None
+            raise
+        return data if isinstance(data, dict) else None
+
+    name_ev = _state("m.room.name")
+    topic_ev = _state("m.room.topic")
+    alias_ev = _state("m.room.canonical_alias")
+    create_ev = _state("m.room.create")
+    join_ev = _state("m.room.join_rules")
+    encryption_ev = _state("m.room.encryption")
+    power_ev = _state("m.room.power_levels")
+
+    members_raw = _request(
+        "GET", homeserver, f"{base}/joined_members", token
+    )
+    joined = (members_raw or {}).get("joined") or {}
+    if not isinstance(joined, dict):
+        joined = {}
+
+    # 权限表：content 为 null（平台房间 null 权限表实锤）或缺失 → 默认 0。
+    power_content = power_ev.get("content") if power_ev else None
+    if not isinstance(power_content, dict):
+        power_content = {}
+    users = power_content.get("users")
+    if not isinstance(users, dict):
+        users = {}
+    try:
+        users_default = int(power_content.get("users_default") or 0)
+    except (TypeError, ValueError):
+        users_default = 0
+
+    members: List[Dict[str, Any]] = []
+    for user_id, profile in joined.items():
+        profile = profile if isinstance(profile, dict) else {}
+        try:
+            level = int(users.get(user_id, users_default))
+        except (TypeError, ValueError):
+            level = users_default
+        if level >= 100:
+            role = "owner"
+        elif level >= 50:
+            role = "moderator"
+        else:
+            role = "member"
+        members.append(
+            {
+                "user_id": str(user_id),
+                "display_name": str(profile.get("display_name") or ""),
+                "avatar_url": str(profile.get("avatar_url") or ""),
+                "power_level": level,
+                "role": role,
+            }
+        )
+    members.sort(key=lambda m: (-m["power_level"], m["display_name"], m["user_id"]))
+
+    return {
+        "room_id": room_id,
+        "name": str((name_ev or {}).get("name") or "").strip(),
+        "topic": str((topic_ev or {}).get("topic") or "").strip(),
+        "canonical_alias": str((alias_ev or {}).get("alias") or "").strip(),
+        "creator": str((create_ev or {}).get("creator") or ""),
+        "join_rule": str((join_ev or {}).get("join_rule") or "public"),
+        # m.room.encryption 事件存在且 content 非 null 才是加密
+        # （content=null = 关闭加密事件）。
+        "encrypted": bool(encryption_ev and encryption_ev.get("content")),
+        "member_count": len(members),
+        "members": members,
+    }
+
+
 def send_message(
     homeserver: str,
     token: str,
@@ -123,15 +225,34 @@ def send_message(
     )
 
 
-def create_dm(homeserver: str, token: str, mxid: str) -> Dict[str, Any]:
+def create_dm(
+    homeserver: str,
+    token: str,
+    mxid: str,
+    name: str = "",
+    topic: str = "",
+) -> Dict[str, Any]:
     """Create (or reuse) a trusted-private DM room with *mxid*.
 
  Reuses an existing direct room from m.direct account data when present;
  otherwise POST /createRoom with preset=trusted_private_chat + invite.
  Returns {room_id, created}.
+
+ ``name``/``topic``：房间创建时的显示名与话题——缺省 ``私聊 · <localpart>``
+ / ``Direct chat with <mxid>``。根因修复：此前 createRoom 只发
+ preset/invite/is_direct，建出**无名空房间**（用户要等对方回复才知道
+ 是谁的私聊）；现在创建即命名。
+ 复用已有 DM 时：房间名为空则 PUT ``m.room.name`` 补名（best-effort，
+ 失败仅记日志不影响返回）——顺带修复之前建出来的无名房间（下次打开
+ 即命名）；已有名字（含用户重命名）不覆盖。
  """
+    localpart = mxid.lstrip("@").split(":", 1)[0] or mxid
+    room_name = (name or "").strip() or f"私聊 · {localpart}"
+    room_topic = (topic or "").strip() or f"Direct chat with {mxid}"
+
     existing = _existing_direct_room(homeserver, token, mxid)
     if existing:
+        _ensure_room_name(homeserver, token, existing, room_name)
         return {"room_id": existing, "created": False}
     created = _request(
         "POST",
@@ -142,9 +263,53 @@ def create_dm(homeserver: str, token: str, mxid: str) -> Dict[str, Any]:
             "preset": "trusted_private_chat",
             "invite": [mxid],
             "is_direct": True,
+            "name": room_name,
+            "topic": room_topic,
         },
     )
     return {"room_id": created.get("room_id", ""), "created": True}
+
+
+def _ensure_room_name(
+    homeserver: str, token: str, room_id: str, name: str
+) -> None:
+    """无名已有 DM 房间补 ``m.room.name``（best-effort，失败仅记日志）。
+
+ GET /state/m.room.name：404 = 无名事件（无名房间）→ PUT 补名；
+ 200 且名字非空 → 跳过（不覆盖已有名字）。任何一步失败只 warning，
+ 不影响 create_dm 的返回（补名是增值动作，不是 DM 打开的前提）。
+ """
+    import urllib.parse
+
+    encoded_room = urllib.parse.quote(room_id, safe="")
+    state_path = (
+        f"/_matrix/client/v3/rooms/{encoded_room}/state/m.room.name"
+    )
+    try:
+        data = _request("GET", homeserver, state_path, token)
+    except MatrixError as exc:
+        if "-> 404:" in str(exc):
+            pass  # 无名房间 → 补名
+        else:
+            logger.warning(
+                "create_dm: read room name failed %s: %s", room_id, exc
+            )
+            return
+    else:
+        if str((data or {}).get("name") or "").strip():
+            return
+    try:
+        _request(
+            "PUT",
+            homeserver,
+            state_path,
+            token,
+            json_body={"name": name},
+        )
+    except Exception as exc:  # noqa: BLE001 - best-effort 补名
+        logger.warning(
+            "create_dm: room name backfill failed %s: %s", room_id, exc
+        )
 
 
 def _existing_direct_room(

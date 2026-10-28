@@ -24,6 +24,13 @@ from ..router import (
     logger,
 )
 
+# QR-status long-poll: iLink holds get_qrcode_status up to ~30s server-side
+# (the QwenPaw client allows 60s; the Controller's long-poll route allows
+# 45s). The generic proxy read timeout (6s) would abort every poll, so the
+# worker could never read "confirmed" and a QR login would never complete
+# through the plugin. Same intent as the Controller's qrcodeStatusTimeout.
+_LONG_POLL_TIMEOUT = httpx.Timeout(connect=5.0, read=45.0, write=10.0, pool=5.0)
+
 
 def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
     """approval + catch-all proxy 域子路由（build_router 原段逐字搬移；catch-all /{target}/{path:path} 必须装配最后）。"""
@@ -598,8 +605,15 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                 for attempt in (1, 2):
                     try:
                         req_started = time.time()
+                        # QR status is an iLink long-poll (up to ~30s): the
+                        # generic 6s read timeout would abort every poll.
+                        proxy_timeout = (
+                            _LONG_POLL_TIMEOUT
+                            if full_path.endswith("/qrcode/status")
+                            else _PROXY_TIMEOUT
+                        )
                         async with GatedAsyncClient(
-                            timeout=_PROXY_TIMEOUT, verify=False
+                            timeout=proxy_timeout, verify=False
                         ) as client:
                             if raw_body is not None:
                                 send_headers = dict(addr_headers)

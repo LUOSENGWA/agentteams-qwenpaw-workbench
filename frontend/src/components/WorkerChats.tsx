@@ -43,8 +43,6 @@ import {
 } from "../api";
 import WorkerSessionDot from "./WorkerSessionDot";
 import WorkerCodingRuns from "./WorkerCodingRuns";
-import { usePoller } from "../usePoller";
-import { useTabActive } from "../tabActivity";
 import { copyText } from "../util";
 import { CHANNEL_LABELS, CHANNEL_COLORS, formatTime, groupTurns } from "./WorkerChatsShared";
 import type { MsgPart } from "./WorkerChatsShared";
@@ -205,14 +203,9 @@ function WorkerChats({
       if (st === "running" || st === "idle") setStatus(st);
     }
   }, []);
-  // 开房间兜底刷新（usePoller：!openId 不跑；!document.hidden 内置）。
-  // 10s 档：SSE 300ms 合并窗是主路（事件驱动≈0 延迟），轮询只是
-  // 断线/丢帧保险丝——4s 档在 75 房集群下每分钟多 10 次无效拨号。
-  usePoller({
-    fn: () => void refreshOpenChat(),
-    intervalMs: 10000,
-    active: useTabActive("chat") && !!openId,
-  });
+  // R4（16.23）：10s 兜底轮询退役——会话刷新已有 SSE 主路（room_message →
+  // refreshTick → 300ms 合并窗），steady-state 不再轮询；SSE 断连期的兜底
+  // 由 WorkbenchPage 的 60s bootFallback 统一承担（断连才启动）。
   // SSE 事件驱动主路：refreshTick 变化（room_message 等）→ 刷新。
   // 加 300ms 合并窗——refreshTick 是全集群
   // room_message 事件驱动（与打开的会话房间无关），burst 消息此前每条

@@ -18,7 +18,7 @@ A team workbench for AgentTeams (HiClaw) clusters through QwenPaw: manage teams,
 | 首页 | 团队/任务/Worker/产物/最近动态/集群负载概览 + 待审批卡片（房间审批源=Worker Tool Guard 真实队列，批准/拒绝发带 `@Worker` 的命令，v0.5.0-beta.12）+ 快捷操作 |
 | 聊天 | 团队房间聊天（Matrix 直连）、话题面板、成员详情卡、房间收藏/静音/退出/删除（Element 同款）、消息搜索、@提及、聊天内工作流卡 live 刷新（Controller 正源 15s，v0.5.0-beta.12.9） |
 | 通知 | 通知中心（@提及/任务进展聚合收件箱，点击跳房间并定位消息）+ 新房间邀请主动通知（桌面 toast + 通知中心入口，跳团队概览接受/拒绝）+ Worker 工具审批请求主动通知（桌面 toast + 通知中心一键批准/拒绝，v0.5.0-beta.12；批准/拒绝命令带 `@Worker`——群房间无 mention 的命令 Worker 不消费，首轮 sync 补检离线期间审批，v0.5.0-beta.12） |
-| 工作流 | 四视图（事件列表/卡片/看板/DAG 拓扑）；卡片与拓扑为左侧项目列表（时间/状态/名称排序、独立滚动）+ 右侧详情，拓扑为自上而下分层 DAG（就绪态高亮、外部依赖注记）+ 项目任务图（暂停/继续/重规划）；当前视图与选中项目记忆（与主 tab 同机制，v0.5.0-beta.12）；tab 可见期 15 秒自动刷新（切走即停，v0.5.0-beta.12.5）；卡片/拓扑 master-detail 重构（v0.5.0-beta.12.7） |
+| 工作流 | 看板 / 拓扑 两视图（事件列表/卡片视图已退役，v0.5.0-beta.16.16）；拓扑为左侧项目列表（时间/状态/名称排序）+ 右侧详情双栏独立滚动（v0.5.0-beta.16.16），自上而下分层 DAG（就绪态高亮、外部依赖注记）+ 项目任务图（暂停/继续/重规划）；看板列映射与 dashboard 同源；当前视图与选中项目记忆（与主 tab 同机制，v0.5.0-beta.12）；tab 可见期 15 秒自动刷新（切走即停，v0.5.0-beta.12.5） |
 | 产物 | 项目产物文件树 + 在线预览 + 下载 |
 | 团队管理 | Worker 层级树、审批模式（工具执行安全四档：严格/智能/自动/关闭）、团队/Worker/员工（Human CR）CRD 管理与团队访问矩阵（L1），建团队时可直接新建 Worker；建队表单 Worker 行支持模型（在服∪在用候选 + 写前三重校验：路径形态硬拒/在服列表命中/候选缺失警示）与 SOUL 富文本（多行/上传，行数预算告警），创建后自动跑创建自检（CRD 回读 + 阶段轮询，v0.5.0-beta.12）；「频道」子 tab（v0.5.0-beta.12）：Worker 频道配置卡片（schema 驱动表单/JSON 双模式）、启用/停用、健康检查、重启、二维码扫码授权（凭据自动回填）、保存前冲突预检、PUT 热加载+读回校验（Controller 版本门控：低于合并频道端点的版本时 404 占位，升级后自动点亮）；审批模式团队 scope 用户（L2）可读写本团队 Worker（Controller 数据面兜底，OFF 档需 L1，v0.5.0-beta.12.5） |
 | 知识库 | 远端 Worker KB 与本地记忆浏览、预览、下载、2D/3D 知识图谱（点节点直接预览对应文件，v0.5.0-beta.12 ；2D/3D 命中区放大=好点，v0.5.0-beta.12）；团队 scope 用户（L2）可读本团队 Worker 知识库（Controller 数据面兜底：日记/知识库/MEMORY.md 三分类，v0.5.0-beta.12.5）；2D 图谱缩放/平移 + 簇聚焦 + 簇分离（v0.5.0-beta.12.9） |
@@ -70,6 +70,47 @@ qwenpaw plugin install https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench
 
 配置（Controller 地址/凭据）保留在插件配置中、收藏等偏好保留在浏览器 localStorage 中，升级不丢失。
 To upgrade: in the Console, **remove the old version first**, then install the new ZIP (the host rejects re-uploading an installed plugin with 409 "Uninstall it first"); the CLI supports in-place overwrite via `--force`. Your configuration and favorites survive the upgrade.
+
+## 源码构建 Build from Source
+
+本插件不保证每个版本都有 Release 发布；当你想用最新开发代码、或想基于源码二次开发时，可以从公开源码自行构建出可安装 ZIP。
+This plugin does not guarantee a Release for every version; if you want the latest development code or to build your own derivative, you can build the installable ZIP from the public source.
+
+**前置 Prerequisites**：
+
+- git
+- Node.js ≥ 20（LTS；vite 等构建依赖是 devDependencies，安装时勿省略）
+- 可访问 npm registry（安装依赖需联网）
+
+**快速（推荐）** / **Quick (recommended)**：
+
+```bash
+git clone https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench.git
+cd agentteams-qwenpaw-workbench
+bash tools/build-from-source.sh
+```
+
+脚本一键完成：`npm ci`（失败自动回退 `npm install`）→ `npm run build`（vite 产出仓库根 `dist/index.js`）→ `tools/pack-plugin-zip.sh` 打安装 ZIP；结束时打印 ZIP 路径、字节数、sha256 与版本号。
+产物 = 仓库根目录 `agentteams-qwenpaw-workbench-v<版本>.zip`（`<版本>` 取 `plugin.json` 的 version 字段）。
+The script runs it all: `npm ci` (auto-fallback to `npm install` on failure) → `npm run build` (vite emits `dist/index.js` at the repo root) → `tools/pack-plugin-zip.sh` packs the install ZIP; it prints the ZIP path, byte size, sha256 and version at the end.
+Artifact = `agentteams-qwenpaw-workbench-v<version>.zip` in the repo root (`<version>` is the `version` field of `plugin.json`).
+
+**手动步骤（等价于脚本，供排错/定制）** / **Manual steps (equivalent to the script, for troubleshooting / customization)**：
+
+```bash
+cd frontend && npm ci && npm run build
+cd .. && bash tools/pack-plugin-zip.sh
+```
+
+（若 `npm ci` 报 EINTEGRITY：`package-lock.json` 个别 integrity 条目与 registry 官方值不符的已知问题——脚本会自动按报错里的 `wanted <脏值> but got <真值>` 修正 lock 对应条目后重试 `npm ci`，构建完成时还原 lock。手动等价操作：按报错把 `frontend/package-lock.json` 中对应的 wanted 值替换为 got 值，重跑 `npm ci`。/ If `npm ci` fails with EINTEGRITY: a known issue where some lockfile integrity entries disagree with the registry — the script repairs the matching lock entry using the `wanted <bad> but got <real>` pair from the error and retries `npm ci`, restoring the lock when done. Manually: replace the wanted value with the got value from the error in `frontend/package-lock.json` and re-run `npm ci`.)
+
+**两个仓库** / **Two repositories**（都可构建 / both are buildable）：
+
+- fork（含最新开发）/ contains the latest development：`git clone https://github.com/LUOSENGWA/agentteams-qwenpaw-workbench.git`
+- 官方 / official：`git clone https://github.com/agentteams-group/agentteams-qwenpaw-workbench.git`
+
+**安装** / **Install**：构建出的 ZIP 与 Release ZIP 等价，安装方式见上文「安装 Installation」章（控制台 / CLI / Release URL 三方式不变）。
+The built ZIP is equivalent to a release ZIP — install per the Installation section above (console / CLI / Release URL, unchanged).
 
 ## 配置 Configuration
 

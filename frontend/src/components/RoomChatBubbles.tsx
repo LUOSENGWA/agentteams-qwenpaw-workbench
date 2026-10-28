@@ -61,9 +61,10 @@ const FileTextOutlined = icon("FileTextOutlined");
  * 点击滚动定位原消息并高亮闪烁，不再内联展开副本）。
  * （13.12 「很多信息『已滚出历史』但 Element 里信息
  * 都在」）：原消息不在已加载窗口时不再标死「已滚出历史」——对齐 Element
- * 按需加载语义：显示可点的「加载原消息」→ 链式向前分页把原消息拉进时间线
- * （onLoadOriginal）；加载成功引用条自动转为正常态（可点定位）；到底仍无 →
- * 落 /context 定位区兜底（onJump 现有链路）并标「原消息不在可加载历史」。 */
+ * 按需加载语义（R2 显式跳转）：显示可点的「加载原消息」→ 显式循环串行
+ * 向前分页直到原消息进窗口（onLoadOriginal，限页上限）→ 定位+高亮；
+ * 成功引用条自动转为正常态（可点定位）；到上限仍无 → 落 /context 定位区
+ * 兜底（onJump 现有链路）并标「原消息不在可加载历史」。 */
 function ReplyBanner({
   msg,
   room,
@@ -166,7 +167,7 @@ function ReplyBanner({
         <span style={{ fontSize: 11, color: "#aaa", flexShrink: 0 }}>↗</span>
       ) : loadState === "loading" || pendingOriginal === reply.event_id ? (
         <span style={{ fontSize: 11, color: PRIMARY, flexShrink: 0 }}>
-          {tr("正在加载…（滚到顶部自动续拉）")}
+          {tr("正在加载原消息…")}
         </span>
       ) : loadState === "notfound" ? (
         <span style={{ fontSize: 11, color: "#ccc", flexShrink: 0 }}>
@@ -183,7 +184,7 @@ function ReplyBanner({
           }}
           title={
             onLoadOriginal
-              ? tr("开始按需加载，滚到顶部会自动继续拉取")
+              ? tr("开始按需加载，自动翻页定位到原消息")
               : undefined
           }
           onClick={async (e) => {

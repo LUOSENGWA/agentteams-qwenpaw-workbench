@@ -15,6 +15,10 @@ import {
   type WorkerTreeTeam,
 } from "./api";
 import { RoomHistory, mergeForward } from "./roomHistory";
+import {
+  nextBackfillAction,
+  computeWindowFloorForJump,
+} from "./originalJump";
 import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
 import { useWorkerChatStatuses } from "./workerChatStatus";
@@ -47,11 +51,13 @@ export interface WorkbenchPageMessagesCtx {
   setMarkingAllRead: (v: boolean) => void;
   pendingOriginalId: string | null;
   setPendingOriginalId: (v: string | null) => void;
+  /** （R2 显式跳转）渲染窗口下界 setter（命中原消息时抬升，见 originalJump）。 */
+  setMinWindowTops: (v: number) => void;
   setJumpToEventId: (v: string | null) => void;
 }
 
 export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
-  const { activeRoom, setActiveRoom, setTab, writeUiState, rooms, setRooms, workerTree, adminData, tr, messages, setMessages, messagesRef, messagesEnd, setMessagesEnd, setMessagesLoading, setHasMore, hasMore, setRoomError, setLoadingMore, setMarkingAllRead, pendingOriginalId, setPendingOriginalId, setJumpToEventId } = ctx;
+  const { activeRoom, setActiveRoom, setTab, writeUiState, rooms, setRooms, workerTree, adminData, tr, setMessages, messagesRef, messagesEnd, setMessagesEnd, setMessagesLoading, setHasMore, setRoomError, setLoadingMore, setMarkingAllRead, pendingOriginalId, setPendingOriginalId, setMinWindowTops, setJumpToEventId } = ctx;
 
   // 消息历史窗口状态机——收敛原 windowRoomRef /
   // messagesEndRef / loadingMoreRef / prefetchRef 四个散落 ref（I1–I6
@@ -165,9 +171,13 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
     }
   }, []);
 
-  const loadMore = React.useCallback(async () => {
-    if (!activeRoom || !messagesEnd) return;
-    if (hist.busy) return; // I5 在飞单发
+  // 取页状态（R2 显式循环消费）：loaded=落地；busy=他人在飞（I5 单发闸，
+  // 调用方稍后重试）；error=取页失败（toast 已给）；none=无房/无游标。
+  const loadMore = React.useCallback(async (): Promise<
+    "loaded" | "none" | "busy" | "error"
+  > => {
+    if (!activeRoom || !messagesEnd) return "none";
+    if (hist.busy) return "busy"; // I5 在飞单发
     hist.setBusy(true);
     setLoadingMore(true);
     try {
@@ -189,82 +199,108 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       setCachedMessages(activeRoom.room_id, { ...page, messages: merged }, merged);
       // I3 管道常驻：落盘后立即预取再下一页（用户滚到边界时通常已零等待）。
       hist.prefetch(activeRoom.room_id, page.end);
+      return "loaded";
     } catch (e) {
       message.error(e instanceof Error ? e.message : tr("加载更早消息失败"));
+      return "error";
     } finally {
       hist.setBusy(false);
       setLoadingMore(false);
     }
   }, [activeRoom, messagesEnd]);
 
-  const pendingOrigResolveRef = React.useRef<
-    ((kind: "found" | "exhausted" | "cancelled") => void) | null
-  >(null);
+  // ── 「加载原消息」= 显式分页跳转（R2）────────────────────
+  // 点按钮 → 本函数内串行翻页直到目标进窗口（限页上限 ORIGINAL_PAGE_CAP）
+  // → 抬渲染窗口下界 + 走既有定位/高亮链；上限内找不到 → exhausted（banner
+  // 落 /context 定位区兜底）。替换旧的「kickstart 一页 + 滚到顶自动续拉」
+  // 接力——其游标/在飞闸/空页走查边界态是「有时加载不出来」「前插锚定补偿
+  // 失败跑到顶部」的范式性根因。取页仍全走 loadMore/RoomHistory
+  // （I1–I6 不变量一处收敛），此处只做循环决策（纯函数 originalJump）。
+  const pendingOrigGenRef = React.useRef(0);
   const pendingOrigIdRef = React.useRef<string | null>(null);
-  // 加载原消息**超量上限**——自动后翻期间窗口净增超过
-  // 3000 条仍未命中 → 判「不在可加载历史」（banner 走 /context 兜底），
-  // 防自动链在超大历史里有尽无头地翻（请求量上下界可控）。
-  const pendingStartLenRef = React.useRef(0);
   React.useEffect(() => {
     pendingOrigIdRef.current = pendingOriginalId;
   }, [pendingOriginalId]);
   const settlePendingOriginal = React.useCallback(
-    (kind: "found" | "exhausted" | "cancelled") => {
-      if (pendingOrigResolveRef.current) {
-        pendingOrigResolveRef.current(kind);
-        pendingOrigResolveRef.current = null;
-      }
+    (_kind: "found" | "exhausted" | "cancelled") => {
+      // 作废本轮：gen++（在飞循环下一次检查即自止）+ 清 pending（旁路释放）。
+      pendingOrigGenRef.current += 1;
       setPendingOriginalId(null);
     },
-    [],
+    [setPendingOriginalId],
   );
+  const finishPendingOriginalJump = React.useCallback(() => {
+    // 定位完成（jumpToMessage 高亮 / /context 兜底）→ 释放 pending：
+    // 渲染窗口旁路关闭；下界（minWindowTops）已抬升，深层目标不被裁掉。
+    if (pendingOrigIdRef.current) {
+      pendingOrigGenRef.current += 1;
+      pendingOrigIdRef.current = null;
+      setPendingOriginalId(null);
+    }
+  }, [setPendingOriginalId]);
   React.useEffect(() => {
     // 切房/关房 → 作废进行中的加载（cancelled：banner 回 idle，不标 notfound）。
     if (pendingOrigIdRef.current) settlePendingOriginal("cancelled");
   }, [activeRoom?.room_id, settlePendingOriginal]);
- // 原消息进窗口 → 自动定位 + 高亮；触底仍无 → 交给 banner 兜底。
-  React.useEffect(() => {
-    if (!pendingOriginalId) return;
-    if (messagesRef.current.some((m) => m.event_id === pendingOriginalId)) {
-      setJumpToEventId(pendingOriginalId);
-      settlePendingOriginal("found");
-      return;
-    }
-    if (
-      messagesRef.current.length - pendingStartLenRef.current > 3000
-    ) {
-      settlePendingOriginal("exhausted"); // 超量仍未命中：判不在可加载历史
-      return;
-    }
-    if (!hasMore) settlePendingOriginal("exhausted");
-  }, [messages, hasMore, pendingOriginalId, settlePendingOriginal]);
-  // 停滞看门狗：每页落地会重置计时（deps 含 messages）；30s 无任何新页
-  // （服务端分页异常）→ 释放 pending（banner 回 idle 可再点），不静默死挂。
-  React.useEffect(() => {
-    if (!pendingOriginalId) return;
-    const timer = window.setTimeout(() => {
-      settlePendingOriginal("cancelled");
-    }, 30000);
-    return () => window.clearTimeout(timer);
-  }, [messages, hasMore, pendingOriginalId, settlePendingOriginal]);
   const loadOriginal = React.useCallback(
     async (
       eventId: string,
     ): Promise<"found" | "exhausted" | "cancelled"> => {
       if (!activeRoom || !eventId) return "cancelled";
       if (pendingOrigIdRef.current === eventId) return "cancelled"; // 已在进行中
-      if (pendingOrigIdRef.current)
-        settlePendingOriginal("cancelled"); // 换目标：旧目标回 idle
-      pendingStartLenRef.current = messagesRef.current.length;
+      // 换目标：作废旧循环（旧循环下一次 gen 检查自止，返回 cancelled）。
+      if (pendingOrigIdRef.current) settlePendingOriginal("cancelled");
+      const myGen = ++pendingOrigGenRef.current;
+      pendingOrigIdRef.current = eventId;
       setPendingOriginalId(eventId);
-      // Kickstart 一页：用户点引用条时大概率不在列表顶部（banner 在中部），
-      // 40px 触顶触发不会来——先拉一页保证前进（后续页由滚动驱动）。
-      void loadMore();
-      return new Promise((resolve) => {
-        pendingOrigResolveRef.current = resolve;
-      });
+      // 停滞看门狗：每页落地重置；30s 无新页（服务端分页异常）→ gen++
+      // 作废本轮（循环自止返回 cancelled，banner 回 idle 可再点），不静默死挂。
+      let stallTimer = 0;
+      const armStall = () => {
+        window.clearTimeout(stallTimer);
+        stallTimer = window.setTimeout(() => {
+          pendingOrigGenRef.current += 1;
+        }, 30000);
+      };
+      armStall();
+      try {
+        let pages = 0;
+        for (;;) {
+          if (pendingOrigGenRef.current !== myGen) return "cancelled";
+          // 单步决策（纯函数）：进窗口→found / 触底或到上限→exhausted / 否则取页。
+          const known = new Set(messagesRef.current.map((m) => m.event_id));
+          const action = nextBackfillAction(known.has(eventId), hist.cursor, pages);
+          if (action !== "fetch") break;
+          const r = await loadMore();
+          if (r === "busy") continue; // 他人在飞（I5 单发）：等落地后重新决策
+          if (r === "error") break; // 取页失败（toast 已给）：回 idle 可重试
+          if (r === "none") break; // 无可载：交最终判定
+          pages += 1;
+          armStall();
+        }
+        if (messagesRef.current.some((m) => m.event_id === eventId)) {
+          // 命中：先抬渲染窗口下界（旁路释放后目标不丢），再启动既有
+          // 定位+高亮链；pendingOriginal 旁路保持到定位完成
+          // （onJumpHandled → finishPendingOriginalJump）才释放。
+          setMinWindowTops(computeWindowFloorForJump(messagesRef.current, eventId));
+          setJumpToEventId(eventId);
+          return "found";
+        }
+        settlePendingOriginal("exhausted");
+        return "exhausted";
+      } finally {
+        window.clearTimeout(stallTimer);
+      }
     },
-    [activeRoom, loadMore, settlePendingOriginal],
+    [
+      activeRoom,
+      hist,
+      loadMore,
+      messagesRef,
+      setJumpToEventId,
+      setMinWindowTops,
+      settlePendingOriginal,
+    ],
   );
 
   // 长轮询：增量拉新消息（dir=b 前 10 条），按 event_id 去重合并。
@@ -435,6 +471,7 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
     refreshMessages,
     loadMore,
     loadOriginal,
+    finishPendingOriginalJump,
     pollMessages,
     openRoom,
     handleGlobalSearchOpenRoom,
