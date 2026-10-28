@@ -82,6 +82,7 @@ export function useRoomChatCore(props: RoomChatProps) {
     onOpenProjectFiles,
     onLoadOriginal,
     pendingOriginal,
+    minWindowTops,
   } = props;
  // 头像点击 → Worker 会话抽屉（只读，
   // #1295 端点；404 版本门占位）。团队管理不再挂会话 tab。
@@ -311,6 +312,14 @@ export function useRoomChatCore(props: RoomChatProps) {
   const revealWindow = React.useCallback(() => {
     setWindowLimit((w) => w + MSG_WINDOW_LIMIT);
   }, []);
+  // R2 显式跳转：渲染窗口下界（单向棘轮）——「加载原消息」命中深层目标后
+  // 父侧抬升（= 目标到最新之间的顶层条数，含目标）；pendingOriginal 旁路
+  // 在 onJumpHandled 时释放，窗口恢复裁切时必须仍罩住目标，否则定位视图
+  // 被拽走。只升不降（降由换房重置统一负责）。
+  React.useLayoutEffect(() => {
+    const m = minWindowTops ?? 0;
+    if (m > windowLimit) setWindowLimit(m);
+  }, [minWindowTops, windowLimit]);
   // 被窗口藏起的顶层消息数（每渲染同步；kickLoadMore 声明早于
   // threadGroups，经 ref 桥接避免声明顺序依赖）。
   const hiddenCountRef = React.useRef(0);
@@ -695,26 +704,19 @@ export function useRoomChatCore(props: RoomChatProps) {
   // 每次渲染后（每页落地 / 加载态变化 / 滚动 state 变化）重查顶部位置：
   // 仍在预载余量内且还有历史 → 续拉下一页；滚离即停（节奏=用户滚动节奏，
   // 滚动事件路径由 handleListScroll 覆盖，本 effect 覆盖「驻顶等历史」路径）。
- // 普通聊天与「加载原消息」模式共用；后者的终止仍由父侧（进窗口→
-  // 定位 / 触底 / 切房作废）。声明在锚 effect 之后：读到的是锚恢复后的
+  // R2：「加载原消息」不再走本接力——改父侧显式循环串行翻页直到目标进窗口
+  // （限页上限 + 定位），本 effect 只管用户「驻顶浏览历史」场景。
+  // 声明在锚 effect 之后：读到的是锚恢复后的
   // scrollTop（前插后位置被推离顶部 → 自然暂停，用户再上翻时接力）。
   React.useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || !hasMore || !onLoadMore) return;
- // **点引用条后
-    // 自动后翻**（Element 同款）——旧版只在用户滚近顶部时才续拉，点了「加载
- // 原消息」但停在原处 → 只前进一页就没了。终止由父侧：进窗口→定位 /
-    // 触底 / 超量上限 / 切房作废 / 30s 停滞看门狗。
-    if (pendingOriginal) {
-      kickLoadMore();
-      return;
-    }
     if (nearTop(el)) kickLoadMore();
  // deps 化——续拉的判据只依赖
-    // 「页落地（messages）/ 待回填目标 / 可载性」，hover 等非数据渲染
+    // 「页落地（messages）/ 可载性」，hover 等非数据渲染
     // 不再重复读布局；滚动路径仍由 handleListScroll 覆盖（kickLoadMore
     // 内有 autoLoadRef 防重）。
-  }, [messages, pendingOriginal, hasMore, onLoadMore, nearTop, kickLoadMore]);
+  }, [messages, hasMore, onLoadMore, nearTop, kickLoadMore]);
 
   // 换房间：重置消息/窗口状态（贴底由 stick hook 的 roomKey effect 负责，
   // Element 开房间即在最新消息处）。

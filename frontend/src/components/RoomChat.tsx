@@ -160,17 +160,22 @@ export interface RoomChatProps {
  /** ：Worker 列表——头像抽屉「查看会话」
  * （WorkerChats fixedWorker 模式）的数据源。 */
   workers?: WorkerInfo[];
-  /** ：引用条「加载原消息」——
- * 链式向前分页把原消息拉进时间线；返回是否找到（找不到由 UI 落
- * /context 定位区兜底）。
- * 调用后只 kickstart 一页，其余页由
- * 滚动驱动（触顶 40px 触发 + 停顶自动续拉，见下方 useLayoutEffect）。 */
+  /** ：引用条「加载原消息」（R2 显式跳转）——
+ * 点击后串行向前分页直到原消息进入窗口（限页上限），随后走既有
+ * 定位+高亮链；返回结果（exhausted=上限内未找到，由 UI 落
+ * /context 定位区兜底；cancelled=切房/换目标/看门狗）。
+ * 不再依赖「滚到顶自动续拉」接力（其边界态是旧版「加载不出来」根因）。 */
   onLoadOriginal?: (
     eventId: string,
   ) => Promise<"found" | "exhausted" | "cancelled">;
   /** 正在回填的原消息 event_id（引用条显示
- * 「正在加载原消息…」；非空时停在顶部会自动续拉分页）。 */
+ * 「正在加载原消息…」；非空时渲染窗口旁路全量，直到定位完成
+ * （onJumpHandled）才释放——深层目标不丢）。 */
   pendingOriginal?: string | null;
+  /** （R2 显式跳转）渲染窗口下界：「加载原消息」命中后，从最新数起至少
+ * 保留该条数的顶层消息（单向棘轮：只升不降，切房由父组件重置 0）——
+ * 防止 pendingOriginal 旁路释放后渲染窗口把深层目标裁掉、拽走已定位视图。 */
+  minWindowTops?: number;
   /** attention 待决策项（父组件已过滤已答/已解决；deployed=false 不传）——
  * 房间标题栏 pill（L3 入口）数据源，按 room_id 匹配当前房间。 */
   attentionPending?: AttentionItem[];
@@ -328,9 +333,11 @@ function RoomChat(props: RoomChatProps) {
           flex: 1,
           overflowY: "auto",
           overflowX: "hidden",
-          // 贴底跟随重构：关浏览器原生滚动锚，前插的视口补偿全权交给
-          // useStickToBottom 的手动锚（防两套锚定打架）。
-          overflowAnchor: "none",
+          // R2 前插锚定：容器保持浏览器原生滚动锚（overflow-anchor: auto
+          // 默认）作第一道防线；顶部动态块（加载按钮/错误条/最早标记，见下）
+          // 设 overflow-anchor: none 排除出锚定候选，浏览器才会选消息行做
+          // 锚点；useStickToBottom 的锚定元素层兜底原生未覆盖的边界
+          // （内容未溢出等），两层合成、无手工 scrollHeight 差值补偿。
           padding: "16px 4px",
           // 15.14：minHeight:300 → 0。旧值在「可用高 < 300」时强制列表
           // 300px → 穿透撑破列 → tabpane 整页滚动 → 输入框随页动。
@@ -382,13 +389,22 @@ function RoomChat(props: RoomChatProps) {
               background: "rgba(250,140,22,0.08)",
               color: "#fa8c16",
               fontSize: 13,
+              // R2：顶部可控动态块——排除出原生滚动锚候选（内容随时增删，
+              // 若被选为锚点，前插时浏览器锚到它 = 视图钉在顶部）。
+              overflowAnchor: "none",
             }}
           >
             <WarnIcon size={13} style={{ verticalAlign: "-2px" }} /> {errorNote}
           </div>
         ) : null}
         {hasMore || threadGroups.hiddenCount > 0 ? (
-          <div style={{ textAlign: "center", paddingBottom: 12 }}>
+          <div
+            style={{
+              textAlign: "center",
+              paddingBottom: 12,
+              overflowAnchor: "none", // R2：同上，动态块不配做锚点
+            }}
+          >
             {/* 预载中显形（自动预载与手动共用同一状态）；窗口揭示
                 无网络往返，按钮即时放出更早消息。 */}
             {loadingMore ? (
@@ -419,6 +435,7 @@ function RoomChat(props: RoomChatProps) {
               color: t.textSecondary,
               paddingBottom: 8,
               opacity: 0.7,
+              overflowAnchor: "none", // R2：同上，动态块不配做锚点
             }}
           >
             {tr("已到最早的消息")}
