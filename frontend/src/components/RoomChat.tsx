@@ -44,6 +44,7 @@ import {
 import {ThreadIcon } from "./RoomChatThread";
 import {useRoomChatCore } from "./RoomChatCore";
 import type {RoomChatCoreState } from "./RoomChatCore";
+import { applyContextWindow } from "../jumpContextWindow";
 import {RoomChatHeader } from "./RoomChatHeader";
 import {RoomChatComposer } from "./RoomChatComposer";
 
@@ -261,6 +262,12 @@ function RoomChat(props: RoomChatProps) {
   } = core;
   // 房间详情刷新信号：重命名完成后 bump → RoomInfoDrawer 重拉房间信息。
   const [roomInfoRefreshTick, setRoomInfoRefreshTick] = React.useState(0);
+  // 定位区上下文片段折叠窗：默认只渲染目标 ±2（applyContextWindow）；
+  // 新的定位上下文进来时恒复位折叠（新片段从 ±2 窗开始，不继承旧展开态）。
+  const [jumpContextExpanded, setJumpContextExpanded] = React.useState(false);
+  React.useEffect(() => {
+    setJumpContextExpanded(false);
+  }, [jumpContext]);
   return (
     <div
       style={{
@@ -964,7 +971,10 @@ function RoomChat(props: RoomChatProps) {
           </div>
 
       {/* 搜索跳转定位区（修复）：目标事件不在已加载窗口时，展示
- /context 前后文片段 + 高亮目标 + 关闭；点击结果后滚动至此。 */}
+ /context 前后文片段 + 高亮目标 + 关闭；点击结果后滚动至此。
+ 16.23 霸屏修复：片段容器限高 40vh + 内部自滚，默认只渲染目标 ±2 条
+（applyContextWindow），其余收在「展开全部上下文」按钮后——全量
+ /context 片段不再把正常消息列表挤出屏幕。 */}
       {jumpContext ? (
         <div
           ref={jumpContextRef}
@@ -975,71 +985,100 @@ function RoomChat(props: RoomChatProps) {
             background: "color-mix(in srgb, var(--app-accent, #FF7F16) 5%, transparent)",
             marginBottom: 8,
             animation: "wbJumpIn 0.3s ease-out",
+            // 霸屏修复：片段高度封顶 + 内部滚动；flexShrink:0 保证纵向
+            // 空间紧张时由上方消息列表（flex:1 min-0）让位，而非压扁本区。
+            maxHeight: "40vh",
+            overflowY: "auto",
+            flexShrink: 0,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 6,
-            }}
-          >
-            <span style={{ fontSize: 12, fontWeight: 700, color: PRIMARY }}>
-              <PinIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("搜索定位")}
-            </span>
-            <span style={{ fontSize: 11.5, color: t.textSecondary, flex: 1 }}>
-              {tr("目标消息不在已加载范围，显示前后文片段")}
-            </span>
-            <antd.Button
-              size="small"
-              type="text"
-              onClick={clearJumpContext}
-              style={{ fontSize: 12 }}
-            >
-              <CloseIcon size={12} />
-            </antd.Button>
-          </div>
-          {jumpContext.events.map((m) => {
-            const isTarget = m.event_id === jumpContext.highlightId;
+          {(() => {
+            const jcWin = applyContextWindow(
+              jumpContext.events,
+              jumpContext.highlightId,
+              jumpContextExpanded,
+            );
             return (
-              <div
-                key={m.event_id}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  marginBottom: 4,
-                  fontSize: 12.5,
-                  background: isTarget ? "color-mix(in srgb, var(--app-accent, #FF7F16) 12%, transparent)" : t.bubbleOther,
-                  border: isTarget
-                    ? `1px solid ${PRIMARY}`
-                    : "1px solid transparent",
-                  wordBreak: "break-word",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
+              <>
                 <div
                   style={{
-                    color: t.textSecondary,
-                    fontSize: 11.5,
-                    marginBottom: 2,
                     display: "flex",
-                    gap: 6,
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 6,
                   }}
                 >
-                  <span style={{ fontWeight: 600, color: t.text }}>
-                    {senderShortName(m.sender, room)}
+                  <span style={{ fontSize: 12, fontWeight: 700, color: PRIMARY }}>
+                    <PinIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("搜索定位")}
                   </span>
-                  {isTarget ? (
-                    <span style={{ color: PRIMARY, fontWeight: 700 }}>●</span>
+                  <span style={{ fontSize: 11.5, color: t.textSecondary, flex: 1 }}>
+                    {tr("目标消息不在已加载范围，显示前后文片段")}
+                  </span>
+                  {jcWin.hiddenCount > 0 ? (
+                    <antd.Button
+                      size="small"
+                      type="link"
+                      onClick={() => setJumpContextExpanded(!jumpContextExpanded)}
+                      style={{ fontSize: 12, flex: "none" }}
+                    >
+                      {jumpContextExpanded
+                        ? tr("收起")
+                        : tr("展开全部上下文")} (
+                      {jumpContext.events.length} {tr("条")})
+                    </antd.Button>
                   ) : null}
+                  <antd.Button
+                    size="small"
+                    type="text"
+                    onClick={clearJumpContext}
+                    style={{ fontSize: 12 }}
+                  >
+                    <CloseIcon size={12} />
+                  </antd.Button>
                 </div>
-                <div style={{ color: t.text }}>
-                  {m.body.slice(0, 600)}
-                </div>
-              </div>
+                {jcWin.events.map((m) => {
+                  const isTarget = m.event_id === jumpContext.highlightId;
+                  return (
+                    <div
+                      key={m.event_id}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        marginBottom: 4,
+                        fontSize: 12.5,
+                        background: isTarget ? "color-mix(in srgb, var(--app-accent, #FF7F16) 12%, transparent)" : t.bubbleOther,
+                        border: isTarget
+                          ? `1px solid ${PRIMARY}`
+                          : "1px solid transparent",
+                        wordBreak: "break-word",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: t.textSecondary,
+                          fontSize: 11.5,
+                          marginBottom: 2,
+                          display: "flex",
+                          gap: 6,
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, color: t.text }}>
+                          {senderShortName(m.sender, room)}
+                        </span>
+                        {isTarget ? (
+                          <span style={{ color: PRIMARY, fontWeight: 700 }}>●</span>
+                        ) : null}
+                      </div>
+                      <div style={{ color: t.text }}>
+                        {m.body.slice(0, 600)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
             );
-          })}
+          })()}
         </div>
       ) : null}
 
