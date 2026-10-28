@@ -790,14 +790,4 @@ export const workerDict: Record<string, { en: string }> = {
   "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。选 Higress configured alias 会自动回填对应 Provider。": {
     en: "Only model + provider change (PUT merge semantics: only changed fields are sent; empty = follow the cluster default). Picking a configured Higress alias auto-fills its provider.",
   },
-  "重启": { en: "Restart" },
-  "重启 {name}（重建容器，配置/模型重新加载）": {
-    en: "Restart {name} (recreates the container; config and model reload)",
-  },
-  "{name} 重启中（容器重建，约 10-30 秒）": {
-    en: "{name} is restarting (container recreate, ~10–30s)",
-  },
-  "模型已保存（热生效：进程内 reload；若未生效可点重启）": {
-    en: "Model saved (hot-applied via an in-process reload; use Restart if it does not take effect)",
-  },
 };

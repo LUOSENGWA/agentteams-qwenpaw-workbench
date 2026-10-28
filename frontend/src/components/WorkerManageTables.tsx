@@ -1,6 +1,6 @@
 import type * as ReactNS from "react";
 
-import { imageTag, requestJson, restartManager, updateManagerModel } from "../api";
+import { imageTag, requestJson, updateManagerModel } from "../api";
 import type { AdminData, ManagerInfo, WorkerTreeTeam } from "../api";
 import { HistoryIcon, MessageIcon as ChatIcon, SettingsIcon, TeamIcon, WarnIcon } from "./icons";
 import {
@@ -35,7 +35,7 @@ export function TeamNode({
   team: WorkerTreeTeam;
   onDm?: (mxid: string) => void;
   adminByWorker: Map<string, AdminData["workers"][number]>;
-  onLifecycle?: (name: string, action: "wake" | "sleep" | "restart") => void;
+  onLifecycle?: (name: string, action: "wake" | "sleep") => void;
   acting: string | null;
   /** worker_name → session 状态（行内圆点）。 */
   sessionByName?: Record<string, WorkerSessionState>;
@@ -509,7 +509,6 @@ export function ManagerTable({
     : { mgr: 150, phase: 88, runtime: 96, model: 240, version: 150, tail: 170 };
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
   const [saving, setSaving] = React.useState<string | null>(null);
-  const [restarting, setRestarting] = React.useState<string | null>(null);
   const union = useModelUnionOptions(usedModels, tr);
 
   const saveModel = React.useCallback(
@@ -572,7 +571,7 @@ export function ManagerTable({
  挤压」——fixed 布局下剩余空间只够喂一个浮动列，列间互相抢宽。
  设计=全列显式定宽 + 横向滚动兜底：谁也不挤压，窄屏出滚动条。
  ≤700px 紧凑列宽（竖屏少滚 230px，模型列提前可见）。 */
-        scroll={{ x: W.mgr + W.phase + W.runtime + W.model + W.version + W.tail + 90 }}
+        scroll={{ x: W.mgr + W.phase + W.runtime + W.model + W.version + W.tail }}
         dataSource={managers}
         /* 展开行 = Manager 详情面板（零新端点）。 */
         expandable={{
@@ -671,39 +670,6 @@ export function ManagerTable({
                   {v ? imageTag(v) : "—"}
                 </span>
               </WbTooltip>
-            ),
-          },
-          {
-            title: tr("操作"),
-            key: "actions",
-            width: 90,
-            render: (_: unknown, mgr: { name: string }) => (
-              <antd.Button
-                size="small"
-                type="link"
-                style={{ padding: 0 }}
-                loading={restarting === mgr.name}
-                onClick={async () => {
-                  setRestarting(mgr.name);
-                  try {
-                    await restartManager(mgr.name);
-                    antd.message.success(
-                      tr("{name} 重启中（容器重建，约 10-30 秒）", {
-                        name: mgr.name,
-                      }),
-                    );
-                    onRefreshAdmin?.(true);
-                  } catch (e) {
-                    antd.message.error(
-                      e instanceof Error ? e.message : tr("操作失败"),
-                    );
-                  } finally {
-                    setRestarting(null);
-                  }
-                }}
-              >
-                {tr("重启")}
-              </antd.Button>
             ),
           },
           {

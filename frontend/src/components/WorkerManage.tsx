@@ -115,16 +115,12 @@ function WorkerManage(props: WorkerManageProps) {
   });
 
   const handleLifecycle = React.useCallback(
-    async (name: string, action: "wake" | "sleep" | "restart") => {
+    async (name: string, action: "wake" | "sleep") => {
       setActing(`${action}:${name}`);
       try {
         await postController(`/workers/${encodeURIComponent(name)}/${action}`);
         antd.message.success(
-          action === "wake"
-            ? tr("{name} 已唤醒", { name })
-            : action === "sleep"
-              ? tr("{name} 已休眠", { name })
-              : tr("{name} 重启中（容器重建，约 10-30 秒）", { name }),
+          action === "wake" ? tr("{name} 已唤醒", { name }) : tr("{name} 已休眠", { name }),
         );
         // 唤醒/休眠=Worker 运行态变更 → 失效缓存
         // （否则 30s TTL 内 admin/拓扑读旧心跳）。

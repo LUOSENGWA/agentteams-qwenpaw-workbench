@@ -230,11 +230,6 @@ export const probeWorkerGateway = (
 export const updateManagerModel = (name: string, model: string) =>
   controllerRequest("PUT", `/managers/${encodeURIComponent(name)}`, { model });
 
-/** 重启 Manager 容器（POST /managers/{name}/restart；Controller 侧 stop+start，
- * 重建后配置/模型重新加载）。 */
-export const restartManager = (name: string) =>
-  controllerRequest("POST", `/managers/${encodeURIComponent(name)}/restart`);
-
 export const deleteTeam = (name: string) =>
   controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
 
