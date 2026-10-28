@@ -529,6 +529,21 @@ async def _ctl_call(
     urls = [u.rstrip("/") for u in router_mod._ordered_addresses(cfg, "controller")]
     if not urls:
         raise HTTPException(status_code=502, detail="未配置 Controller 地址")
+    # Normalize the target to path+query. The documented contract is
+    # ``path = /api/v1/...`` (the base is prepended below), but several
+    # call sites pass a full URL ``f"{base}/api/v1/..."``. Prepending the
+    # base to that produced a double-base URL (e.g.
+    # ``https://h:7113https://h:7113/api/v1/...``) which the gateway
+    # answered with 301 / stalled until timeout — every Millforge SOUL /
+    # create / core-skill call failed. Accepting both forms fixes the old
+    # call sites and keeps this entry point robust for new ones.
+    if "://" in path:
+        from urllib.parse import urlparse as _urlparse
+
+        _parsed = _urlparse(path)
+        path = (_parsed.path or "") + (
+            f"?{_parsed.query}" if _parsed.query else ""
+        )
     if files is None:
         st, data, _text = await ctl_json(
             method, f"{urls[0]}{path}", token, json_body=json_body
@@ -602,8 +617,13 @@ def _build_core_skill_zip(pack_dir: Path) -> Optional[bytes]:
         f"{body}"
     )
     buf = BytesIO()
+    # The controller's skill upload requires exactly one top-level skill
+    # directory (its name becomes the skill name); root-level entries are
+    # rejected with "the zip must contain a single top-level skill
+    # directory". Wrap every entry under ``millforge-core/``.
+    root = "millforge-core"
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("SKILL.md", skill_md)
+        z.writestr(f"{root}/SKILL.md", skill_md)
         proto = core / "protocol"
         if proto.is_dir():
             for f in sorted(proto.rglob("*")):
@@ -612,7 +632,9 @@ def _build_core_skill_zip(pack_dir: Path) -> Optional[bytes]:
                 rel = f.relative_to(core)
                 if "__pycache__" in rel.parts:
                     continue
-                z.writestr(f"references/{rel.as_posix()}", f.read_bytes())
+                z.writestr(
+                    f"{root}/references/{rel.as_posix()}", f.read_bytes()
+                )
         scripts = core / "scripts"
         if scripts.is_dir():
             for f in sorted(scripts.rglob("*")):
@@ -621,7 +643,7 @@ def _build_core_skill_zip(pack_dir: Path) -> Optional[bytes]:
                 rel = f.relative_to(scripts)
                 if "__pycache__" in rel.parts:
                     continue
-                z.writestr(f"scripts/{rel.as_posix()}", f.read_bytes())
+                z.writestr(f"{root}/scripts/{rel.as_posix()}", f.read_bytes())
     return buf.getvalue()
 
 
@@ -1277,8 +1299,10 @@ def build_millforge_router() -> APIRouter:
                         "GET", f"{base}/api/v1/workers", token
                     )
                     skills_by: Dict[str, List[str]] = {}
+                    # The controller lists workers under "workers" (with a
+                    # "total" sibling) — not "items".
                     if st2 == 200 and isinstance(d2, dict):
-                        for w in d2.get("items") or []:
+                        for w in d2.get("workers") or []:
                             if isinstance(w, dict) and w.get("name"):
                                 skills_by[str(w["name"])] = list(
                                     w.get("skills") or []

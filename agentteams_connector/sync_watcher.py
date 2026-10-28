@@ -907,14 +907,16 @@ async def _run() -> None:
                 # ⑤ 房间消息 SSE 触发（P6：12s 轮询 → /sync 事件驱动主路，
                 # IM 式）。载荷只带触发元数据不带正文——内容源 = 前端收到后
                 # 拉该房间最新消息（复用 pollMessages，附件/工作流/媒体渲染
-                # 路径零改动）。排除：基线轮（存量不重放）、编辑
-                # （m.new_content——前端列表不替换旧消息内容，下轮拉取兜底）、
+                # 路径零改动）。排除：基线轮（存量不重放）、
                 # 自己的消息（乐观回显路径已自行刷新）。
+                # 编辑事件（m.replace 带 m.new_content）**必须**广播：否则
+                # 「处理中...」占位根被编辑成正式回复后，前端一直显示旧内容、
+                # 要手动刷新才看见（前端对带 relates_to 的消息走 600ms 合并
+                # 兜底拉取，fetchRoomMessages 已聚合 m.replace 写回原消息）。
                 if (
                     not baseline
                     and sender
                     and sender != me
-                    and not content.get("m.new_content")
                 ):
                     # 附最小载荷——文本消息可被前端直接
                     # 合并渲染（活跃房零回拉）；非文本/复杂消息前端仍走兜底拉取。

@@ -3,6 +3,14 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.23 (2026-10-26 - Millforge inject fix)
+
+**Fixed**
+- **Every Millforge injection failed (HTTP 301 / Controller unreachable)**: `_ctl_call` takes a path only (the base is prepended from the ordered address list), but the injection call sites historically passed a full URL (`f"{base}/api/v1/..."`). Prepending the base again produced a double-base URL (`https://h:7113https://h:7113/api/v1/...`) that the gateway answered with 301 or stalled until timeout, so SOUL updates, worker creation and core-skill attach all failed. The entry point now normalizes the target to path+query, accepting both full URLs and path-only strings.
+- **Core-skill upload returned 400 (`the zip must contain a single top-level skill directory`)**: the core-skill zip put `SKILL.md` / `references/` / `scripts/` at the archive root while the controller requires exactly one top-level skill directory (its name becomes the skill name; root-level entries are rejected). Every entry is now wrapped under `millforge-core/`.
+- **Core-skill attach reported "no skills data" for every worker**: the attach step read assigned skills from `GET /api/v1/workers`, but the controller lists workers under `"workers"` (with a `total` sibling) while the code looked at `"items"`, so the map stayed empty. Read `"workers"` instead; the fake controller in the tests is corrected too (it returned `"items"`, which hid the mismatch).
+- Added the regression test `test_ctl_call_normalizes_full_url_and_path_only` (fails on the double-base URL, passes with both forms normalized) and tightened the I3 core-skill test to assert the single top-level directory.
+
 ## 0.5.0-beta.16.22 (2026-10-26 - provider prefill)
 
 **Fixed**

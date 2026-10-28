@@ -452,7 +452,11 @@ class FakeCtl:
             }
             return 201, {"ok": True}
         if method == "GET" and path.endswith("/api/v1/workers"):
-            return 200, {"items": list(self.workers.values())}
+            # Mirror the real controller: workers live under "workers" with a
+            # "total" sibling (the old fake returned "items", which hid the
+            # producer/consumer key mismatch).
+            return 200, {"workers": list(self.workers.values()),
+                         "total": len(self.workers)}
         m = re.search(r"/api/v1/workers/([^/]+)$", path)
         if m:
             name = unquote(m.group(1))
@@ -1021,13 +1025,16 @@ def test_inject_core_skill_zip_and_assign(client):
     assert up["form"] == {"scope": "team", "team": "skill-team"}
     zf = zipfile.ZipFile(BytesIO(data))
     names = zf.namelist()
-    assert "SKILL.md" in names
-    assert "references/protocol/nmh.md" in names
-    assert "scripts/x.sh" in names
-    skill_md = zf.read("SKILL.md").decode("utf-8")
+    # 控制器要求单个顶层技能目录（目录名 = 技能名）；根级条目会被
+    # "the zip must contain a single top-level skill directory" 400 拒。
+    assert "millforge-core/SKILL.md" in names
+    assert "millforge-core/references/protocol/nmh.md" in names
+    assert "millforge-core/scripts/x.sh" in names
+    assert all(n.split("/")[0] == "millforge-core" for n in names), names
+    skill_md = zf.read("millforge-core/SKILL.md").decode("utf-8")
     assert skill_md.startswith("---\nname: millforge-core\n")
     assert "description:" in skill_md
-    assert zf.read("references/protocol/nmh.md") == \
+    assert zf.read("millforge-core/references/protocol/nmh.md") == \
         "# NMH 协议\n".encode("utf-8")
     # worker skills 追加
     assert ctl.workers["solo-bot"]["skills"] == ["millforge-core"]
@@ -1353,3 +1360,50 @@ def test_packs_list_and_file_preview(client):
     r = tc.get("/millforge/packs/millforge/file",
                params={"path": "../../evil.md"})
     assert r.status_code == 400
+
+
+def test_ctl_call_normalizes_full_url_and_path_only(monkeypatch):
+    """回归：_ctl_call 的契约是 path-only（base 由内部 ordered 地址拼），但历史
+    调用点传的是完整 URL `f"{base}/api/v1/..."`；朴素拼接产生双 base
+    （``https://h:7113https://h:7113/api/v1/...``）→ 网关回 301 或挂到超时，
+    千锻所有 SOUL 更新 / 新建 Worker / core skill 调用全部失败。入口必须把
+    两种形态归一成同一个单 base URL。
+    """
+    import asyncio
+
+    import agentteams_connector.ctl_client as ctlmod
+
+    cfg = {
+        "controller_urls": ["http://ctrl.test:8080"],
+        "address_mode": "auto",
+        "controller_token": "test-token",
+    }
+    monkeypatch.setattr(cfgmod, "load_config", lambda: cfg)
+
+    seen: list = []
+
+    async def fake_ctl_json(method, url, token, json_body=None):
+        seen.append(url)
+        return 404, {"message": "get worker for update: not found"}, ""
+
+    monkeypatch.setattr(ctlmod, "ctl_json", fake_ctl_json)
+
+    async def run():
+        # 历史调用点形态：完整 URL
+        await mfg._ctl_call(
+            "PUT",
+            "http://ctrl.test:8080/api/v1/workers/w1",
+            "test-token",
+            json_body={"soul": "s"},
+        )
+        # 契约形态：path-only
+        await mfg._ctl_call(
+            "PUT", "/api/v1/workers/w1", "test-token", json_body={"soul": "s"}
+        )
+
+    asyncio.run(run())
+
+    assert seen == [
+        "http://ctrl.test:8080/api/v1/workers/w1",
+        "http://ctrl.test:8080/api/v1/workers/w1",
+    ], seen
