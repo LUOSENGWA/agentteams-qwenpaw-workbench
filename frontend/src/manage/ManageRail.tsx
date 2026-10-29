@@ -68,9 +68,7 @@ export default function ManageRail({
               fontSize: 13.5,
               fontWeight: active ? 700 : 400,
               color: active ? PRIMARY : t.textSecondary,
-              background: active
-                ? "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)"
-                : "transparent",
+              background: active ? t.accentBg : "transparent",
             }}
             onMouseEnter={(e) => {
               if (!active) e.currentTarget.style.background = t.hoverBg;

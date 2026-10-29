@@ -280,8 +280,8 @@ function ManagePage(props: ManagePageProps) {
           title={railOpen ? tr("收起左栏") : tr("展开左栏")}
           aria-label={railOpen ? tr("收起左栏") : tr("展开左栏")}
           style={{
-            width: 36,
-            height: 36,
+            width: 44,
+            height: 44,
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
