@@ -195,7 +195,14 @@ function ManagePage(props: ManagePageProps) {
   // 集群 logs/audit 横屏即覆盖中+右（二级页）；其余域仅 narrow 推 L2。
   const isClusterDetail = section === "cluster" && clusterView !== "overview";
   const l2Active = isClusterDetail || (cols === 1 && inDetail);
-  const l2Variant: ManageVariant = isClusterDetail ? "full" : "right";
+  // narrow L2 二级页 variant：team 在拓扑态（选中团队、未进 worker/设置）时拓扑活在
+  // mid 分支（TeamTopologyPane），须用 "mid" 才能渲染；worker/设置走 right 分支。
+  // crd/people 详情表单本就在 right 分支，集群用 full。
+  const l2Variant: ManageVariant = isClusterDetail
+    ? "full"
+    : section === "team" && teamView === "topology"
+      ? "mid"
+      : "right";
 
   const onL2Back = React.useCallback(() => {
     if (section === "team") backTeam();
