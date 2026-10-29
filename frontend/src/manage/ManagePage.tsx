@@ -88,6 +88,8 @@ function ManagePage(props: ManagePageProps) {
     l1TokenMode,
     workerSessionByName,
     onOpenSettings,
+    rooms,
+    attentionPendingByRoom,
     sectionRequest,
     onSectionRequestConsumed,
   } = props;
@@ -107,6 +109,8 @@ function ManagePage(props: ManagePageProps) {
     l1TokenMode,
     workerSessionByName,
     onOpenSettings,
+    rooms,
+    attentionPendingByRoom,
   };
 
   // ── 30s 静默刷新（旧 WorkerManage 同款：activeRef 门控 + refreshRef）──

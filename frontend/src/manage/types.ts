@@ -5,7 +5,7 @@
  * （旧 WorkerManage props 的拆分镜像）；ManageVariant = section 组件在
  * 三栏/二级页布局下的角色（mid=中栏、right=右栏、full=覆盖中+右的二级页）。
  */
-import type { AdminData, WorkerTreeTeam } from "../api";
+import type { AdminData, TeamRoom, WorkerTreeTeam } from "../api";
 import type { WorkerSessionState } from "../workerSessionState";
 import type { ManageNav, ManageSection } from "./useManageNav";
 
@@ -30,6 +30,10 @@ export interface ManageData {
   l1TokenMode?: boolean;
   /** worker_name → session 状态（行内圆点）。 */
   workerSessionByName?: Record<string, WorkerSessionState>;
+  /** Matrix 房间列表（成员头像源：team.room_id → room.members[mxid].avatar_url）。 */
+  rooms?: TeamRoom[];
+  /** room_id → 待决策条数（团队行待决策徽章；旧 controller 未部署 attention = undefined → 不显）。 */
+  attentionPendingByRoom?: Map<string, number>;
   /** 是否已配置 Controller 管理员 token（决定 L1 管理面可用性）。 */
   hasToken?: boolean;
   /** 刷新拓扑树（silent=true 静默不闪页）。 */
