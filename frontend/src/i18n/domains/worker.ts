@@ -1,6 +1,48 @@
 // worker 域 i18n 字典（自 i18n.ts 按域拆分）：Worker 运行时（环境变量/网关探测/运行配置/技能/模型页/LLM 调优）。
 
 export const workerDict: Record<string, { en: string }> = {
+  // ── Worker MCP 面板（CRD 声明 + worker 自注册合并视图，只读）──
+  "Worker MCP": { en: "Worker MCP" },
+  "declared": { en: "declared" },
+  "self-registered": { en: "self-registered" },
+  "enabled": { en: "enabled" },
+  "disabled": { en: "disabled" },
+  "env": { en: "env" },
+  "headers": { en: "headers" },
+  "MCP 合并视图：CRD 声明（spec.mcpServers）+ worker 自注册（容器启动时注册进 QwenPaw 的内置插件 MCP）。env/headers 值已脱敏。": {
+    en: "MCP merged view: CRD declarations (spec.mcpServers) + worker self-registrations (built-in plugin MCPs registered into QwenPaw at container start). env/headers values are masked.",
+  },
+  "当前 controller 不支持读取 worker 自注册 MCP（需升级 controller）": {
+    en: "The current controller cannot read worker self-registered MCP (controller upgrade required)",
+  },
+  "未配置 controller 凭据，暂不能读取 worker 自注册 MCP": {
+    en: "No controller credential configured; cannot read worker self-registered MCP for now",
+  },
+  "自注册 MCP 读取失败（{reason}）——仅显示 CRD 声明。": {
+    en: "Reading self-registered MCP failed ({reason}) — CRD declarations only.",
+  },
+  "该 worker 未配置任何 MCP": { en: "No MCP configured for this worker" },
+  "（无端点）": { en: "(no endpoint)" },
+  "获取失败": { en: "Fetch failed" },
+  // ── Worker 插件面板（worker 已装插件列表，只读表格）──
+  "Worker 插件": { en: "Worker Plugins" },
+  "id": { en: "id" },
+  "name": { en: "name" },
+  "version": { en: "version" },
+  "loaded": { en: "loaded" },
+  "未装载": { en: "not loaded" },
+  "plugin_type": { en: "plugin_type" },
+  "已装 {n} 个 · 已启用 {m} 个": { en: "installed {n} · enabled {m}" },
+  "当前 controller 不支持读取 worker 插件（需升级 controller）": {
+    en: "The current controller cannot read worker plugins (controller upgrade required)",
+  },
+  "未配置 controller 凭据，暂不能读取 worker 插件": {
+    en: "No controller credential configured; cannot read worker plugins for now",
+  },
+  "worker 插件读取失败（{reason}）": {
+    en: "Reading worker plugins failed ({reason})",
+  },
+  "该 worker 未报告任何插件": { en: "No plugins reported by this worker" },
   // ── Worker 环境变量 + 网关探测（1.2.5 #1306 消费，L1/manager only）──
   "环境变量与网关探测": { en: "Env Variables & Gateway Probe" },
   "环境变量": { en: "Env Variables" },
