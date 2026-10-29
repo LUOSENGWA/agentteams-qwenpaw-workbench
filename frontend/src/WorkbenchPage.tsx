@@ -1199,6 +1199,11 @@ export default function WorkbenchPage() {
                 myUserId={config?.matrix?.user_id || ""}
                 /* L1 走 controller token（config 或 env）且未配 admin 账号密码 = 无 Higress Console 会话 */
                 l1TokenMode={hasCtlToken && !config?.admin_username}
+                /* 成员头像源（team.room_id → 房间成员 mxc 头像）+ 待决策徽章（room 维度） */
+                rooms={rooms}
+                attentionPendingByRoom={
+                  attention?.deployed ? attentionPendingByRoom : undefined
+                }
                 /* 一次性 section 深链（首页「去集群」等入口） */
                 sectionRequest={manageSectionReq}
                 onSectionRequestConsumed={clearManageSectionReq}
