@@ -44,7 +44,7 @@ export default function ClusterSection({ nav, data, variant }: ManageSectionProp
     return (
       <div style={{ display: "grid", gap: 12 }}>
         <OpsOverview active />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
           <button
             type="button"
             aria-label={tr("查看组件日志")}

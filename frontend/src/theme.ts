@@ -38,6 +38,8 @@ export interface ThemeColors {
   popoverBg: string;
   /** 工具消息底色。 */
   toolBg: string;
+  /** 主色浅底（accent 10% tint；管理页 rail 选中行等）。 */
+  accentBg: string;
 }
 
 const LIGHT: ThemeColors = {
@@ -54,6 +56,7 @@ const LIGHT: ThemeColors = {
   hoverBg: "rgba(0,0,0,0.03)",
   popoverBg: "#ffffff",
   toolBg: "rgba(0,0,0,0.03)",
+  accentBg: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
 };
 
 const DARK: ThemeColors = {
@@ -70,6 +73,7 @@ const DARK: ThemeColors = {
   hoverBg: "rgba(255,255,255,0.06)",
   popoverBg: "#2a2a2a",
   toolBg: "rgba(255,255,255,0.06)",
+  accentBg: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
 };
 
 /** 读取宿主主题（host.useTheme，插件组件内调用）。
@@ -90,6 +94,7 @@ export function useThemeColors(): ThemeColors {
   return {
     ...(dark ? DARK : LIGHT),
     bubbleMine: accentTint(accent, dark ? 0.18 : 0.08),
+    accentBg: accentTint(accent, 0.10),
   };
 }
 
