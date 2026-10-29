@@ -486,3 +486,68 @@ export async function uploadTeamSkill(opts: {
       : undefined,
   };
 }
+
+// ── Worker MCP 合并读（CRD 声明 + worker 自注册；Controller 新端点代理）──
+
+/** 自注册 MCP 条目（后端已归一化/脱敏：env/headers 值=***；command/args
+ * 用户名段→~；URL 剥 userinfo）。字段随 Controller 形态防御性归一化。 */
+export interface WorkerMcpEntry {
+  /** 稳定标识（QwenPaw MCPClientInfo.key；与 CRD 声明按此合并）。 */
+  name: string;
+  /** 显示名（MCPClientInfo.name，可与 key 不同）。 */
+  displayName?: string;
+  enabled?: boolean | null;
+  transport?: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+}
+
+export interface WorkerMcpResult {
+  available: boolean;
+  worker?: string;
+  /** available=false 时的原因：controller_too_old / no_token / fetch_failed。 */
+  reason?: string;
+  mcpServers?: WorkerMcpEntry[];
+}
+
+/** GET /workers/{worker}/mcp：Controller 端点 404 时后端返回
+ * {available:false, reason:"controller_too_old"}（HTTP 200，不抛错）。 */
+export function fetchWorkerMcp(worker: string): Promise<WorkerMcpResult> {
+  return requestJson(
+    `/agentteams-proxy/workers/${encodeURIComponent(worker)}/mcp`,
+  ) as Promise<WorkerMcpResult>;
+}
+
+// ── Worker 插件只读（Controller 新端点 GET /api/v1/workers/{name}/plugins 代理）──
+
+/** 已装插件条目（字段直传，无凭据无需脱敏）。字段名随 Controller 契约：
+ * id / name / version / enabled / loaded / plugin_type。 */
+export interface WorkerPluginEntry {
+  id?: string;
+  name?: string;
+  version?: string;
+  enabled?: boolean | null;
+  loaded?: boolean | null;
+  plugin_type?: string;
+}
+
+export interface WorkerPluginsResult {
+  available: boolean;
+  worker?: string;
+  /** available=false 时的原因：controller_too_old / no_token。 */
+  reason?: string;
+  plugins?: WorkerPluginEntry[];
+}
+
+/** GET /workers/{worker}/plugins：Controller 端点 404 时后端返回
+ * {available:false, reason:"controller_too_old"}（HTTP 200，不抛错）。 */
+export function fetchWorkerPlugins(
+  worker: string,
+): Promise<WorkerPluginsResult> {
+  return requestJson(
+    `/agentteams-proxy/workers/${encodeURIComponent(worker)}/plugins`,
+  ) as Promise<WorkerPluginsResult>;
+}

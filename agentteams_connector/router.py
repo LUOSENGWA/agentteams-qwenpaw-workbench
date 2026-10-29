@@ -561,6 +561,8 @@ from .routers import (  # noqa: E402
     teams_api,
     upgrade_api,
     wechat_qr_api,
+    worker_mcp_api,
+    worker_plugins_api,
 )
 # attention 决策域（包根模块，函数内惰性导入 router——无模块级反向依赖，
 # 位置不受 re-export 壳约束；固定路径 /attention* 在下方 catch-all 前注册）。
@@ -629,6 +631,13 @@ def build_router() -> APIRouter:
     # 微信 QR 状态直连（iLink 长轮询 ~31s；Controller 频道代理 5s、通用代理
     # 6s 都会掐断）——固定路径 /wechat-qr/status 必须在 catch-all 之前注册。
     router.include_router(wechat_qr_api.build_wechat_qr_router())
+    # Worker MCP（CRD 声明 + worker 自注册合并读，只读；Controller 端点
+    # 404 → 诚实降级 available=false。须在 catch-all 之前，固定路径优先）。
+    router.include_router(worker_mcp_api.build_worker_mcp_router())
+    # Worker 插件（worker 已装插件列表只读代理，字段直传无脱敏；
+    # Controller 端点 404 → 诚实降级 available=false。须在 catch-all
+    # 之前，固定路径优先）。
+    router.include_router(worker_plugins_api.build_worker_plugins_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     return router
