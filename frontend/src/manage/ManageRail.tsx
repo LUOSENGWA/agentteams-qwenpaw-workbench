@@ -1,0 +1,89 @@
+/**
+ * ManageRail.tsx — 「管理」页左栏四域导航（L0）。
+ *
+ * 四域（现有 icons 图标）：团队管理 / CRD 管理 / 人员管理 / 集群管理。
+ * 两种呈现（ManagePage 决定）：wide 内联 200 栏 / medium·narrow 抽屉覆盖。
+ * 行高 ≥44 触控命中（.wb-touch 全局档只管 antd 控件，自写 button 在此自保）；
+ * hover 高亮走 t.hoverBg（鼠标增强，触屏不依赖）。
+ */
+import type * as ReactNS from "react";
+
+import { PRIMARY } from "../WorkbenchPageShared";
+import { useThemeColors } from "../theme";
+import { useT } from "../i18n";
+import { NotesIcon, TeamIcon, UsersIcon, WrenchIcon } from "../components/icons";
+import type { ManageSection } from "./useManageNav";
+
+const host = window.QwenPaw.host;
+const React: typeof ReactNS = host.React;
+
+const RAIL_ITEMS: {
+  key: ManageSection;
+  label: string;
+  Icon: ReactNS.ComponentType<{
+    size?: number;
+    style?: ReactNS.CSSProperties;
+    className?: string;
+  }>;
+}[] = [
+  { key: "team", label: "团队管理", Icon: TeamIcon },
+  { key: "crd", label: "CRD 管理", Icon: NotesIcon },
+  { key: "people", label: "人员管理", Icon: UsersIcon },
+  { key: "cluster", label: "集群管理", Icon: WrenchIcon },
+];
+
+export default function ManageRail({
+  section,
+  onSelect,
+}: {
+  section: ManageSection;
+  onSelect: (s: ManageSection) => void;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  return (
+    <nav
+      aria-label={tr("管理导航")}
+      style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%" }}
+    >
+      {RAIL_ITEMS.map(({ key, label, Icon }) => {
+        const active = section === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            aria-current={active ? "page" : undefined}
+            onClick={() => onSelect(key)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              minHeight: 44,
+              padding: "0 12px",
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              width: "100%",
+              textAlign: "left",
+              fontSize: 13.5,
+              fontWeight: active ? 700 : 400,
+              color: active ? PRIMARY : t.textSecondary,
+              background: active
+                ? "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)"
+                : "transparent",
+            }}
+            onMouseEnter={(e) => {
+              if (!active) e.currentTarget.style.background = t.hoverBg;
+            }}
+            onMouseLeave={(e) => {
+              if (!active) e.currentTarget.style.background = "transparent";
+            }}
+          >
+            <Icon size={16} />
+            {tr(label)}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}

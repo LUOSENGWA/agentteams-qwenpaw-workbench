@@ -32,6 +32,10 @@ export function useWorkbenchUi() {
     skills: "home",
     // 10/26：「待决策」顶层 tab 并入通知页 → 旧持久化值落通知页。
     attention: "inbox",
+    // 10/29：「运维」「审计」顶层 tab 下线（并入管理页集群管理域）
+    // → 旧持久化值落管理页，避免 activeKey 无匹配项 = 空白内容区。
+    ops: "team",
+    audit: "team",
   };
   const readUiState = (
     key: string,

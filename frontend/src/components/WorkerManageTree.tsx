@@ -24,6 +24,7 @@ import {
   WrenchIcon,
 } from "./icons";
 import ApprovalControl from "./ApprovalControl";
+import NarrowSheet from "./NarrowSheet";
 import WorkerEnvPanel from "./WorkerEnvPanel";
 import WorkerMcpPanel from "./WorkerMcpPanel";
 import WorkerPluginsPanel from "./WorkerPluginsPanel";
@@ -223,56 +224,6 @@ function SpawnRow({
   );
 }
 
-/** 竖屏友好弹窗（narrow = 容器可见宽 < 800）：底部抽屉式 antd Modal——
- * 贴底 + 上缘圆角 + 左右留边（手机近全宽；宽窗口上限 560 居中），
- * body ≤88dvh 纵向可滚，头部标题 + 关闭（antd 自带）。
- * 运行配置 / 资源管理 的 narrow 呈现容器——内容 = 现有面板组件原样复用
- * （只换「内联↔弹窗」的呈现容器，不重写内容）。
- * 关闭动画结束（afterClose）才卸载内容：面板内 30s 轮询/取数随之下线，
- * 关窗后零后台负载（house 口径 = afterClose 卸载，动画期间不闪空）。 */
-function NarrowSheet({
-  open,
-  title,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  title: string;
-  onClose: () => void;
-  children: ReactNS.ReactNode;
-}) {
-  const [render, setRender] = React.useState(open);
-  React.useEffect(() => {
-    if (open) setRender(true);
-  }, [open]);
-  return (
-    <antd.Modal
-      open={open}
-      afterClose={() => setRender(false)}
-      onCancel={onClose}
-      footer={null}
-      title={title}
-      width="min(calc(100vw - 32px), 520px)"
-      // 居中弹窗（非底部抽屉）——竖屏友好：不贴底(不靠下)、不超屏底(居中 + body 内滚)。
-      // 此前 styles.wrapper 强改 bottom:0 成底部抽屉→"太靠下 + 贴手势条/超底部"。
-      centered
-      styles={{
-        // 内容纵向可滚：body 封顶 66dvh(≈屏高 2/3)，居中后上下留白，不超屏底。
-        body: {
-          maxHeight: "min(66dvh, 560px)",
-          overflowY: "auto",
-          // 内容贴弹窗宽（左右内边距收紧 16→10，内层 Card/面板铺满弹窗宽）。
-          padding: "8px 10px",
-        },
-        content: { borderRadius: 12, overflow: "hidden" },
-      }}
-    >
-      {/* wbc-narrow：窄屏弹窗内容标记（全局 CSS 消费——表单行转纵向 + antd 控件
-      限宽到容器，治「弹窗内容横向拖」；portal 在 body，规则不带 .wb-main 前缀）。 */}
-      {render ? <div className="wbc-narrow" style={{ minWidth: 0 }}>{children}</div> : null}
-    </antd.Modal>
-  );
-}
 
 /** 管理信息面板：原管理页 Worker 表行全字段 + 生命周期操作（唤醒/休眠）。 */
 function WorkerManageInfo({

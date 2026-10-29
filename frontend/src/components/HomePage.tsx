@@ -62,6 +62,9 @@ interface HomePageProps {
   managers?: ManagerInfo[];
   onOpenRoom: (roomId: string) => void;
   onGotoTab: (tabKey: string) => void;
+  /** SGLang 卡「去集群」入口 → 管理页集群管理域（10/29 运维 tab 下线后
+   * 深链改走管理页 section 通道；未传时兜底落管理页团队域）。 */
+  onGotoCluster?: () => void;
   /** 发起任务弹窗选定目标 → DM 该 Leader/Manager。
    * name = 房间显示名（弹窗按 团队+Worker 上下文生成）；返回
    * Promise 时「发起任务」确认钮等其落地才关窗（loading 防双击）。 */
@@ -88,6 +91,7 @@ function HomePage(props: HomePageProps) {
     managers,
     onOpenRoom,
     onGotoTab,
+    onGotoCluster,
     onDm,
     treeSource = "",
     inboxUnread = 0,
@@ -757,7 +761,7 @@ function HomePage(props: HomePageProps) {
             <SglangCard
               sglang={sglang}
               sgLocalAt={sgLocalAt}
-              onOpen={() => onGotoTab("ops")}
+              onOpen={() => (onGotoCluster ? onGotoCluster() : onGotoTab("team"))}
             />
           )}
           </div>

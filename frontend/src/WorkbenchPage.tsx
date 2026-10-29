@@ -18,16 +18,15 @@ import { logoUrl as LOGO_URL } from "./lib/logo";
 import HomePage from "./components/HomePage";
 import WorkflowBoard, { WfView } from "./components/WorkflowBoard";
 import Artifacts from "./components/Artifacts";
-import OpsPanel from "./components/OpsPanel";
-import AuditLog from "./components/AuditLog";
 import SettingsTab from "./components/SettingsTab";
 import MessageSearch from "./components/MessageSearch";
 import ProjectFiles from "./components/ProjectFiles";
 import NotificationCenter from "./components/NotificationCenter";
 import WorkerChats from "./components/WorkerChats";
-import WorkerManage from "./components/WorkerManage";
+import ManagePage from "./manage/ManagePage";
+import type { ManageSection } from "./manage/useManageNav";
 import { AttentionDecisionModal } from "./components/AttentionDecisionModal";
-import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, WrenchIcon, BrainIcon, SettingsIcon, FolderIcon, HistoryIcon, TargetIcon } from "./components/icons";
+import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, BrainIcon, SettingsIcon, FolderIcon, TargetIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import ModelsTab from "./ModelsTab";
 import { WbTooltip } from "./components/WbTooltip";
@@ -150,7 +149,7 @@ export default function WorkbenchPage() {
   // spawn lists stay empty until the spawn endpoint merges; adapter swaps the data source.
   const [workerTree, setWorkerTree] = React.useState<WorkerTreeTeam[]>([]);
   // 团队结构来源（"controller-workers" 正源 / "room-fallback" 房间聚合）
-  // ——room-fallback 时 WorkerManage 出警示横幅、首页发起任务弹窗只留 Manager 入口。
+  // ——room-fallback 时管理页团队域出警示横幅、首页发起任务弹窗只留 Manager 入口。
   const [treeSource, setTreeSource] = React.useState<string>("");
   const [spawnLoading, setSpawnLoading] = React.useState(false);
   // L1 admin view state.
@@ -348,12 +347,24 @@ export default function WorkbenchPage() {
     [mergeUiState],
   );
 
+  // 管理页 section 深链（一次性通道）：首页 SGLang 卡「去集群」等入口
+  // 落管理页指定域。setTab("team") 后 ManagePage 消费 sectionRequest 并回执
+  // onSectionRequestConsumed 清空（避免同域重复点击被吞）。
+  const [manageSectionReq, setManageSectionReq] = React.useState<ManageSection | null>(null);
+  const requestManageSection = React.useCallback(
+    (s: ManageSection) => {
+      setManageSectionReq(s);
+      setTab("team");
+      scrollTabIntoView("team");
+    },
+    [setTab, scrollTabIntoView],
+  );
+  const clearManageSectionReq = React.useCallback(() => setManageSectionReq(null), []);
+
   const {
     sseState,
     notifyTick,
     setNotifyTick,
-    opsTick,
-    setOpsTick,
     knowledgeTick,
     setKnowledgeTick,
     chatsTick,
@@ -493,11 +504,11 @@ export default function WorkbenchPage() {
   // 旧版 prev==="" 早退 = 持久化首开 team tab 时 admin 取数零触发（首屏只显拓扑
   // 的根因之二；hasCtlToken 翻转 effect 兜底 token 就绪，本处兜底首访意图）。
   const prevTabRef = React.useRef("");
-  // team tab 激活态稳定 ref——
-  // WorkerManage 的 30s 轮询门控读此 ref（tick 时取当前值）。
+  // team（管理）tab 激活态稳定 ref——
+  // ManagePage 的 30s 轮询门控读此 ref（tick 时取当前值）。
   // boolean prop `active={tab === "team"}` 每次切 tab 翻转 → 整树
-  // 重渲落进切换帧（实测无 fetch 的 →团队 切换帧 61ms）；ref 身份
-  // 恒定 → React.memo(WorkerManage) 命中，切 tab 零重渲。
+  // 重渲落进切换帧（实测无 fetch 的 →管理 切换帧 61ms）；ref 身份
+  // 恒定 → React.memo(ManagePage) 命中，切 tab 零重渲。
   const teamActiveRef = React.useRef(false);
   teamActiveRef.current = tab === "team";
   React.useEffect(() => {
@@ -540,9 +551,6 @@ export default function WorkbenchPage() {
         break;
       case "selfcheck":
         void refreshConfig();
-        break;
-      case "ops":
-        setOpsTick((n) => n + 1);
         break;
       case "settings":
         void refreshConfig();
@@ -802,7 +810,7 @@ export default function WorkbenchPage() {
               }
             >
               <antd.Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                v{pluginVersion} —— 多团队工作台（聊天/工作流/产物/运维/管理）
+                v{pluginVersion} —— 多团队工作台（聊天/工作流/产物/管理）
               </antd.Typography.Text>
             </WbTooltip>
           )}
@@ -970,16 +978,15 @@ export default function WorkbenchPage() {
           { key: "artifacts", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BoxIcon size={15} /> {tr("产物")}</span> },
           {
             key: "team",
-            // 👷 工人 → 双人重叠图标（表团队/协作）。
+            // 👷 双人重叠图标（表团队/协作）。
             label: (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <TeamIcon size={15} /> {tr("团队管理")}
+                <TeamIcon size={15} /> {tr("管理")}
               </span>
             ),
           },
           { key: "knowledge", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><NotesIcon size={15} /> {tr("知识库")}</span> },
           { key: "selfcheck", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SearchIcon size={15} /> {tr("自检")}</span> },
-          { key: "ops", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><WrenchIcon size={15} /> {tr("运维")}</span> },
           { key: "models", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><BrainIcon size={15} /> {tr("模型")}</span> },
 
           { key: "settings", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SettingsIcon size={15} /> {tr("配置")}</span> },
@@ -1086,6 +1093,8 @@ export default function WorkbenchPage() {
                 // 回调 prop 稳定化引用。
                 onOpenRoom={handleHomeOpenRoom}
                 onGotoTab={handleGotoTab}
+                // 首页 SGLang 卡「去集群」→ 管理页集群管理域（一次性 section 深链）。
+                onGotoCluster={() => requestManageSection("cluster")}
                 managers={adminData?.managers}
                 onDm={handleDmStable}
                 treeSource={treeSource}
@@ -1165,11 +1174,11 @@ export default function WorkbenchPage() {
             // 👷 → 双人重叠图标（与横排 tab 同源）。
             label: (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <TeamIcon size={15} /> {tr("团队管理")}
+                <TeamIcon size={15} /> {tr("管理")}
               </span>
             ),
             children: (
-              <WorkerManage
+              <ManagePage
                 teams={workerTree}
                 admin={adminData}
                 treeLoading={spawnLoading}
@@ -1190,6 +1199,9 @@ export default function WorkbenchPage() {
                 myUserId={config?.matrix?.user_id || ""}
                 /* L1 走 controller token（config 或 env）且未配 admin 账号密码 = 无 Higress Console 会话 */
                 l1TokenMode={hasCtlToken && !config?.admin_username}
+                /* 一次性 section 深链（首页「去集群」等入口） */
+                sectionRequest={manageSectionReq}
+                onSectionRequestConsumed={clearManageSectionReq}
               />
             ),
           },
@@ -1208,18 +1220,6 @@ export default function WorkbenchPage() {
                 layout={selfCheckLayout}
               />
             ),
-          },
-          {
-            key: "ops",
-            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><WrenchIcon size={15} /> {tr("运维")}</span>,
-            children: (
-              <OpsPanel refreshTick={opsTick} />
-            ),
-          },
-          {
-            key: "audit",
-            label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><HistoryIcon size={15} /> {tr("审计")}</span>,
-            children: <AuditLog hasToken={hasCtlToken} />,
           },
           {
             key: "models",
