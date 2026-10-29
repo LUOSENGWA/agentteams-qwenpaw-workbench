@@ -88,7 +88,7 @@ interface TeamRow {
 
 function buildTeamRows(
   teams: WorkerTreeTeam[],
-  attentionByRoom: Map<string, number> | undefined,
+  attentionByRoom: Record<string, number> | undefined,
 ): TeamRow[] {
   const rows: TeamRow[] = teams.map((team) => {
     const name = team.team_name || UNGROUPED;
@@ -107,7 +107,7 @@ function buildTeamRows(
       leader,
       sleeping,
       abnormal,
-      pending: team.room_id ? attentionByRoom?.get(team.room_id) ?? 0 : 0,
+      pending: team.room_id ? attentionByRoom?.[team.room_id] ?? 0 : 0,
     };
   });
   // 按人排序：leader 名优先（无 leader 取首个成员名）；「未分组」固定置底。

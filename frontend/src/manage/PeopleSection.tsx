@@ -32,7 +32,7 @@ import { useHumanCrd } from "../crdmanage/useHumanCrd";
 import CrdAccessMatrix from "../crdmanage/CrdAccessMatrix";
 import CrdPermModal from "../crdmanage/CrdPermModal";
 import { LEVEL_META } from "../crdmanage/types";
-import MxcAvatar from "../MxcAvatar";
+import { MxcAvatar } from "../MxcAvatar";
 import TruncatedId from "../components/TruncatedId";
 import { NotesIcon, SearchIcon, ShieldIcon, UsersIcon } from "../components/icons";
 import type { ManageSectionProps } from "./types";
@@ -41,7 +41,7 @@ const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-type SubProps = ManageSectionProps & {
+type SubProps = Omit<ManageSectionProps, "cols" | "variant"> & {
   t: ReturnType<typeof useThemeColors>;
   tr: (s: string, v?: Record<string, string | number>) => string;
 };
