@@ -148,4 +148,18 @@ export const adminDict: Record<string, { en: string }> = {
   "团队 Leader 列表不可用（Controller 未接入）——以下为 Manager 入口（跨团队）": {
     en: "Team Leader list unavailable (Controller not connected) — only the Manager entry (cross-team) is available",
   },
+  // ── 15.35 访问与权限 chips（HumanAccessModal 单模态）──
+  "访问与权限": { en: "Access & Permissions" },
+  "权限档位": { en: "Permission level" },
+  "级别 / 可访问团队 / 可访问 Worker 一次保存；旧版 Controller（无 PUT /humans）自动回落「生成命令」。": {
+    en: "Level / accessible teams / accessible workers are saved in one call; on older Controllers (no PUT /humans) it falls back to command generation.",
+  },
+  "权限档位 / 可访问团队 / 可访问 Worker，一次保存；旧版 Controller 回落生成命令": {
+    en: "Permission level / accessible teams / accessible workers — saved in one call; older Controllers fall back to command generation",
+  },
+  "添加团队…": { en: "Add team…" },
+  "未加入任何团队": { en: "Not in any team" },
+  "添加独立 Worker…": { en: "Add standalone worker…" },
+  "无独立 Worker（全部已入团队）": { en: "No standalone workers (all in teams)" },
+  "未关联 Worker（可选）": { en: "No linked workers (optional)" },
 };

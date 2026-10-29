@@ -11,13 +11,12 @@ import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
 import { formatTimeOfDay } from "../util";
 import { WbTooltip } from "./WbTooltip";
-import RuntimeUpgradePanel from "./RuntimeUpgradePanel";
 
-// P6（管理页重构）：原单体 OpsPanel 拆三个导出——
-// OpsOverview（集群状态/版本 + 集群负载 SGLang）与 OpsLogPane（组件日志）
-// 供「管理」页集群管理域分用（概览=中栏、日志=二级页，升级卡归 Worker
-// 详情不在此）；default 导出 OpsPanel = 旧「运维」tab 全量组合（含运行时
-// 升级），原样保留兼容。10/29 顶层「运维」「审计」tab 已下线 → 两个子件
+// P6（管理页重构）：原单体 OpsPanel 拆导出——OpsOverview（集群状态/版本
+// + 集群负载 SGLang）与 OpsLogPane（组件日志）供「管理」页集群管理域分用
+// （概览=中栏、日志=二级页，升级卡归 Worker 详情不在此）。10/29 顶层
+// 「运维」「审计」tab 已下线；15.35 default 组合 OpsPanel 退役（升级卡
+// 已单 worker 化进 Worker 详情，零引用者）——本文件仅余两个命名导出。
 // 轮询门 = useTabActive("ops") || active（宿主显式激活，旧 tab 已下线恒
 // false——与 RuntimeUpgradePanel 同款 active-prop 模式）。
 
@@ -885,30 +884,3 @@ export function OpsLogPane({
   );
 }
 
-/**
- * 旧「运维」tab 全量入口（概览 + 运行时升级 + 组件日志）。10/29 顶层
- * 「运维」tab 下线（内容并入管理页集群管理域）——本组合原样保留兼容
- * （若再被引用行为不变：升级卡在概览与日志之间）；集群域分别消费
- * OpsOverview / OpsLogPane（升级卡归 Worker 详情）。
- */
-function OpsPanel({
-  refreshTick = 0,
-  active = false,
-}: {
-  refreshTick?: number;
-  active?: boolean;
-}) {
-  return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <OpsOverview refreshTick={refreshTick} active={active} />
-
-      {/* 运行时升级（1.2.5 预检+两阶段就地升级，自含 404 降级态） */}
-      <RuntimeUpgradePanel refreshTick={refreshTick} active={active} />
-      <OpsLogPane refreshTick={refreshTick} active={active} />
-    </div>
-  );
-}
-
-// 面板级 memo——父级（WorkbenchPage）重渲染
-// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
-export default React.memo(OpsPanel);

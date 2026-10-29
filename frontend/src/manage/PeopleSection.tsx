@@ -1,24 +1,22 @@
 /**
  * PeopleSection.tsx — 「管理」页人员管理域（方案 §4.3，P5）。
  *
- * 栏职责（方案 §4.3）：
+ * 栏职责（方案 §4.3，15.35 迭代）：
  * - mid:   人员列表（搜索：名字/MXID）；行 = 头像 + 名字 + 可访问团队数
- * - right: 选中人员 → 两入口卡：
- *          团队访问配置（弹窗：CrdAccessMatrix 矩阵内搜索 + 多选团队，
- *               读写逻辑全走 useAccessMatrix）
- *          权限设置（原 CrdPermModal；L1 管理面）
+ * - right: 选中人员 → 单入口卡「访问与权限」（HumanAccessModal chips
+ *          单模态：权限档位 + 可访问团队/Worker chips，一次保存全字段；
+ *          旧团队访问矩阵与旧权限弹窗随 15.35 退役——两者同改
+ *          accessibleTeams 的重叠已消除）
  * - full:  本域不用（竖屏右栏内容走 right variant 推二级页）
  *
- * 权限：本域整体是 L1 管理面——人员列表/访问矩阵/权限设置都依赖 admin
+ * 权限：本域整体是 L1 管理面——人员列表/访问与权限都依赖 admin
  * 数据，admin 只在有 Controller 管理员 token 时取数 → L2 身份（Matrix
- * token、无 admin token）显引导 Alert，写入口（访问配置/权限设置）天然
+ * token、无 admin token）显引导 Alert，写入口天然
  * 隐藏（不存在"有 admin 数据但无 token"的稳态）。
  *
  * 复用（零逻辑分叉）：
- * - useAccessMatrix / CrdAccessMatrix 直用；filter 为新增可选 prop
- *   （CrdManage 原入口不传 = 行为不变）。
- * - useHumanCrd + CrdPermModal 与 CRD 域（CrdSection）各持一份实例
- *   （state 局部化，同一组件实现）。
+ * - useHumanCrd（入口锚点 permHuman/openPerm）+ HumanAccessModal 与 CRD
+ *   域（CrdSection）、CrdManage 各持一份实例（state 局部化，同一组件实现）。
  * - 头像源 = data.rooms 房间成员表（mxid → avatar_url，取不到首字母兜底，
  *   与团队域同源）。
  */
@@ -27,14 +25,14 @@ import type * as ReactNS from "react";
 import type { TeamMember, TeamRoom } from "../api";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { useAccessMatrix } from "../crdmanage/useAccessMatrix";
+import HumanAccessModal, {
+  computeStandaloneWorkers,
+} from "../crdmanage/HumanAccessModal";
 import { useHumanCrd } from "../crdmanage/useHumanCrd";
-import CrdAccessMatrix from "../crdmanage/CrdAccessMatrix";
-import CrdPermModal from "../crdmanage/CrdPermModal";
 import { LEVEL_META } from "../crdmanage/types";
 import { MxcAvatar } from "../MxcAvatar";
 import TruncatedId from "../components/TruncatedId";
-import { NotesIcon, SearchIcon, ShieldIcon, UsersIcon } from "../components/icons";
+import { SearchIcon, ShieldIcon, UsersIcon } from "../components/icons";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -253,7 +251,7 @@ function PeopleList({ nav, data, t, tr }: SubProps) {
   );
 }
 
-// ── right：选中人员 → 两入口卡（访问配置弹窗 / 权限设置弹窗）──
+// ── right：选中人员 → 单入口卡（「访问与权限」打开 HumanAccessModal）──
 
 function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const humans = data.admin?.humans ?? [];
@@ -261,15 +259,9 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const workers = data.admin?.workers ?? [];
   const onRefresh = data.onRefreshAdmin ?? (() => undefined);
 
-  // 两弹窗的状态源（仅本域 active 时挂载；useHumanCrd/useAccessMatrix 无挂载拨号）。
-  const access = useAccessMatrix({
-    humans,
-    tr,
-    onSaved: () => void onRefresh(true),
-  });
+  // 弹窗状态源（仅本域 active 时挂载；useHumanCrd 无挂载拨号，
+  // HumanAccessModal 自持草稿/保存/命令，human=null 时渲染 null）。
   const crd = useHumanCrd({ onRefresh, tr });
-  const [accessOpen, setAccessOpen] = React.useState(false);
-  const [accessFilter, setAccessFilter] = React.useState("");
 
   const roomAvatars = React.useMemo(
     () => buildRoomAvatars(data.rooms),
@@ -358,37 +350,8 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         </antd.Tag>
       </div>
 
-      {/* 两入口卡 */}
+      {/* 单入口卡（15.35：原「团队访问配置 + 权限设置」两卡合并） */}
       <div style={{ display: "grid", gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => {
-            setAccessFilter("");
-            setAccessOpen(true);
-          }}
-          style={entryStyle(t)}
-        >
-          <NotesIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
-          <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
-              {tr("团队访问配置")}
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                color: t.textSecondary,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {tr("勾选该员工可访问的团队（保存到 Controller 或生成命令）")}
-            </span>
-          </span>
-          <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
-            ›
-          </span>
-        </button>
         <button
           type="button"
           onClick={() => crd.openPerm(human)}
@@ -397,7 +360,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
           <ShieldIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
           <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
-              {tr("权限设置")}
+              {tr("访问与权限")}
             </span>
             <span
               style={{
@@ -408,7 +371,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
                 whiteSpace: "nowrap",
               }}
             >
-              {tr("权限档位 / 可访问团队 / 可访问 Worker（生成命令）")}
+              {tr("权限档位 / 可访问团队 / 可访问 Worker，一次保存；旧版 Controller 回落生成命令")}
             </span>
           </span>
           <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
@@ -417,62 +380,15 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         </button>
       </div>
 
-      {/* 团队访问配置弹窗（关闭时懒挂载 = 零后台负载；矩阵内搜索 + 多选团队） */}
-      <antd.Modal
-        open={accessOpen}
-        title={tr("团队访问配置")}
-        width={900}
-        style={{ maxWidth: "calc(100vw - 32px)" }}
-        onCancel={() => setAccessOpen(false)}
-        footer={null}
-        styles={{ body: { maxHeight: "min(72vh, 680px)", overflowY: "auto", paddingTop: 4 } }}
-      >
-        {accessOpen ? (
-          <div style={{ display: "grid", gap: 8 }}>
-            <antd.Input
-              allowClear
-              prefix={<SearchIcon size={14} />}
-              placeholder={tr("搜索账号 / 显示名…")}
-              value={accessFilter}
-              onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                setAccessFilter(e.target.value)
-              }
-              style={{ borderRadius: 8 }}
-              aria-label={tr("搜索账号 / 显示名")}
-            />
-            <CrdAccessMatrix
-              humans={humans}
-              teams={teams}
-              filter={accessFilter}
-              accessOf={access.accessOf}
-              accessChanged={access.accessChanged}
-              toggleAccess={access.toggleAccess}
-              generateAccessCmd={access.generateAccessCmd}
-              copyAccessCmd={access.copyAccessCmd}
-              accessCmd={access.accessCmd}
-              saving={access.saving}
-              saveMsg={access.saveMsg}
-              saveAccess={() => void access.saveAccess()}
-              tr={tr}
-              t={t}
-            />
-          </div>
-        ) : null}
-      </antd.Modal>
-
-      {/* 权限设置弹窗（原 CrdPermModal；与 CRD 域各持实例，零逻辑分叉） */}
-      <CrdPermModal
-        permHuman={crd.permHuman}
-        permForm={crd.permForm}
-        permCmd={crd.permCmd}
-        setPermHuman={crd.setPermHuman}
-        setPermForm={crd.setPermForm}
-        generatePermCmd={crd.generatePermCmd}
-        copyPermCmd={crd.copyPermCmd}
+      {/* 访问与权限弹窗（chips 单模态；human=null 渲染 null = 零后台负载） */}
+      <HumanAccessModal
+        human={crd.permHuman}
         teamNames={teams.map((x) => x.name)}
-        workerNames={workers.map((x) => x.name)}
+        standaloneWorkers={computeStandaloneWorkers(teams, workers)}
         tr={tr}
         t={t}
+        onClose={() => crd.setPermHuman(null)}
+        onSaved={() => void onRefresh(true)}
       />
     </div>
   );
