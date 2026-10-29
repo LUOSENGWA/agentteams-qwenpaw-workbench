@@ -36,6 +36,7 @@ import {
 } from "../components/WorkerManageShared";
 import { SearchIcon, SettingsIcon, TeamIcon } from "../components/icons";
 import MillforgeModal from "../millforge/MillforgeModal";
+import WorkerDetailPane from "./WorkerDetailPane";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -571,6 +572,15 @@ export default function TeamSection({ nav, data, variant }: ManageSectionProps) 
     [nav.selectedTeam, data.teams],
   );
 
+  // Worker 详情数据源（右栏/竖屏 L2）：按名查 admin。
+  const workerInfo = React.useMemo(
+    () =>
+      nav.selectedWorker
+        ? (data.admin?.workers ?? []).find((w) => w.name === nav.selectedWorker) ?? null
+        : null,
+    [nav.selectedWorker, data.admin],
+  );
+
   const gotoCrdCreate = React.useCallback(() => {
     nav.setSection("crd");
     nav.setCrdView("team");
@@ -617,20 +627,39 @@ export default function TeamSection({ nav, data, variant }: ManageSectionProps) 
         </div>
       )
     ) : variant === "right" ? (
-      <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
-          {nav.teamView === "worker"
-            ? `${nav.selectedWorker || ""} · ${tr("Worker 详情")}`
-            : nav.teamView === "settings"
-              ? tr("团队设置")
-              : tr("选择 Worker / 团队")}
-        </span>
-        <span style={{ fontSize: 12, color: t.textSecondary }}>
-          {nav.teamView === "topology"
-            ? tr("点中栏 Worker 节点后这里显示详情")
-            : tr("内容随本域后续批次上线")}
-        </span>
-      </div>
+      nav.teamView === "worker" ? (
+        workerInfo ? (
+          <WorkerDetailPane
+            worker={workerInfo}
+            avatarUrl={roomAvatars.get(workerInfo.matrixUserID)?.avatar_url}
+            hasToken={data.hasToken}
+            onRefreshAdmin={data.onRefreshAdmin}
+          />
+        ) : (
+          // 选中 Worker 已从数据中消失（刷新后改名/删除）→ 回拓扑。
+          <div style={{ padding: 24, textAlign: "center" }}>
+            <antd.Empty
+              image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
+              description={tr("所选 Worker 已不在最新数据中")}
+            >
+              <antd.Button size="small" onClick={() => nav.backTeam()}>
+                {tr("回团队拓扑")}
+              </antd.Button>
+            </antd.Empty>
+          </div>
+        )
+      ) : (
+        <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
+            {nav.teamView === "settings" ? tr("团队设置") : tr("选择 Worker / 团队")}
+          </span>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {nav.teamView === "topology"
+              ? tr("点中栏 Worker 节点后这里显示详情")
+              : tr("内容随本域后续批次上线")}
+          </span>
+        </div>
+      )
     ) : null;
 
   return (
