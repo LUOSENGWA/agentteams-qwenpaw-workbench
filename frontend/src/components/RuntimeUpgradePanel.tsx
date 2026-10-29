@@ -102,7 +102,15 @@ function jobStateVariant(s?: string): "processing" | "success" | "error" | "warn
  * 流程：Worker 列表按团队分组（行内当前版本+可否升级）→ 检查更新
  * （check-all 批量轻探）→ 勾选（选一个=单独升级）→ 选目标版本
  * → 二次确认触发（破坏性：容器重启）→ 顺序执行 + 逐 worker job 跟踪。 */
-function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
+function RuntimeUpgradePanel({
+  refreshTick = 0,
+  active = false,
+}: {
+  refreshTick?: number;
+  /** 宿主显式激活（管理页二级页/弹窗场景——原 useTabActive("ops")
+   * 门在顶层运维 tab 移除后恒 false，改由宿主传入）。 */
+  active?: boolean;
+}) {
   const t = useThemeColors();
   const tr = useT();
 
@@ -191,7 +199,7 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
         />
       ) : null}
 
-        <BatchBody workers={workers} />
+        <BatchBody workers={workers} active={active} />
     </div>
   );
 }
@@ -200,10 +208,17 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
  *  检查更新（批量轻探→每 worker 当前版本+可否就地升级）
  *  + 顺序触发升级（一次一个，避容器重启互扰）+ 逐 worker job 跟踪。
  *  自包含 state，与单 Worker 流程隔离。 */
-function BatchBody({ workers }: { workers: WorkerItem[] }) {
+function BatchBody({
+  workers,
+  active = false,
+}: {
+  workers: WorkerItem[];
+  active?: boolean;
+}) {
   const t = useThemeColors();
   const tr = useT();
-  const opsActive = useTabActive("ops");
+  // 原 tab 门保留（hook 恒调用），宿主显式激活 OR 入。
+  const opsActive = useTabActive("ops") || active;
 
   const [selected, setSelected] = React.useState<string[]>([]);
   const [lightMap, setLightMap] = React.useState<
