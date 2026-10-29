@@ -33,7 +33,7 @@ export interface ManageData {
   /** Matrix 房间列表（成员头像源：team.room_id → room.members[mxid].avatar_url）。 */
   rooms?: TeamRoom[];
   /** room_id → 待决策条数（团队行待决策徽章；旧 controller 未部署 attention = undefined → 不显）。 */
-  attentionPendingByRoom?: Map<string, number>;
+  attentionPendingByRoom?: Record<string, number>;
   /** 是否已配置 Controller 管理员 token（决定 L1 管理面可用性）。 */
   hasToken?: boolean;
   /** 刷新拓扑树（silent=true 静默不闪页）。 */
