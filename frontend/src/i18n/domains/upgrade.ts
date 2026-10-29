@@ -61,6 +61,15 @@ export const upgradeDict: Record<string, { en: string }> = {
   "触发中": { en: "Triggering" },
   "触发失败": { en: "Trigger failed" },
   "确认触发批量运行时升级？": { en: "Confirm batch runtime upgrade?" },
+  // ── 运行时升级·单 worker 紧凑模式（15.35：Worker 详情「运行时升级」卡）──
+  "确认触发运行时升级？": { en: "Confirm runtime upgrade?" },
+  "破坏性操作：将重启 {name} 容器并中断在跑任务；两阶段就地升级，启动自检失败会自动回滚到旧版本。": {
+    en: "Destructive operation: the {name} container will be restarted and running tasks interrupted; two-phase in-place upgrade — a failed boot self-check rolls back to the previous version automatically.",
+  },
+  "当前=该 Worker 容器内 QwenPaw 运行时版（服务端 10min 缓存），最新=PyPI（缓存）。": {
+    en: "Current = QwenPaw runtime version inside this Worker's container (server-side 10-min cache); latest = PyPI (cached).",
+  },
+  "升级成功": { en: "Upgrade succeeded" },
   "Worker（{n} 个）": { en: "Workers ({n})" },
   "将按顺序对每个 Worker 两阶段就地升级并重启容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。": {
     en: "Each Worker is upgraded in-place in two phases in sequence and its container is restarted; running tasks are interrupted in the meantime. A failed boot self-check rolls back to the previous version automatically.",

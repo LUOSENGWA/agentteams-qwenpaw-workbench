@@ -176,6 +176,19 @@ export const updateHumanAccessibleTeams = (
   controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, {
     accessibleTeams,
   });
+
+/** 一键保存人员访问与权限（15.35：同 updateHumanAccessibleTeams 的
+ * PUT /humans/{name} 端点与 merge 语义，一次发全字段：permissionLevel +
+ * accessibleTeams + accessibleWorkers）。
+ * 404/405 = Controller 未含该端点（旧版）→ 调用方回落「生成命令」。 */
+export const updateHumanAccess = (
+  name: string,
+  spec: {
+    permissionLevel: number;
+    accessibleTeams: string[];
+    accessibleWorkers: string[];
+  },
+) => controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, spec);
 /** 创建团队——workerMembers 必须引用已存在的 Worker CR，且 ≥1。 */
 export const createTeam = (body: Record<string, unknown>) =>
   controllerRequest("POST", "/teams", body);

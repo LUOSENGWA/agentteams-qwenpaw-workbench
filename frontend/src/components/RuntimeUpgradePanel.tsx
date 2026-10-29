@@ -1,12 +1,14 @@
 import type * as ReactNS from "react";
 
 import {
+  fetchNodeVersion,
   fetchUpgradeCheckAll,
   fetchUpgradeStatus,
   httpErrorStatus,
   requestJson,
   runUpgrade,
   UPGRADE_TERMINAL_STATES,
+  type NodeVersion,
   type UpgradeCheckAll,
   type UpgradeRunHandle,
   type UpgradeStatusResult,
@@ -98,26 +100,41 @@ function jobStateVariant(s?: string): "processing" | "success" | "error" | "warn
   }
 }
 
-/** 运行时升级段（运维页内，15.25 per-worker 重接；15.28 单模式退役）。
- * 流程：Worker 列表按团队分组（行内当前版本+可否升级）→ 检查更新
- * （check-all 批量轻探）→ 勾选（选一个=单独升级）→ 选目标版本
- * → 二次确认触发（破坏性：容器重启）→ 顺序执行 + 逐 worker job 跟踪。 */
+/** 运行时升级段（双模态，15.35 单 worker 化）：
+ * - 单 worker 紧凑模式（workerName 给定——Worker 详情「运行时升级」卡）：
+ *   头部=该 worker 名 + 当前 runtime 版本（fetchNodeVersion，Worker 详情
+ *   同款 L1 拨号）；[检查更新]=check-all 取该行本地匹配（可升级/已是最新）；
+ *   [升级]=仅可升级时启用 → 二次确认（破坏性·容器重启·在跑任务中断·失败
+ *   自动回滚）→ runUpgrade → 5s 轮询 fetchUpgradeStatus 至终态。
+ *   无 worker 列表/勾选/批量顺序执行/多版本选择。
+ * - 批量模式（workerName 缺省——保留 BatchBody 原行为）。
+ * 非 qwenpaw 运行时（runtime 给定且 ≠qwenpaw）→ 只读提示，无升级按钮。 */
 function RuntimeUpgradePanel({
   refreshTick = 0,
   active = false,
+  workerName,
+  runtime,
 }: {
   refreshTick?: number;
   /** 宿主显式激活（管理页二级页/弹窗场景——原 useTabActive("ops")
    * 门在顶层运维 tab 移除后恒 false，改由宿主传入）。 */
   active?: boolean;
+  /** 给定 = 单 worker 紧凑模式（worker 详情卡）；缺省 = 批量模式。 */
+  workerName?: string;
+  /** Worker 运行时（worker 详情上下文透传）——非 qwenpaw 的确定性
+   * 只读提示判定，免拨号。 */
+  runtime?: string;
 }) {
   const t = useThemeColors();
   const tr = useT();
+  const single = !!workerName;
 
   const [workers, setWorkers] = React.useState<WorkerItem[]>([]);
   const [workersError, setWorkersError] = React.useState("");
+  // 单模态「刷新」= 重新拨号 node-version（refresh=1 绕过 10min 缓存）。
+  const [singleTick, setSingleTick] = React.useState(0);
 
-  // workers 目录（L1；403=未配 token → 引导空态）。
+  // workers 目录（L1；403=未配 token → 引导空态）。批量模式专用。
   const loadWorkers = React.useCallback(async (silent = false) => {
     if (!silent) setWorkersError("");
     try {
@@ -137,14 +154,23 @@ function RuntimeUpgradePanel({
   }, [tr]);
 
   React.useEffect(() => {
+    if (single) return;
     void loadWorkers(false);
-  }, [loadWorkers]);
+  }, [loadWorkers, single]);
 
-  // 切 Tab 回来（rc-tabs 保活不重跑挂载 effect）→ 静默刷新。
+  // 切 Tab 回来（rc-tabs 保活不重跑挂载 effect）→ 静默刷新。批量模式专用。
   React.useEffect(() => {
-    if (!refreshTick) return;
+    if (!refreshTick || single) return;
     void loadWorkers(true);
-  }, [refreshTick, loadWorkers]);
+  }, [refreshTick, loadWorkers, single]);
+
+  const onRefresh = React.useCallback(() => {
+    if (single) {
+      setSingleTick((v) => v + 1);
+    } else {
+      void loadWorkers(false);
+    }
+  }, [single, loadWorkers]);
 
   return (
     <div>
@@ -174,32 +200,367 @@ function RuntimeUpgradePanel({
             type="text"
             size="small"
             icon={<ReloadIcon />}
-            onClick={() => void loadWorkers(false)}
+            onClick={onRefresh}
           />
         </WbTooltip>
       </div>
 
-      {/* QwenPaw only 提示（用户点名） */}
+      {single ? (
+        <SingleWorkerBody
+          workerName={workerName as string}
+          runtime={runtime}
+          active={active}
+          refreshKey={singleTick}
+        />
+      ) : (
+        <>
+          {/* QwenPaw only 提示（用户点名） */}
+          <div
+            style={{
+              fontSize: 12,
+              color: t.textSecondary,
+              marginBottom: 10,
+            }}
+          >
+            {tr("就地升级当前仅支持 qwenpaw 运行时（其他运行时请走镜像重建升级）。")}
+          </div>
+
+          {workersError ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              message={workersError}
+              style={{ marginBottom: 10 }}
+            />
+          ) : null}
+
+          <BatchBody workers={workers} active={active} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 单 worker 紧凑模式（15.35）：Worker 详情「运行时升级」卡内嵌。
+ * 只显该 worker：当前 runtime 版本 + [检查更新] + [升级]（仅可升级时
+ * 启用）+ job 跟踪卡（轮询至终态）。列表/勾选/批量 UI 一概不出。
+ * 自包含 state（懒挂载=弹窗打开才拨号，与卡语义一致）。 */
+function SingleWorkerBody({
+  workerName,
+  runtime,
+  active = false,
+  refreshKey = 0,
+}: {
+  workerName: string;
+  runtime?: string;
+  active?: boolean;
+  /** 段头「刷新」bump——>0 时 node-version 带 refresh=1 绕过缓存实读。 */
+  refreshKey?: number;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+
+  const nonQwenpaw = !!runtime && runtime !== "qwenpaw";
+
+  // 当前 runtime 版本（L1 拨号，服务端 10min 缓存；Worker 详情同款模式）。
+  const [nodeVer, setNodeVer] = React.useState<NodeVersion | null>(null);
+  const [nodeVerErr, setNodeVerErr] = React.useState("");
+  const [l1Denied, setL1Denied] = React.useState(false);
+  React.useEffect(() => {
+    if (nonQwenpaw) return; // 非 qwenpaw → 只读提示，不拨号
+    let alive = true;
+    setNodeVer(null);
+    setNodeVerErr("");
+    setL1Denied(false);
+    fetchNodeVersion(workerName, refreshKey > 0)
+      .then((d) => {
+        if (alive) setNodeVer(d);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        if (httpErrorStatus(e) === 403) {
+          setL1Denied(true);
+        } else {
+          setNodeVerErr(e instanceof Error ? e.message : tr("探测失败"));
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [workerName, nonQwenpaw, refreshKey, tr]);
+
+  // 检查更新：check-all（服务端 10min 缓存）取本 worker 行 → 本地匹配。
+  const [check, setCheck] = React.useState<UpgradeCheckResult | null>(null);
+  const [checking, setChecking] = React.useState(false);
+  const [checkErr, setCheckErr] = React.useState<string | null>(null);
+  const doCheck = React.useCallback(async () => {
+    setChecking(true);
+    setCheck(null);
+    setCheckErr(null);
+    try {
+      const d = await fetchUpgradeCheckAll();
+      const row = d.workers.find((x) => x.name === workerName);
+      const latest = d.latest || "";
+      const current = row?.current ?? null;
+      if (current) qwenpawVersionCache.set(workerName, current);
+      if (!current || !latest || row?.error) {
+        setCheck({
+          current,
+          latest,
+          status: "unknown",
+          error: row?.error || (!latest ? d.error : undefined) || tr("无匹配项"),
+        });
+      } else {
+        const c = compareVersions(current, latest);
+        setCheck({
+          current,
+          latest,
+          status: c < 0 ? "available" : "up-to-date",
+        });
+      }
+    } catch (e) {
+      setCheckErr(e instanceof Error ? e.message : tr("检查更新失败"));
+    } finally {
+      setChecking(false);
+    }
+  }, [workerName]);
+
+  // 升级：仅可升级时启用；二次确认 → runUpgrade → 5s 轮询至终态。
+  const upgradable = check?.status === "available" && !!check.latest;
+  const [confirming, setConfirming] = React.useState(false);
+  const [job, setJob] = React.useState<UpgradeRunHandle | null>(null);
+  const [jobStatus, setJobStatus] = React.useState<UpgradeStatusResult | null>(null);
+  const [triggering, setTriggering] = React.useState(false);
+
+  const jobState = (jobStatus?.state as Record<string, unknown> | undefined)
+    ?.state as string | undefined;
+  const jobTerminal =
+    !!jobState && UPGRADE_TERMINAL_STATES.includes(jobState);
+
+  const doUpgrade = React.useCallback(async () => {
+    if (!check?.latest) return;
+    setConfirming(false);
+    setTriggering(true);
+    try {
+      const j = await runUpgrade(workerName, check.latest);
+      setJob(j);
+      setJobStatus(null);
+    } catch (e) {
+      antd.message.error(
+        `${workerName}：${e instanceof Error ? e.message : tr("触发失败")}`,
+      );
+    } finally {
+      setTriggering(false);
+    }
+  }, [workerName, check, tr]);
+
+  usePoller({
+    fn: async () => {
+      if (!job) return;
+      try {
+        const s = await fetchUpgradeStatus(job.worker, job.job_id);
+        setJobStatus(s);
+        // 升级成功→当前 qwenpaw 版已变，清缓存 + 重拨真值（绕过 10min 缓存）。
+        const st = (s.state as Record<string, unknown> | undefined)?.state as
+          | string
+          | undefined;
+        if (st === "success") {
+          qwenpawVersionCache.delete(job.worker);
+          fetchNodeVersion(job.worker, true)
+            .then(setNodeVer)
+            .catch(() => {
+              /* 重拨失败保留旧值，点「刷新」兜底 */
+            });
+        }
+      } catch {
+        /* 瞬态失败（容器重启中）保留上次状态，下一轮再试 */
+      }
+    },
+    intervalMs: 5000,
+    active: active && !!job && !jobTerminal,
+    minPokeMs: 3000,
+  });
+
+  // 非 qwenpaw 运行时 → 只读提示（无升级按钮）。
+  if (nonQwenpaw) {
+    return (
+      <div style={{ display: "grid", gap: 10 }}>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+        >
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {workerName}
+          </span>
+          <antd.Tag>{runtime}</antd.Tag>
+        </div>
+        <antd.Alert
+          type="info"
+          showIcon
+          message={tr(
+            "就地升级当前仅支持 qwenpaw 运行时（其他运行时请走镜像重建升级）。",
+          )}
+        />
+      </div>
+    );
+  }
+
+  const current =
+    nodeVer?.runtime_version || qwenpawVersionCache.get(workerName) || null;
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {/* worker 名 + 当前 runtime 版本 */}
       <div
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          marginBottom: 10,
-        }}
+        style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
       >
-        {tr("就地升级当前仅支持 qwenpaw 运行时（其他运行时请走镜像重建升级）。")}
+        <span
+          style={{
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          {workerName}
+        </span>
+        {current ? (
+          <antd.Tag color="processing" style={{ marginInlineEnd: 0 }}>
+            {tr("运行时版本")} {current}
+          </antd.Tag>
+        ) : nodeVerErr ? (
+          <WbTooltip title={nodeVerErr}>
+            <antd.Tag color="warning" style={{ marginInlineEnd: 0 }}>
+              {tr("探测失败")}
+            </antd.Tag>
+          </WbTooltip>
+        ) : null}
       </div>
 
-      {workersError ? (
+      {l1Denied ? (
         <antd.Alert
           type="warning"
           showIcon
-          message={workersError}
-          style={{ marginBottom: 10 }}
+          message={tr("需要 Controller 管理员 token（L1）才能执行运行时升级")}
         />
       ) : null}
 
-        <BatchBody workers={workers} active={active} />
+      {/* 检查更新 + 结果 */}
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+      >
+        <antd.Button
+          onClick={() => void doCheck()}
+          loading={checking}
+          disabled={l1Denied}
+        >
+          {tr("检查更新")}
+        </antd.Button>
+        <span style={{ fontSize: 12, color: t.textSecondary }}>
+          {tr(
+            "当前=该 Worker 容器内 QwenPaw 运行时版（服务端 10min 缓存），最新=PyPI（缓存）。",
+          )}
+        </span>
+        {check?.status === "available" && check.latest ? (
+          <antd.Tag color="error" style={{ marginInlineEnd: 0 }}>
+            {tr("可升级")} → {check.latest}
+          </antd.Tag>
+        ) : check?.status === "up-to-date" ? (
+          <antd.Tag color="success" style={{ marginInlineEnd: 0 }}>
+            {tr("已是最新")}
+          </antd.Tag>
+        ) : null}
+        {checkErr ? <antd.Tag color="warning">{checkErr}</antd.Tag> : null}
+      </div>
+
+      {/* 升级（仅可升级时启用；job 进行中不重复触发） */}
+      <div>
+        <antd.Button
+          type="primary"
+          danger
+          icon={<CloudSyncIcon />}
+          disabled={!upgradable || triggering || (!!job && !jobTerminal)}
+          loading={triggering}
+          onClick={() => setConfirming(true)}
+        >
+          {tr("升级")}
+        </antd.Button>
+      </div>
+
+      {/* job 跟踪卡（轮询至终态） */}
+      {job ? (
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 8,
+            border: `1px solid ${t.border}`,
+            background: t.cardBg,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <antd.Badge
+            status={jobStateVariant(jobState)}
+            text={
+              <span
+                style={{
+                  fontFamily: "ui-monospace, monospace",
+                  fontSize: 11,
+                }}
+              >
+                {job.job_id}
+              </span>
+            }
+          />
+          {jobState ? (
+            <antd.Tag color={jobStateVariant(jobState)} style={{ marginInlineEnd: 0 }}>
+              {jobState}
+            </antd.Tag>
+          ) : null}
+          {jobState === "success" ? (
+            <antd.Tag color="success" style={{ marginInlineEnd: 0 }}>
+              {tr("升级成功")}
+            </antd.Tag>
+          ) : null}
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("目标")} <b style={{ color: t.text }}>{job.version}</b>
+          </span>
+        </div>
+      ) : null}
+
+      {/* 破坏性二次确认 */}
+      <antd.Modal
+        open={confirming}
+        title={tr("确认触发运行时升级？")}
+        onCancel={() => setConfirming(false)}
+        onOk={() => void doUpgrade()}
+        okText={tr("确认升级")}
+        okButtonProps={{ danger: true, loading: triggering }}
+        cancelText={tr("取消")}
+      >
+        <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
+          <span>
+            {tr("目标版本")}：
+            <b style={{ fontFamily: "ui-monospace, monospace" }}>
+              {check?.latest}
+            </b>
+          </span>
+          <antd.Alert
+            type="warning"
+            showIcon
+            message={tr(
+              "破坏性操作：将重启 {name} 容器并中断在跑任务；两阶段就地升级，启动自检失败会自动回滚到旧版本。",
+              { name: workerName },
+            )}
+          />
+        </div>
+      </antd.Modal>
     </div>
   );
 }

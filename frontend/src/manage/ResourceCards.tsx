@@ -219,8 +219,15 @@ export default function ResourceCards({
           );
         case "upgrade":
           // active 显式传——原 useTabActive("ops") 门在顶层运维 tab
-          // 移除后恒 false（面板已支持宿主激活）。
-          return <RuntimeUpgradePanel active />;
+          // 移除后恒 false（面板已支持宿主激活）。15.35：worker 详情
+          // 上下文=单 worker 紧凑模式（仅该 worker 的检查/升级，无批量）。
+          return (
+            <RuntimeUpgradePanel
+              active
+              workerName={worker.name}
+              runtime={worker.runtime}
+            />
+          );
         default:
           return null;
       }

@@ -4,7 +4,7 @@
 // - mid:   三个入口卡（员工入职 Human CRD / 创建团队 Team CRD / 新建 Worker）
 //          + 各自记录数
 // - right: 入口选中 → 原 CRD 卡片/表单（crdmanage/* 组件零行为改动直用）：
-//          human  → CrdHumanForm + CrdHumanTableCard（+ 初始密码弹窗 + 权限设置弹窗）
+//          human  → CrdHumanForm + CrdHumanTableCard（+ 初始密码弹窗 + 访问与权限弹窗）
 //          team   → 导出 JSON + CrdTeamForm + CrdCheckPanel + CrdTeamTableCard
 //          worker → CrdWorkerForm
 // - full:  本域不用（横屏无覆盖二级页；竖屏 L2 走 right）
@@ -33,7 +33,9 @@ import CrdTeamForm from "../crdmanage/CrdTeamForm";
 import CrdCheckPanel from "../crdmanage/CrdCheckPanel";
 import CrdWorkerForm from "../crdmanage/CrdWorkerForm";
 import { CrdHumanTableCard, CrdTeamTableCard } from "../crdmanage/CrdListTables";
-import CrdPermModal from "../crdmanage/CrdPermModal";
+import HumanAccessModal, {
+  computeStandaloneWorkers,
+} from "../crdmanage/HumanAccessModal";
 import MillforgeModal from "../millforge/MillforgeModal";
 import { useMillforgeCreate } from "../millforge/useMillforgeCreate";
 import { UserIcon, TeamIcon, RobotIcon } from "../components/icons";
@@ -351,20 +353,16 @@ function CrdDomain({
         t={t}
       />
 
-      {/* 权限设置弹窗（人员表行操作）——与人员域 PeopleSection 各持一份
-       * 实例（state 局部化，同一组件实现零逻辑分叉）。 */}
-      <CrdPermModal
-        permHuman={human.permHuman}
-        permForm={human.permForm}
-        permCmd={human.permCmd}
-        setPermHuman={human.setPermHuman}
-        setPermForm={human.setPermForm}
-        generatePermCmd={human.generatePermCmd}
-        copyPermCmd={human.copyPermCmd}
+      {/* 访问与权限弹窗（chips 单模态；人员表行操作）——与人员域
+       * PeopleSection 各持一份实例（state 局部化，同一组件实现零逻辑分叉）。 */}
+      <HumanAccessModal
+        human={human.permHuman}
         teamNames={teamNames}
-        workerNames={workerNames}
+        standaloneWorkers={computeStandaloneWorkers(teams, workers)}
         tr={tr}
         t={t}
+        onClose={() => human.setPermHuman(null)}
+        onSaved={() => void onRefresh(true)}
       />
     </div>
   );
