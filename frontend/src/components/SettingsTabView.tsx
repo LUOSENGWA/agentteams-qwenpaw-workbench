@@ -17,6 +17,7 @@ import {
   EMPTY_ADDR_AUTH,
   StartupPrefRow,
 } from "./SettingsTabShared";
+import HelpDot from "./HelpDot";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -31,6 +32,19 @@ const UploadIcon = pick("UploadOutlined");
 const FileZipOutlined = pick("FileZipOutlined");
 // 备份与恢复——导出弹窗复制按钮。
 const CopyIcon = pick("CopyOutlined");
+
+// 15.36 D：地址模式/特效档说明（label 精简后完整语义进 ? tooltip；
+// 原选项文案逐字保留为 tooltip 文字，creds.ts 对应键继续登记）。
+const ADDR_MODE_HELP: Record<"auto" | "lan" | "wan", string> = {
+  auto: "自动（默认：最快可达自动切换）",
+  lan: "固定内网（失败不自动切换）",
+  wan: "固定外网（失败不自动切换）",
+};
+const FX_MODE_HELP: Record<"light" | "off" | "full", string> = {
+  light: "轻量（默认：动画保留，模糊半径封顶，省 GPU）",
+  off: "关闭特效（最省电：动画与模糊全停）",
+  full: "完整特效（上游原样，最费 GPU）",
+};
 
 export function SettingsTabView(props: {
   p: Parameters<typeof useSettingsTabCore>[0];
@@ -438,46 +452,50 @@ export function SettingsTabView(props: {
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("地址模式（内网/外网切换策略）")}
           </div>
-          <antd.Select
-            value={addressMode}
-            disabled={config === null}
-            onChange={(v: "auto" | "lan" | "wan") => {
-              setAddressMode(v);
-              // 模式变更即落盘——修复「改了但
-              // 未点保存 → 重开跳回自动」。轻量 PUT，仅 address_mode 一键。
-              // config 未就绪时禁止落盘——默认态
-              // 的「auto」一键 PUT 会覆盖已保存模式（与保存门控同源）。
-              if (config === null) {
-                message.warning(tr("配置尚未加载完成，暂不能保存"));
-                return;
-              }
-              void (async () => {
-                try {
-                  await requestJson("/agentteams-proxy/config", {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    // 带修订号——14.30 起无 rev 保存（磁盘有文件时）409，
-                    // 防陈旧标签页/默认态覆盖。rev 过期=外部改过磁盘，
-                    // 409 显形提示刷新，不误覆盖。
-                    body: JSON.stringify({
-                      config: { address_mode: v },
-                      config_rev: config.config_rev,
-                    }),
-                  });
-                  message.success(tr("地址模式已保存并即时生效"));
-                  onConfigChange();
-                } catch {
-                  message.error(tr("地址模式保存失败，请重试"));
+          {/* 15.36 D：label 精简（完整说明进右侧 ? tooltip） */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <antd.Select
+              value={addressMode}
+              disabled={config === null}
+              onChange={(v: "auto" | "lan" | "wan") => {
+                setAddressMode(v);
+                // 模式变更即落盘——修复「改了但
+                // 未点保存 → 重开跳回自动」。轻量 PUT，仅 address_mode 一键。
+                // config 未就绪时禁止落盘——默认态
+                // 的「auto」一键 PUT 会覆盖已保存模式（与保存门控同源）。
+                if (config === null) {
+                  message.warning(tr("配置尚未加载完成，暂不能保存"));
+                  return;
                 }
-              })();
-            }}
-            style={{ width: "100%" }}
-            options={[
-              { value: "auto", label: tr("自动（默认：最快可达自动切换）") },
-              { value: "lan", label: tr("固定内网（失败不自动切换）") },
-              { value: "wan", label: tr("固定外网（失败不自动切换）") },
-            ]}
-          />
+                void (async () => {
+                  try {
+                    await requestJson("/agentteams-proxy/config", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      // 带修订号——14.30 起无 rev 保存（磁盘有文件时）409，
+                      // 防陈旧标签页/默认态覆盖。rev 过期=外部改过磁盘，
+                      // 409 显形提示刷新，不误覆盖。
+                      body: JSON.stringify({
+                        config: { address_mode: v },
+                        config_rev: config.config_rev,
+                      }),
+                    });
+                    message.success(tr("地址模式已保存并即时生效"));
+                    onConfigChange();
+                  } catch {
+                    message.error(tr("地址模式保存失败，请重试"));
+                  }
+                })();
+              }}
+              style={{ flex: 1, minWidth: 0 }}
+              options={[
+                { value: "auto", label: tr("自动") },
+                { value: "lan", label: tr("固定内网") },
+                { value: "wan", label: tr("固定外网") },
+              ]}
+            />
+            <HelpDot title={tr(ADDR_MODE_HELP[addressMode])} />
+          </div>
           <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
             {tr("切换即自动保存并生效。固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。")}
           </div>
@@ -490,42 +508,46 @@ export function SettingsTabView(props: {
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("控制台特效质量")}
           </div>
-          <antd.Select
-            value={fxMode}
-            onChange={(v: "light" | "off" | "full") => {
-              setFxMode(v);
-              document.documentElement.dataset.wbFx = v;
-              // config 未就绪时禁止落盘（与地址模式同源）。
-              if (config === null) {
-                message.warning(tr("配置尚未加载完成，暂不能保存"));
-                return;
-              }
-              // 与地址模式同款：变更即落盘（轻量 PUT，带修订号——
-              // 14.30 无 rev 409 门控，同地址模式路径）。
-              void (async () => {
-                try {
-                  await requestJson("/agentteams-proxy/config", {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      config: { console_effects: v },
-                      config_rev: config.config_rev,
-                    }),
-                  });
-                  message.success(tr("特效档已保存并即时生效"));
-                  onConfigChange();
-                } catch {
-                  message.error(tr("特效档保存失败，请重试"));
+          {/* 15.36 D：label 精简（完整说明进右侧 ? tooltip） */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <antd.Select
+              value={fxMode}
+              onChange={(v: "light" | "off" | "full") => {
+                setFxMode(v);
+                document.documentElement.dataset.wbFx = v;
+                // config 未就绪时禁止落盘（与地址模式同源）。
+                if (config === null) {
+                  message.warning(tr("配置尚未加载完成，暂不能保存"));
+                  return;
                 }
-              })();
-            }}
-            style={{ width: "100%" }}
-            options={[
-              { value: "light", label: tr("轻量（默认：动画保留，模糊半径封顶，省 GPU）") },
-              { value: "off", label: tr("关闭特效（最省电：动画与模糊全停）") },
-              { value: "full", label: tr("完整特效（上游原样，最费 GPU）") },
-            ]}
-          />
+                // 与地址模式同款：变更即落盘（轻量 PUT，带修订号——
+                // 14.30 无 rev 409 门控，同地址模式路径）。
+                void (async () => {
+                  try {
+                    await requestJson("/agentteams-proxy/config", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        config: { console_effects: v },
+                        config_rev: config.config_rev,
+                      }),
+                    });
+                    message.success(tr("特效档已保存并即时生效"));
+                    onConfigChange();
+                  } catch {
+                    message.error(tr("特效档保存失败，请重试"));
+                  }
+                })();
+              }}
+              style={{ flex: 1, minWidth: 0 }}
+              options={[
+                { value: "light", label: tr("轻量") },
+                { value: "off", label: tr("关闭特效") },
+                { value: "full", label: tr("完整特效") },
+              ]}
+            />
+            <HelpDot title={tr(FX_MODE_HELP[fxMode])} />
+          </div>
         </div>
 
         {/* 连通性测试——逐地址测延迟，外/内网识别可视化。

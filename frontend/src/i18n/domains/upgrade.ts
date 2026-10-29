@@ -246,4 +246,22 @@ export const upgradeDict: Record<string, { en: string }> = {
   "以下为该 CLI 完整设置表单（字段目录驱动）——未设置项显示为空态，只有你改动并保存的项才写入配置文件；未列出的高级字段用下方 JSON 补丁补充。": {
     en: "Full settings form for this CLI (field-catalog driven) — unset fields show as empty states; only fields you change and save are written to the config file; use the JSON patch below for advanced fields not listed.",
   },
+  // ── 15.36 B：运行时升级·版本选择 + 兼容性本地判断（单 worker + 批量共用）──
+  "选择目标版本": { en: "Select target version" },
+  "已是当前版本": { en: "Already at this version" },
+  "⚠️ 目标版本 {target} 低于当前版 {current}——降级可能不兼容": {
+    en: "⚠️ Target {target} is below current {current} — downgrades may be incompatible",
+  },
+  "跨大版本升级（{from} → {to}）——跨大版本变更可能不向后兼容": {
+    en: "Cross-major upgrade ({from} → {to}) — major-version changes may not be backward-compatible",
+  },
+  "目标版本低于当前版（降级可能不兼容）：{names}": {
+    en: "Target below current version (downgrade may be incompatible): {names}",
+  },
+  "跨大版本升级（可能不向后兼容）：{names}": {
+    en: "Cross-major upgrade (may not be backward-compatible): {names}",
+  },
+  "兼容性检查失败：{detail}": {
+    en: "Compatibility pre-check failed: {detail}",
+  },
 };

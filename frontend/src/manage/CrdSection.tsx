@@ -66,10 +66,10 @@ export default function CrdSection({ nav, cols, data, variant }: ManageSectionPr
   );
 }
 
-/** L1 内层：四个重 hook + 三入口/三表单（仅 L1+admin 挂载）。
- * cols 不用（mid 360px 定宽单列）——不解构（noUnusedParameters）。 */
+/** L1 内层：四个重 hook + 三入口/三表单（仅 L1+admin 挂载）。 */
 function CrdDomain({
   nav,
+  cols,
   data,
   variant,
   t,
@@ -135,8 +135,8 @@ function CrdDomain({
     );
   }
 
-  // ── mid：三个入口卡 ──
-  if (variant === "mid") {
+  // ── 入口卡（2/3 栏 mid；四栏 L1 列；选中入口高亮）──
+  const renderEntries = () => {
     const entries = [
       {
         id: "human" as const,
@@ -177,7 +177,7 @@ function CrdDomain({
               textAlign: "left",
               border: `1px solid ${t.border}`,
               borderRadius: 8,
-              background: t.cardBg,
+              background: nav.crdView === e.id ? t.hoverBg : t.cardBg,
               color: "inherit",
               cursor: "pointer",
               font: "inherit",
@@ -217,13 +217,46 @@ function CrdDomain({
         ))}
       </div>
     );
-  }
+  };
+
+  // l1（四栏）与 2/3 栏 mid：入口卡。
+  if (variant === "l1") return renderEntries();
+  if (variant === "mid" && cols !== 4) return renderEntries();
 
   // ── full：本域不用 ──
   if (variant === "full") return null;
 
-  // ── right：入口对应表单 ──
   const view = nav.crdView;
+
+  // ── 四栏：mid = 入口对应表单（列表态 → 引导）；right = 无更深一层 → 引导 ──
+  if (cols === 4) {
+    if (variant === "mid" && view === "list") {
+      return (
+        <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
+            {tr("选择 CRD 入口")}
+          </span>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("点左侧列表入口显示对应表单")}
+          </span>
+        </div>
+      );
+    }
+    if (variant === "right") {
+      return (
+        <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
+            {tr("无更深一层")}
+          </span>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("CRD 表单在中栏")}
+          </span>
+        </div>
+      );
+    }
+  }
+
+  // ── 2/3 栏 right：入口列表态 → 引导；否则入口对应表单 ──
   if (view === "list") {
     return (
       <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
