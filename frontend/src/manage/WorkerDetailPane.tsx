@@ -14,7 +14,7 @@
  * 重启按钮不显示（端点未上游，接口位留给后续）。
  *
  * 资源卡（运行配置/环境变量与网关/Coding CLI/MCP/插件/技能/工具/
- * 频道/审批模式/运行时升级）= P3，在本组件下方接续。
+ * 频道/审批模式/运行时升级）= ResourceCards（P3，本组件下方接续）。
  */
 import type * as ReactNS from "react";
 
@@ -42,6 +42,7 @@ import {
   phaseMeta,
 } from "../components/WorkerManageShared";
 import { RuntimeNotice } from "../runtimeGuard";
+import ResourceCards from "./ResourceCards";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -95,12 +96,15 @@ export default function WorkerDetailPane({
   avatarUrl,
   hasToken,
   onRefreshAdmin,
+  onOpenSettings,
 }: {
   worker: WorkerInfo;
   /** 头像源（room 成员表 mxc 头像；undefined → 首字母兜底）。 */
   avatarUrl?: string;
   hasToken?: boolean;
   onRefreshAdmin?: (silent?: boolean) => void;
+  /** 运行配置卡内「去设置」跳转（透传 WorkerRuntimeConfig）。 */
+  onOpenSettings?: () => void;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -345,6 +349,12 @@ export default function WorkerDetailPane({
           </div>
         ) : null}
       </antd.Card>
+      {/* 资源卡（10 格，P3）——弹窗承载、懒挂载。 */}
+      <ResourceCards
+        worker={worker}
+        hasToken={hasToken}
+        onOpenSettings={onOpenSettings}
+      />
     </div>
   );
 }

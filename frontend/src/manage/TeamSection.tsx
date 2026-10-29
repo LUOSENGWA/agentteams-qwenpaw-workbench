@@ -37,6 +37,7 @@ import {
 import { SearchIcon, SettingsIcon, TeamIcon } from "../components/icons";
 import MillforgeModal from "../millforge/MillforgeModal";
 import WorkerDetailPane from "./WorkerDetailPane";
+import TeamSettingsPane from "./TeamSettingsPane";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -634,6 +635,7 @@ export default function TeamSection({ nav, data, variant }: ManageSectionProps) 
             avatarUrl={roomAvatars.get(workerInfo.matrixUserID)?.avatar_url}
             hasToken={data.hasToken}
             onRefreshAdmin={data.onRefreshAdmin}
+            onOpenSettings={data.onOpenSettings}
           />
         ) : (
           // 选中 Worker 已从数据中消失（刷新后改名/删除）→ 回拓扑。
@@ -648,15 +650,20 @@ export default function TeamSection({ nav, data, variant }: ManageSectionProps) 
             </antd.Empty>
           </div>
         )
+      ) : nav.teamView === "settings" ? (
+        // 团队设置内联（P3）：真 Team CR → CrdCfgForm；未分组 → 引导+弹窗。
+        <TeamSettingsPane
+          teamName={nav.selectedTeam ?? ""}
+          data={data}
+          onBack={() => nav.backTeam()}
+        />
       ) : (
         <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
-            {nav.teamView === "settings" ? tr("团队设置") : tr("选择 Worker / 团队")}
+            {tr("选择 Worker / 团队")}
           </span>
           <span style={{ fontSize: 12, color: t.textSecondary }}>
-            {nav.teamView === "topology"
-              ? tr("点中栏 Worker 节点后这里显示详情")
-              : tr("内容随本域后续批次上线")}
+            {tr("点中栏 Worker 节点后这里显示详情")}
           </span>
         </div>
       )
