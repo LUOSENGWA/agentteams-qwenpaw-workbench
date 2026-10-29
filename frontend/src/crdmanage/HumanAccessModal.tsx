@@ -20,6 +20,7 @@ import {
 import type { ThemeColors } from "../theme";
 import { copyText } from "../util";
 import type { TrFn } from "./types";
+import LevelHelp from "./LevelHelp";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -262,31 +263,25 @@ export default function HumanAccessModal({
           )}
         </div>
 
-        {/* 权限档位（选项文案自退役的旧权限弹窗逐字沿用） */}
+        {/* 权限档位（15.36 D：label 精简为 L1/L2/L3 短档名，完整说明进
+            LevelHelp ? tooltip；选项按档位 1/2/3 升序） */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12, width: 96, flexShrink: 0 }}>
             {tr("权限档位")}
           </span>
           <antd.Select
-            style={{ flex: 1 }}
+            style={{ width: 180 }}
             value={draft.permissionLevel}
             onChange={(v: number) =>
               setDraft((d) => ({ ...d, permissionLevel: v }))
             }
             options={[
-              {
-                value: 2,
-                label: tr("2 = 团队成员（Matrix 登录 → L2，可看本团队）"),
-              },
-              {
-                value: 1,
-                label: tr(
-                  "1 = 管理员（L1；Matrix 登录拿不到 L1，需用管理员 token）",
-                ),
-              },
-              { value: 3, label: tr("3 = Worker") },
+              { value: 1, label: tr("L1 · 管理员") },
+              { value: 2, label: tr("L2 · 团队成员") },
+              { value: 3, label: tr("L3 · Worker") },
             ]}
           />
+          <LevelHelp level={draft.permissionLevel} tr={tr} />
         </div>
 
         <ChipPicker

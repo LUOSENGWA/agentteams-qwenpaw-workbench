@@ -4,6 +4,7 @@ import type { AddressEntry, AddressTestResult, ProbeDiag } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { CheckIcon, CloseIcon, HomeIcon, MonitorIcon, WarnIcon } from "./icons";
+import HelpDot from "./HelpDot";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -316,6 +317,14 @@ export function buildAuthEntry(url: string, d: AddrAuthDraft): AddressEntry {
   return u;
 }
 
+// 15.36 D：认证类型说明（label 精简后完整语义进 ? tooltip；
+// 原选项文案逐字保留为 tooltip 文字，creds.ts 对应键继续登记）。
+const AUTH_MODE_HELP: Record<AddrAuthDraft["type"], string> = {
+  none: "使用服务自身认证（内网默认，留空即用；选此项=清除该地址已存凭据）",
+  basic: "Basic 认证（公网网关 Basic 门，如 Caddy）",
+  bearer: "API Key（Bearer，公网网关 API key 门，如 Higress）",
+};
+
 /** 地址行下方的公网凭据编辑（紧凑：选择器一行；选了才展开输入行）。 */
 export function AddrAuthEditor({
   value,
@@ -329,23 +338,27 @@ export function AddrAuthEditor({
   const tr = useT();
   return (
     <div style={{ marginLeft: 2, marginBottom: 8 }}>
-      <antd.Select
-        size="small"
-        value={value.type}
-        disabled={disabled}
-        // 换类型=新类型无已存凭据（stored 清零，
-        // 防把 A 类型的 stored 标记误带到 B 类型触发 *** 继承）。
-        onChange={(t: "none" | "basic" | "bearer") =>
-          onChange({ ...value, type: t, stored: false })
-        }
-        // 15.14：固定 300px → 流体（容器内全宽，上限 420 防宽屏拉太长）。
-        style={{ width: "100%", maxWidth: 420 }}
-        options={[
-          { value: "none", label: tr("使用服务自身认证（内网默认，留空即用；选此项=清除该地址已存凭据）") },
-          { value: "basic", label: tr("Basic 认证（公网网关 Basic 门，如 Caddy）") },
-          { value: "bearer", label: tr("API Key（Bearer，公网网关 API key 门，如 Higress）") },
-        ]}
-      />
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <antd.Select
+          size="small"
+          value={value.type}
+          disabled={disabled}
+          // 换类型=新类型无已存凭据（stored 清零，
+          // 防把 A 类型的 stored 标记误带到 B 类型触发 *** 继承）。
+          onChange={(t: "none" | "basic" | "bearer") =>
+            onChange({ ...value, type: t, stored: false })
+          }
+          // 15.14：固定 300px → 流体（容器内全宽，上限 420 防宽屏拉太长）。
+          // 15.36 D：label 精简（完整说明进右侧 ? tooltip）。
+          style={{ flex: 1, minWidth: 0, maxWidth: 420 }}
+          options={[
+            { value: "none", label: tr("服务自身认证") },
+            { value: "basic", label: tr("Basic 认证") },
+            { value: "bearer", label: tr("API Key（Bearer）") },
+          ]}
+        />
+        <HelpDot title={tr(AUTH_MODE_HELP[value.type])} />
+      </div>
       {value.type === "basic" ? (
         // 15.14：固定 150/180 → 等宽流体（各 flex:1，窄容器同宽不挤破）。
         <div style={{ display: "flex", gap: 6, marginTop: 4, maxWidth: 420 }}>

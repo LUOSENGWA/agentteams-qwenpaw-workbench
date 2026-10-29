@@ -72,7 +72,7 @@ function entryStyle(t: ThemeColors): ReactNS.CSSProperties {
   };
 }
 
-export default function PeopleSection({ nav, data, variant }: ManageSectionProps) {
+export default function PeopleSection({ nav, cols, data, variant }: ManageSectionProps) {
   const t = useThemeColors();
   const tr = useT();
   // L1 门控（人员域整体 = L1 管理面，见头注）。
@@ -88,10 +88,43 @@ export default function PeopleSection({ nav, data, variant }: ManageSectionProps
       </div>
     );
   }
+  if (variant === "l1") {
+    // 四栏 L1：人员列表常驻（选中行高亮 = PeopleList 既有 sel 态）。
+    return <PeopleList nav={nav} data={data} t={t} tr={tr} />;
+  }
   if (variant === "mid") {
+    // 四栏 mid：详情（列表已移 L1 列）；2/3 栏 mid = 列表。
+    if (cols === 4) {
+      if (nav.selectedHuman) {
+        return <PeopleDetail nav={nav} data={data} t={t} tr={tr} />;
+      }
+      return (
+        <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
+            {tr("选择人员")}
+          </span>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("点左侧列表中的人员配置团队访问与权限")}
+          </span>
+        </div>
+      );
+    }
     return <PeopleList nav={nav} data={data} t={t} tr={tr} />;
   }
   if (variant === "right") {
+    // 四栏 right：无更深一层（详情在中栏，访问与权限弹窗打开）。
+    if (cols === 4) {
+      return (
+        <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
+            {tr("无更深一层")}
+          </span>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("人员详情在中栏（访问与权限弹窗打开）")}
+          </span>
+        </div>
+      );
+    }
     return <PeopleDetail nav={nav} data={data} t={t} tr={tr} />;
   }
   return null;

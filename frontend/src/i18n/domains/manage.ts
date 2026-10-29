@@ -151,4 +151,27 @@ export const manageDict: Record<string, { en: string }> = {
   "点中栏 组件日志 / 审计 卡片查看详情（二级页覆盖本栏）": {
     en: "Pick the component-logs / audit card in the middle column — the detail page covers this pane",
   },
+
+  // ── 15.36 xwide 四栏 + 可点面包屑（A 段）──
+  // 注：「团队列表」「人员列表」「选择团队」复用 admin/worker 域既有键，不重复登记。
+  "入口列表": { en: "Entries" },
+  "收起 L1 列表": { en: "Collapse L1 list" },
+  "展开 L1 列表": { en: "Expand L1 list" },
+  "点列表中的团队查看其拓扑": {
+    en: "Pick a team in the list to view its topology",
+  },
+  "点左侧列表入口显示对应表单": {
+    en: "Pick an entry in the left list to show its form",
+  },
+  "无更深一层": { en: "No deeper level" },
+  "CRD 表单在中栏": { en: "The CRD form lives in the middle column" },
+  "点左侧列表中的人员配置团队访问与权限": {
+    en: "Pick a person in the left list to configure team access & permissions",
+  },
+  "人员详情在中栏（访问与权限弹窗打开）": {
+    en: "Person details live in the middle column (access & permissions open in a modal)",
+  },
+  "点左栏 组件日志 / 审计 卡片查看详情": {
+    en: "Pick the component-logs / audit card in the left column to view details",
+  },
 };

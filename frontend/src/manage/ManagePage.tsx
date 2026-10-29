@@ -1,12 +1,18 @@
 /**
  * ManagePage.tsx — 「管理」页（顶层 tab key=team，替代旧 WorkerManage 页面壳）。
  *
- * 布局（10/29 评审确认，按容器宽度 1/2/3 栏）：
- * - wide（w ≥ 1280）→ 3 栏：左栏 200（内联）+ 中栏 360 + 右栏 flex(min 420)
+ * 布局（10/29 评审确认，15.36 加 xwide 四栏，按容器宽度 1/2/3/4 栏）：
+ * - xwide（w ≥ 1440）→ 4 栏：域导航 160（恒内联）+ L1 列表 280（railOpen 门控）
+ *   + 中栏 340 + 右栏 flex(min 400)——VS Code 活动栏/侧栏/编辑器/辅助栏模型：
+ *   域导航恒显，toggle 改管 L1 列表列显隐（L1 列内容 = 各域第一层：
+ *   团队列表 / CRD 入口 / 人员列表 / 集群概览+入口卡）。
+ * - wide（1280–1439）→ 3 栏：左栏 200（内联）+ 中栏 360 + 右栏 flex(min 420)
  * - medium（1024–1279）→ 2 栏：中栏 360 + 右栏 flex；左栏 = 抽屉覆盖（默认收起）
  * - narrow（< 1024）→ 1 栏：中栏全宽；左栏 = 抽屉；右栏内容推为二级页（左上「←」返回）
- * 左栏展开/收起持久化 localStorage `manage.railOpen`（默认 wide 开、其余关）；
+ * 左栏展开/收起持久化 localStorage `manage.railOpen`（默认 wide 及以上开、其余关）；
  * 页头 toggle 用 MenuIcon（仓库 icons 无 PanelLeft 图标——等价替代，见报告假设）。
+ * 横屏详情态页头显可点面包屑（L1 层名 → … → 当前层；当前层不可点），
+ * 竖屏「←」返回不变。
  *
  * 集群域 logs/audit 为覆盖「中+右」两栏的二级页（横屏亦然，左栏保留）。
  * 各栏独立滚动（overflow:auto + height:100% 链，页面本身不滚）；
@@ -45,7 +51,9 @@ export interface ManagePageProps extends ManageData {
 
 /** 左栏展开态持久化 key（任务书指定 manage.railOpen）。 */
 const RAIL_KEY = "manage.railOpen";
-/** 栏数断点（10/29 评审：wide ≥1280 三栏 / medium 1024–1279 两栏 / narrow <1024 单栏）。 */
+/** 栏数断点（10/29 评审 + 15.36 xwide：xwide ≥1440 四栏 / wide ≥1280 三栏 /
+ * medium 1024–1279 两栏 / narrow <1024 单栏）。 */
+const XWIDE_W = 1440;
 const WIDE_W = 1280;
 const MEDIUM_W = 1024;
 
@@ -140,7 +148,8 @@ function ManagePage(props: ManagePageProps) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const cols: 1 | 2 | 3 = cw >= WIDE_W ? 3 : cw >= MEDIUM_W ? 2 : 1;
+  const cols: 1 | 2 | 3 | 4 =
+    cw >= XWIDE_W ? 4 : cw >= WIDE_W ? 3 : cw >= MEDIUM_W ? 2 : 1;
 
   // ── 左栏展开/收起（持久化；默认 wide 开、其余关）──
   const [railOpen, setRailOpen] = React.useState<boolean>(() =>
@@ -192,9 +201,10 @@ function ManagePage(props: ManagePageProps) {
       <ClusterSection nav={nav} cols={cols} data={data} variant={v} />
     );
 
-  // 集群 logs/audit 横屏即覆盖中+右（二级页）；其余域仅 narrow 推 L2。
+  // 15.36 C：集群详情横屏也走 right 栏（不再覆盖中+右）；仅 narrow（1 栏）
+  // 推 L2 二级页（full variant）。
   const isClusterDetail = section === "cluster" && clusterView !== "overview";
-  const l2Active = isClusterDetail || (cols === 1 && inDetail);
+  const l2Active = cols === 1 && inDetail;
   // narrow L2 二级页 variant：team 在拓扑态（选中团队、未进 worker/设置）时拓扑活在
   // mid 分支（TeamTopologyPane），须用 "mid" 才能渲染；worker/设置走 right 分支。
   // crd/people 详情表单本就在 right 分支，集群用 full。
@@ -211,7 +221,7 @@ function ManagePage(props: ManagePageProps) {
     else setClusterView("overview");
   }, [section, backTeam, setCrdView, setPeopleView, setClusterView]);
 
-  // 二级页标题（竖屏 L2 顶栏 + 集群横屏覆盖栏顶栏共用）。
+  // 二级页标题（竖屏 L2 顶栏）。
   const l2Title =
     section === "team"
       ? teamView === "worker"
@@ -229,23 +239,42 @@ function ManagePage(props: ManagePageProps) {
           ? selectedHuman || tr("人员管理")
           : clusterView === "audit"
             ? tr("审计")
-            : tr("日志");
+            : clusterView === "upgrade"
+              ? tr("运行时批量升级")
+              : tr("日志");
 
-  // 页头面包屑（横屏详情态在标题右侧显路径；竖屏由 L2 顶栏承载）。
-  let crumb = "";
-  if (!l2Active && section !== "cluster") {
+  // 页头可点面包屑（横屏详情态在标题右侧；竖屏由 L2 顶栏承载）。
+  // 段 = [L1 层] → [层 2] → … → [当前层（不可点）]；点击前缀段逐级回退。
+  // cluster（15.36 C）：概览 → 日志/审计/运行时批量升级（详情在 right/mid 栏）。
+  const crumbSegs: { label: string; onClick?: () => void }[] = [];
+  if (!l2Active) {
     if (section === "team" && selectedTeam) {
-      crumb =
-        teamView === "worker" && selectedWorker
-          ? `${selectedTeam} / ${selectedWorker}`
-          : teamView === "settings"
-            ? `${selectedTeam} / ${tr("团队设置")}`
-            : selectedTeam;
+      crumbSegs.push({ label: tr("团队列表"), onClick: () => nav.goTeamList() });
+      crumbSegs.push({ label: selectedTeam, onClick: () => nav.goTeamTopology() });
+      if (teamView === "worker" && selectedWorker) {
+        crumbSegs.push({ label: selectedWorker });
+      } else if (teamView === "settings") {
+        crumbSegs.push({ label: tr("团队设置") });
+      }
     } else if (section === "crd" && crdView !== "list") {
-      crumb =
-        crdView === "human" ? tr("员工入职") : crdView === "team" ? tr("创建团队") : tr("新建 Worker");
+      crumbSegs.push({ label: tr("入口列表"), onClick: () => setCrdView("list") });
+      crumbSegs.push({
+        label:
+          crdView === "human" ? tr("员工入职") : crdView === "team" ? tr("创建团队") : tr("新建 Worker"),
+      });
     } else if (section === "people" && selectedHuman) {
-      crumb = selectedHuman;
+      crumbSegs.push({ label: tr("人员列表"), onClick: () => nav.clearPeople() });
+      crumbSegs.push({ label: selectedHuman });
+    } else if (section === "cluster" && clusterView !== "overview") {
+      crumbSegs.push({ label: tr("概览"), onClick: () => setClusterView("overview") });
+      crumbSegs.push({
+        label:
+          clusterView === "logs"
+            ? tr("组件日志")
+            : clusterView === "audit"
+              ? tr("审计")
+              : tr("运行时批量升级"),
+      });
     }
   }
 
@@ -257,9 +286,13 @@ function ManagePage(props: ManagePageProps) {
   };
 
   const gridTemplate =
-    cols === 3 && railOpen
-      ? "200px 360px minmax(420px, 1fr)"
-      : "360px minmax(420px, 1fr)";
+    cols === 4
+      ? railOpen
+        ? "160px 280px 340px minmax(400px, 1fr)"
+        : "160px 340px minmax(400px, 1fr)"
+      : cols === 3 && railOpen
+        ? "200px 360px minmax(420px, 1fr)"
+        : "360px minmax(420px, 1fr)";
 
   return (
     <div
@@ -284,8 +317,25 @@ function ManagePage(props: ManagePageProps) {
         <button
           type="button"
           onClick={() => setRailPersist(!railOpen)}
-          title={railOpen ? tr("收起左栏") : tr("展开左栏")}
-          aria-label={railOpen ? tr("收起左栏") : tr("展开左栏")}
+          // 四栏：域导航恒显，toggle 管 L1 列表列；其余栏数管左栏（内联/抽屉）。
+          title={
+            cols === 4
+              ? railOpen
+                ? tr("收起 L1 列表")
+                : tr("展开 L1 列表")
+              : railOpen
+                ? tr("收起左栏")
+                : tr("展开左栏")
+          }
+          aria-label={
+            cols === 4
+              ? railOpen
+                ? tr("收起 L1 列表")
+                : tr("展开 L1 列表")
+              : railOpen
+                ? tr("收起左栏")
+                : tr("展开左栏")
+          }
           style={{
             width: 44,
             height: 44,
@@ -314,18 +364,70 @@ function ManagePage(props: ManagePageProps) {
           }}
         >
           {tr(SECTION_TITLE[section])}
-          {crumb ? (
+          {crumbSegs.length ? (
             <span
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 2,
                 fontWeight: 400,
                 fontSize: 12,
                 color: t.textSecondary,
+                minWidth: 0,
                 overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
               }}
             >
-              {`/ ${crumb}`}
+              <span style={{ flexShrink: 0 }}>/</span>
+              {crumbSegs.map((s, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 ? <span style={{ flexShrink: 0 }}>→</span> : null}
+                  {s.onClick ? (
+                    <button
+                      type="button"
+                      onClick={s.onClick}
+                      style={{
+                        height: 44,
+                        padding: "0 6px",
+                        border: "none",
+                        background: "transparent",
+                        color: t.textSecondary,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        borderRadius: 6,
+                        maxWidth: 140,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        flexShrink: 1,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = t.hoverBg;
+                        e.currentTarget.style.color = t.text;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = t.textSecondary;
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ) : (
+                    <span
+                      style={{
+                        color: t.text,
+                        fontWeight: 600,
+                        maxWidth: 140,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        flexShrink: 1,
+                      }}
+                    >
+                      {s.label}
+                    </span>
+                  )}
+                </React.Fragment>
+              ))}
             </span>
           ) : null}
         </span>
@@ -403,7 +505,8 @@ function ManagePage(props: ManagePageProps) {
           </div>
         </div>
       ) : cols >= 2 ? (
-        // ── 2/3 栏：中栏 + 右栏（wide 且展开时左栏内联成第三列）──
+        // ── 2/3/4 栏：中栏 + 右栏（3 栏 wide 且展开时左栏内联成第三列；
+        // 4 栏域导航恒内联成第一列，railOpen 时再插 L1 列表列）──
         <div
           style={{
             flex: "1 1 auto",
@@ -413,11 +516,12 @@ function ManagePage(props: ManagePageProps) {
             gridTemplateColumns: gridTemplate,
           }}
         >
-          {cols === 3 && railOpen ? (
+          {cols === 4 || cols === 3 && railOpen ? (
             <div style={paneStyle}>
               <ManageRail section={section} onSelect={setSection} />
             </div>
           ) : null}
+          {cols === 4 && railOpen ? <div style={paneStyle}>{renderSection("l1")}</div> : null}
           <div style={paneStyle}>{renderSection("mid")}</div>
           <div style={paneStyle}>{renderSection("right")}</div>
         </div>

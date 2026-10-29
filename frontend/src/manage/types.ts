@@ -3,14 +3,15 @@
  *
  * ManageData = WorkbenchPage 经 ManagePage 下发给各 section 的数据/刷新链路
  * （旧 WorkerManage props 的拆分镜像）；ManageVariant = section 组件在
- * 三栏/二级页布局下的角色（mid=中栏、right=右栏、full=覆盖中+右的二级页）。
+ * 三/四栏/二级页布局下的角色（l1=四栏 L1 列表列、mid=中栏、right=右栏、
+ * full=覆盖中+右的二级页）。
  */
 import type { AdminData, TeamRoom, WorkerTreeTeam } from "../api";
 import type { WorkerSessionState } from "../workerSessionState";
 import type { ManageNav, ManageSection } from "./useManageNav";
 
 /** section 组件在当前布局中渲染哪一栏。 */
-export type ManageVariant = "mid" | "right" | "full";
+export type ManageVariant = "l1" | "mid" | "right" | "full";
 
 /** 管理页数据/刷新链路（sections 按需消费；WorkbenchPage 透传原引用）。 */
 export interface ManageData {
@@ -49,8 +50,8 @@ export interface ManageData {
 /** 四域 section 组件统一 props（nav 驱动栏内容，variant 决定角色）。 */
 export interface ManageSectionProps {
   nav: ManageNav;
-  /** 当前栏数（1/2/3）——section 内部布局微调用。 */
-  cols: 1 | 2 | 3;
+  /** 当前栏数（1/2/3/4）——section 内部布局微调用。 */
+  cols: 1 | 2 | 3 | 4;
   data: ManageData;
   variant: ManageVariant;
 }

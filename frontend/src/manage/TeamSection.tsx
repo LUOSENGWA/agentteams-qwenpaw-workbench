@@ -143,6 +143,7 @@ function TeamListPane({
   hasToken,
   onOpen,
   onGotoCrdCreate,
+  activeKey = null,
 }: {
   rows: TeamRow[];
   teams: WorkerTreeTeam[];
@@ -156,6 +157,8 @@ function TeamListPane({
   hasToken?: boolean;
   onOpen: (row: TeamRow) => void;
   onGotoCrdCreate: () => void;
+  /** 当前选中团队（四栏 L1 列常驻列表的行高亮）。 */
+  activeKey?: string | null;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -186,6 +189,7 @@ function TeamListPane({
           <div style={{ display: "grid", gap: 4 }}>
             {visible.map((row) => {
               const hits = matched.get(row.key);
+              const sel = activeKey != null && row.key === activeKey;
               return (
                 <button
                   key={row.key}
@@ -197,18 +201,18 @@ function TeamListPane({
                     gap: 10,
                     minHeight: 48,
                     padding: "6px 10px",
-                    border: "none",
+                    border: sel ? `1px solid ${t.border}` : "1px solid transparent",
                     borderRadius: 8,
                     cursor: "pointer",
-                    background: "transparent",
+                    background: sel ? t.hoverBg : "transparent",
                     textAlign: "left",
                     width: "100%",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = t.hoverBg;
+                    if (!sel) e.currentTarget.style.background = t.hoverBg;
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
+                    if (!sel) e.currentTarget.style.background = "transparent";
                   }}
                 >
                   <MgAvatar
@@ -522,7 +526,7 @@ function TeamTopologyPane({
   );
 }
 
-export default function TeamSection({ nav, data, variant }: ManageSectionProps) {
+export default function TeamSection({ nav, cols, data, variant }: ManageSectionProps) {
   const t = useThemeColors();
   const tr = useT();
   // 列表搜索态（父持有——命中表 matched 与列表同源）。
@@ -587,45 +591,68 @@ export default function TeamSection({ nav, data, variant }: ManageSectionProps) 
     nav.setCrdView("team");
   }, [nav]);
 
-  // 列表态右栏留空（用户明确要求）——hooks 之后才允许提前返回。
-  if (variant === "right" && nav.teamView === "list") return null;
+  // 列表态右栏留空（用户明确要求）——四栏下右栏改显引导不留空。
+  // hooks 之后才允许提前返回。
+  if (variant === "right" && nav.teamView === "list" && cols !== 4) return null;
+
+  const listPane = (
+    <TeamListPane
+      rows={teamRows}
+      teams={data.teams}
+      matched={matched}
+      roomAvatars={roomAvatars}
+      query={query}
+      onQueryChange={setQuery}
+      treeLoading={data.treeLoading}
+      treeSource={data.treeSource}
+      hasToken={data.hasToken}
+      onOpen={(row) => nav.openTeam(row.key)}
+      onGotoCrdCreate={gotoCrdCreate}
+      activeKey={variant === "l1" ? nav.selectedTeam : null}
+    />
+  );
+  const topologyPane = selectedTeam ? (
+    <TeamTopologyPane
+      nav={nav}
+      team={selectedTeam}
+      roomAvatars={roomAvatars}
+      data={data}
+      onOpenMillforge={setMfTeam}
+    />
+  ) : (
+    // 选中团队已从数据中消失（刷新后改名/删除）→ 回列表引导。
+    <div style={{ padding: 24, textAlign: "center" }}>
+      <antd.Empty
+        image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
+        description={tr("所选团队已不在最新数据中")}
+      >
+        <antd.Button size="small" onClick={() => nav.backTeam()}>
+          {tr("回团队列表")}
+        </antd.Button>
+      </antd.Empty>
+    </div>
+  );
+  // 四栏 mid：列表已移 L1 列 → 未选团队时显引导。
+  const mid4Guide = (
+    <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{tr("选择团队")}</span>
+      <span style={{ fontSize: 12, color: t.textSecondary }}>
+        {tr("点列表中的团队查看其拓扑")}
+      </span>
+    </div>
+  );
 
   const body =
-    variant === "mid" ? (
-      nav.teamView === "list" ? (
-        <TeamListPane
-          rows={teamRows}
-          teams={data.teams}
-          matched={matched}
-          roomAvatars={roomAvatars}
-          query={query}
-          onQueryChange={setQuery}
-          treeLoading={data.treeLoading}
-          treeSource={data.treeSource}
-          hasToken={data.hasToken}
-          onOpen={(row) => nav.openTeam(row.key)}
-          onGotoCrdCreate={gotoCrdCreate}
-        />
-      ) : selectedTeam ? (
-        <TeamTopologyPane
-          nav={nav}
-          team={selectedTeam}
-          roomAvatars={roomAvatars}
-          data={data}
-          onOpenMillforge={setMfTeam}
-        />
+    variant === "l1" ? (
+      // 四栏 L1：团队列表常驻（选中行高亮）。
+      listPane
+    ) : variant === "mid" ? (
+      cols === 4 ? (
+        nav.teamView === "list" ? mid4Guide : topologyPane
+      ) : nav.teamView === "list" ? (
+        listPane
       ) : (
-        // 选中团队已从数据中消失（刷新后改名/删除）→ 回列表引导。
-        <div style={{ padding: 24, textAlign: "center" }}>
-          <antd.Empty
-            image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
-            description={tr("所选团队已不在最新数据中")}
-          >
-            <antd.Button size="small" onClick={() => nav.backTeam()}>
-              {tr("回团队列表")}
-            </antd.Button>
-          </antd.Empty>
-        </div>
+        topologyPane
       )
     ) : variant === "right" ? (
       nav.teamView === "worker" ? (
