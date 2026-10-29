@@ -27,6 +27,9 @@ interface CrdAccessMatrixProps {
   saving: boolean;
   saveMsg: { kind: "ok" | "err"; text: string } | null;
   saveAccess: () => void;
+  /** 矩阵内搜索（账号/显示名）——空 = 全量。管理页访问配置弹窗用；
+   * CrdManage 原入口不传，行为不变。 */
+  filter?: string;
   tr: TrFn;
   t: ThemeColors;
 }
@@ -43,9 +46,19 @@ accessCmd,
 saving,
 saveMsg,
 saveAccess,
+filter,
 tr,
 t,
 }: CrdAccessMatrixProps) {
+  // 矩阵内搜索（账号/显示名）——filter 空 = 全量行。
+  const q = (filter ?? "").trim().toLowerCase();
+  const rows = q
+    ? humans.filter(
+        (h) =>
+          h.name.toLowerCase().includes(q) ||
+          (h.displayName || "").toLowerCase().includes(q),
+      )
+    : humans;
   return (
       <antd.Card
         size="small"
@@ -100,7 +113,7 @@ t,
           rowKey="name"
           pagination={false}
           scroll={{ x: 160 + teams.length * 96 }}
-          dataSource={humans}
+          dataSource={rows}
           locale={{ emptyText: tr("暂无人员记录") }}
           columns={[
             {
