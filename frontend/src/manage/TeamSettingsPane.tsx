@@ -17,7 +17,7 @@ import { useT } from "../i18n";
 import { useModelCatalog } from "../crdmanage/useModelCatalog";
 import { useTeamCrd } from "../crdmanage/useTeamCrd";
 import { CrdCfgForm } from "../crdmanage/CrdCfgModal";
-import { computeStandaloneWorkers } from "../crdmanage/HumanAccessModal";
+import { computeStandaloneWorkers } from "../crdmanage/standalone";
 import { StandaloneWorkerModels } from "../components/StandaloneWorkerModels";
 import { TeamIcon } from "../components/icons";
 import type { ManageData } from "./types";
