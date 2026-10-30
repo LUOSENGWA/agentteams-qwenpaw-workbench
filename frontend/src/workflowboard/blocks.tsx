@@ -301,12 +301,15 @@ export function InterruptActions({
     if (!body || busy) return;
     setBusy(true);
     try {
-      if (ev.room_id) {
-        await sendRoomMessage(ev.room_id, `【干预答复】${body}`);
+      // 没有可发送的房间 → 明确报错，绝不静默「已介入」（那只是本地记账）。
+      if (!ev.room_id) {
+        throw new Error(tr("该项目没有可发送的房间，无法在此提交——请到项目房间或工作流页处理"));
       }
+      await sendRoomMessage(ev.room_id, `【干预答复】${body}`);
       const item = pending.items.find((x) => x.id === pendingId);
+      // sent = 已发送待处理（不是已处理）；Controller 仍报同一 interrupt 时会重新出现。
       pending.resolve(pendingId, {
-        status: "answered",
+        status: "sent",
         answer: body.slice(0, 200),
       });
       // 跨源同伴一并清（同 taskId 的其它待办项）。
@@ -342,7 +345,7 @@ export function InterruptActions({
       >
         <CheckIcon size={12} />
         <span style={{ opacity: 0.75 }}>
-          {tr("已介入")}
+          {resolution.status === "sent" ? tr("已提交，等待处理") : tr("已介入")}
           {resolution.answer ? `：${resolution.answer}` : ""}
         </span>
       </div>

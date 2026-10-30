@@ -25,10 +25,12 @@ const antd = host.antd;
 function Row({
   item,
   onSend,
+  canSend,
   onOpenProject,
 }: {
   item: PendingItem;
   onSend: (text: string) => Promise<void> | void;
+  canSend: boolean;
   onOpenProject?: (runId: string) => void;
 }) {
   const tr = useT();
@@ -42,11 +44,14 @@ function Row({
     if (!body || busy) return;
     setBusy(true);
     try {
+      // 只读房间（canSend=false）不能提交——明确报错，不落假状态。
+      if (!canSend) throw new Error("send unavailable");
       await onSend(`【干预答复】${body}`);
-      pending.resolve(item.id, { status: "answered", answer: body.slice(0, 200) });
+      pending.resolve(item.id, { status: "sent", answer: body.slice(0, 200) });
       setText("");
+      antd.message.success(tr("已提交，等待 Leader 处理"));
     } catch {
-      antd.message.error(tr("发送失败，请重试"));
+      antd.message.error(tr("发送失败，请重试（或到工作流页处理）"));
     } finally {
       setBusy(false);
     }
@@ -90,7 +95,7 @@ function Row({
           placeholder={tr("填写处理意见（发到本房间）…")}
           style={{ flex: "1 1 200px", minWidth: 160 }}
         />
-        <antd.Button size="small" type="primary" loading={busy} onClick={() => void submit()} style={{ color: "#fff" }}>
+        <antd.Button size="small" type="primary" loading={busy} disabled={!canSend} onClick={() => void submit()} style={{ color: "#fff" }}>
           {tr("提交")}
         </antd.Button>
         {onOpenProject && item.projectId ? (
@@ -107,10 +112,13 @@ function Row({
 export function RoomPendingBar({
   roomId,
   onSend,
+  canSend = true,
   onOpenProject,
 }: {
   roomId?: string;
   onSend: (text: string) => Promise<void> | void;
+  /** 房间只读（canSend=false）时禁用提交，避免落假「已提交」。 */
+  canSend?: boolean;
   onOpenProject?: (runId: string) => void;
 }) {
   const tr = useT();
@@ -129,7 +137,7 @@ export function RoomPendingBar({
         {tr("本项目有 {n} 项等待人工介入", { n: items.length })}
       </div>
       {items.map((it) => (
-        <Row key={it.id} item={it} onSend={onSend} onOpenProject={onOpenProject} />
+        <Row key={it.id} item={it} onSend={onSend} canSend={canSend} onOpenProject={onOpenProject} />
       ))}
     </div>
   );

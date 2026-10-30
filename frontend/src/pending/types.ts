@@ -35,7 +35,9 @@ export interface PendingItem {
 
 export interface PendingResolution {
   id: string;
-  status: "answered" | "expired";
+  /** sent = 已发送到房间、等 Leader/Worker 处理（**不等于已处理**）；
+   * answered = 用户确认处理完；expired = 来自 Controller 的消失/超时。 */
+  status: "sent" | "answered" | "expired";
   actor?: string;
   answer?: string;
   at: number;
