@@ -2,10 +2,12 @@
  * ManagePage.tsx — 「管理」页（顶层 tab key=team，替代旧 WorkerManage 页面壳）。
  *
  * 布局（10/29 评审确认，15.36 加 xwide 四栏，按容器宽度 1/2/3/4 栏）：
- * - xwide（w ≥ 1440）→ 4 栏：域导航 160（恒内联）+ L1 列表 280（railOpen 门控）
+ * - xwide（w ≥ 1440）→ 4 栏：域导航 160（railOpen 收起为 56 icon-only）+ L1 列表 280（常显）
  *   + 中栏 340 + 右栏 flex(min 400)——VS Code 活动栏/侧栏/编辑器/辅助栏模型：
- *   域导航恒显，toggle 改管 L1 列表列显隐（L1 列内容 = 各域第一层：
+ *   页头 toggle 管最左域导航列（160 ↔ 56 icon-only；L1 列内容 = 各域第一层：
  *   团队列表 / CRD 入口 / 人员列表 / 集群概览+入口卡）。
+ *   集群/CRD 域 4 栏无右栏（16.27 A / 16.28：详情/表单已在中栏）——有效栏 =
+ *   域导航 + L1 列（常显）+ mid。
  * - wide（1280–1439）→ 3 栏：左栏 200（内联）+ 中栏 360 + 右栏 flex(min 420)
  * - medium（1024–1279）→ 2 栏：中栏 360 + 右栏 flex；左栏 = 抽屉覆盖（默认收起）
  * - narrow（< 1024）→ 1 栏：中栏全宽；左栏 = 抽屉；右栏内容推为二级页（左上「←」返回）
@@ -150,6 +152,9 @@ function ManagePage(props: ManagePageProps) {
   }, []);
   const cols: 1 | 2 | 3 | 4 =
     cw >= XWIDE_W ? 4 : cw >= WIDE_W ? 3 : cw >= MEDIUM_W ? 2 : 1;
+  // 16.27 A / 16.28：集群/CRD 域 xwide 四栏无右栏（详情/表单已在中栏）→ 按 3 栏处理
+  // （域导航 160/56 + L1 列常显 280 + mid）；其它域四栏行为不变。
+  const sectionNoRight = (nav.section === "cluster" || nav.section === "crd") && cols === 4;
 
   // ── 左栏展开/收起（持久化；默认 wide 开、其余关）──
   const [railOpen, setRailOpen] = React.useState<boolean>(() =>
@@ -205,6 +210,13 @@ function ManagePage(props: ManagePageProps) {
   // 推 L2 二级页（full variant）。
   const isClusterDetail = section === "cluster" && clusterView !== "overview";
   const l2Active = cols === 1 && inDetail;
+  // 16.32：L1↔L2 转场方向（进入=从右 push，返回=从左 pop）
+  const l2PrevRef = React.useRef(l2Active);
+  const l2Dir: "push" | "pop" | null =
+    l2PrevRef.current === l2Active ? null : l2Active ? "push" : "pop";
+  React.useEffect(() => {
+    l2PrevRef.current = l2Active;
+  }, [l2Active]);
   // narrow L2 二级页 variant：team 在拓扑态（选中团队、未进 worker/设置）时拓扑活在
   // mid 分支（TeamTopologyPane），须用 "mid" 才能渲染；worker/设置走 right 分支。
   // crd/people 详情表单本就在 right 分支，集群用 full。
@@ -287,9 +299,14 @@ function ManagePage(props: ManagePageProps) {
 
   const gridTemplate =
     cols === 4
-      ? railOpen
-        ? "160px 280px 340px minmax(400px, 1fr)"
-        : "160px 340px minmax(400px, 1fr)"
+      ? sectionNoRight
+        ? // 集群/CRD 四栏：域导航 160/56 + L1 列 280（常显）+ mid 全宽（无右栏）。
+          railOpen
+            ? "160px 280px minmax(400px, 1fr)"
+            : "56px 280px minmax(400px, 1fr)"
+        : railOpen
+          ? "160px 280px 340px minmax(400px, 1fr)"
+          : "56px 280px 340px minmax(400px, 1fr)"
       : cols === 3 && railOpen
         ? "200px 360px minmax(420px, 1fr)"
         : "360px minmax(420px, 1fr)";
@@ -317,12 +334,12 @@ function ManagePage(props: ManagePageProps) {
         <button
           type="button"
           onClick={() => setRailPersist(!railOpen)}
-          // 四栏：域导航恒显，toggle 管 L1 列表列；其余栏数管左栏（内联/抽屉）。
+          // 四栏：toggle 管最左域导航（160 ↔ 56 icon-only）；其余栏数管左栏（内联/抽屉）。
           title={
             cols === 4
               ? railOpen
-                ? tr("收起 L1 列表")
-                : tr("展开 L1 列表")
+                ? tr("收起导航")
+                : tr("展开导航")
               : railOpen
                 ? tr("收起左栏")
                 : tr("展开左栏")
@@ -330,8 +347,8 @@ function ManagePage(props: ManagePageProps) {
           aria-label={
             cols === 4
               ? railOpen
-                ? tr("收起 L1 列表")
-                : tr("展开 L1 列表")
+                ? tr("收起导航")
+                : tr("展开导航")
               : railOpen
                 ? tr("收起左栏")
                 : tr("展开左栏")
@@ -453,7 +470,10 @@ function ManagePage(props: ManagePageProps) {
 
       {l2Active ? (
         // ── L2 二级页：竖屏 1 栏详情 / 集群日志·审计覆盖中+右 ──
-        <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <div
+          className={l2Dir === "push" ? "wb-l2-push" : l2Dir === "pop" ? "wb-l2-pop" : undefined}
+          style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column" }}
+        >
           <div
             style={{
               flex: "0 0 auto",
@@ -506,8 +526,10 @@ function ManagePage(props: ManagePageProps) {
         </div>
       ) : cols >= 2 ? (
         // ── 2/3/4 栏：中栏 + 右栏（3 栏 wide 且展开时左栏内联成第三列；
-        // 4 栏域导航恒内联成第一列，railOpen 时再插 L1 列表列）──
+        // 4 栏域导航恒内联成第一列（收起 56 icon-only），L1 列表列常显；
+        // 集群/CRD 域 4 栏无右栏（16.27 A / 16.28）——mid 占最后一列）──
         <div
+          className={l2Dir === "push" ? "wb-l2-push" : l2Dir === "pop" ? "wb-l2-pop" : undefined}
           style={{
             flex: "1 1 auto",
             minHeight: 0,
@@ -518,12 +540,18 @@ function ManagePage(props: ManagePageProps) {
         >
           {cols === 4 || cols === 3 && railOpen ? (
             <div style={paneStyle}>
-              <ManageRail section={section} onSelect={setSection} />
+              <ManageRail
+                section={section}
+                onSelect={setSection}
+                collapsed={cols === 4 && !railOpen}
+              />
             </div>
           ) : null}
-          {cols === 4 && railOpen ? <div style={paneStyle}>{renderSection("l1")}</div> : null}
+          {cols === 4 ? <div style={paneStyle}>{renderSection("l1")}</div> : null}
           <div style={paneStyle}>{renderSection("mid")}</div>
-          <div style={paneStyle}>{renderSection("right")}</div>
+          {sectionNoRight ? null : (
+            <div style={paneStyle}>{renderSection("right")}</div>
+          )}
         </div>
       ) : (
         // ── 1 栏 L1：中栏全宽 ──

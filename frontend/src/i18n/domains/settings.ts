@@ -103,4 +103,8 @@ export const settingsDict: Record<string, { en: string }> = {
   "团队 / 工作流等数据来自 Controller，显示正常；但聊天、通知、@提醒与任务状态同步需要 Matrix 账号。在「配置」页完成 Matrix 登录后功能即补齐。": {
     en: "Team / workflow data from the Controller renders normally, but chat, notifications, @-mentions and task status sync require a Matrix account. Sign in on the Settings page to unlock the full feature set.",
   },
+  // ── 15.36 D：控制台特效质量三档短 label（完整语义键在 creds.ts）──
+  "轻量": { en: "Lightweight" },
+  "关闭特效": { en: "Effects off" },
+  "完整特效": { en: "Full effects" },
 };

@@ -1,7 +1,7 @@
 // 审批域（/approval/*、controller /workers/*/approval、/room-approvals）：QwenPaw approval_level + 房间审批队列。
 
 import { requestJson } from "../shared";
-import { cachedRequest } from "../../requestCache";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 import { publishApprovalCount } from "../../approvalsStore";
 
 // 原「宿主审批队列」段（PendingApproval /
@@ -26,13 +26,21 @@ interface ApprovalListResponse {
   levels: string[];
 }
 
-export async function fetchApprovalList(
+/** 30s 缓存（列表类；key 含 agent；setApprovalLevel/setWorkerApproval
+ * 成功后 invalidateTags(["approvals"]) 覆盖）。 */
+export function fetchApprovalList(
   agent?: string,
 ): Promise<ApprovalListResponse> {
   const q = agent ? `?agent=${encodeURIComponent(agent)}` : "";
-  return (await requestJson(
-    `/agentteams-proxy/approval/list${q}`,
-  )) as ApprovalListResponse;
+  return cachedRequest(
+    `approval-list:${agent ?? ""}`,
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/approval/list${q}`,
+      ) as Promise<ApprovalListResponse>,
+    { tags: ["approvals"] },
+  );
 }
 
 interface ApprovalSetResult {
@@ -47,11 +55,13 @@ export async function setApprovalLevel(
   agent: string,
   level: string,
 ): Promise<ApprovalSetResult> {
-  return (await requestJson(`/agentteams-proxy/approval/set`, {
+  const r = (await requestJson(`/agentteams-proxy/approval/set`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ agent, level }),
   })) as ApprovalSetResult;
+  invalidateTags(["approvals"]);
+  return r;
 }
 
 // ── #1216 Controller 审批端点（L1/L2 统一主路径）────
@@ -61,21 +71,28 @@ export async function setApprovalLevel(
 // #1273→403 透传；team leader 只读→PUT 403；跨团队→404）。
 // 旧 Controller（< 含 #1216 版本）→ 404 = 版本门控，调用方回退旧
 // /approval/list|set（docker 直读/PUT running-config，L1-only）。
-export async function fetchWorkerApproval(
+/** 30s 缓存（key=worker 名；setWorkerApproval 成功后失效同 tag）。 */
+export function fetchWorkerApproval(
   name: string,
 ): Promise<{ approval_level: string }> {
-  return (await requestJson(
-    `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(
-      name,
-    )}/approval`,
-  )) as { approval_level: string };
+  return cachedRequest(
+    `worker-approval:${name}`,
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(
+          name,
+        )}/approval`,
+      ) as Promise<{ approval_level: string }>,
+    { tags: ["approvals"] },
+  );
 }
 
 export async function setWorkerApproval(
   name: string,
   level: string,
 ): Promise<{ approval_level: string }> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(
       name,
     )}/approval`,
@@ -85,6 +102,8 @@ export async function setWorkerApproval(
       body: JSON.stringify({ approval_level: level }),
     },
   )) as { approval_level: string };
+  invalidateTags(["approvals"]);
+  return r;
 }
 
 // ── 待工具审批请求（Worker Tool Guard HITL 主动通知）────

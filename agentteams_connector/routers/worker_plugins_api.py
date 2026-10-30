@@ -2,15 +2,17 @@
 """Worker 插件域：worker 已装插件列表的 Controller 只读代理。
 
 背景：worker 装了哪些插件（builtin/team/custom）由 worker 容器内自报；
-Controller 另有一单加 ``GET /api/v1/workers/{name}/plugins`` 只读代理
-（**可能尚未合并**）。工作台此前没有「该 worker 装了哪些插件」的入口
-——本端点补读路径，前端 WorkerPluginsPanel 以
-id / name / version / enabled / loaded / plugin_type 六列表格展示。
+Controller 的 ``WorkerPlugins`` handler 已存在，但 ``http.go`` 未注册
+``GET /api/v1/workers/{name}/plugins`` 路由——当前 controller 版本
+不提供该端点（404 是真实状态，非过渡态）。工作台此前没有
+「该 worker 装了哪些插件」的入口——本端点补读路径，前端
+WorkerPluginsPanel 以 id / name / version / enabled / loaded /
+plugin_type 六列表格展示。
 
 诚实降级（任务书口径）：
-- Controller 404（端点未合 / 路径不存在）→ HTTP 200
+- Controller 404（当前版本未注册该端点 / 路径不存在）→ HTTP 200
   ``{"available": false, "reason": "controller_too_old"}``
-  ——不抛 500、不吞成空数组；前端显示「需升级 controller」一行提示。
+  ——不抛 500、不吞成空数组；前端显示「需 controller 版本支持」一行提示。
 - 无本地 controller token → HTTP 200
   ``{"available": false, "reason": "no_token"}``（不拨号、不 500）。
 - 其他错误（401/403/5xx/传输全败）→ 透传/映射状态码 + 简短原因
@@ -58,7 +60,7 @@ def build_worker_plugins_router() -> APIRouter:
     async def worker_plugins(worker: str) -> Dict[str, Any]:
         """worker 已装插件（Controller 只读代理，字段直传无脱敏）。
 
-        404（Controller 端点未合/路径不存在）→ 200 available=false
+        404（当前 controller 未注册该端点/路径不存在）→ 200 available=false
         reason=controller_too_old（诚实降级）；401/403/5xx → 透传
         状态码 + 简短原因；无 token → 200 available=false no_token。
         """

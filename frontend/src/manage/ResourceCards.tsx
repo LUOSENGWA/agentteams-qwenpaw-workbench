@@ -11,6 +11,13 @@
 // 权限：L2 写权由各面板自身 l1/403 门控（运行配置 L1-only 字段只读、
 // 工具 PATCH 403 转只读等，与旧拓扑同语义）；「环境变量」卡仅在
 // envEditable === true 时出现（L2 隐藏，与旧拓扑同门控）。
+//
+// 16.31 运行时门控：QwenPaw-only 卡（cfg/mcp/plugins/tools/upgrade——
+// 端点 = Controller 转发 worker 的 QwenPaw app 或 QwenPaw 专属字段）
+// 在非 qwenpaw 运行时**隐藏**（口径 = 只显示通用的，不渲染后再报错；
+// 各面板内部自带 gate 保留，双保险）。runtime 空/未上报的老 worker
+// 不误伤（isQwenpawOnlyDisabled 空值放行）。Coding CLI 卡通用保留
+// （容器内 exec，runtime-agnostic）。
 
 import type * as ReactNS from "react";
 
@@ -19,6 +26,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useWbViewport } from "../WbViewportContext";
 import { invalidateTags } from "../requestCache";
+import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import NarrowSheet from "../components/NarrowSheet";
 import WorkerRuntimeConfig from "../components/WorkerRuntimeConfig";
 import WorkerEnvPanel from "../components/WorkerEnvPanel";
@@ -54,6 +62,10 @@ interface ResourceCardDef {
   icon: (p: { size?: number; style?: ReactNS.CSSProperties }) => ReactNS.ReactElement;
   /** 宽屏弹窗宽度（竖屏走 NarrowSheet，不用此值）。 */
   width: number;
+  /** 16.31：QwenPaw 运行时独有功能——非 qwenpaw 运行时整卡隐藏
+   *（端点 = Controller 转发 worker 的 QwenPaw app 或 QwenPaw 专属
+   *字段；通用卡不设此项）。 */
+  qwenpawOnly?: boolean;
 }
 
 export default function ResourceCards({
@@ -77,6 +89,9 @@ export default function ResourceCards({
   );
 
   const cards: ResourceCardDef[] = React.useMemo(() => {
+    // 16.31：非 qwenpaw 运行时隐藏 QwenPaw-only 卡（只显示通用的）。
+    // runtime 空/未上报 → 放行（老 worker 不误伤，同 runtimeGuard 判据）。
+    const nonQwenpaw = isQwenpawOnlyDisabled(worker.runtime);
     const list: ResourceCardDef[] = [
       {
         id: "cfg",
@@ -84,6 +99,9 @@ export default function ResourceCards({
         desc: tr("并发 / 上下文 / shell 组（L1 可编辑）"),
         icon: SettingsIcon,
         width: 720,
+        // QwenPaw-only：runtime-config 端点字段（并发限流/上下文/shell 组/
+        // auto_title/loop/记忆后端）= QwenPaw app 配置。
+        qwenpawOnly: true,
       },
     ];
     // 环境变量卡——仅 envEditable === true（L2 隐藏，与旧拓扑同门控）。
@@ -118,6 +136,8 @@ export default function ResourceCards({
             : tr("CRD 声明 + Worker 自注册合并视图"),
         icon: PlugIcon,
         width: 720,
+        // QwenPaw-only：合并视图含 worker QwenPaw 自注册腿（/api/mcp）。
+        qwenpawOnly: true,
       },
       {
         id: "plugins",
@@ -125,6 +145,8 @@ export default function ResourceCards({
         desc: tr("id / 名称 / 版本 / 启用（只读表）"),
         icon: BrickIcon,
         width: 720,
+        // QwenPaw-only：端点 = Controller 转发 worker QwenPaw /api/plugins。
+        qwenpawOnly: true,
       },
       {
         id: "skills",
@@ -142,6 +164,8 @@ export default function ResourceCards({
         desc: tr("内置工具启用列表"),
         icon: WrenchIcon,
         width: 720,
+        // QwenPaw-only：内置工具端点 = QwenPaw app 工具集（#1255）。
+        qwenpawOnly: true,
       },
       {
         id: "channels",
@@ -163,10 +187,20 @@ export default function ResourceCards({
         desc: tr("QwenPaw 运行时就地升级（L1 · 二次确认）"),
         icon: MonitorIcon,
         width: 900,
+        // QwenPaw-only：升级对象 = 容器内 QwenPaw 运行时。
+        qwenpawOnly: true,
       },
     );
-    return list;
-  }, [worker.envEditable, worker.env, worker.mcpServers, worker.skills, envCount, tr]);
+    // 16.31 运行时过滤：非 qwenpaw → 去掉 QwenPaw-only 卡（通用卡保留；
+    // 极端组合下全空 = 空 grid，布局自适应不塌，面板内部 gate 仍兜底）。
+    return nonQwenpaw ? list.filter((c) => !c.qwenpawOnly) : list;
+  }, [worker.envEditable, worker.env, worker.mcpServers, worker.skills, worker.runtime, envCount, tr]);
+
+  // 16.31：切 worker（运行时/envEditable 变化）后已打开的卡若被过滤掉
+  // → 关掉弹窗（防 openCard 悬空 = 空标题空内容 Modal）。
+  React.useEffect(() => {
+    if (openCard && !cards.some((c) => c.id === openCard)) setOpenCard(null);
+  }, [cards, openCard]);
 
   // 面板内容懒挂载——只在弹窗打开时渲染（各面板自持轮询/懒加载）。
   // 技能卡 sections 排除 "mcp"（MCP 有独立卡，不重复）。
@@ -290,6 +324,9 @@ export default function ResourceCards({
           open={!!openCard}
           title={open?.title ?? ""}
           onClose={() => setOpenCard(null)}
+          // 16.29：面板首元素为 tab 条/面板标题行——紧贴弹窗标题栏下沿
+          // （去 8px 顶部空隙，滚动时缝隙不再透出内容）。
+          flushTop
         >
           {open ? renderContent(open.id) : null}
         </NarrowSheet>

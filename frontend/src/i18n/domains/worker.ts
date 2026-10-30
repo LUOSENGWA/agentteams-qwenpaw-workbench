@@ -33,8 +33,8 @@ export const workerDict: Record<string, { en: string }> = {
   "未装载": { en: "not loaded" },
   "plugin_type": { en: "plugin_type" },
   "已装 {n} 个 · 已启用 {m} 个": { en: "installed {n} · enabled {m}" },
-  "当前 controller 不支持读取 worker 插件（需升级 controller）": {
-    en: "The current controller cannot read worker plugins (controller upgrade required)",
+  "当前 controller 未提供 worker 插件端点（需 controller 版本支持）": {
+    en: "The current controller does not provide the worker plugins endpoint (a controller version with this endpoint is required)",
   },
   "未配置 controller 凭据，暂不能读取 worker 插件": {
     en: "No controller credential configured; cannot read worker plugins for now",
@@ -831,5 +831,16 @@ export const workerDict: Record<string, { en: string }> = {
   },
   "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。选 Higress configured alias 会自动回填对应 Provider。": {
     en: "Only model + provider change (PUT merge semantics: only changed fields are sent; empty = follow the cluster default). Picking a configured Higress alias auto-fills its provider.",
+  },
+  // 工具分组卡片（16.29）：组名与空态。「文件/运行时/其他/启用/异步执行/
+  // 需配置」复用既有域键（kb/creds/chat），不重复登记。
+  "网络": { en: "Web" },
+  "媒体": { en: "Media" },
+  "智能体": { en: "Agents" },
+  "迁移": { en: "Migration" },
+  "无内置工具": { en: "No built-in tools" },
+  // 16.31：Coding CLI 探测与安装语义（容器层安装、重建即丢）
+  "CLI 安装在 Worker 容器内，容器重建后需重新安装": {
+    en: "CLI is installed inside the Worker container; it must be reinstalled after a container rebuild",
   },
 };

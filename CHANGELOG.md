@@ -3,6 +3,11 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.30（2026-10-29 · 注册为 PawApp）
+
+**修复**
+- 插件类型改为 PawApp（type: app）：修复 /apps/<id> 在 Web 端打开报 "PawApp frontend plugin not found"（根因：宿主校验 plugin_type === app；前端路由与后端 API 均不变）
+
 ## 0.5.0-beta.16.23（2026-10-26 · 千锻注入修复）
 
 **修复**

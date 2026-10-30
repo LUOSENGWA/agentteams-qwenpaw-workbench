@@ -158,6 +158,22 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+ @keyframes wbViewIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+ @keyframes wbL2PushIn {
+  from { opacity: 0; transform: translateX(14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+ @keyframes wbL2PopIn {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+ @keyframes wbSheetIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 /* Worker session 运行指示呼吸动画——照搬 QwenPaw
  AgentStatusIndicator 的 statusPulse（1.2s ease-in-out，opacity 1↔0.35 +
  box-shadow 扩散）。动画挂在 class 上（非内联），reduced-motion 可关。 */
@@ -204,6 +220,8 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   .wb-live-dot { animation: none; }
   .wb-loop-dot.running { animation: none; }
   .wb-tab-shake { animation: none !important; }
+  .wb-main-tabs .ant-tabs-tabpane-active,
+  .wb-l2-push, .wb-l2-pop, .wb-sheet-in { animation: none !important; }
 }
 /* 页面布局（上下边界固定撑满屏幕，参考控制台）：
  main 撑满（height 100% + minHeight 兜底）+ flex column；header 固定；
@@ -410,6 +428,13 @@ html[data-wb-fx="light"] .wb-loop-dot.running {
 .wb-jumpbottom:active {
   transform: scale(0.95);
 }
+/* 16.32 页面转场（Material Fade through / Shared axis X） */
+.wb-main-tabs .ant-tabs-tabpane-active {
+  animation: wbViewIn 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+.wb-l2-push { animation: wbL2PushIn 220ms cubic-bezier(0.2, 0, 0, 1); }
+.wb-l2-pop  { animation: wbL2PopIn  220ms cubic-bezier(0.2, 0, 0, 1); }
+.wb-sheet-in { animation: wbSheetIn 200ms cubic-bezier(0.2, 0, 0, 1); }
 `;
   document.head.appendChild(style);
 }

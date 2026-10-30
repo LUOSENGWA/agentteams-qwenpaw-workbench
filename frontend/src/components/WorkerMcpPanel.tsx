@@ -10,7 +10,7 @@
  *   代理 GET /api/v1/workers/{name}/mcp（worker 侧 QwenPaw mcp.clients
  *   注册表，内置插件 teamharness/workerflow 等自注册条目）。
  *
- * 诚实降级（Controller 端点是并行单，可能尚未合并）：404 → 后端返回
+ * 诚实降级（仅当 Controller 实例未提供该端点时）：404 → 后端返回
  * HTTP 200 {available:false, reason:"controller_too_old"} → 本面板一行
  * info 提示「需升级 controller」，不报错弹窗，declared 照常显示；
  * 无本地 controller token → reason:"no_token" 同款降级。
@@ -156,7 +156,7 @@ function WorkerMcpPanel({
           "MCP 合并视图：CRD 声明（spec.mcpServers）+ worker 自注册（容器启动时注册进 QwenPaw 的内置插件 MCP）。env/headers 值已脱敏。",
         )}
       </div>
-      {/* 诚实降级：Controller 端点未合（404）/ 无 token → 一行提示，
+      {/* 诚实降级：Controller 实例未提供该端点（404）/ 无 token → 一行提示，
           不报错弹窗；declared 列表照常展示（下方不受影响）。 */}
       {unavailable && self ? (
         <antd.Alert

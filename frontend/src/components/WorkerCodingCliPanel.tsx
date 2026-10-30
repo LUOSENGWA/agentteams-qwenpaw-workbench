@@ -501,6 +501,12 @@ function CodingCliPanelBody({
         </div>
       ) : null}
 
+      {/* 16.31：容器语义说明（高频困惑点前置：容器重建后 CLI 安装
+       * 丢失、探测回来「未安装」≠ 面板坏了）。 */}
+      <div style={{ fontSize: 11, color: t.textSecondary }}>
+        {tr("CLI 安装在 Worker 容器内，容器重建后需重新安装")}
+      </div>
+
       {/* 探测缓存提示 + 手动重探（5 分钟 TTL，过期后台刷新不阻塞）。 */}
       <div
         style={{

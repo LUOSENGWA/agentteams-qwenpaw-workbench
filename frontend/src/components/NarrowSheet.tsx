@@ -22,11 +22,15 @@ export default function NarrowSheet({
   title,
   onClose,
   children,
+  flushTop = false,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNS.ReactNode;
+  /** 顶部贴合（默认 false）：body 顶部 padding 0——面板首元素为 tab 条/
+   * 面板标题行时紧贴弹窗标题栏下沿（8px 空隙在滚动时会透出内容）。 */
+  flushTop?: boolean;
 }) {
   const [render, setRender] = React.useState(open);
   React.useEffect(() => {
@@ -49,7 +53,9 @@ export default function NarrowSheet({
           maxHeight: "min(66dvh, 560px)",
           overflowY: "auto",
           // 内容贴弹窗宽（左右内边距收紧 16→10，内层 Card/面板铺满弹窗宽）。
-          padding: "8px 10px",
+          // flushTop：顶部 0——tab 条/面板标题行紧贴标题栏下沿（16.29
+          // 缝隙透出内容修复；左右/底部不变）。
+          padding: flushTop ? "0 10px 8px" : "8px 10px",
         },
         content: { borderRadius: 12, overflow: "hidden" },
       }}
@@ -57,7 +63,7 @@ export default function NarrowSheet({
       {/* wbc-narrow：窄屏弹窗内容标记（全局 CSS 消费——表单行转纵向 + antd 控件
       限宽到容器，治「弹窗内容横向拖」；portal 在 body，规则不带 .wb-main 前缀）。 */}
       {render ? (
-        <div className="wbc-narrow" style={{ minWidth: 0 }}>
+        <div className="wbc-narrow wb-sheet-in" style={{ minWidth: 0 }}>
           {children}
         </div>
       ) : null}

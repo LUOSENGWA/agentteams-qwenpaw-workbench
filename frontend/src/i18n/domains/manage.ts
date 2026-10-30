@@ -58,6 +58,15 @@ export const manageDict: Record<string, { en: string }> = {
   "否": { en: "No" },
   "loop 预算": { en: "loop budget" },
 
+  // ── 16.27 B：Worker 详情模型配置卡 ──
+  // 注：「模型」「Provider」「保存」「保存失败」「模型 alias（留空=跟随集群默认）」等
+  // 复用 workflow/worker/team 域既有键，不重复登记。
+  "模型配置": { en: "Model Config" },
+  "当前值": { en: "Current" },
+  "修改模型配置需 L1 管理权限（Controller 管理员 token）": {
+    en: "Editing model config requires L1 admin access (Controller admin token)",
+  },
+
   // ── 资源卡（P3/fd26b75）──
   "并发 / 上下文 / shell 组（L1 可编辑）": {
     en: "Concurrency / context / shell group (editable at L1)",
@@ -152,6 +161,21 @@ export const manageDict: Record<string, { en: string }> = {
     en: "Pick the component-logs / audit card in the middle column — the detail page covers this pane",
   },
 
+  // ── 16.30：集群域「运行时批量升级」入口卡（+ 面包屑/引导更新）──
+  "概览": { en: "Overview" },
+  "运行时批量升级": { en: "Runtime batch upgrade" },
+  "查看运行时批量升级": { en: "View runtime batch upgrade" },
+  "多选 Worker 批量就地升级 qwenpaw 运行时（L1 · 二次确认）": {
+    en: "In-place QwenPaw runtime upgrade on multiple selected Workers (L1 · double confirm)",
+  },
+  "选择 日志 / 审计 / 批量升级": { en: "Pick logs / audit / batch upgrade" },
+  "点左栏 组件日志 / 审计 / 批量升级 卡片查看详情": {
+    en: "Pick the component-logs / audit / batch-upgrade card in the left column to view details",
+  },
+  "点中栏 组件日志 / 审计 / 批量升级 卡片查看详情（详情在右栏）": {
+    en: "Pick the component-logs / audit / batch-upgrade card in the middle column to view details (shown in the right column)",
+  },
+
   // ── 15.36 xwide 四栏 + 可点面包屑（A 段）──
   // 注：「团队列表」「人员列表」「选择团队」复用 admin/worker 域既有键，不重复登记。
   "入口列表": { en: "Entries" },
@@ -174,4 +198,8 @@ export const manageDict: Record<string, { en: string }> = {
   "点左栏 组件日志 / 审计 卡片查看详情": {
     en: "Pick the component-logs / audit card in the left column to view details",
   },
+
+  // ── 16.30：四栏 toggle 改管最左域导航 ──
+  "收起导航": { en: "Collapse navigation" },
+  "展开导航": { en: "Expand navigation" },
 };
