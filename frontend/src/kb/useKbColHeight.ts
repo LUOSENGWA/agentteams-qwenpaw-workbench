@@ -18,7 +18,7 @@
 //     为止）；无则回退视口。
 //   - 0 宽早退（keep-alive 隐藏 tab）：保留上次值，不写 0。
 //   - rAF 合并 + >=2px 去抖（亚像素抖动不触发重渲）。
-//   - 触发：ResizeObserver(滚动容器) + ResizeObserver(.ant-space，Row 上方
+//   - 触发：ResizeObserver(滚动容器) + ResizeObserver(.ant-space/.qwenpaw-space，Row 上方
 //     内容如图谱卡高度变化时 Space 随之变化 → 捕获重测) + ResizeObserver(row)
 //     + window resize。收敛性：Row 顶只由上方内容决定（与 Row 自身高度无关）
 //     → 自重测值不变 → 去抖终止，无循环。
@@ -104,7 +104,8 @@ export function useKbColHeight(): {
       const cont = findScrollContainer(rowEl);
       if (cont) obs.observe(cont);
       // Space 容器：Row 上方内容（图谱卡等）高度变化时其高度随之变 → 捕获重测。
-      const space = rowEl.closest(".ant-space");
+      // 宿主 antd 前缀为 qwenpaw-（插件 dev 为 ant-），双前缀兜底（10/30）
+      const space = rowEl.closest(".ant-space, .qwenpaw-space");
       if (space) obs.observe(space);
       obs.observe(rowEl);
     }

@@ -194,18 +194,15 @@ export function useWorkbenchUi() {
     setActiveTabState(tab);
   }, [tab]);
  // 切页轻过渡（transform/opacity，仅 WAAPI）——
-  // 170ms 淡入 + 4px 上浮，reduced-motion 守卫；不加 key 重挂（keep-alive
+  // 170ms 淡入 + 4px 上浮；不加 key 重挂（keep-alive
   // 面板的状态/滚动位置不受影响），动画结束 transform 自动还原。
+  // 10/30 定案：插件页内动效不跟随系统「减少动态效果」设置
+  //（原 matchMedia 守卫已删——开了系统设置不等于关插件动效）。
   const paneRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const el = paneRef.current;
     if (!el) return;
     try {
-      if (
-        window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      )
-        return;
       el.animate(
         [
           { opacity: 0.55, transform: "translateY(4px)" },
