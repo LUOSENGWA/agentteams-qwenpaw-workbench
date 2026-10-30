@@ -332,6 +332,7 @@ function RoomChat(props: RoomChatProps) {
           <RoomPendingBar
             roomId={room?.room_id}
             onSend={(text: string) => props.onSend?.(text)}
+            canSend={!!props.onSend && props.canSend !== false}
             onOpenProject={onOpenProject}
           />
           <div

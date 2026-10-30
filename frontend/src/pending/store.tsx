@@ -99,7 +99,7 @@ export function onPendingNav(fn: () => void): () => void {
 // ── store ─────────────────────────────────────────────────────────
 
 export interface PendingResolveInput {
-  status: "answered" | "expired";
+  status: "sent" | "answered" | "expired";
   actor?: string;
   answer?: string;
 }
@@ -174,7 +174,14 @@ export function PendingProvider({ children }: { children: ReactNS.ReactNode }) {
     for (const r of data.resolutions) resolvedIds.add(r.id);
 
     const upsertOne = (cur: PersistedData, item: PendingItem): PersistedData => {
-      if (cur.resolutions.some((r) => r.id === item.id)) return cur;
+      // 只有 answered/expired 才永久跳过；sent（已提交待处理）允许重新出现——
+      // Controller 仍报同一 interrupt 说明还没真处理，UI 必须能再提示。
+      if (
+        cur.resolutions.some(
+          (r) => r.id === item.id && (r.status === "answered" || r.status === "expired"),
+        )
+      )
+        return cur;
       const prev = cur.items.find((it) => it.id === item.id);
       if (prev) {
         // m.replace 修订 / 轮询刷新：字段更新，createdAt 保持最初。
