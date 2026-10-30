@@ -202,4 +202,27 @@ export const manageDict: Record<string, { en: string }> = {
   // ── 16.30：四栏 toggle 改管最左域导航 ──
   "收起导航": { en: "Collapse navigation" },
   "展开导航": { en: "Expand navigation" },
+  // ── 16.41 批次 1：独立 Worker 可见性（列表底部行 / 上下文卡 / 加入 Worker 卡）──
+  "未归属团队的 Worker": { en: "Workers not in any team" },
+  "独立 Worker——能运行、能被私聊，不参与团队任务；点名字看详情，在团队设置里可加进团队。": {
+    en: "Standalone workers — they can run and receive DMs but take no part in team tasks. Pick a name for details; add to a team from team settings.",
+  },
+  "未归属团队": { en: "Not in any team" },
+  "该 Worker 未归属任何团队（独立 Worker）：能运行、能被私聊，但不参与团队任务。": {
+    en: "This worker is not in any team (standalone worker): it can run and receive DMs, but takes no part in team tasks.",
+  },
+  "加进团队：打开目标团队 → 团队设置 →「加入 Worker」一键加入。": {
+    en: "To join a team: open the target team → team settings → “Add Worker” for a one-click join.",
+  },
+  "加入 Worker（未归属团队的）": { en: "Add worker (not in any team)" },
+  "加入本团队": { en: "Add to this team" },
+  "无未归属 Worker（未被任何 Team CR 引用的 Worker）——可到 CRD 管理 → 新建 Worker 创建。": {
+    en: "No unassigned workers (workers referenced by no Team CR) — create one under CRD management → New Worker.",
+  },
+  "一键加入 = PUT 合并进当前团队成员（保留原有成员，角色 = worker）。": {
+    en: "One-click join = PUT-merge into this team’s members (existing members kept, role = worker).",
+  },
+  "Worker CRD（名字 + 运行时 + 模型）；不指定团队 = 独立 Worker": {
+    en: "Worker CRD (name + runtime + model); no team = standalone worker",
+  },
 };

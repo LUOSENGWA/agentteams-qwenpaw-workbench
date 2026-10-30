@@ -51,6 +51,14 @@ t,
         styles={{ body: { padding: 10 } }}
       >
         <div style={{ display: "grid", gap: 6 }}>
+          {/* 独立 Worker 路径显式化：此表单不指定团队 → 建出的 Worker
+不参与任何团队任务；回头路 = 团队设置「加入 Worker」。 */}
+          <antd.Alert
+            type="info"
+            showIcon
+            style={{ fontSize: 11 }}
+            message={tr("不指定团队创建的 Worker 是独立 Worker：它能运行、能被私聊，但不参与任何团队任务。建好后可在团队设置里把它加进团队。")}
+          />
           <FieldLabel>{tr("Worker 名（唯一，小写字母/数字/-）")}</FieldLabel>
           <antd.Input
             size="small"

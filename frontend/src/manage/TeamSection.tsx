@@ -36,6 +36,7 @@ import {
 } from "../components/WorkerManageShared";
 import { SearchIcon, SettingsIcon, TeamIcon } from "../components/icons";
 import MillforgeModal from "../millforge/MillforgeModal";
+import { computeStandaloneWorkers } from "../crdmanage/HumanAccessModal";
 import WorkerDetailPane from "./WorkerDetailPane";
 import TeamSettingsPane from "./TeamSettingsPane";
 import type { ManageSectionProps } from "./types";
@@ -144,6 +145,8 @@ function TeamListPane({
   onOpen,
   onGotoCrdCreate,
   activeKey = null,
+  standaloneWorkers = [],
+  onOpenWorker,
 }: {
   rows: TeamRow[];
   teams: WorkerTreeTeam[];
@@ -159,6 +162,9 @@ function TeamListPane({
   onGotoCrdCreate: () => void;
   /** 当前选中团队（四栏 L1 列常驻列表的行高亮）。 */
   activeKey?: string | null;
+  /** 未归属任何团队的 Worker 名（列表底部折叠行；空 = 不渲染）。 */
+  standaloneWorkers?: string[];
+  onOpenWorker?: (name: string) => void;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -323,6 +329,123 @@ function TeamListPane({
           />
         )}
       </antd.Spin>
+      {standaloneWorkers.length && onOpenWorker ? (
+        <StandaloneWorkersRow names={standaloneWorkers} onOpenWorker={onOpenWorker} />
+      ) : null}
+    </div>
+  );
+}
+
+/** 列表底部：「未归属团队的 Worker（N）」可折叠行（独立 Worker 可见性；
+点开列名字，点名字进 Worker 详情——复用 nav.openWorker，不做新页面）。 */
+function StandaloneWorkersRow({
+  names,
+  onOpenWorker,
+}: {
+  names: string[];
+  onOpenWorker: (name: string) => void;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{ border: `1px dashed ${t.border}`, borderRadius: 8, padding: "6px 10px" }}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          width: "100%",
+          padding: 0,
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          fontSize: 12,
+          fontWeight: 600,
+          color: t.textSecondary,
+          textAlign: "left",
+        }}
+      >
+        {tr("未归属团队的 Worker")}（{names.length}） {open ? "▾" : "▸"}
+      </button>
+      {open ? (
+        <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+          <div style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("独立 Worker——能运行、能被私聊，不参与团队任务；点名字看详情，在团队设置里可加进团队。")}
+          </div>
+          {names.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => onOpenWorker(n)}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "4px 8px",
+                border: "1px solid transparent",
+                borderRadius: 6,
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: 12,
+                color: t.text,
+                textAlign: "left",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = t.hoverBg;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+              }}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 中栏：选中独立 Worker（未归属任何团队）时的上下文卡——
+替代「所选团队已不在最新数据中」空态；详情走既有右栏 WorkerDetailPane。 */
+function StandaloneWorkerContextCard({
+  name,
+  onBack,
+}: {
+  name: string;
+  onBack: () => void;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  return (
+    <div style={{ display: "grid", gap: 10, padding: 12 }}>
+      <antd.Card size="small">
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: t.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {name}
+            </span>
+            <antd.Tag color="blue" style={{ margin: 0, flexShrink: 0 }}>
+              {tr("未归属团队")}
+            </antd.Tag>
+          </div>
+          <antd.Alert
+            type="info"
+            showIcon
+            style={{ fontSize: 11 }}
+            message={tr("该 Worker 未归属任何团队（独立 Worker）：能运行、能被私聊，但不参与团队任务。")}
+          />
+          <div style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("加进团队：打开目标团队 → 团队设置 →「加入 Worker」一键加入。")}
+          </div>
+          <antd.Button size="small" onClick={onBack}>
+            {tr("回团队列表")}
+          </antd.Button>
+        </div>
+      </antd.Card>
     </div>
   );
 }
@@ -586,6 +709,15 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
     [nav.selectedWorker, data.admin],
   );
 
+  // 独立 Worker（未被任何 Team CR 引用）——列表底部折叠行 + 中栏上下文卡。
+  const standaloneWorkers = React.useMemo(
+    () =>
+      data.admin
+        ? computeStandaloneWorkers(data.admin.teams, data.admin.workers)
+        : [],
+    [data.admin],
+  );
+
   const gotoCrdCreate = React.useCallback(() => {
     nav.setSection("crd");
     nav.setCrdView("team");
@@ -609,6 +741,8 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
       onOpen={(row) => nav.openTeam(row.key)}
       onGotoCrdCreate={gotoCrdCreate}
       activeKey={variant === "l1" ? nav.selectedTeam : null}
+      standaloneWorkers={standaloneWorkers}
+      onOpenWorker={(n) => nav.openWorker(n)}
     />
   );
   const topologyPane = selectedTeam ? (
@@ -619,6 +753,10 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
       data={data}
       onOpenMillforge={setMfTeam}
     />
+  ) : nav.selectedWorker ? (
+    // 选中独立 Worker（列表底部折叠行进入）→ 独立上下文卡
+    // （详情在右栏；不显「团队不存在」空态）。
+    <StandaloneWorkerContextCard name={nav.selectedWorker} onBack={() => nav.backTeam()} />
   ) : (
     // 选中团队已从数据中消失（刷新后改名/删除）→ 回列表引导。
     <div style={{ padding: 24, textAlign: "center" }}>
