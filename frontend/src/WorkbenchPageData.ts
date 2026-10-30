@@ -382,6 +382,14 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
             kind: "interrupt",
             projectId: ev.runId,
             roomId: ev.room_id || undefined,
+            taskId: it.id || undefined,
+            projectTitle: ev.title || undefined,
+            taskTitle: (() => {
+              const tk = (ev.taskDetails || []).find(
+                (x) => String(x.task_id || "") === String(it.id || ""),
+              );
+              return tk ? String(tk.summary || tk.task_id || "") || undefined : undefined;
+            })(),
             question: it.description || value || undefined,
             createdAt:
               typeof ev.ts === "number" && ev.ts > 0 ? ev.ts : Date.now(),

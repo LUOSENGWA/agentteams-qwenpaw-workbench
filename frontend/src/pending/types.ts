@@ -21,6 +21,10 @@ export interface PendingItem {
   projectId?: string;
   taskId?: string;
   question?: string;
+  /** 项目标题（interrupt/attention 的所属项目名，卡片标题用）。 */
+  projectTitle?: string;
+  /** 任务标题（interrupt 对应的任务 summary，说明"处理哪个任务"）。 */
+  taskTitle?: string;
   options?: PendingOption[];
   multiSelect?: boolean;
   expiresAt?: number;
