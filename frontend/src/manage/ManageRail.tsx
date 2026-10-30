@@ -2,7 +2,8 @@
  * ManageRail.tsx — 「管理」页左栏四域导航（L0）。
  *
  * 四域（现有 icons 图标）：团队管理 / CRD 管理 / 人员管理 / 集群管理。
- * 两种呈现（ManagePage 决定）：wide 内联 200 栏 / medium·narrow 抽屉覆盖。
+ * 呈现（ManagePage 决定）：wide 内联 200 栏 / 四栏恒内联 160（收起 56
+ * icon-only，collapsed=true，16.30）/ medium·narrow 抽屉覆盖。
  * 行高 ≥44 触控命中（.wb-touch 全局档只管 antd 控件，自写 button 在此自保）；
  * hover 高亮走 t.hoverBg（鼠标增强，触屏不依赖）。
  */
@@ -35,9 +36,13 @@ const RAIL_ITEMS: {
 export default function ManageRail({
   section,
   onSelect,
+  collapsed = false,
 }: {
   section: ManageSection;
   onSelect: (s: ManageSection) => void;
+  /** 四栏收起态（16.30）：icon-only，按钮居中（56px 栏），
+   * title/aria-label 承载标签；非收起态行为完全不变。 */
+  collapsed?: boolean;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -53,13 +58,16 @@ export default function ManageRail({
             key={key}
             type="button"
             aria-current={active ? "page" : undefined}
+            title={collapsed ? tr(label) : undefined}
+            aria-label={collapsed ? tr(label) : undefined}
             onClick={() => onSelect(key)}
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: collapsed ? "center" : undefined,
               gap: 10,
               minHeight: 44,
-              padding: "0 12px",
+              padding: collapsed ? 0 : "0 12px",
               border: "none",
               borderRadius: 8,
               cursor: "pointer",
@@ -78,7 +86,7 @@ export default function ManageRail({
             }}
           >
             <Icon size={16} />
-            {tr(label)}
+            {!collapsed ? tr(label) : null}
           </button>
         );
       })}

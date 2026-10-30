@@ -5,6 +5,7 @@
 // 不执行千锻编译器（P2 另开单）。
 
 import { requestJson } from "../shared";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 
 /** INDEX.yaml 条目（四组同构：skeletons/industry/domain/fragments）。 */
 export interface TemplateEntry {
@@ -56,9 +57,16 @@ export interface TemplateFileResponse {
   content: string;
 }
 
-/** 拉取全部模板包（含解析后 INDEX + meta）。失败抛错（调用方降级）。 */
-export async function fetchTemplates(): Promise<TemplatesListResponse> {
-  return (await requestJson("/agentteams-proxy/templates", undefined, 30000)) as TemplatesListResponse;
+/** 拉取全部模板包（含解析后 INDEX + meta）。失败抛错（调用方降级）。
+ * 300s 缓存（近似静态：pack 集合仅在导入/删除时变化，两个写函数已失效）。 */
+export function fetchTemplates(): Promise<TemplatesListResponse> {
+  return cachedRequest(
+    "templates",
+    300_000,
+    () =>
+      requestJson("/agentteams-proxy/templates", undefined, 30000) as Promise<TemplatesListResponse>,
+    { tags: ["templates"] },
+  );
 }
 
 /** 导入千锻模板包（git clone --depth 1；90s 后端超时 → 前端 300s 宽限
@@ -68,7 +76,7 @@ export async function importTemplates(
   url: string,
   ref: string,
 ): Promise<{ ok: boolean; pack: string; files: number; commit: string }> {
-  return (await requestJson(
+  const r = (await requestJson(
     "/agentteams-proxy/templates/import",
     {
       method: "POST",
@@ -77,9 +85,13 @@ export async function importTemplates(
     },
     300000,
   )) as { ok: boolean; pack: string; files: number; commit: string };
+  // 导入新 pack → 模板列表缓存失效（写后必读最新）。
+  invalidateTags(["templates"]);
+  return r;
 }
 
-/** 读 pack 内单文件（path = pack 根相对路径；.md/.yaml；防穿越由后端保证）。 */
+/** 读 pack 内单文件（path = pack 根相对路径；.md/.yaml；防穿越由后端保证）。
+ * 不缓存：pack 内单文件只读预览（大载荷 + 无轮询消费方，缓存在挤 LRU）。 */
 export async function fetchTemplateFile(
   pack: string,
   path: string,
@@ -96,9 +108,12 @@ export async function fetchTemplateFile(
 export async function deleteTemplatePack(
   pack: string,
 ): Promise<{ ok: boolean; deleted: boolean }> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/templates/${encodeURIComponent(pack)}`,
     { method: "DELETE" },
     30000,
   )) as { ok: boolean; deleted: boolean };
+  // 删除 pack（幂等）→ 模板列表缓存失效。
+  invalidateTags(["templates"]);
+  return r;
 }

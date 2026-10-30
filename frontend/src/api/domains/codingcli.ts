@@ -1,6 +1,7 @@
 // Coding CLI 管理面（/coding-cli/*）：探测/设置/安装任务。
 
 import { requestJson } from "../shared";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 import { listCodingRuns } from "./upgrade";
 import type { CodingRun } from "./upgrade";
 
@@ -60,30 +61,36 @@ const CLI_BASE = (name: string) =>
     name,
   )}/coding-cli`;
 
-export async function listCodingCli(name: string): Promise<CodingCliProbeItem[]> {
-  const body = (await requestJson(CLI_BASE(name), undefined, 30000)) as Record<
-    string,
-    CodingCliProbeItem
-  >;
-  if (!body || typeof body !== "object") return [];
-  return Object.values(body).filter(
-    (v): v is CodingCliProbeItem => !!v && typeof v === "object",
-  );
+/** 30s 缓存（探测列表；key=worker 名）。 */
+export function listCodingCli(name: string): Promise<CodingCliProbeItem[]> {
+  return cachedRequest(`coding-cli:${name}`, 30_000, async () => {
+    const body = (await requestJson(CLI_BASE(name), undefined, 30000)) as Record<
+      string,
+      CodingCliProbeItem
+    >;
+    if (!body || typeof body !== "object") return [];
+    return Object.values(body).filter(
+      (v): v is CodingCliProbeItem => !!v && typeof v === "object",
+    );
+  }, { tags: ["coding-cli"] });
 }
 
-export async function getCliSettings(
+/** 60s 缓存（配置类；key=worker+cli；putCliSettings 成功后失效）。 */
+export function getCliSettings(
   name: string,
   cli: CodingCliId,
 ): Promise<CliSettingsResponse> {
-  const r = (await requestJson(
-    `${CLI_BASE(name)}/${encodeURIComponent(cli)}/settings`,
-    undefined,
-    30000,
-  )) as CliSettingsResponse;
-  // 防御：无 settings 键（旧 controller / 异常）→ 空树（unwrap 不炸）。
-  return r && typeof r === "object" && r.settings
-    ? r
-    : { cli, path: "", exists: false, settings: {} };
+  return cachedRequest(`coding-cli-settings:${name}:${cli}`, 60_000, async () => {
+    const r = (await requestJson(
+      `${CLI_BASE(name)}/${encodeURIComponent(cli)}/settings`,
+      undefined,
+      30000,
+    )) as CliSettingsResponse;
+    // 防御：无 settings 键（旧 controller / 异常）→ 空树（unwrap 不炸）。
+    return r && typeof r === "object" && r.settings
+      ? r
+      : { cli, path: "", exists: false, settings: {} };
+  }, { tags: ["coding-cli"] });
 }
 
 export async function putCliSettings(
@@ -100,6 +107,7 @@ export async function putCliSettings(
     { method: "PUT", body: JSON.stringify(patch) },
     180000,
   )) as CliSettingsResponse;
+  invalidateTags(["coding-cli"]);
   return r && typeof r === "object" && r.settings
     ? r
     : { cli, path: "", exists: true, settings: patch };
@@ -111,7 +119,7 @@ export async function startCodingCliInstall(
   action: "install" | "uninstall",
   version?: string,
 ): Promise<{ task_id: string }> {
-  return (await requestJson(
+  const r = (await requestJson(
     `${CLI_BASE(name)}/${encodeURIComponent(cli)}/install`,
     {
       method: "POST",
@@ -119,8 +127,12 @@ export async function startCodingCliInstall(
     },
     30000,
   )) as { task_id: string };
+  // 安装任务启动 → CLI 探测/设置缓存失效（装完状态变化）。
+  invalidateTags(["coding-cli"]);
+  return r;
 }
 
+/** 不缓存：安装任务状态机轮询（running/done/failed，活性即价值）。 */
 export async function getCliInstallTask(
   name: string,
   cli: CodingCliId,
@@ -150,7 +162,9 @@ interface CodingCliLatestResult {
   items: Record<string, CodingCliLatestItem>;
   registry?: string;
 }
-export async function fetchCodingCliLatest(
+/** 300s 缓存（近似静态：npm registry latest 低频变化；key 含 clis；
+ * refresh 非零 → force 回源）。 */
+export function fetchCodingCliLatest(
   clis?: string,
   refresh = 0,
 ): Promise<CodingCliLatestResult> {
@@ -158,11 +172,17 @@ export async function fetchCodingCliLatest(
   if (clis) q.set("clis", clis);
   if (refresh) q.set("refresh", String(refresh));
   const qs = q.toString();
-  return (await requestJson(
-    `/agentteams-proxy/coding-cli/latest${qs ? "?" + qs : ""}`,
-    undefined,
-    25000,
-  )) as CodingCliLatestResult;
+  return cachedRequest(
+    `coding-cli-latest:${clis ?? ""}`,
+    300_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/coding-cli/latest${qs ? "?" + qs : ""}`,
+        undefined,
+        25000,
+      ) as Promise<CodingCliLatestResult>,
+    { force: refresh > 0, tags: ["coding-cli"] },
+  );
 }
 
 /** 按 worker 过滤 coding runs（list 全量 + 客户端过滤 worker 字段；

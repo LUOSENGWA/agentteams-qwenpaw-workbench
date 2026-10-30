@@ -1,7 +1,7 @@
 // 工作流域（/projects-workflow、/workflow/events、controller /api/v1/projects/*）：DAG/事件/摘要/项目控制。
 
 import { getCachedRooms, httpErrorDetail, httpErrorStatus, requestJson } from "../shared";
-import { cachedRequest } from "../../requestCache";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 
 /** 工作流 DAG 节点（树状拓扑数据源，workerflow nodes 字段）。 */
 export interface WorkflowNode {
@@ -224,6 +224,7 @@ export async function fetchWorkflowEvents(
       (await requestJson(
         `/agentteams-proxy/workflow/events${force ? "?force=true" : ""}`,
       )) as { ok: boolean; events: WorkflowEvent[]; elapsed?: number },
+    { tags: ["workflow"] },
   );
 }
 
@@ -272,7 +273,7 @@ export async function fetchProjectSummaries(
       }
     }
     return Array.from(byId.values());
-  });
+  }, { tags: ["projects"] });
 }
 
 /** 项目 workflow 正源（Controller API，双轨 adapter 的正源侧）。
@@ -438,7 +439,7 @@ export async function fetchProjectWorkflow(
       (await requestJson(
         `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?includeTasks=true${teamQ}`,
       )) as WorkflowDetailResponse,
-    { tags: [`project:${projectId}`] },
+    { tags: ["workflow", `project:${projectId}`] },
   );
 }
 
@@ -453,7 +454,7 @@ export async function fetchWorkflowProjects(
     "workflow/projects",
     30000,
     () => loadWorkflowProjectsRaw(force),
-    { force },
+    { force, tags: ["projects"] },
   );
 }
 
@@ -725,12 +726,15 @@ export function enrichWorkflowRoomNames(events: WorkflowEvent[]): WorkflowEvent[
 }
 
 /** 项目写操作（上游已合并：pause/resume/replan/complete + 任务级 cancel，
- * 走后端 controller 代理）。成功后 Controller 返回刷新后的 workflow JSON。 */
+ * 走后端 controller 代理）。成功后 Controller 返回刷新后的 workflow JSON。
+ * 写面失效策略（16.33）：5 个写成功后统一
+ * invalidateTags(["workflow","projects","project:<id>"])——事件流/项目
+ * 列表/单项目明细三条读缓存同步失效，不靠 TTL 自然过期。 */
 export async function pauseProject(
   projectId: string,
   reason?: string,
 ): Promise<Record<string, unknown>> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/pause`,
     {
       method: "POST",
@@ -738,12 +742,14 @@ export async function pauseProject(
       body: JSON.stringify({ reason: reason ?? "" }),
     },
   )) as Record<string, unknown>;
+  invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  return r;
 }
 
 export async function resumeProject(
   projectId: string,
 ): Promise<Record<string, unknown>> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/resume`,
     {
       method: "POST",
@@ -751,6 +757,8 @@ export async function resumeProject(
       body: JSON.stringify({}),
     },
   )) as Record<string, unknown>;
+  invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  return r;
 }
 
 /** 任务级取消（接按钮）：reason 必填（400），
@@ -761,7 +769,7 @@ export async function cancelTask(
   taskId: string,
   reason: string,
 ): Promise<Record<string, unknown>> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/cancel`,
     {
       method: "POST",
@@ -769,6 +777,8 @@ export async function cancelTask(
       body: JSON.stringify({ reason }),
     },
   )) as Record<string, unknown>;
+  invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  return r;
 }
 
 /** 项目级完成（接按钮）：空 body；
@@ -777,7 +787,7 @@ export async function cancelTask(
 export async function completeProject(
   projectId: string,
 ): Promise<Record<string, unknown>> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/complete`,
     {
       method: "POST",
@@ -785,6 +795,8 @@ export async function completeProject(
       body: JSON.stringify({}),
     },
   )) as Record<string, unknown>;
+  invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  return r;
 }
 
 
@@ -796,7 +808,7 @@ export async function replanProject(
   projectId: string,
   tasks: unknown[],
 ): Promise<Record<string, unknown>> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/replan`,
     {
       method: "POST",
@@ -804,4 +816,6 @@ export async function replanProject(
       body: JSON.stringify({ tasks }),
     },
   )) as Record<string, unknown>;
+  invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  return r;
 }

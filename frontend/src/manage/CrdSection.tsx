@@ -1,11 +1,15 @@
 // CrdSection.tsx — 「管理」页 CRD 管理域（方案 §4.2，P4）。
 //
+// CRD 域 = 纯创建面（16.28）：旧记录列表/行操作已移至团队管理域
+// （TeamSection→TeamSettingsPane→CrdCfgForm 团队配置/删除）与人员管理域
+// （PeopleSection→HumanAccessModal 访问与权限）；本域只保留创建表单。
+//
 // 栏职责（方案 §4.2）：
 // - mid:   三个入口卡（员工入职 Human CRD / 创建团队 Team CRD / 新建 Worker）
 //          + 各自记录数
-// - right: 入口选中 → 原 CRD 卡片/表单（crdmanage/* 组件零行为改动直用）：
-//          human  → CrdHumanForm + CrdHumanTableCard（+ 初始密码弹窗 + 访问与权限弹窗）
-//          team   → 导出 JSON + CrdTeamForm + CrdCheckPanel + CrdTeamTableCard
+// - right: 入口选中 → 原 CRD 表单（crdmanage/* 组件零行为改动直用）：
+//          human  → CrdHumanForm（+ 入职成功初始密码弹窗）
+//          team   → 导出 JSON + CrdTeamForm + CrdCheckPanel
 //          worker → CrdWorkerForm
 // - full:  本域不用（横屏无覆盖二级页；竖屏 L2 走 right）
 //
@@ -14,15 +18,13 @@
 // 仅 L1 且有管理数据时挂载（useModelCatalog 挂载即拉网关 alias，L2 不拨号）。
 //
 // 跨域复用（不复制逻辑）：
-// - 团队表「配置团队」齿轮 = 跳团队域团队设置（P3 CrdCfgForm 内联），
-//   本域不再出 CrdCfgModal（避免两套配置入口分叉）。
-// - 团队表「千锻注入」行操作 = 原 MillforgeModal（与旧 CrdManage 同款）。
 // - 建队表单千锻折叠区 = useMillforgeCreate 实例（pre/post 经 ref 断环，
 //   与 CrdManage 同款接线）。
+//
+// 四栏（cols=4）本组件只收 l1/mid（16.28：无右栏，与集群域同款）。
 
 import type * as ReactNS from "react";
 
-import type { TeamInfo } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useModelCatalog } from "../crdmanage/useModelCatalog";
@@ -32,11 +34,6 @@ import CrdHumanForm from "../crdmanage/CrdHumanForm";
 import CrdTeamForm from "../crdmanage/CrdTeamForm";
 import CrdCheckPanel from "../crdmanage/CrdCheckPanel";
 import CrdWorkerForm from "../crdmanage/CrdWorkerForm";
-import { CrdHumanTableCard, CrdTeamTableCard } from "../crdmanage/CrdListTables";
-import HumanAccessModal, {
-  computeStandaloneWorkers,
-} from "../crdmanage/HumanAccessModal";
-import MillforgeModal from "../millforge/MillforgeModal";
 import { useMillforgeCreate } from "../millforge/useMillforgeCreate";
 import { UserIcon, TeamIcon, RobotIcon } from "../components/icons";
 import type { ManageSectionProps } from "./types";
@@ -105,22 +102,10 @@ function CrdDomain({
     millforgePreCreate: mfPre,
     millforgePostCreate: mfPost,
   });
-  // 团队表「千锻注入」行操作对话框。
-  const [mfTeam, setMfTeam] = React.useState<TeamInfo | null>(null);
 
   const teamNames = teams.map((x) => x.name);
   const workerNames = workers.map((x) => x.name);
   const humanNames = humans.map((x) => x.name);
-
-  // 团队表「配置团队」齿轮 → 跨域跳团队域团队设置（P3 CrdCfgForm 内联）。
-  const gotoTeamSettings = React.useCallback(
-    (r: TeamInfo) => {
-      nav.openTeam(r.name);
-      nav.openTeamSettings();
-      nav.setSection("team");
-    },
-    [nav],
-  );
 
   // ── 数据未就绪瞬态（admin 刷新中清空）──
   if (!data.admin) {
@@ -228,32 +213,18 @@ function CrdDomain({
 
   const view = nav.crdView;
 
-  // ── 四栏：mid = 入口对应表单（列表态 → 引导）；right = 无更深一层 → 引导 ──
-  if (cols === 4) {
-    if (variant === "mid" && view === "list") {
-      return (
-        <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
-            {tr("选择 CRD 入口")}
-          </span>
-          <span style={{ fontSize: 12, color: t.textSecondary }}>
-            {tr("点左侧列表入口显示对应表单")}
-          </span>
-        </div>
-      );
-    }
-    if (variant === "right") {
-      return (
-        <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
-            {tr("无更深一层")}
-          </span>
-          <span style={{ fontSize: 12, color: t.textSecondary }}>
-            {tr("CRD 表单在中栏")}
-          </span>
-        </div>
-      );
-    }
+  // ── 四栏：mid = 入口对应表单（列表态 → 引导）；无右栏（16.28，与集群域同款）──
+  if (cols === 4 && variant === "mid" && view === "list") {
+    return (
+      <div style={{ display: "grid", gap: 8, padding: 12, textAlign: "center" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
+          {tr("选择 CRD 入口")}
+        </span>
+        <span style={{ fontSize: 12, color: t.textSecondary }}>
+          {tr("点左侧列表入口显示对应表单")}
+        </span>
+      </div>
+    );
   }
 
   // ── 2/3 栏 right：入口列表态 → 引导；否则入口对应表单 ──
@@ -273,23 +244,15 @@ function CrdDomain({
   return (
     <div style={{ display: "grid", gap: 10, padding: 4 }}>
       {view === "human" ? (
-        <>
-          <CrdHumanForm
-            hForm={human.hForm}
-            setHForm={human.setHForm}
-            hBusy={human.hBusy}
-            doCreateHuman={human.doCreateHuman}
-            teamNames={teamNames}
-            workerNames={workerNames}
-            tr={tr}
-          />
-          <CrdHumanTableCard
-            humans={humans}
-            openPerm={human.openPerm}
-            doDeleteHuman={human.doDeleteHuman}
-            tr={tr}
-          />
-        </>
+        <CrdHumanForm
+          hForm={human.hForm}
+          setHForm={human.setHForm}
+          hBusy={human.hBusy}
+          doCreateHuman={human.doCreateHuman}
+          teamNames={teamNames}
+          workerNames={workerNames}
+          tr={tr}
+        />
       ) : null}
       {view === "team" ? (
         <>
@@ -326,14 +289,6 @@ function CrdDomain({
             t={t}
           />
           <CrdCheckPanel tCheck={team.tCheck} startTeamCheck={team.startTeamCheck} tr={tr} t={t} />
-          <CrdTeamTableCard
-            teams={teams}
-            openCfg={gotoTeamSettings}
-            doDeleteTeam={team.doDeleteTeam}
-            onMillforge={(r) => setMfTeam(r)}
-            tr={tr}
-            t={t}
-          />
         </>
       ) : null}
       {view === "worker" ? (
@@ -376,27 +331,6 @@ function CrdDomain({
           />
         </antd.Modal>
       ) : null}
-
-      {/* 千锻注入对话框（团队表行操作；注入后静默刷新管理数据）。 */}
-      <MillforgeModal
-        team={mfTeam}
-        workers={workers}
-        onRefresh={() => onRefresh(true)}
-        onClose={() => setMfTeam(null)}
-        t={t}
-      />
-
-      {/* 访问与权限弹窗（chips 单模态；人员表行操作）——与人员域
-       * PeopleSection 各持一份实例（state 局部化，同一组件实现零逻辑分叉）。 */}
-      <HumanAccessModal
-        human={human.permHuman}
-        teamNames={teamNames}
-        standaloneWorkers={computeStandaloneWorkers(teams, workers)}
-        tr={tr}
-        t={t}
-        onClose={() => human.setPermHuman(null)}
-        onSaved={() => void onRefresh(true)}
-      />
     </div>
   );
 }

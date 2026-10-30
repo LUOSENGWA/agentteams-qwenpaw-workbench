@@ -162,4 +162,7 @@ export const adminDict: Record<string, { en: string }> = {
   "添加独立 Worker…": { en: "Add standalone worker…" },
   "无独立 Worker（全部已入团队）": { en: "No standalone workers (all in teams)" },
   "未关联 Worker（可选）": { en: "No linked workers (optional)" },
+  // ── 15.36 D：权限档位 Select 短 label（完整语义进 HelpDot tooltip）──
+  "L1 · 管理员": { en: "L1 · Admin" },
+  "L2 · 团队成员": { en: "L2 · Team member" },
 };

@@ -582,6 +582,7 @@ function WorkerManageInfo({
           open={rcOpen}
           title={tr("运行配置")}
           onClose={() => setRcOpen(false)}
+          flushTop
         >
           <WorkerRuntimeConfig
             sheet
@@ -600,6 +601,7 @@ function WorkerManageInfo({
           open={envOpen}
           title={tr("环境变量与网关探测")}
           onClose={() => setEnvOpen(false)}
+          flushTop
         >
           <WorkerEnvPanel
             sheet
@@ -615,6 +617,7 @@ function WorkerManageInfo({
           open={mcpOpen}
           title={tr("Worker MCP")}
           onClose={() => setMcpOpen(false)}
+          flushTop
         >
           <WorkerMcpPanel sheet worker={worker} />
         </NarrowSheet>
@@ -626,6 +629,7 @@ function WorkerManageInfo({
           open={pluginsOpen}
           title={tr("Worker 插件")}
           onClose={() => setPluginsOpen(false)}
+          flushTop
         >
           <WorkerPluginsPanel sheet worker={worker} />
         </NarrowSheet>
@@ -636,6 +640,7 @@ function WorkerManageInfo({
           open={cliOpen}
           title={tr("Coding CLI（安装/升级/settings）")}
           onClose={() => setCliOpen(false)}
+          flushTop
         >
           <WorkerCodingCliPanel
             sheet
@@ -650,6 +655,7 @@ function WorkerManageInfo({
           open={llmOpen}
           title={tr("LLM 调优（重试与限流 / 流式超时）")}
           onClose={() => setLlmOpen(false)}
+          flushTop
         >
           <WorkerLlmTuningPanel
             sheet
@@ -929,6 +935,7 @@ export function WorkerRow({
                   open={resOpen}
                   title={tr("资源管理（技能 / MCP / 频道 / 工具）")}
                   onClose={() => setResOpen(false)}
+                  flushTop
                 >
                   <WorkerResourcePanel sheet worker={adminWorker} l1={l1} />
                 </NarrowSheet>

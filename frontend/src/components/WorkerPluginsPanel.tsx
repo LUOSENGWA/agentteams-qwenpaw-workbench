@@ -5,11 +5,12 @@
  * 卡片外框进 NarrowSheet）。
  *
  * 数据：插件后端 GET /workers/{name}/plugins → Controller 只读代理
- * GET /api/v1/workers/{name}/plugins（端点是并行单，可能尚未合并）。
+ * GET /api/v1/workers/{name}/plugins（当前 controller 版本未注册该
+ * 路由——WorkerPlugins handler 存在但 http.go 未挂载）。
  *
- * 诚实降级（Controller 端点未合）：404 → 后端返回 HTTP 200
+ * 诚实降级（当前 controller 未提供该端点）：404 → 后端返回 HTTP 200
  * {available:false, reason:"controller_too_old"} → 本面板一行 info 提示
- * 「需升级 controller」，不报错弹窗；无本地 controller token →
+ * 「需 controller 版本支持」，不报错弹窗；无本地 controller token →
  * reason:"no_token" 同款降级。
  *
  * 字段直传：插件条目不含凭据（无 env/headers/command）——后端原样透传，
@@ -210,7 +211,7 @@ function WorkerPluginsPanel({
         </>
       }
     >
-      {/* 诚实降级：Controller 端点未合（404）/ 无 token → 一行提示，
+      {/* 诚实降级：当前 controller 未注册该端点（404）/ 无 token → 一行提示，
           不报错弹窗。 */}
       {unavailable && data ? (
         <antd.Alert
@@ -222,7 +223,7 @@ function WorkerPluginsPanel({
           showIcon
           message={
             data.reason === "controller_too_old"
-              ? tr("当前 controller 不支持读取 worker 插件（需升级 controller）")
+              ? tr("当前 controller 未提供 worker 插件端点（需 controller 版本支持）")
               : data.reason === "no_token"
                 ? tr("未配置 controller 凭据，暂不能读取 worker 插件")
                 : tr("worker 插件读取失败（{reason}）", {

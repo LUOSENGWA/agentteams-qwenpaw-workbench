@@ -3,13 +3,15 @@
  * 内容迁移，10/29 下线；15.36 C：详情统一归 right/mid 栏 + 新增
  * 「运行时批量升级」入口）。
  *
- * 栏职责（15.36 C 起；A 段「详情覆盖中+右」模型废弃）：
+ * 栏职责（15.36 C 起；A 段「详情覆盖中+右」模型废弃；16.27 A：
+ * 集群域四栏无右栏——详情在中栏）：
  * - l1（四栏 L1 列）/ mid（2/3 栏）：集群概览（OpsOverview：集群状态/版本 +
  *   SGLang 负载）+ 三张入口卡：日志 / 审计 / 运行时批量升级（点卡
  *   setClusterView，详情渲染在 right 栏（2/3 栏）或 mid 栏（四栏））
  * - mid（四栏）：详情态渲染详情；概览态引导
- * - right（2/3 栏）：按 clusterView 渲染详情 / 概览态引导
- * - right（四栏）：无更深一层引导（详情在中栏）
+ * - right（仅 2/3 栏）：按 clusterView 渲染详情 / 概览态引导
+ *   （四栏集群域不渲染 right——ManagePage 16.27 A，本组件 cols=4 时
+ *   只会收到 l1/mid variant）
  * - full：仅 narrow（1 栏）L2 二级页全屏渲染（ManagePage L2 分支，左上
  *   「←」返回，筛选保留）
  *
@@ -191,28 +193,8 @@ export default function ClusterSection({ nav, cols, data, variant }: ManageSecti
     return renderOverviewCards();
   }
 
-  // right：2/3 栏按 clusterView 渲染详情/引导；四栏无更深一层。
-  if (cols === 4) {
-    return (
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          placeItems: "center",
-          textAlign: "center",
-          padding: 16,
-        }}
-      >
-        <MonitorIcon size={20} style={{ color: t.textSecondary }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
-          {tr("无更深一层")}
-        </span>
-        <span style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
-          {tr("集群详情在中栏（日志 / 审计 / 批量升级）")}
-        </span>
-      </div>
-    );
-  }
+  // right（仅 2/3 栏）：按 clusterView 渲染详情/引导。四栏集群域无右栏
+  //（ManagePage 16.27 A）——cols=4 时本组件不会再收到 right variant。
   return isDetail
     ? renderDetail()
     : renderGuide(tr("点中栏 组件日志 / 审计 / 批量升级 卡片查看详情（详情在右栏）"));

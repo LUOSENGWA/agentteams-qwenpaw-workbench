@@ -1,7 +1,7 @@
 // CRD/L1-L2 管理面（controller /api/v1/workers|teams|humans|managers）：CRD CRUD + admin 聚合取数。
 
 import { controllerRequest, fetchControllerJson } from "../shared";
-import { cachedFetch } from "../../requestCache";
+import { cachedFetch, invalidateTags } from "../../requestCache";
 
 // ── L1 全量视图（Controller API，需管理员 token）────────────────────
 
@@ -153,66 +153,109 @@ export interface AdminData {
   managers: ManagerInfo[];
 }
 
+// ── 写面失效策略（16.33 缓存补齐）：CRD 全部 CRUD 成功后
+// invalidateTags(["teams","admin"])（admin 聚合视图四段同源）；
+// createWorker 另失效 ["workers-status"]（容器状态列表同变）。
+// probeWorkerGateway 为一次性诊断探测（无对应读缓存），不失效。
+
 /** 员工入职（Human CR 创建）。上游无 UpdateHuman——改权限级别需删除重建。 */
-export const createHuman = (body: Record<string, unknown>) =>
-  controllerRequest("POST", "/humans", body) as Promise<CreateHumanResponse>;
+export async function createHuman(
+  body: Record<string, unknown>,
+): Promise<CreateHumanResponse> {
+  const r = (await controllerRequest("POST", "/humans", body)) as CreateHumanResponse;
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 
 /** 创建 Worker（POST /api/v1/workers，）：CR 创建后由
  * Controller 调和器拉镜像起容器（数分钟就绪）。body: name 必填；
  * model/modelProvider/identity/soul/agents/skills/mcpServers/expose/
  * containerManaged(默认 true)/state 可选（CreateWorkerRequest）。 */
-export const createWorker = (body: Record<string, unknown>) =>
-  controllerRequest("POST", "/workers", body);
-export const deleteHuman = (name: string) =>
-  controllerRequest("DELETE", `/humans/${encodeURIComponent(name)}`);
+export async function createWorker(
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const r = await controllerRequest("POST", "/workers", body);
+  invalidateTags(["teams", "admin", "workers-status"]);
+  return r;
+}
+export async function deleteHuman(name: string): Promise<unknown> {
+  const r = await controllerRequest("DELETE", `/humans/${encodeURIComponent(name)}`);
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 
 /** 更新 Human 的团队授权（PUT /api/v1/humans/{name}，merge 语义：
  * accessibleTeams 传数组 = 整表替换，省略 = 不变）。
  * 404/405 = Controller 未含该端点（旧版）→ 调用方回落「生成命令」。 */
-export const updateHumanAccessibleTeams = (
+export async function updateHumanAccessibleTeams(
   name: string,
   accessibleTeams: string[],
-) =>
-  controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, {
+): Promise<unknown> {
+  const r = await controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, {
     accessibleTeams,
   });
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 
 /** 一键保存人员访问与权限（15.35：同 updateHumanAccessibleTeams 的
  * PUT /humans/{name} 端点与 merge 语义，一次发全字段：permissionLevel +
  * accessibleTeams + accessibleWorkers）。
  * 404/405 = Controller 未含该端点（旧版）→ 调用方回落「生成命令」。 */
-export const updateHumanAccess = (
+export async function updateHumanAccess(
   name: string,
   spec: {
     permissionLevel: number;
     accessibleTeams: string[];
     accessibleWorkers: string[];
   },
-) => controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, spec);
+): Promise<unknown> {
+  const r = await controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, spec);
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 /** 创建团队——workerMembers 必须引用已存在的 Worker CR，且 ≥1。 */
-export const createTeam = (body: Record<string, unknown>) =>
-  controllerRequest("POST", "/teams", body);
+export async function createTeam(body: Record<string, unknown>): Promise<unknown> {
+  const r = await controllerRequest("POST", "/teams", body);
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 /** 配置团队（PUT 部分更新：空字段不覆盖）。humanMembers 上游 PUT 不支持。 */
-export const updateTeam = (name: string, body: Record<string, unknown>) =>
-  controllerRequest("PUT", `/teams/${encodeURIComponent(name)}`, body);
+export async function updateTeam(
+  name: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const r = await controllerRequest("PUT", `/teams/${encodeURIComponent(name)}`, body);
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 /** 更新现有 Worker 的模型（PUT /workers/{name} 合并语义——只应用非空字段，
  * 其余 spec 不动；modelProvider 传 undefined=不改，传值=覆盖）。。
  * 
  * 多 Higress provider 部署下 model 只是请求 alias，真正转发由 modelProvider
  * （APIG Model API 名）决定；选 alias 时应同时回填/下发 provider。 */
-export const updateWorkerModel = (
+export async function updateWorkerModel(
   name: string,
   model: string,
   modelProvider?: string,
-) =>
-  controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, {
+): Promise<unknown> {
+  const r = await controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, {
     model,
     ...(modelProvider !== undefined ? { modelProvider } : {}),
   });
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 /** ：通用 Worker spec 合并更新——
  * 只发非空字段（PUT 合并语义同上）；model/soul 任意组合。 */
-export const updateWorker = (name: string, body: Record<string, unknown>) =>
-  controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, body);
+export async function updateWorker(
+  name: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const r = await controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, body);
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 
 /** Worker 网关身份探测（POST /api/v1/workers/{name}/gateway-probe，
  * AgentTeams 1.2.5+ #1306，L1/manager only）。
@@ -240,11 +283,20 @@ export const probeWorkerGateway = (
 /** 更新 Manager 模型。PUT /managers/{name} 同为合并语义
  * （Controller UpdateManager：if req.Model != "" 才写 spec，其余 spec 不动；
  * resource_handler.go 源码实锤）——只发 {model}，provider 保持原值/默认。 */
-export const updateManagerModel = (name: string, model: string) =>
-  controllerRequest("PUT", `/managers/${encodeURIComponent(name)}`, { model });
+export async function updateManagerModel(
+  name: string,
+  model: string,
+): Promise<unknown> {
+  const r = await controllerRequest("PUT", `/managers/${encodeURIComponent(name)}`, { model });
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 
-export const deleteTeam = (name: string) =>
-  controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
+export async function deleteTeam(name: string): Promise<unknown> {
+  const r = await controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
+  invalidateTags(["teams", "admin"]);
+  return r;
+}
 
 /** cachedFetch 包裹（admin/data，TTL 30s + SWR 30s，tags
  * ["admin"]）——4 路并发取数，WorkerManage 30s 轮询与 CrdManage 失效后

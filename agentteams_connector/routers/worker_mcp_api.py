@@ -2,14 +2,15 @@
 """Worker MCP 域：CRD 声明 + worker 自注册 MCP 的合并读（只读）。
 
 背景：worker 把内置插件 MCP（teamharness/workerflow 等）自注册进
-QwenPaw 客户端注册表（worker 侧 GET /api/mcp），Controller 另有一单
-加 ``GET /api/v1/workers/{name}/mcp`` 只读代理（**可能尚未合并**）。
+QwenPaw 客户端注册表（worker 侧 GET /api/mcp），Controller 提供
+``GET /api/v1/workers/{name}/mcp`` 只读代理（main 已注册；仅当
+Controller 实例未提供该端点时返回 404 → 走下方降级）。
 工作台此前只显示 CRD 的 ``spec.mcpServers``（Controller /workers
 响应透传），看不到 worker 自注册条目——本端点补「自注册」读路径，
 前端 WorkerMcpPanel 将两路合并展示。
 
 诚实降级（任务书口径）：
-- Controller 404（端点未合 / 路径不存在）→ HTTP 200
+- Controller 404（实例未提供该端点 / 路径不存在）→ HTTP 200
   ``{"available": false, "reason": "controller_too_old"}``
   ——不抛 500、不吞成空数组；前端显示「需升级 controller」一行提示。
 - 无本地 controller token → HTTP 200
@@ -17,7 +18,7 @@ QwenPaw 客户端注册表（worker 侧 GET /api/mcp），Controller 另有一�
 - 其他错误（401/403/5xx/传输全败）→ 透传/映射状态码 + 简短原因
   （前端行内 warning，无弹窗）。
 
-防御性归一化（Controller 侧并行单未合、端点响应形态未定案）：
+防御性归一化（端点响应形态未定案，跨版本防御）：
 接受 ① 条目数组 ② 包装对象（mcpServers/servers/mcp/clients/mcp_servers）
 ③ name→config 映射（QwenPaw mcp.clients 形态）；条目以 **key 优先**
 （QwenPaw MCPClientInfo 的 key = 唯一标识，name = 显示名，显示名另存
@@ -167,7 +168,7 @@ def build_worker_mcp_router() -> APIRouter:
     async def worker_mcp(worker: str) -> Dict[str, Any]:
         """worker 自注册 MCP（Controller 只读代理）。
 
-        404（Controller 端点未合/路径不存在）→ 200 available=false
+        404（Controller 实例未提供该端点/路径不存在）→ 200 available=false
         reason=controller_too_old（诚实降级）；401/403/5xx → 透传
         状态码 + 简短原因；无 token → 200 available=false no_token。
         """

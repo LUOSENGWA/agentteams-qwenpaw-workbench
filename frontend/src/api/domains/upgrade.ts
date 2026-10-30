@@ -1,6 +1,7 @@
 // 升级域（/upgrade/*、/node-version/*、/workers/*/runtime-env、controller /api/v1/coding-runs）：集群升级 + coding runs + 节点版本。
 
 import { requestJson } from "../shared";
+import { cachedFetch, cachedRequest, invalidateTags } from "../../requestCache";
 
 // ── 编码执行记录（Coding Runs；上游 1.2.5 #1365/#1381 只读端点）──────
 // 数据面 = Controller GET /api/v1/coding-runs（controller token 鉴权，
@@ -68,15 +69,19 @@ export interface CodingRunDetail {
   };
 }
 
-export async function listCodingRuns(): Promise<CodingRun[]> {
-  const res = (await requestJson(
-    "/agentteams-proxy/controller/api/v1/coding-runs",
-    undefined,
-    30000,
-  )) as CodingRun[] | { runs?: CodingRun[] } | null;
-  if (!res) return [];
-  if (Array.isArray(res)) return res;
-  return res.runs ?? [];
+/** 30s 缓存（WorkerCodingRuns/CodingRunsPanel 均 30s 轮询；
+ * codingcli.listCodingRunsByWorker 委托本函数，自动同享）。 */
+export function listCodingRuns(): Promise<CodingRun[]> {
+  return cachedRequest("coding-runs", 30_000, async () => {
+    const res = (await requestJson(
+      "/agentteams-proxy/controller/api/v1/coding-runs",
+      undefined,
+      30000,
+    )) as CodingRun[] | { runs?: CodingRun[] } | null;
+    if (!res) return [];
+    if (Array.isArray(res)) return res;
+    return res.runs ?? [];
+  }, { tags: ["coding-runs"] });
 }
 
 // ── 运行时升级（1.2.5 #1364/#1343：两阶段编排器 + 预检门控）─────────
@@ -195,22 +200,36 @@ export interface UpgradeStatusResult {
 }
 
 /** 批量检查更新（一次调用全量 worker 当前版+latest；服务端 10min 缓存）。
- * 「检查更新」主路径 + tab 激活后台预取（二次点击毫秒级）。 */
-export async function fetchUpgradeCheckAll(): Promise<UpgradeCheckAll> {
-  return (await requestJson(
-    "/agentteams-proxy/upgrade/check-all",
-    undefined,
-    60000,
-  )) as UpgradeCheckAll;
+ * 「检查更新」主路径 + tab 激活后台预取（二次点击毫秒级）。
+ * 前端 30s + SWR 30s：30-60s 段先回旧值（面板零等待）+ 后台再验证。 */
+export function fetchUpgradeCheckAll(): Promise<UpgradeCheckAll> {
+  return cachedFetch(
+    "upgrade/check-all",
+    30_000,
+    () =>
+      requestJson(
+        "/agentteams-proxy/upgrade/check-all",
+        undefined,
+        60000,
+      ) as Promise<UpgradeCheckAll>,
+    { tags: ["upgrade"], swrMs: 30_000 },
+  );
 }
 
-/** qwenpaw release 列表（版本表格；后端随 latest 同一 PyPI 缓存）。 */
-export async function fetchUpgradeVersions(): Promise<UpgradeVersions> {
-  return (await requestJson(
-    "/agentteams-proxy/upgrade/versions",
-    undefined,
-    30000,
-  )) as UpgradeVersions;
+/** qwenpaw release 列表（版本表格；后端随 latest 同一 PyPI 缓存）。
+ * 300s 缓存（近似静态：release 列表仅新发布时变化）。 */
+export function fetchUpgradeVersions(): Promise<UpgradeVersions> {
+  return cachedRequest(
+    "upgrade/versions",
+    300_000,
+    () =>
+      requestJson(
+        "/agentteams-proxy/upgrade/versions",
+        undefined,
+        30000,
+      ) as Promise<UpgradeVersions>,
+    { tags: ["upgrade"] },
+  );
 }
 
 /** Worker 运行时环境变量（PID 1 env 预填充正源，只读；reveal=明文）。 */
@@ -225,11 +244,17 @@ export async function fetchWorkerRuntimeEnv(
   if (reveal) qs.push("reveal=1");
   if (fresh) qs.push("fresh=1");
   const q = qs.length ? `?${qs.join("&")}` : "";
-  return (await requestJson(
-    `/agentteams-proxy/workers/${encodeURIComponent(worker)}/runtime-env${q}`,
-    undefined,
-    15000, // 服务端 exec cap 8s + 缓冲，挂起不再拖 30s
-  )) as WorkerRuntimeEnv;
+  return cachedRequest(
+    `worker-runtime:${worker}:${reveal ? 1 : 0}`,
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/workers/${encodeURIComponent(worker)}/runtime-env${q}`,
+        undefined,
+        15000, // 服务端 exec cap 8s + 缓冲，挂起不再拖 30s
+      ) as Promise<WorkerRuntimeEnv>,
+    { force: fresh, tags: ["worker-runtime"] },
+  );
 }
 
 /** 触发升级（破坏性：两阶段编排，容器重启、失败自动回滚）。
@@ -238,7 +263,7 @@ export async function runUpgrade(
   worker: string,
   version: string,
 ): Promise<UpgradeRunHandle> {
-  return (await requestJson(
+  const r = (await requestJson(
     "/agentteams-proxy/upgrade/run",
     {
       method: "POST",
@@ -247,8 +272,13 @@ export async function runUpgrade(
     },
     65000,
   )) as UpgradeRunHandle;
+  // 升级启动 → 版本/运行时数据面失效（success 后 UI 另走 refresh 强刷）。
+  invalidateTags(["upgrade", "node-version", "worker-runtime"]);
+  return r;
 }
 
+/** 不缓存：job 状态机轮询（RuntimeUpgradePanel 两处 5s 轮询，
+ * 活性即价值——任何 TTL 都会卡住状态推进；与 fetchSglangLoads 同理）。 */
 export async function fetchUpgradeStatus(
   worker: string,
   jobId?: string,
@@ -264,7 +294,8 @@ export async function fetchUpgradeStatus(
 }
 
 /** 单条 run 详情，固定 ?format=json（transcript 在 output.transcript；
- * 字节透传的 text/plain 默认形态 requestJson 无法解析，故取 json 封装）。 */
+ * 字节透传的 text/plain 默认形态 requestJson 无法解析，故取 json 封装）。
+ * 不缓存：一次性打开的 transcript（大载荷 + 无轮询消费方）。 */
 export async function fetchCodingRunDetail(
   taskID: string,
   run: string,
@@ -301,14 +332,22 @@ export interface NodeVersion {
   probed_at?: number;
 }
 
-export async function fetchNodeVersion(
+/** 300s 缓存（近似静态：镜像 tag 仅发布/升级变化；服务端另有 10min 缓存）。
+ * refresh=true → force 回源（升级 success 后 UI 强刷路径全走 force）。 */
+export function fetchNodeVersion(
   name: string,
   refresh = false,
 ): Promise<NodeVersion> {
   const q = refresh ? "?refresh=1" : "";
-  return (await requestJson(
-    `/agentteams-proxy/node-version/${encodeURIComponent(name)}${q}`,
-    undefined,
-    30000,
-  )) as NodeVersion;
+  return cachedRequest(
+    `node-version:${name}`,
+    300_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/node-version/${encodeURIComponent(name)}${q}`,
+        undefined,
+        30000,
+      ) as Promise<NodeVersion>,
+    { force: refresh, tags: ["node-version"] },
+  );
 }

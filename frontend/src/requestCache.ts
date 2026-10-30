@@ -194,6 +194,16 @@ export function invalidateTags(tags: string[]): void {
   }
 }
 
+/**
+ * 清空全部缓存条目（保留在飞表——在飞 Promise settle 时仍会写回，
+ * 与 invalidateTags 同款 stale-write race；调用方语义是「全量数据面
+ * 重置」（如 importFullConfig 换凭据/身份），页面刷新或下轮 TTL
+ * 即自愈）。
+ */
+export function clearAll(): void {
+  store.clear();
+}
+
 /** 缓存统计（size=当前条目数）。 */
 export function cacheStats(): RequestCacheStats {
   return {
