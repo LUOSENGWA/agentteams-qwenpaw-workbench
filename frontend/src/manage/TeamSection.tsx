@@ -36,7 +36,7 @@ import {
 } from "../components/WorkerManageShared";
 import { SearchIcon, SettingsIcon, TeamIcon } from "../components/icons";
 import MillforgeModal from "../millforge/MillforgeModal";
-import { computeStandaloneWorkers } from "../crdmanage/HumanAccessModal";
+import { computeStandaloneWorkers } from "../crdmanage/standalone";
 import WorkerDetailPane from "./WorkerDetailPane";
 import TeamSettingsPane from "./TeamSettingsPane";
 import type { ManageSectionProps } from "./types";
