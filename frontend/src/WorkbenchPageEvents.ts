@@ -9,6 +9,10 @@ import {
 } from "./api";
 import { mergeForward } from "./roomHistory";
 import { createPoller, type Poller } from "./usePoller";
+import { usePendingStore } from "./pending/store";
+import { attentionPendingKind, parseAttentionMessage } from "./pending/parse";
+import { notifyPending } from "./pending/notify";
+import type { PendingItem } from "./pending/types";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -27,6 +31,12 @@ export interface WorkbenchPageEventsCtx {
 
 export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
   const { tab, activeRoom, pollMessages, markCurrentRead, refreshRooms, refreshWorkflow, setRooms, messagesRef, setMessages } = ctx;
+
+  // P0 人工介入闭环：SSE room_message（任意房间）→ pending store。
+  // SSE effect deps=[] 一次连接——闭包走 ref 取最新 store。
+  const pending = usePendingStore();
+  const pendingRef = React.useRef(pending);
+  pendingRef.current = pending;
 
  // P6（⑨「自动刷新有点蠢，即时信息」）：/sync 事件驱动主路。
   // ref 镜像——SSE effect deps 为空（一次连接），闭包必须走 ref 取最新。
@@ -351,6 +361,36 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
                   };
                 }).event;
                 const evId = String(evp?.event_id || "");
+                // P0 人工介入闭环：ATTENTION 请求（任意房间）→ pending。
+                // 极简载荷只有 body（无 m.mentions）——@我 判定与自解决
+                // 走活动房间全量路径（RoomChatCore）；同一请求也可能由
+                // attention API 承载——池内已有同 taskId 规范项则不双计。
+                if (rid && evp && evId) {
+                  const ap = parseAttentionMessage(String(evp.body || ""));
+                  if (ap) {
+                    const pstore = pendingRef.current;
+                    const dup = pstore.items.some(
+                      (it) =>
+                        it.source === "attention" && it.taskId === ap.taskId,
+                    );
+                    if (!dup) {
+                      const pitem: PendingItem = {
+                        id: `${rid}:${evId}`,
+                        source: "room_message",
+                        kind: attentionPendingKind(ap.question),
+                        roomId: rid,
+                        eventId: evId,
+                        taskId: ap.taskId,
+                        question: ap.question || undefined,
+                        sender: String(evp.sender || ""),
+                        createdAt: Number(evp.ts || 0) || Date.now(),
+                        raw: String(evp.body || "").slice(0, 500),
+                      };
+                      pstore.upsert(pitem);
+                      notifyPending(pitem);
+                    }
+                  }
+                }
                 if (rid && rid === activeRoomRef.current?.room_id) {
                   // 载荷直合——watcher 已附解析后的最小载荷。
                   // 普通文本消息直接合并（零回拉——5Mbps 链路上活跃房回拉

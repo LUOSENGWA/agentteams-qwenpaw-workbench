@@ -43,6 +43,8 @@ import {
   senderShortName,
   toolNameOf,
 } from "./RoomChatShared";
+import { parseAttentionMessage } from "../pending/parse";
+import { AttentionDecisionCard } from "./AttentionDecisionCard";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -595,9 +597,13 @@ function MessageBody({
   onWorkflowIntervened,
   live,
   fileRefTeam,
+  room,
 }: {
   msg: RoomMessage;
   mine: boolean;
+  /** 当前房间（P0 人工介入闭环：ATTENTION 决策卡发【干预答复】需要
+ * room_id；缺省时卡渲染但操作区隐藏）。 */
+  room?: TeamRoom | null;
   /** 当前房间的 team 名（#87 文件引用 chip 点击预览走 team-file 端点；
  * 非团队房间/推不出 team 时缺省，chip 不渲染）。 */
   fileRefTeam?: string | null;
@@ -758,6 +764,36 @@ function MessageBody({
           </div>
         )}
       </div>
+    );
+  }
+  // P0 人工介入闭环：ATTENTION_* 请求（他人消息）→ 正文照渲（MdText），
+  // 其下内联决策卡（question/options/截止/sender + 作答操作；已答→
+  // 「已由 我 于 HH:mm 回答」只读态）。审批卡优先级更高（工具审批
+  // 是二态裁决，先命中先走）；ATTENTION 必为 m.text，与媒体分支无
+  // 实际交集，放 m.image 前保序清晰。
+  if (
+    !mine &&
+    msg.msgtype === "m.text" &&
+    !msg.pending &&
+    parseAttentionMessage(msg.body || "")
+  ) {
+    return (
+      <>
+        <div
+          style={{
+            fontSize: 14,
+            maxWidth: 520,
+            minWidth: 0,
+            padding: "8px 12px",
+            borderRadius: "3px 10px 10px 10px",
+            background: t.bubbleOther,
+            border: `1px solid ${t.border}`,
+          }}
+        >
+          <MdText text={msg.body || ""} />
+        </div>
+        <AttentionDecisionCard msg={msg} room={room ?? null} />
+      </>
     );
   }
   if (msg.msgtype === "m.image" && msg.url) {

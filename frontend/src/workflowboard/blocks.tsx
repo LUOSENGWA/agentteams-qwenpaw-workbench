@@ -11,9 +11,13 @@ import {
   resumeProject,
   completeProject,
   replanProject,
+  sendRoomMessage,
 } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { parseOptions } from "../pending/parse";
+import { selectCompanionIds } from "../pending/tally";
+import { usePendingStore } from "../pending/store";
 import {
   PauseIcon,
   PlayIcon,
@@ -262,20 +266,193 @@ export function InterventionActions({
   );
 }
 
+/** 单条 interrupt 的介入操作区（P0 人工介入闭环 Stage 3）：
+ * 有 options → 选项按钮（recommended 高亮）；无 options → 单行输入
+ * + 提交；action_request=resume 且 allow_accept → 额外「恢复项目」
+ * （复用 resumeProject）；「去房间」深链恒给（ev.room_id 存在时）。
+ * 提交 = 向项目房间发 `【干预答复】` 消息（Worker 侧识别前缀消费）
+ * + 本地 resolve（同 taskId 跨源同伴一并清）。已答 → 只读回显，
+ * 不重复提交。pendingId 口径与 WorkbenchPageData.syncPendingInterrupts
+ * 一致：`${runId}:${it.id}:${it.value}`。 */
+export function InterruptActions({
+  ev,
+  it,
+  onDone,
+  onGotoRoom,
+}: {
+  ev: WorkflowEvent;
+  it: WorkflowInterrupt;
+  onDone?: () => void;
+  onGotoRoom?: (roomId: string) => void;
+}) {
+  const tr = useT();
+  const pending = usePendingStore();
+  const [answer, setAnswer] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  const pendingId = `${ev.runId}:${it.id}:${it.value}`;
+  const resolution = pending.resolutions.find((r) => r.id === pendingId);
+  const options = parseOptions(it.description || it.value);
+  const canResume =
+    it.action_request?.action === "resume" && !!it.config?.allow_accept;
+
+  const submit = async (text: string) => {
+    const body = text.trim();
+    if (!body || busy) return;
+    setBusy(true);
+    try {
+      if (ev.room_id) {
+        await sendRoomMessage(ev.room_id, `【干预答复】${body}`);
+      }
+      const item = pending.items.find((x) => x.id === pendingId);
+      pending.resolve(pendingId, {
+        status: "answered",
+        answer: body.slice(0, 200),
+      });
+      // 跨源同伴一并清（同 taskId 的其它待办项）。
+      if (item) {
+        for (const cid of selectCompanionIds(pending.items, item)) {
+          pending.resolve(cid, {
+            status: "answered",
+            answer: body.slice(0, 200),
+          });
+        }
+      }
+      setAnswer("");
+      onDone?.();
+    } catch (e) {
+      antd.message.error(
+        e instanceof Error ? e.message : tr("发送失败，请重试"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (resolution) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          marginTop: 6,
+          fontSize: 12,
+        }}
+      >
+        <CheckIcon size={12} />
+        <span style={{ opacity: 0.75 }}>
+          {tr("已介入")}
+          {resolution.answer ? `：${resolution.answer}` : ""}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        marginTop: 6,
+        flexWrap: "wrap",
+      }}
+    >
+      {options && options.length > 0 ? (
+        options.map((o) => (
+          <antd.Button
+            key={o.id}
+            size="small"
+            type={o.recommended ? "primary" : "default"}
+            loading={busy}
+            onClick={() => void submit(o.label)}
+          >
+            {o.label}
+          </antd.Button>
+        ))
+      ) : (
+        <>
+          <antd.Input
+            size="small"
+            value={answer}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setAnswer(e.target.value)
+            }
+            onPressEnter={() => void submit(answer)}
+            placeholder={tr("填写介入意见…")}
+            style={{ width: 220 }}
+          />
+          <antd.Button
+            size="small"
+            type="primary"
+            loading={busy}
+            onClick={() => void submit(answer)}
+          >
+            {tr("提交")}
+          </antd.Button>
+        </>
+      )}
+      {canResume ? (
+        <antd.Button
+          size="small"
+          loading={busy}
+          onClick={() => {
+            void (async () => {
+              setBusy(true);
+              try {
+                await resumeProject(ev.runId);
+                antd.message.success(tr("项目已恢复"));
+                onDone?.();
+              } catch (e) {
+                antd.message.error(
+                  e instanceof Error ? e.message : tr("恢复失败"),
+                );
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+        >
+          <PlayIcon
+            size={12}
+            style={{ verticalAlign: "-1px", marginRight: 3 }}
+          />{" "}
+          {tr("恢复项目")}
+        </antd.Button>
+      ) : null}
+      {ev.room_id && onGotoRoom ? (
+        <antd.Button size="small" onClick={() => onGotoRoom(ev.room_id)}>
+          {tr("去房间")}
+        </antd.Button>
+      ) : null}
+    </div>
+  );
+}
+
 /** 中断横幅：展示 interrupts 与暂停原因（paused interrupt）。
  * （13.12 「顶上三个 ⚠ blocked 只显示 '⚠ blocked'
  * 有点突兀」）：interrupt.id 即 task_id（实盘某项目 3 条 blocked
  * interrupt id=...-03/-04/-07 与 tasks_detail task_id 一一对应）→
  * 横幅带任务短编号 + 当前状态 + 分配 Worker，可定位到具体任务。
- * 无 task 匹配（interrupt 非任务维度）→ 保持原样。 */
+ * 无 task 匹配（interrupt 非任务维度）→ 保持原样。
+ * ev 传入时（拓扑详情/决策抽屉）每条横幅挂 InterruptActions 介入区。 */
 export function InterruptsBlock({
   interrupts,
   pauseReason,
   tasks,
+  ev,
+  onDone,
+  onGotoRoom,
 }: {
   interrupts: WorkflowInterrupt[];
   pauseReason?: string;
   tasks?: TaskDetail[];
+  /** 传入时每条横幅挂 InterruptActions 介入操作区（缺省=只读横幅，
+   * 如 AgentActivityTrack 抽屉未带事件上下文的旧调用点）。 */
+  ev?: WorkflowEvent;
+  onDone?: () => void;
+  onGotoRoom?: (roomId: string) => void;
 }) {
   const tr = useT();
   const t = useThemeColors(); 
@@ -331,6 +508,14 @@ export function InterruptsBlock({
             ) : null}
             {pauseReason && it.value !== "paused" ? (
               <span style={{ opacity: 0.8 }}>：{pauseReason}</span>
+            ) : null}
+            {ev ? (
+              <InterruptActions
+                ev={ev}
+                it={it}
+                onDone={onDone}
+                onGotoRoom={onGotoRoom}
+              />
             ) : null}
           </div>
         );

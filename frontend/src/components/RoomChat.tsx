@@ -696,6 +696,7 @@ function RoomChat(props: RoomChatProps) {
                                 : null
                             }
                             fileRefTeam={teamName}
+                            room={room ?? null}
                           />
                         </BubbleBoundary>
                         <ReactionChips

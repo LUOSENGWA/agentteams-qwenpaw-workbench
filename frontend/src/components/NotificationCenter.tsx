@@ -15,8 +15,10 @@ import {
   type RoomApproval,
   type RoomMention,
 } from "../api";
-import { AttentionPanel } from "./AttentionPanel";
+import { AttentionHistoryList } from "./AttentionPanel";
 import { senderShort } from "./MessageSearch";
+import { usePendingStore } from "../pending/store";
+import type { PendingTally } from "../pending/tally";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
@@ -47,18 +49,26 @@ function NotificationCenter(props: {
   invites?: InviteRoom[];
   /** 跳团队概览处理邀请（chat tab + 无激活房间 → 邀请区可见）。 */
   onGotoInvites?: () => void;
-  // ── 待决策子页签（10/26 并入通知页；原顶层「待决策」tab 退役）──
-  /** attention 聚合 payload（全局轮询源在 WorkbenchPageData）。 */
+  // ── 待处理子页签（10/26 原顶层「待决策」tab 并入通知页；
+  // P0 人工介入闭环后由 attention 单源升级为三源统一待办池）──
+  /** attention 聚合 payload（全局轮询源在 WorkbenchPageData；
+ * 历史区 + attention 项回查原始数据用）。 */
   attention?: AttentionPayload | null;
-  /** 当前子页签是否=待决策（状态提到 WorkbenchPage：顶栏 badge 点击
+  /** 当前子页签是否=待处理（状态提到 WorkbenchPage：顶栏 badge 点击
    * 落点 + ui-state 持久化，刷新后保持）。 */
   attentionSubTab?: boolean;
-  /** 子页签切换（通知事件流 ↔ 待决策）。 */
+  /** 子页签切换（通知事件流 ↔ 待处理）。 */
   onAttentionSubTabChange?: (next: boolean) => void;
   /** 面板「回答」→ 打开全局决策弹窗并定位到该条。 */
   onOpenAttentionItem?: (item: AttentionItem) => void;
   /** 面板手动刷新（绕过 30s 服务端缓存）。 */
   onRefreshAttention?: () => void;
+  // ── P0 人工介入闭环：待决策 → 待处理（三源统一池）──
+  /** 待处理统一口径（顶栏 banner / 通知中心角标 / 系统通知同源：
+ * selectPendingTally——任务书要求三处相等，不另开口径）。 */
+  tally?: PendingTally | null;
+  /** pending 项「去项目」→ 工作流 tab 打开对应项目（interrupt 源）。 */
+  onOpenProject?: (runId: string) => void;
 }) {
   const {
     onUnreadCount,
@@ -72,6 +82,8 @@ function NotificationCenter(props: {
     onAttentionSubTabChange,
     onOpenAttentionItem,
     onRefreshAttention,
+    tally,
+    onOpenProject,
   } = props;
   const t = useThemeColors();
   const tr = useT();
@@ -236,7 +248,9 @@ function NotificationCenter(props: {
   // 已含 loadApprovals）。弃用宿主 push-messages
   // 队列（远程 Worker 审批在该进程内，本机队列恒 0——首页没有）。
 
-  // 待决策子页签计数（与顶栏 badge 同过滤口径：本地已答/已解决不计）。
+  // 待处理子页签计数。P0 人工介入闭环后统一走 tally（selectPendingTally——
+  // 与顶栏 banner / 系统通知同一 selector，任务书要求三处相等，不另开口径）；
+  // tally 未传（防御：旧调用点）回退 attention 单源过滤（旧 badge 口径）。
   const attentionPendingCount = React.useMemo(
     () =>
       (attention?.items || []).filter(
@@ -244,6 +258,8 @@ function NotificationCenter(props: {
       ).length,
     [attention],
   );
+  const pendingCount =
+    tally && typeof tally.total === "number" ? tally.total : attentionPendingCount;
 
   const markAll = async () => {
     setMarking(true);
@@ -282,24 +298,27 @@ function NotificationCenter(props: {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      {/* 子页签：通知（事件流）/ 待决策 N（attention；10/26 原顶层 tab 并入）。
+      {/* 子页签：通知（事件流）/ 待处理 N（三源统一池；10/26 原顶层 tab 并入，
+ P0 人工介入闭环后由 attention 单源升级）。
  状态提到 WorkbenchPage（顶栏 badge 点击落点 + ui-state 持久化刷新后保持），
  本组件纯消费。事件流各段（审批/邀请/房间通知/宿主通知）轮询不随子页签
- 停——切到待决策期间未读计数照常累计。 */}
+ 停——切到待处理期间未读计数照常累计。 */}
       <antd.Tabs
         size="small"
         activeKey={attentionSubTab ? "attention" : "events"}
         onChange={(k: string) => onAttentionSubTabChange?.(k === "attention")}
         items={[
           { key: "events", label: tr("通知") },
-          { key: "attention", label: `${tr("待决策")} (${attentionPendingCount})` },
+          { key: "attention", label: `${tr("待处理")} (${pendingCount})` },
         ]}
       />
       {attentionSubTab ? (
-        <AttentionPanel
-          payload={attention ?? null}
-          onOpenItem={(item) => onOpenAttentionItem?.(item)}
+        <PendingPanel
+          attention={attention ?? null}
           onRefresh={() => onRefreshAttention?.()}
+          onOpenAttentionItem={(item) => onOpenAttentionItem?.(item)}
+          onOpenProject={onOpenProject}
+          onGotoRoom={onGotoRoom}
         />
       ) : (
         <>
@@ -797,6 +816,167 @@ function NotificationCenter(props: {
       </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** 待处理子页签内容（P0 人工介入闭环）：pending store 三源统一池
+ * （attention 决策 / interrupt 中断 / room_message @我）+ 已回答历史。
+ * 与顶栏 banner / 系统通知同正源（selectPendingTally 口径），此处只负责
+ * 逐条给「去哪处理」的落点——不重开炉灶另算计数。 */
+function PendingPanel({
+  attention,
+  onRefresh,
+  onOpenAttentionItem,
+  onOpenProject,
+  onGotoRoom,
+}: {
+  attention: AttentionPayload | null;
+  onRefresh: () => void;
+  onOpenAttentionItem?: (item: AttentionItem) => void;
+  onOpenProject?: (runId: string) => void;
+  onGotoRoom?: (roomId: string, eventId?: string) => void;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  const store = usePendingStore();
+
+  // 未裁决项（resolvedIds 是去重集——答过/过期的不再列）。
+  // 最早创建在前：等得最久的先处理（待办队列语义，非通知倒序）。
+  const items = React.useMemo(
+    () =>
+      store.items
+        .filter((p) => !store.resolvedIds.has(p.id))
+        .sort((a, b) => a.createdAt - b.createdAt),
+    [store.items, store.resolvedIds],
+  );
+
+  // attention 源回查原始 AttentionItem（「回答」→ 全局决策弹窗定位该条）。
+  // key 与 pending 项 id 同构：`${taskId}:${kind||"other"}:${attempt??1}`
+  // （WorkbenchPageData.syncPendingAttention 同一去重键）。
+  const attentionById = React.useMemo(() => {
+    const m = new Map<string, AttentionItem>();
+    for (const it of attention?.items || []) {
+      m.set(`${it.task_id}:${it.kind || "other"}:${it.attempt ?? 1}`, it);
+    }
+    return m;
+  }, [attention]);
+
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      {/* 工具条：条数 + 手动刷新（与事件流工具条同款，口径同源）。 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: t.textSecondary }}>
+          {items.length > 0 ? tr("共 {n} 条待处理", { n: items.length }) : tr("当前没有待处理项")}
+        </span>
+        <div style={{ flex: 1 }} />
+        <antd.Button size="small" onClick={onRefresh}>
+          <RefreshIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("刷新")}
+        </antd.Button>
+      </div>
+
+      {items.length === 0 ? (
+        <antd.Empty
+          description={tr("暂无待处理")}
+          image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
+        />
+      ) : (
+        <div style={{ display: "grid", gap: 6 }}>
+          {items.map((p) => {
+            const isAttention = p.source === "attention";
+            const atItem = isAttention ? attentionById.get(p.id) : undefined;
+            const title =
+              p.question ||
+              (isAttention ? p.taskId : p.projectId || p.taskId) ||
+              tr("待处理项");
+            return (
+              <div
+                key={p.id}
+                style={{
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 10,
+                  padding: "8px 12px",
+                  background: t.cardBg,
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <antd.Tag
+                    color={
+                      p.kind === "intervention"
+                        ? "orange"
+                        : p.kind === "approval"
+                        ? "blue"
+                        : p.kind === "interrupt"
+                        ? "volcano"
+                        : "purple"
+                    }
+                    style={{ marginRight: 0 }}
+                  >
+                    {tr(
+                      p.kind === "intervention"
+                        ? "人工介入"
+                        : p.kind === "approval"
+                        ? "审批"
+                        : p.kind === "interrupt"
+                        ? "工作流中断"
+                        : "@你",
+                    )}
+                  </antd.Tag>
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 120,
+                      fontSize: 13,
+                      color: t.text,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={title}
+                  >
+                    {title}
+                  </span>
+                  <span style={{ fontSize: 11, color: t.textSecondary }}>
+                    {formatChatTime(p.createdAt)}
+                  </span>
+                </div>
+                {p.question && p.question !== title ? (
+                  <div className="wb-clamp-2" style={{ fontSize: 12, color: t.textSecondary, whiteSpace: "pre-wrap" }}>
+                    {p.question}
+                  </div>
+                ) : null}
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  {isAttention && atItem && onOpenAttentionItem ? (
+                    <antd.Button size="small" type="primary" onClick={() => onOpenAttentionItem(atItem)}>
+                      {tr("回答")}
+                    </antd.Button>
+                  ) : null}
+                  {p.projectId && onOpenProject ? (
+                    <antd.Button size="small" onClick={() => onOpenProject(p.projectId!)}>
+                      {tr("去项目")}
+                    </antd.Button>
+                  ) : null}
+                  {p.roomId && onGotoRoom ? (
+                    <antd.Button
+                      size="small"
+                      type="text"
+                      style={{ fontSize: 11.5 }}
+                      onClick={() => onGotoRoom(p.roomId!, p.eventId)}
+                    >
+                      <MessageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("去房间")}
+                    </antd.Button>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 已回答历史（复用 AttentionPanel 抽出的列表，口径不重开）。 */}
+      <AttentionHistoryList history={attention?.answered_history || []} />
     </div>
   );
 }

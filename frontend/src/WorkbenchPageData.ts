@@ -15,7 +15,9 @@ import {
   setCachedRooms,
   fetchAuthStatus,
   fetchAttention,
+  resolveAttentionRoom,
   type AdminData,
+  type AttentionAnsweredRecord,
   type AttentionPayload,
   type RoomMessage,
   type SpawnNode,
@@ -28,6 +30,9 @@ import {
 } from "./api";
 import { useT } from "./i18n";
 import { usePoller } from "./usePoller";
+import { usePendingStore } from "./pending/store";
+import { attentionPendingKind, detectMultiSelect } from "./pending/parse";
+import type { PendingItem } from "./pending/types";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -71,6 +76,13 @@ export interface WorkbenchPageDataCtx {
 
 export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
   const { activeRoom, config, setConfig, configRef, configLoadState, setConfigLoadState, setAuthStatus, setMatrixNoneDismissed, setRooms, setRoomsLoading, setInvites, setMutedRooms, setActiveRoom, initialUi, refreshMessages, setWorkerTree, setTreeSource, setSpawnLoading, tab, messages, setWorkflowEvents, setWorkflowLoading, setWorkflowSource, setWorkflowFailReason, setWorkflowFailDetail, setAdminData, setAdminLoading, setAdminFailCount, setSelectedRunId, setTabState, writeUiState, tr } = ctx;
+
+  // P0 人工介入闭环：attention / workflow 两个取数面同步喂 pending store
+  // （顶栏 banner / 通知中心「待处理」/ 系统通知统一口径）。actions 走
+  // 函数式 setState——ref 持最新 store，轮询闭包不抓旧值。
+  const pending = usePendingStore();
+  const pendingRef = React.useRef(pending);
+  pendingRef.current = pending;
 
  const dismissMatrixNone = React.useCallback(() => {
     setMatrixNoneDismissed(true);
@@ -353,6 +365,40 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
   // 下数组规模（数十项）stringify 为毫秒级，指纹门方案有更新丢失风险，
   // 收益不抵风险 → 保持原样。
 
+  // P0 人工介入闭环：workflow 面 → pending store（source=interrupt）。
+  // paused/blocked 项目等人工介入；interrupt 从响应消失 → 立即 expire
+  // （恢复/完成/重规划后不留 ghost pending）。取数失败不 sync——
+  // 保留旧待办（网络抖动不误清）。
+  const syncPendingInterrupts = React.useCallback(
+    (events: WorkflowEvent[]) => {
+      const store = pendingRef.current;
+      const live: PendingItem[] = [];
+      for (const ev of events) {
+        for (const it of ev.interrupts || []) {
+          const value = String(it.value || "");
+          live.push({
+            id: `${ev.runId}:${it.id}:${value}`,
+            source: "interrupt",
+            kind: "interrupt",
+            projectId: ev.runId,
+            roomId: ev.room_id || undefined,
+            question: it.description || value || undefined,
+            createdAt:
+              typeof ev.ts === "number" && ev.ts > 0 ? ev.ts : Date.now(),
+            raw: value || undefined,
+          });
+        }
+      }
+      store.upsertMany(live);
+      const liveIds = new Set(live.map((p) => p.id));
+      const gone = store.items
+        .filter((p) => p.source === "interrupt" && !liveIds.has(p.id))
+        .map((p) => p.id);
+      if (gone.length > 0) store.expire(gone);
+    },
+    [],
+  );
+
   const refreshWorkflow = React.useCallback(async (silent = false) => {
     // 记录拉取时间——切 tab 立即刷新用 2s 去抖（防连环拉）。
     workflowLastFetchRef.current = Date.now();
@@ -370,6 +416,7 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
           setWorkflowSource("controller");
           setWorkflowFailDetail("");
         });
+        syncPendingInterrupts(enriched);
       } else {
         // 记录降级原因——横幅提示「只看已加入房间的项目」+
         // 可操作指引（此前静默降级，正源 401 时用户以为数据就是这样）。
@@ -383,13 +430,15 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
         React.startTransition(() => {
           setWorkflowEvents((prev) => (JSON.stringify(prev) === JSON.stringify(payload.events) ? prev : payload.events));
         });
+        syncPendingInterrupts(payload.events);
       }
     } catch (e) {
       if (!silent) message.error(e instanceof Error ? e.message : tr("获取工作流失败"));
     } finally {
       if (!silent) setWorkflowLoading(false);
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncPendingInterrupts]);
 
   // R4（16.23）：15s 工作流兜底轮询退役——task_status 已有 SSE 主路
   // （sync_watcher _track_workflow 状态变化 → SSE task_status →
@@ -433,6 +482,76 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     null,
   );
   const attentionFetchingRef = React.useRef(false);
+  // P0 人工介入闭环：attention 面 → pending store（source=attention）。
+  // kind 与房间消息同一口径（attentionPendingKind：有 question=干预、
+  // 无=审批）——跨源去重/匹配一致。消失项：id 命中 answered_history
+  // = 已答（带答案记入）；否则过期。room_message 影子（同 taskId 同
+  // kind）expire——attention 项是规范源（有 options/expiresAt），
+  // 同一请求不双计。
+  const syncPendingAttention = React.useCallback(
+    (payload: AttentionPayload) => {
+      const store = pendingRef.current;
+      if (!payload.deployed || !Array.isArray(payload.items)) return;
+      const live: PendingItem[] = [];
+      for (const it of payload.items) {
+        if (it.resolved || it.answered_locally) continue;
+        const taskId = String(it.task_id || "");
+        if (!taskId) continue;
+        const kind = attentionPendingKind(it.question);
+        live.push({
+          id: `${taskId}:${it.kind || "other"}:${it.attempt ?? 1}`,
+          source: "attention",
+          kind,
+          taskId,
+          projectId: it.project_id || undefined,
+          roomId: it.room_id || resolveAttentionRoom(it) || undefined,
+          question: it.question || undefined,
+          options: (it.options || []).map((o) => ({ id: o.id, label: o.label })),
+          multiSelect: detectMultiSelect(it.question),
+          expiresAt: it.expires_at
+            ? Date.parse(it.expires_at) || undefined
+            : undefined,
+          sender: it.worker || undefined,
+          createdAt: Date.parse(it.requested_at) || Date.now(),
+          raw: it.question || undefined,
+        });
+      }
+      store.upsertMany(live);
+      // room_message 影子去重（同一任务请求已由 attention 项承载）。
+      const liveByTask = new Map<string, PendingItem["kind"]>();
+      for (const p of live) if (p.taskId) liveByTask.set(p.taskId, p.kind);
+      const shadows = store.items
+        .filter(
+          (p) =>
+            p.source === "room_message" &&
+            (p.kind === "intervention" || p.kind === "approval") &&
+            p.taskId != null &&
+            liveByTask.get(p.taskId) === p.kind,
+        )
+        .map((p) => p.id);
+      if (shadows.length > 0) store.expire(shadows);
+      // 消失的 attention 项（已答 / 过期 / 被清理）。
+      const liveIds = new Set(live.map((p) => p.id));
+      const history = new Map<string, AttentionAnsweredRecord>();
+      for (const rec of payload.answered_history || []) history.set(rec.key, rec);
+      const answeredGone: string[] = [];
+      const expiredGone: string[] = [];
+      for (const p of store.items) {
+        if (p.source !== "attention" || liveIds.has(p.id)) continue;
+        if (history.has(p.id)) answeredGone.push(p.id);
+        else expiredGone.push(p.id);
+      }
+      for (const id of answeredGone) {
+        store.resolve(id, {
+          status: "answered",
+          answer: history.get(id)?.answer,
+          actor: "attention",
+        });
+      }
+      if (expiredGone.length > 0) store.expire(expiredGone);
+    },
+    [],
+  );
   const refreshAttention = React.useCallback(
     async (bypass = false) => {
       if (attentionFetchingRef.current) return;
@@ -447,13 +566,15 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
               : payload,
           );
         });
+        // pending 同步幂等（upsert 去重）——diff 门跳过重渲不跳同步。
+        syncPendingAttention(payload);
       } catch {
         /* 瞬时抖动 → 保旧值（入口可见性由 deployed/数据决定，不报错） */
       } finally {
         attentionFetchingRef.current = false;
       }
     },
-    [],
+    [syncPendingAttention],
   );
   usePoller({
     fn: () => void refreshAttention(),
@@ -530,6 +651,8 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     setAdminData(null);
     setWorkflowEvents([]);
     setAttention(null);
+    // 换账号：旧账号的待办/已裁决不带走（localStorage 也一并清）。
+    pendingRef.current.clear();
     void refreshConfig();
     void refreshRooms();
     void refreshTree();

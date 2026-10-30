@@ -122,6 +122,7 @@ const SIDEBAR_ICON: ReactNS.ReactNode = hostReact
 
 import WorkbenchPage from "./WorkbenchPage";
 import StandaloneConfigPage from "./StandaloneConfigPage";
+import { PendingProvider } from "./pending/store";
 import { isLocalHost } from "./hostEnv";
 import ApprovalCard from "./components/ApprovalCard";
 import { fetchRoomApprovals, requestJson } from "./api";
@@ -550,7 +551,10 @@ try {
 function WorkbenchEntry() {
   return isLocalHost()
     ? React.createElement(StandaloneConfigPage)
-    : React.createElement(WorkbenchPage);
+    // P0 人工介入闭环：pending store（待处理池 + resolutions）是
+    // 工作台级单例——RoomChatCore 摄取 / 三源同步 / 通知中心消费
+    // 都在 provider 子树内。
+    : React.createElement(PendingProvider, null, React.createElement(WorkbenchPage));
 }
 
 window.QwenPaw.registerRoutes?.("agentteams-qwenpaw-workbench", [
