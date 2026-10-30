@@ -52,7 +52,7 @@ interface UseTeamCrdArgs {
   /** 模型目录（G 簇）——三入口共享的候选/alias/SOUL 数据源。 */
   catalog: ReturnType<typeof useModelCatalog>;
   /** 拓扑 TeamNode 齿轮注册回调（原主组件内 `const { registerHandle } = props;`）。 */
-  registerHandle: CrdManageProps["registerHandle"];
+  registerHandle?: CrdManageProps["registerHandle"];
   /** 千锻建队前置（B6，可选）：团队 ID 校验后调用；返回非 null = 覆盖
    * 表单成员行（workerMembers = 选中/新建的 worker 名）；null = 不参与
    * （表单行原样走）；抛错 = 中止建队（调用方已 toast）。 */

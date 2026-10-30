@@ -204,4 +204,7 @@ export const chatDict: Record<string, { en: string }> = {
     en: "Auto-retry when an LLM call fails (throttling / timeout / 5xx). When off, failures surface immediately.",
   },
   "最大重试次数": { en: "Max retries" },
+  // ── 跳转上下文窗（jumpContext）──
+  "展开全部上下文": { en: "Expand all context" },
+  "条": { en: "events" },
 };

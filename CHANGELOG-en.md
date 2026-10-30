@@ -3,6 +3,11 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.30 (2026-10-29 - Registered as PawApp)
+
+**Fixed**
+- Plugin type is now PawApp (type: app): fixes "/apps/<id>" failing with "PawApp frontend plugin not found" in the web client (host validates plugin_type === app; frontend routes and backend APIs unchanged)
+
 ## 0.5.0-beta.16.23 (2026-10-26 - Millforge inject fix)
 
 **Fixed**

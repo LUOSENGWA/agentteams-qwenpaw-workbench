@@ -6,16 +6,16 @@ import { useT } from "../i18n";
 import type { CrdManageProps } from "../crdmanage/types";
 import { useModelCatalog } from "../crdmanage/useModelCatalog";
 import { useHumanCrd } from "../crdmanage/useHumanCrd";
-import { useAccessMatrix } from "../crdmanage/useAccessMatrix";
 import { useTeamCrd } from "../crdmanage/useTeamCrd";
 import CrdHumanForm from "../crdmanage/CrdHumanForm";
 import CrdTeamForm from "../crdmanage/CrdTeamForm";
 import CrdWorkerForm from "../crdmanage/CrdWorkerForm";
 import CrdCheckPanel from "../crdmanage/CrdCheckPanel";
-import CrdAccessMatrix from "../crdmanage/CrdAccessMatrix";
 import { CrdHumanTableCard, CrdTeamTableCard } from "../crdmanage/CrdListTables";
 import CrdCfgModal from "../crdmanage/CrdCfgModal";
-import CrdPermModal from "../crdmanage/CrdPermModal";
+import HumanAccessModal, {
+  computeStandaloneWorkers,
+} from "../crdmanage/HumanAccessModal";
 import MillforgeModal from "../millforge/MillforgeModal";
 import { useMillforgeCreate } from "../millforge/useMillforgeCreate";
 import type { TeamInfo } from "../api";
@@ -29,12 +29,12 @@ const antd = host.antd;
  * WorkerManage 渲染）。真人"员工"入职（Human CRD）+ 团队创建/配置（Team CRD）。
  * 走现有通用 Controller 代理（agentteams-proxy/controller），零新后端端点。
  *
- * 权限管理（人员可访问团队）：上游 Controller REST 无 UpdateHuman API
- * （dashboard 的 updateHuman 是死代码——只写了客户端没写路由；agt update
- * 也无 human 子命令）→ 本面板生成「embedded apiserver merge-patch」命令
- * （标准姿势：token.csv 第一列 + 127.0.0.1:6443），在 Controller
- * 宿主机执行。上游 Human PUT 端点合并后此处可零改动升级为一键 PUT
- * （通用代理已支持 PUT）。
+ * 访问与权限（15.35）：HumanAccessModal chips 单模态——权限档位 +
+ * 可访问团队/Worker 一次保存（PUT /humans/{name}，同
+ * updateHumanAccessibleTeams 端点/merge 语义）；404/405（旧 Controller
+ * 无 PUT /humans）→ 自动回落「embedded apiserver merge-patch」命令
+ * （token.csv 第一列 + 127.0.0.1:6443，Controller 宿主机执行）。
+ * 旧团队访问矩阵与旧权限设置弹窗已随 15.35 退役。
  */
 export type { CrdManageHandle } from "../crdmanage/types";
 
@@ -70,24 +70,8 @@ export default function CrdManage(props: CrdManageProps) {
     doDeleteHuman,
     permHuman,
     setPermHuman,
-    permForm,
-    setPermForm,
-    permCmd,
     openPerm,
-    generatePermCmd,
-    copyPermCmd,
   } = useHumanCrd({ onRefresh, tr });
-  const {
-    accessOf,
-    accessChanged,
-    toggleAccess,
-    generateAccessCmd,
-    copyAccessCmd,
-    accessCmd,
-    saving: accessSaving,
-    saveMsg: accessSaveMsg,
-    saveAccess,
-  } = useAccessMatrix({ humans, tr, onSaved: onRefresh });
   const {
     gatewayOpts,
     gatewayLoaded,
@@ -275,21 +259,8 @@ export default function CrdManage(props: CrdManageProps) {
           size={12}
           style={{ display: "flex", marginTop: 12 }}
         >
-          <CrdAccessMatrix
-            humans={humans}
-            teams={teams}
-            accessOf={accessOf}
-            accessChanged={accessChanged}
-            toggleAccess={toggleAccess}
-            generateAccessCmd={generateAccessCmd}
-            accessCmd={accessCmd}
-            copyAccessCmd={copyAccessCmd}
-            saving={accessSaving}
-            saveMsg={accessSaveMsg}
-            saveAccess={saveAccess}
-            tr={tr}
-            t={t}
-          />
+          {/* 15.35：团队访问矩阵退役——团队访问改由
+          人员表「访问与权限」行操作（HumanAccessModal）单点管理。 */}
           <CrdHumanTableCard
             humans={humans}
             openPerm={openPerm}
@@ -370,18 +341,15 @@ export default function CrdManage(props: CrdManageProps) {
         t={t}
       />
 
-      <CrdPermModal
-        permHuman={permHuman}
-        permForm={permForm}
-        permCmd={permCmd}
-        setPermHuman={setPermHuman}
-        setPermForm={setPermForm}
-        generatePermCmd={generatePermCmd}
-        copyPermCmd={copyPermCmd}
+      {/* 访问与权限弹窗（chips 单模态；人员表行操作） */}
+      <HumanAccessModal
+        human={permHuman}
         teamNames={teamNames}
-        workerNames={workerNames}
+        standaloneWorkers={computeStandaloneWorkers(teams, workers)}
         tr={tr}
         t={t}
+        onClose={() => setPermHuman(null)}
+        onSaved={() => onRefresh?.(true)}
       />
     </div>
   );

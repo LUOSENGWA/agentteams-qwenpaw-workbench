@@ -15,9 +15,19 @@ import type {
   SpawnNode,
   WorkerSpawnGroup,
 } from "../api";
-import { BookmarkIcon, CodeIcon, SettingsIcon, WrenchIcon } from "./icons";
+import {
+  BookmarkIcon,
+  BrickIcon,
+  CodeIcon,
+  PlugIcon,
+  SettingsIcon,
+  WrenchIcon,
+} from "./icons";
 import ApprovalControl from "./ApprovalControl";
+import NarrowSheet from "./NarrowSheet";
 import WorkerEnvPanel from "./WorkerEnvPanel";
+import WorkerMcpPanel from "./WorkerMcpPanel";
+import WorkerPluginsPanel from "./WorkerPluginsPanel";
 import WorkerRuntimeConfig from "./WorkerRuntimeConfig";
 import WorkerCodingCliPanel from "./WorkerCodingCliPanel";
 import WorkerLlmTuningPanel from "./WorkerLlmTuningPanel";
@@ -214,56 +224,6 @@ function SpawnRow({
   );
 }
 
-/** 竖屏友好弹窗（narrow = 容器可见宽 < 800）：底部抽屉式 antd Modal——
- * 贴底 + 上缘圆角 + 左右留边（手机近全宽；宽窗口上限 560 居中），
- * body ≤88dvh 纵向可滚，头部标题 + 关闭（antd 自带）。
- * 运行配置 / 资源管理 的 narrow 呈现容器——内容 = 现有面板组件原样复用
- * （只换「内联↔弹窗」的呈现容器，不重写内容）。
- * 关闭动画结束（afterClose）才卸载内容：面板内 30s 轮询/取数随之下线，
- * 关窗后零后台负载（house 口径 = afterClose 卸载，动画期间不闪空）。 */
-function NarrowSheet({
-  open,
-  title,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  title: string;
-  onClose: () => void;
-  children: ReactNS.ReactNode;
-}) {
-  const [render, setRender] = React.useState(open);
-  React.useEffect(() => {
-    if (open) setRender(true);
-  }, [open]);
-  return (
-    <antd.Modal
-      open={open}
-      afterClose={() => setRender(false)}
-      onCancel={onClose}
-      footer={null}
-      title={title}
-      width="min(calc(100vw - 32px), 520px)"
-      // 居中弹窗（非底部抽屉）——竖屏友好：不贴底(不靠下)、不超屏底(居中 + body 内滚)。
-      // 此前 styles.wrapper 强改 bottom:0 成底部抽屉→"太靠下 + 贴手势条/超底部"。
-      centered
-      styles={{
-        // 内容纵向可滚：body 封顶 66dvh(≈屏高 2/3)，居中后上下留白，不超屏底。
-        body: {
-          maxHeight: "min(66dvh, 560px)",
-          overflowY: "auto",
-          // 内容贴弹窗宽（左右内边距收紧 16→10，内层 Card/面板铺满弹窗宽）。
-          padding: "8px 10px",
-        },
-        content: { borderRadius: 12, overflow: "hidden" },
-      }}
-    >
-      {/* wbc-narrow：窄屏弹窗内容标记（全局 CSS 消费——表单行转纵向 + antd 控件
-      限宽到容器，治「弹窗内容横向拖」；portal 在 body，规则不带 .wb-main 前缀）。 */}
-      {render ? <div className="wbc-narrow" style={{ minWidth: 0 }}>{children}</div> : null}
-    </antd.Modal>
-  );
-}
 
 /** 管理信息面板：原管理页 Worker 表行全字段 + 生命周期操作（唤醒/休眠）。 */
 function WorkerManageInfo({
@@ -287,6 +247,10 @@ function WorkerManageInfo({
   const [rcOpen, setRcOpen] = React.useState(false);
   // 竖屏：环境变量与网关探测（1.2.5+，envEditable=true 才渲染）同款抽屉。
   const [envOpen, setEnvOpen] = React.useState(false);
+  // 竖屏：Worker MCP（只读合并视图：CRD 声明 + worker 自注册）同款抽屉。
+  const [mcpOpen, setMcpOpen] = React.useState(false);
+  // 竖屏：Worker 插件（只读表格：id/name/version/enabled/loaded/plugin_type）同款抽屉。
+  const [pluginsOpen, setPluginsOpen] = React.useState(false);
   // 竖屏：Coding CLI（1.2.5+ #1360）同款抽屉。
   const [cliOpen, setCliOpen] = React.useState(false);
   // 竖屏：LLM 调优（1.2.5+，L1-only 可编辑）同款抽屉。
@@ -562,6 +526,28 @@ function WorkerManageInfo({
             {tr("环境变量")}
           </antd.Button>
         ) : null}
+        {/* 竖屏：Worker MCP 入口=紧凑按钮（只读合并视图；不依赖
+  envEditable——自注册读路径由面板内部诚实降级）。 */}
+        {narrow ? (
+          <antd.Button
+            size="small"
+            icon={<PlugIcon size={12} />}
+            onClick={() => setMcpOpen(true)}
+          >
+            {tr("Worker MCP")}
+          </antd.Button>
+        ) : null}
+        {/* 竖屏：Worker 插件入口=紧凑按钮（只读表格；Controller 端点
+  未合时由面板内部诚实降级）。 */}
+        {narrow ? (
+          <antd.Button
+            size="small"
+            icon={<BrickIcon size={12} />}
+            onClick={() => setPluginsOpen(true)}
+          >
+            {tr("Worker 插件")}
+          </antd.Button>
+        ) : null}
         {/* 竖屏：Coding CLI 入口=紧凑按钮（1.2.5+ #1360；admin 侧渲染——
   L2 打开后面板自行 403 降级只读，与宽屏同语义）。 */}
         {narrow ? (
@@ -596,6 +582,7 @@ function WorkerManageInfo({
           open={rcOpen}
           title={tr("运行配置")}
           onClose={() => setRcOpen(false)}
+          flushTop
         >
           <WorkerRuntimeConfig
             sheet
@@ -614,6 +601,7 @@ function WorkerManageInfo({
           open={envOpen}
           title={tr("环境变量与网关探测")}
           onClose={() => setEnvOpen(false)}
+          flushTop
         >
           <WorkerEnvPanel
             sheet
@@ -622,12 +610,37 @@ function WorkerManageInfo({
           />
         </NarrowSheet>
       ) : null}
+      {/* ：Worker MCP（只读合并视图：CRD 声明 + worker 自注册）竖屏同款
+  抽屉（自注册读路径懒加载 + 诚实降级，面板内部处理）。 */}
+      {narrow ? (
+        <NarrowSheet
+          open={mcpOpen}
+          title={tr("Worker MCP")}
+          onClose={() => setMcpOpen(false)}
+          flushTop
+        >
+          <WorkerMcpPanel sheet worker={worker} />
+        </NarrowSheet>
+      ) : null}
+      {/* ：Worker 插件（只读表格）竖屏同款抽屉（懒加载 + 诚实降级，
+  面板内部处理）。 */}
+      {narrow ? (
+        <NarrowSheet
+          open={pluginsOpen}
+          title={tr("Worker 插件")}
+          onClose={() => setPluginsOpen(false)}
+          flushTop
+        >
+          <WorkerPluginsPanel sheet worker={worker} />
+        </NarrowSheet>
+      ) : null}
       {/* ：Coding CLI（AgentTeams 1.2.5+ #1360）竖屏同款抽屉。 */}
       {narrow ? (
         <NarrowSheet
           open={cliOpen}
           title={tr("Coding CLI（安装/升级/settings）")}
           onClose={() => setCliOpen(false)}
+          flushTop
         >
           <WorkerCodingCliPanel
             sheet
@@ -642,6 +655,7 @@ function WorkerManageInfo({
           open={llmOpen}
           title={tr("LLM 调优（重试与限流 / 流式超时）")}
           onClose={() => setLlmOpen(false)}
+          flushTop
         >
           <WorkerLlmTuningPanel
             sheet
@@ -873,6 +887,13 @@ export function WorkerRow({
                   onChanged={() => invalidateTags(["admin"])}
                 />
               ) : null}
+              {/* ：Worker MCP（只读合并视图：CRD 声明 + worker 自注册），
+  x=33 段头轨对齐；自注册读路径懒加载 + 404 诚实降级（面板内部）。 */}
+              <WorkerMcpPanel worker={adminWorker} />
+              {/* ：Worker 插件（只读表格：id/name/version/enabled/
+  loaded/plugin_type），x=33 段头轨对齐；懒加载 + 404 诚实降级
+  （面板内部）。 */}
+              <WorkerPluginsPanel worker={adminWorker} />
               {/* ：Coding CLI（AgentTeams 1.2.5+ #1360）宽屏内联卡，
   x=33 段头轨对齐（同款视觉家族；404 旧 Controller=面板内横幅，
   L2=只读降级，探测惰性不后台轮询）。 */}
@@ -914,6 +935,7 @@ export function WorkerRow({
                   open={resOpen}
                   title={tr("资源管理（技能 / MCP / 频道 / 工具）")}
                   onClose={() => setResOpen(false)}
+                  flushTop
                 >
                   <WorkerResourcePanel sheet worker={adminWorker} l1={l1} />
                 </NarrowSheet>

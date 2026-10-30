@@ -98,10 +98,19 @@ function severityOf(ev: AuditEvent): "info" | "warning" | "error" {
   return "info";
 }
 
-function AuditLog({ hasToken }: { hasToken: boolean }) {
+function AuditLog({
+  hasToken,
+  active = false,
+}: {
+  hasToken: boolean;
+  /** 宿主显式激活：10/29 顶层「审计」tab 下线（并入管理页集群管理域）→
+   * 旧 useTabActive("audit") 恒 false，集群域「审计」二级页显式传激活
+   * 30s 轮询才续（与 RuntimeUpgradePanel/OpsPanel 同款 active-prop）。 */
+  active?: boolean;
+}) {
   const t = useThemeColors();
   const tr = useT();
-  const active = useTabActive("audit");
+  const auditActive = useTabActive("audit") || active;
 
   const [kind, setKind] = React.useState("");
   const [range, setRange] = React.useState("7d");
@@ -188,13 +197,13 @@ function AuditLog({ hasToken }: { hasToken: boolean }) {
     void fetchPage(false);
   }, [fetchPage, notFound, denied]);
 
-  // 30s 自动刷新（tab 激活门控，切走即停）。
+  // 30s 自动刷新（tab 激活门控，切走即停；P6 起宿主显式激活优先）。
   usePoller({
     fn: () => {
       if (!notFound && !denied) void fetchPage(false);
     },
     intervalMs: 30000,
-    active,
+    active: auditActive,
   });
 
   if (notFound) {

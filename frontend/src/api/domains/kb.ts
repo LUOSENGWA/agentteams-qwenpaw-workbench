@@ -95,38 +95,46 @@ export async function fetchKbAgents(): Promise<KbAgent[]> {
     )) as Record<string, unknown>;
     const agents = Array.isArray(raw.agents) ? raw.agents : [];
     return agents as KbAgent[];
-  });
+  }, { tags: ["kb"] });
 }
 
-export async function fetchKbTree(agent: string): Promise<KbTree> {
-  const raw = (await requestJson(
-    `/agentteams-proxy/kb/${encodeURIComponent(agent)}/tree`,
-  )) as Record<string, unknown>;
-  return {
-    agent: String(raw.agent ?? agent),
-    workspace: String(raw.workspace ?? ""),
-    files: (Array.isArray(raw.files) ? raw.files : []) as KbFileItem[],
-    dirs: (Array.isArray(raw.dirs) ? raw.dirs : []) as KbDirItem[],
-    count: typeof raw.count === "number" ? raw.count : 0,
-  };
+/** 30s 缓存（列表类；key=agent——多 worker 独立条目）。 */
+export function fetchKbTree(agent: string): Promise<KbTree> {
+  return cachedRequest(`kb:tree:${agent}`, 30_000, async () => {
+    const raw = (await requestJson(
+      `/agentteams-proxy/kb/${encodeURIComponent(agent)}/tree`,
+    )) as Record<string, unknown>;
+    return {
+      agent: String(raw.agent ?? agent),
+      workspace: String(raw.workspace ?? ""),
+      files: (Array.isArray(raw.files) ? raw.files : []) as KbFileItem[],
+      dirs: (Array.isArray(raw.dirs) ? raw.dirs : []) as KbDirItem[],
+      count: typeof raw.count === "number" ? raw.count : 0,
+    };
+  }, { tags: ["kb"] });
 }
 
-/** 目录懒加载（知识库目录树展开，工作区子目录文件可见可开）。 */
-export async function fetchKbDir(
+/** 目录懒加载（知识库目录树展开，工作区子目录文件可见可开）。
+ * 30s 缓存（key=agent+dir 全参数）。 */
+export function fetchKbDir(
   agent: string,
   dir: string,
 ): Promise<KbDirList> {
-  const raw = (await requestJson(
-    `/agentteams-proxy/kb/${encodeURIComponent(agent)}/ls?dir=${encodeURIComponent(dir)}`,
-  )) as Record<string, unknown>;
-  return {
-    agent: String(raw.agent ?? agent),
-    dir: String(raw.dir ?? dir),
-    files: (Array.isArray(raw.files) ? raw.files : []) as KbFileItem[],
-    dirs: (Array.isArray(raw.dirs) ? raw.dirs : []) as KbDirItem[],
-  };
+  return cachedRequest(`kb:dir:${agent}:${dir}`, 30_000, async () => {
+    const raw = (await requestJson(
+      `/agentteams-proxy/kb/${encodeURIComponent(agent)}/ls?dir=${encodeURIComponent(dir)}`,
+    )) as Record<string, unknown>;
+    return {
+      agent: String(raw.agent ?? agent),
+      dir: String(raw.dir ?? dir),
+      files: (Array.isArray(raw.files) ? raw.files : []) as KbFileItem[],
+      dirs: (Array.isArray(raw.dirs) ? raw.dirs : []) as KbDirItem[],
+    };
+  }, { tags: ["kb"] });
 }
 
+/** 不缓存：按需点开的大载荷（文件内容可能数十 KB+），缓存收益低、
+ * 内存压力高（LRU 300 条上限下大条目挤占小条目）。 */
 export async function fetchKbFile(
   agent: string,
   path: string,
@@ -141,16 +149,19 @@ export async function fetchKbFile(
   };
 }
 
-export async function fetchKbGraph(agent: string): Promise<KbGraphData> {
-  const raw = (await requestJson(
-    `/agentteams-proxy/kb/${encodeURIComponent(agent)}/graph`,
-  )) as Record<string, unknown>;
-  return {
-    agent: String(raw.agent ?? agent),
-    nodes: (Array.isArray(raw.nodes) ? raw.nodes : []) as KbGraphData["nodes"],
-    edges: (Array.isArray(raw.edges) ? raw.edges : []) as KbGraphData["edges"],
-    file_count: typeof raw.file_count === "number" ? raw.file_count : 0,
-  };
+/** 30s 缓存（key=agent）。 */
+export function fetchKbGraph(agent: string): Promise<KbGraphData> {
+  return cachedRequest(`kb:graph:${agent}`, 30_000, async () => {
+    const raw = (await requestJson(
+      `/agentteams-proxy/kb/${encodeURIComponent(agent)}/graph`,
+    )) as Record<string, unknown>;
+    return {
+      agent: String(raw.agent ?? agent),
+      nodes: (Array.isArray(raw.nodes) ? raw.nodes : []) as KbGraphData["nodes"],
+      edges: (Array.isArray(raw.edges) ? raw.edges : []) as KbGraphData["edges"],
+      file_count: typeof raw.file_count === "number" ? raw.file_count : 0,
+    };
+  }, { tags: ["kb"] });
 }
 
 // ── 团队知识库深化（跨 Worker 搜索 + 聚合图谱）────────────
@@ -162,6 +173,7 @@ export interface KbSearchMatch {
   snippet: string;
 }
 
+/** 不缓存：用户触发的搜索（自由文本 query 空间无界，缓存命中率趋零）。 */
 export async function fetchKbSearch(
   q: string,
   agents?: string,
@@ -173,16 +185,19 @@ export async function fetchKbSearch(
   )) as { query: string; matches: KbSearchMatch[]; count: number; agents: string[] };
 }
 
-export async function fetchKbGraphMerged(
+/** 30s 缓存（key 含 agents 全参数；agents 缺省="all" 单键）。 */
+export function fetchKbGraphMerged(
   agents?: string,
 ): Promise<{ nodes: KbGraphData["nodes"]; edges: KbGraphData["edges"]; agents: string[] }> {
-  const params = agents ? `?agents=${encodeURIComponent(agents)}` : "";
-  const raw = (await requestJson(
-    `/agentteams-proxy/kb/graph/merged${params}`,
-  )) as Record<string, unknown>;
-  return {
-    nodes: (Array.isArray(raw.nodes) ? raw.nodes : []) as KbGraphData["nodes"],
-    edges: (Array.isArray(raw.edges) ? raw.edges : []) as KbGraphData["edges"],
-    agents: (Array.isArray(raw.agents) ? raw.agents : []) as string[],
-  };
+  return cachedRequest(`kb:graph-merged:${agents || "all"}`, 30_000, async () => {
+    const params = agents ? `?agents=${encodeURIComponent(agents)}` : "";
+    const raw = (await requestJson(
+      `/agentteams-proxy/kb/graph/merged${params}`,
+    )) as Record<string, unknown>;
+    return {
+      nodes: (Array.isArray(raw.nodes) ? raw.nodes : []) as KbGraphData["nodes"],
+      edges: (Array.isArray(raw.edges) ? raw.edges : []) as KbGraphData["edges"],
+      agents: (Array.isArray(raw.agents) ? raw.agents : []) as string[],
+    };
+  }, { tags: ["kb"] });
 }

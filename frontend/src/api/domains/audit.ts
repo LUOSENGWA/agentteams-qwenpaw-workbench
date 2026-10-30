@@ -1,6 +1,7 @@
 // 审计事件域（controller /api/v1/audit）。
 
 import { requestJson } from "../shared";
+import { cachedRequest } from "../../requestCache";
 
 // ── 审计事件（A7；上游 #1270 GET /api/v1/audit，Controller 持久审计存储
 // 读侧，MinIO JSONL 追加式，覆盖全部入口：dashboard / CLI / API）──────
@@ -36,7 +37,9 @@ interface AuditQuery {
   limit?: number; // 默认 50，上限 200
 }
 
-export async function fetchAuditEvents(
+/** 30s 缓存（与 AuditLog 30s 轮询同节奏；key 含
+ * team/kind/from/to/cursor/limit 全参数——翻页各页独立条目）。 */
+export function fetchAuditEvents(
   params: AuditQuery = {},
 ): Promise<AuditPage> {
   const q = new URLSearchParams();
@@ -46,9 +49,16 @@ export async function fetchAuditEvents(
   if (params.to) q.set("to", params.to);
   if (params.cursor) q.set("cursor", params.cursor);
   q.set("limit", String(params.limit ?? 50));
-  return (await requestJson(
-    `/agentteams-proxy/controller/api/v1/audit?${q.toString()}`,
-    undefined,
-    30000,
-  )) as AuditPage;
+  const key = `audit:${params.team ?? ""}:${params.kind ?? ""}:${params.from ?? ""}:${params.to ?? ""}:${params.cursor ?? ""}:${params.limit ?? 50}`;
+  return cachedRequest(
+    key,
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/controller/api/v1/audit?${q.toString()}`,
+        undefined,
+        30000,
+      ) as Promise<AuditPage>,
+    { tags: ["audit"] },
+  );
 }

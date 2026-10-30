@@ -5,6 +5,7 @@ import { chatDict } from "./i18n/domains/chat";
 import { credsDict } from "./i18n/domains/creds";
 import { generalDict } from "./i18n/domains/general";
 import { kbDict } from "./i18n/domains/kb";
+import { manageDict } from "./i18n/domains/manage";
 import { millforgeDict } from "./i18n/domains/millforge";
 import { settingsDict } from "./i18n/domains/settings";
 import { teamDict } from "./i18n/domains/team";
@@ -23,6 +24,7 @@ const DICT: Record<string, { en: string }> = {
   ...credsDict,
   ...generalDict,
   ...kbDict,
+  ...manageDict,
   ...millforgeDict,
   ...settingsDict,
   ...teamDict,

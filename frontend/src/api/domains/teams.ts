@@ -1,7 +1,7 @@
 // 团队域（/teams/*、/dm、/matrix/rooms/*/join|leave、/team-files、/matrix/member/messages）：团队结构/spawn/房间列表/邀请/共享文件/成员消息。
 
 import { requestJson } from "../shared";
-import { cachedFetch, cachedRequest } from "../../requestCache";
+import { cachedFetch, cachedRequest, invalidateTags } from "../../requestCache";
 import { fetchProjectSummaries } from "./workflow";
 
 // ── Team data (page shells render these; adapters fill them) ───────────
@@ -66,6 +66,7 @@ export async function acceptInvite(roomId: string): Promise<void> {
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/join`,
     { method: "POST", body: "{}" },
   );
+  invalidateTags(["teams"]);
 }
 
 /** 拒绝邀请（CS-API v3：invite 状态下的 leave=decline，Element 同款）。 */
@@ -74,6 +75,7 @@ export async function rejectInvite(roomId: string): Promise<void> {
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/leave`,
     { method: "POST", body: "{}" },
   );
+  invalidateTags(["teams"]);
 }
 
 export interface SpawnNode {
@@ -247,13 +249,15 @@ export async function openDm(
   name?: string,
 ): Promise<{ ok: boolean; target: string; room_id: string; created: boolean }> {
   const trimmed = (name || "").trim();
-  return (await requestJson("/agentteams-proxy/dm", {
+  const r = (await requestJson("/agentteams-proxy/dm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(
       trimmed ? { user: mxidOrName, name: trimmed } : { user: mxidOrName },
     ),
   })) as { ok: boolean; target: string; room_id: string; created: boolean };
+  invalidateTags(["teams"]);
+  return r;
 }
 
 /** 【历史替代，勿删·预埋清单 P2】/teams/rooms 实时聚合版——现役链路用
@@ -294,17 +298,24 @@ export interface TeamFileEntry {
   size: number;
 }
 
-/** 列取团队共享目录一层（非递归）；prefix 为空=根。 */
-export async function fetchTeamFiles(
+/** 列取团队共享目录一层（非递归）；prefix 为空=根。
+ * 30s 缓存（目录类按 60s 档下调：文件列表随 worker 写入频繁变化，
+ * 30s 与 ProjectFiles 刷新节奏匹配；key 含 team+prefix）。 */
+export function fetchTeamFiles(
   team: string,
   prefix = "",
 ): Promise<TeamFileEntry[]> {
   const q = new URLSearchParams({ team });
   if (prefix) q.set("prefix", prefix);
-  const data = await requestJson(
-    `/agentteams-proxy/team-files?${q.toString()}`,
+  return cachedRequest(
+    `team-files:${team}:${prefix}`,
+    30_000,
+    async () => {
+      const data = await requestJson(`/agentteams-proxy/team-files?${q.toString()}`);
+      return Array.isArray(data) ? (data as TeamFileEntry[]) : [];
+    },
+    { tags: ["team-files"] },
   );
-  return Array.isArray(data) ? (data as TeamFileEntry[]) : [];
 }
 
 // ── 成员详情：某成员在房间内的最近消息（messages 翻页过滤）───
@@ -316,7 +327,9 @@ export interface MemberMessage {
   origin_server_ts: number;
 }
 
-export async function fetchMemberMessages(
+/** 30s 缓存（成员消息=只读历史，无写路径失效需求；
+ * key 含 roomId/sender/limit 全参数）。 */
+export function fetchMemberMessages(
   roomId: string,
   sender: string,
   limit = 5,
@@ -326,9 +339,15 @@ export async function fetchMemberMessages(
     sender,
     limit: String(limit),
   });
-  return (await requestJson(
-    `/agentteams-proxy/matrix/member/messages?${params.toString()}`,
-  )) as { ok: boolean; messages: MemberMessage[] };
+  return cachedRequest(
+    `member-messages:${roomId}:${sender}:${limit}`,
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/matrix/member/messages?${params.toString()}`,
+      ) as Promise<{ ok: boolean; messages: MemberMessage[] }>,
+    { tags: ["member-messages"] },
+  );
 }
 
 // ── 房间详情（Element 同款房间详情面板 · 数据面）──────────────
@@ -356,10 +375,18 @@ export interface RoomInfo {
   members: RoomInfoMember[];
 }
 
-export async function fetchRoomInfo(
+/** 30s 缓存（房间 state 低频变化；renameRoom/leaveRoom/forgetRoom
+ * 成功后 invalidateTags(["rooms"]) 覆盖）。 */
+export function fetchRoomInfo(
   roomId: string,
 ): Promise<RoomInfo> {
-  return (await requestJson(
-    `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/info`,
-  )) as RoomInfo;
+  return cachedRequest(
+    `room-info:${roomId}`,
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/info`,
+      ) as Promise<RoomInfo>,
+    { tags: ["rooms"] },
+  );
 }

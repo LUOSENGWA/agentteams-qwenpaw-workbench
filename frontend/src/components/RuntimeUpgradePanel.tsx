@@ -1,15 +1,19 @@
 import type * as ReactNS from "react";
 
 import {
+  fetchNodeVersion,
   fetchUpgradeCheckAll,
   fetchUpgradeStatus,
+  fetchUpgradeVersions,
   httpErrorStatus,
   requestJson,
   runUpgrade,
   UPGRADE_TERMINAL_STATES,
+  type NodeVersion,
   type UpgradeCheckAll,
   type UpgradeRunHandle,
   type UpgradeStatusResult,
+  type UpgradeVersionRow,
 } from "../api";
 import VersionTablePicker from "./VersionTablePicker";
 import { useThemeColors } from "../theme";
@@ -98,18 +102,77 @@ function jobStateVariant(s?: string): "processing" | "success" | "error" | "warn
   }
 }
 
-/** 运行时升级段（运维页内，15.25 per-worker 重接；15.28 单模式退役）。
- * 流程：Worker 列表按团队分组（行内当前版本+可否升级）→ 检查更新
- * （check-all 批量轻探）→ 勾选（选一个=单独升级）→ 选目标版本
- * → 二次确认触发（破坏性：容器重启）→ 顺序执行 + 逐 worker job 跟踪。 */
-function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
+/** 大版本号（第一个数字段；非法→0）。 */
+function majorOf(v: string): number {
+  const n = parseInt(v.replace(/^[v=]+/, "").split(/[.+-]/)[0], 10);
+  return isNaN(n) ? 0 : n;
+}
+
+/** 升级兼容性本地判断（15.36 B，单 worker + 批量共用）：
+ * same=目标与当前同版（禁升）；downgrade=目标低于当前（红警告+确认带警告）；
+ * cross-major=目标更高但大版本号不同（黄警告）；upgrade=常规升级；
+ * unknown=当前版未知（不判断）。 */
+function assessUpgradeCompat(
+  current: string | null,
+  target: string,
+): {
+  kind: "same" | "downgrade" | "cross-major" | "upgrade" | "unknown";
+  fromMajor?: number;
+  toMajor?: number;
+} {
+  const tg = target.trim();
+  if (!current || !tg) return { kind: "unknown" };
+  const c = compareVersions(current, tg);
+  if (c === 0) return { kind: "same" };
+  if (c > 0) return { kind: "downgrade" };
+  const fm = majorOf(current);
+  const tm = majorOf(tg);
+  if (fm !== tm) return { kind: "cross-major", fromMajor: fm, toMajor: tm };
+  return { kind: "upgrade" };
+}
+
+/** job state-file 的 note 字段（runner._mark_failed 写入：预检详情 /
+ * 回滚原因 / 健康门等待）——无 note 返回空串。 */
+function jobNoteOf(st?: Record<string, unknown> | null): string {
+  const n = st?.note;
+  return typeof n === "string" && n.trim() ? n : "";
+}
+
+/** 运行时升级段（双模态，15.35 单 worker 化）：
+ * - 单 worker 紧凑模式（workerName 给定——Worker 详情「运行时升级」卡）：
+ *   头部=该 worker 名 + 当前 runtime 版本（fetchNodeVersion，Worker 详情
+ *   同款 L1 拨号）；[检查更新]=check-all 取该行本地匹配（可升级/已是最新）；
+ *   [升级]=仅可升级时启用 → 二次确认（破坏性·容器重启·在跑任务中断·失败
+ *   自动回滚）→ runUpgrade → 5s 轮询 fetchUpgradeStatus 至终态。
+ *   无 worker 列表/勾选/批量顺序执行/多版本选择。
+ * - 批量模式（workerName 缺省——保留 BatchBody 原行为）。
+ * 非 qwenpaw 运行时（runtime 给定且 ≠qwenpaw）→ 只读提示，无升级按钮。 */
+function RuntimeUpgradePanel({
+  refreshTick = 0,
+  active = false,
+  workerName,
+  runtime,
+}: {
+  refreshTick?: number;
+  /** 宿主显式激活（管理页二级页/弹窗场景——原 useTabActive("ops")
+   * 门在顶层运维 tab 移除后恒 false，改由宿主传入）。 */
+  active?: boolean;
+  /** 给定 = 单 worker 紧凑模式（worker 详情卡）；缺省 = 批量模式。 */
+  workerName?: string;
+  /** Worker 运行时（worker 详情上下文透传）——非 qwenpaw 的确定性
+   * 只读提示判定，免拨号。 */
+  runtime?: string;
+}) {
   const t = useThemeColors();
   const tr = useT();
+  const single = !!workerName;
 
   const [workers, setWorkers] = React.useState<WorkerItem[]>([]);
   const [workersError, setWorkersError] = React.useState("");
+  // 单模态「刷新」= 重新拨号 node-version（refresh=1 绕过 10min 缓存）。
+  const [singleTick, setSingleTick] = React.useState(0);
 
-  // workers 目录（L1；403=未配 token → 引导空态）。
+  // workers 目录（L1；403=未配 token → 引导空态）。批量模式专用。
   const loadWorkers = React.useCallback(async (silent = false) => {
     if (!silent) setWorkersError("");
     try {
@@ -129,14 +192,23 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
   }, [tr]);
 
   React.useEffect(() => {
+    if (single) return;
     void loadWorkers(false);
-  }, [loadWorkers]);
+  }, [loadWorkers, single]);
 
-  // 切 Tab 回来（rc-tabs 保活不重跑挂载 effect）→ 静默刷新。
+  // 切 Tab 回来（rc-tabs 保活不重跑挂载 effect）→ 静默刷新。批量模式专用。
   React.useEffect(() => {
-    if (!refreshTick) return;
+    if (!refreshTick || single) return;
     void loadWorkers(true);
-  }, [refreshTick, loadWorkers]);
+  }, [refreshTick, loadWorkers, single]);
+
+  const onRefresh = React.useCallback(() => {
+    if (single) {
+      setSingleTick((v) => v + 1);
+    } else {
+      void loadWorkers(false);
+    }
+  }, [single, loadWorkers]);
 
   return (
     <div>
@@ -166,32 +238,531 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
             type="text"
             size="small"
             icon={<ReloadIcon />}
-            onClick={() => void loadWorkers(false)}
+            onClick={onRefresh}
           />
         </WbTooltip>
       </div>
 
-      {/* QwenPaw only 提示（用户点名） */}
+      {single ? (
+        <SingleWorkerBody
+          workerName={workerName as string}
+          runtime={runtime}
+          active={active}
+          refreshKey={singleTick}
+        />
+      ) : (
+        <>
+          {/* QwenPaw only 提示（用户点名） */}
+          <div
+            style={{
+              fontSize: 12,
+              color: t.textSecondary,
+              marginBottom: 10,
+            }}
+          >
+            {tr("就地升级当前仅支持 qwenpaw 运行时（其他运行时请走镜像重建升级）。")}
+          </div>
+
+          {workersError ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              message={workersError}
+              style={{ marginBottom: 10 }}
+            />
+          ) : null}
+
+          <BatchBody workers={workers} active={active} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 单 worker 紧凑模式（15.35）：Worker 详情「运行时升级」卡内嵌。
+ * 只显该 worker：当前 runtime 版本 + [检查更新] + [升级]（仅可升级时
+ * 启用）+ job 跟踪卡（轮询至终态）。列表/勾选/批量 UI 一概不出。
+ * 自包含 state（懒挂载=弹窗打开才拨号，与卡语义一致）。 */
+function SingleWorkerBody({
+  workerName,
+  runtime,
+  active = false,
+  refreshKey = 0,
+}: {
+  workerName: string;
+  runtime?: string;
+  active?: boolean;
+  /** 段头「刷新」bump——>0 时 node-version 带 refresh=1 绕过缓存实读。 */
+  refreshKey?: number;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+
+  const nonQwenpaw = !!runtime && runtime !== "qwenpaw";
+
+  // 当前 runtime 版本（L1 拨号，服务端 10min 缓存；Worker 详情同款模式）。
+  const [nodeVer, setNodeVer] = React.useState<NodeVersion | null>(null);
+  const [nodeVerErr, setNodeVerErr] = React.useState("");
+  const [l1Denied, setL1Denied] = React.useState(false);
+  React.useEffect(() => {
+    if (nonQwenpaw) return; // 非 qwenpaw → 只读提示，不拨号
+    let alive = true;
+    setNodeVer(null);
+    setNodeVerErr("");
+    setL1Denied(false);
+    fetchNodeVersion(workerName, refreshKey > 0)
+      .then((d) => {
+        if (alive) setNodeVer(d);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        if (httpErrorStatus(e) === 403) {
+          setL1Denied(true);
+        } else {
+          setNodeVerErr(e instanceof Error ? e.message : tr("探测失败"));
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [workerName, nonQwenpaw, refreshKey, tr]);
+
+  // 检查更新：check-all（服务端 10min 缓存）取本 worker 行 → 本地匹配。
+  const [check, setCheck] = React.useState<UpgradeCheckResult | null>(null);
+  const [checking, setChecking] = React.useState(false);
+  const [checkErr, setCheckErr] = React.useState<string | null>(null);
+  const doCheck = React.useCallback(async () => {
+    setChecking(true);
+    setCheck(null);
+    setCheckErr(null);
+    try {
+      const d = await fetchUpgradeCheckAll();
+      const row = d.workers.find((x) => x.name === workerName);
+      const latest = d.latest || "";
+      const current = row?.current ?? null;
+      if (current) qwenpawVersionCache.set(workerName, current);
+      if (!current || !latest || row?.error) {
+        setCheck({
+          current,
+          latest,
+          status: "unknown",
+          error: row?.error || (!latest ? d.error : undefined) || tr("无匹配项"),
+        });
+      } else {
+        const c = compareVersions(current, latest);
+        setCheck({
+          current,
+          latest,
+          status: c < 0 ? "available" : "up-to-date",
+        });
+      }
+    } catch (e) {
+      setCheckErr(e instanceof Error ? e.message : tr("检查更新失败"));
+    } finally {
+      setChecking(false);
+    }
+  }, [workerName]);
+
+  // 目标版本下拉（15.36 B）：检查出 latest 后出现，默认 latest；
+  // 选项=release 列表排除 yanked，拉取失败降级=仅 latest 一项。
+  const [versionSel, setVersionSel] = React.useState("");
+  const [versions, setVersions] = React.useState<UpgradeVersionRow[]>([]);
+  React.useEffect(() => {
+    if (!check?.latest) return;
+    let alive = true;
+    setVersionSel(check.latest);
+    setVersions([]);
+    fetchUpgradeVersions()
+      .then((d) => {
+        if (alive) setVersions((d.versions || []).filter((v) => !v.yanked));
+      })
+      .catch(() => {
+        /* 拉取失败 → versions 保持空 → 选项降级仅 latest */
+      });
+    return () => {
+      alive = false;
+    };
+    // check 身份每次 doCheck 变化但 latest 同串时不重置用户选择。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [check?.latest]);
+
+  const canPick = !!check?.latest;
+  const versionOptions = React.useMemo(() => {
+    const rows: UpgradeVersionRow[] = versions.length
+      ? versions
+      : check?.latest
+        ? [
+            {
+              version: check.latest,
+              upload_time: "",
+              size: 0,
+              prerelease: false,
+              yanked: false,
+              is_latest: true,
+            },
+          ]
+        : [];
+    return rows.map((r) => ({
+      value: r.version,
+      label:
+        r.version +
+        (r.prerelease ? " " + tr("预发布") : "") +
+        (r.is_latest ? " " + tr("最新") : ""),
+    }));
+  }, [versions, check?.latest, tr]);
+
+  // 升级：目标=选中版本（默认 latest）；同版禁升；二次确认 → runUpgrade
+  // → 5s 轮询至终态。
+  const [confirming, setConfirming] = React.useState(false);
+  const [job, setJob] = React.useState<UpgradeRunHandle | null>(null);
+  const [jobStatus, setJobStatus] = React.useState<UpgradeStatusResult | null>(null);
+  const [triggering, setTriggering] = React.useState(false);
+
+  const jobState = (jobStatus?.state as Record<string, unknown> | undefined)
+    ?.state as string | undefined;
+  const jobTerminal =
+    !!jobState && UPGRADE_TERMINAL_STATES.includes(jobState);
+  const jobNote = jobNoteOf(jobStatus?.state);
+
+  const doUpgrade = React.useCallback(async () => {
+    const target = (versionSel || check?.latest || "").trim();
+    if (!target) return;
+    setConfirming(false);
+    setTriggering(true);
+    try {
+      const j = await runUpgrade(workerName, target);
+      setJob(j);
+      setJobStatus(null);
+    } catch (e) {
+      antd.message.error(
+        `${workerName}：${e instanceof Error ? e.message : tr("触发失败")}`,
+      );
+    } finally {
+      setTriggering(false);
+    }
+  }, [workerName, check, versionSel, tr]);
+
+  usePoller({
+    fn: async () => {
+      if (!job) return;
+      try {
+        const s = await fetchUpgradeStatus(job.worker, job.job_id);
+        setJobStatus(s);
+        // 升级成功→当前 qwenpaw 版已变，清缓存 + 重拨真值（绕过 10min 缓存）。
+        const st = (s.state as Record<string, unknown> | undefined)?.state as
+          | string
+          | undefined;
+        if (st === "success") {
+          qwenpawVersionCache.delete(job.worker);
+          fetchNodeVersion(job.worker, true)
+            .then(setNodeVer)
+            .catch(() => {
+              /* 重拨失败保留旧值，点「刷新」兜底 */
+            });
+        }
+      } catch {
+        /* 瞬态失败（容器重启中）保留上次状态，下一轮再试 */
+      }
+    },
+    intervalMs: 5000,
+    active: active && !!job && !jobTerminal,
+    minPokeMs: 3000,
+  });
+
+  // 非 qwenpaw 运行时 → 只读提示（无升级按钮）。
+  if (nonQwenpaw) {
+    return (
+      <div style={{ display: "grid", gap: 10 }}>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+        >
+          <span
+            style={{
+              fontFamily: "ui-monospace, monospace",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            {workerName}
+          </span>
+          <antd.Tag>{runtime}</antd.Tag>
+        </div>
+        <antd.Alert
+          type="info"
+          showIcon
+          message={tr(
+            "就地升级当前仅支持 qwenpaw 运行时（其他运行时请走镜像重建升级）。",
+          )}
+        />
+      </div>
+    );
+  }
+
+  const current =
+    nodeVer?.runtime_version || qwenpawVersionCache.get(workerName) || null;
+
+  // 兼容性本地判断（15.36 B）：目标=选中版本（默认 latest）vs 当前版。
+  const targetVersion = (versionSel || check?.latest || "").trim();
+  const compat = targetVersion
+    ? assessUpgradeCompat(current, targetVersion)
+    : null;
+  const selPrerelease =
+    versions.find((v) => v.version === targetVersion)?.prerelease === true;
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {/* worker 名 + 当前 runtime 版本 */}
       <div
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          marginBottom: 10,
-        }}
+        style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
       >
-        {tr("就地升级当前仅支持 qwenpaw 运行时（其他运行时请走镜像重建升级）。")}
+        <span
+          style={{
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          {workerName}
+        </span>
+        {current ? (
+          <antd.Tag color="processing" style={{ marginInlineEnd: 0 }}>
+            {tr("运行时版本")} {current}
+          </antd.Tag>
+        ) : nodeVerErr ? (
+          <WbTooltip title={nodeVerErr}>
+            <antd.Tag color="warning" style={{ marginInlineEnd: 0 }}>
+              {tr("探测失败")}
+            </antd.Tag>
+          </WbTooltip>
+        ) : null}
       </div>
 
-      {workersError ? (
+      {l1Denied ? (
         <antd.Alert
           type="warning"
           showIcon
-          message={workersError}
-          style={{ marginBottom: 10 }}
+          message={tr("需要 Controller 管理员 token（L1）才能执行运行时升级")}
         />
       ) : null}
 
-        <BatchBody workers={workers} />
+      {/* 检查更新 + 结果 */}
+      <div
+        style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+      >
+        <antd.Button
+          onClick={() => void doCheck()}
+          loading={checking}
+          disabled={l1Denied}
+        >
+          {tr("检查更新")}
+        </antd.Button>
+        <span style={{ fontSize: 12, color: t.textSecondary }}>
+          {tr(
+            "当前=该 Worker 容器内 QwenPaw 运行时版（服务端 10min 缓存），最新=PyPI（缓存）。",
+          )}
+        </span>
+        {check?.status === "available" && check.latest ? (
+          <antd.Tag color="error" style={{ marginInlineEnd: 0 }}>
+            {tr("可升级")} → {check.latest}
+          </antd.Tag>
+        ) : check?.status === "up-to-date" ? (
+          <antd.Tag color="success" style={{ marginInlineEnd: 0 }}>
+            {tr("已是最新")}
+          </antd.Tag>
+        ) : null}
+        {checkErr ? <antd.Tag color="warning">{checkErr}</antd.Tag> : null}
+      </div>
+
+      {/* 目标版本下拉 + 兼容性提示（15.36 B：检查后出现；
+       * 降级红 / 跨大版本黄 / 预发布灰 Tag / 同版禁用升级钮） */}
+      {canPick ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+          >
+            <span style={{ fontSize: 12, color: t.textSecondary }}>
+              {tr("目标版本")}
+            </span>
+            <antd.Select
+              style={{ width: 240 }}
+              value={versionSel || undefined}
+              onChange={(v: string) => setVersionSel(v)}
+              options={versionOptions}
+              placeholder={tr("选择目标版本")}
+              aria-label={tr("目标版本")}
+            />
+            {selPrerelease ? (
+              <antd.Tag style={{ marginInlineEnd: 0 }}>
+                {tr("预发布")}
+              </antd.Tag>
+            ) : null}
+            {compat?.kind === "same" ? (
+              <antd.Tag color="success" style={{ marginInlineEnd: 0 }}>
+                {tr("已是当前版本")}
+              </antd.Tag>
+            ) : null}
+          </div>
+          {compat?.kind === "downgrade" ? (
+            <antd.Alert
+              type="error"
+              showIcon
+              message={tr(
+                "⚠️ 目标版本 {target} 低于当前版 {current}——降级可能不兼容",
+                { target: targetVersion, current: current ?? "" },
+              )}
+            />
+          ) : null}
+          {compat?.kind === "cross-major" ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              message={tr(
+                "跨大版本升级（{from} → {to}）——跨大版本变更可能不向后兼容",
+                {
+                  from: String(compat.fromMajor),
+                  to: String(compat.toMajor),
+                },
+              )}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* 升级（检查后可用；同版禁升；job 进行中不重复触发） */}
+      <div>
+        <antd.Button
+          type="primary"
+          danger
+          icon={<CloudSyncIcon />}
+          disabled={
+            !canPick ||
+            check?.status === "unknown" ||
+            compat?.kind === "same" ||
+            triggering ||
+            (!!job && !jobTerminal)
+          }
+          loading={triggering}
+          onClick={() => setConfirming(true)}
+        >
+          {tr("升级")}
+        </antd.Button>
+      </div>
+
+      {/* job 跟踪卡（轮询至终态） */}
+      {job ? (
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 8,
+            border: `1px solid ${t.border}`,
+            background: t.cardBg,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          <antd.Badge
+            status={jobStateVariant(jobState)}
+            text={
+              <span
+                style={{
+                  fontFamily: "ui-monospace, monospace",
+                  fontSize: 11,
+                }}
+              >
+                {job.job_id}
+              </span>
+            }
+          />
+          {jobState ? (
+            <antd.Tag color={jobStateVariant(jobState)} style={{ marginInlineEnd: 0 }}>
+              {jobState}
+            </antd.Tag>
+          ) : null}
+          {jobState === "success" ? (
+            <antd.Tag color="success" style={{ marginInlineEnd: 0 }}>
+              {tr("升级成功")}
+            </antd.Tag>
+          ) : null}
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("目标")} <b style={{ color: t.text }}>{job.version}</b>
+          </span>
+          {jobState === "precheck_failed" ? (
+            <antd.Alert
+              type="error"
+              showIcon
+              style={{ flexBasis: "100%", margin: 0 }}
+              message={tr("兼容性检查失败：{detail}", {
+                detail: jobNote || "—",
+              })}
+            />
+          ) : null}
+          {jobNote && jobState !== "precheck_failed" ? (
+            <span
+              style={{
+                flexBasis: "100%",
+                fontSize: 11,
+                color: t.textSecondary,
+                wordBreak: "break-all",
+              }}
+            >
+              {jobNote}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* 破坏性二次确认 */}
+      <antd.Modal
+        open={confirming}
+        title={tr("确认触发运行时升级？")}
+        onCancel={() => setConfirming(false)}
+        onOk={() => void doUpgrade()}
+        okText={tr("确认升级")}
+        okButtonProps={{ danger: true, loading: triggering }}
+        cancelText={tr("取消")}
+      >
+        <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
+          <span>
+            {tr("目标版本")}：
+            <b style={{ fontFamily: "ui-monospace, monospace" }}>
+              {targetVersion}
+            </b>
+          </span>
+          {compat?.kind === "downgrade" ? (
+            <antd.Alert
+              type="error"
+              showIcon
+              message={tr(
+                "⚠️ 目标版本 {target} 低于当前版 {current}——降级可能不兼容",
+                { target: targetVersion, current: current ?? "" },
+              )}
+            />
+          ) : null}
+          {compat?.kind === "cross-major" ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              message={tr(
+                "跨大版本升级（{from} → {to}）——跨大版本变更可能不向后兼容",
+                {
+                  from: String(compat.fromMajor),
+                  to: String(compat.toMajor),
+                },
+              )}
+            />
+          ) : null}
+          <antd.Alert
+            type="warning"
+            showIcon
+            message={tr(
+              "破坏性操作：将重启 {name} 容器并中断在跑任务；两阶段就地升级，启动自检失败会自动回滚到旧版本。",
+              { name: workerName },
+            )}
+          />
+        </div>
+      </antd.Modal>
     </div>
   );
 }
@@ -200,10 +771,17 @@ function RuntimeUpgradePanel({ refreshTick = 0 }: { refreshTick?: number }) {
  *  检查更新（批量轻探→每 worker 当前版本+可否就地升级）
  *  + 顺序触发升级（一次一个，避容器重启互扰）+ 逐 worker job 跟踪。
  *  自包含 state，与单 Worker 流程隔离。 */
-function BatchBody({ workers }: { workers: WorkerItem[] }) {
+function BatchBody({
+  workers,
+  active = false,
+}: {
+  workers: WorkerItem[];
+  active?: boolean;
+}) {
   const t = useThemeColors();
   const tr = useT();
-  const opsActive = useTabActive("ops");
+  // 原 tab 门保留（hook 恒调用），宿主显式激活 OR 入。
+  const opsActive = useTabActive("ops") || active;
 
   const [selected, setSelected] = React.useState<string[]>([]);
   const [lightMap, setLightMap] = React.useState<
@@ -335,6 +913,23 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
     setTriggering(false);
     setSeqIdx(-1);
   }, [selected, version, tr]);
+
+  // 15.36 B：已选 worker vs 目标版本本地兼容性判断（同源 assessUpgradeCompat）——
+  // 降级/跨大版本在选单下方红/黄提示 + 二次确认内复现。
+  const batchWarn = React.useMemo(() => {
+    const v = version.trim();
+    if (!v || selected.length === 0) return null;
+    const down: string[] = [];
+    const cross: string[] = [];
+    for (const w of selected) {
+      const cur = lightMap[w]?.current ?? qwenpawVersionCache.get(w) ?? null;
+      if (!cur) continue;
+      const c = assessUpgradeCompat(cur, v);
+      if (c.kind === "downgrade") down.push(w);
+      else if (c.kind === "cross-major") cross.push(w);
+    }
+    return down.length || cross.length ? { down, cross } : null;
+  }, [selected, version, lightMap]);
 
   const jobEntries = Object.entries(jobs);
   const anyJobActive = jobEntries.some(([, j]) => {
@@ -499,6 +1094,31 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
 
       {/* 目标版本（表格选择，15.27）+ 批量升级 */}
       <VersionTablePicker value={version} onChange={setVersion} />
+
+      {/* 降级/跨大版本警告（15.36 B：选中 worker 当前版 vs 目标版本） */}
+      {batchWarn ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          {batchWarn.down.length ? (
+            <antd.Alert
+              type="error"
+              showIcon
+              message={tr("目标版本低于当前版（降级可能不兼容）：{names}", {
+                names: batchWarn.down.join("、"),
+              })}
+            />
+          ) : null}
+          {batchWarn.cross.length ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              message={tr("跨大版本升级（可能不向后兼容）：{names}", {
+                names: batchWarn.cross.join("、"),
+              })}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
       <div
         style={{
           display: "flex",
@@ -578,6 +1198,29 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
                 {idx === seqIdx && triggering ? (
                   <antd.Tag color="processing">{tr("触发中")}</antd.Tag>
                 ) : null}
+                {st === "precheck_failed" ? (
+                  <antd.Alert
+                    type="error"
+                    showIcon
+                    style={{ flexBasis: "100%", margin: 0 }}
+                    message={tr("兼容性检查失败：{detail}", {
+                      detail: jobNoteOf(jobStatus[j.worker]?.state) || "—",
+                    })}
+                  />
+                ) : null}
+                {jobNoteOf(jobStatus[j.worker]?.state) &&
+                st !== "precheck_failed" ? (
+                  <span
+                    style={{
+                      flexBasis: "100%",
+                      fontSize: 11,
+                      color: t.textSecondary,
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {jobNoteOf(jobStatus[j.worker]?.state)}
+                  </span>
+                ) : null}
               </div>
             );
           })}
@@ -605,6 +1248,24 @@ function BatchBody({ workers }: { workers: WorkerItem[] }) {
               {version.trim()}
             </b>
           </span>
+          {batchWarn?.down.length ? (
+            <antd.Alert
+              type="error"
+              showIcon
+              message={tr("目标版本低于当前版（降级可能不兼容）：{names}", {
+                names: batchWarn.down.join("、"),
+              })}
+            />
+          ) : null}
+          {batchWarn?.cross.length ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              message={tr("跨大版本升级（可能不向后兼容）：{names}", {
+                names: batchWarn.cross.join("、"),
+              })}
+            />
+          ) : null}
           <antd.Alert
             type="warning"
             showIcon

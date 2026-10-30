@@ -1,6 +1,7 @@
 // Worker 管理面（/workers/*、/workers-status、/skills）：技能目录/通道/工具/会话/loops/状态 + 团队技能包上传。
 
 import { controllerRequest, requestJson } from "../shared";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 
 // ── 技能中心 ──────────────────────────────────────────────
 /** GET /api/v1/skills 契约（skill-catalog-api.md，已合 main）：技能目录条目。
@@ -20,13 +21,16 @@ export interface SkillCatalogItem {
 export async function fetchSkillCatalog(
   team?: string,
 ): Promise<SkillCatalogItem[]> {
-  const q = team ? `?team=${encodeURIComponent(team)}` : "";
-  const raw = (await controllerRequest("GET", `/skills${q}`)) as Record<
-    string,
-    unknown
-  >;
-  const arr = Array.isArray(raw?.skills) ? raw.skills : [];
-  return arr as SkillCatalogItem[];
+  const key = team ? `skill-catalog:${team}` : "skill-catalog";
+  return cachedRequest(key, 60_000, async () => {
+    const q = team ? `?team=${encodeURIComponent(team)}` : "";
+    const raw = (await controllerRequest("GET", `/skills${q}`)) as Record<
+      string,
+      unknown
+    >;
+    const arr = Array.isArray(raw?.skills) ? raw.skills : [];
+    return arr as SkillCatalogItem[];
+  }, { tags: ["skills"] });
 }
 
 // ── 频道接入（上游契约 draft 未合——404=版本门）──
@@ -61,45 +65,70 @@ function channelBase(name: string): string {
   return `/workers/${encodeURIComponent(name)}/channels`;
 }
 /** 全部频道配置（{[channel]: config}）——404 = Controller 版本门
- * （上游未合/Controller 未升级）。 */
+ * （上游未合/Controller 未升级）。30s 缓存（列表/状态类；
+ * WorkerChannels 30s 静默轮询同节奏）。 */
 export function fetchWorkerChannels(
   name: string,
 ): Promise<Record<string, WorkerChannelConfig>> {
-  return controllerRequest("GET", channelBase(name)) as Promise<
-    Record<string, WorkerChannelConfig>
-  >;
+  return cachedRequest(
+    `worker:channels:${name}`,
+    30_000,
+    () =>
+      controllerRequest("GET", channelBase(name)) as Promise<
+        Record<string, WorkerChannelConfig>
+      >,
+    { tags: ["channels"] },
+  );
 }
-/** 插件频道表单 schema（内置频道无条目）。 */
+/** 插件频道表单 schema（内置频道无条目）。300s 缓存（近似静态——
+ * 随插件装载变化，远慢于配置编辑；30s 轮询下 29/30 免请求）。 */
 export function fetchWorkerChannelSchemas(
   name: string,
 ): Promise<Record<string, ChannelSchema>> {
-  return controllerRequest("GET", `${channelBase(name)}/schemas`) as Promise<
-    Record<string, ChannelSchema>
-  >;
+  return cachedRequest(
+    `worker:channel-schemas:${name}`,
+    300_000,
+    () =>
+      controllerRequest("GET", `${channelBase(name)}/schemas`) as Promise<
+        Record<string, ChannelSchema>
+      >,
+    { tags: ["channels"] },
+  );
 }
-/** 单频道配置读回（写后校验用）。 */
+/** 单频道配置读回（写后校验用）。30s 缓存；putWorkerChannel
+ * 成功后 invalidateTags(["channels"]) 保证写后读回拿到新值。 */
 export function fetchWorkerChannel(
   name: string,
   channel: string,
 ): Promise<WorkerChannelConfig> {
-  return controllerRequest(
-    "GET",
-    `${channelBase(name)}/${encodeURIComponent(channel)}`,
-  ) as Promise<WorkerChannelConfig>;
+  return cachedRequest(
+    `worker:channel:${name}:${channel}`,
+    30_000,
+    () =>
+      controllerRequest(
+        "GET",
+        `${channelBase(name)}/${encodeURIComponent(channel)}`,
+      ) as Promise<WorkerChannelConfig>,
+    { tags: ["channels"] },
+  );
 }
 /** 单频道更新（body = 全量频道配置；PUT 热加载，无需 restart 才生效）。 */
-export function putWorkerChannel(
+export async function putWorkerChannel(
   name: string,
   channel: string,
   config: WorkerChannelConfig,
 ): Promise<WorkerChannelConfig> {
-  return controllerRequest(
+  const r = await controllerRequest(
     "PUT",
     `${channelBase(name)}/${encodeURIComponent(channel)}`,
     config,
   ) as Promise<WorkerChannelConfig>;
+  invalidateTags(["channels"]);
+  return r;
 }
-/** 频道健康检查。 */
+/** 频道健康检查。不缓存：WorkerChannels 的「健康检查」按钮触发
+ * （setHealthBusy + 逐频道 Promise.all）= 显式探测语义，缓存会让按钮
+ * 在 TTL 内假转。 */
 export function fetchWorkerChannelHealth(
   name: string,
   channel: string,
@@ -110,14 +139,16 @@ export function fetchWorkerChannelHealth(
   ) as Promise<Record<string, unknown>>;
 }
 /** 频道重启（stop/start channel manager）。 */
-export function restartWorkerChannel(
+export async function restartWorkerChannel(
   name: string,
   channel: string,
 ): Promise<Record<string, unknown>> {
-  return controllerRequest(
+  const r = await controllerRequest(
     "POST",
     `${channelBase(name)}/${encodeURIComponent(channel)}/restart`,
   ) as Promise<Record<string, unknown>>;
+  invalidateTags(["channels"]);
+  return r;
 }
 /** 冲突检查（保存前：配置与现有运行状态冲突检测）。 */
 export function conflictCheckWorkerChannel(
@@ -184,7 +215,9 @@ export interface WorkerToolInfo {
   icon?: string;
   requiresConfig?: boolean;
 }
-/** 工具列表（只含状态，配置值在 Controller 代理边界已剔除）。 */
+/** 工具列表（只含状态，配置值在 Controller 代理边界已剔除）。不缓存：
+ * WorkerTools 仅挂载 + 「刷新」按钮触发（无轮询），按钮=显式新鲜度
+ * 预期，TTL 会让按钮在窗口内假转且组件不可传 force。 */
 export function fetchWorkerTools(
   name: string,
 ): Promise<{ tools: WorkerToolInfo[]; total: number }> {
@@ -233,11 +266,19 @@ export interface WorkerRuntimeSkill {
   channels?: string[];
   last_updated?: string;
 }
+/** 60s 缓存（目录/配置类；SkillCenter 展开懒加载 + 本地状态已去重，
+ * 缓存主要挡多面板/多窗口重复读）。 */
 export function fetchWorkerSkills(name: string): Promise<WorkerRuntimeSkill[]> {
-  return controllerRequest(
-    "GET",
-    `/workers/${encodeURIComponent(name)}/skills`,
-  ) as Promise<WorkerRuntimeSkill[]>;
+  return cachedRequest(
+    `worker:skills:${name}`,
+    60_000,
+    () =>
+      controllerRequest(
+        "GET",
+        `/workers/${encodeURIComponent(name)}/skills`,
+      ) as Promise<WorkerRuntimeSkill[]>,
+    { tags: ["skills"] },
+  );
 }
 
 // ── Worker 技能预加载策略（PUT /workers/{name}/skills/{skill}/preload）──
@@ -247,16 +288,18 @@ export function fetchWorkerSkills(name: string): Promise<WorkerRuntimeSkill[]> {
 // 写权限（上游 worker_skills.go）：L1 任意 worker；L2 human 限自己团队；
 // team leader 只读（403）。404 = worker 无此技能 / 其 qwenpaw < 2.2.1
 // 无 preload 路由（版本门）/ L2 跨团队防探测；502 = worker 不可达。
-export function setWorkerSkillPreload(
+export async function setWorkerSkillPreload(
   name: string,
   skillName: string,
   preload: boolean,
 ): Promise<{ updated: boolean; preload: boolean }> {
-  return controllerRequest(
+  const r = await controllerRequest(
     "PUT",
     `/workers/${encodeURIComponent(name)}/skills/${encodeURIComponent(skillName)}/preload`,
     { preload },
   ) as Promise<{ updated: boolean; preload: boolean }>;
+  invalidateTags(["skills"]);
+  return r;
 }
 
 // ── Worker 会话只读（#1295 等合并；给无头 QwenPaw Worker「补头」）──────
@@ -288,12 +331,16 @@ interface WorkerChatDetail {
   messages?: WorkerChatMessage[];
   status?: string;
 }
+/** 不缓存：列表仅选中 worker + 「刷新」按钮触发（无轮询、SSE 不驱动
+ * 列表）——按钮=显式新鲜度预期，TTL 会让按钮在窗口内假转。 */
 export function fetchWorkerChats(name: string): Promise<WorkerChatSpec[]> {
   return controllerRequest(
     "GET",
     `/workers/${encodeURIComponent(name)}/chats`,
   ) as Promise<WorkerChatSpec[]>;
 }
+/** 不缓存：SSE 事件驱动新鲜度路径（room_message → refreshTick →
+ * 300ms 合并窗即刷）——TTL 会在 SSE 窗内吞掉刷新、UI 更新停摆至过期。 */
 export function fetchWorkerChat(
   name: string,
   chatId: string,
@@ -304,7 +351,8 @@ export function fetchWorkerChat(
   ) as Promise<WorkerChatDetail>;
 }
 /** /status 仅 QwenPaw ≥2.2.1——旧 runtime 404 = 隐藏状态灯（版本无关门）。
- * 恒 200 时 {status:"idle"|"running"}（chat 不存在也 idle）。 */
+ * 恒 200 时 {status:"idle"|"running"}（chat 不存在也 idle）。
+ * 不缓存：同 fetchWorkerChat——SSE 事件驱动 + 状态灯实时性要求。 */
 export function fetchWorkerChatStatus(
   name: string,
   chatId: string,
@@ -323,11 +371,18 @@ interface WorkersStatusResponse {
   scanning: boolean;
 }
 /** Worker 状态聚合（单端点；旧逐 worker
- * /chats 扇出退役）。 */
+ * /chats 扇出退役）。30s 缓存（与 workerChatStatus 30s 轮询同节奏；
+ * 后端聚合表本身保旧值，TTL 相等不新增陈旧档）。 */
 export function fetchWorkersStatus(): Promise<WorkersStatusResponse> {
-  return requestJson(
-    "/agentteams-proxy/workers-status",
-  ) as Promise<WorkersStatusResponse>;
+  return cachedRequest(
+    "workers-status",
+    30_000,
+    () =>
+      requestJson(
+        "/agentteams-proxy/workers-status",
+      ) as Promise<WorkersStatusResponse>,
+    { tags: ["workers-status"] },
+  );
 }
 
 // ── Worker loop 模式（上游 #1231 端点族，pinned qwenpaw loops router 契约）──
@@ -340,12 +395,19 @@ export interface WorkerLoopModeInfo {
   description?: string;
   source?: string; // builtin | custom | plugin
 }
-/** GET /workers/{name}/loops——可用 loop 模式目录。 */
+/** GET /workers/{name}/loops——可用 loop 模式目录。30s 缓存
+ * （目录类；custom CRUD 成功后失效同 tag）。 */
 export function fetchWorkerLoops(name: string): Promise<WorkerLoopModeInfo[]> {
-  return controllerRequest(
-    "GET",
-    `/workers/${encodeURIComponent(name)}/loops`,
-  ) as Promise<WorkerLoopModeInfo[]>;
+  return cachedRequest(
+    `worker:loops:${name}`,
+    30_000,
+    () =>
+      controllerRequest(
+        "GET",
+        `/workers/${encodeURIComponent(name)}/loops`,
+      ) as Promise<WorkerLoopModeInfo[]>,
+    { tags: ["worker-loops"] },
+  );
 }
 export interface WorkerLoopStatus {
   state: string; // idle | running | awaiting_user
@@ -354,16 +416,24 @@ export interface WorkerLoopStatus {
 /** GET /workers/{name}/loops/status?session_id=——仅按 session 查激活 loop。
  * 聊天页 composer 消费点（QwenPaw 前端 LoopModeSelector
  * 同位）——1:1 Worker 房间 session_id = `matrix:{room_id}`（qwenpaw matrix
- * channel resolve_session_id 实锤：DM/群房间均为 matrix:{room_id}）。 */
+ * channel resolve_session_id 实锤：DM/群房间均为 matrix:{room_id}）。
+ * 15s 缓存（TTL=RoomChatCore composer 15s 轮询节奏，不新增陈旧档；
+ * key 含 session——换房独立条目）。 */
 export function fetchWorkerLoopStatusBySession(
   name: string,
   sessionId: string,
 ): Promise<WorkerLoopStatus> {
   const q = new URLSearchParams({ session_id: sessionId });
-  return controllerRequest(
-    "GET",
-    `/workers/${encodeURIComponent(name)}/loops/status?${q.toString()}`,
-  ) as Promise<WorkerLoopStatus>;
+  return cachedRequest(
+    `worker:loop-status:${name}:${sessionId}`,
+    15_000,
+    () =>
+      controllerRequest(
+        "GET",
+        `/workers/${encodeURIComponent(name)}/loops/status?${q.toString()}`,
+      ) as Promise<WorkerLoopStatus>,
+    { tags: ["loop-status"] },
+  );
 }
 interface WorkerLoopGateConfig {
   id: string;
@@ -379,48 +449,60 @@ export interface WorkerLoopCustomMode {
   enabled?: boolean;
   gates?: WorkerLoopGateConfig[];
 }
-/** GET /workers/{name}/loops/custom——已存自定义 loop 模式。 */
+/** GET /workers/{name}/loops/custom——已存自定义 loop 模式。30s 缓存
+ * （同 worker-loops tag，custom CRUD 成功后一并失效）。 */
 export function fetchWorkerLoopCustoms(
   name: string,
 ): Promise<WorkerLoopCustomMode[]> {
-  return controllerRequest(
-    "GET",
-    `/workers/${encodeURIComponent(name)}/loops/custom`,
-  ) as Promise<WorkerLoopCustomMode[]>;
+  return cachedRequest(
+    `worker:loop-customs:${name}`,
+    30_000,
+    () =>
+      controllerRequest(
+        "GET",
+        `/workers/${encodeURIComponent(name)}/loops/custom`,
+      ) as Promise<WorkerLoopCustomMode[]>,
+    { tags: ["worker-loops"] },
+  );
 }
 /** POST /workers/{name}/loops/custom——新建（整对象；409 重名/422 管道校验失败）。 */
-export function createWorkerLoopCustom(
+export async function createWorkerLoopCustom(
   name: string,
   mode: WorkerLoopCustomMode,
 ): Promise<WorkerLoopCustomMode> {
-  return controllerRequest(
+  const r = await controllerRequest(
     "POST",
     `/workers/${encodeURIComponent(name)}/loops/custom`,
     mode as unknown as Record<string, unknown>,
   ) as Promise<WorkerLoopCustomMode>;
+  invalidateTags(["worker-loops"]);
+  return r;
 }
 /** PUT /workers/{name}/loops/custom/{id}——整块替换（body.id 必须等于路径 id，
  * 否则 422；循环变更由服务端通知团队 Leader）。 */
-export function updateWorkerLoopCustom(
+export async function updateWorkerLoopCustom(
   name: string,
   modeId: string,
   mode: WorkerLoopCustomMode,
 ): Promise<WorkerLoopCustomMode> {
-  return controllerRequest(
+  const r = await controllerRequest(
     "PUT",
     `/workers/${encodeURIComponent(name)}/loops/custom/${encodeURIComponent(modeId)}`,
     mode as unknown as Record<string, unknown>,
   ) as Promise<WorkerLoopCustomMode>;
+  invalidateTags(["worker-loops"]);
+  return r;
 }
 /** DELETE /workers/{name}/loops/custom/{id}——204 无 body。 */
-export function deleteWorkerLoopCustom(
+export async function deleteWorkerLoopCustom(
   name: string,
   modeId: string,
 ): Promise<void> {
-  return controllerRequest(
+  await controllerRequest(
     "DELETE",
     `/workers/${encodeURIComponent(name)}/loops/custom/${encodeURIComponent(modeId)}`,
-  ) as Promise<void>;
+  );
+  invalidateTags(["worker-loops"]);
 }
 
 // ── 技能管理 ──
@@ -470,6 +552,7 @@ export async function uploadTeamSkill(opts: {
         ? o.message
         : undefined;
   const scanRaw = o.scan as Record<string, unknown> | undefined;
+  if (resp.ok) invalidateTags(["skills"]);
   return {
     ok: resp.ok,
     status: resp.status,
@@ -485,4 +568,83 @@ export async function uploadTeamSkill(opts: {
         }
       : undefined,
   };
+}
+
+// ── Worker MCP 合并读（CRD 声明 + worker 自注册；Controller 新端点代理）──
+
+/** 自注册 MCP 条目（后端已归一化/脱敏：env/headers 值=***；command/args
+ * 用户名段→~；URL 剥 userinfo）。字段随 Controller 形态防御性归一化。 */
+export interface WorkerMcpEntry {
+  /** 稳定标识（QwenPaw MCPClientInfo.key；与 CRD 声明按此合并）。 */
+  name: string;
+  /** 显示名（MCPClientInfo.name，可与 key 不同）。 */
+  displayName?: string;
+  enabled?: boolean | null;
+  transport?: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+}
+
+export interface WorkerMcpResult {
+  available: boolean;
+  worker?: string;
+  /** available=false 时的原因：controller_too_old / no_token / fetch_failed。 */
+  reason?: string;
+  mcpServers?: WorkerMcpEntry[];
+}
+
+/** GET /workers/{worker}/mcp：Controller 端点 404 时后端返回
+ * {available:false, reason:"controller_too_old"}（HTTP 200，不抛错）。
+ * 30s 缓存（WorkerMcpPanel 挂载拉取 + 面板间重复读）。 */
+export function fetchWorkerMcp(worker: string): Promise<WorkerMcpResult> {
+  return cachedRequest(
+    `worker:mcp:${worker}`,
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/workers/${encodeURIComponent(worker)}/mcp`,
+      ) as Promise<WorkerMcpResult>,
+    { tags: ["worker-mcp"] },
+  );
+}
+
+// ── Worker 插件只读（Controller 新端点 GET /api/v1/workers/{name}/plugins 代理）──
+
+/** 已装插件条目（字段直传，无凭据无需脱敏）。字段名随 Controller 契约：
+ * id / name / version / enabled / loaded / plugin_type。 */
+export interface WorkerPluginEntry {
+  id?: string;
+  name?: string;
+  version?: string;
+  enabled?: boolean | null;
+  loaded?: boolean | null;
+  plugin_type?: string;
+}
+
+export interface WorkerPluginsResult {
+  available: boolean;
+  worker?: string;
+  /** available=false 时的原因：controller_too_old / no_token。 */
+  reason?: string;
+  plugins?: WorkerPluginEntry[];
+}
+
+/** GET /workers/{worker}/plugins：Controller 端点 404 时后端返回
+ * {available:false, reason:"controller_too_old"}（HTTP 200，不抛错）。
+ * 30s 缓存（WorkerPluginsPanel 挂载拉取 + 面板间重复读）。 */
+export function fetchWorkerPlugins(
+  worker: string,
+): Promise<WorkerPluginsResult> {
+  return cachedRequest(
+    `worker:plugins:${worker}`,
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/workers/${encodeURIComponent(worker)}/plugins`,
+      ) as Promise<WorkerPluginsResult>,
+    { tags: ["worker-plugins"] },
+  );
 }

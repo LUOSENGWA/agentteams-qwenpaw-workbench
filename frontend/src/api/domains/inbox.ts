@@ -1,6 +1,7 @@
 // 通知收件箱域（/console/inbox/*、/notify、/room-mentions）：事件流 + 宿主通知推送 + 房间 @ 提及。
 
 import { requestJson } from "../shared";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 
 // ── 宿主通知收件箱（通知中心）：/console/inbox 事件流 ─────
 // 与 OS 通知/MenuBar 铃铛同一事件源（useOsNotifyPoller 同款端点）。
@@ -26,7 +27,9 @@ interface InboxPage {
   unread_count?: number;
 }
 
-export async function fetchInboxEvents(params: {
+/** 30s 缓存（事件流列表；key 含 limit/offset/unread_only 全参数；
+ * markInboxRead/deleteInboxEvent 成功后 invalidateTags(["inbox"])）。 */
+export function fetchInboxEvents(params: {
   limit?: number;
   offset?: number;
   unread_only?: boolean;
@@ -36,24 +39,31 @@ export async function fetchInboxEvents(params: {
   if (params.offset) query.set("offset", String(params.offset));
   if (params.unread_only) query.set("unread_only", "true");
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return (await requestJson(`/console/inbox/events${suffix}`)) as InboxPage;
+  const key = `inbox-events:${params.limit ?? ""}:${params.offset ?? ""}:${params.unread_only ? 1 : 0}`;
+  return cachedRequest(key, 30_000, async () => {
+    return (await requestJson(`/console/inbox/events${suffix}`)) as InboxPage;
+  }, { tags: ["inbox"] });
 }
 
 export async function markInboxRead(payload: {
   event_ids?: string[];
   all?: boolean;
 }): Promise<{ updated: number }> {
-  return (await requestJson("/console/inbox/read", {
+  const r = (await requestJson("/console/inbox/read", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   })) as { updated: number };
+  invalidateTags(["inbox"]);
+  return r;
 }
 
 export async function deleteInboxEvent(eventId: string): Promise<unknown> {
-  return requestJson(`/console/inbox/events/${encodeURIComponent(eventId)}`, {
+  const r = await requestJson(`/console/inbox/events/${encodeURIComponent(eventId)}`, {
     method: "DELETE",
   });
+  invalidateTags(["inbox"]);
+  return r;
 }
 
 /** 【预埋，勿删·预埋清单 P1】插件通知 → 宿主收件箱（后端
@@ -92,10 +102,18 @@ export interface RoomMention {
   ts: number;
 }
 
-/** 各房间最近 @提到我 的消息（后端扫 joined rooms 近期 timeline）。 */
-export async function fetchRoomMentions(limit = 30): Promise<RoomMention[]> {
-  const raw = (await requestJson(
-    `/agentteams-proxy/room-mentions?limit=${limit}`,
-  )) as Record<string, unknown>;
-  return (Array.isArray(raw.mentions) ? raw.mentions : []) as RoomMention[];
+/** 各房间最近 @提到我 的消息（后端扫 joined rooms 近期 timeline）。
+ * 30s 缓存（key 含 limit；房间新消息由 sync 侧驱动，此处无需失效）。 */
+export function fetchRoomMentions(limit = 30): Promise<RoomMention[]> {
+  return cachedRequest(
+    `room-mentions:${limit}`,
+    30_000,
+    async () => {
+      const raw = (await requestJson(
+        `/agentteams-proxy/room-mentions?limit=${limit}`,
+      )) as Record<string, unknown>;
+      return (Array.isArray(raw.mentions) ? raw.mentions : []) as RoomMention[];
+    },
+    { tags: ["inbox"] },
+  );
 }

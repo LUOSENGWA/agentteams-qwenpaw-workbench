@@ -1,7 +1,7 @@
 // 网关域（/gateway/ai-* + controller /api/v1/gateway/ai-routes）：AI 路由/供应商读写 + 路由目录。
 
 import { requestJson } from "../shared";
-import { cachedRequest } from "../../requestCache";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 
 /** 网关面（Higress Console）列表响应——
  * available=false = 无 Console 会话/不可达（前端优雅降级，非错误）。 */
@@ -61,21 +61,25 @@ interface GatewayMutationResponse {
 export async function createGatewayAiProvider(
   body: Record<string, unknown>,
 ): Promise<GatewayMutationResponse> {
-  return (await requestJson("/agentteams-proxy/gateway/ai-providers", {
+  const r = (await requestJson("/agentteams-proxy/gateway/ai-providers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })) as GatewayMutationResponse;
+  invalidateTags(["gateway"]);
+  return r;
 }
 
 export async function createGatewayAiRoute(
   body: Record<string, unknown>,
 ): Promise<GatewayMutationResponse> {
-  return (await requestJson("/agentteams-proxy/gateway/ai-routes", {
+  const r = (await requestJson("/agentteams-proxy/gateway/ai-routes", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })) as GatewayMutationResponse;
+  invalidateTags(["gateway"]);
+  return r;
 }
 
 // ── 网关写面（14.4）：编辑/删除提供商 / 编辑/删除路由（Console 会话透传）──
@@ -87,7 +91,7 @@ export async function updateGatewayAiProvider(
   name: string,
   body: Record<string, unknown>,
 ): Promise<GatewayMutationResponse> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/gateway/ai-providers/${encodeURIComponent(name)}`,
     {
       method: "PUT",
@@ -95,22 +99,26 @@ export async function updateGatewayAiProvider(
       body: JSON.stringify(body),
     },
   )) as GatewayMutationResponse;
+  invalidateTags(["gateway"]);
+  return r;
 }
 
 export async function deleteGatewayAiProvider(
   name: string,
 ): Promise<GatewayMutationResponse> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/gateway/ai-providers/${encodeURIComponent(name)}`,
     { method: "DELETE" },
   )) as GatewayMutationResponse;
+  invalidateTags(["gateway"]);
+  return r;
 }
 
 export async function updateGatewayAiRoute(
   name: string,
   body: Record<string, unknown>,
 ): Promise<GatewayMutationResponse> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/gateway/ai-routes/${encodeURIComponent(name)}`,
     {
       method: "PUT",
@@ -118,15 +126,19 @@ export async function updateGatewayAiRoute(
       body: JSON.stringify(body),
     },
   )) as GatewayMutationResponse;
+  invalidateTags(["gateway"]);
+  return r;
 }
 
 export async function deleteGatewayAiRoute(
   name: string,
 ): Promise<GatewayMutationResponse> {
-  return (await requestJson(
+  const r = (await requestJson(
     `/agentteams-proxy/gateway/ai-routes/${encodeURIComponent(name)}`,
     { method: "DELETE" },
   )) as GatewayMutationResponse;
+  invalidateTags(["gateway"]);
+  return r;
 }
 
 // ── 模型网关只读路由目录（上游 #1242，Controller 端点，token 鉴权）────
@@ -152,9 +164,17 @@ export interface GatewayRouteCatalog {
 }
 
 /** 模型网关只读路由目录（#1242；Controller 端点，controller token 鉴权，
- * L1-only——L2 调用返 403，调用方需处理权限提示）。 */
-export async function fetchGatewayRouteCatalog(): Promise<GatewayRouteCatalog> {
-  return (await requestJson(
-    "/agentteams-proxy/controller/api/v1/gateway/ai-routes",
-  )) as GatewayRouteCatalog;
+ * L1-only——L2 调用返 403，调用方需处理权限提示）。60s 缓存（目录/配置类；
+ * ModelsTab 挂载拉取 + Console 会话失效时的降级源，无轮询）；
+ * 6 个网关写面成功后 invalidateTags(["gateway"]) 覆盖本条目。 */
+export function fetchGatewayRouteCatalog(): Promise<GatewayRouteCatalog> {
+  return cachedRequest(
+    "gateway/route-catalog",
+    60_000,
+    () =>
+      requestJson(
+        "/agentteams-proxy/controller/api/v1/gateway/ai-routes",
+      ) as Promise<GatewayRouteCatalog>,
+    { tags: ["gateway"] },
+  );
 }
