@@ -21,6 +21,7 @@ import {
   type BoardCol,
 } from "./helpers";
 import { TaskCancelModal } from "./panels";
+import { InterventionActions } from "./blocks";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -36,8 +37,11 @@ export function BoardCard(props: {
   onTaskDone?: () => void;
   /** #1230：卡标题点击 → 任务巡检 Drawer（runId 显式传——看板列跨项目混排）。 */
   onOpenDetail?: (taskId: string, runId: string) => void;
+  /** P0 人工介入闭环：所属项目事件——paused / 有 interrupts 时项目名行
+   * 挂事件级干预操作（暂停/恢复/完成/重规划），看板视图也可达。 */
+  ev?: WorkflowEvent;
 }) {
-  const { task, t, onTaskDone, onOpenDetail } = props;
+  const { task, t, onTaskDone, onOpenDetail, ev } = props;
   const tr = useT();
   const { node } = task;
   const [cancelOpen, setCancelOpen] = React.useState(false);
@@ -101,16 +105,40 @@ export function BoardCard(props: {
         // 15.20：项目名全文展示（原 wb-clamp-2 两行封顶=「卡片被纵向
         // 压缩遮挡」主诉）——卡高随内容动态长，列卡区限高+列内纵滚兜底；
         // 列宽变化时行尾自然回折。
+        // P0 人工介入闭环：paused / 有 interrupts 的项目，项目名行右挂
+        // 事件级干预操作（同拓扑详情，任意视图可达）。
         style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 6,
           fontSize: 11.5,
           color: t.textSecondary,
           whiteSpace: "normal",
           wordBreak: "break-word",
           lineHeight: 1.3,
         }}
-        title={task.projectTitle}
       >
-        {task.projectTitle}
+        <span
+          style={{ flex: "1 1 auto", minWidth: 0 }}
+          title={task.projectTitle}
+        >
+          {task.projectTitle}
+        </span>
+        {ev &&
+        (ev.status === "paused" || (ev.interrupts || []).length > 0) ? (
+          <span
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              justifyContent: "flex-end",
+              flex: "0 1 auto",
+              minWidth: 0,
+            }}
+          >
+            <InterventionActions ev={ev} onDone={onTaskDone} />
+          </span>
+        ) : null}
       </div>
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
         {assignee ? (
@@ -180,6 +208,13 @@ export function BoardColumnsView(props: {
   // WbViewport 容器宽快照（翻转时刻值）——仅作 mode 初值；正源=wrapRef
   // 实测宽（手机旋转 376↔667 不触发 narrow 翻转，快照会过期）。
   const { width: vw } = useWbViewport();
+  // P0 人工介入闭环：runId → 项目事件（看板列跨项目混排，卡按项目
+  // 找回上下文——paused/interrupts 门控与干预操作都用它）。
+  const evByRunId = React.useMemo(() => {
+    const m = new Map<string, WorkflowEvent>();
+    for (const e of events) m.set(e.runId, e);
+    return m;
+  }, [events]);
   // 列内时间序：按 (项目 ts 新→旧, 原节点序) 稳定排序。
   const tasksByCol = React.useMemo(() => {
     const tsOf = new Map(events.map((e) => [e.runId, e.ts || 0]));
@@ -338,6 +373,7 @@ export function BoardColumnsView(props: {
                           ? (tid) => onOpenDetail(tid, task.runId)
                           : undefined
                       }
+                      ev={evByRunId.get(task.runId)}
                     />
                   </div>
                 ))}
@@ -369,6 +405,7 @@ export function BoardColumnsView(props: {
                         ? (tid) => onOpenDetail(tid, task.runId)
                         : undefined
                     }
+                    ev={evByRunId.get(task.runId)}
                   />
                 ))}
               </div>

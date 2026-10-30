@@ -7,6 +7,7 @@
 import type * as ReactNS from "react";
 
 import {
+  type AttentionAnsweredRecord,
   type AttentionItem,
   type AttentionPayload,
 } from "../api";
@@ -299,88 +300,102 @@ export function AttentionPanel({
       </div>
 
       {/* 历史已回答（本地去重记录，answered_at 倒序） */}
-      <div>
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            color: t.textSecondary,
-            marginBottom: 6,
-          }}
-        >
-          {tr("已回答历史")}
+      <AttentionHistoryList history={history} />
+    </div>
+  );
+}
+
+/** 已回答历史列表（自 AttentionPanel 底部抽出导出——通知中心「待处理」
+ * 子页签在「待决策」→「待处理」改造后复用同一列表，口径不重开炉灶）。 */
+export function AttentionHistoryList({
+  history,
+}: {
+  history: AttentionAnsweredRecord[];
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: t.textSecondary,
+          marginBottom: 6,
+        }}
+      >
+        {tr("已回答历史")}
+      </div>
+      {history.length === 0 ? (
+        <div style={{ fontSize: 12, color: t.textSecondary }}>
+          {tr("暂无已回答记录")}
         </div>
-        {history.length === 0 ? (
-          <div style={{ fontSize: 12, color: t.textSecondary }}>
-            {tr("暂无已回答记录")}
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 6 }}>
-            {history.map((rec) => {
-              const meta = KIND_META[rec.kind] || KIND_META.other;
-              return (
-                <div
-                  key={rec.key}
+      ) : (
+        <div style={{ display: "grid", gap: 6 }}>
+          {history.map((rec) => {
+            const meta = KIND_META[rec.kind] || KIND_META.other;
+            return (
+              <div
+                key={rec.key}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: t.cardBg,
+                  border: `1px solid ${t.border}`,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    background: t.cardBg,
-                    border: `1px solid ${t.border}`,
-                    flexWrap: "wrap",
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 12,
+                    color: t.textSecondary,
                   }}
                 >
+                  {fmtTime(rec.answered_at)}
+                </span>
+                <antd.Tag color={meta.color} style={{ marginRight: 0 }}>
+                  {tr(meta.label)}
+                </antd.Tag>
+                <span
+                  style={{
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 12,
+                    color: t.text,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    maxWidth: 260,
+                  }}
+                >
+                  {rec.task_id}
+                </span>
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: 12, color: t.text }}>
+                  {rec.answer}
+                </span>
+                {rec.basis ? (
                   <span
                     style={{
-                      fontFamily: "ui-monospace, monospace",
-                      fontSize: 12,
+                      fontSize: 11,
                       color: t.textSecondary,
-                    }}
-                  >
-                    {fmtTime(rec.answered_at)}
-                  </span>
-                  <antd.Tag color={meta.color} style={{ marginRight: 0 }}>
-                    {tr(meta.label)}
-                  </antd.Tag>
-                  <span
-                    style={{
-                      fontFamily: "ui-monospace, monospace",
-                      fontSize: 12,
-                      color: t.text,
+                      maxWidth: 320,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
-                      maxWidth: 260,
                     }}
                   >
-                    {rec.task_id}
+                    basis: {rec.basis}
                   </span>
-                  <span style={{ flex: 1 }} />
-                  <span style={{ fontSize: 12, color: t.text }}>
-                    {rec.answer}
-                  </span>
-                  {rec.basis ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: t.textSecondary,
-                        maxWidth: 320,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      basis: {rec.basis}
-                    </span>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

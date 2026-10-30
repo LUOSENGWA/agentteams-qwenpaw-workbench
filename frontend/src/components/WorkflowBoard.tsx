@@ -51,6 +51,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
     onViewChange,
     topoRun: topoRunProp,
     onTopoRunChange,
+    onGotoRoom,
   } = props;
   const t = useThemeColors();
   const tr = useT();
@@ -240,6 +241,9 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         interrupts={topoEvent.interrupts || []}
         pauseReason={topoEvent.pause_reason}
         tasks={topoEvent.taskDetails}
+        ev={topoEvent}
+        onDone={() => onRefresh?.()}
+        onGotoRoom={onGotoRoom}
       />
       {topoEvent.loop ? <LoopBlock loop={topoEvent.loop} /> : null}
       {(topoEvent.nodes || []).length > 0 ? (

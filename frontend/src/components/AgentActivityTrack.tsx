@@ -21,6 +21,7 @@ import type * as ReactNS from "react";
 import { type WorkflowEvent } from "../api";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { InterruptsBlock } from "../workflowboard/blocks";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -74,12 +75,17 @@ const shortName = (mxidOrName: string): string =>
 export default function AgentActivityTrack({
   project,
   onOpenProject,
+  onWorkflowIntervened,
 }: {
   project: WorkflowEvent | null;
   onOpenProject?: (runId: string) => void;
+  /** P0 人工介入闭环：中断抽屉里答完/恢复后，通知父侧刷新工作流
+   * （与 RoomChat workflow 卡同一回调）。 */
+  onWorkflowIntervened?: () => void;
 }) {
   const t = useThemeColors();
   const tr = useT();
+  const [hitlOpen, setHitlOpen] = React.useState(false);
   if (!project) return null;
   const status = project.status || "";
   if (isTerminalRun(status)) return null;
@@ -139,7 +145,23 @@ export default function AgentActivityTrack({
           </span>
         ) : null}
         {interrupts.length > 0 ? (
-          <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 11, lineHeight: "18px" }}>
+          // P0 人工介入闭环：chip 可点 → 决策抽屉（InterruptsBlock
+          // 介入区）。stopPropagation——点 chip 不触发整轨的
+          // onOpenProject（跳工作流 tab），介入就地完成。
+          <antd.Tag
+            color="orange"
+            style={{
+              marginInlineEnd: 0,
+              fontSize: 11,
+              lineHeight: "18px",
+              cursor: "pointer",
+            }}
+            onClick={(e: ReactNS.MouseEvent<HTMLElement>) => {
+              e.stopPropagation();
+              setHitlOpen(true);
+            }}
+            title={tr("点击查看并处理中断")}
+          >
             {tr("等待人工介入（{n}）", { n: interrupts.length })}
           </antd.Tag>
         ) : null}
@@ -191,6 +213,26 @@ export default function AgentActivityTrack({
           {tr("全部任务已完成（{n}）", { n: tasks.length })}
         </div>
       ) : null}
+      {/* P0 人工介入闭环：中断决策抽屉（复用 InterruptsBlock 横幅 +
+      介入操作区）——就地答完/恢复，不离开聊天。 */}
+      <antd.Drawer
+        open={hitlOpen}
+        onClose={() => setHitlOpen(false)}
+        title={`${tr("等待人工介入")} — ${project.title || project.runId}`}
+        width={420}
+        placement="right"
+      >
+        <InterruptsBlock
+          interrupts={interrupts}
+          pauseReason={project.pause_reason}
+          tasks={project.taskDetails}
+          ev={project}
+          onDone={() => {
+            setHitlOpen(false);
+            onWorkflowIntervened?.();
+          }}
+        />
+      </antd.Drawer>
     </div>
   );
 }
