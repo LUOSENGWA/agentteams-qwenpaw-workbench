@@ -367,6 +367,7 @@ export function InterruptActions({
             type={o.recommended ? "primary" : "default"}
             loading={busy}
             onClick={() => void submit(o.label)}
+            style={o.recommended ? { color: "#fff" } : undefined}
           >
             {o.label}
           </antd.Button>
@@ -388,6 +389,8 @@ export function InterruptActions({
             type="primary"
             loading={busy}
             onClick={() => void submit(answer)}
+            /* 橙色容器里 primary 按钮会继承父级橙字（蓝底橙字不可读）→ 显式白字 */
+            style={{ color: "#fff" }}
           >
             {tr("提交")}
           </antd.Button>
@@ -475,12 +478,23 @@ export function InterruptsBlock({
           if (task.status) detail.push(task.status);
           if (task.assigned_to) detail.push(task.assigned_to);
         }
+        // 「要处理什么」= 任务标题（summary）+ 状态 + 原因；只有任务短号时读者无从判断。
+        const taskTitle = task
+          ? String(task.summary || "").trim() || task.task_id || shortId(it.id)
+          : shortId(it.id);
+        const reason =
+          String(it.description || "").trim() ||
+          String(pauseReason || "").trim() ||
+          (task && String((task as unknown as Record<string, unknown>).result_note || "").trim()) ||
+          "";
         return (
           <div
             key={it.id || it.value}
             style={{
+              display: "grid",
+              gap: 4,
               fontSize: 12,
-              padding: "6px 10px",
+              padding: "8px 10px",
               borderRadius: 8,
               border: "1px solid #fa8c16",
               // 深色档：6% 橙底太淡 / 深橙字不可读 → 加浓 + 亮向
@@ -488,26 +502,35 @@ export function InterruptsBlock({
               color: t.mode === "dark" ? "#faad14" : "#d46b08",
             }}
           >
-            {it.value === "paused" ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <PauseIcon size={12} /> {tr("项目已暂停")}
+            <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+              {it.value === "paused" ? <PauseIcon size={12} /> : <WarnIcon size={12} />}
+              <span>
+                {it.value === "paused" ? tr("项目已暂停") : it.value === "blocked" ? tr("阻塞") : it.value}
               </span>
+              <span style={{ fontWeight: 400, opacity: 0.9 }}>· {taskTitle}</span>
+              {task && task.status ? (
+                <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10, lineHeight: "16px" }}>
+                  {task.status}
+                </antd.Tag>
+              ) : null}
+              {task && task.assigned_to ? (
+                <span style={{ fontWeight: 400, opacity: 0.75 }}>{task.assigned_to}</span>
+              ) : null}
+            </div>
+            {reason ? (
+              <div style={{ opacity: 0.85 }}>
+                {tr("原因：")}
+                {reason}
+              </div>
             ) : (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <WarnIcon size={12} /> {it.value === "blocked" ? tr("阻塞") : it.value}
-              </span>
+              <div style={{ opacity: 0.75 }}>
+                {tr("未提供原因——在下方填写你的处理意见，发到项目房间由 Leader 跟进。")}
+              </div>
             )}
             {detail.length > 0 ? (
-              <span style={{ opacity: 0.85 }}>
-                {"："}
-                {detail.join(" · ")}
-              </span>
-            ) : null}
-            {it.description ? (
-              <span style={{ opacity: 0.8 }}> — {it.description}</span>
-            ) : null}
-            {pauseReason && it.value !== "paused" ? (
-              <span style={{ opacity: 0.8 }}>：{pauseReason}</span>
+              <div style={{ opacity: 0.7, fontSize: 11 }}>
+                {tr("任务 {n}", { n: shortId(it.id) })}
+              </div>
             ) : null}
             {ev ? (
               <InterruptActions

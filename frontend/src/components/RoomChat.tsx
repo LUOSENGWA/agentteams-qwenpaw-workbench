@@ -42,6 +42,7 @@ import {
   MessageBodyMemo,
 } from "./RoomChatBubbles";
 import {ThreadIcon } from "./RoomChatThread";
+import { RoomPendingBar } from "./RoomPendingBar";
 import {useRoomChatCore } from "./RoomChatCore";
 import type {RoomChatCoreState } from "./RoomChatCore";
 import { applyContextWindow } from "../jumpContextWindow";
@@ -326,6 +327,13 @@ function RoomChat(props: RoomChatProps) {
               minHeight: 0,
             }}
           >
+          {/* 房间内「项目阻塞」处理条（10/30 反馈：在房间就能处理，不必先去工作流）。
+              常驻于列表上方、滚动容器外；无当前房间待办时自渲染 null。 */}
+          <RoomPendingBar
+            roomId={room?.room_id}
+            onSend={(text: string) => props.onSend?.(text)}
+            onOpenProject={onOpenProject}
+          />
           <div
         ref={listRef}
         onScroll={stickToBottom.handleScroll}
