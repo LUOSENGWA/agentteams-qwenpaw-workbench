@@ -227,7 +227,7 @@ export function SettingsTabView(props: {
           display: "grid",
           // auto-fit：每列最小 340px 自适应——宽屏 2–3 列、窄屏自动落回 1 列；
           // alignItems:start 让各卡保持自然高度（不等高拉伸）。
-          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(480px, 100%), 1fr))",
           alignItems: "start",
           gap: 24,
           opacity: config === null ? 0.45 : 1,
@@ -242,7 +242,7 @@ export function SettingsTabView(props: {
 
 
       {/* 「访问地址」卡片。 */}
-      <div style={{ gridColumn: "1 / -1", ...cardBox, display: "grid", gap: 16 }}>
+      <div style={{ ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("访问地址")}</div>
         {/* 凭据记忆状态总览——每个系统凭据是否已保存
  一眼可见（每个账号密码的认证都要分开的可视化）。 */}
@@ -665,7 +665,7 @@ export function SettingsTabView(props: {
       </div>
 
       {/* 「认证」卡片（Controller 认证 + 启动偏好）。 */}
-      <div style={{ gridColumn: "1 / -1", ...cardBox, display: "grid", gap: 16 }}>
+      <div style={{ ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("认证与登录")}</div>
         {/* Controller 认证双模式（用户需求）——「用 admin 的 matrix
  账号登录」或「输入 Controller 管理员 token」。无 API 可取 admin
@@ -969,6 +969,40 @@ export function SettingsTabView(props: {
           </div>
         </div>
         <StartupPrefRow />
+        {/* Matrix 登录（并入认证卡）——账号密码登录；当前身份显示在区块标题上。 */}
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ fontWeight: 600 }}>
+            {tr("Matrix 登录")}
+            {config?.matrix?.user_id ? (
+              <span style={{ fontWeight: 400, color: "#888", marginLeft: 8 }}>
+                {tr("当前身份：")} {config.matrix.user_id}
+              </span>
+            ) : null}
+          </div>
+          <antd.Input
+            placeholder={tr("Matrix 账号（不含 @ 和域名）")}
+            value={loginUser}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setLoginUser(e.target.value)
+            }
+          />
+          <antd.Input.Password
+            placeholder={tr("Matrix 密码")}
+            value={loginPassword}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setLoginPassword(e.target.value)
+            }
+          />
+          <div>
+            <antd.Button
+              type="primary"
+              loading={loggingIn}
+              onClick={() => void doLogin()}
+            >
+              {tr("登录")}
+            </antd.Button>
+          </div>
+        </div>
       </div>
 
       {/* 「集群负载」独立卡片。
@@ -1301,41 +1335,6 @@ export function SettingsTabView(props: {
           </div>
         </div>
       </div>
-      </div>
-
-      {/* 「Matrix 登录」卡片。 */}
-      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
-        <div style={{ fontWeight: 700 }}>
-          {tr("Matrix 登录")}
-          {config?.matrix?.user_id ? (
-            <span style={{ fontWeight: 400, color: "#888", marginLeft: 8 }}>
-              {tr("当前身份：")} {config.matrix.user_id}
-            </span>
-          ) : null}
-        </div>
-        <antd.Input
-          placeholder={tr("Matrix 账号（不含 @ 和域名）")}
-          value={loginUser}
-          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-            setLoginUser(e.target.value)
-          }
-        />
-        <antd.Input.Password
-          placeholder={tr("Matrix 密码")}
-          value={loginPassword}
-          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-            setLoginPassword(e.target.value)
-          }
-        />
-        <div>
-          <antd.Button
-            type="primary"
-            loading={loggingIn}
-            onClick={() => void doLogin()}
-          >
-            {tr("登录")}
-          </antd.Button>
-        </div>
       </div>
 
       <div style={{ ...cardBox, display: "grid", gap: 12 }}>
