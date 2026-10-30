@@ -227,15 +227,15 @@ export interface Artifact {
   size: number | null;
 }
 
-/** cachedRequest 包裹（artifacts，30s）——已有 force
- * 参数透传（force 同样参与在飞去重，完成后覆盖写缓存）。 */
+/** cachedRequest 包裹（artifacts，30s，tags ["artifacts"]）——已有
+ * force 参数透传（force 同样参与在飞去重，完成后覆盖写缓存）。 */
 export async function fetchArtifacts(force = false): Promise<Artifact[]> {
   return cachedRequest("artifacts", 30000, async () => {
     const data = (await requestJson(
       `/agentteams-proxy/artifacts${force ? "?force=true" : ""}`,
     )) as { items?: Artifact[] };
     return data.items || [];
-  });
+  }, { tags: ["artifacts"] });
 }
 
 export interface RoomMessagesPage {
@@ -768,6 +768,8 @@ export async function forgetRoom(roomId: string): Promise<void> {
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/forget`,
     { method: "POST" },
   );
+  // 房间删除 → 房间详情/列表缓存失效（rooms 列表正源走 /teams/sync 侧）。
+  invalidateTags(["rooms"]);
 }
 
 /** 退出房间（CS-API：leave=joined 状态退出；invite 状态
@@ -778,6 +780,8 @@ export async function leaveRoom(roomId: string): Promise<void> {
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/leave`,
     { method: "POST", body: "{}" },
   );
+  // 退出房间 → 房间详情/列表缓存失效（rooms 列表正源走 /teams/sync 侧）。
+  invalidateTags(["rooms"]);
 }
 
 /** 房间重命名（m.room.name state 事件；需房间权限表授权
@@ -797,6 +801,8 @@ export async function renameRoom(
       body: JSON.stringify({ name }),
     },
   );
+  // 房间改名 → 房间详情缓存失效（fetchRoomInfo 30s 条目）。
+  invalidateTags(["rooms"]);
 }
 
 /** 房间权限诊断（改名 403 根因展示）。

@@ -11,8 +11,14 @@ import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
 import { formatTimeOfDay } from "../util";
 import { WbTooltip } from "./WbTooltip";
-import RuntimeUpgradePanel from "./RuntimeUpgradePanel";
 
+// P6（管理页重构）：原单体 OpsPanel 拆导出——OpsOverview（集群状态/版本
+// + 集群负载 SGLang）与 OpsLogPane（组件日志）供「管理」页集群管理域分用
+// （概览=中栏、日志=二级页，升级卡归 Worker 详情不在此）。10/29 顶层
+// 「运维」「审计」tab 已下线；15.35 default 组合 OpsPanel 退役（升级卡
+// 已单 worker 化进 Worker 详情，零引用者）——本文件仅余两个命名导出。
+// 轮询门 = useTabActive("ops") || active（宿主显式激活，旧 tab 已下线恒
+// false——与 RuntimeUpgradePanel 同款 active-prop 模式）。
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -105,10 +111,19 @@ const COMPONENTS = [
   { value: "minio", label: "MinIO（控制器内）" },
 ];
 
-function OpsPanel({
+/**
+ * OpsOverview——运维概览卡组（集群状态/版本 + 集群负载 SGLang）。
+ * P6 自单体 OpsPanel 拆出，供集群管理域中栏（不含运行时升级——升级卡归
+ * Worker 详情）；组件日志区见 OpsLogPane。
+ * active=宿主显式激活（10/29 顶层「运维」tab 下线 → 旧 useTabActive("ops")
+ * 恒 false，不显式传则轮询停摆）。
+ */
+export function OpsOverview({
   refreshTick = 0,
+  active = false,
 }: {
   refreshTick?: number;
+  active?: boolean;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -123,12 +138,6 @@ function OpsPanel({
     higress_version_source?: string | null;
     higress_version_error?: string;
   } | null>(null);
-  const [component, setComponent] = React.useState("controller");
-  const [logs, setLogs] = React.useState<LogLine[]>([]);
-  const [logsLoading, setLogsLoading] = React.useState(false);
-  const [levelFilter, setLevelFilter] = React.useState<"all" | "error">("all");
-  const [autoScroll, setAutoScroll] = React.useState(true);
-  const logBoxRef = React.useRef<HTMLDivElement | null>(null);
 
   const refreshStatus = React.useCallback(async () => {
     setStatusLoading(true);
@@ -166,40 +175,9 @@ function OpsPanel({
   // 门控——ops 的 1s 集群负载轮询此前切走常驻）。
   // 布尔快照——非 ops tab 互切不再重渲
   // 本面板（连点 Tab 固定成本）。
-  const opsActive = useTabActive("ops");
-  const [logsUpdatedAt, setLogsUpdatedAt] = React.useState<number>(0);
-  // 轮询已并入 usePoller（ops tab 激活门控 +
-  // 失败退避内置：×2 至 120s 封顶、成功复位；静默失败保留上次内容）。
-  // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
-  const refreshLogs = React.useCallback(async (comp: string, silent = false) => {
-    if (!silent) setLogsLoading(true);
-    try {
-      const data = (await requestJson(
-        `/agentteams-proxy/docker-logs/${encodeURIComponent(comp)}?tail=300`,
-      )) as { lines?: LogLine[] };
-      setLogs(data.lines || []);
-      setLogsUpdatedAt(Date.now());
-    } catch (e) {
-      if (!silent) {
-        // 手动刷新失败：显式报错并清屏（用户主动动作，需明确反馈）。
-        antd.message.error(e instanceof Error ? e.message : tr("日志拉取失败"));
-        setLogs([]);
-      }
-      // 静默失败：保留上次成功内容（不 setLogs([])）。
-    } finally {
-      if (!silent) setLogsLoading(false);
-    }
-    // tr 每次 render 都是新函数但行为稳定（纯查表），不入 deps——否则轮询 timer 被反复重建
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 组件日志轮询 → usePoller（ops tab 激活；
-  // !document.hidden 由 hook 内置；失败退避由 hook 内置）。
-  usePoller({
-    fn: () => void refreshLogs(component, true),
-    intervalMs: 15000,
-    active: opsActive,
-  });
+  // P6：|| active——顶层「运维」tab 下线后旧门恒 false，宿主
+  // （集群管理域中栏）显式传激活，轮询才续。
+  const opsActive = useTabActive("ops") || active;
 
   // 可选模块：集群负载（L1 专属）。未启用时后端 404 → sglangOff=true 不渲染卡片。
   const [sglang, setSglang] = React.useState<SglangLoads | null>(null);
@@ -289,7 +267,6 @@ function OpsPanel({
 
   React.useEffect(() => {
     void refreshStatus();
-    void refreshLogs(component);
     void refreshSglang(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -313,43 +290,9 @@ function OpsPanel({
   React.useEffect(() => {
     if (!refreshTick) return;
     void refreshStatus();
-    void refreshLogs(component);
     void refreshSglang(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTick]);
-
-  const visibleLogs = React.useMemo(
-    () => (levelFilter === "all" ? logs : logs.filter((l) => l.level === "error")),
-    [logs, levelFilter],
-  );
-
-  // 旧版展示改「最新在上」(14.10) 但跟随逻辑留了
-  // scrollTop=scrollHeight（滚到最底=最旧）——语义打架，轮询把用户视口拽走。
-  // 现按业界标准（kubectl/docker --follow/Grafana logs 同款语义，适配最新在上）：
-  // ① 跟随 = 顶部跟随（autoScroll 时 scrollTop=0，最新行永远贴顶可见）；
-  // ② 用户向下翻（看旧日志，>60px）→ 自动暂停跟随（不打断阅读）；
-  // ③ 暂停且不在顶 → 浮动「↑ 回到最新」钮 → 点击 = 回顶 + 恢复跟随。
-  const [awayFromTop, setAwayFromTop] = React.useState(false);
-  const onLogScroll = React.useCallback(() => {
-    const el = logBoxRef.current;
-    if (!el) return;
-    const away = el.scrollTop > 60;
-    setAwayFromTop(away);
-    if (away) setAutoScroll(false); // 翻旧日志 = 自动暂停跟随（不打断阅读）
-  }, []);
-  const jumpToLatest = React.useCallback(() => {
-    const el = logBoxRef.current;
-    if (el) el.scrollTop = 0;
-    setAwayFromTop(false);
-    setAutoScroll(true);
-  }, []);
-  React.useEffect(() => {
-    const el = logBoxRef.current;
-    if (autoScroll && el) {
-      el.scrollTop = 0;
-      setAwayFromTop(false);
-    }
-  }, [visibleLogs, autoScroll]);
 
   // 集群版本：ops tab 激活时取一次（后端 10min 缓存，无轮询必要）。
   React.useEffect(() => {
@@ -696,14 +639,115 @@ function OpsPanel({
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
 
-      {/* 编码执行记录已迁出运维页 → WorkerChats 抽屉「Coding CLI」tab
-  （per-worker，10/17：coding CLI 会话归 worker 会话区）。
-  CodingRunsPanel 文件保留（WorkerCodingRuns 复用其导出渲染件）。 */}
+/**
+ * OpsLogPane——组件日志区（Controller Docker API 代理 + 15s 轮询 +
+ * 错误过滤 + 自动滚动跟随 + 回到最新）。P6 自单体 OpsPanel 拆出，供
+ * 集群管理域「日志」二级页（覆盖中+右两栏）；轮询门与 OpsOverview 同款。
+ */
+export function OpsLogPane({
+  refreshTick = 0,
+  active = false,
+}: {
+  refreshTick?: number;
+  active?: boolean;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  const [component, setComponent] = React.useState("controller");
+  const [logs, setLogs] = React.useState<LogLine[]>([]);
+  const [logsLoading, setLogsLoading] = React.useState(false);
+  const [levelFilter, setLevelFilter] = React.useState<"all" | "error">("all");
+  const [autoScroll, setAutoScroll] = React.useState(true);
+  const logBoxRef = React.useRef<HTMLDivElement | null>(null);
 
-      {/* 运行时升级（1.2.5 预检+两阶段就地升级，自含 404 降级态） */}
-      <RuntimeUpgradePanel refreshTick={refreshTick} />
+  // P6：|| active——顶层「运维」tab 下线后旧门恒 false，集群域
+  // 「日志」二级页显式传激活。
+  const opsActive = useTabActive("ops") || active;
+  const [logsUpdatedAt, setLogsUpdatedAt] = React.useState<number>(0);
+  // 轮询已并入 usePoller（ops tab 激活门控 +
+  // 失败退避内置：×2 至 120s 封顶、成功复位；静默失败保留上次内容）。
+  // silent=true：后台轮询不闪 loading（手动刷新按钮走非 silent）。
+  const refreshLogs = React.useCallback(async (comp: string, silent = false) => {
+    if (!silent) setLogsLoading(true);
+    try {
+      const data = (await requestJson(
+        `/agentteams-proxy/docker-logs/${encodeURIComponent(comp)}?tail=300`,
+      )) as { lines?: LogLine[] };
+      setLogs(data.lines || []);
+      setLogsUpdatedAt(Date.now());
+    } catch (e) {
+      if (!silent) {
+        // 手动刷新失败：显式报错并清屏（用户主动动作，需明确反馈）。
+        antd.message.error(e instanceof Error ? e.message : tr("日志拉取失败"));
+        setLogs([]);
+      }
+      // 静默失败：保留上次成功内容（不 setLogs([])）。
+    } finally {
+      if (!silent) setLogsLoading(false);
+    }
+    // tr 每次 render 都是新函数但行为稳定（纯查表），不入 deps——否则轮询 timer 被反复重建
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // 组件日志轮询 → usePoller（ops tab 激活；
+  // !document.hidden 由 hook 内置；失败退避由 hook 内置）。
+  usePoller({
+    fn: () => void refreshLogs(component, true),
+    intervalMs: 15000,
+    active: opsActive,
+  });
+
+  React.useEffect(() => {
+    void refreshLogs(component);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 切 Tab 回来时（refreshTick 变化）重取——rc-tabs 保活不会重跑挂载 effect。
+  React.useEffect(() => {
+    if (!refreshTick) return;
+    void refreshLogs(component);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTick]);
+
+  const visibleLogs = React.useMemo(
+    () => (levelFilter === "all" ? logs : logs.filter((l) => l.level === "error")),
+    [logs, levelFilter],
+  );
+
+  // 旧版展示改「最新在上」(14.10) 但跟随逻辑留了
+  // scrollTop=scrollHeight（滚到最底=最旧）——语义打架，轮询把用户视口拽走。
+  // 现按业界标准（kubectl/docker --follow/Grafana logs 同款语义，适配最新在上）：
+  // ① 跟随 = 顶部跟随（autoScroll 时 scrollTop=0，最新行永远贴顶可见）；
+  // ② 用户向下翻（看旧日志，>60px）→ 自动暂停跟随（不打断阅读）；
+  // ③ 暂停且不在顶 → 浮动「↑ 回到最新」钮 → 点击 = 回顶 + 恢复跟随。
+  const [awayFromTop, setAwayFromTop] = React.useState(false);
+  const onLogScroll = React.useCallback(() => {
+    const el = logBoxRef.current;
+    if (!el) return;
+    const away = el.scrollTop > 60;
+    setAwayFromTop(away);
+    if (away) setAutoScroll(false); // 翻旧日志 = 自动暂停跟随（不打断阅读）
+  }, []);
+  const jumpToLatest = React.useCallback(() => {
+    const el = logBoxRef.current;
+    if (el) el.scrollTop = 0;
+    setAwayFromTop(false);
+    setAutoScroll(true);
+  }, []);
+  React.useEffect(() => {
+    const el = logBoxRef.current;
+    if (autoScroll && el) {
+      el.scrollTop = 0;
+      setAwayFromTop(false);
+    }
+  }, [visibleLogs, autoScroll]);
+
+  return (
+    <div>
       {/* 组件日志 */}
       <div>
         <div
@@ -840,6 +884,3 @@ function OpsPanel({
   );
 }
 
-// 面板级 memo——父级（WorkbenchPage）重渲染
-// 且 props 无变化时跳过（修复前全仓零 memo，切 tab 帧断 183-200ms）。
-export default React.memo(OpsPanel);

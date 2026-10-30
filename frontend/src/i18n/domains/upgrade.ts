@@ -61,6 +61,15 @@ export const upgradeDict: Record<string, { en: string }> = {
   "触发中": { en: "Triggering" },
   "触发失败": { en: "Trigger failed" },
   "确认触发批量运行时升级？": { en: "Confirm batch runtime upgrade?" },
+  // ── 运行时升级·单 worker 紧凑模式（15.35：Worker 详情「运行时升级」卡）──
+  "确认触发运行时升级？": { en: "Confirm runtime upgrade?" },
+  "破坏性操作：将重启 {name} 容器并中断在跑任务；两阶段就地升级，启动自检失败会自动回滚到旧版本。": {
+    en: "Destructive operation: the {name} container will be restarted and running tasks interrupted; two-phase in-place upgrade — a failed boot self-check rolls back to the previous version automatically.",
+  },
+  "当前=该 Worker 容器内 QwenPaw 运行时版（服务端 10min 缓存），最新=PyPI（缓存）。": {
+    en: "Current = QwenPaw runtime version inside this Worker's container (server-side 10-min cache); latest = PyPI (cached).",
+  },
+  "升级成功": { en: "Upgrade succeeded" },
   "Worker（{n} 个）": { en: "Workers ({n})" },
   "将按顺序对每个 Worker 两阶段就地升级并重启容器，期间在跑任务会被中断；启动自检失败会自动回滚到旧版本。": {
     en: "Each Worker is upgraded in-place in two phases in sequence and its container is restarted; running tasks are interrupted in the meantime. A failed boot self-check rolls back to the previous version automatically.",
@@ -236,5 +245,23 @@ export const upgradeDict: Record<string, { en: string }> = {
   },
   "以下为该 CLI 完整设置表单（字段目录驱动）——未设置项显示为空态，只有你改动并保存的项才写入配置文件；未列出的高级字段用下方 JSON 补丁补充。": {
     en: "Full settings form for this CLI (field-catalog driven) — unset fields show as empty states; only fields you change and save are written to the config file; use the JSON patch below for advanced fields not listed.",
+  },
+  // ── 15.36 B：运行时升级·版本选择 + 兼容性本地判断（单 worker + 批量共用）──
+  "选择目标版本": { en: "Select target version" },
+  "已是当前版本": { en: "Already at this version" },
+  "⚠️ 目标版本 {target} 低于当前版 {current}——降级可能不兼容": {
+    en: "⚠️ Target {target} is below current {current} — downgrades may be incompatible",
+  },
+  "跨大版本升级（{from} → {to}）——跨大版本变更可能不向后兼容": {
+    en: "Cross-major upgrade ({from} → {to}) — major-version changes may not be backward-compatible",
+  },
+  "目标版本低于当前版（降级可能不兼容）：{names}": {
+    en: "Target below current version (downgrade may be incompatible): {names}",
+  },
+  "跨大版本升级（可能不向后兼容）：{names}": {
+    en: "Cross-major upgrade (may not be backward-compatible): {names}",
+  },
+  "兼容性检查失败：{detail}": {
+    en: "Compatibility pre-check failed: {detail}",
   },
 };

@@ -1,7 +1,7 @@
 // 设置域（/sglang/*、/auth-status、/config/*）：自检、SGLang 负载/模型、地址探测、管理员验证、配置导入导出。
 
 import { requestJson } from "../shared";
-import { cachedRequest } from "../../requestCache";
+import { cachedRequest, clearAll, invalidateTags } from "../../requestCache";
 
 interface SelfCheckItem {
   name: string;
@@ -69,6 +69,9 @@ export interface SglangLoads {
   ranks: SglangRank[];
 }
 
+/** 不缓存：消费方是自适应高频轮询（HomePage sgCadenceRef 1s/5s、
+ * OpsPanel 1s/15s——14.26/14.33「刷新很慢几乎不刷」实证后改的活性档），
+ * 新鲜度即该端点全部价值，任何 TTL/SWR 都会复现停摆缺陷。 */
 export async function fetchSglangLoads(): Promise<SglangLoads> {
   return (await requestJson("/agentteams-proxy/sglang/loads")) as SglangLoads;
 }
@@ -87,7 +90,7 @@ export async function fetchSglangModels(): Promise<string[]> {
     } catch {
       return [];
     }
-  });
+  }, { tags: ["sglang"] });
 }
 
 // 地址条目 = 纯 URL（服务原生认证，内网默认形态）或
@@ -200,13 +203,22 @@ export interface AuthStatus {
   controller_token: string;
 }
 
+/** 30s 缓存（与 WorkbenchPageData 30s 轮询同节奏）——只缓存成功值：
+ * 请求失败原样抛 → 下方 catch 返 null（不写缓存，下轮重试），
+ * 语义与原实现逐字一致（端点不可用=连接器重载窗口）。 */
 export async function fetchAuthStatus(): Promise<AuthStatus | null> {
   try {
-    return (await requestJson(
-      "/agentteams-proxy/auth-status",
-      undefined,
-      4000,
-    )) as AuthStatus;
+    return await cachedRequest(
+      "auth-status",
+      30_000,
+      () =>
+        requestJson(
+          "/agentteams-proxy/auth-status",
+          undefined,
+          4000,
+        ) as Promise<AuthStatus>,
+      { tags: ["auth-status"] },
+    );
   } catch {
     // 端点不可用（连接器重载窗口）→ null=横幅不渲染，下轮再试。
     return null;
@@ -241,11 +253,14 @@ export async function verifyAdmin(body: {
   // Higress 双地址（列表优先；空框已过滤）。
   gateway_admin_urls?: string[];
 }): Promise<VerifyAdminResult> {
-  return (await requestJson("/agentteams-proxy/config/verify-admin", {
+  const r = (await requestJson("/agentteams-proxy/config/verify-admin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })) as VerifyAdminResult;
+  // 验证通过会持久化凭据/建 Console 会话 → auth-status 三态可能翻转。
+  invalidateTags(["auth-status"]);
+  return r;
 }
 
 /** 连通性测试结构化诊断（点击展开详情）——
@@ -369,32 +384,45 @@ export async function importFullConfig(
 ): Promise<ConfigImportResult> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (exportPassword) headers["X-Export-Password"] = exportPassword;
-  return (await requestJson("/agentteams-proxy/config/import", {
+  const r = (await requestJson("/agentteams-proxy/config/import", {
     method: "POST",
     headers,
     body: JSON.stringify(config),
   })) as ConfigImportResult;
+  // 覆盖式换身份/凭据 → 全部数据面读缓存失效（清全表；
+  // 页面刷新兜底同语义）。
+  clearAll();
+  return r;
 }
 
-/** 完整备份门密码状态（是否已设）。 */
+/** 完整备份门密码状态（是否已设）。60s 缓存（状态类低频；
+ * set/clearExportPassword 成功后失效同 tag）。 */
 interface ExportPasswordStatus {
   has_password: boolean;
 }
-export async function exportPasswordStatus(): Promise<ExportPasswordStatus> {
-  return (await requestJson(
-    "/agentteams-proxy/config/export-password-status",
-  )) as ExportPasswordStatus;
+export function exportPasswordStatus(): Promise<ExportPasswordStatus> {
+  return cachedRequest(
+    "export-password-status",
+    60_000,
+    () =>
+      requestJson(
+        "/agentteams-proxy/config/export-password-status",
+      ) as Promise<ExportPasswordStatus>,
+    { tags: ["export-password"] },
+  );
 }
 
 /** 设置/修改完整备份门密码（≥8 位）。 */
 export async function setExportPassword(
   password: string,
 ): Promise<{ ok: boolean; has_password: boolean }> {
-  return (await requestJson("/agentteams-proxy/config/export-password", {
+  const r = (await requestJson("/agentteams-proxy/config/export-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
   })) as { ok: boolean; has_password: boolean };
+  invalidateTags(["export-password"]);
+  return r;
 }
 
 /** 清除完整备份门密码。 */
@@ -402,8 +430,10 @@ export async function clearExportPassword(): Promise<{
   ok: boolean;
   has_password: boolean;
 }> {
-  return (await requestJson(
+  const r = (await requestJson(
     "/agentteams-proxy/config/export-password",
     { method: "DELETE" },
   )) as { ok: boolean; has_password: boolean };
+  invalidateTags(["export-password"]);
+  return r;
 }

@@ -1,6 +1,48 @@
 // worker 域 i18n 字典（自 i18n.ts 按域拆分）：Worker 运行时（环境变量/网关探测/运行配置/技能/模型页/LLM 调优）。
 
 export const workerDict: Record<string, { en: string }> = {
+  // ── Worker MCP 面板（CRD 声明 + worker 自注册合并视图，只读）──
+  "Worker MCP": { en: "Worker MCP" },
+  "declared": { en: "declared" },
+  "self-registered": { en: "self-registered" },
+  "enabled": { en: "enabled" },
+  "disabled": { en: "disabled" },
+  "env": { en: "env" },
+  "headers": { en: "headers" },
+  "MCP 合并视图：CRD 声明（spec.mcpServers）+ worker 自注册（容器启动时注册进 QwenPaw 的内置插件 MCP）。env/headers 值已脱敏。": {
+    en: "MCP merged view: CRD declarations (spec.mcpServers) + worker self-registrations (built-in plugin MCPs registered into QwenPaw at container start). env/headers values are masked.",
+  },
+  "当前 controller 不支持读取 worker 自注册 MCP（需升级 controller）": {
+    en: "The current controller cannot read worker self-registered MCP (controller upgrade required)",
+  },
+  "未配置 controller 凭据，暂不能读取 worker 自注册 MCP": {
+    en: "No controller credential configured; cannot read worker self-registered MCP for now",
+  },
+  "自注册 MCP 读取失败（{reason}）——仅显示 CRD 声明。": {
+    en: "Reading self-registered MCP failed ({reason}) — CRD declarations only.",
+  },
+  "该 worker 未配置任何 MCP": { en: "No MCP configured for this worker" },
+  "（无端点）": { en: "(no endpoint)" },
+  "获取失败": { en: "Fetch failed" },
+  // ── Worker 插件面板（worker 已装插件列表，只读表格）──
+  "Worker 插件": { en: "Worker Plugins" },
+  "id": { en: "id" },
+  "name": { en: "name" },
+  "version": { en: "version" },
+  "loaded": { en: "loaded" },
+  "未装载": { en: "not loaded" },
+  "plugin_type": { en: "plugin_type" },
+  "已装 {n} 个 · 已启用 {m} 个": { en: "installed {n} · enabled {m}" },
+  "当前 controller 未提供 worker 插件端点（需 controller 版本支持）": {
+    en: "The current controller does not provide the worker plugins endpoint (a controller version with this endpoint is required)",
+  },
+  "未配置 controller 凭据，暂不能读取 worker 插件": {
+    en: "No controller credential configured; cannot read worker plugins for now",
+  },
+  "worker 插件读取失败（{reason}）": {
+    en: "Reading worker plugins failed ({reason})",
+  },
+  "该 worker 未报告任何插件": { en: "No plugins reported by this worker" },
   // ── Worker 环境变量 + 网关探测（1.2.5 #1306 消费，L1/manager only）──
   "环境变量与网关探测": { en: "Env Variables & Gateway Probe" },
   "环境变量": { en: "Env Variables" },
@@ -789,5 +831,16 @@ export const workerDict: Record<string, { en: string }> = {
   },
   "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。选 Higress configured alias 会自动回填对应 Provider。": {
     en: "Only model + provider change (PUT merge semantics: only changed fields are sent; empty = follow the cluster default). Picking a configured Higress alias auto-fills its provider.",
+  },
+  // 工具分组卡片（16.29）：组名与空态。「文件/运行时/其他/启用/异步执行/
+  // 需配置」复用既有域键（kb/creds/chat），不重复登记。
+  "网络": { en: "Web" },
+  "媒体": { en: "Media" },
+  "智能体": { en: "Agents" },
+  "迁移": { en: "Migration" },
+  "无内置工具": { en: "No built-in tools" },
+  // 16.31：Coding CLI 探测与安装语义（容器层安装、重建即丢）
+  "CLI 安装在 Worker 容器内，容器重建后需重新安装": {
+    en: "CLI is installed inside the Worker container; it must be reinstalled after a container rebuild",
   },
 };

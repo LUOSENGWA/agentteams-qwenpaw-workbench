@@ -267,7 +267,21 @@ export function WorkerRuntimeConfigView(props: {
           // （tab 条独立横向滚动）。
           tabBarStyle={
             // t.bg 不透明实底（cardBg 半透明会透出滚动内容）。
-            sheet ? { position: "sticky", top: 0, zIndex: 5, background: t.bg, paddingBottom: 6 } : undefined
+            // 16.29：宿主弹窗 flushTop（body 顶部 padding 0）——nav 上/下
+            // margin 清零 + paddingTop 0，tab 条紧贴标题栏下沿、滚动吸顶
+            // 无缝隙；paddingBottom 2px 留作 tab 与内容的分隔。
+            sheet
+              ? {
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 5,
+                  background: t.bg,
+                  marginTop: 0,
+                  marginBottom: 0,
+                  paddingTop: 0,
+                  paddingBottom: 2,
+                }
+              : undefined
           }
           items={[
             {

@@ -6,6 +6,7 @@
 // 不写任务 meta、不改 worker。
 
 import { requestJson, getCachedRooms } from "../shared";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 
 /** attention 选项（NMH §8：options=结构化选项集；回答时严格回 option id）。 */
 export interface AttentionOption {
@@ -76,28 +77,38 @@ export interface AttentionAnswerBody {
   basis?: string;
 }
 
-/** 拉取 attention 聚合（30s 服务端缓存；refresh=true 绕过）。
-
- 失败（4xx/5xx/超时）抛错——调用方保留旧值/隐藏入口（诚实降级）。
+/** 拉取 attention 聚合（服务端自带 30s 缓存）。
+ * 前端 30s 缓存（与 WorkbenchPageData 30s 轮询同节奏）；
+ * refresh=true → force 回源（保留 ?refresh=1 服务端绕过，双保险）；
+ * answerAttention 成功后 invalidateTags(["attention"])。
+ * 失败（4xx/5xx/超时）抛错——调用方保留旧值/隐藏入口（诚实降级）。
  */
-export async function fetchAttention(refresh = false): Promise<AttentionPayload> {
+export function fetchAttention(refresh = false): Promise<AttentionPayload> {
   const q = refresh ? "?refresh=1" : "";
-  return (await requestJson(
-    `/agentteams-proxy/attention${q}`,
-    undefined,
-    30000,
-  )) as AttentionPayload;
+  return cachedRequest(
+    "attention",
+    30_000,
+    () =>
+      requestJson(
+        `/agentteams-proxy/attention${q}`,
+        undefined,
+        30000,
+      ) as Promise<AttentionPayload>,
+    { force: refresh, tags: ["attention"] },
+  );
 }
 
 /** 人类身份答回（Matrix 房间 DECISION 行；后端去重 → 重复 409）。 */
 export async function answerAttention(
   body: AttentionAnswerBody,
 ): Promise<{ ok: boolean; key?: string; event_id?: string; answered_at?: string }> {
-  return (await requestJson(`/agentteams-proxy/attention/answer`, {
+  const r = (await requestJson(`/agentteams-proxy/attention/answer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })) as { ok: boolean; key?: string; event_id?: string; answered_at?: string };
+  invalidateTags(["attention"]);
+  return r;
 }
 
 /** 任务房间 room_id 解析：payload 自带优先；缺失时按房间名约定回退——

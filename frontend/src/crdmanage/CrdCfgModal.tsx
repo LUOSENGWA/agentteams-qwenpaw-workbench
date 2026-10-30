@@ -48,56 +48,54 @@ interface CrdCfgModalProps {
   t: ThemeColors;
 }
 
-export default function CrdCfgModal({
-cfgTeam,
-cfgOpen,
-cfg,
-cfgRows,
-cfgBusy,
-setCfgOpen,
-setCfgTeam,
-setCfg,
-setCfgBatchModel,
-updateCfgRow,
-removeCfgRow,
-addCfgRow,
-cfgBatchModel,
-applyCfgBatch,
-cfgBatchLeaderCount,
-cfgBatchWorkerCount,
-doCfg,
-workers,
-workerNames,
-modelOptions,
-modelCandidates,
-tr,
-t,
-}: CrdCfgModalProps) {
-  return cfgTeam ? (
-    <antd.Modal
-      open={cfgOpen}
-      width={780}
-      title={`${tr("配置团队")} · ${cfgTeam.name}`}
-      // 收起动画——onCancel 只关 cfgOpen（antd
-      // 播退出过渡），afterClose 才卸载（cfgTeam=null），动画期间内容
-      // 保持不闪空。
-      onCancel={() => setCfgOpen(false)}
-      afterClose={() => setCfgTeam(null)}
-      footer={
-        <antd.Space>
-          <antd.Button onClick={() => setCfgOpen(false)}>
-            {tr("取消")}
-          </antd.Button>
-          <antd.Button
-            type="primary"
-            loading={cfgBusy}
-            onClick={() => void doCfg()}
-          >
-            {tr("保存")}
-          </antd.Button>
-        </antd.Space>
-      }
-    >
+/** 配置团队表单本体（10/29 管理页评审——弹窗内容抽取为具名导出：
+ * CrdManage 走原 antd.Modal 壳（行为不变），管理页「团队设置」三栏
+ * 走内联渲染，同一份表单零行为分叉）。props = 原闭包变量名。 */
+export interface CrdCfgFormProps {
+  cfgTeam: TeamInfo;
+  cfg: TeamCfgForm;
+  cfgRows: WorkerRow[];
+  cfgBusy: boolean;
+  setCfg: ReactNS.Dispatch<ReactNS.SetStateAction<TeamCfgForm>>;
+  setCfgBatchModel: ReactNS.Dispatch<ReactNS.SetStateAction<CfgBatchModel>>;
+  updateCfgRow: (i: number, patch: Partial<WorkerRow>) => void;
+  removeCfgRow: (i: number) => void;
+  addCfgRow: () => void;
+  cfgBatchModel: CfgBatchModel;
+  applyCfgBatch: (kind: "leader" | "workers", value: string) => void;
+  cfgBatchLeaderCount: number;
+  cfgBatchWorkerCount: number;
+  /** 在服 Workers（成员行换人时取现值模型做基线）。 */
+  workers: AdminData["workers"];
+  workerNames: string[];
+  modelOptions: { value: string }[];
+  modelCandidates: string[];
+  tr: TrFn;
+  t: ThemeColors;
+}
+
+export function CrdCfgForm({
+  cfgTeam,
+  cfg,
+  cfgRows,
+  cfgBusy,
+  setCfg,
+  setCfgBatchModel,
+  updateCfgRow,
+  removeCfgRow,
+  addCfgRow,
+  cfgBatchModel,
+  applyCfgBatch,
+  cfgBatchLeaderCount,
+  cfgBatchWorkerCount,
+  workers,
+  workerNames,
+  modelOptions,
+  modelCandidates,
+  tr,
+  t,
+}: CrdCfgFormProps) {
+  return (
       <div style={{ display: "grid", gap: 10 }}>
             <FieldLabel>{tr("描述（留空 = 保持不变）")}</FieldLabel>
         <antd.Input.TextArea
@@ -432,6 +430,80 @@ SkillCenter 同款组件 onlyTeam 模式内嵌（目录搜索/上传/自定义/
           {tr("技能/分配/MCP 的保存独立于上方「保存」按钮（走技能中心原端点）；L2 用户经「技能中心（我的团队）」入口，同能力、服务端限本团队。")}
         </div>
       </div>
+  );
+}
+
+export default function CrdCfgModal({
+  cfgTeam,
+  cfgOpen,
+  cfg,
+  cfgRows,
+  cfgBusy,
+  setCfgOpen,
+  setCfgTeam,
+  setCfg,
+  setCfgBatchModel,
+  updateCfgRow,
+  removeCfgRow,
+  addCfgRow,
+  cfgBatchModel,
+  applyCfgBatch,
+  cfgBatchLeaderCount,
+  cfgBatchWorkerCount,
+  doCfg,
+  workers,
+  workerNames,
+  modelOptions,
+  modelCandidates,
+  tr,
+  t,
+}: CrdCfgModalProps) {
+  return cfgTeam ? (
+    <antd.Modal
+      open={cfgOpen}
+      width={780}
+      title={`${tr("配置团队")} · ${cfgTeam.name}`}
+      // 收起动画——onCancel 只关 cfgOpen（antd
+      // 播退出过渡），afterClose 才卸载（cfgTeam=null），动画期间内容
+      // 保持不闪空。
+      onCancel={() => setCfgOpen(false)}
+      afterClose={() => setCfgTeam(null)}
+      footer={
+        <antd.Space>
+          <antd.Button onClick={() => setCfgOpen(false)}>
+            {tr("取消")}
+          </antd.Button>
+          <antd.Button
+            type="primary"
+            loading={cfgBusy}
+            onClick={() => void doCfg()}
+          >
+            {tr("保存")}
+          </antd.Button>
+        </antd.Space>
+      }
+    >
+      <CrdCfgForm
+        cfgTeam={cfgTeam}
+        cfg={cfg}
+        cfgRows={cfgRows}
+        cfgBusy={cfgBusy}
+        setCfg={setCfg}
+        setCfgBatchModel={setCfgBatchModel}
+        updateCfgRow={updateCfgRow}
+        removeCfgRow={removeCfgRow}
+        addCfgRow={addCfgRow}
+        cfgBatchModel={cfgBatchModel}
+        applyCfgBatch={applyCfgBatch}
+        cfgBatchLeaderCount={cfgBatchLeaderCount}
+        cfgBatchWorkerCount={cfgBatchWorkerCount}
+        workers={workers}
+        workerNames={workerNames}
+        modelOptions={modelOptions}
+        modelCandidates={modelCandidates}
+        tr={tr}
+        t={t}
+      />
     </antd.Modal>
   ) : null;
 }

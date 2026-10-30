@@ -144,6 +144,19 @@ export default function WorkerResourcePanel({
         size="small"
         activeKey={tab}
         onChange={showTab}
+        // 16.29：tab 条为首元素——宿主弹窗 flushTop（body 顶部 padding 0）
+        // + nav margin 清零，紧贴标题栏下沿；滚动吸顶且 t.bg 不透明
+        // （cardBg 半透明会透出滚动内容）。
+        tabBarStyle={{
+          position: "sticky",
+          top: 0,
+          zIndex: 5,
+          background: t.bg,
+          marginTop: 0,
+          marginBottom: 0,
+          paddingTop: 0,
+          paddingBottom: 2,
+        }}
         items={items}
       />
     );

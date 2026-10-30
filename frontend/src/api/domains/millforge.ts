@@ -4,6 +4,7 @@
 // 嵌入建队表单/团队管理行操作——无独立页面。
 
 import { requestJson } from "../shared";
+import { cachedRequest, invalidateTags } from "../../requestCache";
 
 const BASE = "/agentteams-proxy/millforge";
 
@@ -238,37 +239,56 @@ export interface MillforgeParseResult {
 
 // ── HTTP 客户端 ──────────────────────────────────────────────────
 
-/** GET /millforge/source（源配置现值 + 派生 URL）。 */
-export async function fetchMillforgeSource(): Promise<MillforgeSource> {
-  return (await requestJson(`${BASE}/source`, undefined, 30000)) as MillforgeSource;
+/** GET /millforge/source（源配置现值 + 派生 URL）。
+ * 60s 缓存（目录/配置类；putMillforgeSource 成功后失效）。 */
+export function fetchMillforgeSource(): Promise<MillforgeSource> {
+  return cachedRequest(
+    "millforge/source",
+    60_000,
+    () => requestJson(`${BASE}/source`, undefined, 30000) as Promise<MillforgeSource>,
+    { tags: ["millforge"] },
+  );
 }
 
 /** PUT /millforge/source（持久化；400 = repo/custom_url 校验失败）。 */
 export async function putMillforgeSource(
   patch: MillforgeSourcePatch,
 ): Promise<MillforgeSource> {
-  return (await requestJson(`${BASE}/source`, {
+  const r = (await requestJson(`${BASE}/source`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   }, 30000)) as MillforgeSource;
+  // 源配置变更 → 源配置缓存失效。
+  invalidateTags(["millforge"]);
+  return r;
 }
 
 /** POST /millforge/import（按源配置导入；90s 后端 clone 超时 → 前端 300s 宽限）。 */
 export async function millforgeImport(ref = "main"): Promise<MillforgeImportResult> {
-  return (await requestJson(`${BASE}/import`, {
+  const r = (await requestJson(`${BASE}/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ref }),
   }, 300000)) as MillforgeImportResult;
+  // 整包覆盖导入 → pack/INDEX/源数据面全部失效。
+  invalidateTags(["millforge"]);
+  return r;
 }
 
-/** GET /millforge/packs（全量 pack + 解析后 INDEX + meta；HTTP 恒 200）。 */
-export async function fetchMillforgePacks(): Promise<MillforgePacksResponse> {
-  return (await requestJson(`${BASE}/packs`, undefined, 30000)) as MillforgePacksResponse;
+/** GET /millforge/packs（全量 pack + 解析后 INDEX + meta；HTTP 恒 200）。
+ * 300s 缓存（近似静态：pack 集合仅在 import 时整体替换，已失效）。 */
+export function fetchMillforgePacks(): Promise<MillforgePacksResponse> {
+  return cachedRequest(
+    "millforge/packs",
+    300_000,
+    () => requestJson(`${BASE}/packs`, undefined, 30000) as Promise<MillforgePacksResponse>,
+    { tags: ["millforge"] },
+  );
 }
 
-/** GET /millforge/packs/{pack}/file（单文件只读预览；防穿越由后端保证）。 */
+/** GET /millforge/packs/{pack}/file（单文件只读预览；防穿越由后端保证）。
+ * 不缓存：pack 内单文件只读预览（大载荷 + 无轮询消费方）。 */
 export async function fetchMillforgePackFile(
   pack: string,
   path: string,
@@ -287,22 +307,30 @@ export async function fetchMillforgePackFile(
 export async function millforgeCompile(
   req: MillforgeCompileRequest,
 ): Promise<MillforgeBuildResult> {
-  return (await requestJson(`${BASE}/compile`, {
+  const r = (await requestJson(`${BASE}/compile`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   }, 180000)) as MillforgeBuildResult;
+  // 新 build 落盘 → build 历史缓存失效。
+  invalidateTags(["millforge"]);
+  return r;
 }
 
 /** POST /millforge/inject（逐项 Controller 调用链 + 读回验证——300s 宽限）。 */
 export async function millforgeInject(
   req: MillforgeInjectRequest,
 ): Promise<MillforgeInjectResult> {
-  return (await requestJson(`${BASE}/inject`, {
+  const r = (await requestJson(`${BASE}/inject`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   }, 300000)) as MillforgeInjectResult;
+  // 注入 = 建 worker + 写 SOUL + 核心技能分配 → 注入历史/CRD 管理面/
+  // 团队结构/技能数据面全部失效（partial 也失效：逐项成败不一，
+  // 失效面宁宽勿窄）。
+  invalidateTags(["millforge", "admin", "teams", "skills"]);
+  return r;
 }
 
 /** POST /millforge/prompt（提示词 = PHILOSOPHY + schema + §十已填充骨架）。 */
@@ -329,11 +357,16 @@ export async function millforgeParseTeamJson(
   }, 60000)) as MillforgeParseResult;
 }
 
-/** GET /millforge/builds（build 历史，最新在前；build.json 元数据列表）。 */
-export async function fetchMillforgeBuilds(): Promise<{ builds: unknown[] }> {
-  return (await requestJson(`${BASE}/builds`, undefined, 30000)) as {
-    builds: unknown[];
-  };
+/** GET /millforge/builds（build 历史，最新在前；build.json 元数据列表）。
+ * 30s 缓存（列表类；millforgeCompile 成功后失效）。 */
+export function fetchMillforgeBuilds(): Promise<{ builds: unknown[] }> {
+  return cachedRequest(
+    "millforge/builds",
+    30_000,
+    () =>
+      requestJson(`${BASE}/builds`, undefined, 30000) as Promise<{ builds: unknown[] }>,
+    { tags: ["millforge"] },
+  );
 }
 
 /** GET /millforge/builds/{id}/file（.md/.json；SOUL 全文 = path {role}.soul.md）。 */
@@ -349,9 +382,14 @@ export async function fetchMillforgeBuildFile(
   )) as { build_id: string; path: string; size: number; content: string };
 }
 
-/** GET /millforge/injections（注入历史，留 50，最新在前）。 */
-export async function fetchMillforgeInjections(): Promise<MillforgeInjectionsResponse> {
-  return (
-    (await requestJson(`${BASE}/injections`, undefined, 30000)) as MillforgeInjectionsResponse
+/** GET /millforge/injections（注入历史，留 50，最新在前）。
+ * 30s 缓存（列表类；millforgeInject 成功后失效）。 */
+export function fetchMillforgeInjections(): Promise<MillforgeInjectionsResponse> {
+  return cachedRequest(
+    "millforge/injections",
+    30_000,
+    () =>
+      requestJson(`${BASE}/injections`, undefined, 30000) as Promise<MillforgeInjectionsResponse>,
+    { tags: ["millforge"] },
   );
 }

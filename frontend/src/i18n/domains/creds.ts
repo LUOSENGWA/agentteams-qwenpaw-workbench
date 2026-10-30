@@ -24,6 +24,9 @@ export const credsDict: Record<string, { en: string }> = {
   "L1 专属——只有部署了本地 SGLang 推理集群才需要开启": { en: "L1 only — enable only if you run a local SGLang inference cluster" },
   "Matrix 登录": { en: "Matrix Login" },
   "自动（默认：最快可达自动切换）": { en: "Auto (default: switch to fastest reachable)" },
+  // 15.36 D：地址模式 Select 短 label（完整语义进 HelpDot tooltip，长键保留）。
+  "固定内网": { en: "Pin LAN" },
+  "固定外网": { en: "Pin WAN" },
   "固定内网（失败不自动切换）": { en: "Pin LAN (no auto-failover on failure)" },
   "固定外网（失败不自动切换）": { en: "Pin WAN (no auto-failover on failure)" },
   "固定档下后台探测照跑（连通性测试仍可见另一条路径状态），但请求不再自动切换；失败会明确报错。": {
@@ -39,6 +42,9 @@ export const credsDict: Record<string, { en: string }> = {
   "固定": { en: "Pinned" },
   // ── 地址覆盖凭据（公网 Basic 门 / API key 门）──
   // 「none」label 加清除语义（旧版 label 已退役）。
+  // 15.36 D：认证类型 Select 短 label（完整语义进 HelpDot tooltip，长键保留）。
+  "服务自身认证": { en: "Service-native auth" },
+  "Basic 认证": { en: "Basic auth" },
   "使用服务自身认证（内网默认，留空即用；选此项=清除该地址已存凭据）": { en: "Use the service's own auth (LAN default — leave empty; picking this clears saved credentials for this address)" },
   "Basic 认证（公网网关 Basic 门，如 Caddy）": { en: "Basic auth (public gateway Basic gate, e.g. Caddy)" },
   "API Key（Bearer，公网网关 API key 门，如 Higress）": { en: "API key (Bearer; public gateway key gate, e.g. Higress)" },
