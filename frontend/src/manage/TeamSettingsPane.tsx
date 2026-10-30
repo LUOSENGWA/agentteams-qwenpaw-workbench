@@ -17,6 +17,7 @@ import { useT } from "../i18n";
 import { useModelCatalog } from "../crdmanage/useModelCatalog";
 import { useTeamCrd } from "../crdmanage/useTeamCrd";
 import { CrdCfgForm } from "../crdmanage/CrdCfgModal";
+import { computeStandaloneWorkers } from "../crdmanage/HumanAccessModal";
 import { StandaloneWorkerModels } from "../components/StandaloneWorkerModels";
 import { TeamIcon } from "../components/icons";
 import type { ManageData } from "./types";
@@ -169,6 +170,16 @@ function TeamCfgInline({
               </div>
             </antd.Spin>
           )}
+          {crd.cfgTeam ? (
+            <AddStandaloneWorkers
+              teams={teams}
+              workers={workers}
+              busy={crd.cfgBusy}
+              onAdd={(n: string) => void crd.doAddWorker(team.name, n)}
+              tr={tr}
+              t={t}
+            />
+          ) : null}
         </div>
       </div>
       {/* 44px 底部操作条（返回 / 保存）——方案 §4.1.4。 */}
@@ -197,6 +208,57 @@ function TeamCfgInline({
         </antd.Button>
       </div>
     </div>
+  );
+}
+
+/** 团队设置「加入 Worker」：列未归属任何团队的 Worker（computeStandaloneWorkers
+同源——admin.workers 中不在任何 teams[].workerNames/workerMembers 的），
+一键 PUT 合并进当前团队（保留原有成员，角色 = worker）。独立 Worker 的回头路。 */
+function AddStandaloneWorkers({
+  teams,
+  workers,
+  busy,
+  onAdd,
+  tr,
+  t,
+}: {
+  teams: TeamInfo[];
+  workers: AdminData["workers"];
+  busy: boolean;
+  onAdd: (workerName: string) => void;
+  tr: (s: string, v?: Record<string, string | number>) => string;
+  t: ReturnType<typeof useThemeColors>;
+}) {
+  const standalone = React.useMemo(
+    () => computeStandaloneWorkers(teams, workers),
+    [teams, workers],
+  );
+  return (
+    <antd.Card size="small" title={tr("加入 Worker（未归属团队的）")}>
+      <div style={{ display: "grid", gap: 6 }}>
+        {standalone.length ? (
+          standalone.map((n) => (
+            <div
+              key={n}
+              style={{ display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <span style={{ fontSize: 12 }}>{n}</span>
+              <div style={{ flex: 1 }} />
+              <antd.Button size="small" loading={busy} onClick={() => onAdd(n)}>
+                {tr("加入本团队")}
+              </antd.Button>
+            </div>
+          ))
+        ) : (
+          <div style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("无未归属 Worker（未被任何 Team CR 引用的 Worker）——可到 CRD 管理 → 新建 Worker 创建。")}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("一键加入 = PUT 合并进当前团队成员（保留原有成员，角色 = worker）。")}
+        </div>
+      </div>
+    </antd.Card>
   );
 }
 

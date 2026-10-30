@@ -141,7 +141,7 @@ function CrdDomain({
         id: "worker" as const,
         icon: RobotIcon,
         title: tr("新建 Worker"),
-        desc: tr("Worker CRD（名字 + 模型 + SOUL）"),
+        desc: tr("Worker CRD（名字 + 运行时 + 模型）；不指定团队 = 独立 Worker"),
         count: workers.length,
       },
     ];

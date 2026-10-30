@@ -316,6 +316,20 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       antd.message.warning(tr("Worker 不能重复"));
       return;
     }
+    // 新建行（mode=new）名字已在服 → 中止整个提交（无半成品）；
+    // 表单侧（CrdTeamForm）有同款行内提示，本层是提交时兜底。
+    const existingNames = new Set(workers.map((w) => w.name));
+    const conflictRows = rows.filter(
+      (r) => r.mode === "new" && existingNames.has(r.name.trim()),
+    );
+    if (conflictRows.length) {
+      antd.message.error(
+        tr("以下 Worker 名已存在，请改名（新建行不自动复用）：{list}", {
+          list: conflictRows.map((r) => r.name.trim()).join("、"),
+        }),
+      );
+      return;
+    }
     if (!rows.some((r) => r.role === "team_leader")) {
       antd.message.warning(tr("至少需要 1 个 team_leader"));
       return;
@@ -339,10 +353,22 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     const proceed = async () => {
       setTBusy(true);
       try {
-        // /：行上填的 model/soul 先落到 Worker CR（PUT 合并语义：
+        // 新建行（mode=new）：先按行 POST /workers（body 与独立创建一致）；
+        // 任一失败 → 抛错中止，团队不创建（不做部分成功）。
+        for (const r of rows) {
+          if (r.mode !== "new") continue;
+          await createWorker({
+            name: r.name.trim(),
+            runtime: (r.runtime || "").trim() || "qwenpaw",
+            model: (r.model || "").trim() || undefined,
+          });
+        }
+        // /：既有行上填的 model/soul 先落到 Worker CR（PUT 合并语义：
         // 只发改动/非空；Team CRD 的 workerMembers 只是引用，model/soul
         // 只存在于 Worker CR——建团缺陷的结构性根因）。
+        // 新建行跳过：model 已随创建落库，且新建行无 SOUL（表单不显示）。
         for (const r of rows) {
+          if (r.mode === "new") continue;
           const m = (r.model || "").trim();
           const s = (r.soul || "").trim();
           const cur = catalog.modelOf(r.name.trim());
@@ -418,7 +444,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       return;
     }
     void proceed();
-  }, [tForm, workerRows, onRefresh, tr, catalog.modelCandidates, catalog.modelOf, startTeamCheck, millforgePreCreate, millforgePostCreate]);
+  }, [tForm, workerRows, workers, onRefresh, tr, catalog.modelCandidates, catalog.modelOf, startTeamCheck, millforgePreCreate, millforgePostCreate]);
 
   const workerNames = workers.map((x) => x.name);
 
@@ -664,6 +690,64 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     void proceedCfg();
   }, [cfgTeam, cfg, cfgRows, llmBase, workerNames, onRefresh, tr, catalog.modelCandidates]);
 
+  /** 团队设置「加入 Worker」：把未归属任何团队的 Worker 一键加进指定团队。
+   * PUT /teams/{name} 的 workerMembers = 全量替换 → 以「现值成员
+   * （workerMembers ∪ workerNames 补齐，防旧数据丢成员）+ 新成员」整表回写，
+   * 保留原有成员，新成员角色 = worker。 */
+  const doAddWorker = React.useCallback(
+    async (teamName: string, workerName: string) => {
+      const n = workerName.trim();
+      if (!n) return;
+      const team = teams.find((x) => x.name === teamName);
+      if (!team) {
+        antd.message.warning(tr("团队数据未加载或团队不存在——请刷新后重试"));
+        return;
+      }
+      const base: { name: string; role: string }[] = (team.workerMembers ?? []).map(
+        (m) => ({ name: m.name, role: m.role }),
+      );
+      const known = new Set(base.map((m) => m.name));
+      for (const wn of team.workerNames ?? []) {
+        if (!known.has(wn)) base.push({ name: wn, role: "worker" });
+      }
+      if (base.some((m) => m.name === n)) {
+        antd.message.info(tr("该 Worker 已是团队现有成员"));
+        return;
+      }
+      setCfgBusy(true);
+      try {
+        await updateTeam(teamName, {
+          workerMembers: [...base, { name: n, role: "worker" }],
+        });
+        // 本团队配置弹窗/内联正在打开 → 同步成员行，否则后续「保存」
+        // 按全量替换用旧行覆盖，会把刚加入的成员丢掉。
+        if (cfgTeam?.name === teamName) {
+          setCfgRows((prev) =>
+            prev.some((r) => r.name === n)
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    name: n,
+                    role: "worker",
+                    model: catalog.modelOf(n),
+                    modelOrig: catalog.modelOf(n),
+                  },
+                ],
+          );
+        }
+        antd.message.success(tr("已加入团队：{name}", { name: n }));
+        invalidateTags(["teams", "admin"]);
+        onRefresh?.(true);
+      } catch (e) {
+        antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+      } finally {
+        setCfgBusy(false);
+      }
+    },
+    [teams, cfgTeam, catalog.modelOf, onRefresh, tr],
+  );
+
   // 删团队前快照 → 删除成功后 6s「撤销」
   // toast → 点撤销按快照重建（createTeam 原字段回写）。诚实语义=重建
   // 非恢复：Matrix 房间历史/容器状态不随 CRD 回来（上游删除是破坏性的），
@@ -768,6 +852,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     cfgBatchLeaderCount,
     cfgBatchWorkerCount,
     doCfg,
+    doAddWorker,
     undoTeam,
     doDeleteTeam,
   };
