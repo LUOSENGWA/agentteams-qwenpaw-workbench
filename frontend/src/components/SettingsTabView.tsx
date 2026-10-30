@@ -147,7 +147,9 @@ export function SettingsTabView(props: {
     doLogin,
   } = c;
   return (
-    <div style={{ display: "grid", gap: 24, maxWidth: 720 }}>
+    /* 10/30：配置页卡片按屏幕宽度自动排列——外层通栏承载横幅（通栏语义），
+       内层卡片区 auto-fit（宽屏 2–3 列、窄屏自动 1 列），不再单列 720px 定宽。 */
+    <div style={{ display: "grid", gap: 24, maxWidth: 1280 }}>
       {/* config 加载态横幅——加载中/失败必须显式。
  静默吞错会让用户把默认态当成已保存值（「没有记忆」事故根因）。 */}
       {config === null && (
@@ -223,6 +225,10 @@ export function SettingsTabView(props: {
       <div
         style={{
           display: "grid",
+          // auto-fit：每列最小 340px 自适应——宽屏 2–3 列、窄屏自动落回 1 列；
+          // alignItems:start 让各卡保持自然高度（不等高拉伸）。
+          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+          alignItems: "start",
           gap: 24,
           opacity: config === null ? 0.45 : 1,
           pointerEvents: config === null ? "none" : undefined,
