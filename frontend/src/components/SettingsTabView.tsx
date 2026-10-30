@@ -236,29 +236,13 @@ export function SettingsTabView(props: {
         aria-disabled={config === null || undefined}
       >
       {/* ：分节卡片化——「聊天页面」卡片。 */}
-      <div style={{ ...cardBox, fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
+      <div style={{ gridColumn: "1 / -1", ...cardBox, fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
         {tr("内网和外网是同一服务器的两条访问路径（家里用内网 IP，外出用公网域名），无需手动切换——插件每 2 分钟自动重测全部地址（测延迟），自动切到最快可达的一条，外网/内网切换自动识别。")}
       </div>
 
-      <div style={cardBox}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>{tr("聊天页面")}</div>
-      {/* 12.14：聊天分栏强制开关——宿主面板宽度判定为窄屏时的豁免。 */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <antd.Switch
-          checked={Boolean(chatForceWide)}
-          onChange={(v: boolean) => onChatForceWideChange?.(v)}
-        />
-        <div>
-          <div style={{ fontWeight: 600 }}>{tr("聊天页面强制左右分栏")}</div>
-          <div style={{ fontSize: 12, color: "#888" }}>
-            {tr("忽略宽窄判定：房间列表与聊天框始终左右分栏、各自独立滚动。窄面板下可用拖动条调宽、⟨ 可收起列表。")}
-          </div>
-        </div>
-      </div>
-      </div>
 
       {/* 「访问地址」卡片。 */}
-      <div style={{ ...cardBox, display: "grid", gap: 16 }}>
+      <div style={{ gridColumn: "1 / -1", ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("访问地址")}</div>
         {/* 凭据记忆状态总览——每个系统凭据是否已保存
  一眼可见（每个账号密码的认证都要分开的可视化）。 */}
@@ -681,7 +665,7 @@ export function SettingsTabView(props: {
       </div>
 
       {/* 「认证」卡片（Controller 认证 + 启动偏好）。 */}
-      <div style={{ ...cardBox, display: "grid", gap: 16 }}>
+      <div style={{ gridColumn: "1 / -1", ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("认证与登录")}</div>
         {/* Controller 认证双模式（用户需求）——「用 admin 的 matrix
  账号登录」或「输入 Controller 管理员 token」。无 API 可取 admin
@@ -992,7 +976,7 @@ export function SettingsTabView(props: {
  → L2 模式隐藏（该隐藏的就隐藏；切 L1 模式仍可配置，
  值已持久化不丢）。 */}
       {ctlMode === "token" && (
-      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
+      <div style={{ gridColumn: "1 / -1", ...cardBox, display: "grid", gap: 12 }}>
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("集群负载（可选模块）")}
@@ -1052,7 +1036,7 @@ export function SettingsTabView(props: {
       </div>
       )}
 
-      <div>
+      <div style={{ gridColumn: "1 / -1" }}>
         <antd.Button
           type="primary"
           loading={saving}
@@ -1072,7 +1056,7 @@ export function SettingsTabView(props: {
             本就 500 显性报，此处补"落没落盘"锚点。 */}
         {config && (
           <span
-            style={{
+            style={{ gridColumn: "1 / -1",
               fontSize: 12,
               alignSelf: "center",
               color: config.configWritable ? "#888" : (t.mode === "dark" ? "#faad14" : "#d48806"),
@@ -1114,7 +1098,7 @@ export function SettingsTabView(props: {
           scan(tr("网关管理"), cs.gateway_admin_urls);
           if (!parts.length) return null;
           return (
-            <span style={{ fontSize: 12, alignSelf: "center", color: t.mode === "dark" ? "#faad14" : "#d48806" }}>
+            <span style={{ gridColumn: "1 / -1", fontSize: 12, alignSelf: "center", color: t.mode === "dark" ? "#faad14" : "#d48806" }}>
               ⚠ {parts.join("；")}
             </span>
           );
@@ -1122,43 +1106,10 @@ export function SettingsTabView(props: {
       </div>
 
       {/* 「配置迁移与诊断」卡片。 */}
-      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
-        <div style={{ fontWeight: 700 }}>{tr("配置迁移与诊断")}</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <antd.Button
-            icon={<DownloadIcon />}
-            onClick={() => void exportConfig()}
-          >
-            {tr("导出配置（脱敏）")}
-          </antd.Button>
-          <antd.Button
-            icon={<UploadIcon />}
-            onClick={() => importInputRef.current?.click()}
-          >
-            {tr("导入配置")}
-          </antd.Button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".json,application/json"
-            style={{ display: "none" }}
-            onChange={(e) => void importConfig(e)}
-          />
-          <antd.Button
-            icon={<FileZipOutlined />}
-            onClick={() => void exportDiagnostic()}
-          >
-            {tr("导出诊断包")}
-          </antd.Button>
-        </div>
-        <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
-          {tr("导出配置含全部地址但不含密码/token（显示为 ***）——导入不会覆盖现有凭据。诊断包 = 脱敏配置 + 自检结果，用于排查问题时交给管理员。")}
-        </div>
-      </div>
 
  {/* 「备份与恢复」卡片——含凭据完整
  配置（用户自己还原用；与上方脱敏导出/导入=交管理员排查 区分）。 */}
-      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
+      <div style={{ gridColumn: "1 / -1", ...cardBox, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700 }}>{tr("备份与恢复")}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <antd.Button
@@ -1335,6 +1286,23 @@ export function SettingsTabView(props: {
         />
       </antd.Modal>
 
+      <div style={cardBox}>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>{tr("聊天页面")}</div>
+      {/* 12.14：聊天分栏强制开关——宿主面板宽度判定为窄屏时的豁免。 */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <antd.Switch
+          checked={Boolean(chatForceWide)}
+          onChange={(v: boolean) => onChatForceWideChange?.(v)}
+        />
+        <div>
+          <div style={{ fontWeight: 600 }}>{tr("聊天页面强制左右分栏")}</div>
+          <div style={{ fontSize: 12, color: "#888" }}>
+            {tr("忽略宽窄判定：房间列表与聊天框始终左右分栏、各自独立滚动。窄面板下可用拖动条调宽、⟨ 可收起列表。")}
+          </div>
+        </div>
+      </div>
+      </div>
+
       {/* 「Matrix 登录」卡片。 */}
       <div style={{ ...cardBox, display: "grid", gap: 12 }}>
         <div style={{ fontWeight: 700 }}>
@@ -1367,6 +1335,40 @@ export function SettingsTabView(props: {
           >
             {tr("登录")}
           </antd.Button>
+        </div>
+      </div>
+
+      <div style={{ ...cardBox, display: "grid", gap: 12 }}>
+        <div style={{ fontWeight: 700 }}>{tr("配置迁移与诊断")}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <antd.Button
+            icon={<DownloadIcon />}
+            onClick={() => void exportConfig()}
+          >
+            {tr("导出配置（脱敏）")}
+          </antd.Button>
+          <antd.Button
+            icon={<UploadIcon />}
+            onClick={() => importInputRef.current?.click()}
+          >
+            {tr("导入配置")}
+          </antd.Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: "none" }}
+            onChange={(e) => void importConfig(e)}
+          />
+          <antd.Button
+            icon={<FileZipOutlined />}
+            onClick={() => void exportDiagnostic()}
+          >
+            {tr("导出诊断包")}
+          </antd.Button>
+        </div>
+        <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.7 }}>
+          {tr("导出配置含全部地址但不含密码/token（显示为 ***）——导入不会覆盖现有凭据。诊断包 = 脱敏配置 + 自检结果，用于排查问题时交给管理员。")}
         </div>
       </div>
  {/* 宿主 Agent 技能管理区块移除（
