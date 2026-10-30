@@ -203,12 +203,15 @@ export function useWorkbenchUi() {
     const el = paneRef.current;
     if (!el) return;
     try {
+      // 10/30 二轮：170ms/4px/0.55 起手幅度肉眼几乎不可见（用户反馈
+      // 「还是没动画」）——加长到 280ms、位移 12px、从全透明起手，
+      // 曲线改 easeOutQuint（快速进入后缓停），观感明确但不拖沓。
       el.animate(
         [
-          { opacity: 0.55, transform: "translateY(4px)" },
+          { opacity: 0, transform: "translateY(12px)" },
           { opacity: 1, transform: "none" },
         ],
-        { duration: 170, easing: "cubic-bezier(0.2,0.8,0.2,1)" },
+        { duration: 280, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
       );
     } catch {
       /* noop */
