@@ -18,6 +18,8 @@ import {
   BubbleBoundary,
   ReactionChips,
 } from "./RoomChatBubbles";
+import { parseAttentionMessage } from "../pending/parse";
+import { AttentionDecisionCard } from "./AttentionDecisionCard";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -259,6 +261,15 @@ export function ThreadPanelView({
           >
             <MdText text={root.body || ""} />
           </div>
+          {/* P0 人工介入闭环：话题根是 ATTENTION_* 请求（非本人发的）→
+          紧凑决策卡（正文已在上，卡只留操作行）。stopPropagation——
+          话题根整块可点跳原消息，卡内作答不触发跳转。 */}
+          {root.sender !== myUserId &&
+          parseAttentionMessage(root.body || "") ? (
+            <div onClick={(e) => e.stopPropagation()}>
+              <AttentionDecisionCard msg={root} room={room} compact />
+            </div>
+          ) : null}
           {onReact ? (
             <ReactionChips
               reactions={root.reactions}
@@ -326,6 +337,11 @@ export function ThreadPanelView({
                       <MdText text={r.body || ""} />
                     </BubbleBoundary>
                   </div>
+                  {/* P0 人工介入闭环：话题回复也是 ATTENTION_* 请求（非本人发的）→
+                  紧凑决策卡。回复块无整块 onClick，无需 stopPropagation。 */}
+                  {!rMine && parseAttentionMessage(r.body || "") ? (
+                    <AttentionDecisionCard msg={r} room={room} compact />
+                  ) : null}
                   {onReact ? (
                     <ReactionChips
                       reactions={r.reactions}

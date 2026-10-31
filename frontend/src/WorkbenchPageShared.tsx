@@ -415,13 +415,14 @@ export const WB_MAIN_CSS = `
         .wb-main [style*="display: grid"] { grid-template-columns: minmax(0, 1fr); }
         /* 卡片标题：flex item min-width:auto 撑宽（"员工入职（Human CRD）"
  166>136 溢出）→ 允许收缩换行。 */
-        .wb-main .ant-card-head-title { min-width: 0; }
+        .wb-main .ant-card-head-title,
+        .wb-main .qwenpaw-card-head-title { min-width: 0; }
         @media (max-width: 700px) {
           .wb-main { padding: 8px 10px 12px !important; gap: 8px !important; }
-          .wb-main .ant-card-body { padding: 10px !important; }
-          .wb-main .ant-table-cell { padding-left: 6px !important; padding-right: 6px !important; }
-          .wb-main .ant-table-thead > tr > th { padding-left: 6px !important; padding-right: 6px !important; }
-          .wb-main .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+          .wb-main .ant-card-body, .wb-main .qwenpaw-card-body { padding: 10px !important; }
+          .wb-main .ant-table-cell, .wb-main .qwenpaw-table-cell { padding-left: 6px !important; padding-right: 6px !important; }
+          .wb-main .ant-table-thead > tr > th, .wb-main .qwenpaw-table-thead > tr > th { padding-left: 6px !important; padding-right: 6px !important; }
+          .wb-main .ant-tag, .wb-main .qwenpaw-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
           .wb-main pre, .wb-main code { white-space: pre-wrap; word-break: break-all; }
         }
         /* ══ 浮层（Modal/Drawer）窄视口防溢出 ══
@@ -445,7 +446,7 @@ export const WB_MAIN_CSS = `
         .wbc-narrow .ant-input-affix-wrapper, .wbc-narrow .qwenpaw-input-affix-wrapper,
         .wbc-narrow .ant-input-number, .wbc-narrow .qwenpaw-input-number,
         .wbc-narrow .ant-picker, .wbc-narrow .qwenpaw-picker { max-width: 100% !important; }
-        .wbc-narrow .ant-slider { margin: 6px 8px 2px !important; }
+        .wbc-narrow .ant-slider, .wbc-narrow .qwenpaw-slider { margin: 6px 8px 2px !important; }
         /* 无列模板的 display:grid 隐式 auto 轨按 item min-content 撑宽
    （.wb-main 同款规则——portal 弹窗在 body 作用域外，须 wbc-narrow 镜像；
    CfgRow 的 150px 1fr 由 .wbc-cfgrow !important 规则优先，不受影响）。 */

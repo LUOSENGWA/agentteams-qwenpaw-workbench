@@ -14,8 +14,6 @@ import {
   httpErrorStatus,
   updateHumanAccess,
   type HumanInfo,
-  type TeamInfo,
-  type WorkerInfo,
 } from "../api";
 import type { ThemeColors } from "../theme";
 import { copyText } from "../util";
@@ -30,19 +28,7 @@ const antd = host.antd;
  * team 成员名读 Team CRD 两源：workerNames（必填）∪ workerMembers[].name
  * （TeamResponse 透传）——两源并集，Controller 版本差异下任一字段在即
  * 判「已入团队」（grep 实锤字段名，不猜）。 */
-export function computeStandaloneWorkers(
-  teams: TeamInfo[],
-  workers: WorkerInfo[],
-): string[] {
-  const inTeam = new Set<string>();
-  for (const tm of teams) {
-    for (const n of tm.workerNames ?? []) inTeam.add(n);
-    for (const m of tm.workerMembers ?? []) inTeam.add(m.name);
-  }
-  return workers
-    .map((w) => w.name)
-    .filter((n) => !inTeam.has(n));
-}
+export { computeStandaloneWorkers } from "./standalone";
 
 interface AccessDraft {
   permissionLevel: number;

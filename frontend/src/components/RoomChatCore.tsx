@@ -37,6 +37,15 @@ import {
 } from "./RoomChatShared";
 import {ThreadPanelView } from "./RoomChatThread";
 import type {RoomChatProps } from "./RoomChat";
+import { usePendingStore } from "../pending/store";
+import {
+  attentionPendingKind,
+  parseAttentionMessage,
+  resolveRoomReplyTarget,
+} from "../pending/parse";
+import { selectCompanionIds } from "../pending/tally";
+import { notifyPending } from "../pending/notify";
+import type { PendingItem } from "../pending/types";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -679,6 +688,104 @@ export function useRoomChatCore(props: RoomChatProps) {
     })();
   }, [messages]);
 
+  // P0 人工介入闭环（消息摄取侧，活动房间全量路径）：
+  // ① 本人新消息 → 自解决——resolveRoomReplyTarget 只认
+  //    m.in_reply_to / m.reference 作为答复关联证据（§5 禁令：不用
+  //    m.thread）；无引用时按 in-room 推断（干预型=有 question 的
+  //    最旧项；裁决型=APPROVE/REJECT 关键词命中）。答一条，同
+  //    taskId 的跨源同伴（attention feed 项）一并清。
+  // ② 他人 ATTENTION 请求 → 建 room_message 待办 + 系统通知；
+  //    跨源去重：attention feed 已承载同 taskId 时让正源项持有。
+  // ③ 他人 @我 → mention 待办（房间级口径；过期由 WorkbenchPage
+  //    按房间 unread_highlight 清零处理）。
+  // 首批=只登记不建项（重开插件打开聊天页不为历史 ATTENTION 重挂
+  // 待办——与审批 effect 同语义）。本 effect 不发消息（自解决只
+  // 观察本人已发出的消息）。
+  const pending = usePendingStore();
+  const pendingRef = React.useRef(pending);
+  pendingRef.current = pending;
+  const pendingSeededRef = React.useRef(false);
+  const seenPendingRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    const roomId = room?.room_id;
+    if (!roomId) return;
+    const store = pendingRef.current;
+    const fresh: RoomMessage[] = [];
+    for (const m of messages) {
+      if (m.msgtype !== "m.text" || !m.body) continue;
+      if (seenPendingRef.current.has(m.event_id)) continue;
+      seenPendingRef.current.add(m.event_id);
+      fresh.push(m);
+    }
+    if (fresh.length === 0) return;
+    if (!pendingSeededRef.current) {
+      pendingSeededRef.current = true;
+      return;
+    }
+    const myId = user_id || "";
+    for (const m of fresh) {
+      if (myId && m.sender === myId) {
+        const targetId = resolveRoomReplyTarget(
+          store.items,
+          roomId,
+          m.body,
+          m.in_reply_to || m.reference,
+        );
+        if (targetId) {
+          const target = store.items.find((it) => it.id === targetId);
+          store.resolve(targetId, {
+            status: "answered",
+            actor: myId,
+            answer: (m.body || "").slice(0, 200),
+          });
+          if (target) {
+            for (const cid of selectCompanionIds(store.items, target)) {
+              store.resolve(cid, { status: "answered", actor: myId });
+            }
+          }
+        }
+        continue;
+      }
+      const ap = parseAttentionMessage(m.body);
+      if (ap) {
+        const dup = store.items.some(
+          (it) => it.source === "attention" && it.taskId === ap.taskId,
+        );
+        if (!dup) {
+          const pitem: PendingItem = {
+            id: `${roomId}:${m.event_id}`,
+            source: "room_message",
+            kind: attentionPendingKind(ap.question),
+            roomId,
+            eventId: m.event_id,
+            taskId: ap.taskId,
+            question: ap.question || undefined,
+            sender: m.sender || undefined,
+            createdAt: m.origin_server_ts || Date.now(),
+            raw: (m.body || "").slice(0, 500),
+          };
+          store.upsert(pitem);
+          notifyPending(pitem);
+        }
+        continue;
+      }
+      if (myId && m.sender !== myId && (m.mentions || []).includes(myId)) {
+        const pitem: PendingItem = {
+          id: `${roomId}:${m.event_id}:mention`,
+          source: "room_message",
+          kind: "mention",
+          roomId,
+          eventId: m.event_id,
+          sender: m.sender || undefined,
+          createdAt: m.origin_server_ts || Date.now(),
+          raw: (m.body || "").slice(0, 500),
+        };
+        store.upsert(pitem);
+        notifyPending(pitem);
+      }
+    }
+  }, [messages, room?.room_id, user_id]);
+
   // 新消息到达 → stick.onNewMessages（following → rAF 批量贴底 + 清零；
   // 否则非本人消息 unread + 1 →「回到最新 N」悬浮钮）。
   // grew 判定改「末条 id 变化」——旧版用 length 增长，
@@ -728,6 +835,9 @@ export function useRoomChatCore(props: RoomChatProps) {
  // 审批解析缓存随房间清（防跨房残留）。
     approvalParseCacheRef.current.clear();
     pendingCacheRef.current = null;
+    // 换房重置人工介入摄取状态（新房间首批=只登记，不建项）。
+    pendingSeededRef.current = false;
+    seenPendingRef.current.clear();
     // 消息窗口回初始（换房=新渲染起点，揭示进度不跨房保留）。
     setWindowLimit(MSG_WINDOW_LIMIT);
   }, [room?.room_id]);

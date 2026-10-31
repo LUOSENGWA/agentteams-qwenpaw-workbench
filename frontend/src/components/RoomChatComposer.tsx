@@ -36,6 +36,7 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
     onSendFiles,
     activityProject,
     onOpenProject,
+    onWorkflowIntervened,
   } = p;
   const {
     draft,
@@ -130,6 +131,7 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
         <AgentActivityTrack
           project={activityProject ?? null}
           onOpenProject={onOpenProject}
+          onWorkflowIntervened={onWorkflowIntervened}
         />
         {replyTo ? (
           <div

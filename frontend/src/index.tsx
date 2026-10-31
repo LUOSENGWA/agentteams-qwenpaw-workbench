@@ -122,6 +122,7 @@ const SIDEBAR_ICON: ReactNS.ReactNode = hostReact
 
 import WorkbenchPage from "./WorkbenchPage";
 import StandaloneConfigPage from "./StandaloneConfigPage";
+import { PendingProvider } from "./pending/store";
 import { isLocalHost } from "./hostEnv";
 import ApprovalCard from "./components/ApprovalCard";
 import { fetchRoomApprovals, requestJson } from "./api";
@@ -158,10 +159,8 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
- @keyframes wbViewIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+ /* wbViewIn 已退役（10/30）：切页过渡统一走 WAAPI（WorkbenchPageUi paneRef），
+ 不再叠加 CSS keyframes，避免双重动画。 */
  @keyframes wbL2PushIn {
   from { opacity: 0; transform: translateX(14px); }
   to   { opacity: 1; transform: translateX(0); }
@@ -215,38 +214,16 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   60% { transform: rotate(6deg); }
   75% { transform: rotate(-3deg); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .wb-session-dot.running { animation: none; }
-  .wb-live-dot { animation: none; }
-  .wb-loop-dot.running { animation: none; }
-  .wb-tab-shake { animation: none !important; }
-  .wb-main-tabs .ant-tabs-tabpane-active,
-  .wb-l2-push, .wb-l2-pop, .wb-sheet-in { animation: none !important; }
-}
+/* 插件动效不受系统「减少动态效果」设置压制（10/30 定案）：
+  状态点/转场/提示抖动都是插件 UI 设计的一部分，系统开关只影响系统层动效。 */
 /* 页面布局（上下边界固定撑满屏幕，参考控制台）：
  main 撑满（height 100% + minHeight 兜底）+ flex column；header 固定；
  tab 内容区 tabpane 层滚动——nav 固定不动，聊天室输入区固定在
  tabpane 底部。注意：content-holder 用 overflow hidden（不是 auto），
  滚动只在 tabpane 层，避免双重滚动条。 */
 .wb-main { height: 100%; }
-.wb-main-tabs.ant-tabs {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.wb-main-tabs .ant-tabs-nav { flex: 0 0 auto; margin-bottom: 10px; }
-.wb-main-tabs .ant-tabs-content-holder {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-.wb-main-tabs .ant-tabs-content { height: 100%; }
-.wb-main-tabs .ant-tabs-tabpane {
-  height: 100%;
-  overflow: auto;
-}
+/* .wb-main-tabs.* 布局链已删（10/30）：容器类从未在 TSX 挂载，规则永不命中；
+ 实际高度链由 WorkbenchPageShared WB_MAIN_CSS 双前缀规则 + 内联 style 承接。 */
 /* 控制台特效三档（console_effects，
  默认 light）取代旧 console_calm bool——旧 data-wb-calm 属性删除
  （迁移后不再写）：
@@ -308,14 +285,10 @@ html[data-wb-fx="light"] [class*="HubShell-module__topbar"] {
 html[data-wb-fx="light"] [class*="ambientLight"] {
   opacity: 0.55 !important;
 }
-/* light 档：1.2s infinite 呼吸动画暂停——75 房侧栏多状态点同屏时
- 是持续合成层重绘源。paused 停在首帧（点仍可见、颜色/Tooltip 继续
- 承载 running 语义），观感无损；off 档本就全停。 */
-html[data-wb-fx="light"] .wb-session-dot.running,
-html[data-wb-fx="light"] .wb-live-dot,
-html[data-wb-fx="light"] .wb-loop-dot.running {
-  animation-play-state: paused !important;
-}
+/* 10/30 定案：console_effects 三档只控 QwenPaw Console 壳的特效
+（玻璃模糊 / RunningGlow 光环 / ambientLight 环境光——都是宿主元素），
+不再门控插件页内动效——状态点呼吸、转场、抖动等属于插件自身 UI，
+任何档位都照常播放。旧 light 档状态点暂停规则已删。 */
 /* 多行截断（跨 Chromium 版本安全的通用写法）。
  15.14 根因：内联 display:-webkit-box + -webkit-line-clamp 在 Chromium 154
  计算为 flow-root（盒模型损坏）——在 grid 容器内与 overflow:hidden 叠加时
@@ -343,12 +316,14 @@ html[data-wb-fx="light"] .wb-loop-dot.running {
 /* antd Tabs 导航条：溢出时可横滚（鼠标滚轮横滚由全局 wheel 委托驱动，
  见 index.tsx 模块级 listener）。滚动条隐藏（与顶栏自写 tab 条同款
  scrollbar-width:none + webkit 伪元素）。 */
-.wb-main .ant-tabs-nav-wrap {
+.wb-main .ant-tabs-nav-wrap,
+.wb-main .qwenpaw-tabs-nav-wrap {
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
 }
-.wb-main .ant-tabs-nav-wrap::-webkit-scrollbar {
+.wb-main .ant-tabs-nav-wrap::-webkit-scrollbar,
+.wb-main .qwenpaw-tabs-nav-wrap::-webkit-scrollbar {
   display: none;
   height: 0;
 }
@@ -428,10 +403,8 @@ html[data-wb-fx="light"] .wb-loop-dot.running {
 .wb-jumpbottom:active {
   transform: scale(0.95);
 }
-/* 16.32 页面转场（Material Fade through / Shared axis X） */
-.wb-main-tabs .ant-tabs-tabpane-active {
-  animation: wbViewIn 180ms cubic-bezier(0.2, 0, 0, 1);
-}
+/* 页面转场：切页=WAAPI（paneRef wrapper，WorkbenchPageUi）；L2/弹窗=CSS。
+ 10/30 定案：不跟随系统「减少动态效果」设置。 */
 .wb-l2-push { animation: wbL2PushIn 220ms cubic-bezier(0.2, 0, 0, 1); }
 .wb-l2-pop  { animation: wbL2PopIn  220ms cubic-bezier(0.2, 0, 0, 1); }
 .wb-sheet-in { animation: wbSheetIn 200ms cubic-bezier(0.2, 0, 0, 1); }
@@ -578,7 +551,10 @@ try {
 function WorkbenchEntry() {
   return isLocalHost()
     ? React.createElement(StandaloneConfigPage)
-    : React.createElement(WorkbenchPage);
+    // P0 人工介入闭环：pending store（待处理池 + resolutions）是
+    // 工作台级单例——RoomChatCore 摄取 / 三源同步 / 通知中心消费
+    // 都在 provider 子树内。
+    : React.createElement(PendingProvider, null, React.createElement(WorkbenchPage));
 }
 
 window.QwenPaw.registerRoutes?.("agentteams-qwenpaw-workbench", [

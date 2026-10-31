@@ -39,6 +39,13 @@ import { useWorkbenchEvents } from "./WorkbenchPageEvents";
 import { useWorkbenchChatActions } from "./WorkbenchPageActions";
 import { useWorkbenchChatLayout } from "./WorkbenchPageLayout";
 import { useWorkbenchDerived } from "./WorkbenchPageDerived";
+import {
+  onPendingNav,
+  takePendingChatRoomId,
+  takePendingProjectKey,
+  usePendingStore,
+} from "./pending/store";
+import { selectPendingTally } from "./pending/tally";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -345,6 +352,47 @@ export default function WorkbenchPage() {
       mergeUiState({ inboxSubTab: next ? "attention" : "events" });
     },
     [mergeUiState],
+  );
+
+  // P0 人工介入闭环——统一「待处理」口径：顶栏 banner / 通知中心
+  // 角标 / 通知中心列表都取这份 tally（selectPendingTally 单一口径，
+  // 三处数字必相等）。mention 项按房间计（rooms.unread_highlight>0
+  // 的房间数），不按消息条数。
+  const pending = usePendingStore();
+  const mentionRoomCount = React.useMemo(
+    () => rooms.filter((r) => (r.unread_highlight || 0) > 0).length,
+    [rooms],
+  );
+  const pendingTally = React.useMemo(
+    () =>
+      selectPendingTally(pending.items, pending.resolutions, mentionRoomCount),
+    [pending.items, pending.resolutions, mentionRoomCount],
+  );
+  // @我 清零：mention 项所属房间 unread_highlight→0（用户已读）→
+  // expire。rooms 未加载完不跑（首帧 rooms=[] 会把历史 mention 项
+  // 全灭——房间状态未知时不动）。
+  React.useEffect(() => {
+    if (rooms.length === 0) return;
+    const unread = new Map<string, number>();
+    for (const r of rooms) unread.set(r.room_id, r.unread_highlight || 0);
+    const ids: string[] = [];
+    for (const it of pending.items) {
+      if (it.kind !== "mention" || !it.roomId) continue;
+      if ((unread.get(it.roomId) || 0) === 0) ids.push(it.id);
+    }
+    if (ids.length > 0) pending.expire(ids);
+  }, [rooms, pending]);
+  // 系统通知点击深链（notifyPending 写 nav key 后 emitPendingNav）：
+  // 原子取出并消费——room 项跳房间，project 项开项目详情。
+  React.useEffect(
+    () =>
+      onPendingNav(() => {
+        const rid = takePendingChatRoomId();
+        if (rid) handleGotoRoom(rid);
+        const pk = takePendingProjectKey();
+        if (pk) handleOpenProject(pk);
+      }),
+    [handleGotoRoom, handleOpenProject],
   );
 
   // 管理页 section 深链（一次性通道）：首页 SGLang 卡「去集群」等入口
@@ -895,6 +943,47 @@ export default function WorkbenchPage() {
         )}
       </header>
 
+ {/* P0 人工介入闭环——统一「待处理」顶栏 banner。三处（本 banner /
+ 顶栏待决策 badge / 通知中心角标）共用 pendingTally 单一口径，数字
+ 必相等。total=0 不渲染；点击「去处理」→ 通知页待处理子页（复用
+ attentionSubTab 通道）。 */}
+      {pendingTally.total > 0 ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flex: "0 0 auto",
+            margin: "10px 14px 0",
+            padding: "8px 14px",
+            borderRadius: 10,
+            background:
+              "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 35%, transparent)",
+          }}
+        >
+          <TargetIcon size={18} />
+          <span style={{ fontSize: 13, color: t.text, fontWeight: 600 }}>
+            {pendingTally.total} {tr("条待你处理")}
+            <span style={{ color: t.textSecondary, fontWeight: 400 }}>
+              {`（${pendingTally.interventions} 待干预 · ${pendingTally.approvals} 待审批 · ${pendingTally.interrupts} 待介入 · ${pendingTally.mentionRooms} 个房间 @你）`}
+            </span>
+          </span>
+          <div style={{ flex: 1 }} />
+          <antd.Button
+            size="small"
+            type="primary"
+            onClick={() => {
+              setAttentionSubTab(true);
+              setTab("inbox");
+              scrollTabIntoView("inbox");
+            }}
+          >
+            {tr("去处理")}
+          </antd.Button>
+        </div>
+      ) : null}
+
  {/* 登录态/凭据失效横幅——token 失效后 @通知静默
  全断、Higress 会话过期后 alias 层静默消失，此前前端零感知（产品
  盲点）。数据源=30s 轮询 /auth-status（零外发请求）。 */}
@@ -1134,13 +1223,18 @@ export default function WorkbenchPage() {
                 // UI 在那里；chat tab 需无激活房间才显示 TeamOverview）。
                 invites={invites}
                 onGotoInvites={gotoInvites}
-                // 待决策子页签（10/26 原顶层 tab 并入）——数据/弹窗/
-                // 刷新链路仍在本层（全局弹窗），子页签状态持久化刷新后保持。
+                // 待处理子页签（10/26 原顶层「待决策」tab 并入；P0 人工介入
+                // 闭环后三源统一池）——数据/弹窗/刷新链路仍在本层（全局弹窗），
+                // 子页签状态持久化刷新后保持。
                 attention={attention}
                 attentionSubTab={attentionSubTab}
                 onAttentionSubTabChange={setAttentionSubTab}
                 onOpenAttentionItem={openAttentionByItem}
                 onRefreshAttention={() => void refreshAttention(true)}
+                // 三源统一口径（与顶栏 banner 同一 selector——数字必相等）。
+                tally={pendingTally}
+                // interrupt 项「去项目」→ 工作流 tab 打开对应项目。
+                onOpenProject={handleOpenProject}
               />
             ),
           },
@@ -1161,6 +1255,7 @@ export default function WorkbenchPage() {
                 onViewChange={handleWfViewChange}
                 topoRun={wfMem.topoRun}
                 onTopoRunChange={handleWfTopoRunChange}
+                onGotoRoom={handleGotoRoom}
               />
             ),
           },

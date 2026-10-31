@@ -41,6 +41,16 @@ export interface RoomMessage {
   /** 团队共享文件引用（#87，content.com.agentteams.file_refs）——
  * 收信侧渲染文件 chip，点击经 team-file 端点预览。 */
   file_refs?: FileRef[];
+  /** @提及结构化（content.m.mentions.user_ids）——@我 判定唯一口径
+ * （不用 body 文本兜底，防 worker 自发提及误报）。 */
+  mentions?: string[];
+  /** 标准回复（m.relates_to["m.in_reply_to"].event_id）——答复关联
+ * 证据之一（P0 人工介入闭环 self-resolve）。 */
+  in_reply_to?: string;
+  /** 引用（rel_type=m.reference）指向的事件——答复关联证据之二。
+ * m.thread 不作答复关联证据（任务书 §5：线程是结构性关系，
+ * 所有线程回复都指向根，不构成「答复了根卡片」的证据）。 */
+  reference?: string;
 }
 
 // ── 聊天内 workflow 卡片──────────────────────────────
@@ -452,6 +462,32 @@ export async function fetchRoomMessages(
           body: body || undefined,
         };
       }
+      // P0 人工介入闭环：@我 结构化提及 + 答复关联证据。
+      // in_reply_to 只认标准回复；reference 只认 m.reference；
+      // m.thread 不进这两个字段（任务书 §5 禁令）。
+      const mentionsRaw = (content["m.mentions"] as
+        | { user_ids?: unknown }
+        | undefined)?.user_ids;
+      const mentions = Array.isArray(mentionsRaw)
+        ? mentionsRaw.filter((x): x is string => typeof x === "string")
+        : undefined;
+      let inReplyTo: string | undefined;
+      let reference: string | undefined;
+      if (relates) {
+        const irt = relates["m.in_reply_to"] as
+          | { event_id?: unknown }
+          | undefined;
+        if (irt && typeof irt.event_id === "string" && irt.event_id) {
+          inReplyTo = irt.event_id;
+        }
+        if (
+          relates.rel_type === "m.reference" &&
+          typeof relates.event_id === "string" &&
+          relates.event_id
+        ) {
+          reference = relates.event_id;
+        }
+      }
       // workflow 卡片载荷透传（规则 1：content 键存在且为对象）。
       const rawWorkflow = content["agentteams.workflow"];
       // 团队共享文件引用（#87）——容错解析（信封/裸数组/畸形丢弃）。
@@ -473,6 +509,9 @@ export async function fetchRoomMessages(
         reply: redacted ? undefined : reply,
         workflow: redacted ? null : (isWorkflowPayload(rawWorkflow) ? rawWorkflow : null),
         file_refs: redacted || refs.length === 0 ? undefined : refs,
+        mentions: redacted || !mentions || mentions.length === 0 ? undefined : mentions,
+        in_reply_to: redacted ? undefined : inReplyTo,
+        reference: redacted ? undefined : reference,
         ...(editedBy ? { edited: true } : {}),
         ...(redacted ? { redacted: true } : {}),
       };

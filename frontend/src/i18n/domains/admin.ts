@@ -165,4 +165,18 @@ export const adminDict: Record<string, { en: string }> = {
   // ── 15.36 D：权限档位 Select 短 label（完整语义进 HelpDot tooltip）──
   "L1 · 管理员": { en: "L1 · Admin" },
   "L2 · 团队成员": { en: "L2 · Team member" },
+  // ── 16.41 批次 1：建队表单行内新建 Worker（mode=new）+ 独立 Worker 显式化 ──
+  "选已有": { en: "Existing" },
+  "Worker 名（新建，唯一）": { en: "Worker name (new, unique)" },
+  "同名 Worker 已存在——请改名，或切回「选已有」（新建不自动复用）": {
+    en: "A worker with this name already exists — rename it, or switch to “Existing” (new rows are never auto-reused)",
+  },
+  "以下 Worker 名已存在，请改名（新建行不自动复用）：{list}": {
+    en: "These worker names already exist — rename them (new rows are never auto-reused): {list}",
+  },
+  "已加入团队：{name}": { en: "Added to team: {name}" },
+  "该 Worker 已是团队现有成员": { en: "This worker is already a member of the team" },
+  "不指定团队创建的 Worker 是独立 Worker：它能运行、能被私聊，但不参与任何团队任务。建好后可在团队设置里把它加进团队。": {
+    en: "A worker created without a team is a standalone worker: it can run and receive DMs, but takes no part in any team’s tasks. You can add it to a team from team settings afterwards.",
+  },
 };
