@@ -20,6 +20,8 @@ export interface WorkflowBoardProps {
   /** 拓扑视图选中的 runId 受控（父组件记忆）。 */
   topoRun?: string;
   onTopoRunChange?: (runId: string) => void;
+  /** P0 人工介入闭环：干预操作「去房间」深链（父组件=聊天 tab 开房间）。 */
+  onGotoRoom?: (roomId: string, eventId?: string) => void;
 }
 
 /** 10/26：工作流只留看板/拓扑两视图——list/card 退役；

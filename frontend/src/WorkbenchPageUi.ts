@@ -194,24 +194,24 @@ export function useWorkbenchUi() {
     setActiveTabState(tab);
   }, [tab]);
  // 切页轻过渡（transform/opacity，仅 WAAPI）——
-  // 170ms 淡入 + 4px 上浮，reduced-motion 守卫；不加 key 重挂（keep-alive
+  // 170ms 淡入 + 4px 上浮；不加 key 重挂（keep-alive
   // 面板的状态/滚动位置不受影响），动画结束 transform 自动还原。
+  // 10/30 定案：插件页内动效不跟随系统「减少动态效果」设置
+  //（原 matchMedia 守卫已删——开了系统设置不等于关插件动效）。
   const paneRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const el = paneRef.current;
     if (!el) return;
     try {
-      if (
-        window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      )
-        return;
+      // 10/30 二轮：170ms/4px/0.55 起手幅度肉眼几乎不可见（用户反馈
+      // 「还是没动画」）——加长到 280ms、位移 12px、从全透明起手，
+      // 曲线改 easeOutQuint（快速进入后缓停），观感明确但不拖沓。
       el.animate(
         [
-          { opacity: 0.55, transform: "translateY(4px)" },
+          { opacity: 0, transform: "translateY(12px)" },
           { opacity: 1, transform: "none" },
         ],
-        { duration: 170, easing: "cubic-bezier(0.2,0.8,0.2,1)" },
+        { duration: 280, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
       );
     } catch {
       /* noop */

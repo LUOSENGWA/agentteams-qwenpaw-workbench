@@ -10,6 +10,7 @@ import type { ThemeColors } from "../theme";
 import { CheckIcon, ClipIcon, CloseIcon, DocIcon, WarnIcon } from "../components/icons";
 import { WbTooltip } from "../components/WbTooltip";
 import FieldLabel from "./FieldLabel";
+import { roleSelectOptions } from "./helpers";
 import { WorkerRowSelects } from "./WorkerRowSelects";
 import MillforgeCreateSection from "../millforge/MillforgeCreateSection";
 import type { MfCreate } from "../millforge/useMillforgeCreate";
@@ -119,13 +120,20 @@ export default function CrdTeamForm({
           {workerRows.map((row, i) => {
             const taken = new Set(
               workerRows
-                .map((r, j) => (j === i ? "" : r.name))
+                .map((r, j) => (j === i ? "" : (r.name || "").trim()))
                 .filter(Boolean),
             );
             const rowMv = validateModelValue(
               row.model || "",
               modelCandidates,
             );
+            // 新建行（mode=new）名字冲突：已存在（在服或本表单其他行）→
+            // 行内红字提示，不自动复用；提交时 useTeamCrd 兜底再拦一次。
+            const newName = (row.name || "").trim();
+            const newRowConflict =
+              row.mode === "new" &&
+              newName !== "" &&
+              (workerNames.includes(newName) || taken.has(newName));
             return (
               <div
                 key={i}
@@ -145,29 +153,99 @@ export default function CrdTeamForm({
                 {/* （竖屏创建团队卡溢出——
 行内 Select flex 项 min-width:auto 撑宽，与 cfgRows
 同几何：40% 基线 + wrap 断撑链）。 */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <WorkerRowSelects
-                    tr={tr}
-                    row={row}
-                    workers={workers}
-                    workerNames={workerNames}
-                    taken={taken}
-                    placeholder={tr("选择 Worker（已有 CR）")}
-                    canRemove={workerRows.length > 1}
-                    onWorkerPick={(v: string) => {
-                      // 选中即预填该 Worker CR 现值（diff 基线）
-                      const mm = modelOf(v);
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {/* 行模式：选已有（原 WorkerRowSelects）/ 新建（名字+运行时+模型）；
+切换模式清空行内容，避免两模式间残留半值。 */}
+                  <antd.Select
+                    size="small"
+                    style={{ width: 118 }}
+                    value={row.mode ?? "existing"}
+                    onChange={(v: "existing" | "new") =>
                       updateRow(i, {
-                        name: v,
-                        model: mm,
-                        modelOrig: mm,
+                        mode: v,
+                        name: "",
+                        model: "",
+                        modelOrig: "",
                         soul: "",
                         soulOpen: false,
-                      });
-                    }}
-                    onRolePick={(v: string) => updateRow(i, { role: v })}
-                    onRemove={() => removeRow(i)}
+                        ...(v === "new" ? { runtime: "qwenpaw" } : { runtime: undefined }),
+                      })
+                    }
+                    options={[
+                      { value: "existing", label: tr("选已有") },
+                      { value: "new", label: tr("新建") },
+                    ]}
                   />
+                  {row.mode === "new" ? (
+                    <>
+                      <antd.Input
+                        size="small"
+                        style={{ flex: "1 1 40%", minWidth: 120 }}
+                        placeholder={tr("Worker 名（新建，唯一）")}
+                        value={row.name}
+                        status={newRowConflict ? "error" : undefined}
+                        onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+                          updateRow(i, { name: e.target.value })
+                        }
+                      />
+                      <antd.Select
+                        size="small"
+                        style={{ width: 132 }}
+                        value={row.runtime || "qwenpaw"}
+                        onChange={(v: string) => updateRow(i, { runtime: v })}
+                        options={[
+                          { value: "openclaw", label: "OpenClaw" },
+                          { value: "hermes", label: "Hermes" },
+                          { value: "qwenpaw", label: "QwenPaw" },
+                          { value: "deepseek-harness", label: "DeepSeek Harness" },
+                        ]}
+                      />
+                      <antd.Select
+                        size="small"
+                        style={{ width: 132 }}
+                        value={row.role}
+                        onChange={(v: string) => updateRow(i, { role: v })}
+                        options={roleSelectOptions(tr)}
+                      />
+                      {workerRows.length > 1 ? (
+                        <antd.Button
+                          size="small"
+                          type="text"
+                          danger
+                          onClick={() => removeRow(i)}
+                          icon={<CloseIcon size={11} />}
+                        />
+                      ) : null}
+                      {newRowConflict ? (
+                        <div style={{ flexBasis: "100%", fontSize: 11, color: "#f5222d" }}>
+                          {tr("同名 Worker 已存在——请改名，或切回「选已有」（新建不自动复用）")}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <WorkerRowSelects
+                      tr={tr}
+                      row={row}
+                      workers={workers}
+                      workerNames={workerNames}
+                      taken={taken}
+                      placeholder={tr("选择 Worker（已有 CR）")}
+                      canRemove={workerRows.length > 1}
+                      onWorkerPick={(v: string) => {
+                        // 选中即预填该 Worker CR 现值（diff 基线）
+                        const mm = modelOf(v);
+                        updateRow(i, {
+                          name: v,
+                          model: mm,
+                          modelOrig: mm,
+                          soul: "",
+                          soulOpen: false,
+                        });
+                      }}
+                      onRolePick={(v: string) => updateRow(i, { role: v })}
+                      onRemove={() => removeRow(i)}
+                    />
+                  )}
                 </div>
                 {/* /：行级模型（AutoComplete + 写前校验实时提示） */}
                 <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
@@ -212,7 +290,9 @@ export default function CrdTeamForm({
                     </WbTooltip>
                   ) : null}
                 </div>
-                {/* ：行级 SOUL（折叠；多行+上传） */}
+                {/* ：行级 SOUL（折叠；多行+上传）。新建行不含 SOUL
+（提交走 POST /workers 仅 name/runtime/model）——不渲染。 */}
+                {row.mode !== "new" ? (
                 <div>
                   <antd.Button
                     size="small"
@@ -253,6 +333,7 @@ export default function CrdTeamForm({
                     </div>
                   ) : null}
                 </div>
+                ) : null}
               </div>
             );
           })}

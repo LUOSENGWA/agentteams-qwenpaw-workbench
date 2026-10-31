@@ -57,6 +57,11 @@ export interface WorkerRow {
   soul?: string;
   /** SOUL 编辑器展开状态（行级折叠，默认收起保持表单紧凑）。 */
   soulOpen?: boolean;
+  /** 建队表单行模式：existing=选已存在 Worker（默认，原 WorkerRowSelects）；
+   * new=现场新建（名字+运行时+模型，提交时先 POST /workers）。 */
+  mode?: "existing" | "new";
+  /** mode=new 时的运行时（POST /workers 的 spec.runtime；缺省 qwenpaw）。 */
+  runtime?: string;
 }
 
 /** 创建自检行（CRD 回读 + 阶段轮询 5s×3min）。 */
