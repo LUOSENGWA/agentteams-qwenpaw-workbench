@@ -27,6 +27,7 @@ import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { getConsistencyState, subscribeConsistency } from "../api";
 import { usePoller } from "../usePoller";
 import { MenuIcon } from "../components/icons";
 import { ReloadIcon } from "../components/WorkerManageShared";
@@ -82,6 +83,13 @@ function ManagePage(props: ManagePageProps) {
   const t = useThemeColors();
   const tr = useT();
   const nav = useManageNav();
+  // #1407 强一致读标记：最近一次「写后强读」经上游 ETag 复核（响应带
+  // X-Consistency: strong）时页头显「已同步（强一致）」；无头（端点不
+  // 支持/复核失败）不显示——诚实降级，不做全局切换开关。
+  const consistency = React.useSyncExternalStore(
+    subscribeConsistency,
+    getConsistencyState,
+  );
   const {
     teams,
     admin,
@@ -452,6 +460,14 @@ function ManagePage(props: ManagePageProps) {
         <span style={{ color: t.textSecondary, fontSize: 11, flexShrink: 0 }}>
           {tr("自动刷新 30 秒")}
         </span>
+        {consistency === "strong" ? (
+          <span
+            style={{ color: "#52c41a", fontSize: 11, flexShrink: 0 }}
+            title={tr("最近一次写后强读已通过上游一致性复核")}
+          >
+            {tr("已同步（强一致）")}
+          </span>
+        ) : null}
         {onRefreshTree || onRefreshAdmin ? (
           <antd.Button
             type="text"

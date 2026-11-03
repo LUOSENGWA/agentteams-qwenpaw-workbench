@@ -259,7 +259,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         // Worker CRD 变更（加入团队成员）→ 失效
         // teams/admin 缓存再刷。
         invalidateTags(["teams", "admin"]);
-        onRefresh?.(true);
+        onRefresh?.(true, true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
       } finally {
@@ -417,7 +417,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         // 建队=团队结构+admin 变更 → 失效缓存再刷
         // （否则 30s TTL 内拓扑树/管理面板读旧值）。
         invalidateTags(["teams", "admin"]);
-        onRefresh?.(true);
+        onRefresh?.(true, true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
       } finally {
@@ -659,9 +659,9 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       );
  // 走收起动画（afterClose 清 cfgTeam）。
       setCfgOpen(false);
-      // 团队配置保存=团队结构+admin 变更 → 失效再刷。
+      // 团队配置保存=团队结构+admin 变更 → 失效再刷（写后强读）。
       invalidateTags(["teams", "admin"]);
-      onRefresh?.(true);
+      onRefresh?.(true, true);
     } catch (e) {
       antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
     } finally {
@@ -738,7 +738,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         }
         antd.message.success(tr("已加入团队：{name}", { name: n }));
         invalidateTags(["teams", "admin"]);
-        onRefresh?.(true);
+        onRefresh?.(true, true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
       } finally {
@@ -771,7 +771,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         antd.message.success(tr("团队 {name} 已按快照重建", { name: snap.name }));
         // 撤销=按快照重建团队 → 失效再刷。
         invalidateTags(["teams", "admin"]);
-        onRefresh?.(true);
+        onRefresh?.(true, true);
       } catch (e) {
         antd.message.error(
           (tr("重建失败") + "：" + (e instanceof Error ? e.message : String(e))).slice(0, 200),
@@ -810,7 +810,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         }
         // 删团队=团队结构+admin 变更 → 失效再刷。
         invalidateTags(["teams", "admin"]);
-        onRefresh?.(true);
+        onRefresh?.(true, true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
       }

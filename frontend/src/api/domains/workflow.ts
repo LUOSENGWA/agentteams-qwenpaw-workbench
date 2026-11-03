@@ -1,7 +1,12 @@
 // 工作流域（/projects-workflow、/workflow/events、controller /api/v1/projects/*）：DAG/事件/摘要/项目控制。
 
-import { getCachedRooms, httpErrorDetail, httpErrorStatus, requestJson } from "../shared";
-import { cachedRequest, invalidateTags } from "../../requestCache";
+import { getCachedRooms, httpErrorDetail, httpErrorStatus, recordConsistencyRead, requestJson, requestJsonConditional, requestJsonFull } from "../shared";
+import {
+  cachedRequest,
+  invalidateTags,
+  NOT_MODIFIED,
+  conditionalValue,
+} from "../../requestCache";
 
 /** 工作流 DAG 节点（树状拓扑数据源，workerflow nodes 字段）。 */
 export interface WorkflowNode {
@@ -430,16 +435,27 @@ interface WorkflowDetailResponse {
 export async function fetchProjectWorkflow(
   projectId: string,
   teamId?: string,
+  opts?: { strong?: boolean },
 ): Promise<WorkflowDetailResponse> {
   const teamQ = teamId ? `&team=${encodeURIComponent(teamId)}` : "";
+  // #1407 写后立即读：?consistency=strong + 同 key force（绕过 TTL/SWR
+  // 直取上游并覆盖写缓存）；是否真强一致由响应头 X-Consistency 判定
+  // 记入 tracker（上游 ETag 复核通过才带 strong 头，无头=诚实降级）。
+  const strongQ = opts?.strong ? `&consistency=strong` : "";
   return cachedRequest(
     `project/wf:${projectId}`,
     30000,
-    async () =>
-      (await requestJson(
-        `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?includeTasks=true${teamQ}`,
-      )) as WorkflowDetailResponse,
-    { tags: ["workflow", `project:${projectId}`] },
+    async () => {
+      const { payload, response } = await requestJsonFull(
+        `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/workflow?includeTasks=true${strongQ}${teamQ}`,
+      );
+      recordConsistencyRead(!!opts?.strong, response);
+      return payload as WorkflowDetailResponse;
+    },
+    {
+      tags: ["workflow", `project:${projectId}`],
+      ...(opts?.strong ? { force: true } : {}),
+    },
   );
 }
 
@@ -462,6 +478,8 @@ export async function fetchWorkflowProjects(
  * 后台刷；前端 1 请求取原始件，装配仍在本地）。
  * force=true → 带 ?refresh=1，
  * 连接器无视 TTL 触发后台补扫（仍零等待返回当前快照，响应字段不变）。
+ * 批次 4：前端 30s cachedRequest（projects-workflow）+ 条件再验证
+ * （减请求；force → ?refresh=1 同时绕过前端缓存与后端缓存层）。
  * 内部消费方：loadWorkflowProjectsRaw（工作流板取数正源）。 */
 async function fetchProjectsWorkflow(
   force = false,
@@ -471,14 +489,28 @@ async function fetchProjectsWorkflow(
   projectsStatus: number;
   projectsError: string;
 }> {
-  return (await requestJson(
-    `/agentteams-proxy/projects-workflow${force ? "?refresh=1" : ""}`,
-  )) as {
+  type PW = {
     projects: Record<string, unknown>[];
     workflows: Record<string, Record<string, unknown>>;
     projectsStatus: number;
     projectsError: string;
   };
+  return cachedRequest(
+    "projects-workflow",
+    30_000,
+    async (etag?: string) => {
+      const { payload, response } = await requestJsonConditional(
+        `/agentteams-proxy/projects-workflow${force ? "?refresh=1" : ""}`,
+        etag,
+      );
+      if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+      return conditionalValue(
+        payload as PW,
+        response?.headers.get("etag") ?? null,
+      );
+    },
+    { force, tags: ["projects"] },
+  );
 }
 
 // // fetchWorkflowMermaid（13.21 引入）与 MermaidDagView 一并退役——
@@ -730,6 +762,20 @@ export function enrichWorkflowRoomNames(events: WorkflowEvent[]): WorkflowEvent[
  * 写面失效策略（16.33）：5 个写成功后统一
  * invalidateTags(["workflow","projects","project:<id>"])——事件流/项目
  * 列表/单项目明细三条读缓存同步失效，不靠 TTL 自然过期。 */
+
+/** 写后立即读（#1407）：生命周期写成功后发起一次 strong workflow 读
+ * （force 绕过缓存直取上游并覆盖写回），是否真强一致由 X-Consistency
+ * 响应头判定记入 tracker。fire-and-forget——不阻塞写返回值；失败自吞
+ * （下一轮常规轮询自愈，读缓存已被 invalidateTags 清掉）。
+ * 任务级 cancel 不在此列（单任务状态变更，项目级 workflow 读非必需）。 */
+function strongRefreshAfterWrite(projectId: string): void {
+  void fetchProjectWorkflow(projectId, undefined, { strong: true }).catch(
+    () => {
+      /* 强读失败自吞：轮询自愈 */
+    },
+  );
+}
+
 export async function pauseProject(
   projectId: string,
   reason?: string,
@@ -743,6 +789,7 @@ export async function pauseProject(
     },
   )) as Record<string, unknown>;
   invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  strongRefreshAfterWrite(projectId);
   return r;
 }
 
@@ -758,6 +805,7 @@ export async function resumeProject(
     },
   )) as Record<string, unknown>;
   invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  strongRefreshAfterWrite(projectId);
   return r;
 }
 
@@ -796,6 +844,7 @@ export async function completeProject(
     },
   )) as Record<string, unknown>;
   invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  strongRefreshAfterWrite(projectId);
   return r;
 }
 
@@ -817,5 +866,6 @@ export async function replanProject(
     },
   )) as Record<string, unknown>;
   invalidateTags(["workflow", "projects", `project:${projectId}`]);
+  strongRefreshAfterWrite(projectId);
   return r;
 }

@@ -24,7 +24,7 @@
 // （后端连接器侧 30s 后台单点扫描 + 聚合缓存，多窗口共享），每 tick 仅 1 请求。
 
 import { fetchWorkersStatus } from "./api";
-import { usePoller } from "./usePoller";
+import { useCachedPolling } from "./hooks/useCachedPolling";
 
 /** Per-Worker session 状态聚合（chats 全量 session 归约）。 */
 interface WorkerChatStatusAgg {
@@ -43,53 +43,36 @@ const POLL_MS = 30_000;
 
 /**
  * 轮询 hook：names（worker 名集合，随团队树变化）→ name → 聚合状态。
- * 仅 document 可见时轮询；卸载停表。React 惰性取宿主。
- * 旧定时器 → usePoller（30s；!document.hidden
- * 内置；隐藏恢复后的补跑走 poller catch-up 语义=闲置>2×间隔立即补）。
- * out 累积表移入 ref（跨 fn 重建存活）；namesKey 变化清表（旧 effect 重建
- * = 新表同款语义）；enabled 假→真由 usePoller 的 poke 覆盖立即拉。
+ * 批次 4 改造：useCachedPolling（快照 diff 门控——后端聚合表保旧值，
+ * 静集群一拍数据几乎不变 → 不变则不重渲；gateOnVisibility 仅 document
+ * 可见时发；resetKey=namesKey worker 集合变化 → 清表 + 重拉；
+ * active 假→真由 usePoller poke 覆盖，与旧语义一致）。
+ * 行为差（诚实标注）：某 worker 从 /workers-status 响应中消失时
+ * 立即从状态表消失（旧版留陈旧聚合值至 namesKey 变化）。
  */
 export function useWorkerChatStatuses(
   names: readonly string[],
   enabled: boolean,
 ): Record<string, WorkerChatStatusAgg> {
-  const React = window.QwenPaw.host.React;
-  const [statuses, setStatuses] = React.useState<
-    Record<string, WorkerChatStatusAgg>
-  >({});
   const namesKey = names.join("\u0000");
-  // 累积表（跨 fn 重建存活；namesKey 变化时清空）。
-  const outRef = React.useRef<Record<string, WorkerChatStatusAgg>>({});
-  // enabled 快照（即时拉 effect 里读最新值，避免进 deps 与 poke 双发）。
-  const enabledRef = React.useRef(enabled);
-  enabledRef.current = enabled;
 
-  // namesKey 变化 → 清旧表（worker 集合变了，旧聚合作废）。
-  React.useEffect(() => {
-    outRef.current = {};
-  }, [namesKey]);
-
-  // 单端点拉取——每 tick 仅 1 个
-  // /workers-status 请求（后端聚合表已含逐 worker 保旧值，映射为同旧形状
-  // 合并进累积表）；请求失败/形状不符 → 保留旧值（不闪灯、不报错——与旧
-  // 语义一致）。
-  const run = React.useCallback(async () => {
-    // 仅 document 可见时发（后台零负载；poller 亦内置 !document.hidden）。
-    if (document.visibilityState !== "visible") return;
+  // 单端点拉取——每 tick 仅 1 个 /workers-status 请求（后端聚合表已含
+  // 逐 worker 保旧值）。失败/形状不符 → null → 保留旧值（不闪灯、
+  // 不报错——与旧语义一致）。
+  const fetchAgg = async (): Promise<
+    Record<string, WorkerChatStatusAgg> | null
+  > => {
     let res: Awaited<ReturnType<typeof fetchWorkersStatus>> | null = null;
     try {
       res = await fetchWorkersStatus();
     } catch {
-      return; // 失败保旧值（不闪灯、不报错——与旧语义一致）。
+      return null; // 失败保旧值（不闪灯、不报错——与旧语义一致）。
     }
-    if (!res || !res.workers || typeof res.workers !== "object") return; // 形状不符保旧值
-    // 值门：逐 worker 比 running/lastUpdated，全等 → 不换 ref（后端聚合
-    // 表保旧值，静集群 30s 一拍数据几乎不变；无条件换 ref=每分钟 2 次
-    // 空转重渲 3400 行主组件 + 13 面板 memo 比对）。
-    let changed = false;
+    if (!res || !res.workers || typeof res.workers !== "object") return null; // 形状不符保旧值
+    const out: Record<string, WorkerChatStatusAgg> = {};
     for (const [name, agg] of Object.entries(res.workers)) {
       if (agg && typeof agg === "object") {
-        const next = {
+        out[name] = {
           running: Boolean(agg.running),
           lastUpdated:
             typeof agg.lastUpdated === "number" &&
@@ -97,28 +80,19 @@ export function useWorkerChatStatuses(
               ? agg.lastUpdated
               : 0,
         };
-        const prev = outRef.current[name];
-        if (
-          !prev ||
-          prev.running !== next.running ||
-          prev.lastUpdated !== next.lastUpdated
-        ) {
-          outRef.current[name] = next;
-          changed = true;
-        }
       }
     }
-    if (changed) setStatuses({ ...outRef.current });
-  }, [namesKey]);
+    return out;
+  };
 
-  // 首拉 / namesKey 变化后重拉（enabled 门走 ref，刻意不进 deps——
-  // 假→真切换由 usePoller 的 poke 覆盖，避免同刻双发）。
-  React.useEffect(() => {
-    if (enabledRef.current) void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run]);
+  const { data } = useCachedPolling<Record<string, WorkerChatStatusAgg>>({
+    fetcher: fetchAgg,
+    intervalMs: POLL_MS,
+    active: enabled,
+    gateOnVisibility: true,
+    resetKey: namesKey,
+    initialData: {},
+  });
 
-  usePoller({ fn: run, intervalMs: POLL_MS, active: enabled });
-
-  return statuses;
+  return data;
 }

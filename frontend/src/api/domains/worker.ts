@@ -1,7 +1,12 @@
 // Worker 管理面（/workers/*、/workers-status、/skills）：技能目录/通道/工具/会话/loops/状态 + 团队技能包上传。
 
-import { controllerRequest, requestJson } from "../shared";
-import { cachedRequest, invalidateTags } from "../../requestCache";
+import { controllerRequest, requestJson, requestJsonConditional } from "../shared";
+import {
+  cachedRequest,
+  invalidateTags,
+  NOT_MODIFIED,
+  conditionalValue,
+} from "../../requestCache";
 
 // ── 技能中心 ──────────────────────────────────────────────
 /** GET /api/v1/skills 契约（skill-catalog-api.md，已合 main）：技能目录条目。
@@ -372,15 +377,24 @@ interface WorkersStatusResponse {
 }
 /** Worker 状态聚合（单端点；旧逐 worker
  * /chats 扇出退役）。30s 缓存（与 workerChatStatus 30s 轮询同节奏；
- * 后端聚合表本身保旧值，TTL 相等不新增陈旧档）。 */
+ * 后端聚合表本身保旧值，TTL 相等不新增陈旧档）。
+ * 批次 4：过期再验证走条件请求（If-None-Match → 304 保旧值 / 200 带
+ * 新 ETag 回写）。 */
 export function fetchWorkersStatus(): Promise<WorkersStatusResponse> {
   return cachedRequest(
     "workers-status",
     30_000,
-    () =>
-      requestJson(
+    async (etag?: string) => {
+      const { payload, response } = await requestJsonConditional(
         "/agentteams-proxy/workers-status",
-      ) as Promise<WorkersStatusResponse>,
+        etag,
+      );
+      if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+      return conditionalValue(
+        payload as WorkersStatusResponse,
+        response?.headers.get("etag") ?? null,
+      );
+    },
     { tags: ["workers-status"] },
   );
 }

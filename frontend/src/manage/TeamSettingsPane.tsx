@@ -275,7 +275,7 @@ function StandaloneEntry({
   t: ReturnType<typeof useThemeColors>;
   teamName: string;
   workers: AdminData["workers"];
-  onRefreshAdmin?: (silent?: boolean) => void;
+  onRefreshAdmin?: (silent?: boolean, strong?: boolean) => void;
   onBack: () => void;
 }) {
   const [open, setOpen] = React.useState(false);

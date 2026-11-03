@@ -640,4 +640,10 @@ def build_router() -> APIRouter:
     router.include_router(worker_plugins_api.build_worker_plugins_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
+    # 条件请求缓存层（批次 4）：全部 GET 路由统一包 ETag/Last-Modified →
+    # 304（SSE/长轮询/流式路由按模板直通，见 conditional 模块头注释）。
+    # 须在所有 include_router 之后（Route 对象此时已扁平进 router.routes）。
+    from . import conditional
+
+    conditional.apply_to_router(router)
     return router

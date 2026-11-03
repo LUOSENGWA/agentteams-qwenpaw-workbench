@@ -69,13 +69,13 @@ const TOOL_GROUP_ZH: Record<ToolGroup, string> = {
 
 /** 组兜底图标（后端未返回 tool.icon 时用）；other = 🔧。 */
 const TOOL_GROUP_ICON: Record<ToolGroup, string> = {
-  files: "📁",
-  web: "🌐",
-  media: "🖼️",
-  agents: "🤖",
-  runtime: "⚙️",
-  migration: "📦",
-  other: "🔧",
+  files: "▤",
+  web: "◉",
+  media: "◫",
+  agents: "◈",
+  runtime: "⚙",
+  migration: "⇅",
+  other: "⚒",
 };
 
 /** name → group 映射（照抄 toolPresentation.ts 的 TOOL_PRESENTATION；

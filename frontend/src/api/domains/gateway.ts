@@ -1,7 +1,13 @@
 // 网关域（/gateway/ai-* + controller /api/v1/gateway/ai-routes）：AI 路由/供应商读写 + 路由目录。
 
-import { requestJson } from "../shared";
-import { cachedRequest, invalidateTags } from "../../requestCache";
+import { requestJson, requestJsonConditional } from "../shared";
+import {
+  cachedRequest,
+  invalidateTags,
+  NOT_MODIFIED,
+  conditionalValue,
+} from "../../requestCache";
+import { lruReadThrough, lruInvalidate } from "../../cache/memoryLru";
 
 /** 网关面（Higress Console）列表响应——
  * available=false = 无 Console 会话/不可达（前端优雅降级，非错误）。 */
@@ -21,29 +27,52 @@ export async function fetchGatewayAiRoutes(
   return cachedRequest(
     "gateway/ai-routes",
     30000,
-    async () =>
-      (await requestJson(
+    async (etag?: string) => {
+      const { payload, response } = await requestJsonConditional(
         "/agentteams-proxy/gateway/ai-routes",
-      )) as GatewayListResponse,
+        etag,
+      );
+      if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+      return conditionalValue(
+        payload as GatewayListResponse,
+        response?.headers.get("etag") ?? null,
+      );
+    },
     { force, tags: ["gateway"] },
   );
 }
 
 /** 网关 LLM Provider 列表（alias 可解析性判定用）。
  * 新增 force 形参（默认 false）+ cachedRequest 包裹
- * （gateway/ai-providers，30s，tags ["gateway"]）。 */
+ * （gateway/ai-providers，30s，tags ["gateway"]）。
+ * 批次 4：外层 LRU（gateway/ai-providers，120s 档）先读后台刷 +
+ * 条件再验证；force 绕过 LRU（写后重取必须见新鲜值）。 */
 export async function fetchGatewayAiProviders(
   force = false,
 ): Promise<GatewayListResponse> {
-  return cachedRequest(
+  const base = (): Promise<GatewayListResponse> =>
+    cachedRequest(
+      "gateway/ai-providers",
+      30000,
+      async (etag?: string) => {
+        const { payload, response } = await requestJsonConditional(
+          "/agentteams-proxy/gateway/ai-providers",
+          etag,
+        );
+        if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+        return conditionalValue(
+          payload as GatewayListResponse,
+          response?.headers.get("etag") ?? null,
+        );
+      },
+      { force, tags: ["gateway"] },
+    );
+  if (force) return base();
+  return lruReadThrough(
     "gateway/ai-providers",
-    30000,
-    async () =>
-      (await requestJson(
-        "/agentteams-proxy/gateway/ai-providers",
-      )) as GatewayListResponse,
-    { force, tags: ["gateway"] },
-  );
+    120_000,
+    base,
+  ) as Promise<GatewayListResponse>;
 }
 
 // ── 网关写面（12.13 P7b）：创建提供商 / 创建路由（Console 会话透传）──
@@ -67,6 +96,7 @@ export async function createGatewayAiProvider(
     body: JSON.stringify(body),
   })) as GatewayMutationResponse;
   invalidateTags(["gateway"]);
+  lruInvalidate("gateway/");
   return r;
 }
 
@@ -79,6 +109,7 @@ export async function createGatewayAiRoute(
     body: JSON.stringify(body),
   })) as GatewayMutationResponse;
   invalidateTags(["gateway"]);
+  lruInvalidate("gateway/");
   return r;
 }
 
@@ -100,6 +131,7 @@ export async function updateGatewayAiProvider(
     },
   )) as GatewayMutationResponse;
   invalidateTags(["gateway"]);
+  lruInvalidate("gateway/");
   return r;
 }
 
@@ -111,6 +143,7 @@ export async function deleteGatewayAiProvider(
     { method: "DELETE" },
   )) as GatewayMutationResponse;
   invalidateTags(["gateway"]);
+  lruInvalidate("gateway/");
   return r;
 }
 
@@ -127,6 +160,7 @@ export async function updateGatewayAiRoute(
     },
   )) as GatewayMutationResponse;
   invalidateTags(["gateway"]);
+  lruInvalidate("gateway/");
   return r;
 }
 
@@ -138,6 +172,7 @@ export async function deleteGatewayAiRoute(
     { method: "DELETE" },
   )) as GatewayMutationResponse;
   invalidateTags(["gateway"]);
+  lruInvalidate("gateway/");
   return r;
 }
 

@@ -14,7 +14,8 @@ worker 卡住时往任务房间发 ``ATTENTION_<KIND>: <task-id> - <question>`` 
 - ``POST /attention/answer``：答侧。以**人类身份**（Matrix 登录 token）把
   决策发回任务房间——复用现有 matrix 代理发送路径（``matrix_client.
   send_message``），不写任务 meta、不改 worker。消息固定格式：
-  ``DECISION: <task_id> → <answer>`` +（basis 存在时换行 ``basis: ...``）。
+  ``DECISION: <task_id> → <answer>`` +（option_id 存在时附一行
+  ``option: <id>``）+（basis 存在时换行 ``basis: ...``）。
   校验：有 options 时 answer 必须是该请求 option id 之一；无 options 时
   自由文本 ≤500。本地持久化 ``<state>/attention-answered.json``（key =
   ``task_id:kind:attempt``）用于去重（重复回答 → 409）与 UI 状态；
@@ -259,6 +260,75 @@ def _with_answered(result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+#: 溯源富化字段（#1394，上游 taskflow.py 写入 attention item 的解决面）。
+_PROVENANCE_FIELDS = (
+    "resolvedVia",
+    "resolvedBy",
+    "resolveEvidence",
+    "resolvedAt",
+    "notification_log",
+)
+
+
+async def _enrich_history(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """给 ``answered_history`` 附解决溯源（#1394 S0+S4a）。
+
+ 历史 = 本地已答记录（回答时落盘的字段）；``resolved*`` / ``notification_log``
+ 写在**上游 attention item**（任务流解决时）。富化：取 include_resolved=1
+ 聚合（优先用新鲜缓存，未命中现扫一次并存缓存），按
+ ``task_id:kind:attempt`` 建 item map，逐条 history 拷贝**存在**的溯源
+ 字段（缺席 → 字段不落，UI 不显示——诚实降级）。当前 Controller
+ attention 端点为固定结构体不透传这些字段 → 拷贝全部落空、payload 原样
+ 返回（零行为变化）；上游端点扩展后自动生效。items/count 语义不变。
+ """
+    history = payload.get("answered_history") or []
+    if not history:
+        return payload
+    resolved_result: Optional[Dict[str, Any]] = None
+    hit = _attention_cache.get("1")
+    if hit and hit[0] > time.monotonic():
+        resolved_result = hit[1]
+    if resolved_result is None:
+        try:
+            resolved_result = await _fetch_all(True)
+        except HTTPException:
+            resolved_result = None
+        else:
+            ttl = (
+                _CACHE_TTL
+                if resolved_result.get("deployed", True)
+                else _NOT_DEPLOYED_TTL
+            )
+            _attention_cache["1"] = (
+                time.monotonic() + ttl,
+                dict(resolved_result),
+            )
+    if not resolved_result or not resolved_result.get("deployed"):
+        return payload
+    by_key: Dict[str, Dict[str, Any]] = {}
+    for it in resolved_result.get("items", []):
+        if not isinstance(it, dict) or not it.get("resolved"):
+            continue
+        by_key[_answer_key(it.get("task_id"), it.get("kind"), it.get("attempt"))] = it
+    enriched = []
+    for rec in history:
+        if not isinstance(rec, dict):
+            enriched.append(rec)
+            continue
+        src = by_key.get(str(rec.get("key") or ""))
+        if not src:
+            enriched.append(rec)
+            continue
+        r = dict(rec)
+        for f in _PROVENANCE_FIELDS:
+            v = src.get(f)
+            if v is not None:
+                r[f] = v
+        enriched.append(r)
+    payload["answered_history"] = enriched
+    return payload
+
+
 async def _find_item(task_id: str, kind: str, attempt: Any) -> Optional[Dict[str, Any]]:
     """定位被回答的原请求（options 校验用）：先查 30s 聚合缓存（未答项
  都在里面），未命中则绕过缓存现扫一次（回答是低频人工动作，成本可接受）。
@@ -297,6 +367,7 @@ class AttentionAnswerRequest(BaseModel):
     kind: str = "other"
     attempt: int = 1
     answer: str = ""  # 有 options = option id 之一；无 = 自由文本 ≤500
+    option_id: Optional[str] = None  # 点选的结构化选项 id（#1449）；自由文本不带
     text: Optional[str] = None  # 可选补充（答案消息的第二行）
     basis: Optional[str] = None  # 可选依据（写入答案消息 ``basis: ...`` 行）
 
@@ -324,12 +395,12 @@ def build_attention_router() -> APIRouter:
             if hit and hit[0] > time.monotonic():
                 result = dict(hit[1])
                 result["cached"] = True
-                return _with_answered(result)
+                return await _enrich_history(_with_answered(result))
         result = await _fetch_all(inc == 1)
         result["cached"] = False
         ttl = _CACHE_TTL if result.get("deployed", True) else _NOT_DEPLOYED_TTL
         _attention_cache[key] = (time.monotonic() + ttl, result)
-        return _with_answered(result)
+        return await _enrich_history(_with_answered(result))
 
     @router.post("/attention/answer")
     async def attention_answer(req: AttentionAnswerRequest) -> Dict[str, Any]:
@@ -384,6 +455,28 @@ def build_attention_router() -> APIRouter:
                 detail=f"自由文本回答不得超过 {_MAX_ANSWER_LEN} 字符",
             )
 
+        # option_id（#1449）：点结构化选项时带 option 的 id（非 label）；
+        # 自由文本不带。失配 fail-closed（带 option_id 且 ≠ answer = 契约
+        # 不一致）；合法域已由上方「answer ∈ option_ids」校验覆盖。
+        option_id = (req.option_id or "").strip()
+        if option_id and option_id != answer:
+            raise HTTPException(
+                status_code=400,
+                detail="optionId 与 answer 不一致（点选项时两者应为同一 option id）",
+            )
+        option_label = (
+            next(
+                (
+                    str(o.get("label") or "")
+                    for o in options
+                    if isinstance(o, dict) and str(o.get("id") or "") == option_id
+                ),
+                "",
+            )
+            if option_id
+            else ""
+        )
+
         # 人类身份发送（Matrix 登录 token = 当前登录人类账号本身）。
         cfg = config_mod.load_config()
         matrix_cfg = cfg.get("matrix") or {}
@@ -397,6 +490,8 @@ def build_attention_router() -> APIRouter:
             raise HTTPException(status_code=502, detail="未配置 Matrix 地址")
 
         lines = [f"DECISION: {task_id} → {answer}"]
+        if option_id:
+            lines.append(f"option: {option_id}")
         text_supplement = (req.text or "").strip()
         if text_supplement:
             lines.append(text_supplement)
@@ -427,6 +522,9 @@ def build_attention_router() -> APIRouter:
             "kind": req.kind,
             "attempt": req.attempt,
             "answer": answer,
+            # #1449：点选的结构化选项 id + label（展示便利）；自由文本不带。
+            "optionId": option_id or None,
+            "optionLabel": option_label or None,
             "basis": basis or None,
             "room_id": room_id,
             "answered_at": answered_at,

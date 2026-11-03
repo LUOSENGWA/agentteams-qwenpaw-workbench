@@ -1,7 +1,13 @@
 // 团队域（/teams/*、/dm、/matrix/rooms/*/join|leave、/team-files、/matrix/member/messages）：团队结构/spawn/房间列表/邀请/共享文件/成员消息。
 
-import { requestJson } from "../shared";
-import { cachedFetch, cachedRequest, invalidateTags } from "../../requestCache";
+import { requestJson, requestJsonConditional } from "../shared";
+import {
+  cachedFetch,
+  cachedRequest,
+  invalidateTags,
+  NOT_MODIFIED,
+  conditionalValue,
+} from "../../requestCache";
 import { fetchProjectSummaries } from "./workflow";
 
 // ── Team data (page shells render these; adapters fill them) ───────────
@@ -118,21 +124,27 @@ export interface WorkerTreeTeam {
 /** cachedFetch 包裹（teams/structure，TTL 15s + SWR 15s，tags
  * ["teams"]）——已有 force 参数透传（team tab 切回 30s 节流后走此缓存）；
  * requestJson 第 3 参 30000 超时保留。SWR：15-30s 段先回旧树（零等待）+
- * 后台再验证；force=true 一律跳过缓存直回源。 */
+ * 后台再验证；force=true 一律跳过缓存直回源。批次 4：过期/SWR 再验证
+ * 走条件请求（If-None-Match → 304 保旧值 / 200 带新 ETag 回写）。 */
 export async function fetchTeamsStructure(
   force = false,
 ): Promise<{ ok: boolean; tree: WorkerTreeTeam[]; source: string }> {
   return cachedFetch(
     "teams/structure",
     15000,
-    async () => {
+    async (etag?: string) => {
       // 30s 封顶——冷窗后端已 ≤~6s（connect 3s
       // failover + 探针 3s 收敛），30s 未回 = 真故障，显形可重试优于恒转圈。
-      return (await requestJson(
+      const { payload, response } = await requestJsonConditional(
         `/agentteams-proxy/teams/structure${force ? "?force=true" : ""}`,
-        undefined,
+        etag,
         30000,
-      )) as { ok: boolean; tree: WorkerTreeTeam[]; source: string };
+      );
+      if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+      return conditionalValue(
+        payload as { ok: boolean; tree: WorkerTreeTeam[]; source: string },
+        response?.headers.get("etag") ?? null,
+      );
     },
     { force, tags: ["teams"], swrMs: 15000 },
   );
@@ -269,17 +281,25 @@ export async function fetchTeamsRooms(): Promise<TeamsRoomsResponse> {
 
 /** cachedFetch 包裹（teams/sync，TTL 15s + SWR 15s，tags
  * ["teams"]）——已有 force 参数透传。SWR：15-30s 段先回旧列表（零等待）+
- * 后台再验证；force=true 一律跳过缓存直回源。 */
+ * 后台再验证；force=true 一律跳过缓存直回源。批次 4：过期/SWR 再验证
+ * 走条件请求（If-None-Match → 304 保旧值 / 200 带新 ETag 回写）。 */
 export async function fetchTeamsSync(
   force = false,
 ): Promise<TeamsRoomsResponse & { elapsed?: number }> {
   return cachedFetch(
     "teams/sync",
     15000,
-    async () =>
-      (await requestJson(
+    async (etag?: string) => {
+      const { payload, response } = await requestJsonConditional(
         `/agentteams-proxy/teams/sync${force ? "?force=true" : ""}`,
-      )) as TeamsRoomsResponse & { elapsed?: number },
+        etag,
+      );
+      if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+      return conditionalValue(
+        payload as TeamsRoomsResponse & { elapsed?: number },
+        response?.headers.get("etag") ?? null,
+      );
+    },
     { force, tags: ["teams"], swrMs: 15000 },
   );
 }

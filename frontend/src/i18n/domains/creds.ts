@@ -123,6 +123,11 @@ export const credsDict: Record<string, { en: string }> = {
     en: "Room creation reported success but the room is missing from the room list (homeserver config may be misaligned). Check settings and retry.",
   },
   "自动刷新 30 秒": { en: "Auto-refresh 30s" },
+  // #1407 强一致读标记（管理页页头，写后强读通过上游 ETag 复核才显示）。
+  "已同步（强一致）": { en: "In sync (strong consistency)" },
+  "最近一次写后强读已通过上游一致性复核": {
+    en: "Latest read-after-write strong read passed upstream consistency verification",
+  },
   "运行时版本": { en: "Runtime version" },
   // （F4：SGLang 卡「要手动刷新才更新」观感真根因=标注
   // 误导——卡片标「自动刷新 1 秒」但数据源是 SGLang 侧快照发布，服务端

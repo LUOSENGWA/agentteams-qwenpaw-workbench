@@ -32,6 +32,28 @@ from ..router import (
 _LONG_POLL_TIMEOUT = httpx.Timeout(connect=5.0, read=45.0, write=10.0, pool=5.0)
 
 
+def _passthrough_headers(resp: httpx.Response) -> Dict[str, str]:
+    """透传 X-Consistency 响应头（强一致读契约，#1407）：上游 workflow
+    端点 ETag 复核通过时带 ``X-Consistency: strong``，前端据此显示
+    「已同步（强一致）」标记；无头不伪造（诚实降级 eventual）。
+
+    另透传上游 ETag/Last-Modified（条件请求缓存层）：路由层包装器
+    优先采用上游 ETag 作为缓存键；X-Upstream-ETag 标记上游来源
+    （与路由层本地合成的 W/"<sha256>" 弱 ETag 区分）。"""
+    out: Dict[str, str] = {}
+    v = resp.headers.get("x-consistency")
+    if v:
+        out["X-Consistency"] = v
+    e = resp.headers.get("etag")
+    if e:
+        out["ETag"] = e
+        out["X-Upstream-ETag"] = e
+    lm = resp.headers.get("last-modified")
+    if lm:
+        out["Last-Modified"] = lm
+    return out
+
+
 def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
     """approval + catch-all proxy 域子路由（build_router 原段逐字搬移；catch-all /{target}/{path:path} 必须装配最后）。"""
     router = APIRouter()
@@ -658,12 +680,14 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                         content=resp.content,
                         status_code=resp.status_code,
                         media_type=resp.headers.get("content-type"),
+                        headers=_passthrough_headers(resp),
                     )
                 # 4xx/5xx：不标记 working，首个非 2xx 留作最终返回。
                 if first_bad is None:
                     first_bad = (
                         resp.status_code, resp.content,
                         resp.headers.get("content-type"),
+                        _passthrough_headers(resp),
                     )
                 # GET/HEAD 仅在地址相关/瞬时错误时换下
                 # 一地址（401/403 网关门、408/429、5xx）；确定性 4xx（400/404/
@@ -690,6 +714,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                     content=resp.content,
                     status_code=resp.status_code,
                     media_type=resp.headers.get("content-type"),
+                    headers=_passthrough_headers(resp),
                 )
             except Exception as exc:  # noqa: BLE001 - try the next address
                 last_error = selfcheck._classify_error(exc)
@@ -703,6 +728,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                 content=first_bad[1],
                 status_code=first_bad[0],
                 media_type=first_bad[2],
+                headers=first_bad[3],
             )
         raise HTTPException(
             status_code=502, detail=f"所有地址请求失败：{last_error}{_pinned_note(cfg)}"

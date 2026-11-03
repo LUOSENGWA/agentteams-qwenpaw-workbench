@@ -3,6 +3,7 @@ import type * as ReactNS from "react";
 import { hostAccentForMode, useHostTheme } from "./hostTheme";
 
 const host = window.QwenPaw.host;
+const React: typeof ReactNS = host.React;
 
 /** hex（#rgb/#rrggbb）+ alpha → rgba() 串。非法 hex 回退现行橙。 */
 function accentTint(accent: string, alpha: number): string {
@@ -91,11 +92,17 @@ export function useThemeColors(): ThemeColors {
   const dark = mode === "dark";
   const hostT = useHostTheme();
   const accent = hostAccentForMode(hostT, dark ? "dark" : "light");
-  return {
-    ...(dark ? DARK : LIGHT),
-    bubbleMine: accentTint(accent, dark ? 0.18 : 0.08),
-    accentBg: accentTint(accent, 0.10),
-  };
+  // 记忆化：同 (mode, accent) → 同一引用。此前每渲染返回新对象——
+  // 消费 t.* 的 React.memo 组件（聊天消息行等）props 浅比较必然
+  // 全击穿，行级 memo 白做。
+  return React.useMemo(
+    () => ({
+      ...(dark ? DARK : LIGHT),
+      bubbleMine: accentTint(accent, dark ? 0.18 : 0.08),
+      accentBg: accentTint(accent, 0.10),
+    }),
+    [dark, accent],
+  );
 }
 
 /** 非组件上下文（事件回调等）读主题（不响应式，按需调用）。 */

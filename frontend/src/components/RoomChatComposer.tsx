@@ -147,7 +147,7 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
           >
             <ReplyOutlined style={{ color: PRIMARY, flexShrink: 0 }} />
             <span
-              style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#666" }}
+              style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: t.textSecondary }}
               // 15.14 命名约定：正文短名（display_name 优先），完整 MXID 走悬停。
               title={replyTo.sender}
             >
@@ -186,7 +186,7 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                color: "#666",
+                color: t.textSecondary,
               }}
             >
               {tr("正在编辑这条消息")}
@@ -225,6 +225,7 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
             {mentionTargets.map(([mxid, member]) => (
               <antd.Tag
                 key={mxid}
+                className="wb-mention-tag"
                 style={{ margin: 0, cursor: "pointer", flexShrink: 0 }}
                 onClick={() => insertMention(mxid)}
               >

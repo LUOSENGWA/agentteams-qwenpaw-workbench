@@ -62,7 +62,7 @@ export function useHumanCrd({ onRefresh, tr }: UseHumanCrdArgs) {
       }
       // 人 CRD 变更 → 失效 admin 缓存再刷。
       invalidateTags(["teams", "admin"]);
-      onRefresh?.(true);
+      onRefresh?.(true, true);
     } catch (e) {
       antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
     } finally {
@@ -86,7 +86,7 @@ export function useHumanCrd({ onRefresh, tr }: UseHumanCrdArgs) {
         antd.message.success(tr("已删除"));
         // 人 CRD 变更 → 失效 admin 缓存再刷。
         invalidateTags(["teams", "admin"]);
-        onRefresh?.(true);
+        onRefresh?.(true, true);
       } catch (e) {
         antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
       }
