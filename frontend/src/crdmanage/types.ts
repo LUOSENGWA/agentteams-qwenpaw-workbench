@@ -11,8 +11,9 @@ export type TrFn = (s: string, vars?: Record<string, string | number>) => string
 export interface CrdManageProps {
   /** 管理数据（humans/teams/workers）——与 WorkerManage 底部三表同一数据源。 */
   admin: AdminData;
-  /** 写操作成功后静默刷新管理数据。 */
-  onRefresh?: (silent?: boolean) => void;
+  /** 写操作成功后静默刷新管理数据（strong=#1407 写后立即读强一致，
+   * 由 X-Consistency 响应头判定记入 tracker）。 */
+  onRefresh?: (silent?: boolean, strong?: boolean) => void;
   /** L1 走 controller_token（无 admin 账号密码 → 无 Higress Console 会话
  * → 网关 alias 层不可见）——为 true 且网关拉取完成仍无会话时显示提示。 */
   l1TokenMode?: boolean;

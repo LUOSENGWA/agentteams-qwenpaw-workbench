@@ -38,6 +38,7 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
     setRoomInfoOpen,
     tr,
     myUserId,
+    t,
   } = c;
   if (!room) {
     return null;
@@ -49,7 +50,7 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
           alignItems: "center",
           gap: 8,
           paddingBottom: 12,
-          borderBottom: "1px solid rgba(0,0,0,0.08)",
+          borderBottom: `1px solid ${t.border}`,
           flexWrap: "wrap",
         }}
       >

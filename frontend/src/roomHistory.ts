@@ -45,7 +45,7 @@ type PageFetcher = (
   from?: string,
 ) => Promise<RoomMessagesPage>;
 
-export const PAGE_SIZE = 50;
+export const PAGE_SIZE = 100;
 /** I4 空页走查上限（防服务端分页异常时无尽空转）。 */
 export const WALK_CAP = 8;
 

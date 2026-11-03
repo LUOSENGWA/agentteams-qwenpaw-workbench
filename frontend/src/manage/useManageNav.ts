@@ -28,6 +28,7 @@ export interface ManageNav {
   teamView: TeamView;
   selectedTeam: string | null;
   selectedWorker: string | null;
+  selectedManager: string | null;
   crdView: CrdView;
   peopleView: PeopleView;
   selectedHuman: string | null;
@@ -40,6 +41,7 @@ export interface ManageNav {
   openTeam: (name: string) => void;
   /** 拓扑点节点 → Worker/Leader 详情（右栏 / 竖屏再推一层）。 */
   openWorker: (name: string) => void;
+  openManager: (name: string) => void;
   /** 团队拓扑齿轮 → 团队设置（右栏内联，非弹窗）。 */
   openTeamSettings: () => void;
   /** 竖屏「←」：worker/settings → topology；topology → list。 */
@@ -61,6 +63,7 @@ export function useManageNav(): ManageNav {
   const [teamView, setTeamView] = React.useState<TeamView>("list");
   const [selectedTeam, setSelectedTeam] = React.useState<string | null>(null);
   const [selectedWorker, setSelectedWorker] = React.useState<string | null>(null);
+  const [selectedManager, setSelectedManager] = React.useState<string | null>(null);
   const [crdView, setCrdView] = React.useState<CrdView>("list");
   const [peopleView, setPeopleView] = React.useState<PeopleView>("list");
   const [selectedHuman, setSelectedHuman] = React.useState<string | null>(null);
@@ -69,16 +72,26 @@ export function useManageNav(): ManageNav {
   const openTeam = React.useCallback((name: string) => {
     setSelectedTeam(name);
     setSelectedWorker(null);
+    setSelectedManager(null);
     setTeamView("topology");
   }, []);
+  const openManager = React.useCallback((name: string) => {
+    setSelectedManager(name);
+    setSelectedWorker(null);
+    setSelectedTeam(null);
+    setTeamView("list");
+  }, []);
+
   const openWorker = React.useCallback((name: string) => {
     setSelectedWorker(name);
+    setSelectedManager(null);
     setTeamView("worker");
   }, []);
   const openTeamSettings = React.useCallback(() => {
     setTeamView("settings");
   }, []);
   const backTeam = React.useCallback(() => {
+    setSelectedManager(null);
     if (teamView === "worker" || teamView === "settings") {
       setTeamView(selectedTeam ? "topology" : "list");
       setSelectedWorker(null);
@@ -90,6 +103,7 @@ export function useManageNav(): ManageNav {
   }, [teamView, selectedTeam]);
 
   const goTeamList = React.useCallback(() => {
+    setSelectedManager(null);
     setTeamView("list");
     setSelectedTeam(null);
     setSelectedWorker(null);
@@ -120,6 +134,7 @@ export function useManageNav(): ManageNav {
     teamView,
     selectedTeam,
     selectedWorker,
+    selectedManager,
     crdView,
     peopleView,
     selectedHuman,
@@ -128,6 +143,7 @@ export function useManageNav(): ManageNav {
     setSection,
     openTeam,
     openWorker,
+    openManager,
     openTeamSettings,
     backTeam,
     goTeamList,

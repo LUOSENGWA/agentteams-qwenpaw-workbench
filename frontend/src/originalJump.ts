@@ -9,7 +9,7 @@ import { groupThreads } from "./threadWindow";
 /** 「加载原消息」翻页上限（页）：120 页 ≈ 6000 条，覆盖验收的
  * 「100+ 页深度定位目标」，同时把请求量上界钉死（旧 3000 条 excess 上限
  * ≈60 页，深目标会被误判为「不存在」）。 */
-export const ORIGINAL_PAGE_CAP = 120;
+export const ORIGINAL_PAGE_CAP = 20;
 
 export type BackfillAction = "fetch" | "done-found" | "done-exhausted";
 

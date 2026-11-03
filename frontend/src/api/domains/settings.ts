@@ -1,7 +1,14 @@
 // 设置域（/sglang/*、/auth-status、/config/*）：自检、SGLang 负载/模型、地址探测、管理员验证、配置导入导出。
 
-import { requestJson } from "../shared";
-import { cachedRequest, clearAll, invalidateTags } from "../../requestCache";
+import { requestJson, requestJsonConditional } from "../shared";
+import {
+  cachedRequest,
+  clearAll,
+  invalidateTags,
+  NOT_MODIFIED,
+  conditionalValue,
+} from "../../requestCache";
+import { lruReadThrough, lruClear } from "../../cache/memoryLru";
 
 interface SelfCheckItem {
   name: string;
@@ -79,18 +86,33 @@ export async function fetchSglangLoads(): Promise<SglangLoads> {
 /** 在服模型列表（SGLang /v1/models 代理；创建 Worker 模型下拉用）。
  * SGLang 模块未启用 → 404 → 返回空列表（前端降级自由输入）。
  * cachedRequest 包裹（sglang/models，60s）——
- * 原高频轮询位点迁移 usePoller 后，同 key 调用经缓存合并为一次回源。 */
+ * 原高频轮询位点迁移 usePoller 后，同 key 调用经缓存合并为一次回源。
+ * 批次 4：外层 LRU（sglang/models，120s 档）先读后台刷 + 过期条件
+ * 再验证（If-None-Match → 304 保旧值 / 200 带新 ETag 回写）。 */
 export async function fetchSglangModels(): Promise<string[]> {
-  return cachedRequest("sglang/models", 60000, async () => {
-    try {
-      const d = (await requestJson(
-        "/agentteams-proxy/sglang/models",
-      )) as { models?: string[] };
-      return d.models || [];
-    } catch {
-      return [];
-    }
-  }, { tags: ["sglang"] });
+  const base = (): Promise<string[]> =>
+    cachedRequest(
+      "sglang/models",
+      60000,
+      async (etag?: string) => {
+        try {
+          const { payload, response } = await requestJsonConditional(
+            "/agentteams-proxy/sglang/models",
+            etag,
+          );
+          if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+          const d = payload as { models?: string[] };
+          return conditionalValue(
+            d.models || [],
+            response?.headers.get("etag") ?? null,
+          );
+        } catch {
+          return [];
+        }
+      },
+      { tags: ["sglang"] },
+    );
+  return lruReadThrough("sglang/models", 120_000, base) as Promise<string[]>;
 }
 
 // 地址条目 = 纯 URL（服务原生认证，内网默认形态）或
@@ -211,12 +233,18 @@ export async function fetchAuthStatus(): Promise<AuthStatus | null> {
     return await cachedRequest(
       "auth-status",
       30_000,
-      () =>
-        requestJson(
+      async (etag?: string) => {
+        const { payload, response } = await requestJsonConditional(
           "/agentteams-proxy/auth-status",
-          undefined,
+          etag,
           4000,
-        ) as Promise<AuthStatus>,
+        );
+        if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+        return conditionalValue(
+          payload as AuthStatus,
+          response?.headers.get("etag") ?? null,
+        );
+      },
       { tags: ["auth-status"] },
     );
   } catch {
@@ -390,8 +418,10 @@ export async function importFullConfig(
     body: JSON.stringify(config),
   })) as ConfigImportResult;
   // 覆盖式换身份/凭据 → 全部数据面读缓存失效（清全表；
-  // 页面刷新兜底同语义）。
+  // 页面刷新兜底同语义）。LRU 同源清空（凭据换面后模型/供应商/
+  // CRD 条目全部作废）。
   clearAll();
+  lruClear();
   return r;
 }
 

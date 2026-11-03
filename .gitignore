@@ -47,3 +47,4 @@ frontend/harness/bundle-env.js
 frontend/harness/bundle-cli.js
 frontend/harness/bundle-settings.js
 CODING_CLI_CARDS_TODO.md
+frontend/harness/bundle-loadmore-fix.js

@@ -39,8 +39,9 @@ export interface ManageData {
   hasToken?: boolean;
   /** 刷新拓扑树（silent=true 静默不闪页）。 */
   onRefreshTree?: (silent?: boolean) => void;
-  /** 刷新管理数据（silent=true 静默不闪页）。 */
-  onRefreshAdmin?: (silent?: boolean) => void;
+  /** 刷新管理数据（silent=true 静默不闪页；strong=#1407 写后立即读强一致，
+   * 由 X-Consistency 响应头判定记入 tracker）。 */
+  onRefreshAdmin?: (silent?: boolean, strong?: boolean) => void;
   /** 点击 Worker「私聊」→ 优先直跳 Worker 个人房间。 */
   onDm?: (mxid: string, roomId?: string) => void;
   /** 运行配置 L1 只读 Alert 的「去设置」跳转。 */

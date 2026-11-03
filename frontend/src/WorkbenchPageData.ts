@@ -30,6 +30,7 @@ import {
 } from "./api";
 import { useT } from "./i18n";
 import { usePoller } from "./usePoller";
+import { sameSnapshot, useCachedPolling } from "./hooks/useCachedPolling";
 import { usePendingStore } from "./pending/store";
 import { attentionPendingKind, detectMultiSelect } from "./pending/parse";
 import type { PendingItem } from "./pending/types";
@@ -306,9 +307,7 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
                 spawns: prevByName.get(w.worker_name)?.spawns || [],
               })),
             }));
-            return JSON.stringify(tree) === JSON.stringify(prev)
-              ? prev
-              : tree;
+            return sameSnapshot(tree, prev) ? prev : tree;
           });
         });
         void loadSpawns();
@@ -419,7 +418,7 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
         const enriched = enrichWorkflowRoomNames(events);
         React.startTransition(() => {
           setWorkflowEvents((prev) =>
-            JSON.stringify(prev) === JSON.stringify(enriched) ? prev : enriched
+            sameSnapshot(prev, enriched) ? prev : enriched
           );
           setWorkflowSource("controller");
           setWorkflowFailDetail("");
@@ -436,7 +435,7 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
         });
         const payload = await fetchWorkflowEvents();
         React.startTransition(() => {
-          setWorkflowEvents((prev) => (JSON.stringify(prev) === JSON.stringify(payload.events) ? prev : payload.events));
+          setWorkflowEvents((prev) => (sameSnapshot(prev, payload.events) ? prev : payload.events));
         });
         syncPendingInterrupts(payload.events);
       }
@@ -486,10 +485,6 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
   // 决策」页共用此数据源（全局数据，不绑任何 tab）。失败保旧值（网络抖动
   // 不清已渲染数据）；deployed=false（旧 controller）→ 无 badge 无入口
   // （诚实降级）。
-  const [attention, setAttention] = React.useState<AttentionPayload | null>(
-    null,
-  );
-  const attentionFetchingRef = React.useRef(false);
   // P0 人工介入闭环：attention 面 → pending store（source=attention）。
   // kind 与房间消息同一口径（attentionPendingKind：有 question=干预、
   // 无=审批）——跨源去重/匹配一致。消失项：id 命中 answered_history
@@ -560,67 +555,50 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     },
     [],
   );
-  const refreshAttention = React.useCallback(
-    async (bypass = false) => {
-      if (attentionFetchingRef.current) return;
-      attentionFetchingRef.current = true;
-      try {
-        const payload = await fetchAttention(bypass);
-        // diff 门：30s 内数据常不变——返回原引用跳过重渲（同 rooms 约定）。
-        React.startTransition(() => {
-          setAttention((prev) =>
-            prev && JSON.stringify(prev) === JSON.stringify(payload)
-              ? prev
-              : payload,
-          );
-        });
-        // pending 同步幂等（upsert 去重）——diff 门跳过重渲不跳同步。
-        syncPendingAttention(payload);
-      } catch {
-        /* 瞬时抖动 → 保旧值（入口可见性由 deployed/数据决定，不报错） */
-      } finally {
-        attentionFetchingRef.current = false;
-      }
-    },
-    [syncPendingAttention],
-  );
-  usePoller({
-    fn: () => void refreshAttention(),
+  // 批次 4：attention 轮询 → useCachedPolling（快照 diff 门控 → 不变则不
+  // 重渲；onFetched 恒跑 → pending 同步不被 diff 门跳过；active 假→真
+  // poke 覆盖旧 armed effect 的首次取数语义；inflight 门防重叠双发）。
+  const {
+    data: attention,
+    refresh: refreshAttention,
+    reset: resetAttention,
+  } = useCachedPolling<AttentionPayload | null>({
+    fetcher: (force) => fetchAttention(!!force),
     intervalMs: 30000,
     active: hasCtlToken,
     minPokeMs: 15000,
+    useTransition: true,
+    initialData: null,
+    onFetched: (payload) => { if (payload) syncPendingAttention(payload); },
   });
-  // hasCtlToken false→true 翻转（config 异步就绪/env 注入晚于挂载）触发首次
-  // 取数（admin armed-ref 同款语义）。
-  const attentionArmedRef = React.useRef(false);
-  React.useEffect(() => {
-    if (!hasCtlToken) {
-      attentionArmedRef.current = false;
-      return;
-    }
-    if (attentionArmedRef.current) return;
-    attentionArmedRef.current = true;
-    void refreshAttention();
-  }, [hasCtlToken, refreshAttention]);
 
   // L1 admin view: only when a Controller token is available (config or env).
-  const refreshAdmin = React.useCallback(async (silent = false) => {
-    if (!hasCtlToken) return;
-    if (!silent) setAdminLoading(true);
-    try {
-      const data = await fetchAdminData();
-      // 数据波 setState 转 transition。
-      React.startTransition(() => {
-        setAdminFailCount(0);
-        setAdminData((prev) => (prev && JSON.stringify(prev) === JSON.stringify(data) ? prev : data));
-      });
-    } catch (e) {
-      setAdminFailCount((n) => n + 1);
-      if (!silent) message.error(e instanceof Error ? e.message : tr("获取管理视图失败"));
-    } finally {
-      if (!silent) setAdminLoading(false);
-    }
-  }, [hasCtlToken]);
+  // strong（#1407 写后立即读）：CRD 保存/团队设置提交后调用方传
+  // (true, true)——4 腿带 ?consistency=strong + 同 key force 覆盖写，
+  // 是否真强一致由 X-Consistency 响应头判定记入 tracker（普通轮询
+  // 不带、不更新标记）。
+  const refreshAdmin = React.useCallback(
+    async (silent = false, strong = false) => {
+      if (!hasCtlToken) return;
+      if (!silent) setAdminLoading(true);
+      try {
+        const data = await fetchAdminData(
+          strong ? { strong: true } : { lru: true },
+        );
+        // 数据波 setState 转 transition。
+        React.startTransition(() => {
+          setAdminFailCount(0);
+          setAdminData((prev) => (prev && sameSnapshot(prev, data) ? prev : data));
+        });
+      } catch (e) {
+        setAdminFailCount((n) => n + 1);
+        if (!silent) message.error(e instanceof Error ? e.message : tr("获取管理视图失败"));
+      } finally {
+        if (!silent) setAdminLoading(false);
+      }
+    },
+    [hasCtlToken],
+  );
 
   // hasCtlToken false→true 翻转（config 异步就绪/
   // env 注入晚于挂载）触发首次 admin 取数。此前该翻转无任何重触发——token 未就绪
@@ -658,7 +636,7 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     setTreeSource("");
     setAdminData(null);
     setWorkflowEvents([]);
-    setAttention(null);
+    resetAttention();
     // 换账号：旧账号的待办/已裁决不带走（localStorage 也一并清）。
     pendingRef.current.clear();
     void refreshConfig();
@@ -667,7 +645,7 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     void refreshAdmin();
     void refreshWorkflow();
     void refreshAttention(true);
-  }, [refreshConfig, refreshRooms, refreshTree, refreshAdmin, refreshWorkflow, refreshAttention]);
+  }, [refreshConfig, refreshRooms, refreshTree, refreshAdmin, refreshWorkflow, refreshAttention, resetAttention]);
   return {
     dismissMatrixNone,
     handleOpenProject,

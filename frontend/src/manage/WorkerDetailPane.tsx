@@ -7,13 +7,14 @@
  * - 运行时 + 版本（AgentTeams 版本 = 镜像 tag 正源；L1 再经
  *   node-version 端点探测容器内运行时实际版本，10min 缓存）
  *
- * 模型配置卡（16.27 B）：原头部只读「模型」行升级为卡（状态卡之前）——
- * 当前值摘要（只读展示保留）+ 模型 alias / Provider 编辑；候选与写前
- * 校验走 useModelUnionOptions（与 StandaloneWorkerModels/ManagerTable
- * 同源）；保存 = PUT /workers/{name} 合并语义，model + modelProvider
- * 同时下发（多 provider 部署只改 model 仍走旧 provider）；L1-only
- * （与唤醒/休眠同门控），未改动不发 PUT；成功 → invalidateTags +
- * onRefreshAdmin（不新增轮询）。
+ * 模型配置卡（16.27 B，任务 A 弹窗化）：内联编辑改为只读摘要 +
+ * 「点击编辑」（与 ManagerDetailPane 模型卡一致），点击 →
+ * ModelEditModal（宽屏左右 / 窄屏上下响应式，与 Manager 详情面板
+ * 共用同一组件零分叉）；候选与写前校验走 useModelUnionOptions（与
+ * StandaloneWorkerModels/ManagerTable 同源）；保存 = PUT /workers/{name}
+ * 合并语义，model + modelProvider 同时下发（多 provider 部署只改 model
+ * 仍走旧 provider）；L1-only（与唤醒/休眠同门控）；成功 →
+ * invalidateTags + onRefreshAdmin（写后强读 #1407，不新增轮询）。
  *
  * 状态卡：休眠 / 重启中 / 心跳态（agentStatus）/ 在跑任务 /
  * 上次运行 / 上次完成 + loop 预算（GET /workers/{name}/loops/status，
@@ -56,6 +57,8 @@ import {
   phaseMeta,
 } from "../components/WorkerManageShared";
 import { RuntimeNotice } from "../runtimeGuard";
+import { BulbIcon } from "../components/icons";
+import ModelEditModal from "./ModelEditModal";
 import ResourceCards from "./ResourceCards";
 
 const host = window.QwenPaw.host;
@@ -116,7 +119,7 @@ export default function WorkerDetailPane({
   /** 头像源（room 成员表 mxc 头像；undefined → 首字母兜底）。 */
   avatarUrl?: string;
   hasToken?: boolean;
-  onRefreshAdmin?: (silent?: boolean) => void;
+  onRefreshAdmin?: (silent?: boolean, strong?: boolean) => void;
   /** 运行配置卡内「去设置」跳转（透传 WorkerRuntimeConfig）。 */
   onOpenSettings?: () => void;
 }) {
@@ -171,45 +174,37 @@ export default function WorkerDetailPane({
     };
   }, [worker.name, worker.roomID]);
 
-  // ── 模型配置卡（16.27 B）——候选/校验与 StandaloneWorkerModels 同源 ──
-  // 草稿只存「改动项」（undefined = 跟当前值基线）；基线 provider：
+  // ── 模型配置（任务 A 弹窗化）——候选/校验与 StandaloneWorkerModels 同源 ──
+  // 草稿由 ModelEditModal 持有（打开时重置为当前值）；基线 provider：
   // Controller 的 modelProvider 优先，旧 Controller 不返回时由 alias 的
   // binding 推导（与 StandaloneWorkerModels 同基线）。
   const union = useModelUnionOptions([worker.model || ""], tr);
-  const [modelDraft, setModelDraft] = React.useState<string | undefined>(undefined);
-  const [provDraft, setProvDraft] = React.useState<string | undefined>(undefined);
+  const [modelModal, setModelModal] = React.useState(false);
   const [modelSaving, setModelSaving] = React.useState(false);
-  // 切 worker 不卸载本组件（TeamSection 无 key）→ 复位草稿。
+  // 切 worker 不卸载本组件（TeamSection 无 key）→ 复位弹窗态。
   React.useEffect(() => {
-    setModelDraft(undefined);
-    setProvDraft(undefined);
+    setModelModal(false);
     setModelSaving(false);
   }, [worker.name]);
 
   const baselineProv =
     worker.modelProvider ||
     providerForModel(union.gatewayOptions, worker.model || "");
-  const modelVal = modelDraft ?? worker.model ?? "";
-  const provVal = provDraft ?? baselineProv;
-  const modelDirty =
-    modelVal !== (worker.model || "") || provVal !== baselineProv;
-  const modelVerdict = validateModelValue(modelVal, union.candidates);
 
-  const saveModel = React.useCallback(
-    async () => {
-      const m = modelVal.trim();
-      const p = provVal.trim();
+  const handleModelSave = React.useCallback(
+    async (mIn: string, pIn: string, subIn: string | null): Promise<boolean> => {
+      const m = mIn.trim();
+      const p = pIn.trim();
       const vd = validateModelValue(m, union.candidates);
       if (vd.level === "error") {
         antd.message.error(modelVerdictText(tr, vd, m, union.candidates));
-        return;
+        return false;
       }
       setModelSaving(true);
       try {
-        // PUT 合并语义：model + modelProvider 必须同时下发——多 Higress
-        // Provider 部署下只改 model 仍走旧 provider（任务书口径）；
-        // provider 空 = 跟随默认（StandaloneWorkerModels 语义）。
-        await updateWorkerModel(worker.name, m, p);
+        // PUT 合并语义：model + modelProvider + subagentModel 同时下发
+        // （subagentModel=null=清除/与主模型相同）。
+        await updateWorkerModel(worker.name, m, p, subIn);
         antd.message.success(
           vd.level === "warn"
             ? tr("已保存（提示：{t}）", {
@@ -217,21 +212,21 @@ export default function WorkerDetailPane({
               })
             : tr("模型已保存（重启 Worker 后生效）"),
         );
-        setModelDraft(undefined);
-        setProvDraft(undefined);
-        // 模型 = Worker spec 变更 → 失效缓存 + 刷新（同唤醒/休眠）。
+        // 模型 = Worker spec 变更 → 失效缓存 + 写后强读（#1407）。
         invalidateTags(["teams", "admin"]);
-        void onRefreshAdmin?.();
+        void onRefreshAdmin?.(true, true);
+        return true;
       } catch (e) {
         // 失败展示后端错误文本（不吞错）。
         antd.message.error(
           e instanceof Error ? e.message : tr("保存失败"),
         );
+        return false;
       } finally {
         setModelSaving(false);
       }
     },
-    [worker.name, modelVal, provVal, union.candidates, onRefreshAdmin, tr],
+    [worker.name, union.candidates, onRefreshAdmin, tr],
   );
 
   const handleLifecycle = React.useCallback(
@@ -343,103 +338,39 @@ export default function WorkerDetailPane({
           ) : null}
         </div>
       </div>
-      {/* 模型配置卡（16.27 B）——头部只读模型行升级；当前值摘要 +
-          模型/Provider 编辑（L1-only，未改动不发 PUT）。 */}
-      <antd.Card
-        size="small"
-        title={tr("模型配置")}
-        styles={{ body: { padding: "8px 12px", display: "grid", gap: 8 } }}
+      {/* 模型配置卡（任务 A 弹窗化）——只读摘要 +「点击编辑」，
+          与 ManagerDetailPane 模型卡一致（L1-only）。 */}
+      <div
+        style={{
+          padding: "10px 14px",
+          borderRadius: 8,
+          background: t.cardBg,
+          border: `1px solid ${t.border}`,
+          cursor: l1 ? "pointer" : "default",
+          transition: "border 0.2s",
+        }}
+        onClick={l1 ? () => setModelModal(true) : undefined}
       >
-        <Row
-          label={tr("当前值")}
-          value={`${worker.model || "—"}${
-            worker.modelProvider ? `（${worker.modelProvider}）` : ""
-          }`}
-        />
-        {l1 ? (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 96,
-                  flexShrink: 0,
-                  fontSize: 12,
-                  color: t.textSecondary,
-                }}
-              >
-                {tr("模型")}
-              </span>
-              <antd.AutoComplete
-                size="small"
-                style={{ flex: 1, minWidth: 0 }}
-                value={modelVal}
-                options={union.options}
-                allowClear
-                disabled={modelSaving}
-                placeholder={tr("模型 alias（留空=跟随集群默认）")}
-                onChange={(val: string) => {
-                  setModelDraft(val || "");
-                  // configured alias → 自动回填其 binding.providerName。
-                  const auto = providerForModel(
-                    union.gatewayOptions,
-                    val || "",
-                  );
-                  if (auto) setProvDraft(auto);
-                }}
-              />
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 96,
-                  flexShrink: 0,
-                  fontSize: 12,
-                  color: t.textSecondary,
-                }}
-              >
-                {tr("Provider")}
-              </span>
-              <antd.AutoComplete
-                size="small"
-                style={{ flex: 1, minWidth: 0 }}
-                value={provVal}
-                options={union.providers.map((p) => ({ value: p.name }))}
-                allowClear
-                disabled={modelSaving}
-                placeholder={tr("留空=跟随默认（Higress Provider 名）")}
-                onChange={(val: string) => setProvDraft(val || "")}
-              />
-            </div>
-            {modelVerdict.level !== "ok" ? (
-              <div
-                style={{
-                  fontSize: 11,
-                  lineHeight: 1.6,
-                  paddingLeft: 104,
-                  // token 集无 danger 色 → 语义红走 CSS 关键字（同 Row）。
-                  color: modelVerdict.level === "error" ? "red" : t.textSecondary,
-                }}
-              >
-                {modelVerdictText(tr, modelVerdict, modelVal, union.candidates)}
-              </div>
-            ) : null}
-            <antd.Button
-              type="primary"
-              size="large"
-              loading={modelSaving}
-              disabled={!modelDirty}
-              style={{ minHeight: 44, justifyContent: "center" }}
-              onClick={() => void saveModel()}
-            >
-              {tr("保存")}
-            </antd.Button>
-          </>
-        ) : (
-          <div style={{ fontSize: 12, color: t.textSecondary }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <BulbIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>
+            {tr("模型配置")}
+          </span>
+          <div style={{ flex: 1 }} />
+          {l1 ? (
+            <span style={{ fontSize: 10, color: t.textSecondary }}>{tr("点击编辑")}</span>
+          ) : null}
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11, color: t.textSecondary }}>
+          {worker.model || tr("未配置")}
+          {worker.modelProvider ? ` · ${worker.modelProvider}` : ""}
+        </div>
+        {!l1 ? (
+          <div style={{ marginTop: 6, fontSize: 11, color: t.textSecondary }}>
             {tr("修改模型配置需 L1 管理权限（Controller 管理员 token）")}
           </div>
-        )}
-      </antd.Card>
+        ) : null}
+      </div>
       {/* 状态卡（方案 §4.1.3：重启按钮不显示——端点未上游） */}
       <antd.Card
         size="small"
@@ -514,6 +445,19 @@ export default function WorkerDetailPane({
           </div>
         ) : null}
       </antd.Card>
+      {/* 模型编辑弹窗（响应式：宽屏左右/窄屏上下；与 Manager 详情面板共用）。 */}
+      <ModelEditModal
+        open={modelModal}
+        title={tr("Worker 模型配置")}
+        currentModel={worker.model ?? ""}
+        currentProvider={baselineProv}
+        runtime={worker.runtime}
+        currentSubagentModel={worker.subagentModel ?? ""}
+        union={union}
+        saving={modelSaving}
+        onCancel={() => setModelModal(false)}
+        onSave={handleModelSave}
+      />
       {/* 资源卡（10 格，P3）——弹窗承载、懒挂载。 */}
       <ResourceCards
         worker={worker}

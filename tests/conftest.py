@@ -30,6 +30,10 @@ _DOMAIN_MODULES = (
     # 包根域模块（attention 决策面；_attention_cache 30s 聚合缓存纳入
     # 逐测清空 + rebind 同步，与 routers/ 域同待遇）。
     "agentteams_connector.attention_api",
+    # 条件请求缓存层（_conditional_cache 元数据表纳入逐测清空——相邻
+    # 测试不得拿上一测的 ETag 互 304；本模块无 router 共享名，
+    # rebind 循环的 hasattr 过滤自然跳过）。
+    "agentteams_connector.conditional",
 )
 
 

@@ -2,6 +2,7 @@
 
 import { controllerRequest, fetchControllerJson } from "../shared";
 import { cachedFetch, invalidateTags } from "../../requestCache";
+import { lruReadThrough, lruInvalidate } from "../../cache/memoryLru";
 
 // ── L1 全量视图（Controller API，需管理员 token）────────────────────
 
@@ -21,6 +22,8 @@ export interface WorkerInfo {
    * Higress APIG Model API 名；空=跟随默认）。多 provider 部署下只改 model
    * 不改 provider = 仍走旧 provider。 */
   modelProvider?: string;
+  /** 子代理模型（QwenPaw >= 2.1.1；空/undefined = 未设/与主模型相同）。 */
+  subagentModel?: string;
   runtime: string;
   /** 自定义 Docker 镜像（WorkerResponse.image；发布部署 = 带发布 tag 的
    * 运行时镜像，如 …agentteams-qwenpaw-worker:v1.2.5——运行时版本正源，
@@ -144,6 +147,30 @@ export interface ManagerInfo {
   roomID: string;
   version: string;
   message: string;
+  /* ── ManagerSpec 字段（仅详情视图）────────────────────────────────────
+   * Controller 列表视图 ManagerResponse 不带这些字段（resource_handler
+   * managerToResponse 只映射标量列）——仅详情端点 GET /managers/{name}
+   * 返回；fetchManagerFull 专供详情面板。旧 Controller 详情响应无这些
+   * 字段 → undefined，前端诚实降级显"未配置"。 */
+  soul?: string;
+  agents?: string;
+  skills?: string[];
+  mcpServers?: McpServerInfo[];
+  env?: Record<string, string>;
+  config?: ManagerConfigInfo;
+}
+
+/** ManagerSpec.Config（controller types.ManagerConfig）——Manager 独有
+ * 运行调参。controller 侧默认值：heartbeatInterval 15m /
+ * workerIdleTimeout 720m / notifyChannel admin-dm。
+ * PUT {config} 为整对象替换语义（UpdateManager：req.Config != nil 整体写）。 */
+export interface ManagerConfigInfo {
+  /** 心跳间隔（如 "15m"）。 */
+  heartbeatInterval?: string;
+  /** Worker 空闲回收超时（如 "720m"）。 */
+  workerIdleTimeout?: string;
+  /** 决策/通知投递频道（如 "admin-dm"）。 */
+  notifyChannel?: string;
 }
 
 export interface AdminData {
@@ -164,6 +191,7 @@ export async function createHuman(
 ): Promise<CreateHumanResponse> {
   const r = (await controllerRequest("POST", "/humans", body)) as CreateHumanResponse;
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 
@@ -176,11 +204,13 @@ export async function createWorker(
 ): Promise<unknown> {
   const r = await controllerRequest("POST", "/workers", body);
   invalidateTags(["teams", "admin", "workers-status"]);
+  lruInvalidate("crd:");
   return r;
 }
 export async function deleteHuman(name: string): Promise<unknown> {
   const r = await controllerRequest("DELETE", `/humans/${encodeURIComponent(name)}`);
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 
@@ -195,6 +225,7 @@ export async function updateHumanAccessibleTeams(
     accessibleTeams,
   });
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 
@@ -212,12 +243,14 @@ export async function updateHumanAccess(
 ): Promise<unknown> {
   const r = await controllerRequest("PUT", `/humans/${encodeURIComponent(name)}`, spec);
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 /** 创建团队——workerMembers 必须引用已存在的 Worker CR，且 ≥1。 */
 export async function createTeam(body: Record<string, unknown>): Promise<unknown> {
   const r = await controllerRequest("POST", "/teams", body);
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 /** 配置团队（PUT 部分更新：空字段不覆盖）。humanMembers 上游 PUT 不支持。 */
@@ -227,6 +260,7 @@ export async function updateTeam(
 ): Promise<unknown> {
   const r = await controllerRequest("PUT", `/teams/${encodeURIComponent(name)}`, body);
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 /** 更新现有 Worker 的模型（PUT /workers/{name} 合并语义——只应用非空字段，
@@ -238,12 +272,14 @@ export async function updateWorkerModel(
   name: string,
   model: string,
   modelProvider?: string,
+  subagentModel?: string | null,
 ): Promise<unknown> {
-  const r = await controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, {
-    model,
-    ...(modelProvider !== undefined ? { modelProvider } : {}),
-  });
+  const body: Record<string, unknown> = { model };
+  if (modelProvider !== undefined) body.modelProvider = modelProvider;
+  if (subagentModel !== undefined) body.subagentModel = subagentModel;
+  const r = await controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, body);
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 /** ：通用 Worker spec 合并更新——
@@ -254,6 +290,7 @@ export async function updateWorker(
 ): Promise<unknown> {
   const r = await controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, body);
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 
@@ -286,46 +323,113 @@ export const probeWorkerGateway = (
 export async function updateManagerModel(
   name: string,
   model: string,
+  modelProvider?: string,
+  subagentModel?: string | null,
 ): Promise<unknown> {
-  const r = await controllerRequest("PUT", `/managers/${encodeURIComponent(name)}`, { model });
+  const body: Record<string, unknown> = { model };
+  if (modelProvider) body.modelProvider = modelProvider;
+  if (subagentModel !== undefined) body.subagentModel = subagentModel;
+  const r = await controllerRequest("PUT", `/managers/${encodeURIComponent(name)}`, body);
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
+  return r;
+}
+
+/** 取 Manager 完整 spec（任务 A：ManagerDetailPane 全配置面板）。
+ * 列表视图 ManagerResponse 不带 spec 字段——详情面板挂载时走本函数
+ * （GET /managers/{name}）；旧 Controller 详情响应缺字段 → 对应字段
+ * undefined，前端诚实降级显"未配置"。 */
+export async function fetchManagerFull(name: string): Promise<ManagerInfo> {
+  const r = (await controllerRequest(
+    "GET",
+    `managers/${encodeURIComponent(name)}`,
+  )) as unknown as ManagerInfo | null;
+  return r ?? ({} as ManagerInfo);
+}
+
+/** 通用 Manager 更新（任务 A 1.7）——PUT /managers/{name} 合并语义，
+ * 只发 body 实际携带的字段（UpdateManagerRequest 各字段 omitempty）：
+ * model/soul/agents 非空才应用（空串不 clear 既有值）；skills/mcpServers
+ * 数组=整表替换（空数组=清空）；config 整对象替换；state 覆盖。
+ * 注：当前 UpdateManagerRequest 无 env 字段——发 {env} 旧 controller 静默
+ * 忽略（无害），controller 补齐后自动生效。 */
+export async function updateManager(name: string, body: Record<string, unknown>): Promise<unknown> {
+  const r = await controllerRequest("PUT", `/managers/${encodeURIComponent(name)}`, body);
+  invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
+  return r;
+}
+
+/** 创建 Manager（POST /api/v1/managers，CreateManagerRequest）：
+ * name 必填；model/modelProvider/runtime/image/soul/agents/skills 可选
+ * （上游 types.go 实证）。CR 创建后由 Controller 调和器拉镜像起容器。 */
+export async function createManager(body: Record<string, unknown>): Promise<unknown> {
+  const r = await controllerRequest("POST", "/managers", body);
+  invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
+  return r;
+}
+
+/** 删除 Manager（DELETE /api/v1/managers/{name}）——只影响该 Manager CR
+ * （上游 resource_handler.go 无级联副作用）。 */
+export async function deleteManager(name: string): Promise<unknown> {
+  const r = await controllerRequest("DELETE", `/managers/${encodeURIComponent(name)}`);
+  invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 
 export async function deleteTeam(name: string): Promise<unknown> {
   const r = await controllerRequest("DELETE", `/teams/${encodeURIComponent(name)}`);
   invalidateTags(["teams", "admin"]);
+  lruInvalidate("crd:");
   return r;
 }
 
 /** cachedFetch 包裹（admin/data，TTL 30s + SWR 30s，tags
  * ["admin"]）——4 路并发取数，WorkerManage 30s 轮询与 CrdManage 失效后
  * 重取合并为一次回源。SWR：30-60s 段先回旧值（面板零等待）+ 后台再验证；
- * >60s 或标签失效（写操作后 invalidateTags(["admin"])）→ 等回源。 */
-export async function fetchAdminData(): Promise<AdminData> {
-  return cachedFetch(
-    "admin/data",
-    30000,
-    async () => {
-      const [workers, teams, humans, managers] = await Promise.all([
-        fetchControllerJson<unknown>("/workers").then(normalizeList),
-        fetchControllerJson<unknown>("/teams").then(normalizeList),
-        // humans/managers
-        // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版
-        // Promise.all 里任一 404/超时（旧 Controller 无该端点/瞬时抖动）整体
-        // reject → admin 面板整体空白；workers/teams 才是 CRD 管理面板核心数据。
-        fetchListSafe("/humans"),
-        fetchListSafe("/managers"),
-      ]);
-      return {
-        workers: workers as WorkerInfo[],
-        teams: teams as TeamInfo[],
-        humans: humans as HumanInfo[],
-        managers: managers as ManagerInfo[],
-      };
-    },
-    { tags: ["admin"], swrMs: 30000 },
-  );
+ * >60s 或标签失效（写操作后 invalidateTags(["admin"])）→ 等回源。
+ *
+ * `strong`（#1407 写后立即读）：4 腿带 `?consistency=strong` 且同 key
+ * force 覆盖写（绕过 TTL/SWR 直取上游）；结果是否真强一致由响应头
+ * X-Consistency 判定并记入 consistency tracker（上游端点不支持该参数
+ * → 无头，诚实降级 eventual，不声称做不到的事）。
+ *
+ * `lru`（批次 4）：外层 LRU（crd:admin，120s）先读后台刷——CRD 管理
+ * 面板打开即有数据；strong 读绕过 LRU（写后读必须新鲜）。4 腿
+ * composite 不条件化（多上游聚合，ETag 无单一来源）——新鲜度由
+ * 30s TTL/SWR 承担。 */
+export async function fetchAdminData(
+  opts?: { strong?: boolean; lru?: boolean },
+): Promise<AdminData> {
+  const strong = opts?.strong ? { strong: true } : undefined;
+  const base = (): Promise<AdminData> =>
+    cachedFetch(
+      "admin/data",
+      30000,
+      async () => {
+        const [workers, teams, humans, managers] = await Promise.all([
+          fetchControllerJson<unknown>("/workers", strong).then(normalizeList),
+          fetchControllerJson<unknown>("/teams", strong).then(normalizeList),
+          // humans/managers
+          // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版
+          // Promise.all 里任一 404/超时（旧 Controller 无该端点/瞬时抖动）整体
+          // reject → admin 面板整体空白；workers/teams 才是 CRD 管理面板核心数据。
+          fetchListSafe("/humans", strong),
+          fetchListSafe("/managers", strong),
+        ]);
+        return {
+          workers: workers as WorkerInfo[],
+          teams: teams as TeamInfo[],
+          humans: humans as HumanInfo[],
+          managers: managers as ManagerInfo[],
+        };
+      },
+      { tags: ["admin"], swrMs: 30000, ...(strong ? { force: true } : {}) },
+    );
+  if (!opts?.lru || opts?.strong) return base();
+  return lruReadThrough("crd:admin", 120_000, base) as Promise<AdminData>;
 }
 
 function normalizeList(payload: unknown): unknown[] {
@@ -342,8 +446,11 @@ function normalizeList(payload: unknown): unknown[] {
 /** 安全腿：controller list 取数 + normalizeList 归一，失败置空
  * （不拖垮同组 workers/teams）——fetchAdminData/fetchL2AdminData 的
  * humans/managers 两路共用（整段复制 2 块收敛）。 */
-function fetchListSafe(url: string): Promise<unknown[]> {
-  return fetchControllerJson<unknown>(url)
+function fetchListSafe(
+  url: string,
+  opts?: { strong?: boolean },
+): Promise<unknown[]> {
+  return fetchControllerJson<unknown>(url, opts)
     .then(normalizeList)
     .catch(() => [] as unknown[]);
 }

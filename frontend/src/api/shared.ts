@@ -6,6 +6,7 @@
 
 import { isLocalHost } from "../hostEnv";
 import { tryLocalConfigEndpoint } from "../localConfigBackend";
+import { NOT_MODIFIED } from "../requestCache";
 import type { RoomMessage, RoomMessagesPage } from "./domains/chat";
 import type { TeamsRoomsResponse } from "./domains/teams";
 
@@ -16,11 +17,19 @@ import type { TeamsRoomsResponse } from "./domains/teams";
  * Controller 抖动时请求可挂起数分钟，前端恒转圈且刷新钮被 loading 禁用
  * （「手动也不行」）。超时抛「请求超时」错误（非 HTTP xxx 形态，调用方
  * toast 后可手动重试）；不传 = 原行为（SSE/长轮询等端点不受影响）。 */
-export async function requestJson(
+export interface RequestJsonResult {
+  payload: unknown;
+  /** 原始响应（读响应头用）；独立宿主 localStorage 模拟层无真实响应 → null。 */
+  response: Response | null;
+}
+
+/** requestJson 的带响应版（返回原始 Response——供读响应头；
+ * 错误语义与 requestJson 完全一致，失败同样 throw）。 */
+export async function requestJsonFull(
   path: string,
   init?: RequestInit,
   timeoutMs?: number,
-): Promise<unknown> {
+): Promise<RequestJsonResult> {
   const host = window.QwenPaw.host;
   // 独立宿主（轴 A kind='local'，hostEnv.ts；旧 shell 回退 isOffline）——
   // 配置域走 localStorage 模拟层（脱敏/合并语义对齐服务端连接器）；未命中
@@ -28,7 +37,7 @@ export async function requestJson(
   // console/远端宿主（server）→ 本分支恒 false，在线路径零改动。
   if (isLocalHost()) {
     const emu = tryLocalConfigEndpoint(path, init);
-    if (emu !== null) return await emu;
+    if (emu !== null) return { payload: await emu, response: null };
   }
   let timer: ReturnType<typeof setTimeout> | null = null;
   let response: Response;
@@ -77,6 +86,11 @@ export async function requestJson(
     throw e;
   }
   if (timer) clearTimeout(timer);
+  if (response.status === 304) {
+    // 304 Not Modified：空 body、无 JSON——返回哨兵（调用方保留本地
+    // 旧值，不覆盖缓存；条件再验证新鲜语义由 requestCache 承担）。
+    return { payload: NOT_MODIFIED, response };
+  }
   const content = await response.text();
   let payload: unknown = null;
   try {
@@ -110,7 +124,30 @@ export async function requestJson(
         : `HTTP ${response.status}`,
     );
   }
-  return payload;
+  return { payload, response };
+}
+
+/** 只返回 payload 的薄包装（既有调用方零改动）。 */
+export async function requestJson(
+  path: string,
+  init?: RequestInit,
+  timeoutMs?: number,
+): Promise<unknown> {
+  return (await requestJsonFull(path, init, timeoutMs)).payload;
+}
+
+/** 条件再验证读（批次 4）：带 etag 时发 If-None-Match；304 时
+ * payload = NOT_MODIFIED 哨兵（调用方保留本地旧值，不覆盖缓存）。 */
+export async function requestJsonConditional(
+  path: string,
+  etag?: string,
+  timeoutMs?: number,
+): Promise<RequestJsonResult> {
+  return requestJsonFull(
+    path,
+    { headers: etag ? { "If-None-Match": etag } : {} },
+    timeoutMs,
+  );
 }
 
 /** 从 requestJson 错误消息提取 HTTP 状态码（failReason 分类单一真相源）。 */
@@ -126,16 +163,59 @@ export function httpErrorDetail(e: unknown): string {
   return m ? m[1] : e.message;
 }
 
-export async function fetchControllerJson<T>(path: string): Promise<T> {
+// ── 强一致读标记（#1407）──────────────────────────────────────────
+// 写后立即读路径用 ?consistency=strong；结果是否真强一致由响应头
+// X-Consistency 判定（上游 ETag 复核通过才带 strong 头；复核失败/
+// 端点不支持 → 无头 = 诚实降级 eventual，不声称做不到的事）。
+// 普通轮询读不更新此状态——标记语义 = 「最近一次写后强读的结果」。
+export type ConsistencyState = "strong" | "eventual" | null;
+let consistencyState: ConsistencyState = null;
+const consistencyListeners = new Set<() => void>();
+
+export function recordConsistencyRead(
+  requested: boolean,
+  response: Response | null,
+): void {
+  if (!requested || !response) return;
+  const next: ConsistencyState =
+    (response.headers.get("x-consistency") || "").toLowerCase() === "strong"
+      ? "strong"
+      : "eventual";
+  if (next === consistencyState) return;
+  consistencyState = next;
+  for (const fn of consistencyListeners) fn();
+}
+
+export function getConsistencyState(): ConsistencyState {
+  return consistencyState;
+}
+
+/** useSyncExternalStore 订阅（返回退订函数）。 */
+export function subscribeConsistency(fn: () => void): () => void {
+  consistencyListeners.add(fn);
+  return () => {
+    consistencyListeners.delete(fn);
+  };
+}
+
+export async function fetchControllerJson<T>(
+  path: string,
+  opts?: { strong?: boolean },
+): Promise<T> {
   // 调用方传 "/workers" 时模板拼接会产生 /api/v1//workers 双斜杠，
   // uvicorn 对双斜杠 301——strip 前导斜杠根治。
   // 30s 封顶（冷窗后端已 ≤~6s；超时显形可重试）。
   const clean = path.replace(/^\/+/, "");
-  return (await requestJson(
-    `/agentteams-proxy/controller/api/v1/${clean}`,
+  const q = opts?.strong
+    ? `${clean.includes("?") ? "&" : "?"}consistency=strong`
+    : "";
+  const { payload, response } = await requestJsonFull(
+    `/agentteams-proxy/controller/api/v1/${clean}${q}`,
     undefined,
     30000,
-  )) as T;
+  );
+  recordConsistencyRead(!!opts?.strong, response);
+  return payload as T;
 }
 
 /** Controller POST（wake/sleep 等生命周期操作）。 */

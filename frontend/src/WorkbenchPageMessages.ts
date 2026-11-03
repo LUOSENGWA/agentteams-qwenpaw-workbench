@@ -150,7 +150,8 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
           ? messagesRef.current
           : (cached?.messages ?? []);
       const merged = mergeForward(base, page.messages);
-      setMessages(merged);
+      messagesRef.current = merged;
+      if (!silent) setMessages(merged);
       // I1 窗口游标：首窗 = 缓存 end ?? 本页 end；非首窗 = 既有游标
       // （loadOlder 单调推进的那个；缓存被逐出时也不回退）。
       const windowEnd = hist.windowEnd(room.room_id, curCount, cached?.end, page.end);
@@ -173,7 +174,7 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
 
   // 取页状态（R2 显式循环消费）：loaded=落地；busy=他人在飞（I5 单发闸，
   // 调用方稍后重试）；error=取页失败（toast 已给）；none=无房/无游标。
-  const loadMore = React.useCallback(async (): Promise<
+  const loadMore = React.useCallback(async (silent = false): Promise<
     "loaded" | "none" | "busy" | "error"
   > => {
     if (!activeRoom || !messagesEnd) return "none";
@@ -191,7 +192,8 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       const merged = older.length
         ? [...older, ...messagesRef.current]
         : messagesRef.current;
-      setMessages(merged);
+      messagesRef.current = merged;
+      if (!silent) setMessages(merged);
       // I1 游标沿更早方向推进 + I6 落盘全量窗口（游标不回退）。
       hist.commit(activeRoom.room_id, page.end);
       setMessagesEnd(page.end);
@@ -271,13 +273,14 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
           const known = new Set(messagesRef.current.map((m) => m.event_id));
           const action = nextBackfillAction(known.has(eventId), hist.cursor, pages);
           if (action !== "fetch") break;
-          const r = await loadMore();
+          const r = await loadMore(true);
           if (r === "busy") continue; // 他人在飞（I5 单发）：等落地后重新决策
           if (r === "error") break; // 取页失败（toast 已给）：回 idle 可重试
           if (r === "none") break; // 无可载：交最终判定
           pages += 1;
           armStall();
         }
+        React.startTransition(() => { setMessages(messagesRef.current); });
         if (messagesRef.current.some((m) => m.event_id === eventId)) {
           // 命中：先抬渲染窗口下界（旁路释放后目标不丢），再启动既有
           // 定位+高亮链；pendingOriginal 旁路保持到定位完成

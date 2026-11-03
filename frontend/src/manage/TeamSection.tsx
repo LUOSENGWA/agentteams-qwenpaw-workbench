@@ -37,6 +37,7 @@ import {
 import { SearchIcon, SettingsIcon, TeamIcon } from "../components/icons";
 import MillforgeModal from "../millforge/MillforgeModal";
 import { computeStandaloneWorkers } from "../crdmanage/standalone";
+import ManagerDetailPane from "./ManagerDetailPane";
 import WorkerDetailPane from "./WorkerDetailPane";
 import TeamSettingsPane from "./TeamSettingsPane";
 import type { ManageSectionProps } from "./types";
@@ -727,8 +728,82 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
   // hooks 之后才允许提前返回。
   if (variant === "right" && nav.teamView === "list" && cols !== 4) return null;
 
+  // ── Manager zone (team management top) ──
+
+
+
+  // Manager 详情：复用 WorkerDetailPane（ManagerInfo → WorkerInfo 适配）
+  const mgrDetailPane = React.useMemo(() => {
+    if (!nav.selectedManager) return null;
+    const mgr = (data.admin?.managers ?? []).find(
+      (m: any) => m.name === nav.selectedManager
+    );
+    if (!mgr) return <antd.Empty description={tr("Manager not found")} />;
+    return (
+      <ManagerDetailPane
+        manager={mgr}
+        hasToken={data.hasToken}
+        onRefreshAdmin={data.onRefreshAdmin}
+      />
+    );
+  }, [nav.selectedManager, data.admin, data.onRefreshAdmin, data.hasToken]);
+
+  // Manager 行：和团队并列在列表里（"一个等级"）。
+
+
+  const managerRows = (data.admin?.managers ?? []) as Array<{
+    name: string;
+    runtime?: string;
+    state?: string;
+    model?: string;
+  }>;
+
   const listPane = (
-    <TeamListPane
+    <>
+      {managerRows.length > 0 && (
+        <div style={{ padding: "4px 8px" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: t.textSecondary, padding: "2px 4px" }}>
+            {tr("Managers")}
+          </div>
+          {managerRows.map((m) => (
+            <div
+              key={m.name}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "10px 12px",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontSize: 12,
+                background: nav.selectedManager === m.name ? "rgba(114,46,209,0.08)" : t.cardBg,
+                border: "1px solid " + (nav.selectedManager === m.name ? "#722ed1" : t.border),
+                borderLeft: "3px solid #722ed1",
+                marginBottom: 4,
+              }}
+              onClick={() => nav.openManager(m.name)}
+            >
+              <div style={{
+                width: 28, height: 28, borderRadius: 6,
+                background: "linear-gradient(135deg, #722ed1, #9254de)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#fff", fontWeight: 700, fontSize: 13,
+              }}>
+                {"M"}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, color: t.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tr("Manager")}</div>
+                <div style={{ fontSize: 10, color: t.textSecondary }}>{m.runtime ?? "qwenpaw"} · {m.model || "-"}</div>
+              </div>
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: m.state === "Running" ? "#52c41a" : m.state === "Sleeping" ? "#faad14" : "#999",
+              }} />
+            </div>
+          ))}
+        </div>
+      )}
+      <TeamListPane
       rows={teamRows}
       teams={data.teams}
       matched={matched}
@@ -744,6 +819,9 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
       standaloneWorkers={standaloneWorkers}
       onOpenWorker={(n) => nav.openWorker(n)}
     />
+
+
+    </>
   );
   const topologyPane = selectedTeam ? (
     <TeamTopologyPane
@@ -786,8 +864,8 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
       listPane
     ) : variant === "mid" ? (
       cols === 4 ? (
-        nav.teamView === "list" ? mid4Guide : topologyPane
-      ) : nav.teamView === "list" ? (
+        nav.selectedManager ? <>{mgrDetailPane}</> : nav.teamView === "list" ? mid4Guide : topologyPane
+      ) : nav.selectedManager ? <>{mgrDetailPane}</> : nav.teamView === "list" ? (
         listPane
       ) : (
         topologyPane

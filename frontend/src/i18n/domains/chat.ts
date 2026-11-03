@@ -207,4 +207,14 @@ export const chatDict: Record<string, { en: string }> = {
   // ── 跳转上下文窗（jumpContext）──
   "展开全部上下文": { en: "Expand all context" },
   "条": { en: "events" },
+  // ── 批次 3：聊天页优化（过程折叠条 / 任务事件卡）──
+  "{n} 次工具调用 · {x}s": { en: "{n} tool calls · {x}s" },
+  "{n} 次工具调用": { en: "{n} tool calls" },
+  "{x}s": { en: "{x}s" },
+  "{w} 已派遣": { en: "{w} dispatched" },
+  "{w} 完成": { en: "{w} done" },
+  "{w} 失败": { en: "{w} failed" },
+  "{w} 超时": { en: "{w} timed out" },
+  // ── 16.46：刻度轨退化文字条（>500 turn）──
+  "共 {n} 回合 · 点击回底部": { en: "{n} turns · click to jump to bottom" },
 };

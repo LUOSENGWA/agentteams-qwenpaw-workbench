@@ -11,6 +11,10 @@ import {
 // 「从服务端拉多少」。
 export const MSG_WINDOW_LIMIT = 150;
 
+/** 空回复列表常量（任务 D §2.3）：行级 memo 下 `replies ?? []` 每渲染
+ * 新建 [] → 该 props 引用永变、memo 击穿。引用稳定的空数组作 fallback。 */
+export const EMPTY_REPLIES: RoomMessage[] = [];
+
 // ── UI 常量（与 WorkbenchPage 视觉一致）──────────────────────────────
 export const PRIMARY = "var(--app-accent, #FF7F16)"; // 品牌主色
 

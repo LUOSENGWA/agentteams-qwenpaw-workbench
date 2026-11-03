@@ -307,6 +307,14 @@ export function useRoomChatCore(props: RoomChatProps) {
   } | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const hoverTimerRef = React.useRef<number | null>(null);
+  // unmount 清理（任务 D §2.2）：悬停计时器是唯一无清理的 setTimeout——
+  // 卸载后到点仍会 setHoveredId（React 18 下为静默 no-op，但属泄漏路径）。
+  React.useEffect(
+    () => () => {
+      if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current);
+    },
+    [],
+  );
 
   // 顶部预加载余量——旧版 40px 只在贴顶瞬间触发（贴顶才拉、拉完要滚回顶
   // 再触发一次），体感「没有预加载」。现 = 视口比例余量：接近顶部即开始拉，
@@ -839,7 +847,13 @@ export function useRoomChatCore(props: RoomChatProps) {
     pendingSeededRef.current = false;
     seenPendingRef.current.clear();
     // 消息窗口回初始（换房=新渲染起点，揭示进度不跨房保留）。
-    setWindowLimit(MSG_WINDOW_LIMIT);
+    // 下界=棘轮值（minWindowTops）：本 effect 是 passive（挂载时晚于
+    // 棘轮 layout effect 落地）；直落 MSG_WINDOW_LIMIT 会把挂载前已抬升
+    // 的棘轮值踩回去 → 渲染窗瞬缩、视口腾空、顶哨兵连环扩窗。
+    // deps 故意不含 minWindowTops：会话中棘轮抬升不得触发换房重置
+    // （清审批/待决登记态）——换房时闭包即新值。
+    setWindowLimit(Math.max(MSG_WINDOW_LIMIT, minWindowTops ?? 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.room_id]);
 
  // ── ─────────────
@@ -902,8 +916,12 @@ export function useRoomChatCore(props: RoomChatProps) {
   }
 
   const myUserId = user_id || "";
-  const mentionTargets = Object.entries(room.members || {}).filter(
-    ([mxid]) => mxid !== myUserId,
+  // memo（任务 D §2.3）：此前每渲染新数组 → mentionCandidates useMemo
+  // 缓存恒失效（成员不变时也 O(成员数) 重算）。
+  const mentionTargets = React.useMemo(
+    () =>
+      Object.entries(room.members || {}).filter(([mxid]) => mxid !== myUserId),
+    [room.members, myUserId],
   );
   // 线程面板打开的 root 消息 + 回复列表。
   const activeThreadMsg = React.useMemo(() => {
@@ -1164,7 +1182,7 @@ export function useRoomChatCore(props: RoomChatProps) {
         gap: 6,
         // 竖屏紧凑头收窄：padding 4/10→2/8（左右更贴、上下留白更少），高度由返回钮触区决定。
         padding: "2px 8px",
-        borderBottom: "1px solid rgba(0,0,0,0.08)",
+        borderBottom: `1px solid ${t.border}`,
         flexWrap: "nowrap",
       }}
     >
@@ -1209,7 +1227,7 @@ export function useRoomChatCore(props: RoomChatProps) {
         trigger={["click"]}
         menu={{ items: compactMenuItems, onClick: compactMenuClick }}
       >
-        <antd.Button size="small" type="text" aria-label={tr("更多")}>
+        <antd.Button size="small" type="text" aria-label={tr("更多")} className="wb-compact-more">
           ⋯
         </antd.Button>
       </antd.Dropdown>

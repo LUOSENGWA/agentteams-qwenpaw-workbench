@@ -19,6 +19,7 @@
  */
 import type * as ReactNS from "react";
 import { logoUrl as LOGO_URL } from "./lib/logo";
+import { logCacheStatsOnce } from "./cache/memoryLru";
 
 // ——
 // 宿主 menu.add/registerRoutes 的 icon 接受 ReactNode（console types.ts
@@ -34,6 +35,9 @@ const LOGO_ICON: ReactNS.ReactNode = hostReact
       style: { display: "block" },
     })
   : "🏢";
+
+// 批次 4：启动时打印一次本地 LRU 统计（console.debug，开发观测面）。
+logCacheStatsOnce();
 
 // 侧栏 logo 待审批徽标——
 // 轮询 /room-approvals（与通知中心同源），出现待审批即红点计数 + 图标
@@ -408,6 +412,28 @@ html[data-wb-fx="light"] [class*="ambientLight"] {
 .wb-l2-push { animation: wbL2PushIn 220ms cubic-bezier(0.2, 0, 0, 1); }
 .wb-l2-pop  { animation: wbL2PopIn  220ms cubic-bezier(0.2, 0, 0, 1); }
 .wb-sheet-in { animation: wbSheetIn 200ms cubic-bezier(0.2, 0, 0, 1); }
+/* ══ 聊天专属 44px 触控档（任务 D）═════════════════════════════════════
+   聊天行内控件多为 sm 尺寸（被上方全局档 :not(.ant-btn-sm) 排除），
+   这里按类点名补齐——行/工具条按钮/快捷表情/成员行按钮/紧凑头 ⋯ 钮。
+   消息行与线程摘要整行 44px 命中（点击=触屏 toggle 操作条/开线程）。 */
+.wb-touch .wb-msg-row { min-height: 44px; }
+.wb-touch .wb-thread-summary { min-height: 44px; }
+.wb-touch .wb-msg-toolbar .ant-btn,
+.wb-touch .wb-msg-toolbar .qwenpaw-btn { min-height: 44px; }
+.wb-touch .wb-quick-react { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+.wb-touch .wb-mention-tag { min-height: 44px; }
+.wb-touch .wb-compact-more { min-height: 44px; }
+.wb-touch .wb-member-actions .ant-btn,
+.wb-touch .wb-member-actions .qwenpaw-btn { min-height: 44px; }
+/* 防 iOS 双击缩放 + 快速点击（touch-action 通行档）。 */
+.wb-main button, .wb-main a, .wb-main [role="button"],
+.wb-main .wb-msg-row, .wb-main .wb-thread-summary, .wb-main .wb-quick-react {
+  touch-action: manipulation;
+}
+/* 面板拖拽手柄：pointer 手势接管，禁浏览器滚/缩放手势抢事件。 */
+.wb-panel-handle { touch-action: none; }
+/* 输入框 16px（iOS <16px 聚焦即缩放页面的浏览器行为规避）。 */
+.wb-touch .wb-main textarea { font-size: 16px; }
 `;
   document.head.appendChild(style);
 }

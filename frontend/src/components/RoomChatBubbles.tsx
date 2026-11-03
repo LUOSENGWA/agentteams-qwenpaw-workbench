@@ -153,7 +153,7 @@ function ReplyBanner({
       <span style={{ color: PRIMARY, fontWeight: 600, flexShrink: 0 }}>
         {senderName}
       </span>
-      <span style={{ color: "#bbb", flexShrink: 0 }}>：</span>
+      <span style={{ color: t.textSecondary, flexShrink: 0 }}>：</span>
       <span
         style={{
           flex: 1,
@@ -166,27 +166,27 @@ function ReplyBanner({
         {summary || "…"}
       </span>
       {original ? (
-        <span style={{ fontSize: 11, color: "#aaa", flexShrink: 0 }}>↗</span>
+        <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>↗</span>
       ) : loadState === "loading" || pendingOriginal === reply.event_id ? (
         <span style={{ fontSize: 11, color: PRIMARY, flexShrink: 0 }}>
-          {tr("正在加载原消息…")}
+          {tr("正在加载更早消息…")}
         </span>
       ) : loadState === "notfound" ? (
-        <span style={{ fontSize: 11, color: "#ccc", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
           {tr("原消息不在可加载历史")}
         </span>
       ) : (
         <span
           style={{
             fontSize: 11,
-            color: onLoadOriginal ? PRIMARY : "#ccc",
+            color: onLoadOriginal ? PRIMARY : t.textSecondary,
             cursor: onLoadOriginal ? "pointer" : "default",
             textDecoration: onLoadOriginal ? "underline" : "none",
             flexShrink: 0,
           }}
           title={
             onLoadOriginal
-              ? tr("开始按需加载，自动翻页定位到原消息")
+              ? tr("自动向前翻页定位到原消息")
               : undefined
           }
           onClick={async (e) => {
@@ -515,7 +515,7 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
         >
           {rest}
         </span>
-        <span style={{ color: "#bbb", fontSize: 11, flexShrink: 0 }}>
+        <span style={{ color: t.textSecondary, fontSize: 11, flexShrink: 0 }}>
           {open ? "▲" : "▼"}
         </span>
       </div>
@@ -524,7 +524,7 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
           <div
             style={{
               fontSize: 10.5,
-              color: "rgba(127,127,127,0.9)",
+              color: t.textSecondary,
               marginBottom: 3,
             }}
           >
@@ -535,11 +535,11 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
               margin: 0,
               padding: "8px 10px",
               background:
-                status === "fail" ? "rgba(229,72,77,0.06)" : "rgba(127,127,127,0.08)",
+                status === "fail" ? "rgba(229,72,77,0.06)" : t.toolBg,
               border:
                 status === "fail"
                   ? "1px solid rgba(229,72,77,0.3)"
-                  : "1px solid rgba(127,127,127,0.2)",
+                  : `1px solid ${t.border}`,
               color: status === "fail" ? "#a13336" : t.textSecondary,
               borderRadius: 6,
               fontSize: 12,
@@ -691,11 +691,11 @@ function MessageBody({
     return (
       <div
         style={{
-          border: `1px solid ${resolved ? "#d9d9d9" : sevColor}`,
+          border: `1px solid ${resolved ? t.border : sevColor}`,
           borderRadius: CARD_RADIUS,
           padding: "10px 14px",
           maxWidth: 420,
-          background: resolved ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.6)",
+          background: resolved ? t.toolBg : t.cardBg,
           opacity: resolved ? 0.7 : 1,
         }}
       >
@@ -718,7 +718,7 @@ function MessageBody({
             {severity}
           </antd.Tag>
           {resolved ? (
-            <span style={{ fontSize: 12, color: "#888" }}>
+            <span style={{ fontSize: 12, color: t.textSecondary }}>
               {resolved === "approve" ? tr("已批准") : tr("已拒绝")}
             </span>
           ) : null}
@@ -755,7 +755,7 @@ function MessageBody({
             >
               <CloseIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("拒绝")}
             </antd.Button>
-            <span style={{ fontSize: 11, color: "#bbb", alignSelf: "center" }}>
+            <span style={{ fontSize: 11, color: t.textSecondary, alignSelf: "center" }}>
               {tr("将发送 @{name} {cmd}", {
                 name: (msg.sender.split(":")[0] || "").replace(/^@/, ""),
                 cmd: approval.approveCmd,
@@ -812,11 +812,11 @@ function MessageBody({
             borderRadius: 8,
             objectFit: "cover",
             cursor: "pointer",
-            border: mine ? "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 25%, transparent)" : "1px solid rgba(0,0,0,0.06)",
+            border: mine ? "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 25%, transparent)" : `1px solid ${t.border}`,
           }}
           onClick={() => thumb && window.open(thumb, "_blank")}
         />
-        <div style={{ fontSize: 12, color: "#999" }}>
+        <div style={{ fontSize: 12, color: t.textSecondary }}>
           {msg.body || tr("图片")} · {tr("点击预览")} /{" "}
           <a href={thumb} download={msg.body || "image"} style={{ color: PRIMARY }}>
             下载
@@ -1001,8 +1001,22 @@ function MessageBody({
     );
   }
   if (msg.msgtype !== "m.text") {
+    // m.notice: silent notification — render as muted italic (no protocol type name)
+    if (msg.msgtype === "m.notice") {
+      const body = msg.body || "";
+      // Legacy thinking messages (pre-#1450) — do not render
+      if (body.startsWith("Thinking:") || body.startsWith("[thinking]")) return null;
+      return (
+        <div style={{ color: t.textSecondary, fontSize: 12, fontStyle: "italic", opacity: 0.65 }}>
+          {body}
+        </div>
+      );
+    }
+    // m.room.* state changes (name/topic) — not a chat bubble
+    if (msg.msgtype.startsWith("m.room.")) return null;
+    // Unknown types — muted, for debugging
     return (
-      <div style={{ color: t.textSecondary, fontSize: 13 }}>
+      <div style={{ color: t.textSecondary, fontSize: 12, opacity: 0.5 }}>
         [{msg.msgtype.replace(/^m\./, "")}] {msg.body || ""}
       </div>
     );

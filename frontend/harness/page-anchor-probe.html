@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>anchor-probe</title>
+<style>
+  #scroller { height: 737px; overflow-y: auto; border: 1px solid #ccc; }
+  .row { height: 78px; line-height: 78px; border-bottom: 1px solid #eee; }
+</style>
+</head>
+<body>
+<div id="scroller"></div>
+<script>
+  const sc = document.getElementById("scroller");
+  function fill(n, from) {
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("div");
+      d.className = "row";
+      d.textContent = "row " + (from + i);
+      sc.insertBefore(d, sc.firstChild);
+    }
+  }
+  // 初始 40 行（100..139），scrollTop=0
+  sc.innerHTML = "";
+  for (let i = 0; i < 40; i++) {
+    const d = document.createElement("div");
+    d.className = "row";
+    d.textContent = "row " + (100 + i);
+    sc.appendChild(d);
+  }
+  window.__P__ = {
+    get top() { return sc.scrollTop; },
+    get height() { return sc.scrollHeight; },
+    // 顶插 20 行（模拟哨兵上扩）
+    prepend20: () => fill(20, 80),
+  };
+</script>
+</body>
+</html>
