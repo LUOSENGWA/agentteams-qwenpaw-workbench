@@ -358,6 +358,7 @@ export const manageDict: Record<string, { en: string }> = {
   "回滚到上次写入": { en: "Roll back previous write" },
   "已生效": { en: "Effective" },
   "待生效": { en: "Pending" },
+  "该运行时的配置面（L1 可编辑）": { en: "This runtime's config surface (L1 editable)" },
   "若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。": {
     en: "If the worker belongs to a team, the controller rejects the deletion (remove it from the team first).",
   },

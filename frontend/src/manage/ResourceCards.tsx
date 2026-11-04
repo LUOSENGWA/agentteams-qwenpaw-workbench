@@ -29,6 +29,8 @@ import { invalidateTags } from "../requestCache";
 import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import NarrowSheet from "../components/NarrowSheet";
 import WorkerRuntimeConfig from "../components/WorkerRuntimeConfig";
+import WorkerRuntimeConfigSurface from "../components/WorkerRuntimeConfigSurface";
+import { fetchRuntimeSurface } from "../api";
 import WorkerEnvPanel from "../components/WorkerEnvPanel";
 import WorkerCodingCliPanel from "../components/WorkerCodingCliPanel";
 import WorkerMcpPanel from "../components/WorkerMcpPanel";
@@ -84,6 +86,28 @@ export default function ResourceCards({
   const [openCard, setOpenCard] = React.useState<string | null>(null);
   const [hoverId, setHoverId] = React.useState<string | null>(null);
 
+  // P8c：非 qwenpaw 运行时先探一次 surface（该运行时有没有配置面）。
+  // 有 → 显示「运行配置」卡（surface 驱动）；404/405 → 不显示该卡。
+  const nonQwenpawRuntime = isQwenpawOnlyDisabled(worker.runtime);
+  const [surfaceReady, setSurfaceReady] = React.useState(false);
+  React.useEffect(() => {
+    if (!nonQwenpawRuntime || !worker.runtime) {
+      setSurfaceReady(false);
+      return;
+    }
+    let alive = true;
+    void fetchRuntimeSurface(worker.runtime)
+      .then(() => {
+        if (alive) setSurfaceReady(true);
+      })
+      .catch(() => {
+        if (alive) setSurfaceReady(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [nonQwenpawRuntime, worker.runtime]);
+
   const envCount = React.useMemo(
     () => Object.keys(worker.env ?? {}).length,
     [worker.env],
@@ -93,18 +117,18 @@ export default function ResourceCards({
     // 16.31：非 qwenpaw 运行时隐藏 QwenPaw-only 卡（只显示通用的）。
     // runtime 空/未上报 → 放行（老 worker 不误伤，同 runtimeGuard 判据）。
     const nonQwenpaw = isQwenpawOnlyDisabled(worker.runtime);
-    const list: ResourceCardDef[] = [
-      {
+    const list: ResourceCardDef[] = [];
+    // 「运行配置」：qwenpaw → 既有 5 分区面板；其他运行时 → 仅当该运行时
+    // 声明了 surface 才出卡（surface 驱动，没声明 = 没卡）。
+    if (!nonQwenpaw || surfaceReady) {
+      list.push({
         id: "cfg",
         title: tr("运行配置"),
-        desc: tr("并发 / 上下文 / shell 组（L1 可编辑）"),
+        desc: nonQwenpaw ? tr("该运行时的配置面（L1 可编辑）") : tr("并发 / 上下文 / shell 组（L1 可编辑）"),
         icon: SettingsIcon,
         width: 720,
-        // QwenPaw-only：runtime-config 端点字段（并发限流/上下文/shell 组/
-        // auto_title/loop/记忆后端）= QwenPaw app 配置。
-        qwenpawOnly: true,
-      },
-    ];
+      });
+    }
     // 环境变量卡——仅 envEditable === true（L2 隐藏，与旧拓扑同门控）。
     if (worker.envEditable === true) {
       list.push({
@@ -204,7 +228,7 @@ export default function ResourceCards({
     // 16.31 运行时过滤：非 qwenpaw → 去掉 QwenPaw-only 卡（通用卡保留；
     // 极端组合下全空 = 空 grid，布局自适应不塌，面板内部 gate 仍兜底）。
     return nonQwenpaw ? list.filter((c) => !c.qwenpawOnly) : list;
-  }, [worker.envEditable, worker.env, worker.mcpServers, worker.skills, worker.runtime, envCount, tr]);
+  }, [worker.envEditable, worker.env, worker.mcpServers, worker.skills, worker.runtime, envCount, tr, nonQwenpawRuntime, surfaceReady]);
 
   // 16.31：切 worker（运行时/envEditable 变化）后已打开的卡若被过滤掉
   // → 关掉弹窗（防 openCard 悬空 = 空标题空内容 Modal）。
@@ -218,7 +242,16 @@ export default function ResourceCards({
     (id: string) => {
       switch (id) {
         case "cfg":
-          return (
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
             <WorkerRuntimeConfig
               name={worker.name}
               l1={!!hasToken}
@@ -285,7 +318,7 @@ export default function ResourceCards({
           return null;
       }
     },
-    [worker, hasToken, onOpenSettings],
+    [worker, hasToken, onOpenSettings, nonQwenpawRuntime],
   );
 
   const open = openCard ? cards.find((c) => c.id === openCard) ?? null : null;
