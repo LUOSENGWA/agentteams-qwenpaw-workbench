@@ -29,6 +29,7 @@ import type * as ReactNS from "react";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
+  deleteWorker,
   fetchNodeVersion,
   fetchWorkerLoopStatusBySession,
   imageTag,
@@ -114,6 +115,7 @@ export default function WorkerDetailPane({
   hasToken,
   onRefreshAdmin,
   onOpenSettings,
+  onDeleted,
 }: {
   worker: WorkerInfo;
   /** 头像源（room 成员表 mxc 头像；undefined → 首字母兜底）。 */
@@ -122,6 +124,8 @@ export default function WorkerDetailPane({
   onRefreshAdmin?: (silent?: boolean, strong?: boolean) => void;
   /** 运行配置卡内「去设置」跳转（透传 WorkerRuntimeConfig）。 */
   onOpenSettings?: () => void;
+  /** 删除成功后的导航（回团队拓扑）——父层决定落地位置。 */
+  onDeleted?: () => void;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -250,8 +254,41 @@ export default function WorkerDetailPane({
   );
 
   const tag = imageTag(worker.image);
+
+  // 删除 Worker（危险区，L1）：DELETE /workers/{name} → 204；该 Worker 是
+  // 任一团队成员时 Controller 返回 409（body.message 含团队与出口端点，
+  // requestJson 已拼成 "HTTP 409: …"）→ 原样透出，不自行改写语义。
+  const confirmDelete = React.useCallback(() => {
+    antd.Modal.confirm({
+      title: tr("删除 Worker {name}", { name: worker.name }),
+      okText: tr("删除"),
+      cancelText: tr("取消"),
+      okButtonProps: { danger: true },
+      content: (
+        <div style={{ display: "grid", gap: 6, fontSize: 12.5 }}>
+          <span>{tr("删除 Worker CR 及其容器。")}</span>
+          <span style={{ fontSize: 11 }}>
+            {tr("若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。")}
+          </span>
+        </div>
+      ),
+      onOk: async () => {
+        try {
+          await deleteWorker(worker.name);
+          antd.message.success(tr("Worker {name} 已删除", { name: worker.name }));
+          invalidateTags(["teams", "admin", "workers-status"]);
+          void onRefreshAdmin?.(true, true);
+          onDeleted?.();
+        } catch (e) {
+          antd.message.error(
+            (e instanceof Error ? e.message : tr("操作失败")).slice(0, 300),
+          );
+        }
+      },
+    });
+  }, [worker.name, onRefreshAdmin, onDeleted, tr]);
   return (
-    <div style={{ display: "grid", gap: 10, padding: 4 }}>
+    <div style={{ display: "grid", gap: 10, padding: 4, minWidth: 0, overflow: "hidden" }}>
       <RuntimeNotice runtime={worker.runtime} compact />
       {/* 头部四行（方案 §4.1.3） */}
       <div style={{ display: "grid", gap: 6, padding: "2px 0" }}>
@@ -442,6 +479,14 @@ export default function WorkerDetailPane({
                 {tr("休眠")}
               </antd.Button>
             )}
+            <antd.Button
+              size="large"
+              danger
+              style={{ minHeight: 44, marginLeft: "auto" }}
+              onClick={confirmDelete}
+            >
+              {tr("删除")}
+            </antd.Button>
           </div>
         ) : null}
       </antd.Card>

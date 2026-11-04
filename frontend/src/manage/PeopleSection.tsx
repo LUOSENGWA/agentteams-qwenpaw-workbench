@@ -22,7 +22,7 @@
  */
 import type * as ReactNS from "react";
 
-import type { TeamMember, TeamRoom } from "../api";
+import { deleteHuman, type TeamMember, type TeamRoom } from "../api";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
 import HumanAccessModal, {
@@ -296,6 +296,12 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   // HumanAccessModal 自持草稿/保存/命令，human=null 时渲染 null）。
   const crd = useHumanCrd({ onRefresh, tr });
 
+  // 删除人员（危险区）——两步确认：Modal 内输入 human 名才放行。
+  // hooks 必须在下方 early-return 之前声明（react-hooks/rules）。
+  const [delOpen, setDelOpen] = React.useState(false);
+  const [delName, setDelName] = React.useState("");
+  const [delBusy, setDelBusy] = React.useState(false);
+
   const roomAvatars = React.useMemo(
     () => buildRoomAvatars(data.rooms),
     [data.rooms],
@@ -327,6 +333,28 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
 
   const level = human.permissionLevel ?? 2;
   const levelMeta = LEVEL_META[level] ?? { label: `L${level}`, color: "default" };
+
+  // 删除 = DELETE /humans/{name}（204）。Controller 侧语义：Matrix 账号
+  // 停用 + 强离全部房间；文件区对象保留；不可撤销 → 输入名字二次确认。
+  const doDeleteHuman = async () => {
+    if (delName.trim() !== human.name) return;
+    setDelBusy(true);
+    try {
+      await deleteHuman(human.name);
+      antd.message.success(tr("人员 {name} 已删除", { name: human.name }));
+      setDelOpen(false);
+      nav.clearPeople();
+      void onRefresh(true, true);
+    } catch (e) {
+      antd.message.error(
+        tr("删除失败：{msg}", {
+          msg: (e instanceof Error ? e.message : String(e)).slice(0, 200),
+        }),
+      );
+    } finally {
+      setDelBusy(false);
+    }
+  };
 
   return (
     <div style={{ display: "grid", gap: 10, padding: 4 }}>
@@ -412,6 +440,63 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
           </span>
         </button>
       </div>
+
+      {/* 危险区：删除人员（L1；Controller 仅 admin 放行）——输入名字确认。 */}
+      <div style={{ display: "grid", gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "red" }}>
+          {tr("危险区")}
+        </span>
+        <antd.Button
+          danger
+          style={{ minHeight: 44, justifyContent: "flex-start" }}
+          onClick={() => {
+            setDelName("");
+            setDelOpen(true);
+          }}
+        >
+          {tr("删除人员")}
+        </antd.Button>
+        <span style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("删除 Human CR：Matrix 账号停用并离开全部房间；文件区保留。不可撤销。")}
+        </span>
+      </div>
+
+      <antd.Modal
+        open={delOpen}
+        title={tr("删除人员 {name}", { name: human.name })}
+        okText={tr("删除")}
+        cancelText={tr("取消")}
+        okButtonProps={{
+          danger: true,
+          disabled: delName.trim() !== human.name,
+          loading: delBusy,
+        }}
+        onCancel={() => {
+          if (!delBusy) setDelOpen(false);
+        }}
+        onOk={() => void doDeleteHuman()}
+        destroyOnClose
+      >
+        <div style={{ display: "grid", gap: 8, fontSize: 12.5 }}>
+          <span>
+            {tr("删除 Human CR「{name}」？Matrix 账号将停用并离开全部房间；其文件区对象保留。此操作不可撤销。", {
+              name: human.name,
+            })}
+          </span>
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("输入 {name} 以确认删除", { name: human.name })}
+          </span>
+          <antd.Input
+            value={delName}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setDelName(e.target.value)
+            }
+            placeholder={human.name}
+            onPressEnter={() => void doDeleteHuman()}
+            aria-label={tr("输入 {name} 以确认删除", { name: human.name })}
+          />
+        </div>
+      </antd.Modal>
 
       {/* 访问与权限弹窗（chips 单模态；human=null 渲染 null = 零后台负载） */}
       <HumanAccessModal

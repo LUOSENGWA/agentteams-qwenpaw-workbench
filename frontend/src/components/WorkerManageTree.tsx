@@ -877,27 +877,31 @@ export function WorkerRow({
           {adminWorker && !narrow ? (
             <>
               <WorkerRuntimeConfig
+                key={`rtc-${adminWorker.name}`}
                 name={adminWorker.name}
                 l1={l1}
                 onOpenSettings={onOpenSettings}
               />
               {adminWorker.envEditable === true ? (
                 <WorkerEnvPanel
+                  key={`env-${adminWorker.name}`}
                   worker={adminWorker}
                   onChanged={() => invalidateTags(["admin"])}
                 />
               ) : null}
               {/* ：Worker MCP（只读合并视图：CRD 声明 + worker 自注册），
-  x=33 段头轨对齐；自注册读路径懒加载 + 404 诚实降级（面板内部）。 */}
-              <WorkerMcpPanel worker={adminWorker} />
+  x=33 段头轨对齐；自注册读路径懒加载 + 404 诚实降级（面板内部）。
+  key={name} 重挂载：切换 worker 强制 remount（编辑态随卸载清零）。 */}
+              <WorkerMcpPanel key={`mcp-${adminWorker.name}`} worker={adminWorker} />
               {/* ：Worker 插件（只读表格：id/name/version/enabled/
   loaded/plugin_type），x=33 段头轨对齐；懒加载 + 404 诚实降级
-  （面板内部）。 */}
-              <WorkerPluginsPanel worker={adminWorker} />
+  （面板内部）。key={name} 重挂载防状态残留。 */}
+              <WorkerPluginsPanel key={`plg-${adminWorker.name}`} worker={adminWorker} />
               {/* ：Coding CLI（AgentTeams 1.2.5+ #1360）宽屏内联卡，
   x=33 段头轨对齐（同款视觉家族；404 旧 Controller=面板内横幅，
-  L2=只读降级，探测惰性不后台轮询）。 */}
+  L2=只读降级，探测惰性不后台轮询）。key={name} 重挂载。 */}
               <WorkerCodingCliPanel
+                key={`cli-${adminWorker.name}`}
                 worker={adminWorker}
                 onChanged={() => invalidateTags(["admin"])}
               />

@@ -38,6 +38,7 @@ import WorkerTools from "../components/WorkerTools";
 import WorkerChannels from "../components/WorkerChannels";
 import ApprovalControl from "../components/ApprovalControl";
 import RuntimeUpgradePanel from "../components/RuntimeUpgradePanel";
+import WorkerLlmTuningPanel from "../components/WorkerLlmTuningPanel";
 import {
   SettingsIcon,
   BoltIcon,
@@ -117,6 +118,15 @@ export default function ResourceCards({
         width: 720,
       });
     }
+    // LLM 调优卡（无条件——通用卡，非 qwenpaw 运行时也显示；面板内部
+    // 惰性加载 + 403 只读降级兜底）。
+    list.push({
+      id: "llm",
+      title: tr("LLM 调优"),
+      desc: tr("重试 / 限流 + 流式超时（流式组热生效）"),
+      icon: BrainIcon,
+      width: 720,
+    });
     list.push(
       {
         id: "cli",
@@ -220,6 +230,15 @@ export default function ResourceCards({
           return (
             <WorkerEnvPanel
               worker={worker}
+              sheet
+              onChanged={() => invalidateTags(["admin"])}
+            />
+          );
+        case "llm":
+          return (
+            <WorkerLlmTuningPanel
+              worker={worker}
+              l1={!!hasToken}
               sheet
               onChanged={() => invalidateTags(["admin"])}
             />

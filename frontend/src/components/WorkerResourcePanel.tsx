@@ -142,6 +142,7 @@ export default function WorkerResourcePanel({
     return (
       <antd.Tabs
         size="small"
+          style={{ minWidth: 0, overflow: "hidden" }}
         activeKey={tab}
         onChange={showTab}
         // 16.29：tab 条为首元素——宿主弹窗 flushTop（body 顶部 padding 0）
@@ -195,6 +196,7 @@ export default function WorkerResourcePanel({
         <div style={{ padding: "0 10px 8px" }}>
           <antd.Tabs
             size="small"
+            style={{ minWidth: 0, overflow: "hidden" }}
             activeKey={tab}
             onChange={showTab}
             items={items}

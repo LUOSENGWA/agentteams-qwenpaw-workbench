@@ -386,6 +386,16 @@ export async function deleteTeam(name: string): Promise<unknown> {
   return r;
 }
 
+/** 删除 Worker（DELETE /api/v1/workers/{name}）——成功 204；
+ * 该 Worker 属于某团队时 409（body.message 透出，调用方用
+ * httpErrorDetail 展示）。写面失效同 createWorker：容器列表同变。 */
+export async function deleteWorker(name: string): Promise<unknown> {
+  const r = await controllerRequest("DELETE", `/workers/${encodeURIComponent(name)}`);
+  invalidateTags(["teams", "admin", "workers-status"]);
+  lruInvalidate("crd:");
+  return r;
+}
+
 /** cachedFetch 包裹（admin/data，TTL 30s + SWR 30s，tags
  * ["admin"]）——4 路并发取数，WorkerManage 30s 轮询与 CrdManage 失效后
  * 重取合并为一次回源。SWR：30-60s 段先回旧值（面板零等待）+ 后台再验证；

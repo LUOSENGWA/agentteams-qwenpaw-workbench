@@ -3,6 +3,15 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.55 (2026-11-04 - Manage page: LLM tuning restored + CRD deletion + nested file API)
+
+**Features**
+- **LLM tuning panel restored on the manage page**: the worker detail cards now include "LLM tuning" (retry / rate-limit + stream timeouts). The two stream-timeout environment variables (first content / idle) are hot-applied by the controller through the QwenPaw envs API, so a save takes effect immediately without a restart. The panel prefills the currently effective values through the four-layer chain (worker override → team default → actual container env value → entrypoint default). The panel was dropped when the manage page was refactored (the legacy manage tree still mounted it; the new page did not).
+- **Deletion for humans / workers / teams**: danger-zone actions in the person detail, team settings and worker detail panes, with controller-faithful semantics — deleting a human disables the Matrix account and forces it out of all rooms (the file area is kept); deleting a team removes the team room and configuration while keeping member workers (they become ungrouped) and offers a 6-second snapshot-rebuild undo; deleting a worker removes its CR and container and surfaces the controller's 409 verbatim when the worker is still a team member (remove it from the team first). Deletion is limited to L1 administrators (the controller is the final arbiter).
+
+**Fixes**
+- **"My files" panel targeted non-existent endpoints**: the panel previously called a flat `/api/v1/human-files` API that the controller does not expose, so the whole panel was unusable. This release rewrites it against the real contract — eight nested endpoints (`/api/v1/humans/{name}/files/{path...}` read/write/delete, `trash` list/restore/purge, `quota` get/set) — with response types aligned to the Go structs; restore conflicts (409) support an admin overwrite confirmation, and size / quota rejections are shown by error code.
+
 ## 0.5.0-beta.16.30 (2026-10-29 - Registered as PawApp)
 
 **Fixed**

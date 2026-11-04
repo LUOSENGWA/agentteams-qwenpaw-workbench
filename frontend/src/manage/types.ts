@@ -37,6 +37,9 @@ export interface ManageData {
   attentionPendingByRoom?: Record<string, number>;
   /** 是否已配置 Controller 管理员 token（决定 L1 管理面可用性）。 */
   hasToken?: boolean;
+  /** 顶层 tab 激活标记（human files 30s 轮询门控；稳定 ref，tick 时读——
+   * 传 ref 不传 boolean，翻转不击穿 React.memo）。 */
+  activeRef?: { current: boolean };
   /** 刷新拓扑树（silent=true 静默不闪页）。 */
   onRefreshTree?: (silent?: boolean) => void;
   /** 刷新管理数据（silent=true 静默不闪页；strong=#1407 写后立即读强一致，

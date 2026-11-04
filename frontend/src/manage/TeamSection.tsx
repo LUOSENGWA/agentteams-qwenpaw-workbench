@@ -741,6 +741,7 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
     if (!mgr) return <antd.Empty description={tr("Manager not found")} />;
     return (
       <ManagerDetailPane
+        key={`mdp-${mgr.name}`}
         manager={mgr}
         hasToken={data.hasToken}
         onRefreshAdmin={data.onRefreshAdmin}
@@ -874,11 +875,13 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
       nav.teamView === "worker" ? (
         workerInfo ? (
           <WorkerDetailPane
+            key={`wdp-${workerInfo.name}`}
             worker={workerInfo}
             avatarUrl={roomAvatars.get(workerInfo.matrixUserID)?.avatar_url}
             hasToken={data.hasToken}
             onRefreshAdmin={data.onRefreshAdmin}
             onOpenSettings={data.onOpenSettings}
+            onDeleted={() => nav.backTeam()}
           />
         ) : (
           // 选中 Worker 已从数据中消失（刷新后改名/删除）→ 回拓扑。

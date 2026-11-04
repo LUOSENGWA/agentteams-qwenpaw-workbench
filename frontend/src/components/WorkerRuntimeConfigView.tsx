@@ -160,6 +160,19 @@ export function WorkerRuntimeConfigView(props: {
           <span style={{ width: 12, fontSize: 10, color: "#888" }}>▸</span>
           <SettingsIcon size={13} />
           <span style={{ fontWeight: 600, fontSize: 12 }}>{tr("运行配置")}</span>
+          {dirty ? (
+            <span
+              title={tr("有未保存改动")}
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "#f59e0b",
+                display: "inline-block",
+                flexShrink: 0,
+              }}
+            />
+          ) : null}
           <antd.Tag color="orange" style={{ marginInlineEnd: 0, fontSize: 10 }}>
             qwenpaw
           </antd.Tag>
@@ -185,10 +198,12 @@ export function WorkerRuntimeConfigView(props: {
         padding: sheet ? 0 : 10,
         display: "grid",
         gap: 10,
+        minWidth: 0,
+        maxWidth: "100%",
       }}
     >
       {/* gap 6 = 折叠态同款（段头对齐：折叠/展开两态图标 x 不漂移）。 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         {/* 展开态补收起抓手（原展开后无法收起）。
  sheet 模式隐藏抓手/图标/标题——Modal 头已带标题与关闭钮，
  仅留 qwenpaw 标签 + 右侧动作钮（刷新/重置/保存）。 */}
@@ -263,6 +278,7 @@ export function WorkerRuntimeConfigView(props: {
       {cfg && !gate ? (
         <antd.Tabs
           size="small"
+          style={{ minWidth: 0, overflow: "hidden" }}
           // 竖屏弹窗：tab 条吸顶（zIndex 高于内容），下方各域 Card 内容独立滚动
           // （tab 条独立横向滚动）。
           tabBarStyle={
