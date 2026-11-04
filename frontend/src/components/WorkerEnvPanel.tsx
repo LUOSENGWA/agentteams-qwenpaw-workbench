@@ -41,6 +41,8 @@ import {
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
+import StreamTimeoutQuickEdit from "./StreamTimeoutQuickEdit";
+import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import { SettingsIcon } from "./icons";
 import { WorkerCollapseCard } from "./WorkerPanelsShared";
 
@@ -91,9 +93,12 @@ const sameMap = (a: Record<string, string>, b: Record<string, string>): boolean 
 function WorkerEnvPanel({
   worker,
   sheet,
+  l1,
   onChanged,
 }: {
   worker: WorkerInfo;
+  /** L1（controller token）：流式超时快捷编辑只在 L1 渲染。 */
+  l1?: boolean;
   /** 竖屏弹窗模式（NarrowSheet 承载）：去卡片外框 + 头部隐藏收起抓手/
    * 图标/标题（与 WorkerRuntimeConfig sheet 同语义），内容零改动。 */
   sheet?: boolean;
@@ -433,6 +438,9 @@ function WorkerEnvPanel({
           Controller detail GET 不回显 spec.env——自定义区读到空≠未配置，
           实际生效值以此区为准（QwenPaw_* / AGENTTEAMS_* / 镜像内置 + 自定义）。 */}
       <antd.Divider style={{ margin: "4px 0" }}>{tr("运行时环境")}</antd.Divider>
+      {!isQwenpawOnlyDisabled(worker.runtime) ? (
+        <StreamTimeoutQuickEdit name={worker.name} l1={l1} onChanged={onChanged} />
+      ) : null}
       <div
         style={{
           display: "flex",

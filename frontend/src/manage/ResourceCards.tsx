@@ -263,6 +263,7 @@ export default function ResourceCards({
           return (
             <WorkerEnvPanel
               worker={worker}
+              l1={!!hasToken}
               sheet
               onChanged={() => invalidateTags(["admin"])}
             />

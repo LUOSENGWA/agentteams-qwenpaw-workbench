@@ -359,6 +359,11 @@ export const manageDict: Record<string, { en: string }> = {
   "已生效": { en: "Effective" },
   "待生效": { en: "Pending" },
   "该运行时的配置面（L1 可编辑）": { en: "This runtime's config surface (L1 editable)" },
+  "流式超时（热生效，无需重启）": { en: "Stream timeouts (hot, no restart)" },
+  "空 = 继承团队/默认": { en: "Empty = inherit team/default" },
+  "保存（热生效）": { en: "Save (hot)" },
+  "重新读取": { en: "Reload" },
+  "已保存（流式超时热生效，无需重启）": { en: "Saved (stream timeouts applied hot, no restart)" },
   "若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。": {
     en: "If the worker belongs to a team, the controller rejects the deletion (remove it from the team first).",
   },
