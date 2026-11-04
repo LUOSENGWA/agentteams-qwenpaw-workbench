@@ -345,4 +345,11 @@ export const manageDict: Record<string, { en: string }> = {
   "若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。": {
     en: "If the worker belongs to a team, the controller rejects the deletion (remove it from the team first).",
   },
+
+  // ── P8C 运行时 surface 表单（G2：SchemaField / SurfaceForm）──
+  "下一轮生效": { en: "Applies next turn" },
+  "需重启": { en: "Requires restart" },
+  "已设置（不回显）": { en: "Set (not shown)" },
+  "通用": { en: "General" },
+  "{n} 个配置项": { en: "{n} field(s)" },
 };
