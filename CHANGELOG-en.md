@@ -3,6 +3,17 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.57 (2026-11-04 - Stream timeouts editable from the env card, applied hot)
+
+**Features**
+- The environment panel now offers a focused "stream timeouts (hot)" editor for
+  `QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT` and `QWENPAW_LLM_STREAM_IDLE_TIMEOUT`:
+  saving writes the worker override and the controller PATCHes the QwenPaw container's
+  `/api/envs`, so it takes effect without a restart. Clearing a value removes the override
+  (inherit team/default), and the panel re-reads the live value after saving.
+- Rendered for L1 only and for the qwenpaw runtime only (the envs API is QwenPaw-specific);
+  field metadata and validation are shared with the LLM tuning panel.
+
 ## 0.5.0-beta.16.56 (2026-11-04 - Runtime-native config surface, plugin side)
 
 **Features**

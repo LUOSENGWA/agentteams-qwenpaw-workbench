@@ -3,6 +3,16 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.57（2026-11-04 · 环境变量卡：流式超时可直接编辑并热生效）
+
+**新功能**
+- **环境变量卡新增「流式超时（热生效）」快捷编辑**：直接改
+  `QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT` / `QWENPAW_LLM_STREAM_IDLE_TIMEOUT`
+  两个值，保存即写 Worker 覆盖并由 Controller 对 qwenpaw 容器 `PATCH /api/envs` 热生效（无需重启）。
+  清空 = 清除覆盖（回继承团队/默认）；保存后自动实读一次真值确认已生效。
+- 仅 L1 渲染、仅 qwenpaw 运行时渲染（envs API 为 QwenPaw 专有）；字段元数据与校验复用
+  LLM 调优的同一份定义，不另造第二份字段表。
+
 ## 0.5.0-beta.16.56（2026-11-04 · 按运行时渲染配置面（P8c，插件侧））
 
 **新功能**
