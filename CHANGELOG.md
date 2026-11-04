@@ -3,6 +3,24 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.56（2026-11-04 · 按运行时渲染配置面（P8c，插件侧））
+
+**新功能**
+- **运行时配置面（surface 驱动）**：Worker 详情不再只对 QwenPaw 提供配置卡。前端先识别
+  `worker.runtime`，再拉取该运行时自己的 surface（`GET /api/runtimes/{runtime}/surface`），
+  **surface 声明什么就渲染什么**（faces → 分组 → 字段），没有跨运行时字段映射、没有判死表。
+  - 字段控件按 `type` 生成（string / int / float / bool / enum / string-list / object 只读）；
+  - `applies` 三态徽标：`hot` 无标、`next-turn`「下一轮生效」、`restart`「需重启」；
+  - `sensitive` 字段按**原子值**输入，读回掩码 `***` 永不回写；
+  - 保存走嵌套 diff + `if-rev` 乐观锁，失败按控制器错误码逐一呈现
+    （`stale_rev` 自动重读、`unknown_field` / `no_writable_keys` / `invalid_value` 定位、
+    `runtime_unknown` 降级、403 只读、502 可重试）；支持回滚到上一次写入。
+  - QwenPaw 继续使用原有分区面板，行为不变；该运行时未声明 surface 时不显示该卡（404/405 静默降级）。
+
+**说明**
+- 控制器端的 surface / member-config 路由由上游 PR #1493 提供；未合并前本版该卡不会出现（诚实降级），
+  合并后无需再发版即可点亮。
+
 ## 0.5.0-beta.16.55（2026-11-04 · 管理页：LLM 调优回归 + CRD 三删 + 文件区 nested API）
 
 **新功能**

@@ -3,6 +3,27 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.56 (2026-11-04 - Runtime-native config surface, plugin side)
+
+**Features**
+- **Runtime-native config surface**: the worker detail no longer offers a configuration card for
+  QwenPaw only. The panel reads `worker.runtime`, fetches that runtime's own surface
+  (`GET /api/runtimes/{runtime}/surface`) and renders exactly what the surface declares
+  (faces, groups, fields). No cross-runtime field mapping and no deny list.
+  - Controls are generated from `type` (string / int / float / bool / enum / string-list / read-only object).
+  - `applies` badges: `hot` none, `next-turn` "applies next turn", `restart` "needs restart".
+  - `sensitive` fields take one atomic value; the masked `***` read-back is never written back.
+  - Saving sends a nested diff with the `if-rev` precondition and maps controller errors one by one
+    (`stale_rev` reloads and keeps the draft; `unknown_field` / `no_writable_keys` / `invalid_value`
+    are pinpointed; `runtime_unknown` degrades; 403 is read-only; 502 is retryable); rollback to the
+    previous write is supported.
+  - QwenPaw keeps its existing sectioned panel unchanged; runtimes without a surface show no card
+    (404/405 degrades silently).
+
+**Notes**
+- The surface / member-config routes come from upstream PR #1493. Until it merges, the card stays
+  hidden by design; once merged it lights up without another release.
+
 ## 0.5.0-beta.16.55 (2026-11-04 - Manage page: LLM tuning restored + CRD deletion + nested file API)
 
 **Features**
