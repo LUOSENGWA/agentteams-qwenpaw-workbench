@@ -74,7 +74,7 @@ export function SchemaField({ field, value, onChange, disabled, error }: SchemaF
             status={error ? "error" : undefined}
             placeholder={ph}
             value={masked || typeof value !== "number" ? null : value}
-            onChange={(v) => onChange(v)}
+            onChange={(v: number | null) => onChange(v)}
             precision={field.type === "int" ? 0 : undefined}
             step={field.type === "float" ? 0.1 : undefined}
           />
