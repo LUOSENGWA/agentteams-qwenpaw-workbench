@@ -124,6 +124,31 @@ function TeamCfgInline({
   const catalog = useModelCatalog({ workers, tr });
   const crd = useTeamCrd({ teams, workers, onRefresh, tr, catalog });
 
+  // 删除团队（危险区）：确认后走 useTeamCrd.doDeleteTeam——内部按快照
+  // 6s「撤销」toast（createTeam 重建）+ 失效刷新；成功后返回团队列表。
+  const confirmDelete = React.useCallback(() => {
+    antd.Modal.confirm({
+      title: tr("删除团队 {name}", { name: team.name }),
+      okText: tr("删除"),
+      cancelText: tr("取消"),
+      okButtonProps: { danger: true },
+      content: (
+        <div style={{ display: "grid", gap: 6, fontSize: 12.5 }}>
+          <span>
+            {tr("团队房间与团队配置将删除；成员 Worker 保留（变为未分组）。")}
+          </span>
+          <span style={{ fontSize: 11 }}>
+            {tr("删除后 6 秒内可从提示条撤销（按快照重建；房间历史与容器状态不随之恢复）。")}
+          </span>
+        </div>
+      ),
+      onOk: async () => {
+        await crd.doDeleteTeam(team.name);
+        onBack();
+      },
+    });
+  }, [crd, team.name, onBack, tr]);
+
   // openCfg 按 team.name 只触发一次：openCfg 的 identity 随 catalog
   // 更新变化，若无键守卫，catalog 每次更新都会重跑 openCfg → 重置
   // 用户草稿（cfg/cfgRows 全部回到 team 基线）。
@@ -180,6 +205,23 @@ function TeamCfgInline({
               t={t}
             />
           ) : null}
+          {/* 危险区：删除团队（L1；Controller 仅 admin 放行）。 */}
+          <div style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "red" }}>
+              {tr("危险区")}
+            </span>
+            <antd.Button
+              danger
+              disabled={crd.cfgBusy}
+              style={{ minHeight: 44, justifyContent: "flex-start" }}
+              onClick={confirmDelete}
+            >
+              {tr("删除团队")}
+            </antd.Button>
+            <span style={{ fontSize: 11, color: t.textSecondary }}>
+              {tr("成员 Worker 保留（变未分组）；6 秒内可从提示条撤销（按快照重建，房间历史不恢复）。")}
+            </span>
+          </div>
         </div>
       </div>
       {/* 44px 底部操作条（返回 / 保存）——方案 §4.1.4。 */}

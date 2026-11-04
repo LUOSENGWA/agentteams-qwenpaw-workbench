@@ -225,4 +225,124 @@ export const manageDict: Record<string, { en: string }> = {
   "Worker CRD（名字 + 运行时 + 模型）；不指定团队 = 独立 Worker": {
     en: "Worker CRD (name + runtime + model); no team = standalone worker",
   },
+
+  // ── 文件域（#1426 Human Files，nested API 版：humans/{name}/files/{path...}）──
+  // 注：「加载中…」「加载失败」「重试」「刷新」「保存」「取消」「已保存」「下载」
+  // 「下载失败」「删除」「操作失败」复用各域既有键，不重复登记。
+  "文件管理": { en: "Files" },
+  "我的文件": { en: "My Files" },
+  "回收站": { en: "Trash" },
+  "回收站为空": { en: "Trash is empty" },
+  "共 {n} 个条目": { en: "{n} entrie(s)" },
+  "目录": { en: "Directory" },
+  "进入目录": { en: "Enter directory" },
+  "上级目录": { en: "Up one level" },
+  "大小 {a} · 删除于 {b}": { en: "Size {a} · Deleted {b}" },
+  "恢复 / 彻底删除在中栏行操作": {
+    en: "Trash entries are operated in the middle column rows",
+  },
+  "存储配额": { en: "Storage quota" },
+  "已用 {a} / 共 {b}": { en: "Used {a} / of {b}" },
+  "配额": { en: "Quota" },
+  "无限制": { en: "Unlimited" },
+  "已用 {a}": { en: "Used {a}" },
+  "配额获取失败": { en: "Failed to fetch quota" },
+  "上传文件": { en: "Upload file" },
+  "上传成功": { en: "Uploaded" },
+  "新建文件夹": { en: "New folder" },
+  "请输入文件夹名": { en: "Enter a folder name" },
+  "文件夹已创建": { en: "Folder created" },
+  "设置配额": { en: "Set quota" },
+  "设置人类文件存储上限（MB）。": {
+    en: "Set the human-file storage limit (MB).",
+  },
+  "配额（MB）": { en: "Quota (MB)" },
+  "请输入有效配额": { en: "Enter a valid quota" },
+  "清除配额": { en: "Clear quota" },
+  "清除配额？": { en: "Clear the quota?" },
+  "清除后人类文件存储无限制。": { en: "After clearing, human-file storage is unlimited." },
+  "移入回收站？": { en: "Move this file to the trash?" },
+  "已移入回收站": { en: "Moved to trash" },
+  "恢复文件": { en: "Restore file" },
+  "已恢复": { en: "Restored" },
+  "彻底删除": { en: "Purge" },
+  "彻底删除此项？": { en: "Purge this item?" },
+  "已彻底删除": { en: "Purged" },
+  "仅管理员": { en: "Admin only" },
+  "目标路径已存在": { en: "Target path already exists" },
+  "覆盖目标路径上的已有文件？（仅管理员）": {
+    en: "Overwrite the existing file at the target path? (admin only)",
+  },
+  "覆盖": { en: "Overwrite" },
+  "无权限或不存在": { en: "No access or not found" },
+  "当前账号无法访问该 Human 的文件，或 Human 不存在。": {
+    en: "The current account cannot access this human's files, or the human does not exist.",
+  },
+  "无法识别当前用户": { en: "Current user not identified" },
+  "请通过 Matrix 登录后再使用文件管理。": {
+    en: "Sign in with a Matrix account to use file management.",
+  },
+  "大小超限（单文件 ≤ 64MiB）": { en: "File exceeds the size limit (64MiB max per file)" },
+  "配额已满": { en: "Storage quota is full" },
+  "上传失败（大小超限或配额已满）": { en: "Upload failed (size limit or quota full)" },
+  "内容冲突（etag 不匹配）——刷新后重试": {
+    en: "Content conflict (etag mismatch) — refresh and retry",
+  },
+  "路径非法": { en: "Invalid path" },
+  "此操作不可撤销": { en: "This action cannot be undone" },
+  "清空": { en: "Purge" },
+  "覆盖上传": { en: "Overwrite upload" },
+  "所选文件已不在最新数据中": {
+    en: "Selected file no longer in the latest data",
+  },
+  "选择文件": { en: "Select a file" },
+  "点左侧列表中的文件查看操作": {
+    en: "Pick a file in the left list to see its actions",
+  },
+  "点中栏文件行查看下载 / 覆盖 / 删除": {
+    en: "Pick a file row in the middle column for download / overwrite / delete",
+  },
+  "暂无文件": { en: "No files" },
+  "大小 {a} · 更新 {b}": { en: "Size {a} · Updated {b}" },
+
+  // ── 危险区：CRD 删除（16.55）──
+  "危险区": { en: "Danger zone" },
+  "删除人员": { en: "Delete person" },
+  "删除团队": { en: "Delete team" },
+  "删除人员 {name}": { en: "Delete person {name}" },
+  "删除团队 {name}": { en: "Delete team {name}" },
+  "删除 Worker {name}": { en: "Delete worker {name}" },
+  "删除失败：{msg}": { en: "Delete failed: {msg}" },
+  "人员 {name} 已删除": { en: "Person {name} deleted" },
+  "Worker {name} 已删除": { en: "Worker {name} deleted" },
+  "删除 Human CR：Matrix 账号停用并离开全部房间；文件区保留。不可撤销。": {
+    en: "Deleting the Human CR disables the Matrix account and leaves all rooms; the file area is kept. This cannot be undone.",
+  },
+  "删除 Human CR「{name}」？Matrix 账号将停用并离开全部房间；其文件区对象保留。此操作不可撤销。": {
+    en: "Delete Human CR “{name}”? The Matrix account will be deactivated and leave all rooms; its file-area objects are kept. This cannot be undone.",
+  },
+  "输入 {name} 以确认删除": { en: "Type {name} to confirm deletion" },
+  "团队房间与团队配置将删除；成员 Worker 保留（变为未分组）。": {
+    en: "The team room and team configuration will be deleted; member workers are kept (they become ungrouped).",
+  },
+  "删除后 6 秒内可从提示条撤销（按快照重建；房间历史与容器状态不随之恢复）。": {
+    en: "You can undo from the toast within 6 seconds (rebuilt from a snapshot; room history and container state are not restored).",
+  },
+  "成员 Worker 保留（变未分组）；6 秒内可从提示条撤销（按快照重建，房间历史不恢复）。": {
+    en: "Member workers are kept (they become ungrouped); undo is available from the toast for 6 seconds (rebuilt from a snapshot; room history is not restored).",
+  },
+  "删除 Worker CR 及其容器。": {
+    en: "Deletes the Worker CR and its container.",
+  },
+  "重试 / 限流 + 流式超时（流式组热生效）": {
+    en: "Retry / rate-limit + stream timeout (stream group applies hot)",
+  },
+  // 存量漏键（TeamSection / WorkerDetailPane 既有 tr 字面量，本次顺手补齐）。
+  "Manager not found": { en: "Manager not found" },
+  "Managers": { en: "Managers" },
+  "Worker 模型配置": { en: "Worker model configuration" },
+  "点击编辑": { en: "Click to edit" },
+  "若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。": {
+    en: "If the worker belongs to a team, the controller rejects the deletion (remove it from the team first).",
+  },
 };

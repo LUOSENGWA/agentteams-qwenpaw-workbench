@@ -37,6 +37,7 @@ import type { ManageData, ManageVariant } from "./types";
 import TeamSection from "./TeamSection";
 import CrdSection from "./CrdSection";
 import PeopleSection from "./PeopleSection";
+import FilesSection from "./FilesSection";
 import ClusterSection from "./ClusterSection";
 
 const host = window.QwenPaw.host;
@@ -76,6 +77,7 @@ const SECTION_TITLE: Record<ManageSection, string> = {
   team: "团队管理",
   crd: "CRD 管理",
   people: "人员管理",
+  files: "文件管理",
   cluster: "集群管理",
 };
 
@@ -90,6 +92,7 @@ function ManagePage(props: ManagePageProps) {
     subscribeConsistency,
     getConsistencyState,
   );
+
   const {
     teams,
     admin,
@@ -129,6 +132,7 @@ function ManagePage(props: ManagePageProps) {
     onOpenSettings,
     rooms,
     attentionPendingByRoom,
+    activeRef,
   };
 
   // ── 30s 静默刷新（旧 WorkerManage 同款：activeRef 门控 + refreshRef）──
@@ -161,8 +165,11 @@ function ManagePage(props: ManagePageProps) {
   const cols: 1 | 2 | 3 | 4 =
     cw >= XWIDE_W ? 4 : cw >= WIDE_W ? 3 : cw >= MEDIUM_W ? 2 : 1;
   // 16.27 A / 16.28：集群/CRD 域 xwide 四栏无右栏（详情/表单已在中栏）→ 按 3 栏处理
-  // （域导航 160/56 + L1 列常显 280 + mid）；其它域四栏行为不变。
-  const sectionNoRight = (nav.section === "cluster" || nav.section === "crd") && cols === 4;
+  // （域导航 160/56 + L1 列常显 280 + mid）；files 同模式（#1426：列表在 L1 列、
+  // 详情在中栏）；其它域四栏行为不变。
+  const sectionNoRight =
+    (nav.section === "cluster" || nav.section === "crd" || nav.section === "files") &&
+    cols === 4;
 
   // ── 左栏展开/收起（持久化；默认 wide 开、其余关）──
   const [railOpen, setRailOpen] = React.useState<boolean>(() =>
@@ -210,6 +217,8 @@ function ManagePage(props: ManagePageProps) {
       <CrdSection nav={nav} cols={cols} data={data} variant={v} />
     ) : section === "people" ? (
       <PeopleSection nav={nav} cols={cols} data={data} variant={v} />
+    ) : section === "files" ? (
+      <FilesSection nav={nav} cols={cols} data={data} variant={v} />
     ) : (
       <ClusterSection nav={nav} cols={cols} data={data} variant={v} />
     );
@@ -238,6 +247,7 @@ function ManagePage(props: ManagePageProps) {
     if (section === "team") backTeam();
     else if (section === "crd") setCrdView("list");
     else if (section === "people") setPeopleView("list");
+    // files 无详情层（inDetail 恒 false，不进 L2，else 分支对其不可达）。
     else setClusterView("overview");
   }, [section, backTeam, setCrdView, setPeopleView, setClusterView]);
 
@@ -257,11 +267,13 @@ function ManagePage(props: ManagePageProps) {
             : tr("新建 Worker")
         : section === "people"
           ? selectedHuman || tr("人员管理")
-          : clusterView === "audit"
-            ? tr("审计")
-            : clusterView === "upgrade"
-              ? tr("运行时批量升级")
-              : tr("日志");
+          : section === "files"
+            ? tr("文件管理")
+            : clusterView === "audit"
+              ? tr("审计")
+              : clusterView === "upgrade"
+                ? tr("运行时批量升级")
+                : tr("日志");
 
   // 页头可点面包屑（横屏详情态在标题右侧；竖屏由 L2 顶栏承载）。
   // 段 = [L1 层] → [层 2] → … → [当前层（不可点）]；点击前缀段逐级回退。

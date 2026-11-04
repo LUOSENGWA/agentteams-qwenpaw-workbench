@@ -1,5 +1,5 @@
 /**
- * useManageNav.ts — 「管理」页导航状态（L0 四域 → L1 中栏 → L2 详情）。
+ * useManageNav.ts — 「管理」页导航状态（L0 五域 → L1 中栏 → L2 详情）。
  *
  * 各域状态机本身即 L2 层级（不另设栈结构——竖屏「← 返回」= 本状态机
  * 逐级降层）：
@@ -7,6 +7,7 @@
  * - crd:     list → human | team | worker
  * - people:  list → (selectedHuman + access | perm)
  * - cluster: overview → logs | audit | upgrade（15.36 C 加批量升级）
+ * - files:   扁平（#1426 Human Files；仅 selectedFile 跨列选中，无详情层）
  * 各域选择互不影响 section 切换（切走再切回保留状态）；back 只降本域。
  *
  * 深链（首页 SGLang 卡 → 集群管理）经 ManagePage 的 sectionRequest
@@ -17,7 +18,7 @@ import type * as ReactNS from "react";
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 
-export type ManageSection = "team" | "crd" | "people" | "cluster";
+export type ManageSection = "team" | "crd" | "people" | "cluster" | "files";
 export type TeamView = "list" | "topology" | "worker" | "settings";
 export type CrdView = "list" | "human" | "team" | "worker";
 export type PeopleView = "list" | "access" | "perm";
@@ -56,6 +57,9 @@ export interface ManageNav {
   /** 横屏面包屑「人员列表」：回列表（清选中人员）。 */
   clearPeople: () => void;
   setClusterView: (v: ClusterView) => void;
+  /** files 域选中的文件名（跨列：l1 列表 → mid/right 详情；null = 未选）。 */
+  selectedFile: string | null;
+  selectFile: (name: string | null) => void;
 }
 
 export function useManageNav(): ManageNav {
@@ -68,6 +72,10 @@ export function useManageNav(): ManageNav {
   const [peopleView, setPeopleView] = React.useState<PeopleView>("list");
   const [selectedHuman, setSelectedHuman] = React.useState<string | null>(null);
   const [clusterView, setClusterView] = React.useState<ClusterView>("overview");
+  const [selectedFile, setSelectedFile] = React.useState<string | null>(null);
+  const selectFile = React.useCallback((name: string | null) => {
+    setSelectedFile(name);
+  }, []);
 
   const openTeam = React.useCallback((name: string) => {
     setSelectedTeam(name);
@@ -153,5 +161,7 @@ export function useManageNav(): ManageNav {
     setPeopleView,
     clearPeople,
     setClusterView,
+    selectedFile,
+    selectFile,
   };
 }

@@ -3,6 +3,15 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.55（2026-11-04 · 管理页：LLM 调优回归 + CRD 三删 + 文件区 nested API）
+
+**新功能**
+- **管理页恢复 LLM 调优面板**：Worker 详情资源卡新增「LLM 调优」（重试 / 限流 + 流式超时）。流式超时组两个环境变量（首段输出 / 输出中断）由 Controller 经 QwenPaw envs API 热生效，保存即生效、无需重启；面板按「Worker 覆盖 → 团队默认 → 容器 env 实读值 → entrypoint 默认」四级链**预填当前生效值**。该面板在管理页重构时丢失（旧管理树仍挂载，新管理页未接）。
+- **CRD 删除能力（人员 / Worker / 团队）**：人员详情、团队设置、Worker 详情三处各加危险区删除入口，语义与 Controller 一致——删人员 = Matrix 账号停用 + 离开全部房间（文件区保留）；删团队 = 团队房间与配置删除、成员 Worker 保留（变未分组），并提供 6 秒快照重建撤销；删 Worker = CR 与容器删除，若仍是团队成员则原样透出 Controller 的 409 提示（先从团队移除）。删除入口限 L1 管理员（Controller 终裁）。
+
+**修复**
+- **「我的文件」面板对接错误接口**：此前对接的是不存在的扁平端点（`/api/v1/human-files`），整块面板实际不可用。本版按 Controller 真实契约重写为 8 个嵌套端点（`/api/v1/humans/{name}/files/{path...}` 读写删 + `trash` 列表/恢复/彻底删 + `quota` 读写），响应类型与 Go 结构体对齐；回收站恢复冲突（409）支持管理员覆盖确认，超限 / 配额满按错误码显示。
+
 ## 0.5.0-beta.16.30（2026-10-29 · 注册为 PawApp）
 
 **修复**

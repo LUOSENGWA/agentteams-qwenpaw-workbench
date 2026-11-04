@@ -1,7 +1,8 @@
 /**
- * ManageRail.tsx — 「管理」页左栏四域导航（L0）。
+ * ManageRail.tsx — 「管理」页左栏五域导航（L0）。
  *
- * 四域（现有 icons 图标）：团队管理 / CRD 管理 / 人员管理 / 集群管理。
+ * 五域（现有 icons 图标）：团队管理 / CRD 管理 / 人员管理 / 文件管理 /
+ * 集群管理。
  * 呈现（ManagePage 决定）：wide 内联 200 栏 / 四栏恒内联 160（收起 56
  * icon-only，collapsed=true，16.30）/ medium·narrow 抽屉覆盖。
  * 行高 ≥44 触控命中（.wb-touch 全局档只管 antd 控件，自写 button 在此自保）；
@@ -12,7 +13,13 @@ import type * as ReactNS from "react";
 import { PRIMARY } from "../WorkbenchPageShared";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { NotesIcon, TeamIcon, UsersIcon, WrenchIcon } from "../components/icons";
+import {
+  FolderIcon,
+  NotesIcon,
+  TeamIcon,
+  UsersIcon,
+  WrenchIcon,
+} from "../components/icons";
 import type { ManageSection } from "./useManageNav";
 
 const host = window.QwenPaw.host;
@@ -30,6 +37,7 @@ const RAIL_ITEMS: {
   { key: "team", label: "团队管理", Icon: TeamIcon },
   { key: "crd", label: "CRD 管理", Icon: NotesIcon },
   { key: "people", label: "人员管理", Icon: UsersIcon },
+  { key: "files", label: "文件管理", Icon: FolderIcon },
   { key: "cluster", label: "集群管理", Icon: WrenchIcon },
 ];
 
