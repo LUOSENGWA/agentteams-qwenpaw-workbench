@@ -342,6 +342,22 @@ export const manageDict: Record<string, { en: string }> = {
   "Managers": { en: "Managers" },
   "Worker 模型配置": { en: "Worker model configuration" },
   "点击编辑": { en: "Click to edit" },
+
+  // ── 运行时配置面（P8c / G3）──
+  "已写入，重启后生效：{keys}": { en: "Written; takes effect after restart: {keys}" },
+  "已写入，尚未生效": { en: "Written; not effective yet" },
+  "已保存": { en: "Saved" },
+  "运行时不接受：{keys}": { en: "Runtime rejects: {keys}" },
+  "配置已被他人修改，已重新读取": { en: "Config changed by someone else; reloaded" },
+  "存在未知字段：{fields}（请刷新后重试）": { en: "Unknown fields: {fields} (refresh and retry)" },
+  "JSON 格式不对": { en: "Invalid JSON" },
+  "无改动": { en: "No changes" },
+  "该运行时暂无配置面（已注册：{supported}）": { en: "This runtime has no config surface yet (registered: {supported})" },
+  "读取配置失败": { en: "Failed to load config" },
+  "只读：团队 Leader 或策略限制": { en: "Read-only: team leader or policy restriction" },
+  "回滚到上次写入": { en: "Roll back previous write" },
+  "已生效": { en: "Effective" },
+  "待生效": { en: "Pending" },
   "若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。": {
     en: "If the worker belongs to a team, the controller rejects the deletion (remove it from the team first).",
   },
