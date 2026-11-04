@@ -12,6 +12,9 @@ import {
   fetchMillforgeSource,
   millforgeCompile,
   millforgeInject,
+  millforgePreflightSouls,
+  type MillforgePreflightTarget,
+  millforgeRollbackSoul,
   millforgeImport,
   millforgeParseTeamJson,
   millforgePrompt,
@@ -369,6 +372,9 @@ export function useMillforgeCore(tr: TrFn) {
   const [injecting, setInjecting] = React.useState(false);
   const [injectError, setInjectError] = React.useState("");
   const [injectResult, setInjectResult] = React.useState<MillforgeInjectResult | null>(null);
+  // SOUL 冲突（现有内容与 build 不同）：非空 = 需用户确认覆盖
+  const [soulConflicts, setSoulConflicts] = React.useState<MillforgePreflightTarget[] | null>(null);
+  const [pendingInjectTeam, setPendingInjectTeam] = React.useState("");
 
   // 新 build 产出 → 按角色初始化 mapping（空）/ createRows（名留空）。
   React.useEffect(() => {
@@ -392,8 +398,34 @@ export function useMillforgeCore(tr: TrFn) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [build?.build_id]);
 
+  const doInjectRef = React.useRef<((t: string, o?: boolean) => Promise<MillforgeInjectResult | null>) | null>(null);
+
+  const confirmSoulOverwrite = React.useCallback(async () => {
+    const teamName = pendingInjectTeam;
+    setSoulConflicts(null);
+    if (teamName) await doInjectRef.current?.(teamName, true);
+  }, [pendingInjectTeam]);
+
+  const cancelSoulOverwrite = React.useCallback(() => {
+    setSoulConflicts(null);
+    setPendingInjectTeam("");
+  }, []);
+
+  const rollbackSoul = React.useCallback(
+    async (worker: string): Promise<boolean> => {
+      try {
+        const res = await millforgeRollbackSoul(worker);
+        return Boolean(res?.verified);
+      } catch (e) {
+        setInjectError(errText(e));
+        return false;
+      }
+    },
+    [],
+  );
+
   const doInject = React.useCallback(
-    async (teamName: string): Promise<MillforgeInjectResult | null> => {
+    async (teamName: string, overwrite = false): Promise<MillforgeInjectResult | null> => {
       if (!build) return null;
       if (injectMode === "mapping") {
         const m: Record<string, string> = {};
@@ -405,6 +437,21 @@ export function useMillforgeCore(tr: TrFn) {
           setInjectError(tr("至少选择 1 个现有 Worker（mapping）"));
           return null;
         }
+        // 预检：现有 SOUL 与 build 不同时，先让用户确认（不静默覆盖）
+        if (!overwrite) {
+          try {
+            const pf = await millforgePreflightSouls(build.build_id, m);
+            if ((pf.conflict_count || 0) > 0) {
+              setSoulConflicts(
+                (pf.targets || []).filter((t) => t.state === "differs"),
+              );
+              setPendingInjectTeam(teamName);
+              return null;
+            }
+          } catch {
+            /* 预检失败不阻断：注入侧仍有 409 兜底 */
+          }
+        }
         setInjecting(true);
         setInjectError("");
         try {
@@ -415,8 +462,10 @@ export function useMillforgeCore(tr: TrFn) {
             create_workers: [],
             core_skill: false, // AgentTeams 1.2.6 起 core 已集成在 TeamHarness，只注入 SOUL
             apply_soul: applySoul,
+            overwrite,
           });
           setInjectResult(res);
+          setSoulConflicts(null);
           return res;
         } catch (e) {
           setInjectError(errText(e));
@@ -455,6 +504,7 @@ export function useMillforgeCore(tr: TrFn) {
           })),
           core_skill: false, // AgentTeams 1.2.6 起 core 已集成在 TeamHarness，只注入 SOUL
           apply_soul: applySoul,
+          overwrite,
         });
         setInjectResult(res);
         return res;
@@ -467,6 +517,7 @@ export function useMillforgeCore(tr: TrFn) {
     },
     [build, injectMode, mapping, createRows, applySoul, tr],
   );
+  doInjectRef.current = doInject;
 
   // ── D 自定义团队（描述需求 → 提示词 → LLM JSON 校验）──
   const [custom, setCustom] = React.useState<MfCustomState>(EMPTY_CUSTOM);
@@ -587,6 +638,10 @@ export function useMillforgeCore(tr: TrFn) {
     injectError,
     injectResult,
     doInject,
+    soulConflicts,
+    confirmSoulOverwrite,
+    cancelSoulOverwrite,
+    rollbackSoul,
     // D 自定义
     custom,
     setCustom,

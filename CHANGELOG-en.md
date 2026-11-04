@@ -3,6 +3,26 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.59 (2026-11-04 - Millforge SOUL injection guards: idempotent, confirm, backup/rollback)
+
+**Features**
+- Read-only preflight before injecting: each target is classified as empty / same / differs with
+  its sha256, provenance and an 80-char excerpt; nothing is written.
+- True idempotency: when the new SOUL has the same sha256 the PUT is skipped (no reconcile, no
+  clobbering manual edits) and the result row shows "unchanged (skipped)".
+- Conflicts require confirmation: a different existing SOUL returns `409 soul_conflict` with
+  per-target details; the UI asks for confirmation (worker, existing source, length, excerpt) and
+  re-injects with `overwrite=true`.
+- Backup and rollback: the previous SOUL is kept before overwriting (3 per worker) and each
+  overwritten row offers "roll back", restoring the previous content and verifying its sha256.
+- Stronger read-back: verification now compares the sha256 of the stored SOUL with what was sent
+  instead of only checking that it is non-empty.
+
+**Notes**
+- Millforge writes SOUL only and never touches AGENTS.md (the controller manages it with markers);
+  team leaders still get marker-based merging while regular workers are fully replaced — the result
+  table's mode column reports apply/overwrite/skipped/rollback accordingly.
+
 ## 0.5.0-beta.16.58 (2026-11-04 - Millforge: source switch fix, SOUL-only injection)
 
 **Fixes**

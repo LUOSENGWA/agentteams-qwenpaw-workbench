@@ -3,6 +3,18 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.59（2026-11-04 · 千锻 SOUL 注入护栏：幂等 / 冲突确认 / 留底回滚）
+
+**新功能**
+- **注入前预检（只读）**：逐目标读现有 SOUL，返回 `empty / same / differs` 三态（含 sha256、来源 provenance、首 80 字摘要），不写任何东西。
+- **同内容真幂等**：与新 SOUL sha256 相同 → 跳过 PUT（不再触发 reconcile、不覆盖手工改动），结果标「无变化（已跳过）」。
+- **冲突必须确认**：现有内容不同 → 后端 `409 soul_conflict`（带逐项冲突详情）；UI 弹确认框列出 Worker / 现有来源（千锻 build 或手工）/ 长度 / 摘要，确认后带 `overwrite=true` 再注入。
+- **覆盖留底 + 一键回滚**：覆盖前把旧 SOUL 存进插件侧留底（每 worker 保 3 条）；结果表每行带「回滚」，把该 Worker 恢复到覆盖前内容并按 sha256 校验。
+- **读回校验加强**：由「SOUL 非空」改为「读回内容 sha256 === 写入内容 sha256」。
+
+**说明**
+- 千锻只写 SOUL，不碰 AGENTS.md（后者由控制器以 marker 合并管理）；团队 Leader 仍走模板 marker 合并（marker 外内容保留），普通 Worker 为整体覆盖——结果表的「方式」列会如实标注 apply/overwrite/跳过/回滚。
+
 ## 0.5.0-beta.16.58（2026-11-04 · 千锻：源切换修复 + 注入只写 SOUL）
 
 **修复**

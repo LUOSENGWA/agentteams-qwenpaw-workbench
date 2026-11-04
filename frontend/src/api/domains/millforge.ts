@@ -161,6 +161,8 @@ export interface MillforgeInjectRequest {
   create_workers: MillforgeCreateWorker[];
   core_skill: boolean;
   apply_soul: boolean;
+  /** 目标已有内容不同的 SOUL 时，true = 确认覆盖（未确认 → 后端 409）。 */
+  overwrite?: boolean;
 }
 
 /** 注入单项结果（souls 现有 Worker / created 新建 Worker 同构）。 */
@@ -168,9 +170,34 @@ export interface MillforgeInjectEntry {
   worker?: string;
   name?: string;
   role_id: string;
-  status: "ok" | "error";
+  /** unchanged = 内容相同已跳过（真幂等）。 */
+  status: "ok" | "unchanged" | "error";
   error?: string;
   verified?: boolean;
+  /** apply=首次写入 / overwrite=确认覆盖 / unchanged=跳过 / rollback=回滚。 */
+  mode?: "apply" | "overwrite" | "unchanged" | "rollback";
+  /** 覆盖前的 SOUL sha256（有值 = 可回滚）。 */
+  prev_sha256?: string;
+  prev_provenance?: Record<string, string | boolean>;
+}
+
+/** POST /millforge/inject/preflight 单项（只读，不写任何东西）。 */
+export interface MillforgePreflightTarget {
+  worker: string;
+  role_id: string;
+  state: "empty" | "same" | "differs" | "error";
+  prev_sha256?: string;
+  new_sha256?: string;
+  prev_provenance?: Record<string, string | boolean>;
+  prev_head?: string;
+  prev_len?: number;
+  error?: string;
+}
+
+export interface MillforgePreflightResult {
+  build_id: string;
+  targets: MillforgePreflightTarget[];
+  conflict_count: number;
 }
 
 /** POST /millforge/inject 响应（HTTP 恒 200 + partial 如实回报逐项成败）。 */
@@ -330,6 +357,39 @@ export async function millforgeInject(
   // 团队结构/技能数据面全部失效（partial 也失效：逐项成败不一，
   // 失效面宁宽勿窄）。
   invalidateTags(["millforge", "admin", "teams", "skills"]);
+  return r;
+}
+
+/** POST /millforge/inject/preflight（注入前只读预检：empty/same/differs）。 */
+export async function millforgePreflightSouls(
+  buildId: string,
+  mapping: Record<string, string>,
+): Promise<MillforgePreflightResult> {
+  return (await requestJson(`${BASE}/inject/preflight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ build_id: buildId, mapping }),
+  }, 30000)) as MillforgePreflightResult;
+}
+
+export interface MillforgeRollbackResult {
+  ok: boolean;
+  worker: string;
+  restored_sha256: string;
+  backup_at?: string;
+  verified: boolean;
+}
+
+/** POST /millforge/rollback（把该 Worker 的 SOUL 回滚到上次覆盖前，插件侧留底）。 */
+export async function millforgeRollbackSoul(
+  worker: string,
+): Promise<MillforgeRollbackResult> {
+  const r = (await requestJson(`${BASE}/rollback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ worker }),
+  }, 60000)) as MillforgeRollbackResult;
+  invalidateTags(["millforge", "admin", "teams"]);
   return r;
 }
 

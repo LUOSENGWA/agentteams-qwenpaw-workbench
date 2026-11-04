@@ -124,6 +124,61 @@ def _injections_path() -> Path:
     return _state_dir() / "millforge-injections.json"
 
 
+def _soul_backups_path() -> Path:
+    return _state_dir() / "millforge-soul-backups.json"
+
+
+def _load_soul_backups() -> List[Dict[str, Any]]:
+    try:
+        data = json.loads(_soul_backups_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _save_soul_backup(
+    worker: str, prev_soul: str, build_id: str, role_id: str
+) -> None:
+    """注入覆盖前留底：只保留每个 worker 最近 3 条，全局 60 条。"""
+    rec = {
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "worker": worker,
+        "build_id": build_id,
+        "role_id": role_id,
+        "prev_sha256": hashlib.sha256((prev_soul or "").encode("utf-8")).hexdigest(),
+        "prev_soul": prev_soul or "",
+        "restored": False,
+    }
+    hist = _load_soul_backups()
+    hist.insert(0, rec)
+    kept: List[Dict[str, Any]] = []
+    per_worker: Dict[str, int] = {}
+    for h in hist:
+        w = str(h.get("worker") or "")
+        if per_worker.get(w, 0) >= 3:
+            continue
+        per_worker[w] = per_worker.get(w, 0) + 1
+        kept.append(h)
+        if len(kept) >= 60:
+            break
+    try:
+        _soul_backups_path().parent.mkdir(parents=True, exist_ok=True)
+        _soul_backups_path().write_text(
+            json.dumps(kept, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+
+def _soul_sha(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+
+def _soul_head(text: str, n: int = 80) -> str:
+    t = re.sub(r"\s+", " ", (text or "").strip())
+    return t[:n]
+
+
 # ── 源配置 ──────────────────────────────────────────────────────────
 
 
@@ -793,6 +848,17 @@ class MillforgeInjectRequest(BaseModel):
     create_workers: List[MillforgeCreateWorker] = []
     core_skill: bool = True
     apply_soul: bool = True
+    # 覆盖已存在且内容不同的 SOUL：默认 False（返回 409 让调用方确认）。
+    overwrite: bool = False
+
+
+class MillforgePreflightRequest(BaseModel):
+    build_id: str = ""
+    mapping: Dict[str, str] = {}  # build role_id → 现有 worker 名
+
+
+class MillforgeRollbackRequest(BaseModel):
+    worker: str = ""
 
 
 class MillforgePromptRequest(BaseModel):
@@ -1139,6 +1205,163 @@ def build_millforge_router() -> APIRouter:
 
     # ── 注入 ──────────────────────────────────────────────────────
 
+    async def _preflight_souls(
+        base: str,
+        token: str,
+        mapping: Dict[str, str],
+        souls: Dict[str, str],
+    ) -> tuple:
+        """mapping 目标逐项读现有 SOUL → (preflight, conflicts, prev_souls)。
+
+        state: empty（无内容）/ same（sha 相同，可跳过）/ differs（需确认）/ error（读取失败）。
+        prev_souls 只在服务端内部留底，不进响应体。
+        """
+        preflight: List[Dict[str, Any]] = []
+        conflicts: List[Dict[str, Any]] = []
+        prev_souls: Dict[str, str] = {}
+        for rid, wname in mapping.items():
+            st, data = await _ctl_call(
+                "GET", f"{base}/api/v1/workers/{quote(wname)}", token
+            )
+            if st != 200 or not isinstance(data, dict):
+                preflight.append(
+                    {
+                        "worker": wname,
+                        "role_id": rid,
+                        "state": "error",
+                        "error": _ctl_err(st, data),
+                    }
+                )
+                continue
+            prev = str(data.get("soul") or "")
+            prev_souls[wname] = prev
+            prev_sha, new_sha = _soul_sha(prev), _soul_sha(souls[rid])
+            state = (
+                "empty"
+                if not prev.strip()
+                else ("same" if prev_sha == new_sha else "differs")
+            )
+            item = {
+                "worker": wname,
+                "role_id": rid,
+                "state": state,
+                "prev_sha256": prev_sha if prev else "",
+                "new_sha256": new_sha,
+                "prev_provenance": _parse_provenance(prev),
+                "prev_head": _soul_head(prev),
+                "prev_len": len(prev),
+            }
+            preflight.append(item)
+            if state == "differs":
+                conflicts.append(item)
+        return preflight, conflicts, prev_souls
+
+    @router.post("/millforge/inject/preflight")
+    async def millforge_inject_preflight(
+        req: MillforgePreflightRequest,
+    ) -> Dict[str, Any]:
+        """注入前预检：逐项返回 empty/same/differs/error（不写任何东西）。"""
+        build = _load_build((req.build_id or "").strip())
+        if not build.get("roles"):
+            raise HTTPException(status_code=404, detail="build 无角色数据")
+        bdir = _builds_dir() / build["build_id"]
+        souls: Dict[str, str] = {}
+        for r in build["roles"]:
+            rid = str(r.get("role") or "")
+            sp = bdir / f"{rid}.soul.md"
+            if rid and sp.is_file():
+                souls[rid] = sp.read_text(encoding="utf-8")
+        mapping = {
+            str(k): str(v).strip()
+            for k, v in (req.mapping or {}).items()
+            if str(v).strip()
+        }
+        for rid in mapping:
+            if rid not in souls:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"mapping 角色 {rid} 不在 build 中",
+                )
+        token, base = _require_token()
+        targets, conflicts, _ = await _preflight_souls(base, token, mapping, souls)
+        return {
+            "build_id": build["build_id"],
+            "targets": targets,
+            "conflict_count": len(conflicts),
+        }
+
+    @router.post("/millforge/rollback")
+    async def millforge_rollback(req: MillforgeRollbackRequest) -> Dict[str, Any]:
+        """把该 Worker 的 SOUL 回滚到「上一次被覆盖前」的内容（插件侧留底）。"""
+        worker = (req.worker or "").strip()
+        if not worker:
+            raise HTTPException(status_code=400, detail="worker 不能为空")
+        backups = _load_soul_backups()
+        rec = next(
+            (
+                b
+                for b in backups
+                if str(b.get("worker") or "") == worker and not b.get("restored")
+            ),
+            None,
+        )
+        if not rec:
+            raise HTTPException(
+                status_code=404, detail=f"{worker} 没有可回滚的 SOUL 备份"
+            )
+        token, base = _require_token()
+        st, data = await _ctl_call(
+            "PUT",
+            f"{base}/api/v1/workers/{quote(worker)}",
+            token,
+            json_body={"soul": str(rec.get("prev_soul") or "")},
+        )
+        if st != 200:
+            raise HTTPException(status_code=502, detail=_ctl_err(st, data))
+        st2, d2 = await _ctl_call(
+            "GET", f"{base}/api/v1/workers/{quote(worker)}", token
+        )
+        verified = (
+            st2 == 200
+            and isinstance(d2, dict)
+            and _soul_sha(str(d2.get("soul") or ""))
+            == str(rec.get("prev_sha256") or "")
+        )
+        rec["restored"] = True
+        rec["restored_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            _soul_backups_path().write_text(
+                json.dumps(backups, ensure_ascii=False, indent=1), encoding="utf-8"
+            )
+        except OSError:
+            pass
+        result = {
+            "ok": verified,
+            "worker": worker,
+            "restored_sha256": rec.get("prev_sha256", ""),
+            "backup_at": rec.get("at", ""),
+            "verified": verified,
+        }
+        _record_injection(
+            {
+                "build_id": str(rec.get("build_id") or ""),
+                "team": "",
+                "partial": False,
+                "souls": [
+                    {
+                        "worker": worker,
+                        "role_id": str(rec.get("role_id") or ""),
+                        "status": "ok" if verified else "error",
+                        "verified": verified,
+                        "mode": "rollback",
+                    }
+                ],
+                "created": [],
+                "core_skill": {"status": "skipped", "detail": "rollback"},
+            }
+        )
+        return result
+
     @router.post("/millforge/inject")
     async def millforge_inject(req: MillforgeInjectRequest) -> Dict[str, Any]:
         """SOUL 注入（现有 Worker PUT / 新建 Worker POST）+ core skill
@@ -1200,6 +1423,85 @@ def build_millforge_router() -> APIRouter:
             "created": [],
             "core_skill": {"status": "skipped", "detail": "未请求 core skill"},
         }
+        # ── 预检：现有 SOUL 三态（empty / same / differs）──
+        preflight, conflicts, prev_souls = await _preflight_souls(
+            base, token, mapping, souls
+        )
+        if conflicts and not req.overwrite:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "soul_conflict",
+                    "message": "目标已有内容不同的 SOUL——需确认后带 overwrite=true 再注",
+                    "conflicts": conflicts,
+                },
+            )
+
+        if not req.apply_soul and not req.core_skill:
+            raise HTTPException(
+                status_code=400,
+                detail="apply_soul 与 core_skill 至少其一须为 true（否则无操作）",
+            )
+        token, base = _require_token()
+        result: Dict[str, Any] = {
+            "build_id": build["build_id"],
+            "team": (req.team or "").strip(),
+            "souls": [],
+            "created": [],
+            "core_skill": {"status": "skipped", "detail": "未请求 core skill"},
+        }
+        # ── 预检：现有 SOUL 三态（empty / same / differs）──
+        # differs 且未 overwrite → 409，绝不静默覆盖；同内容 → 跳过（真幂等）。
+        preflight: List[Dict[str, Any]] = []
+        conflicts: List[Dict[str, Any]] = []
+        prev_souls: Dict[str, str] = {}  # 内部留底用，不进响应
+        if req.apply_soul:
+            for rid, wname in mapping.items():
+                st, data = await _ctl_call(
+                    "GET", f"{base}/api/v1/workers/{quote(wname)}", token
+                )
+                if st != 200 or not isinstance(data, dict):
+                    preflight.append(
+                        {
+                            "worker": wname,
+                            "role_id": rid,
+                            "state": "error",
+                            "error": _ctl_err(st, data),
+                        }
+                    )
+                    continue
+                prev = str(data.get("soul") or "")
+                prev_souls[wname] = prev
+                new_soul = souls[rid]
+                prev_sha, new_sha = _soul_sha(prev), _soul_sha(new_soul)
+                state = (
+                    "empty"
+                    if not prev.strip()
+                    else ("same" if prev_sha == new_sha else "differs")
+                )
+                item = {
+                    "worker": wname,
+                    "role_id": rid,
+                    "state": state,
+                    "prev_sha256": prev_sha if prev else "",
+                    "new_sha256": new_sha,
+                    "prev_provenance": _parse_provenance(prev),
+                    "prev_head": _soul_head(prev),
+                    "prev_len": len(prev),
+                }
+                preflight.append(item)
+                if state == "differs":
+                    conflicts.append(item)
+        if conflicts and not req.overwrite:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "soul_conflict",
+                    "message": "目标已有内容不同的 SOUL——需确认后带 overwrite=true 再注",
+                    "conflicts": conflicts,
+                },
+            )
+
         # 1) 新建 Worker（带 SOUL）
         for c in creates:
             name = c.name.strip()
@@ -1250,7 +1552,40 @@ def build_millforge_router() -> APIRouter:
                 )
         # 2) 现有 Worker → PUT SOUL（apply_soul=false = 纯 core skill 二次注入）
         if req.apply_soul:
+            by_worker = {str(p.get("worker") or ""): p for p in preflight}
             for rid, wname in mapping.items():
+                pf = by_worker.get(wname) or {}
+                # 同内容 → 真幂等：跳过 PUT（不触发 reconcile / 不覆盖手改）
+                if pf.get("state") == "same":
+                    result["souls"].append(
+                        {
+                            "worker": wname,
+                            "role_id": rid,
+                            "status": "unchanged",
+                            "error": "",
+                            "verified": True,
+                            "prev_sha256": pf.get("prev_sha256", ""),
+                            "prev_provenance": pf.get("prev_provenance", {}),
+                            "mode": "unchanged",
+                        }
+                    )
+                    continue
+                if pf.get("state") == "error":
+                    result["souls"].append(
+                        {
+                            "worker": wname,
+                            "role_id": rid,
+                            "status": "error",
+                            "error": str(pf.get("error") or "读取现有 SOUL 失败"),
+                            "verified": False,
+                        }
+                    )
+                    continue
+                # 覆盖前留底（rollback 依据）
+                if pf.get("state") == "differs":
+                    _save_soul_backup(
+                        wname, prev_souls.get(wname, ""), build["build_id"], rid
+                    )
                 st, data = await _ctl_call(
                     "PUT",
                     f"{base}/api/v1/workers/{quote(wname)}",
@@ -1263,19 +1598,24 @@ def build_millforge_router() -> APIRouter:
                     "status": "error" if st != 200 else "ok",
                     "error": "" if st == 200 else _ctl_err(st, data),
                     "verified": False,
+                    "prev_sha256": pf.get("prev_sha256", ""),
+                    "prev_provenance": pf.get("prev_provenance", {}),
+                    "mode": "overwrite" if pf.get("state") == "differs" else "apply",
                 }
                 if st == 200:
                     st2, d2 = await _ctl_call(
                         "GET", f"{base}/api/v1/workers/{quote(wname)}", token
                     )
+                    # 强校验：读回内容 sha 必须等于刚写入的内容（不再只判非空）
                     entry["verified"] = (
                         st2 == 200
                         and isinstance(d2, dict)
-                        and bool(d2.get("soul"))
+                        and _soul_sha(str(d2.get("soul") or ""))
+                        == _soul_sha(souls[rid])
                     )
                     if not entry["verified"]:
                         entry["status"] = "error"
-                        entry["error"] = "读回验证失败（SOUL 未生效）"
+                        entry["error"] = "读回校验失败（SOUL 内容与写入不一致）"
                 result["souls"].append(entry)
         # 3) core skill（打包 → 上传 scope=team → 追加到相关 worker）
         if req.core_skill:

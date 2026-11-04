@@ -946,6 +946,7 @@ def test_inject_update_existing_workers(client):
         "build_id": b["build_id"], "team": "inject-team",
         "mapping": {"lead": "lead-bot", "w1": "w1-bot"},
         "core_skill": False,
+        "overwrite": True,
     })
     assert r.status_code == 200, r.text
     d = r.json()
@@ -1009,6 +1010,7 @@ def test_inject_core_skill_zip_and_assign(client):
     r = tc.post("/millforge/inject", json={
         "build_id": b["build_id"], "team": "skill-team",
         "mapping": {"w1": "solo-bot"}, "core_skill": True,
+        "overwrite": True,
     })
     assert r.status_code == 200, r.text
     d = r.json()
@@ -1429,3 +1431,90 @@ def test_compile_writer_member_role(client):
     kinds = [x.get("kind") for x in roles if x.get("kind")]
     if kinds:
         assert "writer" in kinds, kinds
+
+
+def test_inject_conflict_requires_overwrite(client):
+    """现有 SOUL 与 build 不同 → 409 soul_conflict，且不写任何东西。"""
+    tc, state, ctl, *_ = client
+    _import_pack(tc)
+    b = _compile_and_build(tc, "conflict-team")
+    ctl.seed_worker("lead-bot", soul="hand-written")
+    r = tc.post("/millforge/inject", json={
+        "build_id": b["build_id"], "team": "conflict-team",
+        "mapping": {"lead": "lead-bot"}, "core_skill": False,
+    })
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "soul_conflict"
+    assert detail["conflicts"][0]["worker"] == "lead-bot"
+    assert detail["conflicts"][0]["state"] == "differs"
+    assert "prev_sha256" in detail["conflicts"][0]
+    # 没有 PUT（未确认前绝不覆盖）
+    assert not any(c["method"] == "PUT" for c in ctl.calls)
+
+
+def test_inject_same_soul_is_unchanged(client):
+    """同 build 同角色再注一次 → 跳过 PUT，status=unchanged（真幂等）。"""
+    tc, state, ctl, *_ = client
+    _import_pack(tc)
+    b = _compile_and_build(tc, "idem-team")
+    lead_soul = b["roles"][next(i for i, x in enumerate(b["roles"])
+                               if x["role"] == "lead")]["soul"]
+    ctl.seed_worker("lead-bot", soul=lead_soul)
+    r = tc.post("/millforge/inject", json={
+        "build_id": b["build_id"], "team": "idem-team",
+        "mapping": {"lead": "lead-bot"}, "core_skill": False,
+    })
+    assert r.status_code == 200, r.text
+    entry = r.json()["souls"][0]
+    assert entry["status"] == "unchanged"
+    assert entry["verified"] is True
+    assert not any(c["method"] == "PUT" for c in ctl.calls)
+
+
+def test_inject_overwrite_then_rollback(client):
+    """overwrite 覆盖前留底；rollback 把 SOUL 恢复到覆盖前内容并校验 sha。"""
+    tc, state, ctl, *_ = client
+    _import_pack(tc)
+    b = _compile_and_build(tc, "rollback-team")
+    ctl.seed_worker("lead-bot", soul="hand-written")
+    r = tc.post("/millforge/inject", json={
+        "build_id": b["build_id"], "team": "rollback-team",
+        "mapping": {"lead": "lead-bot"}, "core_skill": False, "overwrite": True,
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["souls"][0]["mode"] == "overwrite"
+    assert ctl.workers["lead-bot"]["soul"] != "hand-written"
+    rr = tc.post("/millforge/rollback", json={"worker": "lead-bot"})
+    assert rr.status_code == 200, rr.text
+    assert rr.json()["verified"] is True
+    assert ctl.workers["lead-bot"]["soul"] == "hand-written"
+    # 再回滚一次没有备份 → 404
+    assert tc.post("/millforge/rollback", json={"worker": "lead-bot"}).status_code == 404
+
+
+def test_inject_preflight_states(client):
+    """preflight 只读：返回 empty / same / differs 三态，不写。"""
+    tc, state, ctl, *_ = client
+    _import_pack(tc)
+    b = _compile_and_build(tc, "pre-team")
+    lead_soul = b["roles"][next(i for i, x in enumerate(b["roles"])
+                               if x["role"] == "lead")]["soul"]
+    ctl.seed_worker("empty-bot")
+    ctl.seed_worker("same-bot", soul=lead_soul)
+    ctl.seed_worker("diff-bot", soul="other")
+    def _pf(worker: str):
+        r = tc.post("/millforge/inject/preflight", json={
+            "build_id": b["build_id"], "mapping": {"lead": worker},
+        })
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    d1 = _pf("empty-bot")
+    assert d1["targets"][0]["state"] == "empty" and d1["conflict_count"] == 0
+    d2 = _pf("same-bot")
+    assert d2["targets"][0]["state"] == "same" and d2["conflict_count"] == 0
+    d3 = _pf("diff-bot")
+    assert d3["targets"][0]["state"] == "differs" and d3["conflict_count"] == 1
+    assert d3["targets"][0]["prev_head"] == "other"
+    assert not any(c["method"] in ("PUT", "POST") for c in ctl.calls)
