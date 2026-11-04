@@ -364,6 +364,12 @@ export const manageDict: Record<string, { en: string }> = {
   "保存（热生效）": { en: "Save (hot)" },
   "重新读取": { en: "Reload" },
   "已保存（流式超时热生效，无需重启）": { en: "Saved (stream timeouts applied hot, no restart)" },
+  "core 技能已由 TeamHarness 提供（AgentTeams 1.2.6+），注入只写 SOUL": {
+    en: "The core skill ships with TeamHarness (AgentTeams 1.2.6+); injection writes SOUL only",
+  },
+  "写入 SOUL（core 技能已由 TeamHarness 提供，无需注入）": {
+    en: "Writes SOUL (the core skill is provided by TeamHarness, no injection needed)",
+  },
   "若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。": {
     en: "If the worker belongs to a team, the controller rejects the deletion (remove it from the team first).",
   },

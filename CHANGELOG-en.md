@@ -3,6 +3,21 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.58 (2026-11-04 - Millforge: source switch fix, SOUL-only injection)
+
+**Fixes**
+- The Millforge source switch no longer snaps back when choosing "custom". The previous
+  implementation treated "custom" as "write an empty custom_url", and since the selected
+  segment is derived from custom_url, the empty value immediately fell back to GitHub/GitCode.
+  The segment is now a local intent: choosing "custom" sticks and shows the URL field, and only
+  a typed URL is persisted; switching to GitHub/GitCode writes the kind and clears custom_url.
+
+**Changes**
+- Millforge injection no longer packages or injects the core skill: as of AgentTeams 1.2.6
+  millforge-core ships with TeamHarness, so injection writes SOUL only. The core checkbox is
+  removed from the team form and the inject panel, the request always sends `core_skill: false`
+  (keeping `apply_soul`), and the UI shows a one-line note instead.
+
 ## 0.5.0-beta.16.57 (2026-11-04 - Stream timeouts editable from the env card, applied hot)
 
 **Features**

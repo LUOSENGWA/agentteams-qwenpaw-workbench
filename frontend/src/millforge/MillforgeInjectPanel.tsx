@@ -38,8 +38,6 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
     setMapping,
     createRows,
     setCreateRows,
-    coreSkill,
-    setCoreSkill,
     applySoul,
     setApplySoul,
     injecting,
@@ -160,16 +158,16 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
         </div>
       )}
 
-      {/* core skill / apply soul 开关 */}
+      {/* 注入内容：仅 SOUL。AgentTeams 1.2.6 起 millforge-core 已集成在 TeamHarness，
+          不再单独打包/注入 core 技能。 */}
       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <antd.Space size={4}>
-          <antd.Checkbox checked={coreSkill} onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setCoreSkill(e.target.checked)} />
-          <span style={{ fontSize: 12 }}>{tr("core 技能打包（millforge-core，scope=team）")}</span>
-        </antd.Space>
         <antd.Space size={4}>
           <antd.Checkbox checked={applySoul} onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setApplySoul(e.target.checked)} />
           <span style={{ fontSize: 12 }}>{tr("写入 SOUL（mapping/新建行）")}</span>
         </antd.Space>
+        <span style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("core 技能已由 TeamHarness 提供（AgentTeams 1.2.6+），注入只写 SOUL")}
+        </span>
       </div>
 
       {!budgetAllOk ? (

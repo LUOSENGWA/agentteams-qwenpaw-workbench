@@ -3,6 +3,19 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.58（2026-11-04 · 千锻：源切换修复 + 注入只写 SOUL）
+
+**修复**
+- **千锻「源」切换：点「自定义」不再回弹**。原实现把「自定义」当作「写入空 custom_url」，
+  而 Segmented 的选中值由 custom_url 派生 → 空值立刻回落到 GitHub/GitCode，表现为点了没反应。
+  现改为本地意图态：点「自定义」即刻停在自定义并显示 URL 输入，只有填入 URL 才落盘；
+  切换到 GitHub/GitCode 才写 kind 并清空 custom_url。
+
+**变更**
+- **千锻注入不再打包/注入 core 技能**：AgentTeams 1.2.6 起 millforge-core 已集成在 TeamHarness，
+  注入只写 SOUL。移除建队表单与注入面板里的 core 勾选，请求固定 `core_skill: false`（保留 `apply_soul`），
+  界面改为一行说明。
+
 ## 0.5.0-beta.16.57（2026-11-04 · 环境变量卡：流式超时可直接编辑并热生效）
 
 **新功能**
