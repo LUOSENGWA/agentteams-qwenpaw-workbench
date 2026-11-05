@@ -3,6 +3,37 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.60 (2026-11-05 - OpenClaw runtime config panel, provider-first model settings, slimmer worker list)
+
+**Features**
+- **OpenClaw runtime configuration panel** rendered natively from the runtime's own surface declaration
+  (16 faces / 609 fields): the face → group → field hierarchy comes straight from the declaration, with no
+  cross-runtime mapping.
+  - Controls cover `number / boolean / secret / array / record / object` (secrets are never echoed back —
+    leaving the field untouched keeps the stored value); `enum` renders as a candidate list on string fields.
+  - **Dynamic entries**: single-wildcard fields render one sub-card per actual entry (e.g. one per channel)
+    with an "add entry" action; double-wildcard compound structures (e.g. per-provider model lists) render
+    read-only and are labelled as such.
+  - Field **search** and a **changed-only** toggle sit above the form; sensitive fields are written as a
+    single whole value and never split into sub-keys.
+  - The runtime config card and the worker runtime badge use the OpenClaw icon; other runtimes are unchanged.
+- **Slimmer worker list**: list requests now ask for `fields=spec,status` (stable config + volatile state),
+  so prompt bodies, env, skills and MCP payloads no longer ride along; controllers that ignore the parameter
+  behave exactly as before.
+  - Skill / env / MCP editors now **read the single-worker detail before enabling edits**: while the detail is
+    loading or after it fails the view stays read-only with a clear error and retry, never falling back to the
+    list row; submits merge with the values that were loaded, so existing entries are not lost.
+  - The worker detail block loads skills / MCP on expansion only — the list itself issues no per-row requests.
+
+**Fixes / consistency**
+- **Model settings are provider-first**: worker / manager model dialogs, the ungrouped worker model panel and
+  the team bulk brush (leader batch / workers batch) all pick the Provider before the model; model candidates
+  are filtered by the chosen Provider; picking a gateway alias auto-fills the Provider only when it is empty,
+  so an explicit choice is never overwritten; a model that does not belong to the selected Provider shows a
+  hint without blocking the save.
+- The team bulk brush now paints **Provider and model as a pair**, and the save path sends `modelProvider`
+  alongside `model` under the existing merge semantics (empty = leave unchanged).
+
 ## 0.5.0-beta.16.59 (2026-11-04 - Millforge SOUL injection guards: idempotent, confirm, backup/rollback)
 
 **Features**

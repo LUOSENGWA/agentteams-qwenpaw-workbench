@@ -3,6 +3,22 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.60（2026-11-05 · OpenClaw 运行配置面板 + 模型设置先 Provider 后模型 + Worker 列表瘦身）
+
+**新功能**
+- **OpenClaw 运行配置面板**：按运行时自身的 surface 声明原生渲染（16 个面 / 609 个字段），面 → 组 → 字段的父子关系直接来自声明，不做跨运行时映射。
+  - 控件覆盖 `number / boolean / secret / array / record / object`（secret 不回显：留空即保持原值），`enum` 作为字符串字段的候选属性渲染。
+  - **动态条目**：单通配字段按实际条目渲染为子卡（如各 channel 一张卡），支持「添加条目」；双通配复合结构（如 provider 下的模型列表）整段只读并标注。
+  - 表单上方新增**字段搜索**与**仅看已修改**开关；敏感字段整体一次写入，不拆子键。
+  - 运行配置卡与 Worker 运行时徽标使用 OpenClaw 图标；其他运行时的展示不变。
+- **Worker 列表瘦身**：列表请求改用 `fields=spec,status` 投影（稳定配置 + 易变状态），提示词正文、env、skills、MCP 等大字段不再随列表下发；旧版控制器忽略该参数时行为不变。
+  - 技能 / 环境变量 / MCP 的编辑入口改为**先读单 Worker 详情再开放编辑**：详情未就绪时只读并给出加载态，失败显示错误与重试，不以列表行兜底；提交时与已加载的现有值合并，避免覆盖丢失。
+  - Worker 展开区的技能 / MCP 改为展开时按需加载，列表本身不逐行请求。
+
+**修复 / 一致性**
+- **模型设置统一「先 Provider 后模型」**：Worker / Manager 模型配置、未分组 Worker 模型设置、团队配置的批量画笔（Leader 批 / Workers 批）全部改为 Provider 在前、模型在后；模型候选按所选 Provider 过滤；选择网关 alias 仅在 Provider 为空时自动回填，不覆盖已指定的 Provider；模型与 Provider 不属于同一路由时给出提示（不阻止保存）。
+- 团队批量画笔改为 **Provider 与模型成对刷写**，保存链在合并语义下同时下发 `modelProvider`（留空=不改）。
+
 ## 0.5.0-beta.16.59（2026-11-04 · 千锻 SOUL 注入护栏：幂等 / 冲突确认 / 留底回滚）
 
 **新功能**
