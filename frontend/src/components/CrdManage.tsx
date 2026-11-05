@@ -78,6 +78,7 @@ export default function CrdManage(props: CrdManageProps) {
     modelCandidates,
     modelOptions,
     modelOf,
+    providers,
     loadSoulFile,
   } = catalog;
   // ── 千锻段（B/C/D）：core 实例供建队表单折叠区（B）持有；建队 pre/post
@@ -328,6 +329,8 @@ export default function CrdManage(props: CrdManageProps) {
         workerNames={workerNames}
         modelOptions={modelOptions}
         modelCandidates={modelCandidates}
+        providers={providers}
+        gatewayOptions={gatewayOpts || []}
         tr={tr}
         t={t}
       />

@@ -496,8 +496,13 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     }
     // 网关 alias（一次性；available=false=无 Higress Console 会话，正常）
     if (!catalog.gatewayLoaded) void catalog.loadGatewayAliases();
- // 批量画笔每次开弹窗复位（不跨团队残留）。
-    setCfgBatchModel({ leader: "", workers: "" });
+ // 批量画笔每次开弹窗复位（不跨团队残留）。C1a-1：含 Provider 刷值。
+    setCfgBatchModel({
+      leader: "",
+      workers: "",
+      leaderProvider: "",
+      workersProvider: "",
+    });
   }, [catalog.modelOf, catalog.modelOpts, catalog.gatewayLoaded, catalog.loadGatewayAliases]);
 
   // 齿轮入口——拓扑 TeamNode「N人」右侧 ⚙ 点按 →
@@ -533,22 +538,35 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     ]);
   }, []);
 
- // // 批量模型画笔——两把独立画笔（Leader 批 / Workers 批）。选中值即刷到对应
-  // 角色行的 model 字段（行内仍可按人精修，行 diff/橙框/校验态全复用），
-  // 落盘走既有「保存」链（updateTeam + 逐改动行 updateWorkerModel），
-  // 零新端点。留空=不刷。只刷有名字的行（新增空行选 Worker 时自动基线）。
+ // // 批量画笔——两把独立画笔（Leader 批 / Workers 批）。C1a-1：每把画笔
+  // Provider + 模型成对刷写到对应角色行（行内仍可按人精修，行 diff/橙框/
+  // 校验态全复用），落盘走既有「保存」链（updateTeam + 逐改动行
+  // updateWorkerModel(name, model, modelProvider)），零新端点。留空=不刷
+  // （该字段不动）。只刷有名字的行（新增空行选 Worker 时自动基线）。
   const [cfgBatchModel, setCfgBatchModel] = React.useState<{
     leader: string;
     workers: string;
-  }>({ leader: "", workers: "" });
+    leaderProvider: string;
+    workersProvider: string;
+  }>({
+    leader: "",
+    workers: "",
+    leaderProvider: "",
+    workersProvider: "",
+  });
   const applyCfgBatch = React.useCallback(
-    (kind: "leader" | "workers", value: string) => {
+    (kind: "leader" | "workers", model: string, provider: string) => {
       setCfgRows((prev) =>
         prev.map((r) => {
           if (!r.name.trim()) return r;
           const isLeader = r.role === "team_leader";
           const target = kind === "leader" ? isLeader : !isLeader;
-          return target ? { ...r, model: value } : r;
+          if (!target) return r;
+          // 成对刷写：各字段独立判断，空=该字段不改（不覆盖行内精修）。
+          const patch: Partial<WorkerRow> = {};
+          if (model) patch.model = model;
+          if (provider) patch.provider = provider;
+          return Object.keys(patch).length ? { ...r, ...patch } : r;
         }),
       );
     },
@@ -637,14 +655,17 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       try {
         await updateTeam(cfgTeam.name, body);
       // 团队保存成功后，逐个应用改动的 Worker 模型（diff：未改动不发）
+      // C1a-1：model 或 provider（画笔刷入）任一变更=改动行；
+      // provider 空=不改（PUT 合并语义：undefined 不下发）。
       const changed = cfgRows.filter((r) => {
         const m = (r.model || "").trim();
-        return r.name.trim() && m && m !== (r.modelOrig ?? "");
+        const p = (r.provider || "").trim();
+        return r.name.trim() && ((m && m !== (r.modelOrig ?? "")) || p);
       });
       let okCount = 0;
       for (const r of changed) {
         try {
-          await updateWorkerModel(r.name.trim(), (r.model || "").trim());
+          await updateWorkerModel(r.name.trim(), (r.model || "").trim(), (r.provider || "").trim() || undefined);
           okCount += 1;
         } catch (we) {
           antd.message.error(

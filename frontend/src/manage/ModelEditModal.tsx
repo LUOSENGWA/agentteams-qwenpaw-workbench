@@ -9,7 +9,12 @@ import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { providerForModel, useModelUnionOptions } from "../modelUnion";
+import {
+  filterModelOptionsByProvider,
+  providerForModel,
+  providerModelMismatch,
+  useModelUnionOptions,
+} from "../modelUnion";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -114,29 +119,10 @@ export default function ModelEditModal({
       destroyOnClose
     >
       <div style={{ display: "grid", gap: 14, padding: "8px 0" }}>
+        {/* C1a-1 provider-first：先选 Provider 再选模型——目录方向恒
+         * provider → models，且实际转发由 Provider 决定（仅模型 alias
+         * 不够）。模型下拉按所选 Provider 过滤（在服+在用恒保留）。 */}
         <div style={fieldsLayout}>
-          <div style={fieldStyle}>
-            <div style={labelStyle}>{tr("模型")}</div>
-            <antd.Select
-              style={{ width: "100%" }}
-              size="large"
-              showSearch
-              allowClear
-              placeholder={tr("模型 alias（留空=跟随集群默认）")}
-              value={model || undefined}
-              onChange={(v: string) => {
-                setModel(v ?? "");
-                const auto = providerForModel(union.gatewayOptions, v ?? "");
-                if (auto) setProvider(auto);
-              }}
-              options={union.options as any[]}
-              filterOption={(input: string, option: any) =>
-                String(option?.label ?? option?.value ?? "")
-                  .toLowerCase()
-                  .includes(input.toLowerCase())
-              }
-            />
-          </div>
           <div style={fieldStyle}>
             <div style={labelStyle}>{tr("Provider")}</div>
             <antd.Select
@@ -149,6 +135,34 @@ export default function ModelEditModal({
               onChange={(v: string) => setProvider(v ?? "")}
               options={union.providers.map((p) => ({ value: p.name, label: p.name }))}
             />
+          </div>
+          <div style={fieldStyle}>
+            <div style={labelStyle}>{tr("模型")}</div>
+            <antd.AutoComplete
+              style={{ width: "100%" }}
+              size="large"
+              allowClear
+              placeholder={tr("模型 alias（留空=跟随集群默认）")}
+              value={model}
+              options={filterModelOptionsByProvider(
+                union.options,
+                union.gatewayOptions,
+                provider,
+              )}
+              onChange={(v: string) => {
+                setModel(v ?? "");
+                // C1a-1：configured alias → binding.providerName 仅当
+                // Provider 当前为空才回填（显式 Provider 是用户意图，
+                // 不覆盖）。
+                const auto = providerForModel(union.gatewayOptions, v ?? "");
+                if (auto && !provider) setProvider(auto);
+              }}
+            />
+            {providerModelMismatch(union.gatewayOptions, model, provider) ? (
+              <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>
+                {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -199,9 +213,7 @@ export default function ModelEditModal({
             background: t.cardBg,
           }}
         >
-          {tr("当前")}：{currentModel || "-"}
-          {currentProvider ? ` · ${currentProvider}` : ""}
-          {showSubagent ? ` · Subagent: ${currentSubagentModel || tr("跟随主模型")}` : ""}
+          {tr("Provider 决定实际转发目标（仅模型 alias 不够）")}
         </div>
       </div>
     </antd.Modal>

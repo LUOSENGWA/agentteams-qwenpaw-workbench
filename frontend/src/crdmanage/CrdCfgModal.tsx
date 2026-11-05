@@ -5,7 +5,12 @@
 import type * as ReactNS from "react";
 
 import type { AdminData, TeamInfo } from "../api";
-import { modelVerdictText, validateModelValue } from "../modelUnion";
+import {
+  filterModelOptionsByProvider,
+  modelVerdictText,
+  validateModelValue,
+} from "../modelUnion";
+import type { LlmProviderLite, ModelSelectionOption } from "../modelCatalog";
 import LlmTuningFields from "../components/LlmTuningFields";
 import { findLlmTuningError, type LlmTuningKey } from "../lib/llm-tuning";
 import type { ThemeColors } from "../theme";
@@ -35,7 +40,11 @@ interface CrdCfgModalProps {
   removeCfgRow: (i: number) => void;
   addCfgRow: () => void;
   cfgBatchModel: CfgBatchModel;
-  applyCfgBatch: (kind: "leader" | "workers", value: string) => void;
+  applyCfgBatch: (
+    kind: "leader" | "workers",
+    model: string,
+    provider: string,
+  ) => void;
   cfgBatchLeaderCount: number;
   cfgBatchWorkerCount: number;
   doCfg: () => void | Promise<void>;
@@ -44,6 +53,12 @@ interface CrdCfgModalProps {
   workerNames: string[];
   modelOptions: { value: string }[];
   modelCandidates: string[];
+  /** Higress Provider 名单（批量画笔 provider 候选——useModelCatalog
+   * 既有取数透传，零新增请求）。 */
+  providers: LlmProviderLite[];
+  /** 网关 alias 原始选项（alias→binding.providerName；批量画笔按所选
+   * Provider 过滤模型候选用）。 */
+  gatewayOptions: ModelSelectionOption[];
   tr: TrFn;
   t: ThemeColors;
 }
@@ -62,7 +77,11 @@ export interface CrdCfgFormProps {
   removeCfgRow: (i: number) => void;
   addCfgRow: () => void;
   cfgBatchModel: CfgBatchModel;
-  applyCfgBatch: (kind: "leader" | "workers", value: string) => void;
+  applyCfgBatch: (
+    kind: "leader" | "workers",
+    model: string,
+    provider: string,
+  ) => void;
   cfgBatchLeaderCount: number;
   cfgBatchWorkerCount: number;
   /** 在服 Workers（成员行换人时取现值模型做基线）。 */
@@ -70,6 +89,12 @@ export interface CrdCfgFormProps {
   workerNames: string[];
   modelOptions: { value: string }[];
   modelCandidates: string[];
+  /** Higress Provider 名单（批量画笔 provider 候选——useModelCatalog
+   * 既有取数透传，零新增请求）。 */
+  providers: LlmProviderLite[];
+  /** 网关 alias 原始选项（alias→binding.providerName；批量画笔按所选
+   * Provider 过滤模型候选用）。 */
+  gatewayOptions: ModelSelectionOption[];
   tr: TrFn;
   t: ThemeColors;
 }
@@ -92,6 +117,8 @@ export function CrdCfgForm({
   workerNames,
   modelOptions,
   modelCandidates,
+  providers,
+  gatewayOptions,
   tr,
   t,
 }: CrdCfgFormProps) {
@@ -204,11 +231,13 @@ subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型
               {tr("团队成员（workerMembers）——保存 = 全量替换成员列表")}
             </div>
             {/* （·「团队配置的窗口应该增加批量改模型，
-leader/workers 两批」）：批量模型画笔——Leader 批 / Workers 批
-两把独立 AutoComplete（数据源/校验态与行内模型框完全同源：
-modelOptions=在服∪在用∪网关 alias，validateModelValue）。
-选中值即刷到对应角色行的 model（行内仍可按人精修）；留空=不刷；
-落盘=下方「保存」的既有 diff 链（只发改动行），零新端点。 */}
+leader/workers 两批」）：批量画笔——Leader 批 / Workers 批
+两把独立画笔。C1a-1 provider-first：每把先选 Provider 再选模型
+（模型候选经 filterModelOptionsByProvider 按所选 Provider 过滤；
+数据源/校验态与行内模型框完全同源：modelOptions=在服∪在用∪网关
+alias，validateModelValue）。
+选中值即成对刷到对应角色行的 model + provider（行内仍可按人精修）；
+留空=不刷；落盘=下方「保存」的既有 diff 链（只发改动行），零新端点。 */}
             <div
               style={{
                 display: "grid",
@@ -233,15 +262,39 @@ modelOptions=在服∪在用∪网关 alias，validateModelValue）。
                   <div style={{ fontSize: 10.5, color: t.textSecondary }}>
                     {tr("Leader 批（{n} 人）", { n: cfgBatchLeaderCount })}
                   </div>
+                  <div style={{ fontSize: 10, color: t.textSecondary }}>
+                    {tr("Provider")}
+                  </div>
+                  <antd.AutoComplete
+                    size="small"
+                    style={{ width: "100%" }}
+                    allowClear
+                    options={providers.map((p) => ({ value: p.name }))}
+                    value={cfgBatchModel.leaderProvider}
+                    onChange={(v: string) => {
+                      const p = v || "";
+                      setCfgBatchModel((prev) => ({ ...prev, leaderProvider: p }));
+                      applyCfgBatch("leader", "", p);
+                    }}
+                  />
+                  <div style={{ fontSize: 10, color: t.textSecondary }}>
+                    {tr("模型")}
+                  </div>
                   <antd.AutoComplete
                     size="small"
                     style={{ width: "100%" }}
                     placeholder={tr("批量模型（选中=刷到该批全部成员）")}
-                    options={modelOptions as { value: string }[]}
+                    options={
+                      filterModelOptionsByProvider(
+                        modelOptions,
+                        gatewayOptions,
+                        cfgBatchModel.leaderProvider,
+                      ) as { value: string }[]
+                    }
                     value={cfgBatchModel.leader}
                     onChange={(v: string) => {
                       setCfgBatchModel((p) => ({ ...p, leader: v }));
-                      applyCfgBatch("leader", v);
+                      applyCfgBatch("leader", v, "");
                     }}
                     status={(() => {
                       const v = cfgBatchModel.leader.trim();
@@ -259,15 +312,39 @@ modelOptions=在服∪在用∪网关 alias，validateModelValue）。
                   <div style={{ fontSize: 10.5, color: t.textSecondary }}>
                     {tr("Workers 批（{n} 人）", { n: cfgBatchWorkerCount })}
                   </div>
+                  <div style={{ fontSize: 10, color: t.textSecondary }}>
+                    {tr("Provider")}
+                  </div>
+                  <antd.AutoComplete
+                    size="small"
+                    style={{ width: "100%" }}
+                    allowClear
+                    options={providers.map((p) => ({ value: p.name }))}
+                    value={cfgBatchModel.workersProvider}
+                    onChange={(v: string) => {
+                      const p = v || "";
+                      setCfgBatchModel((prev) => ({ ...prev, workersProvider: p }));
+                      applyCfgBatch("workers", "", p);
+                    }}
+                  />
+                  <div style={{ fontSize: 10, color: t.textSecondary }}>
+                    {tr("模型")}
+                  </div>
                   <antd.AutoComplete
                     size="small"
                     style={{ width: "100%" }}
                     placeholder={tr("批量模型（选中=刷到该批全部成员）")}
-                    options={modelOptions as { value: string }[]}
+                    options={
+                      filterModelOptionsByProvider(
+                        modelOptions,
+                        gatewayOptions,
+                        cfgBatchModel.workersProvider,
+                      ) as { value: string }[]
+                    }
                     value={cfgBatchModel.workers}
                     onChange={(v: string) => {
                       setCfgBatchModel((p) => ({ ...p, workers: v }));
-                      applyCfgBatch("workers", v);
+                      applyCfgBatch("workers", v, "");
                     }}
                     status={(() => {
                       const v = cfgBatchModel.workers.trim();
@@ -286,6 +363,8 @@ modelOptions=在服∪在用∪网关 alias，validateModelValue）。
                 {tr(
                   "画笔语义：选中值立即同步到对应行的「模型」（行内仍可按人精修，覆盖刷值）；调整角色/新增行不会自动补刷——对那批重新选一次即可。",
                 )}
+                <br />
+                {tr("Provider 与模型成对刷写；留空=不改")}
               </div>
             </div>
             {/* （历史缺陷：标题位置——11.7 共享头行的「模型」悬在满宽模型框上方错位，
@@ -332,9 +411,15 @@ modelOptions=在服∪在用∪网关 alias，validateModelValue）。
                     }
                     canRemove={cfgRows.length > 1}
                     onWorkerPick={(v: string) => {
-                      // 换 Worker = 模型重新基线到新成员的现值（防串改）
+                      // 换 Worker = 模型重新基线到新成员的现值（防串改）；
+                      // 画笔刷入的 provider 一并清掉（防串改：刷值归属旧成员）。
                       const mm = workers.find((w) => w.name === v)?.model || "";
-                      updateCfgRow(i, { name: v, model: mm, modelOrig: mm });
+                      updateCfgRow(i, {
+                        name: v,
+                        model: mm,
+                        modelOrig: mm,
+                        provider: "",
+                      });
                     }}
                     onRolePick={(v: string) => updateCfgRow(i, { role: v })}
                     onRemove={() => removeCfgRow(i)}
@@ -455,6 +540,8 @@ export default function CrdCfgModal({
   workerNames,
   modelOptions,
   modelCandidates,
+  providers,
+  gatewayOptions,
   tr,
   t,
 }: CrdCfgModalProps) {
@@ -501,6 +588,8 @@ export default function CrdCfgModal({
         workerNames={workerNames}
         modelOptions={modelOptions}
         modelCandidates={modelCandidates}
+        providers={providers}
+        gatewayOptions={gatewayOptions}
         tr={tr}
         t={t}
       />

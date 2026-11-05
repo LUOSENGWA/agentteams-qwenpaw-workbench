@@ -217,4 +217,14 @@ export const chatDict: Record<string, { en: string }> = {
   "{w} 超时": { en: "{w} timed out" },
   // ── 16.46：刻度轨退化文字条（>500 turn）──
   "共 {n} 回合 · 点击回底部": { en: "{n} turns · click to jump to bottom" },
+  // ── C1a-1：模型设置统一「先 Provider 后模型」──
+  "该模型不属于所选 Provider（可直接保存，以 Provider 为准）": {
+    en: "This model does not belong to the selected Provider (you can still save; the Provider decides routing)",
+  },
+  "Provider 决定实际转发目标（仅模型 alias 不够）": {
+    en: "The Provider decides the actual forwarding target (the model alias alone is not enough)",
+  },
+  "Provider 与模型成对刷写；留空=不改": {
+    en: "Provider and model are painted as a pair; empty = leave unchanged",
+  },
 };

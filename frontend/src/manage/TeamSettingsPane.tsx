@@ -185,6 +185,8 @@ function TeamCfgInline({
               workerNames={crd.workerNames}
               modelOptions={catalog.modelOptions}
               modelCandidates={catalog.modelCandidates}
+              providers={catalog.providers}
+              gatewayOptions={catalog.gatewayOpts || []}
               tr={tr}
               t={t}
             />

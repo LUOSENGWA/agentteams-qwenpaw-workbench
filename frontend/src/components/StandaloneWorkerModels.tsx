@@ -12,16 +12,20 @@
  *
  * 为什么必须带 provider：多 Higress Provider 部署下，Worker 的 model 只是
  * 请求 alias，真正转发由 modelProvider（APIG Model API 名）决定。只改
- * model 不改 provider = 仍走旧 provider（用户「选了没用」的根因）。选
- * configured alias 时自动回填 binding.providerName；也可手动选 Provider。
+ * model 不改 provider = 仍走旧 provider（用户「选了没用」的根因）。
+ * C1a-1 provider-first：先选 Provider 再选模型（模型候选按所选 Provider
+ * 过滤，在服+在用恒保留）；选 configured alias 时仅当 Provider 为空才
+ * 自动回填 binding.providerName（显式 Provider 是用户意图，不覆盖）。
  */
 import type * as ReactNS from "react";
 
 import { updateWorkerModel } from "../api";
 import type { AdminData } from "../api";
 import {
+  filterModelOptionsByProvider,
   modelVerdictText,
   providerForModel,
+  providerModelMismatch,
   useModelUnionOptions,
   validateModelValue,
 } from "../modelUnion";
@@ -155,6 +159,8 @@ export function StandaloneWorkerModels({
                   padding: 8,
                 }}
               >
+                {/* C1a-1 provider-first：先选 Provider 再选模型（模型候选
+                 * 按所选 Provider 过滤，在服+在用恒保留）。 */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span
                     style={{
@@ -171,21 +177,15 @@ export function StandaloneWorkerModels({
                   <antd.AutoComplete
                     size="small"
                     style={{ flex: 1 }}
-                    value={draft}
-                    options={union.options}
+                    value={prov}
+                    options={union.providers.map((p) => ({
+                      value: p.name,
+                    }))}
                     allowClear
-                    placeholder={tr("模型 alias（留空=跟随集群默认）")}
-                    onChange={(val: string) => {
-                      setDrafts((p) => ({ ...p, [w.name]: val || "" }));
-                      // configured alias → 自动回填其 binding.providerName。
-                      const auto = providerForModel(
-                        union.gatewayOptions,
-                        val || "",
-                      );
-                      if (auto) {
-                        setProvDrafts((p) => ({ ...p, [w.name]: auto }));
-                      }
-                    }}
+                    placeholder={tr("留空=跟随默认（Higress Provider 名）")}
+                    onChange={(val: string) =>
+                      setProvDrafts((p) => ({ ...p, [w.name]: val || "" }))
+                    }
                   />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -196,20 +196,32 @@ export function StandaloneWorkerModels({
                       color: t.textSecondary,
                     }}
                   >
-                    {tr("Provider")}
+                    {tr("模型")}
                   </span>
                   <antd.AutoComplete
                     size="small"
                     style={{ flex: 1 }}
-                    value={prov}
-                    options={union.providers.map((p) => ({
-                      value: p.name,
-                    }))}
+                    value={draft}
+                    options={filterModelOptionsByProvider(
+                      union.options,
+                      union.gatewayOptions,
+                      prov,
+                    )}
                     allowClear
-                    placeholder={tr("留空=跟随默认（Higress Provider 名）")}
-                    onChange={(val: string) =>
-                      setProvDrafts((p) => ({ ...p, [w.name]: val || "" }))
-                    }
+                    placeholder={tr("模型 alias（留空=跟随集群默认）")}
+                    onChange={(val: string) => {
+                      setDrafts((p) => ({ ...p, [w.name]: val || "" }));
+                      // C1a-1：configured alias → binding.providerName
+                      // 仅当 Provider 当前为空才回填（显式 Provider 是
+                      // 用户意图，不覆盖）。
+                      const auto = providerForModel(
+                        union.gatewayOptions,
+                        val || "",
+                      );
+                      if (auto && !prov) {
+                        setProvDrafts((p) => ({ ...p, [w.name]: auto }));
+                      }
+                    }}
                   />
                   {dirty ? (
                     <antd.Button
@@ -222,6 +234,11 @@ export function StandaloneWorkerModels({
                     </antd.Button>
                   ) : null}
                 </div>
+                {providerModelMismatch(union.gatewayOptions, draft, prov) ? (
+                  <div style={{ fontSize: 11, color: "#faad14", paddingLeft: 2 }}>
+                    {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
+                  </div>
+                ) : null}
               </div>
             );
           })}
