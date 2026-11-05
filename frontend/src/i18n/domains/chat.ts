@@ -238,4 +238,10 @@ export const chatDict: Record<string, { en: string }> = {
   "Provider 与模型成对刷写；留空=不改": {
     en: "Provider and model are painted as a pair; empty = leave unchanged",
   },
+  // ── #1477 消费侧：Worker 列表瘦身（fields=spec,status）+ 写前读 detail ──
+  "正在读取 Worker 配置…": { en: "Loading worker config…" },
+  "读取 Worker 配置失败": { en: "Failed to load worker config" },
+  "展开后加载": { en: "Load on expand" },
+  "无": { en: "None" },
+
 };
