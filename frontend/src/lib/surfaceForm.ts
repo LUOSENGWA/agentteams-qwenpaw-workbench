@@ -4,11 +4,16 @@
 // 键模型：surface 字段 key 为点号路径（如 "llm.model"），寻址嵌套配置
 // 文档（ConfigState.values / PUT patch）。buildDraft 产出扁平草稿
 //（点号 key → 值）；diffNested 折回嵌套 patch（只含变化叶子）。
+// 通配键（#1493）：`*` 段恰好匹配一个非空段。单星模板按条目展开
+//（expandEntries / concreteKey，草稿键是 concrete 键）；双星模板
+//（如 models.providers.*.models.*.id）v1 只读（isReadOnlyField）——
+// 不进草稿、不可编辑。normalizeSurface 归一旧 type 别名（re-export
+// 自 api/domains/memberConfig）。
 // 敏感字段红线：sensitive: true 字段整体写入 —— 读回 "***" 进草稿为
 // undefined 哨兵（永不回写）；diffNested 只在声明键上整体比较值，绝不
 // 拆敏感对象下的子键（后端 422 拒绝）。
 
-import type { RuntimeSurface, SurfaceField } from "../api/domains/memberConfig";
+import type { RuntimeSurface, SurfaceField, SurfaceFieldType } from "../api/domains/memberConfig";
 
 /** 点号键取嵌套文档值（段缺失 / 中途非对象 → undefined）。 */
 function resolvePath(obj: Record<string, unknown>, key: string): unknown {
@@ -54,9 +59,53 @@ function setNested(target: Record<string, unknown>, key: string, value: unknown)
   cur[parts[parts.length - 1]] = value;
 }
 
+/** 键中恰好等于 `*` 的段数（`a*b` 这类非纯通配段不计）。 */
+function countStarSegments(key: string): number {
+  let n = 0;
+  for (const p of key.split(".")) if (p === "*") n += 1;
+  return n;
+}
+
+/** v1 只读判定：双星（key 含 ≥2 个 `*` 段，如
+ * models.providers.*.models.*.id）→ true。导出供 UI 用。 */
+export function isReadOnlyField(field: SurfaceField): boolean {
+  return countStarSegments(field.key) >= 2;
+}
+
+/** 单星模板 → values 中该通配段的对象键名列表（裁定：该段值是对象才计，
+ * 标量/数组/null 不计）；去重、保持键序；父路径缺失/中途非对象 → []。
+ * 双星与非通配模板 → []（仅单星可展开）。 */
+export function expandEntries(template: string, values: Record<string, unknown>): string[] {
+  const parts = template.split(".");
+  const starIdx = parts.indexOf("*");
+  if (starIdx === -1 || countStarSegments(template) !== 1) return [];
+  let cur: unknown = values ?? {};
+  for (let i = 0; i < starIdx; i += 1) {
+    if (!cur || typeof cur !== "object" || Array.isArray(cur)) return [];
+    cur = (cur as Record<string, unknown>)[parts[i]];
+  }
+  if (!cur || typeof cur !== "object" || Array.isArray(cur)) return [];
+  const entries: string[] = [];
+  for (const k of Object.keys(cur as Record<string, unknown>)) {
+    const v = (cur as Record<string, unknown>)[k];
+    if (v && typeof v === "object" && !Array.isArray(v) && !entries.includes(k)) entries.push(k);
+  }
+  return entries;
+}
+
+/** 单星模板 + 条目名 → concrete 点号键（替换 `*` 段）。 */
+export function concreteKey(template: string, entry: string): string {
+  const parts = template.split(".");
+  const starIdx = parts.indexOf("*");
+  if (starIdx === -1) return template;
+  parts[starIdx] = entry;
+  return parts.join(".");
+}
+
 /** surface 声明 → 可编辑草稿：按声明 key 逐条从嵌套 values 取值，取不到
  * 用 default；sensitive 字段读回 "***" 掩码（或缺失且无 default）→
- * undefined 哨兵（永不回写）。 */
+ * undefined 哨兵（永不回写）。单星通配字段按条目展开为 concrete 键
+ *（每个 entry 一条，掩码规则同上）；双星字段 v1 只读，不进草稿。 */
 export function buildDraft(
   surface: RuntimeSurface,
   values: Record<string, unknown>,
@@ -65,12 +114,20 @@ export function buildDraft(
   const v = values ?? {};
   for (const face of surface.faces) {
     for (const field of face.fields) {
-      const current = resolvePath(v, field.key);
-      const value = current !== undefined ? current : field.default;
-      if (field.sensitive && (value === undefined || value === "***")) {
-        draft[field.key] = undefined;
-      } else {
-        draft[field.key] = value;
+      if (isReadOnlyField(field)) continue;
+      const starIdx = field.key.split(".").indexOf("*");
+      const keys =
+        starIdx === -1
+          ? [field.key]
+          : expandEntries(field.key, v).map((e) => concreteKey(field.key, e));
+      for (const key of keys) {
+        const current = resolvePath(v, key);
+        const value = current !== undefined ? current : field.default;
+        if (field.sensitive && (value === undefined || value === "***")) {
+          draft[key] = undefined;
+        } else {
+          draft[key] = value;
+        }
       }
     }
   }
@@ -87,6 +144,8 @@ export function diffNested(
   const patch: Record<string, unknown> = {};
   const v = values ?? {};
   for (const [key, draftValue] of Object.entries(draft)) {
+    // 防御：草稿键不应含 `*` 段（通配模板不进草稿）；出现则跳过。
+    if (countStarSegments(key) > 0) continue;
     if (draftValue === undefined) continue;
     if (deepEqual(draftValue, resolvePath(v, key))) continue;
     setNested(patch, key, draftValue);
@@ -101,11 +160,12 @@ export function isSensitiveUnchanged(field: SurfaceField, draftValue: unknown): 
   return draftValue === "***" || draftValue === undefined || draftValue === "";
 }
 
-/** 值展示格式化：bool → 是/否；数组 → 逗号分隔；对象 → JSON；
- * null/undefined → "—"。 */
+/** 值展示格式化：boolean/bool → 是/否；secret → 非空值掩码 "••••"
+ *（不显明文）；数组 → 逗号分隔；对象 → JSON；null/undefined → "—"。 */
 export function formatFieldValue(field: SurfaceField, value: unknown): string {
   if (value === undefined || value === null) return "—";
-  if (field.type === "bool") return value ? "是" : "否";
+  if (field.type === "boolean" || field.type === "bool") return value ? "是" : "否";
+  if (field.type === "secret") return value === "" ? "" : "••••";
   if (Array.isArray(value)) return value.join(", ");
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
@@ -127,4 +187,33 @@ export function flattenKeys(surface: RuntimeSurface): string[] {
     }
   }
   return keys;
+}
+
+/** #1493 合并后契约归一：旧 type 别名 → 真实契约成员
+ *（int|float→number、bool→boolean、string-list→array、
+ * type "enum"→"string" 且保留 enum 属性）。纯函数：不 mutate 入参，
+ * 幂等。定义在此（node 直测；api/domains/memberConfig re-export）。 */
+export function normalizeSurface(surface: RuntimeSurface): RuntimeSurface {
+  const norm = (t: SurfaceFieldType): SurfaceFieldType => {
+    switch (t) {
+      case "int":
+      case "float":
+        return "number";
+      case "bool":
+        return "boolean";
+      case "string-list":
+        return "array";
+      case "enum":
+        return "string";
+      default:
+        return t;
+    }
+  };
+  return {
+    ...surface,
+    faces: surface.faces.map((face) => ({
+      ...face,
+      fields: face.fields.map((f) => ({ ...f, type: norm(f.type) })),
+    })),
+  };
 }

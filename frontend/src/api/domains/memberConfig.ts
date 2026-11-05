@@ -26,14 +26,38 @@
 // 敏感字段红线（后端 #1493）：sensitive: true 字段（即使 type:"object"）
 // 整体一个值写入 —— 敏感对象下的嵌套写被后端拒绝（422）；调用方不许拆
 // 子键写（见 surfaceForm.isSensitiveUnchanged）。
+// #1493 合并后契约对齐：SurfaceFieldType 增补真实 type 成员；normalizeSurface 定义在 lib/surfaceForm（node 直测）并在此 re-export。
 
 import { fetchFile, resolvePluginUrl } from "./chat";
+
+// 归一入口 re-export（定义在 lib/surfaceForm：本域值依赖 ./chat，node
+// strip-types 下不可直导；O2 起 fetchRuntimeSurface 返回前调用它）。
+export { normalizeSurface } from "../../lib/surfaceForm";
+
+/** 字段 type 联合（#1493 合并后契约对齐）：增补真实契约成员
+ * number/boolean/secret/array/record；保留旧别名 int/float/bool/
+ * string-list/enum（SchemaField 等 UI 仍按旧字面量 switch/比较，删旧
+ * 成员会新增 tsc 错误，O2 随 UI 改造一并收窄）。注意 enum 是字段属性
+ *（enum?: string[]），不是 type。 */
+export type SurfaceFieldType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "secret"
+  | "array"
+  | "record"
+  | "object"
+  | "int"
+  | "float"
+  | "bool"
+  | "string-list"
+  | "enum";
 
 /** 单个字段声明（type/applies/class 为字面量联合）。 */
 export interface SurfaceField {
   key: string;
   label?: string;
-  type: "string" | "int" | "float" | "bool" | "enum" | "string-list" | "object";
+  type: SurfaceFieldType;
   default?: unknown;
   unit?: string;
   applies: "hot" | "next-turn" | "restart";
