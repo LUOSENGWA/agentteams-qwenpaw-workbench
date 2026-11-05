@@ -40,6 +40,7 @@ import { isQwenpawOnlyDisabled, RuntimeNotice } from "../runtimeGuard";
 import type { WorkerSessionState } from "../workerSessionState";
 import { invalidateTags } from "../requestCache";
 import { WbTooltip } from "./WbTooltip";
+import { OpenClawIcon } from "./OpenClawIcon";
 import {
   PRIMARY,
   ROLE_BADGE,
@@ -371,6 +372,9 @@ function WorkerManageInfo({
             ) : nodeVer ? (
               nodeVer.runtime_version ? (
                 <antd.Tag color="green" style={{ margin: 0, fontSize: 11 }}>
+                  {nodeVer.runtime === "openclaw" && (
+                    <OpenClawIcon size={12} style={{ marginRight: 4, verticalAlign: "-1px" }} />
+                  )}
                   {RUNTIME_LABELS[nodeVer.runtime || ""] || nodeVer.runtime} {nodeVer.runtime_version}
                 </antd.Tag>
               ) : (

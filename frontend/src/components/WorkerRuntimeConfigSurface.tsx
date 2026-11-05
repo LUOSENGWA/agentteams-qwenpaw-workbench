@@ -22,6 +22,7 @@ import { useThemeColors } from "../theme";
 import SurfaceForm from "./SurfaceForm";
 import SurfaceStatus, { type SurfaceBanner } from "./surface/SurfaceStatus";
 import { SettingsIcon } from "./icons";
+import { OpenClawIcon } from "./OpenClawIcon";
 import { WorkerCollapseCard } from "./WorkerPanelsShared";
 
 const host = window.QwenPaw.host;
@@ -234,8 +235,8 @@ export default function WorkerRuntimeConfigSurface(props: {
     <WorkerCollapseCard
       open={open}
       sheet={sheet}
-      icon={<SettingsIcon size={13} />}
-      title={tr("运行配置")}
+      icon={runtime === "openclaw" ? <OpenClawIcon size={13} /> : <SettingsIcon size={13} />}
+      title={tr(runtime === "openclaw" ? "OpenClaw 运行配置" : "运行配置")}
       headerExtra={
         <>
           <div style={{ flex: 1 }} />
