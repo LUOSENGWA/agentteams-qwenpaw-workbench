@@ -217,3 +217,114 @@ export function normalizeSurface(surface: RuntimeSurface): RuntimeSurface {
     })),
   };
 }
+
+// ── O2：面板过滤 + 通配条目展示（纯函数，node 直测）────────────────
+
+/** 模板段匹配：concrete 键与模板段数相同且所有非 `*` 段相等
+ *（非通配模板退化为精确相等）。 */
+export function keyMatchesTemplate(concrete: string, template: string): boolean {
+  const segs = concrete.split(".");
+  const parts = template.split(".");
+  if (segs.length !== parts.length) return false;
+  for (let i = 0; i < parts.length; i += 1) {
+    if (parts[i] === "*") continue;
+    if (segs[i] !== parts[i]) return false;
+  }
+  return true;
+}
+
+/** 字段过滤（面板「搜索 + 仅看已修改」）：query 对 key/label 做
+ * 不区分大小写子串匹配（空串 = 全过）；changedKeys 空集 = 不做修改过滤，
+ * 否则字段自身 key（非通配）或其模板（单星）匹配到的任一 concrete 键
+ * 命中 changedKeys 才保留。 */
+export function filterFields(
+  fields: SurfaceField[],
+  query: string,
+  changedKeys: ReadonlySet<string>,
+): SurfaceField[] {
+  const q = query.trim().toLowerCase();
+  const out: SurfaceField[] = [];
+  for (const f of fields) {
+    if (q && !`${f.key} ${f.label ?? ""}`.toLowerCase().includes(q)) continue;
+    if (changedKeys.size > 0) {
+      let hit = false;
+      for (const ck of changedKeys) {
+        if (keyMatchesTemplate(ck, f.key)) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) continue;
+    }
+    out.push(f);
+  }
+  return out;
+}
+
+/** 草稿修改键集合：草稿键值非 undefined 且与 values 同键解析值深不相等
+ * → 已修改（通配草稿键本就是 concrete 键；敏感字段 undefined 哨兵
+ * 恒不算修改）。 */
+export function changedKeys(
+  draft: Record<string, unknown>,
+  values: Record<string, unknown>,
+): Set<string> {
+  const v = values ?? {};
+  const out = new Set<string>();
+  for (const [key, dv] of Object.entries(draft)) {
+    if (dv === undefined) continue;
+    if (!deepEqual(dv, resolvePath(v, key))) out.add(key);
+  }
+  return out;
+}
+
+/** 模板在 values 下的全部 concrete 值（单星/双星通用；非星段中途
+ * 缺失 → 空；模板以 `*` 段结尾时标量值也收）。只读字段（双星 v1
+ * 只读）展示用。 */
+export function collectConcreteValues(
+  template: string,
+  values: Record<string, unknown>,
+): unknown[] {
+  const parts = template.split(".");
+  const out: unknown[] = [];
+  const walk = (obj: unknown, i: number): void => {
+    if (i === parts.length) {
+      out.push(obj);
+      return;
+    }
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+    if (parts[i] === "*") {
+      for (const v of Object.values(obj as Record<string, unknown>)) walk(v, i + 1);
+    } else {
+      walk((obj as Record<string, unknown>)[parts[i]], i + 1);
+    }
+  };
+  walk(values ?? {}, 0);
+  return out;
+}
+
+/** 单星模板在草稿中的条目名（键形同且非星段相等的键；去重、按草稿
+ * 键序）——「添加条目」新加的条目（values 中还没有）也参与渲染与
+ * 重名校验。非通配模板 → []。 */
+export function templateDraftEntries(
+  template: string,
+  draft: Record<string, unknown>,
+): string[] {
+  const parts = template.split(".");
+  const starIdx = parts.indexOf("*");
+  if (starIdx === -1) return [];
+  const out: string[] = [];
+  for (const key of Object.keys(draft)) {
+    const segs = key.split(".");
+    if (segs.length !== parts.length) continue;
+    let ok = true;
+    for (let i = 0; i < parts.length; i += 1) {
+      if (i === starIdx) continue;
+      if (segs[i] !== parts[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok && !out.includes(segs[starIdx])) out.push(segs[starIdx]);
+  }
+  return out;
+}

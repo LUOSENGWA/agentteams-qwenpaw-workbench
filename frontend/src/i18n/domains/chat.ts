@@ -186,6 +186,16 @@ export const chatDict: Record<string, { en: string }> = {
   "仅 spec.runtime = qwenpaw 的 Worker 支持。": {
     en: "Only workers with spec.runtime = qwenpaw are supported.",
   },
+  // ── O2：OpenClaw 配置面板（通配条目 / 动态行 / 过滤 / 只读）──
+  "添加条目": { en: "Add entry" },
+  "条目名": { en: "Entry name" },
+  "添加一行": { en: "Add row" },
+  "键": { en: "Key" },
+  "值": { en: "Value" },
+  "复合结构，暂不支持编辑": { en: "Composite structure, not editable yet" },
+  "已设置，未修改时保持原值": { en: "Set — kept when unchanged" },
+  "仅看已修改": { en: "Show changed only" },
+  "搜索字段…": { en: "Search fields…" },
   // ── ──
   "已到最早的消息": { en: "You've reached the earliest messages" },
   "等待输入": { en: "Awaiting input" },

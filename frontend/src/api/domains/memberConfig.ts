@@ -30,9 +30,10 @@
 
 import { fetchFile, resolvePluginUrl } from "./chat";
 
-// 归一入口 re-export（定义在 lib/surfaceForm：本域值依赖 ./chat，node
-// strip-types 下不可直导；O2 起 fetchRuntimeSurface 返回前调用它）。
-export { normalizeSurface } from "../../lib/surfaceForm";
+// 归一入口（定义在 lib/surfaceForm：本域值依赖 ./chat，node strip-types
+// 下不可直导；O2 起 fetchRuntimeSurface 返回前调用它，仍 re-export 供外）。
+import { normalizeSurface } from "../../lib/surfaceForm";
+export { normalizeSurface };
 
 /** 字段 type 联合（#1493 合并后契约对齐）：增补真实契约成员
  * number/boolean/secret/array/record；保留旧别名 int/float/bool/
@@ -162,11 +163,15 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return (await resp.json()) as T;
 }
 
-/** surface 声明（GET /api/runtimes/{runtime}/surface，仅认证）。 */
+/** surface 声明（GET /api/runtimes/{runtime}/surface，仅认证）。
+ * O2：返回前套 normalizeSurface 归一旧 type 别名（int/float→number、
+ * bool→boolean、string-list→array、enum→string 且保留 enum 属性）——
+ * 面板控件只按真实契约成员 switch。 */
 export async function fetchRuntimeSurface(runtime: string): Promise<RuntimeSurface> {
-  return call<RuntimeSurface>(
+  const surface = await call<RuntimeSurface>(
     `/agentteams-proxy/controller/api/runtimes/${encodeURIComponent(runtime)}/surface`,
   );
+  return normalizeSurface(surface);
 }
 
 /** 当前配置（GET /api/members/{name}/config）。 */
