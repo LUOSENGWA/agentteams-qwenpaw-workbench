@@ -162,14 +162,18 @@ ok("collectConcreteValues 父路径缺失 → 空", () => {
 // ── templateDraftEntries ────────────────────────────────────────────
 // 注：templateDraftEntries 只负责「本模板」（只认同名 concrete 键）；
 // 组级跨模板并集由 SurfaceForm 调用侧做（starFields.flatMap 并集）。
-ok("templateDraftEntries 从 concrete 键提条目名（去重、键序）", () => {
+ok("templateDraftEntries 只认本模板同名 concrete 键（去重、键序）", () => {
   const draft = {
     "channels.matrix.enabled": true,
     "channels.slack.apiKey": "x",
     "channels.matrix.apiKey": "y",
     "gateway.port": 1,
   };
-  assert.deepEqual(templateDraftEntries("channels.*.enabled", draft), ["matrix", "slack"]);
+  // 只匹配 channels.*.enabled：slack 只有 apiKey（属于别的模板）→ 不计。
+  // 组级「任一模板有值即出现」的并集由 SurfaceForm 调用侧
+  // starFields.flatMap(...) 完成，不在本纯函数职责内。
+  assert.deepEqual(templateDraftEntries("channels.*.enabled", draft), ["matrix"]);
+  assert.deepEqual(templateDraftEntries("channels.*.apiKey", draft), ["slack", "matrix"]);
 });
 
 ok("templateDraftEntries 非通配模板 → []", () => {
