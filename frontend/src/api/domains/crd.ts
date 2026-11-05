@@ -4,6 +4,12 @@ import { controllerRequest, fetchControllerJson } from "../shared";
 import { cachedFetch, invalidateTags } from "../../requestCache";
 import { lruReadThrough, lruInvalidate } from "../../cache/memoryLru";
 
+/** Worker 列表投影字段（#1477 消费侧，docs/design/worker-list-fields-api.md）：
+ * spec（稳定配置）+ status（易变状态）——不含 skills/mcpServers/env/soul/agents
+ * （写编辑器一律先读 detail GET /workers/{name}，禁列表行兜底）。
+ * 旧 Controller 忽略 fields → 返回全量，消费方优雅降级。导出供测试断言。 */
+export const WORKER_LIST_FIELDS = "spec,status";
+
 // ── L1 全量视图（Controller API，需管理员 token）────────────────────
 
 /** Controller WorkerResponse.mcpServers（api/v1beta1.MCPServer，v1.2.3 实锤）。 */
@@ -15,6 +21,10 @@ export interface McpServerInfo {
 
 export interface WorkerInfo {
   name: string;
+  /** 显示名（WorkerResponse.workerName，omitempty=未设）。#1477 每个 view 都带
+   * 稳定身份：name（CR 名，恒有）+ workerName（显示名，若有）——
+   * 禁止按列表位置关联行。 */
+  workerName?: string;
   phase: string;
   state: string;
   model: string;
@@ -420,7 +430,11 @@ export async function fetchAdminData(
       30000,
       async () => {
         const [workers, teams, humans, managers] = await Promise.all([
-          fetchControllerJson<unknown>("/workers", strong).then(normalizeList),
+          // fields=spec,status（#1477）：列表瘦身——skills/mcpServers/env 出列表，
+          // 写编辑器先读 detail；旧 Controller 忽略该参数返回全量（不炸）。
+          fetchControllerJson<unknown>(`/workers?fields=${WORKER_LIST_FIELDS}`, strong).then(
+            normalizeList,
+          ),
           fetchControllerJson<unknown>("/teams", strong).then(normalizeList),
           // humans/managers
           // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版
@@ -478,7 +492,9 @@ export async function fetchL2AdminData(): Promise<AdminData> {
     30000,
     async () => {
       const [workers, teams, humans, managers] = await Promise.all([
-        fetchControllerJson<unknown>("/workers").then(normalizeList),
+        // fields=spec,status（#1477，同 fetchAdminData）：L2 技能中心正源同样
+        // 投影瘦身；旧 Controller 忽略该参数返回全量（不炸）。
+        fetchControllerJson<unknown>(`/workers?fields=${WORKER_LIST_FIELDS}`).then(normalizeList),
         fetchControllerJson<unknown>("/teams").then(normalizeList),
         fetchListSafe("/humans"),
         fetchListSafe("/managers"),
@@ -491,5 +507,25 @@ export async function fetchL2AdminData(): Promise<AdminData> {
       };
     },
     { tags: ["admin"], swrMs: 30000 },
+  );
+}
+
+/** 写前读 detail（#1477 强制）：写编辑器（skills / env / MCP / 全配置）必须
+ * 先 GET /workers/{name} 成功才可编辑；失败/加载中 → 只读 + 错误，禁止用
+ * 列表行兜底（列表已投影为 spec,status，不含 skills/mcpServers/env）。
+ * 只在用户打开/展开对应 worker 时取一次（不预取、不 N+1）；15s 缓存防
+ * 连续展开/重试风暴，写操作后 invalidateTags(["admin"]) 一并失效。
+ *
+ * `strong`（写后立即读同款语义）：force 绕过 TTL 直取上游。 */
+export async function fetchWorkerDetail(
+  name: string,
+  opts?: { strong?: boolean },
+): Promise<WorkerInfo> {
+  const strong = opts?.strong ? { strong: true } : undefined;
+  return cachedFetch(
+    `worker-detail:${name}`,
+    15000,
+    () => fetchControllerJson<WorkerInfo>(`/workers/${encodeURIComponent(name)}`, strong),
+    { tags: ["admin"], ...(strong ? { force: true } : {}) },
   );
 }

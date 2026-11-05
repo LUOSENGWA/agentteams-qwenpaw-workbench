@@ -217,4 +217,9 @@ export const chatDict: Record<string, { en: string }> = {
   "{w} 超时": { en: "{w} timed out" },
   // ── 16.46：刻度轨退化文字条（>500 turn）──
   "共 {n} 回合 · 点击回底部": { en: "{n} turns · click to jump to bottom" },
+  // ── #1477 消费侧：Worker 列表瘦身（fields=spec,status）+ 写前读 detail ──
+  "正在读取 Worker 配置…": { en: "Loading worker config…" },
+  "读取 Worker 配置失败": { en: "Failed to load worker config" },
+  "展开后加载": { en: "Load on expand" },
+  "无": { en: "None" },
 };

@@ -5,12 +5,14 @@ import {
   fetchNodeVersion,
   fetchWorkerCheckpointGraph,
   fetchWorkerCheckpointStatus,
+  fetchWorkerDetail,
   imageTag,
 } from "../api";
 import type {
   AdminData,
   CheckpointGraphResponse,
   CheckpointStatusResponse,
+  McpServerInfo,
   NodeVersion,
   SpawnNode,
   WorkerSpawnGroup,
@@ -278,6 +280,39 @@ function WorkerManageInfo({
       alive = false;
     };
   }, [l1, worker.name, tr]);
+  // #1477：列表已投影（fields=spec,status）——列表行不含 skills/mcpServers。
+  // Skill/MCP 只读块展开（本组件挂载=树节点展开）才读 detail GET /workers/{name}
+  // （15s 缓存，不预取、不 N+1）；loading→「加载中…」；error→错误+重试。
+  const [skillMcpDetail, setSkillMcpDetail] = React.useState<{
+    state: "loading" | "error" | "ready";
+    skills?: string[];
+    mcpServers?: McpServerInfo[];
+    err?: string;
+  }>({ state: "loading" });
+  const [skillMcpTry, setSkillMcpTry] = React.useState(0);
+  React.useEffect(() => {
+    let alive = true;
+    setSkillMcpDetail({ state: "loading" });
+    fetchWorkerDetail(worker.name)
+      .then((d) => {
+        if (alive)
+          setSkillMcpDetail({
+            state: "ready",
+            skills: d.skills,
+            mcpServers: d.mcpServers,
+          });
+      })
+      .catch((e) => {
+        if (alive)
+          setSkillMcpDetail({
+            state: "error",
+            err: e instanceof Error ? e.message : tr("读取 Worker 配置失败"),
+          });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [worker.name, skillMcpTry, tr]);
   const meta = phaseMeta(worker.phase);
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const busy = acting != null;
@@ -316,6 +351,29 @@ function WorkerManageInfo({
       </span>
     </div>
   );
+  // Skill/MCP 块非 ready 态的公共占位（loading/error+重试；detail 未就绪
+  // 不显示列表行的空值冒充真相）。
+  const skillMcpPending =
+    skillMcpDetail.state === "loading" ? (
+      <span style={{ fontSize: 11, color: "rgba(128,128,128,0.85)" }}>
+        {tr("加载中…")}
+      </span>
+    ) : skillMcpDetail.state === "error" ? (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 11, color: "#cf1322" }}>
+          {tr("读取 Worker 配置失败")}
+          {skillMcpDetail.err ? `（${skillMcpDetail.err}）` : ""}
+        </span>
+        <antd.Button
+          size="small"
+          type="link"
+          style={{ padding: 0, height: "auto", fontSize: 11, lineHeight: "18px" }}
+          onClick={() => setSkillMcpTry((v) => v + 1)}
+        >
+          {tr("重试")}
+        </antd.Button>
+      </span>
+    ) : null;
   return (
     <div
       style={{
@@ -420,60 +478,64 @@ function WorkerManageInfo({
           />
         </div>
       ) : null}
-      {/* ：Worker 已装载 Skill / MCP——零新后端
- （Controller /workers 响应已含 skills/mcpServers，通用代理透传）。
- 写路径（员工自助增删）等上游 PR，此处只读展示。
- ：MCP 行恒显——此列表只含用户自定义
- MCP（CRD spec.mcpServers）；内置 teamharness/workerflow 走镜像插件
- bootstrap，永不在此出现（历史缺陷「MCP 全没配」误诊的误导源）。 */}
-      {worker.skills?.length || worker.mcpServers?.length || worker.runtime === "qwenpaw" ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
-          {worker.skills?.length ? (
-            <Item
-              label={tr("Skill")}
-              wide
-              value={
-                <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
-                  {worker.skills.map((s) => (
-                    <antd.Tag key={s} color="blue" style={{ margin: 0, fontSize: 11 }}>
-                      {s}
+      {/* Worker 已装载 Skill / MCP（只读展示；写路径在技能中心）。
+  #1477：列表投影（spec,status）后列表行不含 skills/mcpServers → 正源改
+  detail（展开=本组件挂载时取，15s 缓存；不预取）。原条件依赖列表行字段，
+  投影后非 qwenpaw worker 恒空=块误隐 → 改恒渲染（状态驱动内容）。
+  MCP 行恒显——此列表只含用户自定义 MCP（CRD spec.mcpServers）；内置
+  teamharness/workerflow 走镜像插件 bootstrap，永不在此出现。 */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px" }}>
+        <Item
+          label={tr("Skill")}
+          wide
+          value={
+            skillMcpPending ??
+            (skillMcpDetail.skills?.length ? (
+              <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
+                {skillMcpDetail.skills.map((s) => (
+                  <antd.Tag key={s} color="blue" style={{ margin: 0, fontSize: 11 }}>
+                    {s}
+                  </antd.Tag>
+                ))}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: "rgba(128,128,128,0.85)" }}>
+                {tr("无")}
+              </span>
+            ))
+          }
+        />
+        <Item
+          label="MCP"
+          wide
+          value={
+            skillMcpPending ??
+            (skillMcpDetail.mcpServers?.length ? (
+              <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
+                {skillMcpDetail.mcpServers.map((m) => (
+                  <WbTooltip
+                    key={m.name}
+                    title={
+                      <span style={{ fontFamily: "monospace", wordBreak: "break-all", maxWidth: 320 }}>
+                        {m.url}
+                      </span>
+                    }
+                  >
+                    <antd.Tag style={{ margin: 0, fontSize: 11, cursor: "help" }}>
+                      {m.name}
+                      {m.transport ? ` · ${m.transport}` : ""}
                     </antd.Tag>
-                  ))}
-                </span>
-              }
-            />
-          ) : null}
-          <Item
-            label="MCP"
-            wide
-            value={
-              worker.mcpServers?.length ? (
-                <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 4 }}>
-                  {worker.mcpServers.map((m) => (
-                    <WbTooltip
-                      key={m.name}
-                      title={
-                        <span style={{ fontFamily: "monospace", wordBreak: "break-all", maxWidth: 320 }}>
-                          {m.url}
-                        </span>
-                      }
-                    >
-                      <antd.Tag style={{ margin: 0, fontSize: 11, cursor: "help" }}>
-                        {m.name}
-                        {m.transport ? ` · ${m.transport}` : ""}
-                      </antd.Tag>
-                    </WbTooltip>
-                  ))}
-                </span>
-              ) : (
-                <span style={{ fontSize: 11, color: "rgba(128,128,128,0.85)" }}>
-                  {tr("无用户自定义 MCP · 内置 teamharness/workerflow 由容器启动时自动注册，不在此列表")}
-                </span>
-              )
-            }
-          />
-        </div>
-      ) : null}
+                  </WbTooltip>
+                ))}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: "rgba(128,128,128,0.85)" }}>
+                {tr("无用户自定义 MCP · 内置 teamharness/workerflow 由容器启动时自动注册，不在此列表")}
+              </span>
+            ))
+          }
+        />
+      </div>
       {/* 竖屏：五按钮 min-content 461px > 390px 容器 274px（10/19 用户反馈实测
           +187px 溢出）→ 允许换行（两行 3+2）；宽屏单行不受影响。 */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
