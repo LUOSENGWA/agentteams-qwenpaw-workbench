@@ -5,8 +5,8 @@
 // 不排序、不隐藏、不补字段——surface 声明什么就渲染什么。
 // O2 通配渲染（纯逻辑用 O1 lib/surfaceForm）：
 //  - 含双星字段的 group → 整组只读块（字段显示值 + 只读 Tag，无控件）；
-//  - 含单星通配字段的 group → 按条目渲染：entries = expandEntries(values) ∪
-//    templateDraftEntries(draft)，antd.Collapse 子卡（默认折叠、首个展开），
+//  - 含单星通配字段的 group → 按条目渲染：entries = 该组单星模板的
+//    (expandEntries(values) ∪ templateDraftEntries(draft)) 并集，antd.Collapse 子卡（默认折叠、首个展开），
 //    子卡内该组单星字段按 concreteKey 拼键渲染；组头「添加条目」
 //    （内联 Input + 确认；条目名空/重复/含 `.` 或 `*` → 禁用）；
 //  - 非通配 group → 现状不变。
@@ -141,9 +141,15 @@ export function SurfaceForm({
 
     // 单星通配 group → 按条目渲染 + 组头「添加条目」。
     if (starFields.length > 0) {
-      const template = starFields[0].key;
+      // 跨模板并集：条目在组内任一单星模板下有值即出现（不能因为
+      // 「只在 apiKey 上有值」就漏掉该条目）。
       const entries = Array.from(
-        new Set([...expandEntries(template, v), ...templateDraftEntries(template, draft)]),
+        new Set(
+          starFields.flatMap((f) => [
+            ...expandEntries(f.key, v),
+            ...templateDraftEntries(f.key, draft),
+          ]),
+        ),
       );
       const visibleStar = visible.filter((f) => starCount(f.key) === 1);
       const visiblePlain = visible.filter((f) => starCount(f.key) === 0);
@@ -194,7 +200,7 @@ export function SurfaceForm({
               >
                 {tr("添加条目")}
               </antd.Button>
-            ))}
+            )}
           </div>
           {visiblePlain.length > 0 ? (
             <div

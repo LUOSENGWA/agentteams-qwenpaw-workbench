@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import {
   changedKeys,
   collectConcreteValues,
+  expandEntries,
   filterFields,
   keyMatchesTemplate,
   templateDraftEntries,
@@ -159,6 +160,8 @@ ok("collectConcreteValues 父路径缺失 → 空", () => {
 });
 
 // ── templateDraftEntries ────────────────────────────────────────────
+// 注：templateDraftEntries 只负责「本模板」（只认同名 concrete 键）；
+// 组级跨模板并集由 SurfaceForm 调用侧做（starFields.flatMap 并集）。
 ok("templateDraftEntries 从 concrete 键提条目名（去重、键序）", () => {
   const draft = {
     "channels.matrix.enabled": true,
@@ -171,6 +174,25 @@ ok("templateDraftEntries 从 concrete 键提条目名（去重、键序）", () 
 
 ok("templateDraftEntries 非通配模板 → []", () => {
   assert.deepEqual(templateDraftEntries("gateway.port", { "gateway.port": 1 }), []);
+});
+
+ok("组级跨模板并集（模拟 SurfaceForm starFields 调用侧）：条目在任一模板下有值即出现", () => {
+  const starFields = [
+    field("channels.*.enabled", "boolean"),
+    field("channels.*.apiKey", "secret", { sensitive: true }),
+  ];
+  // matrix 只出现在 values（enabled 模板），slack 只在 draft（apiKey 模板）→ 并集取全。
+  const values = { channels: { matrix: { enabled: true } } };
+  const draft = { "channels.slack.apiKey": "x" };
+  const entries = Array.from(
+    new Set(
+      starFields.flatMap((f) => [
+        ...expandEntries(f.key, values),
+        ...templateDraftEntries(f.key, draft),
+      ]),
+    ),
+  );
+  assert.deepEqual(entries, ["matrix", "slack"]);
 });
 
 console.log(`\no2-surface: ${n} passed`);
