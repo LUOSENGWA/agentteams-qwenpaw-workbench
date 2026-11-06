@@ -29,6 +29,7 @@
 import {
   controllerRequest,
   fetchControllerJson,
+  httpErrorDetail,
   httpErrorStatus,
   requestJson,
 } from "../shared";
@@ -431,6 +432,10 @@ export async function listModelAccessTables(): Promise<ModelAccessTablesResult> 
     return { supported: true, tables };
   } catch (e) {
     if (httpErrorStatus(e) === 404) return { supported: false, tables: [] };
+    // A build that carries the handler but no CRD answers 500 with "no
+    // matches for kind ModelAccessTable": that is a missing capability, not a
+    // transient failure — degrade like a 404 instead of surfacing an error.
+    if (missingModelAccessCRD(e)) return { supported: false, tables: [] };
     throw e;
   }
 }
@@ -469,4 +474,12 @@ export async function getModelAccessTable(name: string): Promise<ModelAccessTabl
     if (httpErrorStatus(e) === 404) return { supported: false, entries: [], raw: null };
     throw e;
   }
+}
+
+/** True when the controller has the handler but the ModelAccessTable CRD is
+ *  not installed (kubectl-style "no matches for kind" 500). */
+function missingModelAccessCRD(e: unknown): boolean {
+  if (httpErrorStatus(e) !== 500) return false;
+  const detail = httpErrorDetail(e).toLowerCase();
+  return detail.includes("no matches for kind") && detail.includes("modelaccesstable");
 }
