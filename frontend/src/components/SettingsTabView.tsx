@@ -343,7 +343,7 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.matrix} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("内网：http://192.168.x.x:6867")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
             value={matrixLan}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setMatrixLan(e.target.value)
@@ -355,7 +355,7 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("matrix:0", v)}
           />
           <antd.Input
-            placeholder={tr("外网：https://你的域名:6867（可留空）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
             value={matrixWan}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setMatrixWan(e.target.value)
@@ -372,7 +372,7 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.controller} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("内网：http://192.168.x.x:8090（可留空）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
             value={controllerLan}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setControllerLan(e.target.value)
@@ -384,7 +384,7 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("controller:0", v)}
           />
           <antd.Input
-            placeholder={tr("外网：https://你的域名:8090（可留空）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
             value={controllerWan}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setControllerWan(e.target.value)
@@ -408,7 +408,7 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.gateway} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("Higress 地址·内网（Console 管理面；宿主端口部署时自选，默认 18001）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
             value={gatewayAdminUrl}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setGatewayAdminUrl(e.target.value)
@@ -422,7 +422,7 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("gateway:0", v)}
           />
           <antd.Input
-            placeholder={tr("Higress 地址·外网（公网入口，可留空；内网不可达时自动降级）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
             value={gatewayWan}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setGatewayWan(e.target.value)
@@ -564,6 +564,9 @@ export function SettingsTabView(props: {
             <span style={{ fontSize: 12, color: "#888" }}>
               {tr("逐个地址测延迟（失败重试一次），识别外网/内网，测完自动切到最快；后台按状态自适应重测（稳定时低频、单地址不探测）")}
             </span>
+          </div>
+          <div style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>
+            {tr("未写协议时按端口与主机类型自动识别 http/https")}
           </div>
           {connTest ? (
             <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
@@ -1037,7 +1040,7 @@ export function SettingsTabView(props: {
  两条路径同一集群，后台自动测延迟切最快，无需手动切换。 */}
           <div style={{ display: "grid", gap: 8 }}>
             <antd.Input
-              placeholder={tr("内网：http://192.168.x.x:30000")}
+              placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
               value={sglangLan}
               disabled={!sglangEnabled}
               onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -1050,7 +1053,7 @@ export function SettingsTabView(props: {
               disabled={!sglangEnabled}
             />
             <antd.Input
-              placeholder={tr("外网：https://你的域名:30000（可留空）")}
+              placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
               value={sglangWan}
               disabled={!sglangEnabled}
               onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
