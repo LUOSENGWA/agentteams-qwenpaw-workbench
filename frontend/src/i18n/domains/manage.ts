@@ -372,6 +372,30 @@ export const manageDict: Record<string, { en: string }> = {
     en: "Copy failed (browser clipboard not authorized)",
   },
 
+  // ── 文件域 v3（F-V3-1 回收站独立页 + 同步设置弹窗）──
+  "原路径": { en: "Original path" },
+  "同步设置": { en: "Sync settings" },
+  "立即同步": { en: "Sync now" },
+  "控制器未提供清单接口": {
+    en: "Controller provides no manifest API",
+  },
+  "尚无清单（本地同步客户端未写入）": {
+    en: "No manifest yet (local sync client has not written one)",
+  },
+  "未授予 file_sync 权限": { en: "file_sync permission not granted" },
+  "最后写入者": { en: "Last writer" },
+  "同步完成：下载 {a} · 上传 {b} · 冲突 {c}": {
+    en: "Synced: {a} downloaded · {b} uploaded · {c} conflicts",
+  },
+  "同步进行中（已有同步任务在跑）": {
+    en: "Sync already in progress",
+  },
+  "已是最新（代数未变化）": {
+    en: "Already up to date (generation unchanged)",
+  },
+  "同步失败": { en: "Sync failed" },
+  "镜像目录": { en: "Mirror directory" },
+
   // ── 危险区：CRD 删除（16.55）──
   "危险区": { en: "Danger zone" },
   "删除人员": { en: "Delete person" },

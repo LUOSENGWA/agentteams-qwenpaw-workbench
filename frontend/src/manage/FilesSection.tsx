@@ -15,12 +15,16 @@
  * - l1（4 列 L1 列）：视图切换（我的文件 / 回收站）+ 面包屑（目录导航，
  *   根层不渲染——「我的文件」已由 tab 表达）+ compact 列表（回收站行仅选中，
  *   操作在中栏详情）；
- * - mid：  工具条（左 = 配额进度 + 用量文案；右 = 上传文件 / 新建文件夹 / 刷新——
- *          页面级动作按钮唯一入口；设置/清除配额在「人员管理」人员详情，Q）+
- *          同步状态紧凑条（仅 ok 渲染，单行：条目·墓碑·代 + 导出/复制放行尾）+
- *          列表头（视图切换 + 递归开关同行）+ 面包屑（仅 dirPath 非空）+
- *          恒 = 完整列表（名称 / 大小 / 更新时间(删除时间) / 操作，行高 ≥44px（#1669 触控），
- *          目录大小 = —）。详情统一由本 section 的「详情槽」（父层）渲染一次：
+ * - mid：  v3（F-V3-1）标题行（页标题「文件管理」+ 紧凑视图切换
+ *          （我的文件 / 回收站）+ 递归开关——不占列表上方一整行；回收站
+ *          视图无工具条）+ 工具条（仅 files 视图：左 = 配额进度 + 用量
+ *          文案；右 = 上传文件 / 同步设置（→ files/SyncSettingsModal 弹窗）/
+ *          新建文件夹 / 刷新——页面级动作唯一入口；设置/清除配额在「人员
+ *          管理」人员详情，Q）+ 面包屑（仅 files 视图且 dirPath 非空）+
+ *          files 视图 = 完整列表（名称 / 大小 / 更新时间 / 操作，行高
+ *          ≥44px（#1669 触控），目录大小 = —）/ trash 视图 = 回收站独立
+ *          页（files/TrashPanel：原路径 / 大小 / 删除时间 / 操作，自取数
+ *          + 独立列头，不与主列表同屏）。详情统一由本 section 的「详情槽」（父层）渲染一次：
  *          4 列（files 4 列无右栏）/ 1 列 = mid 持槽，按容器宽度
  *          （ResizeObserver；禁 window.innerWidth）断点——≥1200 split
  *          （列表 + 右侧详情 400，flex 不压缩列表）/ 768–1199 drawer
@@ -62,12 +66,10 @@ import {
   deleteFile,
   DirListGuard,
   downloadPresignedUrl,
-  downloadTextFile,
   downloadViaHost,
   entryDisplayName,
   entryRelPath,
   getQuota,
-  getSyncManifest,
   getSyncStatus,
   fetchFile,
   HumanFilesError,
@@ -96,26 +98,52 @@ import {
   DownloadIcon,
   FolderIcon,
   PageIcon,
-  RefreshIcon,
   TrashIcon,
 } from "../components/icons";
 import { ReloadIcon } from "../components/WorkerManageShared";
 import { FilePreview, type PreviewFile } from "../components/FilePreview";
 import type { ManageNav } from "./useManageNav";
 import type { ManageSectionProps } from "./types";
+import TrashPanel, {
+  fmtBytes,
+  fmtTs,
+  normTrashPath,
+  TOUCH,
+  type TrashPanelProps,
+} from "./files/TrashPanel";
+import SyncSettingsModal from "./files/SyncSettingsModal";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
+// v3（F-V3-1）：fmtBytes / TOUCH 自 files/TrashPanel 迁入后重导出——外部面
+// 不变（PeopleSection 配额卡经本文件引用 fmtBytes；files-actions-1669 经
+// 本文件引用 TOUCH / touchCss）。
+export { fmtBytes, TOUCH };
+
 type Tr = (s: string, v?: Record<string, string | number>) => string;
+
+// ── v3（F-V3-1）视图集（纯函数；tests/files-v3-1 断言）────────────────
+/** 文件管理页视图：files = 主列表 / trash = 回收站独立页（TrashPanel）。
+ * 容器持 view（标题行小视图切换；两视图不同屏、列头独立）。 */
+export type FileView = "files" | "trash";
+/** 默认视图（挂载即主列表）。 */
+export const FILE_VIEW_DEFAULT: FileView = "files";
+/** 视图集（渲染顺序 = 标题行分段顺序；tests/files-v3-1 断言）。 */
+export function fileViews(): FileView[] {
+  return ["files", "trash"];
+}
+/** v3：页内同步设置长条（SyncCard）已移除——同步设置改 SyncSettingsModal
+ * 弹窗（工具条按钮打开）；SyncCard 声明保留 = 测试区间锚点，无视图渲染。 */
+export const hasInlineSyncCard = false;
 
 /** 文件域自持状态（tabs / 列表 / 详情 / 配额卡共享）。 */
 interface FilesState {
   humanName: string;
   /** L1 惯例：hasToken = 已配置 Controller 管理员 token（best-effort 门控）。 */
   isAdmin: boolean;
-  view: "files" | "trash";
+  view: FileView;
   /** 当前目录相对路径（空 = 根目录）。 */
   dirPath: string;
   files: HumanFileEntry[];
@@ -133,7 +161,7 @@ interface FilesState {
    * undefined = 老控制器（无分页）。 */
   nextKey: string | null | undefined;
   loadingMore: boolean;
-  onSwitchView: (v: "files" | "trash") => void;
+  onSwitchView: (v: FileView) => void;
   onEnterDir: (p: string) => void;
   onToggleRecursive: (on: boolean) => void;
   /** #1669：opts.force = 强制刷新（时间戳 + cache:"no-store"，见 forceList）。 */
@@ -148,29 +176,8 @@ type SubProps = {
   fs: FilesState;
 };
 
-/** 字节数 → 可读文本（— = 缺失/非法，诚实不造 0）。
- * 导出：PeopleSection 配额卡用量展示同源复用（Q）。 */
-export function fmtBytes(n: number | undefined): string {
-  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "—";
-  if (n < 1024) return `${n} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let v = n / 1024;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i += 1;
-  }
-  return `${v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
-}
-
-/** ISO 时间戳 → 本地短文本（— = 缺失/非法）。 */
-function fmtTs(s: string | undefined): string {
-  if (!s) return "—";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return "—";
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+// fmtBytes / fmtTs（文件域共享纯函数）v3 起在 files/TrashPanel.tsx
+//（TrashPanel / SyncSettingsModal 共用；本文件 import + 重导出，外部面不变）。
 
 /** 16.67 面包屑决策（纯函数；tests/files-ui-1667.test.ts 断言）：
  * 根层（dirPath = ""）→ 整行不渲染（visible=false；「我的文件」已由
@@ -263,16 +270,7 @@ export function detailState(o: {
 const LIST_GRID = "minmax(0, 1fr) 72px 120px 96px";
 
 // ── #1669 触控目标（用户实测：按钮太小、触屏难点）──
-/** 触控常量（纯值，tests/files-actions-1669.test.ts 断言）：列表行高 ≥44 /
- * 所有按钮 ≥40×40（图标按钮 40 盒内 16px 图标 → 有效留白 12px ≥ 8）/
- * 行内图标按钮间距 ≥8 / coarse 指针（触屏）整体再放大 10%。 */
-export const TOUCH = {
-  rowMinHeight: 44,
-  btnMinSize: 40,
-  btnPadding: 8,
-  iconGap: 8,
-  coarseScale: 1.1,
-} as const;
+// TOUCH 常量 v3 起在 files/TrashPanel.tsx（本文件 import + 重导出）。
 
 /** 触控 CSS 变量（各 FilesSection 根 <style> 注入；:root 作用域全列共享——
  * 4 栏 l1+mid 双实例重复注入无害）。行高与按钮统一引用这两个变量。 */
@@ -313,10 +311,7 @@ function fullPath(dirPath: string, name: string): string {
   return dirPath ? `${dirPath}/${name}` : name;
 }
 
-/** 回收站条目路径归一（Go 返回 "files/a.txt" → 相对路径 "a.txt"）。 */
-function normTrashPath(p: string): string {
-  return p.replace(/^files\//, "");
-}
+// normTrashPath（回收站路径归一）v3 起在 files/TrashPanel.tsx（本文件 import）。
 
 /** 行 → 文件相对路径（双形态）：新形态 = entry.path 剥 files/ 前缀；
  * 老形态 = dirPath/name。选中键 / 下载 / 删除 / 上传全走此值。 */
@@ -698,16 +693,21 @@ function DetailOverlay({ t, tr, nav, fs, overlay }: SubProps & { overlay: "drawe
   );
 }
 
-/** 视图切换（我的文件 / 回收站）。 */
-function ViewTabs({ t, tr, fs }: SubProps) {
-  const btn = (v: "files" | "trash", label: string) => {
+/** 视图切换（我的文件 / 回收站）。v3：small = 标题行内紧凑分段（去
+ * flex:1 通栏，不占列表上方一整行）；l1 栏沿用通栏形态。 */
+function ViewTabs({ t, tr, fs, small = false }: SubProps & { small?: boolean }) {
+  const label: Record<FileView, string> = {
+    files: tr("我的文件"),
+    trash: tr("回收站"),
+  };
+  const btn = (v: FileView) => {
     const active = fs.view === v;
     return (
       <button
         type="button"
         onClick={() => fs.onSwitchView(v)}
         style={{
-          flex: 1,
+          ...(small ? {} : { flex: 1 }),
           // #1669：触控目标（minHeight ≥40 + 垂直居中）。
           display: "inline-flex",
           alignItems: "center",
@@ -723,14 +723,13 @@ function ViewTabs({ t, tr, fs }: SubProps) {
           cursor: "pointer",
         }}
       >
-        {label}
+        {label[v]}
       </button>
     );
   };
   return (
     <div style={{ display: "flex", gap: 4 }}>
-      {btn("files", tr("我的文件"))}
-      {btn("trash", tr("回收站"))}
+      {fileViews().map((v) => btn(v))}
     </div>
   );
 }
@@ -789,8 +788,9 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
   );
 }
 
-/** 列表块：出错+重试 / 加载中 / 空态（居中一句 + 主 CTA 文字链接，指向
- * 工具条同一处理函数）/ 表头行 + 行列表（compact = l1 列紧凑行）。 */
+/** 列表块（v3：files-only——回收站独立页 = files/TrashPanel，不同屏）：
+ * 出错+重试 / 加载中 / 空态（居中一句 + 主 CTA 文字链接，指向工具条同一
+ * 处理函数）/ 表头行 + 文件行列表（compact = l1 列紧凑行）。 */
 function ListArea({
   t,
   tr,
@@ -799,8 +799,7 @@ function ListArea({
   actions,
   compact = false,
 }: SubProps & { actions: FilesActions; compact?: boolean }) {
-  const count = fs.view === "trash" ? fs.trash.length : fs.files.length;
-  const filesView = fs.view === "files";
+  const count = fs.files.length;
   return (
     <div style={{ display: "grid", gap: 4 }}>
       {!compact && fs.status !== "err" ? (
@@ -836,24 +835,23 @@ function ListArea({
       {fs.status !== "err" && !fs.loading && count === 0 ? (
         <div style={{ padding: "18px 8px", textAlign: "center" }}>
           <div style={{ fontSize: 12, color: t.textSecondary }}>
-            {filesView ? tr("暂无文件") : tr("回收站为空")}
+            {tr("暂无文件")}
           </div>
           {/* 16.67：空态 CTA = 文字链接（type="link"，非按钮），
            * 指向工具条「上传文件」的同一处理函数（actions 共享）。
            * #1669：minHeight 触控目标（文字链接同样要求 ≥40 可点区）。 */}
-          {filesView ? (
-            <antd.Button
-              type="link"
-              style={{ padding: 0, ...btnTouch }}
-              onClick={actions.onUploadClick}
-            >
-              {tr("上传一个文件")}
-            </antd.Button>
-          ) : null}
+          <antd.Button
+            type="link"
+            style={{ padding: 0, ...btnTouch }}
+            onClick={actions.onUploadClick}
+          >
+            {tr("上传一个文件")}
+          </antd.Button>
         </div>
       ) : null}
-      {/* 16.67 列表表头行：名称 / 大小 / 更新时间(删除时间) / 操作——
-       * 与数据行共用 LIST_GRID 模板（列宽稳定）。 */}
+      {/* 16.67 列表表头行：名称 / 大小 / 更新时间 / 操作——
+       * 与数据行共用 LIST_GRID 模板（列宽稳定）。回收站列头独立于
+       * files/TrashPanel（原路径 / 大小 / 删除时间 / 操作）。 */}
       {!compact && fs.status !== "err" && !fs.loading && count > 0 ? (
         <div
           style={{
@@ -868,28 +866,24 @@ function ListArea({
         >
           <span>{tr("名称")}</span>
           <span style={{ textAlign: "right" }}>{tr("大小")}</span>
-          <span>{filesView ? tr("更新时间") : tr("删除时间")}</span>
+          <span>{tr("更新时间")}</span>
           <span>{tr("操作")}</span>
         </div>
       ) : null}
-      {fs.view === "trash"
-        ? fs.trash.map((e) => (
-            <TrashRow key={e.id} entry={e} t={t} tr={tr} nav={nav} fs={fs} compact={compact} />
-          ))
-        : fs.files.map((e) => (
-            <FileRow
-              key={rowPath(e, fs.dirPath) || entryDisplayName(e)}
-              entry={e}
-              t={t}
-              tr={tr}
-              nav={nav}
-              fs={fs}
-              compact={compact}
-            />
-          ))}
+      {fs.files.map((e) => (
+        <FileRow
+          key={rowPath(e, fs.dirPath) || entryDisplayName(e)}
+          entry={e}
+          t={t}
+          tr={tr}
+          nav={nav}
+          fs={fs}
+          compact={compact}
+        />
+      ))}
       {/* #1518：仅 nextKey 为 string（满页还有下一页）时显「加载更多」；
        * null = 到底、undefined = 老控制器无分页。 */}
-      {!compact && fs.view === "files" && typeof fs.nextKey === "string" ? (
+      {!compact && typeof fs.nextKey === "string" ? (
         <antd.Button block loading={fs.loadingMore} style={btnTouch} onClick={() => fs.loadMore()}>
           {tr("加载更多")}
         </antd.Button>
@@ -1118,118 +1112,41 @@ function FileRow({
   );
 }
 
-/** 回收站行：点击选中；完整行内联 恢复 / 彻底删（非 admin 彻底删 disabled
- * + 「仅管理员」）；compact 行仅选中（操作在中栏详情，见 l1 提示行）。 */
-function TrashRow({
+/** l1 栏回收站紧凑行（v3）：单行（图标 + 原路径），仅选中——恢复 /
+ * 彻底删操作在回收站独立页（files/TrashPanel）行内（见 l1 提示行）。
+ * 完整行（四列 grid + 行内操作）已随回收站独立页迁出本文件。 */
+function TrashRailRow({
   entry,
   t,
-  tr,
   nav,
-  fs,
-  compact = false,
-}: SubProps & { entry: HumanTrashEntry; compact?: boolean }) {
+}: SubProps & { entry: HumanTrashEntry }) {
   const p = normTrashPath(entry.path);
   const sel = nav.selectedFile === p;
-
-  const onRestore = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    void doRestore(fs.humanName, entry.id, fs.isAdmin, () => fs.load(true), tr);
-  };
-  const onPurge = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    if (!fs.isAdmin) return;
-    antd.Modal.confirm({
-      title: tr("彻底删除此项？"),
-      content: tr("此操作不可撤销"),
-      okText: tr("彻底删除"),
-      cancelText: tr("取消"),
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await purgeTrash(fs.humanName, entry.id);
-          antd.message.success(tr("已彻底删除"));
-          if (nav.selectedFile === p) nav.selectFile(null);
-          fs.load(true);
-        } catch (err) {
-          antd.message.error(hfErrorText(err, tr));
-        }
-      },
-    });
-  };
-
   const select = () => nav.selectFile(sel ? null : p);
-  const nameCell = (
-    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-      <TrashIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
-      <span
-        style={{
-          fontWeight: 600,
-          fontSize: 12,
-          color: t.text,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {p}
-      </span>
-    </span>
-  );
   const rowSkin = sel
     ? { border: `1px solid ${t.border}`, background: t.hoverBg }
     : { border: "1px solid transparent", background: "transparent" };
-  const rowHandlers = {
-    onClick: select,
-    onKeyDown: (e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        select();
-      }
-    },
-    onMouseEnter: (e: ReactNS.MouseEvent<HTMLDivElement>) => {
-      if (!sel) e.currentTarget.style.background = t.hoverBg;
-    },
-    onMouseLeave: (e: ReactNS.MouseEvent<HTMLDivElement>) => {
-      if (!sel) e.currentTarget.style.background = "transparent";
-    },
-  };
-
-  if (compact) {
-    // l1 列紧凑行：单行（图标 + 路径），仅选中（操作在中栏详情）。
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        {...rowHandlers}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          minHeight: "var(--hf-row-min, 44px)",
-          padding: "0 8px",
-          borderRadius: 6,
-          cursor: "pointer",
-          width: "100%",
-          ...rowSkin,
-        }}
-      >
-        {nameCell}
-      </div>
-    );
-  }
-
-  // 16.67 回收站行（非 compact）：四列 grid（名称/大小/删除时间/操作），
-  // 行高 36px；行内 恢复/彻底删 stopPropagation（彻底删 admin 门控）。
   return (
     <div
       role="button"
       tabIndex={0}
-      {...rowHandlers}
+      onClick={select}
+      onKeyDown={(e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          select();
+        }
+      }}
+      onMouseEnter={(e: ReactNS.MouseEvent<HTMLDivElement>) => {
+        if (!sel) e.currentTarget.style.background = t.hoverBg;
+      }}
+      onMouseLeave={(e: ReactNS.MouseEvent<HTMLDivElement>) => {
+        if (!sel) e.currentTarget.style.background = "transparent";
+      }}
       style={{
-        display: "grid",
-        gridTemplateColumns: LIST_GRID,
-        gap: 8,
+        display: "flex",
         alignItems: "center",
+        gap: 8,
         minHeight: "var(--hf-row-min, 44px)",
         padding: "0 8px",
         borderRadius: 6,
@@ -1238,55 +1155,67 @@ function TrashRow({
         ...rowSkin,
       }}
     >
-      {nameCell}
-      <span
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          textAlign: "right",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {fmtBytes(entry.size)}
-      </span>
-      <span
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {fmtTs(entry.deletedAt)}
-      </span>
-      <span style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap }}>
-        <button
-          type="button"
-          onClick={onRestore}
-          title={tr("恢复文件")}
-          aria-label={tr("恢复文件")}
-          style={iconBtnStyle(t)}
-        >
-          <RefreshIcon size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={onPurge}
-          disabled={!fs.isAdmin}
-          title={fs.isAdmin ? tr("彻底删除") : tr("仅管理员")}
-          aria-label={tr("彻底删除")}
+      <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <TrashIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+        <span
           style={{
-            ...iconBtnStyle(t),
-            opacity: fs.isAdmin ? 1 : 0.4,
-            cursor: fs.isAdmin ? "pointer" : "not-allowed",
+            fontWeight: 600,
+            fontSize: 12,
+            color: t.text,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}
         >
-          <TrashIcon size={16} />
-        </button>
+          {p}
+        </span>
       </span>
+    </div>
+  );
+}
+
+/** l1 栏回收站紧凑列表（v3）：四态（错误+重试 / 加载中 / 空 / 行列表）——
+ * 与 files/TrashPanel 独立页同四态语义；数据 = 容器 fs.trash（l1 与 mid
+ * 共享同一取数，不重复请求）。 */
+function TrashRailList({ t, tr, nav, fs }: SubProps) {
+  const count = fs.trash.length;
+  return (
+    <div style={{ display: "grid", gap: 4 }}>
+      {fs.status === "err" && count === 0 ? (
+        <>
+          <antd.Alert
+            type="warning"
+            showIcon
+            message={tr("加载失败")}
+            description={fs.error}
+          />
+          <antd.Button style={btnTouch} onClick={() => fs.load(false)}>
+            {tr("重试")}
+          </antd.Button>
+        </>
+      ) : null}
+      {fs.status !== "err" && fs.loading && count === 0 ? (
+        <div
+          style={{
+            padding: "18px 8px",
+            textAlign: "center",
+            fontSize: 12,
+            color: t.textSecondary,
+          }}
+        >
+          {tr("加载中…")}
+        </div>
+      ) : null}
+      {fs.status !== "err" && !fs.loading && count === 0 ? (
+        <div style={{ padding: "18px 8px", textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("回收站为空")}
+          </div>
+        </div>
+      ) : null}
+      {fs.trash.map((e) => (
+        <TrashRailRow key={e.id} entry={e} t={t} tr={tr} nav={nav} fs={fs} />
+      ))}
     </div>
   );
 }
@@ -1453,9 +1382,15 @@ function useFilesActions(
 
 /** 16.67 工具条（取代旧配额卡）：一行——左 = 配额进度 + 用量文案
  * （hover 显「容量配额在『人员管理』中设置」）；右 = 操作按钮组
- * （上传文件 / 新建文件夹 / 刷新——页面级动作唯一入口）；
- * 窄栏（<720px）自动换行不重叠。 */
-function FilesToolbar({ t, tr, fs, actions }: SubProps & { actions: FilesActions }) {
+ * （上传文件 / 同步设置（v3 弹窗入口）/ 新建文件夹 / 刷新——页面级
+ * 动作唯一入口）；窄栏（<720px）自动换行不重叠。 */
+function FilesToolbar({
+  t,
+  tr,
+  fs,
+  actions,
+  onOpenSyncSettings,
+}: SubProps & { actions: FilesActions; onOpenSyncSettings: () => void }) {
   const q = fs.quota;
   const hasLimit = q !== null && typeof q.quotaBytes === "number" && (q.quotaBytes ?? 0) > 0;
   const percent =
@@ -1514,6 +1449,10 @@ function FilesToolbar({ t, tr, fs, actions }: SubProps & { actions: FilesActions
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <antd.Button loading={actions.upBusy} style={btnTouch} onClick={actions.onUploadClick}>
           {tr("上传文件")}
+        </antd.Button>
+        {/* v3（F-V3-1）：同步设置弹窗入口（替代原页内 SyncCard 长条）。 */}
+        <antd.Button style={btnTouch} onClick={onOpenSyncSettings}>
+          {tr("同步设置")}
         </antd.Button>
         <antd.Button style={btnTouch} onClick={actions.openFolderModal}>
           {tr("新建文件夹")}
@@ -1828,144 +1767,14 @@ function TrashDetail({ t, tr, nav, fs }: SubProps) {
   );
 }
 
-/** #1499 同步状态（自持取数：挂载即取 status）——16.67 收敛：
- * 仅 state = ok 渲染（单行紧凑条：条目 N · 墓碑 M · 代 G + 导出/复制
- * 清单原文放行尾，不换行；更新于… 收进条 title tooltip）；
- * empty / denied / unsupported / 未取 → 不渲染（不占版面）。
- * ok 且计数级漂移时条下显黄条（保留）。
- *
- * **产品语义（不要越界）**：服务端只存清单、永不合并；清单条目是客户端
- * 语义（map[string]json.RawMessage）服务端原样存——本卡**不逐条渲染/
- * 解析条目**、**不替用户写清单**，只读计数字段 + 原文导出。 */
-function SyncCard({ t, tr, fs }: SubProps) {
-  const [st, setSt] = React.useState<SyncStatus | null>(null);
-  const [fileCount, setFileCount] = React.useState<number | null>(null);
-  const [manifest, setManifest] = React.useState<{ text: string; etag?: string } | null>(null);
-  const [manifestBusy, setManifestBusy] = React.useState(false);
-
-  const loadSync = React.useCallback(() => {
-    setSt(null);
-    void getSyncStatus(fs.humanName).then((s) => {
-      setSt(s);
-      // 漂移对比仅在有清单时做：后台全树递归计数（limit 封顶 10000；
-      // 老控制器 301 回落老形态 → paginated=false → 无计数 → 跳过漂移）。
-      if (s.state === "ok") {
-        void listFiles(fs.humanName, "", { recursive: true, limit: 10000 })
-          .then((r) => {
-            if (r.paginated && r.nextKey === null) {
-              setFileCount(r.entries.filter((e) => !isEntryDir(e)).length);
-            } else {
-              setFileCount(null);
-            }
-          })
-          .catch(() => setFileCount(null));
-      } else {
-        setFileCount(null);
-      }
-    });
-  }, [fs.humanName]);
-
-  React.useEffect(() => {
-    loadSync();
-  }, [loadSync]);
-
-  // 16.67：仅 ok 渲染（empty / denied / unsupported / 未取 → 不占版面）。
-  if (!st || !syncCardVisible(st.state)) return null;
-
-  const ensureManifest = async (): Promise<string | null> => {
-    if (manifest?.text != null) return manifest.text;
-    setManifestBusy(true);
-    try {
-      const r = await getSyncManifest(fs.humanName);
-      if (r.ok && r.text != null) {
-        setManifest({ text: r.text, etag: r.etag });
-        return r.text;
-      }
-      antd.message.error(tr("清单获取失败"));
-      return null;
-    } finally {
-      setManifestBusy(false);
-    }
-  };
-  const doExport = async () => {
-    const text = await ensureManifest();
-    if (text == null) return;
-    if (downloadTextFile(text, `files-manifest-${fs.humanName}.json`)) {
-      antd.message.success(tr("清单原文已导出"));
-    } else {
-      antd.message.error(tr("导出失败"));
-    }
-  };
-  const doCopy = async () => {
-    const text = await ensureManifest();
-    if (text == null) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      antd.message.success(tr("已复制清单原文"));
-    } catch {
-      antd.message.error(tr("复制失败（浏览器未授权剪贴板）"));
-    }
-  };
-
-  const drift =
-    st.state === "ok" &&
-    fileCount !== null &&
-    typeof st.entries === "number" &&
-    fileCount !== st.entries;
-
-  // 16.67：「更新于…」行收进条 tooltip（条本身 = 计数 + 放行尾两按钮）。
-  const updatedTip = st.updatedBy
-    ? tr("更新于 {t}（{by}）", { t: fmtTs(st.updatedAt), by: st.updatedBy })
-    : tr("更新于 {t}", { t: fmtTs(st.updatedAt) });
-
-  return (
-    <div style={{ display: "grid", gap: 6 }}>
-      <div
-        title={updatedTip}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          border: `1px solid ${t.border}`,
-          borderRadius: 6,
-          padding: "4px 8px",
-          background: t.cardBg,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 11,
-            color: t.textSecondary,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            minWidth: 0,
-          }}
-        >
-          {tr("条目")} {st.entries ?? 0} · {tr("墓碑")} {st.tombstones ?? 0} ·{" "}
-          {tr("代")} {st.generation ?? "—"}
-        </span>
-        <span style={{ flex: 1 }} />
-        <antd.Button loading={manifestBusy} style={btnTouch} onClick={() => void doExport()}>
-          {tr("导出清单原文")}
-        </antd.Button>
-        <antd.Button disabled={manifestBusy} style={btnTouch} onClick={() => void doCopy()}>
-          {tr("复制清单原文")}
-        </antd.Button>
-      </div>
-      {drift ? (
-        <antd.Alert
-          type="warning"
-          showIcon
-          message={tr("文件区 {n} 个文件，清单 {m} 条。清单由本地同步客户端维护，请在本地运行同步客户端对齐。", {
-            n: fileCount as number,
-            m: st.entries ?? 0,
-          })}
-        />
-      ) : null}
-    </div>
-  );
+/** v3（F-V3-1）锚点桩——页内同步设置长条已移除（同步状态 / 立即同步 /
+ * 导出清单原文 / 镜像目录说明全部迁入 files/SyncSettingsModal 弹窗，
+ * 工具条「同步设置」按钮打开；st 由容器取数共享，syncOk = 下方容器的
+ * syncCardVisible 接线）。声明保留 = files-actions-1669 ③ 区间断言锚点
+ *（TrashDetail → 本声明 区间 = TrashDetail 函数体，断言回收站条目不
+ * 预览）；noUnusedLocals 要求 export；无任何视图渲染本桩。 */
+export function SyncCard(): null {
+  return null;
 }
 
 /** #1518 递归平铺开关：canRecursive 探测未过（老控制器）→ 禁用 + tooltip；
@@ -2009,7 +1818,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     myUserId.replace(/^@/, "").split(":")[0];
 
   // ── 组件自持状态（files 域进入即取数；切域卸载即停）──
-  const [view, setView] = React.useState<"files" | "trash">("files");
+  const [view, setView] = React.useState<FileView>(FILE_VIEW_DEFAULT);
   const [dirPath, setDirPath] = React.useState("");
   const [files, setFiles] = React.useState<HumanFileEntry[]>([]);
   const [trash, setTrash] = React.useState<HumanTrashEntry[]>([]);
@@ -2180,6 +1989,21 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     intervalMs: 30000,
   });
 
+  // v3（F-V3-1）同步状态：页内长条已移除 → 容器取数共享给
+  // files/SyncSettingsModal 弹窗（st = null → 「加载中…」；syncOk =
+  // 计数行 vs 原因行的门，16.67 同款判定）。
+  const [st, setSt] = React.useState<SyncStatus | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = React.useState(false);
+  const loadSync = React.useCallback(() => {
+    if (!humanName) return;
+    setSt(null);
+    void getSyncStatus(humanName).then(setSt);
+  }, [humanName]);
+  React.useEffect(() => {
+    loadSync();
+  }, [loadSync]);
+  const syncOk = st ? syncCardVisible(st.state) : false;
+
   if (!humanName) {
     return (
       <div style={{ padding: 8 }}>
@@ -2277,7 +2101,11 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             {tr("恢复 / 彻底删除在中栏行操作")}
           </span>
         )}
-        <ListArea {...sub} actions={actions} compact />
+        {view === "files" ? (
+          <ListArea {...sub} actions={actions} compact />
+        ) : (
+          <TrashRailList {...sub} />
+        )}
       </div>
     );
   }
@@ -2292,24 +2120,58 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     const mode = layoutMode(containerW);
     const hasSelection = nav.selectedFile != null;
     const panes = ownsDetail ? panesFor(mode, hasSelection) : null;
+    // v3（F-V3-1）回收站独立页（files/TrashPanel）：自取数 + 独立列头
+    //（原路径 / 大小 / 删除时间 / 操作）；列宽模板与主列表同一 LIST_GRID
+    //（四列对齐），列头行独立——两视图不再同屏 / 共用列头。
+    const trashPanelProps: TrashPanelProps = {
+      t,
+      tr,
+      humanName,
+      isAdmin: !!data.hasToken,
+      nav,
+      gridTemplateColumns: LIST_GRID,
+      onChanged: () => load(true),
+    };
+    const listNode =
+      view === "trash" ? (
+        <TrashPanel {...trashPanelProps} />
+      ) : (
+        <ListArea {...sub} actions={actions} />
+      );
     return (
       <div ref={widthRef} style={{ display: "grid", gap: 10, padding: 4 }}>
         {/* #1669 触控 CSS 变量（:root 作用域；双实例重复注入无害）。 */}
         <style>{touchCss()}</style>
-        <FilesToolbar {...sub} actions={actions} />
-        <SyncCard {...sub} />
-        {/* 16.67 列表头：视图切换 + 递归开关同一行（工具条独占动作入口）。 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <ViewTabs {...sub} />
-          </div>
+        {/* v3：工具条仅 files 视图（回收站无页面级文件动作 / 同步设置入口）。 */}
+        {view === "files" ? (
+          <FilesToolbar
+            {...sub}
+            actions={actions}
+            onOpenSyncSettings={() => setSyncModalOpen(true)}
+          />
+        ) : null}
+        {/* v3（F-V3-1）标题行：页标题 + 视图切换（紧凑分段，不占列表上方
+         * 一整行）+ 递归开关（仅 files 视图）——替代旧「列表头行」。 */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            minHeight: "var(--hf-row-min, 44px)",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 700, color: t.text, flexShrink: 0 }}>
+            {tr("文件管理")}
+          </span>
+          <ViewTabs {...sub} small />
+          <span style={{ flex: 1 }} />
           {view === "files" ? <RecursiveToggle {...sub} /> : null}
         </div>
-        <Breadcrumbs {...sub} />
+        {view === "files" ? <Breadcrumbs {...sub} /> : null}
         {panes && panes.detail !== null ? (
           <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
             <div style={{ flex: "1 1 auto", minWidth: 0, display: "grid", gap: 4 }}>
-              <ListArea {...sub} actions={actions} />
+              {listNode}
             </div>
             <div
               style={{
@@ -2325,11 +2187,25 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             </div>
           </div>
         ) : (
-          <ListArea {...sub} actions={actions} />
+          listNode
         )}
         {panes && panes.overlay ? (
           <DetailOverlay {...sub} overlay={panes.overlay} />
         ) : null}
+        {/* v3（F-V3-1）同步设置弹窗（关闭不占页面空间）。 */}
+        <SyncSettingsModal
+          t={t}
+          tr={tr}
+          humanName={humanName}
+          open={syncModalOpen}
+          st={st}
+          syncOk={syncOk}
+          onClose={() => setSyncModalOpen(false)}
+          onSynced={() => {
+            loadSync();
+            load(true);
+          }}
+        />
       </div>
     );
   }
