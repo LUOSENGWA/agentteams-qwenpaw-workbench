@@ -26,16 +26,17 @@ const crdSrc = readFileSync(
   "utf8",
 );
 
-ok('WORKER_LIST_FIELDS === "spec,status"（导出常量）', () => {
-  assert.match(
-    crdSrc,
-    /export const WORKER_LIST_FIELDS = "spec,status";/,
-  );
+// S1 重构后：列表不再用单一 `spec,status` 常量，而是 spec/status 两腿
+// （spec 条件复验 60s、status 恒新鲜）——接线断言见 s-conditional-unify.test.ts。
+// 这里只保留「列表不是全量请求」这个 P1 语义。
+ok("列表不再请求全量（有 fields 投影腿）", () => {
+  assert.match(crdSrc, /workers\?fields=spec/);
+  assert.match(crdSrc, /workers\?fields=status/);
 });
 
-ok("列表两处请求均带 fields=WORKER_LIST_FIELDS（fetchAdminData + fetchL2AdminData）", () => {
-  const uses = crdSrc.match(/`\/workers\?fields=\$\{WORKER_LIST_FIELDS\}`/g) || [];
-  assert.equal(uses.length, 2);
+ok("列表两条腿都已接线（fetchAdminData + fetchL2AdminData 均调 listWorkerSummaries）", () => {
+  const uses = crdSrc.match(/listWorkerSummaries\(/g) || [];
+  assert.ok(uses.length >= 2);
 });
 
 ok("fetchWorkerDetail：GET /workers/{name} + 15s TTL + tags [\"admin\"]", () => {

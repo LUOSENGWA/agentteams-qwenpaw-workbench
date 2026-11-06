@@ -7,7 +7,6 @@
 import { isLocalHost } from "../hostEnv";
 import { tryLocalConfigEndpoint } from "../localConfigBackend";
 import { NOT_MODIFIED } from "../requestCache";
-import { clearConditionalResponses } from "../lib/conditionalCache";
 import type { RoomMessage, RoomMessagesPage } from "./domains/chat";
 import type { TeamsRoomsResponse } from "./domains/teams";
 
@@ -25,29 +24,8 @@ export interface RequestJsonResult {
 }
 
 /** requestJson 的带响应版（返回原始 Response——供读响应头；
- * 错误语义与 requestJson 完全一致，失败同样 throw）。
- *
- * R1（dashboard #179 语义）：任何写请求（method !== GET）在请求前清一次
- * 条件缓存（ETag/304）、finally 再清一次——写可改变任意 GET 视图：前清
- * 覆盖已带旧 etag 在飞的条件读，finally 清覆盖写期间/写后窗口（成功失败
- * 都清）。requestJson / controllerRequest / postController 全部收敛到本
- * 函数，一处接线即全覆盖；返回/抛错语义不变（GET 路径行为与原版完全一致）。 */
+ * 错误语义与 requestJson 完全一致，失败同样 throw）。 */
 export async function requestJsonFull(
-  path: string,
-  init?: RequestInit,
-  timeoutMs?: number,
-): Promise<RequestJsonResult> {
-  const isWrite = (init?.method ?? "GET").toUpperCase() !== "GET";
-  if (isWrite) clearConditionalResponses();
-  try {
-    return await doRequestJsonFull(path, init, timeoutMs);
-  } finally {
-    if (isWrite) clearConditionalResponses();
-  }
-}
-
-/** 原实现（上方写清包装委托；行为与 R1 前逐字节一致）。 */
-async function doRequestJsonFull(
   path: string,
   init?: RequestInit,
   timeoutMs?: number,
