@@ -362,13 +362,26 @@ export function makeReloadDedup(): (
   run: () => Promise<void>,
 ) => Promise<void> {
   let cur: { key: string; p: Promise<void> } | null = null;
-  return (key, run) => {
-    if (cur && cur.key === key) return cur.p;
+  // A click that lands while a request for the same key is already running
+  // must not be dropped: it would look like the refresh button did nothing.
+  // Remember the latest request and replay it once the flight settles.
+  let queued: { key: string; run: () => Promise<void> } | null = null;
+  const start = (key: string, run: () => Promise<void>): Promise<void> => {
     const p = run().finally(() => {
       if (cur && cur.p === p) cur = null;
+      const next = queued;
+      queued = null;
+      if (next) void start(next.key, next.run);
     });
     cur = { key, p };
     return p;
+  };
+  return (key, run) => {
+    if (cur && cur.key === key) {
+      queued = { key, run };
+      return cur.p;
+    }
+    return start(key, run);
   };
 }
 

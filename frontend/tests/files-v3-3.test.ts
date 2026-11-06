@@ -321,7 +321,7 @@ try {
   assert.equal(undoEligible(""), false, "空串 → 不出条");
   ok("⑨ undoEligible：非空 true / 空串 false");
 
-  // ── ⑩ makeReloadDedup：in-flight 去重行为 ──────────────────────
+  // ── ⑩ makeReloadDedup：in-flight 去重 + 尾随重放 ────────────────
   {
     let runs = 0;
     let resolve: () => void = () => {};
@@ -337,9 +337,17 @@ try {
     assert.equal(p1, p2, "同 key 返回同一 Promise");
     resolve();
     await p1;
-    void d("k", run);
-    assert.equal(runs, 2, "settle 后重发");
+    // 被合并的那次点击在落地后补跑一次：刷新按钮不会被静默吞掉。
+    assert.equal(runs, 2, "排队请求在 settle 后重放");
     resolve();
+    // 没有排队请求时，settle 不产生多余重发。
+    let runsOnce = 0;
+    const dOnce = makeReloadDedup();
+    await dOnce("once", () => {
+      runsOnce += 1;
+      return Promise.resolve();
+    });
+    assert.equal(runsOnce, 1, "无排队 → 只跑一次");
     // 异 key 不互斥。
     let runs2 = 0;
     let releaseGate: () => void = () => {};
