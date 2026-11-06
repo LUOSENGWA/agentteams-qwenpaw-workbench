@@ -3,6 +3,15 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.67 (2026-11-07 · file page cleanup · workspace access)
+
+**Improved**
+- **File manager de-duplication and layout**: the page no longer repeats the same label three times (title, view switch, breadcrumb root) — the breadcrumb only appears inside a directory; upload, create and quota actions move into a single toolbar; the list gains an **updated-at** column (deleted-at in the recycle bin) and shows `—` for directories; rows are clickable for navigation/selection and inline actions stop propagation; the **sync status card** only renders, on one line, when a manifest exists (entries · tombstones · generation + export/copy).
+- **Workspace access on a person** (#1502 admin surface): default access follows membership; `grants` can only widen (read / readwrite) and `restrictions` only narrow (none / read), with restrictions winning per path; paths stay under `files/`, with no traversal, no absolute paths and no top-level reserved directories, and only `*` / `**` globs. The editor mirrors the controller validation before saving and **re-reads the resource** afterwards, so a controller that silently drops unknown fields is reported as "not persisted".
+
+**Fixed**
+- None (the directory navigation, redirect and timeout fixes from 16.66 continue to apply)
+
 ## 0.5.0-beta.16.66 (2026-11-06 · human files · model grants · module updates)
 
 **Added**
