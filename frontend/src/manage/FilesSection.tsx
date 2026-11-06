@@ -2,43 +2,75 @@
  * FilesSection.tsx — 「管理」页文件管理域（#1426 Human Files，nested API 版）。
  *
  * 数据（组件自持；files 域进入 = 组件挂载取数，切域卸载即停）：
- * - listFiles(humanName, dirPath) + getQuota(humanName) 并行（allSettled——
- *   配额失败不挡文件列表，仅配额条降级）；
- * - 30s 静默轮询（usePoller；门控 = data.activeRef 顶层 tab 激活 &&
- *   404 停重试）；
+ * - load 三腿（allSettled 并行）：listFiles/forceList(humanName, dirPath) +
+ *   getQuota(humanName) + listTrash(humanName)——trash 腿独立状态
+ *   （trashStatus/trashError；不走 dirGuard；配额 / 回收站失败不挡文件列表）；
+ * - 统一刷新入口 reload({silent?, force?})（F-V3-3）：force 默认 true
+ *   （forceList 时间戳 + no-store）；in-flight 去重（同 dirPath+view 复用
+ *   在跑请求，makeReloadDedup）；工具条 ↻ / 列表重试 / 回收站弹窗重试 /
+ *   删除 / 恢复 / 彻底删 / 新建文件夹 / 撤销 全走它（上传 / 覆盖成功保留
+ *   load(true,{force:true}) 字面调用——测试锚定调用形态，行为同 force 刷新）；
+ * - 新鲜度（F-V3-3）：30s 静默轮询（usePoller；子目录同样轮询——dirGuard
+ *   目录标签防过期覆盖；门控 = 顶层 tab 激活 && 非 404 && 非分页中途，
+ *   抽纯函数 shouldPoll；刻意 force:false 保持现有请求形态，递归平铺不被
+ *   forceList 打平）+ 焦点感知（visibilitychange / window.focus：可见且
+ *   距上次成功 load >10s → 静默刷新，see shouldRefetchOnFocus；404 保持禁用）；
  * - humanName = admin.humans find(matrixUserID === myUserId).name，fallback
  *   localpart(myUserId)（L2 模式 admin=null，humans 列表不可用；
  *   MyScopeCard 同款推导）；空 → 「无法识别当前用户」占位。
  *
  * 列职责（沿用 ManagePage 四域列模型；16.67 排版 / 去重；
  * 16.69 master-detail 断点——mid 变体单一职责 = 只出列表）：
- * - l1（4 列 L1 列）：视图切换（我的文件 / 回收站）+ 面包屑（目录导航，
- *   根层不渲染——「我的文件」已由 tab 表达）+ compact 列表（回收站行仅选中，
- *   操作在中栏详情）；
- * - mid：  v3（F-V3-1）标题行（页标题「文件管理」+ 紧凑视图切换
- *          （我的文件 / 回收站）+ 递归开关——不占列表上方一整行；回收站
- *          视图无工具条）+ 工具条（仅 files 视图：左 = 配额进度 + 用量
- *          文案；右 = 上传文件 / 同步设置（→ files/SyncSettingsModal 弹窗）/
- *          新建文件夹 / 刷新——页面级动作唯一入口；设置/清除配额在「人员
- *          管理」人员详情，Q）+ 面包屑（仅 files 视图且 dirPath 非空）+
- *          files 视图 = 完整列表（名称 / 大小 / 更新时间 / 操作，行高
- *          ≥44px（#1669 触控），目录大小 = —）/ trash 视图 = 回收站独立
- *          页（files/TrashPanel：原路径 / 大小 / 删除时间 / 操作，自取数
- *          + 独立列头，不与主列表同屏）。详情统一由本 section 的「详情槽」（父层）渲染一次：
- *          4 列（files 4 列无右栏）/ 1 列 = mid 持槽，按容器宽度
+ * - l1（4 列 L1 列；F-V3-3：files 域不占 L1 列——ManagePage showL1(section,
+ *   cols) = cols===4 && section!=="files"；files 4 栏 = rail + 列表 + 内联
+ *   详情，列表只出现一次）：面包屑（目录导航，根层不渲染）+ compact 列表
+ *   （视图切换 tab 已移除——回收站改弹窗，见下）；
+ * - mid：  标题行（页标题「文件管理」+ 递归开关；F-V3-3：视图切换移除，
+ *          fs.view 内部保持存在但恒为 "files"）+ 工具条（左 = 配额进度 +
+ *          用量文案；右 = 上传文件 / 同步设置（→ files/SyncSettingsModal
+ *          弹窗）/ 新建文件夹 / 回收站（→ files/TrashDialog 弹窗，徽标 =
+ *          条目数，0 不显示；点击 +1 次静默刷新）/ 刷新（reload force）——
+ *          页面级动作唯一入口；设置/清除配额在「人员管理」人员详情，Q）+
+ *          面包屑（dirPath 非空）+ 撤销条（F-V3-3：Alert + 「撤销」，
+ *          8s 自动消失，见「撤销」节）+ 完整列表（名称 / 大小 / 更新时间 /
+ *          操作，行高 ≥44px（#1669 触控），目录大小 = —；F-V3-3 列自适应：
+ *          整批无 updatedAt → 不渲染「更新时间」列，见 columnsFor）+
+ *          回收站弹窗（files/TrashDialog：只消费容器数据，不自取数——
+ *          修旧 TrashPanel 双请求）。详情统一由本 section 的「详情槽」（父层）
+ *          渲染一次：4 列（files 4 列无右栏）/ 1 列 = mid 持槽，按容器宽度
  *          （ResizeObserver；禁 window.innerWidth）断点——≥1200 split
  *          （列表 + 右侧详情 400，flex 不压缩列表）/ 768–1199 drawer
  *          （点行 → Drawer 420）/ <768 sheet（点行 → 全屏 Sheet）；
  *          2/3 列 = 右栏持槽（mid 只出列表，防右栏 + mid 双详情）；
- * - right：2/3 列 = 详情槽：选中 → 文件详情（预览 / 下载 / 覆盖 / 删除）/ 回收站
- *          条目详情（恢复 / 彻底删）；未选中 → 空态（图标 + 主文案 + 副文案 +
- *          上传按钮，按钮与工具条同一 actions.onUploadClick）；加载中 →
- *          「加载中…」；空目录 → 「此目录为空」+ 上传按钮（右栏不得空白）。
+ * - right：2/3 列 = 详情槽：选中 → 文件详情（预览 / 下载 / 覆盖 / 删除）/
+ *          回收站条目详情（恢复 / 彻底删）；未选中 → 空态（图标 + 主文案 +
+ *          副文案；F-V3-3：「上传文件」大按钮删除，改一行次要文字「上传
+ *          请使用上方工具条」——工具条是唯一主 CTA；列表空态 CTA「上传一个
+ *          文件」type="link" 保留）；加载中 → 「加载中…」；空目录 →
+ *          「此目录为空」+ 次要文字（右栏不得空白）。
+ *
+ * 回收站（F-V3-3：弹窗化，替代旧 TrashPanel 独立页 + 视图切换 tab）：
+ * - 工具条「回收站」按钮打开 files/TrashDialog（统一外壳 DialogShell；
+ *   副标题「共 N 项 · 恢复后回到原路径」；搜索（原路径即时过滤）/ 排序
+ *   （删除时间倒序默认）/ 全部恢复（>1 项，二次确认，循环 restoreTrash，
+ *   逐条失败计数汇总）/ 单条恢复 / 彻底删除（二次确认含原路径 +「不可
+ *   恢复」，admin only）；状态 = 骨架 / 空态 / 错误+重试；409 =「同名文件
+ *   已存在」（admin「覆盖恢复」= restoreTrash 第三位置参 true；非 admin
+ *   只提示）；关闭不刷新）；
+ * - 数据 = load 第三腿（fs.trash/trashStatus/trashError）；弹窗**不调**
+ *   listTrash；变更成功后 → onReload（= 容器 reload，in-flight 去重）。
+ *
+ * 撤销（F-V3-3）：
+ * - 软删成功（deleteFile 返回 trashId；确认框勾选「移入回收站（可恢复）」
+ *   默认）→ 列表顶部撤销条（Alert，8s 自动消失）「已移入回收站 · {name}」
+ *   + 「撤销」按钮；只保留最近一条（新覆盖旧）；trashId 空不出条
+ *   （undoEligible 纯函数）；点撤销 → restoreTrash 成功 → message.success +
+ *   reload({silent,force:true})，失败 → 提示原因（条保留可再点）。
  *
  * 权限（Controller 终裁；前端门控 best-effort = hasToken）：
  * - 回收站彻底删 = admin only（非 admin 按钮 disabled +
  *   tooltip「仅管理员」）；
- * - restore 409（目标路径已存在）：admin 二次确认 ?overwrite=1；
+ * - restore 409（同名文件已存在）：admin 二次确认 ?overwrite=1；
  *   非 admin 仅显错误。
  * - 删除文件（#1669）：统一确认框（useDeleteConfirm，列表行 / 详情面板
  *   共用）——勾选「移入回收站（可恢复）」（默认）= 软删；未勾选 = 软删
@@ -104,29 +136,26 @@ import { ReloadIcon } from "../components/WorkerManageShared";
 import { FilePreview, type PreviewFile } from "../components/FilePreview";
 import type { ManageNav } from "./useManageNav";
 import type { ManageSectionProps } from "./types";
-import TrashPanel, {
-  fmtBytes,
-  fmtTs,
-  normTrashPath,
-  TOUCH,
-  type TrashPanelProps,
-} from "./files/TrashPanel";
+import { fmtBytes, fmtTs, normTrashPath, TOUCH } from "./files/format";
 import SyncSettingsModal from "./files/SyncSettingsModal";
+import TrashDialog from "./files/TrashDialog";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-// v3（F-V3-1）：fmtBytes / TOUCH 自 files/TrashPanel 迁入后重导出——外部面
-// 不变（PeopleSection 配额卡经本文件引用 fmtBytes；files-actions-1669 经
-// 本文件引用 TOUCH / touchCss）。
+// F-V3-3：fmtBytes / TOUCH 自 files/format 迁入后重导出——外部面不变
+//（PeopleSection 配额卡经本文件引用 fmtBytes；files-actions-1669 经本文件
+// 引用 TOUCH / touchCss）。
 export { fmtBytes, TOUCH };
 
 type Tr = (s: string, v?: Record<string, string | number>) => string;
 
 // ── v3（F-V3-1）视图集（纯函数；tests/files-v3-1 断言）────────────────
-/** 文件管理页视图：files = 主列表 / trash = 回收站独立页（TrashPanel）。
- * 容器持 view（标题行小视图切换；两视图不同屏、列头独立）。 */
+/** 文件管理页视图：files = 主列表 / trash = 回收站。F-V3-3：视图切换 UI
+ * 移除（回收站改工具条按钮 → TrashDialog 弹窗）——容器 view 恒为 "files"，
+ * 类型保留 "trash" 以维持旧详情分支（TrashDetail/TrashRailList）的编译
+ * 活性与测试锚点。 */
 export type FileView = "files" | "trash";
 /** 默认视图（挂载即主列表）。 */
 export const FILE_VIEW_DEFAULT: FileView = "files";
@@ -167,6 +196,19 @@ interface FilesState {
   /** #1669：opts.force = 强制刷新（时间戳 + cache:"no-store"，见 forceList）。 */
   load: (silent: boolean, opts?: { force?: boolean }) => void;
   loadMore: () => void;
+  /** F-V3-3：回收站取数状态（load 独立腿；"" = 正常 / "err" = 取数失败）。 */
+  trashStatus: "" | "err";
+  trashError: string;
+  /** F-V3-3：统一刷新入口（in-flight 去重；force 默认 true、silent 默认 false）。 */
+  reload: (opts?: { silent?: boolean; force?: boolean }) => void;
+  /** F-V3-3：打开回收站弹窗（+1 次静默刷新；关闭不刷新）。 */
+  onOpenTrash: () => void;
+  /** F-V3-3：当前撤销条（null = 无；只保留最近一条）。 */
+  undo: { trashId: string; name: string } | null;
+  /** F-V3-3：软删成功登记撤销（trashId 空 → 不出条，见 undoEligible）。 */
+  offerUndo: (u: { trashId: string; name: string }) => void;
+  /** F-V3-3：点「撤销」→ restoreTrash（成功 message + reload force；失败提示原因）。 */
+  onUndo: () => void;
 }
 
 type SubProps = {
@@ -176,8 +218,8 @@ type SubProps = {
   fs: FilesState;
 };
 
-// fmtBytes / fmtTs（文件域共享纯函数）v3 起在 files/TrashPanel.tsx
-//（TrashPanel / SyncSettingsModal 共用；本文件 import + 重导出，外部面不变）。
+// fmtBytes / fmtTs（文件域共享纯函数）F-V3-3 起在 files/format.ts
+//（TrashDialog / SyncSettingsModal 共用；本文件 import + 重导出，外部面不变）。
 
 /** 16.67 面包屑决策（纯函数；tests/files-ui-1667.test.ts 断言）：
  * 根层（dirPath = ""）→ 整行不渲染（visible=false；「我的文件」已由
@@ -267,10 +309,71 @@ export function detailState(o: {
 /** 16.67 列表列模板（表头行与数据行共用 → 列宽稳定）：
  * 名称（伸缩）/ 大小 / 时间（更新·删除）/ 操作（定宽）。
  * #1669：操作列 64→96px（2×40px 图标按钮 + 8px 间距，适配 40px 触控目标）。 */
-const LIST_GRID = "minmax(0, 1fr) 72px 120px 96px";
+export const LIST_GRID = "minmax(0, 1fr) 72px 120px 96px";
+/** F-V3-3：整批无 updatedAt → 不渲染「更新时间」列（表头/行同步收窄）。 */
+export const LIST_GRID_NO_TIME = "minmax(0, 1fr) 72px 96px";
+
+/** F-V3-3 列自适应（纯函数；tests/files-v3-3 断言）：整批条目都没有
+ * updatedAt → 不渲染「更新时间」列（表头 / 行 / grid 模板同步）。 */
+export function columnsFor(entries: HumanFileEntry[]): {
+  showUpdatedAt: boolean;
+  grid: string;
+} {
+  const showUpdatedAt = entries.some(
+    (e) => typeof e.updatedAt === "string" && e.updatedAt !== "",
+  );
+  return { showUpdatedAt, grid: showUpdatedAt ? LIST_GRID : LIST_GRID_NO_TIME };
+}
+
+/** F-V3-3 静默轮询门控（纯函数；tests/files-v3-3 断言）：顶层 tab 激活 &&
+ * 非 404 && 非分页中途（nextKey 为 string = 还有下一页，静默刷新会重置
+ * 游标）。子目录不再豁免（dirGuard 目录标签防过期覆盖）。 */
+export function shouldPoll(o: {
+  active: boolean;
+  status: "" | "404" | "err";
+  dirPath: string;
+  nextKey: string | null | undefined;
+}): boolean {
+  if (!o.active) return false;
+  if (o.status === "404") return false;
+  if (typeof o.nextKey === "string") return false;
+  return true;
+}
+
+/** F-V3-3 焦点感知刷新阈值（ms）：可见且距上次成功 load 超过它 → 静默刷新。 */
+export const FOCUS_REFETCH_MS = 10000;
+
+/** F-V3-3 焦点感知判定（纯函数；tests/files-v3-3 断言）：
+ * 距上次成功 load > 10s → 刷新（恰好 10s 不刷）。 */
+export function shouldRefetchOnFocus(last: number, now: number): boolean {
+  return now - last > FOCUS_REFETCH_MS;
+}
+
+/** F-V3-3 撤销条资格（纯函数；tests/files-v3-3 断言）：trashId 非空才出条。 */
+export function undoEligible(trashId: string): boolean {
+  return typeof trashId === "string" && trashId.length > 0;
+}
+
+/** F-V3-3 reload in-flight 去重（纯工厂；tests/files-v3-3 断言）：
+ * 同 key 已有请求在跑 → 复用同一 Promise（不新发）；settle 后清槽可重发；
+ * 异 key 互不干扰。容器用它包装 load（key = dirPath + view）。 */
+export function makeReloadDedup(): (
+  key: string,
+  run: () => Promise<void>,
+) => Promise<void> {
+  let cur: { key: string; p: Promise<void> } | null = null;
+  return (key, run) => {
+    if (cur && cur.key === key) return cur.p;
+    const p = run().finally(() => {
+      if (cur && cur.p === p) cur = null;
+    });
+    cur = { key, p };
+    return p;
+  };
+}
 
 // ── #1669 触控目标（用户实测：按钮太小、触屏难点）──
-// TOUCH 常量 v3 起在 files/TrashPanel.tsx（本文件 import + 重导出）。
+// TOUCH 常量 F-V3-3 起在 files/format.ts（本文件 import + 重导出）。
 
 /** 触控 CSS 变量（各 FilesSection 根 <style> 注入；:root 作用域全列共享——
  * 4 栏 l1+mid 双实例重复注入无害）。行高与按钮统一引用这两个变量。 */
@@ -480,8 +583,9 @@ function useDeleteConfirm(inp: {
   t: ThemeColors;
   tr: Tr;
   humanName: string;
-  /** 删除成功（purged = 是否彻底删除）→ 调用方清选中 + 刷新。 */
-  onDone: (purged: boolean) => void;
+  /** 删除成功 → 调用方清选中 + 刷新 +（软删时）登记撤销条。
+   * F-V3-3：trashId 供 undo（restoreTrash 目标），name 供撤销条文案。 */
+  onDone: (r: { trashId: string; purged: boolean; name: string }) => void;
 }): {
   open: boolean;
   busy: boolean;
@@ -509,7 +613,7 @@ function useDeleteConfirm(inp: {
       const r = await runDeletePlan(inp.humanName, path, deletePlan({ recycle }));
       antd.message.success(inp.tr(r.purged ? "已彻底删除" : "已移入回收站"));
       setOpen(false);
-      inp.onDone(r.purged);
+      inp.onDone({ trashId: r.trashId, purged: r.purged, name });
     } catch (err) {
       antd.message.error(hfErrorText(err, inp.tr));
     } finally {
@@ -602,9 +706,10 @@ async function doRestore(
 /** 16.69 详情栏（唯一详情槽的渲染器；split 右侧内联 / right 变体 / 4·1 列
  * mid 持槽共用——任何宽度下 FileDetail 渲染次数 = 1，见 panesFor/
  * detailRenderCount）。右栏不得空白（detailState 四态）：选中 → 详情 /
- * 加载中 → 「加载中…」/ files 空目录 → 「此目录为空」+ 上传按钮 / 未选中 →
- * 图标 + 主副文案 + 「上传文件」按钮（与工具条同一 actions.onUploadClick）。 */
-function DetailPane({ t, tr, nav, fs, actions }: SubProps & { actions: FilesActions }) {
+ * 加载中 → 「加载中…」/ files 空目录 → 「此目录为空」+ 次要文字 / 未选中 →
+ * 图标 + 主副文案 + 次要文字（F-V3-3：「上传文件」大按钮删除——工具条是
+ * 唯一主 CTA；列表空态 CTA「上传一个文件」link 保留）。 */
+function DetailPane({ t, tr, nav, fs }: SubProps) {
   const st = detailState({
     hasSelection: nav.selectedFile != null,
     loading: fs.loading,
@@ -645,12 +750,10 @@ function DetailPane({ t, tr, nav, fs, actions }: SubProps & { actions: FilesActi
             : tr("点列表行查看恢复 / 彻底删除")}
       </div>
       {fs.view === "files" ? (
-        <antd.Button
-          style={{ marginTop: 8, ...btnTouch }}
-          onClick={actions.onUploadClick}
-        >
-          {tr("上传文件")}
-        </antd.Button>
+        // F-V3-3：主 CTA 收敛到工具条「上传文件」（列表空态 CTA link 同指向）。
+        <div style={{ marginTop: 6, fontSize: 12, color: t.textSecondary }}>
+          {tr("上传请使用上方工具条")}
+        </div>
       ) : null}
     </div>
   );
@@ -690,47 +793,6 @@ function DetailOverlay({ t, tr, nav, fs, overlay }: SubProps & { overlay: "drawe
     >
       {body}
     </antd.Drawer>
-  );
-}
-
-/** 视图切换（我的文件 / 回收站）。v3：small = 标题行内紧凑分段（去
- * flex:1 通栏，不占列表上方一整行）；l1 栏沿用通栏形态。 */
-function ViewTabs({ t, tr, fs, small = false }: SubProps & { small?: boolean }) {
-  const label: Record<FileView, string> = {
-    files: tr("我的文件"),
-    trash: tr("回收站"),
-  };
-  const btn = (v: FileView) => {
-    const active = fs.view === v;
-    return (
-      <button
-        type="button"
-        onClick={() => fs.onSwitchView(v)}
-        style={{
-          ...(small ? {} : { flex: 1 }),
-          // #1669：触控目标（minHeight ≥40 + 垂直居中）。
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: "var(--hf-btn-min, 40px)",
-          padding: "5px 10px",
-          fontSize: 12,
-          fontWeight: 600,
-          color: active ? t.text : t.textSecondary,
-          background: active ? t.hoverBg : "transparent",
-          border: `1px solid ${active ? t.border : "transparent"}`,
-          borderRadius: 6,
-          cursor: "pointer",
-        }}
-      >
-        {label[v]}
-      </button>
-    );
-  };
-  return (
-    <div style={{ display: "flex", gap: 4 }}>
-      {fileViews().map((v) => btn(v))}
-    </div>
   );
 }
 
@@ -788,9 +850,11 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
   );
 }
 
-/** 列表块（v3：files-only——回收站独立页 = files/TrashPanel，不同屏）：
- * 出错+重试 / 加载中 / 空态（居中一句 + 主 CTA 文字链接，指向工具条同一
- * 处理函数）/ 表头行 + 文件行列表（compact = l1 列紧凑行）。 */
+/** 列表块（F-V3-3：files-only——回收站改工具条按钮 → TrashDialog 弹窗，
+ * 不再同屏）：出错+重试（reload force）/ 加载中 / 空态（居中一句 + 主 CTA
+ * 文字链接，指向工具条同一处理函数）/ 表头行 + 文件行列表（列自适应
+ * columnsFor：整批无 updatedAt → 不渲染「更新时间」列；compact = l1 列
+ * 紧凑行）。 */
 function ListArea({
   t,
   tr,
@@ -800,6 +864,8 @@ function ListArea({
   compact = false,
 }: SubProps & { actions: FilesActions; compact?: boolean }) {
   const count = fs.files.length;
+  // F-V3-3 列自适应：表头 / 行 / grid 模板同一决策（纯函数 columnsFor）。
+  const cols = columnsFor(fs.files);
   return (
     <div style={{ display: "grid", gap: 4 }}>
       {!compact && fs.status !== "err" ? (
@@ -815,7 +881,7 @@ function ListArea({
             message={tr("加载失败")}
             description={fs.error}
           />
-          <antd.Button style={btnTouch} onClick={() => fs.load(false)}>
+          <antd.Button style={btnTouch} onClick={() => fs.reload({ force: true })}>
             {tr("重试")}
           </antd.Button>
         </>
@@ -850,13 +916,14 @@ function ListArea({
         </div>
       ) : null}
       {/* 16.67 列表表头行：名称 / 大小 / 更新时间 / 操作——
-       * 与数据行共用 LIST_GRID 模板（列宽稳定）。回收站列头独立于
-       * files/TrashPanel（原路径 / 大小 / 删除时间 / 操作）。 */}
+       * 与数据行共用同一 grid 模板（列宽稳定）。F-V3-3：整批无 updatedAt
+       * → 「更新时间」列不渲染（cols.showUpdatedAt 门控）。回收站列头在
+       * files/TrashDialog（原路径 / 大小 / 删除时间 / 操作）。 */}
       {!compact && fs.status !== "err" && !fs.loading && count > 0 ? (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: LIST_GRID,
+            gridTemplateColumns: cols.grid,
             gap: 8,
             alignItems: "center",
             padding: "0 8px",
@@ -866,7 +933,7 @@ function ListArea({
         >
           <span>{tr("名称")}</span>
           <span style={{ textAlign: "right" }}>{tr("大小")}</span>
-          <span>{tr("更新时间")}</span>
+          {cols.showUpdatedAt ? <span>{tr("更新时间")}</span> : null}
           <span>{tr("操作")}</span>
         </div>
       ) : null}
@@ -879,6 +946,8 @@ function ListArea({
           nav={nav}
           fs={fs}
           compact={compact}
+          grid={cols.grid}
+          showUpdatedAt={cols.showUpdatedAt}
         />
       ))}
       {/* #1518：仅 nextKey 为 string（满页还有下一页）时显「加载更多」；
@@ -892,7 +961,9 @@ function ListArea({
   );
 }
 
-/** 文件行：目录行 = 点击进入；文件行 = 点击选中 + 行内 下载 / 删除(→回收站)。 */
+/** 文件行：目录行 = 点击进入；文件行 = 点击选中 + 行内 下载 / 删除(→回收站)。
+ * F-V3-3：grid / showUpdatedAt 由 ListArea 的 columnsFor 决策传入（表头/行
+ * 同步）；软删成功登记撤销条（fs.offerUndo）+ reload 静默刷新。 */
 function FileRow({
   entry,
   t,
@@ -900,7 +971,14 @@ function FileRow({
   nav,
   fs,
   compact = false,
-}: SubProps & { entry: HumanFileEntry; compact?: boolean }) {
+  grid = LIST_GRID,
+  showUpdatedAt = true,
+}: SubProps & {
+  entry: HumanFileEntry;
+  compact?: boolean;
+  grid: string;
+  showUpdatedAt: boolean;
+}) {
   const isDir = isEntryDir(entry);
   const name = entryDisplayName(entry);
   const path = rowPath(entry, fs.dirPath);
@@ -923,13 +1001,15 @@ function FileRow({
   };
   // #1669 统一删除确认（与详情面板共用 useDeleteConfirm，不各写一份 Modal）：
   // 勾选「移入回收站（可恢复）」（默认）= 软删；未勾选 = 软删后立即彻底删。
+  // F-V3-3：软删成功（trashId 非空）登记撤销条；刷新走统一 reload。
   const del = useDeleteConfirm({
     t,
     tr,
     humanName: fs.humanName,
-    onDone: () => {
+    onDone: (r) => {
       if (nav.selectedFile === path) nav.selectFile(null);
-      fs.load(true);
+      if (!r.purged) fs.offerUndo({ trashId: r.trashId, name });
+      fs.reload({ silent: true });
     },
   });
   const onDelete = (e: ReactNS.MouseEvent) => {
@@ -1047,9 +1127,10 @@ function FileRow({
     );
   }
 
-  // 16.67 列表行（非 compact）：四列 grid（名称/大小/更新时间/操作），
-  // 行高 36px；目录行整行点击进入，文件行整行选中，行内按钮
-  // stopPropagation；etag 不在行内展示（详情面板保留，避免第五列）。
+  // 16.67 列表行（非 compact）：grid（名称/大小/更新时间/操作；F-V3-3
+  // 整批无 updatedAt → 三列，grid/showUpdatedAt 由 columnsFor 传入）；
+  // 目录行整行点击进入，文件行整行选中，行内按钮 stopPropagation；
+  // etag 不在行内展示（详情面板保留，避免多余列）。
   return (
     <div
       role="button"
@@ -1070,7 +1151,7 @@ function FileRow({
       }}
       style={{
         display: "grid",
-        gridTemplateColumns: LIST_GRID,
+        gridTemplateColumns: grid,
         gap: 8,
         alignItems: "center",
         minHeight: "var(--hf-row-min, 44px)",
@@ -1094,17 +1175,19 @@ function FileRow({
       >
         {sizeCell(entry)}
       </span>
-      <span
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {fmtTs(entry.updatedAt)}
-      </span>
+      {showUpdatedAt ? (
+        <span
+          style={{
+            fontSize: 12,
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {fmtTs(entry.updatedAt)}
+        </span>
+      ) : null}
       {actionsCell}
       {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
       {del.node}
@@ -1112,9 +1195,8 @@ function FileRow({
   );
 }
 
-/** l1 栏回收站紧凑行（v3）：单行（图标 + 原路径），仅选中——恢复 /
- * 彻底删操作在回收站独立页（files/TrashPanel）行内（见 l1 提示行）。
- * 完整行（四列 grid + 行内操作）已随回收站独立页迁出本文件。 */
+/** l1 栏回收站紧凑行（v3；F-V3-3 后为保活死分支——files 域 4 栏不再渲染
+ * l1，view 恒 "files" 不进入本分支）：单行（图标 + 原路径）。 */
 function TrashRailRow({
   entry,
   t,
@@ -1174,9 +1256,8 @@ function TrashRailRow({
   );
 }
 
-/** l1 栏回收站紧凑列表（v3）：四态（错误+重试 / 加载中 / 空 / 行列表）——
- * 与 files/TrashPanel 独立页同四态语义；数据 = 容器 fs.trash（l1 与 mid
- * 共享同一取数，不重复请求）。 */
+/** l1 栏回收站紧凑列表（v3；F-V3-3 后为保活死分支）：四态（错误+重试 /
+ * 加载中 / 空 / 行列表）；数据 = 容器 fs.trash（与弹窗共享同一取数）。 */
 function TrashRailList({ t, tr, nav, fs }: SubProps) {
   const count = fs.trash.length;
   return (
@@ -1189,7 +1270,7 @@ function TrashRailList({ t, tr, nav, fs }: SubProps) {
             message={tr("加载失败")}
             description={fs.error}
           />
-          <antd.Button style={btnTouch} onClick={() => fs.load(false)}>
+          <antd.Button style={btnTouch} onClick={() => fs.reload({ force: true })}>
             {tr("重试")}
           </antd.Button>
         </>
@@ -1321,6 +1402,9 @@ function useFilesActions(
     humanName: string;
     dirPath: string;
     load: (silent: boolean, opts?: { force?: boolean }) => void;
+    /** F-V3-3：统一刷新入口（新建文件夹成功走它；上传成功保留 load 字面
+     * 调用——files-actions-1669 源码断言锚定调用形态，行为同 force 刷新）。 */
+    reload: (opts?: { silent?: boolean; force?: boolean }) => void;
   },
   tr: Tr,
 ): FilesActions {
@@ -1356,7 +1440,7 @@ function useFilesActions(
       antd.message.success(tr("文件夹已创建"));
       setFolderOpen(false);
       setFolderName("");
-      inp.load(true);
+      inp.reload({ silent: true });
     } catch (err) {
       antd.message.error(hfErrorText(err, tr));
     } finally {
@@ -1382,7 +1466,8 @@ function useFilesActions(
 
 /** 16.67 工具条（取代旧配额卡）：一行——左 = 配额进度 + 用量文案
  * （hover 显「容量配额在『人员管理』中设置」）；右 = 操作按钮组
- * （上传文件 / 同步设置（v3 弹窗入口）/ 新建文件夹 / 刷新——页面级
+ * （上传文件 / 同步设置（v3 弹窗入口）/ 新建文件夹 / 回收站（F-V3-3 弹窗
+ * 入口 + 条目数徽标，0 不显示）/ 刷新（F-V3-3 reload force）——页面级
  * 动作唯一入口）；窄栏（<720px）自动换行不重叠。 */
 function FilesToolbar({
   t,
@@ -1457,13 +1542,34 @@ function FilesToolbar({
         <antd.Button style={btnTouch} onClick={actions.openFolderModal}>
           {tr("新建文件夹")}
         </antd.Button>
+        {/* F-V3-3：回收站弹窗入口（替代视图切换 tab；徽标 = 条目数，0 不显示；
+         * 点击 = 打开弹窗 + 1 次静默刷新）。 */}
+        <antd.Button style={btnTouch} onClick={() => fs.onOpenTrash()}>
+          <TrashIcon size={15} />
+          {tr("回收站")}
+          {fs.trash.length > 0 ? (
+            <span
+              style={{
+                marginLeft: 6,
+                padding: "0 6px",
+                borderRadius: 9,
+                fontSize: 11,
+                lineHeight: "18px",
+                background: t.accentBg,
+                color: t.text,
+              }}
+            >
+              {fs.trash.length}
+            </span>
+          ) : null}
+        </antd.Button>
         <antd.Button
           type="text"
           icon={<ReloadIcon />}
           title={tr("刷新")}
           aria-label={tr("刷新")}
           style={btnTouch}
-          onClick={() => fs.load(false)}
+          onClick={() => fs.reload({ force: true })}
         />
       </div>
       {/* #1669：全页唯一 file input（模块级共享 ref——l1/mid 双实例死按钮
@@ -1534,13 +1640,16 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
     ? fs.files.find((e) => !isEntryDir(e) && rowPath(e, fs.dirPath) === sel)
     : undefined;
   // #1669 hook 必须在早退 return 之前（entry 消失 = 切占位，hook 数须稳定）。
+  // F-V3-3：软删成功登记撤销条（onDone 闭包晚于渲染执行，name 已初始化）；
+  // 刷新走统一 reload。
   const del = useDeleteConfirm({
     t,
     tr,
     humanName: fs.humanName,
-    onDone: () => {
+    onDone: (r) => {
       nav.selectFile(null);
-      fs.load(true);
+      if (!r.purged) fs.offerUndo({ trashId: r.trashId, name });
+      fs.reload({ silent: true });
     },
   });
 
@@ -1691,7 +1800,10 @@ function TrashDetail({ t, tr, nav, fs }: SubProps) {
       fs.humanName,
       entry.id,
       fs.isAdmin,
-      () => nav.selectFile(null),
+      () => {
+        nav.selectFile(null);
+        fs.reload({ silent: true });
+      },
       tr,
     );
     setBusy("");
@@ -1708,7 +1820,7 @@ function TrashDetail({ t, tr, nav, fs }: SubProps) {
           await purgeTrash(fs.humanName, entry.id);
           antd.message.success(tr("已彻底删除"));
           nav.selectFile(null);
-          fs.load(true);
+          fs.reload({ silent: true });
         } catch (err) {
           antd.message.error(hfErrorText(err, tr));
         }
@@ -1832,6 +1944,22 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [canRecursive, setCanRecursive] = React.useState(false);
   const [nextKey, setNextKey] = React.useState<string | null | undefined>(undefined);
   const [loadingMore, setLoadingMore] = React.useState(false);
+  // F-V3-3：trash 腿状态（与 files 腿独立——一腿失败不拖垮另一腿；
+  // 回收站弹窗消费）。
+  const [trashStatus, setTrashStatus] = React.useState<"" | "err">("");
+  const [trashError, setTrashError] = React.useState("");
+  // F-V3-3：回收站弹窗（工具条按钮打开；关闭不刷新——数据由容器统一管）。
+  const [trashDialogOpen, setTrashDialogOpen] = React.useState(false);
+  // F-V3-3：撤销条（软删成功且 trashId 非空；只保留最近一条；8s 自动消失）。
+  const [undo, setUndo] = React.useState<{ trashId: string; name: string } | null>(null);
+  // F-V3-3：新鲜度——最近一次 files 腿成功时间（焦点/可见性重取判定）。
+  const lastSuccessRef = React.useRef(0);
+  const statusRef = React.useRef(status);
+  statusRef.current = status;
+  // F-V3-3：reload 去重实例（makeReloadDedup 纯工厂；ref 持有跨渲染复用）。
+  const dedupRef = React.useRef<ReturnType<typeof makeReloadDedup> | null>(null);
+  if (dedupRef.current === null) dedupRef.current = makeReloadDedup();
+  const dedup = dedupRef.current;
   const reqRef = React.useRef(0);
   const recursiveProbedRef = React.useRef(false);
   // #1666c 目录导航守卫：请求时读当前目录（onEnterDir 先更新 ref 再立即 load，
@@ -1869,59 +1997,51 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       // 静默刷新接管可见 loading（防「可见→静默」交错卡 loading=true）。
       if (silent) setLoading(false);
       else setLoading(true);
-      const [ls, qs] = await Promise.allSettled([
-        view === "trash"
-          ? listTrash(humanName).then((r) => r.entries)
-          : opts?.force
-            // #1669 上传成功后强制刷新：时间戳 + cache:"no-store"（见 forceList）。
-            ? forceList(humanName, askedDir)
-            : listFiles(humanName, askedDir, recursive ? { recursive: true, limit: 1000 } : undefined),
+      // F-V3-3：固定三腿——files 腿（dirGuard 目录标签；force → forceList
+      // 时间戳 + no-store）+ 配额 + trash 腿（独立 setState，不走 dirGuard）。
+      // view 不再影响取数形态（fs.view 恒 "files"；trash 列表供弹窗/徽标）。
+      const [ls, qs, ts] = await Promise.allSettled([
+        opts?.force
+          // #1669 上传成功后强制刷新：时间戳 + cache:"no-store"（见 forceList）。
+          ? forceList(humanName, askedDir)
+          : listFiles(humanName, askedDir, recursive ? { recursive: true, limit: 1000 } : undefined),
         getQuota(humanName),
+        listTrash(humanName).then((r) => r.entries),
       ]);
-      if (req !== reqRef.current) return; // 过期响应（视图/目录已切换）
+      if (req !== reqRef.current) return; // 过期响应（目录/身份已切换）
+      if (ts.status === "fulfilled") {
+        setTrash(ts.value as HumanTrashEntry[]);
+        setTrashStatus("");
+        setTrashError("");
+      } else {
+        // trash 腿独立失败（files 腿不受影响；弹窗显错误 + 重试）。
+        setTrashStatus("err");
+        setTrashError(hfErrorText(ts.reason, tr));
+      }
       if (ls.status === "fulfilled") {
-        if (view === "trash") {
-          setTrash(ls.value as HumanTrashEntry[]);
-          setNextKey(undefined); // 回收站无分页
-          setStatus("");
-          setError("");
-        } else {
-          const lsValue = ls.value as HumanFileListResponse;
-          // 目录标签：已切目录（新请求在途）→ 丢弃，由新请求接管状态。
-          const applied = dirGuard.applyResult(tag, lsValue);
-          if (!applied) return;
-          setFiles(applied.entries);
-          setNextKey(applied.nextKey); // string=有下一页 / null=到底 / undefined=老控制器
-          setLoadingMore(false);
-          if (applied.paginated) setCanRecursive(true);
-          else probeRecursive(); // 老形态（含递归被 301 回落）→ 一次性探测
-          setStatus("");
-          setError("");
-        }
+        const lsValue = ls.value as HumanFileListResponse;
+        // 目录标签：已切目录（新请求在途）→ 丢弃，由新请求接管状态。
+        const applied = dirGuard.applyResult(tag, lsValue);
+        if (!applied) return;
+        setFiles(applied.entries);
+        setNextKey(applied.nextKey); // string=有下一页 / null=到底 / undefined=老控制器
+        setLoadingMore(false);
+        if (applied.paginated) setCanRecursive(true);
+        else probeRecursive(); // 老形态（含递归被 301 回落）→ 一次性探测
+        setStatus("");
+        setError("");
+        lastSuccessRef.current = Date.now(); // F-V3-3 新鲜度基准
       } else {
         const e = ls.reason;
         const is404 = e instanceof HumanFilesError && e.status === 404;
-        if (view === "trash") {
-          if (is404) {
-            // 404 = 无权限或不存在（任务书 UI 规则）→ 占位卡，轮询停重试。
-            setStatus("404");
-            setError("");
-          } else {
-            // #1666c 错误可见：清旧数据 + 显错误（不保留上一列表）。
-            setTrash([]);
-            setStatus("err");
-            setError(hfErrorText(e, tr));
-          }
-        } else {
-          const applied = dirGuard.applyError(tag, is404 ? 404 : 0, is404 ? "" : hfErrorText(e, tr));
-          if (!applied) return; // 目录标签过期 → 新请求接管状态
-          // 404 = 无权限或不存在（任务书 UI 规则）→ 占位卡，轮询停重试；
-          // 非 404 = 清空列表（根治「列表停在上一目录」）+ 暴露错误文案。
-          setFiles(applied.entries);
-          setNextKey(applied.nextKey);
-          setStatus(applied.status);
-          setError(applied.error);
-        }
+        const applied = dirGuard.applyError(tag, is404 ? 404 : 0, is404 ? "" : hfErrorText(e, tr));
+        if (!applied) return; // 目录标签过期 → 新请求接管状态
+        // 404 = 无权限或不存在（任务书 UI 规则）→ 占位卡，轮询停重试；
+        // 非 404 = 清空列表（根治「列表停在上一目录」）+ 暴露错误文案。
+        setFiles(applied.entries);
+        setNextKey(applied.nextKey);
+        setStatus(applied.status);
+        setError(applied.error);
       }
       if (qs.status === "fulfilled") {
         setQuota(qs.value);
@@ -1933,8 +2053,26 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     },
     // dirPath 不入依赖：请求时经 dirPathRef 读取；切目录由 onEnterDir 的
     // 立即 load 触发（不再依赖 effect 时序），避免同目录双取。
-    [humanName, view, recursive, tr, probeRecursive, dirGuard],
+    // view 已移出依赖（F-V3-3 取数形态恒三腿）。
+    [humanName, recursive, tr, probeRecursive, dirGuard],
   );
+
+  // F-V3-3：reload = load 的 in-flight 去重包装——同一 dirPath 有请求在跑
+  // → 复用其 Promise（多次入口点击不叠发）；force 默认 true；完成后释放。
+  const reload = React.useCallback(
+    (opts?: { silent?: boolean; force?: boolean }) =>
+      dedup(`${dirPathRef.current}\u0000files`, () =>
+        load(opts?.silent ?? false, { force: opts?.force ?? true }),
+      ),
+    [dedup, load],
+  );
+
+  // F-V3-3：撤销条 8s 自动消失（新撤销覆盖旧——setUndo 换引用重启计时）。
+  React.useEffect(() => {
+    if (!undo) return;
+    const id = setTimeout(() => setUndo(null), 8000);
+    return () => clearTimeout(id);
+  }, [undo]);
 
   // #1518 加载更多：仅 nextKey 为 string（满页）时可点；复用 reqRef 防
   // 过期响应；追加（不替换）entries，游标随响应推进。
@@ -1960,34 +2098,56 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
 
   // 16.67 页面级动作（上传/新建文件夹）唯一入口 handlers——工具条按钮与
   // 列表空态 CTA 共享。必须在下方早退 return 之前调用（hooks 顺序稳定）。
-  const actions = useFilesActions({ humanName, dirPath, load }, tr);
+  // F-V3-3：新建文件夹成功 → reload({silent:true})（统一刷新入口）。
+  const actions = useFilesActions({ humanName, dirPath, load, reload }, tr);
 
   // 探测失败（老控制器）且递归已开（探测晚于用户操作）→ 自动回落一层列表。
   React.useEffect(() => {
     if (!canRecursive && recursive) setRecursive(false);
   }, [canRecursive, recursive]);
 
-  // 进入域 / 切视图 / 换目录 / 语言变化 → 取数（load 身份随之变）。
+  // 进入域 / 换目录 / 语言变化 → 取数（load 身份随之变）。
   React.useEffect(() => {
     if (!humanName) return;
     void load(false);
   }, [load, humanName]);
 
-  // 30s 静默轮询：activeRef = 顶层 tab 激活门（稳定 ref，tick 时读）；
-  // 404（无权限/不存在）停重试；nextKey 为 string（分页中途）跳过——
-  // 静默刷新会重置游标，丢掉「加载更多」进度；
-  // #1666c：子目录视图暂停静默轮询（防轮询请求与目录切换交错，
-  // 把子目录视图覆盖成别的内容）。
+  // 30s 静默轮询（F-V3-3：删掉「仅根目录」门控——子目录也轮询，
+  // dirGuard 目录标签保证子目录视图不会被别的内容错配覆盖；
+  // 门控收敛为 shouldPoll：activeRef / 404 停重试 / 分页中途跳过）。
   usePoller({
     fn: () => {
-      if (data.activeRef && !data.activeRef.current) return;
-      if (!humanName || status === "404") return;
-      if (dirPath !== "") return;
-      if (typeof nextKey === "string") return;
-      void load(true);
+      if (
+        !shouldPoll({
+          active: !data.activeRef || data.activeRef.current,
+          status,
+          dirPath,
+          nextKey,
+        })
+      )
+        return;
+      if (!humanName) return;
+      // 保持原请求形态（force:false）：递归平铺不被 forceList 打平成一层。
+      void reload({ silent: true, force: false });
     },
     intervalMs: 30000,
   });
+
+  // F-V3-3 新鲜度：焦点感知——文档可见且距上次成功 load >10s → 静默重取
+  // （切回标签页 / 窗口重新聚焦；404 占位不重取）。
+  React.useEffect(() => {
+    const onVis = (): void => {
+      if (document.hidden || !humanName) return;
+      if (statusRef.current === "404") return;
+      if (shouldRefetchOnFocus(lastSuccessRef.current, Date.now())) void reload({ silent: true });
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
+  }, [humanName, reload]);
 
   // v3（F-V3-1）同步状态：页内长条已移除 → 容器取数共享给
   // files/SyncSettingsModal 弹窗（st = null → 「加载中…」；syncOk =
@@ -2045,6 +2205,31 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     canRecursive,
     nextKey,
     loadingMore,
+    trashStatus,
+    trashError,
+    undo,
+    reload: (opts) => reload(opts),
+    onOpenTrash: () => {
+      setTrashDialogOpen(true);
+      void reload({ silent: true });
+    },
+    offerUndo: (u) => {
+      if (undoEligible(u.trashId)) setUndo({ trashId: u.trashId, name: u.name });
+    },
+    onUndo: () => {
+      if (!undo) return;
+      void (async () => {
+        try {
+          await restoreTrash(humanName, undo.trashId);
+          setUndo(null);
+          antd.message.success(tr("已恢复"));
+          void reload({ silent: true, force: true });
+        } catch (err) {
+          // 失败：条保留（可再点）+ 提示原因。
+          antd.message.error(hfErrorText(err, tr));
+        }
+      })();
+    },
     onSwitchView: (v) => {
       if (v === view) return;
       nav.selectFile(null);
@@ -2089,11 +2274,12 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const sub: SubProps = { t, tr, nav, fs };
 
   if (variant === "l1") {
+    // F-V3-3：视图切换 tab 移除（回收站改弹窗；view 恒 "files"——
+    // trash 分支保留为类型死路，保活 TrashRailRow/TrashRailList）。
     return (
       <div style={{ display: "grid", gap: 8, padding: 8 }}>
         {/* #1669 触控 CSS 变量（:root 作用域；双实例重复注入无害）。 */}
         <style>{touchCss()}</style>
-        <ViewTabs {...sub} />
         {view === "files" ? (
           <Breadcrumbs {...sub} />
         ) : (
@@ -2120,38 +2306,24 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     const mode = layoutMode(containerW);
     const hasSelection = nav.selectedFile != null;
     const panes = ownsDetail ? panesFor(mode, hasSelection) : null;
-    // v3（F-V3-1）回收站独立页（files/TrashPanel）：自取数 + 独立列头
-    //（原路径 / 大小 / 删除时间 / 操作）；列宽模板与主列表同一 LIST_GRID
-    //（四列对齐），列头行独立——两视图不再同屏 / 共用列头。
-    const trashPanelProps: TrashPanelProps = {
-      t,
-      tr,
-      humanName,
-      isAdmin: !!data.hasToken,
-      nav,
-      gridTemplateColumns: LIST_GRID,
-      onChanged: () => load(true),
-    };
-    const listNode =
-      view === "trash" ? (
-        <TrashPanel {...trashPanelProps} />
-      ) : (
-        <ListArea {...sub} actions={actions} />
-      );
+    // F-V3-3：回收站独立页（TrashPanel）移除——改工具条按钮打开的
+    // files/TrashDialog 弹窗（数据 = 容器 load 的 trash 腿，弹窗不自取数）。
+    const listNode = <ListArea {...sub} actions={actions} />;
     return (
       <div ref={widthRef} style={{ display: "grid", gap: 10, padding: 4 }}>
         {/* #1669 触控 CSS 变量（:root 作用域；双实例重复注入无害）。 */}
         <style>{touchCss()}</style>
-        {/* v3：工具条仅 files 视图（回收站无页面级文件动作 / 同步设置入口）。 */}
-        {view === "files" ? (
-          <FilesToolbar
-            {...sub}
-            actions={actions}
-            onOpenSyncSettings={() => setSyncModalOpen(true)}
-          />
-        ) : null}
-        {/* v3（F-V3-1）标题行：页标题 + 视图切换（紧凑分段，不占列表上方
-         * 一整行）+ 递归开关（仅 files 视图）——替代旧「列表头行」。 */}
+        {/* F-V3-3：工具条恒渲染（回收站入口常驻；打开同步弹窗先取一次
+         * 最新状态，打开后再「立即同步」成功 → 容器重取状态 + 列表）。 */}
+        <FilesToolbar
+          {...sub}
+          actions={actions}
+          onOpenSyncSettings={() => {
+            loadSync();
+            setSyncModalOpen(true);
+          }}
+        />
+        {/* 标题行：页标题 + 递归开关（F-V3-3 视图切换已移除）。 */}
         <div
           style={{
             display: "flex",
@@ -2163,11 +2335,36 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           <span style={{ fontSize: 13, fontWeight: 700, color: t.text, flexShrink: 0 }}>
             {tr("文件管理")}
           </span>
-          <ViewTabs {...sub} small />
           <span style={{ flex: 1 }} />
-          {view === "files" ? <RecursiveToggle {...sub} /> : null}
+          <RecursiveToggle {...sub} />
         </div>
-        {view === "files" ? <Breadcrumbs {...sub} /> : null}
+        <Breadcrumbs {...sub} />
+        {/* F-V3-3 撤销条：软删成功（trashId 非空）→ 8s 自动消失；「撤销」
+         * 裸 button（触控计数 btn-var 之一）。 */}
+        {undo ? (
+          <antd.Alert
+            type="success"
+            showIcon
+            message={tr("已移入回收站 · {name}", { name: undo.name })}
+            action={
+              <button
+                type="button"
+                style={{
+                  minHeight: "var(--hf-btn-min, 40px)",
+                  padding: "0 12px",
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 6,
+                  background: t.cardBg,
+                  color: t.text,
+                  cursor: "pointer",
+                }}
+                onClick={() => fs.onUndo()}
+              >
+                {tr("撤销")}
+              </button>
+            }
+          />
+        ) : null}
         {panes && panes.detail !== null ? (
           <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
             <div style={{ flex: "1 1 auto", minWidth: 0, display: "grid", gap: 4 }}>
@@ -2183,7 +2380,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
                 gap: 8,
               }}
             >
-              <DetailPane {...sub} actions={actions} />
+              <DetailPane {...sub} />
             </div>
           </div>
         ) : (
@@ -2203,8 +2400,22 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           onClose={() => setSyncModalOpen(false)}
           onSynced={() => {
             loadSync();
-            load(true);
+            void reload({ silent: true });
           }}
+        />
+        {/* F-V3-3 回收站弹窗（替代 TrashPanel 独立页；数据 = 容器 trash 腿）。 */}
+        <TrashDialog
+          t={t}
+          tr={tr}
+          open={trashDialogOpen}
+          onClose={() => setTrashDialogOpen(false)}
+          humanName={humanName}
+          isAdmin={!!data.hasToken}
+          entries={trash}
+          loading={loading}
+          trashStatus={trashStatus}
+          trashError={trashError}
+          onReload={(opts) => reload(opts)}
         />
       </div>
     );
@@ -2212,5 +2423,5 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
 
   // right（2/3 列 = 详情槽；4 栏 files 无右栏——详情由 mid 持槽，
   // 见 ManagePage sectionNoRight）。
-  return <DetailPane {...sub} actions={actions} />;
+  return <DetailPane {...sub} />;
 }

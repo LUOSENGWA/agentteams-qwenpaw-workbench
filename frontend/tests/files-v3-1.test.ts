@@ -1,9 +1,14 @@
-// F-V3-1：文件管理页 v3——回收站独立页 + 同步设置弹窗。
+// F-V3-1：文件管理页 v3——回收站 + 同步设置弹窗。
 // 直跑：node --experimental-strip-types frontend/tests/files-v3-1.test.ts
 //（node:assert/strict；不进 vitest 面——文件名不带 .vitest.）。
 //
+// F-V3-3 更新：回收站独立页（TrashPanel）已移除 → 改工具条按钮打开的
+// files/TrashDialog 弹窗（数据 = 容器 load 的 trash 腿，弹窗不自取数）；
+// 视图切换 tab 移除（「我的文件」/「回收站」tab 不再渲染，回收站入口 =
+// 工具条按钮）。
+//
 // 加载路径：照 files-ui-1667 先例——临时 entry 重导出 FilesSection（视图
-// 常量 + 默认组件）+ files/TrashPanel（TRASH_COLUMNS + 默认组件）+
+// 常量 + 默认组件）+ files/TrashDialog（TRASH_COLUMNS + 默认组件）+
 // files/SyncSettingsModal（SYNC_RUN_PATH / MIRROR_DIR + 默认组件），
 // esbuild buildSync 到临时 .mjs（window/host shim：真 React + 最小 antd
 // 桩 + document 桩），再动态 import；renderToStaticMarkup 静态渲染
@@ -11,12 +16,14 @@
 //
 // 覆盖（任务书 ≥3 条）：
 // ① fileViews() = ["files","trash"] 且默认 files；mid-4 渲染含页标题
-//    「文件管理」且「我的文件」恰 1 处（标题行小切换，非整行 tab）；
-// ② 回收站独立页——TRASH_COLUMNS = ["原路径","大小","删除时间","操作"]
-//    （导出常量断言）+ TrashPanel 独立渲染初始态（加载中…）+ 源码接线
-//    （列头经 TRASH_COLUMNS.map 渲染；listTrash/restoreTrash/purgeTrash
-//    三 API；空态「回收站为空」；409「目标路径已存在」；彻底删确认；
-//    非管理员禁用 purge）；
+//    「文件管理」；「我的文件」0 处（F-V3-3 视图切换移除）且「回收站」
+//    在位（工具条按钮入口）；
+// ② 回收站弹窗——TRASH_COLUMNS = ["原路径","大小","删除时间","操作"]
+//    （导出常量断言）+ TrashDialog 独立渲染空态（回收站是空的）+ 源码
+//    接线（列头经 TRASH_COLUMNS.map 渲染；restoreTrash/purgeTrash 两
+//    API——listTrash 已上移容器三腿，弹窗源码不得出现；空态
+//    「回收站是空的」；409「同名文件已存在」+ 管理员「覆盖恢复」；
+//    彻底删确认；非管理员禁用 purge）；
 // ③ 同步长条移除——hasInlineSyncCard === false；FilesSection 源码无
 //    <SyncCard 渲染残留；mid-2 渲染「同步设置」按钮恰 1 处（工具条）、
 //    旧「复制清单原文」按钮 0 处；弹窗入口已接（<SyncSettingsModal）；
@@ -37,7 +44,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
 const srcPath = path.join(root, "src", "manage", "FilesSection.tsx");
-const trashPath = path.join(root, "src", "manage", "files", "TrashPanel.tsx");
+const trashPath = path.join(root, "src", "manage", "files", "TrashDialog.tsx");
 const syncPath = path.join(
   root,
   "src",
@@ -149,7 +156,7 @@ try {
     [
       `export { default as FilesSection } from ${JSON.stringify(srcPath)};`,
       `export * from ${JSON.stringify(srcPath)};`,
-      `export { default as TrashPanel, TRASH_COLUMNS } from ${JSON.stringify(trashPath)};`,
+      `export { default as TrashDialog, TRASH_COLUMNS } from ${JSON.stringify(trashPath)};`,
       `export { default as SyncSettingsModal, SYNC_RUN_PATH, MIRROR_DIR } from ${JSON.stringify(syncPath)};`,
       "",
     ].join("\n"),
@@ -169,7 +176,7 @@ try {
     FILE_VIEW_DEFAULT: "files" | "trash";
     hasInlineSyncCard: boolean;
     TRASH_COLUMNS: readonly string[];
-    TrashPanel: (props: Record<string, unknown>) => React.ReactElement;
+    TrashDialog: (props: Record<string, unknown>) => React.ReactElement;
     SyncSettingsModal: (props: Record<string, unknown>) => React.ReactElement;
     SYNC_RUN_PATH: string;
     MIRROR_DIR: string;
@@ -180,50 +187,56 @@ try {
     FILE_VIEW_DEFAULT,
     hasInlineSyncCard,
     TRASH_COLUMNS,
-    TrashPanel,
+    TrashDialog,
     SyncSettingsModal,
     SYNC_RUN_PATH,
     MIRROR_DIR,
   } = mod;
 
-  // ── ① 视图常量 + 标题行小切换（非整行 tab）────────────────────
+  // ── ① 视图常量 + F-V3-3 视图切换移除（回收站入口 = 工具条按钮）──
   assert.deepEqual(fileViews(), ["files", "trash"]);
   assert.equal(FILE_VIEW_DEFAULT, "files");
   const htmlMid4 = renderToStaticMarkup(
     E(FilesSection as never, { nav, cols: 4, data, variant: "mid" }),
   );
   assert.ok(htmlMid4.includes("文件管理"), "标题行含页标题「文件管理」");
-  assert.equal(count(htmlMid4, "我的文件"), 1, "「我的文件」恰 1 处（小切换）");
-  assert.ok(htmlMid4.includes("回收站"), "小切换含「回收站」");
-  ok("① fileViews() = [\"files\",\"trash\"] 且默认 files；mid-4 标题行小切换");
+  assert.equal(count(htmlMid4, "我的文件"), 0, "「我的文件」tab 已移除（F-V3-3）");
+  assert.ok(htmlMid4.includes("回收站"), "工具条「回收站」按钮入口在位");
+  ok("① fileViews() = [\"files\",\"trash\"] 且默认 files；mid-4 视图切换移除 + 工具条回收站入口");
 
-  // ── ② 回收站独立页：列头常量 + 独立渲染 + API 接线 ────────────
+  // ── ② 回收站弹窗：列头常量 + 独立渲染 + API 接线 ──────────────
   assert.deepEqual(TRASH_COLUMNS, ["原路径", "大小", "删除时间", "操作"]);
-  // TrashPanel 独立渲染（初始态 effects 不跑 → loading）——不再依赖
-  // FilesSection 容器取数，不再与主列表共用列头。
+  // TrashDialog 独立渲染（数据全由 props 传入；effects 不跑 → 空态）。
   const htmlTrash = renderToStaticMarkup(
-    E(TrashPanel as never, {
+    E(TrashDialog as never, {
       t,
       tr,
+      open: true,
+      onClose() {},
       humanName: "luo",
       isAdmin: true,
-      nav,
-      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-      onChanged() {},
+      entries: [],
+      loading: false,
+      trashStatus: "",
+      trashError: "",
+      onReload() {},
     }),
   );
-  assert.ok(htmlTrash.includes("加载中…"), "TrashPanel 初始 loading 态");
-  // 源码接线：列头经 TRASH_COLUMNS.map（非硬编码四 <span>）；三个已有
-  // API 直接调用（不改 API）；空态/409/彻底删确认/非管理员禁用 purge。
+  assert.ok(htmlTrash.includes("回收站是空的"), "TrashDialog 空态文案");
+  // 源码接线：列头经 TRASH_COLUMNS.map（非硬编码四 <span>）；恢复/彻底删
+  // 两个已有 API 直接调用；listTrash 已上移容器三腿（弹窗不得自取数）；
+  // 空态/409/彻底删确认/非管理员禁用 purge。
   assert.ok(trashSrc.includes("TRASH_COLUMNS.map"), "列头渲染经 TRASH_COLUMNS.map");
-  for (const api of ["listTrash", "restoreTrash", "purgeTrash"]) {
-    assert.ok(trashSrc.includes(api), `TrashPanel 调已有 API ${api}`);
+  for (const api of ["restoreTrash", "purgeTrash"]) {
+    assert.ok(trashSrc.includes(api), `TrashDialog 调已有 API ${api}`);
   }
-  assert.ok(trashSrc.includes("回收站为空"), "空态「回收站为空」在位");
-  assert.ok(trashSrc.includes("目标路径已存在"), "409 path_conflict 文案在位");
+  assert.ok(!trashSrc.includes("listTrash("), "弹窗不自取数（无 listTrash 调用）");
+  assert.ok(trashSrc.includes("回收站是空的"), "空态「回收站是空的」在位");
+  assert.ok(trashSrc.includes("同名文件已存在"), "409 文案在位");
+  assert.ok(trashSrc.includes("覆盖恢复"), "管理员「覆盖恢复」在位");
   assert.ok(trashSrc.includes("彻底删除此项？"), "彻底删二次确认在位");
   assert.ok(trashSrc.includes("!isAdmin"), "非管理员禁用彻底删除");
-  ok("② TRASH_COLUMNS = [原路径/大小/删除时间/操作]；TrashPanel 独立渲染 + 三 API 接线");
+  ok("② TRASH_COLUMNS = [原路径/大小/删除时间/操作]；TrashDialog 独立渲染 + API 接线（无 listTrash）");
 
   // ── ③ 同步长条移除：hasInlineSyncCard=false + 无渲染残留 + 入口 ─
   assert.equal(hasInlineSyncCard, false, "hasInlineSyncCard 导出 = false");

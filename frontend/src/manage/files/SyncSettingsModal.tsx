@@ -15,7 +15,8 @@
  * - 导出清单原文：getSyncManifest + downloadTextFile（与旧 SyncCard 同一逻辑）。
  * - 路径说明：镜像目录 = MIRROR_DIR（任务书口径 <workspace>/.qwenpaw/agentteams）。
  *
- * 共享帮助函数（fmtTs）从 ./TrashPanel 导入（files/ 内部依赖，无循环）。
+ * 外壳走 DialogShell（F-V3-3：与回收站弹窗同一套 Modal 配置）；共享格式化
+ * 函数（fmtTs）从 ./format 导入。
  */
 import type * as ReactNS from "react";
 
@@ -27,7 +28,8 @@ import {
   type SyncStatus,
 } from "../../api";
 import type { ThemeColors } from "../../theme";
-import { fmtTs } from "./TrashPanel";
+import { fmtTs } from "./format";
+import DialogShell from "./DialogShell";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -168,11 +170,10 @@ export default function SyncSettingsModal({
         : tr("控制器未提供清单接口");
 
   return (
-    <antd.Modal
+    <DialogShell
       open={open}
       title={tr("同步设置")}
-      onCancel={onClose}
-      destroyOnClose
+      onClose={onClose}
       footer={
         <antd.Button style={btnTouch} onClick={onClose}>
           {tr("关闭")}
@@ -247,6 +248,6 @@ export default function SyncSettingsModal({
           </span>
         </div>
       </div>
-    </antd.Modal>
+    </DialogShell>
   );
 }

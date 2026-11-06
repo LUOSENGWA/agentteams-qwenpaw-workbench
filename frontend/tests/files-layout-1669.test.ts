@@ -212,7 +212,8 @@ try {
   assert.ok(!htmlMid4.includes("选择文件查看详情"), "4 列 mid 未选中不出 split 空态（首帧 sheet）");
   assert.ok(!htmlMid4.includes("此目录为空"), "4 列 mid 未选中不出 split 空态（首帧 sheet）");
   assert.equal(count(htmlMid4, ">上传文件<"), 1, "上传按钮恰 1 处（工具条）");
-  assert.equal(count(htmlMid4, "我的文件"), 1, "「我的文件」恰 1 处（tab）");
+  // F-V3-3：视图切换 tab 移除 →「我的文件」0 处（回收站入口 = 工具条按钮）。
+  assert.equal(count(htmlMid4, "我的文件"), 0, "「我的文件」tab 已移除（F-V3-3）");
   ok("⑤a 渲染（4 列 mid 未选中）：恒出列表（不空白、不出详情空态）");
 
   // 1 列 mid + 选中：首帧 sheet → 详情只在全屏 Sheet 浮层一处。
@@ -230,9 +231,15 @@ try {
   );
   assert.ok(htmlRight2.includes("此目录为空"));
   assert.ok(htmlRight2.includes("上传或新建文件夹后开始管理"));
-  assert.equal(count(htmlRight2, ">上传文件<"), 1, "右栏上传按钮恰 1 处（与工具条同一 handler）");
+  // F-V3-3：右栏 DetailPane 的大「上传文件」按钮已删（文件页 4 栏去重）
+  // → 改一行次要文字「上传请使用上方工具条」。
+  assert.equal(count(htmlRight2, ">上传文件<"), 0, "右栏大上传按钮已删（F-V3-3）");
+  assert.ok(
+    htmlRight2.includes("上传请使用上方工具条"),
+    "右栏空态引导文字在位",
+  );
   assert.ok(!htmlRight2.includes("选择文件查看详情"), "空目录 → 不叠 pick 空态");
-  ok("⑤c 渲染（2 列 right 未选中空目录）：此目录为空 + 上传按钮恰 1 处（右栏不空白）");
+  ok("⑤c 渲染（2 列 right 未选中空目录）：此目录为空 + 引导文字（F-V3-3 去重）");
 
   // 2 列 right + 选中：右栏 = 详情（恰 1 处降级文案），不叠空态。
   const htmlRight2Sel = renderToStaticMarkup(

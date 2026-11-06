@@ -10,7 +10,8 @@
 //
 // 覆盖（任务书 ≥3 条）：
 // ① 面包屑根段不出现——breadcrumbParts("") 整行隐藏；非根段不含「我的文件」；
-//    渲染（4 列 mid，根目录）里「我的文件」仅 1 处（= 视图切换 tab）。
+//    渲染（4 列 mid，根目录）里「我的文件」0 处（F-V3-3 视图切换 tab 已移除，
+//    回收站入口 = 工具条按钮）。
 // ② 工具条按钮唯一——渲染（2 列 mid，空列表）里「上传文件」按钮恰 1 处、
 //    「新建文件夹」恰 1 处；列表空态 CTA = 文字链接（data-type="link"）
 //    「上传一个文件」恰 1 处（指向工具条同一处理函数，非新增按钮）。
@@ -18,7 +19,9 @@
 //    null/undefined→false；且 SyncCard 渲染分支经 syncCardVisible 门控
 //    （源码接线断言，同 h1-files-nav ⑤ 风格）。
 // ④ 大小列——目录行 → 「—」（不显 0）；文件 → fmtBytes；缺 size → 「—」。
-// ⑤ 列宽稳定——LIST_GRID 模板被表头行 + 文件行 + 回收站行三处共用。
+// ⑤ 列宽稳定 + F-V3-3 列自适应——columnsFor 整批无 updatedAt →
+//    表头/行/grid 同步去「更新时间」列（LIST_GRID ↔ LIST_GRID_NO_TIME
+//    按批切换）。
 import assert from "node:assert/strict";
 import { buildSync } from "esbuild";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -136,14 +139,14 @@ try {
   assert.ok(!deepParts.segments.includes("我的文件"));
   ok("① breadcrumbParts：根 → 整行隐藏；非根 = 仅路径段（无「我的文件」根段）");
 
-  // 渲染（4 列 mid，根目录）：「我的文件」只应剩视图切换 tab 一处
-  // （改前 = tab + 面包屑根段两处；改后根层面包屑整行不渲染）。
+  // 渲染（4 列 mid，根目录）：「我的文件」0 处——面包屑根段永不合成，
+  // 且 F-V3-3 起视图切换 tab 已移除（回收站入口 = 工具条按钮）。
   const htmlMid4 = renderToStaticMarkup(
     E(FilesSection as never, { nav, cols: 4, data, variant: "mid" }),
   );
-  assert.equal(count(htmlMid4, "我的文件"), 1);
-  assert.ok(htmlMid4.includes("回收站")); // ViewTabs 仍在
-  ok("①b 渲染（4 列 mid 根目录）：「我的文件」恰 1 处（= tab，无面包屑根段）");
+  assert.equal(count(htmlMid4, "我的文件"), 0);
+  assert.ok(htmlMid4.includes("回收站")); // 工具条「回收站」按钮（F-V3-3 弹窗入口）
+  ok("①b 渲染（4 列 mid 根目录）：「我的文件」0 处（无面包屑根段 + tab 已移除）");
 
   // ── ② 工具条按钮唯一 + 空态 CTA 文字链接 ───────────────────────
   // 渲染（2 列 mid，初始空列表）：detail = ListArea（空态）+ FilesToolbar。
@@ -177,10 +180,14 @@ try {
   assert.equal(sizeCell({ type: "file" }), "—");
   ok("④ sizeCell：目录 → —（不显 0）；文件 → 可读大小；缺失 → —");
 
-  // ── ⑤ 列宽稳定：LIST_GRID 三处共用（表头 + 文件行 + 回收站行）──
-  const gridUses = (src.match(/gridTemplateColumns: LIST_GRID/g) || []).length;
-  assert.ok(gridUses >= 3, `LIST_GRID 共用次数 = ${gridUses}（应 ≥ 3）`);
-  ok(`⑤ LIST_GRID 模板三处共用（表头/文件行/回收站行；实测 ${gridUses} 处）`);
+  // ── ⑤ 列宽稳定 + F-V3-3 列自适应：columnsFor 整批无 updatedAt →
+  //    表头/行/grid 同步去「更新时间」列（LIST_GRID ↔ LIST_GRID_NO_TIME
+  //    按批切换，不再是写死的 gridTemplateColumns 字面量）。
+  const colsForUses = (src.match(/\bcolumnsFor\(/g) || []).length;
+  assert.ok(colsForUses >= 2, `columnsFor 接线次数 = ${colsForUses}（定义 + ListArea 调用，应 ≥ 2）`);
+  assert.ok(src.includes("LIST_GRID_NO_TIME"), "无更新时间列的 grid 模板在位");
+  assert.ok(src.includes("showUpdatedAt"), "表头/行按 showUpdatedAt 门控渲染");
+  ok(`⑤ 列自适应接线：columnsFor（${colsForUses} 处）+ LIST_GRID_NO_TIME + showUpdatedAt`);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

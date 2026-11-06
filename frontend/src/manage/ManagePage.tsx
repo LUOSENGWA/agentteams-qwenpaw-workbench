@@ -2,7 +2,8 @@
  * ManagePage.tsx — 「管理」页（顶层 tab key=team，替代旧 WorkerManage 页面壳）。
  *
  * 布局（10/29 评审确认，15.36 加 xwide 四栏，按容器宽度 1/2/3/4 栏）：
- * - xwide（w ≥ 1440）→ 4 栏：域导航 160（railOpen 收起为 56 icon-only）+ L1 列表 280（常显）
+ * - xwide（w ≥ 1440）→ 4 栏：域导航 160（railOpen 收起为 56 icon-only）+ L1 列表 280（常显；
+ *   files 例外无 L1 列——F-V3-3 列表去重，见 showL1）
  *   + 中栏 340 + 右栏 flex(min 400)——VS Code 活动栏/侧栏/编辑器/辅助栏模型：
  *   页头 toggle 管最左域导航列（160 ↔ 56 icon-only；L1 列内容 = 各域第一层：
  *   团队列表 / CRD 入口 / 人员列表 / 集群概览+入口卡）。
@@ -60,6 +61,13 @@ const RAIL_KEY = "manage.railOpen";
 const XWIDE_W = 1440;
 const WIDE_W = 1280;
 const MEDIUM_W = 1024;
+
+/** F-V3-3：4 栏 L1 列表列是否常显——files 例外（列表去重：文件页 4 栏 =
+ * 域导航 + 中栏列表 + 内联详情，列表只出现一次；其余域 4 栏 = 域导航 +
+ * L1 列 + 中栏 + 右栏）。纯函数（单测见 tests/files-v3-3.test.ts）。 */
+export function showL1(section: ManageSection, cols: number): boolean {
+  return cols === 4 && section !== "files";
+}
 
 /** 初始默认：wide 开、其余关；localStorage 有值则从值。 */
 function readRailDefault(initialWide: boolean): boolean {
@@ -165,8 +173,9 @@ function ManagePage(props: ManagePageProps) {
   const cols: 1 | 2 | 3 | 4 =
     cw >= XWIDE_W ? 4 : cw >= WIDE_W ? 3 : cw >= MEDIUM_W ? 2 : 1;
   // 16.27 A / 16.28：集群/CRD 域 xwide 四栏无右栏（详情/表单已在中栏）→ 按 3 栏处理
-  // （域导航 160/56 + L1 列常显 280 + mid）；files 同模式（#1426：列表在 L1 列、
-  // 详情在中栏）；其它域四栏行为不变。
+  // （域导航 160/56 + L1 列常显 280 + mid）；files 无右栏（详情由 mid 持槽内联）
+  // 且 F-V3-3 起无 L1 列（showL1：列表去重，rail + 列表 + 内联详情）；
+  // 其它域四栏行为不变。
   const sectionNoRight =
     (nav.section === "cluster" || nav.section === "crd" || nav.section === "files") &&
     cols === 4;
@@ -319,14 +328,20 @@ function ManagePage(props: ManagePageProps) {
 
   const gridTemplate =
     cols === 4
-      ? sectionNoRight
-        ? // 集群/CRD 四栏：域导航 160/56 + L1 列 280（常显）+ mid 全宽（无右栏）。
+      ? section === "files"
+        ? // F-V3-3：files 四栏无 L1 列（列表去重——rail + 中栏列表 + 内联详情）：
+          //   域导航 160/56 + mid 全宽（持槽内联详情）。
           railOpen
-            ? "160px 280px minmax(400px, 1fr)"
-            : "56px 280px minmax(400px, 1fr)"
-        : railOpen
-          ? "160px 280px 340px minmax(400px, 1fr)"
-          : "56px 280px 340px minmax(400px, 1fr)"
+            ? "160px minmax(400px, 1fr)"
+            : "56px minmax(400px, 1fr)"
+        : sectionNoRight
+          ? // 集群/CRD 四栏：域导航 160/56 + L1 列 280（常显）+ mid 全宽（无右栏）。
+            railOpen
+              ? "160px 280px minmax(400px, 1fr)"
+              : "56px 280px minmax(400px, 1fr)"
+          : railOpen
+            ? "160px 280px 340px minmax(400px, 1fr)"
+            : "56px 280px 340px minmax(400px, 1fr)"
       : cols === 3 && railOpen
         ? "200px 360px minmax(420px, 1fr)"
         : "360px minmax(420px, 1fr)";
@@ -575,7 +590,7 @@ function ManagePage(props: ManagePageProps) {
               />
             </div>
           ) : null}
-          {cols === 4 ? <div style={paneStyle}>{renderSection("l1")}</div> : null}
+          {showL1(section, cols) ? <div style={paneStyle}>{renderSection("l1")}</div> : null}
           <div style={paneStyle}>{renderSection("mid")}</div>
           {sectionNoRight ? null : (
             <div style={paneStyle}>{renderSection("right")}</div>
