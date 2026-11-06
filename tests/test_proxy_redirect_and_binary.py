@@ -118,7 +118,9 @@ def _app():
 
     app = FastAPI()
     app.include_router(router_mod.build_router())
-    return TestClient(app)
+    # 301 断言必须关掉自动跟随：否则 TestClient 会跟到 /api/v1/...
+    # （catch-all 看到 target="api" → 400），测试永远拿不到 302。
+    return TestClient(app, follow_redirects=False)
 
 
 def _last_call(clients: list[_Client]) -> tuple[str, str, dict]:
