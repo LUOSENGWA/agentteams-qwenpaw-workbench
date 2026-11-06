@@ -3,6 +3,12 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.71 (2026-11-07 · recycle bin page · sync settings dialog)
+
+**Improved**
+- **Recycle bin gets its own page**: it no longer shares the tab strip and column header with the main list. A dedicated panel shows original path, size, deleted at and actions (restore, purge); the view switch moved to the title row.
+- **Sync settings become a dialog**: the long sync card inside the page is gone; a toolbar button opens a dialog with the sync status (entries/tombstones/generation/last writer), run-now, manifest export and the mirror location, and explains why sync is unavailable when the controller has no manifest routes.
+
 ## 0.5.0-beta.16.70 (2026-11-07 · selective scope, local unsync, progress)
 
 **Added**
