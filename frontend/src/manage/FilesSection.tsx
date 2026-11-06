@@ -13,13 +13,14 @@
  * 列职责（沿用 ManagePage 四域列模型）：
  * - l1（4 列 L1 列）：视图切换（我的文件 / 回收站）+ 面包屑（目录导航）
  *   + compact 列表（回收站行仅选中，操作在中栏详情）；
- * - mid：  配额卡（进度条 / 上传 / 新建文件夹 / 设置配额（admin））+
+ * - mid：  配额卡（进度条 / 上传 / 新建文件夹；仅用量展示——设置/清除配额
+ *          入口已迁「人员管理」人员详情，Q）+
  *          2/3/1 列 = tabs + 面包屑 + 完整列表；4 列 = tabs + 选中项详情；
  * - right：2/3 列 = 选中文件详情（下载 / 覆盖 / 删除）或回收站条目
  *          详情（恢复 / 彻底删）或提示。
  *
  * 权限（Controller 终裁；前端门控 best-effort = hasToken）：
- * - 回收站彻底删 / 配额设 = admin only（非 admin 按钮 disabled +
+ * - 回收站彻底删 = admin only（非 admin 按钮 disabled +
  *   tooltip「仅管理员」）；
  * - restore 409（目标路径已存在）：admin 二次确认 ?overwrite=1；
  *   非 admin 仅显错误。
@@ -38,7 +39,6 @@ import {
   listTrash,
   purgeTrash,
   restoreTrash,
-  setQuota,
   writeFileSync,
   type HumanFileEntry,
   type HumanTrashEntry,
@@ -91,8 +91,9 @@ type SubProps = {
   fs: FilesState;
 };
 
-/** 字节数 → 可读文本（— = 缺失/非法，诚实不造 0）。 */
-function fmtBytes(n: number | undefined): string {
+/** 字节数 → 可读文本（— = 缺失/非法，诚实不造 0）。
+ * 导出：PeopleSection 配额卡用量展示同源复用（Q）。 */
+export function fmtBytes(n: number | undefined): string {
   if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "—";
   if (n < 1024) return `${n} B`;
   const units = ["KB", "MB", "GB", "TB"];
@@ -142,8 +143,9 @@ function normTrashPath(p: string): string {
   return p.replace(/^files\//, "");
 }
 
-/** 统一错误 → i18n 文案（按 status/code 分支；413 区分 size vs quota）。 */
-function hfErrorText(e: unknown, tr: Tr): string {
+/** 统一错误 → i18n 文案（按 status/code 分支；413 区分 size vs quota）。
+ * 导出：PeopleSection 配额保存/清除 403 提示同源复用（Q）。 */
+export function hfErrorText(e: unknown, tr: Tr): string {
   if (e instanceof HumanFilesError) {
     switch (e.status) {
       case 400:
@@ -624,12 +626,9 @@ function TrashRow({
   );
 }
 
-/** 配额卡：进度条（quotaBytes null = 无限制）+ 上传 / 新建文件夹 /
- * 设置·清除配额（仅 admin 显示——任务书 UI 规则「不显示设置入口」）。 */
+/** 配额卡：仅用量展示（进度条（quotaBytes null = 无限制）+ 上传 / 新建文件夹）。
+ * 设置/清除配额入口已迁「人员管理」人员详情（Q）——本卡不再提供。 */
 function QuotaCard({ t, tr, fs }: SubProps) {
-  const [quotaOpen, setQuotaOpen] = React.useState(false);
-  const [quotaMb, setQuotaMb] = React.useState<number | null>(null);
-  const [quotaBusy, setQuotaBusy] = React.useState(false);
   const [upBusy, setUpBusy] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
   const [folderName, setFolderName] = React.useState("");
@@ -641,48 +640,6 @@ function QuotaCard({ t, tr, fs }: SubProps) {
   const percent =
     hasLimit && q ? Math.min(100, Math.round(((q.usedBytes ?? 0) / (q.quotaBytes as number)) * 100)) : 0;
 
-  const openQuota = () => {
-    setQuotaMb(
-      q && typeof q.quotaBytes === "number"
-        ? Math.max(1, Math.round(q.quotaBytes / (1024 * 1024)))
-        : null,
-    );
-    setQuotaOpen(true);
-  };
-  const saveQuota = async () => {
-    if (typeof quotaMb !== "number" || !Number.isFinite(quotaMb) || quotaMb <= 0) {
-      antd.message.warning(tr("请输入有效配额"));
-      return;
-    }
-    setQuotaBusy(true);
-    try {
-      await setQuota(fs.humanName, Math.round(quotaMb * 1024 * 1024));
-      antd.message.success(tr("已保存"));
-      setQuotaOpen(false);
-      fs.load(true);
-    } catch (e) {
-      antd.message.error(hfErrorText(e, tr));
-    } finally {
-      setQuotaBusy(false);
-    }
-  };
-  const clearQuota = () => {
-    antd.Modal.confirm({
-      title: tr("清除配额？"),
-      content: tr("清除后人类文件存储无限制。"),
-      okText: tr("清除配额"),
-      cancelText: tr("取消"),
-      onOk: async () => {
-        try {
-          await setQuota(fs.humanName, null);
-          antd.message.success(tr("已保存"));
-          fs.load(true);
-        } catch (e) {
-          antd.message.error(hfErrorText(e, tr));
-        }
-      },
-    });
-  };
   const onUploadPick = async (e: ReactNS.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     e.target.value = "";
@@ -744,6 +701,9 @@ function QuotaCard({ t, tr, fs }: SubProps) {
           onClick={() => fs.load(false)}
         />
       </div>
+      <span style={{ fontSize: 11, color: t.textSecondary }}>
+        {tr("容量配额在「人员管理」中设置")}
+      </span>
       {fs.quotaFailed ? (
         <span style={{ fontSize: 11, color: t.textSecondary }}>
           {tr("配额获取失败")}
@@ -782,42 +742,7 @@ function QuotaCard({ t, tr, fs }: SubProps) {
         <antd.Button size="small" onClick={() => { setFolderName(""); setFolderOpen(true); }}>
           {tr("新建文件夹")}
         </antd.Button>
-        {fs.isAdmin ? (
-          <>
-            <antd.Button size="small" onClick={openQuota}>
-              {tr("设置配额")}
-            </antd.Button>
-            <antd.Button size="small" danger onClick={clearQuota}>
-              {tr("清除配额")}
-            </antd.Button>
-          </>
-        ) : null}
       </div>
-      <antd.Modal
-        open={quotaOpen}
-        title={tr("设置配额")}
-        okText={tr("保存")}
-        cancelText={tr("取消")}
-        confirmLoading={quotaBusy}
-        onOk={() => void saveQuota()}
-        onCancel={() => setQuotaOpen(false)}
-        destroyOnClose
-      >
-        <div style={{ display: "grid", gap: 8, padding: "8px 0" }}>
-          <span style={{ fontSize: 12, color: t.textSecondary }}>
-            {tr("设置人类文件存储上限（MB）。")}
-          </span>
-          <antd.InputNumber
-            min={1}
-            step={100}
-            value={quotaMb}
-            onChange={(v: unknown) => setQuotaMb(typeof v === "number" ? v : null)}
-            addonAfter="MB"
-            style={{ width: "100%" }}
-            aria-label={tr("配额（MB）")}
-          />
-        </div>
-      </antd.Modal>
       <antd.Modal
         open={folderOpen}
         title={tr("新建文件夹")}
