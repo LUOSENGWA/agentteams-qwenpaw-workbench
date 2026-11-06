@@ -304,6 +304,10 @@ export const manageDict: Record<string, { en: string }> = {
   },
   "暂无文件": { en: "No files" },
   "大小 {a} · 更新 {b}": { en: "Size {a} · Updated {b}" },
+  // ── 文件域 16.67（排版 / 去重）──
+  "上传一个文件": { en: "Upload a file" },
+  "更新时间": { en: "Updated" },
+  "删除时间": { en: "Deleted" },
 
   // ── 文件域 H1（#1518 游标列表 / #1519 预签名上传 / #1501 预签名下载 /
   // #1499 同步状态卡）──
@@ -490,4 +494,64 @@ export const manageDict: Record<string, { en: string }> = {
   "删除行": { en: "Delete row" },
   "Provider 与 model 必须成对填写": { en: "Provider and model must be filled as a pair" },
   "无 entries（空 = 不授权）": { en: "No entries (empty = no grant)" },
+
+  // ── H2：人员详情「工作区访问」（Human CR spec.workspaceAccess，#1502 管理员面）──
+  // 「保存」「取消」「团队」「只读」「读写」「保存失败」复用各域既有键（不重登）。
+  "工作区访问": { en: "Workspace access" },
+  "files/** 团队访问（grants/restrictions，L1）": {
+    en: "files/** team access (grants/restrictions, L1)",
+  },
+  "工作区访问（{name}）": { en: "Workspace access ({name})" },
+  "读取工作区访问…": { en: "Loading workspace access…" },
+  "读取工作区访问失败": { en: "Failed to load workspace access" },
+  "工作区访问已保存": { en: "Workspace access saved" },
+  "工作区访问存在校验错误——先修正红色提示": {
+    en: "Workspace access has validation issues — fix the red items first",
+  },
+  "当前控制器版本不支持工作区访问（保存未生效）": {
+    en: "The current controller version does not support workspace access (save did not take effect)",
+  },
+  "修改工作区访问需 L1 管理权限（Controller 管理员 token）": {
+    en: "Editing workspace access requires L1 admin access (Controller admin token)",
+  },
+  "团队列表不可用——团队名降级为自由输入": {
+    en: "Team list unavailable — team name degrades to free text",
+  },
+  "默认访问": { en: "Default access" },
+  "成员（accessibleTeams ∪ humanMembers）默认对 files/** 读写；grants 仅为非成员团队加授，restrictions 可收窄默认范围（同路径 restriction 优先）。": {
+    en: "Member teams (accessibleTeams ∪ humanMembers) have readwrite on files/** by default; grants only raise access for non-member teams, restrictions can narrow the default scope (restrictions win on the same path).",
+  },
+  "读写 files/**": { en: "Read/Write files/**" },
+  "无默认团队（无成员关系且未配置 accessibleTeams）": {
+    en: "No default teams (no membership / no accessibleTeams)",
+  },
+  "默认访问由成员关系派生，不写字段": {
+    en: "Default access is derived from membership (no field written)",
+  },
+  "授予规则": { en: "Grant rules" },
+  "为非成员团队加授 files/** 访问（只能加，不能低于默认）": {
+    en: "Raise files/** access for non-member teams (raise only, never below default)",
+  },
+  "限制规则": { en: "Restriction rules" },
+  "收窄默认范围（none = 撤销 / read = 降级）": {
+    en: "Narrow the default scope (none = revoke / read = cap)",
+  },
+  "未配置（继承默认）": { en: "Not configured (default inherited)" },
+  "添加授予规则": { en: "Add grant rule" },
+  "添加限制规则": { en: "Add restriction rule" },
+  "删除规则": { en: "Delete rule" },
+  "模式": { en: "Mode" },
+  "无权限": { en: "No access" },
+  "团队名（自由输入）": { en: "Team name (free text)" },
+  "添加路径（支持 * 和 **）": { en: "Add path (* and ** supported)" },
+  "路径非法：{p}": { en: "Invalid path: {p}" },
+  "模式越界：{m}（此列表允许 {allowed}）": {
+    en: "Mode out of range: {m} (allowed here: {allowed})",
+  },
+  "同一团队在列表中重复": { en: "The same team appears twice in this list" },
+  "团队不存在：{team}": { en: "Unknown team: {team}" },
+  "团队不可为空": { en: "Team must not be empty" },
+  "至少需要一条路径": { en: "At least one path is required" },
+  "每列表至多 32 条规则（当前 {m}）": { en: "At most 32 rules per list (got {m})" },
+  "每规则至多 16 条路径（当前 {m}）": { en: "At most 16 paths per rule (got {m})" },
 };

@@ -10,12 +10,16 @@
  *   localpart(myUserId)（L2 模式 admin=null，humans 列表不可用；
  *   MyScopeCard 同款推导）；空 → 「无法识别当前用户」占位。
  *
- * 列职责（沿用 ManagePage 四域列模型）：
- * - l1（4 列 L1 列）：视图切换（我的文件 / 回收站）+ 面包屑（目录导航）
- *   + compact 列表（回收站行仅选中，操作在中栏详情）；
- * - mid：  配额卡（进度条 / 上传 / 新建文件夹；仅用量展示——设置/清除配额
- *          入口已迁「人员管理」人员详情，Q）+
- *          2/3/1 列 = tabs + 面包屑 + 完整列表；4 列 = tabs + 选中项详情；
+ * 列职责（沿用 ManagePage 四域列模型；16.67 排版 / 去重）：
+ * - l1（4 列 L1 列）：视图切换（我的文件 / 回收站）+ 面包屑（目录导航，
+ *   根层不渲染——「我的文件」已由 tab 表达）+ compact 列表（回收站行仅选中，
+ *   操作在中栏详情）；
+ * - mid：  工具条（左 = 配额进度 + 用量文案；右 = 上传文件 / 新建文件夹 / 刷新——
+ *          页面级动作按钮唯一入口；设置/清除配额在「人员管理」人员详情，Q）+
+ *          同步状态紧凑条（仅 ok 渲染，单行：条目·墓碑·代 + 导出/复制放行尾）+
+ *          列表头（视图切换 + 递归开关同行）+ 面包屑（仅 dirPath 非空）+
+ *          2/3/1 列 = 完整列表（名称 / 大小 / 更新时间(删除时间) / 操作，
+ *          行高 36px，目录大小 = —）；4 列 = tabs + 选中项详情；
  * - right：2/3 列 = 选中文件详情（下载 / 覆盖 / 删除）或回收站条目
  *          详情（恢复 / 彻底删）或提示。
  *
@@ -137,6 +141,37 @@ function fmtTs(s: string | undefined): string {
   const p = (x: number) => String(x).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+
+/** 16.67 面包屑决策（纯函数；tests/files-ui-1667.test.ts 断言）：
+ * 根层（dirPath = ""）→ 整行不渲染（visible=false；「我的文件」已由
+ * 视图切换 tab 表达，根部段不再出现）；非根 → 仅路径段（不含「我的文件」
+ * 根段；↑ 上级按钮由组件单独渲染）。 */
+export function breadcrumbParts(dirPath: string): {
+  visible: boolean;
+  segments: string[];
+} {
+  const segments = dirPath.split("/").filter(Boolean);
+  return { visible: segments.length > 0, segments };
+}
+
+/** 16.67 同步卡收敛（纯函数；tests/files-ui-1667.test.ts 断言）：
+ * 仅 state = ok 渲染（单行紧凑条）；empty / denied / unsupported / 未取 →
+ * 不渲染（不占版面）。 */
+export function syncCardVisible(
+  state: SyncStatus["state"] | null | undefined,
+): boolean {
+  return state === "ok";
+}
+
+/** 16.67 大小列（纯函数）：目录 → 「—」（不显 0 / 0 B）；
+ * 文件 → fmtBytes（缺失/非法 → 「—」）。 */
+export function sizeCell(entry: HumanFileEntry): string {
+  return isEntryDir(entry) ? "—" : fmtBytes(entry.size);
+}
+
+/** 16.67 列表列模板（表头行与数据行共用 → 列宽稳定）：
+ * 名称（伸缩）/ 大小 / 时间（更新·删除）/ 操作（定宽）。 */
+const LIST_GRID = "minmax(0, 1fr) 72px 120px 64px";
 
 /** 行内小图标按钮（裸 <button> + title tooltip，同 PeopleSection 入口行风格）。 */
 function iconBtnStyle(t: ThemeColors): ReactNS.CSSProperties {
@@ -344,9 +379,11 @@ function ViewTabs({ t, tr, fs }: SubProps) {
   );
 }
 
-/** 面包屑目录导航（根 = 我的文件；点段进该层；↑ = 上级目录）。 */
+/** 面包屑目录导航（16.67：根层不渲染整行——「我的文件」已由视图切换
+ * tab 表达，根部段不再出现；非根 = 仅路径段 + ↑ 上级目录）。 */
 function Breadcrumbs({ t, tr, fs }: SubProps) {
-  const segs = fs.dirPath ? fs.dirPath.split("/").filter(Boolean) : [];
+  const { visible, segments } = breadcrumbParts(fs.dirPath);
+  if (!visible) return null;
   const crumb = (label: string, active: boolean, onClick?: () => void) => (
     <button
       type="button"
@@ -367,35 +404,43 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
   );
   return (
     <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
-      {crumb(tr("我的文件"), segs.length === 0, () => fs.onEnterDir(""))}
-      {segs.map((s, i) => {
-        const p = segs.slice(0, i + 1).join("/");
-        const last = i === segs.length - 1;
+      {segments.map((s, i) => {
+        const p = segments.slice(0, i + 1).join("/");
+        const last = i === segments.length - 1;
         return (
           <React.Fragment key={p}>
-            <span style={{ fontSize: 12, color: t.textSecondary }}>/</span>
+            {i > 0 ? (
+              <span style={{ fontSize: 12, color: t.textSecondary }}>/</span>
+            ) : null}
             {crumb(s, last, last ? undefined : () => fs.onEnterDir(p))}
           </React.Fragment>
         );
       })}
-      {segs.length > 0 ? (
-        <button
-          type="button"
-          title={tr("上级目录")}
-          aria-label={tr("上级目录")}
-          style={iconBtnStyle(t)}
-          onClick={() => fs.onEnterDir(segs.slice(0, -1).join("/"))}
-        >
-          <span style={{ fontSize: 13, lineHeight: 1 }}>↑</span>
-        </button>
-      ) : null}
+      <button
+        type="button"
+        title={tr("上级目录")}
+        aria-label={tr("上级目录")}
+        style={iconBtnStyle(t)}
+        onClick={() => fs.onEnterDir(segments.slice(0, -1).join("/"))}
+      >
+        <span style={{ fontSize: 13, lineHeight: 1 }}>↑</span>
+      </button>
     </div>
   );
 }
 
-/** 列表块：出错+重试 / 加载中 / 空态 / 行列表（compact = l1 列紧凑行）。 */
-function ListArea({ t, tr, nav, fs, compact = false }: SubProps & { compact?: boolean }) {
+/** 列表块：出错+重试 / 加载中 / 空态（居中一句 + 主 CTA 文字链接，指向
+ * 工具条同一处理函数）/ 表头行 + 行列表（compact = l1 列紧凑行）。 */
+function ListArea({
+  t,
+  tr,
+  nav,
+  fs,
+  actions,
+  compact = false,
+}: SubProps & { actions: FilesActions; compact?: boolean }) {
   const count = fs.view === "trash" ? fs.trash.length : fs.files.length;
+  const filesView = fs.view === "files";
   return (
     <div style={{ display: "grid", gap: 4 }}>
       {!compact && fs.status !== "err" ? (
@@ -429,15 +474,42 @@ function ListArea({ t, tr, nav, fs, compact = false }: SubProps & { compact?: bo
         </div>
       ) : null}
       {fs.status !== "err" && !fs.loading && count === 0 ? (
+        <div style={{ padding: "18px 8px", textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: t.textSecondary }}>
+            {filesView ? tr("暂无文件") : tr("回收站为空")}
+          </div>
+          {/* 16.67：空态 CTA = 文字链接（type="link"，非按钮），
+           * 指向工具条「上传文件」的同一处理函数（actions 共享）。 */}
+          {filesView ? (
+            <antd.Button
+              type="link"
+              size="small"
+              style={{ padding: 0 }}
+              onClick={actions.onUploadClick}
+            >
+              {tr("上传一个文件")}
+            </antd.Button>
+          ) : null}
+        </div>
+      ) : null}
+      {/* 16.67 列表表头行：名称 / 大小 / 更新时间(删除时间) / 操作——
+       * 与数据行共用 LIST_GRID 模板（列宽稳定）。 */}
+      {!compact && fs.status !== "err" && !fs.loading && count > 0 ? (
         <div
           style={{
-            padding: "18px 8px",
-            textAlign: "center",
+            display: "grid",
+            gridTemplateColumns: LIST_GRID,
+            gap: 8,
+            alignItems: "center",
+            padding: "0 8px",
             fontSize: 12,
             color: t.textSecondary,
           }}
         >
-          {fs.view === "trash" ? tr("回收站为空") : tr("暂无文件")}
+          <span>{tr("名称")}</span>
+          <span style={{ textAlign: "right" }}>{tr("大小")}</span>
+          <span>{filesView ? tr("更新时间") : tr("删除时间")}</span>
+          <span>{tr("操作")}</span>
         </div>
       ) : null}
       {fs.view === "trash"
@@ -515,6 +587,103 @@ function FileRow({
     });
   };
 
+  const nameCell = (
+    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      {isDir ? (
+        <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+      ) : (
+        <PageIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+      )}
+      <span
+        // 新形态（递归平铺）hover 显相对全路径，便于区分同名条目。
+        title={entry.path ? path : undefined}
+        style={{
+          fontWeight: 600,
+          fontSize: 12,
+          color: t.text,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {name}
+        {isDir ? " ›" : ""}
+      </span>
+    </span>
+  );
+  const actionsCell = isDir ? (
+    <span />
+  ) : (
+    <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+      <button
+        type="button"
+        onClick={onDownload}
+        title={tr("下载")}
+        aria-label={tr("下载")}
+        style={iconBtnStyle(t)}
+      >
+        <DownloadIcon size={16} />
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        title={tr("删除")}
+        aria-label={tr("删除")}
+        style={iconBtnStyle(t)}
+      >
+        <TrashIcon size={16} />
+      </button>
+    </span>
+  );
+  const rowSkin = sel
+    ? { border: `1px solid ${t.border}`, background: t.hoverBg }
+    : { border: "1px solid transparent", background: "transparent" };
+
+  if (compact) {
+    // l1 列紧凑行：单行（图标 + 名称 + 文件大小），无时间/操作列。
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        title={dirInteractive ? tr("进入目录") : undefined}
+        onClick={activate}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            activate();
+          }
+        }}
+        onMouseEnter={(e) => {
+          if (!sel) e.currentTarget.style.background = t.hoverBg;
+        }}
+        onMouseLeave={(e) => {
+          if (!sel) e.currentTarget.style.background = "transparent";
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          minHeight: 36,
+          padding: "0 8px",
+          borderRadius: 6,
+          cursor: dirInteractive || !isDir ? "pointer" : "default",
+          width: "100%",
+          ...rowSkin,
+        }}
+      >
+        {nameCell}
+        {isDir ? null : (
+          <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
+            {sizeCell(entry)}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // 16.67 列表行（非 compact）：四列 grid（名称/大小/更新时间/操作），
+  // 行高 36px；目录行整行点击进入，文件行整行选中，行内按钮
+  // stopPropagation；etag 不在行内展示（详情面板保留，避免第五列）。
   return (
     <div
       role="button"
@@ -534,93 +703,43 @@ function FileRow({
         if (!sel) e.currentTarget.style.background = "transparent";
       }}
       style={{
-        display: "flex",
-        alignItems: "center",
+        display: "grid",
+        gridTemplateColumns: LIST_GRID,
         gap: 8,
-        minHeight: compact ? 36 : 44,
-        padding: "6px 8px",
-        border: sel ? `1px solid ${t.border}` : "1px solid transparent",
-        borderRadius: 8,
+        alignItems: "center",
+        height: 36,
+        padding: "0 8px",
+        borderRadius: 6,
         cursor: dirInteractive || !isDir ? "pointer" : "default",
-        background: sel ? t.hoverBg : "transparent",
         width: "100%",
+        ...rowSkin,
       }}
     >
-      {isDir ? (
-        <FolderIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
-      ) : (
-        <PageIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
-      )}
-      <span style={{ minWidth: 0, flex: 1, display: "grid", gap: 2 }}>
-        <span
-          // 新形态（递归平铺）hover 显相对全路径，便于区分同名条目。
-          title={entry.path ? path : undefined}
-          style={{
-            fontWeight: 600,
-            fontSize: 12.5,
-            color: t.text,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {name}
-        </span>
-        {compact ? null : isDir ? (
-          <span style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("目录")}
-            {entry.updatedAt ? ` · ${fmtTs(entry.updatedAt)}` : ""}
-          </span>
-        ) : (
-          <span style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("大小 {a} · 更新 {b}", {
-              a: fmtBytes(entry.size),
-              b: fmtTs(entry.updatedAt),
-            })}
-          </span>
-        )}
+      {nameCell}
+      <span
+        style={{
+          fontSize: 12,
+          color: t.textSecondary,
+          textAlign: "right",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {sizeCell(entry)}
       </span>
-      {compact && !isDir ? (
-        <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
-          {fmtBytes(entry.size)}
-        </span>
-      ) : null}
-      {/* #1518 etag 列：短 8 字符 + title 全量；老控制器条目无 etag → 不渲染（零变化）。 */}
-      {!compact && !isDir && entry.etag ? (
-        <span
-          title={entry.etag}
-          style={{
-            fontSize: 11,
-            color: t.textSecondary,
-            fontFamily: "monospace",
-            flexShrink: 0,
-          }}
-        >
-          {entry.etag.slice(0, 8)}
-        </span>
-      ) : null}
-      {!isDir ? (
-        <>
-          <button
-            type="button"
-            onClick={onDownload}
-            title={tr("下载")}
-            aria-label={tr("下载")}
-            style={iconBtnStyle(t)}
-          >
-            <DownloadIcon size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            title={tr("删除")}
-            aria-label={tr("删除")}
-            style={iconBtnStyle(t)}
-          >
-            <TrashIcon size={14} />
-          </button>
-        </>
-      ) : null}
+      <span
+        style={{
+          fontSize: 12,
+          color: t.textSecondary,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {fmtTs(entry.updatedAt)}
+      </span>
+      {actionsCell}
     </div>
   );
 }
@@ -664,101 +783,169 @@ function TrashRow({
     });
   };
 
+  const select = () => nav.selectFile(sel ? null : p);
+  const nameCell = (
+    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <TrashIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+      <span
+        style={{
+          fontWeight: 600,
+          fontSize: 12,
+          color: t.text,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {p}
+      </span>
+    </span>
+  );
+  const rowSkin = sel
+    ? { border: `1px solid ${t.border}`, background: t.hoverBg }
+    : { border: "1px solid transparent", background: "transparent" };
+  const rowHandlers = {
+    onClick: select,
+    onKeyDown: (e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        select();
+      }
+    },
+    onMouseEnter: (e: ReactNS.MouseEvent<HTMLDivElement>) => {
+      if (!sel) e.currentTarget.style.background = t.hoverBg;
+    },
+    onMouseLeave: (e: ReactNS.MouseEvent<HTMLDivElement>) => {
+      if (!sel) e.currentTarget.style.background = "transparent";
+    },
+  };
+
+  if (compact) {
+    // l1 列紧凑行：单行（图标 + 路径），仅选中（操作在中栏详情）。
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        {...rowHandlers}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          minHeight: 36,
+          padding: "0 8px",
+          borderRadius: 6,
+          cursor: "pointer",
+          width: "100%",
+          ...rowSkin,
+        }}
+      >
+        {nameCell}
+      </div>
+    );
+  }
+
+  // 16.67 回收站行（非 compact）：四列 grid（名称/大小/删除时间/操作），
+  // 行高 36px；行内 恢复/彻底删 stopPropagation（彻底删 admin 门控）。
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => nav.selectFile(sel ? null : p)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          nav.selectFile(sel ? null : p);
-        }
-      }}
-      onMouseEnter={(e) => {
-        if (!sel) e.currentTarget.style.background = t.hoverBg;
-      }}
-      onMouseLeave={(e) => {
-        if (!sel) e.currentTarget.style.background = "transparent";
-      }}
+      {...rowHandlers}
       style={{
-        display: "flex",
-        alignItems: "center",
+        display: "grid",
+        gridTemplateColumns: LIST_GRID,
         gap: 8,
-        minHeight: compact ? 36 : 44,
-        padding: "6px 8px",
-        border: sel ? `1px solid ${t.border}` : "1px solid transparent",
-        borderRadius: 8,
+        alignItems: "center",
+        height: 36,
+        padding: "0 8px",
+        borderRadius: 6,
         cursor: "pointer",
-        background: sel ? t.hoverBg : "transparent",
         width: "100%",
+        ...rowSkin,
       }}
     >
-      <TrashIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
-      <span style={{ minWidth: 0, flex: 1, display: "grid", gap: 2 }}>
-        <span
+      {nameCell}
+      <span
+        style={{
+          fontSize: 12,
+          color: t.textSecondary,
+          textAlign: "right",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {fmtBytes(entry.size)}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: t.textSecondary,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {fmtTs(entry.deletedAt)}
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <button
+          type="button"
+          onClick={onRestore}
+          title={tr("恢复文件")}
+          aria-label={tr("恢复文件")}
+          style={iconBtnStyle(t)}
+        >
+          <RefreshIcon size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={onPurge}
+          disabled={!fs.isAdmin}
+          title={fs.isAdmin ? tr("彻底删除") : tr("仅管理员")}
+          aria-label={tr("彻底删除")}
           style={{
-            fontWeight: 600,
-            fontSize: 12.5,
-            color: t.text,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            ...iconBtnStyle(t),
+            opacity: fs.isAdmin ? 1 : 0.4,
+            cursor: fs.isAdmin ? "pointer" : "not-allowed",
           }}
         >
-          {p}
-        </span>
-        <span style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("大小 {a} · 删除于 {b}", {
-            a: fmtBytes(entry.size),
-            b: fmtTs(entry.deletedAt),
-          })}
-        </span>
+          <TrashIcon size={16} />
+        </button>
       </span>
-      {compact ? null : (
-        <>
-          <button
-            type="button"
-            onClick={onRestore}
-            title={tr("恢复文件")}
-            aria-label={tr("恢复文件")}
-            style={iconBtnStyle(t)}
-          >
-            <RefreshIcon size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={onPurge}
-            disabled={!fs.isAdmin}
-            title={fs.isAdmin ? tr("彻底删除") : tr("仅管理员")}
-            aria-label={tr("彻底删除")}
-            style={{
-              ...iconBtnStyle(t),
-              opacity: fs.isAdmin ? 1 : 0.4,
-              cursor: fs.isAdmin ? "pointer" : "not-allowed",
-            }}
-          >
-            <TrashIcon size={14} />
-          </button>
-        </>
-      )}
     </div>
   );
 }
 
-/** 配额卡：仅用量展示（进度条（quotaBytes null = 无限制）+ 上传 / 新建文件夹）。
- * 设置/清除配额入口已迁「人员管理」人员详情（Q）——本卡不再提供。 */
-function QuotaCard({ t, tr, fs }: SubProps) {
+/** 16.67 页面级动作按钮（上传文件/新建文件夹）的唯一入口状态 + 处理器：
+ * 工具条按钮与列表空态 CTA 文字链接共享同一 handlers——同一动作在页面上
+ * 只出现一处按钮（设置/清除配额仍在「人员管理」人员详情，Q）。
+ * 由根组件调用（早于早退 return，hooks 顺序稳定），handlers 闭包持有
+ * 最新 humanName/dirPath/load。 */
+interface FilesActions {
+  upBusy: boolean;
+  fileRef: ReactNS.MutableRefObject<HTMLInputElement | null>;
+  /** 打开系统文件选择（工具条「上传文件」按钮 + 空态 CTA 共用）。 */
+  onUploadClick: () => void;
+  onUploadPick: (e: ReactNS.ChangeEvent<HTMLInputElement>) => void;
+  folderOpen: boolean;
+  folderName: string;
+  folderBusy: boolean;
+  setFolderName: (v: string) => void;
+  openFolderModal: () => void;
+  closeFolderModal: () => void;
+  createFolder: () => void;
+}
+
+function useFilesActions(
+  inp: { humanName: string; dirPath: string; load: (silent: boolean) => void },
+  tr: Tr,
+): FilesActions {
   const [upBusy, setUpBusy] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
   const [folderName, setFolderName] = React.useState("");
   const [folderBusy, setFolderBusy] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement | null>(null);
-
-  const q = fs.quota;
-  const hasLimit = q !== null && typeof q.quotaBytes === "number" && (q.quotaBytes ?? 0) > 0;
-  const percent =
-    hasLimit && q ? Math.min(100, Math.round(((q.usedBytes ?? 0) / (q.quotaBytes as number)) * 100)) : 0;
 
   const onUploadPick = async (e: ReactNS.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -767,16 +954,16 @@ function QuotaCard({ t, tr, fs }: SubProps) {
     setUpBusy(true);
     try {
       // #1519 预签名上传（500/501 → 内部自动回落直传；commit 成功才算成功）。
-      await uploadFile(fs.humanName, fullPath(fs.dirPath, f.name), f);
+      await uploadFile(inp.humanName, fullPath(inp.dirPath, f.name), f);
       antd.message.success(tr("上传成功"));
-      fs.load(true);
+      inp.load(true);
     } catch (err) {
       antd.message.error(hfErrorText(err, tr));
     } finally {
       setUpBusy(false);
     }
   };
-  const createFolder = async () => {
+  const createFolderInner = async () => {
     const name = folderName.trim();
     if (!name) {
       antd.message.warning(tr("请输入文件夹名"));
@@ -784,11 +971,11 @@ function QuotaCard({ t, tr, fs }: SubProps) {
     }
     setFolderBusy(true);
     try {
-      await writeFileSync(fs.humanName, `${fullPath(fs.dirPath, name)}/.keep`, "");
+      await writeFileSync(inp.humanName, `${fullPath(inp.dirPath, name)}/.keep`, "");
       antd.message.success(tr("文件夹已创建"));
       setFolderOpen(false);
       setFolderName("");
-      fs.load(true);
+      inp.load(true);
     } catch (err) {
       antd.message.error(hfErrorText(err, tr));
     } finally {
@@ -796,23 +983,91 @@ function QuotaCard({ t, tr, fs }: SubProps) {
     }
   };
 
+  return {
+    upBusy,
+    fileRef,
+    onUploadClick: () => fileRef.current?.click(),
+    onUploadPick: (e) => void onUploadPick(e),
+    folderOpen,
+    folderName,
+    folderBusy,
+    setFolderName,
+    openFolderModal: () => {
+      setFolderName("");
+      setFolderOpen(true);
+    },
+    closeFolderModal: () => setFolderOpen(false),
+    createFolder: () => void createFolderInner(),
+  };
+}
+
+/** 16.67 工具条（取代旧配额卡）：一行——左 = 配额进度 + 用量文案
+ * （hover 显「容量配额在『人员管理』中设置」）；右 = 操作按钮组
+ * （上传文件 / 新建文件夹 / 刷新——页面级动作唯一入口）；
+ * 窄栏（<720px）自动换行不重叠。 */
+function FilesToolbar({ t, tr, fs, actions }: SubProps & { actions: FilesActions }) {
+  const q = fs.quota;
+  const hasLimit = q !== null && typeof q.quotaBytes === "number" && (q.quotaBytes ?? 0) > 0;
+  const percent =
+    hasLimit && q
+      ? Math.min(100, Math.round(((q.usedBytes ?? 0) / (q.quotaBytes as number)) * 100))
+      : 0;
+
   return (
     <div
       style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 8,
         border: `1px solid ${t.border}`,
         borderRadius: 8,
-        padding: 10,
-        display: "grid",
-        gap: 8,
+        padding: "8px 10px",
         background: t.cardBg,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <FolderIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 12.5, color: t.text }}>
-          {tr("存储配额")}
-        </span>
-        <div style={{ flex: 1 }} />
+      <div
+        title={tr("容量配额在「人员管理」中设置")}
+        style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: 0 }}
+      >
+        <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+        {fs.quotaFailed ? (
+          <span style={{ fontSize: 12, color: t.textSecondary, whiteSpace: "nowrap" }}>
+            {tr("配额获取失败")}
+          </span>
+        ) : q ? (
+          hasLimit ? (
+            <>
+              <antd.Progress
+                percent={percent}
+                size="small"
+                style={{ width: 120, margin: 0, flexShrink: 0 }}
+              />
+              <span style={{ fontSize: 12, color: t.textSecondary, whiteSpace: "nowrap" }}>
+                {tr("已用 {a} / 共 {b}", {
+                  a: fmtBytes(q.usedBytes),
+                  b: fmtBytes(q.quotaBytes ?? undefined),
+                })}
+              </span>
+            </>
+          ) : (
+            <span style={{ fontSize: 12, color: t.textSecondary, whiteSpace: "nowrap" }}>
+              {tr("配额")}: {tr("无限制")} · {tr("已用 {a}", { a: fmtBytes(q.usedBytes) })}
+            </span>
+          )
+        ) : (
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("加载中…")}
+          </span>
+        )}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+        <antd.Button size="small" loading={actions.upBusy} onClick={actions.onUploadClick}>
+          {tr("上传文件")}
+        </antd.Button>
+        <antd.Button size="small" onClick={actions.openFolderModal}>
+          {tr("新建文件夹")}
+        </antd.Button>
         <antd.Button
           type="text"
           size="small"
@@ -822,63 +1077,31 @@ function QuotaCard({ t, tr, fs }: SubProps) {
           onClick={() => fs.load(false)}
         />
       </div>
-      <span style={{ fontSize: 11, color: t.textSecondary }}>
-        {tr("容量配额在「人员管理」中设置")}
-      </span>
-      {fs.quotaFailed ? (
-        <span style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("配额获取失败")}
-        </span>
-      ) : q ? (
-        hasLimit ? (
-          <>
-            <antd.Progress percent={percent} size="small" />
-            <span style={{ fontSize: 11, color: t.textSecondary }}>
-              {tr("已用 {a} / 共 {b}", {
-                a: fmtBytes(q.usedBytes),
-                b: fmtBytes(q.quotaBytes ?? undefined),
-              })}
-            </span>
-          </>
-        ) : (
-          <span style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("配额")}: {tr("无限制")} · {tr("已用 {a}", { a: fmtBytes(q.usedBytes) })}
-          </span>
-        )
-      ) : (
-        <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("加载中…")}</span>
-      )}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <antd.Button size="small" loading={upBusy} onClick={() => fileRef.current?.click()}>
-          {tr("上传文件")}
-        </antd.Button>
-        <input
-          ref={fileRef}
-          type="file"
-          style={{ display: "none" }}
-          onChange={(e) => void onUploadPick(e)}
-          aria-hidden="true"
-          tabIndex={-1}
-        />
-        <antd.Button size="small" onClick={() => { setFolderName(""); setFolderOpen(true); }}>
-          {tr("新建文件夹")}
-        </antd.Button>
-      </div>
+      <input
+        ref={actions.fileRef}
+        type="file"
+        style={{ display: "none" }}
+        onChange={(e) => actions.onUploadPick(e)}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
       <antd.Modal
-        open={folderOpen}
+        open={actions.folderOpen}
         title={tr("新建文件夹")}
         okText={tr("保存")}
         cancelText={tr("取消")}
-        confirmLoading={folderBusy}
-        onOk={() => void createFolder()}
-        onCancel={() => setFolderOpen(false)}
+        confirmLoading={actions.folderBusy}
+        onOk={actions.createFolder}
+        onCancel={actions.closeFolderModal}
         destroyOnClose
       >
         <div style={{ display: "grid", gap: 8, padding: "8px 0" }}>
           <antd.Input
-            value={folderName}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFolderName(e.target.value)}
-            onPressEnter={() => void createFolder()}
+            value={actions.folderName}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              actions.setFolderName(e.target.value)
+            }
+            onPressEnter={actions.createFolder}
             placeholder={tr("请输入文件夹名")}
             aria-label={tr("请输入文件夹名")}
           />
@@ -1129,9 +1352,11 @@ function TrashDetail({ t, tr, nav, fs }: SubProps) {
   );
 }
 
-/** #1499 同步状态卡（自持取数：挂载即取 status；404 老控制器 → unsupported
- * → 整卡隐藏；403 → 灰条；200 {} → 「尚未建立清单」；ok → 计数字段 +
- * 计数级漂移黄条 + 导出/复制清单原文）。
+/** #1499 同步状态（自持取数：挂载即取 status）——16.67 收敛：
+ * 仅 state = ok 渲染（单行紧凑条：条目 N · 墓碑 M · 代 G + 导出/复制
+ * 清单原文放行尾，不换行；更新于… 收进条 title tooltip）；
+ * empty / denied / unsupported / 未取 → 不渲染（不占版面）。
+ * ok 且计数级漂移时条下显黄条（保留）。
  *
  * **产品语义（不要越界）**：服务端只存清单、永不合并；清单条目是客户端
  * 语义（map[string]json.RawMessage）服务端原样存——本卡**不逐条渲染/
@@ -1168,7 +1393,8 @@ function SyncCard({ t, tr, fs }: SubProps) {
     loadSync();
   }, [loadSync]);
 
-  if (!st || st.state === "unsupported") return null;
+  // 16.67：仅 ok 渲染（empty / denied / unsupported / 未取 → 不占版面）。
+  if (!st || !syncCardVisible(st.state)) return null;
 
   const ensureManifest = async (): Promise<string | null> => {
     if (manifest?.text != null) return manifest.text;
@@ -1211,77 +1437,57 @@ function SyncCard({ t, tr, fs }: SubProps) {
     typeof st.entries === "number" &&
     fileCount !== st.entries;
 
+  // 16.67：「更新于…」行收进条 tooltip（条本身 = 计数 + 放行尾两按钮）。
+  const updatedTip = st.updatedBy
+    ? tr("更新于 {t}（{by}）", { t: fmtTs(st.updatedAt), by: st.updatedBy })
+    : tr("更新于 {t}", { t: fmtTs(st.updatedAt) });
+
   return (
-    <div
-      style={{
-        border: `1px solid ${t.border}`,
-        borderRadius: 8,
-        padding: 10,
-        display: "grid",
-        gap: 8,
-        background: t.cardBg,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <PageIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
-        <span style={{ fontWeight: 600, fontSize: 12.5, color: t.text }}>
-          {tr("同步状态")}
-        </span>
-        <div style={{ flex: 1 }} />
-        <antd.Button
-          type="text"
-          size="small"
-          icon={<ReloadIcon />}
-          title={tr("刷新")}
-          aria-label={tr("刷新")}
-          onClick={loadSync}
-        />
-      </div>
-      {st.state === "denied" ? (
-        <div
+    <div style={{ display: "grid", gap: 6 }}>
+      <div
+        title={updatedTip}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          border: `1px solid ${t.border}`,
+          borderRadius: 6,
+          padding: "4px 8px",
+          background: t.cardBg,
+        }}
+      >
+        <span
           style={{
-            fontSize: 12,
+            fontSize: 11,
             color: t.textSecondary,
-            background: t.hoverBg,
-            borderRadius: 6,
-            padding: "6px 8px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            minWidth: 0,
           }}
         >
-          {tr("该人员未授予 file_sync 能力")}
-        </div>
-      ) : st.state === "empty" ? (
-        <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("尚未建立清单")}</span>
-      ) : (
-        <>
-          <span style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("条目")} {st.entries ?? 0} · {tr("墓碑")} {st.tombstones ?? 0} ·{" "}
-            {tr("代")} {st.generation ?? "—"}
-          </span>
-          <span style={{ fontSize: 11, color: t.textSecondary }}>
-            {st.updatedBy
-              ? tr("更新于 {t}（{by}）", { t: fmtTs(st.updatedAt), by: st.updatedBy })
-              : tr("更新于 {t}", { t: fmtTs(st.updatedAt) })}
-          </span>
-          {drift ? (
-            <antd.Alert
-              type="warning"
-              showIcon
-              message={tr("文件区 {n} 个文件，清单 {m} 条。清单由本地同步客户端维护，请在本地运行同步客户端对齐。", {
-                n: fileCount as number,
-                m: st.entries ?? 0,
-              })}
-            />
-          ) : null}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <antd.Button size="small" loading={manifestBusy} onClick={() => void doExport()}>
-              {tr("导出清单原文")}
-            </antd.Button>
-            <antd.Button size="small" disabled={manifestBusy} onClick={() => void doCopy()}>
-              {tr("复制清单原文")}
-            </antd.Button>
-          </div>
-        </>
-      )}
+          {tr("条目")} {st.entries ?? 0} · {tr("墓碑")} {st.tombstones ?? 0} ·{" "}
+          {tr("代")} {st.generation ?? "—"}
+        </span>
+        <span style={{ flex: 1 }} />
+        <antd.Button size="small" loading={manifestBusy} onClick={() => void doExport()}>
+          {tr("导出清单原文")}
+        </antd.Button>
+        <antd.Button size="small" disabled={manifestBusy} onClick={() => void doCopy()}>
+          {tr("复制清单原文")}
+        </antd.Button>
+      </div>
+      {drift ? (
+        <antd.Alert
+          type="warning"
+          showIcon
+          message={tr("文件区 {n} 个文件，清单 {m} 条。清单由本地同步客户端维护，请在本地运行同步客户端对齐。", {
+            n: fileCount as number,
+            m: st.entries ?? 0,
+          })}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1460,6 +1666,10 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     }
   }, [humanName, dirPath, nextKey, loadingMore, tr]);
 
+  // 16.67 页面级动作（上传/新建文件夹）唯一入口 handlers——工具条按钮与
+  // 列表空态 CTA 共享。必须在下方早退 return 之前调用（hooks 顺序稳定）。
+  const actions = useFilesActions({ humanName, dirPath, load }, tr);
+
   // 探测失败（老控制器）且递归已开（探测晚于用户操作）→ 自动回落一层列表。
   React.useEffect(() => {
     if (!canRecursive && recursive) setRecursive(false);
@@ -1587,7 +1797,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             {tr("恢复 / 彻底删除在中栏行操作")}
           </span>
         )}
-        <ListArea {...sub} compact />
+        <ListArea {...sub} actions={actions} compact />
       </div>
     );
   }
@@ -1609,21 +1819,20 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           />
         )
       ) : (
-        <ListArea {...sub} />
+        <ListArea {...sub} actions={actions} />
       );
     return (
       <div style={{ display: "grid", gap: 10, padding: 4 }}>
-        <QuotaCard {...sub} />
+        <FilesToolbar {...sub} actions={actions} />
         <SyncCard {...sub} />
-        <ViewTabs {...sub} />
-        {view === "files" ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <Breadcrumbs {...sub} />
-            </div>
-            <RecursiveToggle {...sub} />
+        {/* 16.67 列表头：视图切换 + 递归开关同一行（工具条独占动作入口）。 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <ViewTabs {...sub} />
           </div>
-        ) : null}
+          {view === "files" ? <RecursiveToggle {...sub} /> : null}
+        </div>
+        <Breadcrumbs {...sub} />
         {detail}
       </div>
     );
