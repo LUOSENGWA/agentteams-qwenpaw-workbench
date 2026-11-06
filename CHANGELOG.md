@@ -3,6 +3,13 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.73（2026-11-07 · 运行时配置分组）
+
+**改进**
+- 运行时配置从一张平铺长表改为**分组面板**：按 `Config / MCP / Tools / Skills / ACP / Checkpoints / 其他` 分段，`Config` 段内按 reactAgent、agentLoop、llmRetry、llmRateLimiter、context、memory、embeddingModel、toolExecutionLevel 排序；
+- 面板自带**段内搜索**、**显示高级**开关、**已改 N 项**提示与**重置**；窄屏（≤720px）段列表折叠为下拉；
+- 字段渲染复用既有 `CfgRow` / `SchemaField`，行为与之前一致；保存、回滚、重启、错误提示均未改动。
+
 ## 0.5.0-beta.16.72（2026-11-07 · 回收站弹窗 · 刷新语义统一 · 列表去重）
 
 **改进**

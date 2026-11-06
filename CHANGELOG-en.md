@@ -3,6 +3,13 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.73 (2026-11-07 · grouped runtime config)
+
+**Improved**
+- Runtime config turns from one flat list into a **grouped panel**: `Config / MCP / Tools / Skills / ACP / Checkpoints / Other`, with the Config section ordered like QwenPaw's own console (reactAgent, agentLoop, llmRetry, llmRateLimiter, context, memory, embeddingModel, toolExecutionLevel).
+- The panel brings per-section **search**, an **advanced** toggle, a **changed-count** hint and **reset**; under 720px the section list collapses into a select.
+- Field rendering still uses the existing `CfgRow` / `SchemaField`; save, rollback, restart and error reporting are unchanged.
+
 ## 0.5.0-beta.16.72 (2026-11-07 · recycle bin dialog · one refresh path · no duplicate list)
 
 **Improved**
