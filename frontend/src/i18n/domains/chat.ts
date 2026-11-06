@@ -318,6 +318,18 @@ export const chatDict: Record<string, { en: string }> = {
     en: "Provider entries are maintained in the Coding CLI panel (L1)",
   },
 
+  // ── C2：Model Access（#1513）授权/继承/锁定展示 ──
+  // 复用既有键：只读（worker.ts）；保存/取消/修改等已存在，不重复。
+  "可编辑": { en: "Editable" },
+  "继承自 {x}": { en: "Inherited from {x}" },
+  "未授权": { en: "Not granted" },
+  "BYOK 不支持": { en: "BYOK unsupported" },
+  "当前账号未被授予任何模型，请联系管理员（Model Access）": {
+    en: "This account has no model grants — contact an admin (Model Access)",
+  },
+  "模型目录暂不可用": { en: "Model catalog unavailable" },
+  "该组合不在授权范围": { en: "This combination is outside the granted set" },
+
   // ── X1c：地址免填协议（scheme-less 地址自动识别）──
   "192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）": {
     en: "192.168.1.10:6866 or ctlr.example.com:7113 (http:// / https:// optional, auto-detected)",
