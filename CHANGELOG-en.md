@@ -3,6 +3,27 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.61 (2026-11-06 - Parallel slim worker polling with conditional revalidation; restart and hot-applied primary model)
+
+**Performance**
+- **The worker list now polls in parallel and slim**: `fields=spec` (stable configuration) and `fields=status`
+  (volatile state) are requested together; the spec read revalidates with `If-None-Match` and reuses the local
+  bytes on `304`, while status is always read fresh.
+  - Rows are joined by the stable `name`, and **membership follows status**, so a deleted worker disappears
+    immediately; when a newly observed name is missing from the spec snapshot the spec is reloaded once, and if
+    the snapshots still disagree the combined view is read; controllers that do not support or reject `fields`
+    fall back to the full list, exactly as before.
+  - The conditional cache lives in memory only, is capped at 64 entries, is cleared before and after every
+    write request and on identity/connection changes, and a `304` whose local entry has gone re-fetches —
+    **a `304` never turns into empty data**.
+
+**Features**
+- **Restart actions for workers and managers**: a confirmed restart stops and starts the container (in-flight
+  tasks are interrupted) and refreshes the state afterwards; the runtime configuration card's
+  "needs a restart" note also gains an "restart now" action.
+- **Primary-model save copy is runtime-aware**: changing a QwenPaw worker's primary model now takes effect
+  immediately (the controller hot-applies it), while other runtimes keep the "takes effect after restart" note.
+
 ## 0.5.0-beta.16.60 (2026-11-05 - OpenClaw runtime config panel, provider-first model settings, slimmer worker list)
 
 **Features**
