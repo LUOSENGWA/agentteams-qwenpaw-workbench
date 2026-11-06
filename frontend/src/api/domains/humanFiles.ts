@@ -193,7 +193,7 @@ async function fetchRedirectTarget(
  * 二跳返回原样，由调用方按 !ok 报错。 */
 async function followRedirectOnce(
   resp: Response,
-  init: RequestInit | undefined,
+  init?: RequestInit,
 ): Promise<Response> {
   if (resp.status !== 301 && resp.status !== 308) return resp;
   const location = resp.headers.get("Location");
