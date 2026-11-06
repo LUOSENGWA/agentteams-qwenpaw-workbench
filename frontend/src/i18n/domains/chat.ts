@@ -254,6 +254,7 @@ export const chatDict: Record<string, { en: string }> = {
   "Provider（留空=跟随默认）": { en: "Provider (empty = follow default)" },
   // ── #1477 消费侧：Worker 列表瘦身（fields=spec,status）+ 写前读 detail ──
   "正在读取 Worker 配置…": { en: "Loading worker config…" },
+  "未读取到 Provider（保存时保持不变）": { en: "Provider not read (kept unchanged on save)" },
   "读取 Worker 配置失败": { en: "Failed to load worker config" },
   "展开后加载": { en: "Load on expand" },
   "无": { en: "None" },
