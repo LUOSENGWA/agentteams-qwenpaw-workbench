@@ -305,6 +305,44 @@ export const manageDict: Record<string, { en: string }> = {
   "暂无文件": { en: "No files" },
   "大小 {a} · 更新 {b}": { en: "Size {a} · Updated {b}" },
 
+  // ── 文件域 H1（#1518 游标列表 / #1519 预签名上传 / #1501 预签名下载 /
+  // #1499 同步状态卡）──
+  "递归": { en: "Recursive" },
+  "当前控制器版本不支持递归列表": {
+    en: "This controller version does not support recursive listing",
+  },
+  "文件超过预签名上传上限（最大 {a}）": {
+    en: "File exceeds the presigned upload limit ({a} max)",
+  },
+  "上传校验失败（checksum 不匹配）——请重新上传": {
+    en: "Upload rejected (checksum mismatch) — please re-upload",
+  },
+  "上传失败（对象不存在）——请重新上传": {
+    en: "Upload failed (object missing) — please re-upload",
+  },
+  "同步状态": { en: "Sync status" },
+  "尚未建立清单": { en: "No manifest yet" },
+  "该人员未授予 file_sync 能力": {
+    en: "This person has not been granted the file_sync capability",
+  },
+  "文件区 {n} 个文件，清单 {m} 条。清单由本地同步客户端维护，请在本地运行同步客户端对齐。": {
+    en: "File area has {n} file(s) but the manifest lists {m}. The manifest is maintained by the local sync client — run it locally to reconcile.",
+  },
+  "条目": { en: "Entries" },
+  "墓碑": { en: "Tombstones" },
+  "代": { en: "Generation" },
+  "更新于 {t}（{by}）": { en: "Updated {t} (by {by})" },
+  "更新于 {t}": { en: "Updated {t}" },
+  "导出清单原文": { en: "Export manifest" },
+  "复制清单原文": { en: "Copy manifest" },
+  "清单原文已导出": { en: "Manifest exported" },
+  "已复制清单原文": { en: "Manifest copied" },
+  "清单获取失败": { en: "Failed to fetch manifest" },
+  // 「导出失败」复用 settings 域既有键（i18n 字典全局并集）。
+  "复制失败（浏览器未授权剪贴板）": {
+    en: "Copy failed (browser clipboard not authorized)",
+  },
+
   // ── 危险区：CRD 删除（16.55）──
   "危险区": { en: "Danger zone" },
   "删除人员": { en: "Delete person" },
@@ -396,4 +434,60 @@ export const manageDict: Record<string, { en: string }> = {
   "已设置（不回显）": { en: "Set (not shown)" },
   "通用": { en: "General" },
   "{n} 个配置项": { en: "{n} field(s)" },
+
+  // ── C2b：人员详情「模型授权」（Human CR spec.modelAccess，#1513 管理员面）──
+  // 「Provider」「模型」「保存」「取消」「删除」「加载中…」「只读」「可编辑」
+  // 「继承自 {x}」「未授权」「BYOK 不支持」「保存失败」复用各域既有键（不重登）。
+  "模型授权": { en: "Model access" },
+  "主模型 / spawn / Coding CLI（Human CR spec.modelAccess，L1）": {
+    en: "Main / spawn / Coding CLI grants (Human CR spec.modelAccess, L1)",
+  },
+  "模型授权（{name}）": { en: "Model access ({name})" },
+  "读取人 CR…": { en: "Reading the Human CR…" },
+  "读取模型授权失败": { en: "Failed to load model access" },
+  "未配置模型授权（fail-closed）：该人员名下的 Worker 默认全部模型锁定": {
+    en: "No model access configured (fail-closed): workers under this person are locked from all models by default",
+  },
+  "添加作用域并授权 (provider, model) 对后保存；role 留空 = 默认作用域。无值 = fail-closed 全锁。": {
+    en: "Add a scope and grant (provider, model) pairs, then save; an empty role means the default scope. No value = fail-closed (all locked).",
+  },
+  "只读：当前授权由上游继承或策略限制（各分区有原因提示）": {
+    en: "Read-only: grants are inherited upstream or restricted by policy (see the per-surface hints for reasons)",
+  },
+  "修改模型授权需 L1 管理权限（Controller 管理员 token）": {
+    en: "Editing model access requires L1 admin access (Controller admin token)",
+  },
+  "模型授权已保存": { en: "Model access saved" },
+  "部分 entries 缺 provider 或 model——补全或删除后再保存": {
+    en: "Some entries miss a provider or a model — complete or remove them before saving",
+  },
+  "写入路径：{via}": { en: "Write via: {via}" },
+  "未配置作用域（无值 = fail-closed，全部模型锁定）": {
+    en: "No scopes configured (no value = fail-closed, all models locked)",
+  },
+  "添加作用域": { en: "Add scope" },
+  "删除作用域": { en: "Delete scope" },
+  "作用域 {n}": { en: "Scope {n}" },
+  "role（空 = 默认作用域）": { en: "role (empty = default scope)" },
+  "共享表（可选）": { en: "Shared table (optional)" },
+  "共享表与内联 entries 二选一，内联 entries 优先": {
+    en: "Shared table and inline entries are either/or — inline entries win",
+  },
+  "已选共享表：{name}（内联 entries 优先）": {
+    en: "Shared table selected: {name} (inline entries win)",
+  },
+  "共享表内容（只读）": { en: "Shared table contents (read-only)" },
+  "表为空": { en: "Table is empty" },
+  "主模型": { en: "Main model" },
+  "spawn / 子代理": { en: "spawn / subagent" },
+  "继承主模型（spawn 空值）": { en: "Inherit main model (when spawn is empty)" },
+  "继承 spawn 模型（CLI 空值）": { en: "Inherit spawn model (when CLI is empty)" },
+  "添加 CLI": { en: "Add CLI" },
+  "删除 CLI": { en: "Delete CLI" },
+  "CLI 名（如 qwen-code）": { en: "CLI name (e.g. qwen-code)" },
+  "未配置 Coding CLI 授权": { en: "No Coding CLI grants" },
+  "添加行": { en: "Add row" },
+  "删除行": { en: "Delete row" },
+  "Provider 与 model 必须成对填写": { en: "Provider and model must be filled as a pair" },
+  "无 entries（空 = 不授权）": { en: "No entries (empty = no grant)" },
 };

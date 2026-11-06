@@ -23,5 +23,6 @@ export * from "./api/domains/checkpoints";
 export * from "./api/domains/attention";
 export * from "./api/domains/templates";
 export * from "./api/domains/millforge";
+export * from "./api/domains/modules";
 export * from "./api/domains/humanFiles";
 export * from "./api/domains/memberConfig";

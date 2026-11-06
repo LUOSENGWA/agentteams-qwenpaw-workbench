@@ -31,18 +31,30 @@ import type * as ReactNS from "react";
 
 import {
   deleteFile,
+  downloadPresignedUrl,
+  downloadTextFile,
   downloadViaHost,
+  entryDisplayName,
+  entryRelPath,
   getQuota,
+  getSyncManifest,
+  getSyncStatus,
   HumanFilesError,
   humanFileApiPath,
+  isEntryDir,
+  isTicketExpired,
   listFiles,
   listTrash,
+  presignDownload,
   purgeTrash,
   restoreTrash,
+  uploadFile,
   writeFileSync,
   type HumanFileEntry,
+  type HumanFileListResponse,
   type HumanTrashEntry,
   type QuotaResponse,
+  type SyncStatus,
 } from "../api";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -79,9 +91,19 @@ interface FilesState {
   loading: boolean;
   status: "" | "404" | "err";
   error: string;
+  /** #1518 递归平铺（仅新控制器；老控制器探测后 toggle 禁用）。 */
+  recursive: boolean;
+  /** 老控制器探测结果（一次性）：false = 递归/游标不可用 → toggle 禁用。 */
+  canRecursive: boolean;
+  /** #1518 游标：string = 有下一页（显「加载更多」）；null = 到底；
+   * undefined = 老控制器（无分页）。 */
+  nextKey: string | null | undefined;
+  loadingMore: boolean;
   onSwitchView: (v: "files" | "trash") => void;
   onEnterDir: (p: string) => void;
+  onToggleRecursive: (on: boolean) => void;
   load: (silent: boolean) => void;
+  loadMore: () => void;
 }
 
 type SubProps = {
@@ -143,18 +165,78 @@ function normTrashPath(p: string): string {
   return p.replace(/^files\//, "");
 }
 
+/** 行 → 文件相对路径（双形态）：新形态 = entry.path 剥 files/ 前缀；
+ * 老形态 = dirPath/name。选中键 / 下载 / 删除 / 上传全走此值。 */
+function rowPath(e: HumanFileEntry, dirPath: string): string {
+  return e.path ? entryRelPath(e) : fullPath(dirPath, e.name ?? "");
+}
+
+/** 大文件阈值（#1501 建议值 8 MiB）：≥ 走预签名 URL（免代理长流）；
+ * 以下保持现有直下（零行为变化）。 */
+const LARGE_FILE_BYTES = 8 * 1024 * 1024;
+
+/** 统一下载入口（#1501）：
+ * - size ≥ 8MiB → presignDownload 取票；expiresAt 过期（UI 判）→ 重取一次；
+ *   500/501（部署未开）→ 回落现有直下；其余错误 → 报文案不下载；
+ *   票取到但 URL 拉取失败 → 回落直下。
+ * - size < 8MiB / 未知 → 现有 downloadViaHost 直下（零变化）。
+ * 返回是否成功（失败 UI 已自报文案或返回 false 由调用方报「下载失败」）。 */
+async function doDownload(
+  humanName: string,
+  path: string,
+  name: string,
+  size: number | undefined,
+  tr: Tr,
+): Promise<boolean> {
+  if (typeof size === "number" && size >= LARGE_FILE_BYTES) {
+    let r = await presignDownload(humanName, path);
+    if (r.ok && isTicketExpired(r.value.expiresAt)) {
+      // 过期重取一次；重取仍失败且非 500/501 → 报错。
+      const r2 = await presignDownload(humanName, path);
+      if (r2.ok) r = r2;
+      else if (r2.status !== 500 && r2.status !== 501) {
+        antd.message.error(hfErrorText(new HumanFilesError(r2.status, r2.message, r2.code), tr));
+        return false;
+      }
+    }
+    if (!r.ok) {
+      if (r.status === 500 || r.status === 501) {
+        // 部署未开 → 下方回落直下。
+      } else {
+        antd.message.error(hfErrorText(new HumanFilesError(r.status, r.message, r.code), tr));
+        return false;
+      }
+    } else {
+      const ok = await downloadPresignedUrl(r.value.url, name);
+      if (ok) return true;
+      // URL 拉取失败 → 下方回落直下。
+    }
+  }
+  return downloadViaHost(humanFileApiPath(humanName, path), name);
+}
+
 /** 统一错误 → i18n 文案（按 status/code 分支；413 区分 size vs quota）。
  * 导出：PeopleSection 配额保存/清除 403 提示同源复用（Q）。 */
 export function hfErrorText(e: unknown, tr: Tr): string {
   if (e instanceof HumanFilesError) {
+    // #1519 前端拦截：file.size > presign maxBytes（status=0，message=上限字节）。
+    if (e.code === "max_bytes") {
+      return tr("文件超过预签名上传上限（最大 {a}）", { a: fmtBytes(Number(e.message) || 0) });
+    }
     switch (e.status) {
       case 400:
         return tr("路径非法");
       case 403:
         return tr("仅管理员");
       case 404:
+        // #1519 commit：对象已被服务端删 → 「需重新上传」。
+        if (e.code === "object_missing") return tr("上传失败（对象不存在）——请重新上传");
         return tr("无权限或不存在");
       case 409:
+        // #1519 commit：checksum 不匹配（对象已被服务端删）→ 「需重新上传」；
+        // 其余 409 = restore 目标路径已存在（旧语义不变）。
+        if (e.code === "checksum_mismatch")
+          return tr("上传校验失败（checksum 不匹配）——请重新上传");
         return tr("目标路径已存在");
       case 412:
         return tr("内容冲突（etag 不匹配）——刷新后重试");
@@ -301,7 +383,7 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
           title={tr("上级目录")}
           aria-label={tr("上级目录")}
           style={iconBtnStyle(t)}
-          onClick={() => fs.onEnterDir(segs.slice(0, -1).join(""))}
+          onClick={() => fs.onEnterDir(segs.slice(0, -1).join("/"))}
         >
           <span style={{ fontSize: 13, lineHeight: 1 }}>↑</span>
         </button>
@@ -362,8 +444,23 @@ function ListArea({ t, tr, nav, fs, compact = false }: SubProps & { compact?: bo
             <TrashRow key={e.id} entry={e} t={t} tr={tr} nav={nav} fs={fs} compact={compact} />
           ))
         : fs.files.map((e) => (
-            <FileRow key={e.name} entry={e} t={t} tr={tr} nav={nav} fs={fs} compact={compact} />
+            <FileRow
+              key={rowPath(e, fs.dirPath) || entryDisplayName(e)}
+              entry={e}
+              t={t}
+              tr={tr}
+              nav={nav}
+              fs={fs}
+              compact={compact}
+            />
           ))}
+      {/* #1518：仅 nextKey 为 string（满页还有下一页）时显「加载更多」；
+       * null = 到底、undefined = 老控制器无分页。 */}
+      {!compact && fs.view === "files" && typeof fs.nextKey === "string" ? (
+        <antd.Button size="small" block loading={fs.loadingMore} onClick={() => fs.loadMore()}>
+          {tr("加载更多")}
+        </antd.Button>
+      ) : null}
     </div>
   );
 }
@@ -377,17 +474,23 @@ function FileRow({
   fs,
   compact = false,
 }: SubProps & { entry: HumanFileEntry; compact?: boolean }) {
-  const isDir = entry.type === "directory";
-  const path = fullPath(fs.dirPath, entry.name);
+  const isDir = isEntryDir(entry);
+  const name = entryDisplayName(entry);
+  const path = rowPath(entry, fs.dirPath);
   const sel = !isDir && nav.selectedFile === path;
+  // 递归平铺模式下目录行不导航（避免模式切换丢游标）——非交互行。
+  const dirInteractive = isDir && !fs.recursive;
 
   const activate = () => {
-    if (isDir) fs.onEnterDir(path);
-    else nav.selectFile(sel ? null : path);
+    if (isDir) {
+      if (dirInteractive) fs.onEnterDir(path);
+      return;
+    }
+    nav.selectFile(sel ? null : path);
   };
   const onDownload = (e: ReactNS.MouseEvent) => {
     e.stopPropagation();
-    void downloadViaHost(humanFileApiPath(fs.humanName, path), entry.name).then((ok) => {
+    void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
       if (!ok) antd.message.error(tr("下载失败"));
     });
   };
@@ -395,7 +498,7 @@ function FileRow({
     e.stopPropagation();
     antd.Modal.confirm({
       title: tr("移入回收站？"),
-      content: entry.name,
+      content: name,
       okText: tr("删除"),
       cancelText: tr("取消"),
       onOk: async () => {
@@ -415,7 +518,7 @@ function FileRow({
     <div
       role="button"
       tabIndex={0}
-      title={isDir ? tr("进入目录") : undefined}
+      title={dirInteractive ? tr("进入目录") : undefined}
       onClick={activate}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -437,7 +540,7 @@ function FileRow({
         padding: "6px 8px",
         border: sel ? `1px solid ${t.border}` : "1px solid transparent",
         borderRadius: 8,
-        cursor: "pointer",
+        cursor: dirInteractive || !isDir ? "pointer" : "default",
         background: sel ? t.hoverBg : "transparent",
         width: "100%",
       }}
@@ -449,6 +552,8 @@ function FileRow({
       )}
       <span style={{ minWidth: 0, flex: 1, display: "grid", gap: 2 }}>
         <span
+          // 新形态（递归平铺）hover 显相对全路径，便于区分同名条目。
+          title={entry.path ? path : undefined}
           style={{
             fontWeight: 600,
             fontSize: 12.5,
@@ -458,7 +563,7 @@ function FileRow({
             whiteSpace: "nowrap",
           }}
         >
-          {entry.name}
+          {name}
         </span>
         {compact ? null : isDir ? (
           <span style={{ fontSize: 11, color: t.textSecondary }}>
@@ -477,6 +582,20 @@ function FileRow({
       {compact && !isDir ? (
         <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
           {fmtBytes(entry.size)}
+        </span>
+      ) : null}
+      {/* #1518 etag 列：短 8 字符 + title 全量；老控制器条目无 etag → 不渲染（零变化）。 */}
+      {!compact && !isDir && entry.etag ? (
+        <span
+          title={entry.etag}
+          style={{
+            fontSize: 11,
+            color: t.textSecondary,
+            fontFamily: "monospace",
+            flexShrink: 0,
+          }}
+        >
+          {entry.etag.slice(0, 8)}
         </span>
       ) : null}
       {!isDir ? (
@@ -646,7 +765,8 @@ function QuotaCard({ t, tr, fs }: SubProps) {
     if (!f) return;
     setUpBusy(true);
     try {
-      await writeFileSync(fs.humanName, fullPath(fs.dirPath, f.name), f);
+      // #1519 预签名上传（500/501 → 内部自动回落直传；commit 成功才算成功）。
+      await uploadFile(fs.humanName, fullPath(fs.dirPath, f.name), f);
       antd.message.success(tr("上传成功"));
       fs.load(true);
     } catch (err) {
@@ -773,7 +893,7 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
   const owRef = React.useRef<HTMLInputElement | null>(null);
   const sel = nav.selectedFile;
   const entry = sel
-    ? fs.files.find((e) => e.type === "file" && fullPath(fs.dirPath, e.name) === sel)
+    ? fs.files.find((e) => !isEntryDir(e) && rowPath(e, fs.dirPath) === sel)
     : undefined;
 
   if (!entry) {
@@ -783,11 +903,13 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
       </div>
     );
   }
-  const path = fullPath(fs.dirPath, entry.name);
+  const name = entryDisplayName(entry);
+  const path = rowPath(entry, fs.dirPath);
 
   const onDownload = async () => {
     setBusy("download");
-    const ok = await downloadViaHost(humanFileApiPath(fs.humanName, path), entry.name);
+    // #1501：大文件（≥8MiB）走预签名票，500/501/失败 → 内部回落直下。
+    const ok = await doDownload(fs.humanName, path, name, entry.size, tr);
     setBusy("");
     if (!ok) antd.message.error(tr("下载失败"));
   };
@@ -797,7 +919,8 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
     if (!file) return;
     setBusy("overwrite");
     try {
-      await writeFileSync(fs.humanName, path, file);
+      // #1519 预签名覆盖上传（500/501 → 内部回落直传；commit 成功才算成功）。
+      await uploadFile(fs.humanName, path, file);
       antd.message.success(tr("上传成功"));
       fs.load(true);
     } catch (err) {
@@ -809,7 +932,7 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
   const onDelete = () => {
     antd.Modal.confirm({
       title: tr("移入回收站？"),
-      content: entry.name,
+      content: name,
       okText: tr("删除"),
       cancelText: tr("取消"),
       onOk: async () => {
@@ -840,7 +963,7 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
               whiteSpace: "nowrap",
             }}
           >
-            {entry.name}
+            {name}
           </span>
           <span style={{ fontSize: 11, color: t.textSecondary }}>
             {tr("大小 {a} · 更新 {b}", {
@@ -849,6 +972,7 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
             })}
           </span>
           <span
+            title={path}
             style={{
               fontSize: 11,
               color: t.textSecondary,
@@ -859,6 +983,21 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
           >
             {path}
           </span>
+          {entry.etag ? (
+            <span
+              title={entry.etag}
+              style={{
+                fontSize: 11,
+                color: t.textSecondary,
+                fontFamily: "monospace",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {entry.etag}
+            </span>
+          ) : null}
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -989,6 +1128,192 @@ function TrashDetail({ t, tr, nav, fs }: SubProps) {
   );
 }
 
+/** #1499 同步状态卡（自持取数：挂载即取 status；404 老控制器 → unsupported
+ * → 整卡隐藏；403 → 灰条；200 {} → 「尚未建立清单」；ok → 计数字段 +
+ * 计数级漂移黄条 + 导出/复制清单原文）。
+ *
+ * **产品语义（不要越界）**：服务端只存清单、永不合并；清单条目是客户端
+ * 语义（map[string]json.RawMessage）服务端原样存——本卡**不逐条渲染/
+ * 解析条目**、**不替用户写清单**，只读计数字段 + 原文导出。 */
+function SyncCard({ t, tr, fs }: SubProps) {
+  const [st, setSt] = React.useState<SyncStatus | null>(null);
+  const [fileCount, setFileCount] = React.useState<number | null>(null);
+  const [manifest, setManifest] = React.useState<{ text: string; etag?: string } | null>(null);
+  const [manifestBusy, setManifestBusy] = React.useState(false);
+
+  const loadSync = React.useCallback(() => {
+    setSt(null);
+    void getSyncStatus(fs.humanName).then((s) => {
+      setSt(s);
+      // 漂移对比仅在有清单时做：后台全树递归计数（limit 封顶 10000；
+      // 老控制器 301 回落老形态 → paginated=false → 无计数 → 跳过漂移）。
+      if (s.state === "ok") {
+        void listFiles(fs.humanName, "", { recursive: true, limit: 10000 })
+          .then((r) => {
+            if (r.paginated && r.nextKey === null) {
+              setFileCount(r.entries.filter((e) => !isEntryDir(e)).length);
+            } else {
+              setFileCount(null);
+            }
+          })
+          .catch(() => setFileCount(null));
+      } else {
+        setFileCount(null);
+      }
+    });
+  }, [fs.humanName]);
+
+  React.useEffect(() => {
+    loadSync();
+  }, [loadSync]);
+
+  if (!st || st.state === "unsupported") return null;
+
+  const ensureManifest = async (): Promise<string | null> => {
+    if (manifest?.text != null) return manifest.text;
+    setManifestBusy(true);
+    try {
+      const r = await getSyncManifest(fs.humanName);
+      if (r.ok && r.text != null) {
+        setManifest({ text: r.text, etag: r.etag });
+        return r.text;
+      }
+      antd.message.error(tr("清单获取失败"));
+      return null;
+    } finally {
+      setManifestBusy(false);
+    }
+  };
+  const doExport = async () => {
+    const text = await ensureManifest();
+    if (text == null) return;
+    if (downloadTextFile(text, `files-manifest-${fs.humanName}.json`)) {
+      antd.message.success(tr("清单原文已导出"));
+    } else {
+      antd.message.error(tr("导出失败"));
+    }
+  };
+  const doCopy = async () => {
+    const text = await ensureManifest();
+    if (text == null) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      antd.message.success(tr("已复制清单原文"));
+    } catch {
+      antd.message.error(tr("复制失败（浏览器未授权剪贴板）"));
+    }
+  };
+
+  const drift =
+    st.state === "ok" &&
+    fileCount !== null &&
+    typeof st.entries === "number" &&
+    fileCount !== st.entries;
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${t.border}`,
+        borderRadius: 8,
+        padding: 10,
+        display: "grid",
+        gap: 8,
+        background: t.cardBg,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <PageIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
+        <span style={{ fontWeight: 600, fontSize: 12.5, color: t.text }}>
+          {tr("同步状态")}
+        </span>
+        <div style={{ flex: 1 }} />
+        <antd.Button
+          type="text"
+          size="small"
+          icon={<ReloadIcon />}
+          title={tr("刷新")}
+          aria-label={tr("刷新")}
+          onClick={loadSync}
+        />
+      </div>
+      {st.state === "denied" ? (
+        <div
+          style={{
+            fontSize: 12,
+            color: t.textSecondary,
+            background: t.hoverBg,
+            borderRadius: 6,
+            padding: "6px 8px",
+          }}
+        >
+          {tr("该人员未授予 file_sync 能力")}
+        </div>
+      ) : st.state === "empty" ? (
+        <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("尚未建立清单")}</span>
+      ) : (
+        <>
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("条目")} {st.entries ?? 0} · {tr("墓碑")} {st.tombstones ?? 0} ·{" "}
+            {tr("代")} {st.generation ?? "—"}
+          </span>
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {st.updatedBy
+              ? tr("更新于 {t}（{by}）", { t: fmtTs(st.updatedAt), by: st.updatedBy })
+              : tr("更新于 {t}", { t: fmtTs(st.updatedAt) })}
+          </span>
+          {drift ? (
+            <antd.Alert
+              type="warning"
+              showIcon
+              message={tr("文件区 {n} 个文件，清单 {m} 条。清单由本地同步客户端维护，请在本地运行同步客户端对齐。", {
+                n: fileCount as number,
+                m: st.entries ?? 0,
+              })}
+            />
+          ) : null}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <antd.Button size="small" loading={manifestBusy} onClick={() => void doExport()}>
+              {tr("导出清单原文")}
+            </antd.Button>
+            <antd.Button size="small" disabled={manifestBusy} onClick={() => void doCopy()}>
+              {tr("复制清单原文")}
+            </antd.Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** #1518 递归平铺开关：canRecursive 探测未过（老控制器）→ 禁用 + tooltip；
+ * 已开递归时保持可点（可关）。 */
+function RecursiveToggle({ t, tr, fs }: SubProps) {
+  const enabled = fs.canRecursive || fs.recursive;
+  return (
+    <antd.Tooltip
+      title={enabled ? undefined : tr("当前控制器版本不支持递归列表")}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          opacity: enabled ? 1 : 0.45,
+          flexShrink: 0,
+        }}
+      >
+        <antd.Switch
+          size="small"
+          checked={fs.recursive}
+          disabled={!enabled}
+          onChange={(v: boolean) => fs.onToggleRecursive(v)}
+        />
+        <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("递归")}</span>
+      </span>
+    </antd.Tooltip>
+  );
+}
+
 export default function FilesSection({ nav, cols, data, variant }: ManageSectionProps) {
   const t = useThemeColors();
   const tr = useT();
@@ -1010,7 +1335,23 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [loading, setLoading] = React.useState(false);
   const [status, setStatus] = React.useState<"" | "404" | "err">("");
   const [error, setError] = React.useState("");
+  // #1518：递归平铺 + 游标分页（老控制器探测失败 → toggle 禁用，零行为变化）。
+  const [recursive, setRecursive] = React.useState(false);
+  const [canRecursive, setCanRecursive] = React.useState(false);
+  const [nextKey, setNextKey] = React.useState<string | null | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = React.useState(false);
   const reqRef = React.useRef(0);
+  const recursiveProbedRef = React.useRef(false);
+
+  // 老控制器一次性探测：带 recursive 参数 → 老实现 301 回一层列表（无
+  // nextKey）→ paginated=false → 递归不可用。新控制器 → paginated=true。
+  const probeRecursive = React.useCallback(() => {
+    if (recursiveProbedRef.current || !humanName) return;
+    recursiveProbedRef.current = true;
+    void listFiles(humanName, "", { recursive: true, limit: 1 })
+      .then((r) => setCanRecursive(r.paginated))
+      .catch(() => setCanRecursive(false));
+  }, [humanName]);
 
   const load = React.useCallback(
     async (silent: boolean) => {
@@ -1022,13 +1363,22 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       const [ls, qs] = await Promise.allSettled([
         view === "trash"
           ? listTrash(humanName).then((r) => r.entries)
-          : listFiles(humanName, dirPath).then((r) => r.entries),
+          : listFiles(humanName, dirPath, recursive ? { recursive: true, limit: 1000 } : undefined),
         getQuota(humanName),
       ]);
       if (req !== reqRef.current) return; // 过期响应（视图/目录已切换）
       if (ls.status === "fulfilled") {
-        if (view === "trash") setTrash(ls.value as HumanTrashEntry[]);
-        else setFiles(ls.value as HumanFileEntry[]);
+        if (view === "trash") {
+          setTrash(ls.value as HumanTrashEntry[]);
+          setNextKey(undefined); // 回收站无分页
+        } else {
+          const lsValue = ls.value as HumanFileListResponse;
+          setFiles(lsValue.entries);
+          setNextKey(lsValue.nextKey); // string=有下一页 / null=到底 / undefined=老控制器
+          setLoadingMore(false);
+          if (lsValue.paginated) setCanRecursive(true);
+          else probeRecursive(); // 老形态（含递归被 301 回落）→ 一次性探测
+        }
         setStatus("");
         setError("");
       } else if (ls.reason instanceof HumanFilesError && ls.reason.status === 404) {
@@ -1047,8 +1397,35 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       }
       if (!silent) setLoading(false);
     },
-    [humanName, view, dirPath, tr],
+    [humanName, view, dirPath, recursive, tr, probeRecursive],
   );
+
+  // #1518 加载更多：仅 nextKey 为 string（满页）时可点；复用 reqRef 防
+  // 过期响应；追加（不替换）entries，游标随响应推进。
+  const loadMore = React.useCallback(async () => {
+    if (!humanName || typeof nextKey !== "string" || loadingMore) return;
+    const req = ++reqRef.current;
+    setLoadingMore(true);
+    try {
+      const r = await listFiles(humanName, dirPath, {
+        recursive: true,
+        limit: 1000,
+        cursor: nextKey,
+      });
+      if (req !== reqRef.current) return; // 过期响应（目录/视图已切换）
+      setFiles((prev) => [...prev, ...r.entries]);
+      setNextKey(r.nextKey);
+    } catch (e) {
+      antd.message.error(hfErrorText(e, tr));
+    } finally {
+      if (req === reqRef.current) setLoadingMore(false);
+    }
+  }, [humanName, dirPath, nextKey, loadingMore, tr]);
+
+  // 探测失败（老控制器）且递归已开（探测晚于用户操作）→ 自动回落一层列表。
+  React.useEffect(() => {
+    if (!canRecursive && recursive) setRecursive(false);
+  }, [canRecursive, recursive]);
 
   // 进入域 / 切视图 / 换目录 / 语言变化 → 取数（load 身份随之变）。
   React.useEffect(() => {
@@ -1057,11 +1434,13 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   }, [load, humanName]);
 
   // 30s 静默轮询：activeRef = 顶层 tab 激活门（稳定 ref，tick 时读）；
-  // 404（无权限/不存在）停重试。
+  // 404（无权限/不存在）停重试；nextKey 为 string（分页中途）跳过——
+  // 静默刷新会重置游标，丢掉「加载更多」进度。
   usePoller({
     fn: () => {
       if (data.activeRef && !data.activeRef.current) return;
       if (!humanName || status === "404") return;
+      if (typeof nextKey === "string") return;
       void load(true);
     },
     intervalMs: 30000,
@@ -1104,22 +1483,35 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     loading,
     status,
     error,
+    recursive,
+    canRecursive,
+    nextKey,
+    loadingMore,
     onSwitchView: (v) => {
       if (v === view) return;
       nav.selectFile(null);
+      setNextKey(undefined);
       setView(v);
     },
     onEnterDir: (p) => {
       nav.selectFile(null);
+      setNextKey(undefined);
       setDirPath(p);
     },
+    onToggleRecursive: (on) => {
+      if (on === recursive) return;
+      nav.selectFile(null);
+      setNextKey(undefined);
+      setRecursive(on);
+    },
     load: (silent) => void load(silent),
+    loadMore: () => void loadMore(),
   };
   const sub: SubProps = { t, tr, nav, fs };
 
   const selectedEntry =
     view === "files"
-      ? files.find((e) => e.type === "file" && fullPath(dirPath, e.name) === nav.selectedFile)
+      ? files.find((e) => !isEntryDir(e) && rowPath(e, dirPath) === nav.selectedFile)
       : trash.find((e) => normTrashPath(e.path) === nav.selectedFile);
 
   if (variant === "l1") {
@@ -1160,8 +1552,16 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     return (
       <div style={{ display: "grid", gap: 10, padding: 4 }}>
         <QuotaCard {...sub} />
+        <SyncCard {...sub} />
         <ViewTabs {...sub} />
-        {view === "files" ? <Breadcrumbs {...sub} /> : null}
+        {view === "files" ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Breadcrumbs {...sub} />
+            </div>
+            <RecursiveToggle {...sub} />
+          </div>
+        ) : null}
         {detail}
       </div>
     );

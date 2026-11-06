@@ -17,6 +17,7 @@ import {
   EMPTY_ADDR_AUTH,
   StartupPrefRow,
 } from "./SettingsTabShared";
+import { ModuleUpdatesPanel } from "./ModuleUpdatesPanel";
 import HelpDot from "./HelpDot";
 
 const host = window.QwenPaw.host;
@@ -1373,6 +1374,13 @@ export function SettingsTabView(props: {
           {tr("导出配置含全部地址但不含密码/token（显示为 ***）——导入不会覆盖现有凭据。诊断包 = 脱敏配置 + 自检结果，用于排查问题时交给管理员。")}
         </div>
       </div>
+
+      {/* 模块更新（#1526 三平面）——独立面板：默认收起零请求，
+          「载入」后才拉发布索引/三平面已装态（不阻塞设置页首屏）。 */}
+      <div style={{ gridColumn: "1 / -1" }}>
+        <ModuleUpdatesPanel cardBox={cardBox} />
+      </div>
+
  {/* 宿主 Agent 技能管理区块移除（
  「配置页的 QwenPaw 宿主 Agent 技能不需要了」）——SkillsTab 组件
  已删（死代码零残留）；宿主技能系统本体是 QwenPaw 核心功能，

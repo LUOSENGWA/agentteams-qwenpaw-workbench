@@ -14,6 +14,7 @@ from ..dial_gate import GatedAsyncClient, should_failover_status
 from ..router import (
     CONTROLLER_ALLOWED_PREFIXES,
     _APPROVAL_LIST_TTL_SECONDS,
+    _FILE_PROXY_TIMEOUT,
     _PROXY_TIMEOUT,
     _approval_list_cache,
     _ctl_json,
@@ -31,6 +32,18 @@ from ..router import (
 # worker could never read "confirmed" and a QR login would never complete
 # through the plugin. Same intent as the Controller's qrcodeStatusTimeout.
 _LONG_POLL_TIMEOUT = httpx.Timeout(connect=5.0, read=45.0, write=10.0, pool=5.0)
+
+
+def _is_controller_file_io(method: str, path: str) -> bool:
+    """Controller 文件读写判定（PATCH-1666b）：PUT/POST /humans/…/files/…
+    上传与 GET /files/… 下载走 minio 路径，上游慢（256KB PUT 实测 ~34s），
+    须用 _FILE_PROXY_TIMEOUT。纯函数（method+path 无副作用）便于单测；
+    调用方（proxy）另以 target == "controller" 门控，防 matrix 同名
+    /files/ 端点误判。"""
+    m = (method or "").upper()
+    return ("/humans/" in path and m in ("PUT", "POST")) or (
+        "/files/" in path and m == "GET"
+    )
 
 
 def _rewrite_location(
@@ -688,10 +701,20 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                         req_started = time.time()
                         # QR status is an iLink long-poll (up to ~30s): the
                         # generic 6s read timeout would abort every poll.
+                        # 三分支顺序固定：① qrcode/status 长轮询 →
+                        # ② controller 文件读写（PATCH-1666b，上游 minio
+                        # 慢路径 256KB ~34s，6s 读必 502）→ ③ 通用。
                         proxy_timeout = (
                             _LONG_POLL_TIMEOUT
                             if full_path.endswith("/qrcode/status")
-                            else _PROXY_TIMEOUT
+                            else (
+                                _FILE_PROXY_TIMEOUT
+                                if target == "controller"
+                                and _is_controller_file_io(
+                                    request.method, full_path
+                                )
+                                else _PROXY_TIMEOUT
+                            )
                         )
                         async with GatedAsyncClient(
                             timeout=proxy_timeout, verify=False

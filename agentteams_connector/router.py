@@ -273,6 +273,10 @@ _PROBE_TIMEOUT = 6.0
 # 单独压到 3s 快速识破死地址；read 保留 6s（真实响应慢≠地址死）。
 _PROXY_TIMEOUT = httpx.Timeout(connect=3.0, read=6.0, write=10.0, pool=3.0)
 
+# 控制器文件读写：控制器侧 PUT 256KB 实测 ~34s（minio 写路径待优化），
+# 通用 6s 读超时必 502；放宽到 120s（连接/池仍短，防慢挂在别处）。
+_FILE_PROXY_TIMEOUT = httpx.Timeout(connect=5.0, read=120.0, write=120.0, pool=5.0)
+
 
 def _candidate_groups(cfg: Dict[str, Any], kind: str) -> List[List[str]]:
     # 按条目候选组——组 i = 条目 i 的可拨号候选（address_candidates：

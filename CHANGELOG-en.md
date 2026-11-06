@@ -3,6 +3,22 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.66 (2026-11-06 · human files · model grants · module updates)
+
+**Added**
+- **Human file area now uses the new controller capabilities** (#1518 / #1519 / #1501 / #1499):
+  - Listing entries carry **size / etag**; **recursive flat listing with a key cursor** ("Load more" only when a `nextKey` exists).
+  - Uploads use **presigned direct upload + commit**: bytes no longer traverse the controller; files above `maxBytes` are blocked client-side; `commit` 409/413 clearly ask for a re-upload. Falls back to the previous proxied upload when presigning is unavailable (older controllers).
+  - Large downloads use **short-lived presigned URLs**, re-issued when expired.
+  - **Sync status card**: manifest generation / last writer / entry and tombstone counts; a count mismatch shows a "manifest is maintained by the local sync client" hint; the raw manifest can be exported; a missing `file_sync` grant is called out. The browser **never parses manifest entries nor writes a manifest** (the server stores, never merges).
+- **Model grants in the person detail** (#1513 admin surface): role + CodingCLI axes; `(provider, model)` entered as **pairs**; **inherit** for spawn/CLI; shared model tables referenced with a read-only preview; "empty = not granted (fail-closed)" is stated before saving; `PATCH` merge-patch is used when `PUT` is unavailable.
+- **Settings → Module updates** (#1526): team / manager / worker planes; GitHub or GitCode source, `alpha|beta|stable` channel and **custom forks**; **upgrade and downgrade** (with a requires-difference confirmation); rolling progress and a `consistent` badge for teams; errors mapped per 409/502/404/400/503; unsupported controllers show an explicit "not supported" state.
+
+**Fixed**
+- File-area "parent directory" path join: `join("")` → `join("/")` (previously navigated to a non-existent directory).
+- File listings follow **301** redirects (root trailing slash), fixing the file page error on older controllers.
+- connector: controller **file I/O** timeout 30s → **120s**, wired into the catch-all proxy (file reads 6s → 120s), fixing the reproducible 502 on ~250 KB uploads.
+
 ## 0.5.0-beta.16.65 (2026-11-06 - Model Access in the model dialog, hermes runtime config surface)
 
 **Features**
