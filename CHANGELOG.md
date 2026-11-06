@@ -3,6 +3,13 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.70（2026-11-07 · 选择性同步 / 本地取消同步 / 进度）
+
+**新增**
+- **同步范围**：`.sync/config.json` 支持 `include`/`exclude`（glob `*` 单层、`**` 多层，默认 `files/**`），并提供 `GET/PUT /agentteams-proxy/sync/config`（路径必须以 `files/` 开头，禁 `..`/空段）。
+- **取消同步（只影响本地）**：`POST /agentteams-proxy/sync/unsync` 先取远端证据（有 etag 用 etag，否则按 size），**证据不足直接拒绝**（`remote_missing`），成功仅删除本地镜像——端点内**零 DELETE 调用**，云端文件不受影响。
+- **进度快照**：`GET /agentteams-proxy/sync/progress` 返回 `state/files/bytes/speed(5s EMA)/eta/currentPath/queued/failed`，供 UI 显示进度与速度。
+
 ## 0.5.0-beta.16.69（2026-11-07 · 文件页布局/动作/删除 · 工作区同步引擎）
 
 **改进**

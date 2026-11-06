@@ -3,6 +3,13 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.70 (2026-11-07 · selective scope, local unsync, progress)
+
+**Added**
+- **Sync scope**: `.sync/config.json` with `include`/`exclude` globs (`*` one level, `**` recursive, default `files/**`) plus `GET/PUT /agentteams-proxy/sync/config` (paths must stay under `files/`, no `..` or empty segments).
+- **Unsync affects the local copy only**: `POST /agentteams-proxy/sync/unsync` first proves the remote still holds the entry (etag when reported, size otherwise) and refuses the path when that proof is missing (`remote_missing`). A successful call deletes the local mirror and makes **zero DELETE calls** — the cloud copy is untouched.
+- **Progress snapshot**: `GET /agentteams-proxy/sync/progress` reports `state/files/bytes/speed (5s EMA)/eta/currentPath/queued/failed` for the UI.
+
 ## 0.5.0-beta.16.69 (2026-11-07 · file page layout/actions/delete · workspace sync engine)
 
 **Improved**
