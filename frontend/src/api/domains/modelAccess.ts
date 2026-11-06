@@ -39,8 +39,11 @@ export interface ModelAccessPair {
 export interface ModelAccessCapability {
   canEdit: boolean;
   inherit?: boolean;
-  writeVia?: string;
+  /** 服务端为 string[]（model_access_handler.go writeVia []string），不是单值。 */
+  writeVia?: string[];
   inheritedFrom?: string;
+  /** 人类可读的拒绝/锁定原因（服务端 reason 字段）。 */
+  reason?: string;
   status?: "cli_not_granted" | "not_granted" | "byok_unsupported";
 }
 
