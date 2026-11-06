@@ -3,6 +3,19 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.63 (2026-11-06 - Workspace quota setting moves into people management)
+
+**Changes**
+- **The workspace quota setting now lives in "People"**: selecting a person shows a "Workspace quota" entry with
+  the used amount and the limit (labelled unlimited when there is none), where an administrator can set the
+  quota in MB or clear it (clearing means unlimited). The quota is per person and is read once when that person
+  is opened — no prefetching across people.
+- **The file area no longer owns the setting**: it keeps the usage bar and the upload / new-folder actions, with
+  a note pointing to "People" for the quota.
+
+**Gates**
+- 109 pure-logic tests across 7 suites pass; type check has no new errors; the build succeeds.
+
 ## 0.5.0-beta.16.62 (2026-11-06 - One conditional cache for stable reads, skills validators)
 
 **Refactor / performance**
