@@ -3,6 +3,24 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.64 (2026-11-06 - list-projection regressions, files 301/upload, CodingCLI model entry, team inbox, scheme-less addresses)
+
+**Fixes (user-visible)**
+- **Provider baseline in model settings**: the slim list projection omits `modelProvider`, which previously left the dialog baseline empty and cleared the worker's Provider on save (routing silently fell back to the default gateway). The baseline now comes from the single-worker detail read, and an **empty Provider is never sent**.
+- **Environment panel**: hidden only when it is explicitly not editable; the missing `envEditable` in the projection previously made the whole panel disappear.
+- **Files area**: directory listings always carry a trailing slash (no more controller 301), and 301/308 responses are followed once safely (writes keep their method and never downgrade to GET).
+- **Controller proxy**: keep trailing slashes, rewrite the upstream 301 `Location` into the proxy path (it used to send the browser to a non-existent host path), and **no longer drop binary request bodies** (uploads used to land as 0 bytes).
+
+**Features**
+- **CodingCLI entry in the model dialog**: shows each CLI's global model and Provider, **Provider first, then model**, with the Provider written to `model.baseUrl` (qwen-code uses it to disambiguate Providers sharing a model id).
+- **Create-worker and team-member forms are Provider-first**; the "create and join team" action is now an honest "Create worker" (it only ever created).
+- **Backend addresses may omit `http(s)://`**: enter an IP/domain (optionally with a port) and the scheme is inferred from the port and host type; in fixed LAN/WAN mode candidates fall back within their own entry and never across entries.
+- **Team view in the notification center's Pending tab** (#1503): pick a team and a status (pending/overdue/resolved/all); when the controller does not expose the endpoint it degrades to the aggregated view with a notice, and skipped projects are surfaced.
+
+**Quality**
+- Full refresh/retry audit (41 buttons across 30 files): 8 now bypass caches through one shared `useForceReload`; the remainder are listed in the report.
+- Duplicate i18n keys removed, **type checking is now clean**: any future tsc error is a real regression.
+
 ## 0.5.0-beta.16.63 (2026-11-06 - Workspace quota setting moves into people management)
 
 **Changes**
