@@ -3,6 +3,15 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.72 (2026-11-07 · recycle bin dialog · one refresh path · no duplicate list)
+
+**Improved**
+- **The recycle bin is a dialog**: a toolbar button (with an entry-count badge) opens it, so it no longer competes with the main list for the same screen. It offers search, sort by deletion time, restore-all, per-row restore/purge with confirmation, and overwrite on a 409 name clash; under 720px it switches to cards.
+- **Undo after delete**: a soft delete shows an eight second undo bar; one click restores, no need to open the recycle bin.
+- **No duplicate list**: at four columns the page rendered a compact list in the left column and the full list in the middle; only one list remains, and the empty detail pane no longer repeats the upload button.
+- **One refresh path**: the toolbar refresh, the error retry and every mutation now call the same `reload()` (forced fetch, in-flight dedupe, replay of a merged click), subdirectories join the 30s poll, and the list refreshes silently when the window regains focus.
+- **Updated-at column adapts**: controllers that do not return `updatedAt` no longer show a column of dashes.
+
 ## 0.5.0-beta.16.71 (2026-11-07 · recycle bin page · sync settings dialog)
 
 **Improved**
