@@ -19,11 +19,23 @@ import type {
   CodingCliProbeItem,
   SettingsObject,
 } from "../api/domains/codingcli";
+import { fetchModelAccess } from "../api/domains/modelAccess";
+import type {
+  ModelAccessCapability,
+  ModelAccessPair,
+  ModelAccessPayload,
+} from "../api/domains/modelAccess";
 import {
   buildCliModelPatch,
   cliCurrentModel,
   cliModelEntries,
 } from "../lib/codingCliModel";
+import {
+  grantedPairs,
+  lockedAll,
+  pairAllowed,
+  surfaceBadge,
+} from "../lib/modelAccess";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
@@ -105,6 +117,63 @@ export default function ModelEditModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // C2（#1513）Model Access 授权信息——仅 Worker 详情（有 workerName）拉取。
+  // 404（旧版 controller）/ 其它错误 → access 保持 null =「无授权信息」
+  //（行为与现状完全一致，不显示授权 UI；不炸弹窗）。
+  const [access, setAccess] = React.useState<ModelAccessPayload | null>(null);
+
+  React.useEffect(() => {
+    if (!open || !workerName) {
+      setAccess(null);
+      return;
+    }
+    let alive = true;
+    setAccess(null);
+    fetchModelAccess(workerName)
+      .then((r) => {
+        if (alive) setAccess(r.access);
+      })
+      .catch(() => {
+        // 非 404 错误同按「无授权信息」降级（不抛、不阻塞现有行为）。
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open, workerName]);
+
+  // C2：fail-closed（locked 整个弹窗只读）+ main/spawn surface 授予集
+  //（空 = 无授予集 → 候选/校验均按现状，兼容旧控制器）。
+  const locked = lockedAll(access);
+  const mainPairs = access ? grantedPairs(access.surfaces, "main") : [];
+  const spawnPairs = access ? grantedPairs(access.surfaces, "spawn") : [];
+
+  // C2：main surface 有授予集 → 候选只列授予的 (provider, model) 对
+  //（provider 列表 = entries 的 provider 去重；选中 provider 后模型列表 =
+  // 该 provider 的 entries model；未选 provider → 全部授予 model 去重）；
+  // 无 entries → 现状。
+  const providerOptions =
+    mainPairs.length > 0
+      ? Array.from(new Set(mainPairs.map((p) => p.provider))).map((name) => ({
+          value: name,
+          label: name,
+        }))
+      : union.providers.map((p) => ({ value: p.name, label: p.name }));
+
+  const modelOptions =
+    mainPairs.length > 0
+      ? (provider
+          ? mainPairs.filter((p) => p.provider === provider)
+          : mainPairs
+        )
+          .map((p) => p.model)
+          .filter((m, i, a) => a.indexOf(m) === i)
+          .map((m) => ({ value: m, label: m }))
+      : filterModelOptionsByProvider(
+          union.options,
+          union.gatewayOptions,
+          provider,
+        );
+
   const isNarrow = typeof window !== "undefined" && window.innerWidth < 640;
   const fieldsLayout = { display: "grid", gap: 14 } as const;
   const fieldStyle = { width: "100%" } as const;
@@ -119,6 +188,16 @@ export default function ModelEditModal({
     model !== currentModel ||
     provider !== currentProvider ||
     subagentEffective !== currentSubagentModel;
+
+  // C2：若要保存的值不在授予集合（例如历史值）→ 允许显示但保存按钮禁用
+  //（提示「该组合不在授权范围」）。授予集为空 = 无限制（现状）。
+  // subagent 无 Provider 控件 → 按 model 在授予对中是否出现判定。
+  const mainPairOk =
+    mainPairs.length > 0 ? pairAllowed(mainPairs, provider, model) : true;
+  const subagentPairOk =
+    spawnPairs.length > 0 && subagentEffective !== ""
+      ? spawnPairs.some((p) => p.model === subagentEffective)
+      : true;
 
   const handleOk = async () => {
     // subagentSame=true → ""（显式清除覆盖=回到主模型）
@@ -137,26 +216,61 @@ export default function ModelEditModal({
       okText={tr("保存")}
       cancelText={tr("取消")}
       confirmLoading={saving}
-      okButtonProps={{ disabled: !dirty }}
+      okButtonProps={{ disabled: !dirty || locked || !mainPairOk || !subagentPairOk }}
       width={Math.min(560, window.innerWidth - 48)}
       destroyOnClose
     >
       <div style={{ display: "grid", gap: 14, padding: "8px 0" }}>
+        {/* C2（#1513）：locked → 整个弹窗只读 + 顶部提示；
+         * catalogUnavailable → 顶部灰条。 */}
+        {locked ? (
+          <div
+            style={{
+              fontSize: 12,
+              color: "#cf1322",
+              background: "#fff2f0",
+              border: "1px solid #ffccc7",
+              borderRadius: 4,
+              padding: "6px 10px",
+            }}
+          >
+            {tr("当前账号未被授予任何模型，请联系管理员（Model Access）")}
+          </div>
+        ) : null}
+        {access && access.catalogUnavailable === true ? (
+          <div
+            style={{
+              fontSize: 12,
+              color: t.textSecondary,
+              background: t.cardBg,
+              border: `1px solid ${t.border}`,
+              borderRadius: 4,
+              padding: "6px 10px",
+            }}
+          >
+            {tr("模型目录暂不可用")}
+          </div>
+        ) : null}
         {/* C1a-1 provider-first：先选 Provider 再选模型——目录方向恒
          * provider → models，且实际转发由 Provider 决定（仅模型 alias
          * 不够）。模型下拉按所选 Provider 过滤（在服+在用恒保留）。 */}
         <div style={fieldsLayout}>
           <div style={fieldStyle}>
-            <div style={labelStyle}>{tr("Provider")}</div>
+            <div style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
+              {tr("Provider")}
+              {/* C2：主模型区授权徽标（五态；无授权信息 → 不显示） */}
+              {accessBadge(access?.capabilities?.main, tr)}
+            </div>
             <antd.Select
               style={{ width: "100%" }}
               size="large"
               showSearch
               allowClear
+              disabled={locked}
               placeholder={tr("自动（跟随默认）")}
               value={provider || undefined}
               onChange={(v: string) => setProvider(v ?? "")}
-              options={union.providers.map((p) => ({ value: p.name, label: p.name }))}
+              options={providerOptions}
             />
           </div>
           <div style={fieldStyle}>
@@ -165,13 +279,10 @@ export default function ModelEditModal({
               style={{ width: "100%" }}
               size="large"
               allowClear
+              disabled={locked}
               placeholder={tr("模型 alias（留空=跟随集群默认）")}
               value={model}
-              options={filterModelOptionsByProvider(
-                union.options,
-                union.gatewayOptions,
-                provider,
-              )}
+              options={modelOptions}
               onChange={(v: string) => {
                 setModel(v ?? "");
                 // C1a-1：configured alias → binding.providerName 仅当
@@ -181,6 +292,11 @@ export default function ModelEditModal({
                 if (auto && !provider) setProvider(auto);
               }}
             />
+            {!mainPairOk ? (
+              <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>
+                {tr("该组合不在授权范围")}
+              </div>
+            ) : null}
             {providerModelMismatch(union.gatewayOptions, model, provider) ? (
               <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>
                 {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
@@ -204,7 +320,9 @@ export default function ModelEditModal({
               <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
                 {tr("子代理模型")}
               </span>
-              <antd.Switch size="small" checked={subagentSame} onChange={(v: boolean) => setSubagentSame(v)} />
+              {/* C2：子代理区授权徽标（五态；无授权信息 → 不显示） */}
+              {accessBadge(access?.capabilities?.spawn, tr)}
+              <antd.Switch size="small" checked={subagentSame} disabled={locked} onChange={(v: boolean) => setSubagentSame(v)} />
               <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("与主模型相同")}</span>
             </div>
             <div>
@@ -214,15 +332,28 @@ export default function ModelEditModal({
                 size="large"
                 showSearch
                 allowClear
-                disabled={subagentSame}
+                disabled={subagentSame || locked}
                 placeholder={subagentSame ? tr("（与主模型相同）") : tr("选择子代理专用模型")}
                 value={subagentSame ? undefined : subagentModel || undefined}
                 onChange={(v: string) => setSubagentModel(v ?? "")}
-                options={union.options as any[]}
+                options={
+                  spawnPairs.length > 0
+                    ? Array.from(new Set(spawnPairs.map((p) => p.model))).map((m) => ({
+                        value: m,
+                        label: m,
+                      }))
+                    : (union.options as any[])
+                }
                 filterOption={(input: string, option: any) =>
                   String(option?.label ?? option?.value ?? "").toLowerCase().includes(input.toLowerCase())
                 }
               />
+              {/* C2：子代理值不在 spawn 授予集 → 提示（保存按钮同禁用） */}
+              {!subagentPairOk ? (
+                <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>
+                  {tr("该组合不在授权范围")}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -230,7 +361,7 @@ export default function ModelEditModal({
         {/* C1a-2：CodingCLI 模型区块——仅 Worker（workerName）+ L1 渲染；
          * Manager 详情不传 workerName → 不渲染（自检①）。 */}
         {workerName && l1 ? (
-          <CodingCliModelSection workerName={workerName} mainModel={currentModel} />
+          <CodingCliModelSection workerName={workerName} mainModel={currentModel} access={access} />
         ) : null}
 
         <div
@@ -249,6 +380,41 @@ export default function ModelEditModal({
   );
 }
 
+/** C2（#1513）：Model Access 授权徽标（五态：可编辑/继承自/只读/未授权/
+ * BYOK 不支持）；cap 缺（无授权信息）→ 不渲染。 */
+function accessBadge(
+  cap: ModelAccessCapability | null | undefined,
+  tr: ReturnType<typeof useT>,
+): ReactNS.ReactElement | null {
+  if (!cap) return null;
+  const b = surfaceBadge(cap);
+  const label =
+    b.kind === "editable"
+      ? tr("可编辑")
+      : b.kind === "inherited"
+        ? tr("继承自 {x}", { x: b.from || "—" })
+        : b.kind === "not_granted"
+          ? tr("未授权")
+          : b.kind === "byok"
+            ? tr("BYOK 不支持")
+            : tr("只读");
+  const color =
+    b.kind === "editable"
+      ? "green"
+      : b.kind === "inherited"
+        ? "blue"
+        : b.kind === "not_granted"
+          ? "red"
+          : b.kind === "byok"
+            ? "orange"
+            : "default";
+  return (
+    <antd.Tag color={color} style={{ margin: 0, flexShrink: 0 }}>
+      {label}
+    </antd.Tag>
+  );
+}
+
 /** 「跟随 Worker（不指定 baseUrl）」的 Provider 哨兵值（Select option 之一）。 */
 const FOLLOW_PROVIDER = "~follow~";
 
@@ -262,9 +428,12 @@ const FOLLOW_PROVIDER = "~follow~";
 function CodingCliModelSection({
   workerName,
   mainModel,
+  access,
 }: {
   workerName: string;
   mainModel: string;
+  /** C2（#1513）：Model Access 授权信息（null = 无授权信息 → 现状行为）。 */
+  access: ModelAccessPayload | null;
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -377,6 +546,8 @@ function CodingCliModelSection({
           const modelText = err ? "" : cur && cur.name ? cur.name : tr("未配置");
           const status =
             !cur || !cur.name ? "none" : cur.name === mainModel ? "follow" : "indep";
+          // C2（#1513）：该 CLI 的授权能力（缺 = 无授权信息 → 现状行为）。
+          const cap = access?.capabilities?.codingCli?.[p.cli];
           return (
             <div
               key={p.cli}
@@ -415,12 +586,19 @@ function CodingCliModelSection({
                     ? tr("独立")
                     : tr("未配置")}
               </antd.Tag>
+              {/* C2：该 CLI 授权徽标（五态；inherit → 「继承自 …」且编辑禁用） */}
+              {accessBadge(cap, tr)}
               {err ? (
                 <antd.Button size="small" onClick={() => retryCli(p.cli)}>
                   {tr("重试")}
                 </antd.Button>
               ) : (
-                <antd.Button size="small" disabled={!s} onClick={() => setEditing(p.cli)}>
+                // C2：locked / inherit / !canEdit → 编辑禁用（无授权信息 → 现状）
+                <antd.Button
+                  size="small"
+                  disabled={!s || lockedAll(access) || (cap ? cap.inherit || !cap.canEdit : false)}
+                  onClick={() => setEditing(p.cli)}
+                >
                   {tr("修改")}
                 </antd.Button>
               )}
@@ -434,6 +612,9 @@ function CodingCliModelSection({
           workerName={workerName}
           cli={editing}
           settings={settings[editing] as CliSettingsResponse}
+          pairs={
+            access ? grantedPairs(access.surfaces, "codingCli", editing) : []
+          }
           onClose={() => setEditing(null)}
           onSaved={() => refreshCli(editing)}
         />
@@ -451,12 +632,15 @@ function CliModelEditDialog({
   workerName,
   cli,
   settings,
+  pairs,
   onClose,
   onSaved,
 }: {
   workerName: string;
   cli: CodingCliId;
   settings: CliSettingsResponse;
+  /** C2（#1513）：该 CLI surface 的授予 (provider, model) 对（空 = 无授予集 → 现状）。 */
+  pairs: ModelAccessPair[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -477,10 +661,55 @@ function CliModelEditDialog({
       ? null
       : (entries.find((e) => e.id === provider) ?? null);
   const allModels = Array.from(new Set(entries.flatMap((e) => e.models)));
-  const modelOptions = (chosen ? chosen.models : allModels).map((m) => ({
-    value: m,
-    label: m,
-  }));
+
+  // C2（#1513）：有授予集 → 候选只列授予的 (provider, model) 对（方向
+  // provider → models）；无 → 现状。
+  const granted = pairs.length > 0;
+  const grantedProviders = granted
+    ? Array.from(new Set(pairs.map((p) => p.provider)))
+    : [];
+  const grantedModels = granted
+    ? Array.from(new Set(pairs.map((p) => p.model)))
+    : [];
+
+  const providerOptions = [
+    { value: FOLLOW_PROVIDER, label: tr("跟随 Worker") },
+    ...(granted
+      ? grantedProviders.map((id) => {
+          const e = entries.find((x) => x.id === id);
+          return { value: id, label: e?.baseUrl ? `${id} · ${e.baseUrl}` : id };
+        })
+      : entries.map((e) => ({
+          value: e.id,
+          label: e.baseUrl ? `${e.id} · ${e.baseUrl}` : e.id,
+        }))),
+  ];
+
+  const modelOptions = (
+    granted
+      ? provider === FOLLOW_PROVIDER
+        ? grantedModels
+        : pairs.filter((p) => p.provider === provider).map((p) => p.model)
+      : chosen
+        ? chosen.models
+        : allModels
+  )
+    .filter((m, i, a) => a.indexOf(m) === i)
+    .map((m) => ({
+      value: m,
+      label: m,
+    }));
+
+  // C2：要保存的值不在授予集合（例如历史值）→ 保存禁用 + 提示。
+  // 对象形态：须显式 provider（跟随 Worker = 不指定 baseUrl，不成对）+
+  // (provider, model) 成对存在；扁平形态：model 在授予对中是否出现。
+  const saveModel = model.trim();
+  const pairOk = granted
+    ? isObject
+      ? provider !== FOLLOW_PROVIDER && pairAllowed(pairs, provider, saveModel)
+      : pairs.some((p) => p.model === saveModel)
+    : true;
+
   const labelStyle = { fontSize: 13, color: t.textSecondary, marginBottom: 6 } as const;
 
   const handleSave = async () => {
@@ -517,7 +746,7 @@ function CliModelEditDialog({
       okText={tr("保存")}
       cancelText={tr("取消")}
       confirmLoading={saving}
-      okButtonProps={{ disabled: saving || model.trim() === "" }}
+      okButtonProps={{ disabled: saving || model.trim() === "" || !pairOk }}
       destroyOnClose
       width={Math.min(480, window.innerWidth - 48)}
     >
@@ -530,13 +759,7 @@ function CliModelEditDialog({
               size="large"
               showSearch
               value={provider}
-              options={[
-                { value: FOLLOW_PROVIDER, label: tr("跟随 Worker") },
-                ...entries.map((e) => ({
-                  value: e.id,
-                  label: e.baseUrl ? `${e.id} · ${e.baseUrl}` : e.id,
-                })),
-              ]}
+              options={providerOptions}
               onChange={(v: string) => setProvider(v)}
             />
           </div>
@@ -561,6 +784,12 @@ function CliModelEditDialog({
             options={modelOptions}
             onChange={(v: string) => setModel(v ?? "")}
           />
+          {/* C2：要保存的组合不在授予集 → 提示（保存按钮同禁用） */}
+          {!pairOk ? (
+            <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>
+              {tr("该组合不在授权范围")}
+            </div>
+          ) : null}
         </div>
       </div>
     </antd.Modal>
