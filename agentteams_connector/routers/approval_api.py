@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 
 from typing import Any, Dict, Optional
@@ -32,14 +33,59 @@ from ..router import (
 _LONG_POLL_TIMEOUT = httpx.Timeout(connect=5.0, read=45.0, write=10.0, pool=5.0)
 
 
-def _passthrough_headers(resp: httpx.Response) -> Dict[str, str]:
+def _rewrite_location(
+    location: str, target: Optional[str], base: Optional[str]
+) -> str:
+    """上游 3xx Location → 代理内部路径（否则客户端跟随重定向直达上游，
+    落进宿主不存在的 /api/v1/... 路径）。
+
+    规则：
+    - 已以 /api/agentteams-proxy/ 开头 → 原样（已是代理内部路径）；
+    - 绝对 URL 且 scheme+host 命中本次请求用的 base → 取 path+query，
+      再按相对路径规则处理；
+    - /api/... 或 /healthz... 开头 → 加 /api/agentteams-proxy/{target} 前缀
+      （与 CONTROLLER_ALLOWED_PREFIXES 白名单同形，matrix target 同理生效）；
+    - 其它外部域 / 不可映射路径 → 不改写，原样透传。"""
+    if location.startswith("/api/agentteams-proxy/"):
+        return location
+    import urllib.parse as _urlparse_mod
+
+    parsed = _urlparse_mod.urlparse(location)
+    loc_path = location
+    if parsed.scheme and parsed.netloc:
+        if not base:
+            return location
+        b = _urlparse_mod.urlparse(base)
+        if (parsed.scheme, parsed.netloc) != (b.scheme, b.netloc):
+            return location  # 外部域：原样透传
+        loc_path = parsed.path or "/"
+        if parsed.query:
+            loc_path = f"{loc_path}?{parsed.query}"
+    if loc_path.startswith("/api/") or loc_path.startswith("/healthz"):
+        if target:
+            return f"/api/agentteams-proxy/{target}{loc_path}"
+        return loc_path
+    if parsed.scheme and parsed.netloc:
+        return location  # 同源但非白名单前缀：不改写，不伪造
+    return location
+
+
+def _passthrough_headers(
+    resp: httpx.Response,
+    target: Optional[str] = None,
+    base: Optional[str] = None,
+) -> Dict[str, str]:
     """透传 X-Consistency 响应头（强一致读契约，#1407）：上游 workflow
     端点 ETag 复核通过时带 ``X-Consistency: strong``，前端据此显示
     「已同步（强一致）」标记；无头不伪造（诚实降级 eventual）。
 
     另透传上游 ETag/Last-Modified（条件请求缓存层）：路由层包装器
     优先采用上游 ETag 作为缓存键；X-Upstream-ETag 标记上游来源
-    （与路由层本地合成的 W/"<sha256>" 弱 ETag 区分）。"""
+    （与路由层本地合成的 W/"<sha256>" 弱 ETag 区分）。
+
+    另透传 Location 并按 _rewrite_location 归一为代理内部路径：
+    旧版丢弃 Location → 上游 301（尾斜杠规范化）客户端拿到无 Location
+    的 301，点进 body 里的宿主链接 → 宿主 404。"""
     out: Dict[str, str] = {}
     v = resp.headers.get("x-consistency")
     if v:
@@ -51,6 +97,9 @@ def _passthrough_headers(resp: httpx.Response) -> Dict[str, str]:
     lm = resp.headers.get("last-modified")
     if lm:
         out["Last-Modified"] = lm
+    loc = resp.headers.get("location")
+    if loc:
+        out["Location"] = _rewrite_location(loc, target, base)
     return out
 
 
@@ -544,11 +593,12 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                 headers["Authorization"] = f"Bearer {token}"
         else:  # controller
             base_urls = _ordered_addresses(cfg, "controller")
-            # 双斜杠兜底：上游调用方若传 /api/v1//workers，uvicorn 会先 301——
-            # 后端侧再压一遍保证链路干净（前端已根治，此处防其他来源）。
-            full_path = "/" + "/".join(
-                seg for seg in path.split("/") if seg != ""
-            )
+            # 只压连续重复斜杠，末尾斜杠必须保留——上游 Go mux 把
+            # /files 与 /files/ 当不同路由（前者 301 到后者）；旧式
+            # split 丢空段把尾斜杠吃掉 → 上游 301 → 客户端重定向落进
+            # 宿主不存在的路径。/  + path 再压 {2,}：前导双斜杠
+            # （path 自带 "/" 的畸形输入）也一并收敛。
+            full_path = re.sub(r"/{2,}", "/", "/" + path)
             if not full_path.startswith(CONTROLLER_ALLOWED_PREFIXES):
                 raise HTTPException(
                     status_code=400,
@@ -579,14 +629,23 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
         # tools 端点 = PATCH /workers/{name}/tools/{tool}，beta.12.3 起
         # catch-all 漏了 PATCH → 405 Method Not Allowed，打地鼠前的
         # 方法表对账：Go mux 注册的方法集合=GET/PUT/POST/PATCH/DELETE）。
+        # content-type 分支：application/json（含 +json）→ request.json()
+        # 语义不变；其它（multipart / octet-stream / text/* / 无 CT）→
+        # 原始字节透传并转发原 Content-Type（旧版一律 request.json()
+        # → 二进制解析失败 body=None → 上游收空体，文件上传被清空为
+        # 0 字节）；非法 JSON → 回退原始体不丢体。
         if request.method in ("POST", "PUT", "PATCH"):
-            if req_ct.lower().startswith("multipart/form-data"):
-                raw_body = await request.body()
-            else:
+            _ct_main = req_ct.split(";", 1)[0].strip().lower()
+            if _ct_main == "application/json" or (
+                _ct_main.startswith("application/") and _ct_main.endswith("+json")
+            ):
                 try:
                     body = await request.json()
                 except Exception:  # noqa: BLE001
-                    body = None
+                    # Starlette body() 有缓存，json() 失败后仍可取回原字节
+                    raw_body = await request.body()
+            else:
+                raw_body = await request.body()
 
         last_error = "无可用地址"
         query_string = ""
@@ -639,7 +698,8 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                         ) as client:
                             if raw_body is not None:
                                 send_headers = dict(addr_headers)
-                                send_headers["Content-Type"] = req_ct
+                                if req_ct:
+                                    send_headers["Content-Type"] = req_ct
                                 resp = await client.request(
                                     request.method,
                                     url,
@@ -680,14 +740,14 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                         content=resp.content,
                         status_code=resp.status_code,
                         media_type=resp.headers.get("content-type"),
-                        headers=_passthrough_headers(resp),
+                        headers=_passthrough_headers(resp, target=target, base=base),
                     )
                 # 4xx/5xx：不标记 working，首个非 2xx 留作最终返回。
                 if first_bad is None:
                     first_bad = (
                         resp.status_code, resp.content,
                         resp.headers.get("content-type"),
-                        _passthrough_headers(resp),
+                        _passthrough_headers(resp, target=target, base=base),
                     )
                 # GET/HEAD 仅在地址相关/瞬时错误时换下
                 # 一地址（401/403 网关门、408/429、5xx）；确定性 4xx（400/404/
@@ -714,7 +774,7 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                     content=resp.content,
                     status_code=resp.status_code,
                     media_type=resp.headers.get("content-type"),
-                    headers=_passthrough_headers(resp),
+                    headers=_passthrough_headers(resp, target=target, base=base),
                 )
             except Exception as exc:  # noqa: BLE001 - try the next address
                 last_error = selfcheck._classify_error(exc)
