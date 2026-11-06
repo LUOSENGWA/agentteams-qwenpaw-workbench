@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 
 import pytest
 
@@ -420,3 +422,306 @@ def test_ctl_exception_swallowed(tmp_path):
     assert not (eng.root / ".sync" / "lock").exists()
     # lastError 记入 state 面（可观测）
     assert eng.state()["lastError"] == res["error"]
+
+
+# ── S1) should_sync：范围纯函数（glob：* 单层、** 多层） ─────────────
+
+
+def test_should_sync_default_include():
+    # 无配置/空配置 → 默认 files/**
+    assert fse.should_sync("files/a.txt", None) is True
+    assert fse.should_sync("files/a.txt", {}) is True
+    # ** 多层：任意深度命中
+    assert fse.should_sync("files/a/b/c.txt", {"include": ["files/**"]}) is True
+    # files/ 之外永不命中
+    assert fse.should_sync("memory/x", None) is False
+    assert fse.should_sync("digest/x", {}) is False
+    assert fse.should_sync("memory/x", {"include": ["files/**"], "exclude": []}) is False
+
+
+def test_should_sync_exclude_wins_and_star_single_level():
+    cfg = {"include": ["files/**"], "exclude": ["files/tmp/**"]}
+    # exclude 优先（include 命中也拦）
+    assert fse.should_sync("files/tmp/x.md", cfg) is False
+    assert fse.should_sync("files/tmp/deep/x.md", cfg) is False
+    assert fse.should_sync("files/keep/x.md", cfg) is True
+    # * 单层：不跨 /
+    star = {"include": ["files/*.md"]}
+    assert fse.should_sync("files/a.md", star) is True
+    assert fse.should_sync("files/sub/a.md", star) is False
+    # include 不中 → 即使 exclude 命中也 False
+    assert (
+        fse.should_sync(
+            "files/a.md",
+            {"include": ["files/*.txt"], "exclude": ["files/a.md"]},
+        )
+        is False
+    )
+    # 非法路径 → False
+    assert fse.should_sync("../x", None) is False
+    assert fse.should_sync("/abs/x", None) is False
+
+
+# ── sync 域 API 夹具：独立 app + fake 引擎（ensure_engine 取 _engine） ─
+
+
+@pytest.fixture
+def sync_client(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    fake = FakeCtl(responder_for(generation=1))
+    eng = make_engine(tmp_path, fake, Clock())
+    fse._engine = eng  # ensure_engine() 直接取到 fake 引擎，不碰真实网络
+    try:
+        from agentteams_connector.routers import sync_api
+
+        app = FastAPI()
+        app.include_router(sync_api.build_sync_router())
+        yield TestClient(app), eng, fake
+    finally:
+        fse._engine = None
+
+
+def test_sync_config_put_invalid_path_400(sync_client):
+    tc, eng, _ = sync_client
+    r = tc.put("/sync/config", json={"human": HUMAN, "include": ["memory/x"]})
+    assert r.status_code == 400
+    assert r.json()["detail"]["error"] == "invalid_path"
+    r = tc.put("/sync/config", json={"human": HUMAN, "exclude": ["../x"]})
+    assert r.status_code == 400
+    r = tc.put("/sync/config", json={"human": HUMAN, "include": ["files//x"]})
+    assert r.status_code == 400  # 空段
+    # 非法不落盘
+    assert not (eng.root / ".sync" / "config.json").exists()
+
+
+def test_sync_config_put_get_roundtrip(sync_client):
+    tc, eng, _ = sync_client
+    body = {"human": HUMAN, "include": ["files/**"], "exclude": ["files/tmp/**"]}
+    r = tc.put("/sync/config", json=body)
+    assert r.status_code == 200, r.text
+    # 落盘 <root>/.sync/config.json（任务书形状）
+    on_disk = json.loads((eng.root / ".sync" / "config.json").read_text())
+    assert on_disk["humans"][HUMAN]["include"] == ["files/**"]
+    assert on_disk["humans"][HUMAN]["exclude"] == ["files/tmp/**"]
+    r = tc.get("/sync/config")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["human"] == HUMAN
+    assert data["humans"][HUMAN]["exclude"] == ["files/tmp/**"]
+    assert data["effective"]["include"] == ["files/**"]
+    assert data["effective"]["exclude"] == ["files/tmp/**"]
+    # 范围对引擎即时生效
+    assert eng.should_sync("files/tmp/x.md") is False
+    assert eng.should_sync("files/keep/x.md") is True
+
+
+def _listing_responder(entries, status=200):
+    """GET /humans/{h}/files?recursive=1 专用应答（记录在 FakeCtl.calls）。"""
+
+    def resp(method, path, **kw):
+        if (
+            method == "GET"
+            and path == f"{BASE}/files"
+            and (kw.get("params") or {}).get("recursive") == "1"
+        ):
+            return jresult(status, {"entries": entries, "nextKey": None})
+        return jresult(404, {"error": "unhandled"})
+
+    return resp
+
+
+# ── S2) unsync：只删本地、远端零调用零 DELETE ────────────────────────
+
+
+def test_unsync_remote_exists_deletes_local_no_delete_call(sync_client):
+    tc, eng, fake = sync_client
+    # 单文件 + 目录（两个子文件）本地镜像
+    p = eng.files_dir / "docs" / "old.md"
+    p.parent.mkdir(parents=True)
+    p.write_bytes(b"hello")
+    d = eng.files_dir / "tmp"
+    (d / "sub").mkdir(parents=True)
+    (d / "sub" / "x.md").write_bytes(b"x")
+    (d / "y.md").write_bytes(b"yy")
+    # state 记录 etag 与远端条目一致（证据自洽）
+    (eng.root / ".sync" / "state.json").write_text(
+        json.dumps(
+            {"humans": {HUMAN: {"generation": 1, "etags": {"docs/old.md": "e1"}, "local": {}}}}
+        )
+    )
+    fake.responder = _listing_responder(
+        [
+            {"path": "files/docs/old.md", "size": 5, "etag": "e1"},
+            {"path": "files/tmp/sub/x.md", "size": 1, "etag": "e3"},
+            {"path": "files/tmp/y.md", "size": 2, "etag": "e4"},
+        ]
+    )
+    r = tc.post(
+        "/sync/unsync", json={"human": HUMAN, "paths": ["files/docs/old.md", "files/tmp"]}
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["removed"] == ["files/docs/old.md", "files/tmp"]
+    assert data["refused"] == []
+    # 本地镜像已删（文件 + 目录递归）
+    assert not p.exists()
+    assert not d.exists()
+    # 远端零写调用：只有 GET 列表，绝无 DELETE
+    assert all(m == "GET" for m, _, _ in fake.calls)
+    assert not any(m == "DELETE" for m, _, _ in fake.calls)
+    assert any(path == f"{BASE}/files" for _, path, _ in fake.calls)
+
+
+def test_unsync_remote_missing_refused_local_kept(sync_client):
+    tc, eng, fake = sync_client
+    p = eng.files_dir / "docs" / "ghost.md"
+    p.parent.mkdir(parents=True)
+    p.write_bytes(b"ghost")
+    fake.responder = _listing_responder([])  # 远端无此条目
+    r = tc.post("/sync/unsync", json={"paths": ["files/docs/ghost.md"]})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["removed"] == []
+    assert data["refused"] == [
+        {"path": "files/docs/ghost.md", "refused": "remote_missing"}
+    ]
+    assert p.read_bytes() == b"ghost"  # 本地未删
+
+
+def test_unsync_etag_mismatch_refused_default_force_bypass(sync_client):
+    tc, eng, fake = sync_client
+    p = eng.files_dir / "a.md"
+    p.write_bytes(b"abc")
+    # state 记录 etag=e1，远端已是 e2 → 不一致
+    (eng.root / ".sync" / "state.json").write_text(
+        json.dumps({"humans": {HUMAN: {"generation": 1, "etags": {"a.md": "e1"}, "local": {}}}})
+    )
+    fake.responder = _listing_responder(
+        [{"path": "files/a.md", "size": 3, "etag": "e2"}]
+    )
+    r = tc.post("/sync/unsync", json={"paths": ["files/a.md"]})
+    data = r.json()
+    assert data["refused"] == [{"path": "files/a.md", "refused": "etag_mismatch"}]
+    assert data["removed"] == []
+    assert p.exists()
+    # force 绕过 etag_mismatch（remote_missing 永不放行）
+    r = tc.post("/sync/unsync", json={"paths": ["files/a.md"], "force": True})
+    data = r.json()
+    assert data["removed"] == ["files/a.md"]
+    assert not p.exists()
+
+
+def test_unsync_legacy_plain_listing_top_level_only(sync_client):
+    """旧控制器忽略 recursive=1 → 普通列表（name/type/size，无 path/
+    etag）：顶层目录可证（删）、深层路径不可证（remote_missing）。"""
+    tc, eng, fake = sync_client
+    d = eng.files_dir / "tmp"
+    (d / "sub").mkdir(parents=True)
+    (d / "sub" / "x.md").write_bytes(b"x")
+    (d / "top.md").write_bytes(b"t")
+    fake.responder = _listing_responder(
+        [
+            {"name": "tmp", "type": "dir", "size": 0},
+            {"name": "keep.md", "type": "file", "size": 1},
+        ]
+    )
+    r = tc.post("/sync/unsync", json={"paths": ["files/tmp", "files/tmp/sub/x.md"]})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["removed"] == ["files/tmp"]
+    assert data["refused"] == [
+        {"path": "files/tmp/sub/x.md", "refused": "remote_missing"}
+    ]
+    assert not d.exists()
+    assert not any(m != "GET" for m, _, _ in fake.calls)
+
+
+# ── S6) 进度：fake 同步 2 文件 + 端点形状 + 并发读 ───────────────────
+
+
+def test_progress_after_fake_sync_two_files(tmp_path):
+    clock = Clock()
+    fake = FakeCtl(
+        responder_for(
+            generation=2,
+            manifest={
+                "entries": [
+                    {"path": "a.txt", "etag": "e1", "size": 5},
+                    {"path": "b.txt", "etag": "e2", "size": 5},
+                ]
+            },
+            presign_get={"a.txt": b"12345", "b.txt": b"67890"},
+        )
+    )
+    eng = make_engine(tmp_path, fake, clock, state=state_with(1, {}, {}))
+    # 未跑过 → idle 零值形
+    assert eng.progress()["state"] == "idle"
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert res["downloaded"] == 2
+    pg = eng.progress()
+    assert pg["state"] == "idle"  # 跑完回到 idle
+    assert pg["files_total"] == 2
+    assert pg["files_done"] == 2
+    assert pg["bytes_done"] == 10  # >0
+    assert pg["failed"] == 0
+    assert pg["deferred"] == 0
+    assert pg["queued"] == 0
+    assert pg["current_path"] is None
+
+
+def test_sync_progress_endpoint_shape(sync_client):
+    tc, _, _ = sync_client
+    r = tc.get("/sync/progress")
+    assert r.status_code == 200
+    pg = r.json()
+    for k in (
+        "state", "files_total", "files_done", "bytes_total", "bytes_done",
+        "speed_bps", "eta_sec", "current_path", "queued", "failed",
+        "paused", "deferred",
+    ):
+        assert k in pg, f"缺字段 {k}"
+    assert pg["state"] == "idle"  # 无统计时
+
+
+def test_progress_concurrent_reads_no_crash(tmp_path):
+    """两读线程与一次真实时钟同步并发：progress() 不抛异常、终态 idle。"""
+    n = 20
+    fake = FakeCtl(
+        responder_for(
+            generation=2,
+            manifest={
+                "entries": [
+                    {"path": f"x{i}.txt", "etag": f"e{i}", "size": 4}
+                    for i in range(n)
+                ]
+            },
+            presign_get={f"x{i}.txt": b"abcd" for i in range(n)},
+        )
+    )
+    eng = make_engine(tmp_path, fake, time.time, state=state_with(1, {}, {}))
+    errs: list = []
+
+    def reader():
+        try:
+            for _ in range(300):
+                pg = eng.progress()
+                assert pg["state"] in ("idle", "scanning", "syncing", "paused", "error")
+                assert pg["files_done"] <= pg["files_total"]
+        except Exception as exc:  # noqa: BLE001 - 捕获到测试断言
+            errs.append(repr(exc))
+
+    t1 = threading.Thread(target=reader)
+    t2 = threading.Thread(target=reader)
+    t1.start()
+    t2.start()
+    res = eng.run_once()  # 主线程跑同步
+    t1.join()
+    t2.join()
+    assert not errs
+    assert res["downloaded"] == n
+    pg = eng.progress()
+    assert pg["state"] == "idle"
+    assert pg["files_done"] == n

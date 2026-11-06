@@ -18,15 +18,20 @@ run_once 经 asyncio.to_thread 调用，必须是同步函数）。
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import json
 import logging
+import math
 import os
 import random
+import re
+import shutil
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .dial_gate import sync_dial_slot
 
@@ -97,6 +102,164 @@ def safe_rel_path(path: Any) -> Optional[str]:
     if parts[0] in _FORBIDDEN_ROOTS:
         return None
     return "/".join(parts)
+
+
+# ── 同步范围（S1：选择性同步配置 <root>/.sync/config.json） ──────────
+
+# 本地镜像只写 files/ 下；配置 pattern 与同步路径一律以此开头
+# （与服务端 manifest 校验同口径：禁 memory/、digest/ 等）。
+_SCOPE_PREFIX = "files/"
+# include 缺省（配置未提供/为空 → 同步 files/ 下全部）。
+DEFAULT_INCLUDE = ["files/**"]
+
+
+def validate_sync_pattern(pattern: Any) -> Optional[str]:
+    """校验同步范围 pattern（配置 PUT 共用）。
+
+    规则：非空、无 NUL/反斜杠、必须以 ``files/`` 开头、无空段/``.``/
+    ``..``。合法 → 规范化原串；非法 → None。
+    """
+    s = str(pattern or "").strip()
+    if not s or "\0" in s or "\\" in s:
+        return None
+    if not s.startswith(_SCOPE_PREFIX):
+        return None
+    if any(part in ("", ".", "..") for part in s.split("/")):
+        return None
+    return s
+
+
+def _glob_segment_regex(segment: str) -> str:
+    """单段 glob → 正则：``*`` 匹配不含 ``/`` 的任意串（单层）、
+    ``?`` 匹配单个非 ``/`` 字符，其余字符转义。
+
+    ``**`` 只作为**独立段**识别（见 _glob_to_regex）；段内的 ``*``
+    一律按单层语义。
+    """
+    out: List[str] = []
+    for ch in segment:
+        if ch == "*":
+            out.append("[^/]*")
+        elif ch == "?":
+            out.append("[^/]")
+        else:
+            out.append(re.escape(ch))
+    return "".join(out)
+
+
+@functools.lru_cache(maxsize=256)
+def _glob_to_regex(pattern: str) -> "re.Pattern[str]":
+    """按段 glob → 锚定正则。
+
+    语义：``*`` 单层（不跨 ``/``）；独立 ``**`` 段匹配**零个或多个**
+    完整段——``files/**`` 命中 ``files/a.txt`` 与 ``files/a/b/c.txt``；
+    头/中/尾 ``**`` 均可（``**/b`` 命中 ``b`` 本身与任意深度下的 ``b``；
+    ``a/**/b`` 命中 ``a/b`` 与 ``a/x/y/b``）。
+    """
+    segs = str(pattern).strip().strip("/").split("/")
+    collapsed: List[str] = []
+    for s in segs:
+        if s == "**" and collapsed and collapsed[-1] == "**":
+            continue
+        collapsed.append(s)
+    if not collapsed or collapsed == ["**"]:
+        return re.compile(r".*")
+    regex = ""
+    for i, seg in enumerate(collapsed):
+        last = i == len(collapsed) - 1
+        if seg == "**":
+            # 尾段：零或多个段（末段无需尾斜杠）；头/中段：零或多个「段/」
+            regex += ".*" if last else r"(?:[^/]+/)*"
+            continue
+        regex += _glob_segment_regex(seg)
+        if not last:
+            regex += "/"
+    return re.compile("^" + regex + "$")
+
+
+def should_sync(path: Any, cfg: Optional[Dict[str, Any]] = None) -> bool:
+    """判定 ``path`` 是否进入同步范围（纯函数，S1）。
+
+    ``cfg`` 为 config.json 的**单 human 条目**
+    ``{"include": [...], "exclude": [...]}``；缺省/空 → 默认 include
+    ``["files/**"]``、无 exclude。语义：命中至少一个 include **且**不
+    命中任何 exclude 才同步（exclude 优先）。路径按 safe_rel_path
+    归一（绝对路径/``..``/保留目录 → False）。
+    """
+    rel = safe_rel_path(path)
+    if rel is None:
+        return False
+    include = exclude = None
+    if isinstance(cfg, dict):
+        include = cfg.get("include")
+        exclude = cfg.get("exclude")
+    inc = (
+        [p for p in include if isinstance(p, str) and p.strip()]
+        if isinstance(include, list)
+        else []
+    ) or list(DEFAULT_INCLUDE)
+    if not any(_glob_to_regex(p).match(rel) for p in inc):
+        return False
+    if isinstance(exclude, list):
+        exc = [p for p in exclude if isinstance(p, str) and p.strip()]
+        if any(_glob_to_regex(p).match(rel) for p in exc):
+            return False
+    return True
+
+
+def default_human_cfg() -> Dict[str, List[str]]:
+    return {"include": list(DEFAULT_INCLUDE), "exclude": []}
+
+
+def human_cfg(
+    config: Optional[Dict[str, Any]], human: str
+) -> Dict[str, List[str]]:
+    """从整份配置取某 human 的生效范围（缺省项补齐）。"""
+    hc: Dict[str, Any] = {}
+    if isinstance(config, dict):
+        humans = config.get("humans")
+        if isinstance(humans, dict):
+            v = humans.get(str(human))
+            if isinstance(v, dict):
+                hc = v
+    inc = hc.get("include")
+    exc = hc.get("exclude")
+    return {
+        "include": (
+            [p for p in inc if isinstance(p, str)]
+            if isinstance(inc, list) and inc
+            else list(DEFAULT_INCLUDE)
+        ),
+        "exclude": (
+            [p for p in exc if isinstance(p, str)]
+            if isinstance(exc, list)
+            else []
+        ),
+    }
+
+
+def load_sync_config(config_file: Path) -> Dict[str, Any]:
+    """读 ``<root>/.sync/config.json``（缺失/损坏 → ``{"humans": {}}``）。"""
+    try:
+        data = json.loads(Path(config_file).read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            if not isinstance(data.get("humans"), dict):
+                data["humans"] = {}
+            return data
+    except Exception:  # noqa: BLE001 - 损坏按无配置
+        pass
+    return {"humans": {}}
+
+
+def save_sync_config(config_file: Path, config: Dict[str, Any]) -> None:
+    """原子写（tmp + os.replace，与 state.json 同款）。"""
+    p = Path(config_file)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(
+        json.dumps(config, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    os.replace(tmp, p)
 
 
 # ── HTTP 结果（统一形状：status_code / headers(小写键) / content） ────
@@ -170,10 +333,17 @@ class SyncEngine:
         self.lock_file = self.sync_dir / "lock"
         self.conflicts_log = self.sync_dir / "conflicts.log"
         self.files_dir = self.root / "files"
+        self.config_file = self.sync_dir / "config.json"
         self.sync_dir.mkdir(parents=True, exist_ok=True)
         self.files_dir.mkdir(parents=True, exist_ok=True)
         self._holding_lock = False
         self._last_error: Optional[str] = None
+        # S6 进度统计——引擎可能被后台循环线程与 API 工作线程同时读写，
+        # 全部经 _stats_lock（threading.Lock）。
+        self._stats_lock = threading.Lock()
+        self._stats = self._idle_progress()
+        self._speed_ema = 0.0
+        self._last_sample: Optional[Tuple[float, int]] = None
 
     # ── 对外接口 ─────────────────────────────────────────────────────
 
@@ -192,6 +362,326 @@ class SyncEngine:
             "locked": self._lock_held(),
             "humans": st.get("humans") or {},
         }
+
+    # ── S1 同步范围配置 ─────────────────────────────────────────────
+
+    def load_config(self) -> Dict[str, Any]:
+        return load_sync_config(self.config_file)
+
+    def save_config(self, config: Dict[str, Any]) -> None:
+        save_sync_config(self.config_file, config)
+
+    def human_scope(self, human: Optional[str] = None) -> Dict[str, List[str]]:
+        """当前（或指定）human 的生效范围（缺省项已补齐）。"""
+        return human_cfg(self.load_config(), str(human or self.human))
+
+    def should_sync(self, path: Any, human: Optional[str] = None) -> bool:
+        """实例便捷版：按本 human 配置判定。
+
+        范围判定键统一还原 ``files/`` 前缀——服务端契约路径即
+        ``files/<rel>``；既有骨架条目可能不带前缀（裸 ``<rel>``），
+        归一后判定，两种形状同口径。
+        """
+        rel = safe_rel_path(path)
+        if rel is None:
+            return False
+        key = rel if rel.startswith(_SCOPE_PREFIX) else _SCOPE_PREFIX + rel
+        return should_sync(key, self.human_scope(human))
+
+    # ── S6 进度（threading.Lock 保护，供 GET /sync/progress 快照） ──
+
+    @staticmethod
+    def _idle_progress() -> Dict[str, Any]:
+        return {
+            "state": "idle",
+            "files_total": 0,
+            "files_done": 0,
+            "bytes_total": 0,
+            "bytes_done": 0,
+            "speed_bps": 0.0,
+            "eta_sec": 0,
+            "current_path": None,
+            "queued": 0,
+            "failed": 0,
+            "paused": False,
+            "deferred": 0,
+        }
+
+    def progress(self) -> Dict[str, Any]:
+        """进度快照（无统计/未跑过 → ``state: "idle"`` 零值形）。"""
+        with self._stats_lock:
+            return dict(self._stats)
+
+    def _progress_begin(self) -> None:
+        with self._stats_lock:
+            self._stats = self._idle_progress()
+            self._stats["state"] = "scanning"
+            self._speed_ema = 0.0
+            self._last_sample = (self._now(), 0)
+
+    def _progress_plan(
+        self, files_total: int, bytes_total: int, deferred: int = 0
+    ) -> None:
+        with self._stats_lock:
+            self._stats["files_total"] = int(files_total)
+            self._stats["bytes_total"] = int(bytes_total)
+            self._stats["deferred"] = int(deferred)
+            self._stats["queued"] = int(files_total)
+            self._stats["state"] = "syncing"
+
+    def _progress_start_file(self, rel: str) -> None:
+        with self._stats_lock:
+            self._stats["current_path"] = rel
+
+    def _progress_deferred(self) -> None:
+        with self._stats_lock:
+            self._stats["deferred"] += 1
+
+    def _progress_finish_file(self, nbytes: int = 0, ok: bool = True) -> None:
+        """每完成一个文件更新一次（任务书 S6）；speed = 5s EMA。"""
+        now = self._now()
+        with self._stats_lock:
+            st = self._stats
+            st["files_done"] += 1
+            if not ok:
+                st["failed"] += 1
+            st["bytes_done"] += max(0, int(nbytes))
+            st["queued"] = max(
+                0, st["files_total"] - st["files_done"] - st["failed"]
+            )
+            last = self._last_sample
+            if last is not None:
+                dt = now - last[0]
+                db = st["bytes_done"] - last[1]
+                if dt > 0 and db > 0:
+                    inst = db / dt
+                    alpha = 1.0 - math.exp(-dt / 5.0)  # tau=5s
+                    self._speed_ema = (
+                        inst
+                        if self._speed_ema <= 0
+                        else alpha * inst + (1.0 - alpha) * self._speed_ema
+                    )
+                self._last_sample = (now, st["bytes_done"])
+            else:
+                self._last_sample = (now, st["bytes_done"])
+            speed = self._speed_ema
+            st["speed_bps"] = round(speed, 2) if speed > 0 else 0.0
+            remaining = st["bytes_total"] - st["bytes_done"]
+            st["eta_sec"] = (
+                round(remaining / speed, 1)
+                if (speed > 0 and remaining > 0)
+                else 0
+            )
+
+    def _progress_end(self, error: bool = False) -> None:
+        with self._stats_lock:
+            st = self._stats
+            st["state"] = "error" if error else "idle"
+            st["current_path"] = None
+            if not error:
+                st["queued"] = 0
+
+    # ── S2 取消同步（只删本地镜像，远端零调用/零 DELETE） ───────────
+
+    def unsync(
+        self,
+        paths: Any,
+        *,
+        human: Optional[str] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """取消同步：删除给定路径的**本地镜像**（目录则递归），远端
+        **零调用**（绝不发 DELETE）。
+
+        远端证据链（先证明远端确有此物，才允许动本地）：
+        ``GET /humans/{h}/files?recursive=1``（契约条目
+        ``{path:"files/<rel>", size, etag?, updatedAt?}``）；旧控制器
+        忽略 recursive=1 降级为普通列表（只有 ``name``、无 path/etag）
+        → 仅顶层条目可证明，深层路径证据不足。
+
+        判定（逐 path）：
+        - 非法路径 → ``refused: invalid_path``；
+        - 证据不足 → ``refused: remote_missing``（**force 也不放行**）；
+        - 远端 etag 与本地 state 记录 etag 均在且不一致 →
+          ``refused: etag_mismatch``（force 可绕过）；
+        - 无 etag 时退化为「存在性 + size 相同」：远端 size 为正且本地
+          为普通文件而大小不符 → ``refused: size_mismatch``（force 可绕过）。
+
+        返回 ``{"removed": [path...], "refused": [{"path", "refused"}]}``。
+        """
+        h = str(human or self.human)
+        listing = self._fetch_listing(h)
+        removed: List[str] = []
+        refused: List[Dict[str, str]] = []
+        for raw in (paths or []):
+            rel = safe_rel_path(raw)
+            if rel is None or not rel.startswith(_SCOPE_PREFIX):
+                refused.append({"path": str(raw), "refused": "invalid_path"})
+                continue
+            local_rel = rel[len(_SCOPE_PREFIX):]
+            ev = self._listing_evidence(listing, local_rel)
+            if ev is None:
+                refused.append({"path": rel, "refused": "remote_missing"})
+                continue
+            if not force:
+                reason = self._evidence_mismatch(ev, local_rel, h)
+                if reason:
+                    refused.append({"path": rel, "refused": reason})
+                    continue
+            target = self.files_dir / local_rel
+            try:
+                base = self.files_dir.resolve()
+                t = target.resolve()
+                if t != base and base not in t.parents:
+                    refused.append({"path": rel, "refused": "invalid_path"})
+                    continue
+            except Exception:  # noqa: BLE001
+                refused.append({"path": rel, "refused": "invalid_path"})
+                continue
+            try:
+                if target.is_dir():
+                    shutil.rmtree(target)
+                elif target.exists():
+                    target.unlink()
+            except Exception as exc:  # noqa: BLE001 - 删除失败如实上报
+                refused.append({"path": rel, "refused": f"local_delete_failed: {exc}"})
+                continue
+            removed.append(rel)
+        return {"removed": removed, "refused": refused}
+
+    def _fetch_listing(self, human: str) -> List[Dict[str, Any]]:
+        """``GET /humans/{h}/files?recursive=1`` → 归一化条目列表。
+
+        新控制器：条目带 ``path``（契约 ``files/<rel>``，剥前缀存
+        ``rel``）；旧控制器忽略 recursive=1 → 普通列表（只有 ``name``，
+        无 path/etag）→ 记为顶层证据（kind=top）。任何失败 → ``[]``
+        （全部 path 将 remote_missing 拒绝，保守）。
+        """
+        try:
+            r = self.ctl_call(
+                "GET",
+                f"/api/v1/humans/{human}/files",
+                params={"recursive": "1"},
+            )
+            if r.status_code != 200:
+                return []
+            body = r.json()
+        except Exception:  # noqa: BLE001
+            return []
+        raw: List[Any] = []
+        if isinstance(body, list):
+            raw = body
+        elif isinstance(body, dict):
+            for key in ("entries", "files", "items", "list"):
+                v = body.get(key)
+                if isinstance(v, list):
+                    raw = v
+                    break
+        out: List[Dict[str, Any]] = []
+        for e in raw:
+            if not isinstance(e, dict):
+                continue
+            p = e.get("path")
+            if isinstance(p, str):
+                rel = safe_rel_path(p)
+                if rel is None:
+                    continue
+                if rel.startswith(_SCOPE_PREFIX):
+                    rel = rel[len(_SCOPE_PREFIX):]
+                if not rel:
+                    continue
+                etag = e.get("etag") or e.get("ETag")
+                out.append(
+                    {
+                        "kind": "file",
+                        "rel": rel,
+                        "size": e.get("size"),
+                        "etag": str(etag) if etag else None,
+                    }
+                )
+                continue
+            name = safe_rel_path(e.get("name"))
+            if name and "/" not in name:
+                out.append(
+                    {
+                        "kind": "top",
+                        "rel": name,
+                        "size": e.get("size"),
+                        "etag": None,
+                    }
+                )
+        return out
+
+    @staticmethod
+    def _listing_evidence(
+        listing: List[Dict[str, Any]], local_rel: str
+    ) -> Optional[Dict[str, Any]]:
+        """为 ``files/<local_rel>`` 找远端证据。
+
+        - 显式文件条目（rel 相等）→ 该条目（带 size/etag）；
+        - 其下有条目（rel 以 ``local_rel + "/"`` 开头）→ 目录聚合
+          （count + 总 size，无 etag）；
+        - 旧控制器普通列表（kind=top）：仅单段 local_rel 可与顶层名
+          对应（深层路径不可证明 → 返回 None）。
+        找不到 → None（调用方按 remote_missing 拒绝）。
+        """
+        explicit: Optional[Dict[str, Any]] = None
+        under_count = 0
+        under_size = 0
+        for e in listing:
+            er = e.get("rel")
+            if not isinstance(er, str) or not er:
+                continue
+            if er == local_rel:
+                if e.get("kind") == "file" and explicit is None:
+                    explicit = e
+            elif er.startswith(local_rel + "/"):
+                under_count += 1
+                s = e.get("size")
+                if isinstance(s, (int, float)):
+                    under_size += int(s)
+        if explicit is not None:
+            return explicit
+        if under_count:
+            return {
+                "kind": "dir",
+                "rel": local_rel,
+                "size": under_size,
+                "etag": None,
+                "count": under_count,
+            }
+        parts = local_rel.split("/")
+        if len(parts) == 1:
+            for e in listing:
+                if e.get("kind") == "top" and e.get("rel") == parts[0]:
+                    return e
+        return None
+
+    def _evidence_mismatch(
+        self, ev: Dict[str, Any], local_rel: str, human: str
+    ) -> Optional[str]:
+        """远端证据 vs 本地镜像的 etag/size 核对，返回拒绝原因或 None。
+
+        etag：仅显式文件条目（kind=file）且两侧均有值时比较（旧控制器
+        普通列表无 etag → 自然退化为存在性 + size）；
+        size：远端 size 为正且本地是普通文件时比较（目录聚合/size 0/
+        本地缺失 → 仅存在性判定）。
+        """
+        if ev.get("kind") == "file" and ev.get("etag"):
+            st = self._load_state()
+            rec = (st.get("humans") or {}).get(human) or {}
+            local_etag = (rec.get("etags") or {}).get(local_rel)
+            if local_etag and str(local_etag) != str(ev["etag"]):
+                return "etag_mismatch"
+        size = ev.get("size")
+        p = self.files_dir / local_rel
+        if isinstance(size, (int, float)) and int(size) > 0:
+            try:
+                if p.is_file() and p.stat().st_size != int(size):
+                    return "size_mismatch"
+            except Exception:  # noqa: BLE001
+                pass
+        return None
 
     def run_once(self) -> Dict[str, Any]:
         """跑一轮同步（同步函数，供 asyncio.to_thread 调用）。
@@ -324,6 +814,21 @@ class SyncEngine:
     # ── 轮内主流程 ───────────────────────────────────────────────────
 
     def _run_locked(self) -> Dict[str, Any]:
+        """持锁一轮 = S6 进度包裹（scanning → syncing → idle/error）。
+
+        异常原样上抛（run_once 捕获转 ``{"error": ...}``），进度面先
+        标 error；被锁挡下的 run（locked）不碰进度——进度归持锁轮。
+        """
+        self._progress_begin()
+        try:
+            result = self._run_body()
+        except Exception:  # noqa: BLE001
+            self._progress_end(error=True)
+            raise
+        self._progress_end(error="error" in result)
+        return result
+
+    def _run_body(self) -> Dict[str, Any]:
         # 1) status——404/405/501 = 控制器无清单接口（旧版）→ 降级不重试。
         r = self.ctl_call(
             "GET", f"/api/v1/humans/{self.human}/sync/status"
@@ -366,6 +871,31 @@ class SyncEngine:
         prev_local = rec.get("local") or {}
         entry_paths = {e["path"] for e in entries}
 
+        # 3.5) S1 范围 + S6 计划：出范围条目 deferred（不下载/不上传，
+        #      清单条目保留——服务端存全量记录）；files_total/bytes_total
+        #      供进度展示（bytes_total 为已知 size 之和的估计值）。
+        scope_entries = [e for e in entries if self.should_sync(e["path"])]
+        new_locals = [
+            rel
+            for rel in local
+            if rel not in entry_paths and rel not in prev_local
+        ]
+        bytes_total = 0
+        for e in scope_entries:
+            s = e.get("size")
+            if isinstance(s, (int, float)):
+                bytes_total += int(s)
+        for rel in new_locals:
+            try:
+                bytes_total += int((self.files_dir / rel).stat().st_size)
+            except Exception:  # noqa: BLE001
+                pass
+        self._progress_plan(
+            len(scope_entries) + len(new_locals),
+            bytes_total,
+            deferred=len(entries) - len(scope_entries),
+        )
+
         new_etags: Dict[str, str] = dict(prev_etags)
         new_local: Dict[str, Dict[str, float]] = dict(prev_local)
         new_entries: Dict[str, Dict[str, Any]] = {
@@ -375,6 +905,14 @@ class SyncEngine:
 
         for e in entries:
             rel, etag = e["path"], e["etag"]
+            if not self.should_sync(rel):
+                # S1 出范围：deferred（不动本地/远端；清单条目写回时
+                # 保留——服务端是全量记录，范围是本端视角）。
+                self._progress_deferred()
+                continue
+            self._progress_start_file(rel)
+            moved = 0  # 本文件实际传输字节（进度 bytes_done 用）
+            ok = False  # 本文件是否完成（进度 failed 用）
             lnow = local.get(rel)
             prev_l = prev_local.get(rel)
             local_changed = lnow is not None and (
@@ -400,6 +938,8 @@ class SyncEngine:
                     and self._upload(cname, local_bytes)
                 ):
                     uploaded += 1
+                    moved += len(local_bytes)
+                    ok = True
                     cst = (self.files_dir / cname).stat()
                     c_etag = f"local:{_sha16(local_bytes)}"
                     new_local[cname] = {
@@ -413,15 +953,21 @@ class SyncEngine:
                 if self._download(rel):
                     downloaded += 1
                     changed += 1
+                    moved += int(self._stat_rel(rel)["size"])
+                    ok = True
                     new_etags[rel] = etag
                     new_local[rel] = self._stat_rel(rel)
                 conflicts += 1
+                self._progress_finish_file(moved, ok)
             elif remote_changed:
                 if self._download(rel):
                     downloaded += 1
                     changed += 1
+                    moved += int(self._stat_rel(rel)["size"])
+                    ok = True
                     new_etags[rel] = etag
                     new_local[rel] = self._stat_rel(rel)
+                self._progress_finish_file(moved, ok)
             elif local_changed:
                 try:
                     data = (self.files_dir / rel).read_bytes()
@@ -430,6 +976,8 @@ class SyncEngine:
                 if data is not None and self._upload(rel, data):
                     uploaded += 1
                     changed += 1
+                    moved = len(data)
+                    ok = True
                     u_etag = f"local:{_sha16(data)}"
                     new_etags[rel] = u_etag
                     new_local[rel] = {
@@ -438,9 +986,12 @@ class SyncEngine:
                     new_entries[rel] = {
                         "path": rel, "etag": u_etag, "size": len(data)
                     }
+                self._progress_finish_file(moved, ok)
             else:
                 skipped += 1
-                new_local[rel] = dict(lnow)
+                if lnow is not None:
+                    new_local[rel] = dict(lnow)
+                self._progress_finish_file(0, True)
 
         # 本地新文件（manifest 与 state 都未见）→ 上传；远端已删（state
         # 见过、本轮 manifest 无）→ 骨架级不实现删除语义，本地保留不追。
@@ -449,9 +1000,11 @@ class SyncEngine:
                 continue
             if rel in prev_local:
                 continue
+            self._progress_start_file(rel)
             try:
                 data = (self.files_dir / rel).read_bytes()
             except Exception:  # noqa: BLE001
+                self._progress_finish_file(0, ok=False)
                 continue
             if self._upload(rel, data):
                 uploaded += 1
@@ -462,6 +1015,9 @@ class SyncEngine:
                 new_entries[rel] = {
                     "path": rel, "etag": u_etag, "size": len(data)
                 }
+                self._progress_finish_file(len(data), ok=True)
+            else:
+                self._progress_finish_file(0, ok=False)
 
         # 5) 条件写回清单（If-Match；412 → 本轮结束不循环，state 不更新，
         #    下一轮重来）。
@@ -592,6 +1148,7 @@ class SyncEngine:
     # ── 本地扫描 / 读写 ──────────────────────────────────────────────
 
     def _scan_local(self) -> Dict[str, Dict[str, float]]:
+        """扫描本地镜像（S1：出范围文件不进入本轮——不上传、不比对）。"""
         out: Dict[str, Dict[str, float]] = {}
         if not self.files_dir.is_dir():
             return out
@@ -602,7 +1159,7 @@ class SyncEngine:
             except Exception:  # noqa: BLE001
                 continue
             rel = safe_rel_path(p.relative_to(self.files_dir).as_posix())
-            if rel is None:
+            if rel is None or not self.should_sync(rel):
                 continue
             st = p.stat()
             out[rel] = {"mtime": st.st_mtime, "size": st.st_size}
