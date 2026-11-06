@@ -97,6 +97,9 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     // （agentteams-install.sh L2747 AGENTTEAMS_DEFAULT_WORKER_RUNTIME:-qwenpaw）。
     runtime: "qwenpaw",
     model: "",
+    // C1a-2 provider-first：Provider 与模型成对（""=跟随默认）；
+    // doCreateWorker 随 createWorker body 的 modelProvider 下发。
+    provider: "",
     soul: "",
     busy: false,
   });
@@ -244,19 +247,26 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
           // runtime 透传（Worker CR spec.runtime；留空=安装默认 qwenpaw）。
           runtime: nw.runtime,
           model: nw.model.trim() || undefined,
+          // C1a-2：model 只是 alias，实际转发由 modelProvider 决定；
+          // 空=省略（跟随集群默认）。
+          modelProvider: nw.provider.trim() || undefined,
           soul: nw.soul.trim() || undefined,
         });
+        // 只创建——不写回任何 Team CR（加入团队走「团队配置 → 成员」）。
         antd.message.success(
-          nw.model.trim()
-            ? tr("Worker 已创建并加入团队成员（容器数分钟就绪）")
-            : tr("Worker 已创建并加入团队成员——未配模型（跟随集群默认），请在创建自检页确认"),
+          <div style={{ lineHeight: 1.8 }}>
+            <div>{nw.model.trim() ? tr("Worker 已创建") : tr("Worker 已创建——未配模型（跟随集群默认）")}</div>
+            <div style={{ fontSize: 12 }}>{tr("加入团队请在团队配置的成员列表中操作")}</div>
+          </div>,
+          6,
         );
+        // 本地建队表加一行（仅让表格显示新 Worker；不入任何 Team CR）。
         setWorkerRows((prev) => [
           ...prev,
-          { name, role: "worker", model: nw.model.trim(), modelOrig: nw.model.trim() },
+          { name, role: "worker", model: nw.model.trim(), modelOrig: nw.model.trim(), provider: nw.provider.trim() },
         ]);
-        setNw({ name: "", runtime: "qwenpaw", model: "", soul: "", busy: false });
-        // Worker CRD 变更（加入团队成员）→ 失效
+        setNw({ name: "", runtime: "qwenpaw", model: "", soul: "", provider: "", busy: false });
+        // Worker CRD 变更（新建=独立 Worker，不入任何团队）→ 失效
         // teams/admin 缓存再刷。
         invalidateTags(["teams", "admin"]);
         onRefresh?.(true, true);
@@ -353,27 +363,34 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     const proceed = async () => {
       setTBusy(true);
       try {
-        // 新建行（mode=new）：先按行 POST /workers（body 与独立创建一致）；
-        // 任一失败 → 抛错中止，团队不创建（不做部分成功）。
+        // 新建行（mode=new）：先按行 POST /workers（body 与独立创建一致，
+        // C1a-2 含 modelProvider 成对下发）；任一失败 → 抛错中止，
+        // 团队不创建（不做部分成功）。
         for (const r of rows) {
           if (r.mode !== "new") continue;
           await createWorker({
             name: r.name.trim(),
             runtime: (r.runtime || "").trim() || "qwenpaw",
             model: (r.model || "").trim() || undefined,
+            modelProvider: (r.provider || "").trim() || undefined,
           });
         }
-        // /：既有行上填的 model/soul 先落到 Worker CR（PUT 合并语义：
-        // 只发改动/非空；Team CRD 的 workerMembers 只是引用，model/soul
-        // 只存在于 Worker CR——建团缺陷的结构性根因）。
-        // 新建行跳过：model 已随创建落库，且新建行无 SOUL（表单不显示）。
+        // /：既有行上填的 model/provider/soul 先落到 Worker CR（PUT 合并语义：
+        // 只发改动/非空；Team CRD 的 workerMembers 只是引用，model/provider/
+        // soul 只存在于 Worker CR——建团缺陷的结构性根因）。C1a-2：model 与
+        // modelProvider 成对下发（provider 按 admin 现值 diff，未改不发）。
+        // 新建行跳过：model/provider 已随创建落库，且新建行无 SOUL（表单不显示）。
         for (const r of rows) {
           if (r.mode === "new") continue;
           const m = (r.model || "").trim();
+          const p = (r.provider || "").trim();
           const s = (r.soul || "").trim();
           const cur = catalog.modelOf(r.name.trim());
+          const curP =
+            workers.find((w) => w.name === r.name.trim())?.modelProvider || "";
           const body: Record<string, unknown> = {};
           if (m && m !== cur) body.model = m;
+          if (p && p !== curP) body.modelProvider = p;
           if (s) body.soul = s;
           if (Object.keys(body).length) {
             await updateWorker(r.name.trim(), body);

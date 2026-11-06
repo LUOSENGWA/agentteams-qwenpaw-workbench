@@ -238,6 +238,20 @@ export const chatDict: Record<string, { en: string }> = {
   "Provider 与模型成对刷写；留空=不改": {
     en: "Provider and model are painted as a pair; empty = leave unchanged",
   },
+  // ── M1：模型设置入口补全覆盖 + 创建 Worker 改成只创建（C1a-2）──
+  "创建 Worker": { en: "Create worker" },
+  "Worker 已创建": { en: "Worker created" },
+  "Worker 已创建——未配模型（跟随集群默认）": {
+    en: "Worker created — no model set (follows cluster default)",
+  },
+  "加入团队请在团队配置的成员列表中操作": {
+    en: "To add it to a team, edit the member list in team configuration",
+  },
+  // 辅助键（创建表单底部提示）：
+  "创建后由 Controller 调和器拉镜像起容器（数分钟就绪）。": {
+    en: "The Controller reconciler pulls the image and starts the container after creation (ready in minutes).",
+  },
+  "Provider（留空=跟随默认）": { en: "Provider (empty = follow default)" },
   // ── #1477 消费侧：Worker 列表瘦身（fields=spec,status）+ 写前读 detail ──
   "正在读取 Worker 配置…": { en: "Loading worker config…" },
   "读取 Worker 配置失败": { en: "Failed to load worker config" },
