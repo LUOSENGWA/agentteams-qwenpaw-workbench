@@ -234,3 +234,68 @@ export function diffDraft(
   }
   return out;
 }
+
+// ── 面（face）级分区 + 能力桶（F-CFG-3）─────────────────────────────
+//
+// OpenClaw/Hermes 的 surface 以 face 为结构单位（OpenClaw 16 个、Hermes
+// 102 个）；QwenPaw 的配置页则把「MCP / 工具 / 技能 / 频道 / 审批模式」
+// 作为独立能力，config 用 tab 分区。这里把 face 映射到同一套能力桶：
+// 能力桶进独立卡片，其余 face 进「运行配置」的 tabs。
+
+export type CapabilityBucket =
+  | "config"
+  | "mcp"
+  | "tools"
+  | "skills"
+  | "channels"
+  | "approval";
+
+/** face → 能力桶（runtime 相关）。未命中的 face 归 config。 */
+export function faceBucket(runtime: string, faceId: string): CapabilityBucket {
+  const id = (faceId || "").toLowerCase();
+  const rt = (runtime || "").toLowerCase();
+  if (rt === "openclaw") {
+    if (id === "mcp") return "mcp";
+    if (id === "tools") return "tools";
+    if (id === "skills-plugins") return "skills";
+    if (id === "channels" || id === "messaging" || id === "voice") return "channels";
+    if (id === "security") return "approval";
+    return "config";
+  }
+  if (rt === "hermes") {
+    if (id.startsWith("mcp")) return "mcp";
+    if (id === "toolsets" || id === "terminal") return "tools";
+    if (id.startsWith("skill")) return "skills";
+    if (id === "channels" || id === "messaging") return "channels";
+    if (id.includes("approval")) return "approval";
+    return "config";
+  }
+  return "config";
+}
+
+/** face 级分区（id 为 surface face id，非固定 SectionId 联合）。 */
+export interface FaceSection {
+  id: string;
+  label: string;
+  fields: PanelField[];
+}
+
+/** 按 face 拍平为分区（label 优先 face.label，其次 id）——tabs 与卡片共用。 */
+export function buildFaceSections(surface: RuntimeSurface): FaceSection[] {
+  return surface.faces.map((face) => ({
+    id: face.id,
+    label: face.label || face.id,
+    fields: face.fields.map((f) => ({ ...f })),
+  }));
+}
+
+/** 只保留属于给定能力桶的 face 字段（保持 face 顺序）。 */
+export function filterByBucket(
+  runtime: string,
+  surface: RuntimeSurface,
+  bucket: CapabilityBucket,
+): FaceSection[] {
+  return buildFaceSections(surface).filter(
+    (sec) => faceBucket(runtime, String(sec.id)) === bucket,
+  );
+}

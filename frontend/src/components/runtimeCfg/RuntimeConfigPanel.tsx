@@ -1,12 +1,16 @@
-// RuntimeConfigPanel — 运行时配置面板（C2 + F-CFG-2）。
+// RuntimeConfigPanel — 运行时配置面板（C2 + F-CFG-2/3）。
 //
-// 结构与 QwenPaw 控制台一致：**运行配置**用 tab 分区（reactAgent /
-// agentLoop / llmRetry / llmRateLimiter / context / memory /
-// embeddingModel / toolExecutionLevel），其余能力（MCP / 工具 / 技能 /
-// ACP / 检查点 / 其他）各自一张卡片，不再混在同一张长表里。
+// 结构对齐 QwenPaw 控制台：
+// - **运行配置**（bucket="config"）：按分区用 tab 展示。OpenClaw/Hermes 的
+//   surface 以 face 为单位（OpenClaw 16 个、Hermes 102 个）→ tab 标题 = face；
+//   QwenPaw 风格的 surface（无 face 分组）→ tab 标题 = 二级分组
+//   （reactAgent / agentLoop / llmRetry / llmRateLimiter / context / memory /
+//   embeddingModel / toolExecutionLevel）。
+// - **能力**（bucket=mcp/tools/skills/channels/approval）：各自一张卡片，
+//   只渲染映射到该能力的 face（见 lib/configSectionModel.faceBucket），
+//   不再把 MCP/工具/技能/频道/审批 塞进运行配置。
 //
-// 纯逻辑在 lib/configSectionModel（分组、过滤、diff）；本文件只负责布局与
-// 文案。字段渲染复用 CfgRow + SchemaField，不重写控件。
+// 纯逻辑在 lib/configSectionModel；字段渲染复用 CfgRow + SchemaField。
 import type * as ReactNS from "react";
 
 import { useThemeColors } from "../../theme";
@@ -14,13 +18,13 @@ import CfgRow from "./CfgRow";
 import SchemaField from "../schema/SchemaField";
 import {
   advancedFields,
+  buildSections,
   diffDraft,
+  filterByBucket,
   filterSection,
+  type CapabilityBucket,
   type PanelField,
-  type Section,
-  type SectionId,
 } from "../../lib/configSectionModel";
-import { buildSections } from "../../lib/configSectionModel";
 import type { RuntimeSurface } from "../../api/domains/memberConfig";
 
 const host = window.QwenPaw.host;
@@ -46,7 +50,7 @@ function collectConcreteValues(
   return out;
 }
 
-/** 二级段标题（QwenPaw 同款口径）；未知段原样显示。 */
+/** 二级段标题（无 face 分组的 surface）；未知段原样显示。 */
 const SUB_LABELS: Record<string, string> = {
   reactAgent: "React Agent",
   agentLoop: "Agent Loop",
@@ -58,18 +62,41 @@ const SUB_LABELS: Record<string, string> = {
   toolExecutionLevel: "工具执行级别",
 };
 
-const SECTION_ORDER: SectionId[] = [
-  "config",
-  "mcp",
-  "tools",
-  "skills",
-  "acp",
-  "checkpoints",
-  "other",
-];
+/** face 标题（OpenClaw/Hermes）；未知 face 原样显示。 */
+const FACE_LABELS: Record<string, string> = {
+  gateway: "网关",
+  models: "模型",
+  agents: "Agent",
+  tools: "工具",
+  channels: "频道",
+  messaging: "消息",
+  voice: "语音",
+  session: "会话",
+  automation: "自动化",
+  "skills-plugins": "技能与插件",
+  mcp: "MCP",
+  browser: "浏览器",
+  security: "安全",
+  observability: "可观测",
+  ui: "界面",
+  workspace: "工作区",
+  model: "模型",
+  providers: "提供方",
+  agent: "Agent",
+  terminal: "终端",
+  web: "Web",
+  worktrees: "工作树",
+  checkpoints: "检查点",
+  database: "数据库",
+  runtime: "运行时",
+};
 
 export interface RuntimeConfigPanelProps {
   surface: RuntimeSurface;
+  /** 运行时名（face→能力桶映射用）。 */
+  runtime?: string;
+  /** 渲染哪个能力桶（默认 config；能力卡片传 mcp/tools/…）。 */
+  bucket?: CapabilityBucket;
   /** 扁平点号键草稿（buildDraft 产物；通配为 concrete 键）。 */
   draft: Record<string, unknown>;
   /** 基线草稿（载入时 buildDraft）——「已改 N 项」与重置依据。 */
@@ -85,27 +112,33 @@ export interface RuntimeConfigPanelProps {
 }
 
 export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.Element {
-  const { surface, draft, initialDraft, onChange, disabled, errors, values } = props;
+  const {
+    surface,
+    runtime = "",
+    bucket = "config",
+    draft,
+    initialDraft,
+    onChange,
+    disabled,
+    errors,
+    values,
+  } = props;
   const translate: Tr = props.tr ?? ((text: string) => text);
   const t = useThemeColors();
 
   const [query, setQuery] = React.useState("");
   const [showAdvanced, setShowAdvanced] = React.useState(false);
 
-  const sections = React.useMemo<Section[]>(() => buildSections(surface), [surface]);
   const changed = React.useMemo(() => diffDraft(draft, initialDraft), [draft, initialDraft]);
 
-  const byId = React.useMemo(() => {
-    const m = new Map<SectionId, Section>();
-    for (const s of sections) m.set(s.id, s);
-    return m;
-  }, [sections]);
-
+  // face 模式：surface 有 face，且不是 QwenPaw（QwenPaw 用二级分组）。
+  const faceMode = surface.faces.length > 0 && runtime !== "qwenpaw";
+  const allSections = React.useMemo(() => buildSections(surface), [surface]);
   const advKeys = React.useMemo(() => {
     const set = new Set<string>();
-    for (const s of sections) for (const f of advancedFields(s)) set.add(f.key);
+    for (const s of allSections) for (const f of advancedFields(s)) set.add(f.key);
     return set;
-  }, [sections]);
+  }, [allSections]);
 
   const visible = React.useCallback(
     (fields: PanelField[]): PanelField[] =>
@@ -134,40 +167,57 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
     );
   };
 
-  // ── 运行配置：tab 分区 ──────────────────────────────────────────
-  const configSection = byId.get("config");
-  const configTabs = React.useMemo(() => {
-    if (!configSection) return [];
-    const filtered = filterSection(configSection, query);
+  // ── 分区（tab 项）──────────────────────────────────────────────
+  const tabs = React.useMemo(() => {
+    if (faceMode) {
+      return filterByBucket(runtime, surface, bucket)
+        .map((face) => {
+          const sec = allSections.find((s) => s.id === face.id);
+          const filtered = sec ? filterSection(sec, query) : null;
+          return {
+            key: face.id,
+            label: translate(FACE_LABELS[face.id] ?? face.label),
+            fields: visible(filtered ? filtered.fields : face.fields),
+          };
+        })
+        .filter((tab) => tab.fields.length > 0);
+    }
+    const configSec = allSections.find((s) => s.id === "config");
+    if (!configSec) return [];
+    const filtered = filterSection(configSec, query);
     return filtered.subSections
       .map((sub) => ({
         key: sub.id,
         label: translate(SUB_LABELS[sub.id] ?? sub.id),
         fields: visible(sub.fields),
       }))
-      .filter((sub) => sub.fields.length > 0);
-  }, [configSection, query, translate, visible]);
+      .filter((tab) => tab.fields.length > 0);
+  }, [faceMode, runtime, surface, bucket, allSections, query, translate, visible]);
 
-  // ── 其余能力：各自卡片 ─────────────────────────────────────────
-  const cards = React.useMemo(() => {
-    const out: { id: SectionId; title: string; fields: PanelField[] }[] = [];
-    for (const id of SECTION_ORDER) {
-      if (id === "config") continue;
-      const sec = byId.get(id);
-      if (!sec) continue;
-      const filtered = filterSection(sec, query);
-      const fields = visible(filtered.fields);
-      if (fields.length === 0) continue;
-      out.push({ id, title: translate(sec.label), fields });
-    }
-    return out;
-  }, [byId, query, translate, visible]);
+  // 非 config 桶且 face 多于一个：每个 face 一个分组标题（卡片内分节）。
+  const groups = React.useMemo(() => {
+    if (!faceMode || bucket === "config") return [];
+    return filterByBucket(runtime, surface, bucket)
+      .map((face) => {
+        const sec = allSections.find((s) => s.id === face.id);
+        const filtered = sec ? filterSection(sec, query) : null;
+        return {
+          id: face.id,
+          title: translate(FACE_LABELS[face.id] ?? face.label),
+          fields: visible(filtered ? filtered.fields : face.fields),
+        };
+      })
+      .filter((g) => g.fields.length > 0);
+  }, [faceMode, bucket, runtime, surface, allSections, query, translate, visible]);
 
-  const hitCount =
-    configTabs.reduce((n, tab) => n + tab.fields.length, 0) +
-    cards.reduce((n, c) => n + c.fields.length, 0);
+  const faceCount = faceMode ? filterByBucket(runtime, surface, bucket).length : tabs.length;
+  const hitCount = faceMode
+    ? groups.length > 0
+      ? groups.reduce((n, g) => n + g.fields.length, 0)
+      : tabs.reduce((n, tab) => n + tab.fields.length, 0)
+    : tabs.reduce((n, tab) => n + tab.fields.length, 0);
 
-  if (sections.length === 0) {
+  if (faceCount === 0 && !faceMode) {
     return (
       <div style={{ padding: 12, fontSize: 12, color: t.textSecondary }}>
         {translate("暂无可配置字段")}
@@ -175,14 +225,23 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
     );
   }
 
+  // 能力桶没有对应 face：诚实空态（该运行时没有这部分）。
+  if (faceMode && faceCount === 0) {
+    return (
+      <div style={{ padding: 12, fontSize: 12, color: t.textSecondary }}>
+        {translate("该运行时没有这部分配置面")}
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+    <div style={{ display: "grid", gap: 10, minWidth: 0, maxWidth: "100%" }}>
       {/* 工具行：搜索 + 显示高级 + 已改计数 + 重置 */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <antd.Input
           size="small"
           allowClear
-          style={{ flex: 1, minWidth: 120, maxWidth: 260 }}
+          style={{ flex: "1 1 160px", minWidth: 0, maxWidth: 280 }}
           placeholder={translate("搜索字段…")}
           value={query}
           onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => setQuery(ev.target.value)}
@@ -207,30 +266,31 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
         </antd.Button>
       </div>
 
-      {/* 运行配置（tab 分区） */}
-      {configTabs.length > 0 ? (
-        <antd.Card
+      {/* 能力桶：多 face 时按 face 分节（卡片内） */}
+      {groups.length > 0 ? (
+        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+          {groups.map((g) => (
+            <div key={g.id} style={{ display: "grid", gap: 8, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 12 }}>{g.title}</div>
+              {g.fields.map(renderField)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <antd.Tabs
           size="small"
-          title={translate("运行配置")}
-          styles={{ body: { paddingTop: 4 } }}
-        >
-          <antd.Tabs
-            size="small"
-            items={configTabs.map((tab) => ({
-              key: tab.key,
-              label: tab.label,
-              children: <div style={{ display: "grid", gap: 8 }}>{tab.fields.map(renderField)}</div>,
-            }))}
-          />
-        </antd.Card>
-      ) : null}
-
-      {/* 其余能力卡片 */}
-      {cards.map((card) => (
-        <antd.Card key={card.id} size="small" title={card.title}>
-          <div style={{ display: "grid", gap: 8 }}>{card.fields.map(renderField)}</div>
-        </antd.Card>
-      ))}
+          style={{ minWidth: 0 }}
+          items={tabs.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            children: (
+              <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                {tab.fields.map(renderField)}
+              </div>
+            ),
+          }))}
+        />
+      )}
     </div>
   );
 }

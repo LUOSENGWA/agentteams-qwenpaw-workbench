@@ -126,7 +126,7 @@ export default function ResourceCards({
         title: tr("运行配置"),
         desc: nonQwenpaw ? tr("该运行时的配置面（L1 可编辑）") : tr("并发 / 上下文 / shell 组（L1 可编辑）"),
         icon: SettingsIcon,
-        width: 720,
+        width: 960,
       });
     }
     // 环境变量卡——仅 envEditable === true（L2 隐藏，与旧拓扑同门控）。
@@ -170,8 +170,6 @@ export default function ResourceCards({
             : tr("CRD 声明 + Worker 自注册合并视图"),
         icon: PlugIcon,
         width: 720,
-        // QwenPaw-only：合并视图含 worker QwenPaw 自注册腿（/api/mcp）。
-        qwenpawOnly: true,
       },
       {
         id: "plugins",
@@ -198,8 +196,6 @@ export default function ResourceCards({
         desc: tr("内置工具启用列表"),
         icon: WrenchIcon,
         width: 720,
-        // QwenPaw-only：内置工具端点 = QwenPaw app 工具集（#1255）。
-        qwenpawOnly: true,
       },
       {
         id: "channels",
@@ -211,7 +207,7 @@ export default function ResourceCards({
       {
         id: "approval",
         title: tr("审批模式"),
-        desc: tr("审批档位（QwenPaw 独有）"),
+        desc: tr("审批档位"),
         icon: ShieldIcon,
         width: 720,
       },
@@ -286,19 +282,75 @@ export default function ResourceCards({
             />
           );
         case "mcp":
-          return <WorkerMcpPanel worker={worker} sheet />;
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-mcp-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="mcp"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
+            <WorkerMcpPanel worker={worker} sheet />
+          );
         case "plugins":
           return <WorkerPluginsPanel worker={worker} sheet />;
         case "skills":
-          return (
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-skills-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="skills"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
             <SkillCenter onlyWorker={worker.name} sections={["catalog", "matrix"]} />
           );
         case "tools":
-          return <WorkerTools workers={[worker]} />;
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-tools-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="tools"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
+            <WorkerTools workers={[worker]} />
+          );
         case "channels":
-          return <WorkerChannels workers={[worker]} active />;
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-ch-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="channels"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
+            <WorkerChannels workers={[worker]} active />
+          );
         case "approval":
-          return (
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-appr-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="approval"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
             <ApprovalControl
               workerName={worker.name}
               runtime={worker.runtime}
@@ -393,8 +445,12 @@ export default function ResourceCards({
           footer={null}
           styles={{
             body: {
-              maxHeight: "min(70vh, 720px)",
+              maxHeight: "min(72vh, 760px)",
               overflowY: "auto",
+              // 横向不滚：内容自身收缩（宽表面板/长字段名），需要横向滚的
+              // 子表各自带容器滚动，不在弹窗体上出现整条横向滚动条。
+              overflowX: "hidden",
+              minWidth: 0,
               paddingTop: 4,
             },
           }}

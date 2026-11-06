@@ -257,10 +257,13 @@ ok("源码接线：RuntimeConfigPanel 复用 CfgRow/SchemaField；config 走 Tab
   assert.match(panelSrc, /import\s+SchemaField\s+from\s+["']\.\.\/schema\/SchemaField["']/);
   assert.match(panelSrc, /import\s*{[^}]*buildSections[^}]*}\s*from\s+["']\.\.\/\.\.\/lib\/configSectionModel["']/s);
   assert.match(panelSrc, /tr\?: Tr/); // tr 由调用方传入
-  // F-CFG-2 结构：运行配置用 tab 分区，其余能力各自一张卡片。
+  // F-CFG-3 结构：面板按能力桶渲染（config → tabs；能力桶 → 分节），
+  // 能力卡片由 ResourceCards 传 bucket 决定。
   assert.match(panelSrc, /antd\.Tabs/);
-  assert.match(panelSrc, /antd\.Card/);
+  assert.match(panelSrc, /filterByBucket/);
+  assert.match(panelSrc, /bucket\?: CapabilityBucket/);
   assert.match(panelSrc, /SUB_LABELS/);
+  assert.match(panelSrc, /FACE_LABELS/);
 });
 
 ok("生产代码不依赖夹具：模型与面板源码均无 fixtures/readFileSync/hermes-surface 引用", () => {

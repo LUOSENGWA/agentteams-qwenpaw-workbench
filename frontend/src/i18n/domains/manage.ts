@@ -3,6 +3,20 @@
 // 原域字典，此处只收本重构新增、且全库字典无键的中文字符串）。
 
 export const manageDict: Record<string, { en: string }> = {
+  // ── 运行时配置：能力桶与 face 标题（F-CFG-3）──
+  "该运行时没有这部分配置面": { en: "This runtime exposes no fields for this section" },
+  "网关": { en: "Gateway" },
+  "自动化": { en: "Automation" },
+  "技能与插件": { en: "Skills & plugins" },
+  "浏览器": { en: "Browser" },
+  "可观测": { en: "Observability" },
+  "界面": { en: "Interface" },
+  "提供方": { en: "Providers" },
+  "终端": { en: "Terminal" },
+  "数据库": { en: "Database" },
+  "语音": { en: "Voice" },
+  "安全": { en: "Security" },
+
 
   // ── 运行时配置面板（C2 / F-CFG-2）──
   "显示高级": { en: "Show advanced" },

@@ -26,6 +26,7 @@ import { classifyLoadError, classifyWriteError } from "../lib/memberConfigErrors
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
 import RuntimeConfigPanel from "./runtimeCfg/RuntimeConfigPanel";
+import type { CapabilityBucket } from "../lib/configSectionModel";
 import SurfaceStatus, { type SurfaceBanner } from "./surface/SurfaceStatus";
 import { SettingsIcon } from "./icons";
 import { OpenClawIcon } from "./OpenClawIcon";
@@ -56,8 +57,10 @@ export default function WorkerRuntimeConfigSurface(props: {
   l1?: boolean;
   sheet?: boolean;
   onChanged?: () => void;
+  /** 渲染哪个能力桶（默认 config；能力卡片传 mcp/tools/…）。 */
+  bucket?: CapabilityBucket;
 }): JSX.Element | null {
-  const { name, runtime, l1, sheet, onChanged } = props;
+  const { name, runtime, l1, sheet, onChanged, bucket = "config" } = props;
   const tr = useT();
   const t = useThemeColors();
 
@@ -393,6 +396,8 @@ export default function WorkerRuntimeConfigSurface(props: {
         {surface ? (
               <RuntimeConfigPanel
                 surface={surface}
+                runtime={runtime}
+                bucket={bucket}
                 draft={draft}
                 initialDraft={initialDraft}
                 onChange={onField}
