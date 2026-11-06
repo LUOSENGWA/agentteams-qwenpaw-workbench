@@ -280,20 +280,24 @@ try {
     assert.ok(!calls.some((c) => c.path.includes("commit")), "直传无 commit 记账");
   });
 
-  await ok("presign 404 → 不回落，原样上抛", async () => {
+  await ok("presign 404 → 回落直传（#1668 旧版控制器无该路由）", async () => {
     reset();
     storageCalls.length = 0;
     route(
       /^\/agentteams-proxy\/controller\/api\/v1\/humans\/luo\/files\/c\.txt\?presign=1$/,
-      () => json(404, { message: "not a member" }),
+      () => new Response("Not Found", { status: 404 }),
+    );
+    route(
+      /^\/agentteams-proxy\/controller\/api\/v1\/humans\/luo\/files\/c\.txt$/,
+      () => json(200, { path: "files/c.txt", size: 1, etag: "d404" }),
     );
     const file = new File(["z"], "c.txt");
-    await assert.rejects(
-      () => uploadFile("luo", "c.txt", file),
-      (e: unknown) => e instanceof HumanFilesError && e.status === 404,
-      "404（非部署未开）→ 抛 HumanFilesError(404)",
-    );
-    assert.equal(storageCalls.length, 0);
+    const r = await uploadFile("luo", "c.txt", file);
+    assert.equal(r.via, "direct", "404 = 旧版无路由 → 回落直传（#1668）");
+    assert.equal(r.etag, "d404");
+    assert.equal(calls[1].path, `${P}/c.txt`);
+    assert.equal(calls[1].init?.method, "PUT");
+    assert.equal(storageCalls.length, 0, "回落不触达对象存储");
   });
 
   await ok("file.size > maxBytes → 前端拦截（code=max_bytes，不发送）", async () => {

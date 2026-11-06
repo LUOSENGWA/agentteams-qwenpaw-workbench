@@ -600,8 +600,9 @@ export interface PresignUploadResponse {
 }
 
 /** presignUpload 类型化结果（不 throw）：
- * ok=false status 500/501 → 调用方回落直传（writeFileSync）；
- * 404 非成员 / 413 配额已满 → 直接上抛 UI 文案。 */
+ * ok=false status → 调用方按 shouldFallbackToDirect 判定：
+ * 404/405/5xx = 预签名不可用 → 回落直传（writeFileSync）；
+ * 401/403/409/412/413 = 权限与业务限制 → 直接上抛 UI 文案。 */
 export type PresignUploadResult =
   | { ok: true; value: PresignUploadResponse }
   | { ok: false; status: number; code?: string; message: string };
@@ -651,6 +652,21 @@ export function isTicketExpired(expiresAt: string | undefined, now: number = Dat
   const t = Date.parse(expiresAt);
   if (Number.isNaN(t)) return false;
   return t <= now;
+}
+
+/** 预签名不可用 → 应回落直传的状态码集合。
+ *  404/405：控制器没有该路由/方法（旧版）
+ *  500/501/502/503：部署未开预签名 / 上游不可用
+ *  401/403/409/412/413 不回落：权限与业务限制，回落只会得到同样错误。 */
+export function shouldFallbackToDirect(status: number): boolean {
+  return (
+    status === 404 ||
+    status === 405 ||
+    status === 500 ||
+    status === 501 ||
+    status === 502 ||
+    status === 503
+  );
 }
 
 /** 对象上传到预签名 URL：PUT → 裸 body（不带 Content-Type——S3 签名头
@@ -718,14 +734,17 @@ export interface UploadFileResult {
   path: string;
   size: number;
   etag: string;
-  /** presign = 预签名成功（commit 已记账）；direct = presign 500/501 回落直传。 */
+  /** presign = 预签名成功（commit 已记账）；direct = presign 不可用
+   * （shouldFallbackToDirect：404/405/5xx）回落直传。 */
   via: "presign" | "direct";
 }
 
 /**
  * 上传统一入口（UI 唯一调用点）：
- * 1. presignUpload——500/501（部署未开）→ 回落 writeFileSync 直传（与旧
- *    行为零变化）；404/413 等 → 原样抛 HumanFilesError（UI 按 status/code 文案）。
+ * 1. presignUpload——预签名不可用（shouldFallbackToDirect：404/405 旧版
+ *    无路由/方法、500/501/502/503 部署未开/上游不可用）→ 回落
+ *    writeFileSync 直传；401/403/409/412/413 等 → 原样抛
+ *    HumanFilesError（UI 按 status/code 文案）。
  * 2. 票已过期（expiresAt ≤ now，极慢页面）→ 重签一次。
  * 3. file.size > maxBytes → 前端拦截不发送（code=max_bytes，message=上限
  *    字节数字符串，UI 用 fmtBytes(Number(message)) 格式化）。
@@ -741,7 +760,9 @@ export async function uploadFile(
 ): Promise<UploadFileResult> {
   let r = await presignUpload(humanName, path);
   if (!r.ok) {
-    if (r.status === 500 || r.status === 501) {
+    if (shouldFallbackToDirect(r.status)) {
+      // 预签名不可用（旧版控制器 / 部署未开）→ 直传；原状态不吞——
+      // 直传自身失败仍按直传响应的 status/code 上抛。
       const d = await writeFileSync(humanName, path, file);
       return { ...d, via: "direct" };
     }
@@ -776,7 +797,8 @@ export interface PresignDownloadResponse {
   expiresAt?: string;
 }
 
-/** presignDownload 类型化结果（不 throw）：500/501 → UI 回落现有直下。 */
+/** presignDownload 类型化结果（不 throw）：status → shouldFallbackToDirect
+ * 判定，预签名不可用 → UI 回落现有直下。 */
 export type PresignDownloadResult =
   | { ok: true; value: PresignDownloadResponse }
   | { ok: false; status: number; code?: string; message: string };

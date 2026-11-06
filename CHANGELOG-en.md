@@ -3,6 +3,11 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.68 (2026-11-07 · direct upload when presigning is absent)
+
+**Fixed**
+- Older controllers answer `POST …/files/{path}?presign=1` with **405** (no such route), but the client only treated 500/501 as "presigning unavailable", so uploads failed. A single predicate now decides: **404/405 and 5xx fall back to the streamed upload**, while `401/403/409/412/413` surface as real errors (a fallback would only repeat them). Upload and download share it.
+
 ## 0.5.0-beta.16.67 (2026-11-07 · file page cleanup · workspace access)
 
 **Improved**

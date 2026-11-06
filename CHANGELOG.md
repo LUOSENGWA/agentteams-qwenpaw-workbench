@@ -3,6 +3,11 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.68（2026-11-07 · 预签名不可用时自动直传）
+
+**修复**
+- 旧控制器对 `POST …/files/{path}?presign=1` 返回 **405**（无该路由），而前端只把 500/501 当作「预签名不可用」，导致**上传直接失败**。现在统一由 `shouldFallbackToDirect(status)` 判定：**404/405 与 5xx 回落直传**；`401/403/409/412/413` 不回落（权限/业务限制，回落只会重复报错）。上传与下载共用同一判定。
+
 ## 0.5.0-beta.16.67（2026-11-07 · 文件页去重 / 工作区访问）
 
 **改进**

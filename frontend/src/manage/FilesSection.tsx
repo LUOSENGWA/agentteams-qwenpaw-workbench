@@ -53,6 +53,7 @@ import {
   presignDownload,
   purgeTrash,
   restoreTrash,
+  shouldFallbackToDirect,
   uploadFile,
   writeFileSync,
   type HumanFileEntry,
@@ -213,8 +214,8 @@ const LARGE_FILE_BYTES = 8 * 1024 * 1024;
 
 /** 统一下载入口（#1501）：
  * - size ≥ 8MiB → presignDownload 取票；expiresAt 过期（UI 判）→ 重取一次；
- *   500/501（部署未开）→ 回落现有直下；其余错误 → 报文案不下载；
- *   票取到但 URL 拉取失败 → 回落直下。
+ *   预签名不可用（shouldFallbackToDirect：404/405/5xx）→ 回落现有直下；
+ *   其余错误 → 报文案不下载；票取到但 URL 拉取失败 → 回落直下。
  * - size < 8MiB / 未知 → 现有 downloadViaHost 直下（零变化）。
  * 返回是否成功（失败 UI 已自报文案或返回 false 由调用方报「下载失败」）。 */
 async function doDownload(
@@ -227,17 +228,17 @@ async function doDownload(
   if (typeof size === "number" && size >= LARGE_FILE_BYTES) {
     let r = await presignDownload(humanName, path);
     if (r.ok && isTicketExpired(r.value.expiresAt)) {
-      // 过期重取一次；重取仍失败且非 500/501 → 报错。
+      // 过期重取一次；重取仍失败且非回落集合 → 报错。
       const r2 = await presignDownload(humanName, path);
       if (r2.ok) r = r2;
-      else if (r2.status !== 500 && r2.status !== 501) {
+      else if (!shouldFallbackToDirect(r2.status)) {
         antd.message.error(hfErrorText(new HumanFilesError(r2.status, r2.message, r2.code), tr));
         return false;
       }
     }
     if (!r.ok) {
-      if (r.status === 500 || r.status === 501) {
-        // 部署未开 → 下方回落直下。
+      if (shouldFallbackToDirect(r.status)) {
+        // 预签名不可用 → 下方回落直下。
       } else {
         antd.message.error(hfErrorText(new HumanFilesError(r.status, r.message, r.code), tr));
         return false;
