@@ -3,6 +3,22 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.62 (2026-11-06 - One conditional cache for stable reads, skills validators)
+
+**Refactor / performance**
+- **Removed a duplicate conditional-cache implementation**: the worker list carried its own ETag store that
+  overlapped with the shared request cache (TTL + tag invalidation + `If-None-Match` revalidation + reuse of the
+  previous body). The duplicate is gone; the list and the skill catalog now both go through the shared cache, so
+  there is exactly one revalidation path and no chance of the two drifting apart.
+- **Skill catalog revalidates**: its reads now send `If-None-Match`, and a `304` reuses the local data (same
+  cache semantics; writes invalidate through the existing tags).
+- Note: the controller also serves stable ETags for `/version`, `/mcp-servers` and `/gateway/ai-routes`; this
+  plugin does not read the first two directly (MCP goes through the per-worker endpoint), and gateway routes
+  already revalidated.
+
+**Gates**
+- 96 pure-logic tests across 6 suites pass; type check has no new errors; the build succeeds.
+
 ## 0.5.0-beta.16.61 (2026-11-06 - Parallel slim worker polling with conditional revalidation; restart and hot-applied primary model)
 
 **Performance**
