@@ -3,6 +3,17 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.74（2026-11-07 · 配置页按 QwenPaw 结构重排 + i18n）
+
+**改进**
+- **运行配置用 tab 分区**：reactAgent / Agent Loop / LLM 重试 / LLM 限流 / 上下文 / 记忆 / 嵌入模型 / 工具执行级别，与 QwenPaw 控制台一致；
+- **其余能力各自卡片**：MCP / 工具 / 技能 / ACP / 检查点 / 其他 各一张卡，不再混在一张长表里；
+- 搜索、显示高级、已改计数、重置统一放在顶部工具行，作用于 tabs 与卡片；
+- 分区标题全部走 i18n 字典（新增 10 个键），不再写死中英混排。
+
+**修复**
+- 控制器缺少 `ModelAccessTable` CRD 时 `/model-access-tables` 返回 500「no matches for kind」，此前会当错误弹出；现在按「不支持」降级为空态。
+
 ## 0.5.0-beta.16.73（2026-11-07 · 运行时配置分组）
 
 **改进**

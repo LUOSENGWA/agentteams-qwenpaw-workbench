@@ -3,6 +3,17 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.74 (2026-11-07 · config page mirrors QwenPaw layout · i18n)
+
+**Improved**
+- **Runtime config is tabbed**: reactAgent / Agent Loop / LLM retry / LLM rate limiter / context / memory / embedding model / tool execution level, matching the QwenPaw console.
+- **Each hosted capability gets its own card**: MCP / tools / skills / ACP / checkpoints / other, instead of one long table.
+- Search, show-advanced, changed count and reset sit in one toolbar above both the tabs and the cards.
+- Section titles come from the i18n dictionary (10 new keys), no more mixed-language literals.
+
+**Fixed**
+- A controller without the `ModelAccessTable` CRD answers 500 "no matches for kind"; that is now treated as an unsupported capability (empty state) instead of an error.
+
 ## 0.5.0-beta.16.73 (2026-11-07 · grouped runtime config)
 
 **Improved**
