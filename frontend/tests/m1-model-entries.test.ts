@@ -68,7 +68,7 @@ ok("团队表单：行级 Provider 选择 + 候选按 Provider 过滤 + provider
 ok("团队表单：选中已有 Worker 预填其 CR 现值 modelProvider（diff 基线）", () => {
   assert.match(
     teamFormSrc,
-    /workers\.find\(\(x\) => x\.name === v\)\?\.modelProvider \|\| "",/,
+    /workers\.find\(\(x\) => x\.name === v\)\?\.modelProvider \|\| ""/,
   );
 });
 
