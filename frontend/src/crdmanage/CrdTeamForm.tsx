@@ -4,8 +4,24 @@
 
 import type * as ReactNS from "react";
 
-import type { AdminData } from "../api";
-import { modelVerdictText, validateModelValue } from "../modelUnion";
+import {
+  fetchGatewayAiProviders,
+  fetchGatewayAiRoutes,
+  type AdminData,
+} from "../api";
+import {
+  buildModelSelectionOptions,
+  type LlmProviderLite,
+  type ModelSelectionOption,
+} from "../modelCatalog";
+import {
+  extractGatewayLists,
+  filterModelOptionsByProvider,
+  modelVerdictText,
+  providerForModel,
+  providerModelMismatch,
+  validateModelValue,
+} from "../modelUnion";
 import type { ThemeColors } from "../theme";
 import { CheckIcon, ClipIcon, CloseIcon, DocIcon, WarnIcon } from "../components/icons";
 import { WbTooltip } from "../components/WbTooltip";
@@ -67,6 +83,47 @@ export default function CrdTeamForm({
   tr,
   t,
 }: CrdTeamFormProps) {
+  // C1a-2 provider-first：成员行 Provider 名单 + 网关 alias→provider 映射
+  // （与 CrdCfgModal 同源数据）。父组件（建队卡接线）不在本单白名单、
+  // 传不进 props → 叶子直调请求缓存包裹的取数：cachedRequest（30s TTL +
+  // in-flight 去重）+ LRU，同屏 catalog 实例挂载即已拉取 → 命中缓存/
+  // 复用同 key 在途 Promise，零新增网络请求。
+  const [providers, setProviders] = React.useState<LlmProviderLite[]>([]);
+  const [gatewayOpts, setGatewayOpts] = React.useState<
+    ModelSelectionOption[] | null
+  >(null);
+  React.useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const [routes, provs] = await Promise.all([
+          fetchGatewayAiRoutes(),
+          fetchGatewayAiProviders(),
+        ]);
+        if (!live) return;
+        if (!routes.available || !provs.available) {
+          setGatewayOpts(null); // 无 Console 会话=正常降级（非错误）
+          setProviders([]);
+          return;
+        }
+        // 共享解包 + 共享构建（与 useModelCatalog 同源零分叉）。
+        const { routesList, providersList } = extractGatewayLists(
+          routes.data,
+          provs.data,
+        );
+        setGatewayOpts(buildModelSelectionOptions(routesList, providersList));
+        setProviders(providersList);
+      } catch {
+        if (live) {
+          setGatewayOpts(null);
+          setProviders([]);
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
   return (
       <antd.Card
         size="small"
@@ -166,6 +223,7 @@ export default function CrdTeamForm({
                         name: "",
                         model: "",
                         modelOrig: "",
+                        provider: "",
                         soul: "",
                         soulOpen: false,
                         ...(v === "new" ? { runtime: "qwenpaw" } : { runtime: undefined }),
@@ -234,10 +292,13 @@ export default function CrdTeamForm({
                       onWorkerPick={(v: string) => {
                         // 选中即预填该 Worker CR 现值（diff 基线）
                         const mm = modelOf(v);
+                        const pp =
+                          workers.find((x) => x.name === v)?.modelProvider || "";
                         updateRow(i, {
                           name: v,
                           model: mm,
                           modelOrig: mm,
+                          provider: pp,
                           soul: "",
                           soulOpen: false,
                         });
@@ -247,19 +308,40 @@ export default function CrdTeamForm({
                     />
                   )}
                 </div>
-                {/* /：行级模型（AutoComplete + 写前校验实时提示） */}
+                {/* C1a-2 provider-first：行级 Provider 在模型前（与配置团队
+行同几何）；候选按 Provider 过滤，失配黄字提示不阻塞。 */}
                 <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
                   {tr("模型")}
                 </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
 {/* ：240 定宽，与配置团队/Manager 表同几何。 */}
+                  <antd.AutoComplete
+                    size="small"
+                    allowClear
+                    style={{ width: 132 }}
+                    placeholder={tr("Provider")}
+                    options={providers.map((p) => ({ value: p.name }))}
+                    value={row.provider || ""}
+                    onChange={(v: string) => updateRow(i, { provider: v || "" })}
+                  />
                   <antd.AutoComplete
                     size="small"
                     style={{ width: 240 }}
                     placeholder={tr("模型（留空=不改；新建跟随集群默认；下拉=在服∪在用∪Higress alias）")}
-                    options={modelOptions as { value: string }[]}
+                    options={filterModelOptionsByProvider(
+                      modelOptions,
+                      gatewayOpts ?? [],
+                      row.provider || "",
+                    ) as { value: string }[]}
                     value={row.model || ""}
-                    onChange={(v: string) => updateRow(i, { model: v })}
+                    onChange={(v: string) => {
+                      updateRow(i, { model: v });
+                      // configured alias → 仅当 Provider 为空才回填（显式
+                      // Provider 是用户意图，不覆盖）。
+                      const auto = providerForModel(gatewayOpts ?? [], v);
+                      if (auto && !(row.provider || ""))
+                        updateRow(i, { provider: auto });
+                    }}
                     status={
                       rowMv.level === "error"
                         ? "error"
@@ -288,6 +370,21 @@ export default function CrdTeamForm({
                         )}
                       </span>
                     </WbTooltip>
+                  ) : null}
+                  {providerModelMismatch(
+                    gatewayOpts ?? [],
+                    row.model || "",
+                    row.provider || "",
+                  ) ? (
+                    <div
+                      style={{
+                        flexBasis: "100%",
+                        fontSize: 10.5,
+                        color: "#faad14",
+                      }}
+                    >
+                      {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
+                    </div>
                   ) : null}
                 </div>
                 {/* ：行级 SOUL（折叠；多行+上传）。新建行不含 SOUL
