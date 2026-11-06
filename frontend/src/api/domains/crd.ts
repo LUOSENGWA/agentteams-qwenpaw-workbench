@@ -302,7 +302,10 @@ export async function updateWorkerModel(
   subagentModel?: string | null,
 ): Promise<unknown> {
   const body: Record<string, unknown> = { model };
-  if (modelProvider !== undefined) body.modelProvider = modelProvider;
+  // 空 provider 永不下发：列表投影（#1477 fields=spec/status）不含 modelProvider，
+  // 弹窗基线可能取不到值；若把 "" 写下去，控制器 merge 语义会清空该 Worker 的
+  // provider（现存 deepseek / qwen3.6-local 等会被改错路由）。清空不是有效用例。
+  if (modelProvider !== undefined && modelProvider !== "") body.modelProvider = modelProvider;
   if (subagentModel !== undefined) body.subagentModel = subagentModel;
   const r = await controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, body);
   invalidateTags(["teams", "admin"]);
