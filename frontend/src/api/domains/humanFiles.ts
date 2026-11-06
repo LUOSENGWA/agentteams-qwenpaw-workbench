@@ -141,26 +141,92 @@ export function humanFileApiPath(humanName: string, path: string): string {
   return `${BASE(humanName, "files")}/${e}`;
 }
 
+// ── 3xx 单跳跟随兜底（文件区 301 收尾）────────────────────────────
+// shared.requestJsonFull 对 3xx 直接 throw「HTTP xxx」且丢 Location 头，
+// 无法跟随。Controller 目录路由（列目录尾斜杠语义）301 的 Location 可能是
+// /api/agentteams-proxy/... 根相对插件路径——host.fetch 的相对路径通道才能
+// 正确解析。故本文件自带 raw fetch：仅 301/308 且带非空 Location 时跟随
+// 一次（method-preserving——写不允许降级成 GET），二跳原样返回，
+// 仍非 2xx 由调用方按原逻辑报错。
+
+/** raw JSON fetch（镜像 requestJsonFull 的 host.fetch/Bearer 注入，
+ * 但 3xx 不转错——返回原始 Response 供 followRedirectOnce 判定）。 */
+async function rawJsonFetch(path: string, init?: RequestInit): Promise<Response> {
+  const host = window.QwenPaw.host;
+  if (typeof host.fetch === "function") return host.fetch(path, init);
+  const headers: Record<string, string> = {
+    ...((init?.headers as Record<string, string> | undefined) || {}),
+  };
+  const token =
+    typeof host.getApiToken === "function" ? host.getApiToken() : "";
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const url = typeof host.getApiUrl === "function" ? host.getApiUrl(path) : path;
+  return fetch(url, { ...init, headers });
+}
+
+/** 取重定向目标：绝对 URL → 裸 fetch（补 Bearer）；根相对 → host.fetch
+ *（自带鉴权注入）优先，否则 host.getApiUrl 解析后裸 fetch（补 Bearer）。
+ * 与 rawJsonFetch 同型：host.fetch 通道不手工补 token（宿主自注入），
+ * 裸 fetch 通道镜像 requestJsonFull 的 Bearer 注入。 */
+async function fetchRedirectTarget(
+  location: string,
+  init: RequestInit | undefined,
+): Promise<Response> {
+  const host = window.QwenPaw.host;
+  const headers: Record<string, string> = {
+    ...((init?.headers as Record<string, string> | undefined) || {}),
+  };
+  const token = typeof host.getApiToken === "function" ? host.getApiToken() : "";
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (/^https?:/i.test(location)) {
+    return fetch(location, { ...init, headers });
+  }
+  if (typeof host.fetch === "function") return host.fetch(location, init);
+  return fetch(
+    typeof host.getApiUrl === "function" ? host.getApiUrl(location) : location,
+    { ...init, headers },
+  );
+}
+
+/** 3xx 单跳跟随：仅 301/308 且带非空 Location 时跟随一次。
+ * init 原样透传（method-preserving——PUT 写不得降级成 GET）；
+ * 二跳返回原样，由调用方按 !ok 报错。 */
+async function followRedirectOnce(
+  resp: Response,
+  init: RequestInit | undefined,
+): Promise<Response> {
+  if (resp.status !== 301 && resp.status !== 308) return resp;
+  const location = resp.headers.get("Location");
+  if (!location) return resp;
+  return fetchRedirectTarget(location, init);
+}
+
 /**
  * 列目录（GET /humans/{name}/files/{path}）。
- * path 空 → 列根目录；path 指向目录 → 列该目录（URL 尾缀 "/" = 目录列表语义）。
- * JSON 读走 controllerRequest（复用现有模式）。
+ * path 空 → 列根目录；path 指向目录 → 列该目录（URL 尾缀 "/" = 目录列表语义，
+ * 恒带尾斜杠防 Controller 301）。JSON 读走本文件 rawJsonFetch + 3xx 单跳
+ * 跟随（shared 通道 3xx 丢 Location 头，无法跟随）。
  */
 export async function listFiles(
   humanName: string,
   path = "",
 ): Promise<HumanFileListResponse> {
   const dir = encPath(path);
+  // 恒带尾斜杠（目录列表语义）：空 dir = 根目录。此前空 dir 无尾斜杠
+  // → Controller 目录路由 301（文件区 301 根因）；非空 dir 同理。
+  // 走本文件 rawJsonFetch（非 controllerRequest）——shared 通道 3xx 丢
+  // Location 头无法跟随，这里补单跳兜底。
+  const full = `${BASE(humanName, "files")}${dir ? `/${dir}` : ""}/`;
   try {
-    const payload = (await controllerRequest(
-      "GET",
-      dir ? `${API(humanName, "files")}/${dir}/` : API(humanName, "files"),
-    )) as Partial<HumanFileListResponse> | null;
+    const resp = await followRedirectOnce(await rawJsonFetch(full));
+    if (!resp.ok) throw await readHttpError(resp);
+    const payload = (await resp.json()) as Partial<HumanFileListResponse> | null;
     return {
       path: typeof payload?.path === "string" ? payload.path : path,
       entries: Array.isArray(payload?.entries) ? payload.entries : [],
     };
   } catch (e) {
+    if (e instanceof HumanFilesError) throw e;
     throw fromSharedError(e);
   }
 }
@@ -169,7 +235,8 @@ export async function listFiles(
  * fetch + blob（不走 controllerRequest）。 */
 export async function readFileSync(humanName: string, path: string): Promise<Blob> {
   const url = humanFileApiPath(humanName, path);
-  const resp = await fetchFile(url, resolvePluginUrl(url));
+  const resp0 = await fetchFile(url, resolvePluginUrl(url));
+  const resp = await followRedirectOnce(resp0);
   if (!resp.ok) throw await readHttpError(resp);
   return resp.blob();
 }
@@ -187,11 +254,10 @@ export async function writeFileSync(
   const body = typeof content === "string" ? new Blob([content]) : content;
   const headers: Record<string, string> = { "Content-Type": "application/octet-stream" };
   if (ifMatch) headers["If-Match"] = ifMatch;
-  const resp = await fetchFile(url, resolvePluginUrl(url), {
-    method: "PUT",
-    headers,
-    body,
-  });
+  const init: RequestInit = { method: "PUT", headers, body };
+  const resp0 = await fetchFile(url, resolvePluginUrl(url), init);
+  // 3xx 兜底：init 原样透传 = method-preserving（写不得降级成 GET）。
+  const resp = await followRedirectOnce(resp0, init);
   if (!resp.ok) throw await readHttpError(resp);
   let data: { path?: unknown; size?: unknown; etag?: unknown } = {};
   try {

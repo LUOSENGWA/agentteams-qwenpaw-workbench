@@ -29,6 +29,7 @@ import {
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
+import { useForceReload } from "../lib/useForceReload";
 import { BrickIcon } from "./icons";
 import { WorkerCollapseCard } from "./WorkerPanelsShared";
 
@@ -71,6 +72,9 @@ function WorkerPluginsPanel({
       setLoading(false);
     }
   }, [worker.name, tr]);
+
+  // 手动刷新必穿透 30s 插件缓存（worker:plugins:*）——统一走 useForceReload。
+  const { reload, loading: reloadLoading } = useForceReload(load, ["worker-plugins"]);
 
   React.useEffect(() => {
     if (open && !data && !loading) void load();
@@ -203,8 +207,8 @@ function WorkerPluginsPanel({
           <antd.Button
             size="small"
             type="text"
-            loading={loading}
-            onClick={() => void load()}
+            loading={loading || reloadLoading}
+            onClick={() => void reload()}
           >
             {tr("刷新")}
           </antd.Button>
