@@ -21,6 +21,7 @@ import type * as ReactNS from "react";
 
 import { updateWorkerModel } from "../api";
 import type { AdminData } from "../api";
+import { modelSaveCopyKey } from "../api/domains/lifecycle";
 import {
   filterModelOptionsByProvider,
   modelVerdictText,
@@ -99,7 +100,7 @@ export function StandaloneWorkerModels({
             ? tr("已保存（提示：{t}）", {
                 t: modelVerdictText(tr, verdict, value, union.candidates),
               })
-            : tr("模型已保存（重启 Worker 后生效）"),
+            : tr(modelSaveCopyKey(target?.runtime ?? "")),
         );
         setDrafts((p) => {
           const n = { ...p };

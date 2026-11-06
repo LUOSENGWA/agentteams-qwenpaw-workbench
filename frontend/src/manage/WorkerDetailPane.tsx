@@ -18,8 +18,8 @@
  *
  * 状态卡：休眠 / 重启中 / 心跳态（agentStatus）/ 在跑任务 /
  * 上次运行 / 上次完成 + loop 预算（GET /workers/{name}/loops/status，
- * 404/失败 → 整行不显，诚实降级）；唤醒/休眠操作 L1-only，
- * 重启按钮不显示（端点未上游，接口位留给后续）。
+ * 404/失败 → 整行不显，诚实降级）；唤醒/休眠/重启操作 L1-only
+ *（重启 = #1473 POST /workers/{name}/restart）。
  *
  * 资源卡（运行配置/环境变量与网关/Coding CLI/MCP/插件/技能/工具/
  * 频道/审批模式/运行时升级）= ResourceCards（P3，本组件下方接续）。
@@ -39,6 +39,7 @@ import {
   type WorkerInfo,
   type WorkerLoopStatus,
 } from "../api";
+import { modelSaveCopyKey, restartWorker } from "../api/domains/lifecycle";
 import {
   modelVerdictText,
   providerForModel,
@@ -53,6 +54,7 @@ import {
   RUNTIME_LABELS,
   WakeIcon,
   SleepIcon,
+  ReloadIcon,
   fmtRfc3339,
   isStateConsistent,
   phaseMeta,
@@ -135,7 +137,7 @@ export default function WorkerDetailPane({
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const restarting = (worker.containerState || "").toLowerCase() === "restarting";
   const stateInconsistent = !isStateConsistent(worker.state, worker.containerState);
-  const [acting, setActing] = React.useState<"wake" | "sleep" | null>(null);
+  const [acting, setActing] = React.useState<"wake" | "sleep" | "restart" | null>(null);
 
   // 容器内运行时版本（L1-only 拨号；旧 WorkerManageInfo 同款模式）。
   const [nodeVer, setNodeVer] = React.useState<NodeVersion | null>(null);
@@ -214,7 +216,7 @@ export default function WorkerDetailPane({
             ? tr("已保存（提示：{t}）", {
                 t: modelVerdictText(tr, vd, m, union.candidates),
               })
-            : tr("模型已保存（重启 Worker 后生效）"),
+            : tr(modelSaveCopyKey(worker.runtime)),
         );
         // 模型 = Worker spec 变更 → 失效缓存 + 写后强读（#1407）。
         invalidateTags(["teams", "admin"]);
@@ -252,6 +254,32 @@ export default function WorkerDetailPane({
     },
     [worker.name, onRefreshAdmin, tr],
   );
+
+  // 重启（#1473）：POST /workers/{name}/restart（authz=wake）；停容器
+  // 失败 → 502（后端文本原样透出）；容器不存在 → 仍 Restarting
+  //（控制器 reconcile 拉起），UI 无需特殊分支。
+  const handleRestart = React.useCallback(() => {
+    antd.Modal.confirm({
+      title: tr("重启 Worker {name}？", { name: worker.name }),
+      content: tr("停止并重新启动容器：运行中的进程重新读配置；进行中的任务会被中断。"),
+      okText: tr("重启"),
+      cancelText: tr("取消"),
+      onOk: async () => {
+        setActing("restart");
+        try {
+          await restartWorker(worker.name);
+          antd.message.success(tr("{name} 重启中", { name: worker.name }));
+          // 重启 = Worker 运行态变更 → 失效缓存（同唤醒/休眠）。
+          invalidateTags(["teams", "admin"]);
+          void onRefreshAdmin?.();
+        } catch (e) {
+          antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+        } finally {
+          setActing(null);
+        }
+      },
+    });
+  }, [worker.name, onRefreshAdmin, tr]);
 
   const tag = imageTag(worker.image);
 
@@ -408,7 +436,7 @@ export default function WorkerDetailPane({
           </div>
         ) : null}
       </div>
-      {/* 状态卡（方案 §4.1.3：重启按钮不显示——端点未上游） */}
+      {/* 状态卡（方案 §4.1.3：唤醒/休眠/重启 L1-only；重启 = #1473） */}
       <antd.Card
         size="small"
         title={tr("状态")}
@@ -479,6 +507,16 @@ export default function WorkerDetailPane({
                 {tr("休眠")}
               </antd.Button>
             )}
+            <antd.Button
+              size="large"
+              icon={<ReloadIcon />}
+              loading={acting === "restart"}
+              disabled={acting != null || restarting}
+              style={{ minHeight: 44 }}
+              onClick={() => handleRestart()}
+            >
+              {tr("重启")}
+            </antd.Button>
             <antd.Button
               size="large"
               danger

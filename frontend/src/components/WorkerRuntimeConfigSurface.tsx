@@ -17,6 +17,7 @@ import {
   putMemberConfig,
   rollbackMemberConfig,
 } from "../api/domains/memberConfig";
+import { restartWorker } from "../api/domains/lifecycle";
 import { buildDraft, changedKeys, diffNested, pushRev } from "../lib/surfaceForm";
 import { applySensitiveObjectText } from "../lib/surfacePatch";
 import { classifyLoadError, classifyWriteError } from "../lib/memberConfigErrors";
@@ -54,6 +55,9 @@ export default function WorkerRuntimeConfigSurface(props: {
   const [banner, setBanner] = React.useState<SurfaceBanner | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [rollingBack, setRollingBack] = React.useState(false);
+  // 「立即重启」按钮态 + pendingRestart 提示行可见性（提示消失即隐藏）。
+  const [restarting, setRestarting] = React.useState(false);
+  const [pendingKeys, setPendingKeys] = React.useState<string[]>([]);
   const [readOnly, setReadOnly] = React.useState(false);
   const [runtimeUnknown, setRuntimeUnknown] = React.useState("");
   const [revStack, setRevStack] = React.useState<string[]>([]);
@@ -78,6 +82,7 @@ export default function WorkerRuntimeConfigSurface(props: {
     setLoading(true);
     setLoadErr("");
     setBanner(null);
+    setPendingKeys([]);
     try {
       const [sRes, cRes] = await Promise.allSettled([
         fetchRuntimeSurface(runtime),
@@ -140,6 +145,7 @@ export default function WorkerRuntimeConfigSurface(props: {
       if (prevRev) setRevStack((s) => pushRev(s, prevRev));
       const applied = fresh ? fresh.applied : res.applied;
       const pending = fresh ? fresh.pendingRestart : res.pendingRestart;
+      setPendingKeys(pending.length > 0 ? pending : []);
       const notes: string[] = [];
       if (pending.length > 0) notes.push(tr("已写入，重启后生效：{keys}", { keys: pending.join("、") }));
       else if (applied === "pending") notes.push(tr("已写入，尚未生效"));
@@ -241,6 +247,30 @@ export default function WorkerRuntimeConfigSurface(props: {
     }
   }, [busy, noWrite, revStack, config, name, afterWrite, onWriteError]);
 
+  // 「立即重启」（pendingRestart 提示行末尾）：confirm → POST
+  // /workers/{name}/restart（#1473）→ 成功重读配置（复用 load：重读后
+  // pendingRestart 清空、提示行与按钮消失）；失败后端文本原样透出。
+  const handleRestartNow = React.useCallback(() => {
+    antd.Modal.confirm({
+      title: tr("重启 Worker {name}？", { name }),
+      content: tr("停止并重新启动容器：运行中的进程重新读配置；进行中的任务会被中断。"),
+      okText: tr("重启"),
+      cancelText: tr("取消"),
+      onOk: async () => {
+        setRestarting(true);
+        try {
+          await restartWorker(name);
+          antd.message.success(tr("已发送重启"));
+          void load();
+        } catch (e) {
+          antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+        } finally {
+          setRestarting(false);
+        }
+      },
+    });
+  }, [name, tr, load]);
+
   if (gone) return null;
 
   return (
@@ -282,8 +312,25 @@ export default function WorkerRuntimeConfigSurface(props: {
           noWrite={noWrite}
           banner={banner}
           onRetry={() => void load()}
-          onBannerClose={() => setBanner(null)}
+          onBannerClose={() => {
+            setBanner(null);
+            setPendingKeys([]);
+          }}
         />
+        {/* pendingRestart 提示行末尾：「立即重启」按钮（提示在才显示）。
+         * SurfaceStatus（白名单外）的 Alert 内无法注入控件 → 紧邻提示行右对齐。 */}
+        {pendingKeys.length > 0 ? (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -4 }}>
+            <antd.Button
+              size="small"
+              loading={restarting}
+              disabled={noWrite || restarting}
+              onClick={() => handleRestartNow()}
+            >
+              {tr("立即重启")}
+            </antd.Button>
+          </div>
+        ) : null}
         {!loading && !runtimeUnknown ? (
           <>
         {surface ? (
