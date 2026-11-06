@@ -3,10 +3,11 @@
  *
  * 栏职责（方案 §4.3，15.35 迭代）：
  * - mid:   人员列表（搜索：名字/MXID）；行 = 头像 + 名字 + 可访问团队数
- * - right: 选中人员 → 单入口卡「访问与权限」（HumanAccessModal chips
+ * - right: 选中人员 → 入口卡「访问与权限」（HumanAccessModal chips
  *          单模态：权限档位 + 可访问团队/Worker chips，一次保存全字段；
  *          旧团队访问矩阵与旧权限弹窗随 15.35 退役——两者同改
- *          accessibleTeams 的重叠已消除）
+ *          accessibleTeams 的重叠已消除）+ 入口卡「工作区容量配额」（Q：
+ *          用量展示 + 设置/清除（admin）；选中人员才拉 getQuota，不预取）
  * - full:  本域不用（竖屏右栏内容走 right variant 推二级页）
  *
  * 权限：本域整体是 L1 管理面——人员列表/访问与权限都依赖 admin
@@ -22,7 +23,16 @@
  */
 import type * as ReactNS from "react";
 
-import { deleteHuman, type TeamMember, type TeamRoom } from "../api";
+import {
+  deleteHuman,
+  getQuota,
+  quotaBytesToMb,
+  quotaMbToBytes,
+  setQuota,
+  type QuotaResponse,
+  type TeamMember,
+  type TeamRoom,
+} from "../api";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
 import HumanAccessModal, {
@@ -32,7 +42,8 @@ import { useHumanCrd } from "../crdmanage/useHumanCrd";
 import { LEVEL_META } from "../crdmanage/types";
 import { MxcAvatar } from "../MxcAvatar";
 import TruncatedId from "../components/TruncatedId";
-import { SearchIcon, ShieldIcon, UsersIcon } from "../components/icons";
+import { BoxIcon, SearchIcon, ShieldIcon, UsersIcon } from "../components/icons";
+import { fmtBytes, hfErrorText } from "./FilesSection";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -284,7 +295,8 @@ function PeopleList({ nav, data, t, tr }: SubProps) {
   );
 }
 
-// ── right：选中人员 → 单入口卡（「访问与权限」打开 HumanAccessModal）──
+// ── right：选中人员 → 入口卡（「访问与权限」打开 HumanAccessModal；
+// 「工作区容量配额」用量展示 + 设置/清除（admin，Q 从文件区迁入））──
 
 function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const humans = data.admin?.humans ?? [];
@@ -310,6 +322,39 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const human = nav.selectedHuman
     ? (humans.find((h) => h.name === nav.selectedHuman) ?? null)
     : null;
+
+  // ── 工作区容量配额（Q：设置入口从文件区迁入人员详情）──
+  // 选中人员才拉 getQuota（一次；不预取全部人员、无 N+1）；human 切换重置。
+  // hooks 必须在下方 early-return 之前声明（react-hooks/rules）。
+  const [quota, setQuotaState] = React.useState<QuotaResponse | null>(null);
+  const [quotaFailed, setQuotaFailed] = React.useState(false);
+  const [quotaOpen, setQuotaOpen] = React.useState(false);
+  const [quotaMb, setQuotaMb] = React.useState<number | null>(null);
+  const [quotaBusy, setQuotaBusy] = React.useState(false);
+  const quotaReqRef = React.useRef(0);
+  const selectedName = human ? human.name : null;
+
+  const refreshQuota = React.useCallback(async () => {
+    if (!selectedName) return;
+    const req = ++quotaReqRef.current;
+    try {
+      const q = await getQuota(selectedName);
+      if (req !== quotaReqRef.current) return; // 过期响应（人员已切换）
+      setQuotaState(q);
+      setQuotaFailed(false);
+    } catch {
+      if (req !== quotaReqRef.current) return;
+      setQuotaFailed(true);
+    }
+  }, [selectedName]);
+
+  React.useEffect(() => {
+    // human 切换（含取消选中）→ 重置配额态并收起模态框；选中才拉一次。
+    setQuotaState(null);
+    setQuotaFailed(false);
+    setQuotaOpen(false);
+    if (selectedName) void refreshQuota();
+  }, [selectedName, refreshQuota]);
 
   // 未选中（或选中项已不在最新数据）→ 占位。
   if (!human) {
@@ -355,6 +400,66 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
       setDelBusy(false);
     }
   };
+
+  // admin 门（与 FilesSection 同源：hasToken = 已配置 Controller 管理员 token）。
+  const isAdmin = !!data.hasToken;
+
+  // 打开配额模态框（admin；点开 = 重试——失败副标题「可点开重试」）。
+  const openQuota = () => {
+    if (!isAdmin) return;
+    setQuotaMb(quota ? quotaBytesToMb(quota.quotaBytes) : null);
+    setQuotaOpen(true);
+    void refreshQuota();
+  };
+  const saveQuota = async () => {
+    if (!selectedName) return;
+    if (typeof quotaMb !== "number" || !Number.isFinite(quotaMb) || quotaMb <= 0) {
+      antd.message.warning(tr("请输入有效配额"));
+      return;
+    }
+    setQuotaBusy(true);
+    try {
+      await setQuota(selectedName, quotaMbToBytes(quotaMb));
+      antd.message.success(tr("已保存"));
+      setQuotaOpen(false);
+      void refreshQuota();
+    } catch (e) {
+      antd.message.error(hfErrorText(e, tr));
+    } finally {
+      setQuotaBusy(false);
+    }
+  };
+  const clearQuota = () => {
+    if (!selectedName) return;
+    antd.Modal.confirm({
+      title: tr("清除配额？"),
+      content: tr("清除后该人员文件存储无限制。"),
+      okText: tr("清除配额"),
+      cancelText: tr("取消"),
+      onOk: async () => {
+        try {
+          await setQuota(selectedName, null);
+          antd.message.success(tr("已保存"));
+          setQuotaOpen(false);
+          void refreshQuota();
+        } catch (e) {
+          antd.message.error(hfErrorText(e, tr));
+        }
+      },
+    });
+  };
+
+  // 入口卡副标题：有上限 → 已用/上限；无限制；加载中；失败（可点开重试）。
+  const quotaSub = quotaFailed
+    ? tr("配额读取失败（可点开重试）")
+    : quota
+      ? quota.quotaBytes
+        ? tr("已用 {a} / 上限 {b}", {
+            a: fmtBytes(quota.usedBytes),
+            b: fmtBytes(quota.quotaBytes),
+          })
+        : tr("无限制 · 已用 {a}", { a: fmtBytes(quota.usedBytes) })
+      : tr("读取中…");
 
   return (
     <div style={{ display: "grid", gap: 10, padding: 4 }}>
@@ -411,7 +516,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         </antd.Tag>
       </div>
 
-      {/* 单入口卡（15.35：原「团队访问配置 + 权限设置」两卡合并） */}
+      {/* 入口卡（15.35：原「团队访问配置 + 权限设置」两卡合并；Q：+ 工作区容量配额） */}
       <div style={{ display: "grid", gap: 8 }}>
         <button
           type="button"
@@ -438,6 +543,35 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
           <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
             ›
           </span>
+        </button>
+        {/* 第二张入口卡：工作区容量配额（Q：用量展示 + 设置/清除；非 admin 只显用量） */}
+        <button
+          type="button"
+          onClick={isAdmin ? openQuota : undefined}
+          style={isAdmin ? entryStyle(t) : { ...entryStyle(t), cursor: "default" }}
+        >
+          <BoxIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
+              {tr("工作区容量配额")}
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                color: t.textSecondary,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {quotaSub}
+            </span>
+          </span>
+          {isAdmin ? (
+            <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
+              ›
+            </span>
+          ) : null}
         </button>
       </div>
 
@@ -495,6 +629,35 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
             onPressEnter={() => void doDeleteHuman()}
             aria-label={tr("输入 {name} 以确认删除", { name: human.name })}
           />
+        </div>
+      </antd.Modal>
+
+      {/* 工作区容量配额模态框（复用文件区语义：MB 输入 + 保存 / 清除 confirm；admin only） */}
+      <antd.Modal
+        open={quotaOpen}
+        title={tr("设置配额（MB）")}
+        okText={tr("保存")}
+        cancelText={tr("取消")}
+        confirmLoading={quotaBusy}
+        onOk={() => void saveQuota()}
+        onCancel={() => setQuotaOpen(false)}
+        destroyOnClose
+      >
+        <div style={{ display: "grid", gap: 8, padding: "8px 0" }}>
+          <antd.InputNumber
+            min={1}
+            step={100}
+            value={quotaMb}
+            onChange={(v: unknown) => setQuotaMb(typeof v === "number" ? v : null)}
+            addonAfter="MB"
+            style={{ width: "100%" }}
+            aria-label={tr("配额（MB）")}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <antd.Button danger size="small" onClick={clearQuota}>
+              {tr("清除配额")}
+            </antd.Button>
+          </div>
         </div>
       </antd.Modal>
 

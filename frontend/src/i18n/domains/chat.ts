@@ -254,5 +254,17 @@ export const chatDict: Record<string, { en: string }> = {
   "立即重启": { en: "Restart now" },
   "已发送重启": { en: "Restart sent" },
   "模型已保存（立即生效）": { en: "Model saved (effective immediately)" },
-
+  // ── Q：工作区容量配额迁到人员管理（设置入口在人员详情；其余键复用已有：
+  // 保存/取消/已保存/刷新/加载中…/配额（MB）/请输入有效配额/清除配额/清除配额？）──
+  "工作区容量配额": { en: "Workspace storage quota" },
+  "已用 {a} / 上限 {b}": { en: "Used {a} / limit {b}" },
+  "无限制 · 已用 {a}": { en: "Unlimited · used {a}" },
+  "设置配额（MB）": { en: "Set quota (MB)" },
+  "清除后该人员文件存储无限制。": {
+    en: "After clearing, this person's file storage is unlimited.",
+  },
+  "容量配额在「人员管理」中设置": { en: "Storage quota is set in People management" },
+  "配额读取失败（可点开重试）": {
+    en: "Failed to fetch quota (click to open to retry)",
+  },
 };
