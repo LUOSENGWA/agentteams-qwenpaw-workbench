@@ -281,4 +281,11 @@ export const chatDict: Record<string, { en: string }> = {
   "配额读取失败（可点开重试）": {
     en: "Failed to fetch quota (click to open to retry)",
   },
+  // ── X1c：地址免填协议（scheme-less 地址自动识别）──
+  "192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）": {
+    en: "192.168.1.10:6866 or ctlr.example.com:7113 (http:// / https:// optional, auto-detected)",
+  },
+  "未写协议时按端口与主机类型自动识别 http/https": {
+    en: "Without a scheme, http/https is auto-detected from port and host type",
+  },
 };

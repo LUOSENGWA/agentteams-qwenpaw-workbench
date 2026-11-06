@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from typing import Any, Dict, List, Optional, Union
 
 # 地址条目 = 字符串（服务原生认证，
@@ -29,12 +30,95 @@ _AUTH_TYPES = ("basic", "bearer")
 
 
 def address_url(entry: Any) -> str:
-    """地址条目 → URL 字符串（str 原样；dict 取 .url；其他 → ""）。"""
+    """地址条目 → URL 字符串（str 原样；dict 取 .url；其他 → ""）。
+
+ 不做 scheme 补全（X1c）——补全发生在拨号点的候选组层
+ （address_candidates），这里保持原样避免二次归一化。
+ """
     if isinstance(entry, str):
         return entry.strip()
     if isinstance(entry, dict):
         return str(entry.get("url") or "").strip()
     return ""
+
+
+_SCHEME_HEAD_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9+.\-]*")
+
+
+def address_candidates(raw: str) -> List[str]:
+    """地址（可省略 http(s)://）→ 可拨号候选 URL 列表（按条目分组的基础）。
+
+ - 空/纯空白 → []。
+ - 显式 scheme（http:// / https:// 大小写不敏感，及其他 scheme）→
+   [原样] 单候选——旧配置（显式写法）零行为变化。判协议**显式查
+   ``://``**，禁止用 urlsplit 推断（实测陷阱：urlsplit 把
+   "ctlr.example.com:7113" 的 host 误读成 scheme、port 误读成 path）。
+ - 无 ``://`` → 先显式规则拆 host/port（不用 urlsplit），候选顺序
+   （端口优先于主机类型）：
+     端口 443 → https 在前；端口 80 → http 在前；
+     其他端口/无端口 → IPv4/IPv6 字面量 / localhost / 单标签（无点）
+     主机 http 在前（curl 裸主机默认 http/80 同口径），含点域名
+     https 在前（浏览器 HTTPS-First 公开行为）。
+ - port 与 path/query 原样保留（h:6866/api → http://h:6866/api）。
+ """
+    s = (raw or "").strip()
+    if not s:
+        return []
+    scheme, sep, _rest = s.partition("://")
+    if sep and _SCHEME_HEAD_RE.fullmatch(scheme):
+        # 显式 scheme（http/https 大小写不敏感 + 其他 scheme 原样透传）
+        return [s]
+    host, port, tail = _split_hostport_tail(s)
+    if not host:
+        return []
+    port_no = int(port) if port and port.isdigit() else None
+    if port_no == 443:
+        order = ("https", "http")
+    elif port_no == 80:
+        order = ("http", "https")
+    else:
+        order = ("http", "https") if _host_prefers_http(host) else ("https", "http")
+    hostport = host + (f":{port}" if port else "")
+    return [f"{sch}://{hostport}{tail}" for sch in order]
+
+
+def _split_hostport_tail(s: str) -> tuple:
+    """无 scheme 地址 → (host, port|None, tail)。显式字符扫描拆分——
+ 禁用 urlsplit（会把 host:port 误读为 scheme/path）。tail 含前导
+ "/" 或 "?"（path/query 原样保留）。"""
+    idx = -1
+    for i, ch in enumerate(s):
+        if ch in "/?":
+            idx = i
+            break
+    hostport, tail = (s[:idx], s[idx:]) if idx >= 0 else (s, "")
+    if hostport.startswith("["):
+        close = hostport.find("]")
+        if close != -1:
+            rest = hostport[close + 1 :]
+            if not rest or rest.startswith(":"):
+                port = rest[1:] if rest.startswith(":") else None
+                return hostport[: close + 1], (port or None), tail
+        return hostport, None, tail  # 畸形（括号未闭合等）→ 整体当 host 字面量
+    if hostport.count(":") > 1:
+        # 未加方括号的多冒号 = IPv6 字面量（带端口须方括号）→ 整体 host
+        return hostport, None, tail
+    if hostport.count(":") == 1:
+        host, _, port = hostport.partition(":")
+        return host, (port or None), tail
+    return hostport, None, tail
+
+
+def _host_prefers_http(host: str) -> bool:
+    """无端口线索时主机类型 → http 是否在前。
+ 方括号 IPv6 / IPv4 字面量 / localhost / 单标签（无点）主机 → http 在
+ 前（内网默认形态，curl 裸主机默认 http/80 同口径）；含点域名 →
+ https 在前（浏览器 HTTPS-First 公开行为）。"""
+    if host.startswith("[") or host.lower() == "localhost" or "." not in host:
+        return True
+    if re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", host):
+        return True
+    return False
 
 
 def _normalize_auth(raw: Any) -> Optional[Dict[str, str]]:
@@ -59,15 +143,23 @@ def _normalize_auth(raw: Any) -> Optional[Dict[str, str]]:
     return None
 
 
+def _auth_norm(x: str) -> str:
+    """凭据反查归一：去 http(s):// 前缀 + 去尾斜杠（两侧同口径）。
+ scheme 无关 → 裸地址条目对该条目的任一候选（http/https）都命中
+ 同一份 auth（X1c 候选组共享凭据）。"""
+    return re.sub(r"^https?://", "", x).rstrip("/")
+
+
 def auth_for_url(entries: Any, url: str) -> Optional[Dict[str, str]]:
     """该 URL 对应的覆盖凭据（无/无效 → None）。
 
- url 匹配口径 = rstrip("/") 后精确相等（配置里的 url 可能带尾斜杠，
- 拨号点也统一 rstrip 后再查——两侧同口径防不命中）。
+ url 匹配口径 = 两侧 _auth_norm（去 scheme 前缀 + rstrip("/")）后
+ 精确相等（配置里的 url 可能带尾斜杠/不带 scheme，拨号点拿任一
+ 候选 URL 反查结果一致——X1c）。
  """
-    target = url.rstrip("/")
+    target = _auth_norm(url)
     for entry in entries or []:
-        if address_url(entry) and address_url(entry).rstrip("/") == target:
+        if address_url(entry) and _auth_norm(address_url(entry)) == target:
             return _normalize_auth((entry or {}).get("auth") if isinstance(entry, dict) else None)
     return None
 
