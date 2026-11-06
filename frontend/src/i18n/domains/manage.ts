@@ -372,7 +372,6 @@ export const manageDict: Record<string, { en: string }> = {
   },
   "无变化（已跳过）": { en: "Unchanged (skipped)" },
   "方式": { en: "Mode" },
-  "覆盖": { en: "Overwrite" },
   "跳过": { en: "Skipped" },
   "写入": { en: "Write" },
   "回滚": { en: "Roll back" },
@@ -386,7 +385,6 @@ export const manageDict: Record<string, { en: string }> = {
   "现有来源": { en: "Existing source" },
   "现有长度": { en: "Length" },
   "现有摘要": { en: "Excerpt" },
-  "千锻": { en: "Millforge" },
   "手工/未知": { en: "Manual/unknown" },
   "若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。": {
     en: "If the worker belongs to a team, the controller rejects the deletion (remove it from the team first).",
