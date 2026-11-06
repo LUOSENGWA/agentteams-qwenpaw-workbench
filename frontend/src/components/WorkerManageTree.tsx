@@ -248,7 +248,7 @@ function WorkerManageInfo({
   const { narrow } = useWbViewport();
   // 竖屏：运行配置改底部抽屉弹窗（narrow 下不内联撑长列表）。
   const [rcOpen, setRcOpen] = React.useState(false);
-  // 竖屏：环境变量与网关探测（1.2.5+，envEditable=true 才渲染）同款抽屉。
+  // 竖屏：环境变量与网关探测（1.2.5+，仅 envEditable 明确 false 隐藏）同款抽屉。
   const [envOpen, setEnvOpen] = React.useState(false);
   // 竖屏：Worker MCP（只读合并视图：CRD 声明 + worker 自注册）同款抽屉。
   const [mcpOpen, setMcpOpen] = React.useState(false);
@@ -581,9 +581,10 @@ function WorkerManageInfo({
             {tr("运行配置")}
           </antd.Button>
         ) : null}
-        {/* 竖屏：环境变量与网关探测入口=紧凑按钮（1.2.5+ envEditable
-  才渲染；L2/旧 Controller 隐藏——与下方内联面板同一门控）。 */}
-        {narrow && worker.envEditable === true ? (
+        {/* 竖屏：环境变量与网关探测入口=紧凑按钮（1.2.5+，仅 envEditable
+  明确 false=L2 遮蔽才隐藏；undefined=旧 Controller/16.61 投影丢字段
+  照常渲染，面板内 detail 加载态降级——与下方内联面板同一门控）。 */}
+        {narrow && worker.envEditable !== false ? (
           <antd.Button
             size="small"
             icon={<SettingsIcon size={12} />}
@@ -659,10 +660,11 @@ function WorkerManageInfo({
         </NarrowSheet>
       ) : null}
       {/* ：Worker 环境变量 + 网关探测（AgentTeams 1.2.5+ #1306）。
-  envEditable=true 才渲染（L2=遮蔽 false / 旧 Controller=undefined，
-  两者隐藏——优雅降级）；宽屏内联卡同移 WorkerRow（段头对齐）；
-  竖屏同款抽屉。保存后容器重建生效——面板内有二次确认与明示。 */}
-      {worker.envEditable === true && narrow ? (
+  仅 envEditable 明确 false（L2 遮蔽）隐藏；undefined（旧 Controller /
+  16.61 列表投影丢 envEditable）照常渲染，面板内 detail 加载态降级；
+  宽屏内联卡同移 WorkerRow（段头对齐）；竖屏同款抽屉。
+  保存后容器重建生效——面板内有二次确认与明示。 */}
+      {worker.envEditable !== false && narrow ? (
         <NarrowSheet
           open={envOpen}
           title={tr("环境变量与网关探测")}
@@ -948,7 +950,7 @@ export function WorkerRow({
                 l1={l1}
                 onOpenSettings={onOpenSettings}
               />
-              {adminWorker.envEditable === true ? (
+              {adminWorker.envEditable !== false ? (
                 <WorkerEnvPanel
                   key={`env-${adminWorker.name}`}
                   worker={adminWorker}

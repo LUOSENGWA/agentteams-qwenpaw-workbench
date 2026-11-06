@@ -88,8 +88,10 @@ export interface WorkerInfo {
   /** Worker 环境变量（spec.env 透传，AgentTeams 1.2.5+；
  * L2 账号被服务端遮蔽 → 不存在；旧 Controller 无字段 → undefined）。 */
   env?: Record<string, string>;
-  /** env 是否可编辑（1.2.5+；L1/manager=true，L2=false，旧 Controller=undefined
- * → 前端一律不渲染 env 段，优雅降级）。 */
+  /** env 是否可编辑（1.2.5+；L1/manager=true，L2=false，旧 Controller=
+ * undefined；16.61 起列表投影 fields=spec/status 也丢此字段=undefined）。
+ * 渲染门：仅明确 false（L2 遮蔽）隐藏 env 段；undefined 照常渲染、
+ * 面板内 detail 加载态诚实降级。 */
   envEditable?: boolean;
   /** LLM 调优（AgentTeams 1.2.5+，顶层回显，omitempty=未设置不显；
    * 留空=继承团队默认/registry 默认。写=PUT /workers/{name} 字段级 diff，

@@ -4,8 +4,9 @@
  * 契约（上游 v1.2.5 源码实读：agentteams-controller internal/server/
  * worker_env.go / worker_gateway_probe.go / types.go，2026-10-17 对账）：
  * - env 读：GET /workers[/{name}] 回 `env` + `envEditable`。L2 账号被遮蔽
- *   （env=nil、envEditable=false）；旧 Controller 无字段（undefined）——
- *   两者一律不渲染本段（优雅降级，不显空占位）。
+ *   （env=nil、envEditable=false）→ 不渲染本段；undefined（旧 Controller
+ *   无字段 / 16.61 列表投影丢 envEditable）→ 照常渲染，面板内走 detail
+ *   加载态诚实降级（不显空占位）。
  *   ⚠️ 实盘勘误（10/17 实测 v1.2.5）：detail GET 响应实际**不回显 env**
  *   （keys 无 env，写路径 PUT 可用）→ 自定义变量区读到空≠未配置；
  *   「实际生效值」正源 = 本面板「运行时环境」区（容器 PID 1 /proc/1/
@@ -342,7 +343,10 @@ function WorkerEnvPanel({
     }
   };
 
-  if (worker.envEditable !== true) return null;
+  // 只有明确 L2 遮蔽（envEditable === false）才隐藏本段；undefined
+  // （旧 Controller 无字段 / 16.61 列表投影丢 envEditable）照常渲染，
+  // 面板内走 detail 加载态诚实降级（写前读门已禁列表行兜底）。
+  if (worker.envEditable === false) return null;
 
   return (
     <WorkerCollapseCard

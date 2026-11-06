@@ -31,6 +31,7 @@ import { useT } from "../i18n";
 import {
   deleteWorker,
   fetchNodeVersion,
+  fetchWorkerDetail,
   fetchWorkerLoopStatusBySession,
   imageTag,
   postController,
@@ -40,6 +41,7 @@ import {
   type WorkerLoopStatus,
 } from "../api";
 import { modelSaveCopyKey, restartWorker } from "../api/domains/lifecycle";
+import { providerForWrite, resolveProviderBaseline } from "../lib/providerBaseline";
 import {
   modelVerdictText,
   providerForModel,
@@ -181,24 +183,70 @@ export default function WorkerDetailPane({
   }, [worker.name, worker.roomID]);
 
   // ── 模型配置（任务 A 弹窗化）——候选/校验与 StandaloneWorkerModels 同源 ──
-  // 草稿由 ModelEditModal 持有（打开时重置为当前值）；基线 provider：
-  // Controller 的 modelProvider 优先，旧 Controller 不返回时由 alias 的
-  // binding 推导（与 StandaloneWorkerModels 同基线）。
+  // 草稿由 ModelEditModal 持有（打开时重置为当前值）。
+  // provider 基线（#1477：16.61 起列表投影 fields=spec/status 不含
+  // modelProvider）= 写前读 detail 的 modelProvider > 列表行（仍带时）>
+  // alias 回填推导；detail 成功（或列表带值）才可信，不可信 + 用户未显式
+  // 改 provider → 保存不下发 modelProvider（保持控制器现值，防误清）。
   const union = useModelUnionOptions([worker.model || ""], tr);
   const [modelModal, setModelModal] = React.useState(false);
   const [modelSaving, setModelSaving] = React.useState(false);
-  // 切 worker 不卸载本组件（TeamSection 无 key）→ 复位弹窗态。
+  // 写前读 detail 缓存（fetchWorkerDetail 内 15s TTL；成功/失败各记一次，
+  // 失败下次打开重试）。modelProvider/subagentModel 均以此为准。
+  const [provDetail, setProvDetail] = React.useState<{
+    loading: boolean;
+    failed: boolean;
+    modelProvider?: string;
+    subagentModel?: string;
+  }>({ loading: false, failed: false });
+  // 切 worker 不卸载本组件（TeamSection 无 key）→ 复位弹窗态 + 基线态。
   React.useEffect(() => {
     setModelModal(false);
     setModelSaving(false);
+    setProvDetail({ loading: false, failed: false });
   }, [worker.name]);
 
-  const baselineProv =
-    worker.modelProvider ||
-    providerForModel(union.gatewayOptions, worker.model || "");
+  const provBaseline = React.useMemo(
+    () =>
+      resolveProviderBaseline(
+        provDetail.modelProvider,
+        worker.modelProvider,
+        providerForModel(union.gatewayOptions, worker.model || ""),
+      ),
+    [provDetail.modelProvider, worker.modelProvider, union.gatewayOptions, worker.model],
+  );
+
+  // 打开弹窗：先起写前读 detail（列表投影下基线不可信的补数路径）；
+  // 加载中弹窗内 provider 字段显「正在读取…」、入口禁用；失败 → 基线保持
+  // 不可信（保存时不下发 modelProvider），弹窗仍可编辑 model。
+  const openModelModal = React.useCallback(() => {
+    if (provDetail.loading || modelSaving) return;
+    setModelModal(true);
+    if (provDetail.modelProvider !== undefined || provDetail.subagentModel !== undefined) {
+      return;
+    }
+    setProvDetail({ loading: true, failed: false });
+    fetchWorkerDetail(worker.name)
+      .then((d) =>
+        setProvDetail({
+          loading: false,
+          failed: false,
+          modelProvider: d.modelProvider,
+          subagentModel: d.subagentModel,
+        }),
+      )
+      .catch(() => setProvDetail({ loading: false, failed: true }));
+  }, [provDetail, modelSaving, worker.name]);
 
   const handleModelSave = React.useCallback(
     async (mIn: string, pIn: string, subIn: string | null): Promise<boolean> => {
+      // 基线仍加载中（含「读取完成但弹窗字段尚未复位」的竞态窗口）→ 不写，
+      // 防把「正在读取…占位文案」当成 provider 下发。
+      const loadingText = tr("正在读取 Worker 配置…");
+      if (provDetail.loading || pIn.trim() === loadingText) {
+        antd.message.warning(loadingText);
+        return false;
+      }
       const m = mIn.trim();
       const p = pIn.trim();
       const vd = validateModelValue(m, union.candidates);
@@ -206,11 +254,16 @@ export default function WorkerDetailPane({
         antd.message.error(modelVerdictText(tr, vd, m, union.candidates));
         return false;
       }
+      // 基线判定（#1477）：可信 → 下发用户值（未改=现值，与旧行为一致）；
+      // 不可信 + 用户未显式改 provider → undefined = 不带 modelProvider，
+      // 控制器 merge 语义保持现值（alias 猜测基线不得写盘）。
+      const pSend = providerForWrite(provBaseline, p === provBaseline.value ? undefined : p);
       setModelSaving(true);
       try {
         // PUT 合并语义：model + modelProvider + subagentModel 同时下发
-        // （subagentModel=null=清除/与主模型相同）。
-        await updateWorkerModel(worker.name, m, p, subIn);
+        // （subagentModel=null=清除/与主模型相同；modelProvider=undefined
+        // 时不带该键=保持控制器现值）。
+        await updateWorkerModel(worker.name, m, pSend, subIn);
         antd.message.success(
           vd.level === "warn"
             ? tr("已保存（提示：{t}）", {
@@ -220,6 +273,8 @@ export default function WorkerDetailPane({
         );
         // 模型 = Worker spec 变更 → 失效缓存 + 写后强读（#1407）。
         invalidateTags(["teams", "admin"]);
+        // 写后基线作废：下次打开弹窗重新读 detail 取新现值。
+        setProvDetail({ loading: false, failed: false });
         void onRefreshAdmin?.(true, true);
         return true;
       } catch (e) {
@@ -232,7 +287,7 @@ export default function WorkerDetailPane({
         setModelSaving(false);
       }
     },
-    [worker.name, union.candidates, onRefreshAdmin, tr],
+    [worker.name, union.candidates, onRefreshAdmin, tr, provBaseline, provDetail.loading],
   );
 
   const handleLifecycle = React.useCallback(
@@ -411,10 +466,11 @@ export default function WorkerDetailPane({
           borderRadius: 8,
           background: t.cardBg,
           border: `1px solid ${t.border}`,
-          cursor: l1 ? "pointer" : "default",
+          cursor: l1 && !provDetail.loading ? "pointer" : "default",
           transition: "border 0.2s",
         }}
-        onClick={l1 ? () => setModelModal(true) : undefined}
+        // 基线加载中禁用打开（弹窗内 provider 字段另显「正在读取…」）。
+        onClick={l1 && !provDetail.loading ? openModelModal : undefined}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <BulbIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
@@ -429,6 +485,11 @@ export default function WorkerDetailPane({
         <div style={{ marginTop: 6, fontSize: 11, color: t.textSecondary }}>
           {worker.model || tr("未配置")}
           {worker.modelProvider ? ` · ${worker.modelProvider}` : ""}
+          {/* 基线不可信（列表投影丢 modelProvider 且 detail 未读到/失败）：
+              明示保存时不会动 provider（诚实降级，不显猜测值）。 */}
+          {l1 && !provBaseline.trusted
+            ? ` · ${tr("未读取到 Provider（保存时保持不变）")}`
+            : ""}
         </div>
         {!l1 ? (
           <div style={{ marginTop: 6, fontSize: 11, color: t.textSecondary }}>
@@ -533,9 +594,12 @@ export default function WorkerDetailPane({
         open={modelModal}
         title={tr("Worker 模型配置")}
         currentModel={worker.model ?? ""}
-        currentProvider={baselineProv}
+        // 基线加载中显「正在读取…」占位（读取完成/失败后 effect 复位为
+        // 基线值）；handleModelSave 守卫禁止该占位作为 provider 下发。
+        currentProvider={provDetail.loading ? tr("正在读取 Worker 配置…") : provBaseline.value}
         runtime={worker.runtime}
-        currentSubagentModel={worker.subagentModel ?? ""}
+        // subagentModel 基线同 provider：detail 优先，列表行兜底。
+        currentSubagentModel={provDetail.subagentModel ?? worker.subagentModel ?? ""}
         union={union}
         saving={modelSaving}
         workerName={worker.name}
