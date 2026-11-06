@@ -1,51 +1,72 @@
-// RuntimeConfigPanel — 运行时配置分组展示面板（C2，展示组件）。
-// 只负责：分组（buildSections）+ 搜索（filterSection）+ 高级过滤
-//（advancedFields）+ dirty 状态（diffDraft）。不取数、不保存、不
-// 回滚——接线到入口页（WorkerDetailPane / WorkerRuntimeConfig 等）是
-// 下一单的事。
-// 字段渲染复用 CfgRow（label + ⓘ 描述）+ SchemaField（schema 驱动
-// 控件）——不重写字段渲染。通配模板字段（key 含 *）只读展示
-//（collectConcreteValues 收集值；按条目编辑留在 SurfaceForm 通配
-// 渲染路径）。窄屏（≤720px）：段列表折叠成下拉、字段单列。
-// 所有文案走传入的 tr（缺省 identity，中文源语言直出）；不新增
-// i18n 域条目。
+// RuntimeConfigPanel — 运行时配置面板（C2 + F-CFG-2）。
+//
+// 结构与 QwenPaw 控制台一致：**运行配置**用 tab 分区（reactAgent /
+// agentLoop / llmRetry / llmRateLimiter / context / memory /
+// embeddingModel / toolExecutionLevel），其余能力（MCP / 工具 / 技能 /
+// ACP / 检查点 / 其他）各自一张卡片，不再混在同一张长表里。
+//
+// 纯逻辑在 lib/configSectionModel（分组、过滤、diff）；本文件只负责布局与
+// 文案。字段渲染复用 CfgRow + SchemaField，不重写控件。
 import type * as ReactNS from "react";
 
-import { type RuntimeSurface } from "../../api/domains/memberConfig";
+import { useThemeColors } from "../../theme";
+import CfgRow from "./CfgRow";
+import SchemaField from "../schema/SchemaField";
 import {
   advancedFields,
-  buildSections,
   diffDraft,
   filterSection,
   type PanelField,
   type Section,
+  type SectionId,
 } from "../../lib/configSectionModel";
-import { collectConcreteValues } from "../../lib/surfaceForm";
-import { useThemeColors } from "../../theme";
-import CfgRow from "./CfgRow";
-import SchemaField from "../schema/SchemaField";
+import { buildSections } from "../../lib/configSectionModel";
+import type { RuntimeSurface } from "../../api/domains/memberConfig";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
-type Tr = (text: string, vars?: Record<string, string | number>) => string;
+type Tr = (text: string, params?: Record<string, string | number>) => string;
 
-/** 窄屏判定（≤720px）。shim/无 matchMedia 环境 → false（宽版布局）。
- * 同 TrashDialog.useNarrow 先例。 */
-function useNarrow(max = 720): boolean {
-  const [narrow, setNarrow] = React.useState<boolean>(
-    () => !!window.matchMedia && window.matchMedia(`(max-width: ${max}px)`).matches,
-  );
-  React.useEffect(() => {
-    if (!window.matchMedia) return;
-    const mq = window.matchMedia(`(max-width: ${max}px)`);
-    const fn = (e: { matches: boolean }): void => setNarrow(e.matches);
-    mq.addEventListener?.("change", fn);
-    return () => mq.removeEventListener?.("change", fn);
-  }, [max]);
-  return narrow;
+/** 通配模板键的展示值收集（单星按条目；双星只读）。 */
+function collectConcreteValues(
+  key: string,
+  values: Record<string, unknown>,
+): unknown[] {
+  if (!key.includes("*")) return [];
+  const prefix = key.slice(0, key.indexOf("*"));
+  const suffix = key.slice(key.indexOf("*") + 1);
+  const out: unknown[] = [];
+  for (const [k, v] of Object.entries(values)) {
+    if (!k.startsWith(prefix)) continue;
+    if (suffix !== "" && !k.endsWith(suffix)) continue;
+    if (suffix === "" || k.length > prefix.length + suffix.length) out.push(v);
+  }
+  return out;
 }
+
+/** 二级段标题（QwenPaw 同款口径）；未知段原样显示。 */
+const SUB_LABELS: Record<string, string> = {
+  reactAgent: "React Agent",
+  agentLoop: "Agent Loop",
+  llmRetry: "LLM 重试",
+  llmRateLimiter: "LLM 限流",
+  context: "上下文",
+  memory: "记忆",
+  embeddingModel: "嵌入模型",
+  toolExecutionLevel: "工具执行级别",
+};
+
+const SECTION_ORDER: SectionId[] = [
+  "config",
+  "mcp",
+  "tools",
+  "skills",
+  "acp",
+  "checkpoints",
+  "other",
+];
 
 export interface RuntimeConfigPanelProps {
   surface: RuntimeSurface;
@@ -64,45 +85,37 @@ export interface RuntimeConfigPanelProps {
 }
 
 export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.Element {
-  const { surface, draft, initialDraft, onChange, disabled, errors, values, tr } = props;
-  const translate = tr ?? ((text: string) => text);
+  const { surface, draft, initialDraft, onChange, disabled, errors, values } = props;
+  const translate: Tr = props.tr ?? ((text: string) => text);
   const t = useThemeColors();
-  const narrow = useNarrow(720);
 
-  const sections = React.useMemo<Section[]>(() => buildSections(surface), [surface]);
-  const [activeId, setActiveId] = React.useState<string>("");
   const [query, setQuery] = React.useState("");
   const [showAdvanced, setShowAdvanced] = React.useState(false);
 
-  const active = sections.find((s) => s.id === activeId) ?? sections[0];
-  const filtered = React.useMemo(
-    () => (active ? filterSection(active, query) : null),
-    [active, query],
-  );
-  const advKeys = React.useMemo(
-    () => new Set(active ? advancedFields(active).map((f) => f.key) : []),
-    [active],
-  );
+  const sections = React.useMemo<Section[]>(() => buildSections(surface), [surface]);
   const changed = React.useMemo(() => diffDraft(draft, initialDraft), [draft, initialDraft]);
 
-  // 重置：逐项把变更键写回基线值（新增条目写 undefined 哨兵 → 草稿
-  // 视为未改，diffDraft 不再计）。
+  const byId = React.useMemo(() => {
+    const m = new Map<SectionId, Section>();
+    for (const s of sections) m.set(s.id, s);
+    return m;
+  }, [sections]);
+
+  const advKeys = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const s of sections) for (const f of advancedFields(s)) set.add(f.key);
+    return set;
+  }, [sections]);
+
+  const visible = React.useCallback(
+    (fields: PanelField[]): PanelField[] =>
+      fields.filter((f) => (showAdvanced ? true : !advKeys.has(f.key))),
+    [advKeys, showAdvanced],
+  );
+
   const handleReset = React.useCallback(() => {
     for (const key of changed) onChange(key, initialDraft[key]);
   }, [changed, initialDraft, onChange]);
-
-  if (!active || !filtered) {
-    return (
-      <div style={{ padding: 12, fontSize: 12, color: t.textSecondary }}>
-        {translate("暂无可配置字段")}
-      </div>
-    );
-  }
-
-  // 高级过滤：隐藏高级字段（通配模板按模板键判定）；全空二级段收起。
-  const visibleSubs = filtered.subSections
-    .map((s) => ({ ...s, fields: s.fields.filter((f) => !advKeys.has(f.key)) }))
-    .filter((s) => s.fields.length > 0);
 
   const v = values ?? {};
   const renderField = (f: PanelField) => {
@@ -121,33 +134,50 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
     );
   };
 
-  const sectionButtons = sections.map((s) => {
-    const sel = s.id === active.id;
+  // ── 运行配置：tab 分区 ──────────────────────────────────────────
+  const configSection = byId.get("config");
+  const configTabs = React.useMemo(() => {
+    if (!configSection) return [];
+    const filtered = filterSection(configSection, query);
+    return filtered.subSections
+      .map((sub) => ({
+        key: sub.id,
+        label: translate(SUB_LABELS[sub.id] ?? sub.id),
+        fields: visible(sub.fields),
+      }))
+      .filter((sub) => sub.fields.length > 0);
+  }, [configSection, query, translate, visible]);
+
+  // ── 其余能力：各自卡片 ─────────────────────────────────────────
+  const cards = React.useMemo(() => {
+    const out: { id: SectionId; title: string; fields: PanelField[] }[] = [];
+    for (const id of SECTION_ORDER) {
+      if (id === "config") continue;
+      const sec = byId.get(id);
+      if (!sec) continue;
+      const filtered = filterSection(sec, query);
+      const fields = visible(filtered.fields);
+      if (fields.length === 0) continue;
+      out.push({ id, title: translate(sec.label), fields });
+    }
+    return out;
+  }, [byId, query, translate, visible]);
+
+  const hitCount =
+    configTabs.reduce((n, tab) => n + tab.fields.length, 0) +
+    cards.reduce((n, c) => n + c.fields.length, 0);
+
+  if (sections.length === 0) {
     return (
-      <div
-        key={s.id}
-        onClick={() => setActiveId(s.id)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "5px 8px",
-          borderRadius: 6,
-          cursor: "pointer",
-          fontSize: 12,
-          background: sel ? t.accentBg : "transparent",
-          border: `1px solid ${sel ? t.border : "transparent"}`,
-        }}
-      >
-        <span style={{ flex: 1 }}>{translate(s.label)}</span>
-        <antd.Tag style={{ marginInlineEnd: 0, fontSize: 10 }}>{s.fields.length}</antd.Tag>
+      <div style={{ padding: 12, fontSize: 12, color: t.textSecondary }}>
+        {translate("暂无可配置字段")}
       </div>
     );
-  });
+  }
 
   return (
     <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
-      {/* 顶部：搜索（命中数）+ 显示高级 + 已改 N 项 + 重置 */}
+      {/* 工具行：搜索 + 显示高级 + 已改计数 + 重置 */}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <antd.Input
           size="small"
@@ -158,7 +188,7 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
           onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => setQuery(ev.target.value)}
         />
         <span style={{ fontSize: 11, color: t.textSecondary, whiteSpace: "nowrap" }}>
-          {translate("{n} 个命中", { n: filtered.fields.length })}
+          {translate("{n} 个命中", { n: hitCount })}
         </span>
         <antd.Switch
           size="small"
@@ -177,57 +207,30 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
         </antd.Button>
       </div>
 
-      {/* 主体：宽屏 = 左段列表（计数徽标）+ 右字段（纵向滚动）；
-       * 窄屏（≤720px）= 段下拉 + 字段单列。 */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: narrow ? "1fr" : "190px minmax(0, 1fr)",
-          gap: 10,
-          alignItems: "start",
-          minWidth: 0,
-        }}
-      >
-        {narrow ? (
-          <antd.Select
+      {/* 运行配置（tab 分区） */}
+      {configTabs.length > 0 ? (
+        <antd.Card
+          size="small"
+          title={translate("运行配置")}
+          styles={{ body: { paddingTop: 4 } }}
+        >
+          <antd.Tabs
             size="small"
-            style={{ width: "100%" }}
-            value={active.id}
-            onChange={(id: string) => setActiveId(id)}
-            options={sections.map((s) => ({
-              value: s.id,
-              label: `${translate(s.label)}（${s.fields.length}）`,
+            items={configTabs.map((tab) => ({
+              key: tab.key,
+              label: tab.label,
+              children: <div style={{ display: "grid", gap: 8 }}>{tab.fields.map(renderField)}</div>,
             }))}
           />
-        ) : (
-          <div style={{ display: "grid", gap: 4, position: "sticky", top: 8 }}>{sectionButtons}</div>
-        )}
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            overflowY: "auto",
-            maxHeight: 520,
-            padding: 2,
-            minWidth: 0,
-          }}
-        >
-          {visibleSubs.length === 0 ? (
-            <div style={{ fontSize: 12, color: t.textSecondary }}>
-              {translate("无匹配字段")}
-            </div>
-          ) : (
-            visibleSubs.map((sub) => (
-              <div key={sub.id} style={{ display: "grid", gap: 2, minWidth: 0 }}>
-                <div style={{ fontSize: 11, color: t.textSecondary, padding: "2px 0" }}>
-                  {translate(sub.label)}
-                </div>
-                {sub.fields.map(renderField)}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+        </antd.Card>
+      ) : null}
+
+      {/* 其余能力卡片 */}
+      {cards.map((card) => (
+        <antd.Card key={card.id} size="small" title={card.title}>
+          <div style={{ display: "grid", gap: 8 }}>{card.fields.map(renderField)}</div>
+        </antd.Card>
+      ))}
     </div>
   );
 }

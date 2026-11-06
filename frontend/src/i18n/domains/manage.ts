@@ -3,6 +3,19 @@
 // 原域字典，此处只收本重构新增、且全库字典无键的中文字符串）。
 
 export const manageDict: Record<string, { en: string }> = {
+
+  // ── 运行时配置面板（C2 / F-CFG-2）──
+  "显示高级": { en: "Show advanced" },
+  "已改 {n} 项": { en: "{n} changed" },
+  "{n} 个命中": { en: "{n} matches" },
+  "暂无可配置字段": { en: "No configurable fields" },
+  "上下文": { en: "Context" },
+  "记忆": { en: "Memory" },
+  "嵌入模型": { en: "Embedding model" },
+  "工具执行级别": { en: "Tool execution level" },
+  "LLM 重试": { en: "LLM retry" },
+  "LLM 限流": { en: "LLM rate limiter" },
+
   // ── 页壳 / 导航（P0）──
   "管理": { en: "Manage" },
   "管理导航": { en: "Manage navigation" },

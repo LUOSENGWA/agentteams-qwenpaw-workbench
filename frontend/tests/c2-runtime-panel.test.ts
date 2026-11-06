@@ -252,12 +252,15 @@ ok("hermes 夹具分段归属抽检：toolsets→tools、mcp.*→mcp、skills→
 });
 
 // ── 11. 源码接线：复用既有字段渲染，不读盘、不依赖夹具 ───────────────
-ok("源码接线：RuntimeConfigPanel 复用 CfgRow/SchemaField（不重写字段渲染）；tr 文案透传", () => {
+ok("源码接线：RuntimeConfigPanel 复用 CfgRow/SchemaField；config 走 Tabs、其余走 Card；tr 透传", () => {
   assert.match(panelSrc, /import\s+CfgRow\s+from\s+["']\.\/CfgRow["']/);
   assert.match(panelSrc, /import\s+SchemaField\s+from\s+["']\.\.\/schema\/SchemaField["']/);
   assert.match(panelSrc, /import\s*{[^}]*buildSections[^}]*}\s*from\s+["']\.\.\/\.\.\/lib\/configSectionModel["']/s);
   assert.match(panelSrc, /tr\?: Tr/); // tr 由调用方传入
-  assert.match(panelSrc, /useNarrow\(720\)/); // 窄屏 720 断点
+  // F-CFG-2 结构：运行配置用 tab 分区，其余能力各自一张卡片。
+  assert.match(panelSrc, /antd\.Tabs/);
+  assert.match(panelSrc, /antd\.Card/);
+  assert.match(panelSrc, /SUB_LABELS/);
 });
 
 ok("生产代码不依赖夹具：模型与面板源码均无 fixtures/readFileSync/hermes-surface 引用", () => {

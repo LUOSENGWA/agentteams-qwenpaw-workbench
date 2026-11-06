@@ -59,12 +59,13 @@ export const SECTION_ORDER: readonly SectionId[] = [
 
 /** 顶级段显示名（组件侧 tr 透传；此处保留源语言）。 */
 const SECTION_LABELS: Record<SectionId, string> = {
-  config: "Config",
+  // 中文作为 i18n 源键（与全库字典一致）；MCP / ACP 为专有名词不译。
+  config: "运行配置",
   mcp: "MCP",
-  tools: "Tools",
-  skills: "Skills",
+  tools: "工具",
+  skills: "技能",
   acp: "ACP",
-  checkpoints: "Checkpoints",
+  checkpoints: "检查点",
   other: "其他",
 };
 
