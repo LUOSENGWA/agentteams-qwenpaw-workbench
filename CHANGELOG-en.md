@@ -3,6 +3,23 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.65 (2026-11-06 - Model Access in the model dialog, hermes runtime config surface)
+
+**Features**
+- **Model Access is now visible in the model dialog** (#1513): the primary, spawn and CodingCLI surfaces each show
+  their grant state — `editable` / `inherited from X` / `read-only` / `not granted` / `BYOK unsupported`. When the
+  account has no granted model at all the dialog becomes read-only with a hint to contact the administrator.
+  - Grants are matched as **(provider, model) pairs**: a provider from one grant combined with a model from another
+    is rejected as out of scope.
+  - Inheriting surfaces stay read-only (spawn inherits the primary model, CodingCLI inherits spawn); an unavailable
+    catalog is surfaced.
+  - Controllers that do not expose the endpoint fall back to the previous behaviour (no grant UI).
+- **hermes runtime config surface** (#1494): the runtime config card labels itself per runtime (OpenClaw / Hermes);
+  when a controller does not support a runtime's surface it now lists the runtimes it does support and offers a retry.
+
+**Quality**
+- Type checking clean; 218 node tests across 14 suites; 593 Python tests.
+
 ## 0.5.0-beta.16.64 (2026-11-06 - list-projection regressions, files 301/upload, CodingCLI model entry, team inbox, scheme-less addresses)
 
 **Fixes (user-visible)**
