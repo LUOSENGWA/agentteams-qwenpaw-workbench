@@ -3,6 +3,14 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.75 (2026-11-07 · OpenClaw/Hermes config split into capability cards)
+
+**Improved**
+- OpenClaw and Hermes surfaces are split into the same capability cards QwenPaw uses: **MCP / tools / skills / channels / approval mode**. The runtime config keeps only the config faces, shown as one tab per face.
+- For non-QwenPaw runtimes those cards are surface-driven, with an honest empty state ("this runtime exposes no fields for this section"); QwenPaw keeps its existing panels.
+- The config dialog widens from 720 to 960 and its body no longer scrolls horizontally: long field names shrink, and only the tab strip scrolls.
+- Face titles are translated (gateway, model, agent, session, automation, browser, observability, interface, workspace and more).
+
 ## 0.5.0-beta.16.74 (2026-11-07 · config page mirrors QwenPaw layout · i18n)
 
 **Improved**

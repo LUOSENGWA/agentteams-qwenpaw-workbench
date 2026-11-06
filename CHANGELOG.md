@@ -3,6 +3,14 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.75（2026-11-07 · OpenClaw/Hermes 配置拆成能力卡）
+
+**改进**
+- OpenClaw / Hermes 的配置面按 face 拆到与 QwenPaw 相同的能力卡：**MCP / 工具 / 技能 / 频道 / 审批模式** 各自一张卡，运行配置只剩 config 类 face，并按 face 用 tab 分区；
+- 能力卡对非 QwenPaw 运行时由 surface 驱动（没有对应 face 时显示「该运行时没有这部分配置面」），QwenPaw 仍走原面板；
+- 运行配置弹窗宽度 720 → 960，弹窗体不再出现横向滚动条（长字段名收缩，tab 条超出时自己滚动）；
+- face 标题走 i18n（网关 / 模型 / Agent / 会话 / 自动化 / 浏览器 / 可观测 / 界面 / 工作区 等 11 个新键）。
+
 ## 0.5.0-beta.16.74（2026-11-07 · 配置页按 QwenPaw 结构重排 + i18n）
 
 **改进**
