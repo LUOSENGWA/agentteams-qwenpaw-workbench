@@ -243,5 +243,16 @@ export const chatDict: Record<string, { en: string }> = {
   "读取 Worker 配置失败": { en: "Failed to load worker config" },
   "展开后加载": { en: "Load on expand" },
   "无": { en: "None" },
+  // ── #1473 消费侧：重启动作 + 主模型热应用文案 ──
+  "重启": { en: "Restart" },
+  "重启 Worker {name}？": { en: "Restart Worker {name}?" },
+  "重启 Manager {name}？": { en: "Restart Manager {name}?" },
+  "停止并重新启动容器：运行中的进程重新读配置；进行中的任务会被中断。": {
+    en: "Stop and restart the container: running processes re-read their config; in-flight tasks will be interrupted.",
+  },
+  "{name} 重启中": { en: "{name} is restarting" },
+  "立即重启": { en: "Restart now" },
+  "已发送重启": { en: "Restart sent" },
+  "模型已保存（立即生效）": { en: "Model saved (effective immediately)" },
 
 };
