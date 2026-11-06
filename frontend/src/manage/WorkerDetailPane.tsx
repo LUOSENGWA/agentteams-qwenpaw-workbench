@@ -538,6 +538,8 @@ export default function WorkerDetailPane({
         currentSubagentModel={worker.subagentModel ?? ""}
         union={union}
         saving={modelSaving}
+        workerName={worker.name}
+        l1={l1}
         onCancel={() => setModelModal(false)}
         onSave={handleModelSave}
       />

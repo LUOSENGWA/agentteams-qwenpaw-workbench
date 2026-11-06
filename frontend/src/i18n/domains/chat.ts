@@ -281,6 +281,20 @@ export const chatDict: Record<string, { en: string }> = {
   "配额读取失败（可点开重试）": {
     en: "Failed to fetch quota (click to open to retry)",
   },
+  // ── C1a-2：模型设置增加 CodingCLI 条目（先 Provider 后模型；provider 落
+  // model.baseUrl；其余键复用既有：未配置/重试/加载中…/已保存/刷新/取消/保存/Provider/模型）──
+  "CodingCLI 模型": { en: "CodingCLI models" },
+  "跟随 Worker": { en: "Follow worker" },
+  "跟随主模型": { en: "Follows main model" },
+  "独立": { en: "Independent" },
+  "修改": { en: "Edit" },
+  "该 CLI 不支持 Provider 维度（扁平模型名）": {
+    en: "This CLI has no Provider dimension (flat model name)",
+  },
+  "Provider 条目由 Coding CLI 面板维护（L1）": {
+    en: "Provider entries are maintained in the Coding CLI panel (L1)",
+  },
+
   // ── X1c：地址免填协议（scheme-less 地址自动识别）──
   "192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）": {
     en: "192.168.1.10:6866 or ctlr.example.com:7113 (http:// / https:// optional, auto-detected)",
