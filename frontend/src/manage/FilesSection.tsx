@@ -129,14 +129,24 @@ import { usePoller } from "../usePoller";
 import {
   DownloadIcon,
   FolderIcon,
+  ListIcon,
   PageIcon,
   TrashIcon,
+  TreeIcon,
 } from "../components/icons";
 import { ReloadIcon } from "../components/WorkerManageShared";
 import { FilePreview, type PreviewFile } from "../components/FilePreview";
 import type { ManageNav } from "./useManageNav";
 import type { ManageSectionProps } from "./types";
 import { fmtBytes, fmtTs, normTrashPath, TOUCH } from "./files/format";
+import {
+  flattenTree,
+  parseFilesView,
+  treeIndent,
+  treeKeyNav,
+  type FilesView,
+  type TreeRow,
+} from "./files/treeModel";
 import SyncSettingsModal from "./files/SyncSettingsModal";
 import TrashDialog from "./files/TrashDialog";
 
@@ -203,6 +213,10 @@ interface FilesState {
   reload: (opts?: { silent?: boolean; force?: boolean }) => void;
   /** F-V3-3：打开回收站弹窗（+1 次静默刷新；关闭不刷新）。 */
   onOpenTrash: () => void;
+  /** F-V3-4：列表/树视图模式（localStorage "manage.filesView" 持久化）。 */
+  filesView: FilesView;
+  /** F-V3-4：切视图（写回 localStorage；不可用静默回落）。 */
+  onFilesViewChange: (v: FilesView) => void;
   /** F-V3-3：当前撤销条（null = 无；只保留最近一条）。 */
   undo: { trashId: string; name: string } | null;
   /** F-V3-3：软删成功登记撤销（trashId 空 → 不出条，见 undoEligible）。 */
@@ -385,6 +399,42 @@ export function makeReloadDedup(): (
   };
 }
 
+// ── F-V3-4 视图模式（列表/树）持久化 ─────────────────────────────────
+/** localStorage 键（视图选择跨会话保留）。 */
+const FILES_VIEW_STORAGE_KEY = "manage.filesView";
+/** 读持久化视图（localStorage 不可用——隐私模式/受限宿主 → null 回落 list）。 */
+function readStoredFilesView(): string | null {
+  try {
+    return localStorage.getItem(FILES_VIEW_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+/** 写回持久化视图（失败静默——视图选择属可失数据，不打断交互）。 */
+function writeStoredFilesView(v: FilesView): void {
+  try {
+    localStorage.setItem(FILES_VIEW_STORAGE_KEY, v);
+  } catch {
+    /* 静默回落（内存态仍生效） */
+  }
+}
+/** 视图切换窄屏规则（≤600px 分段按钮只显图标，文字隐藏）。 */
+const VIEW_SEG_CSS =
+  "@media (max-width: 600px){.hf-view-seg .hf-view-seg-label{display:none}}";
+
+/** 树形键盘导航键判别（e.key 收窄到 treeKeyNav 的联合类型）。 */
+function isTreeNavKey(
+  k: string,
+): k is "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter" {
+  return (
+    k === "ArrowUp" ||
+    k === "ArrowDown" ||
+    k === "ArrowLeft" ||
+    k === "ArrowRight" ||
+    k === "Enter"
+  );
+}
+
 // ── #1669 触控目标（用户实测：按钮太小、触屏难点）──
 // TOUCH 常量 F-V3-3 起在 files/format.ts（本文件 import + 重导出）。
 
@@ -419,6 +469,26 @@ function iconBtnStyle(t: ThemeColors): ReactNS.CSSProperties {
     cursor: "pointer",
     flexShrink: 0,
     padding: 0,
+  };
+}
+
+/** F-V3-4 视图分段按钮（裸 <button>；≥44px 触控盒 = --hf-row-min；
+ * 激活 = accentBg 底 + text 色）。 */
+function viewSegBtnStyle(t: ThemeColors, active: boolean): ReactNS.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minHeight: "var(--hf-row-min, 44px)",
+    minWidth: "var(--hf-row-min, 44px)",
+    padding: "0 10px",
+    border: `1px solid ${t.border}`,
+    borderRadius: 6,
+    background: active ? t.accentBg : "transparent",
+    color: active ? t.text : t.textSecondary,
+    fontWeight: active ? 700 : 400,
+    cursor: "pointer",
   };
 }
 
@@ -1208,6 +1278,384 @@ function FileRow({
   );
 }
 
+/** F-V3-4 树行：目录行 = 点击展开/收起（chevron ▸/▾）；文件行 = 点击选中 +
+ * 行内 下载/删除（复刻 FileRow 的 doDownload / useDeleteConfirm 接线，
+ * 不新写逻辑）。缩进 = treeIndent(depth)；行高 = --hf-row-min。 */
+function TreeRowView({
+  row,
+  focused,
+  pending,
+  failed,
+  t,
+  tr,
+  nav,
+  fs,
+  onActivate,
+  onRetry,
+}: SubProps & {
+  row: TreeRow;
+  focused: boolean;
+  pending: boolean;
+  failed: boolean;
+  onActivate: (row: TreeRow) => void;
+  onRetry: (row: TreeRow) => void;
+}) {
+  // flattenTree 恒透传 entry；?? 兜底仅防 name-only 老形态条目。
+  const entry = row.entry ?? { name: row.name };
+  const isDir = row.isDir;
+  const name = row.name;
+  const path = rowPath(entry, fs.dirPath);
+  const sel = !isDir && nav.selectedFile === path;
+  const onDownload = (e: ReactNS.MouseEvent) => {
+    e.stopPropagation();
+    void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
+      if (!ok) antd.message.error(tr("下载失败"));
+    });
+  };
+  // #1669 统一删除确认（与 FileRow / 详情面板共用 useDeleteConfirm）。
+  const del = useDeleteConfirm({
+    t,
+    tr,
+    humanName: fs.humanName,
+    onDone: (r) => {
+      if (nav.selectedFile === path) nav.selectFile(null);
+      if (!r.purged) fs.offerUndo({ trashId: r.trashId, name });
+      fs.reload({ silent: true });
+    },
+  });
+  const onDelete = (e: ReactNS.MouseEvent) => {
+    e.stopPropagation();
+    del.request(path, name);
+  };
+  const rowSkin =
+    sel || focused
+      ? { border: `1px solid ${t.border}`, background: t.hoverBg }
+      : { border: "1px solid transparent", background: "transparent" };
+
+  return (
+    <div
+      role="button"
+      tabIndex={-1}
+      onClick={() => onActivate(row)}
+      onMouseEnter={(e) => {
+        if (!sel && !focused) e.currentTarget.style.background = t.hoverBg;
+      }}
+      onMouseLeave={(e) => {
+        if (!sel && !focused) e.currentTarget.style.background = "transparent";
+      }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "16px minmax(0, 1fr) auto",
+        gap: 8,
+        alignItems: "center",
+        minHeight: "var(--hf-row-min, 44px)",
+        padding: "0 8px",
+        paddingLeft: 8 + treeIndent(row.depth),
+        borderRadius: 6,
+        cursor: "pointer",
+        width: "100%",
+        ...rowSkin,
+      }}
+    >
+      <span
+        style={{
+          width: 16,
+          fontSize: 11,
+          color: t.textSecondary,
+          textAlign: "center",
+          userSelect: "none",
+          flexShrink: 0,
+        }}
+      >
+        {isDir ? (row.expanded ? "▾" : "▸") : ""}
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        {isDir ? (
+          <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+        ) : (
+          <PageIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+        )}
+        <span
+          // 新形态（带 path）hover 显相对全路径，便于区分同名条目。
+          title={entry.path ? path : undefined}
+          style={{
+            fontWeight: 600,
+            fontSize: 12,
+            color: t.text,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {name}
+          {isDir ? " ›" : ""}
+        </span>
+      </span>
+      <span
+        style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap, flexShrink: 0 }}
+      >
+        {/* 懒加载指示：加载中「…」；失败「重试」（点击重拉，不触发行展开）。 */}
+        {pending ? (
+          <span style={{ fontSize: 12, color: t.textSecondary, padding: "0 2px" }}>…</span>
+        ) : null}
+        {failed ? (
+          <span onClick={(e) => e.stopPropagation()}>
+            <antd.Button size="small" style={btnTouch} onClick={() => onRetry(row)}>
+              {tr("重试")}
+            </antd.Button>
+          </span>
+        ) : null}
+        {isDir ? (
+          // 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip（同 FileRow）。
+          <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
+            <span style={{ display: "inline-flex" }}>
+              <button
+                type="button"
+                disabled
+                aria-label={tr("删除")}
+                style={{ ...iconBtnStyle(t), opacity: 0.4, cursor: "not-allowed" }}
+              >
+                <TrashIcon size={16} />
+              </button>
+            </span>
+          </antd.Tooltip>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onDownload}
+              title={tr("下载")}
+              aria-label={tr("下载")}
+              style={iconBtnStyle(t)}
+            >
+              <DownloadIcon size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              title={tr("删除")}
+              aria-label={tr("删除")}
+              style={iconBtnStyle(t)}
+            >
+              <TrashIcon size={16} />
+            </button>
+          </>
+        )}
+      </span>
+      {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
+      {del.node}
+    </div>
+  );
+}
+
+/** F-V3-4 树视图块（mid/full 列表槽，fs.filesView === "tree" 时替换
+ * ListArea；l1 紧凑列不走树）：四态镜像 ListArea（出错 + 重试 / 加载中 /
+ * 空态 + 链接 CTA / 行列表）；children / expanded 用 ref 持有（ref 写 +
+ * rev 自增触发重渲）；目录首次展开懒加载 listFiles 写 children Map
+ *（gen 代数防切目录后在途响应污染新缓存）；键盘导航 = 容器 tabIndex=0 +
+ * treeKeyNav（focusIndex 高亮；Enter = 行激活）。 */
+function TreeArea({
+  t,
+  tr,
+  nav,
+  fs,
+  actions,
+}: SubProps & { actions: FilesActions }) {
+  const childrenRef = React.useRef<Map<string, HumanFileEntry[]>>(new Map());
+  const expandedRef = React.useRef<Set<string>>(new Set());
+  const genRef = React.useRef(0);
+  const [rev, setRev] = React.useState(0);
+  const [pending, setPending] = React.useState<ReadonlySet<string>>(new Set<string>());
+  const [failed, setFailed] = React.useState<ReadonlySet<string>>(new Set<string>());
+  const [focusIndex, setFocusIndex] = React.useState(0);
+
+  // 切目录 → 代数 +1：重置缓存/展开/焦点；在途懒加载响应经 genRef 校验丢弃。
+  React.useEffect(() => {
+    genRef.current += 1;
+    childrenRef.current = new Map();
+    expandedRef.current = new Set();
+    setPending(new Set<string>());
+    setFailed(new Set<string>());
+    setFocusIndex(0);
+  }, [fs.dirPath]);
+
+  const rows = React.useMemo(
+    () =>
+      flattenTree({
+        roots: fs.files,
+        children: childrenRef.current,
+        expanded: expandedRef.current,
+      }),
+    [fs.files, rev],
+  );
+  const idx = rows.length === 0 ? 0 : Math.min(focusIndex, rows.length - 1);
+
+  /** 懒加载目录子项（首次展开 / 失败重试）：listFiles 入参 = rowPath
+   * （新形态 = entry.path 剥 files/ 前缀，尾斜杠由 encPath 归一；
+   * 老形态 = dirPath/name）。 */
+  const loadChildren = React.useCallback(
+    (row: TreeRow): void => {
+      const entry = row.entry ?? { name: row.name };
+      const gen = genRef.current;
+      setPending((prev) => {
+        const next = new Set(prev);
+        next.add(row.path);
+        return next;
+      });
+      setFailed((prev) => {
+        if (!prev.has(row.path)) return prev;
+        const next = new Set(prev);
+        next.delete(row.path);
+        return next;
+      });
+      void listFiles(fs.humanName, rowPath(entry, fs.dirPath)).then(
+        (r) => {
+          if (gen !== genRef.current) return; // 代数过期（已切目录）→ 丢弃
+          childrenRef.current.set(row.path, r.entries);
+          setPending((prev) => {
+            const next = new Set(prev);
+            next.delete(row.path);
+            return next;
+          });
+          setRev((v) => v + 1);
+        },
+        () => {
+          if (gen !== genRef.current) return;
+          setPending((prev) => {
+            const next = new Set(prev);
+            next.delete(row.path);
+            return next;
+          });
+          setFailed((prev) => {
+            const next = new Set(prev);
+            next.add(row.path);
+            return next;
+          });
+        },
+      );
+    },
+    [fs.humanName, fs.dirPath],
+  );
+
+  const toggleRow = React.useCallback(
+    (row: TreeRow): void => {
+      if (!row.isDir) return;
+      const expanded = expandedRef.current;
+      if (expanded.has(row.path)) {
+        expanded.delete(row.path);
+      } else {
+        expanded.add(row.path);
+        // 首次展开且未缓存 → 懒加载（加载中行尾「…」，失败「重试」）。
+        if (!childrenRef.current.has(row.path)) loadChildren(row);
+      }
+      setRev((v) => v + 1);
+    },
+    [loadChildren],
+  );
+
+  const activateRow = React.useCallback(
+    (row: TreeRow): void => {
+      if (row.isDir) {
+        toggleRow(row);
+        return;
+      }
+      const entry = row.entry ?? { name: row.name };
+      const p = rowPath(entry, fs.dirPath);
+      // 文件行点选走现有选中逻辑（与 FileRow 一致；再次点击取消选中）。
+      nav.selectFile(nav.selectedFile === p ? null : p);
+    },
+    [nav, toggleRow, fs.dirPath],
+  );
+
+  const onKeyDown = (e: ReactNS.KeyboardEvent<HTMLDivElement>): void => {
+    if (!isTreeNavKey(e.key)) return;
+    e.preventDefault();
+    const next = treeKeyNav({ rows, index: idx }, e.key, (p) => {
+      const r = rows.find((x) => x.path === p);
+      if (r) toggleRow(r);
+    });
+    setFocusIndex(next);
+    if (e.key === "Enter") {
+      const r = rows[next];
+      if (r) activateRow(r);
+    }
+  };
+
+  const count = fs.files.length;
+  return (
+    <div
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      style={{ display: "grid", gap: 4, outline: "none" }}
+    >
+      {fs.status !== "err" ? (
+        <span style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("共 {n} 个条目", { n: count })}
+        </span>
+      ) : null}
+      {fs.status === "err" && count === 0 ? (
+        <>
+          <antd.Alert
+            type="warning"
+            showIcon
+            message={tr("加载失败")}
+            description={fs.error}
+          />
+          <antd.Button style={btnTouch} onClick={() => fs.reload({ force: true })}>
+            {tr("重试")}
+          </antd.Button>
+        </>
+      ) : null}
+      {fs.status !== "err" && fs.loading && count === 0 ? (
+        <div
+          style={{
+            padding: "18px 8px",
+            textAlign: "center",
+            fontSize: 12,
+            color: t.textSecondary,
+          }}
+        >
+          {tr("加载中…")}
+        </div>
+      ) : null}
+      {fs.status !== "err" && !fs.loading && count === 0 ? (
+        <div style={{ padding: "18px 8px", textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("暂无文件")}
+          </div>
+          {/* 空态 CTA = 文字链接（同 ListArea，指向工具条同一处理函数）。 */}
+          <antd.Button
+            type="link"
+            style={{ padding: 0, ...btnTouch }}
+            onClick={actions.onUploadClick}
+          >
+            {tr("上传一个文件")}
+          </antd.Button>
+        </div>
+      ) : null}
+      {/* 行 key = index（老形态嵌套可重名 → path 键会碰撞；行序由
+       * flattenTree 深度优先稳定给出）。 */}
+      {fs.status !== "err" && count > 0
+        ? rows.map((r, i) => (
+            <TreeRowView
+              key={i}
+              row={r}
+              focused={i === idx}
+              pending={pending.has(r.path)}
+              failed={failed.has(r.path)}
+              t={t}
+              tr={tr}
+              nav={nav}
+              fs={fs}
+              onActivate={activateRow}
+              onRetry={loadChildren}
+            />
+          ))
+        : null}
+    </div>
+  );
+}
+
 /** l1 栏回收站紧凑行（v3；F-V3-3 后为保活死分支——files 域 4 栏不再渲染
  * l1，view 恒 "files" 不进入本分支）：单行（图标 + 原路径）。 */
 function TrashRailRow({
@@ -1509,6 +1957,40 @@ function FilesToolbar({
         background: t.cardBg,
       }}
     >
+      {/* F-V3-4 视图分段按钮（最左）：列表 / 树——aria-label + title；
+       * ≥44px（--hf-row-min）；≤600px 只显图标（VIEW_SEG_CSS 隐藏 label）。
+       * 裸 <button>（非 antd）——既有渲染锚点按 antd 形态计数。 */}
+      <style>{VIEW_SEG_CSS}</style>
+      <div
+        role="group"
+        aria-label={tr("视图切换")}
+        style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}
+      >
+        <button
+          type="button"
+          className="hf-view-seg"
+          aria-label={tr("列表视图")}
+          title={tr("列表视图")}
+          aria-pressed={fs.filesView === "list"}
+          onClick={() => fs.onFilesViewChange("list")}
+          style={viewSegBtnStyle(t, fs.filesView === "list")}
+        >
+          <ListIcon size={16} />
+          <span className="hf-view-seg-label">{tr("列表")}</span>
+        </button>
+        <button
+          type="button"
+          className="hf-view-seg"
+          aria-label={tr("树视图")}
+          title={tr("树视图")}
+          aria-pressed={fs.filesView === "tree"}
+          onClick={() => fs.onFilesViewChange("tree")}
+          style={viewSegBtnStyle(t, fs.filesView === "tree")}
+        >
+          <TreeIcon size={16} />
+          <span className="hf-view-seg-label">{tr("树")}</span>
+        </button>
+      </div>
       <div
         title={tr("容量配额在「人员管理」中设置")}
         style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: 0 }}
@@ -1944,6 +2426,15 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
 
   // ── 组件自持状态（files 域进入即取数；切域卸载即停）──
   const [view, setView] = React.useState<FileView>(FILE_VIEW_DEFAULT);
+  // F-V3-4：视图模式（列表/树）——localStorage 持久化（不可用 → 静默回落
+  // list，见 readStoredFilesView / writeStoredFilesView）。
+  const [filesView, setFilesViewState] = React.useState<FilesView>(() =>
+    parseFilesView(readStoredFilesView()),
+  );
+  const setFilesView = React.useCallback((v: FilesView) => {
+    setFilesViewState(v);
+    writeStoredFilesView(v);
+  }, []);
   const [dirPath, setDirPath] = React.useState("");
   const [files, setFiles] = React.useState<HumanFileEntry[]>([]);
   const [trash, setTrash] = React.useState<HumanTrashEntry[]>([]);
@@ -2226,6 +2717,8 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       setTrashDialogOpen(true);
       void reload({ silent: true });
     },
+    filesView,
+    onFilesViewChange: (v) => setFilesView(v),
     offerUndo: (u) => {
       if (undoEligible(u.trashId)) setUndo({ trashId: u.trashId, name: u.name });
     },
@@ -2321,7 +2814,13 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     const panes = ownsDetail ? panesFor(mode, hasSelection) : null;
     // F-V3-3：回收站独立页（TrashPanel）移除——改工具条按钮打开的
     // files/TrashDialog 弹窗（数据 = 容器 load 的 trash 腿，弹窗不自取数）。
-    const listNode = <ListArea {...sub} actions={actions} />;
+    // F-V3-4：tree 模式列表槽渲染树（详情槽不变——右/内联详情仍只渲染一次）。
+    const listNode =
+      filesView === "tree" ? (
+        <TreeArea {...sub} actions={actions} />
+      ) : (
+        <ListArea {...sub} actions={actions} />
+      );
     return (
       <div ref={widthRef} style={{ display: "grid", gap: 10, padding: 4 }}>
         {/* #1669 触控 CSS 变量（:root 作用域；双实例重复注入无害）。 */}

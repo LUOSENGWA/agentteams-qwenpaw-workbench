@@ -124,6 +124,17 @@ assert.ok(!/\bdocument\b/.test(modelCode), "treeModel 不应引用 document");
 assert.ok(!/^import(?!\s+type)/m.test(modelCode), "treeModel 只允许 import type");
 assert.ok(!/["'](react|antd)/.test(modelCode), "treeModel 不应引用 UI 模块");
 
+// ⑨ 源码接线断言：FilesSection 已 import 并消费树模型（视图解析 / 树拍平 /
+// 键盘导航），工具条有「树」分段按钮文案（模型自身行为 ①–⑦ 已覆盖，不重复）。
+const sectionSrc = readFileSync(
+  path.join(here, "..", "src", "manage", "FilesSection.tsx"),
+  "utf8",
+);
+assert.ok(sectionSrc.includes("parseFilesView"), "FilesSection 接线 parseFilesView（视图持久化解析）");
+assert.ok(sectionSrc.includes("flattenTree"), "FilesSection 接线 flattenTree（树拍平渲染）");
+assert.ok(sectionSrc.includes("treeKeyNav"), "FilesSection 接线 treeKeyNav（键盘导航）");
+assert.ok(sectionSrc.includes('tr("树")'), "工具条有「树」分段按钮文案");
+
 // 防回归：TreeRow 导出为接口（类型面可被 UI 层复用）
 const _rowCheck: TreeRow = rows[0];
 assert.ok(_rowCheck);

@@ -605,6 +605,46 @@ export function MenuIcon({ size = 14, style, className }: IconProps) {
   );
 }
 
+/** ☰ 列表（手写 stroke，HarmonyOS 无对应件）：视图切换「列表」段。 */
+export function ListIcon({ size = 14, style, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
+      className={className}
+      aria-hidden
+    >
+      <path d="M9 6h11M9 12h11M9 18h11" stroke="currentColor" stroke-width="1.8" strokeLinecap="round"/>
+      <circle cx="4.5" cy="6" r="1.5" fill="currentColor"/>
+      <circle cx="4.5" cy="12" r="1.5" fill="currentColor"/>
+      <circle cx="4.5" cy="18" r="1.5" fill="currentColor"/>
+    </svg>
+  );
+}
+
+/** 🌳 树（手写 stroke，HarmonyOS 无对应件）：视图切换「树」段（层级树
+ * 形——根节点引出两级子节点）。 */
+export function TreeIcon({ size = 14, style, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
+      className={className}
+      aria-hidden
+    >
+      <circle cx="5.5" cy="5" r="2.1" fill="currentColor"/>
+      <path d="M5.5 7.1V19" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M5.5 12h6.2M5.5 19h6.2" stroke="currentColor" stroke-width="1.6"/>
+      <circle cx="15.5" cy="12" r="2" fill="currentColor"/>
+      <circle cx="15.5" cy="19" r="2" fill="currentColor"/>
+    </svg>
+  );
+}
+
 /** 📎 回形针/附件（手写 stroke，HarmonyOS 无对应件）。 */
 export function ClipIcon({ size = 14, style, className }: IconProps) {
   return (
