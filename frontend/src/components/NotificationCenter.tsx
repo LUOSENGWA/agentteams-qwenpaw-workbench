@@ -6,14 +6,18 @@ import {
   fetchInboxEvents,
   fetchRoomApprovals,
   fetchRoomMentions,
+  fetchTeamAttention,
+  fetchTeamsStructure,
   markInboxRead,
   sendApprovalCommand,
+  teamRowToAttentionItem,
   type AttentionItem,
   type AttentionPayload,
   type InboxEvent,
   type InviteRoom,
   type RoomApproval,
   type RoomMention,
+  type TeamAttentionRow,
 } from "../api";
 import { AttentionHistoryList } from "./AttentionPanel";
 import { senderShort } from "./MessageSearch";
@@ -820,10 +824,47 @@ function NotificationCenter(props: {
   );
 }
 
+// ── 团队视角（#1503）辅助 ─────────────────────────────────────────────
+/** 团队视角状态筛选（#1503 契约 status 参数逐字）。 */
+type TeamStatus = "open" | "overdue" | "resolved" | "all";
+
+/** 团队名列表（复用既有 teams 域 fetchTeamsStructure——自身 15s 缓存 +
+ * SWR；WorkbenchPageData 定期轮询，此处正常命中缓存、不发新请求）。
+ * 模块级缓存：每次页面生命周期只拉一次（失败置空列表，下次再试）。 */
+let teamNamesCache: string[] | null = null;
+async function listTeamNames(): Promise<string[]> {
+  if (teamNamesCache) return teamNamesCache;
+  try {
+    const { tree } = await fetchTeamsStructure();
+    const names: string[] = [];
+    for (const tm of tree || []) {
+      const name = (tm.team_name || "").trim();
+      if (name && !names.includes(name)) names.push(name);
+    }
+    teamNamesCache = names;
+    return names;
+  } catch {
+    return [];
+  }
+}
+
+/** ISO 时刻（团队视角行 requestedAt）→「YYYY-MM-DD HH:mm」；解析失败原样。 */
+function fmtIso(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(
+    d.getHours(),
+  )}:${p(d.getMinutes())}`;
+}
+
 /** 待处理子页签内容（P0 人工介入闭环）：pending store 三源统一池
  * （attention 决策 / interrupt 中断 / room_message @我）+ 已回答历史。
  * 与顶栏 banner / 系统通知同正源（selectPendingTally 口径），此处只负责
- * 逐条给「去哪处理」的落点——不重开炉灶另算计数。 */
+ * 逐条给「去哪处理」的落点——不重开炉灶另算计数。
+ * 团队视角（#1503）：顶部范围选择=全部（聚合，现状行为）或单团队；
+ * 选团队后按 status 拉团队级列表（404 未部署 → 黄条降级回聚合视图）。 */
 function PendingPanel({
   attention,
   onRefresh,
@@ -862,20 +903,246 @@ function PendingPanel({
     return m;
   }, [attention]);
 
+  // ── 团队视角（#1503）：scope=""=全部（聚合，现状行为不变）；
+  // 非空=团队名（团队级列表，status 筛选 open/overdue/resolved/all）。 ──
+  const [scopeTeam, setScopeTeam] = React.useState("");
+  const [teamStatus, setTeamStatus] = React.useState<TeamStatus>("open");
+  const [teamRows, setTeamRows] = React.useState<TeamAttentionRow[] | null>(null);
+  const [teamSkipped, setTeamSkipped] = React.useState(0);
+  const [teamUnsupported, setTeamUnsupported] = React.useState(false);
+  const [teamLoading, setTeamLoading] = React.useState(false);
+  const [teamError, setTeamError] = React.useState("");
+  const [teamNames, setTeamNames] = React.useState<string[] | null>(null);
+  const teamSeq = React.useRef(0);
+
+  // 团队名：面板打开拉一次并缓存（模块级；命中 teams 域既有缓存）。
+  React.useEffect(() => {
+    if (teamNames !== null) return;
+    let alive = true;
+    void listTeamNames().then((names) => {
+      if (alive) setTeamNames(names);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [teamNames]);
+
+  // 切团队 / 切筛选都重拉（404 → unsupported=true 不抛错，UI 降级）。
+  const loadTeamAttention = React.useCallback(
+    async (team: string, status: TeamStatus) => {
+      const seq = ++teamSeq.current;
+      setTeamLoading(true);
+      setTeamError("");
+      setTeamRows(null);
+      setTeamSkipped(0);
+      setTeamUnsupported(false);
+      try {
+        const res = await fetchTeamAttention(team, status);
+        if (seq !== teamSeq.current) return; // 过期响应（已切走）丢弃
+        setTeamRows(res.rows);
+        setTeamSkipped(res.skipped);
+        setTeamUnsupported(res.unsupported);
+      } catch (e) {
+        if (seq !== teamSeq.current) return;
+        setTeamError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (seq === teamSeq.current) setTeamLoading(false);
+      }
+    },
+    [],
+  );
+
+  React.useEffect(() => {
+    if (!scopeTeam) return;
+    void loadTeamAttention(scopeTeam, teamStatus);
+  }, [scopeTeam, teamStatus, loadTeamAttention]);
+
+  // 团队视角降级（端点 404）：保留下方聚合内容并标注「聚合视图」。
+  const teamDowngraded = scopeTeam !== "" && teamUnsupported;
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      {/* 工具条：条数 + 手动刷新（与事件流工具条同款，口径同源）。 */}
+      {/* 工具条：范围选择（全部（聚合）+ 团队下拉；选团队后追加状态
+ * 筛选）+ 条数 + 手动刷新（与事件流工具条同款，口径同源）。 */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("团队视角")}</span>
+        <antd.Select
+          size="small"
+          style={{ minWidth: 140 }}
+          value={scopeTeam}
+          onChange={(v: string) => setScopeTeam(v)}
+          loading={teamNames === null}
+          options={[
+            { value: "", label: tr("全部（聚合）") },
+            ...(teamNames || []).map((n) => ({ value: n, label: n })),
+          ]}
+        />
+        {scopeTeam ? (
+          <antd.Segmented
+            size="small"
+            value={teamStatus}
+            onChange={(v: string | number) => setTeamStatus(v as TeamStatus)}
+            options={[
+              { value: "open", label: tr("待处理") },
+              { value: "overdue", label: tr("逾期") },
+              { value: "resolved", label: tr("已解决") },
+              { value: "all", label: tr("全部") },
+            ]}
+          />
+        ) : null}
+        <div style={{ flex: 1 }} />
         <span style={{ fontSize: 13, color: t.textSecondary }}>
           {items.length > 0 ? tr("共 {n} 条待处理", { n: items.length }) : tr("当前没有待处理项")}
         </span>
-        <div style={{ flex: 1 }} />
         <antd.Button size="small" onClick={onRefresh}>
           <RefreshIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("刷新")}
         </antd.Button>
       </div>
 
-      {items.length === 0 ? (
+      {/* 团队视角（404）：controller 未部署 #1503 → 黄条 + 下方保留聚合视图。 */}
+      {teamDowngraded ? (
+        <antd.Alert
+          type="warning"
+          showIcon
+          style={{ flex: "0 0 auto" }}
+          message={tr("当前控制器不支持团队视角（需 #1503）")}
+        />
+      ) : null}
+      {/* 团队视角：坏项目读取失败被跳过（响应头 X-Attention-Skipped）。 */}
+      {scopeTeam !== "" && !teamUnsupported && teamSkipped > 0 ? (
+        <antd.Alert
+          type="info"
+          showIcon
+          style={{ flex: "0 0 auto" }}
+          message={tr("{n} 个项目读取失败已跳过", { n: teamSkipped })}
+        />
+      ) : null}
+
+      {scopeTeam !== "" && !teamUnsupported ? (
+        // ── 团队视角列表（行复用现有 pending 行样式 + 团队视角补显示）──
+        teamLoading || !teamRows ? (
+          <div style={{ fontSize: 12, color: t.textSecondary }}>{tr("加载中…")}</div>
+        ) : teamError ? (
+          <div style={{ color: "#ff4d4f", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+            <WarnIcon size={12} /> {teamError}
+          </div>
+        ) : teamRows.length === 0 ? (
+          <antd.Empty
+            description={tr("暂无待处理")}
+            image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        ) : (
+          <div style={{ display: "grid", gap: 6 }}>
+            {teamRows.map((row) => {
+              const it = teamRowToAttentionItem(row);
+              const title = it.question || it.task_id;
+              // notified=null → 「未发送通知」（不推断）；非 null → 三个
+              // 独立验收态拼接（sent / roomAccepted / channelAccepted===true）。
+              const notified = it.notified;
+              const notifParts =
+                notified == null
+                  ? []
+                  : [
+                      notified.sent ? tr("已发送") : null,
+                      notified.roomAccepted ? tr("房间已接受") : null,
+                      notified.channelAccepted === true ? tr("通道已接受") : null,
+                    ].filter((s): s is string => Boolean(s));
+              const notifLabel =
+                notified == null || notifParts.length === 0
+                  ? tr("未发送通知")
+                  : notifParts.join(" · ");
+              return (
+                <div
+                  key={it.task_id}
+                  style={{
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 10,
+                    padding: "8px 12px",
+                    background: t.cardBg,
+                    display: "grid",
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <antd.Tag
+                      color={it.kind === "approval" ? "blue" : "purple"}
+                      style={{ marginRight: 0 }}
+                    >
+                      {it.kind || "other"}
+                    </antd.Tag>
+                    {/* 逾期标记——服务端派生值透传展示（前端不计算）。 */}
+                    {it.overdue ? (
+                      <antd.Tag color="red" style={{ marginRight: 0 }}>
+                        {tr("逾期")}
+                      </antd.Tag>
+                    ) : null}
+                    {it.resolved ? (
+                      <antd.Tag color="green" style={{ marginRight: 0 }}>
+                        {tr("已解决")}
+                      </antd.Tag>
+                    ) : null}
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 120,
+                        fontSize: 13,
+                        color: t.text,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={title}
+                    >
+                      {title}
+                    </span>
+                    <span style={{ fontSize: 11, color: t.textSecondary }}>
+                      {fmtIso(it.requested_at)}
+                    </span>
+                  </div>
+                  {/* 已解决：resolvedVia / resolvedBy 补显示。 */}
+                  {it.resolved && (it.resolvedVia || it.resolvedBy) ? (
+                    <div style={{ fontSize: 11.5, color: t.textSecondary }}>
+                      {[it.resolvedVia, it.resolvedBy].filter(Boolean).join(" · ")}
+                    </div>
+                  ) : null}
+                  {/* 选项补显示（label + description）。 */}
+                  {it.options && it.options.length > 0 ? (
+                    <div style={{ display: "grid", gap: 2 }}>
+                      {it.options.map((o) => (
+                        <div key={o.id} style={{ fontSize: 12, color: t.textSecondary }}>
+                          · {o.label}
+                          {o.description ? ` — ${o.description}` : ""}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div style={{ fontSize: 11.5, color: t.textSecondary }}>{notifLabel}</div>
+                  {it.room_id && onGotoRoom ? (
+                    <div>
+                      <antd.Button
+                        size="small"
+                        type="text"
+                        style={{ fontSize: 11.5 }}
+                        onClick={() => onGotoRoom(it.room_id!)}
+                      >
+                        <MessageIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("去房间")}
+                      </antd.Button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        // ── 聚合视图（现状行为；团队视角降级时保留并标注）──
+        <>
+          {teamDowngraded ? (
+            <antd.Tag style={{ justifySelf: "start", marginRight: 0 }}>
+              {tr("聚合视图")}
+            </antd.Tag>
+          ) : null}
+          {items.length === 0 ? (
         <antd.Empty
           description={tr("暂无待处理")}
           image={antd.Empty.PRESENTED_IMAGE_SIMPLE}
@@ -973,6 +1240,8 @@ function PendingPanel({
             );
           })}
         </div>
+      )}
+        </>
       )}
 
       {/* 已回答历史（复用 AttentionPanel 抽出的列表，口径不重开）。 */}
