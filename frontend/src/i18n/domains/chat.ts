@@ -182,6 +182,10 @@ export const chatDict: Record<string, { en: string }> = {
   // 
   "运行配置": { en: "Runtime config" },
   "OpenClaw 运行配置": { en: "OpenClaw runtime config" },
+  "Hermes 运行配置": { en: "Hermes runtime config" },
+  "当前控制器版本不支持该运行时配置面（控制器支持：{list}）": {
+    en: "This controller version does not support the config surface for this runtime (supported: {list})",
+  },
   "运行配置不可用": { en: "Runtime config unavailable" },
   "该 Worker 不支持运行配置": { en: "This worker does not support runtime config" },
   "仅 spec.runtime = qwenpaw 的 Worker 支持。": {

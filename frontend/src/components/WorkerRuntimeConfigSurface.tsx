@@ -12,6 +12,7 @@ import {
   type ConfigWriteResult,
   type RuntimeSurface,
   type SurfaceField,
+  MemberConfigError,
   fetchMemberConfig,
   fetchRuntimeSurface,
   putMemberConfig,
@@ -32,6 +33,21 @@ import { WorkerCollapseCard } from "./WorkerPanelsShared";
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
+
+/** O4 404 友好化：部署控制器对不支持的运行时返回 404 +
+ * {error:"unknown runtime", supported:[...]}（#1493 契约形状是 409 +
+ * runtime_unknown）；classifyLoadError 把 404 一律归 gone（整卡消失），
+ * 故组件按响应体形状自识别 → 支持运行时列表文本（非该形状 → ""，
+ * 落回正常分类，其它错误保持现状）。 */
+function supportedRuntimeList(e: unknown): string {
+  if (!(e instanceof MemberConfigError)) return "";
+  const body =
+    e.detail && typeof e.detail === "object" ? (e.detail as Record<string, unknown>) : null;
+  if (!body) return "";
+  if (Array.isArray(body.supported)) return (body.supported as string[]).join("、");
+  if (typeof body.supported === "string") return body.supported;
+  return "";
+}
 
 export default function WorkerRuntimeConfigSurface(props: {
   name: string;
@@ -83,12 +99,18 @@ export default function WorkerRuntimeConfigSurface(props: {
     setLoadErr("");
     setBanner(null);
     setPendingKeys([]);
+    setRuntimeUnknown(""); // 重试需能从 friendly 态恢复（成功后展示表单）
     try {
       const [sRes, cRes] = await Promise.allSettled([
         fetchRuntimeSurface(runtime),
         fetchMemberConfig(name),
       ]);
       if (sRes.status === "rejected") {
+        const supported = supportedRuntimeList(sRes.reason);
+        if (supported) {
+          setRuntimeUnknown(supported);
+          return;
+        }
         const e = classifyLoadError(sRes.reason);
         if (e.kind === "gone") setGone(true);
         else if (e.kind === "runtime_unknown") setRuntimeUnknown(e.supported);
@@ -97,6 +119,11 @@ export default function WorkerRuntimeConfigSurface(props: {
       }
       setSurface(sRes.value);
       if (cRes.status === "rejected") {
+        const supported = supportedRuntimeList(cRes.reason);
+        if (supported) {
+          setRuntimeUnknown(supported);
+          return;
+        }
         const e = classifyLoadError(cRes.reason);
         if (e.kind === "gone") setGone(true);
         else if (e.kind === "runtime_unknown") setRuntimeUnknown(e.supported);
@@ -271,6 +298,15 @@ export default function WorkerRuntimeConfigSurface(props: {
     });
   }, [name, tr, load]);
 
+  // O4（#1494 hermes surface 已合）：标题按运行时映射——openclaw 品牌标题；
+  // hermes 无品牌资产 → 通用标题 + 通用 SettingsIcon（图标行不特化，不硬造）。
+  const titleKey =
+    runtime === "openclaw"
+      ? "OpenClaw 运行配置"
+      : runtime === "hermes"
+        ? "Hermes 运行配置"
+        : "运行配置";
+
   if (gone) return null;
 
   return (
@@ -278,7 +314,7 @@ export default function WorkerRuntimeConfigSurface(props: {
       open={open}
       sheet={sheet}
       icon={runtime === "openclaw" ? <OpenClawIcon size={13} /> : <SettingsIcon size={13} />}
-      title={tr(runtime === "openclaw" ? "OpenClaw 运行配置" : "运行配置")}
+      title={tr(titleKey)}
       headerExtra={
         <>
           <div style={{ flex: 1 }} />
@@ -305,18 +341,42 @@ export default function WorkerRuntimeConfigSurface(props: {
       onCollapse={() => setOpen(false)}
     >
       <div style={{ display: "grid", gap: 10 }}>
-        <SurfaceStatus
-          runtimeUnknown={runtimeUnknown}
-          loading={loading}
-          loadErr={loadErr}
-          noWrite={noWrite}
-          banner={banner}
-          onRetry={() => void load()}
-          onBannerClose={() => {
-            setBanner(null);
-            setPendingKeys([]);
-          }}
-        />
+        {/* O4：unknown runtime（控制器版本不支持该运行时的配置面）→ 友好
+         * 文案（含 supported 列表）+ 重试；传 "" 给 SurfaceStatus，其旧
+         * runtimeUnknown 分支不重复渲染。 */}
+        {runtimeUnknown ? (
+          <antd.Alert
+            type="warning"
+            showIcon
+            message={tr("当前控制器版本不支持该运行时配置面（控制器支持：{list}）", {
+              list: runtimeUnknown,
+            })}
+            description={
+              <antd.Button
+                type="link"
+                size="small"
+                style={{ padding: 0 }}
+                loading={loading}
+                onClick={() => void load()}
+              >
+                {tr("重试")}
+              </antd.Button>
+            }
+          />
+        ) : (
+          <SurfaceStatus
+            runtimeUnknown=""
+            loading={loading}
+            loadErr={loadErr}
+            noWrite={noWrite}
+            banner={banner}
+            onRetry={() => void load()}
+            onBannerClose={() => {
+              setBanner(null);
+              setPendingKeys([]);
+            }}
+          />
+        )}
         {/* pendingRestart 提示行末尾：「立即重启」按钮（提示在才显示）。
          * SurfaceStatus（白名单外）的 Alert 内无法注入控件 → 紧邻提示行右对齐。 */}
         {pendingKeys.length > 0 ? (
