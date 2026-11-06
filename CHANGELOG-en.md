@@ -3,6 +3,17 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.69 (2026-11-07 · file page layout/actions/delete · workspace sync engine)
+
+**Improved**
+- **File page layout**: the detail pane renders exactly once, so landscape no longer shows a duplicated sidebar; the layout follows the width (**split above 1200px, drawer in the middle range, full sheet below 768px**) and an unselected split pane shows an explicit empty state with the upload action.
+- **Actions and touch**: a single handler and file input back every upload entry point (toolbar, empty state, drop zone); rows and buttons reach touch size (44/40, larger on coarse pointers); the detail pane embeds **FilePreview** (images, Markdown, tables, text).
+- **Delete confirmation**: one shared dialog for the list and the detail pane; "move to recycle bin" is checked by default and unchecking follows the soft delete with a purge; no client-side role gate; directory rows disable the action because the API cannot delete directories.
+
+**Added**
+- **Workspace sync engine (backend)**: generation comparison, incremental download/upload, conditional manifest write-back (`If-Match`, 412 retries next round), conflict copies named after the timestamp, a single-writer lock with backoff, and a one-shot disabled state when the controller has no manifest routes.
+- The mirror lives under **`<workspace>/.qwenpaw/agentteams/`**, which follows QwenPaw backup persistence and stays out of checkpoint snapshots.
+
 ## 0.5.0-beta.16.68 (2026-11-07 · direct upload when presigning is absent)
 
 **Fixed**
