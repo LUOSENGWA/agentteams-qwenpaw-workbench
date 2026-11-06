@@ -304,6 +304,64 @@ export function parseListPayload(
   };
 }
 
+// ── 文件区目录导航守卫（#1666c：进子目录后列表不刷新/显示根内容）─────────
+// 组件 load() 契约（请求打目录标签 + 错误清列表）：
+//   const askedDir = <当前目录>;      // 请求时记录
+//   const tag = guard.begin(askedDir);
+//   const r = await listFiles(humanName, askedDir, opts);
+//   const applied = guard.applyResult(tag, r)  // 失败走 applyError(tag, status, msg)
+//   if (applied) { 写入 React state }          // 不一致（目录已切换）→ 丢弃
+// begin() 更新「当前请求目录」标签；响应回来只有标签仍是最新才应用——
+// 即使本响应比另一目录的在途请求晚到（乱序），也不会覆盖新目录的列表。
+// 纯逻辑（不依赖 React / i18n），node 可直测（见 tests/h1-files-nav.test.ts）。
+export interface DirListApplied {
+  entries: HumanFileEntry[];
+  nextKey: string | null | undefined;
+  paginated: boolean;
+  status: "" | "404" | "err";
+  error: string;
+}
+
+export class DirListGuard {
+  /** 当前请求目录（begin() 更新；undefined = 尚无请求）。 */
+  private tag: string | undefined = undefined;
+
+  /** 该响应标签是否仍为最新（组件可作 apply* 之外的独立判定）。 */
+  isCurrent(tag: string): boolean {
+    return this.tag === tag;
+  }
+
+  /** 为新请求打标签（记录请求时刻的目录）。 */
+  begin(dir: string): string {
+    this.tag = dir;
+    return dir;
+  }
+
+  /** 成功响应：标签仍最新 → 返回列表状态（调用方写入 React state）；
+   * 已切目录（新请求在途）→ null（丢弃，由新请求接管状态）。 */
+  applyResult(tag: string, resp: HumanFileListResponse): DirListApplied | null {
+    if (!this.isCurrent(tag)) return null;
+    return {
+      entries: resp.entries,
+      nextKey: resp.nextKey,
+      paginated: resp.paginated,
+      status: "",
+      error: "",
+    };
+  }
+
+  /** 失败响应：标签不匹配 → null（丢弃）；404 → status=404（UI 占位卡，
+   * 列表无关）；非 404 → 清空列表 + status=err + 错误文案——失败不再保留
+   * 上一目录的旧数据（「看起来没反应」的直接来源）。 */
+  applyError(tag: string, status: number, error: string): DirListApplied | null {
+    if (!this.isCurrent(tag)) return null;
+    if (status === 404) {
+      return { entries: [], nextKey: undefined, paginated: false, status: "404", error: "" };
+    }
+    return { entries: [], nextKey: undefined, paginated: false, status: "err", error };
+  }
+}
+
 /** 条目相对文件根路径（供 API 调用 / 行键用）。
  * 新形态 path 带 "files/" 前缀（manifest 同拼写）→ 剥前缀；
  * 老形态 = 目录内条目名（name）。 */

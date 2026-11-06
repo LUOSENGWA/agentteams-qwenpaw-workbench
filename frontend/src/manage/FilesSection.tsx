@@ -31,6 +31,7 @@ import type * as ReactNS from "react";
 
 import {
   deleteFile,
+  DirListGuard,
   downloadPresignedUrl,
   downloadTextFile,
   downloadViaHost,
@@ -1342,6 +1343,15 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [loadingMore, setLoadingMore] = React.useState(false);
   const reqRef = React.useRef(0);
   const recursiveProbedRef = React.useRef(false);
+  // #1666c 目录导航守卫：请求时读当前目录（onEnterDir 先更新 ref 再立即 load，
+  // 使立即取数瞄准新目录；每渲染同步 = 其余路径读到的仍是最新目录）。
+  const dirPathRef = React.useRef(dirPath);
+  dirPathRef.current = dirPath;
+  // DirListGuard：目录标签（过期响应丢弃）+ 错误清列表决策（纯逻辑，
+  // 单测见 tests/h1-files-nav.test.ts）。
+  const dirGuardRef = React.useRef<DirListGuard | null>(null);
+  if (dirGuardRef.current === null) dirGuardRef.current = new DirListGuard();
+  const dirGuard = dirGuardRef.current;
 
   // 老控制器一次性探测：带 recursive 参数 → 老实现 301 回一层列表（无
   // nextKey）→ paginated=false → 递归不可用。新控制器 → paginated=true。
@@ -1357,13 +1367,17 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     async (silent: boolean) => {
       if (!humanName) return;
       const req = ++reqRef.current;
+      // #1666c 请求打目录标签：请求时记录 askedDir（ref = 请求时刻的当前目录），
+      // 响应回来标签仍最新才写状态（防另一目录的并发/晚到响应错配覆盖）。
+      const askedDir = dirPathRef.current;
+      const tag = dirGuard.begin(askedDir);
       // 静默刷新接管可见 loading（防「可见→静默」交错卡 loading=true）。
       if (silent) setLoading(false);
       else setLoading(true);
       const [ls, qs] = await Promise.allSettled([
         view === "trash"
           ? listTrash(humanName).then((r) => r.entries)
-          : listFiles(humanName, dirPath, recursive ? { recursive: true, limit: 1000 } : undefined),
+          : listFiles(humanName, askedDir, recursive ? { recursive: true, limit: 1000 } : undefined),
         getQuota(humanName),
       ]);
       if (req !== reqRef.current) return; // 过期响应（视图/目录已切换）
@@ -1371,23 +1385,45 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
         if (view === "trash") {
           setTrash(ls.value as HumanTrashEntry[]);
           setNextKey(undefined); // 回收站无分页
+          setStatus("");
+          setError("");
         } else {
           const lsValue = ls.value as HumanFileListResponse;
-          setFiles(lsValue.entries);
-          setNextKey(lsValue.nextKey); // string=有下一页 / null=到底 / undefined=老控制器
+          // 目录标签：已切目录（新请求在途）→ 丢弃，由新请求接管状态。
+          const applied = dirGuard.applyResult(tag, lsValue);
+          if (!applied) return;
+          setFiles(applied.entries);
+          setNextKey(applied.nextKey); // string=有下一页 / null=到底 / undefined=老控制器
           setLoadingMore(false);
-          if (lsValue.paginated) setCanRecursive(true);
+          if (applied.paginated) setCanRecursive(true);
           else probeRecursive(); // 老形态（含递归被 301 回落）→ 一次性探测
+          setStatus("");
+          setError("");
         }
-        setStatus("");
-        setError("");
-      } else if (ls.reason instanceof HumanFilesError && ls.reason.status === 404) {
-        // 404 = 无权限或不存在（任务书 UI 规则）→ 占位卡，轮询停重试。
-        setStatus("404");
-        setError("");
       } else {
-        setStatus("err");
-        setError(hfErrorText(ls.reason, tr));
+        const e = ls.reason;
+        const is404 = e instanceof HumanFilesError && e.status === 404;
+        if (view === "trash") {
+          if (is404) {
+            // 404 = 无权限或不存在（任务书 UI 规则）→ 占位卡，轮询停重试。
+            setStatus("404");
+            setError("");
+          } else {
+            // #1666c 错误可见：清旧数据 + 显错误（不保留上一列表）。
+            setTrash([]);
+            setStatus("err");
+            setError(hfErrorText(e, tr));
+          }
+        } else {
+          const applied = dirGuard.applyError(tag, is404 ? 404 : 0, is404 ? "" : hfErrorText(e, tr));
+          if (!applied) return; // 目录标签过期 → 新请求接管状态
+          // 404 = 无权限或不存在（任务书 UI 规则）→ 占位卡，轮询停重试；
+          // 非 404 = 清空列表（根治「列表停在上一目录」）+ 暴露错误文案。
+          setFiles(applied.entries);
+          setNextKey(applied.nextKey);
+          setStatus(applied.status);
+          setError(applied.error);
+        }
       }
       if (qs.status === "fulfilled") {
         setQuota(qs.value);
@@ -1397,7 +1433,9 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       }
       if (!silent) setLoading(false);
     },
-    [humanName, view, dirPath, recursive, tr, probeRecursive],
+    // dirPath 不入依赖：请求时经 dirPathRef 读取；切目录由 onEnterDir 的
+    // 立即 load 触发（不再依赖 effect 时序），避免同目录双取。
+    [humanName, view, recursive, tr, probeRecursive, dirGuard],
   );
 
   // #1518 加载更多：仅 nextKey 为 string（满页）时可点；复用 reqRef 防
@@ -1435,11 +1473,14 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
 
   // 30s 静默轮询：activeRef = 顶层 tab 激活门（稳定 ref，tick 时读）；
   // 404（无权限/不存在）停重试；nextKey 为 string（分页中途）跳过——
-  // 静默刷新会重置游标，丢掉「加载更多」进度。
+  // 静默刷新会重置游标，丢掉「加载更多」进度；
+  // #1666c：子目录视图暂停静默轮询（防轮询请求与目录切换交错，
+  // 把子目录视图覆盖成别的内容）。
   usePoller({
     fn: () => {
       if (data.activeRef && !data.activeRef.current) return;
       if (!humanName || status === "404") return;
+      if (dirPath !== "") return;
       if (typeof nextKey === "string") return;
       void load(true);
     },
@@ -1490,18 +1531,39 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     onSwitchView: (v) => {
       if (v === view) return;
       nav.selectFile(null);
+      // #1666c 切视图立即清空（加载态，不再保留上一视图的列表）；
+      // 取数由 effect 触发（view 在 load 依赖里，身份随之变）。
+      setFiles([]);
+      setTrash([]);
       setNextKey(undefined);
+      setStatus("");
+      setError("");
+      setLoading(true);
       setView(v);
     },
     onEnterDir: (p) => {
       nav.selectFile(null);
+      // #1666c 切目录立即清空：点进去的瞬间看到加载态，而不是旧目录数据。
+      setFiles([]);
       setNextKey(undefined);
+      setStatus("");
+      setError("");
+      setLoading(true);
+      dirPathRef.current = p; // 请求时读取的 ref 先行更新 → 立即 load 瞄准新目录
       setDirPath(p);
+      // 立即取数（不依赖 effect 时序——load 身份已不随目录变化）。
+      void load(false);
     },
     onToggleRecursive: (on) => {
       if (on === recursive) return;
       nav.selectFile(null);
+      // #1666c 同切目录一类：立即清空，取数由 effect 触发（recursive 在
+      // load 依赖里）；不清则平铺/单层两种形态的行键会互相错位。
+      setFiles([]);
       setNextKey(undefined);
+      setStatus("");
+      setError("");
+      setLoading(true);
       setRecursive(on);
     },
     load: (silent) => void load(silent),
