@@ -11,6 +11,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
+import { useForceReload } from "../lib/useForceReload";
 import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
@@ -440,6 +441,12 @@ function CodingRunsPanel({ refreshTick = 0 }: { refreshTick?: number }) {
     [],
   );
 
+  // 手动刷新必穿透 30s coding-runs 缓存——统一走 useForceReload。
+  const { reload, loading: reloadLoading } = useForceReload(
+    () => refresh(false),
+    ["coding-runs"],
+  );
+
   React.useEffect(() => {
     void refresh(false);
   }, [refresh]);
@@ -496,8 +503,8 @@ function CodingRunsPanel({ refreshTick = 0 }: { refreshTick?: number }) {
             type="text"
             size="small"
             icon={<ReloadIcon />}
-            loading={loading}
-            onClick={() => void refresh(false)}
+            loading={loading || reloadLoading}
+            onClick={() => void reload()}
           />
         </WbTooltip>
       </div>

@@ -37,6 +37,7 @@ import {
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
+import { useForceReload } from "../lib/useForceReload";
 import { PlugIcon } from "./icons";
 import { WorkerCollapseCard } from "./WorkerPanelsShared";
 
@@ -116,6 +117,9 @@ function WorkerMcpPanel({
     }
   }, [worker.name, tr]);
 
+  // 手动刷新必穿透 30s 读缓存（worker:mcp:*）——统一走 useForceReload。
+  const { reload, loading: reloadLoading } = useForceReload(load, ["worker-mcp"]);
+
   React.useEffect(() => {
     if (open && !self && !loading) void load();
   }, [open, self, loading, load]);
@@ -143,8 +147,8 @@ function WorkerMcpPanel({
           <antd.Button
             size="small"
             type="text"
-            loading={loading}
-            onClick={() => void load()}
+            loading={loading || reloadLoading}
+            onClick={() => void reload()}
           >
             {tr("刷新")}
           </antd.Button>

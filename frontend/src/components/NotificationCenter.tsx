@@ -23,6 +23,7 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useTabActive } from "../tabActivity";
 import { usePoller } from "../usePoller";
+import { useForceReload } from "../lib/useForceReload";
 import { formatChatTime, sevColor } from "../util";
 
 const host = window.QwenPaw.host;
@@ -187,6 +188,10 @@ function NotificationCenter(props: {
     void loadApprovals();
   }, [unreadOnly, onUnreadCount, loadMentions, loadApprovals]);
 
+  // 手动刷新必穿透 30s inbox 缓存（["inbox"]）——统一走 useForceReload
+  //（loading 状态仅初始 true、刷新从不置位，本 hook 的 loading 接管按钮）。
+  const { reload, loading: reloadLoading } = useForceReload(load, ["inbox"]);
+
   // 30s 轮询（含未读计数 → tab badge）。
   // 旧定时器 → usePoller（30s）。任务书条件写作
   // `open && !document.hidden`，但本组件 props 无 open（实况核对）——本组件
@@ -348,7 +353,7 @@ function NotificationCenter(props: {
         >
           <CheckIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("全部已读")}
         </antd.Button>
-        <antd.Button size="small" onClick={() => void load()}>
+        <antd.Button size="small" loading={reloadLoading} onClick={() => void reload()}>
           <RefreshIcon size={12} style={{ verticalAlign: "-1px", marginRight: 3 }} /> {tr("刷新")}
         </antd.Button>
       </div>
