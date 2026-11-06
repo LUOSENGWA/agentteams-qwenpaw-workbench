@@ -326,7 +326,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   // ── 工作区容量配额（Q：设置入口从文件区迁入人员详情）──
   // 选中人员才拉 getQuota（一次；不预取全部人员、无 N+1）；human 切换重置。
   // hooks 必须在下方 early-return 之前声明（react-hooks/rules）。
-  const [quota, setQuota] = React.useState<QuotaResponse | null>(null);
+  const [quota, setQuotaState] = React.useState<QuotaResponse | null>(null);
   const [quotaFailed, setQuotaFailed] = React.useState(false);
   const [quotaOpen, setQuotaOpen] = React.useState(false);
   const [quotaMb, setQuotaMb] = React.useState<number | null>(null);
@@ -340,7 +340,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
     try {
       const q = await getQuota(selectedName);
       if (req !== quotaReqRef.current) return; // 过期响应（人员已切换）
-      setQuota(q);
+      setQuotaState(q);
       setQuotaFailed(false);
     } catch {
       if (req !== quotaReqRef.current) return;
@@ -350,7 +350,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
 
   React.useEffect(() => {
     // human 切换（含取消选中）→ 重置配额态并收起模态框；选中才拉一次。
-    setQuota(null);
+    setQuotaState(null);
     setQuotaFailed(false);
     setQuotaOpen(false);
     if (selectedName) void refreshQuota();
