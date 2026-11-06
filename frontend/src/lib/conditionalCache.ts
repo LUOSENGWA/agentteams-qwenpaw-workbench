@@ -183,7 +183,7 @@ function writeEntry(url: string, entry: CachedEntry): void {
 
 export interface ConditionalJsonResult<T> {
   /** 200：解析后的 JSON；304：NOT_MODIFIED 哨兵（调用方复用自存旧值）。 */
-  payload: T | NOT_MODIFIED;
+  payload: T | typeof NOT_MODIFIED;
   response: Response;
 }
 
