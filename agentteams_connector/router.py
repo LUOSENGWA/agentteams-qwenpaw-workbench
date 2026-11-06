@@ -581,6 +581,7 @@ from .routers import (  # noqa: E402
     matrix_api,
     node_version_api,
     status_api,
+    sync_api,
     team_files_api,
     teams_api,
     upgrade_api,
@@ -662,6 +663,10 @@ def build_router() -> APIRouter:
     # Controller 端点 404 → 诚实降级 available=false。须在 catch-all
     # 之前，固定路径优先）。
     router.include_router(worker_plugins_api.build_worker_plugins_router())
+    # 工作区文件镜像同步域（/sync/state 只读 + /sync/run 手动触发；
+    # 引擎为同步函数，handler 内经 asyncio.to_thread 跑工作线程。
+    # 须在 catch-all 之前，固定路径优先）。
+    router.include_router(sync_api.build_sync_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     # 条件请求缓存层（批次 4）：全部 GET 路由统一包 ETag/Last-Modified →

@@ -261,6 +261,15 @@ export const manageDict: Record<string, { en: string }> = {
   "清除配额": { en: "Clear quota" },
   "清除配额？": { en: "Clear the quota?" },
   "清除后人类文件存储无限制。": { en: "After clearing, human-file storage is unlimited." },
+  // #1669 删除确认（勾选「移入回收站（可恢复）」/彻底删除）
+  "删除文件？": { en: "Delete this file?" },
+  "移入回收站（可恢复）": { en: "Move to trash (recoverable)" },
+  "将彻底删除，不可恢复": {
+    en: "It will be permanently deleted and cannot be recovered",
+  },
+  "目录删除暂不支持（请逐个删除文件）": {
+    en: "Deleting directories is not supported yet (delete the files one by one)",
+  },
   "移入回收站？": { en: "Move this file to the trash?" },
   "已移入回收站": { en: "Moved to trash" },
   "恢复文件": { en: "Restore file" },
@@ -308,6 +317,22 @@ export const manageDict: Record<string, { en: string }> = {
   "上传一个文件": { en: "Upload a file" },
   "更新时间": { en: "Updated" },
   "删除时间": { en: "Deleted" },
+
+  // ── 文件域 16.69（master-detail 断点：split / drawer / sheet）──
+  "选择文件查看详情": { en: "Select a file to see details" },
+  "点列表文件行查看下载 / 覆盖 / 删除": {
+    en: "Pick a file row in the list for download / overwrite / delete",
+  },
+  "选择回收站条目": { en: "Select a trash entry" },
+  "点列表行查看恢复 / 彻底删除": {
+    en: "Pick a row in the list for restore / purge",
+  },
+  "此目录为空": { en: "This directory is empty" },
+  "上传或新建文件夹后开始管理": {
+    en: "Upload a file or create a folder to get started",
+  },
+  "文件详情": { en: "File details" },
+  "回收站条目": { en: "Trash entry" },
 
   // ── 文件域 H1（#1518 游标列表 / #1519 预签名上传 / #1501 预签名下载 /
   // #1499 同步状态卡）──

@@ -182,6 +182,23 @@ class AgentTeamsWorkbenchPlugin:
             lambda: projects_workflow.stop(),
         )
 
+        # v1.2.6-1.2.7：工作区文件镜像同步引擎（files/** ↔ Controller
+        # 文件区，清单条件写回 If-Match；设计=文件同步-工作区镜像设计-
+        # 20261107）。模块名 file_sync_engine（避与 sync_watcher 混淆），
+        # 钩子名 agentteams-file-sync。启动 60s 后首跑，之后每 300s
+        # （±30s jitter）；单轮异常吞掉记日志，不影响宿主。
+        from agentteams_connector import file_sync_engine
+
+        api.register_startup_hook(
+            "agentteams-file-sync",
+            lambda: file_sync_engine.start(),
+            priority=250,
+        )
+        api.register_shutdown_hook(
+            "agentteams-file-sync",
+            lambda: file_sync_engine.stop(),
+        )
+
         # v0.5.0-beta.14.10：KB 预热——上次访问的 agent 后台
         # 静默补 tree+graph（重启后首开知识库同样秒开）。fire-and-forget、
         # 预热失败无碍；不依赖 HTTP 自呼（直调 router 模块 _kb_prewarm_agent
