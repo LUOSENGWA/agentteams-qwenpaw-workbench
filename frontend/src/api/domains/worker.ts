@@ -23,18 +23,26 @@ export interface SkillCatalogItem {
   runtimes?: string[];
   version?: string;
 }
-export async function fetchSkillCatalog(
+/** S（#1480）：GET /api/v1/skills 带强 ETag → 条件复验（cachedRequest +
+ * requestJsonConditional，60s，tags ["skills"]，304 复用缓存旧值；写后调用
+ * 方仍 invalidateTags(["skills"])）。返回语义不变：SkillCatalogItem[]。 */
+export function fetchSkillCatalog(
   team?: string,
 ): Promise<SkillCatalogItem[]> {
   const key = team ? `skill-catalog:${team}` : "skill-catalog";
-  return cachedRequest(key, 60_000, async () => {
+  return cachedRequest(key, 60_000, async (etag?: string) => {
     const q = team ? `?team=${encodeURIComponent(team)}` : "";
-    const raw = (await controllerRequest("GET", `/skills${q}`)) as Record<
-      string,
-      unknown
-    >;
+    const { payload, response } = await requestJsonConditional(
+      `/agentteams-proxy/controller/api/v1/skills${q}`,
+      etag,
+    );
+    if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+    const raw = payload as Record<string, unknown>;
     const arr = Array.isArray(raw?.skills) ? raw.skills : [];
-    return arr as SkillCatalogItem[];
+    return conditionalValue(
+      arr as SkillCatalogItem[],
+      response?.headers.get("etag") ?? null,
+    );
   }, { tags: ["skills"] });
 }
 
