@@ -1,10 +1,11 @@
 // WorkerRuntimeConfigSurface — 运行时配置面状态机（P8c/G3）。
 // 取数（surface+config 并行）→ 草稿 → 保存（嵌套 diff + if-rev）→ 重读/rev 栈 → 回滚 → 错误映射。
-// 复用：api/domains/memberConfig（契约）+ lib/surfaceForm（草稿/diff/过滤）+ lib/surfacePatch（路径/敏感解析）
-//  + lib/memberConfigErrors（错误分类）+ components/SurfaceForm（渲染）。敏感值永不回写。
-// O2：表单上方「搜索字段 + 仅看已修改」过滤行（纯函数 filterFields/
-// changedKeys）；surface 渲染入口接 O1 通配逻辑（buildDraft 草稿键为
-// concrete 键，双星只读/单星按条目由 SurfaceForm 渲染）。
+// 复用：api/domains/memberConfig（契约）+ lib/surfaceForm（草稿/diff）+ lib/surfacePatch（路径/敏感解析）
+//  + lib/memberConfigErrors（错误分类）+ components/runtimeCfg/RuntimeConfigPanel（C2 分组渲染）。
+// 敏感值永不回写。
+// C2：字段渲染接分组面板（自带搜索/高级过滤/已改计数/重置）；草稿更新
+// 仍走 onField 不可变赋值。buildDraft 草稿键为 concrete 键；通配展示值
+// 由面板经 values 收集（collectConcreteValues）。
 import type * as ReactNS from "react";
 
 import {
@@ -19,12 +20,12 @@ import {
   rollbackMemberConfig,
 } from "../api/domains/memberConfig";
 import { restartWorker } from "../api/domains/lifecycle";
-import { buildDraft, changedKeys, diffNested, pushRev } from "../lib/surfaceForm";
+import { buildDraft, diffNested, pushRev } from "../lib/surfaceForm";
 import { applySensitiveObjectText } from "../lib/surfacePatch";
 import { classifyLoadError, classifyWriteError } from "../lib/memberConfigErrors";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
-import SurfaceForm from "./SurfaceForm";
+import RuntimeConfigPanel from "./runtimeCfg/RuntimeConfigPanel";
 import SurfaceStatus, { type SurfaceBanner } from "./surface/SurfaceStatus";
 import { SettingsIcon } from "./icons";
 import { OpenClawIcon } from "./OpenClawIcon";
@@ -77,9 +78,6 @@ export default function WorkerRuntimeConfigSurface(props: {
   const [readOnly, setReadOnly] = React.useState(false);
   const [runtimeUnknown, setRuntimeUnknown] = React.useState("");
   const [revStack, setRevStack] = React.useState<string[]>([]);
-  // O2 字段过滤：搜索子串 + 「仅看已修改」开关（默认关）。
-  const [query, setQuery] = React.useState("");
-  const [changedOnly, setChangedOnly] = React.useState(false);
 
   const busy = saving || rollingBack;
   const noWrite = l1 !== true || readOnly;
@@ -87,11 +85,10 @@ export default function WorkerRuntimeConfigSurface(props: {
     () => (surface ? surface.faces.flatMap((f) => f.fields) : []),
     [surface],
   );
-  // 草稿值与 values 不同的键集合（含通配 concrete 键）；开关关 → 空集
-  //（filterFields 对空集不做修改过滤）。
-  const changedSet = React.useMemo(
-    () => (changedOnly ? changedKeys(draft, config?.values ?? {}) : new Set<string>()),
-    [changedOnly, draft, config],
+  // C2 面板基线草稿：「已改 N 项」计数与重置的依据（surface/config 变化时重建）。
+  const initialDraft = React.useMemo(
+    () => (surface ? buildDraft(surface, config?.values ?? {}) : {}),
+    [surface, config],
   );
 
   const load = React.useCallback(async () => {
@@ -394,39 +391,16 @@ export default function WorkerRuntimeConfigSurface(props: {
         {!loading && !runtimeUnknown ? (
           <>
         {surface ? (
-              <>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <antd.Input
-                    size="small"
-                    allowClear
-                    style={{ flex: 1, minWidth: 120, maxWidth: 280 }}
-                    placeholder={tr("搜索字段…")}
-                    value={query}
-                    onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                      setQuery(ev.target.value)
-                    }
-                  />
-                  <antd.Switch
-                    size="small"
-                    checked={changedOnly}
-                    onChange={(c: boolean) => setChangedOnly(c)}
-                  />
-                  <span style={{ fontSize: 11, color: t.textSecondary }}>
-                    {tr("仅看已修改")}
-                  </span>
-                </div>
-                <SurfaceForm
-                  surface={surface}
-                  draft={draft}
-                  onChange={onField}
-                  disabled={noWrite || busy}
-                  errors={fieldErrors}
-                  sheet={sheet}
-                  values={config?.values}
-                  query={query}
-                  changedKeys={changedSet}
-                />
-              </>
+              <RuntimeConfigPanel
+                surface={surface}
+                draft={draft}
+                initialDraft={initialDraft}
+                onChange={onField}
+                disabled={noWrite || busy}
+                errors={fieldErrors}
+                values={config?.values}
+                tr={tr}
+              />
             ) : null}
             {config ? (
               <div style={{ fontSize: 10, color: t.textSecondary }}>
