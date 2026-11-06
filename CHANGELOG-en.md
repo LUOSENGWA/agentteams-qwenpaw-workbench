@@ -3,6 +3,14 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.76 (2026-11-07 · file tree view)
+
+**Improved**
+- The files page gains a **list / tree** switch in the toolbar (persisted as `manage.filesView`).
+- Tree view: chevrons expand directories, rows indent by level, children load lazily on expand with inline retry on failure, and the row actions stay the existing download/delete.
+- Keyboard: arrows move the focus row, Right expands only directories, Enter selects/expands; rows keep the 44px touch height.
+- The detail pane is unchanged — the tree replaces the list slot only, so exactly one detail view renders at any width.
+
 ## 0.5.0-beta.16.75 (2026-11-07 · OpenClaw/Hermes config split into capability cards)
 
 **Improved**
