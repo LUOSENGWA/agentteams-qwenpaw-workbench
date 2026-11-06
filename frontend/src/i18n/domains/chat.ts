@@ -282,6 +282,24 @@ export const chatDict: Record<string, { en: string }> = {
   "配额读取失败（可点开重试）": {
     en: "Failed to fetch quota (click to open to retry)",
   },
+  // ── A1b：团队视角（#1503）通知中心「待处理」页签 ──
+  // 复用既有键：全部（worker.ts）/ 加载中…（creds.ts）/ 去房间（本文件），不重复。
+  "全部（聚合）": { en: "All (aggregated)" },
+  "团队视角": { en: "Team view" },
+  "待处理": { en: "Pending" },
+  "逾期": { en: "Overdue" },
+  "已解决": { en: "Resolved" },
+  "聚合视图": { en: "Aggregated view" },
+  "当前控制器不支持团队视角（需 #1503）": {
+    en: "This controller does not support the team view (#1503 required)",
+  },
+  "{n} 个项目读取失败已跳过": { en: "{n} project(s) skipped — failed to read" },
+  "未发送通知": { en: "No notification sent" },
+  "已发送": { en: "Sent" },
+  "房间已接受": { en: "Room accepted" },
+  "通道已接受": { en: "Channel accepted" },
+
+
   // ── C1a-2：模型设置增加 CodingCLI 条目（先 Provider 后模型；provider 落
   // model.baseUrl；其余键复用既有：未配置/重试/加载中…/已保存/刷新/取消/保存/Provider/模型）──
   "CodingCLI 模型": { en: "CodingCLI models" },
