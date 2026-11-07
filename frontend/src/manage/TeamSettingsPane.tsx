@@ -41,7 +41,7 @@ export default function TeamSettingsPane({
   if (!data.admin) {
     return (
       <div style={{ display: "grid", gap: 10, padding: 4 }}>
-        <PaneHeader tr={tr} onBack={onBack} title={teamName || tr("团队设置")} />
+        <PaneHeader tr={tr} t={t} onBack={onBack} title={teamName || tr("团队设置")} />
         <antd.Alert type="warning" showIcon message={tr("管理数据未就绪")} />
       </div>
     );
@@ -74,15 +74,32 @@ export default function TeamSettingsPane({
 /** 栏头：44px 返回 + 标题（与 L2 二级页头同几何）。 */
 function PaneHeader({
   tr,
+  t,
   onBack,
   title,
+  extra,
 }: {
   tr: (s: string, v?: Record<string, string | number>) => string;
+  t: ReturnType<typeof useThemeColors>;
   onBack: () => void;
   title: string;
+  /** 右侧操作（保存等）——与返回同一行，滚动时固定在顶部。 */
+  extra?: ReactNS.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 44 }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        minHeight: 44,
+        position: "sticky",
+        top: 0,
+        zIndex: 3,
+        background: t.bg,
+        paddingBottom: 4,
+      }}
+    >
       <antd.Button onClick={onBack} style={{ minHeight: 44 }}>
         {tr("返回")}
       </antd.Button>
@@ -101,6 +118,8 @@ function PaneHeader({
       >
         <TeamIcon size={15} /> {title}
       </span>
+      <div style={{ flex: 1 }} />
+      {extra}
     </div>
   );
 }
@@ -163,9 +182,27 @@ function TeamCfgInline({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      {/* 标题栏固定：返回 + 标题 + 保存（滚动内容只在下方区域滚动）。 */}
+      <div style={{ flex: "0 0 auto", padding: "4px 4px 0" }}>
+        <PaneHeader
+          tr={tr}
+          t={t}
+          onBack={onBack}
+          title={`${tr("团队设置")} · ${team.name}`}
+          extra={
+            <antd.Button
+              type="primary"
+              loading={crd.cfgBusy}
+              style={{ minHeight: 44 }}
+              onClick={() => void crd.doCfg()}
+            >
+              {tr("保存")}
+            </antd.Button>
+          }
+        />
+      </div>
       <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
         <div style={{ display: "grid", gap: 10, padding: "4px 4px 12px" }}>
-          <PaneHeader tr={tr} onBack={onBack} title={`${tr("团队设置")} · ${team.name}`} />
           {crd.cfgTeam ? (
             <CrdCfgForm
               cfgTeam={crd.cfgTeam}
@@ -225,31 +262,6 @@ function TeamCfgInline({
             </span>
           </div>
         </div>
-      </div>
-      {/* 44px 底部操作条（返回 / 保存）——方案 §4.1.4。 */}
-      <div
-        style={{
-          flex: "0 0 auto",
-          minHeight: 44,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          borderTop: `1px solid ${t.border}`,
-          padding: "4px 4px 0",
-        }}
-      >
-        <antd.Button onClick={onBack} style={{ minHeight: 44 }}>
-          {tr("返回")}
-        </antd.Button>
-        <div style={{ flex: 1 }} />
-        <antd.Button
-          type="primary"
-          loading={crd.cfgBusy}
-          style={{ minHeight: 44 }}
-          onClick={() => void crd.doCfg()}
-        >
-          {tr("保存")}
-        </antd.Button>
       </div>
     </div>
   );
@@ -330,7 +342,7 @@ function StandaloneEntry({
 
   return (
     <div style={{ display: "grid", gap: 10, padding: 4 }}>
-      <PaneHeader tr={tr} onBack={onBack} title={teamName || tr("未分组")} />
+      <PaneHeader tr={tr} t={t} onBack={onBack} title={teamName || tr("未分组")} />
       <antd.Card size="small">
         <div style={{ display: "grid", gap: 8, fontSize: 12.5, color: t.textSecondary }}>
           <span>

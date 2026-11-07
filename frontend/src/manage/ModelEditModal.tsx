@@ -90,6 +90,8 @@ export default function ModelEditModal({
   const [provider, setProvider] = React.useState("");
   const [subagentSame, setSubagentSame] = React.useState(true);
   const [subagentModel, setSubagentModel] = React.useState("");
+  /** 子代理 Provider：只用于过滤候选/回填，提交仍是子代理 model 名。 */
+  const [subagentProvider, setSubagentProvider] = React.useState("");
 
   const showSubagent = runtime === "qwenpaw";
 
@@ -148,6 +150,42 @@ export default function ModelEditModal({
   const locked = lockedAll(access) && !l1;
   const mainPairs = access ? grantedPairs(access.surfaces, "main") : [];
   const spawnPairs = access ? grantedPairs(access.surfaces, "spawn") : [];
+  // 子代理候选：有授予集 → 只列授予对；否则列目录。Provider 只做过滤。
+  const subagentProviderOptions = React.useMemo(() => {
+    if (spawnPairs.length > 0) {
+      return Array.from(new Set(spawnPairs.map((p) => p.provider))).map((p) => ({
+        value: p,
+        label: p,
+      }));
+    }
+    return union.providers.map((p) => ({ value: p.name, label: p.name }));
+  }, [spawnPairs, union.providers]);
+  const subagentModelOptions = React.useMemo(() => {
+    if (spawnPairs.length > 0) {
+      const pairs = subagentProvider
+        ? spawnPairs.filter((p) => p.provider === subagentProvider)
+        : spawnPairs;
+      return Array.from(new Set(pairs.map((p) => p.model))).map((m) => ({ value: m, label: m }));
+    }
+    const all = union.options as { value?: string; label?: unknown; options?: unknown[] }[];
+    if (!subagentProvider) return all as never;
+    // 目录形态：按 provider 归属过滤（providerForModel 只对 alias 有效，
+    // 归属不到时保留，避免把可自由输入的值藏掉）。
+    const flat: { value: string; label: unknown }[] = [];
+    const walk = (arr: unknown[]): void => {
+      for (const it of arr) {
+        const o = it as { value?: string; label?: unknown; options?: unknown[] };
+        if (Array.isArray(o.options)) walk(o.options);
+        else if (typeof o.value === "string") flat.push({ value: o.value, label: o.label ?? o.value });
+      }
+    };
+    walk(all);
+    const keep = flat.filter((o) => {
+      const owner = providerForModel(union.gatewayOptions, o.value);
+      return owner === "" || owner === subagentProvider;
+    });
+    return keep as never;
+  }, [spawnPairs, subagentProvider, union.options, union.gatewayOptions]);
 
   // C2：main surface 有授予集 → 候选只列授予的 (provider, model) 对
   //（provider 列表 = entries 的 provider 去重；选中 provider 后模型列表 =
@@ -327,29 +365,40 @@ export default function ModelEditModal({
               <antd.Switch size="small" checked={subagentSame} disabled={locked} onChange={(v: boolean) => setSubagentSame(v)} />
               <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("与主模型相同")}</span>
             </div>
-            <div>
-              <div style={labelStyle}>{tr("子代理模型（留空=跟随主模型）")}</div>
-              <antd.Select
-                style={{ width: "100%" }}
-                size="large"
-                showSearch
-                allowClear
-                disabled={subagentSame || locked}
-                placeholder={subagentSame ? tr("（与主模型相同）") : tr("选择子代理专用模型")}
-                value={subagentSame ? undefined : subagentModel || undefined}
-                onChange={(v: string) => setSubagentModel(v ?? "")}
-                options={
-                  spawnPairs.length > 0
-                    ? Array.from(new Set(spawnPairs.map((p) => p.model))).map((m) => ({
-                        value: m,
-                        label: m,
-                      }))
-                    : (union.options as any[])
-                }
-                filterOption={(input: string, option: any) =>
-                  String(option?.label ?? option?.value ?? "").toLowerCase().includes(input.toLowerCase())
-                }
-              />
+            <div style={{ display: "grid", gap: 8 }}>
+              {/* 与主模型同一套「先 Provider 再模型」：Provider 只用于过滤
+               * 候选与回填，不改变提交字段（子代理只提交 model 名）。 */}
+              <div>
+                <div style={labelStyle}>{tr("子代理 Provider（留空=跟随主模型 Provider）")}</div>
+                <antd.Select
+                  style={{ width: "100%" }}
+                  size="large"
+                  showSearch
+                  allowClear
+                  disabled={subagentSame || locked}
+                  placeholder={tr("自动（跟随）")}
+                  value={subagentProvider || undefined}
+                  onChange={(v: string) => setSubagentProvider(v ?? "")}
+                  options={subagentProviderOptions}
+                />
+              </div>
+              <div>
+                <div style={labelStyle}>{tr("子代理模型（留空=跟随主模型）")}</div>
+                <antd.Select
+                  style={{ width: "100%" }}
+                  size="large"
+                  showSearch
+                  allowClear
+                  disabled={subagentSame || locked}
+                  placeholder={subagentSame ? tr("（与主模型相同）") : tr("选择子代理专用模型")}
+                  value={subagentSame ? undefined : subagentModel || undefined}
+                  onChange={(v: string) => setSubagentModel(v ?? "")}
+                  options={subagentModelOptions}
+                  filterOption={(input: string, option: any) =>
+                    String(option?.label ?? option?.value ?? "").toLowerCase().includes(input.toLowerCase())
+                  }
+                />
+              </div>
               {/* C2：子代理值不在 spawn 授予集 → 提示（保存按钮同禁用） */}
               {!subagentPairOk ? (
                 <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>

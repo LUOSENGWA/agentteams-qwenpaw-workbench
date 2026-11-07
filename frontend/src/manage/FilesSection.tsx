@@ -129,6 +129,7 @@ import { usePoller } from "../usePoller";
 import {
   DownloadIcon,
   FolderIcon,
+  FolderOpenIcon,
   ListIcon,
   PageIcon,
   TrashIcon,
@@ -1291,21 +1292,25 @@ function TreeRowView({
   nav,
   fs,
   onActivate,
+  onToggle,
   onRetry,
+  selected,
 }: SubProps & {
   row: TreeRow;
   focused: boolean;
   pending: boolean;
   failed: boolean;
   onActivate: (row: TreeRow) => void;
+  onToggle: (row: TreeRow) => void;
   onRetry: (row: TreeRow) => void;
+  selected?: boolean;
 }) {
   // flattenTree 恒透传 entry；?? 兜底仅防 name-only 老形态条目。
   const entry = row.entry ?? { name: row.name };
   const isDir = row.isDir;
   const name = row.name;
   const path = rowPath(entry, fs.dirPath);
-  const sel = !isDir && nav.selectedFile === path;
+  const sel = !isDir ? nav.selectedFile === path : !!selected;
   const onDownload = (e: ReactNS.MouseEvent) => {
     e.stopPropagation();
     void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
@@ -1337,6 +1342,9 @@ function TreeRowView({
       role="button"
       tabIndex={-1}
       onClick={() => onActivate(row)}
+      onDoubleClick={() => {
+        if (isDir) fs.onEnterDir(path);
+      }}
       onMouseEnter={(e) => {
         if (!sel && !focused) e.currentTarget.style.background = t.hoverBg;
       }}
@@ -1358,6 +1366,13 @@ function TreeRowView({
       }}
     >
       <span
+        role="button"
+        aria-label={isDir ? (row.expanded ? tr("收起") : tr("展开")) : undefined}
+        onClick={(e) => {
+          if (!isDir) return;
+          e.stopPropagation(); // 只切展开，不改选中
+          onToggle(row);
+        }}
         style={{
           width: 16,
           fontSize: 11,
@@ -1365,13 +1380,18 @@ function TreeRowView({
           textAlign: "center",
           userSelect: "none",
           flexShrink: 0,
+          cursor: isDir ? "pointer" : "default",
         }}
       >
         {isDir ? (row.expanded ? "▾" : "▸") : ""}
       </span>
       <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
         {isDir ? (
-          <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          row.expanded ? (
+            <FolderOpenIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          ) : (
+            <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          )
         ) : (
           <PageIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
         )}
@@ -1468,6 +1488,8 @@ function TreeArea({
   const [pending, setPending] = React.useState<ReadonlySet<string>>(new Set<string>());
   const [failed, setFailed] = React.useState<ReadonlySet<string>>(new Set<string>());
   const [focusIndex, setFocusIndex] = React.useState(0);
+  /** 树里选中的目录（上传目标；单击目录行选择、chevron 只切展开）。 */
+  const [selectedDir, setSelectedDir] = React.useState("");
 
   // 切目录 → 代数 +1：重置缓存/展开/焦点；在途懒加载响应经 genRef 校验丢弃。
   React.useEffect(() => {
@@ -1477,6 +1499,8 @@ function TreeArea({
     setPending(new Set<string>());
     setFailed(new Set<string>());
     setFocusIndex(0);
+    setSelectedDir("");
+    actions.setUploadDir("");
   }, [fs.dirPath]);
 
   const rows = React.useMemo(
@@ -1556,7 +1580,12 @@ function TreeArea({
   const activateRow = React.useCallback(
     (row: TreeRow): void => {
       if (row.isDir) {
-        toggleRow(row);
+        // 单击目录 = 选中（上传目标），展开由 chevron 负责；再点一次取消。
+        const entry = row.entry ?? { name: row.name };
+        const p = rowPath(entry, fs.dirPath);
+        const next = selectedDir === row.path ? "" : row.path;
+        setSelectedDir(next);
+        actions.setUploadDir(next ? p : "");
         return;
       }
       const entry = row.entry ?? { name: row.name };
@@ -1564,7 +1593,7 @@ function TreeArea({
       // 文件行点选走现有选中逻辑（与 FileRow 一致；再次点击取消选中）。
       nav.selectFile(nav.selectedFile === p ? null : p);
     },
-    [nav, toggleRow, fs.dirPath],
+    [nav, fs.dirPath, selectedDir, actions],
   );
 
   const onKeyDown = (e: ReactNS.KeyboardEvent<HTMLDivElement>): void => {
@@ -1648,7 +1677,9 @@ function TreeArea({
               nav={nav}
               fs={fs}
               onActivate={activateRow}
+              onToggle={toggleRow}
               onRetry={loadChildren}
+              selected={r.isDir && selectedDir === r.path}
             />
           ))
         : null}
@@ -1856,6 +1887,8 @@ interface FilesActions {
   openFolderModal: () => void;
   closeFolderModal: () => void;
   createFolder: () => void;
+  /** 树视图选中的上传目标目录（相对 dirPath；"" = 当前目录）。 */
+  setUploadDir: (dir: string) => void;
 }
 
 function useFilesActions(
@@ -1866,6 +1899,8 @@ function useFilesActions(
     /** F-V3-3：统一刷新入口（新建文件夹成功走它；上传成功保留 load 字面
      * 调用——files-actions-1669 源码断言锚定调用形态，行为同 force 刷新）。 */
     reload: (opts?: { silent?: boolean; force?: boolean }) => void;
+    /** 树视图选中的上传目标（相对当前目录）；空 = 当前目录。 */
+    uploadDirRef: { current: string };
   },
   tr: Tr,
 ): FilesActions {
@@ -1880,7 +1915,8 @@ function useFilesActions(
     setUpBusy(true);
     try {
       // #1519 预签名上传（500/501 → 内部自动回落直传；commit 成功才算成功）。
-      await uploadFile(inp.humanName, fullPath(inp.dirPath, file.name), file);
+      const targetDir = inp.uploadDirRef.current || inp.dirPath;
+      await uploadFile(inp.humanName, fullPath(targetDir, file.name), file);
       antd.message.success(tr("上传成功"));
       inp.load(true, { force: true });
     } catch (err) {
@@ -1922,6 +1958,9 @@ function useFilesActions(
     },
     closeFolderModal: () => setFolderOpen(false),
     createFolder: () => void createFolderInner(),
+    setUploadDir: (dir: string) => {
+      inp.uploadDirRef.current = dir;
+    },
   };
 }
 
@@ -2603,7 +2642,9 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   // 16.67 页面级动作（上传/新建文件夹）唯一入口 handlers——工具条按钮与
   // 列表空态 CTA 共享。必须在下方早退 return 之前调用（hooks 顺序稳定）。
   // F-V3-3：新建文件夹成功 → reload({silent:true})（统一刷新入口）。
-  const actions = useFilesActions({ humanName, dirPath, load, reload }, tr);
+  // 树视图的上传目标（相对当前目录）；切目录/切视图时由树自己清空。
+  const uploadDirRef = React.useRef("");
+  const actions = useFilesActions({ humanName, dirPath, load, reload, uploadDirRef }, tr);
 
   // 探测失败（老控制器）且递归已开（探测晚于用户操作）→ 自动回落一层列表。
   React.useEffect(() => {
