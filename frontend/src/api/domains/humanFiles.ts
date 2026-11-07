@@ -158,10 +158,13 @@ export interface HumanTrashResponse {
   entries: HumanTrashEntry[];
 }
 
-/** 配额（quotaBytes null = 无限制）。 */
+/** 配额（quotaBytes null = 无限制）。
+ * quotaFiles 为前向兼容字段：当前 Controller 契约只有 quotaBytes，
+ * GET 缺省 → null（表单留空 = 不限）；PUT 带上后被老实现忽略。 */
 export interface QuotaResponse {
   usedBytes: number;
   quotaBytes: number | null;
+  quotaFiles?: number | null;
 }
 
 /** requestJson 的 "HTTP xxx: detail" 错误 → HumanFilesError（status 提取同源）。 */
@@ -460,6 +463,46 @@ export async function readFileSync(humanName: string, path: string): Promise<Blo
   return outcome.blob;
 }
 
+/** 文件元信息（HEAD：ETag + Content-Length；HEAD 不可用 → 空对象）。 */
+export interface FileStat {
+  etag?: string;
+  size?: number;
+}
+
+/** 取文件元信息（HEAD /humans/{name}/files/{path}）。
+ * 控制器/代理不支持 HEAD（405 / 网络失败）→ 返回 {}，调用方回落到列表
+ * entry.etag 作 If-Match。 */
+export async function statFile(humanName: string, path: string): Promise<FileStat> {
+  const url = humanFileApiPath(humanName, path);
+  try {
+    const resp = await fetchFile(url, resolvePluginUrl(url), { method: "HEAD" });
+    if (!resp.ok) return {};
+    const len = resp.headers.get("Content-Length");
+    const size = len !== null && len !== "" ? Number(len) : NaN;
+    return {
+      etag: resp.headers.get("ETag") ?? undefined,
+      size: Number.isFinite(size) && size >= 0 ? size : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/** 读文本正文 + 同一次 GET 的 ETag（在线编辑打开用；fresh GET，不走
+ * #1544 的 304 缓存——避免「缓存正文 + 新 ETag」错配导致覆盖他人写入）。 */
+export async function readFileText(
+  humanName: string,
+  path: string,
+): Promise<{ text: string; etag?: string }> {
+  const url = humanFileApiPath(humanName, path);
+  const resp = await fetchFile(url, resolvePluginUrl(url));
+  if (!resp.ok) throw await readHttpError(resp);
+  return {
+    text: await resp.text(),
+    etag: resp.headers.get("ETag") ?? undefined,
+  };
+}
+
 /** 写文件（PUT /humans/{name}/files/{path}；body = 原始字节，
  * Content-Type: application/octet-stream）。ifMatch = If-Match（乐观并发；
  * 不匹配 → 412）；不带 ifMatch 的同名写 = 覆盖。 */
@@ -554,7 +597,8 @@ export async function purgeTrash(humanName: string, id: string): Promise<void> {
   }
 }
 
-/** 读配额（GET /humans/{name}/quota；quotaBytes null = 无限制）。 */
+/** 读配额（GET /humans/{name}/quota；quotaBytes null = 无限制）。
+ * quotaFiles（前向兼容）缺省/非数 → null（= 表单留空）。 */
 export async function getQuota(humanName: string): Promise<QuotaResponse> {
   try {
     const p = (await controllerRequest(
@@ -564,20 +608,38 @@ export async function getQuota(humanName: string): Promise<QuotaResponse> {
     return {
       usedBytes: typeof p?.usedBytes === "number" ? p.usedBytes : 0,
       quotaBytes: typeof p?.quotaBytes === "number" ? p.quotaBytes : null,
+      quotaFiles: typeof p?.quotaFiles === "number" ? p.quotaFiles : null,
     };
   } catch (e) {
     throw fromSharedError(e);
   }
 }
 
+/** setQuota 入参（任务书双维形态；files 缺省 = 不发该字段）。 */
+export interface QuotaSetInput {
+  /** 字节；null = 清除配额（无限制），0 = 零额度。 */
+  bytes: number | null;
+  /** 文件数；null = 无限制，0 = 零额度（前向兼容字段）。 */
+  files?: number | null;
+}
+
 /** 设配额（PUT /humans/{name}/quota → 200；admin only → 403）。
- * quotaBytes = null → 清除配额（无限制）。 */
+ * 兼容两种入参：
+ *   number | null —— 旧形态（PeopleSection）：只发 {quotaBytes}；
+ *   {bytes, files} —— 文件区新形态：files !== undefined 时附带 quotaFiles。
+ * bytes = null → 清除配额（无限制）。 */
 export async function setQuota(
   humanName: string,
-  quotaBytes: number | null,
+  quota: number | null | QuotaSetInput,
 ): Promise<void> {
+  const body: Record<string, unknown> = {
+    quotaBytes: typeof quota === "number" || quota === null ? quota : quota.bytes,
+  };
+  if (quota !== null && typeof quota === "object" && quota.files !== undefined) {
+    body.quotaFiles = quota.files;
+  }
   try {
-    await controllerRequest("PUT", API(humanName, "quota"), { quotaBytes });
+    await controllerRequest("PUT", API(humanName, "quota"), body);
   } catch (e) {
     throw fromSharedError(e);
   }

@@ -73,7 +73,8 @@ import { BrainIcon, BoxIcon, DoorIcon, SearchIcon, ShieldIcon, UsersIcon } from 
 import { WbTooltip } from "../components/WbTooltip";
 import { useCallerLevel } from "../hooks/useCallerLevel";
 import { canControlResources, resourceControlDeniedHint } from "../lib/resourceControl";
-import { fmtBytes, hfErrorText } from "./FilesSection";
+import { hfErrorText } from "./FilesSection";
+import { formatQuotaValue } from "./files/quotaEdit";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -495,10 +496,10 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
     : quota
       ? quota.quotaBytes
         ? tr("已用 {a} / 上限 {b}", {
-            a: fmtBytes(quota.usedBytes),
-            b: fmtBytes(quota.quotaBytes),
+            a: formatQuotaValue(quota.usedBytes),
+            b: formatQuotaValue(quota.quotaBytes),
           })
-        : tr("无限制 · 已用 {a}", { a: fmtBytes(quota.usedBytes) })
+        : tr("无限制 · 已用 {a}", { a: formatQuotaValue(quota.usedBytes) })
       : tr("读取中…");
 
   // #1536 收敛的两张卡本体（非 L1 时 disabled；L1 路径 DOM 不变）。

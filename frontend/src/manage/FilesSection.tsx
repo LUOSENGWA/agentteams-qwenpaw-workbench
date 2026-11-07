@@ -206,6 +206,18 @@ import TrashDialog from "./files/TrashDialog";
 import UploadQueuePanel from "./files/UploadQueuePanel";
 import FileDropTarget from "./files/FileDropTarget";
 import {
+  FileOpProgressBar,
+  QuotaEditDialog,
+  RenameMoveDialog,
+  TextEditorDialog,
+  type FileOpProgress,
+  type FileOpTarget,
+} from "./files/FileOpsDialogs";
+import { formatQuotaValue } from "./files/quotaEdit";
+import { isEditableText } from "./files/textEdit";
+import { useCallerLevel } from "../hooks/useCallerLevel";
+import { canControlResources } from "../lib/resourceControl";
+import {
   collectDrop,
   snapshotDrop,
   uniqueParentDirs,
@@ -256,6 +268,15 @@ interface FilesState {
   humanName: string;
   /** L1 惯例：hasToken = 已配置 Controller 管理员 token（best-effort 门控）。 */
   isAdmin: boolean;
+  /** RBAC level 判定的 admin 门（canControlResources：L1）——配额编辑入口
+   * 仅 admin 显示（任务书「仅 canAdmin」）。 */
+  canAdmin: boolean;
+  /** 行操作入口（容器挂 重命名/移动/文本编辑 弹窗）。 */
+  onRename: (target: FileOpTarget) => void;
+  onMove: (target: FileOpTarget) => void;
+  onEditText: (target: FileOpTarget) => void;
+  /** 打开配额编辑弹窗（admin only；入口已按 canAdmin 隐藏）。 */
+  onEditQuota: () => void;
   view: FileView;
   /** 当前目录相对路径（空 = 根目录）。 */
   dirPath: string;
@@ -641,6 +662,62 @@ function InfoIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
   );
 }
 
+/** 行内「重命名」图标（铅笔；icons.tsx 无此形态，files 域自持）。 */
+function RenameIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M10.8 2.7l2.5 2.5L5.6 12.9l-3.1.6.6-3.1 7.7-7.7z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 行内「移动到…」图标（文件夹 + 右箭头）。 */
+function MoveIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M1.8 4.2h4l1.4 1.6h7v6.4H1.8V4.2z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7.2 9.4h4.2M9.8 7.8l1.6 1.6-1.6 1.6"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 行内「编辑文本」图标（文档 + 笔）。 */
+function EditTextIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M3.2 1.8h6.4l3.2 3.2v4.2"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path d="M5.2 6.2h4.4M5.2 8.6h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path
+        d="M12.4 9.2l1.5 1.5-3.9 3.9-1.9.4.4-1.9 3.9-3.9z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** F-V3-4 视图分段按钮（裸 <button>；≥44px 触控盒 = --hf-row-min；
  * 激活 = accentBg 底 + text 色）。 */
 function viewSegBtnStyle(t: ThemeColors, active: boolean): ReactNS.CSSProperties {
@@ -664,6 +741,13 @@ function viewSegBtnStyle(t: ThemeColors, active: boolean): ReactNS.CSSProperties
 /** 条目完整相对路径（文件行选中键 / API 路径）。 */
 function fullPath(dirPath: string, name: string): string {
   return dirPath ? `${dirPath}/${name}` : name;
+}
+
+/** 行操作弹窗用的条目名（目录新形态 path 带尾斜杠 → 取末段，避免把
+ * "files/docs/" 整串当名称回显）。 */
+function opNameOf(path: string, fallback: string): string {
+  const clean = path.replace(/\/+$/, "");
+  return clean.split("/").pop() || fallback;
 }
 
 // normTrashPath（回收站路径归一）v3 起在 files/TrashPanel.tsx（本文件 import）。
@@ -1195,6 +1279,7 @@ export function FileDetailDrawer({
   const name = entry
     ? entryDisplayName(entry)
     : targetPath.split("/").filter(Boolean).pop() ?? "";
+  const opName = opNameOf(targetPath, name);
   // #1669 统一删除确认（与列表行 / 详情面板共用，不另写 Modal）。
   const del = useDeleteConfirm({
     t,
@@ -1299,11 +1384,78 @@ export function FileDetailDrawer({
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {targetIsDir ? (
-          <antd.Button style={{ minHeight: 44 }} onClick={onOpenSyncSettings}>
-            {tr("同步设置")}
-          </antd.Button>
+          <>
+            <antd.Button
+              style={{ minHeight: 44 }}
+              onClick={() => {
+                onClose();
+                fs.onRename({ path: targetPath, name: opName, isDir: true, etag: entry.etag });
+              }}
+            >
+              {tr("重命名")}
+            </antd.Button>
+            <antd.Button
+              style={{ minHeight: 44 }}
+              onClick={() => {
+                onClose();
+                fs.onMove({ path: targetPath, name: opName, isDir: true, etag: entry.etag });
+              }}
+            >
+              {tr("移动到…")}
+            </antd.Button>
+            <antd.Button style={{ minHeight: 44 }} onClick={onOpenSyncSettings}>
+              {tr("同步设置")}
+            </antd.Button>
+          </>
         ) : (
           <>
+            {isEditableText(name, entry.size) ? (
+              <antd.Button
+                style={{ minHeight: 44 }}
+                onClick={() => {
+                  onClose();
+                  fs.onEditText({
+                    path: targetPath,
+                    name: opName,
+                    isDir: false,
+                    size: entry.size,
+                    etag: entry.etag,
+                  });
+                }}
+              >
+                {tr("编辑")}
+              </antd.Button>
+            ) : null}
+            <antd.Button
+              style={{ minHeight: 44 }}
+              onClick={() => {
+                onClose();
+                fs.onRename({
+                  path: targetPath,
+                  name,
+                  isDir: false,
+                  size: entry.size,
+                  etag: entry.etag,
+                });
+              }}
+            >
+              {tr("重命名")}
+            </antd.Button>
+            <antd.Button
+              style={{ minHeight: 44 }}
+              onClick={() => {
+                onClose();
+                fs.onMove({
+                  path: targetPath,
+                  name,
+                  isDir: false,
+                  size: entry.size,
+                  etag: entry.etag,
+                });
+              }}
+            >
+              {tr("移动到…")}
+            </antd.Button>
             {previewable(name) ? (
               <antd.Button type="primary" style={{ minHeight: 44 }} onClick={onPreview}>
                 {tr("预览")}
@@ -1879,10 +2031,63 @@ function FileRow({
       <InfoIcon size={16} />
     </button>
   );
+  // 第二批行操作：重命名 / 移动到…（目录同样支持）；文本文件额外给「编辑」。
+  const opTarget: FileOpTarget = {
+    path,
+    name: opNameOf(path, name),
+    isDir,
+    size: entry.size,
+    etag: entry.etag,
+  };
+  const renameBtn = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        fs.onRename(opTarget);
+      }}
+      title={tr("重命名")}
+      aria-label={tr("重命名")}
+      style={iconBtnStyle(t)}
+    >
+      <RenameIcon size={16} />
+    </button>
+  );
+  const moveBtn = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        fs.onMove(opTarget);
+      }}
+      title={tr("移动到…")}
+      aria-label={tr("移动到…")}
+      style={iconBtnStyle(t)}
+    >
+      <MoveIcon size={16} />
+    </button>
+  );
+  const editBtn =
+    !isDir && isEditableText(name, entry.size) ? (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          fs.onEditText(opTarget);
+        }}
+        title={tr("编辑")}
+        aria-label={tr("编辑")}
+        style={iconBtnStyle(t)}
+      >
+        <EditTextIcon size={16} />
+      </button>
+    ) : null;
   const actionsCell = isDir ? (
     // #1669 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip 提示。
     <span style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap }}>
       {detailBtn}
+      {renameBtn}
+      {moveBtn}
       <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
         <span style={{ display: "inline-flex" }}>
           <button
@@ -1899,6 +2104,9 @@ function FileRow({
   ) : (
     <span style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap }}>
       {detailBtn}
+      {editBtn}
+      {renameBtn}
+      {moveBtn}
       <button
         type="button"
         onClick={onDownload}
@@ -2141,6 +2349,57 @@ function TreeRowView({
     e.stopPropagation();
     fs.onOpenDetail(path, isDir);
   };
+  // 第二批行操作（与 FileRow 同源）：重命名 / 移动到… / 文本编辑。
+  const opTarget: FileOpTarget = {
+    path,
+    name: opNameOf(path, name),
+    isDir,
+    size: entry.size,
+    etag: entry.etag,
+  };
+  const renameBtn = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        fs.onRename(opTarget);
+      }}
+      title={tr("重命名")}
+      aria-label={tr("重命名")}
+      style={iconBtnStyle(t)}
+    >
+      <RenameIcon size={16} />
+    </button>
+  );
+  const moveBtn = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        fs.onMove(opTarget);
+      }}
+      title={tr("移动到…")}
+      aria-label={tr("移动到…")}
+      style={iconBtnStyle(t)}
+    >
+      <MoveIcon size={16} />
+    </button>
+  );
+  const editBtn =
+    !isDir && isEditableText(name, entry.size) ? (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          fs.onEditText(opTarget);
+        }}
+        title={tr("编辑")}
+        aria-label={tr("编辑")}
+        style={iconBtnStyle(t)}
+      >
+        <EditTextIcon size={16} />
+      </button>
+    ) : null;
   // 拖拽上传目标（目录行）：拦截内部 drag 事件 → 高亮本行 + drop 落此目录；
   // stopPropagation 同时阻止区域遮罩盖住行高亮（遮罩 pointerEvents:none，
   // 但仍会视觉覆盖，故不激活）。
@@ -2353,6 +2612,8 @@ function TreeRowView({
         >
           <InfoIcon size={16} />
         </button>
+        {renameBtn}
+        {moveBtn}
         {isDir ? (
           // 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip（同 FileRow）。
           <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
@@ -2369,6 +2630,7 @@ function TreeRowView({
           </antd.Tooltip>
         ) : (
           <>
+            {editBtn}
             <button
               type="button"
               onClick={onDownload}
@@ -2831,6 +3093,57 @@ function GridCard({
     e.stopPropagation();
     del.request(path, name);
   };
+  // 第二批行操作（与 FileRow / 树行同源）：重命名 / 移动到… / 文本编辑。
+  const opTarget: FileOpTarget = {
+    path,
+    name: opNameOf(path, name),
+    isDir,
+    size: entry.size,
+    etag: entry.etag,
+  };
+  const renameBtn = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        fs.onRename(opTarget);
+      }}
+      title={tr("重命名")}
+      aria-label={tr("重命名")}
+      style={iconBtnStyle(t)}
+    >
+      <RenameIcon size={16} />
+    </button>
+  );
+  const moveBtn = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        fs.onMove(opTarget);
+      }}
+      title={tr("移动到…")}
+      aria-label={tr("移动到…")}
+      style={iconBtnStyle(t)}
+    >
+      <MoveIcon size={16} />
+    </button>
+  );
+  const editBtn =
+    !isDir && isEditableText(name, entry.size) ? (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          fs.onEditText(opTarget);
+        }}
+        title={tr("编辑")}
+        aria-label={tr("编辑")}
+        style={iconBtnStyle(t)}
+      >
+        <EditTextIcon size={16} />
+      </button>
+    ) : null;
 
   const skin = sel
     ? { border: `1px solid ${t.border}`, background: t.hoverBg }
@@ -2926,6 +3239,8 @@ function GridCard({
             >
               <InfoIcon size={16} />
             </button>
+            {renameBtn}
+            {moveBtn}
             <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
               <span style={{ display: "inline-flex" }}>
                 <button
@@ -2953,6 +3268,9 @@ function GridCard({
             >
               <InfoIcon size={16} />
             </button>
+            {editBtn}
+            {renameBtn}
+            {moveBtn}
             <button
               type="button"
               onClick={onDownload}
@@ -3649,7 +3967,7 @@ function FilesToolbar({
         </button>
       </div>
       <div
-        title={tr("容量配额在「人员管理」中设置")}
+        title={tr("配额")}
         style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: 0 }}
       >
         <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
@@ -3667,14 +3985,14 @@ function FilesToolbar({
               />
               <span style={{ fontSize: 12, color: t.textSecondary, whiteSpace: "nowrap" }}>
                 {tr("已用 {a} / 共 {b}", {
-                  a: fmtBytes(q.usedBytes),
-                  b: fmtBytes(q.quotaBytes ?? undefined),
+                  a: formatQuotaValue(q.usedBytes),
+                  b: formatQuotaValue(q.quotaBytes ?? undefined),
                 })}
               </span>
             </>
           ) : (
             <span style={{ fontSize: 12, color: t.textSecondary, whiteSpace: "nowrap" }}>
-              {tr("配额")}: {tr("无限制")} · {tr("已用 {a}", { a: fmtBytes(q.usedBytes) })}
+              {tr("配额")}: {tr("无限制")} · {tr("已用 {a}", { a: formatQuotaValue(q.usedBytes) })}
             </span>
           )
         ) : (
@@ -3682,6 +4000,16 @@ function FilesToolbar({
             {tr("加载中…")}
           </span>
         )}
+        {/* 配额编辑入口：仅 canAdmin（RBAC L1）显示；非 admin 隐藏。 */}
+        {fs.canAdmin ? (
+          <antd.Button
+            size="small"
+            style={{ minHeight: "var(--hf-btn-min, 40px)", flexShrink: 0 }}
+            onClick={() => fs.onEditQuota()}
+          >
+            {tr("编辑配额")}
+          </antd.Button>
+        ) : null}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         <antd.Button style={btnTouch} onClick={actions.onUploadClick}>
@@ -4110,6 +4438,18 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [trash, setTrash] = React.useState<HumanTrashEntry[]>([]);
   const [quota, setQuota] = React.useState<QuotaResponse | null>(null);
   const [quotaFailed, setQuotaFailed] = React.useState(false);
+  // ── 第二批：重命名/移动、配额编辑、文本在线编辑 ──
+  // RBAC level 判定（canControlResources = L1）——配额编辑入口仅 admin 显示。
+  const canAdmin = canControlResources(
+    useCallerLevel({ admin: data.admin, myUserId: data.myUserId, hasToken: data.hasToken }),
+  );
+  const [opDialog, setOpDialog] = React.useState<{
+    mode: "rename" | "move";
+    target: FileOpTarget;
+  } | null>(null);
+  const [editorTarget, setEditorTarget] = React.useState<FileOpTarget | null>(null);
+  const [quotaDialogOpen, setQuotaDialogOpen] = React.useState(false);
+  const [opProgress, setOpProgress] = React.useState<FileOpProgress | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [status, setStatus] = React.useState<"" | "404" | "err">("");
   const [error, setError] = React.useState("");
@@ -4558,6 +4898,15 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const fs: FilesState = {
     humanName,
     isAdmin: !!data.hasToken,
+    canAdmin,
+    onRename: (target) => setOpDialog({ mode: "rename", target }),
+    onMove: (target) => setOpDialog({ mode: "move", target }),
+    onEditText: (target) => setEditorTarget(target),
+    onEditQuota: () => {
+      setQuotaDialogOpen(true);
+      // 打开前重取一次配额（与人员详情 openQuota 同口径）。
+      void load(true);
+    },
     view,
     dirPath,
     files,
@@ -4788,6 +5137,13 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           onRetry={actions.onRetryUpload}
           onClearFinished={actions.onClearFinishedUploads}
         />
+        {/* 第二批：重命名/移动进度（copying / renaming / error，逐文件）。 */}
+        <FileOpProgressBar
+          t={t}
+          tr={tr}
+          progress={opProgress}
+          onDismiss={() => setOpProgress(null)}
+        />
         {/* 标题行：页标题 + 递归开关（F-V3-3 视图切换已移除）。 */}
         <div
           style={{
@@ -4920,6 +5276,50 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           trashError={trashError}
           onReload={(opts) => reload(opts)}
         />
+        {/* 第二批弹窗：重命名 / 移动到…（复制-删除；目录逐文件）。 */}
+        {opDialog ? (
+          <RenameMoveDialog
+            open
+            mode={opDialog.mode}
+            target={opDialog.target}
+            entries={files}
+            dirPath={dirPath}
+            t={t}
+            tr={tr}
+            humanName={humanName}
+            errorText={(e) => hfErrorText(e, tr)}
+            onClose={() => setOpDialog(null)}
+            onDone={() => void reload({ silent: true, force: true })}
+            onProgress={setOpProgress}
+          />
+        ) : null}
+        {/* 第二批弹窗：文本在线编辑（If-Match；412 冲突选择）。 */}
+        {editorTarget ? (
+          <TextEditorDialog
+            open
+            target={editorTarget}
+            t={t}
+            tr={tr}
+            humanName={humanName}
+            errorText={(e) => hfErrorText(e, tr)}
+            onClose={() => setEditorTarget(null)}
+            onSaved={() => void reload({ silent: true, force: true })}
+          />
+        ) : null}
+        {/* 第二批弹窗：配额编辑（十进制 MB/GB + 文件数；仅 admin）。 */}
+        {quotaDialogOpen ? (
+          <QuotaEditDialog
+            open
+            canAdmin={canAdmin}
+            quota={quota}
+            t={t}
+            tr={tr}
+            humanName={humanName}
+            errorText={(e) => hfErrorText(e, tr)}
+            onClose={() => setQuotaDialogOpen(false)}
+            onSaved={() => void load(true)}
+          />
+        ) : null}
       </div>
     );
   }
