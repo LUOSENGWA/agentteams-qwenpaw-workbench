@@ -17,6 +17,20 @@ import type { TeamsRoomsResponse } from "./domains/teams";
  * Controller 抖动时请求可挂起数分钟，前端恒转圈且刷新钮被 loading 禁用
  * （「手动也不行」）。超时抛「请求超时」错误（非 HTTP xxx 形态，调用方
  * toast 后可手动重试）；不传 = 原行为（SSE/长轮询等端点不受影响）。 */
+/** JSON 请求体默认带 `Content-Type: application/json`。
+ *
+ * fetch 对字符串 body 默认 `text/plain;charset=UTF-8`；FastAPI 的 Pydantic
+ * body 解析按 content-type 选分支，非 JSON 直接 422（实测
+ * `/matrix/mark-read`、`/rooms/{id}/leave` 等只传 `body: JSON.stringify(...)`
+ * 的调用全部中招）。调用方显式给了 content-type（含 FormData 等）则不动。 */
+export function withJsonContentType(init?: RequestInit): RequestInit | undefined {
+  if (!init || typeof init.body !== "string" || init.body.length === 0) return init;
+  const headers = new Headers(init.headers);
+  if (headers.has("content-type")) return init;
+  headers.set("content-type", "application/json");
+  return { ...init, headers };
+}
+
 export interface RequestJsonResult {
   payload: unknown;
   /** 原始响应（读响应头用）；独立宿主 localStorage 模拟层无真实响应 → null。 */
@@ -39,6 +53,7 @@ export async function requestJsonFull(
     const emu = tryLocalConfigEndpoint(path, init);
     if (emu !== null) return { payload: await emu, response: null };
   }
+  init = withJsonContentType(init);
   let timer: ReturnType<typeof setTimeout> | null = null;
   let response: Response;
   try {
