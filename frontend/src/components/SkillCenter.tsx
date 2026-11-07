@@ -39,6 +39,9 @@ import {
   setWorkerSkillPreload,
   httpErrorStatus,
   uploadTeamSkill,
+  downloadSkill,
+  isSkillDownloadUnavailable,
+  skillDownloadKey,
 } from "../api";
 import { strToU8, zipSync } from "fflate";
 import { invalidateTags } from "../requestCache";
@@ -54,6 +57,20 @@ import { UploadSkillModal, SkillDetailModal } from "./SkillCenterModals";
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
+
+/** 下载保存：Blob → object URL → a.click（与 WorkerWorkspaceFilesPanel
+ * triggerDownload 同范式——鉴权已在前端 fetch 完成，锚点只触发本地保存，
+ * 不指向任何远端 URL）。 */
+function triggerSkillSave(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
 
 
 /**
@@ -267,6 +284,53 @@ export default function SkillCenter({
       }
     },
     [tr],
+  );
+  // ── 技能包下载（目录行动作；GET /api/v1/skills/{name}/download 流式 zip）──
+  // team 作用域与目录取数同源（loadCatalog 同表达式）：onlyTeam 优先，
+  // 其次 L2 当前团队；L1 全量视图无 team → controller 取全局（shared）
+  // 前缀，builtin/团队层技能 404 → 该行隐藏下载（能力降级，非故障）。
+  const dlTeamScope = onlyTeam || (l2 ? l2Team || undefined : undefined);
+  // 按「作用域×技能名」键控：404/405 = 当前作用域无此下载 → gone（隐藏，
+  // 不弹错）；busy = 拉取中（防重复点击）。
+  const [dlBusy, setDlBusy] = React.useState<Record<string, boolean>>({});
+  const [dlGone, setDlGone] = React.useState<Record<string, true>>({});
+  const skillDlState = React.useCallback(
+    (name: string): "ready" | "busy" | "gone" => {
+      const key = skillDownloadKey(dlTeamScope, name);
+      if (dlGone[key]) return "gone";
+      if (dlBusy[key]) return "busy";
+      return "ready";
+    },
+    [dlTeamScope, dlBusy, dlGone],
+  );
+  const handleSkillDownload = React.useCallback(
+    async (name: string) => {
+      const key = skillDownloadKey(dlTeamScope, name);
+      if (dlGone[key] || dlBusy[key]) return;
+      setDlBusy((p) => ({ ...p, [key]: true }));
+      try {
+        const { blob, filename } = await downloadSkill(name, dlTeamScope);
+        triggerSkillSave(blob, filename);
+        antd.message.success(tr("开始下载 {name}", { name }));
+      } catch (e) {
+        // 404/405 = builtin 技能无存储包 / 老控制器无路由 / 越权隐藏 →
+        // 隐藏该操作（能力降级，不报错）；其余（403/5xx/网络）提示可重试。
+        if (isSkillDownloadUnavailable(e)) {
+          setDlGone((p) => ({ ...p, [key]: true }));
+        } else {
+          antd.message.error(
+            tr("下载失败：{m}", { m: e instanceof Error ? e.message : "?" }),
+          );
+        }
+      } finally {
+        setDlBusy((p) => {
+          const n = { ...p };
+          delete n[key];
+          return n;
+        });
+      }
+    },
+    [dlTeamScope, dlGone, dlBusy, tr],
   );
   const [mcpMap, setMcpMap] = React.useState<Record<string, McpServerInfo[]>>({});
   const [savingRow, setSavingRow] = React.useState("");
@@ -696,6 +760,8 @@ export default function SkillCenter({
           onDetail={setDetailSkill}
           preloadBusy={preloadBusy}
           togglePreload={togglePreload}
+          skillDlState={skillDlState}
+          onSkillDownload={(s) => void handleSkillDownload(s)}
           savingRow={savingRow}
           onSave={(w) => void saveWorkerSkills(w)}
           onRefresh={() => {

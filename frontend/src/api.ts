@@ -11,6 +11,7 @@ export * from "./api/domains/audit";
 export * from "./api/domains/upgrade";
 export * from "./api/domains/codingcli";
 export * from "./api/domains/workspaceFiles";
+export * from "./api/domains/skills";
 export * from "./api/domains/crd";
 export * from "./api/domains/worker";
 export * from "./api/domains/chat";

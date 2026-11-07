@@ -511,6 +511,10 @@ export const workerDict: Record<string, { en: string }> = {
   "技能目录 API 待上游合并": { en: "Skill catalog API awaiting upstream merge" },
   "技能目录 API 待上游合并——合并并升级后本节自动点亮": { en: "Skill catalog API awaiting upstream merge — activates after merge + upgrade" },
   "技能目录加载失败：{m}": { en: "Failed to load skill catalog: {m}" },
+  // 技能包下载（目录行动作；GET /skills/{name}/download 流式 zip）
+  "下载技能包（zip）": { en: "Download skill package (zip)" },
+  "开始下载 {name}": { en: "Downloading {name}" },
+  "下载失败：{m}": { en: "Download failed: {m}" },
   "无 MCP": { en: "No MCP" },
   "无 Worker": { en: "No workers" },
   "无 Worker（admin token 未配置？）": { en: "No workers (admin token not configured?)" },
