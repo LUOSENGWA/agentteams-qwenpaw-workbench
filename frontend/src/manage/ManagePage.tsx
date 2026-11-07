@@ -33,7 +33,11 @@ import { usePoller } from "../usePoller";
 import { MenuIcon } from "../components/icons";
 import { ReloadIcon } from "../components/WorkerManageShared";
 import ManageRail from "./ManageRail";
-import { useManageNav, type ManageSection } from "./useManageNav";
+import {
+  useManageNav,
+  type ManageSection,
+  type ManageSectionRequest,
+} from "./useManageNav";
 import type { ManageData, ManageVariant } from "./types";
 import TeamSection from "./TeamSection";
 import CrdSection from "./CrdSection";
@@ -49,8 +53,9 @@ export interface ManagePageProps extends ManageData {
   /** 当前 tab 是否激活（rc-tabs 保活：30s 轮询门控；稳定 ref 模式，
    * 传 ref 不传 boolean——prop 翻转不击穿 React.memo）。 */
   activeRef?: { current: boolean };
-  /** section 深链（一次性请求：首页 SGLang 卡 → 集群管理）。 */
-  sectionRequest?: ManageSection | null;
+  /** section 深链（一次性请求：首页 SGLang 卡 → 集群管理；命令面板 →
+   * 域 + 实体）。裸 section 字符串 = 只落域（旧行为），对象额外选中实体。 */
+  sectionRequest?: ManageSectionRequest | null;
   onSectionRequestConsumed?: () => void;
 }
 
@@ -193,13 +198,28 @@ function ManagePage(props: ManagePageProps) {
     }
   }, []);
 
-  // ── section 深链消费（首页 SGLang 卡 → 集群管理；一次性）──
+  // ── section 深链消费（首页 SGLang 卡 → 集群管理；命令面板 → 实体；
+  // 一次性）──
   const { setSection } = nav;
   React.useEffect(() => {
-    if (sectionRequest) {
+    if (!sectionRequest) return;
+    if (typeof sectionRequest === "string") {
       setSection(sectionRequest);
-      onSectionRequestConsumed?.();
+    } else {
+      const req = sectionRequest;
+      setSection(req.section);
+      if (req.section === "team") {
+        // Worker 详情可脱离 selectedTeam（TeamSection 走 standalone 分支）；
+        // 团队名优先于 Worker 名。
+        if (req.worker) nav.openWorker(req.worker);
+        else if (req.team) nav.openTeam(req.team);
+      } else if (req.section === "people" && req.human) {
+        nav.selectHuman(req.human);
+      } else if (req.section === "files" && req.file) {
+        nav.selectFile(req.file);
+      }
     }
+    onSectionRequestConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionRequest]);
 

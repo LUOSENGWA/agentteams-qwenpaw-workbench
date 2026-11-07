@@ -20,11 +20,14 @@ import WorkflowBoard, { WfView } from "./components/WorkflowBoard";
 import Artifacts from "./components/Artifacts";
 import SettingsTab from "./components/SettingsTab";
 import MessageSearch from "./components/MessageSearch";
+import CommandPalette, {
+  useCommandPaletteHotkey,
+} from "./components/CommandPalette";
 import ProjectFiles from "./components/ProjectFiles";
 import NotificationCenter from "./components/NotificationCenter";
 import WorkerChats from "./components/WorkerChats";
 import ManagePage from "./manage/ManagePage";
-import type { ManageSection } from "./manage/useManageNav";
+import type { ManageSectionRequest } from "./manage/useManageNav";
 import { AttentionDecisionModal } from "./components/AttentionDecisionModal";
 import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, BrainIcon, SettingsIcon, FolderIcon, TargetIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
@@ -398,9 +401,11 @@ export default function WorkbenchPage() {
   // 管理页 section 深链（一次性通道）：首页 SGLang 卡「去集群」等入口
   // 落管理页指定域。setTab("team") 后 ManagePage 消费 sectionRequest 并回执
   // onSectionRequestConsumed 清空（避免同域重复点击被吞）。
-  const [manageSectionReq, setManageSectionReq] = React.useState<ManageSection | null>(null);
+  // 命令面板复用同一通道：对象形态 = 域 + 实体（人员/团队/Worker/文件）。
+  const [manageSectionReq, setManageSectionReq] =
+    React.useState<ManageSectionRequest | null>(null);
   const requestManageSection = React.useCallback(
-    (s: ManageSection) => {
+    (s: ManageSectionRequest) => {
       setManageSectionReq(s);
       setTab("team");
       scrollTabIntoView("team");
@@ -408,6 +413,12 @@ export default function WorkbenchPage() {
     [setTab, scrollTabIntoView],
   );
   const clearManageSectionReq = React.useCallback(() => setManageSectionReq(null), []);
+
+  // 全局命令面板（⌘K）：顶栏搜索框点击或快捷键打开（顶层挂载一次）。
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const openPalette = React.useCallback(() => setPaletteOpen(true), []);
+  const closePalette = React.useCallback(() => setPaletteOpen(false), []);
+  useCommandPaletteHotkey(openPalette);
 
   const {
     sseState,
@@ -864,6 +875,45 @@ export default function WorkbenchPage() {
           )}
         </div>
         <div style={{ flex: 1 }} />
+        {/* 全局命令面板入口（反向对齐 dashboard R1：顶栏搜索框 + ⌘K）。
+    CommandPalette 挂在页面尾部（顶层一次），此处只做打开触发器。 */}
+        <WbTooltip title={tr("全局搜索")}>
+          <button
+            type="button"
+            onClick={openPalette}
+            aria-label={tr("全局搜索")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 30,
+              padding: narrow ? "0 8px" : "0 10px",
+              border: `1px solid ${t.border}`,
+              background: "transparent",
+              borderRadius: 15,
+              color: t.textSecondary,
+              cursor: "pointer",
+              fontSize: 12,
+              flexShrink: 0,
+            }}
+          >
+            <SearchIcon size={14} />
+            {!narrow && <span>{tr("搜索")}</span>}
+            {!narrow && (
+              <span
+                style={{
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 5,
+                  padding: "0 5px",
+                  fontSize: 10.5,
+                  lineHeight: "16px",
+                }}
+              >
+                ⌘K
+              </span>
+            )}
+          </button>
+        </WbTooltip>
         {/* attention 待决策 badge——deployed 且有未答项才显示（点击跳
     通知页「待决策」子页；答题走面板内「回答」开全局弹窗）；
     旧 controller（404 降级）不显示，诚实降级。 */}
@@ -1357,6 +1407,16 @@ export default function WorkbenchPage() {
         onOpenRoom={handleGlobalSearchOpenRoom}
         rooms={rooms}
         onOpenRoomOnly={handleGlobalSearchOpenRoomOnly}
+      />
+      {/* 全局命令面板（⌘K / 顶栏搜索框）：人员 / 团队 / Worker / 项目 /
+          文件跨资源跳转；数据首次打开才取（60s 缓存、失败静默）。 */}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={closePalette}
+        myUserId={config?.matrix?.user_id || ""}
+        onGotoTab={handleGotoTab}
+        onOpenManage={requestManageSection}
+        onOpenProject={handleOpenProject}
       />
       {/* 项目文件面板（产物端点 版：任务结果/任务书/交付物） */}
  {/* 项目文件 Drawer 标题带文件夹 SVG；
