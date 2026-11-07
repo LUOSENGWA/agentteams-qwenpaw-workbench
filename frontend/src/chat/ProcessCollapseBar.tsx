@@ -1,7 +1,7 @@
 /**
  * 过程折叠条（批次 3）：一个 turn 的工具调用聚合为一行。
  *
- * 默认折叠：`🔧 N 次工具调用 · X.Xs` + 展开箭头；
+ * 默认折叠：`WrenchIcon N 次工具调用 · X.Xs` + 展开箭头；
  * 展开：逐次调用（工具名 + 参数摘要 + 耗时 + 状态），
  * 行内再点开看完整参数/结果（原 ToolBubble 展开能力保留）。
  * 高度过渡 150ms（grid-template-rows 0fr→1fr，Chromium 原生支持）。
@@ -10,8 +10,11 @@
  * 工具帧，口径不变）；经 aggregateToolCalls 配对 call/result。
  *
  * 思考过程：turn 内的 m.notice 推理帧（isThinkingNotice 启发式）由调用方
- * 抽取为 thoughts 传入——并入同一条折叠（`🧠 思考过程 · 🔧 N 次工具调用`），
- * 展开区先思考段、再工具行；不再作为红色/斜体正文气泡刷屏。
+ * 抽取为 thoughts 传入——并入同一条折叠（`BrainIcon 思考过程 · WrenchIcon
+ * N 次工具调用`），展开区先思考段、再工具行；不再作为红色/斜体正文气泡刷屏。
+ *
+ * 交互：只有折叠头（标题行）切换展开；子项（参数/结果）点击只切自己的
+ * 展开态并 stopPropagation，选中文本/点击展开区空白不会收起整个过程条。
  *
  * 流式进行中（active）：默认展开 + 转圈（wb-process-spin，reduced-motion
  * 关闭）+ 折叠头「· 进行中」；turn 结束后自动折叠，用户手动点过则以其
@@ -21,7 +24,7 @@ import type { AggregatedCall, ToolCall } from "./ChatIR";
 import { aggregateToolCalls } from "./ChatIR";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
-import { CheckIcon, CloseIcon, WrenchIcon } from "../components/icons";
+import { BrainIcon, CheckIcon, CloseIcon, WrenchIcon } from "../components/icons";
 
 const host = window.QwenPaw.host;
 const React = host.React;
@@ -43,7 +46,14 @@ function CallRow({ call }: { call: AggregatedCall }) {
         ? "#30a46c"
         : t.textSecondary;
   return (
-    <div onClick={() => call.detail && setOpen((v) => !v)} style={{ cursor: call.detail ? "pointer" : "default" }}>
+    <div
+      onClick={(e) => {
+        // 子项（参数/结果）点击不冒泡到父条：展开/选择文本不得收起整个过程条。
+        e.stopPropagation();
+        if (call.detail) setOpen((v) => !v);
+      }}
+      style={{ cursor: call.detail ? "pointer" : "default" }}
+    >
       <div
         style={{
           display: "flex",
@@ -89,6 +99,7 @@ function CallRow({ call }: { call: AggregatedCall }) {
       </div>
       {open && call.detail ? (
         <pre
+          onClick={(e) => e.stopPropagation()}
           style={{
             margin: "4px 0 4px 18px",
             padding: "8px 10px",
@@ -163,9 +174,7 @@ export function ProcessCollapseBar({
   return (
     <div
       className={active ? "wb-process-bar is-active" : "wb-process-bar"}
-      onClick={() => setUserOpen(!open)}
       style={{
-        cursor: "pointer",
         padding: "4px 10px",
         borderRadius: 10,
         background: t.toolBg,
@@ -177,10 +186,25 @@ export function ProcessCollapseBar({
       }}
       title={title}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {/* 只有头部（chevron/标题行）切换折叠；展开区空白与子项点击不收起。 */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setUserOpen(!open)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setUserOpen(!open);
+          }
+        }}
+        style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+      >
         {hasThoughts ? (
           <>
-            <span style={{ fontSize: 12, flexShrink: 0 }}>🧠</span>
+            <span data-icon="brain" style={{ display: "inline-flex", flexShrink: 0 }}>
+              <BrainIcon size={12} />
+            </span>
             <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
               {tr("思考过程")}
             </span>
@@ -191,7 +215,9 @@ export function ProcessCollapseBar({
         ) : null}
         {hasCalls ? (
           <>
-            <span style={{ fontSize: 12, flexShrink: 0 }}>🔧</span>
+            <span data-icon="wrench" style={{ display: "inline-flex", flexShrink: 0 }}>
+              <WrenchIcon size={12} />
+            </span>
             <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
               {callsLabel}
             </span>
@@ -213,6 +239,8 @@ export function ProcessCollapseBar({
       </div>
       {/* 150ms 高度过渡：grid 行 0fr→1fr（内容隐藏不卸载，展开态保留）。 */}
       <div
+        data-process-body=""
+        onClick={(e) => e.stopPropagation()}
         style={{
           display: "grid",
           gridTemplateRows: open ? "1fr" : "0fr",

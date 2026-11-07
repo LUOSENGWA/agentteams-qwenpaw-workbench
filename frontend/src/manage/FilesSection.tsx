@@ -192,8 +192,8 @@ import {
 } from "./files/uploadQueue";
 import {
   clearSelection,
+  clickSelection,
   pruneSelection,
-  selectAll,
   selectAllState,
   selectedSummary,
   toggleSelection,
@@ -201,6 +201,7 @@ import {
   type SelectionSet,
   type SelectAllState,
 } from "../lib/filesSelection";
+import { resolveTargetDir, targetDirLabel } from "./files/targetDir";
 import SyncSettingsModal from "./files/SyncSettingsModal";
 import TrashDialog from "./files/TrashDialog";
 import UploadQueuePanel from "./files/UploadQueuePanel";
@@ -255,12 +256,12 @@ export function fileViews(): FileView[] {
  * 弹窗（工具条按钮打开）；SyncCard 声明保留 = 测试区间锚点，无视图渲染。 */
 export const hasInlineSyncCard = false;
 
-/** 树视图批量上下文（TreeArea 上报 → 容器）：可见文件行按树顺序（shift
- *  区间用）+ 已知文件条目（根 + 已加载子层，含折叠缓存——汇总 / 批量 /
- *  剔除基准）。折叠后可见行收窄，但已知条目不变 → 选择保留。 */
+/** 树视图批量上下文（TreeArea 上报 → 容器）：可见行按树顺序（shift
+ *  区间用，含目录）+ 已知条目（根 + 已加载子层，含折叠缓存——汇总 /
+ *  批量 / 剔除基准）。折叠后可见行收窄，但已知条目不变 → 选择保留。 */
 export interface TreeBatchInfo {
   visiblePaths: string[];
-  entries: { path: string; name: string; size?: number }[];
+  entries: { path: string; name: string; size?: number; isDir?: boolean }[];
 }
 
 /** 文件域自持状态（tabs / 列表 / 详情 / 配额卡共享）。 */
@@ -312,25 +313,37 @@ interface FilesState {
   filesView: FilesView;
   /** F-V3-4：切视图（写回 localStorage；不可用静默回落）。 */
   onFilesViewChange: (v: FilesView) => void;
-  /** 批量选择（列表/网格共用）：键 = rowPath；目录不可选；
+  /** 批量选择（列表/树/网格共用）：键 = rowPath；文件与目录均可选；
    * 视图切换保留（容器层 state），刷新/切目录由 pruneSelection 剔除。 */
   selected: SelectionSet;
-  /** 当前目录可选（文件）行路径序列（列表顺序）——shift 区间定位 /
-   * 全选 / 剔除基准；目录行不入列。 */
-  selectablePaths: string[];
-  /** 「全选」三态（按 selectablePaths 判定；全目录 → none）。 */
+  /** 当前目录可见行路径序列（列表顺序；**含目录**）——shift 区间定位 /
+   * 全选 / 剔除基准。 */
+  visiblePaths: string[];
+  /** 「全选」三态（按当前视图可见行判定；文件 + 目录都计入）。 */
   selAll: SelectAllState;
-  /** 单点 / shift 区间切换（isDir 行由容器忽略；shift 锚点在容器层）。
-   *  opts.paths = 区间定位顺序（树视图传可见文件行顺序；缺省 = 列表/网格
-   *  的 selectablePaths）。 */
+  /** 当前焦点行是目录（详情槽据此不渲染 FileDetail / 浮层）。 */
+  focusedIsDir: boolean;
+  /** 复选框切换：只改批量选择，不改焦点 / 目标、不触发展开。
+   *  opts.paths = 区间定位顺序（树视图传可见行顺序；缺省 = 当前目录）。 */
   onToggleSelect: (
     path: string,
-    opts: { isDir: boolean; shiftKey: boolean; paths?: readonly string[] },
+    opts: { shiftKey: boolean; paths?: readonly string[] },
+  ) => void;
+  /** 行点击（焦点与批量选择分离）：无修饰 → 只选本行；Ctrl/Cmd → 切换；
+   *  Shift → 从锚点到本行的可见行区间（文件 + 目录）。 */
+  onRowClick: (
+    path: string,
+    opts: {
+      isDir: boolean;
+      shiftKey: boolean;
+      toggleKey: boolean;
+      paths?: readonly string[];
+    },
   ) => void;
   /** 树视图批量上下文上报（可见行 + 已知条目）；null = 离开树视图。 */
   onTreeBatchChange: (info: TreeBatchInfo | null) => void;
-  /** 表头/网格工具条「全选」三态切换（all → 清空；否则全选）。 */
-  onSelectAllToggle: () => void;
+  /** 表头/网格工具条「全选」三态切换（all → 清空；否则并入全部可见行）。 */
+  onSelectAll: (paths: readonly string[]) => void;
   /** 批量操作条「取消选择」。 */
   onClearSelection: () => void;
   /** F-V3-3：当前撤销条（null = 无；只保留最近一条）。 */
@@ -1134,7 +1147,7 @@ async function doRestore(
  * 唯一主 CTA；列表空态 CTA「上传一个文件」link 保留）。 */
 function DetailPane({ t, tr, nav, fs }: SubProps) {
   const st = detailState({
-    hasSelection: nav.selectedFile != null,
+    hasSelection: nav.selectedFile != null && !fs.focusedIsDir,
     loading: fs.loading,
     status: fs.status,
     view: fs.view,
@@ -1627,12 +1640,14 @@ function SelCheck({
  * 「已选 {n} 项 · {字节}」+ 下载（串行 + 进度「下载中（a/b）」）/ 删除
  *（复用 useDeleteConfirm 批量模式，进回收站）/ 取消选择。
  * 三视图同源：选中集合 = 容器 selected，批量项 = 容器 batchEntries（树 =
- * 根 + 已加载子层，折叠保留选择）。窄屏（≤600px）flexWrap 换行，不遮挡。 */
+ * 根 + 已加载子层，折叠保留选择）。B2：目录也计入选择 → 下载跳过并显式
+ * 提示「目录不支持下载」，删除跳过并提示（服务端不支持目录删除）。 */
 function BatchBar({
   t,
   tr,
   count,
   bytes,
+  dirCount,
   dlProgress,
   busy,
   onDownload,
@@ -1643,6 +1658,8 @@ function BatchBar({
   tr: Tr;
   count: number;
   bytes: number;
+  /** 选中项中的目录数（下载跳过；删除需显式提示不支持）。 */
+  dirCount: number;
   /** {done,total} | null（null = 未在批量下载）。 */
   dlProgress: { done: number; total: number } | null;
   /** 批量删除确认进行中（禁用操作防重入）。 */
@@ -1652,6 +1669,7 @@ function BatchBar({
   onCancel: () => void;
 }) {
   const dl = dlProgress;
+  const fileCount = count - dirCount;
   return (
     <div
       role="toolbar"
@@ -1677,10 +1695,15 @@ function BatchBar({
         </span>
       </span>
       <span style={{ flex: "1 1 100%" }} />
+      {dirCount > 0 ? (
+        <span style={{ fontSize: 11, color: t.textSecondary, flexBasis: "100%" }}>
+          {tr("目录不支持下载，已跳过 {n} 个", { n: dirCount })}
+        </span>
+      ) : null}
       <antd.Button
         size="small"
         loading={dl !== null}
-        disabled={busy}
+        disabled={busy || fileCount === 0}
         style={btnTouch}
         onClick={onDownload}
       >
@@ -1806,6 +1829,12 @@ function ListArea({
   const count = files.length;
   // F-V3-3 列自适应：表头 / 行 / grid 模板同一决策（纯函数 columnsFor）。
   const cols = columnsFor(fs.files);
+  // 可见行顺序（列表顺序，含目录）：shift 区间 / 全选三态 / 行点击共用。
+  const viewPaths = React.useMemo(
+    () => files.map((e) => rowPath(e, fs.dirPath)).filter((p) => p !== ""),
+    [files, fs.dirPath],
+  );
+  const selState = selectAllState(fs.selected, viewPaths);
   return (
     <div style={{ display: "grid", gap: 4 }}>
       {!compact && fs.status !== "err" ? (
@@ -1874,9 +1903,9 @@ function ListArea({
         >
           <SelCheck
             t={t}
-            checked={fs.selAll === "all"}
-            indeterminate={fs.selAll === "some"}
-            onToggle={() => fs.onSelectAllToggle()}
+            checked={selState === "all"}
+            indeterminate={selState === "some"}
+            onToggle={() => fs.onSelectAll(viewPaths)}
             label={tr("全选")}
           />
           <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} onSetSort={onSetSort} />
@@ -1918,6 +1947,7 @@ function ListArea({
           nav={nav}
           fs={fs}
           compact={compact}
+          paths={viewPaths}
           grid={cols.grid}
           showUpdatedAt={cols.showUpdatedAt}
           showCreated={cols.showCreated}
@@ -1944,12 +1974,15 @@ function FileRow({
   nav,
   fs,
   compact = false,
+  paths,
   grid = LIST_GRID,
   showUpdatedAt = true,
   showCreated = false,
 }: SubProps & {
   entry: HumanFileEntry;
   compact?: boolean;
+  /** 可见行顺序（含目录）：shift 区间 / 行点击区间共用。 */
+  paths: readonly string[];
   grid: string;
   showUpdatedAt: boolean;
   showCreated: boolean;
@@ -1957,17 +1990,29 @@ function FileRow({
   const isDir = isEntryDir(entry);
   const name = entryDisplayName(entry);
   const path = rowPath(entry, fs.dirPath);
-  const sel = !isDir && nav.selectedFile === path;
+  // 焦点行与批量选择都高亮（目录也可选，B2 选择模型）。
+  const sel = nav.selectedFile === path || fs.selected.has(path);
   // 递归平铺模式下目录行不导航（避免模式切换丢游标）——非交互行。
   const dirInteractive = isDir && !fs.recursive;
 
+  /** 行点击 = 焦点 + 批量选择（无修饰只选本行 / Ctrl 切换 / Shift 区间）。 */
+  const rowClick = (e: ReactNS.MouseEvent) =>
+    fs.onRowClick(path, {
+      isDir,
+      shiftKey: e.shiftKey,
+      toggleKey: e.ctrlKey || e.metaKey,
+      paths,
+    });
+  /** Enter 激活：目录进入；文件聚焦（行点击同义）。 */
   const activate = () => {
     if (isDir) {
       if (dirInteractive) fs.onEnterDir(path);
       return;
     }
-    nav.selectFile(sel ? null : path);
+    fs.onRowClick(path, { isDir: false, shiftKey: false, toggleKey: false, paths });
   };
+  const toggleSel = (shiftKey: boolean) =>
+    fs.onToggleSelect(path, { shiftKey, paths });
   const onDownload = (e: ReactNS.MouseEvent) => {
     e.stopPropagation();
     void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
@@ -2140,9 +2185,13 @@ function FileRow({
         title={dirInteractive ? tr("进入目录") : undefined}
         onClick={activate}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.key === "Enter") {
             e.preventDefault();
             activate();
+          } else if (e.key === " ") {
+            // Space = 切换批量选择（行焦点不变）。
+            e.preventDefault();
+            toggleSel(e.shiftKey);
           }
         }}
         onMouseEnter={(e) => {
@@ -2177,18 +2226,24 @@ function FileRow({
 
   // 16.67 列表行（非 compact）：grid（名称/大小/更新时间/操作；F-V3-3
   // 整批无 updatedAt → 三列，grid/showUpdatedAt 由 columnsFor 传入）；
-  // 目录行整行点击进入，文件行整行选中，行内按钮 stopPropagation；
-  // etag 不在行内展示（详情面板保留，避免多余列）。
+  // B2 选择模型：单击行 = 焦点 + 批量选择（无修饰只选本行 / Ctrl 切换 /
+  // Shift 区间），双击目录进入；复选框只切批量选择（stopPropagation）。
   return (
     <div
       role="button"
       tabIndex={0}
-      title={dirInteractive ? tr("进入目录") : undefined}
-      onClick={activate}
+      title={dirInteractive ? tr("双击进入目录") : undefined}
+      onClick={rowClick}
+      onDoubleClick={() => {
+        if (isDir && dirInteractive) fs.onEnterDir(path);
+      }}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (e.key === "Enter") {
           e.preventDefault();
           activate();
+        } else if (e.key === " ") {
+          e.preventDefault();
+          toggleSel(e.shiftKey);
         }
       }}
       onMouseEnter={(e) => {
@@ -2211,18 +2266,16 @@ function FileRow({
         ...rowSkin,
       }}
     >
-      {/* 批量选择列：文件 = checkbox（shift 点击 = 区间选择）；目录不可选
-       *（服务端不支持目录删除）= 空占位格保持列宽稳定。 */}
-      {isDir ? (
-        <span aria-hidden="true" />
-      ) : (
+      {/* 批量选择列：文件 + 目录都可选（B2）；shift 点击 = 可见行区间；
+       * 复选框独立于行焦点 / 树目标（stopPropagation 不触发展开）。 */}
+      <span onDoubleClick={(e) => e.stopPropagation()}>
         <SelCheck
           t={t}
           checked={fs.selected.has(path)}
-          onToggle={(shiftKey) => fs.onToggleSelect(path, { isDir: false, shiftKey })}
+          onToggle={toggleSel}
           label={tr("选择 {name}", { name })}
         />
-      )}
+      </span>
       {nameCell}
       <span
         style={{
@@ -2280,9 +2333,10 @@ function FileRow({
   );
 }
 
-/** F-V3-4 树行：目录行 = 点击展开/收起（chevron ▸/▾）；文件行 = 点击选中 +
- * 行内 下载/删除（复刻 FileRow 的 doDownload / useDeleteConfirm 接线，
- * 不新写逻辑）。缩进 = treeIndent(depth)；行高 = --hf-row-min。 */
+/** F-V3-4 树行：目录行 = 点击设为上传 / 新建目标 + 焦点（展开只由 chevron
+ * ▸/▾ 控制）；文件行 = 点击焦点 + 批量选择；行内 下载/删除（复刻 FileRow
+ * 的 doDownload / useDeleteConfirm 接线，不新写逻辑）。缩进 =
+ * treeIndent(depth)；行高 = --hf-row-min。 */
 function TreeRowView({
   row,
   focused,
@@ -2306,13 +2360,17 @@ function TreeRowView({
   focused: boolean;
   pending: boolean;
   failed: boolean;
-  onActivate: (row: TreeRow) => void;
+  onActivate: (
+    row: TreeRow,
+    mods?: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean },
+  ) => void;
   onToggle: (row: TreeRow) => void;
   onRetry: (row: TreeRow) => void;
   /** 拖拽上传目标 = 本目录行（树视图目录行高亮 + 拦截 drop）。 */
   onDropToDir: (snap: DropSnapshot, dir: string) => void;
-  /** 批量选择（文件行 checkbox；shift = 按可见顺序区间）。 */
+  /** 批量选择（文件 + 目录；shift = 按可见行区间）。 */
   onToggleSelect: (path: string, shiftKey: boolean) => void;
+  /** 目录行是否为当前上传 / 新建目标。 */
   selected?: boolean;
   grid: string;
   showUpdatedAt: boolean;
@@ -2323,7 +2381,9 @@ function TreeRowView({
   const isDir = row.isDir;
   const name = row.name;
   const path = rowPath(entry, fs.dirPath);
-  const sel = !isDir ? nav.selectedFile === path : !!selected;
+  const sel =
+    fs.selected.has(path) ||
+    (isDir ? !!selected : nav.selectedFile === path);
   const onDownload = (e: ReactNS.MouseEvent) => {
     e.stopPropagation();
     void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
@@ -2452,7 +2512,13 @@ function TreeRowView({
       role="button"
       tabIndex={-1}
       {...dirDropProps}
-      onClick={() => onActivate(row)}
+      onClick={(e) =>
+        onActivate(row, {
+          shiftKey: e.shiftKey,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+        })
+      }
       onDoubleClick={() => {
         if (isDir) fs.onEnterDir(path);
       }}
@@ -2464,8 +2530,8 @@ function TreeRowView({
       }}
       style={{
         display: "grid",
-        // 44px 首列 = 批量选择 checkbox（目录不可选，空占位保持列宽稳定；
-        // 与表头同宽）；16px = 展开三角。
+        // 44px 首列 = 批量选择 checkbox（文件 + 目录都可选；与表头同宽）；
+        // 16px = 展开三角。
         gridTemplateColumns: `44px 16px ${grid}`,
         gap: 8,
         alignItems: "center",
@@ -2478,18 +2544,16 @@ function TreeRowView({
         ...rowSkin,
       }}
     >
-      {/* 批量选择列：文件 = checkbox（shift 点击 = 可见行区间选择）；目录
-       * 不可选（服务端不支持目录删除）= 空占位格。 */}
-      {isDir ? (
-        <span aria-hidden="true" />
-      ) : (
+      {/* 批量选择列：文件 + 目录都可选（B2）；复选框独立于行焦点 / 上传
+       * 目标（不触发展开）。 */}
+      <span onDoubleClick={(e) => e.stopPropagation()}>
         <SelCheck
           t={t}
           checked={fs.selected.has(path)}
           onToggle={(shiftKey) => onToggleSelect(path, shiftKey)}
           label={tr("选择 {name}", { name })}
         />
-      )}
+      </span>
       <span
         role="button"
         aria-label={isDir ? (row.expanded ? tr("收起") : tr("展开")) : undefined}
@@ -2664,11 +2728,12 @@ function TreeRowView({
  * rev 自增触发重渲）；目录首次展开懒加载 listFiles 写 children Map
  *（gen 代数防切目录后在途响应污染新缓存）；键盘导航 = 容器 tabIndex=0 +
  * treeKeyNav（focusIndex 高亮；Enter = 行激活）。
- * 批量选择（文件行 checkbox；目录不可选）：shift 区间 = 可见行顺序
- *（flattenTree 拍平序）；折叠只收窄可见行 → 选择集合保留（容器剔除基准
- * 用本组件上报的「已知条目」，含折叠缓存）。已知条目/可见路径经
- * fs.onTreeBatchChange 上报，批量操作条与列表/网格同源（容器
- * batchEntries + 同一 BatchBar / useDeleteConfirm 批量模式）。 */
+ * 批量选择（B2：文件 + 目录都可选）：复选框只切批量选择（不改上传目标 /
+ * 焦点），行点击 = 焦点 + 选择（无修饰只选本行 / Ctrl 切换 / Shift 可见行
+ * 区间）；折叠只收窄可见行 → 选择集合保留（容器剔除基准用本组件上报的
+ * 「已知条目」，含折叠缓存）。已知条目/可见路径经 fs.onTreeBatchChange
+ * 上报，批量操作条与列表/网格同源（容器 batchEntries + 同一 BatchBar /
+ * useDeleteConfirm 批量模式）。 */
 function TreeArea({
   t,
   tr,
@@ -2716,26 +2781,24 @@ function TreeArea({
   }, [fs.files, rev, sort]);
   const idx = rows.length === 0 ? 0 : Math.min(focusIndex, rows.length - 1);
 
-  // 可见文件行路径（树拍平顺序）——shift 区间定位（目录行跳过，区间仍按
-  // 可见顺序闭区间）。
+  // 可见行路径（树拍平顺序，**含目录**）——shift 区间定位 / 全选三态 /
+  // 行点击区间（B2：文件 + 目录都可选）。
   const visiblePaths = React.useMemo(() => {
     const out: string[] = [];
     for (const r of rows) {
-      if (r.isDir) continue;
       const p = rowPath(r.entry ?? { name: r.name }, fs.dirPath);
       if (p !== "") out.push(p);
     }
     return out;
   }, [rows, fs.dirPath]);
-  // 已知条目（根 + 已加载子层，含折叠缓存中的子项）——批量汇总 / 下载 /
-  // 删除 / 选择剔除基准：折叠只收窄可见行，已选子项不丢。
+  // 已知条目（根 + 已加载子层，含折叠缓存中的子项；文件 + 目录）——批量
+  // 汇总 / 下载 / 删除 / 选择剔除基准：折叠只收窄可见行，已选子项不丢。
   const knownEntries = React.useMemo(() => {
-    const out: { path: string; name: string; size?: number }[] = [];
+    const out: { path: string; name: string; size?: number; isDir?: boolean }[] = [];
     for (const e of collectTreeEntries(fs.files, childrenRef.current)) {
-      if (isEntryDir(e)) continue;
       const p = rowPath(e, fs.dirPath);
       if (p === "") continue;
-      out.push({ path: p, name: entryDisplayName(e), size: e.size });
+      out.push({ path: p, name: entryDisplayName(e), size: e.size, isDir: isEntryDir(e) });
     }
     return out;
   }, [fs.files, rev, fs.dirPath]);
@@ -2813,25 +2876,41 @@ function TreeArea({
   );
 
   const activateRow = React.useCallback(
-    (row: TreeRow): void => {
-      if (row.isDir) {
-        // 单击目录 = 选中（上传目标），展开由 chevron 负责；再点一次取消。
-        const entry = row.entry ?? { name: row.name };
-        const p = rowPath(entry, fs.dirPath);
-        const next = selectedDir === row.path ? "" : row.path;
-        setSelectedDir(next);
-        actions.setUploadDir(next ? p : "");
-        return;
-      }
+    (
+      row: TreeRow,
+      mods: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean } = {},
+    ): void => {
       const entry = row.entry ?? { name: row.name };
       const p = rowPath(entry, fs.dirPath);
-      // 文件行点选走现有选中逻辑（与 FileRow 一致；再次点击取消选中）。
-      nav.selectFile(nav.selectedFile === p ? null : p);
+      if (row.isDir) {
+        // 目录行点击 = 上传 / 新建目标 + 焦点（展开仍只由 chevron 控制）；
+        // 目标用无尾斜杠形态，避免拼出 "docs//file"。
+        const target = p.replace(/\/+$/, "");
+        setSelectedDir(row.path);
+        actions.setUploadDir(target);
+      }
+      // 焦点 + 批量选择：无修饰只选本行 / Ctrl 切换 / Shift 可见行区间。
+      fs.onRowClick(p, {
+        isDir: row.isDir,
+        shiftKey: mods.shiftKey === true,
+        toggleKey: mods.ctrlKey === true || mods.metaKey === true,
+        paths: visiblePaths,
+      });
     },
-    [nav, fs.dirPath, selectedDir, actions],
+    [fs, fs.dirPath, visiblePaths, actions],
   );
 
   const onKeyDown = (e: ReactNS.KeyboardEvent<HTMLDivElement>): void => {
+    // Space = 切换批量选择（行焦点不变；Shift+Space 从锚点扩区间）。
+    if (e.key === " ") {
+      e.preventDefault();
+      const r = rows[idx];
+      if (!r) return;
+      const p = rowPath(r.entry ?? { name: r.name }, fs.dirPath);
+      if (p === "") return;
+      fs.onToggleSelect(p, { shiftKey: e.shiftKey, paths: visiblePaths });
+      return;
+    }
     if (!isTreeNavKey(e.key)) return;
     e.preventDefault();
     const next = treeKeyNav({ rows, index: idx }, e.key, (p) => {
@@ -2847,6 +2926,7 @@ function TreeArea({
 
   const count = fs.files.length;
   const cols = columnsFor(fs.files);
+  const selState = selectAllState(fs.selected, visiblePaths);
   return (
     <div
       tabIndex={0}
@@ -2904,8 +2984,8 @@ function TreeArea({
         <div
           style={{
             display: "grid",
-            // 44px 选择列 + 16px 三角列（与行模板同宽，列宽稳定；树无
-            // 「全选」表头 checkbox——目录不可选，全选语义由容器统一）。
+            // 44px 选择列 + 16px 三角列（与行模板同宽，列宽稳定）；
+            // B2：表头复选框 = 当前可见行（文件 + 目录）三态全选。
             gridTemplateColumns: `44px 16px ${cols.grid}`,
             gap: 8,
             alignItems: "center",
@@ -2914,7 +2994,13 @@ function TreeArea({
             color: t.textSecondary,
           }}
         >
-          <span />
+          <SelCheck
+            t={t}
+            checked={selState === "all"}
+            indeterminate={selState === "some"}
+            onToggle={() => fs.onSelectAll(visiblePaths)}
+            label={tr("全选")}
+          />
           <span />
           <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} onSetSort={onSetSort} />
           <span style={{ textAlign: "right" }}>
@@ -2947,9 +3033,9 @@ function TreeArea({
               onRetry={loadChildren}
               onDropToDir={onDropToDir}
               onToggleSelect={(p, shiftKey) =>
-                fs.onToggleSelect(p, { isDir: false, shiftKey, paths: visiblePaths })
+                fs.onToggleSelect(p, { shiftKey, paths: visiblePaths })
               }
-              selected={r.isDir && selectedDir === r.path}
+              selected={selectedDir === r.path}
               grid={cols.grid}
               showUpdatedAt={cols.showUpdatedAt}
               showCreated={cols.showCreated}
@@ -3048,6 +3134,7 @@ function GridCard({
   entry,
   apiPath,
   allowThumb,
+  paths,
   t,
   tr,
   nav,
@@ -3056,20 +3143,29 @@ function GridCard({
   entry: HumanFileEntry;
   apiPath: string;
   allowThumb: boolean;
+  /** 可见行顺序（含目录）：shift 区间 / 行点击区间共用。 */
+  paths: readonly string[];
 }) {
   const isDir = isEntryDir(entry);
   const name = entryDisplayName(entry);
   const path = rowPath(entry, fs.dirPath);
-  const sel = nav.selectedFile === path;
+  const sel = nav.selectedFile === path || fs.selected.has(path);
   const dirInteractive = isDir && !fs.recursive;
 
-  const select = () => nav.selectFile(sel ? null : path);
+  /** 单击 = 焦点 + 批量选择（无修饰只选本行 / Ctrl 切换 / Shift 区间）。 */
+  const select = (e: ReactNS.MouseEvent) =>
+    fs.onRowClick(path, {
+      isDir,
+      shiftKey: e.shiftKey,
+      toggleKey: e.ctrlKey || e.metaKey,
+      paths,
+    });
   const onDbl = () => {
     if (isDir) {
       if (dirInteractive) fs.onEnterDir(path);
       return;
     }
-    nav.selectFile(path);
+    fs.onRowClick(path, { isDir: false, shiftKey: false, toggleKey: false, paths });
   };
   const onDownload = (e: ReactNS.MouseEvent) => {
     e.stopPropagation();
@@ -3152,13 +3248,20 @@ function GridCard({
     <div
       role="button"
       tabIndex={0}
-      title={dirInteractive ? tr("进入目录") : undefined}
+      title={dirInteractive ? tr("双击进入目录") : undefined}
       onClick={select}
       onDoubleClick={onDbl}
       onKeyDown={(e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (e.key === "Enter") {
           e.preventDefault();
-          select();
+          if (isDir) {
+            if (dirInteractive) fs.onEnterDir(path);
+          } else {
+            fs.onRowClick(path, { isDir: false, shiftKey: false, toggleKey: false, paths });
+          }
+        } else if (e.key === " ") {
+          e.preventDefault();
+          fs.onToggleSelect(path, { shiftKey: e.shiftKey, paths });
         }
       }}
       onMouseEnter={(e: ReactNS.MouseEvent<HTMLDivElement>) => {
@@ -3177,24 +3280,26 @@ function GridCard({
         ...skin,
       }}
     >
-      {/* 缩略区 + 批量选择 checkbox（仅文件；目录不可选）：checkbox 叠在
-       * 缩略区左上角，44×44 命中区（coarse 指针随 --hf-row-min 放大）。 */}
+      {/* 缩略区 + 批量选择 checkbox（文件与目录都可选；B2）：checkbox 叠在
+       * 缩略区左上角，44×44 命中区（coarse 指针随 --hf-row-min 放大）。
+       * 只切批量选择，不改变焦点 / 上传目标、不触发进入。 */}
       <div style={{ position: "relative" }}>
         <GridThumb entry={entry} apiPath={apiPath} t={t} allowThumb={allowThumb} />
-        {!isDir ? (
-          <span
-            style={{ position: "absolute", top: 4, left: 4, zIndex: 1 }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <SelCheck
-              t={t}
-              checked={fs.selected.has(path)}
-              onToggle={(shiftKey) => fs.onToggleSelect(path, { isDir: false, shiftKey })}
-              label={tr("选择 {name}", { name })}
-            />
-          </span>
-        ) : null}
+        <span
+          style={{ position: "absolute", top: 4, left: 4, zIndex: 1 }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <SelCheck
+            t={t}
+            checked={fs.selected.has(path)}
+            onToggle={(shiftKey) =>
+              fs.onToggleSelect(path, { shiftKey, paths })
+            }
+            label={tr("选择 {name}", { name })}
+          />
+        </span>
       </div>
       <span
         title={name}
@@ -3320,6 +3425,12 @@ function GridArea({
 }) {
   const [gridRef, gridW] = useContainerWidth();
   const count = files.length;
+  // 可见行顺序（网格顺序，含目录）：shift 区间 / 全选三态 / 行点击共用。
+  const viewPaths = React.useMemo(
+    () => files.map((e) => rowPath(e, fs.dirPath)).filter((p) => p !== ""),
+    [files, fs.dirPath],
+  );
+  const selState = selectAllState(fs.selected, viewPaths);
   // 容器宽度已知且不足两列（gridW < 2×180+gap）→ min 边按 gridMinCols 档
   // 收窄（≤600 → 2 列），auto-fill 不再塌成单列；否则保持任务书模板。
   const gridTemplate = React.useMemo(() => {
@@ -3377,9 +3488,9 @@ function GridArea({
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <SelCheck
             t={t}
-            checked={fs.selAll === "all"}
-            indeterminate={fs.selAll === "some"}
-            onToggle={() => fs.onSelectAllToggle()}
+            checked={selState === "all"}
+            indeterminate={selState === "some"}
+            onToggle={() => fs.onSelectAll(viewPaths)}
             label={tr("全选")}
           />
           <span style={{ fontSize: 11, color: t.textSecondary }}>
@@ -3437,6 +3548,7 @@ function GridArea({
                 entry={e}
                 apiPath={humanFileApiPath(fs.humanName, p)}
                 allowThumb={thumbPaths.has(p)}
+                paths={viewPaths}
                 t={t}
                 tr={tr}
                 nav={nav}
@@ -3684,6 +3796,11 @@ interface FilesActions {
   createFolder: () => void;
   /** 树视图选中的上传目标目录（相对 dirPath；"" = 当前目录）。 */
   setUploadDir: (dir: string) => void;
+  /** 当前上传 / 新建目标（树选中目录优先；"" = 当前目录）。弹窗标题 /
+   *  上传入队共用同一解析（B1 实测：新建曾忽略树目标）。 */
+  folderTarget: string;
+  /** 目标展示标签（根 =「我的文件」，其余带尾斜杠）。 */
+  folderTargetLabel: string;
   /** 上传队列（多选并发 ≤2；状态机见 files/uploadQueue.ts）。 */
   uploadItems: UploadItem[];
   onRetryUpload: (id: string) => void;
@@ -3806,6 +3923,8 @@ function useFilesActions(
     reload: (opts?: { silent?: boolean; force?: boolean }) => void;
     /** 树视图选中的上传目标（相对当前目录）；空 = 当前目录。 */
     uploadDirRef: { current: string };
+    /** 目标变化回调（容器据此重渲染弹窗标题；ref 本身不触发渲染）。 */
+    onUploadDirChange: (dir: string) => void;
   },
   tr: Tr,
 ): FilesActions {
@@ -3813,6 +3932,8 @@ function useFilesActions(
   const [folderName, setFolderName] = React.useState("");
   const [folderBusy, setFolderBusy] = React.useState(false);
   const queue = useUploadQueue({ humanName: inp.humanName, load: inp.load, tr });
+  // B1：目标目录单一解析（树选中目录优先；空 = 当前目录），新建 / 上传共用。
+  const targetDir = resolveTargetDir(inp.uploadDirRef.current, inp.dirPath);
 
   const createFolderInner = async () => {
     const name = folderName.trim();
@@ -3822,10 +3943,11 @@ function useFilesActions(
     }
     setFolderBusy(true);
     try {
-      await writeFileSync(inp.humanName, `${fullPath(inp.dirPath, name)}/.keep`, "");
+      await writeFileSync(inp.humanName, `${fullPath(targetDir, name)}/.keep`, "");
       antd.message.success(tr("文件夹已创建"));
       setFolderOpen(false);
       setFolderName("");
+      // 成功后保留目标选择（uploadDirRef 不清空），仅刷新列表。
       inp.reload({ silent: true });
     } catch (err) {
       antd.message.error(hfErrorText(err, tr));
@@ -3866,7 +3988,7 @@ function useFilesActions(
     // 多选入队：目标目录在点击时刻拍平（树视图选中的上传目标优先）。
     onUploadClick: () =>
       requestFilesPick((files) =>
-        queue.enqueue(files, inp.uploadDirRef.current || inp.dirPath),
+        queue.enqueue(files, resolveTargetDir(inp.uploadDirRef.current, inp.dirPath)),
       ),
     folderOpen,
     folderName,
@@ -3880,7 +4002,10 @@ function useFilesActions(
     createFolder: () => void createFolderInner(),
     setUploadDir: (dir: string) => {
       inp.uploadDirRef.current = dir;
+      inp.onUploadDirChange(dir);
     },
+    folderTarget: targetDir,
+    folderTargetLabel: targetDirLabel(targetDir, tr("我的文件")),
     uploadItems: queue.items,
     onRetryUpload: queue.retry,
     onClearFinishedUploads: queue.clearFinished,
@@ -4065,7 +4190,7 @@ function FilesToolbar({
       />
       <antd.Modal
         open={actions.folderOpen}
-        title={tr("新建文件夹")}
+        title={tr("在 {dir} 下新建", { dir: actions.folderTargetLabel })}
         okText={tr("保存")}
         cancelText={tr("取消")}
         confirmLoading={actions.folderBusy}
@@ -4074,13 +4199,16 @@ function FilesToolbar({
         destroyOnClose
       >
         <div style={{ display: "grid", gap: 8, padding: "8px 0" }}>
+          <div style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("在 {dir} 下新建", { dir: actions.folderTargetLabel })}
+          </div>
           <antd.Input
             value={actions.folderName}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               actions.setFolderName(e.target.value)
             }
             onPressEnter={actions.createFolder}
-            placeholder={tr("请输入文件夹名")}
+            placeholder={tr("在 {dir} 下新建", { dir: actions.folderTargetLabel })}
             aria-label={tr("请输入文件夹名")}
           />
         </div>
@@ -4468,12 +4596,16 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [detailTarget, setDetailTarget] = React.useState<FileDetailTarget | null>(null);
   // F-V3-3：撤销条（软删成功且 trashId 非空；只保留最近一条；8s 自动消失）。
   const [undo, setUndo] = React.useState<{ trashId: string; name: string } | null>(null);
-  // 批量选择（列表/网格共用；目录不可选）：键 = rowPath。选择态在容器层 →
-  // 视图切换（列表/网格/树）天然保留；刷新/切目录后 pruneSelection 剔除
-  // 已消失的路径（effect，幂等）。
+  // 批量选择（列表/树/网格共用；文件 + 目录都可选）：键 = rowPath。选择态
+  // 在容器层 → 视图切换天然保留；刷新/切目录后 pruneSelection 剔除已消失
+  // 的路径（effect，幂等）。
   const [selected, setSelected] = React.useState<SelectionSet>(new Set<string>());
-  // shift 区间锚点 = 最近一次非 shift 选择点（shift 点击不改锚点）。
+  // shift 区间锚点 = 最近一次行点击点（shift 点击不改锚点）。
   const [selAnchor, setSelAnchor] = React.useState<string | null>(null);
+  // 焦点行是否目录（行点击时明确记录；详情槽据此不渲染 FileDetail）。
+  const [focusedDirHint, setFocusedDirHint] = React.useState(false);
+  // 上传目标镜像（ref 供闭包读取；state 让工具条弹窗标题随树选择重渲染）。
+  const [uploadTarget, setUploadTarget] = React.useState("");
   // 批量下载进度（{done,total} | null = 未在批量下载）。
   const [batchDl, setBatchDl] = React.useState<{ done: number; total: number } | null>(null);
   // F-V3-3：新鲜度——最近一次 files 腿成功时间（焦点/可见性重取判定）。
@@ -4591,17 +4723,16 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     [dedup, load],
   );
 
-  // 批量选择派生：当前目录可选（文件）行路径序列（列表顺序）——
-  // shift 区间定位 / 全选 / 剔除基准；目录行不入列（目录不可选）。
-  const selectablePaths = React.useMemo(
+  // 批量选择派生：当前目录**可见行**路径序列（列表顺序，含目录）——
+  // shift 区间定位 / 全选三态 / 剔除基准（B2：文件 + 目录都可选）。
+  const visiblePaths = React.useMemo(
     () =>
       files
-        .filter((e) => !isEntryDir(e))
         .map((e) => rowPath(e, dirPath))
         .filter((p) => p !== ""),
     [files, dirPath],
   );
-  // 树视图批量上下文（TreeArea 上报：可见文件行顺序 + 已知条目）。
+  // 树视图批量上下文（TreeArea 上报：可见行顺序 + 已知条目）。
   // 离开树视图 → 清空（回落列表/网格语义）。
   const [treeBatch, setTreeBatch] = React.useState<TreeBatchInfo | null>(null);
   const onTreeBatchChange = React.useCallback((info: TreeBatchInfo | null) => {
@@ -4610,16 +4741,16 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   React.useEffect(() => {
     if (filesView !== "tree") setTreeBatch(null);
   }, [filesView]);
-  // 批量条目与列表/网格同源：列表/网格 = 当前目录文件；树 = 已加载全部
-  // 文件（含折叠缓存——折叠后的已选项仍参与汇总与批量操作）。
+  // 批量条目与列表/网格同源：列表/网格 = 当前目录条目；树 = 已加载全部
+  // 条目（含折叠缓存——折叠后的已选项仍参与汇总与批量操作）。
   const topEntries = React.useMemo(
     () =>
       files
-        .filter((e) => !isEntryDir(e))
         .map((e) => ({
           path: rowPath(e, dirPath),
           name: entryDisplayName(e),
           size: e.size,
+          isDir: isEntryDir(e),
         }))
         .filter((x) => x.path !== ""),
     [files, dirPath],
@@ -4630,12 +4761,24 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     () => batchEntries.filter((e) => selected.has(e.path)),
     [batchEntries, selected],
   );
-  const selAll: SelectAllState = selectAllState(selected, selectablePaths);
-  // 选中汇总（批量操作条：数量 + 字节）。
+  const selAll: SelectAllState = selectAllState(selected, visiblePaths);
+  // 选中汇总（批量操作条：数量 + 字节；目录 size 缺失按 0 计）。
   const selSummary = React.useMemo(
     () => selectedSummary(batchEntries, selected),
     [batchEntries, selected],
   );
+  // 焦点行是否目录：明细槽据此不渲染 FileDetail（目录详情走「详情」按钮）。
+  const focusedIsDir = React.useMemo(() => {
+    const p = nav.selectedFile;
+    if (!p) return false;
+    if (p.endsWith("/")) return true;
+    const e = files.find((x) => rowPath(x, dirPath) === p);
+    if (e) return isEntryDir(e);
+    return focusedDirHint;
+  }, [nav.selectedFile, files, dirPath, focusedDirHint]);
+  React.useEffect(() => {
+    if (nav.selectedFile === null) setFocusedDirHint(false);
+  }, [nav.selectedFile]);
 
   // 刷新 / 切目录 / 加载更多 → 剔除已消失的路径（pruneSelection 幂等：
   // 无变化时原样返回，setState 同引用 → React 跳过重渲染）。
@@ -4645,53 +4788,74 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     () =>
       filesView === "tree" && treeBatch !== null
         ? batchEntries.map((e) => e.path)
-        : selectablePaths,
-    [filesView, treeBatch, batchEntries, selectablePaths],
+        : visiblePaths,
+    [filesView, treeBatch, batchEntries, visiblePaths],
   );
   React.useEffect(() => {
     setSelected((prev) => pruneSelection(prev, prunePaths));
   }, [prunePaths]);
 
-  // 单点 / shift 区间切换（目录行忽略；shift 无锚点 → 回落单点并设锚点）。
-  // paths = 区间定位顺序：树视图传可见文件行顺序，列表/网格用默认序列。
+  // 复选框切换：只改批量选择，不改焦点 / 上传目标、不触发展开。
+  // paths = 区间定位顺序：树视图传可见行顺序，列表/网格缺省 = 当前目录。
   const onToggleSelect = React.useCallback(
     (
       p: string,
-      opts: { isDir: boolean; shiftKey: boolean; paths?: readonly string[] },
+      opts: { shiftKey: boolean; paths?: readonly string[] },
     ) => {
-      if (opts.isDir || p === "") return;
-      const paths = opts.paths ?? selectablePaths;
-      if (opts.shiftKey) {
-        if (selAnchor) {
-          // 区间 [锚点..p]（含两端）并入现有选择；锚点保持不变。
-          setSelected((prev) =>
-            toggleSelection(prev, p, {
-              shiftKey: true,
-              anchor: selAnchor,
-              paths,
-            }),
-          );
-          return;
-        }
-        setSelected((prev) => toggleSelection(prev, p));
-        setSelAnchor(p);
-        return;
-      }
-      setSelected((prev) => toggleSelection(prev, p));
-      setSelAnchor(p);
+      if (p === "") return;
+      const paths = opts.paths ?? visiblePaths;
+      setSelected((prev) =>
+        toggleSelection(prev, p, {
+          shiftKey: opts.shiftKey,
+          anchor: selAnchor,
+          paths,
+        }),
+      );
     },
-    [selAnchor, selectablePaths],
+    [selAnchor, visiblePaths],
   );
-  // 「全选」三态切换：all → 清空；some/none → 全选（目录不入列）。
-  const onSelectAllToggle = React.useCallback(() => {
-    if (selAll === "all") {
-      setSelected(clearSelection());
+  // 行点击：焦点 + 批量选择分离模型（无修饰只选本行 / Ctrl 切换 / Shift 区间）。
+  const onRowClick = React.useCallback(
+    (
+      p: string,
+      opts: {
+        isDir: boolean;
+        shiftKey: boolean;
+        toggleKey: boolean;
+        paths?: readonly string[];
+      },
+    ) => {
+      if (p === "") return;
+      const paths = opts.paths ?? visiblePaths;
+      const r = clickSelection(selected, p, {
+        shiftKey: opts.shiftKey,
+        toggleKey: opts.toggleKey,
+        anchor: selAnchor,
+        paths,
+      });
+      setSelected(r.selected);
+      setSelAnchor(r.anchor);
+      setFocusedDirHint(opts.isDir);
+      nav.selectFile(p);
+    },
+    [selected, selAnchor, visiblePaths, nav],
+  );
+  // 「全选」三态切换：all → 清空；some/none → 并入全部可见行（文件 + 目录）。
+  const onSelectAll = React.useCallback(
+    (paths: readonly string[]) => {
+      if (selectAllState(selected, paths) === "all") {
+        setSelected(clearSelection());
+      } else {
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const p of paths) next.add(p);
+          return next;
+        });
+      }
       setSelAnchor(null);
-    } else {
-      setSelected(selectAll(selectablePaths));
-      setSelAnchor(null);
-    }
-  }, [selAll, selectablePaths]);
+    },
+    [selected],
+  );
   const onClearSelection = React.useCallback(() => {
     setSelected(clearSelection());
     setSelAnchor(null);
@@ -4720,9 +4884,15 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
 
   // 批量下载：逐个走现有 doDownload handler（预签名/直下语义不变），
   // 串行 + batchDl 进度；部分失败不中断，结束 reportBatchResult 汇总。
-  // items = batchTargets（列表/网格/树同源：树含已加载子层，折叠保选）。
+  // items = batchTargets 中的文件（目录不支持下载 → 显式提示跳过 N 个）。
   const batchDownload = React.useCallback(async () => {
-    const items = batchTargets;
+    const items = batchTargets.filter((it) => !it.isDir);
+    const skippedDirs = batchTargets.length - items.length;
+    if (skippedDirs > 0) {
+      antd.message.warning(
+        tr("目录不支持下载，已跳过 {n} 个", { n: skippedDirs }),
+      );
+    }
     if (items.length === 0) return;
     setBatchDl({ done: 0, total: items.length });
     let ok = 0;
@@ -4780,7 +4950,19 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   // F-V3-3：新建文件夹成功 → reload({silent:true})（统一刷新入口）。
   // 树视图的上传目标（相对当前目录）；切目录/切视图时由树自己清空。
   const uploadDirRef = React.useRef("");
-  const actions = useFilesActions({ humanName, dirPath, load, reload, uploadDirRef }, tr);
+  const actions = useFilesActions(
+    {
+      humanName,
+      dirPath,
+      load,
+      reload,
+      uploadDirRef,
+      onUploadDirChange: setUploadTarget,
+    },
+    tr,
+  );
+  // uploadTarget 仅用于工具条 / 拖拽层重渲染（标题与目标标签跟随树选择）；
+  // 值本身由 uploadDirRef 供闭包读取（避免闭包过期）。
 
   /** 拖拽上传：同步快照（浏览器 entry 生命周期）→ 异步递归收集（200 文件 /
    *  200 MB，超限提示截断）→ 复用上传队列入队。dir 空 = 当前目录；
@@ -4800,11 +4982,15 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
         if (r.files.length === 0) return;
         actions.onDropFiles(
           r.files.map((d) => ({ file: d.file as File, relPath: d.relPath })),
-          dir,
+          // 树目录行 drop = 该目录；空白区 / 文件行 drop = 当前树上选中的
+          // 上传目标（B1：与工具条上传同一口径），否则当前目录。
+          dir !== undefined
+            ? dir
+            : resolveTargetDir(uploadDirRef.current, dirPath),
         );
       })();
     },
-    [actions, tr],
+    [actions, tr, dirPath],
   );
 
   // 探测失败（老控制器）且递归已开（探测晚于用户操作）→ 自动回落一层列表。
@@ -4931,11 +5117,13 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     filesView,
     onFilesViewChange: (v) => setFilesView(v),
     selected,
-    selectablePaths,
+    visiblePaths,
     selAll,
+    focusedIsDir,
     onToggleSelect,
+    onRowClick,
     onTreeBatchChange,
-    onSelectAllToggle,
+    onSelectAll,
     onClearSelection,
     offerUndo: (u) => {
       if (undoEligible(u.trashId)) setUndo({ trashId: u.trashId, name: u.name });
@@ -5061,7 +5249,8 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     // 任何宽度 FileDetail 渲染次数 = 1（panesFor/detailRenderCount）。
     const ownsDetail = variant === "full" || cols === 4 || cols === 1;
     const mode = layoutMode(containerW);
-    const hasSelection = nav.selectedFile != null;
+    // 目录焦点不占详情槽（目录详情走行内「详情」按钮的抽屉）。
+    const hasSelection = nav.selectedFile != null && !fs.focusedIsDir;
     // 宽度 0 = 该 section 处于隐藏 tab（切到知识库等）或首帧：此时不能按
     // sheet/drawer 渲染，否则详情会以全屏 Sheet 盖住当前页面。
     // 量到 0 = 该 section 处于隐藏 tab（切到知识库等）→ 不渲染 sheet/drawer，
@@ -5107,7 +5296,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       <FileDropTarget
         t={t}
         tr={tr}
-        dirLabel={fs.dirPath || tr("我的文件")}
+        dirLabel={resolveTargetDir(uploadTarget, fs.dirPath) || tr("我的文件")}
         onDrop={(snap) => onDropSnapshot(snap)}
       >
         {listNode}
@@ -5195,13 +5384,25 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             tr={tr}
             count={selSummary.count}
             bytes={selSummary.bytes}
+            dirCount={batchTargets.filter((e) => e.isDir).length}
             dlProgress={batchDl}
             busy={batchDl !== null || batchDelete.busy}
             onDownload={() => void batchDownload()}
             onDelete={() => {
-              if (batchTargets.length > 0) {
+              // 目录删除服务端不支持（与行内禁用按钮同口径）：显式跳过并提示，
+              // 不静默失败。
+              const filesOnly = batchTargets.filter((e) => !e.isDir);
+              const skippedDirs = batchTargets.length - filesOnly.length;
+              if (skippedDirs > 0) {
+                antd.message.warning(
+                  tr("目录删除暂不支持，已跳过 {n} 个（请逐个删除文件）", {
+                    n: skippedDirs,
+                  }),
+                );
+              }
+              if (filesOnly.length > 0) {
                 batchDelete.requestBatch(
-                  batchTargets.map((e) => ({ path: e.path, name: e.name })),
+                  filesOnly.map((e) => ({ path: e.path, name: e.name })),
                 );
               }
             }}
