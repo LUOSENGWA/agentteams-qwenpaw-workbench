@@ -516,6 +516,21 @@ export default function WorkerDetailPane({
         }}
         // 基线加载中禁用打开（弹窗内 provider 字段另显「正在读取…」）。
         onClick={l1 && !provDetail.loading ? openModelModal : undefined}
+        // R4 a11y：整卡可点但原先是裸 div（键盘/读屏不可达）——补按钮语义 +
+        // 回车/空格等价点击；不可点时整组属性不挂（不谎报可交互）。
+        role={l1 && !provDetail.loading ? "button" : undefined}
+        tabIndex={l1 && !provDetail.loading ? 0 : undefined}
+        aria-label={l1 ? tr("模型配置") : undefined}
+        onKeyDown={
+          l1 && !provDetail.loading
+            ? (e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openModelModal();
+                }
+              }
+            : undefined
+        }
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <BulbIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />

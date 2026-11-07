@@ -78,6 +78,7 @@ export function TaskCancelModal(props: {
         onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
           setReason(e.target.value)
         }
+        aria-label={tr("取消原因（必填，将通知团队）")}
         placeholder={tr("取消原因（必填，将通知团队）")}
         rows={3}
         maxLength={200}

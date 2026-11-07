@@ -78,16 +78,26 @@ export function BoardCard(props: {
         flexShrink: 0,
       }}
     >
-      <div
+      <button
+        type="button"
         // 15.14：clamp 走全局标准类（.wb-clamp-2）；15.20 该类已补
         // -webkit-box 三件套真 clamp（旧版 block+max-height 半行泄漏已修）。
         // 标题=节点短名，两行封顶足够，全文走 title 悬停。
+        // R4 a11y：原 div onClick 键盘不可达 → 真按钮（纯文本按钮样式复位，
+        // 不影响 clamp 布局：display 仍由 .wb-clamp-2 接管）。
         className="wb-clamp-2"
+        disabled={!(taskId && onOpenDetail)}
         style={{
           fontWeight: 600,
           fontSize: 12.5,
           lineHeight: 1.3,
           color: t.text,
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          textAlign: "start",
+          fontFamily: "inherit",
+          width: "100%",
           cursor: taskId && onOpenDetail ? "pointer" : "default",
         }}
         // 15.14 命名约定：正文显示短名（nodeLabelUi，MXID→localpart），
@@ -102,7 +112,7 @@ export function BoardCard(props: {
         }
       >
         {nodeLabelUi(node)}
-      </div>
+      </button>
       <div
         // 15.20：项目名全文展示（原 wb-clamp-2 两行封顶=「卡片被纵向
         // 压缩遮挡」主诉）——卡高随内容动态长，列卡区限高+列内纵滚兜底；
@@ -185,6 +195,7 @@ export function BoardCard(props: {
                   size="small"
                   type="text"
                   danger
+                  aria-label={tr("取消此任务（须填原因，不可恢复）")}
                   style={{ padding: "0 4px", height: 20 }}
                   onClick={() => setCancelOpen(true)}
                 >

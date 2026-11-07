@@ -1851,6 +1851,8 @@ function TreeRowView({
       : { border: "1px solid transparent", background: "transparent" };
 
   return (
+    /* a11y-static-exempt: 树行 = roving tabindex（滚动态），键盘由容器
+       （tabIndex=0 + onKeyDown 方向键/Home/End）统一接管，行内不再重复绑定 */
     <div
       role="button"
       tabIndex={-1}
@@ -2653,6 +2655,7 @@ function GridArea({
           {/* 网格无表头 → 用紧凑排序选择器暴露同一组列（列表用表头点击）。 */}
           <antd.Select
             size="small"
+            aria-label={tr("排序方式")}
             style={{ minWidth: 170 }}
             value={`${sort.key}:${sort.dir}`}
             options={[
@@ -3650,6 +3653,7 @@ function RecursiveToggle({ t, tr, fs }: SubProps) {
       >
         <antd.Switch
           size="small"
+          aria-label={tr("递归")}
           checked={fs.recursive}
           disabled={!enabled}
           onChange={(v: boolean) => fs.onToggleRecursive(v)}

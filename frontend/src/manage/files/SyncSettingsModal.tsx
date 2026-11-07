@@ -679,6 +679,7 @@ export default function SyncSettingsModal({
             <antd.Input
               size="small"
               value={unsyncPath}
+              aria-label={tr("镜像内相对路径，如 文档/旧稿.docx")}
               placeholder={tr("镜像内相对路径，如 文档/旧稿.docx")}
               onChange={(e: { target: { value: string } }) => setUnsyncPath(e.target.value)}
             />

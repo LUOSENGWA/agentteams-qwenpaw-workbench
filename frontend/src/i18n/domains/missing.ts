@@ -206,4 +206,17 @@ export const missingDict: Record<string, { en: string }> = {
   "修改 ↓": { en: "Modified ↓" },
   "创建 ↑": { en: "Created ↑" },
   "创建 ↓": { en: "Created ↓" },
+  // R4 a11y：表单控件的 aria-label（placeholder 不能当字段名）。
+  "排序方式": { en: "Sort order" },
+  "地址认证方式": { en: "Address auth mode" },
+  "Matrix 内网地址": { en: "Matrix LAN address" },
+  "Matrix 外网地址": { en: "Matrix WAN address" },
+  "Controller 内网地址": { en: "Controller LAN address" },
+  "Controller 外网地址": { en: "Controller WAN address" },
+  "Higress 内网地址": { en: "Higress LAN address" },
+  "Higress 外网地址": { en: "Higress WAN address" },
+  "SGLang 内网地址": { en: "SGLang LAN address" },
+  "SGLang 外网地址": { en: "SGLang WAN address" },
+  "Higress 管理员账号": { en: "Higress admin username" },
+  "Higress 管理员密码": { en: "Higress admin password" },
 };

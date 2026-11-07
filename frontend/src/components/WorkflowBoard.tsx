@@ -381,6 +381,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <antd.Segmented
             size="small"
+            aria-label={tr("视图切换")}
             value={view}
             onChange={(v: ReactNS.Key | number) => setView(v as WfView)}
             options={[
@@ -417,6 +418,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           {/* 排序（时间/状态/名称）——看板跟随；拓扑左栏项目列表跟随。 */}
           <antd.Select
             size="small"
+            aria-label={tr("排序方式")}
             value={sortBy}
             onChange={(v: "time_desc" | "time_asc" | "status" | "name") =>
               setSortBy(v)
@@ -433,6 +435,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             <antd.Button
               type="text"
               size="small"
+              aria-label={tr("刷新")}
               icon={<ReloadIcon />}
               loading={loading || manualRefresh}
               onClick={() => void handleRefreshClick()}
@@ -546,6 +549,30 @@ overflow:hidden——高度可约束、不撑破页面（10/26）：各视图内
           <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
           <div
             onMouseDown={startRailDrag}
+            // R4 a11y：分栏拖拽只认鼠标 → 分隔条语义 + 键盘 ←/→ 调宽
+            // （Shift=大步），避免键盘用户无法改栏宽。
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={tr("拖动调整项目列表宽度")}
+            aria-valuenow={railW}
+            aria-valuemin={220}
+            aria-valuemax={520}
+            tabIndex={0}
+            onKeyDown={(e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              const step = e.shiftKey ? 40 : 10;
+              const next = Math.min(
+                520,
+                Math.max(220, railW + (e.key === "ArrowRight" ? step : -step)),
+              );
+              setRailW(next);
+              try {
+                localStorage.setItem(RAIL_KEY, String(next));
+              } catch {
+                /* 隐私模式 localStorage 不可用——本次会话有效即可 */
+              }
+            }}
             title={tr("拖动调整项目列表宽度")}
             style={{
               cursor: "col-resize",
