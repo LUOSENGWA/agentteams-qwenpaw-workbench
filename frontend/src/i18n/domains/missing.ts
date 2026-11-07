@@ -193,5 +193,7 @@ export const missingDict: Record<string, { en: string }> = {
   "版本未就绪（无 ETag）——点「重新载入」后重试": { en: "Version not ready (no ETag) — click Reload and try again" },
   "选择团队（或输入团队名）": { en: "Select a team (or type its name)" },
   "重新载入": { en: "Reload" },
+  "网格视图": { en: "Grid view" },
+  "网格": { en: "Grid" },
   "项目 meta": { en: "Project meta" },
 };
