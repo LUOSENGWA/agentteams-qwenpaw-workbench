@@ -3,6 +3,13 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.126 (R4 static a11y gate · 2026-11-07)
+
+**Added**
+- `lib/a11yStatic.ts`: a static accessibility gate — icon-only buttons need `aria-label` or readable text, clickable `div`s need role/tabIndex/keyboard handling, form controls need labels, images need alt text, plus a contrast allowlist. `tests/a11y-static.vitest.test.ts` enforces 13 rules and fails on violations.
+- Fixes on key pages: workflow board (BoardView / blocks / panels), file section (FilesSection), worker detail (WorkerDetailPane) and the sync settings dialog now carry aria-labels and keyboard reachability.
+
+**Tests**: vitest 211 passed · `tsc --noEmit` clean · `npm run build` clean.
 ## 0.5.0-beta.16.125 (fix module-updates crash · 2026-11-07)
 
 **Fixed**

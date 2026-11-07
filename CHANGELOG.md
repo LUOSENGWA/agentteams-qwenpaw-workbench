@@ -3,6 +3,13 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.126（R4 静态 a11y 门 · 2026-11-07）
+
+**新增**
+- `lib/a11yStatic.ts`：静态无障碍门——图标按钮必须有 `aria-label`/可读文本、可点 `div` 必须有 role/tabIndex/键盘处理、表单控件必须有 label/aria-label、图片必须有 alt、对比度白名单；`tests/a11y-static.vitest.test.ts` 覆盖 13 条规则，违规直接失败。
+- 关键页修复：工作流看板（BoardView / blocks / panels）、文件区（FilesSection）、Worker 详情（WorkerDetailPane）、同步设置弹窗补 aria-label / 键盘可达性。
+
+**测试**：vitest 211 passed · `tsc --noEmit` 0 · `npm run build` 0。
 ## 0.5.0-beta.16.125（修复模块更新崩溃 · 2026-11-07）
 
 **修复**
