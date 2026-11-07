@@ -3,6 +3,14 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.77 (2026-11-07 · model grants become multi-select)
+
+**Improved**
+- The person-detail grant editor no longer asks for row-by-row "add row": pick **providers first (multi-select, searchable)**, then **models (multi-select, searchable)**.
+- The model list is narrowed to the selected providers using gateway alias ownership; without ownership data it falls back to the full catalog instead of hiding options.
+- Existing grants show as the selected values in both selects; read-only mode renders tags instead of disabled inputs.
+- The empty-selection hint (no grants = fail-closed) stays.
+
 ## 0.5.0-beta.16.76 (2026-11-07 · file tree view)
 
 **Improved**
