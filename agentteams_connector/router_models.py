@@ -152,6 +152,7 @@ _CONFIG_KEY_TYPES: Dict[str, type] = {
     "admin_password": str,
     "gateway_admin_url": str,
     "console_session": str,
+    "dashboard_url": str,
     "address_mode": str,
     "console_effects": str,
     "console_calm": bool,

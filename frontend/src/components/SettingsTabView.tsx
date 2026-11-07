@@ -85,6 +85,8 @@ export function SettingsTabView(props: {
     setGatewayAdminUrl,
     gatewayWan,
     setGatewayWan,
+    dashboardUrl,
+    setDashboardUrl,
     fxMode,
     setFxMode,
     verifying,
@@ -398,6 +400,26 @@ export function SettingsTabView(props: {
             value={addrAuth["controller:1"] || EMPTY_ADDR_AUTH}
             onChange={(v) => setAddrAuthFor("controller:1", v)}
           />
+        </div>
+
+        {/* Dashboard 地址——Worker 详情「打开 Tracing」跳转目标。
+ Tracing 是 Dashboard 的能力，插件只跳转（不复制页面）；
+ 未配置时按钮隐藏。 */}
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            {tr("Dashboard 地址（可选；Worker 详情「打开 Tracing」跳转目标）")}
+          </div>
+          <antd.Input
+            placeholder="http://localhost:13000"
+            value={dashboardUrl}
+            aria-label={tr("Dashboard 地址")}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setDashboardUrl(e.target.value)
+            }
+          />
+          <div style={{ marginTop: 4, fontSize: 11, color: t.textSecondary }}>
+            {tr("Tracing 是 Dashboard 的能力，插件只做跳转；未配置 Dashboard 地址时「打开 Tracing」按钮隐藏。")}
+          </div>
         </div>
 
  {/* Higress 地址并入地址配置区（与

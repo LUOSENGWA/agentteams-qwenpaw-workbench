@@ -466,6 +466,8 @@ def load_config() -> Dict[str, Any]:
             # 控制台特效三档（落盘值须重载保留）。
             "console_effects",
             "console_session",
+            # Dashboard 地址（Tracing 跳转目标；落盘值须重载保留）。
+            "dashboard_url",
             "sglang",
             "matrix",
             "address_mode",
@@ -657,6 +659,9 @@ def update_config(
         val = patch["address_mode"].strip()
         if val:
             merged["address_mode"] = val if val in ("auto", "lan", "wan") else "auto"
+    # Dashboard 地址（非秘密；空串=清空 → Worker 详情「打开 Tracing」入口隐藏）。
+    if "dashboard_url" in patch and isinstance(patch["dashboard_url"], str):
+        merged["dashboard_url"] = patch["dashboard_url"].strip()
     if "sglang" in patch and isinstance(patch["sglang"], dict):
         existing = merged.get("sglang") or {}
         incoming = dict(patch["sglang"])

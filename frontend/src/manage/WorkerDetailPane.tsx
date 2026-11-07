@@ -72,6 +72,7 @@ import { RuntimeNotice } from "../runtimeGuard";
 import { BulbIcon, PlayIcon } from "../components/icons";
 import { WbTooltip } from "../components/WbTooltip";
 import { resourceControlDeniedHint } from "../lib/resourceControl";
+import { tracingUrl } from "../lib/tracingUrl";
 import ModelEditModal from "./ModelEditModal";
 import ResourceCards from "./ResourceCards";
 
@@ -130,6 +131,7 @@ export default function WorkerDetailPane({
   onRefreshAdmin,
   onOpenSettings,
   onDeleted,
+  dashboardUrl = "",
 }: {
   worker: WorkerInfo;
   /** 头像源（room 成员表 mxc 头像；undefined → 首字母兜底）。 */
@@ -147,12 +149,18 @@ export default function WorkerDetailPane({
   onOpenSettings?: () => void;
   /** 删除成功后的导航（回团队拓扑）——父层决定落地位置。 */
   onDeleted?: () => void;
+  /**
+   * Dashboard 地址（config.dashboard_url）——「打开 Tracing」跳转目标。
+   * 空/非法 → 入口隐藏（Tracing 是 Dashboard 能力，插件只跳转）。
+   */
+  dashboardUrl?: string;
 }) {
   const t = useThemeColors();
   const tr = useT();
   const obj = useAvatarUrl(avatarUrl);
   const l1 = !!hasToken;
   const deniedHint = resourceControlDeniedHint(tr);
+  const tracing = tracingUrl(dashboardUrl);
   const meta = phaseMeta(worker.phase);
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const restarting = (worker.containerState || "").toLowerCase() === "restarting";
@@ -601,6 +609,23 @@ export default function WorkerDetailPane({
             label={tr("loop 预算")}
             value={`${loop.state}${loop.mode?.name ? ` · ${loop.mode.name}` : ""}`}
           />
+        ) : null}
+        {/* Dashboard Tracing 跳转：仅配置了 dashboard 地址时显示（未配置
+            → 隐藏）；只跳转不复制页面，也不拼 worker/筛选参数——tracing
+            页不支持 URL 参数。 */}
+        {tracing ? (
+          <div style={{ display: "flex", marginTop: 8 }}>
+            <antd.Button
+              size="large"
+              aria-label={tr("打开 Tracing（Dashboard 调用链页面，新窗口）")}
+              style={{ minHeight: 44 }}
+              onClick={() =>
+                window.open(tracing, "_blank", "noopener,noreferrer")
+              }
+            >
+              {tr("打开 Tracing")}
+            </antd.Button>
+          </div>
         ) : null}
         {l1 ? (
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>

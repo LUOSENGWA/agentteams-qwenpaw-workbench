@@ -201,4 +201,13 @@ export const settingsDict: Record<string, { en: string }> = {
   "索引外已装：{name} {v}": { en: "Installed outside index: {name} {v}" },
   "该团队尚未安装任何模块": { en: "This team has no modules installed" },
   "无索引模块或已装插件": { en: "No index modules or installed plugins" },
+
+  // ── R3：Dashboard 地址（Worker 详情「打开 Tracing」跳转目标）──
+  "Dashboard 地址（可选；Worker 详情「打开 Tracing」跳转目标）": {
+    en: "Dashboard URL (optional; target for \"Open Tracing\" in worker details)",
+  },
+  "Dashboard 地址": { en: "Dashboard URL" },
+  "Tracing 是 Dashboard 的能力，插件只做跳转；未配置 Dashboard 地址时「打开 Tracing」按钮隐藏。": {
+    en: "Tracing lives in the Dashboard — this plugin only links to it. The \"Open Tracing\" button is hidden until a Dashboard URL is configured.",
+  },
 };
