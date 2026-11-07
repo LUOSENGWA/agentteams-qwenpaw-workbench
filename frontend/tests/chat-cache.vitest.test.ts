@@ -1,8 +1,8 @@
-// 本地聊天缓存（lib/chatCache）内存适配器测试——node 环境无 IndexedDB，
-// 走同 API 的 MemoryStore：upsert 去重 / 编辑标记保留 / 顺序 / 窗口 /
-// LRU 预算 / 已读位点。
+// 本地聊天缓存（lib/chatCache）后端磁盘适配器测试——mock 宿主 fetch +
+// 假磁盘（Map<roomId, {messages, end}>）：PUT 合并去重 / GET 整窗切片 /
+// 写失败静默 / prune 路由 / 已读位点内存语义。
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   getLastRead,
@@ -16,6 +16,10 @@ import {
   setLastRead,
 } from "../src/lib/chatCache";
 import type { RoomMessage } from "../src/api";
+
+const BASE = "/agentteams-proxy/storage";
+const CHAT = `${BASE}/chat/`;
+const LIMIT = 500;
 
 function msg(
   id: string,
@@ -32,10 +36,96 @@ function msg(
   };
 }
 
-describe("chatCache: messages", () => {
-  it("upserts by event_id (no duplicates, newer payload wins)", async () => {
+interface Win {
+  messages: RoomMessage[];
+  end: string | null;
+}
+
+/** 假磁盘：与后端 cache/chat/<roomId>.json 同形（整窗覆盖 + 500 截断）。 */
+const disk = new Map<string, Win>();
+let requests: { method: string; path: string; body?: unknown }[] = [];
+let failAll = false;
+let pruneCalls = 0;
+
+function json(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+const fetchMock = vi.fn(async (path: string, init?: RequestInit): Promise<Response> => {
+  const method = (init?.method || "GET").toUpperCase();
+  let body: unknown;
+  if (typeof init?.body === "string" && init.body) {
+    try {
+      body = JSON.parse(init.body);
+    } catch {
+      body = null;
+    }
+  }
+  requests.push({ method, path, body });
+  if (failAll) return json({ detail: "boom" }, 500);
+
+  const [rawPath] = path.split("?");
+  if (rawPath === `${BASE}/prune` && method === "POST") {
+    pruneCalls += 1;
+    return json({ removedFiles: 0, freedBytes: 0 });
+  }
+  if (rawPath.startsWith(CHAT)) {
+    const roomId = decodeURIComponent(rawPath.slice(CHAT.length));
+    if (method === "GET") {
+      const win = disk.get(roomId) ?? { messages: [], end: null };
+      const limit = Number(new URLSearchParams(path.split("?")[1] || "").get("limit") || LIMIT);
+      const messages = limit > 0 ? win.messages.slice(-limit) : [];
+      return json({ messages, end: win.end });
+    }
+    if (method === "PUT") {
+      const payload = (body || {}) as { messages?: RoomMessage[]; end?: string };
+      const messages = Array.isArray(payload.messages) ? payload.messages : [];
+      const capped = messages.slice(-LIMIT);
+      disk.set(roomId, { messages: capped, end: payload.end ?? null });
+      return json({ ok: true, count: capped.length });
+    }
+    if (method === "DELETE") {
+      disk.delete(roomId);
+      return json({ ok: true });
+    }
+  }
+  return json({ detail: "not found" }, 404);
+});
+
+beforeEach(() => {
+  disk.clear();
+  requests = [];
+  failAll = false;
+  pruneCalls = 0;
+  fetchMock.mockClear();
+  // requestJsonFull 走宿主 fetch（node 无 window → 手工搭最小宿主）。
+  (globalThis as unknown as { window: unknown }).window = {
+    QwenPaw: {
+      host: {
+        fetch: fetchMock,
+        getApiUrl: (p: string) => p,
+        getApiToken: () => "",
+      },
+    },
+  };
+});
+
+afterEach(() => {
+  delete (globalThis as unknown as { window?: unknown }).window;
+});
+
+function requestsFor(room: string, method: string) {
+  const path = `${CHAT}${encodeURIComponent(room)}`;
+  return requests.filter((r) => r.path.startsWith(path) && r.method === method);
+}
+
+describe("chatCache: 后端磁盘适配器（PUT/GET）", () => {
+  it("PUT merges by event_id (newer payload wins, no duplicates)", async () => {
     const acct = "acct-upsert";
-    const room = "!r:hs";
+    const room = "!r-upsert:hs";
     await putMessages(acct, room, [msg("$a", 100), msg("$b", 200)]);
     await putMessages(acct, room, [
       { ...msg("$a", 100), body: "edited-body" },
@@ -44,13 +134,18 @@ describe("chatCache: messages", () => {
     const got = await getRecent(acct, room, 10);
     expect(got.map((m) => m.event_id)).toEqual(["$a", "$b", "$c"]);
     expect(got[0].body).toBe("edited-body");
+    // 落盘 = 合并后的整窗（不是两次覆盖的残片）
+    expect(disk.get(room)?.messages.map((m) => m.event_id)).toEqual([
+      "$a",
+      "$b",
+      "$c",
+    ]);
   });
 
   it("keeps edited/pending flags when the fresh payload omits them", async () => {
     const acct = "acct-flags";
-    const room = "!r:hs";
+    const room = "!r-flags:hs";
     await putMessages(acct, room, [msg("$a", 100, { edited: true, pending: true })]);
-    // 服务端页不带 edited/pending 字段 → 本地标记不被抹掉
     await putMessages(acct, room, [msg("$a", 100, { body: "server-body" })]);
     const [got] = await getRecent(acct, room, 10);
     expect(got.body).toBe("server-body");
@@ -58,9 +153,21 @@ describe("chatCache: messages", () => {
     expect(got.pending).toBe(true);
   });
 
-  it("returns getRecent in ascending ts order, newest window last", async () => {
+  it("server truncates to 500 and client keeps the newest window", async () => {
+    const acct = "acct-cap";
+    const room = "!r-cap:hs";
+    const all = Array.from({ length: 600 }, (_, i) => msg(`$m${i}`, i));
+    await putMessages(acct, room, all);
+    expect(disk.get(room)?.messages.length).toBe(LIMIT);
+    const got = await getRecent(acct, room, LIMIT);
+    expect(got.length).toBe(LIMIT);
+    expect(got[0].event_id).toBe("$m100");
+    expect(got[got.length - 1].event_id).toBe("$m599");
+  });
+
+  it("getRecent returns ascending ts order, newest window last", async () => {
     const acct = "acct-recent";
-    const room = "!r:hs";
+    const room = "!r-recent:hs";
     await putMessages(acct, room, [
       msg("$c", 300),
       msg("$a", 100),
@@ -72,38 +179,43 @@ describe("chatCache: messages", () => {
     expect(got.map((m) => m.event_id)).toEqual(["$c", "$d", "$e"]);
   });
 
-  it("getRange returns messages strictly before beforeTs (ascending)", async () => {
-    const acct = "acct-range";
-    const room = "!r:hs";
-    await putMessages(acct, room, [
-      msg("$a", 100),
-      msg("$b", 200),
-      msg("$c", 300),
-      msg("$d", 400),
-    ]);
-    const got = await getRange(acct, room, 300, 10);
-    expect(got.map((m) => m.event_id)).toEqual(["$a", "$b"]);
-    const limited = await getRange(acct, room, 400, 2);
-    expect(limited.map((m) => m.event_id)).toEqual(["$b", "$c"]);
-  });
-
-  it("isolates accounts and rooms", async () => {
-    await putMessages("acct-x", "!r1:hs", [msg("$x1", 100)]);
-    await putMessages("acct-y", "!r1:hs", [msg("$y1", 100)]);
-    await putMessages("acct-x", "!r2:hs", [msg("$x2", 100)]);
-    expect((await getRecent("acct-x", "!r1:hs", 10)).map((m) => m.event_id)).toEqual(["$x1"]);
-    expect((await getRecent("acct-y", "!r1:hs", 10)).map((m) => m.event_id)).toEqual(["$y1"]);
-    expect((await getRecent("acct-x", "!r2:hs", 10)).map((m) => m.event_id)).toEqual(["$x2"]);
-  });
-
-  it("getWindow returns the target ±N (ascending, target included)", async () => {
-    const acct = "acct-window";
-    const room = "!r:hs";
-    const all = Array.from({ length: 11 }, (_, i) => msg(`$m${i}`, 100 + i));
-    await putMessages(acct, room, all);
+  it("loads the whole window once, then slices in memory", async () => {
+    const acct = "acct-slice";
+    const room = "!r-slice:hs";
+    disk.set(room, {
+      messages: Array.from({ length: 10 }, (_, i) => msg(`$m${i}`, 100 + i)),
+      end: "e10",
+    });
+    const recent = await getRecent(acct, room, 3);
+    expect(recent.map((m) => m.event_id)).toEqual(["$m7", "$m8", "$m9"]);
+    const range = await getRange(acct, room, 105, 2);
+    expect(range.map((m) => m.event_id)).toEqual(["$m3", "$m4"]);
     const win = await getWindow(acct, room, "$m5", 2, 2);
     expect(win.map((m) => m.event_id)).toEqual(["$m3", "$m4", "$m5", "$m6", "$m7"]);
+    // 整窗只 GET 一次（其余走内存）
+    expect(requestsFor(room, "GET").length).toBe(1);
     expect(await getWindow(acct, room, "$missing", 2, 2)).toEqual([]);
+  });
+
+  it("does not cache failed reads (retry hits the backend again)", async () => {
+    const acct = "acct-retry";
+    const room = "!r-retry:hs";
+    failAll = true;
+    expect(await getRecent(acct, room, 5)).toEqual([]);
+    failAll = false;
+    disk.set(room, { messages: [msg("$a", 100)], end: null });
+    expect((await getRecent(acct, room, 5)).map((m) => m.event_id)).toEqual(["$a"]);
+    expect(requestsFor(room, "GET").length).toBe(2);
+  });
+
+  it("write/read failures are silent (return empty, never throw)", async () => {
+    const acct = "acct-fail";
+    const room = "!r-fail:hs";
+    failAll = true;
+    await expect(putMessages(acct, room, [msg("$a", 100)])).resolves.toBeUndefined();
+    expect(await getRecent(acct, room, 10)).toEqual([]);
+    expect(await getRange(acct, room, 1000, 10)).toEqual([]);
+    expect(await getWindow(acct, room, "$a", 2, 2)).toEqual([]);
   });
 });
 
@@ -118,10 +230,10 @@ describe("chatCache: mergeMessages", () => {
   });
 });
 
-describe("chatCache: budgets (LRU)", () => {
-  it("pruneRoom keeps only the newest keep messages", async () => {
+describe("chatCache: budgets", () => {
+  it("pruneRoom trims the window via PUT (keep < 500)", async () => {
     const acct = "acct-prune-room";
-    const room = "!r:hs";
+    const room = "!r-prune-room:hs";
     await putMessages(acct, room, [
       msg("$a", 100),
       msg("$b", 200),
@@ -137,29 +249,29 @@ describe("chatCache: budgets (LRU)", () => {
     ]);
   });
 
-  it("pruneAll drops the oldest rooms per account (lastTs LRU)", async () => {
-    const acct = "acct-prune-all";
-    await putMessages(acct, "!old:hs", [msg("$o1", 100)]);
-    await putMessages(acct, "!mid:hs", [msg("$m1", 200)]);
-    await putMessages(acct, "!new:hs", [msg("$n1", 300)]);
-    // 另一个账号不受本账号预算影响
-    await putMessages("acct-prune-all-other", "!keep:hs", [msg("$k1", 50)]);
-    await pruneAll(2);
-    expect(await getRecent(acct, "!old:hs", 10)).toEqual([]);
-    expect((await getRecent(acct, "!mid:hs", 10)).map((m) => m.event_id)).toEqual(["$m1"]);
-    expect((await getRecent(acct, "!new:hs", 10)).map((m) => m.event_id)).toEqual(["$n1"]);
-    expect(
-      (await getRecent("acct-prune-all-other", "!keep:hs", 10)).map((m) => m.event_id),
-    ).toEqual(["$k1"]);
+  it("pruneRoom is a no-op at or above the server window cap", async () => {
+    const acct = "acct-prune-noop";
+    const room = "!r-prune-noop:hs";
+    await putMessages(acct, room, [msg("$a", 100)]);
+    const before = requestsFor(room, "PUT").length;
+    await pruneRoom(acct, room); // 默认 2000 ≥ 500
+    expect(requestsFor(room, "PUT").length).toBe(before);
+  });
+
+  it("pruneAll asks the backend to prune (server policy is authoritative)", async () => {
+    await pruneAll();
+    expect(pruneCalls).toBe(1);
+    failAll = true;
+    await expect(pruneAll()).resolves.toBeUndefined();
   });
 });
 
 describe("chatCache: last read", () => {
-  it("stores and reads the last-read position per account+room", async () => {
-    await setLastRead("acct-lr", "!r:hs", 1234);
-    expect(await getLastRead("acct-lr", "!r:hs")).toBe(1234);
-    expect(await getLastRead("acct-lr", "!other:hs")).toBeNull();
-    await setLastRead("acct-lr", "!r:hs", 9999);
-    expect(await getLastRead("acct-lr", "!r:hs")).toBe(9999);
+  it("keeps the last-read position in session memory per account+room", async () => {
+    await setLastRead("acct-lr", "!r-lr:hs", 1234);
+    expect(await getLastRead("acct-lr", "!r-lr:hs")).toBe(1234);
+    expect(await getLastRead("acct-lr", "!other-lr:hs")).toBeNull();
+    await setLastRead("acct-lr", "!r-lr:hs", 9999);
+    expect(await getLastRead("acct-lr", "!r-lr:hs")).toBe(9999);
   });
 });

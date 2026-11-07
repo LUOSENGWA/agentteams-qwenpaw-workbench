@@ -414,6 +414,40 @@ def test_chat_cache_window_cap_and_roundtrip(tmp_path):
     assert store.chat_get("!nobody:matrix.example.com") is None
 
 
+def test_chat_prune_room_and_byte_budgets(tmp_path):
+    store = SyncStore(tmp_path / "agentteams")
+    store.ensure_dirs()
+    for i in range(5):
+        store.chat_put(f"!room{i}:hs", [{"i": i}])
+    files = sorted(store.chat_dir.glob("*.json"))
+    # 显式 mtime 序：room0 最旧 … room4 最新
+    for i, p in enumerate(files):
+        os.utime(p, (1_760_000_000 + i, 1_760_000_000 + i))
+    # 1) 房间数收敛：超 3 房 → 删最旧 2 个
+    got = store.chat_prune(max_rooms=3, max_bytes=10**9)
+    assert got["removedFiles"] == 2
+    assert got["freedBytes"] > 0
+    left = [p.name for p in store.chat_dir.glob("*.json")]
+    assert len(left) == 3
+    assert "_room0_hs.json" not in left and "_room1_hs.json" not in left
+    # 2) 总量收敛：继续按 mtime 删到 ≤ 单文件大小
+    one = max(p.stat().st_size for p in store.chat_dir.glob("*.json"))
+    got2 = store.chat_prune(max_rooms=10, max_bytes=one)
+    assert got2["removedFiles"] == 2
+    total = sum(p.stat().st_size for p in store.chat_dir.glob("*.json"))
+    assert total <= one
+    # 3) 已在上限内 → no-op
+    assert store.chat_prune(max_rooms=10, max_bytes=10**9) == {
+        "removedFiles": 0,
+        "freedBytes": 0,
+    }
+
+
+def test_chat_prune_missing_dir_is_noop(tmp_path):
+    store = SyncStore(tmp_path / "agentteams")  # 不 ensure_dirs
+    assert store.chat_prune() == {"removedFiles": 0, "freedBytes": 0}
+
+
 # ── 12) /sync/state 端点字段补充（root/lastRunAt/conflicts）────────
 
 

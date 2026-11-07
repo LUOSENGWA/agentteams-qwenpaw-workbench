@@ -50,6 +50,8 @@ STATE_VERSION = 1
 # 容量上限（设计 §5 / 本仓实现口径）。
 MAX_HTTP_BODY_BYTES = 256 * 1024  # cache/http .body 单文件 ≤256KB
 MAX_CHAT_MESSAGES = 500  # cache/chat 每房窗口 ≤500 条
+MAX_CHAT_ROOMS = 30  # cache/chat 房间数上限（设计 §5 LRU）
+MAX_CHAT_TOTAL_BYTES = 64 * 1024 * 1024  # cache/chat 总量上限 64MB
 MAX_LRU_ENTRIES = 200  # cache/lru 条目数（前端 memoryLru(200) 同口径）
 HTTP_DEFAULT_MAX_AGE = 300.0  # http 新鲜度判定默认窗口（秒）
 
@@ -285,6 +287,49 @@ class SyncStore:
             self._chat_file(room_id).unlink(missing_ok=True)
         except Exception:  # noqa: BLE001
             pass
+
+    def chat_prune(
+        self,
+        max_rooms: int = MAX_CHAT_ROOMS,
+        max_bytes: int = MAX_CHAT_TOTAL_BYTES,
+    ) -> Dict[str, int]:
+        """chat 目录容量整理（设计 §5）：先按房间数、再按总量淘汰最旧。
+
+        淘汰序 = 文件 mtime 升序（写入即使用——每次 chat_put 都是原子
+        替换，mtime 随写刷新，近似 LRU）。先淘汰到房间数 ≤``max_rooms``，
+        再继续淘汰到总量 ≤``max_bytes``。目录缺失/损坏 → no-op。
+
+        返回 ``{"removedFiles": n, "freedBytes": b}``。
+        """
+        removed = 0
+        freed = 0
+        try:
+            entries = []
+            for p in self.chat_dir.glob("*.json"):
+                if p.name.endswith(".tmp"):
+                    continue
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                entries.append((st.st_mtime, p.name, st.st_size, p))
+        except Exception:  # noqa: BLE001 - 目录缺失/不可读 → no-op
+            return {"removedFiles": 0, "freedBytes": 0}
+        entries.sort(key=lambda e: (e[0], e[1]))  # 最旧在前
+        count = len(entries)
+        total = sum(e[2] for e in entries)
+        for _mtime, _name, size, path in entries:
+            if count <= max_rooms and total <= max_bytes:
+                break
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                continue
+            count -= 1
+            total -= size
+            removed += 1
+            freed += size
+        return {"removedFiles": removed, "freedBytes": freed}
 
     # ── lru：memoryLru 落盘快照（设计 §4）──────────────────────────
 
