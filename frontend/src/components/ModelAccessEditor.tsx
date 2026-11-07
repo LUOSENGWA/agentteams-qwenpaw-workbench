@@ -205,11 +205,29 @@ function EntriesEditor({
   t: ThemeColors;
   onChange: (next: ModelAccessPair[]) => void;
 }) {
-  const sel = pairsToSelection(rows);
   const modelsByProvider = catalog?.modelsByProvider;
   const allModels = catalog?.models ?? [];
   const providers = catalog?.providers ?? [];
+
+  // 选择态自持：provider 可以「只选不配对」（还没选模型时也要留住选择），
+  // 因此不能从 rows 反推——rows 是提交形态，选择是编辑中间态。
+  const derived = pairsToSelection(rows);
+  const [sel, setSel] = React.useState<PairSelection>(derived);
+  const lastRowsRef = React.useRef(rows);
+  React.useEffect(() => {
+    if (lastRowsRef.current !== rows) {
+      lastRowsRef.current = rows;
+      setSel(pairsToSelection(rows));
+    }
+  }, [rows]);
+
+  const apply = (next: PairSelection) => {
+    setSel(next);
+    onChange(selectionToPairs(next, rows, modelsByProvider));
+  };
+
   const modelOptions = modelOptionsFor(sel, allModels, modelsByProvider);
+  const hasProviders = sel.providers.length > 0;
 
   if (!canEdit) {
     if (rows.length === 0) {
@@ -240,9 +258,7 @@ function EntriesEditor({
         placeholder={tr("选择 Provider（可多选，输入可搜索）")}
         options={providers.map((p) => ({ value: p, label: p }))}
         value={sel.providers}
-        onChange={(v: string[]) =>
-          onChange(selectionToPairs({ providers: v, models: sel.models }, rows, modelsByProvider))
-        }
+        onChange={(v: string[]) => apply({ providers: v, models: sel.models })}
       />
       <antd.Select
         mode="multiple"
@@ -251,16 +267,13 @@ function EntriesEditor({
         optionFilterProp="label"
         size="small"
         style={{ width: "100%" }}
+        disabled={!hasProviders}
         placeholder={
-          sel.providers.length === 0 && (modelsByProvider !== undefined)
-            ? tr("先选 Provider，再选模型")
-            : tr("选择模型（可多选，输入可搜索）")
+          hasProviders ? tr("选择模型（可多选，输入可搜索）") : tr("先选 Provider，再选模型")
         }
         options={modelOptions.map((m) => ({ value: m, label: m }))}
         value={sel.models}
-        onChange={(v: string[]) =>
-          onChange(selectionToPairs({ providers: sel.providers, models: v }, rows, modelsByProvider))
-        }
+        onChange={(v: string[]) => apply({ providers: sel.providers, models: v })}
       />
       {rows.length === 0 ? (
         <span style={{ fontSize: 11, color: t.textSecondary }}>

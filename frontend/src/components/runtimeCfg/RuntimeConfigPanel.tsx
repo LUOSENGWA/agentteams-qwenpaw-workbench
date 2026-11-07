@@ -26,6 +26,25 @@ import {
   type PanelField,
 } from "../../lib/configSectionModel";
 import type { RuntimeSurface } from "../../api/domains/memberConfig";
+import {
+  BoltIcon,
+  BoxIcon,
+  BrainIcon,
+  BrickIcon,
+  ChartIcon,
+  CodeIcon,
+  LinkIcon,
+  MenuIcon,
+  MessageIcon,
+  MonitorIcon,
+  PinIcon,
+  PlugIcon,
+  PulseIcon,
+  RobotIcon,
+  ShieldIcon,
+  TreeIcon,
+  WrenchIcon,
+} from "../icons";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -90,6 +109,54 @@ const FACE_LABELS: Record<string, string> = {
   database: "数据库",
   runtime: "运行时",
 };
+
+/** face → 图标（与能力卡同一套图标语义；未知 face 无图标）。 */
+const FACE_ICONS: Record<string, (p: { size?: number }) => JSX.Element> = {
+  gateway: BoltIcon,
+  models: BrainIcon,
+  model: BrainIcon,
+  providers: LinkIcon,
+  agents: RobotIcon,
+  agent: RobotIcon,
+  tools: WrenchIcon,
+  toolsets: WrenchIcon,
+  terminal: CodeIcon,
+  channels: MessageIcon,
+  messaging: MessageIcon,
+  voice: MonitorIcon,
+  session: PulseIcon,
+  automation: BoltIcon,
+  "skills-plugins": BrickIcon,
+  skills: BrickIcon,
+  mcp: PlugIcon,
+  browser: MonitorIcon,
+  security: ShieldIcon,
+  observability: ChartIcon,
+  ui: MenuIcon,
+  workspace: BoxIcon,
+  web: LinkIcon,
+  worktrees: TreeIcon,
+  checkpoints: PinIcon,
+  database: BoxIcon,
+  runtime: BoltIcon,
+};
+
+function FaceLabel({
+  id,
+  text,
+}: {
+  id: string;
+  text: string;
+}): JSX.Element {
+  const Icon = FACE_ICONS[id];
+  if (!Icon) return <span>{text}</span>;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <Icon size={12} />
+      <span>{text}</span>
+    </span>
+  );
+}
 
 export interface RuntimeConfigPanelProps {
   surface: RuntimeSurface;
@@ -172,12 +239,24 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
     if (faceMode) {
       return filterByBucket(runtime, surface, bucket)
         .map((face) => {
-          const sec = allSections.find((s) => s.id === face.id);
-          const filtered = sec ? filterSection(sec, query) : null;
+          const q = query.trim().toLowerCase();
+          const match = (f: PanelField): boolean =>
+            q === "" ||
+            `${f.key} ${f.label ?? ""} ${f.description ?? ""}`.toLowerCase().includes(q);
+          const subs = face.subSections.length
+            ? face.subSections.map((sub) => ({
+                id: sub.id,
+                label: translate(sub.label),
+                fields: visible(sub.fields.filter(match)),
+              }))
+            : [];
           return {
             key: face.id,
-            label: translate(FACE_LABELS[face.id] ?? face.label),
-            fields: visible(filtered ? filtered.fields : face.fields),
+            label: (
+              <FaceLabel id={face.id} text={translate(FACE_LABELS[face.id] ?? face.label)} />
+            ),
+            fields: subs.length ? subs.flatMap((x) => x.fields) : visible(face.fields.filter(match)),
+            subs: subs.filter((x) => x.fields.length > 0),
           };
         })
         .filter((tab) => tab.fields.length > 0);
@@ -190,6 +269,7 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
         key: sub.id,
         label: translate(SUB_LABELS[sub.id] ?? sub.id),
         fields: visible(sub.fields),
+        subs: [] as { id: string; label: string; fields: PanelField[] }[],
       }))
       .filter((tab) => tab.fields.length > 0);
   }, [faceMode, runtime, surface, bucket, allSections, query, translate, visible]);
@@ -285,7 +365,18 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
             label: tab.label,
             children: (
               <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
-                {tab.fields.map(renderField)}
+                {tab.subs.length > 0
+                  ? tab.subs.map((sub) => (
+                      <div key={sub.id} style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                        {sub.id ? (
+                          <div style={{ fontSize: 11, color: t.textSecondary, marginTop: 4 }}>
+                            {sub.label}
+                          </div>
+                        ) : null}
+                        {sub.fields.map(renderField)}
+                      </div>
+                    ))
+                  : tab.fields.map(renderField)}
               </div>
             ),
           }))}

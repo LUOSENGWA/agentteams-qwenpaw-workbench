@@ -274,19 +274,41 @@ export function faceBucket(runtime: string, faceId: string): CapabilityBucket {
 }
 
 /** face 级分区（id 为 surface face id，非固定 SectionId 联合）。 */
-export interface FaceSection {
+export interface FaceSubSection {
   id: string;
   label: string;
   fields: PanelField[];
 }
 
+export interface FaceSection {
+  id: string;
+  label: string;
+  fields: PanelField[];
+  /** face 内分组（来自 field.group，如 gateway.auth / agent.agent_cache）；
+   * 无 group 的字段归入 id="" 的默认段。 */
+  subSections: FaceSubSection[];
+}
+
 /** 按 face 拍平为分区（label 优先 face.label，其次 id）——tabs 与卡片共用。 */
 export function buildFaceSections(surface: RuntimeSurface): FaceSection[] {
-  return surface.faces.map((face) => ({
-    id: face.id,
-    label: face.label || face.id,
-    fields: face.fields.map((f) => ({ ...f })),
-  }));
+  return surface.faces.map((face) => {
+    const fields = face.fields.map((f) => ({ ...f }));
+    const order: string[] = [];
+    const byGroup = new Map<string, PanelField[]>();
+    for (const f of fields) {
+      const g = (f.group ?? "").trim();
+      if (!byGroup.has(g)) {
+        byGroup.set(g, []);
+        order.push(g);
+      }
+      byGroup.get(g)!.push(f);
+    }
+    const subSections: FaceSubSection[] =
+      order.length > 1 || (order.length === 1 && order[0] !== "")
+        ? order.map((g) => ({ id: g, label: g, fields: byGroup.get(g) ?? [] }))
+        : [];
+    return { id: face.id, label: face.label || face.id, fields, subSections };
+  });
 }
 
 /** 只保留属于给定能力桶的 face 字段（保持 face 顺序）。 */

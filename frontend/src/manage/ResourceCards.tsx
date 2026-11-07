@@ -142,14 +142,16 @@ export default function ResourceCards({
         width: 720,
       });
     }
-    // LLM 调优卡（无条件——通用卡，非 qwenpaw 运行时也显示；面板内部
-    // 惰性加载 + 403 只读降级兜底）。
+    // LLM 调优卡 = QwenPaw 原生能力（重试/限流/流式超时）。OpenClaw /
+    // Hermes 的等价字段在各自 surface 里（models/gateway/agent face），
+    // 由「运行配置」渲染，不再重复一张卡。
     list.push({
       id: "llm",
       title: tr("LLM 调优"),
       desc: tr("重试 / 限流 + 流式超时（流式组热生效）"),
       icon: BrainIcon,
       width: 720,
+      qwenpawOnly: true,
     });
     list.push(
       {
