@@ -177,15 +177,17 @@ async function putBatch(
   roomId: string,
   messages: readonly RoomMessage[],
   end?: string | null,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await requestJson(chatUrl(roomId), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, end: end ?? undefined }),
     });
+    return true;
   } catch {
     /* 缓存写入失败静默——聊天主流程不受影响 */
+    return false;
   }
 }
 
@@ -229,6 +231,9 @@ export async function putMessages(
     // 内存窗口（会话级）：合并增量 + 上限约束；end 维持既有值。
     // 无既有窗口 → 片段标记 complete=false（读整窗时再向库补齐）。
     const merged = mergeInto(prev?.messages ?? [], outgoing, CHAT_CACHE_ROOM_KEEP);
+    // 先落库：写失败不得污染内存窗口（否则读路径会把“没写进去的消息”
+    // 当成本地历史返回，重试也看不到失败）。
+    if (!(await putBatch(roomId, outgoing, prev?.end))) return;
     if (prev || merged.length) {
       remember(key, {
         messages: merged,
@@ -238,7 +243,6 @@ export async function putMessages(
     }
     const sp = sparse.get(key);
     if (sp) sparse.set(key, mergeInto(sp, outgoing, CHAT_CACHE_ROOM_KEEP));
-    await putBatch(roomId, outgoing, prev?.end);
   });
 }
 
