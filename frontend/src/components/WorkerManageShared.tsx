@@ -1,5 +1,6 @@
 import type * as ReactNS from "react";
 
+import { httpErrorStatus } from "../api/shared";
 import type { SpawnNode, WorkerSpawnGroup } from "../api";
 
 const host = window.QwenPaw.host;
@@ -109,3 +110,34 @@ export function fmtRfc3339(v: string): string {
 }
 
 /** 树形连线：行首缩进 + 竖线 + 横线（经典树视觉）。 */
+
+/** 长文折叠阈值（spawn 消息内容折叠行数）。 */
+export const SPAWN_MSG_FOLD_LINES = 6;
+
+/** 消息内容 → 折叠展示文本（纯函数，单测直测）。
+ * 换行（\n）保留（渲染层 whiteSpace:pre-wrap 呈现）；行数超 maxLines
+ * → 取前 maxLines 行 + folded=true（调用方渲染「展开」行）。 */
+export function foldMessageContent(
+  content: string | null | undefined,
+  maxLines: number = SPAWN_MSG_FOLD_LINES,
+): { text: string; folded: boolean } {
+  const text = typeof content === "string" ? content : "";
+  if (!text) return { text: "", folded: false };
+  const lines = text.split(/\r?\n/);
+  // 两路径都经 split+join——CRLF 统一归一为 \n（pre-wrap 呈现一致）。
+  if (lines.length <= maxLines) return { text: lines.join("\n"), folded: false };
+  return { text: lines.slice(0, maxLines).join("\n"), folded: true };
+}
+
+/** spawn 消息拉取失败 → UI 状态分类（httpErrorStatus 分流）：
+ * 404 = 会话不存在 / 不属于该项目 / 老控制器无此路由 → 空态（不报错）；
+ * 403 = 无权（跨团队）→ 行内「无权限查看」；
+ * 其余 → 加载失败（可重试）。 */
+export function classifySpawnMsgError(
+  e: unknown,
+): "empty" | "forbidden" | "error" {
+  const status = httpErrorStatus(e);
+  if (status === 404) return "empty";
+  if (status === 403) return "forbidden";
+  return "error";
+}

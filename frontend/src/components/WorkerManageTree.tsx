@@ -18,6 +18,12 @@ import type {
   SpawnNode,
   WorkerSpawnGroup,
 } from "../api";
+// spawn 会话消息端点（域文件直取，manage/* 同款直取模式）。
+import {
+  getSpawnMessages,
+  type SpawnMessage,
+  type SpawnMessagesResponse,
+} from "../api/domains/teams";
 import {
   BookmarkIcon,
   BrickIcon,
@@ -59,6 +65,8 @@ import {
   isStateConsistent,
   fmtTime,
   fmtRfc3339,
+  foldMessageContent,
+  classifySpawnMsgError,
 } from "./WorkerManageShared";
 
 const host = window.QwenPaw.host;
@@ -221,10 +229,234 @@ function SpawnRow({
           ) : null}
         </div>
       ) : null}
+      {/* 会话消息子项：仅 /spawns 正源节点带 project_id（消息端点按项目
+ 寻址）；无 project_id 不渲染入口（无可请求的路径）。懒加载在组件内。 */}
+      {node.project_id ? (
+        <SpawnMessages
+          projectId={node.project_id}
+          sessionId={node.session_id}
+          depth={depth}
+        />
+      ) : null}
       {(node.children || []).map((child) => (
         <SpawnRow key={child.session_id} node={child} depth={depth + 1} />
       ))}
     </>
+  );
+}
+
+type SpawnMsgState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ok"; data: SpawnMessagesResponse }
+  | { kind: "empty" }
+  | { kind: "forbidden" }
+  | { kind: "error"; message: string };
+
+/** spawn 会话「消息」子项（懒加载：展开才请求，列表渲染不批量拉取）。
+ * 404（会话不存在 / 不属于该项目 / 老控制器无此路由）= 空态不报错；
+ * 403 = 行内「无权限查看」；其余失败 = 「加载失败 · 重试」。 */
+function SpawnMessages({
+  projectId,
+  sessionId,
+  depth,
+}: {
+  projectId: string;
+  sessionId: string;
+  depth: number;
+}) {
+  const tr = useT();
+  const [open, setOpen] = React.useState(false);
+  const [tryTick, setTryTick] = React.useState(0);
+  const [state, setState] = React.useState<SpawnMsgState>({ kind: "idle" });
+
+  React.useEffect(() => {
+    if (!open) return; // 懒加载：收起态不发请求
+    let alive = true;
+    setState({ kind: "loading" });
+    getSpawnMessages(projectId, sessionId, 200)
+      .then((data) => {
+        if (alive) setState({ kind: "ok", data });
+      })
+      .catch((e: unknown) => {
+        if (!alive) return;
+        const cls = classifySpawnMsgError(e);
+        if (cls === "empty") setState({ kind: "empty" });
+        else if (cls === "forbidden") setState({ kind: "forbidden" });
+        else
+          setState({
+            kind: "error",
+            message: e instanceof Error ? e.message : String(e),
+          });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open, tryTick, projectId, sessionId]);
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          // 触控目标 ≥44px（整行命中，不误触邻行）。
+          minHeight: 44,
+          cursor: "pointer",
+        }}
+        onClick={(e: ReactNS.MouseEvent) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <TreeLine depth={depth + 1} isLast />
+        <span style={{ width: 12, fontSize: 10, color: "#888", flexShrink: 0 }}>
+          {open ? "▾" : "▸"}
+        </span>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            color: "#666",
+            fontSize: 12,
+          }}
+        >
+          <MessageIcon size={12} /> {tr("消息")}
+        </span>
+      </div>
+      {open ? (
+        <div
+          style={{
+            marginLeft: (depth + 1) * 22 + 42,
+            display: "grid",
+            gap: 8,
+            paddingBottom: 8,
+          }}
+        >
+          {state.kind === "loading" ? (
+            <span style={{ color: "#999", fontSize: 12 }}>
+              {tr("加载中…")}
+            </span>
+          ) : null}
+          {state.kind === "empty" ? (
+            <span style={{ color: "#999", fontSize: 12 }}>{tr("暂无消息")}</span>
+          ) : null}
+          {state.kind === "forbidden" ? (
+            <span style={{ color: "#cf1322", fontSize: 12 }}>
+              {tr("无权限查看")}
+            </span>
+          ) : null}
+          {state.kind === "error" ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <antd.Button
+                size="small"
+                danger
+                style={{ minHeight: 44 }}
+                onClick={() => setTryTick((v) => v + 1)}
+              >
+                {tr("加载失败")} · {tr("重试")}
+              </antd.Button>
+              <span style={{ color: "#999", fontSize: 11 }}>{state.message}</span>
+            </div>
+          ) : null}
+          {state.kind === "ok" ? (
+            <>
+              {state.data.messages.length === 0 ? (
+                <span style={{ color: "#999", fontSize: 12 }}>
+                  {tr("暂无消息")}
+                </span>
+              ) : (
+                state.data.messages.map((m, i) => (
+                  <SpawnMessageItem key={m.seq ?? `idx-${i}`} m={m} />
+                ))
+              )}
+              {state.data.has_more ? (
+                <span style={{ color: "#999", fontSize: 11 }}>
+                  {tr("仅显示最近 {n} 条", {
+                    n: state.data.messages.length,
+                  })}
+                </span>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 单条 spawn 消息：role/name + created_at（本地时区）+ content
+ * （whiteSpace:pre-wrap 保留换行；超 6 行折叠 +「展开」行，触控 ≥44px）。 */
+function SpawnMessageItem({ m }: { m: SpawnMessage }) {
+  const tr = useT();
+  const [expanded, setExpanded] = React.useState(false);
+  const { text, folded } = foldMessageContent(m.content);
+  return (
+    <div style={{ borderLeft: "2px solid rgba(0,0,0,0.1)", paddingLeft: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 6,
+          flexWrap: "wrap",
+        }}
+      >
+        <antd.Tag
+          style={{ margin: 0, fontSize: 11 }}
+          color={m.role === "user" ? "orange" : "blue"}
+        >
+          {m.role || "?"}
+        </antd.Tag>
+        {m.name ? (
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#333" }}>
+            {m.name}
+          </span>
+        ) : null}
+        {m.created_at ? (
+          <span style={{ fontSize: 11, color: "#999" }}>
+            {fmtRfc3339(m.created_at)}
+          </span>
+        ) : null}
+      </div>
+      {m.content ? (
+        <div
+          style={{
+            fontSize: 12.5,
+            lineHeight: 1.5,
+            color: "#333",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            marginTop: 2,
+          }}
+        >
+          {expanded ? m.content : text}
+        </div>
+      ) : null}
+      {folded ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            // 触控目标 ≥44px。
+            minHeight: 44,
+            cursor: "pointer",
+            color: "var(--app-accent, #FF7F16)",
+            fontSize: 12,
+          }}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? tr("收起") : tr("展开")}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

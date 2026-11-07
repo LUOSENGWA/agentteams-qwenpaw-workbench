@@ -93,6 +93,8 @@ export interface SpawnNode {
   children?: SpawnNode[];
   /** 正源：父 spawn 的 session_id（root_session_id），用于建树后不展示。 */
   rootSessionId?: string;
+  /** 所属项目 project_id（/spawns 按项目拉取时已知）——spawn 消息端点路径参数。 */
+  project_id?: string;
   /* spawn 工具/技能白名单——QwenPaw #7004 持久化（meta.subagent_allowed_tools/
  subagent_skills）经 Controller spawn 端点透传（需上游 main 64a77b5f+，v1.2.3 tag 未含）；仅当派发时
  受限且 Worker 运行 QwenPaw 2.1+ 时出现，2.0.1 恒无（不渲染）。 */
@@ -178,7 +180,7 @@ async function loadWorkerSpawnsRaw(): Promise<{
           for (const w of resp.workers || []) {
             const name = String(w.worker || "");
             if (!name) continue;
-            const nodes = (w.spawns || []).map(mapSpawnInfo);
+            const nodes = (w.spawns || []).map((s) => mapSpawnInfo(s, pid));
             if (!byWorker[name]) byWorker[name] = [];
             byWorker[name].push(...nodes);
           }
@@ -231,8 +233,9 @@ function spawnStringList(v: unknown): string[] | undefined {
   return out.length ? out : undefined;
 }
 
-/** spawnInfo → SpawnNode（UI 契约映射）。 */
-function mapSpawnInfo(s: Record<string, unknown>): SpawnNode {
+/** spawnInfo → SpawnNode（UI 契约映射）；projectId = 本次 /spawns 请求
+ * 所属项目（消息端点路径参数，随节点透传 UI）。 */
+function mapSpawnInfo(s: Record<string, unknown>, projectId?: string): SpawnNode {
   const createdIso = typeof s.created_at === "string" ? s.created_at : "";
   return {
     session_id: String(s.session_id || ""),
@@ -243,6 +246,7 @@ function mapSpawnInfo(s: Record<string, unknown>): SpawnNode {
     last_activity:
       typeof s.updated_at === "string" ? s.updated_at : undefined,
     created_at: createdIso ? Date.parse(createdIso) || 0 : 0,
+    ...(projectId ? { project_id: projectId } : {}),
     ...((s as { root_session_id?: unknown }).root_session_id
       ? {
           rootSessionId: String(
@@ -408,5 +412,85 @@ export function fetchRoomInfo(
         `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/info`,
       ) as Promise<RoomInfo>,
     { tags: ["rooms"] },
+  );
+}
+
+// ── Spawn 会话消息（项目 spawn 会话消息查看 · 只读）──────────────────
+// 契约（主控自 controller 源码逐字核对）：
+// GET /api/v1/projects/{id}/spawns/{sessionId}/messages?limit=N[&team=T]
+// 200 → {session_id, task?, messages:[{seq,kind,role,name,content,
+//   tool_state,headline,created_at}], has_more}（字段全部可选）。
+// 404 = spawn 会话不存在 / 不属于该项目 / 老控制器无此路由（UI 判空态，
+// 不报错）；403 = 无权（跨团队）。limit 默认由服务端定（有上限），
+// 前端按需传 200。
+
+export interface SpawnMessage {
+  seq?: number;
+  kind?: string;
+  /** user | assistant（容错：异常值原样透出由 UI 展示层处理）。 */
+  role?: string;
+  name?: string;
+  content?: string;
+  tool_state?: string;
+  headline?: string;
+  /** RFC3339。 */
+  created_at?: string;
+}
+
+export interface SpawnMessagesResponse {
+  session_id?: string;
+  /** 首条用户消息（可缺）。 */
+  task?: string;
+  /** 恒为数组（容错：服务端缺失/非数组 → []）。 */
+  messages: SpawnMessage[];
+  /** true = 还有更早消息未返回（limit 截断）。 */
+  has_more?: boolean;
+}
+
+/** 单条消息归一化（容错）：非对象/字段缺失/类型不符 → undefined（
+ * content → ""）；不臆造字段。 */
+function normalizeSpawnMessage(m: unknown): SpawnMessage {
+  const o = (m && typeof m === "object" ? m : {}) as Record<string, unknown>;
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v !== "" ? v : undefined;
+  return {
+    seq: typeof o.seq === "number" && Number.isFinite(o.seq) ? o.seq : undefined,
+    kind: str(o.kind),
+    role: str(o.role),
+    name: str(o.name),
+    content: typeof o.content === "string" ? o.content : "",
+    tool_state: str(o.tool_state),
+    headline: str(o.headline),
+    created_at: str(o.created_at),
+  };
+}
+
+/** 读 spawn 会话最近消息（懒加载入口；30s 缓存，key 含
+ * project/session/limit 全参数）。错误原样抛出（httpErrorStatus 可分流：
+ * 404 空态 / 403 无权限 / 其余可重试）——不吞状态码。 */
+export function getSpawnMessages(
+  projectId: string,
+  sessionId: string,
+  limit?: number,
+): Promise<SpawnMessagesResponse> {
+  const q = limit && limit > 0 ? `?limit=${Math.floor(limit)}` : "";
+  return cachedRequest(
+    `spawn-messages:${projectId}:${sessionId}:${limit ?? ""}`,
+    30_000,
+    async () => {
+      const data = (await requestJson(
+        `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(projectId)}/spawns/${encodeURIComponent(sessionId)}/messages${q}`,
+      )) as Partial<SpawnMessagesResponse> | null;
+      return {
+        session_id:
+          typeof data?.session_id === "string" ? data.session_id : undefined,
+        task: typeof data?.task === "string" ? data.task : undefined,
+        messages: Array.isArray(data?.messages)
+          ? data.messages.map(normalizeSpawnMessage)
+          : [],
+        has_more: data?.has_more === true,
+      };
+    },
+    { tags: ["spawn-messages"] },
   );
 }
