@@ -266,6 +266,7 @@ function SpawnMessages({
   depth: number;
 }) {
   const tr = useT();
+  const t = useThemeColors();
   const [open, setOpen] = React.useState(false);
   const [tryTick, setTryTick] = React.useState(0);
   const [state, setState] = React.useState<SpawnMsgState>({ kind: "idle" });
@@ -310,7 +311,7 @@ function SpawnMessages({
         }}
       >
         <TreeLine depth={depth + 1} isLast />
-        <span style={{ width: 12, fontSize: 10, color: "#888", flexShrink: 0 }}>
+        <span style={{ width: 12, fontSize: 10, color: t.textSecondary, flexShrink: 0 }}>
           {open ? "▾" : "▸"}
         </span>
         <span
@@ -318,7 +319,7 @@ function SpawnMessages({
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
-            color: "#666",
+            color: t.textSecondary,
             fontSize: 12,
           }}
         >
@@ -335,15 +336,15 @@ function SpawnMessages({
           }}
         >
           {state.kind === "loading" ? (
-            <span style={{ color: "#999", fontSize: 12 }}>
+            <span style={{ color: t.textSecondary, fontSize: 12 }}>
               {tr("加载中…")}
             </span>
           ) : null}
           {state.kind === "empty" ? (
-            <span style={{ color: "#999", fontSize: 12 }}>{tr("暂无消息")}</span>
+            <span style={{ color: t.textSecondary, fontSize: 12 }}>{tr("暂无消息")}</span>
           ) : null}
           {state.kind === "forbidden" ? (
-            <span style={{ color: "#cf1322", fontSize: 12 }}>
+            <span style={{ color: t.mode === "dark" ? "#ff7875" : "#cf1322", fontSize: 12 }}>
               {tr("无权限查看")}
             </span>
           ) : null}
@@ -364,13 +365,13 @@ function SpawnMessages({
               >
                 {tr("加载失败")} · {tr("重试")}
               </antd.Button>
-              <span style={{ color: "#999", fontSize: 11 }}>{state.message}</span>
+              <span style={{ color: t.textSecondary, fontSize: 11 }}>{state.message}</span>
             </div>
           ) : null}
           {state.kind === "ok" ? (
             <>
               {state.data.messages.length === 0 ? (
-                <span style={{ color: "#999", fontSize: 12 }}>
+                <span style={{ color: t.textSecondary, fontSize: 12 }}>
                   {tr("暂无消息")}
                 </span>
               ) : (
@@ -379,7 +380,7 @@ function SpawnMessages({
                 ))
               )}
               {state.data.has_more ? (
-                <span style={{ color: "#999", fontSize: 11 }}>
+                <span style={{ color: t.textSecondary, fontSize: 11 }}>
                   {tr("仅显示最近 {n} 条", {
                     n: state.data.messages.length,
                   })}
@@ -397,10 +398,11 @@ function SpawnMessages({
  * （whiteSpace:pre-wrap 保留换行；超 6 行折叠 +「展开」行，触控 ≥44px）。 */
 function SpawnMessageItem({ m }: { m: SpawnMessage }) {
   const tr = useT();
+  const t = useThemeColors();
   const [expanded, setExpanded] = React.useState(false);
   const { text, folded } = foldMessageContent(m.content);
   return (
-    <div style={{ borderLeft: "2px solid rgba(0,0,0,0.1)", paddingLeft: 8 }}>
+    <div style={{ borderLeft: `2px solid ${t.border}`, paddingLeft: 8 }}>
       <div
         style={{
           display: "flex",
@@ -421,7 +423,7 @@ function SpawnMessageItem({ m }: { m: SpawnMessage }) {
           </span>
         ) : null}
         {m.created_at ? (
-          <span style={{ fontSize: 11, color: "#999" }}>
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
             {fmtRfc3339(m.created_at)}
           </span>
         ) : null}
@@ -431,7 +433,7 @@ function SpawnMessageItem({ m }: { m: SpawnMessage }) {
           style={{
             fontSize: 12.5,
             lineHeight: 1.5,
-            color: "#333",
+            color: t.text,
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             marginTop: 2,

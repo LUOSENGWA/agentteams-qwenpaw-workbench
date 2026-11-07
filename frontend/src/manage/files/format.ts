@@ -13,6 +13,10 @@ export const TOUCH = {
   coarseScale: 1.1,
 } as const;
 
+/** antd.Button 最小触控盒（CSS 变量由 FilesSection touchCss 注入；coarse 指针自动放大）。
+ * 唯一实现——各文件子面板从此导入，禁止各自复制一份。 */
+export const BTN_TOUCH = { minHeight: "var(--hf-btn-min, 40px)" } as const;
+
 /** 可读文件大小（B / KB / MB / GB；缺失 → "—"）。 */
 export function fmtBytes(n: number | undefined | null): string {
   if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "—";

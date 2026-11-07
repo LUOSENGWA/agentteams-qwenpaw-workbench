@@ -139,7 +139,7 @@ import { ReloadIcon } from "../components/WorkerManageShared";
 import { FilePreview, type PreviewFile } from "../components/FilePreview";
 import type { ManageNav } from "./useManageNav";
 import type { ManageSectionProps } from "./types";
-import { fmtBytes, fmtTs, normTrashPath, TOUCH } from "./files/format";
+import { BTN_TOUCH, fmtBytes, fmtTs, normTrashPath, TOUCH } from "./files/format";
 import {
   flattenTree,
   parseFilesView,
@@ -481,9 +481,8 @@ export function touchCss(): string {
   );
 }
 
-/** #1669：antd.Button 最小触控目标（antd small=24 / middle=32 均 <40 →
- * inline minHeight 覆盖其类高；coarse 指针下变量自动放大 10%）。 */
-const btnTouch: ReactNS.CSSProperties = { minHeight: "var(--hf-btn-min, 40px)" };
+/** #1669：antd.Button 最小触控目标——唯一实现在 files/format（BTN_TOUCH）。 */
+const btnTouch: ReactNS.CSSProperties = BTN_TOUCH;
 
 /** 行内小图标按钮（裸 <button> + title tooltip，同 PeopleSection 入口行风格）。
  * #1669：30×30 → ≥40×40 触控盒（16px 图标居中 → 有效留白 12px ≥ 8）。 */

@@ -34,7 +34,7 @@ import {
   type SyncStatus,
 } from "../../api";
 import type { ThemeColors } from "../../theme";
-import { fmtTs } from "./format";
+import { BTN_TOUCH, fmtTs } from "./format";
 import DialogShell from "./DialogShell";
 import SyncScopeDialog, { type SyncScope } from "./SyncScopeDialog";
 
@@ -69,8 +69,8 @@ interface ConflictRec {
 /** S6 进度快照（idle / scanning / syncing / done…）。 */
 export const SYNC_PROGRESS_PATH = "/agentteams-proxy/sync/progress";
 
-/** antd.Button 最小触控盒（与 FilesSection.btnTouch 同源）。 */
-const btnTouch: ReactNS.CSSProperties = { minHeight: "var(--hf-btn-min, 40px)" };
+/** antd.Button 最小触控盒（唯一实现：files/format BTN_TOUCH）。 */
+const btnTouch: ReactNS.CSSProperties = BTN_TOUCH;
 
 interface RunMsg {
   kind: "ok" | "info" | "warn";
@@ -526,6 +526,7 @@ export default function SyncSettingsModal({
         : tr("控制器未提供清单接口");
 
   return (
+    <>
     <DialogShell
       open={open}
       title={tr("同步设置")}
@@ -716,16 +717,6 @@ export default function SyncSettingsModal({
             </span>
           </div>
         ) : null}
-        <SyncScopeDialog
-          open={scopeOpen}
-          t={t}
-          tr={tr}
-          humanName={humanName}
-          initial={scopeInitial}
-          saving={scopeBusy}
-          onClose={() => setScopeOpen(false)}
-          onSave={(next) => void saveScopeSelection(next)}
-        />
         {/* 路径说明（镜像目录）。 */}
         <div style={{ display: "grid", gap: 4 }}>
           <span style={labelStyle(t)}>{tr("镜像目录")}</span>
@@ -742,5 +733,16 @@ export default function SyncSettingsModal({
         </div>
       </div>
     </DialogShell>
+            <SyncScopeDialog
+          open={scopeOpen}
+          t={t}
+          tr={tr}
+          humanName={humanName}
+          initial={scopeInitial}
+          saving={scopeBusy}
+          onClose={() => setScopeOpen(false)}
+          onSave={(next) => void saveScopeSelection(next)}
+        />
+    </>
   );
 }
