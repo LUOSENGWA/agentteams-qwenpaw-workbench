@@ -544,11 +544,21 @@ function CodingCliModelSection({
 
   /** 「跟随主模型」开关：开 = 把该 CLI 的模型写成主模型（不带 baseUrl，
    * 即跟随 Worker 的 provider）；关 = 打开编辑器让用户挑独立 provider/model。 */
+  // 取消跟随是「本地待定」态：开关立刻显示为关（不再弹回），同时打开编辑器
+  // 让用户挑独立 provider/model；编辑器取消/失败则回到真实状态。
+  const [pendingIndep, setPendingIndep] = React.useState<Set<string>>(new Set());
   const setFollow = (cli: CodingCliId, follow: boolean): void => {
     if (!follow) {
+      setPendingIndep((cur) => new Set(cur).add(cli));
       setEditing(cli);
       return;
     }
+    setPendingIndep((cur) => {
+      if (!cur.has(cli)) return cur;
+      const next = new Set(cur);
+      next.delete(cli);
+      return next;
+    });
     const s = settings[cli];
     if (!s || !mainModel) return;
     void (async () => {
@@ -647,12 +657,23 @@ function CodingCliModelSection({
               </span>
               <antd.Switch
                 size="small"
-                checked={status === "follow"}
+                checked={status === "follow" && !pendingIndep.has(p.cli)}
                 disabled={
                   !s ||
                   lockedAll(access) ||
                   (cap ? cap.inherit || !cap.canEdit : false) ||
                   (status === "none" && !mainModel)
+                }
+                title={
+                  !s
+                    ? tr("未安装该 Coding CLI")
+                    : lockedAll(access)
+                      ? tr("未授权：无法修改 CodingCLI 模型")
+                      : cap?.inherit
+                        ? tr("授权要求该 CLI 跟随主模型，不能独立配置")
+                        : cap && !cap.canEdit
+                          ? tr("无权限修改该 CLI 模型")
+                          : undefined
                 }
                 onChange={(v: boolean) => setFollow(p.cli, v)}
                 aria-label={tr("跟随主模型")}
@@ -693,7 +714,13 @@ function CodingCliModelSection({
           pairs={
             access ? grantedPairs(access.surfaces, "codingCli", editing) : []
           }
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setPendingIndep((cur) => {
+              if (cur.size === 0) return cur;
+              return new Set();
+            });
+          }}
           onSaved={() => refreshCli(editing)}
         />
       ) : null}
