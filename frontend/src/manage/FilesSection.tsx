@@ -139,7 +139,14 @@ import { ReloadIcon } from "../components/WorkerManageShared";
 import { FilePreview, type PreviewFile } from "../components/FilePreview";
 import type { ManageNav } from "./useManageNav";
 import type { ManageSectionProps } from "./types";
-import { BTN_TOUCH, fmtBytes, fmtTs, normTrashPath, TOUCH } from "./files/format";
+import {
+  BTN_TOUCH,
+  filesErrorText,
+  fmtBytes,
+  fmtTs,
+  normTrashPath,
+  TOUCH,
+} from "./files/format";
 import {
   flattenTree,
   parseFilesView,
@@ -993,7 +1000,7 @@ function ListArea({
             type="warning"
             showIcon
             message={tr("加载失败")}
-            description={fs.error}
+            description={tr(filesErrorText(fs.error))}
           />
           <antd.Button style={btnTouch} onClick={() => fs.reload({ force: true })}>
             {tr("重试")}
@@ -1747,7 +1754,7 @@ function TreeArea({
             type="warning"
             showIcon
             message={tr("加载失败")}
-            description={fs.error}
+            description={tr(filesErrorText(fs.error))}
           />
           <antd.Button style={btnTouch} onClick={() => fs.reload({ force: true })}>
             {tr("重试")}
@@ -1903,7 +1910,7 @@ function TrashRailList({ t, tr, nav, fs }: SubProps) {
             type="warning"
             showIcon
             message={tr("加载失败")}
-            description={fs.error}
+            description={tr(filesErrorText(fs.error))}
           />
           <antd.Button style={btnTouch} onClick={() => fs.reload({ force: true })}>
             {tr("重试")}

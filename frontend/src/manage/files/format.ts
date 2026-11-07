@@ -17,6 +17,14 @@ export const TOUCH = {
  * 唯一实现——各文件子面板从此导入，禁止各自复制一份。 */
 export const BTN_TOUCH = { minHeight: "var(--hf-btn-min, 40px)" } as const;
 
+/** 文件域错误文案：存储不可用（Controller #1538 的
+ * ``503 storage_unavailable``）给可操作提示，其余原样透出。
+ * 单点收敛——列表/回收站/同步设置共用，避免每处各写一遍正则。 */
+export function filesErrorText(raw: string): string {
+  if (/storage_unavailable|\b503\b/.test(raw)) return "存储暂不可用，请稍后重试";
+  return raw;
+}
+
 /** 可读文件大小（B / KB / MB / GB；缺失 → "—"）。 */
 export function fmtBytes(n: number | undefined | null): string {
   if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "—";

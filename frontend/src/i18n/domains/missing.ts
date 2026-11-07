@@ -178,5 +178,6 @@ export const missingDict: Record<string, { en: string }> = {
   "需要你介入": { en: "Needs your input" },
   "高级": { en: "Advanced" },
   "默认同步 files/**（全部文件）": { en: "Default: sync files/** (all files)" },
+  "存储暂不可用，请稍后重试": { en: "Storage is temporarily unavailable. Please try again later." },
   "（与主模型相同）": { en: "(same as the main model)" },
 };
