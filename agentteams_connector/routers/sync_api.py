@@ -14,6 +14,9 @@
   远端零调用零 DELETE；证据不足 remote_missing 拒绝）。
 - ``GET  /agentteams-proxy/sync/progress`` → S6 进度快照（无统计 →
   ``state: "idle"``）。
+- ``POST /agentteams-proxy/sync/pause``    → 暂停同步（只停传输，不动任何
+  本地/远端文件；``.sync/config.json`` 的 ``sync_paused=true``）。
+- ``POST /agentteams-proxy/sync/resume``   → 恢复同步。
 
 引擎经 ``file_sync_engine.ensure_engine()`` 惰性取——startup hook
 （agentteams-file-sync）正常会先建好；惰性建仅为容错（hook 未跑 /
@@ -44,17 +47,41 @@ def build_sync_router() -> APIRouter:
     async def sync_run() -> Dict[str, Any]:
         """手动触发一轮同步（UI「立即同步」按钮）。
 
+        手动优先级最高：先吃掉待跑的 watch/agent_stop 轮次（run_manual），
         与后台定时循环互斥由引擎内 .sync/lock 保证（O_EXCL 单写者）——
         后台轮跑中时本端点返回 locked，前端提示「同步进行中」。
         """
         from .. import file_sync_engine
 
+        return await asyncio.to_thread(file_sync_engine.run_manual)
+
+    @router.post("/sync/pause")
+    async def sync_pause() -> Dict[str, Any]:
+        """暂停同步：只停传输，不动任何本地/远端文件（设计 §6 行 10）。"""
+        from .. import file_sync_engine
+
         eng = file_sync_engine.ensure_engine()
-        return await asyncio.to_thread(eng.run_once)
+        return eng.set_paused(True)
+
+    @router.post("/sync/resume")
+    async def sync_resume() -> Dict[str, Any]:
+        """恢复同步（下一轮开始生效；不立即强行跑一轮）。"""
+        from .. import file_sync_engine
+
+        eng = file_sync_engine.ensure_engine()
+        result = eng.set_paused(False)
+        trig = file_sync_engine.get_triggers()
+        if trig is not None:
+            # 恢复后不必等满定时周期：标 dirty 让 dispatcher 2s 后跑一轮。
+            trig.mark("manual", priority=file_sync_engine.TRIGGER_PRIORITY["manual"])
+        return result
 
     @router.get("/sync/config")
     async def sync_config() -> Dict[str, Any]:
-        """S1 范围读：整份配置 + 当前 human 生效值（缺省项已补齐）。"""
+        """S1 范围读：整份配置 + 当前 human 生效值（缺省项已补齐）。
+
+        ``paused`` = 暂停开关（前端同步设置三态文案「已暂停/同步中/空闲」）。
+        """
         from .. import file_sync_engine
 
         eng = file_sync_engine.ensure_engine()
@@ -62,6 +89,7 @@ def build_sync_router() -> APIRouter:
         return {
             "humans": cfg.get("humans") or {},
             "human": eng.human,
+            "paused": bool(cfg.get("sync_paused")),
             "effective": file_sync_engine.human_cfg(cfg, eng.human),
         }
 
