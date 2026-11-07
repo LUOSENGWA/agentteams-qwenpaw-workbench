@@ -9,6 +9,7 @@ import {
   EMPTY_REPLIES,
 } from "./RoomChatShared";
 import { ProcessCollapseBar } from "../chat/ProcessCollapseBar";
+import { isThinkingNotice, stripThinkingPrefix } from "../chat/ChatIR";
 import { TurnTimeline } from "../chat/TurnTimeline";
 import { TaskEventCard } from "../chat/TaskEventCard";
 import RoomChatMessageRow from "./RoomChatMessageRow";
@@ -74,6 +75,12 @@ export default function RoomChatMessages(props: {
     tr,
   } = c;
   const onWorkflowIntervened = p.onWorkflowIntervened;
+
+  // 思考过程识别（m.notice 推理帧）的 worker 判定表：成员名表 ∪ 会话状态表。
+  const workerMxids = React.useMemo(
+    () => ({ ...(memberWorkerNames || {}), ...(workerSessionByMxid || {}) }),
+    [memberWorkerNames, workerSessionByMxid],
+  );
 
   // 首次渲染消息时（renderItems 从空→有值）：paint 前贴底（不闪顶）。
   // 根因：useStickToBottom 换房间是 useEffect（paint 后）→ 用户看到 1 帧顶部。
@@ -267,6 +274,15 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                 return <TaskEventCard key={item.key} ev={item.ev} />;
               }
               const { turn, start, end } = item.range;
+              // 本 turn 的思考段（m.notice 推理帧，原序）——并入过程折叠条。
+              const thoughts: string[] = [];
+              for (const m of turn.messages) {
+                const msgMine = myUserId !== "" && m.sender === myUserId;
+                if (!isThinkingNotice(m, msgMine, workerMxids)) continue;
+                const text = stripThinkingPrefix(m.body);
+                if (text) thoughts.push(text);
+              }
+              const hasProcess = turn.toolCalls.length > 0 || thoughts.length > 0;
               return (
                 <div key={turn.id} data-turn-id={turn.id}>
                 {v.tops.slice(start, end).map((msg, i) => {
@@ -304,6 +320,12 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                   // 外层 key div 保留（日期分隔/未读线照旧），只省独立气泡行。
                   const absorbedTool =
                     isToolMessage(msg.body || "") && replies.length === 0;
+                  // 思考 notice：同上不独立成行（正文改由上方过程折叠条承载）；
+                  // 有回复的 notice 保留行——回复入口不能随正文一起消失。
+                  const absorbedThinking =
+                    !absorbedTool &&
+                    replies.length === 0 &&
+                    isThinkingNotice(msg, mine, workerMxids);
                   return (
                     <RoomChatMessageRow
                       key={msg.event_id || `${msg.sender}-${msg.origin_server_ts}`}
@@ -314,6 +336,7 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                       sameSender={sameSender}
                       unreadLine={unreadLine}
                       absorbedTool={absorbedTool}
+                      absorbedThinking={absorbedThinking}
                       mine={mine}
                       hovered={hoveredId === msg.event_id}
                       showTime={showTime}
@@ -352,8 +375,8 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                     />
                   );
                 })}
-                {/* 批次 3：过程折叠条——本 turn 的工具调用聚合（默认折叠）。 */}
-                {turn.toolCalls.length > 0 ? (
+                {/* 批次 3：过程折叠条——本 turn 的工具调用 + 思考过程（默认折叠）。 */}
+                {hasProcess ? (
                   <div
                     key={`${turn.id}-process`}
                     style={{
@@ -366,7 +389,10 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                     }}
                   >
                     <div style={{ maxWidth: "82%", minWidth: 0 }}>
-                      <ProcessCollapseBar calls={turn.toolCalls} />
+                      <ProcessCollapseBar
+                        calls={turn.toolCalls}
+                        thoughts={thoughts}
+                      />
                     </div>
                   </div>
                 ) : null}
