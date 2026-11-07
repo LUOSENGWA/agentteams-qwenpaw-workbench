@@ -550,6 +550,32 @@ function CodingCliModelSection({
       .catch(() => setReload((n) => n + 1));
   };
 
+  /** 「跟随主模型」开关：开 = 把该 CLI 的模型写成主模型（不带 baseUrl，
+   * 即跟随 Worker 的 provider）；关 = 打开编辑器让用户挑独立 provider/model。 */
+  const setFollow = (cli: CodingCliId, follow: boolean): void => {
+    if (!follow) {
+      setEditing(cli);
+      return;
+    }
+    const s = settings[cli];
+    if (!s || !mainModel) return;
+    void (async () => {
+      try {
+        const patch = buildCliModelPatch(
+          cli,
+          (s.settings as Record<string, unknown>).model,
+          mainModel,
+          "",
+        );
+        await putCliSettings(workerName, cli, patch as SettingsObject);
+        antd.message.success(tr("已跟随主模型"));
+        refreshCli(cli);
+      } catch (e) {
+        antd.message.error(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  };
+
   const installed = (list ?? []).filter((p) => p.installed);
 
   // 未装任何 CLI → 不渲染本区块（任务书）。
@@ -627,16 +653,25 @@ function CodingCliModelSection({
                   tr("加载中…")
                 )}
               </span>
-              <antd.Tag
-                color={status === "follow" ? "blue" : status === "indep" ? "orange" : "default"}
-                style={{ margin: 0, flexShrink: 0 }}
-              >
+              <antd.Switch
+                size="small"
+                checked={status === "follow"}
+                disabled={
+                  !s ||
+                  lockedAll(access) ||
+                  (cap ? cap.inherit || !cap.canEdit : false) ||
+                  (status === "none" && !mainModel)
+                }
+                onChange={(v: boolean) => setFollow(p.cli, v)}
+                aria-label={tr("跟随主模型")}
+              />
+              <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
                 {status === "follow"
                   ? tr("跟随主模型")
                   : status === "indep"
                     ? tr("独立")
                     : tr("未配置")}
-              </antd.Tag>
+              </span>
               {/* C2：该 CLI 授权徽标（五态；inherit → 「继承自 …」且编辑禁用） */}
               {accessBadge(cap, tr)}
               {err ? (
