@@ -349,4 +349,22 @@ export const chatDict: Record<string, { en: string }> = {
   "其他房间": { en: "Other rooms" },
   "备注": { en: "Notes" },
   "打开任务备注（meta.json）": { en: "Open task notes (meta.json)" },
+
+  // ── R11 语音输入（Web Speech API）──
+  "语音输入": { en: "Voice input" },
+  "停止语音输入": { en: "Stop voice input" },
+  "正在听…": { en: "Listening…" },
+  "未获得麦克风权限，请在浏览器设置中允许后重试": {
+    en: "Microphone permission denied. Allow it in your browser settings and try again.",
+  },
+  "未找到可用的麦克风": { en: "No microphone available" },
+  "没有识别到语音，请再试一次": {
+    en: "No speech detected. Please try again.",
+  },
+  "语音识别网络错误，请检查网络后重试": {
+    en: "Speech recognition network error. Check your connection and try again.",
+  },
+  "语音识别出错，请重试": {
+    en: "Speech recognition failed. Please try again.",
+  },
 };
