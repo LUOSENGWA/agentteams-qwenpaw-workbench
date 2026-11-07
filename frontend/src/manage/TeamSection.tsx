@@ -46,6 +46,8 @@ import {
   SettingsIcon,
   TeamIcon,
 } from "../components/icons";
+import { SessionDot } from "../components/WorkerSessionDot";
+import type { WorkerSessionState } from "../workerSessionState";
 import MillforgeModal from "../millforge/MillforgeModal";
 import MillforgeEntryCard from "./MillforgeEntryCard";
 import { computeStandaloneWorkers } from "../crdmanage/standalone";
@@ -161,6 +163,7 @@ function TeamListPane({
   onGotoCrdCreate,
   activeKey = null,
   standaloneWorkers = [],
+  workerSessionByName,
   onOpenWorker,
 }: {
   rows: TeamRow[];
@@ -179,6 +182,8 @@ function TeamListPane({
   activeKey?: string | null;
   /** 未归属任何团队的 Worker 名（列表底部折叠行；空 = 不渲染）。 */
   standaloneWorkers?: string[];
+  /** worker_name → 会话态（团队行显 leader、独立 Worker 行显自身）。 */
+  workerSessionByName?: Record<string, WorkerSessionState>;
   onOpenWorker?: (name: string) => void;
 }) {
   const t = useThemeColors();
@@ -211,6 +216,10 @@ function TeamListPane({
             {visible.map((row) => {
               const hits = matched.get(row.key);
               const sel = activeKey != null && row.key === activeKey;
+              // 团队行指示灯 = leader 的会话态（无 leader / 未派生 → 不渲染）。
+              const leaderState = row.leader
+                ? workerSessionByName?.[row.leader.worker_name]
+                : undefined;
               return (
                 <button
                   key={row.key}
@@ -265,15 +274,24 @@ function TeamListPane({
                     >
                       <span
                         style={{
-                          fontWeight: 600,
-                          fontSize: 13,
-                          color: t.text,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          minWidth: 0,
                         }}
                       >
-                        {row.name}
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            fontSize: 13,
+                            color: t.text,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {row.name}
+                        </span>
+                        <SessionDot state={leaderState} />
                       </span>
                       {row.pending > 0 ? (
                         <antd.Tag
@@ -345,7 +363,11 @@ function TeamListPane({
         )}
       </antd.Spin>
       {standaloneWorkers.length && onOpenWorker ? (
-        <StandaloneWorkersRow names={standaloneWorkers} onOpenWorker={onOpenWorker} />
+        <StandaloneWorkersRow
+          names={standaloneWorkers}
+          workerSessionByName={workerSessionByName}
+          onOpenWorker={onOpenWorker}
+        />
       ) : null}
     </div>
   );
@@ -355,9 +377,12 @@ function TeamListPane({
 点开列名字，点名字进 Worker 详情——复用 nav.openWorker，不做新页面）。 */
 function StandaloneWorkersRow({
   names,
+  workerSessionByName,
   onOpenWorker,
 }: {
   names: string[];
+  /** worker_name → 会话态（每行名字前显灯；未派生 → 不渲染）。 */
+  workerSessionByName?: Record<string, WorkerSessionState>;
   onOpenWorker: (name: string) => void;
 }) {
   const t = useThemeColors();
@@ -391,33 +416,50 @@ function StandaloneWorkersRow({
           <div style={{ fontSize: 11, color: t.textSecondary }}>
             {tr("独立 Worker——能运行、能被私聊，不参与团队任务；点名字看详情，在团队设置里可加进团队。")}
           </div>
-          {names.map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => onOpenWorker(n)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "4px 8px",
-                border: "1px solid transparent",
-                borderRadius: 6,
-                background: "transparent",
-                cursor: "pointer",
-                fontSize: 12,
-                color: t.text,
-                textAlign: "left",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = t.hoverBg;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
-            >
-              {n}
-            </button>
-          ))}
+          {names.map((n) => {
+            const st = workerSessionByName?.[n];
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onOpenWorker(n)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  width: "100%",
+                  padding: "4px 8px",
+                  border: "1px solid transparent",
+                  borderRadius: 6,
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  color: t.text,
+                  textAlign: "left",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = t.hoverBg;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                }}
+              >
+                {/* 灯在名字前；灯自带 marginLeft 6 作左缘缩进，名字再留 6px
+                    保证灯—名字间距（无 state 时不留空位）。 */}
+                <SessionDot state={st} />
+                <span
+                  style={{
+                    marginLeft: st ? 6 : 0,
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {n}
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -885,6 +927,7 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
       onGotoCrdCreate={gotoCrdCreate}
       activeKey={variant === "l1" ? nav.selectedTeam : null}
       standaloneWorkers={standaloneWorkers}
+      workerSessionByName={data.workerSessionByName}
       onOpenWorker={(n) => nav.openWorker(n)}
     />
 
@@ -947,6 +990,7 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
             avatarUrl={roomAvatars.get(workerInfo.matrixUserID)?.avatar_url}
             hasToken={data.hasToken}
             canControl={canControl}
+            sessionState={data.workerSessionByName?.[workerInfo.name]}
             onRefreshAdmin={data.onRefreshAdmin}
             onOpenSettings={data.onOpenSettings}
             onDeleted={() => nav.backTeam()}

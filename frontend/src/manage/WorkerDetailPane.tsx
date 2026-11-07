@@ -70,7 +70,9 @@ import {
 } from "../components/WorkerManageShared";
 import { RuntimeNotice } from "../runtimeGuard";
 import { BulbIcon, PlayIcon } from "../components/icons";
+import { SessionDot } from "../components/WorkerSessionDot";
 import { WbTooltip } from "../components/WbTooltip";
+import type { WorkerSessionState } from "../workerSessionState";
 import { resourceControlDeniedHint } from "../lib/resourceControl";
 import ModelEditModal from "./ModelEditModal";
 import ResourceCards from "./ResourceCards";
@@ -127,6 +129,7 @@ export default function WorkerDetailPane({
   avatarUrl,
   hasToken,
   canControl = false,
+  sessionState,
   onRefreshAdmin,
   onOpenSettings,
   onDeleted,
@@ -135,6 +138,11 @@ export default function WorkerDetailPane({
   /** 头像源（room 成员表 mxc 头像；undefined → 首字母兜底）。 */
   avatarUrl?: string;
   hasToken?: boolean;
+  /**
+   * Worker 会话态（父层 useWorkerSessionStates 派生，零新增请求）。
+   * undefined = 旧 controller 未派生 / 不在团队树内 → 不渲染指示灯。
+   */
+  sessionState?: WorkerSessionState;
   /**
    * #1536：调用者是否 L1（permissionLevel === 1）——资源控制
    * （删除 Worker）仅此放行；缺省 = false（fail closed）。
@@ -430,16 +438,25 @@ export default function WorkerDetailPane({
           </antd.Avatar>
           <span
             style={{
-              fontWeight: 700,
-              fontSize: 15,
-              color: t.text,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              display: "inline-flex",
+              alignItems: "center",
               minWidth: 0,
             }}
           >
-            {worker.name}
+            <span
+              style={{
+                fontWeight: 700,
+                fontSize: 15,
+                color: t.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
+            >
+              {worker.name}
+            </span>
+            <SessionDot state={sessionState} />
           </span>
           <span
             style={{
