@@ -491,8 +491,15 @@ def load_config() -> Dict[str, Any]:
             if legacy_gw:
                 merged["gateway_admin_urls"] = [legacy_gw]
         elif merged.get("gateway_admin_urls"):
-            merged["gateway_admin_url"] = (
-                address_url(merged["gateway_admin_urls"][0]) or ""
+            # 列表可含空槽占位（内网未填，见 merge_address_entries）——
+            # legacy 单值取首个非空条目，与空槽引入前口径一致。
+            merged["gateway_admin_url"] = next(
+                (
+                    address_url(e)
+                    for e in merged["gateway_admin_urls"]
+                    if address_url(e)
+                ),
+                "",
             )
         # Legacy schema migration (v0.1.0 profiles) → auto-failover lists.
         if not merged["matrix_homeservers"] and isinstance(raw.get("profiles"), dict):

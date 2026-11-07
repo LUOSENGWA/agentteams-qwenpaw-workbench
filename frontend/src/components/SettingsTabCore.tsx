@@ -115,7 +115,8 @@ export function useSettingsTabCore({
       setAddrAuth((prev) => ({ ...prev, [key]: v })),
     [],
   );
-  // 表单当前值 → 提交条目（URL + 可选凭据；空=空串，后端合并时丢弃）。
+  // 表单当前值 → 提交条目（URL + 可选凭据；空=空串，后端合并时保留为
+  // 空槽占位——只填外网时不得把外网挤到内网位）。
   // gateway 族（Higress 双地址，同构）。
   const buildAddrEntries = React.useCallback(
     (kind: "matrix" | "controller" | "sglang" | "gateway"): AddressEntry[] => {
