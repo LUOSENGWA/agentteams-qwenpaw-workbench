@@ -19,6 +19,7 @@
 import type * as ReactNS from "react";
 
 import DialogShell from "./files/DialogShell";
+import ModelPicker from "../components/ModelPicker";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
@@ -26,7 +27,6 @@ import {
   fieldsFor,
   isDraftDirty,
   MAX_FALLBACKS,
-  modelsForProvider,
   validateModelDraft,
 } from "../lib/modelDraft";
 import type {
@@ -127,19 +127,7 @@ export default function ModelSettingsModal({
     [draft, value, features],
   );
 
-  const providerOptions = React.useMemo(
-    () => providers.map((p) => ({ value: p.name, label: p.name })),
-    [providers],
-  );
   // 二级 Select 候选 = 所选 Provider 的模型清单（未选 / 未知 → 空）。
-  const modelOptions = React.useMemo(
-    () =>
-      modelsForProvider(providers, draft.provider).map((m) => ({
-        value: m,
-        label: m,
-      })),
-    [providers, draft.provider],
-  );
   // 回退候选 = 全部 provider 模型并集（去重，保序）。
   const fallbackOptions = React.useMemo(() => {
     const out: string[] = [];
@@ -276,48 +264,24 @@ export default function ModelSettingsModal({
           </div>
         ) : null}
 
-        {/* 主模型：Provider → Model 两级 Select（模型随所选 Provider 过滤）。 */}
+        {/* 主模型：Provider → Model 统一部件（ModelPicker）。 */}
         <div style={{ display: "grid", gap: 12 }}>
-          <div>
-            <div style={labelStyle}>{tr("Provider")}</div>
-            <antd.Select
-              style={{ width: "100%" }}
-              size="large"
-              allowClear
-              placeholder={tr("选择 Provider")}
-              value={draft.provider || undefined}
-              onChange={(v: string) => {
-                // 换 Provider 时模型必须重新对齐：旧模型若不属于新 Provider，
-                // 保留下来就会提交一对不成立的 (provider, model)。
-                const nextProvider = v ?? "";
-                const allowed = modelsForProvider(providers, nextProvider);
-                const keep = allowed.includes(draft.model ?? "") ? draft.model : "";
-                setMain({ provider: nextProvider, model: keep });
-              }}
-              options={providerOptions}
-              {...searchable}
-            />
-          </div>
-          <div>
-            <div style={labelStyle}>{tr("模型")}</div>
-            <antd.Select
-              style={{ width: "100%" }}
-              size="large"
-              allowClear
-              placeholder={tr("选择模型")}
-              value={draft.model || undefined}
-              onChange={(v: string) => setMain({ model: v ?? "" })}
-              options={modelOptions}
-              {...searchable}
-            />
-            {mainErrors.length > 0 ? (
-              <div style={errStyle}>
-                {mainErrors.map((c) => (
-                  <div key={c}>{errorText(c, tr)}</div>
-                ))}
-              </div>
-            ) : null}
-          </div>
+          <ModelPicker
+            tr={(x) => tr(x)}
+            providers={providers}
+            provider={draft.provider ?? ""}
+            model={draft.model ?? ""}
+            allowEmpty
+            size="large"
+            onChange={(p, m) => setMain({ provider: p, model: m })}
+          />
+          {mainErrors.length > 0 ? (
+            <div style={errStyle}>
+              {mainErrors.map((c) => (
+                <div key={c}>{errorText(c, tr)}</div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {/* 回退链（features.fallbacks）：增删、去重、上限 3。 */}

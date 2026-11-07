@@ -36,10 +36,10 @@ import {
   pairAllowed,
   surfaceBadge,
 } from "../lib/modelAccess";
+import ModelPicker from "../components/ModelPicker";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
-  filterModelOptionsByProvider,
   providerForModel,
   providerModelMismatch,
   useModelUnionOptions,
@@ -191,28 +191,22 @@ export default function ModelEditModal({
   //（provider 列表 = entries 的 provider 去重；选中 provider 后模型列表 =
   // 该 provider 的 entries model；未选 provider → 全部授予 model 去重）；
   // 无 entries → 现状。
-  const providerOptions =
-    mainPairs.length > 0
-      ? Array.from(new Set(mainPairs.map((p) => p.provider))).map((name) => ({
-          value: name,
-          label: name,
-        }))
-      : union.providers.map((p) => ({ value: p.name, label: p.name }));
-
-  const modelOptions =
-    mainPairs.length > 0
-      ? (provider
-          ? mainPairs.filter((p) => p.provider === provider)
-          : mainPairs
-        )
-          .map((p) => p.model)
-          .filter((m, i, a) => a.indexOf(m) === i)
-          .map((m) => ({ value: m, label: m }))
-      : filterModelOptionsByProvider(
-          union.options,
-          union.gatewayOptions,
-          provider,
-        );
+  // ModelPicker 的 provider→models：授予模式按授予对；目录模式按 alias 归属。
+  const pickerProviders = React.useMemo(() => {
+    const map = new Map<string, string[]>();
+    const push = (p: string, m: string) => {
+      if (!m) return;
+      const list = map.get(p) ?? [];
+      if (!list.includes(m)) list.push(m);
+      map.set(p, list);
+    };
+    if (mainPairs.length > 0) {
+      for (const p of mainPairs) push(p.provider, p.model);
+    } else {
+      for (const m of union.candidates ?? []) push(providerForModel(union.gatewayOptions, m), m);
+    }
+    return [...map].map(([name, models]) => ({ name, models }));
+  }, [mainPairs, union]);
 
   const isNarrow = typeof window !== "undefined" && window.innerWidth < 640;
   const fieldsLayout = { display: "grid", gap: 14 } as const;
@@ -297,39 +291,24 @@ export default function ModelEditModal({
         <div style={fieldsLayout}>
           <div style={fieldStyle}>
             <div style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
-              {tr("Provider")}
-              {/* C2：主模型区授权徽标（五态；无授权信息 → 不显示） */}
               {accessBadge(access?.capabilities?.main, tr)}
             </div>
-            <antd.Select
-              style={{ width: "100%" }}
-              size="large"
-              showSearch
-              allowClear
-              disabled={locked}
-              placeholder={tr("自动（跟随默认）")}
-              value={provider || undefined}
-              onChange={(v: string) => setProvider(v ?? "")}
-              options={providerOptions}
-            />
-          </div>
-          <div style={fieldStyle}>
-            <div style={labelStyle}>{tr("模型")}</div>
-            <antd.AutoComplete
-              style={{ width: "100%" }}
-              size="large"
-              allowClear
-              disabled={locked}
-              placeholder={tr("模型 alias（留空=跟随集群默认）")}
-              value={model}
-              options={modelOptions}
-              onChange={(v: string) => {
-                setModel(v ?? "");
-                // C1a-1：configured alias → binding.providerName 仅当
-                // Provider 当前为空才回填（显式 Provider 是用户意图，
-                // 不覆盖）。
-                const auto = providerForModel(union.gatewayOptions, v ?? "");
-                if (auto && !provider) setProvider(auto);
+            <ModelPicker
+              tr={(x) => tr(x)}
+              providers={pickerProviders}
+              provider={provider}
+              model={model}
+              allowEmpty
+              readOnly={locked}
+              providerPlaceholder={tr("自动（跟随默认）")}
+              modelPlaceholder={tr("模型 alias（留空=跟随集群默认）")}
+              emptyText={tr("跟随集群默认")}
+              onChange={(p, m) => {
+                // 目录模式：模型能反查到归属且当前未显式指定 Provider 时回填
+                // （显式选择是用户意图，不覆盖）。
+                const auto = !p && m ? providerForModel(union.gatewayOptions, m) : "";
+                setProvider(auto || p);
+                setModel(m);
               }}
             />
             {!mainPairOk ? (
