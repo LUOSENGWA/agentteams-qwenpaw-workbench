@@ -3,6 +3,16 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.78 (2026-11-07 · config grouping corrected)
+
+**Fixed**
+- **Provider select dropped the choice**: the selection now keeps its own state instead of being derived from committed pairs; the model select stays disabled until a provider is chosen.
+- **Face sub-groups wired**: surface fields carry their own group (125 distinct in OpenClaw, 182 in Hermes — `gateway.auth`, `agent.agent_cache`, ...). Those render as sub-sections inside the face's tab, so faces no longer mix into one table or duplicate the capability cards.
+- **LLM tuning card is QwenPaw-only**: OpenClaw/Hermes keep retry and timeout fields in their own faces (models / gateway / agent), rendered by the config tab.
+
+**Improved**
+- Config tabs carry icons, matching the capability card icon set.
+
 ## 0.5.0-beta.16.77 (2026-11-07 · model grants become multi-select)
 
 **Improved**

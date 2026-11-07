@@ -3,6 +3,16 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.78（2026-11-07 · 配置按 face 分组修正）
+
+**修复**
+- **模型授权 Provider 选不上**：选择态改为组件自持（不再从已提交的成对值反推）；未选 Provider 时模型框禁用；
+- **face 内的分组接上**：surface 字段自带 group（OpenClaw 125 组 / Hermes 182 组，如 `gateway.auth`、`agent.agent_cache`），现在作为该 face 内的分节显示，不再把不同 face 的字段混成一张表、也不再与能力卡重复；
+- **LLM 调优卡仅 QwenPaw**：OpenClaw / Hermes 的重试/超时字段在各自 face（models / gateway / agent）里，由运行配置渲染。
+
+**改进**
+- 运行配置的 tab 带图标（与能力卡同一套图标语义）。
+
 ## 0.5.0-beta.16.77（2026-11-07 · 模型授权改为多选）
 
 **改进**
