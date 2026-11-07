@@ -11,6 +11,7 @@ import {
 import { ProcessCollapseBar } from "../chat/ProcessCollapseBar";
 import {
   isThinkingNotice,
+  runBlockText,
   shouldContinueGroup,
   splitTurn,
   stripThinkingPrefix,
@@ -22,10 +23,13 @@ import {
   TurnHeader,
   ChatDatePill,
   ChatUnreadLine,
+  RunConfirmationCard,
+  RunErrorBar,
 } from "./RoomChatTurnParts";
 import RoomChatMessageRow from "./RoomChatMessageRow";
 import { RoomPendingBar } from "./RoomPendingBar";
 import type { RoomChatProps } from "./RoomChat";
+import type { RoomMessage } from "../api";
 import type { RoomChatCoreState } from "./RoomChatCore";
 import type { RoomChatViewState } from "./RoomChatView";
 
@@ -92,6 +96,18 @@ export default function RoomChatMessages(props: {
     () => ({ ...(memberWorkerNames || {}), ...(workerSessionByMxid || {}) }),
     [memberWorkerNames, workerSessionByMxid],
   );
+
+  // 结构化 text 块替代 body（org.agentteams.run）：按 event_id 预算一次，
+  // 保持 RoomChatMessageRow 的行级 memo 引用稳定（仅 tops 变化时重建）。
+  const runBlockBodies = React.useMemo(() => {
+    const map = new Map<string, RoomMessage>();
+    for (const m of v.tops) {
+      const text = runBlockText(m.runBlocks);
+      if (text === null) continue;
+      map.set(m.event_id, { ...m, body: text, msgtype: "m.text" });
+    }
+    return map;
+  }, [v.tops]);
 
   // 只有「列表尾部 turn」才可能是进行中：历史 turn 的未闭合工具帧
   // （call 后没有结果帧）不该让过程条永久停在「进行中/展开」。
@@ -299,7 +315,7 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
               // 有过程的 turn → 渲染顺序 TurnHeader → 过程条 → 回答行；
               // 无过程的 turn（人聊）→ 仍由组首行自带 header（现状视觉），
               // 续行判定走 shouldContinueGroup（5 分钟 + 同日 + 同族）。
-              const { thoughts: thoughtMsgs, calls } = splitTurn(turn, {
+              const { thoughts: thoughtMsgs, calls, confirmations, errors } = splitTurn(turn, {
                 isMine: (m: ChatMessage) => myUserId !== "" && m.sender === myUserId,
                 workerMxids,
               });
@@ -375,6 +391,25 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                     </div>
                   </div>
                 ) : null}
+                {/* confirmation 块：只读审批卡（独立于过程条；审批动作走
+                    Matrix 回复，不新造交互）。 */}
+                {confirmations.length > 0 ? (
+                  <div
+                    key={`${turn.id}-confirmations`}
+                    style={{ ...turnAlign, padding: "0 6px 3px" }}
+                  >
+                    <div style={{ maxWidth: "82%", minWidth: 0 }}>
+                      {confirmations.map((block, i) => (
+                        <RunConfirmationCard
+                          key={`${block.confirmation_id}-${i}`}
+                          block={block}
+                          t={t}
+                          tr={tr}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {v.tops.slice(start, end).map((msg, i) => {
                   const idx = start + i;
                   const prev = idx > 0 ? v.tops[idx - 1] : null;
@@ -410,21 +445,31 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                   // 每渲染新建 [] → 行级 memo 该 props 引用永变、白做。
                   const replies =
                     threadGroups.repliesOf.get(msg.event_id) ?? EMPTY_REPLIES;
+                  // 结构化块（org.agentteams.run）：有块时不走 body 启发式。
+                  // 无 text 块 → 只留锚点行（思考/工具/审批/错误各自独立呈现）；
+                  // 有 text 块 → 正文用块文本（runBlockBodies 覆盖）。
+                  const hasRunBlocks =
+                    !!msg.runBlocks && msg.runBlocks.length > 0;
+                  const absorbedBlocks =
+                    hasRunBlocks && !runBlockBodies.has(msg.event_id);
                   // 批次 3：无回复的工具帧吸收进本 turn 的过程折叠条
                   // （turn.toolCalls 聚合，见循环尾 ProcessCollapseBar）——
                   // 外层 key div 保留（日期分隔/未读线照旧），只省独立气泡行。
                   const absorbedTool =
-                    isToolMessage(msg.body || "") && replies.length === 0;
+                    !hasRunBlocks &&
+                    isToolMessage(msg.body || "") &&
+                    replies.length === 0;
                   // 思考 notice：同上不独立成行（正文改由上方过程折叠条承载）；
                   // 有回复的 notice 保留行——回复入口不能随正文一起消失。
                   const absorbedThinking =
+                    !hasRunBlocks &&
                     !absorbedTool &&
                     replies.length === 0 &&
                     isThinkingNotice(msg, mine, workerMxids);
                   return (
                     <RoomChatMessageRow
                       key={msg.event_id || `${msg.sender}-${msg.origin_server_ts}`}
-                      msg={msg}
+                      msg={runBlockBodies.get(msg.event_id) ?? msg}
                       idx={idx}
                       topsLen={v.tops.length}
                       sep={sep}
@@ -432,6 +477,7 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                       unreadLine={unreadLine}
                       absorbedTool={absorbedTool}
                       absorbedThinking={absorbedThinking}
+                      absorbedBlocks={absorbedBlocks}
                       mine={mine}
                       hovered={hoveredId === msg.event_id}
                       showTime={showTime}
@@ -470,6 +516,21 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                     />
                   );
                 })}
+                {/* error 块：run 结束哨兵（一行状态条，排在回答行之后）。 */}
+                {errors.length > 0 ? (
+                  <div style={{ ...turnAlign, padding: "0 6px" }}>
+                    <div style={{ maxWidth: "82%", minWidth: 0 }}>
+                      {errors.map((block, i) => (
+                        <RunErrorBar
+                          key={`${turn.id}-error-${i}`}
+                          block={block}
+                          t={t}
+                          tr={tr}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 </div>
               );
             })}

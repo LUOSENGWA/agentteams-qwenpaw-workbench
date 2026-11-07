@@ -49,6 +49,8 @@ export interface RoomChatMessageRowProps {
   absorbedTool: boolean;
   /** 思考过程 notice（isThinkingNotice）：正文已并入过程折叠条，行只留锚点。 */
   absorbedThinking?: boolean;
+  /** 结构化运行时块（无 text 块）：内容已由过程条/卡片承载，行只留锚点。 */
+  absorbedBlocks?: boolean;
   mine: boolean;
   /** hoveredId === msg.event_id（调用方算好——memo 浅比较对 boolean 友好）。 */
   hovered: boolean;
@@ -101,6 +103,7 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
     unreadLine,
     absorbedTool,
     absorbedThinking,
+    absorbedBlocks,
     mine,
     hovered,
     showTime,
@@ -165,7 +168,7 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
       {/* 日期分隔 Element 同款居中胶囊
 （旧 antd.Divider 通栏线太散，与扁平消息行不搭）。 */}
       {sep ? <ChatDatePill ts={msg.origin_server_ts} t={t} tr={tr} /> : null}
-      {absorbedTool || absorbedThinking ? (
+      {absorbedTool || absorbedThinking || absorbedBlocks ? (
         <div data-event-id={msg.event_id} />
       ) : (
         // 触屏 tap 切换操作条挂在行上（原内层气泡容器 onClick 上移——

@@ -4,11 +4,12 @@
 // 单一实现：RoomChatMessageRow（组首行）与 RoomChatMessages（turn 级
 // header，过程条之上）共用同一个 TurnHeader——不复制两份头像逻辑。
 import type * as ReactNS from "react";
-import { type RoomMessage, type TeamRoom } from "../api";
+import type { RoomMessage, RunBlockConfirmation, RunBlockError, TeamRoom } from "../api";
 import { type WorkerSessionState } from "../workerSessionState";
 import { WbTooltip } from "./WbTooltip";
 import { PRIMARY, senderShortName, formatTime, dateLabel } from "./RoomChatShared";
 import { SenderAvatarMemo } from "./RoomChatBubbles";
+import { ShieldIcon, WarnIcon } from "./icons";
 import type { ThemeColors } from "../theme";
 
 const host = window.QwenPaw.host;
@@ -151,6 +152,107 @@ export function ChatUnreadLine({
       <div style={{ flex: 1, borderTop: `1px solid ${PRIMARY}`, opacity: 0.5 }} />
       <span style={{ fontSize: 12, color: PRIMARY }}>{tr("以下为新消息")}</span>
       <div style={{ flex: 1, borderTop: `1px solid ${PRIMARY}`, opacity: 0.5 }} />
+    </div>
+  );
+}
+
+// ── 结构化运行时块（org.agentteams.run）：confirmation / error ──────
+//
+// 只读呈现：审批动作由 AgentTeams 审批链路（Matrix 回复）承载，这里不
+// 新造 approve/deny 交互；error 是 run 结束哨兵，一行状态条。
+
+/** 待审批确认卡（tool_call 的 tool-guard 请求，confirmation 块）。 */
+export function RunConfirmationCard({
+  block,
+  t,
+  tr,
+}: {
+  block: RunBlockConfirmation;
+  t: ThemeColors;
+  tr: (text: string, vars?: Record<string, string | number>) => string;
+}) {
+  const params = block.parameters ? String(block.parameters) : "";
+  return (
+    <div
+      style={{
+        border: "1px solid #fa8c16",
+        borderRadius: 10,
+        padding: "8px 12px",
+        background: t.cardBg,
+        maxWidth: 420,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+        <ShieldIcon size={14} />
+        <span style={{ fontWeight: 600, fontSize: 13, wordBreak: "break-all" }}>
+          {block.tool_name}
+        </span>
+        <span style={{ fontSize: 11, color: "#fa8c16" }}>{tr("待确认")}</span>
+      </div>
+      {params ? (
+        <div
+          style={{
+            fontSize: 12,
+            color: t.textSecondary,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxHeight: 96,
+            overflow: "auto",
+          }}
+        >
+          {params}
+        </div>
+      ) : null}
+      {block.external_files ? (
+        <div style={{ fontSize: 12, color: t.textSecondary, wordBreak: "break-all" }}>
+          {tr("外部文件")}：{block.external_files}
+        </div>
+      ) : null}
+      <div style={{ marginTop: 6, fontSize: 11, color: t.textSecondary }}>
+        {tr("需在 Matrix 回复审批")}
+      </div>
+    </div>
+  );
+}
+
+const RUN_ERROR_LABEL: Record<RunBlockError["kind"], string> = {
+  cancelled: "已取消",
+  failed: "运行失败",
+  quiet: "静默结束",
+};
+
+/** run 结束哨兵（error 块）：一行状态条，不折进思考过程。 */
+export function RunErrorBar({
+  block,
+  t,
+  tr,
+}: {
+  block: RunBlockError;
+  t: ThemeColors;
+  tr: (text: string, vars?: Record<string, string | number>) => string;
+}) {
+  const color = block.kind === "failed" ? "#e5484d" : t.textSecondary;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        fontSize: 12,
+        color,
+        padding: "2px 0",
+      }}
+    >
+      <span style={{ display: "inline-flex", flexShrink: 0 }}>
+        <WarnIcon size={13} />
+      </span>
+      <span style={{ fontWeight: 600, flexShrink: 0 }}>
+        {tr(RUN_ERROR_LABEL[block.kind])}
+      </span>
+      <span style={{ color: t.textSecondary, wordBreak: "break-word" }}>
+        {block.title}
+      </span>
     </div>
   );
 }

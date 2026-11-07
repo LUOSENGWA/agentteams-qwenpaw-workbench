@@ -13,6 +13,12 @@
  *   同时保留在 turn.messages 原序（渲染层决定工具帧是否独立成行）。
  */
 import { isToolMessage } from "../components/RoomChatShared";
+import type {
+  RunBlock,
+  RunBlockConfirmation,
+  RunBlockError,
+  RunBlockToolCall,
+} from "../api";
 
 /** 单次工具调用（一条工具帧 = 一个 ToolCall）。 */
 export interface ToolCall {
@@ -39,6 +45,8 @@ export interface ChatMessage {
   type?: string;
   /** 非空 = 工具帧；buildTurns 将其吸收进 turn.toolCalls。 */
   toolCalls?: ToolCall[];
+  /** 结构化运行时块（org.agentteams.run）；非空时优先于 body 启发式。 */
+  runBlocks?: RunBlock[];
   /** 乐观回显未确认（流式/发送中）。 */
   pending?: boolean;
 }
@@ -193,21 +201,77 @@ export function shouldContinueGroup(
 
 // ── turn 拆分（渲染顺序：header → 过程条 → 回答行）──────────────────
 
-/** 一个 turn 的三段：思考帧 / 工具调用 / 回答帧（原序）。 */
+/** 一个 turn 的分段：思考帧 / 工具调用 / 回答帧 / 结构化待办（原序）。 */
 export interface SplitTurn {
-  /** 思考过程帧（isThinkingNotice；渲染为过程条折叠区文本）。 */
+  /** 思考过程帧（isThinkingNotice 或 thinking 块；渲染为过程条折叠区文本）。 */
   thoughts: ChatMessage[];
-  /** 工具调用（turn.toolCalls，过程条数据源）。 */
+  /** 工具调用（turn.toolCalls 或 tool_call 块，过程条数据源）。 */
   calls: ToolCall[];
   /** 回答帧（思考/工具之外的其余消息，含审批卡等独立 tile）。 */
   answers: ChatMessage[];
+  /** confirmation 块（只读审批卡片，不折进过程条；按 Matrix 回复审批）。 */
+  confirmations: RunBlockConfirmation[];
+  /** error 块（run 结束哨兵，一行状态条）。 */
+  errors: RunBlockError[];
+}
+
+/** 块内参数/结果 → JSON 文本（字符串原样；不可序列化退 String）。 */
+function jsonText(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value === "string") return value;
+  try {
+    const s = JSON.stringify(value);
+    return s === undefined ? String(value) : s;
+  } catch {
+    return String(value);
+  }
+}
+
+/** tool_call 块 → 过程条 ToolCall（status 四态映射到 call/ok/fail）。 */
+function toolCallFromRunBlock(
+  block: RunBlockToolCall,
+  msg: ChatMessage,
+): ToolCall {
+  const argsJson = jsonText(block.arguments);
+  const resultJson = block.result === undefined ? "" : jsonText(block.result);
+  const detail = [argsJson, resultJson].filter((s) => s.length > 0).join("\n");
+  return {
+    id: block.tool_call_id || msg.id,
+    name: block.tool_name,
+    argsSummary: argsJson ? argsJson.slice(0, 80) : undefined,
+    detail: detail || undefined,
+    status:
+      block.status === "succeeded"
+        ? "ok"
+        : block.status === "failed"
+          ? "fail"
+          : "call",
+    ts: block.started_at ?? msg.ts,
+  };
 }
 
 /**
- * turn → { thoughts, calls, answers }。
- * - 思考判定复用 isThinkingNotice（mine / worker 表由调用方给，缺省保守：
- *   只有带 thinking 前缀的 notice 算思考）；
- * - 工具帧复用 isToolMessage（工具帧的 toolCalls 已由 buildTurns 吸收）；
+ * 结构化块的可见文本（text 块拼接）；无 text 块 → null。
+ * 有 text 块时渲染层用它替代 body（不重复渲染原正文）。
+ */
+export function runBlockText(blocks: RunBlock[] | undefined): string | null {
+  if (!blocks || blocks.length === 0) return null;
+  const texts: string[] = [];
+  for (const block of blocks) {
+    if (block.type === "text") texts.push(block.text);
+  }
+  return texts.length > 0 ? texts.join("\n\n") : null;
+}
+
+/**
+ * turn → { thoughts, calls, answers, confirmations, errors }。
+ * - 消息带 runBlocks（非空）时结构化优先：
+ *   thinking → thoughts（strip 无需前缀）、tool_call → calls、
+ *   text → answers（块文本替代 body）、confirmation/error → 独立列表；
+ *   该消息不再走 body 启发式（不重复解析正文）；
+ * - 无 runBlocks 时沿用既有启发式：思考判定复用 isThinkingNotice
+ *   （mine / worker 表由调用方给，缺省保守：只有带 thinking 前缀的 notice
+ *   算思考）；工具帧复用 isToolMessage（toolCalls 已由 buildTurns 吸收）；
  * - 其余（含审批卡/交付卡）→ answers；不修改入参。
  */
 export function splitTurn(
@@ -221,7 +285,45 @@ export function splitTurn(
   const isMine = opts?.isMine;
   const thoughts: ChatMessage[] = [];
   const answers: ChatMessage[] = [];
+  const calls: ToolCall[] = [];
+  const confirmations: RunBlockConfirmation[] = [];
+  const errors: RunBlockError[] = [];
   for (const msg of turn.messages) {
+    const blocks = msg.runBlocks;
+    if (blocks && blocks.length > 0) {
+      const texts: string[] = [];
+      for (let i = 0; i < blocks.length; i += 1) {
+        const block = blocks[i];
+        if (block.type === "thinking") {
+          thoughts.push({
+            id: `${msg.id}:thinking:${i}`,
+            sender: msg.sender,
+            ts: msg.ts,
+            body: block.content,
+            type: "m.notice",
+          });
+        } else if (block.type === "tool_call") {
+          calls.push(toolCallFromRunBlock(block, msg));
+        } else if (block.type === "text") {
+          texts.push(block.text);
+        } else if (block.type === "confirmation") {
+          confirmations.push(block);
+        } else if (block.type === "error") {
+          errors.push(block);
+        }
+      }
+      if (texts.length > 0) {
+        answers.push({
+          id: msg.id,
+          sender: msg.sender,
+          ts: msg.ts,
+          body: texts.join("\n\n"),
+          type: "m.text",
+        });
+      }
+      continue;
+    }
+    if (msg.toolCalls && msg.toolCalls.length > 0) calls.push(...msg.toolCalls);
     if (isThinkingNotice(msg, isMine ? isMine(msg) : false, workerMxids)) {
       thoughts.push(msg);
       continue;
@@ -229,7 +331,7 @@ export function splitTurn(
     if (isToolMessage(msg.body ?? "")) continue;
     answers.push(msg);
   }
-  return { thoughts, calls: turn.toolCalls.slice(), answers };
+  return { thoughts, calls, answers, confirmations, errors };
 }
 
 /** 聚合后的单次工具调用（过程条展开行）：
