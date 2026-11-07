@@ -96,8 +96,9 @@ export function selectionToInclude(
   };
   const isOn = (p: string): boolean => rawOn(p) && !ancestorOff(p);
   const rootOn = rawOn("");
-  if (rootOn && all.every(isOn)) {
-    return [recursive ? "files/**" : "files/*"];
+  if (rootOn && all.every(isOn) && recursive) {
+    // 递归 + 全选 → 一条通配覆盖全部（含根下文件）。
+    return ["files/**"];
   }
   const inc = new Set<string>();
   if (rootOn) inc.add("files/*");

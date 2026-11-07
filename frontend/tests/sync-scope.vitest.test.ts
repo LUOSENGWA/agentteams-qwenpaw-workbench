@@ -41,8 +41,13 @@ describe("selectionToInclude", () => {
     expect(selectionToInclude({}, true, dirs)).toEqual(["files/**"]);
   });
 
-  it("全选 + 非递归 → files/*", () => {
-    expect(selectionToInclude({}, false, dirs)).toEqual(["files/*"]);
+  it("全选 + 非递归 → 根文件 + 每个目录的直接文件（不进子目录）", () => {
+    expect(selectionToInclude({}, false, dirs)).toEqual([
+      "files/*",
+      "files/文档/*",
+      "files/文档/2026/*",
+      "files/照片/*",
+    ]);
   });
 
   it("递归：关掉一个目录 → 根直接文件 + 其余目录（子目录被父覆盖）", () => {
