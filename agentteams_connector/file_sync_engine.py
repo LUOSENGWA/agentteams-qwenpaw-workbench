@@ -1234,6 +1234,14 @@ class SyncEngine:
                 if isinstance(v, list):
                     raw = v
                     break
+                if isinstance(v, dict):
+                    # Controller 形态：entries = {path: 客户端记录}（对象）。
+                    raw = [
+                        {"path": pk, **pv}
+                        for pk, pv in v.items()
+                        if isinstance(pv, dict)
+                    ]
+                    break
             else:
                 raw = [
                     {"path": k, **v}
@@ -1270,24 +1278,30 @@ class SyncEngine:
     def _rebuild_manifest(
         original: Any, entries_map: Dict[str, Dict[str, Any]]
     ) -> Any:
-        """按原始 manifest 形状重建（list 回 list；dict 保其余键、
-        更新 entries 段；未知形状回裸 list）。"""
-        entries = [dict(v) for v in entries_map.values()]
-        if isinstance(original, list):
-            return entries
+        """重建写回体——**必须是 Controller 的 syncManifest 形态**：
+
+        ``{"version":1, "entries": {path: 记录}, "tombstones": [...]}``
+
+        Controller 的 ``Entries`` 是 ``map[string]json.RawMessage``
+        （human_sync_handler.go 的 syncManifest）；写成数组会 400
+        invalid JSON。保留原始体里的其它键（generation 等由服务端覆盖）。
+        """
+        entries = {
+            str(v.get("path")): dict(v)
+            for v in entries_map.values()
+            if isinstance(v, dict) and v.get("path")
+        }
+        out: Dict[str, Any] = {}
         if isinstance(original, dict):
             out = {
                 k: v
                 for k, v in original.items()
                 if k not in ("entries", "files", "items")
             }
-            key = next(
-                (k for k in ("entries", "files", "items") if k in original),
-                "entries",
-            )
-            out[key] = entries
-            return out
-        return entries
+        out["version"] = int(out.get("version") or 1)
+        out["entries"] = entries
+        out.setdefault("tombstones", [])
+        return out
 
     # ── 本地扫描 / 读写 ──────────────────────────────────────────────
 
