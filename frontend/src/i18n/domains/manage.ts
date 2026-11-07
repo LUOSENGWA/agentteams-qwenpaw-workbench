@@ -3,6 +3,20 @@
 // 原域字典，此处只收本重构新增、且全库字典无键的中文字符串）。
 
 export const manageDict: Record<string, { en: string }> = {
+  // ── 文件列表：Finder 风格列 ──
+  "类型": { en: "Kind" },
+  "详细类型": { en: "Detailed type" },
+  "文件夹": { en: "Folder" },
+  "图片": { en: "Image" },
+  "文档": { en: "Document" },
+  "文本": { en: "Text" },
+  "表格": { en: "Spreadsheet" },
+  "数据": { en: "Data" },
+  "视频": { en: "Video" },
+  "音频": { en: "Audio" },
+  "压缩包": { en: "Archive" },
+  "代码": { en: "Code" },
+
   // ── 模型授权：多选式录入（F-CFG-4）──
   "选择 Provider（可多选，输入可搜索）": { en: "Select providers (multi, searchable)" },
   "选择模型（可多选，输入可搜索）": { en: "Select models (multi, searchable)" },

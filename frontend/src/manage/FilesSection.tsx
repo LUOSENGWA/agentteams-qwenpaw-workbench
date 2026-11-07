@@ -324,9 +324,44 @@ export function detailState(o: {
 /** 16.67 列表列模板（表头行与数据行共用 → 列宽稳定）：
  * 名称（伸缩）/ 大小 / 时间（更新·删除）/ 操作（定宽）。
  * #1669：操作列 64→96px（2×40px 图标按钮 + 8px 间距，适配 40px 触控目标）。 */
-export const LIST_GRID = "minmax(0, 1fr) 72px 120px 96px";
+export const LIST_GRID = "minmax(0, 1fr) 72px 84px 132px 120px 96px";
 /** F-V3-3：整批无 updatedAt → 不渲染「更新时间」列（表头/行同步收窄）。 */
-export const LIST_GRID_NO_TIME = "minmax(0, 1fr) 72px 96px";
+export const LIST_GRID_NO_TIME = "minmax(0, 1fr) 72px 84px 132px 96px";
+
+/** 扩展名（小写，无扩展名 → ""）。 */
+function extOf(name: string): string {
+  const i = name.lastIndexOf(".");
+  return i > 0 && i < name.length - 1 ? name.slice(i + 1).toLowerCase() : "";
+}
+
+/** 类型列：文件夹 / 扩展名大写 / 文件（对齐 Finder 的 Kind 列）。 */
+export function fileTypeLabel(e: HumanFileEntry): string {
+  if (isEntryDir(e)) return "文件夹";
+  const ext = extOf(entryDisplayName(e));
+  return ext ? ext.toUpperCase() : "文件";
+}
+
+/** 详细类型列：把扩展名归到「图片 / 文档 / 文本 / 表格 / 数据 / 视频 /
+ * 音频 / 压缩包」大类（Finder 的 Detailed Type 语义）。 */
+export function detailedTypeLabel(e: HumanFileEntry): string {
+  if (isEntryDir(e)) return "文件夹";
+  const ext = extOf(entryDisplayName(e));
+  const group: Record<string, string> = {
+    png: "图片", jpg: "图片", jpeg: "图片", gif: "图片", webp: "图片", svg: "图片", bmp: "图片", ico: "图片",
+    pdf: "文档", doc: "文档", docx: "文档", ppt: "文档", pptx: "文档",
+    md: "文本", txt: "文本", log: "文本", rst: "文本",
+    csv: "表格", xls: "表格", xlsx: "表格", tsv: "表格",
+    json: "数据", yaml: "数据", yml: "数据", xml: "数据", toml: "数据", ini: "数据",
+    mp4: "视频", mov: "视频", webm: "视频", mkv: "视频",
+    mp3: "音频", wav: "音频", flac: "音频", m4a: "音频",
+    zip: "压缩包", tar: "压缩包", gz: "压缩包", tgz: "压缩包", rar: "压缩包", "7z": "压缩包",
+    js: "代码", ts: "代码", tsx: "代码", jsx: "代码", py: "代码", go: "代码", rs: "代码",
+    sh: "代码", css: "代码", html: "代码",
+  };
+  const g = group[ext];
+  if (!g) return ext ? `文件/${ext.toUpperCase()}` : "文件";
+  return `${g}/${ext.toUpperCase()}`;
+}
 
 /** F-V3-3 列自适应（纯函数；tests/files-v3-3 断言）：整批条目都没有
  * updatedAt → 不渲染「更新时间」列（表头 / 行 / grid 模板同步）。 */
@@ -1017,6 +1052,8 @@ function ListArea({
         >
           <span>{tr("名称")}</span>
           <span style={{ textAlign: "right" }}>{tr("大小")}</span>
+          <span>{tr("类型")}</span>
+          <span>{tr("详细类型")}</span>
           {cols.showUpdatedAt ? <span>{tr("更新时间")}</span> : null}
           <span>{tr("操作")}</span>
         </div>
@@ -1258,6 +1295,28 @@ function FileRow({
         }}
       >
         {sizeCell(entry)}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: t.textSecondary,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {tr(fileTypeLabel(entry))}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: t.textSecondary,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {tr(detailedTypeLabel(entry))}
       </span>
       {showUpdatedAt ? (
         <span
@@ -1800,20 +1859,28 @@ function TrashRailList({ t, tr, nav, fs }: SubProps) {
 /** 16.69 容器宽度（ResizeObserver 观察根 div；禁 window.innerWidth——
  * 断点按文件 section 实际宽度而非视口）。静态渲染（测试）首帧 = 0 →
  * sheet 语义（仅列表），挂载后 RO 回报真实宽度。 */
-function useContainerWidth(): [ReactNS.MutableRefObject<HTMLDivElement | null>, number] {
+function useContainerWidth(): [
+  ReactNS.MutableRefObject<HTMLDivElement | null>,
+  number,
+  boolean,
+] {
   const ref = React.useRef<HTMLDivElement | null>(null);
   const [w, setW] = React.useState(0);
+  // 首帧 / SSR 没有 ResizeObserver 报告 → measured=false（按 0 处理，但
+  // 不能当成「隐藏 tab」）；只有量到 0 才算隐藏。
+  const [measured, setMeasured] = React.useState(false);
   React.useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => {
       const nw = Math.round(entries[0]?.contentRect.width ?? 0);
+      setMeasured(true);
       setW((prev) => (nw === prev ? prev : nw));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  return [ref, w];
+  return [ref, w, measured];
 }
 
 // ── #1669 统一上传入口（全页唯一）──
@@ -2521,7 +2588,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
 
   // 16.69 容器宽度断点（mid 持槽时的 split / drawer / sheet 判定）。
   // 必须在下方早退 return 之前调用（hooks 顺序稳定）。
-  const [widthRef, containerW] = useContainerWidth();
+  const [widthRef, containerW, widthMeasured] = useContainerWidth();
 
   // 老控制器一次性探测：带 recursive 参数 → 老实现 301 回一层列表（无
   // nextKey）→ paginated=false → 递归不可用。新控制器 → paginated=true。
@@ -2856,7 +2923,13 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     const ownsDetail = variant === "full" || cols === 4 || cols === 1;
     const mode = layoutMode(containerW);
     const hasSelection = nav.selectedFile != null;
-    const panes = ownsDetail ? panesFor(mode, hasSelection) : null;
+    // 宽度 0 = 该 section 处于隐藏 tab（切到知识库等）或首帧：此时不能按
+    // sheet/drawer 渲染，否则详情会以全屏 Sheet 盖住当前页面。
+    // 量到 0 = 该 section 处于隐藏 tab（切到知识库等）→ 不渲染 sheet/drawer，
+    // 否则详情会以全屏 Sheet 盖住当前页面；首帧未测量（measured=false）仍按
+    // 旧语义渲染，保持静态渲染/测试行为。
+    const hiddenTab = widthMeasured && containerW === 0;
+    const panes = ownsDetail && !hiddenTab ? panesFor(mode, hasSelection) : null;
     // F-V3-3：回收站独立页（TrashPanel）移除——改工具条按钮打开的
     // files/TrashDialog 弹窗（数据 = 容器 load 的 trash 腿，弹窗不自取数）。
     // F-V3-4：tree 模式列表槽渲染树（详情槽不变——右/内联详情仍只渲染一次）。

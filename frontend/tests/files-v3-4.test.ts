@@ -140,3 +140,12 @@ const _rowCheck: TreeRow = rows[0];
 assert.ok(_rowCheck);
 
 console.log("files-v3-4: all assertions passed");
+
+// ── 列表列：Finder 风格类型列（F-COLS）──
+{
+  const { fileTypeLabel, detailedTypeLabel } = await import("../src/manage/FilesSection.tsx");
+  assert.equal(fileTypeLabel({ name: "a.PNG", type: "file", size: 1 }), "PNG");
+  assert.equal(fileTypeLabel({ name: "docs", type: "dir" }), "文件夹");
+  assert.equal(detailedTypeLabel({ name: "a.png", type: "file", size: 1 }), "图片/PNG");
+  assert.equal(detailedTypeLabel({ name: "a.bin", type: "file", size: 1 }), "文件/BIN");
+}
