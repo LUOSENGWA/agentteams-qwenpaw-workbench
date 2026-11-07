@@ -3,6 +3,21 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.133 (chat DB / file DnD / media viewer / sync backpressure / manage dots / tracing / voice · 2026-11-07)
+
+**Added**
+- Chat history now lives in SQLite `cache/chat.db` (WAL, kept permanently, JSON migrated on first start, global 2 GiB LRU); `/context` results are persisted so repeat jumps need no network.
+- In-app media viewer: zoom/pan/gallery/download; native video/audio; unified attachment cards.
+- Files: drag-and-drop upload (recursive folders), detail drawer, trash search/sort.
+- Sync: retry with backoff (±20% jitter, 429/5xx) + 30 s/200-file round budget + >8 MiB deferral.
+- Manage page session dots restored (team leader row / standalone workers / worker detail header).
+- Worker "Open Tracing" link (`dashboard_url`; no fake params; scheme-less defaults to http).
+- Voice input via Web Speech API (no deps; hidden when unsupported; interim not submitted, final appended, never auto-sends).
+
+**Fixed**
+- `clampPan` normalizes -0; failed chat writes no longer pollute the in-memory window.
+
+**Tests**: pytest 728 · vitest 314 · `tsc` 0 · build 0.
 ## 0.5.0-beta.16.132 (mark-read 422 fix · 2026-11-07)
 
 **Fixed**

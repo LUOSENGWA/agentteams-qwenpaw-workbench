@@ -3,6 +3,21 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.133（聊天 DB/文件 DnD/媒体灯箱/同步背压/管理灯/Tracing/语音 · 2026-11-07）
+
+**新增**
+- 聊天记录改 SQLite `cache/chat.db`（WAL，永久保留，JSON 首启迁移；全局 2 GiB LRU）；「加载原消息」context 全量入库，二次零网络。
+- 应用内媒体灯箱：缩放/拖拽/切图/下载，图片画廊成组；视频/音频原生播放；附件卡统一。
+- 文件：拖拽上传（目录递归）、文件详情抽屉、回收站搜索排序。
+- 同步：弱网重试退避（±20% jitter，429/5xx）+ 单轮 30s/200 文件预算 + >8MiB 延后。
+- 管理页恢复会话指示灯（团队行 leader / 独立 Worker / 详情头）。
+- Worker「打开 Tracing」跳转（配置 `dashboard_url`，无参数拼接；无协议默认 http）。
+- 语音输入：Web Speech API，零依赖；不支持则隐藏；interim 不提交、final 追加、不自动发送。
+
+**修复**
+- `clampPan` -0 归一；聊天写库失败不污染内存窗口（失败静默且可重试）。
+
+**测试**：pytest 728 · vitest 314 · `tsc` 0 · build 0。
 ## 0.5.0-beta.16.132（mark-read 422 修复 · 2026-11-07）
 
 **修复**
