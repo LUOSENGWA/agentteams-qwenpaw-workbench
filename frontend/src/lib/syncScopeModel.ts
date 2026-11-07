@@ -86,6 +86,8 @@ export function selectionToInclude(
   const all = [...new Set(dirs.filter(Boolean))].sort();
   const rawOn = (p: string): boolean => selection[p] !== false;
   const ancestorOff = (p: string): boolean => {
+    // 根开关（""）是全部目录的祖先：根关 → 其后代一律不同步。
+    if (p !== "" && !rawOn("")) return true;
     const segs = p.split("/");
     for (let i = 1; i < segs.length; i += 1) {
       if (!rawOn(segs.slice(0, i).join("/"))) return true;

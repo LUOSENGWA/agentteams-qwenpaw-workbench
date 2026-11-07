@@ -68,6 +68,15 @@ describe("selectionToInclude", () => {
     ]);
   });
 
+  it("根开关关掉 → 全部不同步（空规则）", () => {
+    expect(selectionToInclude({ "": false }, true, dirs)).toEqual([]);
+  });
+
+  it("根开关开 + 关一个子目录 → 根文件与其余目录仍同步", () => {
+    const inc = selectionToInclude({ "": true, 照片: false }, true, dirs);
+    expect(inc).toEqual(["files/*", "files/文档/**"]);
+  });
+
   it("全部关闭 → 空规则（调用方用 exclude files/** 表达不同步）", () => {
     expect(
       selectionToInclude(

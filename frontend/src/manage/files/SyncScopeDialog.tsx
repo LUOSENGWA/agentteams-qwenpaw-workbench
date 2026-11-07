@@ -101,11 +101,21 @@ export default function SyncScopeDialog(props: SyncScopeDialogProps): JSX.Elemen
   const isOn = (p: string): boolean => selection[p] !== false;
   /** 任一祖先被关 → 本行显示为关且禁改（父级已不同步）。 */
   const ancestorOff = (p: string): boolean => {
+    if (p !== "" && !isOn("")) return true;
     const segs = p.split("/");
     for (let i = 1; i < segs.length; i += 1) {
       if (!isOn(segs.slice(0, i).join("/"))) return true;
     }
     return false;
+  };
+
+  /** 根开关：一次控制全部（根 "" + 所有目录）。 */
+  const toggleRoot = (next: boolean) => {
+    setSelection(() => {
+      const out: Record<string, boolean> = { "": next };
+      for (const d of allDirs) out[d] = next;
+      return out;
+    });
   };
 
   const toggle = (node: DirNode, next: boolean) => {
@@ -194,6 +204,27 @@ export default function SyncScopeDialog(props: SyncScopeDialogProps): JSX.Elemen
               {tr("还没有文件夹（先上传文件或同步一次）")}
             </span>
           ) : null}
+          {/* 根节点：从根目录开始（整棵 files/ 一个开关） */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 8px",
+              minHeight: 44,
+              borderBottom: `1px solid ${t.border}`,
+            }}
+          >
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600 }}>
+              {tr("全部文件（根目录）")}
+            </span>
+            <antd.Switch
+              size="small"
+              checked={isOn("")}
+              onChange={(v: boolean) => toggleRoot(v)}
+              aria-label={tr("同步全部文件")}
+            />
+          </div>
           {flattenTree(tree).map((p) => {
             const node = (() => {
               const segs = p.split("/");
