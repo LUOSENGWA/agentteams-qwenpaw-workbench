@@ -3,6 +3,12 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.81（2026-11-07 · 资源卡顺序对齐）
+
+**改进**
+- Worker 详情资源卡按 QwenPaw Agent 页顺序排列：运行配置 → MCP → 工具 → 技能 → 频道 → 审批模式 → Coding CLI → 环境变量 → LLM 调优 → Worker 插件 → 运行时升级；
+- 非 QwenPaw 运行时，MCP / 工具 / 技能 / 频道 / 审批模式 的说明改为「该运行时的配置面（surface 驱动）」，与实际数据来源一致。
+
 ## 0.5.0-beta.16.80（2026-11-07 · 模型授权保存 400 修复）
 
 **修复**

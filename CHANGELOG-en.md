@@ -3,6 +3,12 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.81 (2026-11-07 · resource card order)
+
+**Improved**
+- Worker detail cards follow the QwenPaw Agent page order: runtime config → MCP → tools → skills → channels → approval mode → Coding CLI → environment → LLM tuning → worker plugins → runtime upgrade.
+- For non-QwenPaw runtimes the MCP / tools / skills / channels / approval descriptions now say the card is the runtime's surface-driven config face, matching where the data comes from.
+
 ## 0.5.0-beta.16.80 (2026-11-07 · model grant 400 fix)
 
 **Fixed**
