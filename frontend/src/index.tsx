@@ -208,6 +208,16 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
 .wb-loop-dot.running {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }
+/* R11 语音输入：识别中的麦克风按钮红色脉冲（节奏同
+ wbSessionPulse 1.2s；不支持识别的浏览器不渲染该按钮）。 */
+@keyframes wbMicPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255,77,79,0.55); }
+  50% { opacity: 0.75; box-shadow: 0 0 0 5px rgba(255,77,79,0); }
+}
+.wb-mic-btn.listening {
+  animation: wbMicPulse 1.2s ease-in-out infinite;
+  background: rgba(255,77,79,0.10);
+}
 /* ：有待审批时侧栏 logo
  晃一次（bell shake，1.2s）；持续待批挂红点计数（静态，不循环晃）。 */
 @keyframes wbTabShake {
