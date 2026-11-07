@@ -2,6 +2,7 @@ import type * as ReactNS from "react";
 
 import {
   requestJson,
+  requestJsonFull,
   httpErrorStatus,
   httpErrorDetail,
   fetchWorkerLoops,
@@ -125,6 +126,8 @@ export function useWorkerRuntimeConfigCore({
 
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
+  /** GET 时拿到的配置 ETag（PUT 的 If-Match；#1522 起服务端强制）。 */
+  const [cfgEtag, setCfgEtag] = React.useState<string | null>(null);
 
   const base = `/agentteams-proxy/controller/api/v1/workers/${encodeURIComponent(name)}`;
   const url = `${base}/runtime-config`;
@@ -153,7 +156,10 @@ export function useWorkerRuntimeConfigCore({
     setGate("");
     setGateMsg("");
     try {
-      const d = (await requestJson(url)) as Rc;
+      const full = await requestJsonFull(url);
+      const d = full.payload as Rc;
+      const etag = full.response?.headers?.get("ETag") ?? null;
+      setCfgEtag(etag);
       setCfg(d && typeof d === "object" ? d : null);
       void loadLoops();
     } catch (e) {
@@ -695,12 +701,21 @@ export function useWorkerRuntimeConfigCore({
       return;
     }
     if (Object.keys(diff).length === 0) return;
+    if (!cfgEtag) {
+      // #1522：PUT 必须有 If-Match（服务端 428 不盲写）——先重读拿 ETag。
+      setMsg({ ok: false, text: tr("配置版本未就绪，已重新读取，请再次保存") });
+      void load();
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
       await requestJson(url, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "If-Match": cfgEtag,
+        },
         body: JSON.stringify(diff),
       });
       setMsg({
@@ -709,13 +724,27 @@ export function useWorkerRuntimeConfigCore({
           ? tr("已保存——loop 配置变更将通知团队 Leader")
           : tr("已保存"),
       });
-      // 读回（read-merge-write 后的权威值）
-      const d = (await requestJson(url)) as Rc;
+      // 读回（read-merge-write 后的权威值 + 新 ETag）
+      const full = await requestJsonFull(url);
+      const d = full.payload as Rc;
+      setCfgEtag(full.response?.headers?.get("ETag") ?? null);
       setCfg(d && typeof d === "object" ? d : null);
       resetEdits();
     } catch (e) {
       const st = httpErrorStatus(e);
-      if (st === 409) {
+      const detail = httpErrorDetail(e);
+      if (st === 428) {
+        // 无/失效 ETag：重读后让用户再保存（不盲写）。
+        setMsg({ ok: false, text: tr("配置版本已失效，已重新读取，请再次保存") });
+        void load();
+      } else if (st === 409 && detail.includes("conflict")) {
+        // #1522：409 = 版本冲突（不再是"锁"）——重读最新，保留用户编辑。
+        setMsg({
+          ok: false,
+          text: tr("配置已被他人修改，已载入最新版本；请确认后再保存"),
+        });
+        void load();
+      } else if (st === 409) {
         setMsg({ ok: false, text: tr("配置被锁定（Worker 正在执行任务），稍后重试") });
       } else {
         setMsg({ ok: false, text: httpErrorDetail(e) || tr("保存失败") });

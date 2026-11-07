@@ -179,5 +179,8 @@ export const missingDict: Record<string, { en: string }> = {
   "高级": { en: "Advanced" },
   "默认同步 files/**（全部文件）": { en: "Default: sync files/** (all files)" },
   "存储暂不可用，请稍后重试": { en: "Storage is temporarily unavailable. Please try again later." },
+  "配置版本未就绪，已重新读取，请再次保存": { en: "Config version not ready — reloaded, please save again." },
+  "配置版本已失效，已重新读取，请再次保存": { en: "Config version expired — reloaded, please save again." },
+  "配置已被他人修改，已载入最新版本；请确认后再保存": { en: "The config was changed elsewhere; the latest version is loaded — review and save again." },
   "（与主模型相同）": { en: "(same as the main model)" },
 };
