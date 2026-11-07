@@ -1,16 +1,27 @@
-// F-V3-4：文件「树形视图」纯逻辑——视图开关解析、祖先路径、缩进、
-// 树拍平、键盘导航。只引类型，不依赖 UI 运行时（无 React/antd/window）；
-// UI 接线在后续提交。
+// F-V3-4：文件「树形/网格视图」纯逻辑——视图开关解析、祖先路径、缩进、
+// 树拍平、键盘导航、网格最小列数。只引类型，不依赖 UI 运行时
+// （无 React/antd/window）；UI 接线在后续提交。
 //
 // 直跑：node --experimental-strip-types frontend/tests/files-v3-4.test.ts
 
 import type { HumanFileEntry } from "../../api/domains/humanFiles";
 
-export type FilesView = "list" | "tree";
+export type FilesView = "list" | "tree" | "grid";
 
-/** 解析持久化的视图设置："tree"→tree，其它/空/非法→list（回落）。 */
+/** 解析持久化的视图设置："tree"→tree，"grid"→grid，其它/空/非法→list（回落）。 */
 export function parseFilesView(raw: unknown): FilesView {
-  return raw === "tree" ? "tree" : "list";
+  if (raw === "tree") return "tree";
+  if (raw === "grid") return "grid";
+  return "list";
+}
+
+/** 网格视图按容器宽度的最小列数（任务书口径）：
+ *  ≤600 → 2；≤900 → 3；≤1400 → 4；否则 → 5。 */
+export function gridMinCols(width: number): number {
+  if (width <= 600) return 2;
+  if (width <= 900) return 3;
+  if (width <= 1400) return 4;
+  return 5;
 }
 
 /** 传入路径的全部祖先路径（不含自身），根到近排序。

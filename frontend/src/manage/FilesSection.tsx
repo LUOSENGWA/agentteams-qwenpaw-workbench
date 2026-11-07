@@ -130,13 +130,16 @@ import {
   DownloadIcon,
   FolderIcon,
   FolderOpenIcon,
+  GridIcon,
   ListIcon,
   PageIcon,
+  PictureIcon,
   TrashIcon,
   TreeIcon,
 } from "../components/icons";
 import { ReloadIcon } from "../components/WorkerManageShared";
 import { FilePreview, type PreviewFile } from "../components/FilePreview";
+import { useMediaObjectUrl } from "../useMediaObjectUrl";
 import type { ManageNav } from "./useManageNav";
 import type { ManageSectionProps } from "./types";
 import {
@@ -149,6 +152,7 @@ import {
 } from "./files/format";
 import {
   flattenTree,
+  gridMinCols,
   parseFilesView,
   treeIndent,
   treeKeyNav,
@@ -221,7 +225,7 @@ interface FilesState {
   reload: (opts?: { silent?: boolean; force?: boolean }) => void;
   /** F-V3-3：打开回收站弹窗（+1 次静默刷新；关闭不刷新）。 */
   onOpenTrash: () => void;
-  /** F-V3-4：列表/树视图模式（localStorage "manage.filesView" 持久化）。 */
+  /** F-V3-4：列表/树/网格视图模式（localStorage "manage.filesView" 持久化）。 */
   filesView: FilesView;
   /** F-V3-4：切视图（写回 localStorage；不可用静默回落）。 */
   onFilesViewChange: (v: FilesView) => void;
@@ -438,7 +442,7 @@ export function makeReloadDedup(): (
   };
 }
 
-// ── F-V3-4 视图模式（列表/树）持久化 ─────────────────────────────────
+// ── F-V3-4 视图模式（列表/树/网格）持久化 ─────────────────────────────
 /** localStorage 键（视图选择跨会话保留）。 */
 const FILES_VIEW_STORAGE_KEY = "manage.filesView";
 /** 读持久化视图（localStorage 不可用——隐私模式/受限宿主 → null 回落 list）。 */
@@ -1837,6 +1841,357 @@ function TreeArea({
   );
 }
 
+// ── F-V3-4 网格视图（fs.filesView === "grid" 时替换列表槽；l1 紧凑列不走）──
+/** 网格列模板（任务书字面形态）：最小格 180px，auto-fill 尽量多列。
+ * 容器极窄（不足两列）时按 gridMinCols 档收窄 min 边（见 GridArea）。 */
+const GRID_TEMPLATE = "repeat(auto-fill, minmax(180px, 1fr))";
+const GRID_CELL_MIN = 180;
+const GRID_GAP = 10;
+/** 缩略图懒加载配额（任务书：最多前 60 个）——递归平铺下 fs.files 可达
+ * 数百条，objectURL 取数只给前 60 个图片条目，其余出图标。 */
+const GRID_THUMB_CAP = 60;
+
+/** 网格卡片缩略区（高 120px）：图片文件 = useMediaObjectUrl 懒加载
+ *（卡片经 IntersectionObserver 进入视口才取 blob；IO 不可用 → 不出图
+ * 只出图标）；目录 = 文件夹图标；其它文件（含图片取数前/失败）= 图标。 */
+function GridThumb({
+  entry,
+  apiPath,
+  t,
+  allowThumb,
+}: {
+  entry: HumanFileEntry;
+  apiPath: string;
+  t: ThemeColors;
+  /** 本卡是否有缩略图配额（前 GRID_THUMB_CAP 个图片文件）。 */
+  allowThumb: boolean;
+}) {
+  const isDir = isEntryDir(entry);
+  const isImg = !isDir && isImageName(entryDisplayName(entry));
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = React.useState(false);
+  // IntersectionObserver 不可用（旧 webview 兜底）→ 不取图只出图标。
+  const ioOk = typeof IntersectionObserver !== "undefined";
+  React.useEffect(() => {
+    if (!isImg || !allowThumb || !ioOk) return;
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver((es) => {
+      for (const e of es) {
+        if (e.isIntersecting) {
+          setVisible(true);
+          io.disconnect();
+        }
+      }
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isImg, allowThumb, ioOk]);
+  const src = useMediaObjectUrl(
+    isImg && allowThumb && ioOk && visible ? apiPath : undefined,
+    "",
+  );
+  const icon = isDir ? (
+    <FolderIcon size={40} style={{ color: t.textSecondary }} />
+  ) : isImg ? (
+    <PictureIcon size={40} style={{ color: t.textSecondary }} />
+  ) : (
+    <PageIcon size={40} style={{ color: t.textSecondary }} />
+  );
+  return (
+    <div
+      ref={ref}
+      style={{
+        height: 120,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        borderRadius: 6,
+        background: t.hoverBg,
+      }}
+    >
+      {src !== "" ? (
+        <img src={src} alt="" style={{ width: "100%", height: 120, objectFit: "cover" }} />
+      ) : (
+        icon
+      )}
+    </div>
+  );
+}
+
+/** 网格卡片：缩略区（高 120px）+ 名称（两行截断）+ 大小 + 行内下载/删除
+ *（沿用 FileRow 的 doDownload / useDeleteConfirm 接线，不另写一套）。
+ * 交互：单击 = 选中（再点取消，目录/文件同——任务书语义）；双击 = 目录
+ * 进入（导航；递归平铺模式目录不可交互，同 FileRow）/ 文件选中（无条件
+ * set，抵消 click-click 的 toggle）。键盘 Enter/Space = 单击语义。 */
+function GridCard({
+  entry,
+  apiPath,
+  allowThumb,
+  t,
+  tr,
+  nav,
+  fs,
+}: SubProps & {
+  entry: HumanFileEntry;
+  apiPath: string;
+  allowThumb: boolean;
+}) {
+  const isDir = isEntryDir(entry);
+  const name = entryDisplayName(entry);
+  const path = rowPath(entry, fs.dirPath);
+  const sel = nav.selectedFile === path;
+  const dirInteractive = isDir && !fs.recursive;
+
+  const select = () => nav.selectFile(sel ? null : path);
+  const onDbl = () => {
+    if (isDir) {
+      if (dirInteractive) fs.onEnterDir(path);
+      return;
+    }
+    nav.selectFile(path);
+  };
+  const onDownload = (e: ReactNS.MouseEvent) => {
+    e.stopPropagation();
+    void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
+      if (!ok) antd.message.error(tr("下载失败"));
+    });
+  };
+  // 统一删除确认（与 FileRow / 详情面板共用 useDeleteConfirm，不各写 Modal）：
+  // 勾选「移入回收站（可恢复）」（默认）= 软删；未勾选 = 软删后立即彻底删。
+  const del = useDeleteConfirm({
+    t,
+    tr,
+    humanName: fs.humanName,
+    onDone: (r) => {
+      if (nav.selectedFile === path) nav.selectFile(null);
+      if (!r.purged) fs.offerUndo({ trashId: r.trashId, name });
+      fs.reload({ silent: true });
+    },
+  });
+  const onDelete = (e: ReactNS.MouseEvent) => {
+    e.stopPropagation();
+    del.request(path, name);
+  };
+
+  const skin = sel
+    ? { border: `1px solid ${t.border}`, background: t.hoverBg }
+    : { border: `1px solid ${t.border}`, background: t.cardBg };
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      title={dirInteractive ? tr("进入目录") : undefined}
+      onClick={select}
+      onDoubleClick={onDbl}
+      onKeyDown={(e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          select();
+        }
+      }}
+      onMouseEnter={(e: ReactNS.MouseEvent<HTMLDivElement>) => {
+        if (!sel) e.currentTarget.style.background = t.hoverBg;
+      }}
+      onMouseLeave={(e: ReactNS.MouseEvent<HTMLDivElement>) => {
+        if (!sel) e.currentTarget.style.background = t.cardBg;
+      }}
+      style={{
+        display: "grid",
+        gap: 6,
+        padding: 8,
+        borderRadius: 8,
+        cursor: "pointer",
+        minWidth: 0,
+        ...skin,
+      }}
+    >
+      <GridThumb entry={entry} apiPath={apiPath} t={t} allowThumb={allowThumb} />
+      <span
+        title={name}
+        style={{
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          fontWeight: 600,
+          fontSize: 12,
+          color: t.text,
+          wordBreak: "break-all",
+        }}
+      >
+        {name}
+      </span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+        <span
+          style={{
+            fontSize: 11,
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {sizeCell(entry)}
+        </span>
+        {isDir ? (
+          // #1669 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip
+          // 提示（同 FileRow）。
+          <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
+            <span style={{ display: "inline-flex" }}>
+              <button
+                type="button"
+                disabled
+                aria-label={tr("删除")}
+                style={{ ...iconBtnStyle(t), opacity: 0.4, cursor: "not-allowed" }}
+              >
+                <TrashIcon size={16} />
+              </button>
+            </span>
+          </antd.Tooltip>
+        ) : (
+          <span style={{ display: "inline-flex", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={onDownload}
+              title={tr("下载")}
+              aria-label={tr("下载")}
+              style={iconBtnStyle(t)}
+            >
+              <DownloadIcon size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              title={tr("删除")}
+              aria-label={tr("删除")}
+              style={iconBtnStyle(t)}
+            >
+              <TrashIcon size={16} />
+            </button>
+          </span>
+        )}
+      </div>
+      {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
+      {del.node}
+    </div>
+  );
+}
+
+/** F-V3-4 网格视图块（mid/full 列表槽，fs.filesView === "grid" 时替换
+ * ListArea；l1 紧凑列不走网格）：四态镜像 ListArea（出错 + 重试 / 加载中 /
+ * 空态 + 链接 CTA / 卡片网格）；列模板 = 任务书 repeat(auto-fill,
+ * minmax(180px, 1fr))，容器极窄时按 gridMinCols 档收窄 min 边防 auto-fill
+ * 塌成单列；缩略图配额 = fs.files 顺序前 GRID_THUMB_CAP 个图片文件。 */
+function GridArea({
+  t,
+  tr,
+  nav,
+  fs,
+  actions,
+}: SubProps & { actions: FilesActions }) {
+  const [gridRef, gridW] = useContainerWidth();
+  const count = fs.files.length;
+  // 容器宽度已知且不足两列（gridW < 2×180+gap）→ min 边按 gridMinCols 档
+  // 收窄（≤600 → 2 列），auto-fill 不再塌成单列；否则保持任务书模板。
+  const gridTemplate = React.useMemo(() => {
+    if (gridW <= 0) return GRID_TEMPLATE;
+    const cols = gridMinCols(gridW);
+    const minCell = Math.floor((gridW - (cols - 1) * GRID_GAP) / cols);
+    return minCell >= GRID_CELL_MIN
+      ? GRID_TEMPLATE
+      : `repeat(auto-fill, minmax(${minCell}px, 1fr)`;
+  }, [gridW]);
+  // 缩略图配额：fs.files 顺序前 GRID_THUMB_CAP 个图片文件（任务书：最多前 60）。
+  const thumbPaths = React.useMemo(() => {
+    const s = new Set<string>();
+    for (const e of fs.files) {
+      if (s.size >= GRID_THUMB_CAP) break;
+      if (!isEntryDir(e) && isImageName(entryDisplayName(e))) {
+        s.add(rowPath(e, fs.dirPath));
+      }
+    }
+    return s;
+  }, [fs.files, fs.dirPath]);
+
+  return (
+    <div ref={gridRef} style={{ display: "grid", gap: 8 }}>
+      {fs.status !== "err" ? (
+        <span style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("共 {n} 个条目", { n: count })}
+        </span>
+      ) : null}
+      {fs.status === "err" && count === 0 ? (
+        <>
+          <antd.Alert
+            type="warning"
+            showIcon
+            message={tr("加载失败")}
+            description={fs.error}
+          />
+          <antd.Button style={btnTouch} onClick={() => fs.reload({ force: true })}>
+            {tr("重试")}
+          </antd.Button>
+        </>
+      ) : null}
+      {fs.status !== "err" && fs.loading && count === 0 ? (
+        <div
+          style={{
+            padding: "18px 8px",
+            textAlign: "center",
+            fontSize: 12,
+            color: t.textSecondary,
+          }}
+        >
+          {tr("加载中…")}
+        </div>
+      ) : null}
+      {fs.status !== "err" && !fs.loading && count === 0 ? (
+        <div style={{ padding: "18px 8px", textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("暂无文件")}
+          </div>
+          {/* 空态 CTA = 文字链接（同 ListArea，指向工具条同一处理函数）。 */}
+          <antd.Button
+            type="link"
+            style={{ padding: 0, ...btnTouch }}
+            onClick={actions.onUploadClick}
+          >
+            {tr("上传一个文件")}
+          </antd.Button>
+        </div>
+      ) : null}
+      {fs.status !== "err" && count > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: gridTemplate, gap: GRID_GAP }}>
+          {fs.files.map((e) => {
+            const p = rowPath(e, fs.dirPath);
+            return (
+              <GridCard
+                key={p || entryDisplayName(e)}
+                entry={e}
+                apiPath={humanFileApiPath(fs.humanName, p)}
+                allowThumb={thumbPaths.has(p)}
+                t={t}
+                tr={tr}
+                nav={nav}
+                fs={fs}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+      {/* #1518：仅 nextKey 为 string（满页还有下一页）时显「加载更多」；
+       * null = 到底、undefined = 老控制器无分页。 */}
+      {typeof fs.nextKey === "string" ? (
+        <antd.Button block loading={fs.loadingMore} style={btnTouch} onClick={() => fs.loadMore()}>
+          {tr("加载更多")}
+        </antd.Button>
+      ) : null}
+    </div>
+  );
+}
+
 /** l1 栏回收站紧凑行（v3；F-V3-3 后为保活死分支——files 域 4 栏不再渲染
  * l1，view 恒 "files" 不进入本分支）：单行（图标 + 原路径）。 */
 function TrashRailRow({
@@ -2154,7 +2509,7 @@ function FilesToolbar({
         background: t.cardBg,
       }}
     >
-      {/* F-V3-4 视图分段按钮（最左）：列表 / 树——aria-label + title；
+      {/* F-V3-4 视图分段按钮（最左）：列表 / 树 / 网格——aria-label + title；
        * ≥44px（--hf-row-min）；≤600px 只显图标（VIEW_SEG_CSS 隐藏 label）。
        * 裸 <button>（非 antd）——既有渲染锚点按 antd 形态计数。 */}
       <style>{VIEW_SEG_CSS}</style>
@@ -2186,6 +2541,18 @@ function FilesToolbar({
         >
           <TreeIcon size={16} />
           <span className="hf-view-seg-label">{tr("树")}</span>
+        </button>
+        <button
+          type="button"
+          className="hf-view-seg"
+          aria-label={tr("网格视图")}
+          title={tr("网格视图")}
+          aria-pressed={fs.filesView === "grid"}
+          onClick={() => fs.onFilesViewChange("grid")}
+          style={viewSegBtnStyle(t, fs.filesView === "grid")}
+        >
+          <GridIcon size={16} />
+          <span className="hf-view-seg-label">{tr("网格")}</span>
         </button>
       </div>
       <div
@@ -2301,6 +2668,10 @@ function FilesToolbar({
   );
 }
 
+/** 图片扩展集（与 components/FilePreview 的 IMAGE_EXT 同源——网格缩略图
+ * 与详情预览用同一判定，不各写一套）。 */
+const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"]);
+
 /** #1669：是否可预览（与 components/FilePreview 支持的类型集一致：
  * 图片 / 文本类（含 md / csv / tsv / json）/ xlsx）。入参可为扩展名或
  * 文件名；其余类型详情面板只给「下载」。纯函数（测试断言）。 */
@@ -2310,14 +2681,22 @@ export function previewable(nameOrExt: string): boolean {
   const ext = i >= 0 ? s.slice(i + 1) : s;
   return (
     ext === "xlsx" ||
+    IMAGE_EXT.has(ext) ||
     new Set([
-      // IMAGE_EXT ∪ TEXT_PREVIEW_EXT（与 FilePreview 保持同步）。
-      "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp",
+      // TEXT_PREVIEW_EXT（与 FilePreview 保持同步）。
       "md", "markdown", "txt", "log", "json", "csv", "tsv",
       "yaml", "yml", "xml", "sql", "html", "htm",
       "py", "ts", "js", "tsx", "jsx", "go", "rs", "sh",
     ]).has(ext)
   );
+}
+
+/** F-V3-4 网格缩略图：按文件名判图片（HumanFileEntry 无 MIME 字段，
+ * 扩展集与 previewable 的 IMAGE_EXT 同源；无扩展 → 非图片）。 */
+function isImageName(name: string): boolean {
+  const s = name.trim().toLowerCase();
+  const i = s.lastIndexOf(".");
+  return i >= 0 && IMAGE_EXT.has(s.slice(i + 1));
 }
 
 /** 选中文件详情：meta + 预览 / 下载 / 覆盖上传 / 删除(→回收站，#1669 统一
@@ -3019,10 +3398,13 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     const panes = ownsDetail && !hiddenTab ? panesFor(mode, hasSelection) : null;
     // F-V3-3：回收站独立页（TrashPanel）移除——改工具条按钮打开的
     // files/TrashDialog 弹窗（数据 = 容器 load 的 trash 腿，弹窗不自取数）。
-    // F-V3-4：tree 模式列表槽渲染树（详情槽不变——右/内联详情仍只渲染一次）。
+    // F-V3-4：tree 模式列表槽渲染树、grid 模式渲染 GridArea（详情槽不变——
+    // 右/内联详情仍只渲染一次）。
     const listNode =
       filesView === "tree" ? (
         <TreeArea {...sub} actions={actions} />
+      ) : filesView === "grid" ? (
+        <GridArea {...sub} actions={actions} />
       ) : (
         <ListArea {...sub} actions={actions} />
       );

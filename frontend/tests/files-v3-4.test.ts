@@ -1,7 +1,7 @@
-// F-V3-4：文件「树形视图」纯逻辑 treeModel（视图解析 / 祖先路径 / 缩进 /
-// 树拍平 / 键盘导航）。直接 import（treeModel 只 import type，strip-types
-// 擦除后不加载 humanFiles 实体），不碰 UI、不进 vitest 面（文件名不带
-// .vitest.）。
+// F-V3-4：文件「树形/网格视图」纯逻辑 treeModel（视图解析 / 祖先路径 /
+// 缩进 / 树拍平 / 键盘导航 / 网格最小列数）。直接 import（treeModel 只
+// import type，strip-types 擦除后不加载 humanFiles 实体），不碰 UI、不进
+// vitest 面（文件名不带 .vitest.）。
 // 直跑：node --experimental-strip-types frontend/tests/files-v3-4.test.ts
 //（node:assert/strict）。
 //
@@ -15,6 +15,10 @@
 // ⑦ treeKeyNav ArrowRight 目录 → onToggle(path) 且 index 不变；文件不触发；
 //    Left/Enter 返回原 index；
 // ⑧ 源码断言：treeModel 纯类型，无 window/document、无值 import、不引 UI 模块。
+// ⑩ parseFilesView 认 "grid" → grid（第三态；其余回落 list 已由 ① 覆盖）；
+// ⑪ gridMinCols 四档（含边界）：≤600 → 2；≤900 → 3；≤1400 → 4；否则 → 5；
+// ⑫ 源码接线断言：FilesSection 含 filesView === "grid" 分支 + gridMinCols
+//    接线 + 网格模板字面量 + 「网格」分段按钮文案 + 缩略图懒加载接线。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -23,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import {
   ancestorsOf,
   flattenTree,
+  gridMinCols,
   parseFilesView,
   treeIndent,
   treeKeyNav,
@@ -134,6 +139,31 @@ assert.ok(sectionSrc.includes("parseFilesView"), "FilesSection 接线 parseFiles
 assert.ok(sectionSrc.includes("flattenTree"), "FilesSection 接线 flattenTree（树拍平渲染）");
 assert.ok(sectionSrc.includes("treeKeyNav"), "FilesSection 接线 treeKeyNav（键盘导航）");
 assert.ok(sectionSrc.includes('tr("树")'), "工具条有「树」分段按钮文案");
+
+// ⑩ parseFilesView 认 "grid"（第三态）
+assert.equal(parseFilesView("grid"), "grid");
+
+// ⑪ gridMinCols 四档（含边界）
+assert.equal(gridMinCols(0), 2);
+assert.equal(gridMinCols(600), 2);
+assert.equal(gridMinCols(601), 3);
+assert.equal(gridMinCols(900), 3);
+assert.equal(gridMinCols(901), 4);
+assert.equal(gridMinCols(1400), 4);
+assert.equal(gridMinCols(1401), 5);
+assert.equal(gridMinCols(4000), 5);
+
+// ⑫ 源码接线断言：FilesSection 网格视图分支 + 接线（模型自身行为 ⑩–⑪
+// 已覆盖，不重复）
+assert.ok(sectionSrc.includes('filesView === "grid"'), 'FilesSection 含 filesView === "grid" 分支');
+assert.ok(sectionSrc.includes("gridMinCols"), "FilesSection 接线 gridMinCols（窄容器按档收窄 min 边）");
+assert.ok(
+  sectionSrc.includes("repeat(auto-fill, minmax(180px, 1fr))"),
+  "网格列模板 = 任务书字面形态",
+);
+assert.ok(sectionSrc.includes('tr("网格")'), "工具条有「网格」分段按钮文案");
+assert.ok(sectionSrc.includes("useMediaObjectUrl"), "网格缩略图走 useMediaObjectUrl（host.fetch blob → objectURL）");
+assert.ok(sectionSrc.includes("IntersectionObserver"), "缩略图懒加载用 IntersectionObserver（不可用 → 只出图标）");
 
 // 防回归：TreeRow 导出为接口（类型面可被 UI 层复用）
 const _rowCheck: TreeRow = rows[0];

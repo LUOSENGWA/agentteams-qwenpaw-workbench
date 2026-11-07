@@ -645,6 +645,25 @@ export function TreeIcon({ size = 14, style, className }: IconProps) {
   );
 }
 
+/** ▦ 网格（手写 stroke，HarmonyOS 无对应件）：视图切换「网格」段（2×2 方块）。 */
+export function GridIcon({ size = 14, style, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      style={{ verticalAlign: "-2px", flexShrink: 0, ...style }}
+      className={className}
+      aria-hidden
+    >
+      <rect x="4" y="4" width="7" height="7" rx="1.2" fill="currentColor"/>
+      <rect x="13" y="4" width="7" height="7" rx="1.2" fill="currentColor"/>
+      <rect x="4" y="13" width="7" height="7" rx="1.2" fill="currentColor"/>
+      <rect x="13" y="13" width="7" height="7" rx="1.2" fill="currentColor"/>
+    </svg>
+  );
+}
+
 /** 📎 回形针/附件（手写 stroke，HarmonyOS 无对应件）。 */
 export function ClipIcon({ size = 14, style, className }: IconProps) {
   return (
