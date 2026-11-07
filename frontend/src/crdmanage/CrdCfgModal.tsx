@@ -5,12 +5,16 @@
 import type * as ReactNS from "react";
 
 import type { AdminData, TeamInfo } from "../api";
-import {
-  filterModelOptionsByProvider,
-  modelVerdictText,
-  validateModelValue,
-} from "../modelUnion";
+import { modelVerdictText, validateModelValue } from "../modelUnion";
 import type { LlmProviderLite, ModelSelectionOption } from "../modelCatalog";
+import ModelSettingsModal from "../manage/ModelSettingsModal";
+import type { ModelDraft, ProviderOption } from "../lib/modelDraft";
+import {
+  buildLocalProviderOptions,
+  draftFromRow,
+  LOCAL_PROVIDER,
+  rowFromDraft,
+} from "./modelPanelWiring";
 import LlmTuningFields from "../components/LlmTuningFields";
 import { findLlmTuningError, type LlmTuningKey } from "../lib/llm-tuning";
 import type { ThemeColors } from "../theme";
@@ -61,6 +65,70 @@ interface CrdCfgModalProps {
   gatewayOptions: ModelSelectionOption[];
   tr: TrFn;
   t: ThemeColors;
+}
+
+/** 模型单元格只读摘要 chip（11.7 统一模型弹窗接线）：值空 → placeholder
+ * 次级色；changed → 橙框（原 AutoComplete 改动态同色）；校验 error/warn
+ * → 红/橙 Tag（tooltip 候选列表，与改造前行内同口径同文案）。
+ * prefix（批量「provider / 模型」摘要）只参与展示、不参与校验。 */
+function ModelCellChip({
+  value,
+  prefix,
+  placeholder,
+  changed,
+  showVerdict = true,
+  tr,
+  t,
+  candidates,
+}: {
+  value?: string;
+  prefix?: string;
+  placeholder?: string;
+  changed?: boolean;
+  /** 改动前不显示校验 Tag（行内模型格旧行为）；缺省恒显。 */
+  showVerdict?: boolean;
+  tr: TrFn;
+  t: ThemeColors;
+  candidates: string[];
+}) {
+  const v = (value || "").trim();
+  const pv = (prefix || "").trim();
+  const verdict = v ? validateModelValue(v, candidates) : null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, flex: 1 }}>
+      <span
+        title={v || undefined}
+        style={{
+          fontSize: 12,
+          color: v ? t.text : t.textSecondary,
+          border: changed ? "1px solid #fa8c16" : `1px dashed ${t.border}`,
+          borderRadius: 6,
+          padding: "3px 8px",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          maxWidth: 240,
+        }}
+      >
+        {v ? (pv ? `${pv} / ${v}` : v) : (placeholder || "")}
+      </span>
+      {verdict && verdict.level !== "ok" && showVerdict ? (
+        <WbTooltip title={modelVerdictText(tr, verdict, v, candidates)}>
+          <antd.Tag color={verdict.level === "error" ? "red" : "orange"} style={{ marginInlineEnd: 0 }}>
+            {verdict.level === "error" ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <CloseIcon size={10} /> {tr("路径形态")}
+              </span>
+            ) : (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <WarnIcon size={10} /> {tr("未命中")}
+              </span>
+            )}
+          </antd.Tag>
+        </WbTooltip>
+      ) : null}
+    </div>
+  );
 }
 
 /** 配置团队表单本体（10/29 管理页评审——弹窗内容抽取为具名导出：
@@ -122,6 +190,94 @@ export function CrdCfgForm({
   tr,
   t,
 }: CrdCfgFormProps) {
+  // ── 11.7 统一模型弹窗接线（ModelSettingsModal × 团队设置入口）────────
+  // 模型单元格 = 只读摘要 + 编辑：弹窗预填当前值，保存只写回本表单本地
+  // state（cfg / cfgRows / cfgBatchModel），**不发任何请求**——写链
+  // （预写校验 + diff + updateTeam / 逐改动行模型对下发）仍由「保存」
+  // = doCfg 统一提交（零新端点、零字段名变化）。
+  type ModelPanelTarget =
+    | { kind: "subagent" }
+    | { kind: "row"; index: number }
+    | { kind: "batch"; batch: "leader" | "workers" };
+  const [modelPanel, setModelPanel] =
+    React.useState<ModelPanelTarget | null>(null);
+
+  // Provider 目录：真实 Higress provider（modelMapping 键 + 路由绑定
+  // alias）+ 「在服+在用」哨兵组（原 AutoComplete 数据源，保原入口自由
+  // 选择能力）。
+  const panelProviders: ProviderOption[] = React.useMemo(
+    () =>
+      buildLocalProviderOptions(
+        providers,
+        gatewayOptions,
+        modelOptions.map((o) => o.value),
+      ),
+    [providers, gatewayOptions, modelOptions],
+  );
+
+  // 按目标取当前值 → 弹窗预填草稿（provider 解析序：已刷值 > alias
+  // 绑定 > 哨兵；subagent 无 provider 字段 → 绑定 / 哨兵）。
+  const panelValue: ModelDraft = React.useMemo(() => {
+    if (!modelPanel) return { provider: LOCAL_PROVIDER, model: "" };
+    if (modelPanel.kind === "subagent") {
+      return draftFromRow(cfg.subagentModel, "", gatewayOptions);
+    }
+    if (modelPanel.kind === "row") {
+      const r = cfgRows[modelPanel.index];
+      return draftFromRow(r?.model, r?.provider, gatewayOptions);
+    }
+    const b = modelPanel.batch;
+    return draftFromRow(
+      b === "leader" ? cfgBatchModel.leader : cfgBatchModel.workers,
+      b === "leader" ? cfgBatchModel.leaderProvider : cfgBatchModel.workersProvider,
+      gatewayOptions,
+    );
+  }, [modelPanel, cfg.subagentModel, cfgRows, cfgBatchModel, gatewayOptions]);
+
+  // 写回（本地 state only；哨兵 → 所选模型 alias 绑定 / 空，见
+  // modelPanelWiring.rowFromDraft）。
+  const savePanel = React.useCallback(
+    (patch: ModelDraft): Promise<void> => {
+      const back = rowFromDraft(patch, gatewayOptions);
+      if (!modelPanel) return Promise.resolve();
+      if (modelPanel.kind === "subagent") {
+        // subagentModel = 单模型字符串字段（"" → doCfg 发 null = 清空/继承）。
+        setCfg((c) => ({ ...c, subagentModel: back.model }));
+        return Promise.resolve();
+      }
+      if (modelPanel.kind === "row") {
+        // 行 {model, provider} 成对写回（provider "" = 不下发 = 不改，
+        // doCfg diff 同旧语义）。
+        updateCfgRow(modelPanel.index, {
+          model: back.model,
+          provider: back.provider,
+        });
+        return Promise.resolve();
+      }
+      const b = modelPanel.batch;
+      setCfgBatchModel((prev) =>
+        b === "leader"
+          ? { ...prev, leader: back.model, leaderProvider: back.provider }
+          : { ...prev, workers: back.model, workersProvider: back.provider },
+      );
+      // 画笔语义与旧 AutoComplete 逐字段一致：成对刷到对应角色行
+      // （行内仍可精修覆盖）。
+      applyCfgBatch(b, back.model, back.provider);
+      return Promise.resolve();
+    },
+    [modelPanel, setCfg, updateCfgRow, setCfgBatchModel, applyCfgBatch, gatewayOptions],
+  );
+
+  const modelPanelTitle = modelPanel
+    ? modelPanel.kind === "subagent"
+      ? tr("子代理默认模型")
+      : modelPanel.kind === "row"
+        ? `${tr("成员模型")} · ${cfgRows[modelPanel.index]?.name || tr("未选")}`
+        : modelPanel.batch === "leader"
+          ? `${tr("批量设置模型")} · ${tr("Leader 批")}`
+          : `${tr("批量设置模型")} · ${tr("Workers 批")}`
+    : "";
+
   return (
       <div style={{ display: "grid", gap: 10 }}>
             <FieldLabel>{tr("描述（留空 = 保持不变）")}</FieldLabel>
@@ -142,46 +298,24 @@ export function CrdCfgForm({
             setCfg({ ...cfg, heartbeatEvery: e.target.value })
           }
         />
-        {/* ：
-subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型）。
-：裸 Input → 与 Worker 选模型
-同款 AutoComplete（同数据源 modelOptions=在服∪在用模型∪网关 alias，
-同 validateModelValue 校验态）——「来源一样」。 */}
+        {/* subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker
+主模型）。11.7 统一模型弹窗接线：只读摘要 + 编辑 →
+ModelSettingsModal 预填（候选数据源同源 modelOptions=在服∪在用∪
+网关 alias；留空可保存=继承）；保存写回 cfg.subagentModel（"" →
+doCfg 发 null 清空/继承），校验态 validateModelValue 不变。 */}
         <FieldLabel>{tr("子代理默认模型（留空 = 继承各 Worker 主模型）")}</FieldLabel>
-        <antd.AutoComplete
-          size="small"
-          style={{ width: 320, maxWidth: "100%" }}
-          placeholder={tr("子代理默认模型（如 qwen3.6:27b-fp8；留空 = 继承）")}
-          options={modelOptions as { value: string }[]}
-          value={cfg.subagentModel}
-          onChange={(v: string) => setCfg({ ...cfg, subagentModel: v })}
-          status={(() => {
-            const v = cfg.subagentModel.trim();
-            if (!v) return undefined;
-            const lv = validateModelValue(v, modelCandidates).level;
-            return lv === "error" ? "error" : lv === "warn" ? "warning" : undefined;
-          })()}
-        />
-        {(() => {
-          const v = cfg.subagentModel.trim();
-          if (!v) return null;
-          const sv = validateModelValue(v, modelCandidates);
-          return sv.level === "ok" ? null : (
-            <WbTooltip title={modelVerdictText(tr, sv, v, modelCandidates)}>
-              <antd.Tag color={sv.level === "error" ? "red" : "orange"} style={{ marginBottom: 4 }}>
-                {sv.level === "error" ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                    <CloseIcon size={10} /> {tr("路径形态")}
-                  </span>
-                ) : (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                    <WarnIcon size={10} /> {tr("未命中")}
-                  </span>
-                )}
-              </antd.Tag>
-            </WbTooltip>
-          );
-        })()}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", maxWidth: 420 }}>
+          <ModelCellChip
+            value={cfg.subagentModel}
+            placeholder={tr("留空 = 继承各 Worker 主模型")}
+            tr={tr}
+            t={t}
+            candidates={modelCandidates}
+          />
+          <antd.Button size="small" onClick={() => setModelPanel({ kind: "subagent" })}>
+            {tr("编辑")}
+          </antd.Button>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <antd.Switch
             size="small"
@@ -232,12 +366,10 @@ subagentModel=团队级 spawn 子代理默认模型（""=继承 Worker 主模型
             </div>
             {/* （·「团队配置的窗口应该增加批量改模型，
 leader/workers 两批」）：批量画笔——Leader 批 / Workers 批
-两把独立画笔。C1a-1 provider-first：每把先选 Provider 再选模型
-（模型候选经 filterModelOptionsByProvider 按所选 Provider 过滤；
-数据源/校验态与行内模型框完全同源：modelOptions=在服∪在用∪网关
-alias，validateModelValue）。
-选中值即成对刷到对应角色行的 model + provider（行内仍可按人精修）；
-留空=不刷；落盘=下方「保存」的既有 diff 链（只发改动行），零新端点。 */}
+两把独立画笔。11.7 统一模型弹窗接线：每把 = 只读摘要（provider /
+模型）+ 设置 → ModelSettingsModal 预填批量当前值；保存写回
+cfgBatchModel 并按原画笔语义成对刷到对应角色行（行内仍可精修）。
+留空 = 不刷；落盘 = 下方「保存」的既有 diff 链（只发改动行），零新端点。 */}
             <div
               style={{
                 display: "grid",
@@ -262,101 +394,43 @@ alias，validateModelValue）。
                   <div style={{ fontSize: 10.5, color: t.textSecondary }}>
                     {tr("Leader 批（{n} 人）", { n: cfgBatchLeaderCount })}
                   </div>
-                  <div style={{ fontSize: 10, color: t.textSecondary }}>
-                    {tr("Provider")}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <ModelCellChip
+                      value={cfgBatchModel.leader}
+                      prefix={cfgBatchModel.leaderProvider || undefined}
+                      placeholder={tr("未设置（留空 = 不刷）")}
+                      tr={tr}
+                      t={t}
+                      candidates={modelCandidates}
+                    />
+                    <antd.Button
+                      size="small"
+                      onClick={() => setModelPanel({ kind: "batch", batch: "leader" })}
+                    >
+                      {tr("设置")}
+                    </antd.Button>
                   </div>
-                  <antd.AutoComplete
-                    size="small"
-                    style={{ width: "100%" }}
-                    allowClear
-                    options={providers.map((p) => ({ value: p.name }))}
-                    value={cfgBatchModel.leaderProvider}
-                    onChange={(v: string) => {
-                      const p = v || "";
-                      setCfgBatchModel((prev) => ({ ...prev, leaderProvider: p }));
-                      applyCfgBatch("leader", "", p);
-                    }}
-                  />
-                  <div style={{ fontSize: 10, color: t.textSecondary }}>
-                    {tr("模型")}
-                  </div>
-                  <antd.AutoComplete
-                    size="small"
-                    style={{ width: "100%" }}
-                    placeholder={tr("批量模型（选中=刷到该批全部成员）")}
-                    options={
-                      filterModelOptionsByProvider(
-                        modelOptions,
-                        gatewayOptions,
-                        cfgBatchModel.leaderProvider,
-                      ) as { value: string }[]
-                    }
-                    value={cfgBatchModel.leader}
-                    onChange={(v: string) => {
-                      setCfgBatchModel((p) => ({ ...p, leader: v }));
-                      applyCfgBatch("leader", v, "");
-                    }}
-                    status={(() => {
-                      const v = cfgBatchModel.leader.trim();
-                      if (!v) return undefined;
-                      const lv = validateModelValue(v, modelCandidates).level;
-                      return lv === "error"
-                        ? "error"
-                        : lv === "warn"
-                          ? "warning"
-                          : undefined;
-                    })()}
-                  />
                 </div>
                 <div style={{ display: "grid", gap: 4 }}>
                   <div style={{ fontSize: 10.5, color: t.textSecondary }}>
                     {tr("Workers 批（{n} 人）", { n: cfgBatchWorkerCount })}
                   </div>
-                  <div style={{ fontSize: 10, color: t.textSecondary }}>
-                    {tr("Provider")}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <ModelCellChip
+                      value={cfgBatchModel.workers}
+                      prefix={cfgBatchModel.workersProvider || undefined}
+                      placeholder={tr("未设置（留空 = 不刷）")}
+                      tr={tr}
+                      t={t}
+                      candidates={modelCandidates}
+                    />
+                    <antd.Button
+                      size="small"
+                      onClick={() => setModelPanel({ kind: "batch", batch: "workers" })}
+                    >
+                      {tr("设置")}
+                    </antd.Button>
                   </div>
-                  <antd.AutoComplete
-                    size="small"
-                    style={{ width: "100%" }}
-                    allowClear
-                    options={providers.map((p) => ({ value: p.name }))}
-                    value={cfgBatchModel.workersProvider}
-                    onChange={(v: string) => {
-                      const p = v || "";
-                      setCfgBatchModel((prev) => ({ ...prev, workersProvider: p }));
-                      applyCfgBatch("workers", "", p);
-                    }}
-                  />
-                  <div style={{ fontSize: 10, color: t.textSecondary }}>
-                    {tr("模型")}
-                  </div>
-                  <antd.AutoComplete
-                    size="small"
-                    style={{ width: "100%" }}
-                    placeholder={tr("批量模型（选中=刷到该批全部成员）")}
-                    options={
-                      filterModelOptionsByProvider(
-                        modelOptions,
-                        gatewayOptions,
-                        cfgBatchModel.workersProvider,
-                      ) as { value: string }[]
-                    }
-                    value={cfgBatchModel.workers}
-                    onChange={(v: string) => {
-                      setCfgBatchModel((p) => ({ ...p, workers: v }));
-                      applyCfgBatch("workers", v, "");
-                    }}
-                    status={(() => {
-                      const v = cfgBatchModel.workers.trim();
-                      if (!v) return undefined;
-                      const lv = validateModelValue(v, modelCandidates).level;
-                      return lv === "error"
-                        ? "error"
-                        : lv === "warn"
-                          ? "warning"
-                          : undefined;
-                    })()}
-                  />
                 </div>
               </div>
               <div style={{ fontSize: 10.5, color: t.textSecondary }}>
@@ -425,57 +499,37 @@ alias，validateModelValue）。
                     onRemove={() => removeCfgRow(i)}
                   />
                   </div>
-                  {/* 模型框 240 定宽（原 1 1 100% 满宽
-=「超宽」；与 Manager 表模型列 180-240 同几何）+ 行内
-「模型」标签落在框正上方。 */}
+                  {/* 模型格 240 定宽摘要（chip maxWidth 240，原
+AutoComplete 同几何）+ 编辑 → 统一模型弹窗（11.7 接线）：预填行
+当前值（provider 已刷值 > alias 绑定 > 哨兵），保存写回该行
+cfgRows（model + provider 成对；""=不改，doCfg diff 语义不变）。 */}
                   <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
                     {tr("模型")}
                   </div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <antd.AutoComplete
-                    size="small"
-                    style={{
-                      width: 240,
-                      borderColor: modelChanged ? "#fa8c16" : undefined,
-                    }}
-                    placeholder={tr("模型（留空=不改；下拉=在服∪在用模型，provider 不变）")}
-                    options={modelOptions as { value: string }[]}
-                    value={row.model || ""}
-                    onChange={(v: string) => updateCfgRow(i, { model: v })}
-                    status={
-                      modelChanged
-                        ? validateModelValue(row.model || "", modelCandidates).level === "error"
-                          ? "error"
-                          : validateModelValue(row.model || "", modelCandidates).level === "warn"
-                            ? "warning"
-                            : undefined
-                        : undefined
-                    }
-                  />
-                  {modelChanged ? (
-                    (() => {
-                      const cmv = validateModelValue(row.model || "", modelCandidates);
-                      return cmv.level === "ok" ? (
-                        <antd.Tag color="orange">{tr("模型已改动")}</antd.Tag>
-                      ) : (
-                        <WbTooltip
-                          title={modelVerdictText(tr, cmv, row.model || "", modelCandidates)}
-                        >
-                          <antd.Tag color={cmv.level === "error" ? "red" : "orange"}>
-                            {cmv.level === "error" ? (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                <CloseIcon size={10} /> {tr("路径形态")}
-                              </span>
-                            ) : (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                <WarnIcon size={10} /> {tr("未命中")}
-                              </span>
-                            )}
-                          </antd.Tag>
-                        </WbTooltip>
-                      );
-                    })()
-                  ) : null}
+                    <ModelCellChip
+                      value={row.model}
+                      placeholder={tr("留空 = 不改")}
+                      changed={modelChanged}
+                      showVerdict={modelChanged}
+                      tr={tr}
+                      t={t}
+                      candidates={modelCandidates}
+                    />
+                    <antd.Button
+                      size="small"
+                      onClick={() => setModelPanel({ kind: "row", index: i })}
+                    >
+                      {tr("编辑")}
+                    </antd.Button>
+                    {modelChanged
+                      ? (() => {
+                          const cmv = validateModelValue(row.model || "", modelCandidates);
+                          return cmv.level === "ok" ? (
+                            <antd.Tag color="orange">{tr("模型已改动")}</antd.Tag>
+                          ) : null;
+                        })()
+                      : null}
                   </div>
                 </div>
               );
@@ -514,6 +568,19 @@ SkillCenter 同款组件 onlyTeam 模式内嵌（目录搜索/上传/自定义/
         <div style={{ fontSize: 11, color: t.textSecondary }}>
           {tr("技能/分配/MCP 的保存独立于上方「保存」按钮（走技能中心原端点）；L2 用户经「技能中心（我的团队）」入口，同能力、服务端限本团队。")}
         </div>
+        {/* 11.7 统一模型弹窗（团队设置入口）：按选中单元格预填；保存
+      只写回本地表单 state（cfg / cfgRows / cfgBatchModel），落盘仍由
+      底部「保存」= doCfg 统一提交。allowEmptyMain：子代理行 / 成员行
+      / 批量均允许「留空 = 继承 / 不改」清空保存。 */}
+        <ModelSettingsModal
+          open={modelPanel !== null}
+          title={modelPanelTitle}
+          value={panelValue}
+          providers={panelProviders}
+          allowEmptyMain
+          onClose={() => setModelPanel(null)}
+          onSave={savePanel}
+        />
       </div>
   );
 }
