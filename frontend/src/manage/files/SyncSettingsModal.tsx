@@ -36,6 +36,7 @@ import {
 import type { ThemeColors } from "../../theme";
 import { fmtTs } from "./format";
 import DialogShell from "./DialogShell";
+import SyncScopeDialog, { type SyncScope } from "./SyncScopeDialog";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -153,10 +154,11 @@ export default function SyncSettingsModal({
   const [exportBusy, setExportBusy] = React.useState(false);
   const [lastRun, setLastRun] = React.useState<LastRun | null>(null);
   /** S1 生效范围（null = 未取到 → 范围块降级为静态说明）。 */
-  const [scope, setScope] = React.useState<{ include: string[]; exclude: string[] } | null>(null);
+  const [scope, setScope] = React.useState<
+    { include: string[]; exclude: string[]; recursive: boolean; selection: Record<string, boolean> } | null
+  >(null);
+  const [scopeOpen, setScopeOpen] = React.useState(false);
   const [scopeBusy, setScopeBusy] = React.useState(false);
-  const [newInc, setNewInc] = React.useState("");
-  const [newExc, setNewExc] = React.useState("");
   /** S6 进度（null = 未取到；state=idle 时只显示「空闲」）。 */
   const [prog, setProg] = React.useState<ProgressSnap | null>(null);
   /** S2 待取消同步的镜像路径（相对 files/）。 */
@@ -291,14 +293,29 @@ export default function SyncSettingsModal({
         return;
       }
       const j = (await resp.json().catch(() => null)) as Record<string, unknown> | null;
-      const eff = (j?.effective ?? null) as { include?: unknown; exclude?: unknown } | null;
+      const eff = (j?.effective ?? null) as
+        | { include?: unknown; exclude?: unknown; recursive?: unknown; selection?: unknown }
+        | null;
       if (!eff) {
         setScope(null);
         return;
       }
       const asArr = (v: unknown): string[] =>
         Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-      setScope({ include: asArr(eff.include), exclude: asArr(eff.exclude) });
+      const sel =
+        eff.selection && typeof eff.selection === "object" && !Array.isArray(eff.selection)
+          ? Object.fromEntries(
+              Object.entries(eff.selection as Record<string, unknown>).filter(
+                ([k, v]) => typeof k === "string" && typeof v === "boolean",
+              ),
+            ) as Record<string, boolean>
+          : {};
+      setScope({
+        include: asArr(eff.include),
+        exclude: asArr(eff.exclude),
+        recursive: typeof eff.recursive === "boolean" ? eff.recursive : true,
+        selection: sel,
+      });
     } catch {
       setScope(null);
     }
@@ -395,37 +412,6 @@ export default function SyncSettingsModal({
     }
   };
 
-  /** S1 保存（PUT；pattern 非法 → 后端 400 invalid_path，原样提示不吞错）。 */
-  const saveScope = async (next: { include: string[]; exclude: string[] }) => {
-    setScopeBusy(true);
-    try {
-      const resp = await fetchFile(SYNC_CONFIG_PATH, resolvePluginUrl(SYNC_CONFIG_PATH), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ human: humanName, ...next }),
-      });
-      if (resp.status === 404) {
-        antd.message.warning(tr("控制器未提供同步范围配置接口"));
-        return;
-      }
-      if (!resp.ok) {
-        const j = (await resp.json().catch(() => null)) as Record<string, unknown> | null;
-        if (j?.error === "invalid_path") {
-          antd.message.error(`${tr("路径不合法")}: ${String(j.path ?? "")}`);
-        } else {
-          antd.message.error(`HTTP ${resp.status}`);
-        }
-        return;
-      }
-      setScope(next);
-      antd.message.success(tr("同步范围已保存"));
-    } catch {
-      antd.message.error(tr("保存失败"));
-    } finally {
-      setScopeBusy(false);
-    }
-  };
-
   /** S2 取消同步：只删本地镜像；远端证据不足后端拒绝（refused 原样展示）。 */
   const doUnsync = () => {
     const p = unsyncPath.trim();
@@ -463,6 +449,63 @@ export default function SyncSettingsModal({
         }
       },
     });
+  };
+
+  /** 范围摘要文案（全选 / n 个文件夹 + 递归态）。 */
+  const scopeSummary = (): string => {
+    if (!scope) return tr("默认同步 files/**（全部文件）");
+    const inc = scope.include;
+    if (inc.length === 0) return tr("不同步任何文件");
+    if (inc.length === 1 && (inc[0] === "files/**" || inc[0] === "files/*")) {
+      return scope.recursive
+        ? tr("全部文件（含子文件夹）")
+        : tr("仅根目录直接文件");
+    }
+    const folders = Object.entries(scope.selection).filter(([, on]) => on).length;
+    const label = folders > 0 ? tr("{n} 个文件夹", { n: folders }) : tr("{n} 条规则", { n: inc.length });
+    return scope.recursive ? tr("{l}（含子文件夹）", { l: label }) : tr("{l}（不含子文件夹）", { l: label });
+  };
+
+  /** 保存目录选择（selection/recursive → include glob 由弹窗导出）。 */
+  const saveScopeSelection = async (
+    next: SyncScope & { include: string[] },
+  ) => {
+    setScopeBusy(true);
+    try {
+      const resp = await fetchFile(SYNC_CONFIG_PATH, resolvePluginUrl(SYNC_CONFIG_PATH), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          human: humanName,
+          include: next.include,
+          // 全关（include 空）→ 用 exclude files/** 表达「一个都不同步」；
+          // 引擎 include 为空会回退默认 files/**，不能靠空 include 表达。
+          exclude: next.include.length === 0 ? ["files/**"] : [],
+          recursive: next.recursive,
+          selection: next.selection,
+        }),
+      });
+      if (resp.status === 404) {
+        antd.message.warning(tr("控制器未提供同步范围配置接口"));
+        return;
+      }
+      if (!resp.ok) {
+        antd.message.error(`HTTP ${resp.status}`);
+        return;
+      }
+      setScope({
+        include: next.include,
+        exclude: next.include.length === 0 ? ["files/**"] : [],
+        recursive: next.recursive,
+        selection: next.selection,
+      });
+      setScopeOpen(false);
+      antd.message.success(tr("同步范围已保存"));
+    } catch {
+      antd.message.error(tr("保存失败"));
+    } finally {
+      setScopeBusy(false);
+    }
   };
 
   /** state 未就绪的原因（empty / denied / unsupported；ok 走计数行）。 */
@@ -597,87 +640,27 @@ export default function SyncSettingsModal({
             {tr("导出清单原文")}
           </antd.Button>
         </div>
-        {/* S1 同步范围（可选目录：include/exclude 通配；默认 files/**）。 */}
+        {/* S1 同步范围：目录开关（对齐 Dropbox/OneDrive「Choose folders」） */}
         <div style={{ display: "grid", gap: 6 }}>
           <span style={labelStyle(t)}>{tr("同步范围")}</span>
-          {scope ? (
-            <>
-              <span style={{ fontSize: 12, color: t.textSecondary }}>
-                {tr("只同步命中的路径；不同步 memory/、digest/、.trash/、.sync/")}
-              </span>
-              {(
-                [
-                  ["include", tr("包含"), newInc, setNewInc],
-                  ["exclude", tr("排除"), newExc, setNewExc],
-                ] as const
-              ).map(([key, label, val, setVal]) => (
-                <div key={key} style={{ display: "grid", gap: 4 }}>
-                  <span style={{ fontSize: 12, color: t.textSecondary }}>{label}</span>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    {scope[key].length === 0 ? (
-                      <span style={{ fontSize: 12, color: t.textSecondary }}>
-                        {key === "include" ? tr("默认 files/**") : tr("无")}
-                      </span>
-                    ) : (
-                      scope[key].map((p) => (
-                        <antd.Tag
-                          key={p}
-                          closable={!scopeBusy}
-                          style={{ marginInlineEnd: 0, fontSize: 12 }}
-                          onClose={(e: { preventDefault?: () => void }) => {
-                            e?.preventDefault?.();
-                            void saveScope({ ...scope, [key]: scope[key].filter((x) => x !== p) });
-                          }}
-                        >
-                          {p}
-                        </antd.Tag>
-                      ))
-                    )}
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <antd.Input
-                      size="small"
-                      value={val}
-                      placeholder={tr("如 files/文档/**")}
-                      onChange={(e: { target: { value: string } }) => setVal(e.target.value)}
-                      onPressEnter={() => {
-                        const p = val.trim();
-                        if (!p) return;
-                        void saveScope({ ...scope, [key]: [...scope[key], p] }).then(() =>
-                          setVal(""),
-                        );
-                      }}
-                    />
-                    <antd.Button
-                      size="small"
-                      loading={scopeBusy}
-                      disabled={!val.trim()}
-                      onClick={() => {
-                        const p = val.trim();
-                        if (!p) return;
-                        void saveScope({ ...scope, [key]: [...scope[key], p] }).then(() =>
-                          setVal(""),
-                        );
-                      }}
-                    >
-                      {tr("添加")}
-                    </antd.Button>
-                  </div>
-                </div>
-              ))}
-              <span style={{ fontSize: 12, color: t.textSecondary }}>
-                {tr("远端文档不会被本地删除影响")}
-              </span>
-            </>
-          ) : (
-            <>
-              <span style={valueStyle(t)}>
-                {tr("同步 workspace/{h}/files/**", { h: humanName })}
-              </span>
-              <span style={valueStyle(t)}>{tr("不同步 memory/、digest/、.trash/、.sync/")}</span>
-              <span style={valueStyle(t)}>{tr("远端文档不会被本地删除影响")}</span>
-            </>
-          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ ...valueStyle(t), flex: 1, minWidth: 0 }}>{scopeSummary()}</span>
+            <antd.Button
+              size="small"
+              style={{ minHeight: 40 }}
+              loading={scopeBusy}
+              disabled={!scope}
+              onClick={() => setScopeOpen(true)}
+            >
+              {tr("选择文件夹…")}
+            </antd.Button>
+          </div>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("只同步选中的文件夹；关闭某个文件夹只停止本机同步，云端文件保留。")}
+          </span>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("不同步 memory/、digest/、.trash/、.sync/")}
+          </span>
         </div>
         {/* S2 取消同步（只删本地镜像；远端零 DELETE）。 */}
         <div style={{ display: "grid", gap: 6 }}>
@@ -724,6 +707,16 @@ export default function SyncSettingsModal({
             </span>
           </div>
         ) : null}
+        <SyncScopeDialog
+          open={scopeOpen}
+          t={t}
+          tr={tr}
+          humanName={humanName}
+          initial={{ selection: scope?.selection ?? {}, recursive: scope?.recursive ?? true }}
+          saving={scopeBusy}
+          onClose={() => setScopeOpen(false)}
+          onSave={(next) => void saveScopeSelection(next)}
+        />
         {/* 路径说明（镜像目录）。 */}
         <div style={{ display: "grid", gap: 4 }}>
           <span style={labelStyle(t)}>{tr("镜像目录")}</span>

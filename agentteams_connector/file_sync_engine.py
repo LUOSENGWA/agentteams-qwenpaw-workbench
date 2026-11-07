@@ -221,8 +221,15 @@ def default_human_cfg() -> Dict[str, List[str]]:
 
 def human_cfg(
     config: Optional[Dict[str, Any]], human: str
-) -> Dict[str, List[str]]:
-    """从整份配置取某 human 的生效范围（缺省项补齐）。"""
+) -> Dict[str, Any]:
+    """从整份配置取某 human 的生效范围（缺省项补齐）。
+
+    返回 ``{include, exclude, recursive, selection}``：
+    - include/exclude = 引擎判定用的 glob（权威）；
+    - recursive = 目录选择界面的「递归同步子文件夹」开关（默认 True）；
+    - selection = ``{目录相对路径: bool}``（目录开关状态快照；引擎不消费，
+      仅供界面回显——include/exclude 已由前端按同一规则导出）。
+    """
     hc: Dict[str, Any] = {}
     if isinstance(config, dict):
         humans = config.get("humans")
@@ -232,6 +239,8 @@ def human_cfg(
                 hc = v
     inc = hc.get("include")
     exc = hc.get("exclude")
+    rec = hc.get("recursive")
+    sel = hc.get("selection")
     return {
         "include": (
             [p for p in inc if isinstance(p, str)]
@@ -243,7 +252,42 @@ def human_cfg(
             if isinstance(exc, list)
             else []
         ),
+        "recursive": rec if isinstance(rec, bool) else True,
+        "selection": (
+            {
+                k: bool(v)
+                for k, v in sel.items()
+                if isinstance(k, str) and isinstance(v, bool)
+            }
+            if isinstance(sel, dict)
+            else {}
+        ),
     }
+
+
+def validate_scope_dir(path: Any) -> Optional[str]:
+    """目录选择路径校验（无 ``files/`` 前缀；``""`` = 根）。
+
+    合法：无 ``..``/空段/控制字符、非绝对路径、不以 ``/`` 结尾（归一后）。
+    返回归一后的目录串（"" 合法）；非法 → None。
+    """
+    if not isinstance(path, str):
+        return None
+    raw = path.strip()
+    if raw.startswith("/"):
+        return None
+    raw = raw.strip("/")
+    if raw == "":
+        return ""
+    if ".." in raw.split("/"):
+        return None
+    for seg in raw.split("/"):
+        if not seg or any(ord(c) < 32 for c in seg):
+            return None
+    full = safe_rel_path("files/" + raw)
+    if full is None:
+        return None
+    return raw
 
 
 def load_sync_config(config_file: Path) -> Dict[str, Any]:

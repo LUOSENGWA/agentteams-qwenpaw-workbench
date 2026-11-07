@@ -81,6 +81,30 @@ def build_sync_router() -> APIRouter:
         if not human:
             raise HTTPException(status_code=400, detail={"error": "invalid_body"})
         new_hc: Dict[str, Any] = {}
+        # 目录选择界面：recursive 开关 + selection 快照（引擎不消费后者）。
+        rec = body.get("recursive")
+        if rec is not None:
+            if not isinstance(rec, bool):
+                raise HTTPException(
+                    status_code=400, detail={"error": "invalid_body", "key": "recursive"}
+                )
+            new_hc["recursive"] = rec
+        sel = body.get("selection")
+        if sel is not None:
+            if not isinstance(sel, dict):
+                raise HTTPException(
+                    status_code=400, detail={"error": "invalid_body", "key": "selection"}
+                )
+            clean: Dict[str, bool] = {}
+            for k, v in sel.items():
+                dir_key = file_sync_engine.validate_scope_dir(k)
+                if dir_key is None or not isinstance(v, bool):
+                    raise HTTPException(
+                        status_code=400,
+                        detail={"error": "invalid_path", "path": str(k)},
+                    )
+                clean[dir_key] = v
+            new_hc["selection"] = clean
         for key in ("include", "exclude"):
             if key not in body:
                 continue

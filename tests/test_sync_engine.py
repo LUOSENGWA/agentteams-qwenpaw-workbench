@@ -736,3 +736,49 @@ def test_progress_concurrent_reads_no_crash(tmp_path):
     pg = eng.progress()
     assert pg["state"] == "idle"
     assert pg["files_done"] == n
+
+
+# ── 目录选择（recursive / selection）────────────────────────────────
+
+
+def test_human_cfg_carries_recursive_and_selection():
+    import agentteams_connector.file_sync_engine as fse
+
+    cfg = {
+        "humans": {
+            "luo": {
+                "include": ["files/文档/**"],
+                "recursive": False,
+                "selection": {"文档": True, "照片": False},
+            }
+        }
+    }
+    got = fse.human_cfg(cfg, "luo")
+    assert got["include"] == ["files/文档/**"]
+    assert got["recursive"] is False
+    assert got["selection"] == {"文档": True, "照片": False}
+    # 缺省：递归 True、selection 空（旧配置零变化）
+    d = fse.human_cfg({}, "luo")
+    assert d["recursive"] is True and d["selection"] == {}
+
+
+def test_validate_scope_dir():
+    import agentteams_connector.file_sync_engine as fse
+
+    assert fse.validate_scope_dir("") == ""
+    assert fse.validate_scope_dir("文档") == "文档"
+    assert fse.validate_scope_dir("文档/2026") == "文档/2026"
+    assert fse.validate_scope_dir("/abs") is None
+    assert fse.validate_scope_dir("../x") is None
+    assert fse.validate_scope_dir("a//b") is None
+    assert fse.validate_scope_dir(123) is None
+
+
+def test_non_recursive_glob_does_not_cross_dirs():
+    import agentteams_connector.file_sync_engine as fse
+
+    cfg = {"include": ["files/文档/*"]}
+    assert fse.should_sync("files/文档/a.md", cfg)
+    assert not fse.should_sync("files/文档/2026/b.md", cfg)
+    cfg2 = {"include": ["files/文档/**"]}
+    assert fse.should_sync("files/文档/2026/b.md", cfg2)
