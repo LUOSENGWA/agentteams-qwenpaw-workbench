@@ -1,8 +1,9 @@
 // ResourceCards.tsx — 「管理」页团队域 · Worker 详情资源卡（方案 §4.1.3，P3）。
 //
-// 10 卡 = 旧拓扑 Worker 展开面板的管理段 + 合并分支 MCP/插件卡，一格一卡
-// （替代旧 4-tab 嵌套）：运行配置 / 环境变量与网关 / Coding CLI / MCP /
-// Worker 插件 / 技能 / 工具 / 频道 / 审批模式 / 运行时升级。
+// 11 卡 = 旧拓扑 Worker 展开面板的管理段 + 合并分支 MCP/插件卡 + LLM 调优，
+// 一格一卡（替代旧 4-tab 嵌套）。顺序 = QwenPaw Agent 页语义顺序：运行配置 /
+// MCP / 工具 / 技能 / 频道 / 审批模式 / Coding CLI / 环境变量与网关 / LLM 调优 /
+// Worker 插件 / 运行时升级。
 //
 // 卡 = 入口（标题 + 一行摘要 + 右尖角）；点击打开大弹窗（宽 720，
 // 技能/运行时升级 900；竖屏 narrow → NarrowSheet）。内容懒挂载——
@@ -129,6 +130,70 @@ export default function ResourceCards({
         width: 960,
       });
     }
+    // 顺序 = QwenPaw Agent 页语义顺序（MCP → 工具 → 技能 → 频道 → 审批模式
+    // → Coding CLI → 环境变量 → LLM 调优 → Worker 插件 → 运行时升级）。
+    // 非 QwenPaw 时五张能力卡的 desc 换「配置面（surface 驱动）」口径，
+    // QwenPaw 保持原文案（面板实现不变，见 renderContent）。
+    list.push(
+      {
+        id: "mcp",
+        title: tr("MCP"),
+        desc: nonQwenpaw
+          ? tr("该运行时的 MCP 配置面（surface 驱动）")
+          : (worker.mcpServers?.length ?? 0) > 0
+            ? tr("{n} 个 server（CRD 声明 + 自注册合并视图）", {
+                n: worker.mcpServers?.length ?? 0,
+              })
+            : tr("CRD 声明 + Worker 自注册合并视图"),
+        icon: PlugIcon,
+        width: 720,
+      },
+      {
+        id: "tools",
+        title: tr("工具"),
+        desc: nonQwenpaw
+          ? tr("该运行时的工具配置面（surface 驱动）")
+          : tr("内置工具启用列表"),
+        icon: WrenchIcon,
+        width: 720,
+      },
+      {
+        id: "skills",
+        title: tr("技能"),
+        desc: nonQwenpaw
+          ? tr("该运行时的技能配置面（surface 驱动）")
+          : (worker.skills?.length ?? 0) > 0
+            ? tr("已配 {n} 项 · 目录 / 分配矩阵", { n: worker.skills?.length ?? 0 })
+            : tr("目录 / 分配矩阵（MCP 独立卡）"),
+        icon: BrainIcon,
+        width: 900,
+      },
+      {
+        id: "channels",
+        title: tr("频道"),
+        desc: nonQwenpaw
+          ? tr("该运行时的频道配置面（surface 驱动）")
+          : tr("频道配置 + 二维码授权"),
+        icon: MessageIcon,
+        width: 720,
+      },
+      {
+        id: "approval",
+        title: tr("审批模式"),
+        desc: nonQwenpaw
+          ? tr("该运行时的审批配置面（surface 驱动）")
+          : tr("审批档位"),
+        icon: ShieldIcon,
+        width: 720,
+      },
+      {
+        id: "cli",
+        title: tr("Coding CLI"),
+        desc: tr("安装 / 升级 / 配置（1.2.5+）"),
+        icon: CodeIcon,
+        width: 720,
+      },
+    );
     // 环境变量卡——仅 envEditable === true（L2 隐藏，与旧拓扑同门控）。
     if (worker.envEditable === true) {
       list.push({
@@ -145,33 +210,14 @@ export default function ResourceCards({
     // LLM 调优卡 = QwenPaw 原生能力（重试/限流/流式超时）。OpenClaw /
     // Hermes 的等价字段在各自 surface 里（models/gateway/agent face），
     // 由「运行配置」渲染，不再重复一张卡。
-    list.push({
-      id: "llm",
-      title: tr("LLM 调优"),
-      desc: tr("重试 / 限流 + 流式超时（流式组热生效）"),
-      icon: BrainIcon,
-      width: 720,
-      qwenpawOnly: true,
-    });
     list.push(
       {
-        id: "cli",
-        title: tr("Coding CLI"),
-        desc: tr("安装 / 升级 / 配置（1.2.5+）"),
-        icon: CodeIcon,
+        id: "llm",
+        title: tr("LLM 调优"),
+        desc: tr("重试 / 限流 + 流式超时（流式组热生效）"),
+        icon: BrainIcon,
         width: 720,
-      },
-      {
-        id: "mcp",
-        title: tr("MCP"),
-        desc:
-          (worker.mcpServers?.length ?? 0) > 0
-            ? tr("{n} 个 server（CRD 声明 + 自注册合并视图）", {
-                n: worker.mcpServers?.length ?? 0,
-              })
-            : tr("CRD 声明 + Worker 自注册合并视图"),
-        icon: PlugIcon,
-        width: 720,
+        qwenpawOnly: true,
       },
       {
         id: "plugins",
@@ -181,37 +227,6 @@ export default function ResourceCards({
         width: 720,
         // QwenPaw-only：端点 = Controller 转发 worker QwenPaw /api/plugins。
         qwenpawOnly: true,
-      },
-      {
-        id: "skills",
-        title: tr("技能"),
-        desc:
-          (worker.skills?.length ?? 0) > 0
-            ? tr("已配 {n} 项 · 目录 / 分配矩阵", { n: worker.skills?.length ?? 0 })
-            : tr("目录 / 分配矩阵（MCP 独立卡）"),
-        icon: BrainIcon,
-        width: 900,
-      },
-      {
-        id: "tools",
-        title: tr("工具"),
-        desc: tr("内置工具启用列表"),
-        icon: WrenchIcon,
-        width: 720,
-      },
-      {
-        id: "channels",
-        title: tr("频道"),
-        desc: tr("频道配置 + 二维码授权"),
-        icon: MessageIcon,
-        width: 720,
-      },
-      {
-        id: "approval",
-        title: tr("审批模式"),
-        desc: tr("审批档位"),
-        icon: ShieldIcon,
-        width: 720,
       },
       {
         id: "upgrade",

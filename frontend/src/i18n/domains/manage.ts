@@ -128,6 +128,22 @@ export const manageDict: Record<string, { en: string }> = {
   "QwenPaw 运行时就地升级（L1 · 二次确认）": {
     en: "In-place QwenPaw runtime upgrade (L1 · double confirm)",
   },
+  // 非 QwenPaw 运行时能力卡 desc（surface 驱动口径，与 cfg 卡同句式）
+  "该运行时的 MCP 配置面（surface 驱动）": {
+    en: "This runtime's MCP config surface (surface-driven)",
+  },
+  "该运行时的工具配置面（surface 驱动）": {
+    en: "This runtime's tools config surface (surface-driven)",
+  },
+  "该运行时的技能配置面（surface 驱动）": {
+    en: "This runtime's skills config surface (surface-driven)",
+  },
+  "该运行时的频道配置面（surface 驱动）": {
+    en: "This runtime's channels config surface (surface-driven)",
+  },
+  "该运行时的审批配置面（surface 驱动）": {
+    en: "This runtime's approval config surface (surface-driven)",
+  },
 
   // ── CRD 域（P4）──
   "创建团队": { en: "Create Team" },
