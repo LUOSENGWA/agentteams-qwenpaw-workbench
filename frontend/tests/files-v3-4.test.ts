@@ -143,9 +143,14 @@ console.log("files-v3-4: all assertions passed");
 
 // ── 列表列：Finder 风格类型列（F-COLS）──
 {
-  const { fileTypeLabel, detailedTypeLabel } = await import("../src/manage/FilesSection.tsx");
+  const { fileTypeLabel, columnsFor, listGrid } = await import("../src/manage/FilesSection.tsx");
   assert.equal(fileTypeLabel({ name: "a.PNG", type: "file", size: 1 }), "PNG");
   assert.equal(fileTypeLabel({ name: "docs", type: "dir" }), "文件夹");
-  assert.equal(detailedTypeLabel({ name: "a.png", type: "file", size: 1 }), "图片/PNG");
-  assert.equal(detailedTypeLabel({ name: "a.bin", type: "file", size: 1 }), "文件/BIN");
+  assert.equal(listGrid({ modified: true, created: false }), "minmax(0, 1fr) 72px 84px 120px 96px");
+  assert.equal(listGrid({ modified: true, created: true }), "minmax(0, 1fr) 72px 84px 120px 120px 96px");
+  assert.equal(columnsFor([{ name: "a", type: "file", size: 1 }]).showCreated, false);
+  assert.equal(
+    columnsFor([{ name: "a", type: "file", size: 1, createdAt: "2026-01-01T00:00:00Z" }]).showCreated,
+    true,
+  );
 }

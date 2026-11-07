@@ -3,6 +3,9 @@
 // 原域字典，此处只收本重构新增、且全库字典无键的中文字符串）。
 
 export const manageDict: Record<string, { en: string }> = {
+  "修改": { en: "Modified" },
+  "创建": { en: "Created" },
+
   // ── 文件列表：Finder 风格列 ──
   "类型": { en: "Kind" },
   "详细类型": { en: "Detailed type" },

@@ -324,9 +324,17 @@ export function detailState(o: {
 /** 16.67 列表列模板（表头行与数据行共用 → 列宽稳定）：
  * 名称（伸缩）/ 大小 / 时间（更新·删除）/ 操作（定宽）。
  * #1669：操作列 64→96px（2×40px 图标按钮 + 8px 间距，适配 40px 触控目标）。 */
-export const LIST_GRID = "minmax(0, 1fr) 72px 84px 132px 120px 96px";
-/** F-V3-3：整批无 updatedAt → 不渲染「更新时间」列（表头/行同步收窄）。 */
-export const LIST_GRID_NO_TIME = "minmax(0, 1fr) 72px 84px 132px 96px";
+/** 列模板按可见列拼（名称 / 大小 / 类型 / 修改 / 创建 / 操作）。 */
+export function listGrid(o: { modified: boolean; created: boolean }): string {
+  const cols = ["minmax(0, 1fr)", "72px", "84px"];
+  if (o.modified) cols.push("120px");
+  if (o.created) cols.push("120px");
+  cols.push("96px");
+  return cols.join(" ");
+}
+/** 兼容导出（历史测试引用；默认 = 三列 + 操作）。 */
+export const LIST_GRID = listGrid({ modified: true, created: false });
+export const LIST_GRID_NO_TIME = listGrid({ modified: false, created: false });
 
 /** 扩展名（小写，无扩展名 → ""）。 */
 function extOf(name: string): string {
@@ -341,38 +349,26 @@ export function fileTypeLabel(e: HumanFileEntry): string {
   return ext ? ext.toUpperCase() : "文件";
 }
 
-/** 详细类型列：把扩展名归到「图片 / 文档 / 文本 / 表格 / 数据 / 视频 /
- * 音频 / 压缩包」大类（Finder 的 Detailed Type 语义）。 */
-export function detailedTypeLabel(e: HumanFileEntry): string {
-  if (isEntryDir(e)) return "文件夹";
-  const ext = extOf(entryDisplayName(e));
-  const group: Record<string, string> = {
-    png: "图片", jpg: "图片", jpeg: "图片", gif: "图片", webp: "图片", svg: "图片", bmp: "图片", ico: "图片",
-    pdf: "文档", doc: "文档", docx: "文档", ppt: "文档", pptx: "文档",
-    md: "文本", txt: "文本", log: "文本", rst: "文本",
-    csv: "表格", xls: "表格", xlsx: "表格", tsv: "表格",
-    json: "数据", yaml: "数据", yml: "数据", xml: "数据", toml: "数据", ini: "数据",
-    mp4: "视频", mov: "视频", webm: "视频", mkv: "视频",
-    mp3: "音频", wav: "音频", flac: "音频", m4a: "音频",
-    zip: "压缩包", tar: "压缩包", gz: "压缩包", tgz: "压缩包", rar: "压缩包", "7z": "压缩包",
-    js: "代码", ts: "代码", tsx: "代码", jsx: "代码", py: "代码", go: "代码", rs: "代码",
-    sh: "代码", css: "代码", html: "代码",
-  };
-  const g = group[ext];
-  if (!g) return ext ? `文件/${ext.toUpperCase()}` : "文件";
-  return `${g}/${ext.toUpperCase()}`;
-}
-
 /** F-V3-3 列自适应（纯函数；tests/files-v3-3 断言）：整批条目都没有
  * updatedAt → 不渲染「更新时间」列（表头 / 行 / grid 模板同步）。 */
 export function columnsFor(entries: HumanFileEntry[]): {
   showUpdatedAt: boolean;
+  showCreated: boolean;
   grid: string;
 } {
   const showUpdatedAt = entries.some(
     (e) => typeof e.updatedAt === "string" && e.updatedAt !== "",
   );
-  return { showUpdatedAt, grid: showUpdatedAt ? LIST_GRID : LIST_GRID_NO_TIME };
+  // 创建时间：当前控制器（S3 / embedded）不返回，只有后端提供时才成列。
+  const showCreated = entries.some(
+    (e) => typeof (e as { createdAt?: string }).createdAt === "string" &&
+      (e as { createdAt?: string }).createdAt !== "",
+  );
+  return {
+    showUpdatedAt,
+    showCreated,
+    grid: listGrid({ modified: showUpdatedAt, created: showCreated }),
+  };
 }
 
 /** F-V3-3 静默轮询门控（纯函数；tests/files-v3-3 断言）：顶层 tab 激活 &&
@@ -1053,8 +1049,8 @@ function ListArea({
           <span>{tr("名称")}</span>
           <span style={{ textAlign: "right" }}>{tr("大小")}</span>
           <span>{tr("类型")}</span>
-          <span>{tr("详细类型")}</span>
-          {cols.showUpdatedAt ? <span>{tr("更新时间")}</span> : null}
+          {cols.showUpdatedAt ? <span>{tr("修改")}</span> : null}
+          {cols.showCreated ? <span>{tr("创建")}</span> : null}
           <span>{tr("操作")}</span>
         </div>
       ) : null}
@@ -1069,6 +1065,7 @@ function ListArea({
           compact={compact}
           grid={cols.grid}
           showUpdatedAt={cols.showUpdatedAt}
+          showCreated={cols.showCreated}
         />
       ))}
       {/* #1518：仅 nextKey 为 string（满页还有下一页）时显「加载更多」；
@@ -1094,11 +1091,13 @@ function FileRow({
   compact = false,
   grid = LIST_GRID,
   showUpdatedAt = true,
+  showCreated = false,
 }: SubProps & {
   entry: HumanFileEntry;
   compact?: boolean;
   grid: string;
   showUpdatedAt: boolean;
+  showCreated: boolean;
 }) {
   const isDir = isEntryDir(entry);
   const name = entryDisplayName(entry);
@@ -1307,17 +1306,6 @@ function FileRow({
       >
         {tr(fileTypeLabel(entry))}
       </span>
-      <span
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {tr(detailedTypeLabel(entry))}
-      </span>
       {showUpdatedAt ? (
         <span
           style={{
@@ -1329,6 +1317,19 @@ function FileRow({
           }}
         >
           {fmtTs(entry.updatedAt)}
+        </span>
+      ) : null}
+      {showCreated ? (
+        <span
+          style={{
+            fontSize: 12,
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {fmtTs((entry as { createdAt?: string }).createdAt)}
         </span>
       ) : null}
       {actionsCell}
@@ -1354,6 +1355,9 @@ function TreeRowView({
   onToggle,
   onRetry,
   selected,
+  grid,
+  showUpdatedAt,
+  showCreated,
 }: SubProps & {
   row: TreeRow;
   focused: boolean;
@@ -1363,6 +1367,9 @@ function TreeRowView({
   onToggle: (row: TreeRow) => void;
   onRetry: (row: TreeRow) => void;
   selected?: boolean;
+  grid: string;
+  showUpdatedAt: boolean;
+  showCreated: boolean;
 }) {
   // flattenTree 恒透传 entry；?? 兜底仅防 name-only 老形态条目。
   const entry = row.entry ?? { name: row.name };
@@ -1412,7 +1419,7 @@ function TreeRowView({
       }}
       style={{
         display: "grid",
-        gridTemplateColumns: "16px minmax(0, 1fr) auto",
+        gridTemplateColumns: `16px ${grid}`,
         gap: 8,
         alignItems: "center",
         minHeight: "var(--hf-row-min, 44px)",
@@ -1474,6 +1481,55 @@ function TreeRowView({
           {isDir ? " ›" : ""}
         </span>
       </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: t.textSecondary,
+          textAlign: "right",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {sizeCell(entry)}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: t.textSecondary,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {tr(fileTypeLabel(entry))}
+      </span>
+      {showUpdatedAt ? (
+        <span
+          style={{
+            fontSize: 12,
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {fmtTs(entry.updatedAt)}
+        </span>
+      ) : null}
+      {showCreated ? (
+        <span
+          style={{
+            fontSize: 12,
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {fmtTs((entry as { createdAt?: string }).createdAt)}
+        </span>
+      ) : null}
       <span
         style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap, flexShrink: 0 }}
       >
@@ -1674,6 +1730,7 @@ function TreeArea({
   };
 
   const count = fs.files.length;
+  const cols = columnsFor(fs.files);
   return (
     <div
       tabIndex={0}
@@ -1727,6 +1784,27 @@ function TreeArea({
       ) : null}
       {/* 行 key = index（老形态嵌套可重名 → path 键会碰撞；行序由
        * flattenTree 深度优先稳定给出）。 */}
+      {fs.status !== "err" && count > 0 ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `16px ${cols.grid}`,
+            gap: 8,
+            alignItems: "center",
+            padding: "0 8px",
+            fontSize: 12,
+            color: t.textSecondary,
+          }}
+        >
+          <span />
+          <span>{tr("名称")}</span>
+          <span style={{ textAlign: "right" }}>{tr("大小")}</span>
+          <span>{tr("类型")}</span>
+          {cols.showUpdatedAt ? <span>{tr("修改")}</span> : null}
+          {cols.showCreated ? <span>{tr("创建")}</span> : null}
+          <span>{tr("操作")}</span>
+        </div>
+      ) : null}
       {fs.status !== "err" && count > 0
         ? rows.map((r, i) => (
             <TreeRowView
@@ -1743,6 +1821,9 @@ function TreeArea({
               onToggle={toggleRow}
               onRetry={loadChildren}
               selected={r.isDir && selectedDir === r.path}
+              grid={cols.grid}
+              showUpdatedAt={cols.showUpdatedAt}
+              showCreated={cols.showCreated}
             />
           ))
         : null}
