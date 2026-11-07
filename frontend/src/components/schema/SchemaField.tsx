@@ -419,13 +419,17 @@ export function SchemaField({
           />
         );
       case "boolean":
+        // 网格子项默认 stretch：Switch 作为直接网格子项会被拉满整行。
+        // 用 flex 容器把它固定在左侧、保持开关自身宽度。
         return (
-          <antd.Switch
-            size="small"
-            disabled={disabled}
-            checked={value === true}
-            onChange={(c: boolean) => onChange(c)}
-          />
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <antd.Switch
+              size="small"
+              disabled={disabled}
+              checked={value === true}
+              onChange={(c: boolean) => onChange(c)}
+            />
+          </div>
         );
       case "secret":
         // 脱敏哨兵 → 置空 + 「已设置，未修改时保持原值」占位，不改草稿；

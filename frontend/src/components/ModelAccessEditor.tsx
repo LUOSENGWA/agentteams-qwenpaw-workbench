@@ -211,19 +211,22 @@ function EntriesEditor({
 
   // 选择态自持：provider 可以「只选不配对」（还没选模型时也要留住选择），
   // 因此不能从 rows 反推——rows 是提交形态，选择是编辑中间态。
-  const derived = pairsToSelection(rows);
-  const [sel, setSel] = React.useState<PairSelection>(derived);
-  const lastRowsRef = React.useRef(rows);
+  // 选择态自持。外部值变化时按「内容」同步（父组件每次 render 都可能给
+  // 新数组引用，按引用比较会把刚选中的 provider 清空）。
+  const [sel, setSel] = React.useState<PairSelection>(() => pairsToSelection(rows));
+  const emittedRef = React.useRef<string>(JSON.stringify(pairsToSelection(rows)));
   React.useEffect(() => {
-    if (lastRowsRef.current !== rows) {
-      lastRowsRef.current = rows;
-      setSel(pairsToSelection(rows));
-    }
+    const incoming = JSON.stringify(pairsToSelection(rows));
+    if (incoming === emittedRef.current) return; // 自己刚提交的，不回灌
+    emittedRef.current = incoming;
+    setSel(JSON.parse(incoming) as PairSelection);
   }, [rows]);
 
   const apply = (next: PairSelection) => {
     setSel(next);
-    onChange(selectionToPairs(next, rows, modelsByProvider));
+    const pairs = selectionToPairs(next, rows, modelsByProvider);
+    emittedRef.current = JSON.stringify(pairsToSelection(pairs));
+    onChange(pairs);
   };
 
   const modelOptions = modelOptionsFor(sel, allModels, modelsByProvider);
@@ -612,15 +615,22 @@ export default function ModelAccessEditor(props: ModelAccessEditorProps) {
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <antd.Input
+                        <antd.Select
                           value={cli}
                           disabled={!cliEd}
-                          placeholder={tr("CLI 名（如 qwen-code）")}
+                          size="small"
                           style={{ width: 180 }}
-                          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                            renameCli(i, cli, e.target.value)
-                          }
-                          aria-label={tr("CLI 名（如 qwen-code）")}
+                          options={[
+                            { value: "qwen-code", label: "Qwen Code" },
+                            { value: "opencode", label: "OpenCode" },
+                            { value: "qoder", label: "Qoder" },
+                          ].filter(
+                            (o) =>
+                              o.value === cli ||
+                              !Object.keys(scopes[i].codingCli ?? {}).includes(o.value),
+                          )}
+                          onChange={(v: string) => renameCli(i, cli, v)}
+                          aria-label={tr("Coding CLI")}
                         />
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                           <antd.Switch

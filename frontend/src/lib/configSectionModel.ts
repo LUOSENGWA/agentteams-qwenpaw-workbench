@@ -311,13 +311,44 @@ export function buildFaceSections(surface: RuntimeSurface): FaceSection[] {
   });
 }
 
-/** 只保留属于给定能力桶的 face 字段（保持 face 顺序）。 */
+/** 字段级归属：face 已属于某能力桶 → 跟随 face；config face 内的字段
+ * 再按 group 前段判定（OpenClaw/Hermes 的 approval.*、mcp.*、channels.*、
+ * skills.*、tools.* 分组常常嵌在 config face 里）。 */
+export function fieldBucket(
+  runtime: string,
+  faceId: string,
+  group: string,
+): CapabilityBucket {
+  const byFace = faceBucket(runtime, faceId);
+  if (byFace !== "config") return byFace;
+  const g = (group || "").trim().toLowerCase();
+  if (!g) return "config";
+  if (g === "mcp" || g.startsWith("mcp.")) return "mcp";
+  if (g === "approval" || g.startsWith("approval.") || g.startsWith("approvals")) return "approval";
+  if (g === "channels" || g.startsWith("channels.") || g === "messaging" || g.startsWith("messaging."))
+    return "channels";
+  if (g === "skills" || g.startsWith("skills.") || g.startsWith("skill")) return "skills";
+  if (g === "tools" || g.startsWith("tools.") || g === "toolset" || g.startsWith("toolsets"))
+    return "tools";
+  return "config";
+}
+
+/** 只保留属于给定能力桶的字段（face 顺序 + face 内分组顺序不变；
+ * 过滤后为空的 face / 分组不出现）。 */
 export function filterByBucket(
   runtime: string,
   surface: RuntimeSurface,
   bucket: CapabilityBucket,
 ): FaceSection[] {
-  return buildFaceSections(surface).filter(
-    (sec) => faceBucket(runtime, String(sec.id)) === bucket,
-  );
+  const out: FaceSection[] = [];
+  for (const face of buildFaceSections(surface)) {
+    const keep = (f: PanelField): boolean => fieldBucket(runtime, face.id, f.group ?? "") === bucket;
+    const fields = face.fields.filter(keep);
+    if (fields.length === 0) continue;
+    const subSections = face.subSections
+      .map((sub) => ({ ...sub, fields: sub.fields.filter(keep) }))
+      .filter((sub) => sub.fields.length > 0);
+    out.push({ id: face.id, label: face.label, fields, subSections });
+  }
+  return out;
 }
