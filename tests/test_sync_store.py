@@ -18,7 +18,6 @@ from agentteams_connector.file_sync_engine import (
     _iso,
 )
 from agentteams_connector.sync_store import (
-    MAX_CHAT_MESSAGES,
     MAX_HTTP_BODY_BYTES,
     MAX_LRU_ENTRIES,
     SyncStore,
@@ -92,12 +91,16 @@ def test_path_layout(tmp_path):
     assert eng.state_file == root / ".sync" / "state.json"
     assert eng.lock_file == root / ".sync" / "lock"
     assert eng.conflicts_log == root / ".sync" / "conflicts.log"
-    # cache 三类目录
+    # cache：http/lru 目录 + 聊天库（chat.db 惰性建；旧 cache/chat 不再创建）
     st = eng.store
     assert st.http_dir == root / "cache" / "http"
-    assert st.chat_dir == root / "cache" / "chat"
+    assert st.chat_dir == root / "cache" / "chat"  # 旧布局：仅作迁移源
     assert st.lru_dir == root / "cache" / "lru"
-    assert st.http_dir.is_dir() and st.chat_dir.is_dir() and st.lru_dir.is_dir()
+    assert st.http_dir.is_dir() and st.lru_dir.is_dir()
+    assert not st.chat_dir.exists()
+    assert st.chat_db.db_path == root / "cache" / "chat.db"
+    assert not st.chat_db.db_path.exists()  # 构造不连库（首次使用时才建）
+    st.close()
     # http 文件名 key = sha1(method+url)（method 归一大写）
     assert http_key("GET", "https://x.example/a") == http_key(
         "get", "https://x.example/a"
@@ -385,33 +388,75 @@ def test_http_oversized_body_not_persisted(tmp_path):
     assert store.http_get("GET", url)["body"] == b"small"
 
 
-# ── 11) chat 每房窗口（≤500，保留最新）+ 回读 ──────────────────────
+# ── 11) chat：SQLite 增量 upsert（永久保留）+ 回读 ─────────────────
 
 
-def test_chat_cache_window_cap_and_roundtrip(tmp_path):
+def test_chat_store_incremental_roundtrip(tmp_path):
     store = SyncStore(tmp_path / "agentteams")
     store.ensure_dirs()
     room = "!room123:matrix.example.com"
-    msgs = [{"i": i, "body": f"m{i}"} for i in range(600)]
+    msgs = [{"event_id": f"$m{i}", "origin_server_ts": i, "body": f"m{i}"} for i in range(600)]
     n = store.chat_put(room, msgs, end="cursor-599")
-    assert n == MAX_CHAT_MESSAGES  # 截断到 500
-    # 落盘文件名 = 安全化后的 roomId（! / : → _）
-    files = list(store.chat_dir.glob("*.json"))
-    assert len(files) == 1
-    assert files[0].name == "_room123_matrix.example.com.json"
+    assert n == 600  # 不按 500 截断历史
+    assert store.chat_db.db_path.is_file()
+    assert not store.chat_dir.exists()  # 不再写 JSON 目录
     got = store.chat_get(room)
     assert got is not None
     assert got["end"] == "cursor-599"
-    assert len(got["messages"]) == 500
-    assert got["messages"][0]["i"] == 100  # 保留最新 500 条
-    assert got["messages"][-1]["i"] == 599
-    # 覆盖写：新窗口整体替换
-    assert store.chat_put(room, [{"i": 700}], end="cursor-700") == 1
+    assert len(got["messages"]) == 600
+    assert got["messages"][0]["event_id"] == "$m0"
+    assert got["messages"][-1]["event_id"] == "$m599"
+    # 增量写：同一个 id 覆盖、旧历史保留
+    assert store.chat_put(room, [{"event_id": "$m0", "origin_server_ts": 0, "body": "edited"}]) == 1
     got2 = store.chat_get(room)
-    assert got2["messages"] == [{"i": 700}]
-    assert got2["end"] == "cursor-700"
-    # 未知房间 → None
+    assert len(got2["messages"]) == 600
+    assert got2["messages"][0]["body"] == "edited"
+    assert got2["end"] == "cursor-599"  # 不带 end → 游标保留
+    # 按 event 取窗口（服务端切片，前端免拉整窗）
+    win = store.chat_window(room, "$m10", 1, 1)
+    assert [m["event_id"] for m in win["messages"]] == ["$m9", "$m10", "$m11"]
+    # 未知房间 → None（路由层转 200 空窗口）
     assert store.chat_get("!nobody:matrix.example.com") is None
+    assert store.chat_window("!nobody:matrix.example.com", "$m10") is None
+    store.close()
+
+
+def test_chat_prune_evicts_by_lru_over_db_size(tmp_path):
+    store = SyncStore(tmp_path / "agentteams")
+    store.ensure_dirs()
+    for i in range(4):
+        store.chat_put(
+            f"!room{i}:hs",
+            [
+                {"event_id": f"$r{i}-{k}", "origin_server_ts": k, "body": "x" * 400}
+                for k in range(100)
+            ],
+        )
+        # 显式 last_access 序：room0 最旧 … room3 最新
+        store.chat_db._conn.execute(
+            "UPDATE rooms SET last_access=? WHERE room_id=?",
+            (1_760_000_000 + i, f"!room{i}:hs"),
+        )
+        store.chat_db._conn.commit()
+    store.chat_db._checkpoint()  # WAL 落主库后度量（上限口径不含虚高 WAL）
+    size = store.chat_bytes()
+    # 1) 上限内 → no-op
+    assert store.chat_prune(max_bytes=size * 10) == {"removedFiles": 0, "freedBytes": 0}
+    # 2) 上限压到一半 → 按 last_access 淘汰最旧房间，至少留 1 房
+    got = store.chat_prune(max_bytes=size // 2)
+    assert got["removedFiles"] >= 1
+    assert got["freedBytes"] > 0
+    assert store.chat_bytes() <= size // 2
+    assert not store.chat_db.has_room("!room0:hs")
+    assert store.chat_db.has_room("!room3:hs")
+    store.close()
+
+
+def test_chat_prune_missing_dir_is_noop(tmp_path):
+    store = SyncStore(tmp_path / "agentteams")  # 不 ensure_dirs
+    assert store.chat_prune() == {"removedFiles": 0, "freedBytes": 0}
+    store.close()
+
 
 
 # ── 12) /sync/state 端点字段补充（root/lastRunAt/conflicts）────────

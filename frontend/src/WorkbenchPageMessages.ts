@@ -157,8 +157,8 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
   const refreshMessages = React.useCallback(async (room: TeamRoom, silent = false) => {
     if (!silent) setMessagesLoading(true);
     try {
-      // ① 本地持久缓存（IndexedDB）：先上屏旧消息（离线可读），随后网络
-      // 首屏合并覆盖。只取最近 N 条——首屏窗口大小与网络首屏一致。
+      // ① 本地持久缓存（插件后端 cache/chat.db）：先上屏旧消息（离线可读），
+      // 随后网络首屏合并覆盖。只取最近 N 条——首屏窗口大小与网络首屏一致。
       const persisted = silent
         ? []
         : await getCachedRecent(cacheAccount, room.room_id, 50);
@@ -208,8 +208,9 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       setRoomError(page.error === "not_found" ? "not_found" : "");
       // I6：缓存存全量已加载历史（含 loadOlder 前插）+ 窗口游标（不回退）。
       setCachedMessages(room.room_id, { ...page, end: windowEnd }, merged);
-      // 本地持久缓存：本页落盘 + 房间预算裁剪（LRU 逐更早）；首次开房
-      // 顺带整理一次全局房间预算（每会话一次）。
+      // 本地持久缓存：本页增量落库（服务端 event_id upsert，历史永久保留）；
+      // 首次开房顺带整理一次全局容量（2GB 房间 LRU，每会话一次）。
+      // pruneCacheRoom 已退役（保留调用仅为接口兼容，内部 no-op）。
       setMessagesFromCache(false);
       void putCachedMessages(cacheAccount, room.room_id, page.messages);
       void pruneCacheRoom(cacheAccount, room.room_id);
@@ -278,7 +279,7 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
   // 旧版（R2）：串行翻页直到目标进窗口（上限 ORIGINAL_PAGE_CAP=20 页），
   // 深层目标慢且易 exhausted。新版定位优先级：
   //   ① 目标已在窗口 → 就地定位（零网络）；
-  //   ② IndexedDB 缓存命中 → 目标 ±25 条注入时间线（零网络）；
+  //   ② 本地库（cache/chat.db）命中 → 目标 ±25 条注入时间线（零网络）；
   //   ③ /context（GET /rooms/{id}/context/{eventId}?limit=30）→ 前后文
   //      合并进缓存与当前窗口（一次请求，不再逐页翻）；
   //   ④ /context 不可用（404/501/网络错/空）→ 回退 R2 显式分页循环

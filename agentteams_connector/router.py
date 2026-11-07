@@ -26,6 +26,8 @@ Frontend plugin fetches these same-origin endpoints (no CORS):
 - ``POST /agentteams-proxy/millforge/prompt`` 自定义团队「描述需求」提示词（PHILOSOPHY + schema + §十骨架）
 - ``POST /agentteams-proxy/millforge/parse-team-json`` LLM JSON 校验（Draft7，逐字段 path+message）
 - ``GET /agentteams-proxy/millforge/builds`` / ``.../injections`` 编译/注入历史
+- ``GET/PUT/DELETE /agentteams-proxy/storage/chat/{room_id}`` 聊天消息 SQLite 读写（cache/chat.db，永久保留 + 2GB 房间 LRU）
+- ``GET /agentteams-proxy/storage/state`` / ``POST …/storage/prune`` 缓存容量状态/整理
 - ``{METHOD}/{agentteams-proxy}/{matrix|controller}/{path}`` forwarded
 
 Auto-failover: addresses are ordered lists (LAN first, WAN second). Every
@@ -581,6 +583,7 @@ from .routers import (  # noqa: E402
     matrix_api,
     node_version_api,
     status_api,
+    storage_api,
     sync_api,
     team_files_api,
     teams_api,
@@ -667,6 +670,9 @@ def build_router() -> APIRouter:
     # 引擎为同步函数，handler 内经 asyncio.to_thread 跑工作线程。
     # 须在 catch-all 之前，固定路径优先）。
     router.include_router(sync_api.build_sync_router())
+    # 插件存储域（聊天缓存磁盘化：/storage/chat 读写 + state/prune。
+    # 前端 chatCache 适配器唯一数据面；固定路径，须在 catch-all 之前）。
+    router.include_router(storage_api.build_storage_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     # 条件请求缓存层（批次 4）：全部 GET 路由统一包 ETag/Last-Modified →
