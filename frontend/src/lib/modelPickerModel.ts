@@ -3,6 +3,8 @@
 
 export interface ModelPickerProvider {
   name: string;
+  /** 展示名（缺省 = name）。name 仍是回传的稳定标识（如「跟随 Worker」哨兵值）。 */
+  label?: string;
   models?: string[];
 }
 

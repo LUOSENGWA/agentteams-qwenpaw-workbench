@@ -28,6 +28,8 @@ export interface ModelPickerProps {
   readOnly?: boolean;
   disabled?: boolean;
   size?: "small" | "middle" | "large";
+  /** 单行紧凑布局（表格行/设置行）：无标签、Provider 132 + 模型 240。 */
+  inline?: boolean;
   providerPlaceholder?: string;
   modelPlaceholder?: string;
   /** 只读态文案（未设置时显示占位文案）。 */
@@ -49,13 +51,17 @@ export default function ModelPicker(props: ModelPickerProps): JSX.Element {
     readOnly = false,
     disabled = false,
     size = "large",
+    inline = false,
     providerPlaceholder,
     modelPlaceholder,
     emptyText,
     tr,
   } = props;
 
-  const providerOptions = providers.map((p) => ({ value: p.name, label: p.name }));
+  const providerOptions = providers.map((p) => ({
+    value: p.name,
+    label: p.label ?? p.name,
+  }));
   const modelOptions = modelOptionsForProvider(providers, provider).map((m) => ({
     value: m,
     label: m,
@@ -80,9 +86,15 @@ export default function ModelPicker(props: ModelPickerProps): JSX.Element {
   }
 
   return (
-    <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+    <div
+      style={
+        inline
+          ? { display: "flex", gap: 6, alignItems: "center", minWidth: 0, flexWrap: "wrap" }
+          : { display: "grid", gap: 8, minWidth: 0 }
+      }
+    >
       <antd.Select
-        style={{ width: "100%" }}
+        style={inline ? { width: 132 } : { width: "100%" }}
         size={size}
         allowClear={allowEmpty}
         disabled={disabled}
@@ -97,7 +109,7 @@ export default function ModelPicker(props: ModelPickerProps): JSX.Element {
         {...searchable}
       />
       <antd.Select
-        style={{ width: "100%" }}
+        style={inline ? { width: 240 } : { width: "100%" }}
         size={size}
         allowClear={allowEmpty}
         disabled={disabled}

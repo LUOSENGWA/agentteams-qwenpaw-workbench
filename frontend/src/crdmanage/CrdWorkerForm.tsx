@@ -12,12 +12,11 @@ import {
 } from "../modelCatalog";
 import {
   extractGatewayLists,
-  filterModelOptionsByProvider,
   modelVerdictText,
-  providerForModel,
   providerModelMismatch,
   validateModelValue,
 } from "../modelUnion";
+import ModelPicker, { type ModelPickerProvider } from "../components/ModelPicker";
 import type { ThemeColors } from "../theme";
 import { CheckIcon, ClipIcon, CloseIcon, WarnIcon } from "../components/icons";
 import FieldLabel from "./FieldLabel";
@@ -51,7 +50,6 @@ export default function CrdWorkerForm({
 nw,
 setNw,
 doCreateWorker,
-modelOptions,
 modelCandidates,
 loadSoulFile,
 tr,
@@ -67,6 +65,19 @@ t,
   const [gatewayOpts, setGatewayOpts] = React.useState<
     ModelSelectionOption[] | null
   >(null);
+
+  // ModelPicker 的 Provider→Model 候选（网关 alias 按 binding.providerName 归组）。
+  const pickerProviders: ModelPickerProvider[] = React.useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const p of providers) map.set(p.name, new Set());
+    for (const o of gatewayOpts ?? []) {
+      const pn = o.binding?.providerName;
+      if (!pn) continue;
+      if (!map.has(pn)) map.set(pn, new Set());
+      map.get(pn)?.add(o.alias);
+    }
+    return [...map.entries()].map(([name, set]) => ({ name, models: [...set].sort() }));
+  }, [providers, gatewayOpts]);
   React.useEffect(() => {
     let live = true;
     void (async () => {
@@ -143,37 +154,18 @@ deepseek-harness 补上（上游 RuntimeDeepSeekHarness 常量实锤）、
             ]}
             style={{ width: "100%" }}
           />
-          {/* C1a-2 provider-first：Provider 在模型前（与 ModelEditModal /
-CrdCfgModal 同款成对控件）——实际转发由 Provider 决定，model 只是 alias。 */}
-          <FieldLabel>{tr("Provider（留空=跟随默认）")}</FieldLabel>
-          <antd.AutoComplete
-            size="small"
-            allowClear
-            style={{ width: "100%" }}
-            options={providers.map((p) => ({ value: p.name }))}
-            value={nw.provider}
-            onChange={(v: string) =>
-              setNw((p) => ({ ...p, provider: v || "" }))
-            }
-          />
+          {/* C1a-2 provider-first：唯一 ModelPicker（Provider → Model，候选按
+Provider 过滤）——实际转发由 Provider 决定，model 只是 alias。 */}
           <FieldLabel>{tr("模型（留空=跟随集群默认）")}</FieldLabel>
-          <antd.AutoComplete
-            size="small"
-            placeholder={tr("模型（留空=跟随集群默认；下拉=在服∪在用∪Higress alias）")}
-            options={filterModelOptionsByProvider(
-              modelOptions,
-              gatewayOpts ?? [],
-              nw.provider,
-            ) as { value: string }[]}
-            value={nw.model}
-            onChange={(v: string) => {
-              setNw((p) => ({ ...p, model: v }));
-              // configured alias → binding.providerName 仅当 Provider 为空
-              // 才回填（显式 Provider 是用户意图，不覆盖）。
-              const auto = providerForModel(gatewayOpts ?? [], v);
-              if (auto && !nw.provider) setNw((p) => ({ ...p, provider: auto }));
-            }}
-            style={{ width: "100%" }}
+          <ModelPicker
+            tr={tr}
+            allowEmpty
+            providers={pickerProviders}
+            provider={nw.provider}
+            model={nw.model}
+            providerPlaceholder={tr("Provider（留空=跟随默认）")}
+            modelPlaceholder={tr("模型（留空=跟随集群默认）")}
+            onChange={(p: string, m: string) => setNw((prev) => ({ ...prev, provider: p, model: m }))}
           />
           {providerModelMismatch(
             gatewayOpts ?? [],

@@ -36,7 +36,7 @@ import {
   pairAllowed,
   surfaceBadge,
 } from "../lib/modelAccess";
-import ModelPicker from "../components/ModelPicker";
+import ModelPicker, { type ModelPickerProvider } from "../components/ModelPicker";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import {
@@ -777,33 +777,37 @@ function CliModelEditDialog({
     ? Array.from(new Set(pairs.map((p) => p.model)))
     : [];
 
-  const providerOptions = [
-    { value: FOLLOW_PROVIDER, label: tr("跟随 Worker") },
-    ...(granted
-      ? grantedProviders.map((id) => {
-          const e = entries.find((x) => x.id === id);
-          return { value: id, label: e?.baseUrl ? `${id} · ${e.baseUrl}` : id };
-        })
-      : entries.map((e) => ({
-          value: e.id,
-          label: e.baseUrl ? `${e.id} · ${e.baseUrl}` : e.id,
-        }))),
+  // 唯一 ModelPicker 的候选：Provider（含「跟随 Worker」哨兵）→ 该 Provider
+  // 的模型。有授予集时只列授予的对（C2/#1513 语义不变）。
+  const modelOptionsFor = (pid: string): string[] =>
+    (
+      granted
+        ? pid === FOLLOW_PROVIDER
+          ? grantedModels
+          : pairs.filter((p) => p.provider === pid).map((p) => p.model)
+        : (entries.find((x) => x.id === pid)?.models ?? allModels)
+    ).filter((m, i, a) => a.indexOf(m) === i);
+  const providerLabel = (id: string): string => {
+    const e = entries.find((x) => x.id === id);
+    const base = id === FOLLOW_PROVIDER ? tr("跟随 Worker") : id;
+    return e?.baseUrl ? `${base} · ${e.baseUrl}` : base;
+  };
+  const pickerProviders: ModelPickerProvider[] = [
+    ...(isObject
+      ? [
+          {
+            name: FOLLOW_PROVIDER,
+            label: providerLabel(FOLLOW_PROVIDER),
+            models: modelOptionsFor(FOLLOW_PROVIDER),
+          },
+        ]
+      : []),
+    ...(granted ? grantedProviders : entries.map((e) => e.id)).map((id) => ({
+      name: id,
+      label: providerLabel(id),
+      models: modelOptionsFor(id),
+    })),
   ];
-
-  const modelOptions = (
-    granted
-      ? provider === FOLLOW_PROVIDER
-        ? grantedModels
-        : pairs.filter((p) => p.provider === provider).map((p) => p.model)
-      : chosen
-        ? chosen.models
-        : allModels
-  )
-    .filter((m, i, a) => a.indexOf(m) === i)
-    .map((m) => ({
-      value: m,
-      label: m,
-    }));
 
   // C2：要保存的值不在授予集合（例如历史值）→ 保存禁用 + 提示。
   // 对象形态：须显式 provider（跟随 Worker = 不指定 baseUrl，不成对）+
@@ -856,19 +860,7 @@ function CliModelEditDialog({
       width={Math.min(480, window.innerWidth - 48)}
     >
       <div style={{ display: "grid", gap: 14, padding: "8px 0" }}>
-        {isObject ? (
-          <div>
-            <div style={labelStyle}>{tr("Provider")}</div>
-            <antd.Select
-              style={{ width: "100%" }}
-              size="large"
-              showSearch
-              value={provider}
-              options={providerOptions}
-              onChange={(v: string) => setProvider(v)}
-            />
-          </div>
-        ) : (
+        {isObject ? null : (
           <div style={{ fontSize: 11, color: "#faad14" }}>
             {tr("该 CLI 不支持 Provider 维度（扁平模型名）")}
           </div>
@@ -880,14 +872,18 @@ function CliModelEditDialog({
         ) : null}
         <div>
           <div style={labelStyle}>{tr("模型")}</div>
-          <antd.AutoComplete
-            style={{ width: "100%" }}
-            size="large"
-            allowClear
-            placeholder={tr("模型")}
-            value={model}
-            options={modelOptions}
-            onChange={(v: string) => setModel(v ?? "")}
+          <ModelPicker
+            tr={tr}
+            allowEmpty
+            providers={pickerProviders}
+            provider={provider}
+            model={model}
+            providerPlaceholder={tr("Provider")}
+            modelPlaceholder={tr("模型")}
+            onChange={(p: string, m: string) => {
+              setProvider(p);
+              setModel(m);
+            }}
           />
           {/* C2：要保存的组合不在授予集 → 提示（保存按钮同禁用） */}
           {!pairOk ? (

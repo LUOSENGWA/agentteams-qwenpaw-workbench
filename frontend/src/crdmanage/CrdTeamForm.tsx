@@ -16,12 +16,11 @@ import {
 } from "../modelCatalog";
 import {
   extractGatewayLists,
-  filterModelOptionsByProvider,
   modelVerdictText,
-  providerForModel,
   providerModelMismatch,
   validateModelValue,
 } from "../modelUnion";
+import ModelPicker, { type ModelPickerProvider } from "../components/ModelPicker";
 import type { ThemeColors } from "../theme";
 import { CheckIcon, ClipIcon, CloseIcon, DocIcon, WarnIcon } from "../components/icons";
 import { WbTooltip } from "../components/WbTooltip";
@@ -75,7 +74,6 @@ export default function CrdTeamForm({
   workers,
   humanNames,
   workerNames,
-  modelOptions,
   modelCandidates,
   modelOf,
   loadSoulFile,
@@ -89,9 +87,27 @@ export default function CrdTeamForm({
   // in-flight 去重）+ LRU，同屏 catalog 实例挂载即已拉取 → 命中缓存/
   // 复用同 key 在途 Promise，零新增网络请求。
   const [providers, setProviders] = React.useState<LlmProviderLite[]>([]);
+
   const [gatewayOpts, setGatewayOpts] = React.useState<
     ModelSelectionOption[] | null
   >(null);
+
+  // ModelPicker 的 Provider→Model 候选：网关 alias 按 binding.providerName
+  // 归到各自 Provider（无 binding 的 alias 不进列表，避免出现空 Provider）。
+  const pickerProviders: ModelPickerProvider[] = React.useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const p of providers) map.set(p.name, new Set());
+    for (const o of gatewayOpts ?? []) {
+      const pn = o.binding?.providerName;
+      if (!pn) continue;
+      if (!map.has(pn)) map.set(pn, new Set());
+      map.get(pn)?.add(o.alias);
+    }
+    return [...map.entries()].map(([name, set]) => ({
+      name,
+      models: [...set].sort(),
+    }));
+  }, [providers, gatewayOpts]);
   React.useEffect(() => {
     let live = true;
     void (async () => {
@@ -315,39 +331,18 @@ export default function CrdTeamForm({
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
 {/* ：240 定宽，与配置团队/Manager 表同几何。 */}
-                  <antd.AutoComplete
+                  <ModelPicker
+                    inline
                     size="small"
-                    allowClear
-                    style={{ width: 132 }}
-                    placeholder={tr("Provider")}
-                    options={providers.map((p) => ({ value: p.name }))}
-                    value={row.provider || ""}
-                    onChange={(v: string) => updateRow(i, { provider: v || "" })}
-                  />
-                  <antd.AutoComplete
-                    size="small"
-                    style={{ width: 240 }}
-                    placeholder={tr("模型（留空=不改；新建跟随集群默认；下拉=在服∪在用∪Higress alias）")}
-                    options={filterModelOptionsByProvider(
-                      modelOptions,
-                      gatewayOpts ?? [],
-                      row.provider || "",
-                    ) as { value: string }[]}
-                    value={row.model || ""}
-                    onChange={(v: string) => {
-                      updateRow(i, { model: v });
-                      // configured alias → 仅当 Provider 为空才回填（显式
-                      // Provider 是用户意图，不覆盖）。
-                      const auto = providerForModel(gatewayOpts ?? [], v);
-                      if (auto && !(row.provider || ""))
-                        updateRow(i, { provider: auto });
-                    }}
-                    status={
-                      rowMv.level === "error"
-                        ? "error"
-                        : rowMv.level === "warn"
-                          ? "warning"
-                          : undefined
+                    allowEmpty
+                    tr={tr}
+                    providers={pickerProviders}
+                    provider={row.provider || ""}
+                    model={row.model || ""}
+                    providerPlaceholder={tr("Provider")}
+                    modelPlaceholder={tr("模型（留空=不改）")}
+                    onChange={(p: string, m: string) =>
+                      updateRow(i, { provider: p, model: m })
                     }
                   />
                   {(row.model || "").trim() && rowMv.level !== "ok" ? (
