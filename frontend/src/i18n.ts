@@ -12,6 +12,7 @@ import { teamDict } from "./i18n/domains/team";
 import { upgradeDict } from "./i18n/domains/upgrade";
 import { workerDict } from "./i18n/domains/worker";
 import { workflowDict } from "./i18n/domains/workflow";
+import { missingDict } from "./i18n/domains/missing";
 
 const host = window.QwenPaw.host;
 
@@ -31,6 +32,7 @@ const DICT: Record<string, { en: string }> = {
   ...upgradeDict,
   ...workerDict,
   ...workflowDict,
+  ...missingDict,
 };
 
 
