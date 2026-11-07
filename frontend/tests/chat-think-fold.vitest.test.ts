@@ -182,7 +182,9 @@ describe("ProcessCollapseBar 思考过程合并", () => {
 
   it("只有思考：仍显示折叠条，且不出现工具文案", () => {
     const html = renderToStaticMarkup(E(Bar, { calls: [], thoughts: THOUGHTS }));
-    expect(html).toContain("🧠");
+    // A2：图标化（BrainIcon），不再使用 emoji。
+    expect(html).toContain('data-icon="brain"');
+    expect(html).not.toContain("🧠");
     expect(html).toContain("思考过程");
     expect(html).not.toContain("次工具调用");
     expect(preCount(html)).toBe(2);

@@ -313,8 +313,16 @@ export const manageDict: Record<string, { en: string }> = {
   "上传文件": { en: "Upload file" },
   "上传成功": { en: "Uploaded" },
   "新建文件夹": { en: "New folder" },
+  "在 {dir} 下新建": { en: "New in {dir}" },
   "请输入文件夹名": { en: "Enter a folder name" },
   "文件夹已创建": { en: "Folder created" },
+  "双击进入目录": { en: "Double-click to enter directory" },
+  "目录不支持下载，已跳过 {n} 个": {
+    en: "Directories cannot be downloaded; skipped {n}",
+  },
+  "目录删除暂不支持，已跳过 {n} 个（请逐个删除文件）": {
+    en: "Deleting directories is not supported; skipped {n} (delete the files one by one)",
+  },
   "设置配额": { en: "Set quota" },
   "设置人类文件存储上限（MB）。": {
     en: "Set the human-file storage limit (MB).",
