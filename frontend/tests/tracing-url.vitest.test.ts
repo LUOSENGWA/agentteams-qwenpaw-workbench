@@ -31,12 +31,12 @@ describe("tracingUrl", () => {
     );
   });
 
-  it("adds https:// when the scheme is omitted", () => {
+  it("adds http:// when the scheme is omitted (local dashboard default)", () => {
     expect(tracingUrl("localhost:13000")).toBe(
-      "https://localhost:13000/#/console/governance/tracing",
+      "http://localhost:13000/#/console/governance/tracing",
     );
     expect(tracingUrl("dash.example.com")).toBe(
-      "https://dash.example.com/#/console/governance/tracing",
+      "http://dash.example.com/#/console/governance/tracing",
     );
   });
 

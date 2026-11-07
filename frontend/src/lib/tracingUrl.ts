@@ -6,8 +6,8 @@
  *
  * 规则：
  * - 空 / 纯空白 → null（未配置 Dashboard 地址 → 入口隐藏）；
- * - 无协议（`localhost:13000`）→ 按 https 优先补全（与后端地址探测口径
- *   一致；显式 `http://` 原样保留——这里只是链接，内网 http 合法）；
+ * - 无协议（`localhost:13000`）→ 补 `http://`（dashboard 默认本地/内网；
+ *   显式 `https://` 原样保留——这里只是链接，不做网络探测）；
  * - 协议非 http(s) / 无法解析 → null（不生成可被脚本注入的链接）；
  * - 去尾部斜杠后补 `/#/console/governance/tracing`。
  */
@@ -17,7 +17,7 @@ export function tracingUrl(base: string): string | null {
   const raw = typeof base === "string" ? base.trim() : "";
   if (!raw) return null;
   const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw);
-  const candidate = hasScheme ? raw : `https://${raw}`;
+  const candidate = hasScheme ? raw : `http://${raw}`;
   let parsed: URL;
   try {
     parsed = new URL(candidate);
