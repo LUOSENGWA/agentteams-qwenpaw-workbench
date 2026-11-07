@@ -35,6 +35,9 @@ const antd = host.antd;
 export interface ModelCatalogLite {
   providers: string[];
   models: string[];
+  /** 模型 → 所属 provider（父组件按网关 alias 归属构造；缺省 = 不按
+   * provider 过滤模型候选）。 */
+  modelsByProvider?: Record<string, string[]>;
 }
 
 export interface ModelAccessEditorProps {
@@ -127,44 +130,66 @@ function capMeta(
 
 /** (provider, model) 成对字段——目录候选非空 → AutoComplete（可自由输入）；
  * 候选空 → Input 自由输入（目录为空退化路径）。 */
-function PairField({
-  value,
-  placeholder,
-  options,
-  disabled,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  options: string[];
-  disabled?: boolean;
-  onChange: (v: string) => void;
-}) {
-  if (options.length) {
-    return (
-      <antd.AutoComplete
-        value={value}
-        disabled={disabled}
-        options={options.map((o: string) => ({ value: o }))}
-        placeholder={placeholder}
-        allowClear
-        style={{ width: "100%" }}
-        onChange={(v: string) => onChange(v ?? "")}
-      />
-    );
-  }
-  return (
-    <antd.Input
-      value={value}
-      disabled={disabled}
-      placeholder={placeholder}
-      allowClear
-      onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
-    />
-  );
+/** 选中态：provider 多选 + model 多选（各自去重保序）。 */
+export interface PairSelection {
+  providers: string[];
+  models: string[];
 }
 
-/** entries 行编辑器（增删行 + 成对校验行内红字）。 */
+/** 已授权对 → 两个多选的值（回显）。 */
+export function pairsToSelection(rows: ModelAccessPair[]): PairSelection {
+  const providers: string[] = [];
+  const models: string[] = [];
+  for (const r of rows) {
+    const p = (r.provider ?? "").trim();
+    const m = (r.model ?? "").trim();
+    if (p && !providers.includes(p)) providers.push(p);
+    if (m && !models.includes(m)) models.push(m);
+  }
+  return { providers, models };
+}
+
+/** 多选（先 provider 后 model）可选模型：选中 provider 的并集；
+ * 无映射信息 → 全部候选（不误伤自由输入场景）。 */
+export function modelOptionsFor(
+  sel: PairSelection,
+  allModels: string[],
+  modelsByProvider?: Record<string, string[]>,
+): string[] {
+  if (!modelsByProvider || Object.keys(modelsByProvider).length === 0) return allModels;
+  if (sel.providers.length === 0) return allModels;
+  const out: string[] = [];
+  for (const p of sel.providers) {
+    for (const m of modelsByProvider[p] ?? []) {
+      if (!out.includes(m)) out.push(m);
+    }
+  }
+  return out;
+}
+
+/** 多选 → (provider, model) 对。provider 归属优先沿用原对，其次按
+ * modelsByProvider 反查（命中多个选中 provider 时取第一个），最后落第一个
+ * 选中 provider（无映射时的兜底：单 provider 场景语义正确）。 */
+export function selectionToPairs(
+  sel: PairSelection,
+  prev: ModelAccessPair[],
+  modelsByProvider?: Record<string, string[]>,
+): ModelAccessPair[] {
+  const picked = new Set(sel.providers);
+  const out: ModelAccessPair[] = [];
+  for (const m of sel.models) {
+    const before = prev.find((r) => r.model === m && r.provider);
+    let provider = before && picked.has(before.provider) ? before.provider : "";
+    if (!provider && modelsByProvider) {
+      provider = sel.providers.find((p) => (modelsByProvider[p] ?? []).includes(m)) ?? "";
+    }
+    if (!provider) provider = sel.providers[0] ?? before?.provider ?? "";
+    out.push({ provider, model: m });
+  }
+  return out;
+}
+
+/** entries 编辑器（provider 多选 → model 多选；不再逐行增删）。 */
 function EntriesEditor({
   rows,
   canEdit,
@@ -180,71 +205,72 @@ function EntriesEditor({
   t: ThemeColors;
   onChange: (next: ModelAccessPair[]) => void;
 }) {
-  const setRow = (i: number, patch: Partial<ModelAccessPair>) =>
-    onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const sel = pairsToSelection(rows);
+  const modelsByProvider = catalog?.modelsByProvider;
+  const allModels = catalog?.models ?? [];
+  const providers = catalog?.providers ?? [];
+  const modelOptions = modelOptionsFor(sel, allModels, modelsByProvider);
+
+  if (!canEdit) {
+    if (rows.length === 0) {
+      return (
+        <span style={{ fontSize: 11, color: t.textSecondary }}>{tr("无 entries（空 = 不授权）")}</span>
+      );
+    }
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {rows.map((r, i) => (
+          <antd.Tag key={i} style={{ marginInlineEnd: 0, fontSize: 11 }}>
+            {r.provider ? `${r.provider} / ${r.model}` : r.model}
+          </antd.Tag>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: "grid", gap: 4 }}>
-      {rows.map((r, i) => {
-        const ok = r.provider.trim() !== "" && r.model.trim() !== "";
-        return (
-          <div key={i} style={{ display: "grid", gap: 2 }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 24px",
-                gap: 6,
-                alignItems: "center",
-              }}
-            >
-              <PairField
-                value={r.provider}
-                placeholder={tr("Provider")}
-                options={catalog?.providers ?? []}
-                disabled={!canEdit}
-                onChange={(v) => setRow(i, { provider: v })}
-              />
-              <PairField
-                value={r.model}
-                placeholder={tr("模型")}
-                options={catalog?.models ?? []}
-                disabled={!canEdit}
-                onChange={(v) => setRow(i, { model: v })}
-              />
-              <span
-                role="button"
-                aria-label={tr("删除行")}
-                onClick={() => canEdit && onChange(rows.filter((_, j) => j !== i))}
-                style={{
-                  cursor: canEdit ? "pointer" : "default",
-                  color: canEdit ? t.textSecondary : t.border,
-                  display: "inline-flex",
-                  justifyContent: "center",
-                }}
-              >
-                <CloseIcon size={13} />
-              </span>
-            </div>
-            {!ok && canEdit ? (
-              <span style={{ fontSize: 11, color: "#ff4d4f" }}>
-                {tr("Provider 与 model 必须成对填写")}
-              </span>
-            ) : null}
-          </div>
-        );
-      })}
+    <div style={{ display: "grid", gap: 6 }}>
+      <antd.Select
+        mode="multiple"
+        allowClear
+        showSearch
+        optionFilterProp="label"
+        size="small"
+        style={{ width: "100%" }}
+        placeholder={tr("选择 Provider（可多选，输入可搜索）")}
+        options={providers.map((p) => ({ value: p, label: p }))}
+        value={sel.providers}
+        onChange={(v: string[]) =>
+          onChange(selectionToPairs({ providers: v, models: sel.models }, rows, modelsByProvider))
+        }
+      />
+      <antd.Select
+        mode="multiple"
+        allowClear
+        showSearch
+        optionFilterProp="label"
+        size="small"
+        style={{ width: "100%" }}
+        placeholder={
+          sel.providers.length === 0 && (modelsByProvider !== undefined)
+            ? tr("先选 Provider，再选模型")
+            : tr("选择模型（可多选，输入可搜索）")
+        }
+        options={modelOptions.map((m) => ({ value: m, label: m }))}
+        value={sel.models}
+        onChange={(v: string[]) =>
+          onChange(selectionToPairs({ providers: sel.providers, models: v }, rows, modelsByProvider))
+        }
+      />
       {rows.length === 0 ? (
         <span style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("无 entries（空 = 不授权）")}
+          {tr("未选择 = 不授权（fail-closed）")}
         </span>
       ) : null}
-      {canEdit ? (
-        <antd.Button
-          size="small"
-          type="dashed"
-          onClick={() => onChange([...rows, { provider: "", model: "" }])}
-        >
-          {tr("添加行")}
-        </antd.Button>
+      {rows.some((r) => !r.provider.trim() || !r.model.trim()) ? (
+        <span style={{ fontSize: 11, color: "#ff4d4f" }}>
+          {tr("Provider 与 model 必须成对填写")}
+        </span>
       ) : null}
     </div>
   );

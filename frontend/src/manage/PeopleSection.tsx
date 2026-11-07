@@ -63,6 +63,7 @@ import HumanAccessModal, {
 } from "../crdmanage/HumanAccessModal";
 import { useHumanCrd } from "../crdmanage/useHumanCrd";
 import { useModelCatalog } from "../crdmanage/useModelCatalog";
+import { providerForModel } from "../modelUnion";
 import { LEVEL_META } from "../crdmanage/types";
 import { MxcAvatar } from "../MxcAvatar";
 import TruncatedId from "../components/TruncatedId";
@@ -817,6 +818,16 @@ function HumanModelAccessModal({
   // 模型候选（复用 useModelCatalog：挂载即拉网关 alias；SGLang 一次性
   // seed——ref guard 防 hook 新引用引发 effect 重跑；候选空 = 自由输入）。
   const catalog = useModelCatalog({ workers, tr });
+  // 模型 → provider 归属（复用 providerForModel，不在本地重写映射规则）。
+  const modelsByProvider = React.useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const m of catalog.modelCandidates) {
+      const p = providerForModel(catalog.gatewayOpts ?? [], m);
+      if (!p) continue;
+      (out[p] ??= []).push(m);
+    }
+    return out;
+  }, [catalog.modelCandidates, catalog.gatewayOpts]);
   const setModelOptsRef = React.useRef(catalog.setModelOpts);
   setModelOptsRef.current = catalog.setModelOpts;
   React.useEffect(() => {
@@ -942,6 +953,9 @@ function HumanModelAccessModal({
               catalog={{
                 providers: catalog.providers.map((p) => p.name),
                 models: catalog.modelCandidates,
+                // 网关 alias → provider 归属（选完 provider 后模型下拉只列
+                // 该 provider 的模型；无会话时为空 → 不过滤）。
+                modelsByProvider: modelsByProvider,
               }}
               onChange={(next) => {
                 setDraft(next);

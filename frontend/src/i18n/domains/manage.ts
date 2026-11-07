@@ -3,6 +3,12 @@
 // 原域字典，此处只收本重构新增、且全库字典无键的中文字符串）。
 
 export const manageDict: Record<string, { en: string }> = {
+  // ── 模型授权：多选式录入（F-CFG-4）──
+  "选择 Provider（可多选，输入可搜索）": { en: "Select providers (multi, searchable)" },
+  "选择模型（可多选，输入可搜索）": { en: "Select models (multi, searchable)" },
+  "先选 Provider，再选模型": { en: "Pick providers first, then models" },
+  "未选择 = 不授权（fail-closed）": { en: "Nothing selected = no grants (fail-closed)" },
+
   // ── 运行时配置：能力桶与 face 标题（F-CFG-3）──
   "该运行时没有这部分配置面": { en: "This runtime exposes no fields for this section" },
   "网关": { en: "Gateway" },

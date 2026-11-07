@@ -476,13 +476,18 @@ try {
 }
 
 // ── 源码断言（组件依赖 window.QwenPaw host，node 不可直 import）────
-ok("editor：成对校验红字 + inherit Switch + writeVia/reason 只读回显 + tables=null 隐藏表选择器 + 候选空=自由输入", () => {
+ok("editor：多选式录入（provider→model）+ 成对校验红字 + inherit Switch + 只读回显 + tables=null 隐藏表选择器", () => {
   assert.match(editorSrc, /Provider 与 model 必须成对填写/);
   assert.match(editorSrc, /antd\.Switch/);
   assert.match(editorSrc, /cap\.writeVia/);
   assert.match(editorSrc, /cap\.reason/);
   assert.match(editorSrc, /tables && tables\.length/);
-  assert.match(editorSrc, /options\.length/); // PairField 目录分支
+  // F-CFG-4：不再逐行增删——provider / model 两个多选框（可搜索），
+  // 模型候选按所选 provider 过滤（modelsByProvider）。
+  assert.match(editorSrc, /mode="multiple"/);
+  assert.match(editorSrc, /modelsByProvider/);
+  assert.match(editorSrc, /selectionToPairs/);
+  assert.doesNotMatch(editorSrc, /添加行/);
   assert.match(editorSrc, /写入路径：\{via\}/);
 });
 
