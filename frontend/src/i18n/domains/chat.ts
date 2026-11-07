@@ -349,4 +349,10 @@ export const chatDict: Record<string, { en: string }> = {
   "其他房间": { en: "Other rooms" },
   "备注": { en: "Notes" },
   "打开任务备注（meta.json）": { en: "Open task notes (meta.json)" },
+
+  // ── 聊天图片灯箱（应用内查看器：缩放/切图/下载）──
+  "图片预览": { en: "Image preview" },
+  "图片加载失败": { en: "Failed to load image" },
+  "上一张": { en: "Previous" },
+  "下一张": { en: "Next" },
 };
