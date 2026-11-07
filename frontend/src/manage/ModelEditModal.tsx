@@ -143,7 +143,9 @@ export default function ModelEditModal({
 
   // C2：fail-closed（locked 整个弹窗只读）+ main/spawn surface 授予集
   //（空 = 无授予集 → 候选/校验均按现状，兼容旧控制器）。
-  const locked = lockedAll(access);
+  // 管理员（L1）不受人员授权表约束：控制器对 SA/管理员返回的是 locked
+  // 占位（stub），不能据此把管理员挡在「未授予任何模型」后面。
+  const locked = lockedAll(access) && !l1;
   const mainPairs = access ? grantedPairs(access.surfaces, "main") : [];
   const spawnPairs = access ? grantedPairs(access.surfaces, "spawn") : [];
 

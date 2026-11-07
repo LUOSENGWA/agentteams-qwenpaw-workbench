@@ -264,10 +264,18 @@ export function faceBucket(runtime: string, faceId: string): CapabilityBucket {
   }
   if (rt === "hermes") {
     if (id.startsWith("mcp")) return "mcp";
-    if (id === "toolsets" || id === "terminal") return "tools";
+    if (
+      id === "toolsets" ||
+      id === "tools" ||
+      id === "terminal" ||
+      id === "tool_output" ||
+      id.startsWith("tool_loop")
+    )
+      return "tools";
     if (id.startsWith("skill")) return "skills";
-    if (id === "channels" || id === "messaging") return "channels";
-    if (id.includes("approval")) return "approval";
+    if (id === "channels" || id === "messaging" || id === "voice" || id === "discord")
+      return "channels";
+    if (id === "approvals" || id === "approval" || id.includes("approval")) return "approval";
     return "config";
   }
   return "config";
@@ -323,13 +331,16 @@ export function fieldBucket(
   if (byFace !== "config") return byFace;
   const g = (group || "").trim().toLowerCase();
   if (!g) return "config";
-  if (g === "mcp" || g.startsWith("mcp.")) return "mcp";
-  if (g === "approval" || g.startsWith("approval.") || g.startsWith("approvals")) return "approval";
-  if (g === "channels" || g.startsWith("channels.") || g === "messaging" || g.startsWith("messaging."))
-    return "channels";
-  if (g === "skills" || g.startsWith("skills.") || g.startsWith("skill")) return "skills";
-  if (g === "tools" || g.startsWith("tools.") || g === "toolset" || g.startsWith("toolsets"))
-    return "tools";
+  // 分组名形如 gateway.tools / nodeHost.mcp / auxiliary.skills_hub /
+  // messages.groupChat / security.approval —— 逐段判定，命中即归位。
+  for (const seg of g.split(/[._-]+/)) {
+    if (seg === "mcp") return "mcp";
+    if (seg === "approval" || seg === "approvals") return "approval";
+    if (seg === "channel" || seg === "channels" || seg === "message" || seg === "messages" || seg === "messaging" || seg === "voice")
+      return "channels";
+    if (seg === "skill" || seg === "skills") return "skills";
+    if (seg === "tool" || seg === "tools" || seg === "toolset" || seg === "toolsets") return "tools";
+  }
   return "config";
 }
 
