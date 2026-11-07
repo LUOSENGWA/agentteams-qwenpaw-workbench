@@ -240,19 +240,21 @@ export function serializeScope(
     }
     if (Object.keys(spOut).length) out.spawn = spOut;
   }
-  const cliOut: Record<string, unknown> = {};
+  // CRD 契约：codingCli 是数组 []ModelAccessCli{cli, entries, inherit}，
+  // 不是 map（早期按 map 发 → 400 invalid JSON）。
+  const cliOut: Record<string, unknown>[] = [];
   for (const [cli, v] of Object.entries(scope.codingCli ?? {})) {
     const key = cli.trim();
     if (!key || !v || typeof v !== "object") continue;
-    const one: Record<string, unknown> = {};
+    const one: Record<string, unknown> = { cli: key };
     if (v.inherit === true) one.inherit = true;
     else {
       const es = cleanPairs(v.entries);
       if (es.length) one.entries = es;
     }
-    if (Object.keys(one).length) cliOut[key] = one;
+    if (Object.keys(one).length > 1) cliOut.push(one);
   }
-  if (Object.keys(cliOut).length) out.codingCli = cliOut;
+  if (cliOut.length) out.codingCli = cliOut;
   return Object.keys(out).length ? out : null;
 }
 
@@ -295,12 +297,34 @@ export interface HumanModelAccessView {
   capabilities: HumanModelAccessCapabilities | null;
 }
 
+/** CR 里的 codingCli 是数组；编辑器内部用 map（cli → surface）。
+ * 读面统一归一成 map，写面（serializeScope）再转回数组。 */
+function normalizeScope(s: Record<string, unknown>): HumanModelAccessScope {
+  const cli = s.codingCli;
+  if (Array.isArray(cli)) {
+    const map: Record<string, { entries?: ModelAccessPair[]; inherit?: boolean }> = {};
+    for (const item of cli) {
+      const o = asRecord(item);
+      const id = typeof o?.cli === "string" ? (o!.cli as string) : "";
+      if (!id) continue;
+      map[id] = {
+        entries: Array.isArray(o?.entries) ? (o!.entries as ModelAccessPair[]) : undefined,
+        inherit: o?.inherit === true ? true : undefined,
+      };
+    }
+    return { ...(s as HumanModelAccessScope), codingCli: map };
+  }
+  return s as HumanModelAccessScope;
+}
+
 function extractModelAccess(cr: Record<string, unknown> | null): HumanModelAccess | null {
   if (!cr) return null;
   const holder = asRecord(cr.spec) ?? cr;
   const ma = asRecord(holder.modelAccess);
   if (!ma || !Array.isArray(ma.scopes)) return null;
-  const scopes = ma.scopes.filter((s) => asRecord(s) !== null) as HumanModelAccessScope[];
+  const scopes = ma.scopes
+    .filter((s) => asRecord(s) !== null)
+    .map((s) => normalizeScope(s as Record<string, unknown>));
   return { scopes };
 }
 

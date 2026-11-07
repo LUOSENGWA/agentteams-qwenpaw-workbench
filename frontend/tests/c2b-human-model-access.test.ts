@@ -153,14 +153,15 @@ try {
     assert.deepEqual(s, { spawn: { entries: [{ provider: "p", model: "m" }] } });
   });
 
-  ok("② serializeScope：CLI inherit=true → codingCli.{cli} = {inherit:true}；CLI 名 trim、空白名丢弃", () => {
+  ok("② serializeScope：CLI inherit=true → codingCli 数组项 {cli, inherit:true}；CLI 名 trim、空白名丢弃", () => {
     const s = ma.serializeScope({
       codingCli: {
         "qwen-code": { inherit: true, entries: [{ provider: "p", model: "m" }] },
         "  ": { entries: [{ provider: "p", model: "m" }] },
       },
     });
-    assert.deepEqual(s, { codingCli: { "qwen-code": { inherit: true } } });
+    // CRD 契约：codingCli 是数组（[]ModelAccessCli），不是 map。
+    assert.deepEqual(s, { codingCli: [{ cli: "qwen-code", inherit: true }] });
   });
 
   ok("② serializeScope：main 无 inherit（不写 inherit 键）；role 空白省略键；table 保留", () => {

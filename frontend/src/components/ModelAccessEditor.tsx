@@ -27,6 +27,8 @@ import type { TrFn } from "../crdmanage/types";
 import { CloseIcon } from "./icons";
 
 const host = window.QwenPaw.host;
+/** 固定三种 Coding CLI（与 api/domains/codingcli.ts 的 CodingCliId 同源）。 */
+export const CLI_IDS = ["qwen-code", "opencode", "qoder"] as const;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
@@ -433,15 +435,12 @@ export default function ModelAccessEditor(props: ModelAccessEditorProps) {
     delete rec[cli];
     setCodingCli(i, rec);
   };
+  // 固定三种 CLI：加的时候直接取「第一个还没选的」，不造 qwen-code-2 这种名字。
   const addCli = (i: number) => {
     const used = Object.keys(scopes[i].codingCli ?? {});
-    let key = "qwen-code";
-    let n = 2;
-    while (used.includes(key)) {
-      key = `qwen-code-${n}`;
-      n += 1;
-    }
-    patchScope(i, { codingCli: { ...(scopes[i].codingCli ?? {}), [key]: {} } });
+    const next = CLI_IDS.find((id) => !used.includes(id));
+    if (!next) return;
+    patchScope(i, { codingCli: { ...(scopes[i].codingCli ?? {}), [next]: {} } });
   };
 
   return (
@@ -589,7 +588,12 @@ export default function ModelAccessEditor(props: ModelAccessEditorProps) {
               t={t}
               right={
                 !readOnly ? (
-                  <antd.Button size="small" type="dashed" onClick={() => addCli(i)}>
+                  <antd.Button
+                    size="small"
+                    type="dashed"
+                    disabled={Object.keys(scopes[i].codingCli ?? {}).length >= CLI_IDS.length}
+                    onClick={() => addCli(i)}
+                  >
                     {tr("添加 CLI")}
                   </antd.Button>
                 ) : null
