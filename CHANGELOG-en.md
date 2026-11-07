@@ -3,6 +3,23 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.130 (#1544/#1545 adaptation · 2026-11-07)
+
+**Added/adapted**
+- File reads send `If-None-Match`; a 304 reuses the local ETag cache (LRU 50; no ETag means no cache), so previews no longer re-download.
+- Sync engine manifest GET is conditional: a 200 stores raw manifest + ETag in `.sync/manifest.cache.json`; 304 reuses it; missing/corrupt falls back to full.
+- Downloads: 304 skips; an existing `.part` resumes with `Range` + `If-Range` (206 append, 200/416 refetch), response ETag checked (mismatch discards).
+- Restore from remote when the local file is missing while the remote is unchanged.
+- sync/status callers unchanged (same five fields, backed by #1545 metadata).
+
+**Tests**: pytest 680 · vitest 219 · `tsc` 0 · build 0.
+## 0.5.0-beta.16.129 (dual-address slot fix · 2026-11-07)
+
+**Fixed**
+- Saving only the external address no longer copies it into the internal slot: `merge_address_entries` keeps a leading empty placeholder (`["", "https://wan"]`) and trims trailing empties; internal-only stays `["https://lan"]`, both empty `[]`.
+- Per-slot credential inheritance is unchanged (`***` still reuses the stored secret); no position shifting.
+
+**Tests**: pytest 672 · vitest 213 · build 0.
 ## 0.5.0-beta.16.127 (address scheme detection · 2026-11-07)
 
 **Fixed**

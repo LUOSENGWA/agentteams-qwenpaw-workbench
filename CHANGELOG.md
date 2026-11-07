@@ -3,6 +3,23 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.130（#1544/#1545 适配 · 2026-11-07）
+
+**新增/适配**
+- 前端文件读取带 `If-None-Match`：304 命中本地 ETag 缓存（LRU 50，无 ETag 不缓存），重复预览不再整份重下。
+- 同步引擎 manifest 条件 GET：200 缓存原文 + ETag 到 `.sync/manifest.cache.json`，304 直接复用；缓存缺失/损坏回退全量。
+- 文件下载：有远端 etag 时 304 跳过；`.part` 存在时 `Range`+`If-Range` 断点续传（206 追加、200/416 重下），完成后校验 ETag（不一致丢弃）。
+- 本地文件缺失但远端未变时从远端恢复（不再因 state etag 相同而跳过）。
+- sync/status 调用不变（形状仍五字段，适配 #1545 元数据实现）。
+
+**测试**：pytest 680 · vitest 219 · `tsc` 0 · build 0。
+## 0.5.0-beta.16.129（双地址空槽修复 · 2026-11-07）
+
+**修复**
+- 只填外网地址时不再被回填到内网：`merge_address_entries` 保留前导空槽占位（`["", "https://wan"]`），尾部空槽压缩；只填内网仍是 `["https://lan"]`，两空为 `[]`。
+- 凭据按槽位继承不变（`***` 占位仍取旧秘密），位置不迁移。
+
+**测试**：pytest 672 · vitest 213 · build 0。
 ## 0.5.0-beta.16.127（地址协议识别 · 2026-11-07）
 
 **修复**
