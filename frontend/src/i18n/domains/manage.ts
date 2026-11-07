@@ -343,6 +343,21 @@ export const manageDict: Record<string, { en: string }> = {
   "彻底删除": { en: "Purge" },
   "彻底删除此项？": { en: "Purge this item?" },
   "已彻底删除": { en: "Purged" },
+  // files-batch 多选 + 批量操作（列表/网格；目录不可选）
+  "全选": { en: "Select all" },
+  "选择 {name}": { en: "Select {name}" },
+  "等 {n} 个文件": { en: "and {n} more file(s)" },
+  "批量操作": { en: "Batch actions" },
+  "已选 {n} 项": { en: "{n} selected" },
+  "下载中（{a}/{b}）": { en: "Downloading ({a}/{b})" },
+  "取消选择": { en: "Clear selection" },
+  "删除 {n} 个文件？": { en: "Delete {n} files?" },
+  "将移入回收站（可在回收站恢复）": { en: "They will be moved to the trash (recoverable)" },
+  "{n} 项{noun}成功": { en: "{n} {noun} succeeded" },
+  "{a} 成功 / {b} 失败（{why}）": {
+    en: "{a} succeeded / {b} failed ({why})",
+  },
+  "未知错误": { en: "Unknown error" },
   "仅管理员": { en: "Admin only" },
   "目标路径已存在": { en: "Target path already exists" },
   "覆盖目标路径上的已有文件？（仅管理员）": {

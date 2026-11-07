@@ -170,6 +170,17 @@ import {
   type FilesView,
   type TreeRow,
 } from "./files/treeModel";
+import {
+  clearSelection,
+  pruneSelection,
+  selectAll,
+  selectAllState,
+  selectedSummary,
+  toggleSelection,
+  type BatchOpResult,
+  type SelectionSet,
+  type SelectAllState,
+} from "../lib/filesSelection";
 import SyncSettingsModal from "./files/SyncSettingsModal";
 import TrashDialog from "./files/TrashDialog";
 
@@ -240,6 +251,20 @@ interface FilesState {
   filesView: FilesView;
   /** F-V3-4：切视图（写回 localStorage；不可用静默回落）。 */
   onFilesViewChange: (v: FilesView) => void;
+  /** 批量选择（列表/网格共用）：键 = rowPath；目录不可选；
+   * 视图切换保留（容器层 state），刷新/切目录由 pruneSelection 剔除。 */
+  selected: SelectionSet;
+  /** 当前目录可选（文件）行路径序列（列表顺序）——shift 区间定位 /
+   * 全选 / 剔除基准；目录行不入列。 */
+  selectablePaths: string[];
+  /** 「全选」三态（按 selectablePaths 判定；全目录 → none）。 */
+  selAll: SelectAllState;
+  /** 单点 / shift 区间切换（isDir 行由容器忽略；shift 锚点在容器层）。 */
+  onToggleSelect: (path: string, opts: { isDir: boolean; shiftKey: boolean }) => void;
+  /** 表头/网格工具条「全选」三态切换（all → 清空；否则全选）。 */
+  onSelectAllToggle: () => void;
+  /** 批量操作条「取消选择」。 */
+  onClearSelection: () => void;
   /** F-V3-3：当前撤销条（null = 无；只保留最近一条）。 */
   undo: { trashId: string; name: string } | null;
   /** F-V3-3：软删成功登记撤销（trashId 空 → 不出条，见 undoEligible）。 */
@@ -602,6 +627,20 @@ async function doDownload(
   return downloadViaHost(humanFileApiPath(humanName, path), name);
 }
 
+/** 批量操作结果汇总（任务 C）：全部成功 →「{n} 项{noun}成功」；
+ * 部分失败不中断后 →「{a} 成功 / {b} 失败（首个错误原因）」（warning 级）。 */
+function reportBatchResult(tr: Tr, noun: string, r: BatchOpResult): void {
+  if (r.failed === 0) {
+    antd.message.success(tr("{n} 项{noun}成功", { n: r.ok, noun }));
+    return;
+  }
+  antd.message.warning(tr("{a} 成功 / {b} 失败（{why}）", {
+    a: r.ok,
+    b: r.failed,
+    why: r.firstError ?? tr("未知错误"),
+  }));
+}
+
 // ── #1669 强制刷新（上传成功后）──
 // 列表走 legacy GET（humanFiles.legacyListFull——尾斜杠端点），浏览器/宿主
 // HTTP 缓存可能回旧响应（端点无 ETag / 缓存控制约定），新上传文件可能不出
@@ -710,34 +749,52 @@ async function runDeletePlan(
   return { trashId, purged };
 }
 
-/** #1669 删除确认（列表行 + 详情面板共用，不各写一份 Modal）：
- * 标题「删除文件？」+ 文件名 + 勾选「移入回收站（可恢复）」（默认勾选；
- * 未勾选显「⚠ 将彻底删除，不可恢复」）；按钮 [取消] [删除]。
- * 不做前端角色门（无「仅管理员可彻底删除」禁用/提示）；成功文案区分
- * 「已移入回收站」/「已彻底删除」；失败 = hfErrorText（403 →「无权限」）。 */
+/** #1669 删除确认（列表行 + 详情面板 + 网格卡 + 容器批量共用，不各写一份
+ * Modal）：单文件模式标题「删除文件？」+ 文件名 + 勾选「移入回收站（可恢复）」
+ * （默认勾选；未勾选显「⚠ 将彻底删除，不可恢复」）；按钮 [取消] [删除]。
+ * 批量模式（requestBatch）：标题「删除 {n} 个文件？」，恒软删进回收站
+ * （无彻底删除选项——服务端不支持目录/批量彻底删），串行执行、部分失败
+ * 不中断，结果（成功 N / 失败 M / 首个错误原因 + 已删清单）交 onBatchDone，
+ * 由调用方汇总提示。不做前端角色门（无「仅管理员可彻底删除」禁用/提示）；
+ * 单文件成功文案区分「已移入回收站」/「已彻底删除」；失败 = hfErrorText
+ * （403 →「无权限」）。 */
 function useDeleteConfirm(inp: {
   t: ThemeColors;
   tr: Tr;
   humanName: string;
-  /** 删除成功 → 调用方清选中 + 刷新 +（软删时）登记撤销条。
+  /** 单文件删除成功 → 调用方清选中 + 刷新 +（软删时）登记撤销条。
    * F-V3-3：trashId 供 undo（restoreTrash 目标），name 供撤销条文案。 */
   onDone: (r: { trashId: string; purged: boolean; name: string }) => void;
+  /** 批量模式完成回调（仅 requestBatch 触发）：软删结果汇总（部分失败
+   * 不中断；deleted = 删除成功项，供清详情选中）；调用方负责提示 + 刷新。 */
+  onBatchDone?: (
+    r: BatchOpResult & { deleted: { path: string; name: string }[] },
+  ) => void;
 }): {
   open: boolean;
   busy: boolean;
   request: (path: string, name: string) => void;
+  requestBatch: (items: { path: string; name: string }[]) => void;
   node: ReactNS.ReactElement;
 } {
   const [open, setOpen] = React.useState(false);
   const [path, setPath] = React.useState("");
   const [name, setName] = React.useState("");
+  const [batch, setBatch] = React.useState<{ path: string; name: string }[] | null>(null);
   const [recycle, setRecycle] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
 
   const request = (p: string, n: string) => {
     setPath(p);
     setName(n);
+    setBatch(null);
     setRecycle(true); // 每次打开默认勾选「移入回收站（可恢复）」
+    setOpen(true);
+  };
+  const requestBatch = (items: { path: string; name: string }[]) => {
+    setPath("");
+    setName("");
+    setBatch(items);
     setOpen(true);
   };
   const close = () => {
@@ -746,6 +803,27 @@ function useDeleteConfirm(inp: {
   const onOk = async () => {
     setBusy(true);
     try {
+      if (batch) {
+        // 批量：串行软删（恒进回收站，无彻底删选项）；部分失败不中断，
+        // 单项错误仅计入汇总（首个错误原因），不逐项弹 toast。
+        let ok = 0;
+        let failed = 0;
+        let firstError: string | undefined;
+        const deleted: { path: string; name: string }[] = [];
+        for (const it of batch) {
+          try {
+            await deleteFile(inp.humanName, it.path);
+            ok += 1;
+            deleted.push(it);
+          } catch (err) {
+            failed += 1;
+            if (firstError === undefined) firstError = hfErrorText(err, inp.tr);
+          }
+        }
+        setOpen(false);
+        inp.onBatchDone?.({ ok, failed, firstError, deleted });
+        return;
+      }
       const r = await runDeletePlan(inp.humanName, path, deletePlan({ recycle }));
       antd.message.success(inp.tr(r.purged ? "已彻底删除" : "已移入回收站"));
       setOpen(false);
@@ -757,7 +835,41 @@ function useDeleteConfirm(inp: {
     }
   };
 
-  const node = (
+  const node = batch ? (
+    <antd.Modal
+      open={open}
+      title={inp.tr("删除 {n} 个文件？", { n: batch.length })}
+      okText={inp.tr("删除")}
+      cancelText={inp.tr("取消")}
+      confirmLoading={busy}
+      onOk={() => void onOk()}
+      onCancel={close}
+      destroyOnClose
+    >
+      <div style={{ display: "grid", gap: 8, padding: "4px 0" }}>
+        <div style={{ fontSize: 13, color: inp.t.text }}>
+          {inp.tr("将移入回收站（可在回收站恢复）")}
+        </div>
+        <div style={{ display: "grid", gap: 2, fontSize: 12, color: inp.t.textSecondary }}>
+          {batch.slice(0, 5).map((it) => (
+            <span
+              key={it.path}
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {it.name}
+            </span>
+          ))}
+          {batch.length > 5 ? (
+            <span>{inp.tr("等 {n} 个文件", { n: batch.length })}</span>
+          ) : null}
+        </div>
+      </div>
+    </antd.Modal>
+  ) : (
     <antd.Modal
       open={open}
       title={inp.tr("删除文件？")}
@@ -797,7 +909,7 @@ function useDeleteConfirm(inp: {
       </div>
     </antd.Modal>
   );
-  return { open, busy, request, node };
+  return { open, busy, request, requestBatch, node };
 }
 
 /** 恢复回收站条目（409 = 目标已存在：admin 二次确认 overwrite=1；非 admin 仅显错）。 */
@@ -986,6 +1098,162 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
   );
 }
 
+/** 批量选择 checkbox（裸 `<button role="checkbox">`——静态渲染测试的
+ * antd 桩无 Checkbox，不引入新 antd 组件进任何渲染路径）：44×44 触控
+ * 命中区（--hf-row-min，coarse 指针 +10%），18px 内框（≥18px 本体）；
+ * ✓ = 选中，– = 半选（全选三态 indeterminate）。配色全走 theme token。 */
+function SelCheck({
+  t,
+  checked,
+  indeterminate = false,
+  onToggle,
+  label,
+}: {
+  t: ThemeColors;
+  checked: boolean;
+  /** 半选（全选三态 = some）。 */
+  indeterminate?: boolean;
+  /** 省略 = 纯展示（disabled 语义）。 */
+  onToggle?: (shiftKey: boolean) => void;
+  label: string;
+}) {
+  const on = checked || indeterminate;
+  const interactive = onToggle !== undefined;
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={indeterminate ? "mixed" : checked}
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        e.stopPropagation(); // 不触发行/卡片的点击语义（目录进入/详情选中）
+        if (interactive) onToggle(e.shiftKey);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (interactive) onToggle(false);
+        }
+      }}
+      style={{
+        width: "var(--hf-row-min, 44px)",
+        height: "var(--hf-row-min, 44px)",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        border: "none",
+        background: "transparent",
+        padding: 0,
+        cursor: interactive ? "pointer" : "default",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 18,
+          height: 18,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 4,
+          // token 无实色 accent（accentBg 仅 10% tint 底），选中实色走宿主主色变量。
+          border: `1.5px solid ${on ? "var(--app-accent, #FF7F16)" : t.border}`,
+          background: on ? "var(--app-accent, #FF7F16)" : "transparent",
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 700,
+          lineHeight: 1,
+        }}
+      >
+        {checked ? "✓" : indeterminate ? "–" : ""}
+      </span>
+    </button>
+  );
+}
+
+/** 批量操作条（选中 >0 且列表/网格视图时渲染；树视图不做批量）：
+ * 「已选 {n} 项 · {字节}」+ 下载（串行 + 进度「下载中（a/b）」）/ 删除
+ *（复用 useDeleteConfirm 批量模式，进回收站）/ 取消选择。
+ * 窄屏（≤600px）flexWrap 换行，不固定不遮挡。 */
+function BatchBar({
+  t,
+  tr,
+  count,
+  bytes,
+  dlProgress,
+  busy,
+  onDownload,
+  onDelete,
+  onCancel,
+}: {
+  t: ThemeColors;
+  tr: Tr;
+  count: number;
+  bytes: number;
+  /** {done,total} | null（null = 未在批量下载）。 */
+  dlProgress: { done: number; total: number } | null;
+  /** 批量删除确认进行中（禁用操作防重入）。 */
+  busy: boolean;
+  onDownload: () => void;
+  onDelete: () => void;
+  onCancel: () => void;
+}) {
+  const dl = dlProgress;
+  return (
+    <div
+      role="toolbar"
+      aria-label={tr("批量操作")}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 8,
+        background: t.accentBg,
+        border: `1px solid ${t.border}`,
+        fontSize: 12,
+        color: t.text,
+      }}
+    >
+      <span style={{ fontWeight: 700 }}>
+        {tr("已选 {n} 项", { n: count })}
+        <span style={{ fontWeight: 400, color: t.textSecondary }}>
+          {" · "}
+          {fmtBytes(bytes)}
+        </span>
+      </span>
+      <span style={{ flex: "1 1 100%" }} />
+      <antd.Button
+        size="small"
+        loading={dl !== null}
+        disabled={busy}
+        style={btnTouch}
+        onClick={onDownload}
+      >
+        {dl
+          ? tr("下载中（{a}/{b}）", { a: dl.done, b: dl.total })
+          : tr("下载")}
+      </antd.Button>
+      <antd.Button
+        size="small"
+        danger
+        disabled={busy}
+        style={btnTouch}
+        onClick={onDelete}
+      >
+        {tr("删除")}
+      </antd.Button>
+      <antd.Button size="small" disabled={busy} style={btnTouch} onClick={onCancel}>
+        {tr("取消选择")}
+      </antd.Button>
+    </div>
+  );
+}
+
 /** 列表块（F-V3-3：files-only——回收站改工具条按钮 → TrashDialog 弹窗，
  * 不再同屏）：出错+重试（reload force）/ 加载中 / 空态（居中一句 + 主 CTA
  * 文字链接，指向工具条同一处理函数）/ 表头行 + 文件行列表（列自适应
@@ -1145,7 +1413,8 @@ function ListArea({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: cols.grid,
+            // 44px 首列 = 批量全选 checkbox（与 FileRow 行模板同宽，列宽稳定）。
+            gridTemplateColumns: `44px ${cols.grid}`,
             gap: 8,
             alignItems: "center",
             padding: "0 8px",
@@ -1153,6 +1422,13 @@ function ListArea({
             color: t.textSecondary,
           }}
         >
+          <SelCheck
+            t={t}
+            checked={fs.selAll === "all"}
+            indeterminate={fs.selAll === "some"}
+            onToggle={() => fs.onSelectAllToggle()}
+            label={tr("全选")}
+          />
           <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} onSetSort={onSetSort} />
           <span style={{ textAlign: "right" }}>
             <SortHeader
@@ -1400,7 +1676,8 @@ function FileRow({
       }}
       style={{
         display: "grid",
-        gridTemplateColumns: grid,
+        // 44px 首列 = 批量选择 checkbox（与表头同宽，列宽稳定；目录行空占位）。
+        gridTemplateColumns: `44px ${grid}`,
         gap: 8,
         alignItems: "center",
         minHeight: "var(--hf-row-min, 44px)",
@@ -1411,6 +1688,18 @@ function FileRow({
         ...rowSkin,
       }}
     >
+      {/* 批量选择列：文件 = checkbox（shift 点击 = 区间选择）；目录不可选
+       *（服务端不支持目录删除）= 空占位格保持列宽稳定。 */}
+      {isDir ? (
+        <span aria-hidden="true" />
+      ) : (
+        <SelCheck
+          t={t}
+          checked={fs.selected.has(path)}
+          onToggle={(shiftKey) => fs.onToggleSelect(path, { isDir: false, shiftKey })}
+          label={tr("选择 {name}", { name })}
+        />
+      )}
       {nameCell}
       <span
         style={{
@@ -1721,7 +2010,10 @@ function TreeRowView({
  * 空态 + 链接 CTA / 行列表）；children / expanded 用 ref 持有（ref 写 +
  * rev 自增触发重渲）；目录首次展开懒加载 listFiles 写 children Map
  *（gen 代数防切目录后在途响应污染新缓存）；键盘导航 = 容器 tabIndex=0 +
- * treeKeyNav（focusIndex 高亮；Enter = 行激活）。 */
+ * treeKeyNav（focusIndex 高亮；Enter = 行激活）。
+ * 批量选择本单不做（任务书：三视图里列表与网格可用）——树行不渲染
+ * checkbox、不接 fs.selected/批量操作条；树视图下的选择态保留但不展示，
+ * 批量操作条在树视图隐藏（容器门控 filesView !== "tree"）。 */
 function TreeArea({
   t,
   tr,
@@ -2136,7 +2428,25 @@ function GridCard({
         ...skin,
       }}
     >
-      <GridThumb entry={entry} apiPath={apiPath} t={t} allowThumb={allowThumb} />
+      {/* 缩略区 + 批量选择 checkbox（仅文件；目录不可选）：checkbox 叠在
+       * 缩略区左上角，44×44 命中区（coarse 指针随 --hf-row-min 放大）。 */}
+      <div style={{ position: "relative" }}>
+        <GridThumb entry={entry} apiPath={apiPath} t={t} allowThumb={allowThumb} />
+        {!isDir ? (
+          <span
+            style={{ position: "absolute", top: 4, left: 4, zIndex: 1 }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SelCheck
+              t={t}
+              checked={fs.selected.has(path)}
+              onToggle={(shiftKey) => fs.onToggleSelect(path, { isDir: false, shiftKey })}
+              label={tr("选择 {name}", { name })}
+            />
+          </span>
+        ) : null}
+      </div>
       <span
         title={name}
         style={{
@@ -2256,9 +2566,6 @@ function GridArea({
     <div ref={gridRef} style={{ display: "grid", gap: 8 }}>
       {fs.status !== "err" ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("共 {n} 个条目", { n: count })}
-          </span>
           {/* 网格无表头 → 用紧凑排序选择器暴露同一组列（列表用表头点击）。 */}
           <antd.Select
             size="small"
@@ -2281,6 +2588,22 @@ function GridArea({
               onSetSort({ key: k as FileSortKey, dir: dir === "desc" ? "desc" : "asc" });
             }}
           />
+        </div>
+      ) : null}
+      {/* 网格工具条（count>0）：「全选」三态 checkbox + 计数（有列表时
+       * 计数并入此行，避免与独立计数行重复）。 */}
+      {fs.status !== "err" && !fs.loading && count > 0 ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <SelCheck
+            t={t}
+            checked={fs.selAll === "all"}
+            indeterminate={fs.selAll === "some"}
+            onToggle={() => fs.onSelectAllToggle()}
+            label={tr("全选")}
+          />
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("共 {n} 个条目", { n: count })}
+          </span>
         </div>
       ) : null}
       {fs.status === "err" && count === 0 ? (
@@ -3193,6 +3516,14 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [trashDialogOpen, setTrashDialogOpen] = React.useState(false);
   // F-V3-3：撤销条（软删成功且 trashId 非空；只保留最近一条；8s 自动消失）。
   const [undo, setUndo] = React.useState<{ trashId: string; name: string } | null>(null);
+  // 批量选择（列表/网格共用；目录不可选）：键 = rowPath。选择态在容器层 →
+  // 视图切换（列表/网格/树）天然保留；刷新/切目录后 pruneSelection 剔除
+  // 已消失的路径（effect，幂等）。
+  const [selected, setSelected] = React.useState<SelectionSet>(new Set<string>());
+  // shift 区间锚点 = 最近一次非 shift 选择点（shift 点击不改锚点）。
+  const [selAnchor, setSelAnchor] = React.useState<string | null>(null);
+  // 批量下载进度（{done,total} | null = 未在批量下载）。
+  const [batchDl, setBatchDl] = React.useState<{ done: number; total: number } | null>(null);
   // F-V3-3：新鲜度——最近一次 files 腿成功时间（焦点/可见性重取判定）。
   const lastSuccessRef = React.useRef(0);
   const statusRef = React.useRef(status);
@@ -3307,6 +3638,124 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       ),
     [dedup, load],
   );
+
+  // 批量选择派生：当前目录可选（文件）行路径序列（列表顺序）——
+  // shift 区间定位 / 全选 / 剔除基准；目录行不入列（目录不可选）。
+  const selectablePaths = React.useMemo(
+    () =>
+      files
+        .filter((e) => !isEntryDir(e))
+        .map((e) => rowPath(e, dirPath))
+        .filter((p) => p !== ""),
+    [files, dirPath],
+  );
+  const selAll: SelectAllState = selectAllState(selected, selectablePaths);
+  // 选中汇总（批量操作条：数量 + 字节）。
+  const selSummary = React.useMemo(
+    () =>
+      selectedSummary(
+        files.map((e) => ({ path: rowPath(e, dirPath), size: e.size })),
+        selected,
+      ),
+    [files, dirPath, selected],
+  );
+
+  // 刷新 / 切目录 / 加载更多 → 剔除已消失的路径（pruneSelection 幂等：
+  // 无变化时原样返回，setState 同引用 → React 跳过重渲染）。
+  React.useEffect(() => {
+    setSelected((prev) => pruneSelection(prev, selectablePaths));
+  }, [selectablePaths]);
+
+  // 单点 / shift 区间切换（目录行忽略；shift 无锚点 → 回落单点并设锚点）。
+  const onToggleSelect = React.useCallback(
+    (p: string, opts: { isDir: boolean; shiftKey: boolean }) => {
+      if (opts.isDir || p === "") return;
+      if (opts.shiftKey) {
+        if (selAnchor) {
+          // 区间 [锚点..p]（含两端）并入现有选择；锚点保持不变。
+          setSelected((prev) =>
+            toggleSelection(prev, p, {
+              shiftKey: true,
+              anchor: selAnchor,
+              paths: selectablePaths,
+            }),
+          );
+          return;
+        }
+        setSelected((prev) => toggleSelection(prev, p));
+        setSelAnchor(p);
+        return;
+      }
+      setSelected((prev) => toggleSelection(prev, p));
+      setSelAnchor(p);
+    },
+    [selAnchor, selectablePaths],
+  );
+  // 「全选」三态切换：all → 清空；some/none → 全选（目录不入列）。
+  const onSelectAllToggle = React.useCallback(() => {
+    if (selAll === "all") {
+      setSelected(clearSelection());
+      setSelAnchor(null);
+    } else {
+      setSelected(selectAll(selectablePaths));
+      setSelAnchor(null);
+    }
+  }, [selAll, selectablePaths]);
+  const onClearSelection = React.useCallback(() => {
+    setSelected(clearSelection());
+    setSelAnchor(null);
+  }, []);
+
+  // 批量删除：容器层单一 useDeleteConfirm 实例（与列表行/网格卡/详情面板
+  // 共用同一组件，不另写 Modal）；批量 = 恒软删进回收站（无彻底删选项），
+  // 完成后汇总提示 + 清选择 + 静默刷新。
+  const batchDelete = useDeleteConfirm({
+    t,
+    tr,
+    humanName,
+    onDone: () => {
+      /* 本实例仅走 requestBatch（批量模式）；单文件模式不使用。 */
+    },
+    onBatchDone: (r) => {
+      reportBatchResult(tr, "删除", r);
+      setSelected(clearSelection());
+      setSelAnchor(null);
+      if (nav.selectedFile && r.deleted.some((d) => d.path === nav.selectedFile)) {
+        nav.selectFile(null);
+      }
+      void reload({ silent: true });
+    },
+  });
+
+  // 批量下载：逐个走现有 doDownload handler（预签名/直下语义不变），
+  // 串行 + batchDl 进度；部分失败不中断，结束 reportBatchResult 汇总。
+  const batchDownload = React.useCallback(async () => {
+    const items = files
+      .filter((e) => !isEntryDir(e))
+      .map((e) => ({ e, p: rowPath(e, dirPath) }))
+      .filter((x) => x.p !== "" && selected.has(x.p));
+    if (items.length === 0) return;
+    setBatchDl({ done: 0, total: items.length });
+    let ok = 0;
+    let failed = 0;
+    let firstError: string | undefined;
+    for (const { e, p } of items) {
+      try {
+        const good = await doDownload(humanName, p, entryDisplayName(e), e.size, tr);
+        if (good) ok += 1;
+        else {
+          failed += 1;
+          if (firstError === undefined) firstError = tr("下载失败");
+        }
+      } catch (err) {
+        failed += 1;
+        if (firstError === undefined) firstError = hfErrorText(err, tr);
+      }
+      setBatchDl({ done: ok + failed, total: items.length });
+    }
+    setBatchDl(null);
+    reportBatchResult(tr, "下载", { ok, failed, firstError });
+  }, [files, dirPath, selected, humanName, tr]);
 
   // F-V3-3：撤销条 8s 自动消失（新撤销覆盖旧——setUndo 换引用重启计时）。
   React.useEffect(() => {
@@ -3458,6 +3907,12 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     },
     filesView,
     onFilesViewChange: (v) => setFilesView(v),
+    selected,
+    selectablePaths,
+    selAll,
+    onToggleSelect,
+    onSelectAllToggle,
+    onClearSelection,
     offerUndo: (u) => {
       if (undoEligible(u.trashId)) setUndo({ trashId: u.trashId, name: u.name });
     },
@@ -3674,6 +4129,28 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
                 {tr("撤销")}
               </button>
             }
+          />
+        ) : null}
+        {/* 批量操作条：选中 >0 且列表/网格视图（树视图不做批量，见 TreeArea
+         * 注释）：下载（串行 + 进度）/ 删除（useDeleteConfirm 批量模式 →
+         * 进回收站）/ 取消选择。窄屏 flexWrap 换行不遮挡。 */}
+        {selected.size > 0 && filesView !== "tree" ? (
+          <BatchBar
+            t={t}
+            tr={tr}
+            count={selSummary.count}
+            bytes={selSummary.bytes}
+            dlProgress={batchDl}
+            busy={batchDl !== null || batchDelete.busy}
+            onDownload={() => void batchDownload()}
+            onDelete={() => {
+              const items = files
+                .filter((e) => !isEntryDir(e))
+                .map((e) => ({ path: rowPath(e, dirPath), name: entryDisplayName(e) }))
+                .filter((x) => x.path !== "" && selected.has(x.path));
+              if (items.length > 0) batchDelete.requestBatch(items);
+            }}
+            onCancel={onClearSelection}
           />
         ) : null}
         {panes && panes.detail !== null ? (
