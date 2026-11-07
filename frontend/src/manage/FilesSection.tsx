@@ -151,6 +151,16 @@ import {
   TOUCH,
 } from "./files/format";
 import {
+  DEFAULT_FILE_SORT,
+  FILE_SORT_STORAGE_KEY,
+  nextFileSort,
+  parseFileSort,
+  serializeFileSort,
+  sortFileEntries,
+  type FileSort,
+  type FileSortKey,
+} from "./files/sortModel";
+import {
   flattenTree,
   gridMinCols,
   parseFilesView,
@@ -980,6 +990,48 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
  * 文字链接，指向工具条同一处理函数）/ 表头行 + 文件行列表（列自适应
  * columnsFor：整批无 updatedAt → 不渲染「更新时间」列；compact = l1 列
  * 紧凑行）。 */
+/** 可排序列表头：按钮 + 方向指示（aria-sort 供读屏）。
+ * 目录恒在前；点击同列翻转方向，换列回升序（业界口径）。 */
+function SortHeader({
+  label,
+  k,
+  sort,
+  onSort,
+  align,
+}: {
+  label: string;
+  k: FileSortKey;
+  sort: FileSort;
+  onSort: (k: FileSortKey) => void;
+  align?: "right";
+}) {
+  const active = sort.key === k;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(k)}
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      style={{
+        all: "unset",
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 2,
+        minHeight: 44,
+        textAlign: align === "right" ? "right" : "left",
+        justifyContent: align === "right" ? "flex-end" : "flex-start",
+        color: active ? "var(--app-accent, inherit)" : "inherit",
+        fontWeight: active ? 600 : 400,
+      }}
+    >
+      {label}
+      <span style={{ fontSize: 9, opacity: active ? 0.9 : 0.35 }}>
+        {active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}
+      </span>
+    </button>
+  );
+}
+
 function ListArea({
   t,
   tr,
@@ -987,8 +1039,17 @@ function ListArea({
   fs,
   actions,
   compact = false,
-}: SubProps & { actions: FilesActions; compact?: boolean }) {
-  const count = fs.files.length;
+  files,
+  sort,
+  onSort,
+}: SubProps & {
+  actions: FilesActions;
+  compact?: boolean;
+  files: HumanFileEntry[];
+  sort: FileSort;
+  onSort: (k: FileSortKey) => void;
+}) {
+  const count = files.length;
   // F-V3-3 列自适应：表头 / 行 / grid 模板同一决策（纯函数 columnsFor）。
   const cols = columnsFor(fs.files);
   return (
@@ -1056,15 +1117,37 @@ function ListArea({
             color: t.textSecondary,
           }}
         >
-          <span>{tr("名称")}</span>
-          <span style={{ textAlign: "right" }}>{tr("大小")}</span>
-          <span>{tr("类型")}</span>
-          {cols.showUpdatedAt ? <span>{tr("修改")}</span> : null}
-          {cols.showCreated ? <span>{tr("创建")}</span> : null}
+          <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} />
+          <span style={{ textAlign: "right" }}>
+            <SortHeader
+              label={tr("大小")}
+              k="size"
+              sort={sort}
+              onSort={onSort}
+              align="right"
+            />
+          </span>
+          <SortHeader label={tr("类型")} k="type" sort={sort} onSort={onSort} />
+          {cols.showUpdatedAt ? (
+            <SortHeader
+              label={tr("修改")}
+              k="updatedAt"
+              sort={sort}
+              onSort={onSort}
+            />
+          ) : null}
+          {cols.showCreated ? (
+            <SortHeader
+              label={tr("创建")}
+              k="createdAt"
+              sort={sort}
+              onSort={onSort}
+            />
+          ) : null}
           <span>{tr("操作")}</span>
         </div>
       ) : null}
-      {fs.files.map((e) => (
+      {files.map((e) => (
         <FileRow
           key={rowPath(e, fs.dirPath) || entryDisplayName(e)}
           entry={e}
@@ -2090,9 +2173,17 @@ function GridArea({
   nav,
   fs,
   actions,
-}: SubProps & { actions: FilesActions }) {
+  files,
+  sort,
+  onSetSort,
+}: SubProps & {
+  actions: FilesActions;
+  files: HumanFileEntry[];
+  sort: FileSort;
+  onSetSort: (s: FileSort) => void;
+}) {
   const [gridRef, gridW] = useContainerWidth();
-  const count = fs.files.length;
+  const count = files.length;
   // 容器宽度已知且不足两列（gridW < 2×180+gap）→ min 边按 gridMinCols 档
   // 收窄（≤600 → 2 列），auto-fill 不再塌成单列；否则保持任务书模板。
   const gridTemplate = React.useMemo(() => {
@@ -2106,21 +2197,45 @@ function GridArea({
   // 缩略图配额：fs.files 顺序前 GRID_THUMB_CAP 个图片文件（任务书：最多前 60）。
   const thumbPaths = React.useMemo(() => {
     const s = new Set<string>();
-    for (const e of fs.files) {
+    for (const e of files) {
       if (s.size >= GRID_THUMB_CAP) break;
       if (!isEntryDir(e) && isImageName(entryDisplayName(e))) {
         s.add(rowPath(e, fs.dirPath));
       }
     }
     return s;
-  }, [fs.files, fs.dirPath]);
+  }, [files, fs.dirPath]);
 
   return (
     <div ref={gridRef} style={{ display: "grid", gap: 8 }}>
       {fs.status !== "err" ? (
-        <span style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("共 {n} 个条目", { n: count })}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("共 {n} 个条目", { n: count })}
+          </span>
+          {/* 网格无表头 → 用紧凑排序选择器暴露同一组列（列表用表头点击）。 */}
+          <antd.Select
+            size="small"
+            style={{ minWidth: 170 }}
+            value={`${sort.key}:${sort.dir}`}
+            options={[
+              { value: "name:asc", label: tr("名称 ↑") },
+              { value: "name:desc", label: tr("名称 ↓") },
+              { value: "size:asc", label: tr("大小 ↑") },
+              { value: "size:desc", label: tr("大小 ↓") },
+              { value: "type:asc", label: tr("类型 ↑") },
+              { value: "type:desc", label: tr("类型 ↓") },
+              { value: "updatedAt:asc", label: tr("修改 ↑") },
+              { value: "updatedAt:desc", label: tr("修改 ↓") },
+              { value: "createdAt:asc", label: tr("创建 ↑") },
+              { value: "createdAt:desc", label: tr("创建 ↓") },
+            ]}
+            onChange={(v: string) => {
+              const [k, dir] = v.split(":");
+              onSetSort({ key: k as FileSortKey, dir: dir === "desc" ? "desc" : "asc" });
+            }}
+          />
+        </div>
       ) : null}
       {fs.status === "err" && count === 0 ? (
         <>
@@ -2164,7 +2279,7 @@ function GridArea({
       ) : null}
       {fs.status !== "err" && count > 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: gridTemplate, gap: GRID_GAP }}>
-          {fs.files.map((e) => {
+          {files.map((e) => {
             const p = rowPath(e, fs.dirPath);
             return (
               <GridCard
@@ -3356,6 +3471,30 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     loadMore: () => void loadMore(),
   };
   const sub: SubProps = { t, tr, nav, fs };
+  /** 列排序（列表/网格共用；localStorage 持久化）。目录恒在前由 sortModel 保证。 */
+  const [fileSort, setFileSort] = React.useState<FileSort>(() => {
+    try {
+      return parseFileSort(window.localStorage.getItem(FILE_SORT_STORAGE_KEY));
+    } catch {
+      return DEFAULT_FILE_SORT;
+    }
+  });
+  const applyFileSort = React.useCallback((next: FileSort) => {
+    setFileSort(next);
+    try {
+      window.localStorage.setItem(FILE_SORT_STORAGE_KEY, serializeFileSort(next));
+    } catch {
+      /* 隐私模式/配额满：仅本次会话生效 */
+    }
+  }, []);
+  const onFileSort = React.useCallback(
+    (k: FileSortKey) => applyFileSort(nextFileSort(fileSort, k)),
+    [applyFileSort, fileSort],
+  );
+  const sortedFiles = React.useMemo(
+    () => sortFileEntries(fs.files, fileSort),
+    [fs.files, fileSort],
+  );
 
   if (variant === "l1") {
     // F-V3-3：视图切换 tab 移除（回收站改弹窗；view 恒 "files"——
@@ -3372,7 +3511,14 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           </span>
         )}
         {view === "files" ? (
-          <ListArea {...sub} actions={actions} compact />
+          <ListArea
+            {...sub}
+            actions={actions}
+            compact
+            files={sortedFiles}
+            sort={fileSort}
+            onSort={onFileSort}
+          />
         ) : (
           <TrashRailList {...sub} />
         )}
@@ -3404,9 +3550,21 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       filesView === "tree" ? (
         <TreeArea {...sub} actions={actions} />
       ) : filesView === "grid" ? (
-        <GridArea {...sub} actions={actions} />
+        <GridArea
+          {...sub}
+          actions={actions}
+          files={sortedFiles}
+          sort={fileSort}
+          onSetSort={applyFileSort}
+        />
       ) : (
-        <ListArea {...sub} actions={actions} />
+        <ListArea
+          {...sub}
+          actions={actions}
+          files={sortedFiles}
+          sort={fileSort}
+          onSort={onFileSort}
+        />
       );
     return (
       <div ref={widthRef} style={{ display: "grid", gap: 10, padding: 4 }}>
