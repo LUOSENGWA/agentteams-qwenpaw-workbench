@@ -349,6 +349,20 @@ export const probeWorkerGateway = (
     `/workers/${encodeURIComponent(name)}/gateway-probe`,
     kind === "mcp" && server ? { kind, server } : { kind },
   ) as Promise<GatewayProbeResult>;
+/** 修复网关授权（POST /gateway/consumers/{name}/bind，幂等）——
+ * Controller 侧把该 Consumer 授权到配置的 AI 模型 API（Higress）。Worker 的
+ * Consumer 名固定为 `worker-<runtimeName>`（member_reconcile.go 同口径），
+ * 正常由 reconciler 自动授权；此调用用于授权丢失后的手工回填。
+ * 204 = 成功（无 body）；403 无权限 / 404·501 老控制器无此路由 / 500 网关侧错误。 */
+export async function bindWorkerGatewayConsumer(
+  workerName: string,
+): Promise<void> {
+  await controllerRequest(
+    "POST",
+    `/gateway/consumers/${encodeURIComponent(`worker-${workerName}`)}/bind`,
+  );
+}
+
 /** 更新 Manager 模型。PUT /managers/{name} 同为合并语义
  * （Controller UpdateManager：if req.Model != "" 才写 spec，其余 spec 不动；
  * resource_handler.go 源码实锤）——只发 {model}，provider 保持原值/默认。 */

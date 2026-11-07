@@ -34,6 +34,7 @@ import type * as ReactNS from "react";
 import {
   updateWorker,
   probeWorkerGateway,
+  bindWorkerGatewayConsumer,
   fetchWorkerRuntimeEnv,
   fetchWorkerDetail,
   httpErrorStatus,
@@ -158,6 +159,8 @@ function WorkerEnvPanel({
   const [probeMcpSel, setProbeMcpSel] = React.useState<string>(
     () => worker.mcpServers?.[0]?.name ?? "",
   );
+  /** 修复网关授权（幂等 bind；排障用）。 */
+  const [authBusy, setAuthBusy] = React.useState(false);
   const [probeRes, setProbeRes] = React.useState<{
     kind: "model" | "mcp";
     ok: boolean;
@@ -311,6 +314,30 @@ function WorkerEnvPanel({
       return;
     }
     void run();
+  };
+
+  /** 修复网关授权：POST /gateway/consumers/worker-<name>/bind（幂等）。 */
+  const repairGatewayAuth = async () => {
+    setAuthBusy(true);
+    try {
+      await bindWorkerGatewayConsumer(worker.name);
+      antd.message.success(
+        tr("已授权该 Worker 的网关 Consumer（worker-{n}）", { n: worker.name }),
+      );
+    } catch (e) {
+      const st = httpErrorStatus(e);
+      if (st === 403) {
+        antd.message.error(tr("无权限：仅管理员/负责人可修复授权"));
+      } else if (st === 404 || st === 501) {
+        antd.message.warning(tr("控制器未提供该接口（版本较旧）"));
+      } else {
+        antd.message.error(
+          tr("修复失败：{d}", { d: httpErrorDetail(e) || String(st ?? "") }),
+        );
+      }
+    } finally {
+      setAuthBusy(false);
+    }
   };
 
   const probe = async (kind: "model" | "mcp") => {
@@ -704,6 +731,17 @@ function WorkerEnvPanel({
             {tr("（该 Worker 未设置模型）")}
           </span>
         )}
+        <antd.Button
+          size="small"
+          loading={authBusy}
+          disabled={!worker.model}
+          onClick={() => void repairGatewayAuth()}
+          title={tr("授权丢失/403 时用：把 worker-{n} 重新授权到 AI 模型 API", {
+            n: worker.name,
+          })}
+        >
+          {tr("修复网关授权")}
+        </antd.Button>
         {worker.mcpServers?.length ? (
           <React.Fragment>
             <antd.Select
