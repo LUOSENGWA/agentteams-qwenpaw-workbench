@@ -98,10 +98,14 @@ export function TaskInspectionDrawer(props: {
   onClose: () => void;
   /** 取消成功后父组件静默刷新（对齐看板卡 onTaskDone 语义）。 */
   onDone?: () => void;
+  /** #1540 meta 编辑入口可见性（首次 GET 405/404 后父置 false 隐藏）。 */
+  metaSupported?: boolean;
+  /** #1540 打开任务 meta 编辑（同一共享弹窗；父组件持有目标态）。 */
+  onOpenMeta?: (taskId: string, title: string) => void;
 }) {
   const t = useThemeColors();
   const tr = useT();
-  const { ev, taskId } = props;
+  const { ev, taskId, metaSupported, onOpenMeta } = props;
   // spec/结果产物/交付物的查看/下载/预览 = 共享
   // ArtifactLines（与拓扑任务详情行同一组件——预览态随组件内聚，
   // 本 Drawer 不再自持 preview/downloading）。
@@ -149,15 +153,28 @@ export function TaskInspectionDrawer(props: {
             <span style={{ fontFamily: "monospace", fontSize: 11, color: t.textSecondary, overflowWrap: "anywhere" }}>
               {taskId}
             </span>
-            {canCancel ? (
-              <antd.Button
-                size="small"
-                danger
-                style={{ marginLeft: "auto" }}
-                onClick={() => setCancelOpen(true)}
-              >
-                {tr("取消任务")}
-              </antd.Button>
+            {/* #1540：任务 meta 编辑入口 + 取消——同一右对齐操作区。 */}
+            {(metaSupported && onOpenMeta) || canCancel ? (
+              <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                {metaSupported && onOpenMeta ? (
+                  <antd.Button
+                    size="small"
+                    type="text"
+                    onClick={() => onOpenMeta(taskId, node ? nodeLabel(node) : taskId)}
+                  >
+                    {tr("元数据")}
+                  </antd.Button>
+                ) : null}
+                {canCancel ? (
+                  <antd.Button
+                    size="small"
+                    danger
+                    onClick={() => setCancelOpen(true)}
+                  >
+                    {tr("取消任务")}
+                  </antd.Button>
+                ) : null}
+              </span>
             ) : null}
           </div>
           {!detail ? (

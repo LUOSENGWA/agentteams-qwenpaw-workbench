@@ -26,6 +26,7 @@ import {
   LoopBlock,
 } from "../workflowboard/blocks";
 import { ProjectRail } from "../workflowboard/rail";
+import MetaEditorModal from "./MetaEditorModal";
 
 export type { WfView };
 
@@ -199,6 +200,15 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   const topoEvent = events.find((e) => e.runId === topoRun) || withNodes[0] || null;
   // #1230 任务巡检：任务卡点击 → Drawer（runId+taskId 双键定位；
   // 事件被刷新剔除时 find 落 null → Drawer 自动空态关闭语义由 open 判空覆盖）。
+  /** #1540 meta 编辑目标（项目/任务共用同一弹窗）。 */
+  const [metaTarget, setMetaTarget] = React.useState<{
+    kind: "project" | "task";
+    id: string;
+    title: string;
+    teamId?: string;
+  } | null>(null);
+  /** 首次 405/404 → 本会话隐藏 meta 入口（老控制器静默降级）。 */
+  const [metaSupported, setMetaSupported] = React.useState(true);
   const [inspect, setInspect] = React.useState<{
     runId: string;
     taskId: string;
@@ -235,6 +245,22 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         >
           {statusMeta(topoEvent.status).label}
         </antd.Tag>
+        {metaSupported ? (
+          <antd.Button
+            size="small"
+            type="text"
+            onClick={() =>
+              setMetaTarget({
+                kind: "project",
+                id: topoEvent.runId,
+                title: topoEvent.title || topoEvent.runId,
+                teamId: topoEvent.team_id,
+              })
+            }
+          >
+            {tr("元数据")}
+          </antd.Button>
+        ) : null}
         <InterventionActions ev={topoEvent} onDone={() => onRefresh?.()} />
       </div>
       <InterruptsBlock
@@ -543,6 +569,28 @@ overflow:hidden——高度可约束、不撑破页面（10/26）：各视图内
         taskId={inspect?.taskId ?? null}
         onClose={() => setInspect(null)}
         onDone={() => onRefresh?.()}
+        metaSupported={metaSupported}
+        onOpenMeta={(taskId, title) =>
+          setMetaTarget({
+            kind: "task",
+            id: taskId,
+            title,
+            teamId: inspectEv?.team_id,
+          })
+        }
+      />
+      <MetaEditorModal
+        open={!!metaTarget}
+        kind={metaTarget?.kind ?? "project"}
+        id={metaTarget?.id ?? ""}
+        title={metaTarget?.title ?? ""}
+        teamId={metaTarget?.teamId}
+        onClose={() => setMetaTarget(null)}
+        onUnsupported={() => {
+          setMetaSupported(false);
+          setMetaTarget(null);
+        }}
+        onSaved={() => onRefresh?.()}
       />
     </div>
   );
