@@ -26,6 +26,7 @@ import {
   type PanelField,
 } from "../../lib/configSectionModel";
 import type { RuntimeSurface } from "../../api/domains/memberConfig";
+import { fieldLabel, labelFor } from "../../lib/runtimeLabels";
 import {
   BoltIcon,
   BoxIcon,
@@ -221,7 +222,11 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
   const renderField = (f: PanelField) => {
     const star = f.key.includes("*");
     return (
-      <CfgRow key={f.key} label={translate(f.label || f.key)} tip={f.description}>
+      <CfgRow
+        key={f.key}
+        label={translate(fieldLabel(runtime, f.key, f.label))}
+        tip={f.description}
+      >
         <SchemaField
           field={f}
           value={star ? collectConcreteValues(f.key, v) : draft[f.key]}
@@ -253,7 +258,10 @@ export default function RuntimeConfigPanel(props: RuntimeConfigPanelProps): JSX.
           return {
             key: face.id,
             label: (
-              <FaceLabel id={face.id} text={translate(FACE_LABELS[face.id] ?? face.label)} />
+              <FaceLabel
+                id={face.id}
+                text={labelFor(runtime, face.id, translate(FACE_LABELS[face.id] ?? face.label))}
+              />
             ),
             fields: subs.length ? subs.flatMap((x) => x.fields) : visible(face.fields.filter(match)),
             subs: subs.filter((x) => x.fields.length > 0),
