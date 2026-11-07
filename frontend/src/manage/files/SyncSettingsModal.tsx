@@ -58,6 +58,13 @@ export const SYNC_STATE_PATH = "/agentteams-proxy/sync/state";
 export const SYNC_CONFIG_PATH = "/agentteams-proxy/sync/config";
 /** S2 取消同步（只删本地镜像，远端零 DELETE）。 */
 export const SYNC_UNSYNC_PATH = "/agentteams-proxy/sync/unsync";
+/** S5 冲突记录（conflicts.log 一行；字段按引擎 _log_conflict 写入形态）。 */
+interface ConflictRec {
+  ts?: string;
+  path?: string;
+  conflictCopy?: string;
+}
+
 /** S6 进度快照（idle / scanning / syncing / done…）。 */
 export const SYNC_PROGRESS_PATH = "/agentteams-proxy/sync/progress";
 
@@ -154,6 +161,8 @@ export default function SyncSettingsModal({
   const [prog, setProg] = React.useState<ProgressSnap | null>(null);
   /** S2 待取消同步的镜像路径（相对 files/）。 */
   const [unsyncPath, setUnsyncPath] = React.useState("");
+  /** S5 冲突记录（新→旧；null = 端点缺失/未取到 → 整块隐藏）。 */
+  const [conflicts, setConflicts] = React.useState<ConflictRec[] | null>(null);
 
   const num = (v: unknown): number => (typeof v === "number" ? v : 0);
 
@@ -337,6 +346,54 @@ export default function SyncSettingsModal({
   React.useEffect(() => {
     if (open) void loadScope();
   }, [open, loadScope]);
+
+  /** S5 冲突列表（端点缺失/失败 → null = 整块隐藏，不空壳报错）。 */
+  const loadConflicts = React.useCallback(async () => {
+    try {
+      const resp = await fetchFile(
+        "/agentteams-proxy/sync/conflicts?limit=50",
+        resolvePluginUrl("/agentteams-proxy/sync/conflicts?limit=50"),
+      );
+      if (!resp.ok) {
+        setConflicts(null);
+        return;
+      }
+      const j = (await resp.json().catch(() => null)) as Record<string, unknown> | null;
+      const arr = Array.isArray(j?.conflicts) ? (j?.conflicts as ConflictRec[]) : [];
+      setConflicts(arr);
+    } catch {
+      setConflicts(null);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (open) void loadConflicts();
+  }, [open, loadConflicts]);
+
+  /** S5 删本地冲突副本（远端不动）；成功后重取列表。 */
+  const removeConflict = async (rel: string) => {
+    try {
+      const resp = await fetchFile(
+        "/agentteams-proxy/sync/conflicts/remove",
+        resolvePluginUrl("/agentteams-proxy/sync/conflicts/remove"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: rel }),
+        },
+      );
+      const j = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!resp.ok || j.removed !== true) {
+        antd.message.warning(tr("未删除（{r}）", { r: String(j.reason ?? resp.status) }));
+        return;
+      }
+      antd.message.success(tr("已删除本地冲突副本"));
+      void loadConflicts();
+      onSynced();
+    } catch {
+      antd.message.error(tr("操作失败"));
+    }
+  };
 
   /** S1 保存（PUT；pattern 非法 → 后端 400 invalid_path，原样提示不吞错）。 */
   const saveScope = async (next: { include: string[]; exclude: string[] }) => {
@@ -640,6 +697,33 @@ export default function SyncSettingsModal({
             {tr("远端证据不足时会被拒绝（远端始终不动）")}
           </span>
         </div>
+        {/* S5 冲突（conflicts.log；每条 = 本地副本 + 远端主文件） */}
+        {conflicts && conflicts.length > 0 ? (
+          <div style={{ display: "grid", gap: 6 }}>
+            <span style={labelStyle(t)}>{tr("冲突（{n}）", { n: conflicts.length })}</span>
+            {conflicts.slice(0, 10).map((c, i) => (
+              <div
+                key={`${c.conflictCopy ?? c.path ?? "c"}-${i}`}
+                style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}
+              >
+                <span style={{ ...valueStyle(t), flex: 1, minWidth: 0, wordBreak: "break-all" }}>
+                  {c.path ?? "—"}
+                  {c.ts ? ` · ${fmtTs(c.ts)}` : ""}
+                </span>
+                <antd.Button
+                  size="small"
+                  disabled={!c.conflictCopy}
+                  onClick={() => c.conflictCopy && void removeConflict(c.conflictCopy)}
+                >
+                  {tr("删除本地副本")}
+                </antd.Button>
+              </div>
+            ))}
+            <span style={{ fontSize: 12, color: t.textSecondary }}>
+              {tr("主文件以远端为准；冲突副本仅存本地，删除不影响远端")}
+            </span>
+          </div>
+        ) : null}
         {/* 路径说明（镜像目录）。 */}
         <div style={{ display: "grid", gap: 4 }}>
           <span style={labelStyle(t)}>{tr("镜像目录")}</span>

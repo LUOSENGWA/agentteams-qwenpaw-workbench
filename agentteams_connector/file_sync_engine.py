@@ -850,6 +850,46 @@ class SyncEngine:
         )
         os.replace(tmp, self.state_file)
 
+    def list_conflicts(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """冲突日志最近 N 条（新→旧；坏行跳过，不整块失败）。"""
+        out: List[Dict[str, Any]] = []
+        try:
+            with open(self.conflicts_log, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception:  # noqa: BLE001
+            return out
+        for line in reversed(lines):
+            if len(out) >= max(1, int(limit)):
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            if isinstance(rec, dict):
+                out.append(rec)
+        return out
+
+    def remove_conflict_copy(self, rel: Any) -> Dict[str, Any]:
+        """删本地冲突副本（``*.conflict-*``，仅镜像内；远端零调用）。"""
+        key = safe_rel_path(rel)
+        if key is None or ".conflict-" not in key:
+            return {"removed": False, "reason": "invalid_path"}
+        target = (self.root / key).resolve()
+        try:
+            target.relative_to(self.root.resolve())
+        except Exception:  # noqa: BLE001
+            return {"removed": False, "reason": "invalid_path"}
+        try:
+            target.unlink()
+            return {"removed": True, "path": key}
+        except FileNotFoundError:
+            return {"removed": False, "reason": "not_found", "path": key}
+        except Exception:  # noqa: BLE001
+            return {"removed": False, "reason": "io_error", "path": key}
+
     def _conflict_count(self) -> int:
         try:
             with open(self.conflicts_log, "r", encoding="utf-8") as f:

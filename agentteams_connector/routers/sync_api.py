@@ -129,6 +129,26 @@ def build_sync_router() -> APIRouter:
             eng.unsync, paths, human=body.get("human"), force=bool(body.get("force"))
         )
 
+    @router.get("/sync/conflicts")
+    async def sync_conflicts(limit: int = 200) -> Dict[str, Any]:
+        """S5 冲突列表（conflicts.log 最近 N 条，新→旧）。"""
+        from .. import file_sync_engine
+
+        eng = file_sync_engine.ensure_engine()
+        return {"conflicts": eng.list_conflicts(limit)}
+
+    @router.post("/sync/conflicts/remove")
+    async def sync_conflict_remove(body: Dict[str, Any]) -> Dict[str, Any]:
+        """S5 删本地冲突副本（``*.conflict-*``；远端零调用）。"""
+        from .. import file_sync_engine
+
+        body = body or {}
+        rel = body.get("path")
+        if not isinstance(rel, str) or not rel.strip():
+            raise HTTPException(status_code=400, detail={"error": "invalid_body"})
+        eng = file_sync_engine.ensure_engine()
+        return eng.remove_conflict_copy(rel)
+
     @router.get("/sync/progress")
     async def sync_progress() -> Dict[str, Any]:
         """S6 进度快照（state/files_*/bytes_*/speed_bps/eta_sec/…；

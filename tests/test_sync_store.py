@@ -445,3 +445,41 @@ def test_sync_state_endpoint_fields(tmp_path):
         assert data["cursor"] is None
     finally:
         fse._engine = None
+
+
+# ── S5 冲突日志（列表 + 删本地副本） ─────────────────────────────
+
+
+def test_list_conflicts_newest_first_and_skips_bad_lines(tmp_path):
+    from agentteams_connector.file_sync_engine import SyncEngine
+
+    eng = SyncEngine.__new__(SyncEngine)  # 只测日志读取，不建真实引擎
+    eng.sync_dir = tmp_path
+    eng.conflicts_log = tmp_path / "conflicts.log"
+    eng.conflicts_log.write_text(
+        '{"ts":"t1","path":"files/a.md","conflictCopy":"files/a.md.conflict-1"}\n'
+        "not json\n"
+        '{"ts":"t2","path":"files/b.md","conflictCopy":"files/b.md.conflict-2"}\n',
+        encoding="utf-8",
+    )
+    got = SyncEngine.list_conflicts(eng, limit=10)
+    assert [c["path"] for c in got] == ["files/b.md", "files/a.md"]
+
+
+def test_remove_conflict_copy_only_conflict_files(tmp_path):
+    from agentteams_connector.file_sync_engine import SyncEngine
+
+    eng = SyncEngine.__new__(SyncEngine)
+    eng.root = tmp_path
+    f = tmp_path / "files" / "a.md.conflict-20260101T000000Z"
+    f.parent.mkdir(parents=True)
+    f.write_text("x", encoding="utf-8")
+    assert SyncEngine.remove_conflict_copy(eng, "files/a.md.conflict-20260101T000000Z")[
+        "removed"
+    ]
+    assert not f.exists()
+    # 非冲突文件拒绝
+    plain = tmp_path / "files" / "a.md"
+    plain.write_text("y", encoding="utf-8")
+    assert not SyncEngine.remove_conflict_copy(eng, "files/a.md")["removed"]
+    assert plain.exists()
