@@ -3,6 +3,13 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.132 (mark-read 422 fix · 2026-11-07)
+
+**Fixed**
+- `POST /matrix/mark-read` rejected a valid JSON body with 422 `loc:["query","req"]`: `MarkReadRequest` was declared inside `build_matrix_router()`, and with `from __future__ import annotations` FastAPI resolves annotations against module globals, so the local class was invisible and `req` became a required query parameter. The class now lives at module level, with a TestClient regression (200/401, never 422).
+- Keeps 16.131's default `Content-Type: application/json` for other POSTs.
+
+**Tests**: pytest 681 · vitest 222 · build 0.
 ## 0.5.0-beta.16.130 (#1544/#1545 adaptation · 2026-11-07)
 
 **Added/adapted**

@@ -3,6 +3,13 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.132（mark-read 422 修复 · 2026-11-07）
+
+**修复**
+- `POST /matrix/mark-read` 正常 JSON body 被 422 `loc:["query","req"]`：`MarkReadRequest` 定义在 `build_matrix_router()` 函数内，模块 `from __future__ import annotations` 让 FastAPI 用模块 globals 解析注解时找不到局部类，把 `req` 当成必填 query 参数。类移到模块级；新增 TestClient 回归（body 200/401，不得 422）。
+- 同时保留 16.131 的 `Content-Type: application/json` 默认（其他 POST 少头时不再 422）。
+
+**测试**：pytest 681 · vitest 222 · build 0。
 ## 0.5.0-beta.16.130（#1544/#1545 适配 · 2026-11-07）
 
 **新增/适配**
