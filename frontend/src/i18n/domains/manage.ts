@@ -752,4 +752,62 @@ export const manageDict: Record<string, { en: string }> = {
   "打开 Tracing（Dashboard 调用链页面，新窗口）": {
     en: "Open Tracing (Dashboard call-chain page, new window)",
   },
+
+  // ── 文件区第二批：重命名/移动、配额编辑（十进制 MB/GB）、文本在线编辑 ──
+  "重命名": { en: "Rename" },
+  "移动到…": { en: "Move to…" },
+  "移动": { en: "Move" },
+  "编辑配额": { en: "Edit quota" },
+  "新名称": { en: "New name" },
+  "名称非法": { en: "Invalid name" },
+  "名称未变化": { en: "Name unchanged" },
+  "目标目录": { en: "Target folder" },
+  "选择目录": { en: "Choose folder" },
+  "目标目录非法": { en: "Invalid target folder" },
+  "目标目录与当前目录相同": { en: "Target folder is the current folder" },
+  "不能移动到自身或子目录": { en: "Cannot move into itself or a subfolder" },
+  "目标已存在": { en: "Target already exists" },
+  "「{name}」已存在，覆盖？": { en: "\"{name}\" already exists. Overwrite?" },
+  "覆盖保存": { en: "Overwrite" },
+  "内容冲突": { en: "Content conflict" },
+  "文件已被其他人修改。重新加载会丢弃本地修改；覆盖保存将强制写入。": {
+    en: "The file was modified by someone else. Reloading discards your edits; overwrite forces the write.",
+  },
+  "重新加载（丢弃本地）": { en: "Reload (discard local)" },
+  "放弃": { en: "Discard" },
+  "继续编辑": { en: "Keep editing" },
+  "放弃未保存的修改？": { en: "Discard unsaved changes?" },
+  "编辑文本": { en: "Edit text" },
+  "文本上限 1 MiB": { en: "Text limit 1 MiB" },
+  "文件过大，无法在线编辑（≤1 MiB）": {
+    en: "File too large to edit online (≤1 MiB)",
+  },
+  "（无 ETag，保存不带 If-Match）": { en: "(No ETag; save without If-Match)" },
+  "容量": { en: "Capacity" },
+  "单位": { en: "Unit" },
+  "文件数": { en: "File count" },
+  "留空 = 不限；0 = 零额度": { en: "Empty = unlimited; 0 = zero quota" },
+  "十进制：1 MB = 1,000,000 bytes，1 GB = 1,000,000,000 bytes": {
+    en: "Decimal: 1 MB = 1,000,000 bytes, 1 GB = 1,000,000,000 bytes",
+  },
+  "当前已用 {a}": { en: "Currently used {a}" },
+  "复制中…": { en: "Copying…" },
+  "重命名中…": { en: "Renaming…" },
+  "已移动": { en: "Moved" },
+  "已重命名": { en: "Renamed" },
+  "空目录无可移动文件（已跳过）": {
+    en: "Empty folder has no files to move (skipped)",
+  },
+  "部分文件移动失败（成功 {a} / 失败 {b}）": {
+    en: "Some files failed to move ({a} succeeded / {b} failed)",
+  },
+  "只列出已加载目录；可手输其它路径": {
+    en: "Only loaded folders are listed; you can type another path",
+  },
+  "手输相对路径（留空 = 根目录）": {
+    en: "Type a relative path (empty = root)",
+  },
+  "文件大于 8 MiB，重命名/移动可能较慢": {
+    en: "File is larger than 8 MiB; rename/move may be slow",
+  },
 };
