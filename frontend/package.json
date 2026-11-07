@@ -1,7 +1,7 @@
 {
   "name": "agentteams-qwenpaw-workbench-ui",
   "private": true,
-  "version": "0.5.0-beta.16.124",
+  "version": "0.5.0-beta.16.125",
   "scripts": {
     "build": "vite build"
   },
