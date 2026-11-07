@@ -9,6 +9,7 @@ import {
   parseFileSort,
   serializeFileSort,
   sortFileEntries,
+  sortTreeLevels,
 } from "../src/manage/files/sortModel";
 
 const f = (
@@ -85,5 +86,37 @@ describe("sort state helpers", () => {
   it("serializeFileSort round-trips", () => {
     const s = { key: "updatedAt", dir: "desc" } as const;
     expect(parseFileSort(serializeFileSort(s))).toEqual(s);
+  });
+});
+
+describe("sortTreeLevels (tree view)", () => {
+  it("sorts roots and every loaded level independently, dirs first", () => {
+    const roots = [f("files/b.md"), d("files/Z")];
+    const children = new Map<string, HumanFileEntry[]>([
+      ["Z/", [f("Z/2.md"), f("Z/10.md"), d("Z/sub")]],
+    ]);
+    const out = sortTreeLevels(roots, children, { key: "name", dir: "asc" });
+    expect(out.roots.map((e) => e.path)).toEqual(["files/Z/", "files/b.md"]);
+    expect(out.children.get("Z/")!.map((e) => e.path)).toEqual([
+      "Z/sub/",
+      "Z/2.md",
+      "Z/10.md",
+    ]);
+    // 不修改入参
+    expect(children.get("Z/")!.map((e) => e.path)).toEqual([
+      "Z/2.md",
+      "Z/10.md",
+      "Z/sub/",
+    ]);
+  });
+
+  it("descending keeps directories first", () => {
+    const roots = [d("files/a"), d("files/Z"), f("files/m.md")];
+    const out = sortTreeLevels(roots, new Map(), { key: "name", dir: "desc" });
+    expect(out.roots.map((e) => e.path)).toEqual([
+      "files/Z/",
+      "files/a/",
+      "files/m.md",
+    ]);
   });
 });

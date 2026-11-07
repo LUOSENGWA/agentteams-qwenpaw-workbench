@@ -115,6 +115,18 @@ export function compareFileEntries(
   return cmp * sign;
 }
 
+/** 树视图逐层排序：根层与每个已加载目录的子项都按同一 sort 排序，
+ * 返回新的 children Map（不改入参；tree 结构/展开状态不受影响）。 */
+export function sortTreeLevels(
+  roots: HumanFileEntry[],
+  children: Map<string, HumanFileEntry[]>,
+  sort: FileSort,
+): { roots: HumanFileEntry[]; children: Map<string, HumanFileEntry[]> } {
+  const out = new Map<string, HumanFileEntry[]>();
+  for (const [k, v] of children) out.set(k, sortFileEntries(v, sort));
+  return { roots: sortFileEntries(roots, sort), children: out };
+}
+
 /** 排序副本（目录恒在前；不改原数组）。 */
 export function sortFileEntries(
   entries: HumanFileEntry[],

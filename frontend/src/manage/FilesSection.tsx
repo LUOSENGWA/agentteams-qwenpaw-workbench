@@ -157,6 +157,7 @@ import {
   parseFileSort,
   serializeFileSort,
   sortFileEntries,
+  sortTreeLevels,
   type FileSort,
   type FileSortKey,
 } from "./files/sortModel";
@@ -990,45 +991,78 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
  * 文字链接，指向工具条同一处理函数）/ 表头行 + 文件行列表（列自适应
  * columnsFor：整批无 updatedAt → 不渲染「更新时间」列；compact = l1 列
  * 紧凑行）。 */
-/** 可排序列表头：按钮 + 方向指示（aria-sort 供读屏）。
- * 目录恒在前；点击同列翻转方向，换列回升序（业界口径）。 */
+/** 可排序表头（列表与树共用）：
+ * - 列名点击 = 同列翻转 / 换列升序；
+ * - 右侧**两个三角形**（▲ 升序 / ▼ 降序）可分别点击直达方向；
+ * - aria-sort 供读屏；触控热区 ≥44px。 */
 function SortHeader({
   label,
   k,
   sort,
   onSort,
+  onSetSort,
   align,
 }: {
   label: string;
   k: FileSortKey;
   sort: FileSort;
   onSort: (k: FileSortKey) => void;
+  onSetSort: (s: FileSort) => void;
   align?: "right";
 }) {
   const active = sort.key === k;
+  const triangle = (dir: "asc" | "desc") => {
+    const on = active && sort.dir === dir;
+    return (
+      <button
+        type="button"
+        aria-label={`${label} ${dir === "asc" ? "升序" : "降序"}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSetSort({ key: k, dir });
+        }}
+        style={{
+          all: "unset",
+          cursor: "pointer",
+          padding: "0 1px",
+          lineHeight: "6px",
+          fontSize: 7,
+          opacity: on ? 0.95 : 0.32,
+          color: on ? "var(--app-accent, inherit)" : "inherit",
+        }}
+      >
+        {dir === "asc" ? "▲" : "▼"}
+      </button>
+    );
+  };
   return (
-    <button
-      type="button"
-      onClick={() => onSort(k)}
-      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+    <span
       style={{
-        all: "unset",
-        cursor: "pointer",
         display: "inline-flex",
         alignItems: "center",
         gap: 2,
         minHeight: 44,
-        textAlign: align === "right" ? "right" : "left",
         justifyContent: align === "right" ? "flex-end" : "flex-start",
-        color: active ? "var(--app-accent, inherit)" : "inherit",
-        fontWeight: active ? 600 : 400,
       }}
     >
-      {label}
-      <span style={{ fontSize: 9, opacity: active ? 0.9 : 0.35 }}>
-        {active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}
+      <button
+        type="button"
+        onClick={() => onSort(k)}
+        aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+        style={{
+          all: "unset",
+          cursor: "pointer",
+          color: active ? "var(--app-accent, inherit)" : "inherit",
+          fontWeight: active ? 600 : 400,
+        }}
+      >
+        {label}
+      </button>
+      <span style={{ display: "inline-flex", flexDirection: "column", marginLeft: 1 }}>
+        {triangle("asc")}
+        {triangle("desc")}
       </span>
-    </button>
+    </span>
   );
 }
 
@@ -1042,12 +1076,14 @@ function ListArea({
   files,
   sort,
   onSort,
+  onSetSort,
 }: SubProps & {
   actions: FilesActions;
   compact?: boolean;
   files: HumanFileEntry[];
   sort: FileSort;
   onSort: (k: FileSortKey) => void;
+  onSetSort: (s: FileSort) => void;
 }) {
   const count = files.length;
   // F-V3-3 列自适应：表头 / 行 / grid 模板同一决策（纯函数 columnsFor）。
@@ -1117,23 +1153,23 @@ function ListArea({
             color: t.textSecondary,
           }}
         >
-          <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} />
+          <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} onSetSort={onSetSort} />
           <span style={{ textAlign: "right" }}>
             <SortHeader
               label={tr("大小")}
               k="size"
               sort={sort}
-              onSort={onSort}
+              onSort={onSort} onSetSort={onSetSort}
               align="right"
             />
           </span>
-          <SortHeader label={tr("类型")} k="type" sort={sort} onSort={onSort} />
+          <SortHeader label={tr("类型")} k="type" sort={sort} onSort={onSort} onSetSort={onSetSort} />
           {cols.showUpdatedAt ? (
             <SortHeader
               label={tr("修改")}
               k="updatedAt"
               sort={sort}
-              onSort={onSort}
+              onSort={onSort} onSetSort={onSetSort}
             />
           ) : null}
           {cols.showCreated ? (
@@ -1141,7 +1177,7 @@ function ListArea({
               label={tr("创建")}
               k="createdAt"
               sort={sort}
-              onSort={onSort}
+              onSort={onSort} onSetSort={onSetSort}
             />
           ) : null}
           <span>{tr("操作")}</span>
@@ -1692,7 +1728,15 @@ function TreeArea({
   nav,
   fs,
   actions,
-}: SubProps & { actions: FilesActions }) {
+  sort,
+  onSort,
+  onSetSort,
+}: SubProps & {
+  actions: FilesActions;
+  sort: FileSort;
+  onSort: (k: FileSortKey) => void;
+  onSetSort: (s: FileSort) => void;
+}) {
   const childrenRef = React.useRef<Map<string, HumanFileEntry[]>>(new Map());
   const expandedRef = React.useRef<Set<string>>(new Set());
   const genRef = React.useRef(0);
@@ -1715,15 +1759,11 @@ function TreeArea({
     actions.setUploadDir("");
   }, [fs.dirPath]);
 
-  const rows = React.useMemo(
-    () =>
-      flattenTree({
-        roots: fs.files,
-        children: childrenRef.current,
-        expanded: expandedRef.current,
-      }),
-    [fs.files, rev],
-  );
+  const rows = React.useMemo(() => {
+    // 每一层子项都按当前列排序（目录恒在前），树结构不变。
+    const { roots, children } = sortTreeLevels(fs.files, childrenRef.current, sort);
+    return flattenTree({ roots, children, expanded: expandedRef.current });
+  }, [fs.files, rev, sort]);
   const idx = rows.length === 0 ? 0 : Math.min(focusIndex, rows.length - 1);
 
   /** 懒加载目录子项（首次展开 / 失败重试）：listFiles 入参 = rowPath
@@ -1890,11 +1930,17 @@ function TreeArea({
           }}
         >
           <span />
-          <span>{tr("名称")}</span>
-          <span style={{ textAlign: "right" }}>{tr("大小")}</span>
-          <span>{tr("类型")}</span>
-          {cols.showUpdatedAt ? <span>{tr("修改")}</span> : null}
-          {cols.showCreated ? <span>{tr("创建")}</span> : null}
+          <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} onSetSort={onSetSort} />
+          <span style={{ textAlign: "right" }}>
+            <SortHeader label={tr("大小")} k="size" sort={sort} onSort={onSort} onSetSort={onSetSort} align="right" />
+          </span>
+          <SortHeader label={tr("类型")} k="type" sort={sort} onSort={onSort} onSetSort={onSetSort} />
+          {cols.showUpdatedAt ? (
+            <SortHeader label={tr("修改")} k="updatedAt" sort={sort} onSort={onSort} onSetSort={onSetSort} />
+          ) : null}
+          {cols.showCreated ? (
+            <SortHeader label={tr("创建")} k="createdAt" sort={sort} onSort={onSort} onSetSort={onSetSort} />
+          ) : null}
           <span>{tr("操作")}</span>
         </div>
       ) : null}
@@ -3518,6 +3564,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             files={sortedFiles}
             sort={fileSort}
             onSort={onFileSort}
+            onSetSort={applyFileSort}
           />
         ) : (
           <TrashRailList {...sub} />
@@ -3548,7 +3595,13 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     // 右/内联详情仍只渲染一次）。
     const listNode =
       filesView === "tree" ? (
-        <TreeArea {...sub} actions={actions} />
+        <TreeArea
+          {...sub}
+          actions={actions}
+          sort={fileSort}
+          onSort={onFileSort}
+          onSetSort={applyFileSort}
+        />
       ) : filesView === "grid" ? (
         <GridArea
           {...sub}
@@ -3564,6 +3617,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           files={sortedFiles}
           sort={fileSort}
           onSort={onFileSort}
+          onSetSort={applyFileSort}
         />
       );
     return (
