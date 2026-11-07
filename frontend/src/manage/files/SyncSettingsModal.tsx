@@ -54,6 +54,12 @@ export const MIRROR_DIR = "<workspace>/.qwenpaw/agentteams";
  * 无此端点（404/405）、首跑前 lastRunAt=null——一律按可选处理；请求失败 =
  * 「上次运行」整块隐藏，不报错）。 */
 export const SYNC_STATE_PATH = "/agentteams-proxy/sync/state";
+/** S1 同步范围（GET 读整份 + 当前 human 生效值；PUT 写 include/exclude）。 */
+export const SYNC_CONFIG_PATH = "/agentteams-proxy/sync/config";
+/** S2 取消同步（只删本地镜像，远端零 DELETE）。 */
+export const SYNC_UNSYNC_PATH = "/agentteams-proxy/sync/unsync";
+/** S6 进度快照（idle / scanning / syncing / done…）。 */
+export const SYNC_PROGRESS_PATH = "/agentteams-proxy/sync/progress";
 
 /** antd.Button 最小触控盒（与 FilesSection.btnTouch 同源）。 */
 const btnTouch: ReactNS.CSSProperties = { minHeight: "var(--hf-btn-min, 40px)" };
@@ -61,6 +67,19 @@ const btnTouch: ReactNS.CSSProperties = { minHeight: "var(--hf-btn-min, 40px)" }
 interface RunMsg {
   kind: "ok" | "info" | "warn";
   text: string;
+}
+
+/** 人读字节（B/KB/MB/GB，一位小数）。 */
+function fmtBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < u.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${i === 0 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
 }
 
 /** 「上次运行」块数据（GET /sync/state 快照；state 为 null = 整块隐藏）。 */
@@ -71,6 +90,21 @@ interface LastRun {
   running: boolean | null;
   /** 冲突数；null 或 0 → 展示「无」。 */
   conflicts: number | null;
+}
+
+/** S6 进度快照（file_sync_engine._idle_progress 全字段；缺省按 0/null）。 */
+interface ProgressSnap {
+  state: string;
+  files_total: number;
+  files_done: number;
+  bytes_total: number;
+  bytes_done: number;
+  speed_bps: number;
+  eta_sec: number;
+  current_path: string | null;
+  queued: number;
+  failed: number;
+  deferred: number;
 }
 
 export interface SyncSettingsModalProps {
@@ -111,6 +145,15 @@ export default function SyncSettingsModal({
   const [runMsg, setRunMsg] = React.useState<RunMsg | null>(null);
   const [exportBusy, setExportBusy] = React.useState(false);
   const [lastRun, setLastRun] = React.useState<LastRun | null>(null);
+  /** S1 生效范围（null = 未取到 → 范围块降级为静态说明）。 */
+  const [scope, setScope] = React.useState<{ include: string[]; exclude: string[] } | null>(null);
+  const [scopeBusy, setScopeBusy] = React.useState(false);
+  const [newInc, setNewInc] = React.useState("");
+  const [newExc, setNewExc] = React.useState("");
+  /** S6 进度（null = 未取到；state=idle 时只显示「空闲」）。 */
+  const [prog, setProg] = React.useState<ProgressSnap | null>(null);
+  /** S2 待取消同步的镜像路径（相对 files/）。 */
+  const [unsyncPath, setUnsyncPath] = React.useState("");
 
   const num = (v: unknown): number => (typeof v === "number" ? v : 0);
 
@@ -230,6 +273,141 @@ export default function SyncSettingsModal({
     }
   };
 
+  /** S1 读生效范围（端点缺失/失败 → null，块内降级为静态说明）。 */
+  const loadScope = React.useCallback(async () => {
+    try {
+      const resp = await fetchFile(SYNC_CONFIG_PATH, resolvePluginUrl(SYNC_CONFIG_PATH));
+      if (!resp.ok) {
+        setScope(null);
+        return;
+      }
+      const j = (await resp.json().catch(() => null)) as Record<string, unknown> | null;
+      const eff = (j?.effective ?? null) as { include?: unknown; exclude?: unknown } | null;
+      if (!eff) {
+        setScope(null);
+        return;
+      }
+      const asArr = (v: unknown): string[] =>
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+      setScope({ include: asArr(eff.include), exclude: asArr(eff.exclude) });
+    } catch {
+      setScope(null);
+    }
+  }, []);
+
+  /** S6 轮询（打开时 1s 一次；关闭即停，避免后台空转）。 */
+  React.useEffect(() => {
+    if (!open) {
+      setProg(null);
+      return undefined;
+    }
+    let live = true;
+    const tick = async () => {
+      try {
+        const resp = await fetchFile(SYNC_PROGRESS_PATH, resolvePluginUrl(SYNC_PROGRESS_PATH));
+        if (!resp.ok) return;
+        const j = (await resp.json().catch(() => null)) as Record<string, unknown> | null;
+        if (!live || !j) return;
+        const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+        setProg({
+          state: typeof j.state === "string" ? j.state : "idle",
+          files_total: n(j.files_total),
+          files_done: n(j.files_done),
+          bytes_total: n(j.bytes_total),
+          bytes_done: n(j.bytes_done),
+          speed_bps: n(j.speed_bps),
+          eta_sec: n(j.eta_sec),
+          current_path: typeof j.current_path === "string" ? j.current_path : null,
+          queued: n(j.queued),
+          failed: n(j.failed),
+          deferred: n(j.deferred),
+        });
+      } catch {
+        /* 端点缺失/网络抖动 → 保留上一次快照 */
+      }
+    };
+    void tick();
+    const h = window.setInterval(() => void tick(), 1000);
+    return () => {
+      live = false;
+      window.clearInterval(h);
+    };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (open) void loadScope();
+  }, [open, loadScope]);
+
+  /** S1 保存（PUT；pattern 非法 → 后端 400 invalid_path，原样提示不吞错）。 */
+  const saveScope = async (next: { include: string[]; exclude: string[] }) => {
+    setScopeBusy(true);
+    try {
+      const resp = await fetchFile(SYNC_CONFIG_PATH, resolvePluginUrl(SYNC_CONFIG_PATH), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ human: humanName, ...next }),
+      });
+      if (resp.status === 404) {
+        antd.message.warning(tr("控制器未提供同步范围配置接口"));
+        return;
+      }
+      if (!resp.ok) {
+        const j = (await resp.json().catch(() => null)) as Record<string, unknown> | null;
+        if (j?.error === "invalid_path") {
+          antd.message.error(`${tr("路径不合法")}: ${String(j.path ?? "")}`);
+        } else {
+          antd.message.error(`HTTP ${resp.status}`);
+        }
+        return;
+      }
+      setScope(next);
+      antd.message.success(tr("同步范围已保存"));
+    } catch {
+      antd.message.error(tr("保存失败"));
+    } finally {
+      setScopeBusy(false);
+    }
+  };
+
+  /** S2 取消同步：只删本地镜像；远端证据不足后端拒绝（refused 原样展示）。 */
+  const doUnsync = () => {
+    const p = unsyncPath.trim();
+    if (!p) return;
+    antd.Modal.confirm({
+      title: tr("取消同步并删除本地副本？"),
+      content: tr("仅删除本地镜像 {p}；远端文件不会被删除。", { p }),
+      okText: tr("取消同步"),
+      cancelText: tr("不动"),
+      onOk: async () => {
+        try {
+          const resp = await fetchFile(SYNC_UNSYNC_PATH, resolvePluginUrl(SYNC_UNSYNC_PATH), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ human: humanName, paths: [p] }),
+          });
+          if (!resp.ok) {
+            antd.message.error(`HTTP ${resp.status}`);
+            return;
+          }
+          const j = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
+          const removed = Array.isArray(j.removed) ? j.removed.length : 0;
+          const refused = Array.isArray(j.refused) ? j.refused.length : 0;
+          if (removed > 0) {
+            setUnsyncPath("");
+            antd.message.success(tr("已删除本地副本 {n} 项（远端未动）", { n: removed }));
+            onSynced();
+          } else {
+            antd.message.warning(
+              tr("未删除：远端证据不足（{n} 项被拒）；远端未动", { n: refused }),
+            );
+          }
+        } catch {
+          antd.message.error(tr("操作失败"));
+        }
+      },
+    });
+  };
+
   /** state 未就绪的原因（empty / denied / unsupported；ok 走计数行）。 */
   const statusReason =
     st?.state === "empty"
@@ -296,6 +474,42 @@ export default function SyncSettingsModal({
             </span>
           </div>
         ) : null}
+        {/* S6 进度（GET /sync/progress 1s 轮询；idle 只显示空闲）。 */}
+        {prog ? (
+          <div style={{ display: "grid", gap: 4 }}>
+            <span style={labelStyle(t)}>{tr("同步进度")}</span>
+            {prog.state === "idle" ? (
+              <span style={valueStyle(t)}>{tr("空闲")}</span>
+            ) : (
+              <>
+                <antd.Progress
+                  percent={
+                    prog.files_total > 0
+                      ? Math.min(100, Math.round((prog.files_done / prog.files_total) * 100))
+                      : 0
+                  }
+                  size="small"
+                  status={prog.state === "error" ? "exception" : "active"}
+                />
+                <span style={valueStyle(t)}>
+                  {tr("文件 {a}/{b}", { a: prog.files_done, b: prog.files_total })} ·{" "}
+                  {fmtBytes(prog.bytes_done)}/{fmtBytes(prog.bytes_total)}
+                </span>
+                <span style={valueStyle(t)}>
+                  {tr("速度 {s}/s", { s: fmtBytes(prog.speed_bps) })} ·{" "}
+                  {prog.eta_sec > 0 ? tr("剩余 {n}s", { n: prog.eta_sec }) : tr("剩余 —")}
+                  {prog.failed > 0 ? ` · ${tr("失败")} ${prog.failed}` : ""}
+                  {prog.deferred > 0 ? ` · ${tr("延后")} ${prog.deferred}` : ""}
+                </span>
+                {prog.current_path ? (
+                  <span style={{ ...valueStyle(t), wordBreak: "break-all" }}>
+                    {prog.current_path}
+                  </span>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
         {/* 立即同步（未就绪仍可点——服务端终裁；404/disabled 后禁用）。 */}
         <div style={{ display: "grid", gap: 6 }}>
           <antd.Button
@@ -326,14 +540,105 @@ export default function SyncSettingsModal({
             {tr("导出清单原文")}
           </antd.Button>
         </div>
-        {/* 同步范围（静态说明：引擎只同步 files/**，远端零 DELETE）。 */}
-        <div style={{ display: "grid", gap: 4 }}>
+        {/* S1 同步范围（可选目录：include/exclude 通配；默认 files/**）。 */}
+        <div style={{ display: "grid", gap: 6 }}>
           <span style={labelStyle(t)}>{tr("同步范围")}</span>
-          <span style={valueStyle(t)}>
-            {tr("同步 workspace/{h}/files/**", { h: humanName })}
+          {scope ? (
+            <>
+              <span style={{ fontSize: 12, color: t.textSecondary }}>
+                {tr("只同步命中的路径；不同步 memory/、digest/、.trash/、.sync/")}
+              </span>
+              {(
+                [
+                  ["include", tr("包含"), newInc, setNewInc],
+                  ["exclude", tr("排除"), newExc, setNewExc],
+                ] as const
+              ).map(([key, label, val, setVal]) => (
+                <div key={key} style={{ display: "grid", gap: 4 }}>
+                  <span style={{ fontSize: 12, color: t.textSecondary }}>{label}</span>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {scope[key].length === 0 ? (
+                      <span style={{ fontSize: 12, color: t.textSecondary }}>
+                        {key === "include" ? tr("默认 files/**") : tr("无")}
+                      </span>
+                    ) : (
+                      scope[key].map((p) => (
+                        <antd.Tag
+                          key={p}
+                          closable={!scopeBusy}
+                          style={{ marginInlineEnd: 0, fontSize: 12 }}
+                          onClose={(e: { preventDefault?: () => void }) => {
+                            e?.preventDefault?.();
+                            void saveScope({ ...scope, [key]: scope[key].filter((x) => x !== p) });
+                          }}
+                        >
+                          {p}
+                        </antd.Tag>
+                      ))
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <antd.Input
+                      size="small"
+                      value={val}
+                      placeholder={tr("如 files/文档/**")}
+                      onChange={(e: { target: { value: string } }) => setVal(e.target.value)}
+                      onPressEnter={() => {
+                        const p = val.trim();
+                        if (!p) return;
+                        void saveScope({ ...scope, [key]: [...scope[key], p] }).then(() =>
+                          setVal(""),
+                        );
+                      }}
+                    />
+                    <antd.Button
+                      size="small"
+                      loading={scopeBusy}
+                      disabled={!val.trim()}
+                      onClick={() => {
+                        const p = val.trim();
+                        if (!p) return;
+                        void saveScope({ ...scope, [key]: [...scope[key], p] }).then(() =>
+                          setVal(""),
+                        );
+                      }}
+                    >
+                      {tr("添加")}
+                    </antd.Button>
+                  </div>
+                </div>
+              ))}
+              <span style={{ fontSize: 12, color: t.textSecondary }}>
+                {tr("远端文档不会被本地删除影响")}
+              </span>
+            </>
+          ) : (
+            <>
+              <span style={valueStyle(t)}>
+                {tr("同步 workspace/{h}/files/**", { h: humanName })}
+              </span>
+              <span style={valueStyle(t)}>{tr("不同步 memory/、digest/、.trash/、.sync/")}</span>
+              <span style={valueStyle(t)}>{tr("远端文档不会被本地删除影响")}</span>
+            </>
+          )}
+        </div>
+        {/* S2 取消同步（只删本地镜像；远端零 DELETE）。 */}
+        <div style={{ display: "grid", gap: 6 }}>
+          <span style={labelStyle(t)}>{tr("取消同步（仅删本地副本）")}</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <antd.Input
+              size="small"
+              value={unsyncPath}
+              placeholder={tr("镜像内相对路径，如 文档/旧稿.docx")}
+              onChange={(e: { target: { value: string } }) => setUnsyncPath(e.target.value)}
+            />
+            <antd.Button size="small" disabled={!unsyncPath.trim()} onClick={doUnsync}>
+              {tr("取消同步")}
+            </antd.Button>
+          </div>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("远端证据不足时会被拒绝（远端始终不动）")}
           </span>
-          <span style={valueStyle(t)}>{tr("不同步 memory/、digest/、.trash/、.sync/")}</span>
-          <span style={valueStyle(t)}>{tr("远端文档不会被本地删除影响")}</span>
         </div>
         {/* 路径说明（镜像目录）。 */}
         <div style={{ display: "grid", gap: 4 }}>
