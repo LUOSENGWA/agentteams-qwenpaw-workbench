@@ -1373,6 +1373,10 @@ function TreeRowView({
           e.stopPropagation(); // 只切展开，不改选中
           onToggle(row);
         }}
+        onDoubleClick={(e) => {
+          // 双击三角 ≠ 进入目录：只吞掉事件，避免冒泡到行触发「打开」。
+          e.stopPropagation();
+        }}
         style={{
           width: 16,
           fontSize: 11,
