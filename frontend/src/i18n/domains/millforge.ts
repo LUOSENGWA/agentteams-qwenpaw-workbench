@@ -116,7 +116,9 @@ export const millforgeDict: Record<string, { en: string }> = {
   "全部成功": { en: "all succeeded" },
   // ── C 对话框 + 历史 ──
   "千锻注入": { en: "Millforge inject" },
+  "注入": { en: "Inject" },
   "自定义团队": { en: "Custom team" },
+  "注入历史": { en: "Injection history" },
   "注入历史（最近 50 条）": { en: "Injection history (last 50)" },
   "（暂无注入记录）": { en: "(no injection records yet)" },
   "整体": { en: "overall" },

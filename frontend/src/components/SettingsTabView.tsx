@@ -17,7 +17,6 @@ import {
   EMPTY_ADDR_AUTH,
   StartupPrefRow,
 } from "./SettingsTabShared";
-import { ModuleUpdatesPanel } from "./ModuleUpdatesPanel";
 import HelpDot from "./HelpDot";
 
 const host = window.QwenPaw.host;
@@ -1375,11 +1374,8 @@ export function SettingsTabView(props: {
         </div>
       </div>
 
-      {/* 模块更新（#1526 三平面）——独立面板：默认收起零请求，
-          「载入」后才拉发布索引/三平面已装态（不阻塞设置页首屏）。 */}
-      <div style={{ gridColumn: "1 / -1" }}>
-        <ModuleUpdatesPanel cardBox={cardBox} />
-      </div>
+ {/* 模块更新（#1526 三平面）已搬进「管理 → 团队 → 千锻」弹窗的
+ 「模块更新」tab（2026-11-07）：设置页不再挂载。 */}
 
  {/* 宿主 Agent 技能管理区块移除（
  「配置页的 QwenPaw 宿主 Agent 技能不需要了」）——SkillsTab 组件

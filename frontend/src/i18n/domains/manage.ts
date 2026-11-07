@@ -76,10 +76,7 @@ export const manageDict: Record<string, { en: string }> = {
     en: "This team is not a Team CR (e.g. “Ungrouped”); Millforge injection needs a team target",
   },
   "千锻": { en: "Millforge" },
-  "选模板 / 自定义 → 编译预览 → 注入 Worker": {
-    en: "Template / custom → compile preview → inject into workers",
-  },
-  "打开千锻注入": { en: "Open Millforge injection" },
+  "注入 / 模块更新 / 历史": { en: "Inject / module updates / history" },
   "团队设置": { en: "Team Settings" },
   "所选团队已不在最新数据中": { en: "Selected team no longer in the latest data" },
   "回团队列表": { en: "Back to team list" },

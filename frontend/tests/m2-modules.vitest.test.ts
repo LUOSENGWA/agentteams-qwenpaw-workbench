@@ -313,7 +313,8 @@ test("bonus isInstallableKind：runner 不可装，其余可装", () => {
 test("bonus i18n 门（本单范围，与 scripts/i18n-gate.mjs 同判据）：本单键 missing=0 且无重复登记", () => {
   // 全树基线本身是红的（2026-11-06 直跑 gate：缺=74 重=4——「已保存/操作/
   // 无改动/跳过」等，均为其他既有组件欠债）——本单不越界补别人的键，
-  // 门控范围收为本单引入键：ModuleUpdatesPanel.tsx 的全部 tr("字面量")
+  // 门控范围收为本单引入键：ModuleUpdatesBody.tsx（原 Panel，2026-11-07 搬进
+  // 千锻弹窗）的全部 tr("字面量")
   // 必须已在字典（i18n.ts + i18n/domains/*.ts 并集）且每个恰好登记一次
   // （本单未新增重复登记；复用键如 刷新/取消/关闭 本就只登记一次）。
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -336,7 +337,7 @@ test("bonus i18n 门（本单范围，与 scripts/i18n-gate.mjs 同判据）：�
       occ.set(m[1], (occ.get(m[1]) ?? 0) + 1);
   }
   const panelText = readFileSync(
-    join(srcDir, "components", "ModuleUpdatesPanel.tsx"),
+    join(srcDir, "components", "ModuleUpdatesBody.tsx"),
     "utf8",
   );
   const mine = new Set<string>();

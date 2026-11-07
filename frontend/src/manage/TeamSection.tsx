@@ -6,7 +6,7 @@
  *          匹配人时行内显「匹配成员」；按人排序 leader 名优先；
  *          「未分组」固定置底且同等管理）；
  *          否则 → 团队拓扑（节点 = 名字+头像+状态灯，细节进右栏；
- *          头部 = 团队名+成员数+团队设置齿轮；齿轮下 = 千锻注入卡）。
+ *          头部 = 团队名+成员数+团队设置齿轮；齿轮下 = 千锻入口卡）。
  * - right: teamView==="worker" → Worker 详情（P2）；
  *          teamView==="settings" → 团队设置内联（P3）；
  *          列表态右栏留空（用户明确要求）
@@ -47,6 +47,7 @@ import {
   TeamIcon,
 } from "../components/icons";
 import MillforgeModal from "../millforge/MillforgeModal";
+import MillforgeEntryCard from "./MillforgeEntryCard";
 import { computeStandaloneWorkers } from "../crdmanage/standalone";
 import { useCallerLevel } from "../hooks/useCallerLevel";
 import { canControlResources } from "../lib/resourceControl";
@@ -587,35 +588,13 @@ function TeamTopologyPane({
           <SettingsIcon size={16} />
         </button>
       </div>
-      {/* 千锻注入卡（注入入口，非常驻创建表单） */}
-      <antd.Card size="small" styles={{ body: { padding: "6px 12px" } }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            minHeight: 44,
-          }}
-        >
-          <span style={{ minWidth: 0, flex: 1, display: "grid", gap: 2 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
-              {tr("千锻")}
-            </span>
-            <span style={{ fontSize: 11, color: t.textSecondary }}>
-              {tr("选模板 / 自定义 → 编译预览 → 注入 Worker")}
-            </span>
-          </span>
-          <antd.Button
-            size="small"
-            type="primary"
-            disabled={!!mfDisabledReason}
-            title={mfDisabledReason || undefined}
-            onClick={() => adminTeam && onOpenMillforge(adminTeam)}
-          >
-            {tr("打开千锻注入")}
-          </antd.Button>
-        </div>
-      </antd.Card>
+      {/* 千锻入口卡（整卡按钮 → 注入 / 自定义团队 / 模块更新 / 注入历史） */}
+      <MillforgeEntryCard
+        t={t}
+        tr={tr}
+        disabledReason={mfDisabledReason}
+        onClick={() => adminTeam && onOpenMillforge(adminTeam)}
+      />
       {/* 节点列表：名字 + 头像 + 状态灯（点节点 → 右栏详情，P2） */}
       <div style={{ display: "grid", gap: 4 }}>
         {ordered.map((w) => {
