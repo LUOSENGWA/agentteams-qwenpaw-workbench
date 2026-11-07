@@ -708,4 +708,9 @@ export const manageDict: Record<string, { en: string }> = {
   },
   "下载已开始": { en: "Download started" },
   "（空文件）": { en: "(empty file)" },
+
+  // ── #1536 资源控制入口收敛（非 L1 调用者 → disabled + 统一提示）──
+  "仅管理员可创建或删除资源": {
+    en: "Only admins can create or delete resources",
+  },
 };

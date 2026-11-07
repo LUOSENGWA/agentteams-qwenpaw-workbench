@@ -70,6 +70,9 @@ import TruncatedId from "../components/TruncatedId";
 import ModelAccessEditor from "../components/ModelAccessEditor";
 import WorkspaceAccessEditor from "../components/WorkspaceAccessEditor";
 import { BrainIcon, BoxIcon, DoorIcon, SearchIcon, ShieldIcon, UsersIcon } from "../components/icons";
+import { WbTooltip } from "../components/WbTooltip";
+import { useCallerLevel } from "../hooks/useCallerLevel";
+import { canControlResources, resourceControlDeniedHint } from "../lib/resourceControl";
 import { fmtBytes, hfErrorText } from "./FilesSection";
 import type { ManageSectionProps } from "./types";
 
@@ -330,6 +333,12 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const teams = data.admin?.teams ?? [];
   const workers = data.admin?.workers ?? [];
   const onRefresh = data.onRefreshAdmin ?? (() => undefined);
+  // #1536：资源控制（删除人员 / 访问与权限保存）只对 L1 调用者
+  // （permissionLevel === 1；未知 → fail closed）。
+  const canControl = canControlResources(
+    useCallerLevel({ admin: data.admin, myUserId: data.myUserId, hasToken: data.hasToken }),
+  );
+  const deniedHint = resourceControlDeniedHint(tr);
 
   // 弹窗状态源（仅本域 active 时挂载；useHumanCrd 无挂载拨号，
   // HumanAccessModal 自持草稿/保存/命令，human=null 时渲染 null）。
@@ -492,6 +501,54 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         : tr("无限制 · 已用 {a}", { a: fmtBytes(quota.usedBytes) })
       : tr("读取中…");
 
+  // #1536 收敛的两张卡本体（非 L1 时 disabled；L1 路径 DOM 不变）。
+  const permCard = (
+    <button
+      type="button"
+      disabled={!canControl}
+      onClick={() => crd.openPerm(human)}
+      style={{
+        ...entryStyle(t),
+        cursor: canControl ? "pointer" : "not-allowed",
+        opacity: canControl ? 1 : 0.65,
+      }}
+    >
+      <ShieldIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+      <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
+          {tr("访问与权限")}
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tr("权限档位 / 可访问团队 / 可访问 Worker，一次保存；旧版 Controller 回落生成命令")}
+        </span>
+      </span>
+      <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
+        ›
+      </span>
+    </button>
+  );
+  const delHumanCard = (
+    <antd.Button
+      danger
+      disabled={!canControl}
+      style={{ minHeight: 44, justifyContent: "flex-start" }}
+      onClick={() => {
+        setDelName("");
+        setDelOpen(true);
+      }}
+    >
+      {tr("删除人员")}
+    </antd.Button>
+  );
+
   return (
     <div style={{ display: "grid", gap: 10, padding: 4 }}>
       {/* 人员头卡 */}
@@ -549,32 +606,14 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
 
       {/* 入口卡（15.35：原「团队访问配置 + 权限设置」两卡合并；Q：+ 工作区容量配额） */}
       <div style={{ display: "grid", gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => crd.openPerm(human)}
-          style={entryStyle(t)}
-        >
-          <ShieldIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
-          <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
-              {tr("访问与权限")}
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                color: t.textSecondary,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {tr("权限档位 / 可访问团队 / 可访问 Worker，一次保存；旧版 Controller 回落生成命令")}
-            </span>
-          </span>
-          <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
-            ›
-          </span>
-        </button>
+        {/* #1536：保存权限档位 = 资源控制，非 L1 disabled + 统一提示。 */}
+        {canControl ? (
+          permCard
+        ) : (
+          <WbTooltip title={deniedHint} tap={false}>
+            <span style={{ display: "block" }}>{permCard}</span>
+          </WbTooltip>
+        )}
         {/* 第二张入口卡：工作区容量配额（Q：用量展示 + 设置/清除；非 admin 只显用量） */}
         <button
           type="button"
@@ -660,21 +699,19 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         </button>
       </div>
 
-      {/* 危险区：删除人员（L1；Controller 仅 admin 放行）——输入名字确认。 */}
+      {/* 危险区：删除人员（L1；Controller 仅 admin 放行）——输入名字确认。
+          #1536：非 L1 调用者 disabled + 统一提示（不隐藏）。 */}
       <div style={{ display: "grid", gap: 6 }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: "red" }}>
           {tr("危险区")}
         </span>
-        <antd.Button
-          danger
-          style={{ minHeight: 44, justifyContent: "flex-start" }}
-          onClick={() => {
-            setDelName("");
-            setDelOpen(true);
-          }}
-        >
-          {tr("删除人员")}
-        </antd.Button>
+        {canControl ? (
+          delHumanCard
+        ) : (
+          <WbTooltip title={deniedHint} tap={false}>
+            <span style={{ display: "inline-block" }}>{delHumanCard}</span>
+          </WbTooltip>
+        )}
         <span style={{ fontSize: 11, color: t.textSecondary }}>
           {tr("删除 Human CR：Matrix 账号停用并离开全部房间；文件区保留。不可撤销。")}
         </span>

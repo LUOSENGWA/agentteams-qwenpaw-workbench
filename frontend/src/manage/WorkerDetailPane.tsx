@@ -69,6 +69,8 @@ import {
 } from "../components/WorkerManageShared";
 import { RuntimeNotice } from "../runtimeGuard";
 import { BulbIcon, PlayIcon } from "../components/icons";
+import { WbTooltip } from "../components/WbTooltip";
+import { resourceControlDeniedHint } from "../lib/resourceControl";
 import ModelEditModal from "./ModelEditModal";
 import ResourceCards from "./ResourceCards";
 
@@ -123,6 +125,7 @@ export default function WorkerDetailPane({
   worker,
   avatarUrl,
   hasToken,
+  canControl = false,
   onRefreshAdmin,
   onOpenSettings,
   onDeleted,
@@ -131,6 +134,13 @@ export default function WorkerDetailPane({
   /** 头像源（room 成员表 mxc 头像；undefined → 首字母兜底）。 */
   avatarUrl?: string;
   hasToken?: boolean;
+  /**
+   * #1536：调用者是否 L1（permissionLevel === 1）——资源控制
+   * （删除 Worker）仅此放行；缺省 = false（fail closed）。
+   * 与 hasToken（workbench 配置了管理员 token）是两回事：
+   * L2 带 token 也只能看不能删，后端按调用者档位 403。
+   */
+  canControl?: boolean;
   onRefreshAdmin?: (silent?: boolean, strong?: boolean) => void;
   /** 运行配置卡内「去设置」跳转（透传 WorkerRuntimeConfig）。 */
   onOpenSettings?: () => void;
@@ -141,6 +151,7 @@ export default function WorkerDetailPane({
   const tr = useT();
   const obj = useAvatarUrl(avatarUrl);
   const l1 = !!hasToken;
+  const deniedHint = resourceControlDeniedHint(tr);
   const meta = phaseMeta(worker.phase);
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const restarting = (worker.containerState || "").toLowerCase() === "restarting";
@@ -623,14 +634,27 @@ export default function WorkerDetailPane({
                 {tr("拉起就绪")}
               </antd.Button>
             ) : null}
-            <antd.Button
-              size="large"
-              danger
-              style={{ minHeight: 44, marginLeft: "auto" }}
-              onClick={confirmDelete}
-            >
-              {tr("删除")}
-            </antd.Button>
+            {/* #1536：删除 Worker = 资源控制，非 L1 调用者 disabled +
+                统一提示（不隐藏）；disabled 按钮不触发 mouse 事件 →
+                tooltip 挂在 wrapper span 上。 */}
+            {canControl ? (
+              <antd.Button
+                size="large"
+                danger
+                style={{ minHeight: 44, marginLeft: "auto" }}
+                onClick={confirmDelete}
+              >
+                {tr("删除")}
+              </antd.Button>
+            ) : (
+              <WbTooltip title={deniedHint} tap={false}>
+                <span style={{ display: "inline-block", marginLeft: "auto" }}>
+                  <antd.Button size="large" danger disabled style={{ minHeight: 44 }}>
+                    {tr("删除")}
+                  </antd.Button>
+                </span>
+              </WbTooltip>
+            )}
           </div>
         ) : null}
       </antd.Card>

@@ -20,6 +20,9 @@ import { CrdCfgForm } from "../crdmanage/CrdCfgModal";
 import { computeStandaloneWorkers } from "../crdmanage/standalone";
 import { StandaloneWorkerModels } from "../components/StandaloneWorkerModels";
 import { TeamIcon } from "../components/icons";
+import { WbTooltip } from "../components/WbTooltip";
+import { useCallerLevel } from "../hooks/useCallerLevel";
+import { canControlResources, resourceControlDeniedHint } from "../lib/resourceControl";
 import type { ManageData } from "./types";
 
 const host = window.QwenPaw.host;
@@ -37,6 +40,11 @@ export default function TeamSettingsPane({
 }) {
   const tr = useT();
   const t = useThemeColors();
+  // #1536：删除团队 = 资源控制，只对 L1 调用者（permissionLevel === 1）开放。
+  // useCallerLevel 为纯派生（无内部 hook），可在早退分支前调用。
+  const canControl = canControlResources(
+    useCallerLevel({ admin: data.admin, myUserId: data.myUserId, hasToken: data.hasToken }),
+  );
 
   if (!data.admin) {
     return (
@@ -56,6 +64,7 @@ export default function TeamSettingsPane({
       team={team}
       teams={teams}
       workers={workers}
+      canControl={canControl}
       onRefresh={data.onRefreshAdmin ?? (() => undefined)}
       onBack={onBack}
     />
@@ -129,17 +138,21 @@ function TeamCfgInline({
   team,
   teams,
   workers,
+  canControl,
   onRefresh,
   onBack,
 }: {
   team: TeamInfo;
   teams: TeamInfo[];
   workers: AdminData["workers"];
+  /** #1536：调用者是否 L1（资源控制 = 允许删除团队）。 */
+  canControl: boolean;
   onRefresh: (silent?: boolean) => void;
   onBack: () => void;
 }) {
   const tr = useT();
   const t = useThemeColors();
+  const deniedHint = resourceControlDeniedHint(tr);
   const catalog = useModelCatalog({ workers, tr });
   const crd = useTeamCrd({ teams, workers, onRefresh, tr, catalog });
 
@@ -244,19 +257,34 @@ function TeamCfgInline({
               t={t}
             />
           ) : null}
-          {/* 危险区：删除团队（L1；Controller 仅 admin 放行）。 */}
+          {/* 危险区：删除团队（L1；Controller 仅 admin 放行）。
+              #1536：非 L1 调用者 disabled + 统一提示（不隐藏）。 */}
           <div style={{ display: "grid", gap: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "red" }}>
               {tr("危险区")}
             </span>
-            <antd.Button
-              danger
-              disabled={crd.cfgBusy}
-              style={{ minHeight: 44, justifyContent: "flex-start" }}
-              onClick={confirmDelete}
-            >
-              {tr("删除团队")}
-            </antd.Button>
+            {canControl ? (
+              <antd.Button
+                danger
+                disabled={crd.cfgBusy}
+                style={{ minHeight: 44, justifyContent: "flex-start" }}
+                onClick={confirmDelete}
+              >
+                {tr("删除团队")}
+              </antd.Button>
+            ) : (
+              <WbTooltip title={deniedHint} tap={false}>
+                <span style={{ display: "inline-block" }}>
+                  <antd.Button
+                    danger
+                    disabled
+                    style={{ minHeight: 44, justifyContent: "flex-start" }}
+                  >
+                    {tr("删除团队")}
+                  </antd.Button>
+                </span>
+              </WbTooltip>
+            )}
             <span style={{ fontSize: 11, color: t.textSecondary }}>
               {tr("成员 Worker 保留（变未分组）；6 秒内可从提示条撤销（按快照重建，房间历史不恢复）。")}
             </span>

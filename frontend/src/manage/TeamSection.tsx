@@ -48,6 +48,8 @@ import {
 } from "../components/icons";
 import MillforgeModal from "../millforge/MillforgeModal";
 import { computeStandaloneWorkers } from "../crdmanage/standalone";
+import { useCallerLevel } from "../hooks/useCallerLevel";
+import { canControlResources } from "../lib/resourceControl";
 import ManagerDetailPane from "./ManagerDetailPane";
 import WorkerDetailPane from "./WorkerDetailPane";
 import TeamSettingsPane from "./TeamSettingsPane";
@@ -803,6 +805,13 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
     nav.setCrdView("team");
   }, [nav]);
 
+  // #1536：资源控制（删除 Worker / 删除团队）只对 L1 调用者开放
+  // （permissionLevel === 1；未知 → fail closed）。团队设置 pane
+  // 自行同数据源计算删除团队门控，口径 = 同一纯函数。
+  const canControl = canControlResources(
+    useCallerLevel({ admin: data.admin, myUserId: data.myUserId, hasToken: data.hasToken }),
+  );
+
   // 列表态右栏留空（用户明确要求）——四栏下右栏改显引导不留空。
   // hooks 之后才允许提前返回。
   if (variant === "right" && nav.teamView === "list" && cols !== 4) return null;
@@ -958,6 +967,7 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
             worker={workerInfo}
             avatarUrl={roomAvatars.get(workerInfo.matrixUserID)?.avatar_url}
             hasToken={data.hasToken}
+            canControl={canControl}
             onRefreshAdmin={data.onRefreshAdmin}
             onOpenSettings={data.onOpenSettings}
             onDeleted={() => nav.backTeam()}
