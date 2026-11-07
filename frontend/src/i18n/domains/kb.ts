@@ -198,6 +198,10 @@ export const kbDict: Record<string, { en: string }> = {
   "暂停失败": { en: "Failed to pause" },
   "恢复失败": { en: "Failed to resume" },
   "检查点": { en: "Checkpoints" },
+  "{n} 个检查点": { en: "{n} checkpoint(s)" },
+  "检查点数量": { en: "Checkpoints" },
+  "仅显示最近 100 条": { en: "Showing only the latest 100" },
+  "当前 HEAD": { en: "Current HEAD" },
   "该 Worker 需 QwenPaw 2.1 才有检查点": {
     en: "This worker needs QwenPaw 2.1 for checkpoints",
   },

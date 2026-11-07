@@ -76,6 +76,7 @@ import type { WorkerSessionState } from "../workerSessionState";
 import { resourceControlDeniedHint } from "../lib/resourceControl";
 import { tracingUrl } from "../lib/tracingUrl";
 import ModelEditModal from "./ModelEditModal";
+import CheckpointCard from "./CheckpointCard";
 import ResourceCards from "./ResourceCards";
 
 const host = window.QwenPaw.host;
@@ -718,6 +719,14 @@ export default function WorkerDetailPane({
           </div>
         ) : null}
       </antd.Card>
+      {/* 检查点卡（旧拓扑 CheckpointCard 迁入，只读 + 懒加载：展开才拨
+          /checkpoints/{status,graph}；四态各自降级，失败不外溢到其它面板）。
+          key=worker.name：切 Worker 强制复位折叠/数据态。 */}
+      <CheckpointCard
+        key={worker.name}
+        workerName={worker.name}
+        runtime={worker.runtime}
+      />
       {/* 模型编辑弹窗（响应式：宽屏左右/窄屏上下；与 Manager 详情面板共用）。 */}
       <ModelEditModal
         open={modelModal}
