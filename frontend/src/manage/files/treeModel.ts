@@ -101,6 +101,27 @@ export function flattenTree(opts: {
   return rows;
 }
 
+/** 树已知条目（根 + 所有已加载子层，含折叠中的缓存子项；按对象去重）。
+ *  批量汇总 / 剔除基准：折叠不丢已选——可见行收窄时选择集合仍按本清单
+ *  保留。目录条目原样包含，调用方按 isDir 过滤。 */
+export function collectTreeEntries(
+  roots: readonly HumanFileEntry[],
+  children: ReadonlyMap<string, readonly HumanFileEntry[]>,
+): HumanFileEntry[] {
+  const seen = new Set<HumanFileEntry>();
+  const out: HumanFileEntry[] = [];
+  const add = (list: readonly HumanFileEntry[]): void => {
+    for (const e of list) {
+      if (seen.has(e)) continue;
+      seen.add(e);
+      out.push(e);
+    }
+  };
+  add(roots);
+  for (const list of children.values()) add(list);
+  return out;
+}
+
 /** 树形键盘导航：返回新的 index（焦点移动由调用方执行）。
  *  Up/Down 夹在 [0, rows.length-1]；Right 落在目录上触发 onToggle(path)
  *  （展开/收起由调用方决定）；Left/Enter/其它一律返回原 index。 */

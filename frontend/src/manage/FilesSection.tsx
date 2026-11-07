@@ -162,6 +162,7 @@ import {
   type FileSortKey,
 } from "./files/sortModel";
 import {
+  collectTreeEntries,
   flattenTree,
   gridMinCols,
   parseFilesView,
@@ -170,6 +171,14 @@ import {
   type FilesView,
   type TreeRow,
 } from "./files/treeModel";
+import {
+  UPLOAD_CONCURRENCY,
+  makeUploadItems,
+  markUploadStatus,
+  retryUpload,
+  startableIds,
+  type UploadItem,
+} from "./files/uploadQueue";
 import {
   clearSelection,
   pruneSelection,
@@ -183,6 +192,7 @@ import {
 } from "../lib/filesSelection";
 import SyncSettingsModal from "./files/SyncSettingsModal";
 import TrashDialog from "./files/TrashDialog";
+import UploadQueuePanel from "./files/UploadQueuePanel";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -210,6 +220,14 @@ export function fileViews(): FileView[] {
 /** v3：页内同步设置长条（SyncCard）已移除——同步设置改 SyncSettingsModal
  * 弹窗（工具条按钮打开）；SyncCard 声明保留 = 测试区间锚点，无视图渲染。 */
 export const hasInlineSyncCard = false;
+
+/** 树视图批量上下文（TreeArea 上报 → 容器）：可见文件行按树顺序（shift
+ *  区间用）+ 已知文件条目（根 + 已加载子层，含折叠缓存——汇总 / 批量 /
+ *  剔除基准）。折叠后可见行收窄，但已知条目不变 → 选择保留。 */
+export interface TreeBatchInfo {
+  visiblePaths: string[];
+  entries: { path: string; name: string; size?: number }[];
+}
 
 /** 文件域自持状态（tabs / 列表 / 详情 / 配额卡共享）。 */
 interface FilesState {
@@ -259,8 +277,15 @@ interface FilesState {
   selectablePaths: string[];
   /** 「全选」三态（按 selectablePaths 判定；全目录 → none）。 */
   selAll: SelectAllState;
-  /** 单点 / shift 区间切换（isDir 行由容器忽略；shift 锚点在容器层）。 */
-  onToggleSelect: (path: string, opts: { isDir: boolean; shiftKey: boolean }) => void;
+  /** 单点 / shift 区间切换（isDir 行由容器忽略；shift 锚点在容器层）。
+   *  opts.paths = 区间定位顺序（树视图传可见文件行顺序；缺省 = 列表/网格
+   *  的 selectablePaths）。 */
+  onToggleSelect: (
+    path: string,
+    opts: { isDir: boolean; shiftKey: boolean; paths?: readonly string[] },
+  ) => void;
+  /** 树视图批量上下文上报（可见行 + 已知条目）；null = 离开树视图。 */
+  onTreeBatchChange: (info: TreeBatchInfo | null) => void;
   /** 表头/网格工具条「全选」三态切换（all → 清空；否则全选）。 */
   onSelectAllToggle: () => void;
   /** 批量操作条「取消选择」。 */
@@ -1174,10 +1199,11 @@ function SelCheck({
   );
 }
 
-/** 批量操作条（选中 >0 且列表/网格视图时渲染；树视图不做批量）：
+/** 批量操作条（选中 >0 且列表/树/网格视图均渲染）：
  * 「已选 {n} 项 · {字节}」+ 下载（串行 + 进度「下载中（a/b）」）/ 删除
  *（复用 useDeleteConfirm 批量模式，进回收站）/ 取消选择。
- * 窄屏（≤600px）flexWrap 换行，不固定不遮挡。 */
+ * 三视图同源：选中集合 = 容器 selected，批量项 = 容器 batchEntries（树 =
+ * 根 + 已加载子层，折叠保留选择）。窄屏（≤600px）flexWrap 换行，不遮挡。 */
 function BatchBar({
   t,
   tr,
@@ -1772,6 +1798,7 @@ function TreeRowView({
   onActivate,
   onToggle,
   onRetry,
+  onToggleSelect,
   selected,
   grid,
   showUpdatedAt,
@@ -1784,6 +1811,8 @@ function TreeRowView({
   onActivate: (row: TreeRow) => void;
   onToggle: (row: TreeRow) => void;
   onRetry: (row: TreeRow) => void;
+  /** 批量选择（文件行 checkbox；shift = 按可见顺序区间）。 */
+  onToggleSelect: (path: string, shiftKey: boolean) => void;
   selected?: boolean;
   grid: string;
   showUpdatedAt: boolean;
@@ -1837,7 +1866,9 @@ function TreeRowView({
       }}
       style={{
         display: "grid",
-        gridTemplateColumns: `16px ${grid}`,
+        // 44px 首列 = 批量选择 checkbox（目录不可选，空占位保持列宽稳定；
+        // 与表头同宽）；16px = 展开三角。
+        gridTemplateColumns: `44px 16px ${grid}`,
         gap: 8,
         alignItems: "center",
         minHeight: "var(--hf-row-min, 44px)",
@@ -1849,6 +1880,18 @@ function TreeRowView({
         ...rowSkin,
       }}
     >
+      {/* 批量选择列：文件 = checkbox（shift 点击 = 可见行区间选择）；目录
+       * 不可选（服务端不支持目录删除）= 空占位格。 */}
+      {isDir ? (
+        <span aria-hidden="true" />
+      ) : (
+        <SelCheck
+          t={t}
+          checked={fs.selected.has(path)}
+          onToggle={(shiftKey) => onToggleSelect(path, shiftKey)}
+          label={tr("选择 {name}", { name })}
+        />
+      )}
       <span
         role="button"
         aria-label={isDir ? (row.expanded ? tr("收起") : tr("展开")) : undefined}
@@ -2011,9 +2054,11 @@ function TreeRowView({
  * rev 自增触发重渲）；目录首次展开懒加载 listFiles 写 children Map
  *（gen 代数防切目录后在途响应污染新缓存）；键盘导航 = 容器 tabIndex=0 +
  * treeKeyNav（focusIndex 高亮；Enter = 行激活）。
- * 批量选择本单不做（任务书：三视图里列表与网格可用）——树行不渲染
- * checkbox、不接 fs.selected/批量操作条；树视图下的选择态保留但不展示，
- * 批量操作条在树视图隐藏（容器门控 filesView !== "tree"）。 */
+ * 批量选择（文件行 checkbox；目录不可选）：shift 区间 = 可见行顺序
+ *（flattenTree 拍平序）；折叠只收窄可见行 → 选择集合保留（容器剔除基准
+ * 用本组件上报的「已知条目」，含折叠缓存）。已知条目/可见路径经
+ * fs.onTreeBatchChange 上报，批量操作条与列表/网格同源（容器
+ * batchEntries + 同一 BatchBar / useDeleteConfirm 批量模式）。 */
 function TreeArea({
   t,
   tr,
@@ -2057,6 +2102,39 @@ function TreeArea({
     return flattenTree({ roots, children, expanded: expandedRef.current });
   }, [fs.files, rev, sort]);
   const idx = rows.length === 0 ? 0 : Math.min(focusIndex, rows.length - 1);
+
+  // 可见文件行路径（树拍平顺序）——shift 区间定位（目录行跳过，区间仍按
+  // 可见顺序闭区间）。
+  const visiblePaths = React.useMemo(() => {
+    const out: string[] = [];
+    for (const r of rows) {
+      if (r.isDir) continue;
+      const p = rowPath(r.entry ?? { name: r.name }, fs.dirPath);
+      if (p !== "") out.push(p);
+    }
+    return out;
+  }, [rows, fs.dirPath]);
+  // 已知条目（根 + 已加载子层，含折叠缓存中的子项）——批量汇总 / 下载 /
+  // 删除 / 选择剔除基准：折叠只收窄可见行，已选子项不丢。
+  const knownEntries = React.useMemo(() => {
+    const out: { path: string; name: string; size?: number }[] = [];
+    for (const e of collectTreeEntries(fs.files, childrenRef.current)) {
+      if (isEntryDir(e)) continue;
+      const p = rowPath(e, fs.dirPath);
+      if (p === "") continue;
+      out.push({ path: p, name: entryDisplayName(e), size: e.size });
+    }
+    return out;
+  }, [fs.files, rev, fs.dirPath]);
+  // 上报容器（批量条 / 剔除）。引用稳定 → 上报引发的重渲染不会再次触发
+  // 本 effect（否则 setState ↔ effect 循环）。
+  const treeBatch = React.useMemo(
+    () => ({ visiblePaths, entries: knownEntries }),
+    [visiblePaths, knownEntries],
+  );
+  React.useEffect(() => {
+    fs.onTreeBatchChange(treeBatch);
+  }, [fs.onTreeBatchChange, treeBatch]);
 
   /** 懒加载目录子项（首次展开 / 失败重试）：listFiles 入参 = rowPath
    * （新形态 = entry.path 剥 files/ 前缀，尾斜杠由 encPath 归一；
@@ -2213,7 +2291,9 @@ function TreeArea({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `16px ${cols.grid}`,
+            // 44px 选择列 + 16px 三角列（与行模板同宽，列宽稳定；树无
+            // 「全选」表头 checkbox——目录不可选，全选语义由容器统一）。
+            gridTemplateColumns: `44px 16px ${cols.grid}`,
             gap: 8,
             alignItems: "center",
             padding: "0 8px",
@@ -2221,6 +2301,7 @@ function TreeArea({
             color: t.textSecondary,
           }}
         >
+          <span />
           <span />
           <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} onSetSort={onSetSort} />
           <span style={{ textAlign: "right" }}>
@@ -2251,6 +2332,9 @@ function TreeArea({
               onActivate={activateRow}
               onToggle={toggleRow}
               onRetry={loadChildren}
+              onToggleSelect={(p, shiftKey) =>
+                fs.onToggleSelect(p, { isDir: false, shiftKey, paths: visiblePaths })
+              }
               selected={r.isDir && selectedDir === r.path}
               grid={cols.grid}
               showUpdatedAt={cols.showUpdatedAt}
@@ -2822,25 +2906,43 @@ function useContainerWidth(): [
 // 实例的当前目录。详情面板的覆盖上传经同一入口（自己的 sink）——不再
 // 存在第二个 input。
 type UploadPickSink = (file: File) => void | Promise<void>;
+/** 多选 sink（上传队列）：一次 pick 的全部文件。 */
+type UploadPickManySink = (files: File[]) => void | Promise<void>;
 const uploadInputRef: { current: HTMLInputElement | null } = { current: null };
 let uploadPickSink: UploadPickSink | null = null;
+let uploadPickManySink: UploadPickManySink | null = null;
 
 /** 唯一 onPickFiles（#1669）：全页唯一 input[type=file] 的 pick 处理器。
  * 消费点击时注册的 sink（被点击实例的上传方）；取消（无文件）= 消费后
- * 什么都不做。 */
+ * 什么都不做。单文件 sink（详情面板覆盖上传）收 files[0]；多选 sink
+ *（工具条上传队列）收全部文件。 */
 export async function onPickFiles(e: ReactNS.ChangeEvent<HTMLInputElement>): Promise<void> {
   const input = e.target as HTMLInputElement;
-  const file = input.files?.[0] ?? null;
+  const files = Array.from(input.files ?? []);
   input.value = ""; // 允许重选同一文件
-  const sink = uploadPickSink;
+  const many = uploadPickManySink;
+  const one = uploadPickSink;
+  uploadPickManySink = null;
   uploadPickSink = null;
-  if (file && sink) await sink(file);
+  if (files.length === 0) return;
+  if (many) await many(files);
+  else if (one) await one(files[0]);
 }
 
-/** 请求文件选择：注册被点击实例的 sink → 点全页唯一隐藏 input
+/** 请求文件选择（单文件）：注册被点击实例的 sink → 点全页唯一隐藏 input
  * （工具条宿主必挂载：凡渲染上传按钮的 variant 都渲染工具条）。 */
 export function requestFilePick(sink: UploadPickSink): void {
   uploadPickSink = sink;
+  uploadPickManySink = null;
+  if (uploadInputRef.current) uploadInputRef.current.multiple = false;
+  uploadInputRef.current?.click();
+}
+
+/** 请求文件选择（多选 → 上传队列）：同一 input，multiple=true；取消不派发。 */
+export function requestFilesPick(sink: UploadPickManySink): void {
+  uploadPickManySink = sink;
+  uploadPickSink = null;
+  if (uploadInputRef.current) uploadInputRef.current.multiple = true;
   uploadInputRef.current?.click();
 }
 
@@ -2874,8 +2976,7 @@ export function uploadEntryPoints(): UploadEntryPoint[] {
  * 最新 humanName/dirPath/load。#1669：上传点击 = requestFilePick 派发到
  * 模块级唯一 input（见上方「统一上传入口」块）。 */
 interface FilesActions {
-  upBusy: boolean;
-  /** 打开系统文件选择（工具条「上传文件」按钮 + 空态 CTA 共用）。 */
+  /** 打开系统文件选择（工具条「上传文件」按钮 + 空态 CTA 共用；多选入队）。 */
   onUploadClick: () => void;
   folderOpen: boolean;
   folderName: string;
@@ -2886,6 +2987,102 @@ interface FilesActions {
   createFolder: () => void;
   /** 树视图选中的上传目标目录（相对 dirPath；"" = 当前目录）。 */
   setUploadDir: (dir: string) => void;
+  /** 上传队列（多选并发 ≤2；状态机见 files/uploadQueue.ts）。 */
+  uploadItems: UploadItem[];
+  onRetryUpload: (id: string) => void;
+  onClearFinishedUploads: () => void;
+}
+
+/** 上传队列编排：入队 → 并发 ≤2 启动（startableIds 仲裁）→ 逐项
+ *  uploadFile（#1519 预签名，500/501 内部回落直传；后端零改动）→ 状态
+ *  回写；失败项 retryUpload 回 waiting 重新入泵。成功即强制刷新列表
+ *（load(true,{force:true})——files-actions-1669 源码断言锚定该调用形态）。 */
+function useUploadQueue(inp: {
+  humanName: string;
+  load: (silent: boolean, opts?: { force?: boolean }) => void;
+  tr: Tr;
+}): {
+  items: UploadItem[];
+  enqueue: (files: File[], dir: string) => void;
+  retry: (id: string) => void;
+  clearFinished: () => void;
+} {
+  const [items, setItems] = React.useState<UploadItem[]>([]);
+  // ref 为真源（泵在异步回调里读最新队列，避免闭包快照）；state 供渲染。
+  const itemsRef = React.useRef<UploadItem[]>([]);
+  const filesRef = React.useRef<Map<string, File>>(new Map());
+  const seqRef = React.useRef(0);
+  const inpRef = React.useRef(inp);
+  inpRef.current = inp;
+
+  const apply = (next: UploadItem[]): void => {
+    itemsRef.current = next;
+    setItems(next);
+  };
+  const mark = (id: string, status: UploadItem["status"], error?: string): void => {
+    const next = markUploadStatus(itemsRef.current, id, status, error);
+    if (next !== itemsRef.current) apply(next);
+  };
+  function startItem(item: UploadItem): void {
+    const file = filesRef.current.get(item.id);
+    if (!file) {
+      mark(item.id, "failed", inpRef.current.tr("未知错误"));
+      return;
+    }
+    mark(item.id, "uploading");
+    void uploadFile(inpRef.current.humanName, item.path, file)
+      .then(
+        () => {
+          mark(item.id, "success");
+          inpRef.current.load(true, { force: true });
+        },
+        (err) => {
+          mark(item.id, "failed", hfErrorText(err, inpRef.current.tr));
+        },
+      )
+      .finally(() => {
+        pump();
+      });
+  }
+  /** 并发仲裁：startableIds 已按「limit − 在途 uploading」算出空位，
+   *  一次启动即填满；每项终态再入泵（失败重试也走这里）。 */
+  function pump(): void {
+    const ids = startableIds(itemsRef.current, UPLOAD_CONCURRENCY);
+    for (const id of ids) {
+      const item = itemsRef.current.find((it) => it.id === id);
+      if (item) startItem(item);
+    }
+  }
+
+  const enqueue = (files: File[], dir: string): void => {
+    if (files.length === 0) return;
+    const prefix = `q${seqRef.current++}-`;
+    const created = makeUploadItems(
+      files.map((f) => ({ name: f.name, size: f.size })),
+      dir,
+      prefix,
+    );
+    created.forEach((it, i) => filesRef.current.set(it.id, files[i]));
+    apply([...itemsRef.current, ...created]);
+    pump();
+  };
+  const retry = (id: string): void => {
+    const next = retryUpload(itemsRef.current, id);
+    if (next !== itemsRef.current) apply(next);
+    pump();
+  };
+  const clearFinished = (): void => {
+    const keep: UploadItem[] = [];
+    const removed: string[] = [];
+    for (const it of itemsRef.current) {
+      if (it.status === "success") removed.push(it.id);
+      else keep.push(it);
+    }
+    if (removed.length === 0) return;
+    for (const id of removed) filesRef.current.delete(id); // 释放 File 引用
+    apply(keep);
+  };
+  return { items, enqueue, retry, clearFinished };
 }
 
 function useFilesActions(
@@ -2893,35 +3090,19 @@ function useFilesActions(
     humanName: string;
     dirPath: string;
     load: (silent: boolean, opts?: { force?: boolean }) => void;
-    /** F-V3-3：统一刷新入口（新建文件夹成功走它；上传成功保留 load 字面
-     * 调用——files-actions-1669 源码断言锚定调用形态，行为同 force 刷新）。 */
+    /** F-V3-3：统一刷新入口（新建文件夹成功走它；上传成功在队列 hook 内
+     * 以 load(true,{force:true}) 字面调用，行为同 force 刷新）。 */
     reload: (opts?: { silent?: boolean; force?: boolean }) => void;
     /** 树视图选中的上传目标（相对当前目录）；空 = 当前目录。 */
     uploadDirRef: { current: string };
   },
   tr: Tr,
 ): FilesActions {
-  const [upBusy, setUpBusy] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
   const [folderName, setFolderName] = React.useState("");
   const [folderBusy, setFolderBusy] = React.useState(false);
+  const queue = useUploadQueue({ humanName: inp.humanName, load: inp.load, tr });
 
-  /** 上传到当前目录（被点击实例的 sink，#1669）：成功后强制刷新列表
-   * （时间戳 + no-store，见 forceList）。 */
-  const doUpload = async (file: File): Promise<void> => {
-    setUpBusy(true);
-    try {
-      // #1519 预签名上传（500/501 → 内部自动回落直传；commit 成功才算成功）。
-      const targetDir = inp.uploadDirRef.current || inp.dirPath;
-      await uploadFile(inp.humanName, fullPath(targetDir, file.name), file);
-      antd.message.success(tr("上传成功"));
-      inp.load(true, { force: true });
-    } catch (err) {
-      antd.message.error(hfErrorText(err, tr));
-    } finally {
-      setUpBusy(false);
-    }
-  };
   const createFolderInner = async () => {
     const name = folderName.trim();
     if (!name) {
@@ -2943,8 +3124,11 @@ function useFilesActions(
   };
 
   return {
-    upBusy,
-    onUploadClick: () => requestFilePick((f) => doUpload(f)),
+    // 多选入队：目标目录在点击时刻拍平（树视图选中的上传目标优先）。
+    onUploadClick: () =>
+      requestFilesPick((files) =>
+        queue.enqueue(files, inp.uploadDirRef.current || inp.dirPath),
+      ),
     folderOpen,
     folderName,
     folderBusy,
@@ -2958,6 +3142,9 @@ function useFilesActions(
     setUploadDir: (dir: string) => {
       inp.uploadDirRef.current = dir;
     },
+    uploadItems: queue.items,
+    onRetryUpload: queue.retry,
+    onClearFinishedUploads: queue.clearFinished,
   };
 }
 
@@ -3075,7 +3262,7 @@ function FilesToolbar({
         )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-        <antd.Button loading={actions.upBusy} style={btnTouch} onClick={actions.onUploadClick}>
+        <antd.Button style={btnTouch} onClick={actions.onUploadClick}>
           {tr("上传文件")}
         </antd.Button>
         {/* v3（F-V3-1）：同步设置弹窗入口（替代原页内 SyncCard 长条）。 */}
@@ -3649,27 +3836,66 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
         .filter((p) => p !== ""),
     [files, dirPath],
   );
+  // 树视图批量上下文（TreeArea 上报：可见文件行顺序 + 已知条目）。
+  // 离开树视图 → 清空（回落列表/网格语义）。
+  const [treeBatch, setTreeBatch] = React.useState<TreeBatchInfo | null>(null);
+  const onTreeBatchChange = React.useCallback((info: TreeBatchInfo | null) => {
+    setTreeBatch(info);
+  }, []);
+  React.useEffect(() => {
+    if (filesView !== "tree") setTreeBatch(null);
+  }, [filesView]);
+  // 批量条目与列表/网格同源：列表/网格 = 当前目录文件；树 = 已加载全部
+  // 文件（含折叠缓存——折叠后的已选项仍参与汇总与批量操作）。
+  const topEntries = React.useMemo(
+    () =>
+      files
+        .filter((e) => !isEntryDir(e))
+        .map((e) => ({
+          path: rowPath(e, dirPath),
+          name: entryDisplayName(e),
+          size: e.size,
+        }))
+        .filter((x) => x.path !== ""),
+    [files, dirPath],
+  );
+  const batchEntries =
+    filesView === "tree" ? treeBatch?.entries ?? topEntries : topEntries;
+  const batchTargets = React.useMemo(
+    () => batchEntries.filter((e) => selected.has(e.path)),
+    [batchEntries, selected],
+  );
   const selAll: SelectAllState = selectAllState(selected, selectablePaths);
   // 选中汇总（批量操作条：数量 + 字节）。
   const selSummary = React.useMemo(
-    () =>
-      selectedSummary(
-        files.map((e) => ({ path: rowPath(e, dirPath), size: e.size })),
-        selected,
-      ),
-    [files, dirPath, selected],
+    () => selectedSummary(batchEntries, selected),
+    [batchEntries, selected],
   );
 
   // 刷新 / 切目录 / 加载更多 → 剔除已消失的路径（pruneSelection 幂等：
   // 无变化时原样返回，setState 同引用 → React 跳过重渲染）。
+  // 树视图基准 = 已知条目（含折叠缓存）；首帧 treeBatch 未上报 → 回落
+  // 当前目录路径，避免切换视图瞬间清空选择。
+  const prunePaths = React.useMemo(
+    () =>
+      filesView === "tree" && treeBatch !== null
+        ? batchEntries.map((e) => e.path)
+        : selectablePaths,
+    [filesView, treeBatch, batchEntries, selectablePaths],
+  );
   React.useEffect(() => {
-    setSelected((prev) => pruneSelection(prev, selectablePaths));
-  }, [selectablePaths]);
+    setSelected((prev) => pruneSelection(prev, prunePaths));
+  }, [prunePaths]);
 
   // 单点 / shift 区间切换（目录行忽略；shift 无锚点 → 回落单点并设锚点）。
+  // paths = 区间定位顺序：树视图传可见文件行顺序，列表/网格用默认序列。
   const onToggleSelect = React.useCallback(
-    (p: string, opts: { isDir: boolean; shiftKey: boolean }) => {
+    (
+      p: string,
+      opts: { isDir: boolean; shiftKey: boolean; paths?: readonly string[] },
+    ) => {
       if (opts.isDir || p === "") return;
+      const paths = opts.paths ?? selectablePaths;
       if (opts.shiftKey) {
         if (selAnchor) {
           // 区间 [锚点..p]（含两端）并入现有选择；锚点保持不变。
@@ -3677,7 +3903,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             toggleSelection(prev, p, {
               shiftKey: true,
               anchor: selAnchor,
-              paths: selectablePaths,
+              paths,
             }),
           );
           return;
@@ -3729,19 +3955,17 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
 
   // 批量下载：逐个走现有 doDownload handler（预签名/直下语义不变），
   // 串行 + batchDl 进度；部分失败不中断，结束 reportBatchResult 汇总。
+  // items = batchTargets（列表/网格/树同源：树含已加载子层，折叠保选）。
   const batchDownload = React.useCallback(async () => {
-    const items = files
-      .filter((e) => !isEntryDir(e))
-      .map((e) => ({ e, p: rowPath(e, dirPath) }))
-      .filter((x) => x.p !== "" && selected.has(x.p));
+    const items = batchTargets;
     if (items.length === 0) return;
     setBatchDl({ done: 0, total: items.length });
     let ok = 0;
     let failed = 0;
     let firstError: string | undefined;
-    for (const { e, p } of items) {
+    for (const it of items) {
       try {
-        const good = await doDownload(humanName, p, entryDisplayName(e), e.size, tr);
+        const good = await doDownload(humanName, it.path, it.name, it.size, tr);
         if (good) ok += 1;
         else {
           failed += 1;
@@ -3755,7 +3979,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     }
     setBatchDl(null);
     reportBatchResult(tr, "下载", { ok, failed, firstError });
-  }, [files, dirPath, selected, humanName, tr]);
+  }, [batchTargets, humanName, tr]);
 
   // F-V3-3：撤销条 8s 自动消失（新撤销覆盖旧——setUndo 换引用重启计时）。
   React.useEffect(() => {
@@ -3911,6 +4135,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     selectablePaths,
     selAll,
     onToggleSelect,
+    onTreeBatchChange,
     onSelectAllToggle,
     onClearSelection,
     offerUndo: (u) => {
@@ -4089,6 +4314,16 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             setSyncModalOpen(true);
           }}
         />
+        {/* 上传队列面板（工具条下方）：多选并发 ≤2、逐项状态 + 总进度 +
+         * 失败重试；空队列不占版面，移动端（sheet 断点）默认折叠。 */}
+        <UploadQueuePanel
+          t={t}
+          tr={tr}
+          items={actions.uploadItems}
+          compact={widthMeasured && layoutMode(containerW) === "sheet"}
+          onRetry={actions.onRetryUpload}
+          onClearFinished={actions.onClearFinishedUploads}
+        />
         {/* 标题行：页标题 + 递归开关（F-V3-3 视图切换已移除）。 */}
         <div
           style={{
@@ -4131,10 +4366,10 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             }
           />
         ) : null}
-        {/* 批量操作条：选中 >0 且列表/网格视图（树视图不做批量，见 TreeArea
-         * 注释）：下载（串行 + 进度）/ 删除（useDeleteConfirm 批量模式 →
-         * 进回收站）/ 取消选择。窄屏 flexWrap 换行不遮挡。 */}
-        {selected.size > 0 && filesView !== "tree" ? (
+        {/* 批量操作条：选中 >0（列表 / 树 / 网格三视图同源）：下载（串行 +
+         * 进度）/ 删除（useDeleteConfirm 批量模式 → 进回收站）/ 取消选择。
+         * 批量项 = batchTargets（树含已加载子层，折叠保选）。窄屏换行。 */}
+        {selSummary.count > 0 ? (
           <BatchBar
             t={t}
             tr={tr}
@@ -4144,11 +4379,11 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             busy={batchDl !== null || batchDelete.busy}
             onDownload={() => void batchDownload()}
             onDelete={() => {
-              const items = files
-                .filter((e) => !isEntryDir(e))
-                .map((e) => ({ path: rowPath(e, dirPath), name: entryDisplayName(e) }))
-                .filter((x) => x.path !== "" && selected.has(x.path));
-              if (items.length > 0) batchDelete.requestBatch(items);
+              if (batchTargets.length > 0) {
+                batchDelete.requestBatch(
+                  batchTargets.map((e) => ({ path: e.path, name: e.name })),
+                );
+              }
             }}
             onCancel={onClearSelection}
           />
