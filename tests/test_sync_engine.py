@@ -782,3 +782,49 @@ def test_non_recursive_glob_does_not_cross_dirs():
     assert not fse.should_sync("files/文档/2026/b.md", cfg)
     cfg2 = {"include": ["files/文档/**"]}
     assert fse.should_sync("files/文档/2026/b.md", cfg2)
+
+
+# ── 首次同步：manifest 404 = 尚无清单（不是「接口不存在」）──────────
+
+
+def test_manifest_404_first_run_creates_with_if_none_match(tmp_path):
+    """Controller 语义：manifest 不存在 → 404；应走空清单 + If-None-Match:* 创建。"""
+
+    def resp(method, path, **kw):
+        if method == "GET" and path == f"{BASE}/sync/status":
+            return jresult(200, {"generation": 0})
+        if method == "GET" and path == f"{BASE}/sync/manifest":
+            return jresult(404, {"message": "file not found"})
+        if method == "PUT" and path == f"{BASE}/sync/manifest":
+            return jresult(201, {"ok": True})
+        return jresult(404, {"error": "unhandled"})
+
+    clock = Clock()
+    fake = FakeCtl(resp)
+    eng = make_engine(tmp_path, fake, clock, state=state_with(1, {}, {}))
+    res = eng.run_once()
+    assert res.get("enabled") is not False, res
+    assert res.get("error") is None, res
+    puts = [c for c in fake.calls if c[0] == "PUT" and c[1] == f"{BASE}/sync/manifest"]
+    assert len(puts) == 1
+    assert (puts[0][2].get("headers") or {}).get("If-None-Match") == "*"
+    assert "If-Match" not in (puts[0][2].get("headers") or {})
+
+
+def test_manifest_409_retry(tmp_path):
+    """首次创建期间别人先建 → 409 manifest_exists → retry（不落 state）。"""
+
+    def resp(method, path, **kw):
+        if method == "GET" and path == f"{BASE}/sync/status":
+            return jresult(200, {"generation": 0})
+        if method == "GET" and path == f"{BASE}/sync/manifest":
+            return jresult(404, {"message": "file not found"})
+        if method == "PUT" and path == f"{BASE}/sync/manifest":
+            return jresult(409, {"error": "manifest_exists"})
+        return jresult(404, {"error": "unhandled"})
+
+    clock = Clock()
+    fake = FakeCtl(resp)
+    eng = make_engine(tmp_path, fake, clock, state=state_with(1, {}, {}))
+    res = eng.run_once()
+    assert res.get("retry") is True, res

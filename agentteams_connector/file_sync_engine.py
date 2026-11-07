@@ -981,18 +981,28 @@ class SyncEngine:
             return {"skipped": "same-generation"}
 
         # 2) manifest（响应头 ETag 用于条件写回——真实实现走 httpx 直连）。
+        #
+        # 404 语义分流（human_sync_handler.go:194-196）：**manifest 不存在**
+        # 也是 404（首次同步还没有清单）——不能当「接口不存在」降级；只有
+        # 405/501 才是老控制器无此路由。首次同步走空清单 + If-None-Match:* 建。
         r = self.ctl_call(
             "GET", f"/api/v1/humans/{self.human}/sync/manifest"
         )
-        if r.status_code in (404, 405, 501):
+        creating_manifest = False
+        if r.status_code in (405, 501):
             return {
                 "enabled": False,
                 "reason": "controller_without_manifest",
             }
-        if r.status_code != 200:
+        if r.status_code == 404:
+            manifest = {"version": 1, "entries": {}}
+            manifest_etag = None
+            creating_manifest = True
+        elif r.status_code != 200:
             return {"error": f"sync/manifest HTTP {r.status_code}"}
-        manifest = r.json()
-        manifest_etag = self._etag_from(r, manifest)
+        else:
+            manifest = r.json()
+            manifest_etag = self._etag_from(r, manifest)
         entries = self._parse_entries(manifest)
 
         # 3) 本地扫描 + 逐条比对。
@@ -1154,6 +1164,10 @@ class SyncEngine:
         put_headers: Dict[str, str] = {}
         if manifest_etag:
             put_headers["If-Match"] = manifest_etag
+        elif creating_manifest:
+            # 首次写：清单不存在 → 创建语义（服务端 409 manifest_exists 表示
+            # 期间别人先建了；本轮结束，下轮重读）。
+            put_headers["If-None-Match"] = "*"
         r = self.ctl_call(
             "PUT",
             f"/api/v1/humans/{self.human}/sync/manifest",
@@ -1167,7 +1181,7 @@ class SyncEngine:
             "conflicts": conflicts,
             "skipped": skipped,
         }
-        if r.status_code == 412:
+        if r.status_code in (409, 412):
             return {"retry": True, **counts}
         if r.status_code not in (200, 201):
             return {"error": f"sync/manifest PUT HTTP {r.status_code}", **counts}
