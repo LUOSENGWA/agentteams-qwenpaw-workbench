@@ -40,6 +40,13 @@ export const MODULE_UPDATES_TAG = "module-updates";
 
 // ── 索引 ──────────────────────────────────────────────────────────
 
+/** 索引内的制品条目（上游 channels.json：一个版本可带多个制品——
+ * qwenpaw zip + 运行时中立的 tar.gz；安装只认 zip）。 */
+export interface IndexArtifact {
+  name: string;
+  sha256: string;
+}
+
 /** 索引内模块的版本条目（字段名以 #1526 后端 handler 为准；宽容解析见
  * moduleEntryVersions()）。 */
 export interface IndexVersionEntry {
@@ -50,6 +57,11 @@ export interface IndexVersionEntry {
   sha256?: string;
   /** 该版本的依赖要求（确认弹窗展示差异；key = 依赖名，value = 约束）。 */
   requires?: Record<string, string>;
+  /** 上游原始制品清单（对象 map 形态规范化时用于补 artifact/sha256）。 */
+  artifacts?: IndexArtifact[];
+  commit?: string;
+  published_at?: string;
+  deprecated?: boolean;
 }
 
 /** 索引内模块条目。 */
@@ -67,6 +79,9 @@ export interface IndexModuleEntry {
   artifact?: string;
   sha256?: string;
   requires?: Record<string, string>;
+  /** 该通道最新版本号（上游字段；UI 不依赖，仅为保留索引原貌）。 */
+  latest?: string | null;
+  note?: string;
 }
 
 /** GET /api/v1/millforge/index 响应。 */
@@ -195,8 +210,10 @@ export function getIndex(q: ModuleIndexQuery): Promise<ModuleIndexResponse> {
   return cachedRequest(
     `millforge/index?${qs}`,
     30_000,
-    () =>
-      fetchControllerJson<ModuleIndexResponse>(`millforge/index?${qs}`),
+    async () =>
+      normalizeIndexResponse(
+        await fetchControllerJson<unknown>(`millforge/index?${qs}`),
+      ),
     { tags: [MODULE_UPDATES_TAG] },
   );
 }
@@ -336,16 +353,143 @@ export async function installWorkerPlugin(
 
 // ── 宽容解析 / 版本比较（UI 与测试共用）───────────────────────────
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+/** 单个版本条目规范化：保留原字段（artifacts/requires/commit/
+ * published_at/deprecated…），补齐 version；上游只给 artifacts[] 时按控制器
+ * indexArtifact 同款规则补 artifact/sha256（优先 zip——安装只认 zip），
+ * 否则 UI 版本按钮会因「制品/校验字段缺失」全部禁用。
+ * 返回副本，不改入参。 */
+function normalizeVersionEntry(
+  version: string,
+  raw: Record<string, unknown>,
+): IndexVersionEntry {
+  const out = { ...raw, version } as IndexVersionEntry;
+  const artifacts: IndexArtifact[] = Array.isArray(raw.artifacts)
+    ? raw.artifacts
+        .filter(isPlainObject)
+        .filter(
+          (a): a is { name: string; sha256: string } =>
+            typeof a.name === "string" &&
+            !!a.name &&
+            typeof a.sha256 === "string" &&
+            !!a.sha256,
+        )
+    : [];
+  if (artifacts.length > 0 && (!out.artifact || !out.sha256)) {
+    const pinned = out.artifact
+      ? artifacts.find((a) => a.name === out.artifact)
+      : undefined;
+    const pick =
+      pinned ?? artifacts.find((a) => a.name.endsWith(".zip")) ?? artifacts[0];
+    if (!out.artifact) out.artifact = pick.name;
+    if (!out.sha256) out.sha256 = pick.sha256;
+  }
+  return out;
+}
+
+/** 版本列表规范化：数组 → 过滤 version 为字符串的条目；对象 map
+ *（上游形态，key=版本号）→ [{version, ...v}]；条目自身单 version 字符串 →
+ * 单条目；缺失/null → []。 */
+function normalizeVersionList(
+  rawVersions: unknown,
+  entry: Record<string, unknown>,
+): IndexVersionEntry[] {
+  if (Array.isArray(rawVersions)) {
+    return rawVersions
+      .filter(
+        (v): v is Record<string, unknown> =>
+          isPlainObject(v) && typeof v.version === "string" && !!v.version,
+      )
+      .map((v) => normalizeVersionEntry(v.version as string, v));
+  }
+  if (isPlainObject(rawVersions)) {
+    return Object.entries(rawVersions)
+      .filter(([, v]) => isPlainObject(v))
+      .map(([version, v]) =>
+        normalizeVersionEntry(version, v as Record<string, unknown>),
+      );
+  }
+  if (typeof entry.version === "string" && entry.version) {
+    // 单版本形态：条目自身即一个版本，只取版本字段（不把 module/kind 等
+    // 条目字段带进版本条目）。
+    return [
+      {
+        version: entry.version,
+        artifact: typeof entry.artifact === "string" ? entry.artifact : undefined,
+        sha256: typeof entry.sha256 === "string" ? entry.sha256 : undefined,
+        requires: isPlainObject(entry.requires)
+          ? (entry.requires as Record<string, string>)
+          : undefined,
+      },
+    ];
+  }
+  return [];
+}
+
+/** 模块条目规范化：module 名由 key（对象 map）或条目自身（数组）给出，
+ * 其余字段原样保留。 */
+function normalizeModuleEntry(
+  module: string,
+  raw: Record<string, unknown>,
+): IndexModuleEntry {
+  return {
+    ...raw,
+    module,
+    versions: normalizeVersionList(raw.versions, raw),
+  } as IndexModuleEntry;
+}
+
+/** GET /api/v1/millforge/index 载荷规范化（API 边界）。
+ *
+ * 上游 channels.json 的 `modules` 是**对象 map**（key = 模块名），每个模块的
+ * `versions` 也是**对象 map**（key = 版本号）——控制器是 re-wrap 代理，原样
+ * 透传该形状（millforge_index.go 只校验 modules 是 JSON 对象）。早期的类型/
+ * UI 假设两者都是数组，于是 `modules.find is not a function` 崩溃、版本列表
+ * 为空。此处统一成数组（UI 按数组消费），数组形态原样兼容。 */
+export function normalizeIndexResponse(raw: unknown): ModuleIndexResponse {
+  const obj = isPlainObject(raw) ? raw : {};
+  const modules: IndexModuleEntry[] = [];
+  if (Array.isArray(obj.modules)) {
+    for (const m of obj.modules) {
+      if (!isPlainObject(m) || typeof m.module !== "string" || !m.module)
+        continue;
+      modules.push(normalizeModuleEntry(m.module, m));
+    }
+  } else if (isPlainObject(obj.modules)) {
+    for (const [module, m] of Object.entries(obj.modules)) {
+      if (!isPlainObject(m)) continue;
+      modules.push(normalizeModuleEntry(module, m));
+    }
+  }
+  return {
+    schema: typeof obj.schema === "number" ? obj.schema : 1,
+    channel:
+      typeof obj.channel === "string" ? (obj.channel as ModuleChannel) : "beta",
+    modules,
+    source:
+      obj.source === "github" || obj.source === "gitcode"
+        ? obj.source
+        : undefined,
+    repo: typeof obj.repo === "string" ? obj.repo : undefined,
+    fetched_at: typeof obj.fetched_at === "string" ? obj.fetched_at : undefined,
+  };
+}
+
 /** 模块条目版本列表宽容解析：
  * ① entry.versions 为数组 → 取其中 version 为字符串的条目（主形态）；
- * ② 否则条目自身带 version 字符串 → 包成单条目（单版本形态兜底）；
- * ③ 都没有 → []（UI 显「索引无版本条目」）。
+ * ② entry.versions 为对象 map（上游形态）→ [{version, ...v}]（兜底，
+ *    防绕过 getIndex 规范化直接消费原始载荷）；
+ * ③ 否则条目自身带 version 字符串 → 包成单条目（单版本形态兜底）；
+ * ④ 都没有 → []（UI 显「索引无版本条目」）。
  * 字段名以 #1526 后端 handler 为准——此处不硬断言单一形状。 */
 export function moduleEntryVersions(
   entry: IndexModuleEntry | null | undefined,
 ): IndexVersionEntry[] {
   if (!entry || typeof entry !== "object") return [];
-  const raw = entry.versions;
+  const raw: unknown = entry.versions;
   if (Array.isArray(raw)) {
     return raw.filter(
       (v): v is IndexVersionEntry =>
@@ -353,6 +497,13 @@ export function moduleEntryVersions(
         typeof v === "object" &&
         typeof (v as { version?: unknown }).version === "string",
     );
+  }
+  if (isPlainObject(raw)) {
+    return Object.entries(raw)
+      .filter(([, v]) => isPlainObject(v))
+      .map(([version, v]) =>
+        normalizeVersionEntry(version, v as Record<string, unknown>),
+      );
   }
   if (typeof entry.version === "string" && entry.version) {
     return [

@@ -32,6 +32,7 @@ import {
   installWorkerPlugin,
   isInstallableKind,
   moduleEntryVersions,
+  normalizeIndexResponse,
 } from "../src/api/domains/modules";
 import type { IndexModuleEntry } from "../src/api/domains/modules";
 
@@ -118,6 +119,206 @@ test("①c 索引 404 上抛（空态语义——区别于读端点的 supported
     getIndex({ source: "github", repo: "x/y", ref: "main", channel: "beta" }),
   ).rejects.toThrow("HTTP 404");
 });
+
+// ── ①d 索引规范化（上游 modules/versions 对象 map——16.124 崩溃回归）──
+
+/** 真实 beta channels.json 形状（2026-11-05）：modules 是对象 map，
+ * versions 是对象 map，制品在 artifacts[]（zip + tar.gz）。 */
+function betaChannelsPayload() {
+  return {
+    schema: 1,
+    channel: "beta",
+    updated_at: "2026-11-05T01:00:35Z",
+    modules: {
+      looprunner: {
+        kind: "runner",
+        latest: null,
+        versions: {},
+        note: "reserved in 1.2.6; the runner is not shipped with this release",
+      },
+      teamharness: {
+        kind: "plugin",
+        latest: "0.1.0",
+        versions: {
+          "0.1.0": {
+            artifacts: [
+              {
+                name: "teamharness-qwenpaw-0.1.0.zip",
+                sha256:
+                  "e4d07e30619b5d2e3452490303d33ab1423da056a241ceb5f8739a35cd7be77b",
+              },
+              {
+                name: "teamharness.tar.gz",
+                sha256:
+                  "595f33fb8680410ad5fa0be82c6d460bd6ab5baa5910df3e8c38eed8f3551533",
+              },
+            ],
+            requires: {
+              agentteams: ">=1.2.6",
+              contracts: "1",
+              tool_schema: "1",
+            },
+            commit: "8795080efdd7edcecdce025d83f8994d0600f31f",
+            published_at: "2026-11-05T01:00:35Z",
+            deprecated: false,
+          },
+        },
+      },
+      "agentteams-matrix": {
+        kind: "bundle",
+        pluginId: "agentteams-matrix-channel",
+        latest: "0.1.0",
+        versions: {
+          "0.1.0": {
+            artifacts: [
+              {
+                name: "agentteams-matrix-channel-0.1.0.zip",
+                sha256:
+                  "dd46b308bdd4b3ae80f4b098a4e282855f8736bdefa7c477c2b780aec4d9b44f",
+              },
+            ],
+            requires: { agentteams: ">=1.2.6" },
+            commit: "8795080efdd7edcecdce025d83f8994d0600f31f",
+            published_at: "2026-11-05T01:00:35Z",
+            deprecated: false,
+          },
+        },
+      },
+    },
+  };
+}
+
+test("①d getIndex：modules/versions 对象 map 规范化为数组（崩溃回归）", async () => {
+  calls.length = 0;
+  responder = () => ({
+    status: 200,
+    body: {
+      ...betaChannelsPayload(),
+      source: "github",
+      repo: "LUOSENGWA/Millforge",
+      fetched_at: "2026-11-07T00:00:00Z",
+    },
+  });
+  const r = await getIndex({
+    source: "github",
+    repo: "LUOSENGWA/Millforge",
+    ref: "main",
+    channel: "beta",
+  });
+  // 对象 map → 数组（UI 的 modules.find 不再崩）
+  expect(Array.isArray(r.modules)).toBe(true);
+  expect(r.modules).toHaveLength(3);
+  expect(r.modules.map((m) => m.module).sort()).toEqual([
+    "agentteams-matrix",
+    "looprunner",
+    "teamharness",
+  ]);
+  expect(r.schema).toBe(1);
+  expect(r.channel).toBe("beta");
+  expect(r.source).toBe("github");
+  expect(r.repo).toBe("LUOSENGWA/Millforge");
+
+  const th = r.modules.find((m) => m.module === "teamharness");
+  expect(th?.kind).toBe("plugin");
+  expect(th?.latest).toBe("0.1.0");
+  expect(entryPluginId(th as IndexModuleEntry)).toBe("teamharness");
+  expect(Array.isArray(th?.versions)).toBe(true);
+  expect(th?.versions).toHaveLength(1);
+  expect(th?.versions?.[0].version).toBe("0.1.0");
+  // artifacts[] → artifact/sha256（优先 zip；否则 UI 版本按钮全禁用）
+  expect(th?.versions?.[0].artifact).toBe("teamharness-qwenpaw-0.1.0.zip");
+  expect(th?.versions?.[0].sha256).toBe(
+    "e4d07e30619b5d2e3452490303d33ab1423da056a241ceb5f8739a35cd7be77b",
+  );
+  expect(th?.versions?.[0].requires).toEqual({
+    agentteams: ">=1.2.6",
+    contracts: "1",
+    tool_schema: "1",
+  });
+  expect(th?.versions?.[0].commit).toBe("8795080efdd7edcecdce025d83f8994d0600f31f");
+  expect(th?.versions?.[0].deprecated).toBe(false);
+
+  // bundle：pluginId 保留（≠ module），版本列表同源
+  const mx = r.modules.find((m) => m.module === "agentteams-matrix");
+  expect(mx?.kind).toBe("bundle");
+  expect(mx?.pluginId).toBe("agentteams-matrix-channel");
+  expect(entryPluginId(mx as IndexModuleEntry)).toBe("agentteams-matrix-channel");
+  expect(mx?.versions?.[0].version).toBe("0.1.0");
+
+  // runner：空 versions map → []，且不可安装
+  const lr = r.modules.find((m) => m.module === "looprunner");
+  expect(lr?.versions).toEqual([]);
+  expect(lr?.note).toContain("runner");
+  expect(isInstallableKind(lr as IndexModuleEntry)).toBe(false);
+
+  // moduleEntryVersions 与规范化后的条目一致
+  const viaHelper = moduleEntryVersions(th);
+  expect(viaHelper.map((v) => v.version)).toEqual(["0.1.0"]);
+  expect(viaHelper[0].artifact).toBe("teamharness-qwenpaw-0.1.0.zip");
+});
+
+test("①e normalizeIndexResponse：空/缺失 modules → []；数组形态仍兼容", () => {
+  expect(normalizeIndexResponse({ schema: 1, channel: "beta", modules: {} }).modules).toEqual([]);
+  expect(normalizeIndexResponse({ schema: 1, channel: "beta" }).modules).toEqual([]);
+  expect(normalizeIndexResponse(null).modules).toEqual([]);
+  expect(normalizeIndexResponse({ modules: [null, 123, { nope: 1 }] }).modules).toEqual([]);
+
+  const arr = normalizeIndexResponse({
+    schema: 1,
+    channel: "alpha",
+    modules: [
+      {
+        module: "teamharness",
+        kind: "plugin",
+        pluginId: "millforge-teamharness",
+        versions: [
+          { version: "0.2.0", artifact: "th-0.2.0.zip", sha256: "abc" },
+          { version: 7 },
+        ],
+      },
+      {
+        module: "solo",
+        version: "0.3.0",
+        artifact: "solo.zip",
+        sha256: "def",
+      },
+    ],
+  });
+  expect(arr.modules).toHaveLength(2);
+  expect(arr.modules[0].module).toBe("teamharness");
+  expect(arr.modules[0].versions).toHaveLength(1);
+  expect(arr.modules[0].versions?.[0]).toEqual({
+    version: "0.2.0",
+    artifact: "th-0.2.0.zip",
+    sha256: "abc",
+  });
+  // 单版本条目形态：versions 补成单条目
+  expect(arr.modules[1].versions).toEqual([
+    { version: "0.3.0", artifact: "solo.zip", sha256: "def" },
+  ]);
+});
+
+test("①f moduleEntryVersions：versions 对象 map 兜底（绕过 getIndex 的原始载荷）", () => {
+  const entry = {
+    module: "teamharness",
+    versions: {
+      "0.1.0": {
+        artifacts: [
+          { name: "teamharness.tar.gz", sha256: "tar" },
+          { name: "teamharness-qwenpaw-0.1.0.zip", sha256: "zip" },
+        ],
+        requires: { contracts: "1" },
+      },
+      bad: 42,
+    },
+  } as unknown as IndexModuleEntry;
+  const vs = moduleEntryVersions(entry);
+  expect(vs.map((v) => v.version)).toEqual(["0.1.0"]);
+  expect(vs[0].artifact).toBe("teamharness-qwenpaw-0.1.0.zip");
+  expect(vs[0].sha256).toBe("zip");
+  expect(vs[0].requires).toEqual({ contracts: "1" });
+});
+
 
 // ── ② 安装 payload 逐字段 ────────────────────────────────────────
 
