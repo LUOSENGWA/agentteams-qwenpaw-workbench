@@ -1266,6 +1266,35 @@ def test_download_304_skips_and_keeps_local(tmp_path):
     assert st["humans"][HUMAN]["etags"]["a.txt"] == "e2"
 
 
+def test_download_304_without_local_refetches_full(tmp_path):
+    """③b state 有 etag 但本地文件缺失：不得只发 INM（304 会被误判已下载），
+    必须无条件全量 GET 并落盘。"""
+    clock = Clock()
+    seen = []
+
+    def direct(path, headers):
+        seen.append(headers)
+        return bresult(200, b"fresh", {"ETag": "e2"})
+
+    fake = FakeCtl(
+        _conditional_responder(
+            generation=2,
+            manifest_entries=[{"path": "a.txt", "etag": "e2", "size": 5}],
+            direct=direct,
+        )
+    )
+    eng = make_engine(tmp_path, fake, clock, files={"a.txt": b"gone-soon"})
+    p = eng.files_dir / "a.txt"
+    eng._save_state(state_with(1, {"a.txt": "e2"}, {"a.txt": local_rec(p)}))
+    p.unlink()
+
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert seen == [{}]
+    assert p.read_bytes() == b"fresh"
+    assert res["downloaded"] == 1
+
+
 def test_download_206_resumes_from_part(tmp_path):
     """④ 本地有 .part → Range + If-Range → 206 追加后原子改名。"""
     clock = Clock()

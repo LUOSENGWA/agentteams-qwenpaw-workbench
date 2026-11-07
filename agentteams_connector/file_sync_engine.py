@@ -1267,6 +1267,17 @@ class SyncEngine:
                     new_etags[rel] = etag
                     new_local[rel] = self._stat_rel(rel)
                 self._progress_finish_file(moved, ok)
+            elif lnow is None:
+                # 远端未变但本地文件缺失（镜像被删/重建、state 仍在）→ 从远端
+                # 恢复；删除语义不传播，远端仍是下载权威。
+                if self._download(rel, etag):
+                    downloaded += 1
+                    changed += 1
+                    moved += int(self._stat_rel(rel)["size"])
+                    ok = True
+                    new_etags[rel] = etag
+                    new_local[rel] = self._stat_rel(rel)
+                self._progress_finish_file(moved, ok)
             elif local_changed:
                 try:
                     data = (self.files_dir / rel).read_bytes()
@@ -1721,11 +1732,14 @@ class SyncEngine:
             except Exception:  # noqa: BLE001
                 part_size = 0
         headers: Dict[str, str] = {}
+        local_exists = (self.files_dir / rel).is_file()
         if part_size > 0 and remote_etag:
             # 续传：If-Range 保证远端未变才回 206（变了回 200 全量）。
             headers["Range"] = f"bytes={part_size}-"
             headers["If-Range"] = str(remote_etag)
-        elif remote_etag:
+        elif remote_etag and local_exists:
+            # 只在本地确实有完整文件时才带 INM：否则 304 会被当成「已下载」
+            # 而本地永远缺文件（state 有 etag、镜像被删/重建的场景）。
             headers["If-None-Match"] = str(remote_etag)
         try:
             r = self.ctl_call("GET", base, headers=headers or None)
