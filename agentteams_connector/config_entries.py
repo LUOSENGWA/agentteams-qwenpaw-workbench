@@ -204,21 +204,22 @@ def merge_address_entries(
  - 新条目=dict：
  - auth 缺省/type=none → 字符串条目（显式清除凭据）。
  - 凭据字段空串或 "***" → 继承旧条目同名字段（脱敏回传=保持不变）。
- - url 为空 → 丢弃该条目（与旧 filter(v=>v.trim()) 行为一致）。
+ - url 为空 → **保留空槽占位 ""**（槽位≠内容：前端按 [0]=内网 /
+   [1]=外网 回填，丢弃空槽会把外网条目挤到内网位）。
+ - 循环结束后去尾部空槽（尾空无槽位语义）。
  - 旧列表更长的尾部条目 → 丢弃（前端始终提交完整两行）。
  """
     merged: List[AddressEntry] = []
     old_list = list(old_entries or [])
     for i, entry in enumerate(new_entries or []):
         if isinstance(entry, str):
-            u = entry.strip()
-            if u:
-                merged.append(u)
+            merged.append(entry.strip())
             continue
         if not isinstance(entry, dict):
             continue
         u = str(entry.get("url") or "").strip()
         if not u:
+            merged.append("")
             continue
         old_entry = old_list[i] if i < len(old_list) else None
         old_auth = (
@@ -250,6 +251,9 @@ def merge_address_entries(
                 merged.append(u)
         else:
             merged.append(u)
+    # 去尾部空槽：只有中间的「未填」占位有意义（保住后续条目的槽位）。
+    while merged and merged[-1] == "":
+        merged.pop()
     return merged
 
 def credential_gaps(

@@ -51,8 +51,11 @@ async def agentteams_qwenpaw_workbench_status(scope: str = "overview") -> str:
     if not token or not user_id:
         return "工作台未登录：请先在插件配置页登录 Matrix 账号，再重试。"
     homeservers = cfg.get("matrix_homeservers") or []
-    # 条目 str | {url, auth?}——统一取 url。
-    homeserver = config_mod.address_url(homeservers[0]) if homeservers else ""
+    # 条目 str | {url, auth?}——统一取 url；列表可含空槽占位（内网未填），
+    # 取首个非空条目（只配外网时不能误报未配置）。
+    homeserver = next(
+        (u for u in (config_mod.address_url(e) for e in homeservers) if u), ""
+    )
     if not homeserver:
         return "未配置 Matrix 地址（插件配置页 matrix_homeservers 为空）。"
 
