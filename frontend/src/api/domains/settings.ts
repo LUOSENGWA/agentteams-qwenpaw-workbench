@@ -328,6 +328,8 @@ export interface AddressTestResult {
   http_ok?: boolean;
   ms: number | null;
   detail: string;
+  // 无协议地址被后端自动识别时 = 原输入（url 已是解析后的带协议 URL）。
+  resolved_from?: string;
   diag?: ProbeDiag;
   // 该地址实际生效的凭据类型（none/basic/bearer）+
   // 401/403 质询分诊（basic=网关 Basic 门 / key=网关 API key 门 /
@@ -356,6 +358,8 @@ export interface ConfigTestResponse {
   };
   applied: boolean;
   switched?: { matrix: boolean; controller: boolean };
+  // scheme_unresolved = 无协议且 https/http 都探测不通（已按 https 探测显示）。
+  warnings?: string[];
 }
 
 /** 连通性测试（可传未保存的表单值；不传则测已配置地址）。 */

@@ -330,12 +330,12 @@ export const chatDict: Record<string, { en: string }> = {
   "模型目录暂不可用": { en: "Model catalog unavailable" },
   "该组合不在授权范围": { en: "This combination is outside the granted set" },
 
-  // ── X1c：地址免填协议（scheme-less 地址自动识别）──
-  "192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）": {
-    en: "192.168.1.10:6866 or ctlr.example.com:7113 (http:// / https:// optional, auto-detected)",
+  // ── X1c / N：地址免填协议（scheme-less 地址自动识别）──
+  "192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）": {
+    en: "192.168.1.10:6866 or ctlr.example.com:7113 (host:port, https / http auto-detected)",
   },
-  "未写协议时按端口与主机类型自动识别 http/https": {
-    en: "Without a scheme, http/https is auto-detected from port and host type",
+  "未写协议时 https 优先（探测失败回退 http），显式 http:// 不升级": {
+    en: "Without a scheme, https is tried first (falls back to http); an explicit http:// is never upgraded",
   },
 
   // ── R15 聊天团队/房间切换 + R13 任务备注 ──

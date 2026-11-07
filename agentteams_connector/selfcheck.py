@@ -326,4 +326,7 @@ from .selfcheck_probes import (  # noqa: E402
     _resolve_ip_hint,
     _resolve_ip_hint_uncached,
     diagnose_target,
+    # 无协议地址 → https 优先解析（保存/测试/导入路径共用）。
+    resolve_scheme,
+    split_url_scheme,
 )

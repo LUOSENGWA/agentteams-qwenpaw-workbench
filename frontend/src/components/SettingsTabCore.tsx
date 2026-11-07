@@ -15,6 +15,7 @@ import {
 } from "../api";
 import type {
   AddressEntry,
+  AddressTestResult,
   ConfigTestResponse,
   VerifyAdminResult,
   WorkbenchConfig,
@@ -128,7 +129,8 @@ export function useSettingsTabCore({
               : [sglangLan, sglangWan];
       return [0, 1].map((i) =>
         buildAuthEntry(
-          // 协议自动识别：`host:port` → `http://host:port`（已带 https 保留）。
+          // 协议自动识别：无协议原样提交（`host:port`）——后端保存/测试时
+          // https 优先探测，显式 http/https 保留（不再强行补 http://）。
           normalizeHttpUrl(urls[i]),
           addrAuth[`${kind}:${i}`] || EMPTY_ADDR_AUTH,
         ),
@@ -145,6 +147,45 @@ export function useSettingsTabCore({
       sglangWan,
       addrAuth,
     ],
+  );
+  // 协议识别结果回显——只在「差异就是后端补了协议」时写回输入框
+  // （host:port → https://host:port）；显式协议/用户其余输入原样不动。
+  const echoResolvedScheme = React.useCallback(
+    (
+      saved: AddressEntry[] | undefined,
+      submitted: AddressEntry[],
+      setters: [(v: string) => void, (v: string) => void],
+    ) => {
+      for (const i of [0, 1]) {
+        const original = entryUrl(submitted[i]);
+        const before = original.replace(/\/+$/, "");
+        const after = entryUrl(saved?.[i]);
+        if (!before || !after || after === original) continue;
+        if (after.replace(/^https?:\/\//i, "") === before) setters[i](after);
+      }
+    },
+    [],
+  );
+  // 连通性测试行回显——行带 resolved_from 时表示后端自动补了协议。
+  const echoResolvedRows = React.useCallback(
+    (
+      rows: AddressTestResult[] | null | undefined,
+      submitted: AddressEntry[],
+      setters: [(v: string) => void, (v: string) => void],
+    ) => {
+      const byInput = new Map<string, string>();
+      (rows || []).forEach((r) => {
+        if (r.resolved_from) {
+          byInput.set(r.resolved_from.replace(/\/+$/, ""), r.url);
+        }
+      });
+      for (const i of [0, 1]) {
+        const v = entryUrl(submitted[i]).replace(/\/+$/, "");
+        const resolved = v ? byInput.get(v) : undefined;
+        if (resolved) setters[i](resolved);
+      }
+    },
+    [],
   );
   // Controller 认证双模式（Matrix 登录 L2 / 管理员 token L1）。
   const [ctlMode, setCtlMode] = React.useState<"matrix" | "token">("matrix");
@@ -495,6 +536,39 @@ export function useSettingsTabCore({
           },
         }),
       });
+      // 无协议地址回显——后端保存时按 https 优先解析协议，落盘值即
+      // 解析结果；发生了自动识别就把地址框改成解析后的 URL。
+      const savedCfg = resp as Partial<WorkbenchConfig> & {
+        warnings?: string[];
+      };
+      echoResolvedScheme(
+        savedCfg.matrix_homeservers,
+        buildAddrEntries("matrix"),
+        [setMatrixLan, setMatrixWan],
+      );
+      echoResolvedScheme(
+        savedCfg.controller_urls,
+        buildAddrEntries("controller"),
+        [setControllerLan, setControllerWan],
+      );
+      echoResolvedScheme(
+        savedCfg.sglang?.urls,
+        buildAddrEntries("sglang"),
+        [setSglangLan, setSglangWan],
+      );
+      echoResolvedScheme(
+        savedCfg.gateway_admin_urls,
+        buildAddrEntries("gateway"),
+        [setGatewayAdminUrl, setGatewayWan],
+      );
+      if ((savedCfg.warnings || []).includes("scheme_unresolved")) {
+        message.warning(
+          tr(
+            "未探测到服务，已按 https 保存；若服务只支持 http，请显式写 http://",
+          ),
+          8,
+        );
+      }
       // 凭据回读校验——落盘形态（str=无凭据/basic/
       // bearer）与表单意图逐位置对表，不一致=当场显形（「已保存但没
       // 记住」不再无痕：成功 toast 后紧跟警告列出异常位置）。
@@ -565,11 +639,26 @@ export function useSettingsTabCore({
       controller?: AddressEntry[],
       sglang?: AddressEntry[],
       gateway?: AddressEntry[],
+      // 手动测试：把后端自动识别的协议回显到地址框（后台轮询不回显，
+      // 免得覆盖用户正在输入的值）。
+      echoBack = false,
     ) => {
       setTesting(true);
       try {
         const res = await testAddresses(matrix, controller, sglang, gateway);
         setConnTest(res);
+        if (echoBack) {
+          echoResolvedRows(res.matrix, matrix || [], [setMatrixLan, setMatrixWan]);
+          echoResolvedRows(res.controller, controller || [], [
+            setControllerLan,
+            setControllerWan,
+          ]);
+          echoResolvedRows(res.sglang, sglang || [], [setSglangLan, setSglangWan]);
+          echoResolvedRows(res.gateway, gateway || [], [
+            setGatewayAdminUrl,
+            setGatewayWan,
+          ]);
+        }
       } catch (e) {
         message.error(
           e instanceof Error ? e.message : tr("连通性测试失败"),
@@ -578,7 +667,7 @@ export function useSettingsTabCore({
         setTesting(false);
       }
     },
-    [],
+    [echoResolvedRows],
   );
 
   // L1 验证（Controller token / Higress 账号两块独立，验证通过才持久化凭据）。

@@ -352,6 +352,97 @@ async def _probe_with_retry(
     return await probe(url, token, timeout)
 
 
+# ── 地址协议识别（无协议 → https 优先）──────────────────────────────
+# 用户常省略 http(s)://（`192.168.54.107:6866`）。业界口径：浏览器
+# HTTPS-first/HTTPS-Upgrade、curl --proto-default https；TLS 端口收到
+# 明文请求回 400 "plain HTTP request was sent to HTTPS port"。故无协议时
+# **https 优先**，失败才回退 http；两者都不通按 https 保存（安全默认，
+# 绝不静默降级 http）；显式 http:// / https:// 一律不覆盖。
+_SCHEME_CACHE: Dict[str, Any] = {}  # "host:port" -> (expiry_monotonic, scheme)
+_SCHEME_CACHE_TTL = 600.0  # 10 分钟
+_SCHEME_HEAD_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*)://")
+SCHEME_UNRESOLVED = "scheme_unresolved"
+
+
+def split_url_scheme(raw: str) -> tuple:
+    """地址 → (scheme|"", 去空白原串)。只认显式 ``://``——
+ 禁用 urlsplit 推断（"host:6873" 会被误读成 scheme=host/path=6873）。"""
+    s = (raw or "").strip()
+    m = _SCHEME_HEAD_RE.match(s)
+    return (m.group(1).lower() if m else ""), s
+
+
+def _strip_trailing_slash(s: str) -> str:
+    """去尾斜杠（"http://h/" → "http://h"；"http://" 与 "h:1/" 边界安全）。"""
+    out = s.rstrip("/")
+    return out if out and not out.endswith(":") else s
+
+
+def _scheme_cache_key(raw: str) -> str:
+    """缓存键 = host:port（去 path/query；大小写归一）。"""
+    s = (raw or "").strip()
+    for sep in ("/", "?"):
+        idx = s.find(sep)
+        if idx >= 0:
+            s = s[:idx]
+    return s.lower()
+
+
+def _scheme_probe_url(url: str, timeout: float) -> bool:
+    """探测 URL 是否「通」——TCP+TLS+任意 HTTP 响应都算通
+ （400 也算：对端在按 HTTP 应答）。verify=False / trust_env=False：
+ 只测连通，不校验证书、不被本机代理环境变量扭曲（同 selfcheck 直连口径）。"""
+    try:
+        with sync_dial_slot(), httpx.Client(
+            timeout=timeout, verify=False, trust_env=False
+        ) as client:
+            client.get(url, headers={"User-Agent": "agentteams-scheme-probe"})
+        return True
+    except Exception:  # noqa: BLE001 - 任何传输层异常都算不通
+        return False
+
+
+async def resolve_scheme(raw: str, timeout: float = 3.0) -> Dict[str, Any]:
+    """地址 → 带协议的 URL（保存/测试/导入前统一解析）。
+
+ 返回 {url, input, auto, warning}：
+ - 显式 scheme（http/https 及其他）→ 原样（仅去尾斜杠），auto=False；
+   显式 http 不升级、显式 https 不降级。
+ - 无协议 → 先探 https，失败回退 http；命中结果按 host:port 缓存 10 分钟
+   （连续保存/测试同一地址不重复探测）。
+ - 两者都不通 → 按 https 返回且 warning="scheme_unresolved"（安全默认）；
+   失败结果不缓存（服务稍后起来时下次保存仍能识别）。
+ """
+    scheme, s = split_url_scheme(raw)
+    out: Dict[str, Any] = {"url": s, "input": s, "auto": False, "warning": None}
+    if not s:
+        return out
+    if scheme:
+        if scheme in ("http", "https"):
+            out["url"] = _strip_trailing_slash(s)
+        return out
+    trimmed = _strip_trailing_slash(s)
+    key = _scheme_cache_key(s)
+    now = time.monotonic()
+    cached = _SCHEME_CACHE.get(key)
+    chosen = cached[1] if cached and cached[0] > now else ""
+    if not chosen:
+        for candidate in ("https", "http"):
+            if await asyncio.to_thread(
+                _scheme_probe_url, f"{candidate}://{trimmed}", timeout
+            ):
+                chosen = candidate
+                break
+        if chosen:
+            _SCHEME_CACHE[key] = (now + _SCHEME_CACHE_TTL, chosen)
+    out["auto"] = True
+    if not chosen:
+        chosen = "https"  # 安全默认：绝不静默按 http 保存
+        out["warning"] = SCHEME_UNRESOLVED
+    out["url"] = f"{chosen}://{trimmed}"
+    return out
+
+
 # fake-ip / 私有地址段检测——DNS 被代理劫持时解析结果落在这些段，
 # 直接点破「不是服务器证书问题，是本机 DNS/代理问题」。
 _FAKE_IP_HINTS = (

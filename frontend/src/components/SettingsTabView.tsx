@@ -343,7 +343,7 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.matrix} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={matrixLan}
             aria-label={tr("Matrix 内网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -356,7 +356,7 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("matrix:0", v)}
           />
           <antd.Input
-            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={matrixWan}
             aria-label={tr("Matrix 外网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -374,7 +374,7 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.controller} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={controllerLan}
             aria-label={tr("Controller 内网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -387,7 +387,7 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("controller:0", v)}
           />
           <antd.Input
-            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={controllerWan}
             aria-label={tr("Controller 外网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -412,7 +412,7 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.gateway} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={gatewayAdminUrl}
             aria-label={tr("Higress 内网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -427,7 +427,7 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("gateway:0", v)}
           />
           <antd.Input
-            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={gatewayWan}
             aria-label={tr("Higress 外网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -564,6 +564,8 @@ export function SettingsTabView(props: {
                   gatewayAdminUrl.trim() || gatewayWan.trim()
                     ? buildAddrEntries("gateway")
                     : [],
+                  // 手动测试：自动识别的协议回显到地址框。
+                  true,
                 )
               }
             >
@@ -574,7 +576,7 @@ export function SettingsTabView(props: {
             </span>
           </div>
           <div style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>
-            {tr("未写协议时按端口与主机类型自动识别 http/https")}
+            {tr("未写协议时 https 优先（探测失败回退 http），显式 http:// 不升级")}
           </div>
           {connTest ? (
             <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
@@ -1056,7 +1058,7 @@ export function SettingsTabView(props: {
  两条路径同一集群，后台自动测延迟切最快，无需手动切换。 */}
           <div style={{ display: "grid", gap: 8 }}>
             <antd.Input
-              placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
+              placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
               aria-label={tr("SGLang 内网地址")}
               value={sglangLan}
               disabled={!sglangEnabled}
@@ -1070,7 +1072,7 @@ export function SettingsTabView(props: {
               disabled={!sglangEnabled}
             />
             <antd.Input
-              placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（可省略 http:// / https://，自动识别）")}
+              placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
               aria-label={tr("SGLang 外网地址")}
               value={sglangWan}
               disabled={!sglangEnabled}

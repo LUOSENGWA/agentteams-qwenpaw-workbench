@@ -258,6 +258,9 @@ export const workerDict: Record<string, { en: string }> = {
   "配置已保存（已自动探测生效地址）": {
     en: "Settings saved (reachable address auto-detected)",
   },
+  "未探测到服务，已按 https 保存；若服务只支持 http，请显式写 http://": {
+    en: "No service reachable — saved as https; if it only serves http, write http:// explicitly",
+  },
   "保存失败": { en: "Save failed" },
   // #1514 模型授权强制：写面 grant 错误统一文案（lib/modelGrantErrors）
   "需同时选择 Provider 和模型": {
