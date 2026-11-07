@@ -3,6 +3,15 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.134 (thinking fold / files batch 2 / checkpoints / sync triggers · 2026-11-07)
+
+**Added**
+- Chat: `m.notice` / `Thinking:` reasoning is no longer a large italic body; it is collected per turn into the process disclosure (`🧠 Thinking · 🔧 N tool calls · X.Xs`), thinking first on expand, original notice rows hidden.
+- Files: rename/move (read → write new path → trash old, rollback on failure), quota editing (**decimal MB/GB**, 1000-based; blank = unlimited, 0 = zero), in-browser text editing (≤1 MiB, If-Match, 412 reload/overwrite).
+- Manage: checkpoint card moved into Worker detail (lazy four states: loading/unsupported/unavailable/empty/data, read-only).
+- Sync: host `watchfiles` on `files/**` (2 s debounce), agent-turn-end trigger, ≤10 s shutdown flush of small files, `sync_paused` switch (API + UI); priority manual > agent_stop > watch > timer.
+
+**Tests**: pytest 738 · vitest 373 · `tsc` 0 · build 0.
 ## 0.5.0-beta.16.133 (chat DB / file DnD / media viewer / sync backpressure / manage dots / tracing / voice · 2026-11-07)
 
 **Added**

@@ -3,6 +3,15 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.134（思考折叠/文件二批/检查点卡/同步触发 · 2026-11-07）
+
+**新增**
+- 聊天：`m.notice` / `Thinking:` 推理消息不再渲染成大段斜体正文；按 turn 收集并入过程折叠条（`🧠 思考过程 · 🔧 N 次工具调用 · X.Xs`），展开先思考后调用，原始 notice 行不出现。
+- 文件：重命名/移动（读→写新路径→旧路径进回收站，失败回滚）、配额编辑（**MB/GB 十进制**，1000 进制，留空=不限、0=零）、文本在线编辑（≤1MiB，If-Match，412 冲突选择重载/覆盖）。
+- 管理：检查点卡迁入 Worker 详情（懒加载四态：加载/不支持/不可用/空/有数据，只读）。
+- 同步：宿主 `watchfiles` 监听 `files/**`（2s 去抖）、Agent 回合结束触发、关机 ≤10s 小文件 flush、`sync_paused` 暂停开关（API+UI），优先级 手动>agent_stop>watch>定时。
+
+**测试**：pytest 738 · vitest 373 · `tsc` 0 · build 0。
 ## 0.5.0-beta.16.133（聊天 DB/文件 DnD/媒体灯箱/同步背压/管理灯/Tracing/语音 · 2026-11-07）
 
 **新增**
