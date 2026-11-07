@@ -3,6 +3,16 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.135 (turn-level chat rendering · 2026-11-07)
+
+**Changed**
+- A worker turn renders its avatar/name/time once (`TurnHeader`); order is **header → process disclosure → answer**, with the process no longer trailing the answer.
+- `ProcessCollapseBar` gains `active`: auto-expands while running with "thinking/running" status and collapses when done (unless the user expanded it manually).
+- Continuation rows require **5 minutes + same day + same message family**; a same-sender gap **>10 minutes** or a day change starts a new turn.
+- Approval/confirmation cards stay standalone tiles outside the process fold; task event cards still interleave by ts.
+- `RoomChatTurnParts.tsx` extracts TurnHeader/date separators/unread line shared with the message group header.
+
+**Tests**: pytest 738 · vitest 394 · `tsc` 0 · build 0.
 ## 0.5.0-beta.16.134 (thinking fold / files batch 2 / checkpoints / sync triggers · 2026-11-07)
 
 **Added**

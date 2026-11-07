@@ -3,6 +3,16 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.135（turn 级聊天渲染 · 2026-11-07）
+
+**变更**
+- 一个 worker turn 只渲染一次头像/名字/时间（`TurnHeader`），顺序改为 **header → 过程折叠条 → 最终回答**；过程不再排在答案之后。
+- `ProcessCollapseBar` 增加 `active`：进行中自动展开并显示「思考中…/进行中」，结束后自动折叠（用户手动展开过则不强制）。
+- 同发送者续行改为 **5 分钟 + 同日 + 同消息族**；同 sender 间隔 **>10 分钟**或跨天断 turn。
+- 审批/确认卡保持独立 tile，不折进过程；任务事件卡仍按 ts 交错。
+- `RoomChatTurnParts.tsx` 抽出 TurnHeader/日期分隔/未读线，与消息组首行共用同一实现。
+
+**测试**：pytest 738 · vitest 394 · `tsc` 0 · build 0。
 ## 0.5.0-beta.16.134（思考折叠/文件二批/检查点卡/同步触发 · 2026-11-07）
 
 **新增**
