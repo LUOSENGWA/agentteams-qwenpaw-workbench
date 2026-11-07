@@ -3,6 +3,14 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.123（2026-11-07 · 上传队列 / 树视图批量）
+
+**新增**
+- 文件上传队列：并发 3，逐文件进度、取消、重试，失败条目聚合展示；关闭面板不中断在跑上传。
+- 树视图批量选择：勾选目录联动其子项（含折叠），批量删除/下载复用 16.120 的批量通道与确认弹窗。
+
+**测试**：vitest 187 passed · `tsc --noEmit` 0 · `npm run build` 0。
+
 ## 0.5.0-beta.16.122（2026-11-07 · 团队切换 / 任务备注 / 移动快捷条）
 
 **新增**

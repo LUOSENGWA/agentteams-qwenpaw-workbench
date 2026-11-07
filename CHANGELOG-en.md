@@ -3,6 +3,14 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.123 (2026-11-07 · upload queue / tree batch)
+
+**Added**
+- File upload queue: concurrency 3, per-file progress, cancel and retry, aggregated failures; closing the panel does not abort in-flight uploads.
+- Tree-view batch selection: selecting a folder selects its descendants (collapsed included); batch delete/download reuse the 16.120 batch path and confirmation dialog.
+
+**Tests**: vitest 187 passed · `tsc --noEmit` clean · `npm run build` clean.
+
 ## 0.5.0-beta.16.122 (2026-11-07 · team switcher / task notes / mobile quick bar)
 
 **Added**
