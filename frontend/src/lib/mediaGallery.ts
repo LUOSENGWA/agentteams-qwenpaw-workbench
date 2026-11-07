@@ -125,10 +125,10 @@ export function clampPan(
   const z = clampZoom(zoom);
   const maxX = Math.max(0, (viewWidth * (z - 1)) / 2);
   const maxY = Math.max(0, (viewHeight * (z - 1)) / 2);
-  return {
-    x: Math.min(maxX, Math.max(-maxX, pan.x)),
-    y: Math.min(maxY, Math.max(-maxY, pan.y)),
-  };
+  const x = Math.min(maxX, Math.max(-maxX, pan.x));
+  const y = Math.min(maxY, Math.max(-maxY, pan.y));
+  // -0 归一为 0：DOM transform 不需要负零，测试/序列化也不该出现 -0。
+  return { x: x === 0 ? 0 : x, y: y === 0 ? 0 : y };
 }
 
 export type MediaKind = "image" | "video" | "audio" | "file";
