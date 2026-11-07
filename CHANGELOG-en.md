@@ -3,6 +3,12 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.80 (2026-11-07 · model grant 400 fix)
+
+**Fixed**
+- Saving a person's model grant failed with `400 invalid JSON: cannot unmarshal object into ... codingCli of type []v1beta1.ModelAccessCli`: the CRD declares `codingCli` as an **array** of `{cli, entries, inherit}`, while the editor sent a map. The write path now serializes the array and the read path normalizes it back to a map, so the editor is unchanged.
+- "Add CLI" no longer invents `qwen-code-2`: it takes the first unused entry of the fixed three (qwen-code, opencode, qoder), and the button disables once all three are present.
+
 ## 0.5.0-beta.16.79 (2026-11-07 · config and grant interaction fixes)
 
 **Fixed**

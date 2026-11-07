@@ -3,6 +3,12 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.80（2026-11-07 · 模型授权保存 400 修复）
+
+**修复**
+- 保存人员模型授权报 `400 invalid JSON: cannot unmarshal object into ... codingCli of type []v1beta1.ModelAccessCli`：CRD 的 `codingCli` 是**数组**（`{cli, entries, inherit}`），此前按 map 发送。现在写面转数组、读面归一成 map，编辑器内部不变；
+- 「添加 CLI」不再生成 `qwen-code-2`：直接取固定三种里第一个没选的（qwen-code / opencode / qoder），三个都加过后按钮禁用。
+
 ## 0.5.0-beta.16.79（2026-11-07 · 配置与授权交互修正）
 
 **修复**
