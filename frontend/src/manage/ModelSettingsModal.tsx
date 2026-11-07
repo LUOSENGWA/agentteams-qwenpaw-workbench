@@ -286,7 +286,14 @@ export default function ModelSettingsModal({
               allowClear
               placeholder={tr("选择 Provider")}
               value={draft.provider || undefined}
-              onChange={(v: string) => setMain({ provider: v ?? "" })}
+              onChange={(v: string) => {
+                // 换 Provider 时模型必须重新对齐：旧模型若不属于新 Provider，
+                // 保留下来就会提交一对不成立的 (provider, model)。
+                const nextProvider = v ?? "";
+                const allowed = modelsForProvider(providers, nextProvider);
+                const keep = allowed.includes(draft.model ?? "") ? draft.model : "";
+                setMain({ provider: nextProvider, model: keep });
+              }}
               options={providerOptions}
               {...searchable}
             />

@@ -378,7 +378,20 @@ export default function ModelEditModal({
                   disabled={subagentSame || locked}
                   placeholder={tr("自动（跟随）")}
                   value={subagentProvider || undefined}
-                  onChange={(v: string) => setSubagentProvider(v ?? "")}
+                  onChange={(v: string) => {
+                    // 换 Provider 后旧的子代理模型可能不属于它 → 一并清掉，
+                    // 避免提交一对不成立的 (provider, model)。
+                    const next = v ?? "";
+                    setSubagentProvider(next);
+                    if (!subagentModel) return;
+                    const allowed =
+                      spawnPairs.length > 0
+                        ? spawnPairs
+                            .filter((p) => !next || p.provider === next)
+                            .map((p) => p.model)
+                        : null;
+                    if (allowed && !allowed.includes(subagentModel)) setSubagentModel("");
+                  }}
                   options={subagentProviderOptions}
                 />
               </div>
