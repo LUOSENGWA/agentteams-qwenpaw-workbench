@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
 """工作区文件镜像同步引擎（files/** ↔ Controller 文件区）。
 
-设计依据：方案与设计/AgentTeams/下版本1.2.6-1.2.7/文件同步-工作区镜像设计-20261107.md
-- 同步引擎跑在**插件后端**（浏览器无文件系统）；镜像落在 QwenPaw 工作区内
-  ``agentteams/``（``.sync/`` 状态 + ``files/`` 镜像，随工作区持久化/备份）。
+设计依据：方案与设计/AgentTeams/下版本1.2.6-1.2.7/10-客户端同步与缓存/
+QwenPaw插件存储与缓存-设计-20261107.md（SYNC-STORE 根布局 + 缓存落盘）
++ 文件同步-工作区镜像设计-20261107.md（协议/冲突/调度）。
+- 同步引擎跑在**插件后端**（浏览器无文件系统）；镜像根 =
+  ``<workspace>/.qwenpaw/agentteams/``（``.sync/`` 状态 +
+  ``workspace/<human>/files/`` 镜像 + ``cache/`` 磁盘缓存——工作区内
+  .qwenpaw/ = 备份覆盖且 checkpoint 排除，随工作区持久化）。
+- 首启一次性迁移：旧根 ``<workspace>/agentteams/`` 存在且新根不存在 →
+  搬一次（sync_store.migrate_root），state.json 记 ``migratedFrom``。
 - 服务端只存清单不合并（#1499）；写回是条件 PUT（``If-Match`` → 412 本轮
   结束并标记 retry，**不循环**，下一轮重来）。
 - 命名：仓库已有 ``sync_watcher.py``（Matrix /sync 长轮询）易混 → 本单模块名
@@ -33,14 +39,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from . import sync_store
 from .dial_gate import sync_dial_slot
 
 logger = logging.getLogger(
     "qwenpaw.plugins.agentteams_qwenpaw_workbench.file_sync"
 )
 
-# .sync/lock 过期阈值（秒）——O_EXCL 创建 + 30 分钟过期可夺（设计 §5）。
-LOCK_STALE_SECONDS = 30 * 60
+# .sync/lock 过期阈值（秒）——O_EXCL 创建 + 10 分钟过期可夺（SYNC-STORE
+# 任务书口径；设计「QwenPaw插件存储与缓存」§7 单写者锁）。
+LOCK_STALE_SECONDS = 10 * 60
 # 定时：启动 60s 后首跑，之后每 300s（±30s jitter）（设计 §5 / 任务书）。
 # 定时器先用常量，配置项后续加（设计 §8）。
 FIRST_DELAY_SECONDS = 60.0
@@ -332,10 +340,22 @@ class SyncEngine:
         self.state_file = self.sync_dir / "state.json"
         self.lock_file = self.sync_dir / "lock"
         self.conflicts_log = self.sync_dir / "conflicts.log"
-        self.files_dir = self.root / "files"
+        # SYNC-STORE 布局：镜像在 workspace/<human>/files/（根 =
+        # <workspace>/.qwenpaw/agentteams）；首启一次性迁移
+        # （旧根 <workspace>/agentteams 存在且新根不存在 → 搬一次
+        # 并记 state.json migratedFrom）。
+        self.migrated_from = sync_store.migrate_root(self.root, self.human)
+        self.files_dir = self.root / "workspace" / self.human / "files"
         self.config_file = self.sync_dir / "config.json"
         self.sync_dir.mkdir(parents=True, exist_ok=True)
         self.files_dir.mkdir(parents=True, exist_ok=True)
+        # 磁盘缓存存储（cache/http|chat|lru；设计「QwenPaw插件存储与缓存」§3）。
+        self.store = sync_store.SyncStore(self.root, now=self._now)
+        self.store.ensure_dirs()
+        if self.migrated_from is not None:
+            st = self._load_state()
+            st["migratedFrom"] = self.migrated_from
+            self._save_state(st)
         self._holding_lock = False
         self._last_error: Optional[str] = None
         # S6 进度统计——引擎可能被后台循环线程与 API 工作线程同时读写，
@@ -348,16 +368,26 @@ class SyncEngine:
     # ── 对外接口 ─────────────────────────────────────────────────────
 
     def state(self) -> Dict[str, Any]:
-        """供 GET /sync/state（设计 §7 可观测面）。"""
+        """供 GET /sync/state（设计 §7 可观测面 + SYNC-STORE 字段：
+        version/root/human/lastRunAt/conflicts/cursor/migratedFrom）。
+
+        顶层字段取自新顶层 state（``_save_state`` 盖戳）；旧形状
+        state.json（无顶层字段）回退 per-human 记录，向后兼容。
+        """
         st = self._load_state()
         rec = (st.get("humans") or {}).get(self.human) or {}
         etags = rec.get("etags") or {}
         return {
             "enabled": True,
-            "generation": rec.get("generation"),
+            "version": st.get("version"),
+            "root": str(self.root),
+            "human": self.human,
+            "generation": st.get("generation", rec.get("generation")),
             "files": len(etags),
             "conflicts": self._conflict_count(),
-            "lastRunAt": rec.get("lastRunAt"),
+            "lastRunAt": st.get("lastRunAt") or rec.get("lastRunAt"),
+            "cursor": st.get("cursor"),
+            "migratedFrom": st.get("migratedFrom"),
             "lastError": self._last_error,
             "locked": self._lock_held(),
             "humans": st.get("humans") or {},
@@ -717,7 +747,7 @@ class SyncEngine:
         )
 
     def _acquire_lock(self) -> bool:
-        """O_EXCL 抢锁；>30min 视为过期可夺（按内容 at，回退 mtime）。"""
+        """O_EXCL 抢锁；>10min 视为过期可夺（按内容 at，回退 mtime）。"""
         try:
             fd = os.open(
                 str(self.lock_file),
@@ -798,6 +828,22 @@ class SyncEngine:
         return {"humans": {}}
 
     def _save_state(self, st: Dict[str, Any]) -> None:
+        """落 state.json（原子 tmp+rename）。
+
+        SYNC-STORE 顶层字段 ``{version, root, human, lastRunAt,
+        generation, conflicts, cursor?}`` 自动盖戳（cursor 已有则原样
+        携带——增量游标设计「增量游标since-20261107」，本单不新增写
+        逻辑）；``humans`` per-human 明细（etag/local 表）保持不动。
+        """
+        st = dict(st)
+        st.setdefault("version", sync_store.STATE_VERSION)
+        st["root"] = str(self.root)
+        st["human"] = self.human
+        rec = (st.get("humans") or {}).get(self.human) or {}
+        st["generation"] = rec.get("generation", st.get("generation"))
+        st["lastRunAt"] = rec.get("lastRunAt") or st.get("lastRunAt")
+        st["conflicts"] = self._conflict_count()
+        self.sync_dir.mkdir(parents=True, exist_ok=True)
         tmp = self.state_file.with_name(self.state_file.name + ".tmp")
         tmp.write_text(
             json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8"
@@ -1334,11 +1380,15 @@ def set_current_agent(agent: Optional[str]) -> None:
 def resolve_workspace_root(
     agent: Optional[str] = None, working: Optional[Path] = None
 ) -> Path:
-    """镜像根解析（任务书顺序）：
+    """镜像根解析（SYNC-STORE，设计「QwenPaw插件存储与缓存」§2/§3）：
 
-    1. ``<WORKING_DIR>/workspaces/<agent>/agentteams``——agent 默认取插件
-       当前 agent（注入 > ``AGENTTEAMS_SYNC_AGENT`` env）；
-    2. 该 agent 工作区不存在 → ``<WORKING_DIR>/agentteams``。
+    1. ``<WORKING_DIR>/workspaces/<agent>/.qwenpaw/agentteams``——agent
+       默认取插件当前 agent（注入 > ``AGENTTEAMS_SYNC_AGENT`` env）；
+    2. 该 agent 工作区不存在 → ``<WORKING_DIR>/.qwenpaw/agentteams``。
+
+    工作区内 .qwenpaw/ = 备份覆盖（include_agents）且 checkpoint 排除
+    （静态排除名单）；旧根（``<workspace>/agentteams``）由 SyncEngine
+    首启一次性迁移处理（sync_store.migrate_root）。
     """
     base = Path(working) if working is not None else _working_dir()
     a = str(
@@ -1350,8 +1400,8 @@ def resolve_workspace_root(
     if a:
         ws = base / "workspaces" / a
         if ws.is_dir():
-            return ws / "agentteams"
-    return base / "agentteams"
+            return ws / ".qwenpaw" / "agentteams"
+    return base / ".qwenpaw" / "agentteams"
 
 
 def build_ctl_call() -> Callable[..., HttpResult]:

@@ -79,7 +79,9 @@ def make_engine(
     human: str = HUMAN,
 ) -> SyncEngine:
     root = tmp_path / "agentteams"
-    files_dir = root / "files"
+    # SYNC-STORE 布局：镜像在 workspace/<human>/files/（tmp 根不在
+    # .qwenpaw/ 下 → 迁移逻辑天然 no-op，测试树隔离安全）
+    files_dir = root / "workspace" / human / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
     (root / ".sync").mkdir(parents=True, exist_ok=True)
     for rel, data in (files or {}).items():
@@ -162,7 +164,7 @@ def test_same_generation_skips(tmp_path):
     assert fake.call_count == 1
     assert fake.calls[0][0] == "GET"
     assert fake.calls[0][1] == f"{BASE}/sync/status"
-    assert not list((eng.root / "files").glob("*"))
+    assert not list(eng.files_dir.rglob("*"))
 
 
 # ── 2) status 404 → enabled=False，且只调用一次（不重试） ────────────
@@ -203,7 +205,7 @@ def test_remote_new_file_downloaded(tmp_path):
     assert res["downloaded"] == 1
     assert res["changed"] == 1
     assert res.get("error") is None
-    got = (eng.root / "files" / "notes" / "a.txt").read_bytes()
+    got = (eng.files_dir / "notes" / "a.txt").read_bytes()
     assert got == b"hello world"
     # 清单写回带 If-Match（条件 PUT，#1499）
     put = [c for c in fake.calls if c[0] == "PUT" and c[1] == f"{BASE}/sync/manifest"]
@@ -224,7 +226,7 @@ def test_remote_new_file_downloaded(tmp_path):
 def test_local_change_uploaded(tmp_path):
     clock = Clock()
     root = tmp_path / "agentteams"
-    files_dir = root / "files"
+    files_dir = root / "workspace" / HUMAN / "files"
     files_dir.mkdir(parents=True)
     p = files_dir / "a.txt"
     p.write_bytes(b"old")
@@ -262,7 +264,7 @@ def test_local_change_uploaded(tmp_path):
 def test_both_changed_conflict(tmp_path):
     clock = Clock()
     root = tmp_path / "agentteams"
-    files_dir = root / "files"
+    files_dir = root / "workspace" / HUMAN / "files"
     files_dir.mkdir(parents=True)
     p = files_dir / "b.txt"
     p.write_bytes(b"local-v1")
@@ -327,9 +329,9 @@ def test_stale_lock_seized(tmp_path):
     eng = make_engine(
         tmp_path, fake, clock, state=state_with(1, {}, {})
     )
-    # 过期锁（at 早于 30min）→ 可夺，正常开跑
+    # 过期锁（at 早于 10min 阈值，SYNC-STORE 口径）→ 可夺，正常开跑
     (eng.root / ".sync" / "lock").write_text(
-        json.dumps({"pid": 99999, "at": _iso(clock() - 31 * 60)}), encoding="utf-8"
+        json.dumps({"pid": 99999, "at": _iso(clock() - 11 * 60)}), encoding="utf-8"
     )
     res = eng.run_once()
     assert res.get("locked") is not True
@@ -377,30 +379,39 @@ def test_resolve_workspace_root(tmp_path, monkeypatch):
     monkeypatch.delenv("AGENTTEAMS_SYNC_AGENT", raising=False)
     fse.set_current_agent(None)
     try:
-        # 无 agent → fallback 到 <WORKING_DIR>/agentteams
-        assert fse.resolve_workspace_root(working=working) == working / "agentteams"
-        # 显式 agent → <WORKING_DIR>/workspaces/<agent>/agentteams
+        # 无 agent → fallback 到 <WORKING_DIR>/.qwenpaw/agentteams
+        assert (
+            fse.resolve_workspace_root(working=working)
+            == working / ".qwenpaw" / "agentteams"
+        )
+        # 显式 agent → <WORKING_DIR>/workspaces/<agent>/.qwenpaw/agentteams
         assert (
             fse.resolve_workspace_root("AgentA", working=working)
-            == ws_a / "agentteams"
+            == ws_a / ".qwenpaw" / "agentteams"
         )
         # 不存在的工作区 → 回退
         assert (
             fse.resolve_workspace_root("Ghost", working=working)
-            == working / "agentteams"
+            == working / ".qwenpaw" / "agentteams"
         )
         # env 覆盖（agent 默认取插件当前 agent 的替代通道）
         monkeypatch.setenv("AGENTTEAMS_SYNC_AGENT", "AgentB")
-        assert fse.resolve_workspace_root(working=working) == ws_b / "agentteams"
+        assert (
+            fse.resolve_workspace_root(working=working)
+            == ws_b / ".qwenpaw" / "agentteams"
+        )
         # 显式参数优先于 env
         assert (
             fse.resolve_workspace_root("AgentA", working=working)
-            == ws_a / "agentteams"
+            == ws_a / ".qwenpaw" / "agentteams"
         )
         # 插件当前 agent 注入点（宿主装配侧 set_current_agent）
         monkeypatch.delenv("AGENTTEAMS_SYNC_AGENT", raising=False)
         fse.set_current_agent("AgentB")
-        assert fse.resolve_workspace_root(working=working) == ws_b / "agentteams"
+        assert (
+            fse.resolve_workspace_root(working=working)
+            == ws_b / ".qwenpaw" / "agentteams"
+        )
     finally:
         fse.set_current_agent(None)
 
