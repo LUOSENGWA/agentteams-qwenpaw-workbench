@@ -1,5 +1,6 @@
 import type * as ReactNS from "react";
 
+import { normalizeHttpUrl } from "../lib/httpUrl";
 import {
   clearExportPassword,
   entryUrl,
@@ -126,7 +127,11 @@ export function useSettingsTabCore({
               ? [gatewayAdminUrl, gatewayWan]
               : [sglangLan, sglangWan];
       return [0, 1].map((i) =>
-        buildAuthEntry(urls[i], addrAuth[`${kind}:${i}`] || EMPTY_ADDR_AUTH),
+        buildAuthEntry(
+          // 协议自动识别：`host:port` → `http://host:port`（已带 https 保留）。
+          normalizeHttpUrl(urls[i]),
+          addrAuth[`${kind}:${i}`] || EMPTY_ADDR_AUTH,
+        ),
       );
     },
     [
