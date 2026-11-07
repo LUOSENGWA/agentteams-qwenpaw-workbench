@@ -31,9 +31,10 @@ import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import NarrowSheet from "../components/NarrowSheet";
 import WorkerRuntimeConfig from "../components/WorkerRuntimeConfig";
 import WorkerRuntimeConfigSurface from "../components/WorkerRuntimeConfigSurface";
-import { fetchRuntimeSurface } from "../api";
+import { fetchRuntimeSurface, probeWorkspaceFilesSupported } from "../api";
 import WorkerEnvPanel from "../components/WorkerEnvPanel";
 import WorkerCodingCliPanel from "../components/WorkerCodingCliPanel";
+import WorkerWorkspaceFilesPanel from "../components/WorkerWorkspaceFilesPanel";
 import WorkerMcpPanel from "../components/WorkerMcpPanel";
 import WorkerPluginsPanel from "../components/WorkerPluginsPanel";
 import SkillCenter from "../components/SkillCenter";
@@ -53,6 +54,7 @@ import {
   MessageIcon,
   ShieldIcon,
   MonitorIcon,
+  BoxIcon,
 } from "../components/icons";
 
 const host = window.QwenPaw.host;
@@ -108,6 +110,29 @@ export default function ResourceCards({
       alive = false;
     };
   }, [nonQwenpawRuntime, worker.runtime]);
+
+  // 「工作区文件」版本门（QwenPaw ≥ 2.1 / 新控制器才有路由）：探测通过才出卡
+  // （404 老控制器 / 503 kube 模式 / W8 越权 → 隐藏，不报错）。仅 qwenpaw /
+  // runtime 未上报时探测（非 qwenpaw 卡片会被 qwenpawOnly 过滤，不付探测成本）。
+  const [wfilesSupported, setWfilesSupported] = React.useState(false);
+  React.useEffect(() => {
+    if (nonQwenpawRuntime) {
+      setWfilesSupported(false);
+      return;
+    }
+    let alive = true;
+    setWfilesSupported(false);
+    void probeWorkspaceFilesSupported(worker.name)
+      .then((ok) => {
+        if (alive) setWfilesSupported(ok);
+      })
+      .catch(() => {
+        if (alive) setWfilesSupported(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [nonQwenpawRuntime, worker.name]);
 
   const envCount = React.useMemo(
     () => Object.keys(worker.env ?? {}).length,
@@ -194,6 +219,18 @@ export default function ResourceCards({
         width: 720,
       },
     );
+    // 工作区文件（知识库）——版本门：探测通过才出卡（老控制器 404 隐藏）。
+    // 紧跟 Coding CLI 之后（任务书顺序）；qwenpawOnly（上游仅 qwenpaw runtime）。
+    if (wfilesSupported) {
+      list.push({
+        id: "wfiles",
+        title: tr("工作区文件"),
+        desc: tr("MEMORY / memory / digest · 文本可编辑"),
+        icon: BoxIcon,
+        width: 720,
+        qwenpawOnly: true,
+      });
+    }
     // 环境变量卡——仅 envEditable === true（L2 隐藏，与旧拓扑同门控）。
     if (worker.envEditable === true) {
       list.push({
@@ -241,7 +278,7 @@ export default function ResourceCards({
     // 16.31 运行时过滤：非 qwenpaw → 去掉 QwenPaw-only 卡（通用卡保留；
     // 极端组合下全空 = 空 grid，布局自适应不塌，面板内部 gate 仍兜底）。
     return nonQwenpaw ? list.filter((c) => !c.qwenpawOnly) : list;
-  }, [worker.envEditable, worker.env, worker.mcpServers, worker.skills, worker.runtime, envCount, tr, nonQwenpawRuntime, surfaceReady]);
+  }, [worker.envEditable, worker.env, worker.mcpServers, worker.skills, worker.runtime, worker.name, envCount, tr, nonQwenpawRuntime, surfaceReady, wfilesSupported]);
 
   // 16.31：切 worker（运行时/envEditable 变化）后已打开的卡若被过滤掉
   // → 关掉弹窗（防 openCard 悬空 = 空标题空内容 Modal）。
@@ -296,6 +333,15 @@ export default function ResourceCards({
               worker={worker}
               sheet
               onChanged={() => invalidateTags(["admin"])}
+            />
+          );
+        case "wfiles":
+          return (
+            <WorkerWorkspaceFilesPanel
+              key={`wfiles-${worker.name}`}
+              worker={worker}
+              l1={!!hasToken}
+              sheet
             />
           );
         case "mcp":

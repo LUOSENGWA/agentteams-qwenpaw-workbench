@@ -682,4 +682,30 @@ export const manageDict: Record<string, { en: string }> = {
   "至少需要一条路径": { en: "At least one path is required" },
   "每列表至多 32 条规则（当前 {m}）": { en: "At most 32 rules per list (got {m})" },
   "每规则至多 16 条路径（当前 {m}）": { en: "At most 16 paths per rule (got {m})" },
+
+  // ── 工作区文件（知识库）卡 + 拉起就绪（11/7 接入 workspace-files / ready 端点）──
+  "工作区文件": { en: "Workspace files" },
+  "MEMORY / memory / digest · 文本可编辑": {
+    en: "MEMORY / memory / digest · editable text",
+  },
+  "根目录": { en: "Root" },
+  "保存中…": { en: "Saving…" },
+  "已请求拉起 {name}": { en: "Startup requested for {name}" },
+  "文件已被修改，请重新读取后再保存": {
+    en: "File changed since read — reload it before saving",
+  },
+  "无写权限（L2 需 workspaceFileAccess=readwrite）": {
+    en: "No write permission (L2 needs workspaceFileAccess=readwrite)",
+  },
+  "Worker 容器不可达（未就绪），请稍后重试": {
+    en: "Worker container unreachable (not ready) — retry later",
+  },
+  "当前 Controller 不支持工作区文件（需 QwenPaw ≥ 2.1）": {
+    en: "This controller does not support workspace files (needs QwenPaw ≥ 2.1)",
+  },
+  "文件不存在或已移出允许列表": {
+    en: "File not found or outside the allowlist",
+  },
+  "下载已开始": { en: "Download started" },
+  "（空文件）": { en: "(empty file)" },
 };

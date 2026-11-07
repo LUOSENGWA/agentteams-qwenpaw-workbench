@@ -33,6 +33,7 @@ import {
   fetchNodeVersion,
   fetchWorkerDetail,
   fetchWorkerLoopStatusBySession,
+  httpErrorStatus,
   imageTag,
   postController,
   updateWorkerModel,
@@ -40,7 +41,12 @@ import {
   type WorkerInfo,
   type WorkerLoopStatus,
 } from "../api";
-import { modelSaveCopyKey, restartWorker } from "../api/domains/lifecycle";
+import {
+  ensureWorkerReadyWithFallback,
+  modelSaveCopyKey,
+  restartWorker,
+  shouldShowEnsureReady,
+} from "../api/domains/lifecycle";
 import { providerForWrite, resolveProviderBaseline } from "../lib/providerBaseline";
 import {
   modelVerdictText,
@@ -62,7 +68,7 @@ import {
   phaseMeta,
 } from "../components/WorkerManageShared";
 import { RuntimeNotice } from "../runtimeGuard";
-import { BulbIcon } from "../components/icons";
+import { BulbIcon, PlayIcon } from "../components/icons";
 import ModelEditModal from "./ModelEditModal";
 import ResourceCards from "./ResourceCards";
 
@@ -139,7 +145,10 @@ export default function WorkerDetailPane({
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const restarting = (worker.containerState || "").toLowerCase() === "restarting";
   const stateInconsistent = !isStateConsistent(worker.state, worker.containerState);
-  const [acting, setActing] = React.useState<"wake" | "sleep" | "restart" | null>(null);
+  const [acting, setActing] = React.useState<"wake" | "sleep" | "restart" | "ensureReady" | null>(null);
+  // 拉起就绪入口降级（404 = 老控制器 ensure-ready 与 ready 双路由皆无
+  // → 隐藏按钮不报错，诚实降级）。
+  const [ensureReadyUnsupported, setEnsureReadyUnsupported] = React.useState(false);
 
   // 容器内运行时版本（L1-only 拨号；旧 WorkerManageInfo 同款模式）。
   const [nodeVer, setNodeVer] = React.useState<NodeVersion | null>(null);
@@ -204,6 +213,7 @@ export default function WorkerDetailPane({
     setModelModal(false);
     setModelSaving(false);
     setProvDetail({ loading: false, failed: false });
+    setEnsureReadyUnsupported(false);
   }, [worker.name]);
 
   const provBaseline = React.useMemo(
@@ -334,6 +344,27 @@ export default function WorkerDetailPane({
         }
       },
     });
+  }, [worker.name, onRefreshAdmin, tr]);
+
+  // 拉起就绪：ensure-ready（任意失败回落 ready，旧控制器版本门）；
+  // 双 404 = 老控制器两路由皆无 → 隐藏按钮（能力降级，不报错）。
+  const handleEnsureReady = React.useCallback(async () => {
+    setActing("ensureReady");
+    try {
+      await ensureWorkerReadyWithFallback(worker.name);
+      antd.message.success(tr("已请求拉起 {name}", { name: worker.name }));
+      // 运行态变更 → 失效缓存 + 刷新（同唤醒/休眠）。
+      invalidateTags(["teams", "admin"]);
+      void onRefreshAdmin?.();
+    } catch (e) {
+      if (httpErrorStatus(e) === 404) {
+        setEnsureReadyUnsupported(true);
+      } else {
+        antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+      }
+    } finally {
+      setActing(null);
+    }
   }, [worker.name, onRefreshAdmin, tr]);
 
   const tag = imageTag(worker.image);
@@ -578,6 +609,20 @@ export default function WorkerDetailPane({
             >
               {tr("重启")}
             </antd.Button>
+            {/* 拉起就绪：仅 phase 非 Running/Ready 时显示（任务书口径）；
+                双 404（老控制器）→ unsupported 态隐藏。 */}
+            {shouldShowEnsureReady(worker.phase) && !ensureReadyUnsupported ? (
+              <antd.Button
+                size="large"
+                icon={<PlayIcon />}
+                loading={acting === "ensureReady"}
+                disabled={acting != null}
+                style={{ minHeight: 44 }}
+                onClick={() => void handleEnsureReady()}
+              >
+                {tr("拉起就绪")}
+              </antd.Button>
+            ) : null}
             <antd.Button
               size="large"
               danger

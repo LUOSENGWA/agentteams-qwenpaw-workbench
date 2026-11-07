@@ -21,20 +21,31 @@ import type * as ReactNS from "react";
 
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { httpErrorStatus } from "../api";
 import type {
   TeamInfo,
   TeamMember,
   WorkerSpawnGroup,
   WorkerTreeTeam,
 } from "../api";
+import {
+  ensureWorkerReadyWithFallback,
+  shouldShowEnsureReady,
+} from "../api/domains/lifecycle";
 import { useAvatarUrl } from "../useAvatar";
+import { invalidateTags } from "../requestCache";
 import {
   PRIMARY,
   ROLE_BADGE,
   ROLE_COLOR,
   phaseMeta,
 } from "../components/WorkerManageShared";
-import { SearchIcon, SettingsIcon, TeamIcon } from "../components/icons";
+import {
+  PlayIcon,
+  SearchIcon,
+  SettingsIcon,
+  TeamIcon,
+} from "../components/icons";
 import MillforgeModal from "../millforge/MillforgeModal";
 import { computeStandaloneWorkers } from "../crdmanage/standalone";
 import ManagerDetailPane from "./ManagerDetailPane";
@@ -490,6 +501,33 @@ function TeamTopologyPane({
     });
     return arr;
   }, [team.workers]);
+
+  // 行内「拉起就绪」（L1-only；phase 非 Running/Ready 才显）：ensure-ready
+  // 任意失败回落 ready（旧控制器版本门）；双 404 → 该 worker 隐藏按钮。
+  const l1 = !!data.hasToken;
+  const [ensuring, setEnsuring] = React.useState<Record<string, boolean>>({});
+  const [ensureUnsupported, setEnsureUnsupported] =
+    React.useState<Record<string, boolean>>({});
+  const handleEnsureReady = React.useCallback(
+    async (name: string) => {
+      setEnsuring((m) => ({ ...m, [name]: true }));
+      try {
+        await ensureWorkerReadyWithFallback(name);
+        antd.message.success(tr("已请求拉起 {name}", { name }));
+        invalidateTags(["teams", "admin"]);
+        void data.onRefreshAdmin?.();
+      } catch (e) {
+        if (httpErrorStatus(e) === 404) {
+          setEnsureUnsupported((m) => ({ ...m, [name]: true }));
+        } else {
+          antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+        }
+      } finally {
+        setEnsuring((m) => ({ ...m, [name]: false }));
+      }
+    },
+    [data.onRefreshAdmin, tr],
+  );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 4 }}>
       {/* 头部：团队名 + 成员数 + 团队设置齿轮（→ 右栏内联设置，P3） */}
@@ -580,11 +618,24 @@ function TeamTopologyPane({
       <div style={{ display: "grid", gap: 4 }}>
         {ordered.map((w) => {
           const meta = phaseMeta(w.phase || "");
+          const showReady =
+            l1 &&
+            shouldShowEnsureReady(w.phase) &&
+            !ensureUnsupported[w.worker_name];
           return (
-            <button
+            // 行 = div[role=button]（原 button）：行内「拉起就绪」是嵌套
+            // 按钮，HTML 不允许 button 套 button。
+            <div
               key={w.worker_name}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => nav.openWorker(w.worker_name)}
+              onKeyDown={(e: ReactNS.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  nav.openWorker(w.worker_name);
+                }
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -642,7 +693,35 @@ function TeamTopologyPane({
               <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
                 {meta.label}
               </span>
-            </button>
+              {showReady ? (
+                <button
+                  type="button"
+                  title={tr("拉起就绪")}
+                  aria-label={tr("拉起就绪")}
+                  disabled={!!ensuring[w.worker_name]}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleEnsureReady(w.worker_name);
+                  }}
+                  style={{
+                    width: 26,
+                    height: 26,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: `1px solid ${t.border}`,
+                    borderRadius: 6,
+                    background: t.cardBg,
+                    color: t.textSecondary,
+                    cursor: ensuring[w.worker_name] ? "wait" : "pointer",
+                    opacity: ensuring[w.worker_name] ? 0.5 : 1,
+                    flexShrink: 0,
+                  }}
+                >
+                  <PlayIcon size={12} />
+                </button>
+              ) : null}
+            </div>
           );
         })}
       </div>
