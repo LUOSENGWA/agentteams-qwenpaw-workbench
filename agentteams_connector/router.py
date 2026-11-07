@@ -26,7 +26,7 @@ Frontend plugin fetches these same-origin endpoints (no CORS):
 - ``POST /agentteams-proxy/millforge/prompt`` 自定义团队「描述需求」提示词（PHILOSOPHY + schema + §十骨架）
 - ``POST /agentteams-proxy/millforge/parse-team-json`` LLM JSON 校验（Draft7，逐字段 path+message）
 - ``GET /agentteams-proxy/millforge/builds`` / ``.../injections`` 编译/注入历史
-- ``GET/PUT/DELETE /agentteams-proxy/storage/chat/{room_id}`` 聊天缓存磁盘读写（cache/chat，每房 500 条）
+- ``GET/PUT/DELETE /agentteams-proxy/storage/chat/{room_id}`` 聊天消息 SQLite 读写（cache/chat.db，永久保留 + 2GB 房间 LRU）
 - ``GET /agentteams-proxy/storage/state`` / ``POST …/storage/prune`` 缓存容量状态/整理
 - ``{METHOD}/{agentteams-proxy}/{matrix|controller}/{path}`` forwarded
 

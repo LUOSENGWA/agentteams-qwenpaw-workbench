@@ -11,7 +11,7 @@ QwenPaw插件存储与缓存-设计-20261107.md
     ├── .sync/{state.json, lock, conflicts.log}
     ├── cache/http/<sha1(method+url)>.json   {etag,lastModified,bodyHash,savedAt,size}
     ├── cache/http/<sha1>.body                响应体（≤256KB 才落盘）
-    ├── cache/chat/<roomId>.json              {messages[], end}（窗口+游标）
+    ├── cache/chat.db                        聊天消息 SQLite（永久保留 + 2GB LRU）
     └── cache/lru/<key>.json                  memoryLru 落盘快照
 
 - 工作区内 ``.qwenpaw/`` = 备份覆盖（include_agents）且 checkpoint 排除
@@ -23,8 +23,9 @@ QwenPaw插件存储与缓存-设计-20261107.md
   （lru 载回内存）。单写锁 ``.sync/lock`` 由 file_sync_engine 承担
   （PID + 时间戳，10 分钟过期可夺）。
 
-容量上限（§5）：http ``.body`` 单文件 ≤256KB；chat 每房窗口 ≤500 条；
-lru 条目数 200（与前端 memoryLru 上限一致）。
+容量上限（§5）：http ``.body`` 单文件 ≤256KB；chat 落 SQLite（``chat_db``，
+**不按房间截断历史**，库总量 >2GB 才按房间 LRU 整房淘汰）；lru 条目数
+200（与前端 memoryLru 上限一致）。
 """
 
 from __future__ import annotations
@@ -41,6 +42,8 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from .chat_db import ChatDB
+
 logger = logging.getLogger(
     "qwenpaw.plugins.agentteams_qwenpaw_workbench.sync_store"
 )
@@ -49,9 +52,8 @@ logger = logging.getLogger(
 STATE_VERSION = 1
 # 容量上限（设计 §5 / 本仓实现口径）。
 MAX_HTTP_BODY_BYTES = 256 * 1024  # cache/http .body 单文件 ≤256KB
-MAX_CHAT_MESSAGES = 500  # cache/chat 每房窗口 ≤500 条
-MAX_CHAT_ROOMS = 30  # cache/chat 房间数上限（设计 §5 LRU）
-MAX_CHAT_TOTAL_BYTES = 64 * 1024 * 1024  # cache/chat 总量上限 64MB
+MAX_CHAT_MESSAGES = 500  # 单次 GET 默认/最大窗口（DB 永久保留，不截断历史）
+MAX_CHAT_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # chat.db 全局上限 2GB（房间 LRU）
 MAX_LRU_ENTRIES = 200  # cache/lru 条目数（前端 memoryLru(200) 同口径）
 HTTP_DEFAULT_MAX_AGE = 300.0  # http 新鲜度判定默认窗口（秒）
 
@@ -132,26 +134,58 @@ class SyncStore:
     """同步根的磁盘缓存存储（http/chat/lru 三类；内存+磁盘双层，读回退）。
 
     读：内存命中 → 直接返回；未命中 → 读磁盘（lru 载回内存）。
-    写：一律原子落盘（tmp + os.replace）；lru 同时更新内存并做条目数
-    淘汰。全部失败静默（缓存不佳不影响主流程，kb_cache 同款口径）。
+    写：http/lru 原子落盘（tmp + os.replace），chat 走 SQLite（``chat_db``，
+    ``event_id`` 增量 upsert，永久保留 + 全局 2GB 房间 LRU）。全部失败
+    静默（缓存不佳不影响主流程，kb_cache 同款口径）。
     """
 
     def __init__(
-        self, root: Path, *, now: Optional[Callable[[], float]] = None
+        self,
+        root: Path,
+        *,
+        now: Optional[Callable[[], float]] = None,
+        chat_max_bytes: int = MAX_CHAT_TOTAL_BYTES,
     ) -> None:
         self.root = Path(root)
         self.cache_dir = self.root / "cache"
         self.http_dir = self.cache_dir / "http"
+        # 旧 JSON 目录（仅迁移源；运行路径不再读写，见 chat_db）。
         self.chat_dir = self.cache_dir / "chat"
         self.lru_dir = self.cache_dir / "lru"
         self._now = now or time.time
         self._mu = threading.Lock()
         self._lru_mem: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        self._chat_max_bytes = int(chat_max_bytes)
+        self._chat_db: Optional["ChatDB"] = None
 
     def ensure_dirs(self) -> None:
-        """建 cache/ 三级目录（mkdir -p）。"""
-        for d in (self.http_dir, self.chat_dir, self.lru_dir):
+        """建 http/lru 缓存目录（mkdir -p）。
+
+        ``cache/chat/``（旧 JSON 布局）不再强制创建；chat.db 由 ChatDB 首次
+        使用时建。旧目录若存在，留给 ChatDB 一次性迁移处理。
+        """
+        for d in (self.http_dir, self.lru_dir):
             d.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def chat_db(self) -> "ChatDB":
+        """聊天消息库（惰性创建：不在 import/构造期连库）。"""
+        db = self._chat_db
+        if db is None:
+            with self._mu:
+                if self._chat_db is None:
+                    self._chat_db = ChatDB(
+                        self.root, now=self._now, max_bytes=self._chat_max_bytes
+                    )
+                db = self._chat_db
+        return db
+
+    def close(self) -> None:
+        """关闭聊天库连接（幂等；测试/退出用）。"""
+        with self._mu:
+            db = self._chat_db
+        if db is not None:
+            db.close()
 
     # ── 原子写 ─────────────────────────────────────────────────────
 
@@ -254,82 +288,83 @@ class SyncStore:
             return False
         return store_body
 
-    # ── chat：逐房窗口+游标（设计 §4）─────────────────────────────
+    # ── chat：SQLite 消息库（永久保留；见 chat_db）──────────────────
 
-    def _chat_file(self, room_id: Any) -> Path:
-        return self.chat_dir / f"{_safe_name(room_id)}.json"
+    def chat_get(
+        self, room_id: Any, limit: Optional[int] = None
+    ) -> Optional[Dict[str, Any]]:
+        """读房间消息 ``{messages, end}``（升序）。
 
-    def chat_get(self, room_id: Any) -> Optional[Dict[str, Any]]:
-        """读单房缓存 ``{messages, end}``；缺失/损坏 → None。"""
-        try:
-            data = json.loads(self._chat_file(room_id).read_text(encoding="utf-8"))
-        except Exception:  # noqa: BLE001
-            return None
-        if isinstance(data, dict) and isinstance(data.get("messages"), list):
-            return data
-        return None
-
-    def chat_put(self, room_id: Any, messages: List[Any], *, end: Any = None) -> int:
-        """落单房窗口（截断到 ≤500 条，**保留最新**）；返回实际条数。
-
-        0 = 写失败（静默）。整窗口覆盖写（原子替换）。
+        ``limit``：最近 N 条；None = 整房全部。房间不存在 → None（路由
+        层据此返回 200 空窗口，语义由 storage_api 承担）。
         """
-        msgs = list(messages or [])[-MAX_CHAT_MESSAGES:]
-        try:
-            self._atomic_json(self._chat_file(room_id), {"messages": msgs, "end": end})
-        except Exception:  # noqa: BLE001
-            return 0
-        return len(msgs)
+        db = self.chat_db
+        rid = str(room_id)
+        if not db.has_room(rid):
+            return None
+        return {
+            "messages": db.get_recent(rid, limit),
+            "end": db.get_end_cursor(rid),
+        }
+
+    def chat_window(
+        self, room_id: Any, event_id: str, before: int = 25, after: int = 25
+    ) -> Optional[Dict[str, Any]]:
+        """目标消息前后各 N 条（升序，含目标）；房间不存在 → None。"""
+        db = self.chat_db
+        rid = str(room_id)
+        if not db.has_room(rid):
+            return None
+        return {
+            "messages": db.get_window(rid, str(event_id), before, after),
+            "end": db.get_end_cursor(rid),
+        }
+
+    def chat_put(
+        self, room_id: Any, messages: List[Any], *, end: Any = None
+    ) -> int:
+        """增量 upsert（``event_id`` 去重；不截断历史）；返回本批条数。
+
+        写失败向上抛（路由层映射 503，前端静默降级）。
+        """
+        return self.chat_db.put_messages(
+            str(room_id), list(messages or []), end=end if isinstance(end, str) else None
+        )
 
     def chat_drop(self, room_id: Any) -> None:
-        """删单房缓存（如退群）；缺失 → no-op。"""
+        """删单房消息 + 游标（如退群）；缺失 → no-op。"""
         try:
-            self._chat_file(room_id).unlink(missing_ok=True)
-        except Exception:  # noqa: BLE001
+            self.chat_db.drop_room(str(room_id))
+        except Exception:  # noqa: BLE001 - 删除失败不炸路由
             pass
+
+    def chat_bytes(self) -> int:
+        """chat.db 占用字节（状态面用；库未建 → 0）。"""
+        try:
+            return self.chat_db.size_bytes()
+        except Exception:  # noqa: BLE001
+            return 0
 
     def chat_prune(
         self,
-        max_rooms: int = MAX_CHAT_ROOMS,
-        max_bytes: int = MAX_CHAT_TOTAL_BYTES,
+        max_rooms: int = 0,
+        max_bytes: Optional[int] = None,
     ) -> Dict[str, int]:
-        """chat 目录容量整理（设计 §5）：先按房间数、再按总量淘汰最旧。
+        """全局容量整理：库 > ``max_bytes`` 时按 ``rooms.last_access`` LRU
+        整房淘汰（至少保留 1 房）。
 
-        淘汰序 = 文件 mtime 升序（写入即使用——每次 chat_put 都是原子
-        替换，mtime 随写刷新，近似 LRU）。先淘汰到房间数 ≤``max_rooms``，
-        再继续淘汰到总量 ≤``max_bytes``。目录缺失/损坏 → no-op。
-
-        返回 ``{"removedFiles": n, "freedBytes": b}``。
+        ``max_rooms`` 仅为兼容旧签名而保留（旧「每房/30 房」策略已退役；
+        用户口径：历史永久保留）。``max_bytes=None`` → 用本 store 的上限
+        （构造参数 ``chat_max_bytes``，默认 2GB）。返回
+        ``{removedFiles, freedBytes}``（沿用旧 JSON 口径的字段名，
+        状态面/测试零改动）。
         """
-        removed = 0
-        freed = 0
+        del max_rooms  # 旧房间数预算：不再使用
         try:
-            entries = []
-            for p in self.chat_dir.glob("*.json"):
-                if p.name.endswith(".tmp"):
-                    continue
-                try:
-                    st = p.stat()
-                except OSError:
-                    continue
-                entries.append((st.st_mtime, p.name, st.st_size, p))
-        except Exception:  # noqa: BLE001 - 目录缺失/不可读 → no-op
+            return self.chat_db.prune(max_bytes=max_bytes)
+        except Exception as exc:  # noqa: BLE001 - 整理失败不炸路由
+            logger.warning("chat prune failed: %s", exc)
             return {"removedFiles": 0, "freedBytes": 0}
-        entries.sort(key=lambda e: (e[0], e[1]))  # 最旧在前
-        count = len(entries)
-        total = sum(e[2] for e in entries)
-        for _mtime, _name, size, path in entries:
-            if count <= max_rooms and total <= max_bytes:
-                break
-            try:
-                path.unlink(missing_ok=True)
-            except Exception:  # noqa: BLE001
-                continue
-            count -= 1
-            total -= size
-            removed += 1
-            freed += size
-        return {"removedFiles": removed, "freedBytes": freed}
 
     # ── lru：memoryLru 落盘快照（设计 §4）──────────────────────────
 

@@ -1,23 +1,28 @@
 # -*- coding: utf-8 -*-
-"""插件存储域（聊天缓存磁盘化：读写 + 容量状态 + 整理）。
+"""插件存储域（聊天消息 SQLite：读写 + 容量状态 + 整理）。
 
 设计依据：方案与设计/AgentTeams/下版本1.2.6-1.2.7/10-客户端同步与缓存/
 QwenPaw插件存储与缓存-设计-20261107.md §3/§4/§6。
 
 - ``GET    /storage/chat/{room_id}?limit=500`` → ``{messages, end}``
-  （无缓存 → ``{messages: [], end: null}``，200 不 404）；
+  （最近 N 条，默认/最大 500；无房 → ``{messages: [], end: null}``，200 不 404）；
+- ``GET    /storage/chat/{room_id}?event_id=..&before=25&after=25`` →
+  目标消息前后各 N 条（升序，含目标）——「加载原消息」按需取窗口，
+  免拉整窗；
 - ``PUT    /storage/chat/{room_id}`` body ``{messages, end?}`` →
-  ``{ok, count}``（服务端截断到 500 条，保留最新）；
+  ``{ok, count}``（按 ``event_id`` 增量 upsert，**不截断历史**）；
 - ``DELETE /storage/chat/{room_id}`` → ``{ok: true}``；
 - ``GET    /storage/state`` → 三类缓存字节数 + 容量上限；
-- ``POST   /storage/prune`` → chat 容量整理 ``{removedFiles, freedBytes}``。
+- ``POST   /storage/prune`` → 全局 LRU 整理 ``{removedFiles, freedBytes}``。
 
-落盘 = ``<workspace>/.qwenpaw/agentteams/cache/chat/<roomId>.json``
-（SyncStore，原子写）。前端不直接读写磁盘，全部经本域（浏览器沙箱）。
+落盘 = ``<workspace>/.qwenpaw/agentteams/cache/chat.db``（SQLite 单库，
+永久保留；总量 >2GB 按房间 LRU 淘汰）。前端不直接读写磁盘，全部经本域
+（浏览器沙箱）。
 """
 from __future__ import annotations
 
 import asyncio
+import threading
 
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -34,14 +39,25 @@ from ..sync_store import (
 # 远小于此）。非法 → 400。
 MAX_ROOM_ID_LEN = 256
 
+# 每个同步根一个 SyncStore（进程级缓存）：聊天库是持久 SQLite 连接，
+# 若每请求新建实例会同号连接/句柄无限增长（挂载上 fd 泄漏代价极高）。
+_STORES: Dict[str, SyncStore] = {}
+_STORES_LOCK = threading.Lock()
+
 
 def _store() -> SyncStore:
-    """当前工作区的同步根存储（惰性建目录；测试可整体替换本函数）。"""
+    """当前工作区的同步根存储（进程内按根复用；测试可整体替换本函数）。"""
     from ..file_sync_engine import resolve_workspace_root
 
-    store = SyncStore(resolve_workspace_root())
-    store.ensure_dirs()
-    return store
+    root = Path(resolve_workspace_root())
+    key = str(root)
+    with _STORES_LOCK:
+        store = _STORES.get(key)
+        if store is None:
+            store = SyncStore(root)
+            store.ensure_dirs()
+            _STORES[key] = store
+        return store
 
 
 def _dir_bytes(directory: Path) -> int:
@@ -75,25 +91,41 @@ def build_storage_router() -> APIRouter:
 
     @router.get("/storage/chat/{room_id}")
     async def storage_chat_get(
-        room_id: str, limit: int = MAX_CHAT_MESSAGES
+        room_id: str,
+        limit: int = MAX_CHAT_MESSAGES,
+        event_id: Optional[str] = None,
+        before: int = 25,
+        after: int = 25,
     ) -> Dict[str, Any]:
-        """读单房窗口（默认整窗 500 条；无缓存 → 空窗口 200）。"""
+        """读房间消息：默认最近 ``limit`` 条；给 ``event_id`` 则取目标窗口。
+
+        无房/无目标 → ``{messages: [], end: null}``（200，不 404）。
+        """
         rid = _room_id_or_400(room_id)
-        lim = max(0, min(int(limit), MAX_CHAT_MESSAGES))
         store = _store()
-        cached = await asyncio.to_thread(store.chat_get, rid)
+        target = (event_id or "").strip()
+        if target:
+            win = await asyncio.to_thread(
+                store.chat_window,
+                rid,
+                target,
+                max(0, min(int(before), MAX_CHAT_MESSAGES)),
+                max(0, min(int(after), MAX_CHAT_MESSAGES)),
+            )
+            if not win:
+                return {"messages": [], "end": None}
+            return {"messages": win.get("messages") or [], "end": win.get("end")}
+        lim = max(0, min(int(limit), MAX_CHAT_MESSAGES))
+        cached = await asyncio.to_thread(store.chat_get, rid, lim)
         if not cached:
             return {"messages": [], "end": None}
-        msgs = cached.get("messages") or []
-        if lim < len(msgs):
-            msgs = msgs[-lim:] if lim else []
-        return {"messages": msgs, "end": cached.get("end")}
+        return {"messages": cached.get("messages") or [], "end": cached.get("end")}
 
     @router.put("/storage/chat/{room_id}")
     async def storage_chat_put(
         room_id: str, body: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """整窗覆盖写（服务端截断到最新 500 条；写失败 → 503）。"""
+        """增量 upsert（按 event_id 去重，不截断历史）；写失败 → 503。"""
         rid = _room_id_or_400(room_id)
         body = body or {}
         messages = body.get("messages")
@@ -106,21 +138,18 @@ def build_storage_router() -> APIRouter:
             raise HTTPException(
                 status_code=400, detail={"error": "invalid_body", "key": "end"}
             )
-        expected = min(len(messages), MAX_CHAT_MESSAGES)
         store = _store()
         try:
             count = await asyncio.to_thread(store.chat_put, rid, messages, end=end)
         except Exception:  # noqa: BLE001 - 磁盘不可写 → 503（前端静默降级）
-            count = -1
-        if count != expected:
             raise HTTPException(
                 status_code=503, detail={"error": "storage_unavailable"}
             )
-        return {"ok": True, "count": count}
+        return {"ok": True, "count": int(count)}
 
     @router.delete("/storage/chat/{room_id}")
     async def storage_chat_delete(room_id: str) -> Dict[str, Any]:
-        """删单房缓存（幂等：缺失也是 ok）。"""
+        """删单房消息（幂等：缺失也是 ok）。"""
         rid = _room_id_or_400(room_id)
         store = _store()
         await asyncio.to_thread(store.chat_drop, rid)
@@ -128,12 +157,12 @@ def build_storage_router() -> APIRouter:
 
     @router.get("/storage/state")
     async def storage_state() -> Dict[str, Any]:
-        """缓存现状（三类目录字节汇总）+ 容量上限（设计 §5）。"""
+        """缓存现状（chat.db 字节 + http/lru 目录字节）+ 容量上限。"""
         store = _store()
 
         def _snapshot() -> Dict[str, int]:
             return {
-                "chatBytes": _dir_bytes(store.chat_dir),
+                "chatBytes": store.chat_bytes(),
                 "httpBytes": _dir_bytes(store.http_dir),
                 "lruBytes": _dir_bytes(store.lru_dir),
             }
@@ -142,6 +171,7 @@ def build_storage_router() -> APIRouter:
         return {
             "cache": cache,
             "limits": {
+                # 单次 GET 窗口上限（历史永久保留，非每房截断）
                 "chatMessages": MAX_CHAT_MESSAGES,
                 "chatBytes": MAX_CHAT_TOTAL_BYTES,
             },
@@ -149,7 +179,7 @@ def build_storage_router() -> APIRouter:
 
     @router.post("/storage/prune")
     async def storage_prune() -> Dict[str, Any]:
-        """触发 chat 容量整理（房间数 / 总量 LRU 淘汰）。"""
+        """触发全局容量整理（库 >2GB 时按 rooms.last_access LRU 整房淘汰）。"""
         store = _store()
         try:
             return await asyncio.to_thread(store.chat_prune)
