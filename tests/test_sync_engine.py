@@ -691,6 +691,8 @@ def test_sync_progress_endpoint_shape(sync_client):
         "state", "files_total", "files_done", "bytes_total", "bytes_done",
         "speed_bps", "eta_sec", "current_path", "queued", "failed",
         "paused", "deferred",
+        # 弱网/背压（任务书 20261107 §5）
+        "partial", "processed", "retries",
     ):
         assert k in pg, f"缺字段 {k}"
     assert pg["state"] == "idle"  # 无统计时

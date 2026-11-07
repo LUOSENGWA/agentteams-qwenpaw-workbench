@@ -19,6 +19,10 @@ QwenPaw插件存储与缓存-设计-20261107.md（SYNC-STORE 根布局 + 缓存�
   state.json 的 per-human 记录（不透明，原样回传）。
 - 命名：仓库已有 ``sync_watcher.py``（Matrix /sync 长轮询）易混 → 本单模块名
   ``file_sync_engine``，钩子名 ``agentteams-file-sync``。
+- 弱网/背压（设计「弱网与高延迟优化」§4）：单轮预算 30s / 200 文件（到点
+  收尾 partial，下一轮从 state 续）+ >8MiB 大文件延后（无历史速率直接延后，
+  下一轮优先）+ 网络异常/5xx/429 指数退避重试（404/409/410/412/304 语义
+  不变）。
 
 骨架级实现：``run_once`` 全链路可注入（``ctl_call``/``now`` 可 fake），
 单测（tests/test_sync_engine.py）全部离线；真实 ``ctl_call`` 基于连接器既有
@@ -67,6 +71,24 @@ _FORBIDDEN_ROOTS = (".trash", ".sync", ".control")
 # 非空一律走全量对账；变更超一页时，下一轮探测从响应 cursor 续接，逐轮
 # 收敛。
 CHANGES_PAGE_LIMIT = 1000
+# 弱网/背压（设计「弱网与高延迟优化」§4；任务书 20261107）：
+# - 单轮预算：传输阶段每完成一个文件检查一次，到点即收尾（partial）——
+#   剩下的留给下一轮（state/游标已落盘，已同步的文件不会重传）；
+# - 大文件：>8MiB 排到队尾，本轮剩余预算不足（按历史速率估算）或无历史
+#   速率时直接延后（下一轮优先，但同样受预算约束）；
+# - 重试：仅网络异常 / 5xx / 429 指数退避（±20% jitter），404/409/410/
+#   412 与 304 语义不变（不重试）。
+ROUND_BUDGET_SECONDS = 30.0
+ROUND_MAX_FILES = 200
+LARGE_FILE_BYTES = 8 * 1024 * 1024
+RETRY_MAX = 3
+RETRY_BASE = 0.5
+_RETRY_JITTER = 0.2
+
+
+def _retryable_status(status_code: int) -> bool:
+    """可退避重试的响应码：429（限流）/ 5xx（服务端瞬时故障）。"""
+    return status_code == 429 or 500 <= status_code < 600
 
 
 # ── 时间/路径工具 ─────────────────────────────────────────────────────
@@ -375,6 +397,8 @@ class SyncEngine:
         http(s) URL。
     now:
         时钟注入（默认 ``time.time``），测试用固定时钟验证锁过期等。
+    sleep:
+        退避休眠注入（默认 ``time.sleep``），测试用假时钟推进避免真睡。
     """
 
     def __init__(
@@ -384,11 +408,13 @@ class SyncEngine:
         human: str,
         ctl_call: Callable[..., HttpResult],
         now: Optional[Callable[[], float]] = None,
+        sleep: Optional[Callable[[float], None]] = None,
     ) -> None:
         self.root = Path(root)
         self.human = str(human or DEFAULT_HUMAN)
         self.ctl_call = ctl_call
         self._now = now or time.time
+        self._sleep = sleep or time.sleep
         self.sync_dir = self.root / ".sync"
         self.state_file = self.sync_dir / "state.json"
         self.lock_file = self.sync_dir / "lock"
@@ -434,10 +460,14 @@ class SyncEngine:
         顶层字段取自新顶层 state（``_save_state`` 盖戳）；旧形状
         state.json（无顶层字段）回退 per-human 记录，向后兼容。
         ``cursor``（增量游标）优先取 per-human 记录，回退遗留顶层字段。
+        弱网/背压字段（任务书 20261107 §5）：``partial`` 取 state 的
+        未完成标记（跨轮持续），``processed/deferred/retries`` 取本进程
+        最近一轮的快照（前端对未知字段容错）。
         """
         st = self._load_state()
         rec = (st.get("humans") or {}).get(self.human) or {}
         etags = rec.get("etags") or {}
+        pg = self.progress()
         return {
             "enabled": True,
             "version": st.get("version"),
@@ -452,6 +482,11 @@ class SyncEngine:
             "lastError": self._last_error,
             "locked": self._lock_held(),
             "humans": st.get("humans") or {},
+            "partial": bool(rec.get("partial")),
+            "pending": int(rec.get("pending") or 0),
+            "processed": int(pg.get("processed") or 0),
+            "deferred": int(pg.get("deferred") or 0),
+            "retries": int(pg.get("retries") or 0),
         }
 
     # ── S1 同步范围配置 ─────────────────────────────────────────────
@@ -496,6 +531,15 @@ class SyncEngine:
             "failed": 0,
             "paused": False,
             "deferred": 0,
+            # 弱网/背压字段（任务书 20261107 §5）：partial = 本轮被预算或
+            # 大文件策略截断；processed = 本轮完成的传输数（预算口径）；
+            # retries = 本轮发起的重试次数；deferred_large / retry_exhausted
+            # 供诊断（前端对未知字段容错）。
+            "partial": False,
+            "processed": 0,
+            "retries": 0,
+            "deferred_large": 0,
+            "retry_exhausted": 0,
         }
 
     def progress(self) -> Dict[str, Any]:
@@ -527,6 +571,10 @@ class SyncEngine:
     def _progress_deferred(self) -> None:
         with self._stats_lock:
             self._stats["deferred"] += 1
+
+    def _progress_deferred_add(self, n: int) -> None:
+        with self._stats_lock:
+            self._stats["deferred"] += int(n)
 
     def _progress_finish_file(self, nbytes: int = 0, ok: bool = True) -> None:
         """每完成一个文件更新一次（任务书 S6）；speed = 5s EMA。"""
@@ -571,6 +619,113 @@ class SyncEngine:
             st["current_path"] = None
             if not error:
                 st["queued"] = 0
+
+    def _progress_set_round(self, result: Dict[str, Any]) -> None:
+        """把本轮背压结果盖到进度快照（partial/processed/deferred）。"""
+        with self._stats_lock:
+            st = self._stats
+            if isinstance(result.get("partial"), bool):
+                st["partial"] = result["partial"]
+            if isinstance(result.get("processed"), int):
+                st["processed"] = result["processed"]
+            if isinstance(result.get("deferred"), int):
+                st["deferred_large"] = result["deferred"]
+
+    # ── 弱网重试（网络异常 / 5xx / 429，指数退避 + ±20% jitter） ────
+    # 语义边界：304（条件 GET 未变更）与 404/409/410/412 都是**确定结论**，
+    # 直接返回不重试；重试耗尽如实上报（网络异常继续上抛、状态码原样
+    # 返回），并在 conflicts.log 记一条 retry_exhausted——调用方既有的
+    # 失败语义不变，整轮不因此中断。
+
+    def _retry_count(self) -> int:
+        with self._stats_lock:
+            return int(self._stats.get("retries") or 0)
+
+    def _retry_wait(self, attempt: int) -> None:
+        delay = RETRY_BASE * (2 ** attempt)
+        delay *= 1.0 + random.uniform(-_RETRY_JITTER, _RETRY_JITTER)
+        with self._stats_lock:
+            self._stats["retries"] += 1
+        try:
+            self._sleep(max(0.0, delay))
+        except Exception:  # noqa: BLE001 - 休眠失败不该打挂同步
+            logger.debug("file sync retry sleep failed", exc_info=True)
+
+    def _note_retry_exhausted(
+        self,
+        method: str,
+        path: str,
+        status_code: Optional[int],
+        exc: Optional[BaseException],
+    ) -> None:
+        with self._stats_lock:
+            self._stats["retry_exhausted"] += 1
+        rec = {
+            "ts": _iso(self._now()),
+            "kind": "retry_exhausted",
+            "method": str(method).upper(),
+            "path": str(path),
+            "status": status_code,
+            "attempts": RETRY_MAX + 1,
+            "error": f"{type(exc).__name__}: {exc}" if exc else None,
+        }
+        try:
+            self.sync_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.conflicts_log, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:  # noqa: BLE001 - 日志失败不影响主流程
+            logger.debug("file sync retry_exhausted log write failed", exc_info=True)
+
+    def _call(self, method: str, path: str, **kw: Any) -> HttpResult:
+        """``ctl_call`` + 退避重试（仅网络异常 / 5xx / 429）。
+
+        非可重试结论（200/304/4xx 等）原样返回；重试耗尽后状态码原样
+        返回，网络异常原样上抛——调用方的失败处理不变。
+        """
+        attempt = 0
+        while True:
+            try:
+                r = self.ctl_call(method, path, **kw)
+            except Exception as exc:  # noqa: BLE001 - 网络异常按可重试
+                if attempt >= RETRY_MAX:
+                    self._note_retry_exhausted(method, path, None, exc)
+                    raise
+                self._retry_wait(attempt)
+                attempt += 1
+                continue
+            if not _retryable_status(r.status_code):
+                return r
+            if attempt >= RETRY_MAX:
+                self._note_retry_exhausted(method, path, r.status_code, None)
+                return r
+            self._retry_wait(attempt)
+            attempt += 1
+
+    def _should_defer_large(
+        self,
+        rel: str,
+        size: int,
+        *,
+        started: float,
+        priority: Any,
+    ) -> bool:
+        """大文件延后判定（任务书 §3）。
+
+        - 非大文件 / 上轮延后优先队列里的文件 → 不延后（优先文件本轮
+          直接尝试，避免"无速率历史 → 永远延后"的死循环）；
+        - 无历史速率（尚未传过文件）→ 直接延后；
+        - 历史速率估算耗时 > 本轮剩余预算 → 延后。
+        """
+        if size <= LARGE_FILE_BYTES or rel in priority:
+            return False
+        with self._stats_lock:
+            speed = self._speed_ema
+        if speed <= 0:
+            return True
+        remaining_s = ROUND_BUDGET_SECONDS - (self._now() - started)
+        if remaining_s <= 0:
+            return True
+        return size / speed > remaining_s
 
     # ── S2 取消同步（只删本地镜像，远端零调用/零 DELETE） ───────────
 
@@ -649,7 +804,7 @@ class SyncEngine:
         （全部 path 将 remote_missing 拒绝，保守）。
         """
         try:
-            r = self.ctl_call(
+            r = self._call(
                 "GET",
                 f"/api/v1/humans/{human}/files",
                 params={"recursive": "1"},
@@ -786,7 +941,10 @@ class SyncEngine:
           （不拉 manifest、不扫目录）
         - 清单写回 412 → ``{"retry": True, ...计数}``（本轮结束，不循环）
         - 正常 → ``{changed, downloaded, uploaded, conflicts, skipped,
-          retry: False, generation, lastRunAt, delta?}``
+          retry: False, partial, processed, deferred, retries, remaining,
+          generation, lastRunAt, delta?}``——``partial`` = 本轮有未完成
+          工作（单轮预算截断 / 大文件延后 / 传输失败），下一轮从
+          state/游标继续
         - 异常 → ``{"error": "..."}``（吞掉不抛，宿主不受影响）
         """
         if not self._acquire_lock():
@@ -965,7 +1123,11 @@ class SyncEngine:
             logger.debug("file sync manifest cache write failed: %s", exc)
 
     def list_conflicts(self, limit: int = 200) -> List[Dict[str, Any]]:
-        """冲突日志最近 N 条（新→旧；坏行跳过，不整块失败）。"""
+        """冲突日志最近 N 条（新→旧；坏行跳过，不整块失败）。
+
+        ``kind=retry_exhausted`` 的重试耗尽记录只是诊断凭证，不进冲突
+        列表（前端冲突表按 path/etag/conflictCopy 渲染）。
+        """
         out: List[Dict[str, Any]] = []
         try:
             with open(self.conflicts_log, "r", encoding="utf-8") as f:
@@ -982,7 +1144,7 @@ class SyncEngine:
                 rec = json.loads(line)
             except Exception:  # noqa: BLE001
                 continue
-            if isinstance(rec, dict):
+            if isinstance(rec, dict) and rec.get("kind") != "retry_exhausted":
                 out.append(rec)
         return out
 
@@ -1005,11 +1167,28 @@ class SyncEngine:
             return {"removed": False, "reason": "io_error", "path": key}
 
     def _conflict_count(self) -> int:
+        """真冲突条数（conflicts.log 里 ``kind=retry_exhausted`` 的重试
+        记录不计入冲突——同文件共享追加式日志，靠 kind 区分）。
+
+        conflicts.log 可能被外部塞入坏行：可解析且带 ``conflictCopy``
+        才计数。
+        """
+        n = 0
         try:
             with open(self.conflicts_log, "r", encoding="utf-8") as f:
-                return sum(1 for line in f if line.strip())
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if isinstance(rec, dict) and rec.get("conflictCopy"):
+                        n += 1
         except Exception:  # noqa: BLE001
             return 0
+        return n
 
     # ── 轮内主流程 ───────────────────────────────────────────────────
 
@@ -1025,6 +1204,7 @@ class SyncEngine:
         except Exception:  # noqa: BLE001
             self._progress_end(error=True)
             raise
+        self._progress_set_round(result)
         self._progress_end(error="error" in result)
         return result
 
@@ -1034,7 +1214,7 @@ class SyncEngine:
         #    （entries/tombstones/generation/updatedAt/updatedBy），实现改为
         #    回答 manifest 用户元数据——调用方零改动，不需要 sidecar，也
         #    不额外请求任何端点（产品语义：#1499 服务端只存清单不合并）。
-        r = self.ctl_call(
+        r = self._call(
             "GET", f"/api/v1/humans/{self.human}/sync/status"
         )
         if r.status_code in (404, 405, 501):
@@ -1051,7 +1231,15 @@ class SyncEngine:
 
         st = self._load_state()
         rec = (st.get("humans") or {}).get(self.human) or {}
-        if generation is not None and generation == rec.get("generation"):
+        # 上一轮被单轮预算截断（partial）→ 即便 generation 未变也必须继续
+        # 对账：state.json 里已记的 etag/local 让"已同步文件"本轮直接跳过，
+        # 不会重复传输（任务书 20261107 §2）。
+        partial_pending = bool(rec.get("partial"))
+        if (
+            generation is not None
+            and generation == rec.get("generation")
+            and not partial_pending
+        ):
             return {"skipped": "same-generation"}
 
         # 1.5) 增量探测（拉 manifest 之前）：per-human cursor →
@@ -1066,10 +1254,12 @@ class SyncEngine:
         raw_cursor = rec.get("cursor")
         cursor = raw_cursor if isinstance(raw_cursor, str) and raw_cursor else None
         probe = self._probe_changes(cursor)
-        if probe["outcome"] == "no-changes":
+        if probe["outcome"] == "no-changes" and not partial_pending:
             # 无变更：更新 cursor（原样回传）与 lastRunAt；generation 盖戳
             # （探测已证明无文件变更，下轮走 same-generation 跳过），
             # etags/local 原样携带。
+            # partial 未清（上一轮被预算截断）时不能走这条捷径——探测说
+            # "远端没变更"不等于"本地剩下的都传完了"。
             last_run_at = _iso(self._now())
             st.setdefault("humans", {})[self.human] = {
                 "generation": generation,
@@ -1077,6 +1267,8 @@ class SyncEngine:
                 "local": rec.get("local") or {},
                 "cursor": probe["cursor"],
                 "lastRunAt": last_run_at,
+                "partial": False,
+                "pending": 0,
             }
             self._save_state(st)
             return {"skipped": "no-changes", "lastRunAt": last_run_at}
@@ -1111,14 +1303,14 @@ class SyncEngine:
             if cached_manifest
             else {}
         )
-        r = self.ctl_call(
+        r = self._call(
             "GET",
             f"/api/v1/humans/{self.human}/sync/manifest",
             headers=get_headers or None,
         )
         if r.status_code == 304 and cached_manifest is None:
             # 没带条件头却收到 304（异常服务端）→ 无条件重取一次。
-            r = self.ctl_call(
+            r = self._call(
                 "GET", f"/api/v1/humans/{self.human}/sync/manifest"
             )
         creating_manifest = False
@@ -1168,6 +1360,9 @@ class SyncEngine:
         local = self._scan_local()
         prev_etags = rec.get("etags") or {}
         prev_local = rec.get("local") or {}
+        prev_deferred = {
+            r for r in (rec.get("largeDeferred") or []) if isinstance(r, str)
+        }
         entry_paths = {e["path"] for e in entries}
 
         # 3.5) S1 范围 + S6 计划：出范围条目 deferred（不下载/不上传，
@@ -1201,7 +1396,11 @@ class SyncEngine:
             e["path"]: dict(e) for e in entries
         }
         changed = downloaded = uploaded = conflicts = skipped = 0
+        processed = 0  # 本轮完成的传输数（单轮预算口径）
+        failed = 0  # 传输失败数（重试耗尽/语义拒绝）——下一轮继续
 
+        # 4) 组计划：把"要比对的条目"先归一成动作，便于按弱网策略排序。
+        plan: List[Dict[str, Any]] = []
         for e in entries:
             rel, etag = e["path"], e["etag"]
             if not self.should_sync(rel):
@@ -1209,9 +1408,6 @@ class SyncEngine:
                 # 保留——服务端是全量记录，范围是本端视角）。
                 self._progress_deferred()
                 continue
-            self._progress_start_file(rel)
-            moved = 0  # 本文件实际传输字节（进度 bytes_done 用）
-            ok = False  # 本文件是否完成（进度 failed 用）
             lnow = local.get(rel)
             prev_l = prev_local.get(rel)
             local_changed = lnow is not None and (
@@ -1220,10 +1416,88 @@ class SyncEngine:
                 or lnow["size"] != prev_l.get("size")
             )
             remote_changed = etag != prev_etags.get(rel)
-
             if remote_changed and local_changed:
-                # 4) 两侧都变 → 本地另存冲突副本并上传；远端覆盖主文件；
-                #    追加 conflicts.log（设计 §4，Dropbox 双版本同构）。
+                kind = "conflict"
+            elif remote_changed:
+                kind = "download"
+            elif lnow is None:
+                # 远端未变但本地文件缺失（镜像被删/重建、state 仍在）→ 从
+                # 远端恢复；删除语义不传播，远端仍是下载权威。
+                kind = "restore"
+            elif local_changed:
+                kind = "upload"
+            else:
+                kind = "skip"
+            size = e.get("size")
+            if not isinstance(size, (int, float)) or int(size) <= 0:
+                size = int(lnow["size"]) if lnow else 0
+            plan.append(
+                {
+                    "kind": kind,
+                    "rel": rel,
+                    "etag": etag,
+                    "size": int(size),
+                    "lnow": lnow,
+                }
+            )
+
+        # 本地新文件（manifest 与 state 都未见）→ 上传；远端已删（state
+        # 见过、本轮 manifest 无）→ 骨架级不实现删除语义，本地保留不追。
+        for rel, lnow in local.items():
+            if rel in entry_paths or rel in prev_local:
+                continue
+            plan.append(
+                {
+                    "kind": "upload_new",
+                    "rel": rel,
+                    "etag": None,
+                    "size": int(lnow["size"]),
+                    "lnow": lnow,
+                }
+            )
+
+        # 4.5) 弱网排序：上轮延后的大文件优先（rank 0——没有速率历史时
+        #      也能被尝试，否则会永久延后）→ 普通文件（1）→ 其余大文件
+        #      排到队尾（2）。同档稳定保序。
+        def _backpressure_rank(item: Dict[str, Any]) -> int:
+            if item["rel"] in prev_deferred:
+                return 0
+            return 2 if item["size"] > LARGE_FILE_BYTES else 1
+
+        plan.sort(key=_backpressure_rank)
+
+        # 4.6) 执行：传输阶段计时。每完成一个文件检查 elapsed>30s 或
+        #      processed>=200 → 结束本轮（partial），剩下的留给下一轮；
+        #      已写入的 state/etag 保证下轮不重传。
+        started = self._now()
+        total_transfers = sum(1 for it in plan if it["kind"] != "skip")
+        done: set = set()
+        for item in plan:
+            rel = item["rel"]
+            kind = item["kind"]
+            etag = item["etag"]
+            lnow = item["lnow"]
+            if kind == "skip":
+                skipped += 1
+                if lnow is not None:
+                    new_local[rel] = dict(lnow)
+                self._progress_finish_file(0, True)
+                continue
+            if self._should_defer_large(
+                rel, item["size"], started=started, priority=prev_deferred
+            ):
+                continue
+            if processed >= ROUND_MAX_FILES or (
+                self._now() - started > ROUND_BUDGET_SECONDS
+            ):
+                break
+            self._progress_start_file(rel)
+            moved = 0  # 本文件实际传输字节（进度 bytes_done 用）
+            ok = False  # 本文件是否完成（进度 failed 用）
+
+            if kind == "conflict":
+                # 两侧都变 → 本地另存冲突副本并上传；远端覆盖主文件；
+                # 追加 conflicts.log（设计 §4，Dropbox 双版本同构）。
                 ts = self._now()
                 cname = f"{rel}.conflict-{_utc_stamp(ts)}"
                 try:
@@ -1258,7 +1532,7 @@ class SyncEngine:
                     new_local[rel] = self._stat_rel(rel)
                 conflicts += 1
                 self._progress_finish_file(moved, ok)
-            elif remote_changed:
+            elif kind in ("download", "restore"):
                 if self._download(rel, etag):
                     downloaded += 1
                     changed += 1
@@ -1267,18 +1541,7 @@ class SyncEngine:
                     new_etags[rel] = etag
                     new_local[rel] = self._stat_rel(rel)
                 self._progress_finish_file(moved, ok)
-            elif lnow is None:
-                # 远端未变但本地文件缺失（镜像被删/重建、state 仍在）→ 从远端
-                # 恢复；删除语义不传播，远端仍是下载权威。
-                if self._download(rel, etag):
-                    downloaded += 1
-                    changed += 1
-                    moved += int(self._stat_rel(rel)["size"])
-                    ok = True
-                    new_etags[rel] = etag
-                    new_local[rel] = self._stat_rel(rel)
-                self._progress_finish_file(moved, ok)
-            elif local_changed:
+            else:  # upload / upload_new
                 try:
                     data = (self.files_dir / rel).read_bytes()
                 except Exception:  # noqa: BLE001
@@ -1290,44 +1553,42 @@ class SyncEngine:
                     ok = True
                     u_etag = f"local:{_sha16(data)}"
                     new_etags[rel] = u_etag
-                    new_local[rel] = {
-                        "mtime": lnow["mtime"], "size": lnow["size"]
-                    }
+                    new_local[rel] = dict(lnow or {})
                     new_entries[rel] = {
                         "path": rel, "etag": u_etag, "size": len(data)
                     }
                 self._progress_finish_file(moved, ok)
-            else:
-                skipped += 1
-                if lnow is not None:
-                    new_local[rel] = dict(lnow)
-                self._progress_finish_file(0, True)
 
-        # 本地新文件（manifest 与 state 都未见）→ 上传；远端已删（state
-        # 见过、本轮 manifest 无）→ 骨架级不实现删除语义，本地保留不追。
-        for rel, lnow in local.items():
-            if rel in entry_paths:
-                continue
-            if rel in prev_local:
-                continue
-            self._progress_start_file(rel)
-            try:
-                data = (self.files_dir / rel).read_bytes()
-            except Exception:  # noqa: BLE001
-                self._progress_finish_file(0, ok=False)
-                continue
-            if self._upload(rel, data):
-                uploaded += 1
-                changed += 1
-                u_etag = f"local:{_sha16(data)}"
-                new_etags[rel] = u_etag
-                new_local[rel] = dict(lnow)
-                new_entries[rel] = {
-                    "path": rel, "etag": u_etag, "size": len(data)
-                }
-                self._progress_finish_file(len(data), ok=True)
-            else:
-                self._progress_finish_file(0, ok=False)
+            if not ok:
+                failed += 1
+            done.add(rel)
+            processed += 1
+            if processed >= ROUND_MAX_FILES or (
+                self._now() - started > ROUND_BUDGET_SECONDS
+            ):
+                break
+
+        # 4.7) 收尾估算：本轮没传成的大文件记入 largeDeferred（下一轮
+        #      优先），remaining = 尚未处理的传输数 + 本轮失败的传输数
+        #      （失败也要下一轮继续，否则 generation 未变会被跳过）。
+        deferred_large = [
+            it["rel"]
+            for it in plan
+            if it["kind"] != "skip"
+            and it["size"] > LARGE_FILE_BYTES
+            and it["rel"] not in done
+        ]
+        if deferred_large:
+            self._progress_deferred_add(len(deferred_large))
+        remaining = max(0, total_transfers - processed) + failed
+        partial = bool(remaining)
+        backpressure: Dict[str, Any] = {
+            "partial": partial,
+            "processed": processed,
+            "deferred": len(deferred_large),
+            "retries": self._retry_count(),
+            "remaining": remaining,
+        }
 
         # 5) 条件写回清单（If-Match；412 → 本轮结束不循环，state 不更新，
         #    下一轮重来）。
@@ -1338,7 +1599,7 @@ class SyncEngine:
             # 首次写：清单不存在 → 创建语义（服务端 409 manifest_exists 表示
             # 期间别人先建了；本轮结束，下轮重读）。
             put_headers["If-None-Match"] = "*"
-        r = self.ctl_call(
+        r = self._call(
             "PUT",
             f"/api/v1/humans/{self.human}/sync/manifest",
             json_body=self._rebuild_manifest(manifest, new_entries),
@@ -1352,14 +1613,20 @@ class SyncEngine:
             "skipped": skipped,
         }
         if r.status_code in (409, 412):
-            return {"retry": True, **counts}
+            return {"retry": True, **counts, **backpressure}
         if r.status_code not in (200, 201):
-            return {"error": f"sync/manifest PUT HTTP {r.status_code}", **counts}
+            return {
+                "error": f"sync/manifest PUT HTTP {r.status_code}",
+                **counts,
+                **backpressure,
+            }
 
         # 6) 更新 state（generation/etags/cursor/lastRunAt），释放锁在
         #    run_once。cursor = next_cursor（按 1.5 探测结果：410 → latest、
         #    400 → 清空、delta → 响应 cursor、其余保留旧值）——全量失败
         #    （409/412/错误）走上面的提前返回，不更新 state。
+        #    partial=True 时下一轮即便 generation 未变也会继续对账（见
+        #    上方 partial_pending），largeDeferred 只影响排序不影响正确性。
         last_run_at = _iso(self._now())
         st.setdefault("humans", {})[self.human] = {
             "generation": generation,
@@ -1367,11 +1634,15 @@ class SyncEngine:
             "local": new_local,
             "cursor": next_cursor,
             "lastRunAt": last_run_at,
+            "partial": partial,
+            "pending": remaining,
+            "largeDeferred": deferred_large,
         }
         self._save_state(st)
         out: Dict[str, Any] = {
             "retry": False,
             **counts,
+            **backpressure,
             "generation": generation,
             "lastRunAt": last_run_at,
         }
@@ -1412,6 +1683,8 @@ class SyncEngine:
         if not cursor:
             return {"outcome": "no-cursor"}
         try:
+            # 探测是优化路径、失败本就回落全量：不用 _call 重试（否则弱网
+            # 下每轮先白等 3 次退避才降级）。
             r = self.ctl_call(
                 "GET",
                 f"/api/v1/humans/{self.human}/files/changes",
@@ -1685,7 +1958,7 @@ class SyncEngine:
         """
         base = f"/api/v1/humans/{self.human}/files/{rel}"
         try:
-            r = self.ctl_call("GET", base, params={"presign": "1"})
+            r = self._call("GET", base, params={"presign": "1"})
         except Exception as exc:  # noqa: BLE001
             logger.debug("file sync download presign failed: %s", exc)
             return False
@@ -1703,7 +1976,7 @@ class SyncEngine:
                 pass
             if url:
                 try:
-                    r2 = self.ctl_call("GET", str(url))
+                    r2 = self._call("GET", str(url))
                 except Exception as exc:  # noqa: BLE001
                     logger.debug("file sync download %s failed: %s", url, exc)
                     return False
@@ -1742,7 +2015,7 @@ class SyncEngine:
             # 而本地永远缺文件（state 有 etag、镜像被删/重建的场景）。
             headers["If-None-Match"] = str(remote_etag)
         try:
-            r = self.ctl_call("GET", base, headers=headers or None)
+            r = self._call("GET", base, headers=headers or None)
         except Exception as exc:  # noqa: BLE001
             logger.debug("file sync download %s failed: %s", base, exc)
             return False
@@ -1787,7 +2060,7 @@ class SyncEngine:
         base = f"/api/v1/humans/{self.human}/files/{rel}"
         presign: Optional[Dict[str, Any]] = None
         try:
-            r = self.ctl_call("POST", base, params={"presign": "1"})
+            r = self._call("POST", base, params={"presign": "1"})
             if r.status_code == 200:
                 try:
                     j = r.json()
@@ -1806,14 +2079,14 @@ class SyncEngine:
             if not isinstance(hdrs, dict):
                 hdrs = {}
             try:
-                up = self.ctl_call(method, url, headers=dict(hdrs), content=data)
+                up = self._call(method, url, headers=dict(hdrs), content=data)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("file sync presigned upload failed: %s", exc)
                 return False
             if up.status_code not in (200, 201, 204):
                 return False
             try:
-                c = self.ctl_call(
+                c = self._call(
                     "POST",
                     f"{base}/commit",
                     json_body={"size": len(data), "source": "plugin-file-sync"},
@@ -1823,7 +2096,7 @@ class SyncEngine:
                 return False
             return c.status_code in (200, 201, 204)
         try:
-            p = self.ctl_call("PUT", base, content=data)
+            p = self._call("PUT", base, content=data)
         except Exception as exc:  # noqa: BLE001
             logger.debug("file sync direct PUT failed: %s", exc)
             return False
