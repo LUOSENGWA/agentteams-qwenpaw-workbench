@@ -7,6 +7,7 @@ import {
 } from "./icons";
 import WorkerSessionDot from "./WorkerSessionDot";
 import MemberStrip from "./MemberStrip";
+import { ChatSwitcher } from "./ChatSwitcher";
 import { type WorkerSessionState } from "../workerSessionState";
 import {PRIMARY } from "./RoomChatShared";
 import { resolveAttentionRoom } from "../api";
@@ -28,6 +29,9 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
     workerMxids,
     workerSessionByMxid,
     onOpenProjectFiles,
+    rooms,
+    teams,
+    onSwitchRoom,
   } = p;
   const {
     setDraft,
@@ -63,6 +67,15 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
         <antd.Typography.Title level={5} style={{ margin: 0 }}>
           {room.name}
         </antd.Typography.Title>
+        {/* R15：团队/房间切换（复用父级 rooms/teams 列表与 openRoom 路由）。 */}
+        {rooms && teams && onSwitchRoom ? (
+          <ChatSwitcher
+            rooms={rooms}
+            teams={teams}
+            activeRoom={room}
+            onSwitchRoom={onSwitchRoom}
+          />
+        ) : null}
         {/* 房间 ID 已收口到「房间详情」Drawer（标题栏不再展示）。 */}
         {/* Worker session 运行指示。
  1:1 Worker 房间 = sessionState 三态（蓝呼吸/绿/灰）；

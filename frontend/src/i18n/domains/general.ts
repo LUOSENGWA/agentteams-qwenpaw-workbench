@@ -25,4 +25,6 @@ export const generalDict: Record<string, { en: string }> = {
     en: "↑↓ to select · Enter to open · Esc to close",
   },
   "文本匹配结果": { en: "Matches" },
+  // ── R2 移动端底部快捷条 ──
+  "移动端快捷入口": { en: "Mobile quick links" },
 };

@@ -337,4 +337,12 @@ export const chatDict: Record<string, { en: string }> = {
   "未写协议时按端口与主机类型自动识别 http/https": {
     en: "Without a scheme, http/https is auto-detected from port and host type",
   },
+
+  // ── R15 聊天团队/房间切换 + R13 任务备注 ──
+  "团队切换": { en: "Team" },
+  "房间切换": { en: "Room" },
+  "切换团队/房间": { en: "Switch team / room" },
+  "其他房间": { en: "Other rooms" },
+  "备注": { en: "Notes" },
+  "打开任务备注（meta.json）": { en: "Open task notes (meta.json)" },
 };

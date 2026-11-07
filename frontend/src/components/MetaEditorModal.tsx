@@ -55,12 +55,14 @@ export interface MetaEditorModalProps {
   onUnsupported?: () => void;
   /** 保存成功 → 调用方刷新自己的数据。 */
   onSaved?: () => void;
+  /** R13「备注」入口：载入完成后把焦点放到 JSON 文本区。 */
+  focusOnOpen?: boolean;
 }
 
 type Phase = "loading" | "ready" | "ambiguous" | "error";
 
 export default function MetaEditorModal(props: MetaEditorModalProps) {
-  const { open, kind, id, title, teamId, onClose, onUnsupported, onSaved } =
+  const { open, kind, id, title, teamId, onClose, onUnsupported, onSaved, focusOnOpen } =
     props;
   const tr = useT();
   const t = useThemeColors();
@@ -75,6 +77,13 @@ export default function MetaEditorModal(props: MetaEditorModalProps) {
   const [team, setTeam] = React.useState("");
   const [teamOptions, setTeamOptions] = React.useState<{ value: string }[]>([]);
   const [teamListFailed, setTeamListFailed] = React.useState(false);
+  // R13「备注」入口：ready 后聚焦 JSON 文本区（延迟到 Modal 挂载/动画完成）。
+  const textAreaRef = React.useRef<{ focus: () => void } | null>(null);
+  React.useEffect(() => {
+    if (!open || !focusOnOpen || phase !== "ready") return;
+    const timer = window.setTimeout(() => textAreaRef.current?.focus(), 60);
+    return () => window.clearTimeout(timer);
+  }, [open, focusOnOpen, phase]);
 
   // 任务端点的有效消歧键：用户输入 > 所属团队 > 无（裸 id）。
   const effTeam =
@@ -280,6 +289,7 @@ export default function MetaEditorModal(props: MetaEditorModalProps) {
         {phase === "ready" ? (
           <>
             <antd.Input.TextArea
+              ref={textAreaRef}
               value={text}
               onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
                 setText(e.target.value)

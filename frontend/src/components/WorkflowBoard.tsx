@@ -200,12 +200,13 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   const topoEvent = events.find((e) => e.runId === topoRun) || withNodes[0] || null;
   // #1230 任务巡检：任务卡点击 → Drawer（runId+taskId 双键定位；
   // 事件被刷新剔除时 find 落 null → Drawer 自动空态关闭语义由 open 判空覆盖）。
-  /** #1540 meta 编辑目标（项目/任务共用同一弹窗）。 */
+  /** #1540 meta 编辑目标（项目/任务共用同一弹窗）；R13 备注入口 focus=true。 */
   const [metaTarget, setMetaTarget] = React.useState<{
     kind: "project" | "task";
     id: string;
     title: string;
     teamId?: string;
+    focus?: boolean;
   } | null>(null);
   /** 首次 405/404 → 本会话隐藏 meta 入口（老控制器静默降级）。 */
   const [metaSupported, setMetaSupported] = React.useState(true);
@@ -484,6 +485,20 @@ overflow:hidden——高度可约束、不撑破页面（10/26）：各视图内
             t={t}
             onTaskDone={() => onRefresh?.()}
             onOpenDetail={(tid, rid) => setInspect({ runId: rid, taskId: tid })}
+            onOpenNotes={
+              metaSupported
+                ? (tid, rid) => {
+                    const ev = events.find((e) => e.runId === rid);
+                    setMetaTarget({
+                      kind: "task",
+                      id: tid,
+                      title: tid,
+                      teamId: ev?.team_id,
+                      focus: true,
+                    });
+                  }
+                : undefined
+            }
           />
           </div>
         )
@@ -576,6 +591,7 @@ overflow:hidden——高度可约束、不撑破页面（10/26）：各视图内
             id: taskId,
             title,
             teamId: inspectEv?.team_id,
+            focus: true,
           })
         }
       />
@@ -585,6 +601,7 @@ overflow:hidden——高度可约束、不撑破页面（10/26）：各视图内
         id={metaTarget?.id ?? ""}
         title={metaTarget?.title ?? ""}
         teamId={metaTarget?.teamId}
+        focusOnOpen={!!metaTarget?.focus}
         onClose={() => setMetaTarget(null)}
         onUnsupported={() => {
           setMetaSupported(false);

@@ -37,11 +37,13 @@ export function BoardCard(props: {
   onTaskDone?: () => void;
   /** #1230：卡标题点击 → 任务巡检 Drawer（runId 显式传——看板列跨项目混排）。 */
   onOpenDetail?: (taskId: string, runId: string) => void;
+  /** R13：卡上「备注」直达 meta 编辑器（端点 405 时父级不传=隐藏）。 */
+  onOpenNotes?: (taskId: string, runId: string) => void;
   /** P0 人工介入闭环：所属项目事件——paused / 有 interrupts 时项目名行
    * 挂事件级干预操作（暂停/恢复/完成/重规划），看板视图也可达。 */
   ev?: WorkflowEvent;
 }) {
-  const { task, t, onTaskDone, onOpenDetail, ev } = props;
+  const { task, t, onTaskDone, onOpenDetail, onOpenNotes, ev } = props;
   const tr = useT();
   const { node } = task;
   const [cancelOpen, setCancelOpen] = React.useState(false);
@@ -164,18 +166,33 @@ export function BoardCard(props: {
             {tr("依赖 {n} 项", { n: deps.length })}
           </antd.Tag>
         ) : null}
-        {canCancel ? (
-          <WbTooltip title={tr("取消此任务（须填原因，不可恢复）")}>
-            <antd.Button
-              size="small"
-              type="text"
-              danger
-              style={{ marginLeft: "auto", padding: "0 4px", height: 20 }}
-              onClick={() => setCancelOpen(true)}
-            >
-              <CloseIcon size={12} />
-            </antd.Button>
-          </WbTooltip>
+        {(taskId && onOpenNotes) || canCancel ? (
+          <span style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
+            {taskId && onOpenNotes ? (
+              <antd.Button
+                size="small"
+                type="text"
+                style={{ padding: "0 4px", height: 20 }}
+                title={tr("备注")}
+                onClick={() => onOpenNotes(taskId, task.runId)}
+              >
+                {tr("备注")}
+              </antd.Button>
+            ) : null}
+            {canCancel ? (
+              <WbTooltip title={tr("取消此任务（须填原因，不可恢复）")}>
+                <antd.Button
+                  size="small"
+                  type="text"
+                  danger
+                  style={{ padding: "0 4px", height: 20 }}
+                  onClick={() => setCancelOpen(true)}
+                >
+                  <CloseIcon size={12} />
+                </antd.Button>
+              </WbTooltip>
+            ) : null}
+          </span>
         ) : null}
       </div>
       <TaskCancelModal
@@ -202,8 +219,10 @@ export function BoardColumnsView(props: {
   t: ReturnType<typeof useThemeColors>;
   onTaskDone?: () => void;
   onOpenDetail?: (taskId: string, runId: string) => void;
+  /** R13：卡上「备注」直达 meta 编辑器（不传=不渲染，405 静默隐藏）。 */
+  onOpenNotes?: (taskId: string, runId: string) => void;
 }) {
-  const { events, t, onTaskDone, onOpenDetail } = props;
+  const { events, t, onTaskDone, onOpenDetail, onOpenNotes } = props;
   const tr = useT();
   // WbViewport 容器宽快照（翻转时刻值）——仅作 mode 初值；正源=wrapRef
   // 实测宽（手机旋转 376↔667 不触发 narrow 翻转，快照会过期）。
@@ -373,6 +392,11 @@ export function BoardColumnsView(props: {
                           ? (tid) => onOpenDetail(tid, task.runId)
                           : undefined
                       }
+                      onOpenNotes={
+                        onOpenNotes
+                          ? (tid) => onOpenNotes(tid, task.runId)
+                          : undefined
+                      }
                       ev={evByRunId.get(task.runId)}
                     />
                   </div>
@@ -403,6 +427,11 @@ export function BoardColumnsView(props: {
                     onOpenDetail={
                       onOpenDetail
                         ? (tid) => onOpenDetail(tid, task.runId)
+                        : undefined
+                    }
+                    onOpenNotes={
+                      onOpenNotes
+                        ? (tid) => onOpenNotes(tid, task.runId)
                         : undefined
                     }
                     ev={evByRunId.get(task.runId)}

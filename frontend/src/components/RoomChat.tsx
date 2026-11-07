@@ -10,6 +10,7 @@ import {
   type RoomMessage,
   type TeamRoom,
   type WorkerInfo,
+  type WorkerTreeTeam,
   type WorkflowEvent,
 } from "../api";
 import { type FileRef } from "../lib/file-refs";
@@ -158,6 +159,12 @@ export interface RoomChatProps {
   attentionPending?: AttentionItem[];
   /** 房间标题栏 attention pill 点击 → 父组件打开全局待决策弹窗并定位该房间第一条。 */
   onOpenRoomAttention?: (room: TeamRoom) => void;
+  /** R15 团队/房间切换：父级既有房间列表（/teams/sync）与团队树
+ * （/teams/structure）——切换器零新请求，直接复用。 */
+  rooms?: TeamRoom[];
+  teams?: WorkerTreeTeam[];
+  /** R15：切换房间（父级 openRoom，同时落 ui-state 持久化）。 */
+  onSwitchRoom?: (roomId: string) => void;
 }
 function RoomChat(props: RoomChatProps) {
   const c = useRoomChatCore(props);

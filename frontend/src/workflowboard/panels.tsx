@@ -9,6 +9,7 @@ import { type WorkflowEvent, cancelTask } from "../api";
 import ArtifactLines from "../components/ArtifactLines";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { canEditTaskMeta } from "../lib/metaEntry";
 import { UserIcon } from "../components/icons";
 import {
   statusMeta,
@@ -131,6 +132,8 @@ export function TaskInspectionDrawer(props: {
   const meta = statusMeta(status);
   const canCancel =
     !!taskId && status !== "" && !TERMINAL_NODE_STATUSES.includes(status);
+  // R13：备注入口（复用 16.113 meta 编辑器；端点 405 → metaSupported=false 隐藏）。
+  const canEditMeta = canEditTaskMeta(metaSupported, !!onOpenMeta);
   return (
     <antd.Drawer
       open={open}
@@ -154,15 +157,18 @@ export function TaskInspectionDrawer(props: {
               {taskId}
             </span>
             {/* #1540：任务 meta 编辑入口 + 取消——同一右对齐操作区。 */}
-            {(metaSupported && onOpenMeta) || canCancel ? (
+            {canEditMeta || canCancel ? (
               <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-                {metaSupported && onOpenMeta ? (
+                {canEditMeta ? (
                   <antd.Button
                     size="small"
                     type="text"
-                    onClick={() => onOpenMeta(taskId, node ? nodeLabel(node) : taskId)}
+                    title={tr("打开任务备注（meta.json）")}
+                    onClick={() =>
+                      onOpenMeta?.(taskId, node ? nodeLabel(node) : taskId)
+                    }
                   >
-                    {tr("元数据")}
+                    {tr("备注")}
                   </antd.Button>
                 ) : null}
                 {canCancel ? (

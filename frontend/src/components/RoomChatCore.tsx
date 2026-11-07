@@ -36,6 +36,7 @@ import {
   sameLoopStatus,
 } from "./RoomChatShared";
 import {ThreadPanelView } from "./RoomChatThread";
+import { ChatSwitcher } from "./ChatSwitcher";
 import type {RoomChatProps } from "./RoomChat";
 import { usePendingStore } from "../pending/store";
 import {
@@ -92,6 +93,9 @@ export function useRoomChatCore(props: RoomChatProps) {
     onLoadOriginal,
     pendingOriginal,
     minWindowTops,
+    rooms,
+    teams,
+    onSwitchRoom,
   } = props;
  // 头像点击 → Worker 会话抽屉（只读，
   // #1295 端点；404 版本门占位）。团队管理不再挂会话 tab。
@@ -1208,6 +1212,16 @@ export function useRoomChatCore(props: RoomChatProps) {
           {room.name}
         </antd.Typography.Title>
       </div>
+      {/* R15：窄屏折叠切换（按钮 + Popover，头部仍保持单行）。 */}
+      {rooms && teams && onSwitchRoom ? (
+        <ChatSwitcher
+          rooms={rooms}
+          teams={teams}
+          activeRoom={room}
+          onSwitchRoom={onSwitchRoom}
+          narrow
+        />
+      ) : null}
       {workerBadge?.phase ? (
         <antd.Tag
           color={

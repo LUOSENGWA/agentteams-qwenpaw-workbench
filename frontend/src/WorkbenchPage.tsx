@@ -12,6 +12,7 @@ import {
   type AuthStatus,
 } from "./api";
 import RoomChat from "./components/RoomChat";
+import { MobileQuickBar, useQuickBarVisible } from "./components/MobileQuickBar";
 import { WbViewportProvider } from "./WbViewportContext";
 import TeamOverview from "./components/TeamOverview";
 import { logoUrl as LOGO_URL } from "./lib/logo";
@@ -549,6 +550,16 @@ export default function WorkbenchPage() {
     setChatListHiddenPersist,
   });
 
+  // R2：移动端快捷条（≤600px 才显示；桌面不渲染）。
+  const quickBarVisible = useQuickBarVisible();
+  const handleQuickBarSelect = React.useCallback(
+    (key: string) => {
+      setTab(key);
+      scrollTabIntoView(key);
+    },
+    [setTab, scrollTabIntoView],
+  );
+
   // R2 显式跳转：跳转完成（定位高亮 / /context 兜底）→ 先释放 pending
   // 原消息（渲染窗口旁路关闭；下界已抬升，目标行不丢），再清跳转事件。
   const handleJumpHandledWrapped = React.useCallback(() => {
@@ -678,6 +689,9 @@ export default function WorkbenchPage() {
       onOpenProjectFiles={openProjectFiles}
       attentionPending={attention?.deployed ? attentionPending : undefined}
       onOpenRoomAttention={handleOpenRoomAttention}
+      rooms={rooms}
+      teams={workerTree}
+      onSwitchRoom={openRoom}
     />
   ) : null;
 
@@ -1210,6 +1224,8 @@ export default function WorkbenchPage() {
           overflowX: "hidden",
           maxWidth: "100%",
           paddingTop: 12,
+          // R2：窄屏底部固定快捷条不遮最后一行（44px + 呼吸）。
+          paddingBottom: quickBarVisible ? 60 : undefined,
         }}
       >
       <antd.Tabs
@@ -1467,6 +1483,12 @@ export default function WorkbenchPage() {
         onIndexChange={setAttentionIndex}
         onClose={() => setAttentionOpen(false)}
         onAnswered={() => void refreshAttention(false)}
+      />
+      {/* R2：≤600px 底部固定快捷条（文件/工作流/消息/设置），桌面不渲染。 */}
+      <MobileQuickBar
+        visible={quickBarVisible}
+        tab={tab}
+        onSelect={handleQuickBarSelect}
       />
     </main>
     </WbViewportProvider>
