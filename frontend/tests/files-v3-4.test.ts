@@ -176,8 +176,8 @@ console.log("files-v3-4: all assertions passed");
   const { fileTypeLabel, columnsFor, listGrid } = await import("../src/manage/FilesSection.tsx");
   assert.equal(fileTypeLabel({ name: "a.PNG", type: "file", size: 1 }), "PNG");
   assert.equal(fileTypeLabel({ name: "docs", type: "dir" }), "文件夹");
-  assert.equal(listGrid({ modified: true, created: false }), "minmax(0, 1fr) 72px 84px 120px 96px");
-  assert.equal(listGrid({ modified: true, created: true }), "minmax(0, 1fr) 72px 84px 120px 120px 96px");
+  assert.equal(listGrid({ modified: true, created: false }), "minmax(0, 1fr) 72px 84px 120px 136px");
+  assert.equal(listGrid({ modified: true, created: true }), "minmax(0, 1fr) 72px 84px 120px 120px 136px");
   assert.equal(columnsFor([{ name: "a", type: "file", size: 1 }]).showCreated, false);
   assert.equal(
     columnsFor([{ name: "a", type: "file", size: 1, createdAt: "2026-01-01T00:00:00Z" }]).showCreated,

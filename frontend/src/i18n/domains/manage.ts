@@ -419,7 +419,20 @@ export const manageDict: Record<string, { en: string }> = {
   },
   "文件详情": { en: "File details" },
   "回收站条目": { en: "Trash entry" },
-
+  // ── 文件域 files-dnd（拖拽上传 / 详情抽屉 / 回收站搜索排序）──
+  "松开上传到 {dir}": { en: "Release to upload to {dir}" },
+  "拖入内容超出上限（{n} 个文件 / {size}），已截断": {
+    en: "Drop exceeds the limit ({n} files / {size}); truncated",
+  },
+  "部分目录创建失败（上传仍会尝试）": {
+    en: "Some folders could not be created (upload will still be attempted)",
+  },
+  "路径": { en: "Path" },
+  "复制路径": { en: "Copy path" },
+  "目录详情": { en: "Folder details" },
+  "子项数（已加载）": { en: "Items (loaded)" },
+  "无匹配": { en: "No matches" },
+  "按原路径/操作人搜索": { en: "Filter by original path / operator" },
   // ── 文件域 H1（#1518 游标列表 / #1519 预签名上传 / #1501 预签名下载 /
   // #1499 同步状态卡）──
   "递归": { en: "Recursive" },

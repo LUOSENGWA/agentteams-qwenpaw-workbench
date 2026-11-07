@@ -91,6 +91,17 @@
  *     json 内联，其余文本兜底；回收站条目不预览）。
  *   - 上传成功后强制刷新：load(true, {force:true}) → forceList（时间戳 +
  *     cache:"no-store"；humanFiles.ts 零改动，见 forceList 注释）。
+ *
+ * files-dnd（拖拽上传 + 详情抽屉 + 回收站搜索排序）：
+ *   - 拖拽上传：列表 / 树 / 网格共用 files/FileDropTarget（覆盖层 + window
+ *     drop 兜底），收集逻辑在 files/fileDrop（目录递归；200 文件 / 200 MB
+ *     截断）；drop → 现有 useUploadQueue 队列（不另写上传）；相对路径子目录
+ *     先建（.keep 占位，同「新建文件夹」）。树视图目录行 drop = 该目录为
+ *     上传目标（行高亮、不透传区域遮罩）。
+ *   - 详情抽屉：FileDetailDrawer（右 Drawer；<768 底部全屏 Sheet），行 /
+ *     网格卡 / 树行「详情」按钮打开；只读列表已有字段（不额外请求）。
+ *   - 回收站：TrashDialog 搜索（原路径 / 操作人）+ 排序下拉（删除时间 /
+ *     大小 / 名称）。
  */
 import type * as ReactNS from "react";
 
@@ -193,6 +204,17 @@ import {
 import SyncSettingsModal from "./files/SyncSettingsModal";
 import TrashDialog from "./files/TrashDialog";
 import UploadQueuePanel from "./files/UploadQueuePanel";
+import FileDropTarget from "./files/FileDropTarget";
+import {
+  collectDrop,
+  snapshotDrop,
+  uniqueParentDirs,
+  DROP_MAX_BYTES,
+  DROP_MAX_FILES,
+  type DataTransferLike,
+  type DropSnapshot,
+} from "./files/fileDrop";
+import { copyText } from "../util";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -296,6 +318,8 @@ interface FilesState {
   offerUndo: (u: { trashId: string; name: string }) => void;
   /** F-V3-3：点「撤销」→ restoreTrash（成功 message + reload force；失败提示原因）。 */
   onUndo: () => void;
+  /** 打开文件/目录详情抽屉（行 / 网格卡 / 树行的「详情」按钮；不额外发请求）。 */
+  onOpenDetail: (path: string, isDir: boolean) => void;
 }
 
 type SubProps = {
@@ -395,13 +419,14 @@ export function detailState(o: {
 
 /** 16.67 列表列模板（表头行与数据行共用 → 列宽稳定）：
  * 名称（伸缩）/ 大小 / 时间（更新·删除）/ 操作（定宽）。
- * #1669：操作列 64→96px（2×40px 图标按钮 + 8px 间距，适配 40px 触控目标）。 */
+ * #1669：操作列 64→96px（2×40px 图标按钮 + 8px 间距，适配 40px 触控目标）。
+ * files-dnd：操作列 96→136px（3×40px：详情 / 下载 / 删除；同样 8px 间距）。 */
 /** 列模板按可见列拼（名称 / 大小 / 类型 / 修改 / 创建 / 操作）。 */
 export function listGrid(o: { modified: boolean; created: boolean }): string {
   const cols = ["minmax(0, 1fr)", "72px", "84px"];
   if (o.modified) cols.push("120px");
   if (o.created) cols.push("120px");
-  cols.push("96px");
+  cols.push("136px");
   return cols.join(" ");
 }
 /** 兼容导出（历史测试引用；默认 = 三列 + 操作）。 */
@@ -441,6 +466,32 @@ export function columnsFor(entries: HumanFileEntry[]): {
     showCreated,
     grid: listGrid({ modified: showUpdatedAt, created: showCreated }),
   };
+}
+
+/** 详情抽屉 ETag 脱敏（任务书：展示前 12 位；超长补省略号）。纯函数。 */
+export function maskEtag(etag: string | undefined | null): string {
+  if (!etag) return "—";
+  return etag.length > 12 ? `${etag.slice(0, 12)}…` : etag;
+}
+
+/** 目录详情「子项数」：只统计已加载条目（列表/递归平铺里的直接子项）。
+ *  当前目录本身不在列表里 → 0；不做额外请求。纯函数。 */
+export function loadedChildCount(
+  entries: readonly HumanFileEntry[],
+  dirPath: string,
+): number {
+  const base = dirPath.replace(/\/+$/, "");
+  if (!base) return 0;
+  const prefix = `${base}/`;
+  let n = 0;
+  for (const e of entries) {
+    if (!e.path) continue; // 老形态无全路径 → 无法判定归属
+    const p = entryRelPath(e).replace(/\/+$/, "");
+    if (!p.startsWith(prefix)) continue;
+    const rest = p.slice(prefix.length);
+    if (rest.length > 0 && !rest.includes("/")) n += 1;
+  }
+  return n;
 }
 
 /** F-V3-3 静默轮询门控（纯函数；tests/files-v3-3 断言）：顶层 tab 激活 &&
@@ -573,6 +624,21 @@ function iconBtnStyle(t: ThemeColors): ReactNS.CSSProperties {
     flexShrink: 0,
     padding: 0,
   };
+}
+
+/** 行内「详情」图标（icons.tsx 无 info 形态；files 域自持，防跨域耦合）。 */
+function InfoIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <circle cx="8" cy="8" r="6.2" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M8 7.2v4M8 4.9v.2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 /** F-V3-4 视图分段按钮（裸 <button>；≥44px 触控盒 = --hf-row-min；
@@ -1032,6 +1098,49 @@ function DetailPane({ t, tr, nav, fs }: SubProps) {
   );
 }
 
+/** 16.69 详情浮层外壳（DetailOverlay / FileDetailDrawer 共用）：右 Drawer
+ *  (420) / 底部全屏 Sheet 两种形态——同一套 antd.Drawer 配置，不各写一份。 */
+function DetailDrawerShell({
+  t,
+  title,
+  overlay,
+  onClose,
+  children,
+}: {
+  t: ThemeColors;
+  title: string;
+  overlay: "drawer" | "sheet";
+  onClose: () => void;
+  children: ReactNS.ReactNode;
+}) {
+  const bodyStyle = { padding: 14, background: t.bg };
+  if (overlay === "sheet") {
+    return (
+      <antd.Drawer
+        open
+        onClose={onClose}
+        placement="bottom"
+        height="100%"
+        title={title}
+        styles={{ body: bodyStyle }}
+      >
+        {children}
+      </antd.Drawer>
+    );
+  }
+  return (
+    <antd.Drawer
+      open
+      onClose={onClose}
+      width={420}
+      title={title}
+      styles={{ body: bodyStyle }}
+    >
+      {children}
+    </antd.Drawer>
+  );
+}
+
 /** 16.69 断点浮层（drawer/sheet 模式点行弹出；该模式下详情只此一处渲染）：
  * 768–1199 → 右侧 Drawer(420)；<768 → 底部全屏 Sheet。 */
 function DetailOverlay({ t, tr, nav, fs, overlay }: SubProps & { overlay: "drawer" | "sheet" }) {
@@ -1042,35 +1151,198 @@ function DetailOverlay({ t, tr, nav, fs, overlay }: SubProps & { overlay: "drawe
   ) : (
     <TrashDetail t={t} tr={tr} nav={nav} fs={fs} />
   );
-  if (overlay === "sheet") {
-    return (
-      <antd.Drawer
-        open
-        onClose={close}
-        placement="bottom"
-        height="100%"
-        title={title}
-        styles={{ body: { padding: 14, background: t.bg } }}
-      >
-        {body}
-      </antd.Drawer>
-    );
-  }
   return (
-    <antd.Drawer
-      open
-      onClose={close}
-      width={420}
-      title={title}
-      styles={{ body: { padding: 14, background: t.bg } }}
+    <DetailDrawerShell t={t} title={title} overlay={overlay} onClose={close}>
+      {body}
+    </DetailDrawerShell>
+  );
+}
+
+/** files-dnd 详情抽屉目标（行 / 网格卡 / 树行「详情」按钮传入）。 */
+export interface FileDetailTarget {
+  path: string;
+  isDir: boolean;
+}
+
+/** 文件 / 目录详情抽屉（files-dnd）：右侧 Drawer（<768 容器宽度 → 底部
+ * 全屏 Sheet，与 DetailOverlay 同口径）。只读列表已有字段——**不额外发
+ * 请求**；updatedAt / ETag 缺失显示「—」。文件：路径（可复制）/ 大小 /
+ * 类型 / 修改 / ETag（前 12 位）+ 预览 / 下载 / 删除（进回收站）；目录：
+ * 路径 + 已加载子项数 + 同步设置快捷入口。 */
+export function FileDetailDrawer({
+  t,
+  tr,
+  fs,
+  target,
+  narrow,
+  onClose,
+  onOpenSyncSettings,
+}: SubProps & {
+  target: FileDetailTarget | null;
+  narrow: boolean;
+  onClose: () => void;
+  onOpenSyncSettings: () => void;
+}) {
+  const [busy, setBusy] = React.useState<"" | "download">("");
+  const [preview, setPreview] = React.useState<PreviewFile | null>(null);
+  const targetPath = target?.path ?? "";
+  const targetIsDir = target?.isDir ?? false;
+  const entry = target
+    ? fs.files.find(
+        (e) => rowPath(e, fs.dirPath) === target.path && isEntryDir(e) === target.isDir,
+      )
+    : undefined;
+  const name = entry
+    ? entryDisplayName(entry)
+    : targetPath.split("/").filter(Boolean).pop() ?? "";
+  // #1669 统一删除确认（与列表行 / 详情面板共用，不另写 Modal）。
+  const del = useDeleteConfirm({
+    t,
+    tr,
+    humanName: fs.humanName,
+    onDone: (r) => {
+      onClose();
+      if (!r.purged) fs.offerUndo({ trashId: r.trashId, name });
+      fs.reload({ silent: true });
+    },
+  });
+
+  const apiPath = humanFileApiPath(fs.humanName, targetPath);
+  const onDownload = async (): Promise<void> => {
+    if (!entry) return;
+    setBusy("download");
+    const ok = await doDownload(fs.humanName, targetPath, name, entry.size, tr);
+    setBusy("");
+    if (!ok) antd.message.error(tr("下载失败"));
+  };
+  const onPreview = (): void => {
+    if (!entry) return;
+    setPreview({
+      name,
+      url: apiPath,
+      apiPath,
+      size: entry.size,
+      rawUrl: apiPath,
+    });
+  };
+  const onCopyPath = (): void => {
+    copyText(targetPath, (ok) => {
+      if (ok) antd.message.success(tr("已复制"));
+      else antd.message.error(tr("复制失败（浏览器未授权剪贴板）"));
+    });
+  };
+
+  const field = (label: string, value: ReactNS.ReactNode): ReactNS.ReactElement => (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "88px minmax(0, 1fr)",
+        gap: 8,
+        alignItems: "start",
+        fontSize: 12,
+      }}
+    >
+      <span style={{ color: t.textSecondary }}>{label}</span>
+      <span style={{ color: t.text, wordBreak: "break-all", minWidth: 0 }}>{value}</span>
+    </div>
+  );
+
+  const body = !target || !entry ? (
+    <div style={{ padding: 12, textAlign: "center", fontSize: 12, color: t.textSecondary }}>
+      {tr("所选文件已不在最新数据中")}
+    </div>
+  ) : (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gap: 6 }}>
+        {field(
+          tr("路径"),
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            <span
+              title={targetPath}
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
+            >
+              {targetPath}
+            </span>
+            <button
+              type="button"
+              onClick={onCopyPath}
+              title={tr("复制路径")}
+              aria-label={tr("复制路径")}
+              style={{
+                minHeight: 44,
+                minWidth: 44,
+                border: "none",
+                background: "transparent",
+                color: t.textSecondary,
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              {tr("复制")}
+            </button>
+          </span>,
+        )}
+        {field(tr("大小"), targetIsDir ? "—" : fmtBytes(entry.size))}
+        {field(tr("类型"), tr(fileTypeLabel(entry)))}
+        {field(tr("修改"), fmtTs(entry.updatedAt) || "—")}
+        {targetIsDir
+          ? field(tr("子项数（已加载）"), String(loadedChildCount(fs.files, targetPath)))
+          : field(
+              "ETag",
+              <span style={{ fontFamily: "monospace" }}>{maskEtag(entry.etag)}</span>,
+            )}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {targetIsDir ? (
+          <antd.Button style={{ minHeight: 44 }} onClick={onOpenSyncSettings}>
+            {tr("同步设置")}
+          </antd.Button>
+        ) : (
+          <>
+            {previewable(name) ? (
+              <antd.Button type="primary" style={{ minHeight: 44 }} onClick={onPreview}>
+                {tr("预览")}
+              </antd.Button>
+            ) : null}
+            <antd.Button
+              loading={busy === "download"}
+              style={{ minHeight: 44 }}
+              onClick={() => void onDownload()}
+            >
+              {tr("下载")}
+            </antd.Button>
+            <antd.Button danger style={{ minHeight: 44 }} onClick={() => del.request(targetPath, name)}>
+              {tr("删除")}
+            </antd.Button>
+          </>
+        )}
+      </div>
+      {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
+      {del.node}
+      {/* #1669：复用 components/FilePreview（图 / md / csv / xlsx / json 内联）。 */}
+      <FilePreview file={preview} onClose={() => setPreview(null)} />
+    </div>
+  );
+
+  return (
+    <DetailDrawerShell
+      t={t}
+      title={targetIsDir ? tr("目录详情") : tr("文件详情")}
+      overlay={narrow ? "sheet" : "drawer"}
+      onClose={onClose}
     >
       {body}
-    </antd.Drawer>
+    </DetailDrawerShell>
   );
 }
 
 /** 面包屑目录导航（16.67：根层不渲染整行——「我的文件」已由视图切换
- * tab 表达，根部段不再出现；非根 = 仅路径段 + ↑ 上级目录）。 */
+ * tab 表达；非根 = 仅路径段 + ↑ 上级目录）。 */
 function Breadcrumbs({ t, tr, fs }: SubProps) {
   const { visible, segments } = breadcrumbParts(fs.dirPath);
   if (!visible) return null;
@@ -1592,9 +1864,25 @@ function FileRow({
       </span>
     </span>
   );
+  const onDetail = (e: ReactNS.MouseEvent) => {
+    e.stopPropagation();
+    fs.onOpenDetail(path, isDir);
+  };
+  const detailBtn = (
+    <button
+      type="button"
+      onClick={onDetail}
+      title={tr("详情")}
+      aria-label={tr("详情")}
+      style={iconBtnStyle(t)}
+    >
+      <InfoIcon size={16} />
+    </button>
+  );
   const actionsCell = isDir ? (
     // #1669 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip 提示。
     <span style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap }}>
+      {detailBtn}
       <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
         <span style={{ display: "inline-flex" }}>
           <button
@@ -1610,6 +1898,7 @@ function FileRow({
     </span>
   ) : (
     <span style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap }}>
+      {detailBtn}
       <button
         type="button"
         onClick={onDownload}
@@ -1798,6 +2087,7 @@ function TreeRowView({
   onActivate,
   onToggle,
   onRetry,
+  onDropToDir,
   onToggleSelect,
   selected,
   grid,
@@ -1811,6 +2101,8 @@ function TreeRowView({
   onActivate: (row: TreeRow) => void;
   onToggle: (row: TreeRow) => void;
   onRetry: (row: TreeRow) => void;
+  /** 拖拽上传目标 = 本目录行（树视图目录行高亮 + 拦截 drop）。 */
+  onDropToDir: (snap: DropSnapshot, dir: string) => void;
   /** 批量选择（文件行 checkbox；shift = 按可见顺序区间）。 */
   onToggleSelect: (path: string, shiftKey: boolean) => void;
   selected?: boolean;
@@ -1845,8 +2137,52 @@ function TreeRowView({
     e.stopPropagation();
     del.request(path, name);
   };
-  const rowSkin =
-    sel || focused
+  const onDetail = (e: ReactNS.MouseEvent) => {
+    e.stopPropagation();
+    fs.onOpenDetail(path, isDir);
+  };
+  // 拖拽上传目标（目录行）：拦截内部 drag 事件 → 高亮本行 + drop 落此目录；
+  // stopPropagation 同时阻止区域遮罩盖住行高亮（遮罩 pointerEvents:none，
+  // 但仍会视觉覆盖，故不激活）。
+  const [dropOver, setDropOver] = React.useState(false);
+  const dropDepth = React.useRef(0);
+  const dirDropProps = isDir
+    ? {
+        onDragEnter: (e: ReactNS.DragEvent<HTMLDivElement>) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropDepth.current += 1;
+          if (!dropOver) setDropOver(true);
+        },
+        onDragOver: (e: ReactNS.DragEvent<HTMLDivElement>) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+        },
+        onDragLeave: (e: ReactNS.DragEvent<HTMLDivElement>) => {
+          e.stopPropagation();
+          dropDepth.current = Math.max(0, dropDepth.current - 1);
+          if (dropDepth.current === 0) setDropOver(false);
+        },
+        onDrop: (e: ReactNS.DragEvent<HTMLDivElement>) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropDepth.current = 0;
+          setDropOver(false);
+          const snap = snapshotDrop(
+            e.dataTransfer as unknown as DataTransferLike,
+          );
+          if (snap.entries.length === 0 && snap.files.length === 0) return;
+          onDropToDir(snap, path);
+        },
+      }
+    : {};
+  const rowSkin = dropOver
+    ? {
+        border: "1px dashed var(--app-accent, #FF7F16)",
+        background: t.accentBg,
+      }
+    : sel || focused
       ? { border: `1px solid ${t.border}`, background: t.hoverBg }
       : { border: "1px solid transparent", background: "transparent" };
 
@@ -1856,6 +2192,7 @@ function TreeRowView({
     <div
       role="button"
       tabIndex={-1}
+      {...dirDropProps}
       onClick={() => onActivate(row)}
       onDoubleClick={() => {
         if (isDir) fs.onEnterDir(path);
@@ -2007,6 +2344,15 @@ function TreeRowView({
             </antd.Button>
           </span>
         ) : null}
+        <button
+          type="button"
+          onClick={onDetail}
+          title={tr("详情")}
+          aria-label={tr("详情")}
+          style={iconBtnStyle(t)}
+        >
+          <InfoIcon size={16} />
+        </button>
         {isDir ? (
           // 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip（同 FileRow）。
           <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
@@ -2070,11 +2416,14 @@ function TreeArea({
   sort,
   onSort,
   onSetSort,
+  onDropToDir,
 }: SubProps & {
   actions: FilesActions;
   sort: FileSort;
   onSort: (k: FileSortKey) => void;
   onSetSort: (s: FileSort) => void;
+  /** 目录行 drop = 该目录为上传目标（空白区由 FileDropTarget 接管）。 */
+  onDropToDir: (snap: DropSnapshot, dir: string) => void;
 }) {
   const childrenRef = React.useRef<Map<string, HumanFileEntry[]>>(new Map());
   const expandedRef = React.useRef<Set<string>>(new Set());
@@ -2334,6 +2683,7 @@ function TreeArea({
               onActivate={activateRow}
               onToggle={toggleRow}
               onRetry={loadChildren}
+              onDropToDir={onDropToDir}
               onToggleSelect={(p, shiftKey) =>
                 fs.onToggleSelect(p, { isDir: false, shiftKey, paths: visiblePaths })
               }
@@ -2563,20 +2913,46 @@ function GridCard({
         {isDir ? (
           // #1669 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip
           // 提示（同 FileRow）。
-          <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
-            <span style={{ display: "inline-flex" }}>
-              <button
-                type="button"
-                disabled
-                aria-label={tr("删除")}
-                style={{ ...iconBtnStyle(t), opacity: 0.4, cursor: "not-allowed" }}
-              >
-                <TrashIcon size={16} />
-              </button>
-            </span>
-          </antd.Tooltip>
+          <span style={{ display: "inline-flex", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                fs.onOpenDetail(path, true);
+              }}
+              title={tr("详情")}
+              aria-label={tr("详情")}
+              style={iconBtnStyle(t)}
+            >
+              <InfoIcon size={16} />
+            </button>
+            <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
+              <span style={{ display: "inline-flex" }}>
+                <button
+                  type="button"
+                  disabled
+                  aria-label={tr("删除")}
+                  style={{ ...iconBtnStyle(t), opacity: 0.4, cursor: "not-allowed" }}
+                >
+                  <TrashIcon size={16} />
+                </button>
+              </span>
+            </antd.Tooltip>
+          </span>
         ) : (
           <span style={{ display: "inline-flex", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                fs.onOpenDetail(path, false);
+              }}
+              title={tr("详情")}
+              aria-label={tr("详情")}
+              style={iconBtnStyle(t)}
+            >
+              <InfoIcon size={16} />
+            </button>
             <button
               type="button"
               onClick={onDownload}
@@ -2994,6 +3370,12 @@ interface FilesActions {
   uploadItems: UploadItem[];
   onRetryUpload: (id: string) => void;
   onClearFinishedUploads: () => void;
+  /** 拖拽上传：收集结果（文件 + 相对路径）入同一上传队列；dir 空 = 当前目录。
+   *  相对路径含子目录时先建目录（.keep 占位，与「新建文件夹」同法）。 */
+  onDropFiles: (
+    dropped: readonly { file: File; relPath: string }[],
+    dir?: string,
+  ) => void;
 }
 
 /** 上传队列编排：入队 → 并发 ≤2 启动（startableIds 仲裁）→ 逐项
@@ -3006,7 +3388,11 @@ function useUploadQueue(inp: {
   tr: Tr;
 }): {
   items: UploadItem[];
-  enqueue: (files: File[], dir: string) => void;
+  enqueue: (
+    files: File[],
+    dir: string,
+    relPaths?: readonly (string | undefined)[],
+  ) => void;
   retry: (id: string) => void;
   clearFinished: () => void;
 } {
@@ -3057,11 +3443,15 @@ function useUploadQueue(inp: {
     }
   }
 
-  const enqueue = (files: File[], dir: string): void => {
+  const enqueue = (
+    files: File[],
+    dir: string,
+    relPaths?: readonly (string | undefined)[],
+  ): void => {
     if (files.length === 0) return;
     const prefix = `q${seqRef.current++}-`;
     const created = makeUploadItems(
-      files.map((f) => ({ name: f.name, size: f.size })),
+      files.map((f, i) => ({ name: f.name, size: f.size, relPath: relPaths?.[i] })),
       dir,
       prefix,
     );
@@ -3126,6 +3516,34 @@ function useFilesActions(
     }
   };
 
+  /** 拖拽上传：先按相对路径建子目录（"docs/sub/a.txt" → docs、docs/sub），
+   *  再整批入同一上传队列（复用 useUploadQueue / UploadQueuePanel）。
+   *  目录创建失败不阻断上传（父路径缺失时由服务端报错，队列逐项显失败）。 */
+  const dropFiles = async (
+    dropped: readonly { file: File; relPath: string }[],
+    dir?: string,
+  ): Promise<void> => {
+    if (dropped.length === 0) return;
+    // 树目录行的 rowPath 带尾斜杠（新形态 path 以 "/" 结尾）→ 归一，避免
+    // 拼出 "a/b//file"（与 fullPath / 队列 path 共用同一口径）。
+    const targetDir = (dir || inp.dirPath).replace(/\/+$/, "");
+    const parents = uniqueParentDirs(dropped.map((d) => d.relPath));
+    let dirFailed = 0;
+    for (const p of parents) {
+      try {
+        await writeFileSync(inp.humanName, `${fullPath(targetDir, p)}/.keep`, "");
+      } catch {
+        dirFailed += 1;
+      }
+    }
+    if (dirFailed > 0) antd.message.warning(tr("部分目录创建失败（上传仍会尝试）"));
+    queue.enqueue(
+      dropped.map((d) => d.file),
+      targetDir,
+      dropped.map((d) => d.relPath),
+    );
+  };
+
   return {
     // 多选入队：目标目录在点击时刻拍平（树视图选中的上传目标优先）。
     onUploadClick: () =>
@@ -3148,6 +3566,7 @@ function useFilesActions(
     uploadItems: queue.items,
     onRetryUpload: queue.retry,
     onClearFinishedUploads: queue.clearFinished,
+    onDropFiles: (dropped, dir) => void dropFiles(dropped, dir),
   };
 }
 
@@ -3705,6 +4124,8 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [trashError, setTrashError] = React.useState("");
   // F-V3-3：回收站弹窗（工具条按钮打开；关闭不刷新——数据由容器统一管）。
   const [trashDialogOpen, setTrashDialogOpen] = React.useState(false);
+  // files-dnd：详情抽屉目标（行 / 网格卡 / 树行「详情」；只读列表已有字段）。
+  const [detailTarget, setDetailTarget] = React.useState<FileDetailTarget | null>(null);
   // F-V3-3：撤销条（软删成功且 trashId 非空；只保留最近一条；8s 自动消失）。
   const [undo, setUndo] = React.useState<{ trashId: string; name: string } | null>(null);
   // 批量选择（列表/网格共用；目录不可选）：键 = rowPath。选择态在容器层 →
@@ -4021,6 +4442,31 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const uploadDirRef = React.useRef("");
   const actions = useFilesActions({ humanName, dirPath, load, reload, uploadDirRef }, tr);
 
+  /** 拖拽上传：同步快照（浏览器 entry 生命周期）→ 异步递归收集（200 文件 /
+   *  200 MB，超限提示截断）→ 复用上传队列入队。dir 空 = 当前目录；
+   *  树视图目录行 drop 传该目录相对路径。 */
+  const onDropSnapshot = React.useCallback(
+    (snap: DropSnapshot, dir?: string) => {
+      void (async () => {
+        const r = await collectDrop(snap);
+        if (r.truncated) {
+          antd.message.warning(
+            tr("拖入内容超出上限（{n} 个文件 / {size}），已截断", {
+              n: DROP_MAX_FILES,
+              size: fmtBytes(DROP_MAX_BYTES),
+            }),
+          );
+        }
+        if (r.files.length === 0) return;
+        actions.onDropFiles(
+          r.files.map((d) => ({ file: d.file as File, relPath: d.relPath })),
+          dir,
+        );
+      })();
+    },
+    [actions, tr],
+  );
+
   // 探测失败（老控制器）且递归已开（探测晚于用户操作）→ 自动回落一层列表。
   React.useEffect(() => {
     if (!canRecursive && recursive) setRecursive(false);
@@ -4159,6 +4605,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
         }
       })();
     },
+    onOpenDetail: (path, isDir) => setDetailTarget({ path, isDir }),
     onSwitchView: (v) => {
       if (v === view) return;
       nav.selectFile(null);
@@ -4285,6 +4732,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           sort={fileSort}
           onSort={onFileSort}
           onSetSort={applyFileSort}
+          onDropToDir={(snap, dir) => onDropSnapshot(snap, dir)}
         />
       ) : filesView === "grid" ? (
         <GridArea
@@ -4304,6 +4752,18 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           onSetSort={applyFileSort}
         />
       );
+    // files-dnd：列表 / 树 / 网格三视图共用拖拽上传外壳（空白/文件行 drop =
+    // 当前目录；树目录行自己的 drop 在 TreeRowView 内 stopPropagation）。
+    const dropNode = (
+      <FileDropTarget
+        t={t}
+        tr={tr}
+        dirLabel={fs.dirPath || tr("我的文件")}
+        onDrop={(snap) => onDropSnapshot(snap)}
+      >
+        {listNode}
+      </FileDropTarget>
+    );
     return (
       <div ref={widthRef} style={{ display: "grid", gap: 10, padding: 4 }}>
         {/* #1669 触控 CSS 变量（:root 作用域；双实例重复注入无害）。 */}
@@ -4395,7 +4855,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
         {panes && panes.detail !== null ? (
           <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
             <div style={{ flex: "1 1 auto", minWidth: 0, display: "grid", gap: 4 }}>
-              {listNode}
+              {dropNode}
             </div>
             <div
               style={{
@@ -4411,10 +4871,26 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             </div>
           </div>
         ) : (
-          listNode
+          dropNode
         )}
         {panes && panes.overlay ? (
           <DetailOverlay {...sub} overlay={panes.overlay} />
+        ) : null}
+        {/* files-dnd：文件 / 目录详情抽屉（行 / 网格卡 / 树行「详情」按钮打开；
+         * 与选中详情槽互不影响，窄屏（<768）改底部 Sheet）。关闭态不挂载
+         * Drawer——静态渲染 / 无详情时零结构负担（同 DetailOverlay 口径）。 */}
+        {detailTarget ? (
+          <FileDetailDrawer
+            {...sub}
+            target={detailTarget}
+            narrow={layoutMode(containerW) === "sheet"}
+            onClose={() => setDetailTarget(null)}
+            onOpenSyncSettings={() => {
+              setDetailTarget(null);
+              loadSync();
+              setSyncModalOpen(true);
+            }}
+          />
         ) : null}
         {/* v3（F-V3-1）同步设置弹窗（关闭不占页面空间）。 */}
         <SyncSettingsModal

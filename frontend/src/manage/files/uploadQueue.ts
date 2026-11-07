@@ -39,19 +39,26 @@ function joinPath(dir: string, name: string): string {
   return dir ? `${dir}/${name}` : name;
 }
 
-/** 多选文件 → 队列项（全部 waiting）。idPrefix 用于同一页面多批入队去重。 */
+/** 多选文件 → 队列项（全部 waiting）。idPrefix 用于同一页面多批入队去重。
+ *  relPath = 相对 dir 的路径（拖入目录时含子目录前缀，如 "docs/a.txt"）；
+ *  缺省 = 文件名（普通多选）。 */
 export function makeUploadItems(
-  files: readonly { name: string; size: number }[],
+  files: readonly { name: string; size: number; relPath?: string }[],
   dir: string,
   idPrefix = "",
 ): UploadItem[] {
-  return files.map((f, i) => ({
-    id: `${idPrefix}${i}-${f.name}`,
-    name: f.name,
-    size: f.size,
-    path: joinPath(dir, f.name),
-    status: "waiting",
-  }));
+  return files.map((f, i) => {
+    const rel = f.relPath || f.name;
+    const item: UploadItem = {
+      id: `${idPrefix}${i}-${rel}`,
+      // 列表展示名 = 末段文件名（子目录路径放在 title / path）。
+      name: rel.split("/").pop() || f.name,
+      size: f.size,
+      path: joinPath(dir, rel),
+      status: "waiting",
+    };
+    return item;
+  });
 }
 
 /** 当前可启动的 waiting 项 id（并发仲裁：limit − 在途 uploading）。
