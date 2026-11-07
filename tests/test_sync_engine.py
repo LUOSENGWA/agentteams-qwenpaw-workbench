@@ -1127,3 +1127,252 @@ def test_changes_400_clears_cursor_full_sync(tmp_path):
     res2 = eng.run_once()
     assert res2["skipped"] == "same-generation"
     assert _changes_calls(fake) == 1
+
+
+# ── 9) #1544 条件请求（manifest 304 / 文件 304 / Range 续传 / 416 / etag）──
+
+
+def _conditional_responder(
+    *,
+    generation,
+    manifest_entries,
+    manifest_etag="M1",
+    direct=None,
+):
+    """status + manifest(200) + 写回 + presign 不可用 + 直连 GET 剧本。"""
+
+    def resp(method, path, **kw):
+        params = kw.get("params") or {}
+        if method == "GET" and path == f"{BASE}/sync/status":
+            return jresult(200, {"generation": generation})
+        if method == "GET" and path == f"{BASE}/sync/manifest":
+            return jresult(
+                200, {"entries": manifest_entries}, {"ETag": manifest_etag}
+            )
+        if method == "PUT" and path == f"{BASE}/sync/manifest":
+            return jresult(200, {"ok": True})
+        if method == "GET" and params.get("presign") == "1":
+            return jresult(405, {"error": "presign unavailable"})
+        if method == "GET" and path.startswith(f"{BASE}/files/"):
+            return direct(path, dict(kw.get("headers") or {}))
+        return jresult(404, {"error": "unhandled"})
+
+    return resp
+
+
+def _manifest_gets(fake) -> list:
+    return [
+        dict(c[2].get("headers") or {})
+        for c in fake.calls
+        if c[0] == "GET" and c[1] == f"{BASE}/sync/manifest"
+    ]
+
+
+def test_manifest_conditional_get_reuses_cache_on_304(tmp_path):
+    """① 200 时缓存 manifest 原文 + ETag；下轮带 If-None-Match → 304 →
+    直接用缓存原文（entries 照常参与对账），ETag 仍作 If-Match 写回。"""
+    clock = Clock()
+    gen = {"n": 2}
+
+    def resp(method, path, **kw):
+        params = kw.get("params") or {}
+        if method == "GET" and path == f"{BASE}/sync/status":
+            return jresult(200, {"generation": gen["n"]})
+        if method == "GET" and path == f"{BASE}/sync/manifest":
+            if (kw.get("headers") or {}).get("If-None-Match") == "M1":
+                return HttpResult(304, {"ETag": "M1"})
+            return jresult(
+                200,
+                {"entries": [{"path": "a.txt", "etag": "e1", "size": 1}]},
+                {"ETag": "M1"},
+            )
+        if method == "PUT" and path == f"{BASE}/sync/manifest":
+            return jresult(200, {"ok": True})
+        if method == "GET" and params.get("presign") == "1":
+            return jresult(405, {"error": "presign unavailable"})
+        return bresult(200, b"x")
+
+    fake = FakeCtl(resp)
+    eng = make_engine(tmp_path, fake, clock, state=state_with(1, {}, {}))
+
+    # 第 1 轮：无条件 GET → 下载 + 落缓存
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert res["downloaded"] == 1
+    cache_file = eng.root / ".sync" / "manifest.cache.json"
+    cached = json.loads(cache_file.read_text(encoding="utf-8"))
+    assert cached["etag"] == "M1"
+    assert cached["human"] == HUMAN
+    # body 存原文文本（可原样 json.loads）
+    assert json.loads(cached["body"])["entries"][0]["path"] == "a.txt"
+    assert _manifest_gets(fake)[0] == {}
+
+    # 第 2 轮：generation 变化 → manifest 条件 GET → 304 → 缓存原文
+    gen["n"] = 3
+    res2 = eng.run_once()
+    assert res2.get("error") is None
+    assert res2["skipped"] == 1  # 缓存 entries 与 state 一致 → 未变更
+    assert _manifest_gets(fake)[1] == {"If-None-Match": "M1"}
+    puts = [c for c in fake.calls if c[0] == "PUT"]
+    assert puts[-1][2].get("headers", {}).get("If-Match") == "M1"
+
+
+def test_manifest_cache_corrupt_falls_back_to_plain_get(tmp_path):
+    """② 缓存损坏 → 不带条件头无条件 GET（不报错），并重新落缓存。"""
+    clock = Clock()
+    fake = FakeCtl(
+        _conditional_responder(
+            generation=2,
+            manifest_entries=[],
+            manifest_etag="M7",
+            direct=lambda path, headers: bresult(200, b"x"),
+        )
+    )
+    eng = make_engine(tmp_path, fake, clock, state=state_with(1, {}, {}))
+    eng.manifest_cache_file.write_text("{not-json", encoding="utf-8")
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert _manifest_gets(fake) == [{}]
+    cached = json.loads(eng.manifest_cache_file.read_text(encoding="utf-8"))
+    assert cached["etag"] == "M7"
+
+
+def test_download_304_skips_and_keeps_local(tmp_path):
+    """③ 远端 etag 未变 → If-None-Match → 304：跳过下载并保留本地文件。"""
+    clock = Clock()
+    seen = []
+
+    def direct(path, headers):
+        seen.append(headers)
+        return HttpResult(304, {"ETag": "e2"})
+
+    fake = FakeCtl(
+        _conditional_responder(
+            generation=2,
+            manifest_entries=[{"path": "a.txt", "etag": "e2", "size": 4}],
+            direct=direct,
+        )
+    )
+    eng = make_engine(tmp_path, fake, clock, files={"a.txt": b"keep"})
+    p = eng.files_dir / "a.txt"
+    eng._save_state(state_with(1, {"a.txt": "e1"}, {"a.txt": local_rec(p)}))
+
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert seen == [{"If-None-Match": "e2"}]
+    assert p.read_bytes() == b"keep"
+    assert res["downloaded"] == 1
+    st = json.loads((eng.root / ".sync" / "state.json").read_text(encoding="utf-8"))
+    assert st["humans"][HUMAN]["etags"]["a.txt"] == "e2"
+
+
+def test_download_206_resumes_from_part(tmp_path):
+    """④ 本地有 .part → Range + If-Range → 206 追加后原子改名。"""
+    clock = Clock()
+    seen = []
+
+    def direct(path, headers):
+        seen.append(headers)
+        return bresult(206, b"world", {"ETag": "e2"})
+
+    fake = FakeCtl(
+        _conditional_responder(
+            generation=2,
+            manifest_entries=[{"path": "a.txt", "etag": "e2", "size": 11}],
+            direct=direct,
+        )
+    )
+    eng = make_engine(tmp_path, fake, clock, files={"a.txt": b"old"})
+    p = eng.files_dir / "a.txt"
+    part = p.with_name("a.txt.part")
+    part.write_bytes(b"hello ")
+    eng._save_state(state_with(1, {"a.txt": "e1"}, {"a.txt": local_rec(p)}))
+
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert seen == [{"Range": "bytes=6-", "If-Range": "e2"}]
+    assert p.read_bytes() == b"hello world"
+    assert not part.exists()
+    assert res["downloaded"] == 1
+
+
+def test_download_416_discards_part_and_refetches(tmp_path):
+    """⑤ Range 起点越界 416 → 丢 part 后全量重下（第二次不带 Range）。"""
+    clock = Clock()
+    seen = []
+
+    def direct(path, headers):
+        seen.append(headers)
+        if "Range" in headers:
+            return HttpResult(416, {})
+        return bresult(200, b"fresh", {"ETag": "e2"})
+
+    fake = FakeCtl(
+        _conditional_responder(
+            generation=2,
+            manifest_entries=[{"path": "a.txt", "etag": "e2", "size": 5}],
+            direct=direct,
+        )
+    )
+    eng = make_engine(tmp_path, fake, clock, files={"a.txt": b"old"})
+    p = eng.files_dir / "a.txt"
+    part = p.with_name("a.txt.part")
+    part.write_bytes(b"too-long-part")
+    eng._save_state(state_with(1, {"a.txt": "e1"}, {"a.txt": local_rec(p)}))
+
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert seen[0].get("Range") == "bytes=13-"
+    assert "Range" not in seen[1]
+    assert p.read_bytes() == b"fresh"
+    assert not part.exists()
+    assert res["downloaded"] == 1
+
+
+def test_download_etag_mismatch_discards_bytes(tmp_path):
+    """⑥ 响应 ETag 与 listing etag 不一致（TOCTOU）→ 丢弃本次字节。"""
+    clock = Clock()
+    fake = FakeCtl(
+        _conditional_responder(
+            generation=2,
+            manifest_entries=[{"path": "a.txt", "etag": "e2", "size": 5}],
+            direct=lambda path, headers: bresult(200, b"stale", {"ETag": "e9"}),
+        )
+    )
+    eng = make_engine(tmp_path, fake, clock, files={"a.txt": b"keep"})
+    p = eng.files_dir / "a.txt"
+    part = p.with_name("a.txt.part")
+    eng._save_state(state_with(1, {"a.txt": "e1"}, {"a.txt": local_rec(p)}))
+
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert res["downloaded"] == 0
+    assert p.read_bytes() == b"keep"
+    assert not part.exists()
+
+
+def test_download_without_etag_is_unconditional(tmp_path):
+    """⑦ 无远端 etag（旧控制器 / 未知记账）→ 无条件全量下载。"""
+    clock = Clock()
+    seen = []
+
+    def direct(path, headers):
+        seen.append(headers)
+        return bresult(200, b"body")
+
+    fake = FakeCtl(
+        _conditional_responder(
+            generation=2,
+            manifest_entries=[{"path": "a.txt", "size": 4}],
+            direct=direct,
+        )
+    )
+    eng = make_engine(tmp_path, fake, clock, files={"a.txt": b"old"})
+    p = eng.files_dir / "a.txt"
+    eng._save_state(state_with(1, {"a.txt": "e1"}, {"a.txt": local_rec(p)}))
+
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert seen == [{}]
+    assert p.read_bytes() == b"body"
+    assert res["downloaded"] == 1

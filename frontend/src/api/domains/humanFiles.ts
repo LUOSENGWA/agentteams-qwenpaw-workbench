@@ -62,6 +62,7 @@
 
 import { controllerRequest, httpErrorStatus } from "../shared";
 import { fetchFile, resolvePluginUrl } from "./chat";
+import { FileEtagCache, readFileThroughCache } from "../../lib/fileEtagCache";
 
 const V1 = "/agentteams-proxy/controller/api/v1";
 
@@ -440,14 +441,23 @@ export async function listFiles(
   }
 }
 
+/** 文件正文 ETag 缓存（#1544；进程内 LRU 50 条，跨 human 用 key 前缀隔离）。 */
+const readFileCache = new FileEtagCache();
+
 /** 读文件内容（GET /humans/{name}/files/{path}，具体文件 → 原始字节流 + ETag）。
+ * #1544 起支持 If-None-Match → 304：命中缓存时服务端不读 body，
+ * 直接复用上次的字节（进程内 LRU 50 条；无 ETag 响应不缓存）。
  * fetch + blob（不走 controllerRequest）。 */
 export async function readFileSync(humanName: string, path: string): Promise<Blob> {
   const url = humanFileApiPath(humanName, path);
-  const resp0 = await fetchFile(url, resolvePluginUrl(url));
-  const resp = await followRedirectOnce(resp0);
-  if (!resp.ok) throw await readHttpError(resp);
-  return resp.blob();
+  const key = `${humanName}:${path}`;
+  const outcome = await readFileThroughCache(
+    key,
+    (init) => fetchFile(url, resolvePluginUrl(url), init).then((resp) => followRedirectOnce(resp, init)),
+    readFileCache,
+  );
+  if (outcome.kind === "response") throw await readHttpError(outcome.response);
+  return outcome.blob;
 }
 
 /** 写文件（PUT /humans/{name}/files/{path}；body = 原始字节，

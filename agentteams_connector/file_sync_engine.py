@@ -393,6 +393,9 @@ class SyncEngine:
         self.state_file = self.sync_dir / "state.json"
         self.lock_file = self.sync_dir / "lock"
         self.conflicts_log = self.sync_dir / "conflicts.log"
+        # manifest 条件 GET 缓存（#1544：manifest GET 支持 If-None-Match →
+        # 304；缓存原文 + ETag 落在 .sync/，与 state.json 同款落盘）。
+        self.manifest_cache_file = self.sync_dir / "manifest.cache.json"
         # SYNC-STORE 布局：镜像在 workspace/<human>/files/（根 =
         # <workspace>/.qwenpaw/agentteams）；首启一次性迁移
         # （旧根 <workspace>/agentteams 存在且新根不存在 → 搬一次
@@ -910,6 +913,57 @@ class SyncEngine:
         )
         os.replace(tmp, self.state_file)
 
+    # ── manifest 条件 GET 缓存（#1544）───────────────────────────────
+    # controller 的 GET sync/manifest 现在支持 If-None-Match → 304（ETag =
+    # 快照 validator）。缓存 = ``.sync/manifest.cache.json``：
+    # ``{version, human, etag, savedAt, body}``，body 存**原文文本**
+    # （304 时原样 json.loads 回 manifest，不再拉 2MiB body）。落盘与
+    # state.json 同款（tmp + os.replace，权限随 umask）。
+
+    def _load_manifest_cache(self) -> Optional[Dict[str, Any]]:
+        """读 manifest 缓存；缺失/损坏/他人 human → None（调用方走无条件 GET）。"""
+        try:
+            data = json.loads(
+                self.manifest_cache_file.read_text(encoding="utf-8")
+            )
+        except Exception:  # noqa: BLE001 - 缓存缺失/损坏按无缓存
+            return None
+        if not isinstance(data, dict):
+            return None
+        if data.get("human") not in (None, self.human):
+            return None
+        etag = data.get("etag")
+        body = data.get("body")
+        if not isinstance(etag, str) or not etag or not isinstance(body, str):
+            return None
+        try:
+            manifest = json.loads(body)
+        except Exception:  # noqa: BLE001 - 原文损坏 → 当无缓存
+            return None
+        return {"etag": etag, "manifest": manifest}
+
+    def _save_manifest_cache(self, etag: str, text: str) -> None:
+        """写 manifest 缓存（失败只记 debug——缓存不佳不影响同步主流程）。"""
+        try:
+            self.sync_dir.mkdir(parents=True, exist_ok=True)
+            payload = json.dumps(
+                {
+                    "version": 1,
+                    "human": self.human,
+                    "etag": str(etag),
+                    "savedAt": _iso(self._now()),
+                    "body": text,
+                },
+                ensure_ascii=False,
+            )
+            tmp = self.manifest_cache_file.with_name(
+                self.manifest_cache_file.name + ".tmp"
+            )
+            tmp.write_text(payload, encoding="utf-8")
+            os.replace(tmp, self.manifest_cache_file)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("file sync manifest cache write failed: %s", exc)
+
     def list_conflicts(self, limit: int = 200) -> List[Dict[str, Any]]:
         """冲突日志最近 N 条（新→旧；坏行跳过，不整块失败）。"""
         out: List[Dict[str, Any]] = []
@@ -976,6 +1030,10 @@ class SyncEngine:
 
     def _run_body(self) -> Dict[str, Any]:
         # 1) status——404/405/501 = 控制器无清单接口（旧版）→ 降级不重试。
+        #    #1545 后 sync/status 仍是**同一端点、同一形状**
+        #    （entries/tombstones/generation/updatedAt/updatedBy），实现改为
+        #    回答 manifest 用户元数据——调用方零改动，不需要 sidecar，也
+        #    不额外请求任何端点（产品语义：#1499 服务端只存清单不合并）。
         r = self.ctl_call(
             "GET", f"/api/v1/humans/{self.human}/sync/status"
         )
@@ -1039,20 +1097,40 @@ class SyncEngine:
             next_cursor = None
 
         # 2) manifest（响应头 ETag 用于条件写回——真实实现走 httpx 直连）。
+        #    #1544：GET 支持 If-None-Match → 304（ETag = 快照 validator）。
+        #    有本地缓存就带条件头；304 → 直接用缓存原文（不再拉 body），
+        #    ETag 同时作为随后 PUT 的 If-Match。缓存缺失/损坏/304 意外无缓存
+        #    → 无条件 GET（不报错）。
         #
         # 404 语义分流（human_sync_handler.go:194-196）：**manifest 不存在**
         # 也是 404（首次同步还没有清单）——不能当「接口不存在」降级；只有
         # 405/501 才是老控制器无此路由。首次同步走空清单 + If-None-Match:* 建。
-        r = self.ctl_call(
-            "GET", f"/api/v1/humans/{self.human}/sync/manifest"
+        cached_manifest = self._load_manifest_cache()
+        get_headers: Dict[str, str] = (
+            {"If-None-Match": cached_manifest["etag"]}
+            if cached_manifest
+            else {}
         )
+        r = self.ctl_call(
+            "GET",
+            f"/api/v1/humans/{self.human}/sync/manifest",
+            headers=get_headers or None,
+        )
+        if r.status_code == 304 and cached_manifest is None:
+            # 没带条件头却收到 304（异常服务端）→ 无条件重取一次。
+            r = self.ctl_call(
+                "GET", f"/api/v1/humans/{self.human}/sync/manifest"
+            )
         creating_manifest = False
         if r.status_code in (405, 501):
             return {
                 "enabled": False,
                 "reason": "controller_without_manifest",
             }
-        if r.status_code == 404:
+        if r.status_code == 304 and cached_manifest is not None:
+            manifest = cached_manifest["manifest"]
+            manifest_etag = cached_manifest["etag"]
+        elif r.status_code == 404:
             manifest = {"version": 1, "entries": {}}
             manifest_etag = None
             creating_manifest = True
@@ -1061,6 +1139,8 @@ class SyncEngine:
         else:
             manifest = r.json()
             manifest_etag = self._etag_from(r, manifest)
+            if manifest_etag:
+                self._save_manifest_cache(manifest_etag, r.text())
         entries = self._parse_entries(manifest)
 
         # 2.5) 远端真实文件清单（下载权威）：manifest 是**客户端记账状态**，
@@ -1169,7 +1249,7 @@ class SyncEngine:
                         "path": cname, "etag": c_etag, "size": cst.st_size
                     }
                     self._log_conflict(rel, prev_etags.get(rel), etag, cname)
-                if self._download(rel):
+                if self._download(rel, etag):
                     downloaded += 1
                     changed += 1
                     moved += int(self._stat_rel(rel)["size"])
@@ -1179,7 +1259,7 @@ class SyncEngine:
                 conflicts += 1
                 self._progress_finish_file(moved, ok)
             elif remote_changed:
-                if self._download(rel):
+                if self._download(rel, etag):
                     downloaded += 1
                     changed += 1
                     moved += int(self._stat_rel(rel)["size"])
@@ -1500,7 +1580,10 @@ class SyncEngine:
     # ── 本地扫描 / 读写 ──────────────────────────────────────────────
 
     def _scan_local(self) -> Dict[str, Dict[str, float]]:
-        """扫描本地镜像（S1：出范围文件不进入本轮——不上传、不比对）。"""
+        """扫描本地镜像（S1：出范围文件不进入本轮——不上传、不比对）。
+
+        ``*.part`` = 断点续传中间文件（#1544），不当作本地文件比对/上传。
+        """
         out: Dict[str, Dict[str, float]] = {}
         if not self.files_dir.is_dir():
             return out
@@ -1509,6 +1592,8 @@ class SyncEngine:
                 if not p.is_file():
                     continue
             except Exception:  # noqa: BLE001
+                continue
+            if p.name.endswith(".part"):
                 continue
             rel = safe_rel_path(p.relative_to(self.files_dir).as_posix())
             if rel is None or not self.should_sync(rel):
@@ -1541,16 +1626,58 @@ class SyncEngine:
 
     # ── 下载 / 上传 ──────────────────────────────────────────────────
 
-    def _download(self, rel: str) -> bool:
-        """GET …/files/{path}?presign=1：200 且带 url → 用 url 直取；
-        否则直读 body；presign 不可用（4xx/5xx）→ 退回无参 GET。"""
+    def _part_path(self, rel: str) -> Path:
+        """断点续传中间文件：``<file>.part``（镜像内，_scan_local 跳过）。"""
+        p = self.files_dir / rel
+        return p.with_name(p.name + ".part")
+
+    @staticmethod
+    def _discard_part(part: Path) -> None:
+        try:
+            part.unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001 - 清理失败不影响主流程
+            pass
+
+    def _finish_download(
+        self, rel: str, data: bytes, *, append: bool = False
+    ) -> bool:
+        """本次字节先落 ``.part``，再原子改名成目标文件（#1544 续传基础）。
+
+        ``append=True`` = 206 续传（在已有 part 上追加）；否则覆盖写
+        part（= 全量重下）。中途失败/进程被杀时 part 残留 → 下一轮
+        ``Range`` 续传。
+        """
+        target = self.files_dir / rel
+        part = self._part_path(rel)
+        try:
+            part.parent.mkdir(parents=True, exist_ok=True)
+            if append:
+                with open(part, "ab") as f:
+                    f.write(data)
+            else:
+                part.write_bytes(data)
+            os.replace(part, target)
+            return True
+        except Exception:  # noqa: BLE001
+            logger.debug("file sync download write failed: %s", rel, exc_info=True)
+            return False
+
+    def _download(self, rel: str, remote_etag: Optional[str] = None) -> bool:
+        """下载 ``rel``：presign 优先（保持既有优先级），回落直连 controller。
+
+        #1544 起 controller 的 ``GET /files/{path}`` 支持 ``If-None-Match``
+        （304）、``Range``/``If-Range``（206/416）；条件请求与断点续传只在
+        **直连** GET 上启用（预签名 URL 仍是全量直下，不强求 Range）。
+
+        :param remote_etag: listing / state 记录的远端 etag（None = 旧控制器
+            或本地记账 etag 未知 → 无条件全量）。
+        """
         base = f"/api/v1/humans/{self.human}/files/{rel}"
         try:
             r = self.ctl_call("GET", base, params={"presign": "1"})
         except Exception as exc:  # noqa: BLE001
             logger.debug("file sync download presign failed: %s", exc)
             return False
-        candidates: List[tuple] = []  # (kind, target, inline_body)
         if r.status_code == 200:
             url = None
             try:
@@ -1564,25 +1691,79 @@ class SyncEngine:
             except Exception:  # noqa: BLE001 - 非 JSON body 按直读处理
                 pass
             if url:
-                candidates.append(("GET", str(url), None))
-            elif r.content:
-                candidates.append(("_body", None, r.content))
-        if not candidates and r.status_code in (400, 404, 405, 501):
-            candidates.append(("GET", base, None))
-        for kind, target, body in candidates:
-            if kind == "_body":
-                if body and self._write_file(rel, body):
-                    return True
-                continue
+                try:
+                    r2 = self.ctl_call("GET", str(url))
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("file sync download %s failed: %s", url, exc)
+                    return False
+                if r2.status_code == 200:
+                    return self._finish_download(rel, r2.content)
+                return False
+            if r.content:
+                # 200 + 原始字节（非 JSON 票）= 直读 body 兜底
+                return self._finish_download(rel, r.content)
+        elif r.status_code not in (400, 404, 405, 501):
+            return False
+        # presign 不可用（400/404/405/501）或 200 空响应 → 直连 controller
+        return self._download_direct(rel, remote_etag)
+
+    def _download_direct(
+        self, rel: str, remote_etag: Optional[str], *, allow_resume: bool = True
+    ) -> bool:
+        """直连 controller 的条件 GET（304 跳过）+ Range 断点续传。"""
+        base = f"/api/v1/humans/{self.human}/files/{rel}"
+        part = self._part_path(rel)
+        part_size = 0
+        if allow_resume:
             try:
-                r2 = self.ctl_call("GET", target)
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("file sync download %s failed: %s", target, exc)
-                continue
-            if r2.status_code == 200 and r2.content:
-                if self._write_file(rel, r2.content):
-                    return True
-        return False
+                if part.is_file():
+                    part_size = part.stat().st_size
+            except Exception:  # noqa: BLE001
+                part_size = 0
+        headers: Dict[str, str] = {}
+        if part_size > 0 and remote_etag:
+            # 续传：If-Range 保证远端未变才回 206（变了回 200 全量）。
+            headers["Range"] = f"bytes={part_size}-"
+            headers["If-Range"] = str(remote_etag)
+        elif remote_etag:
+            headers["If-None-Match"] = str(remote_etag)
+        try:
+            r = self.ctl_call("GET", base, headers=headers or None)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("file sync download %s failed: %s", base, exc)
+            return False
+        if r.status_code == 304:
+            # 未变更（304 不读 body）→ 保留本地镜像；有 .part 说明本地
+            # 版本不完整（正常路径不会带 If-None-Match），按失败留给下轮。
+            return part_size == 0
+        if r.status_code == 416:
+            # Range 越界（远端变短 / part 比远端大）→ 丢 part 重下。
+            self._discard_part(part)
+            if allow_resume and remote_etag:
+                return self._download_direct(
+                    rel, remote_etag, allow_resume=False
+                )
+            return False
+        if r.status_code not in (200, 206):
+            return False
+        resp_etag = r.headers.get("etag")
+        if remote_etag and resp_etag and str(resp_etag) != str(remote_etag):
+            # TOCTOU：响应 etag 与 listing/state 的 etag 不一致 → 丢弃本次字节。
+            self._discard_part(part)
+            logger.debug(
+                "file sync download etag mismatch %s: %s != %s",
+                rel,
+                resp_etag,
+                remote_etag,
+            )
+            return False
+        if r.status_code == 206:
+            if part_size <= 0:
+                # 无 part 却拿到 206（服务端异常）→ 内容不完整，不可用。
+                return False
+            return self._finish_download(rel, r.content, append=True)
+        # 200 = 全量（含续传被 If-Range 判定远端已变的情形）→ 覆盖重下。
+        return self._finish_download(rel, r.content)
 
     def _upload(self, rel: str, data: bytes) -> bool:
         """POST …/files/{path}?presign=1 → 直传 → /commit；
