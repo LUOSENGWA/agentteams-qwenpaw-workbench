@@ -29,3 +29,4 @@ export * from "./api/domains/modules";
 export * from "./api/domains/humanFiles";
 export * from "./api/domains/memberConfig";
 export * from "./api/domains/meta";
+export * from "./api/domains/cluster";

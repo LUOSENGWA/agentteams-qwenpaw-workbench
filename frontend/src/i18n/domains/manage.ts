@@ -852,4 +852,12 @@ export const manageDict: Record<string, { en: string }> = {
     en: "This Manager has no container-log endpoint (not provided by the Controller)",
   },
   "无权限查看日志": { en: "No permission to view logs" },
+  // ── 集群页：控制器卡（/status 计数 + /version 版本，P1）──
+  "控制器": { en: "Controller" },
+  "部署模式": { en: "Deployment mode" },
+  "Controller 版本": { en: "Controller version" },
+  "dev（镜像未注入版本）": { en: "dev (image has no injected version)" },
+  "Controller 实时快照（60s 缓存）": {
+    en: "Controller live snapshot (60s cache)",
+  },
 };
