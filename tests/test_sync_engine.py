@@ -95,17 +95,16 @@ def make_engine(
     return SyncEngine(root, human=human, ctl_call=fake, now=clock)
 
 
-def state_with(gen, etags, local):
-    return {
-        "humans": {
-            HUMAN: {
-                "generation": gen,
-                "etags": etags,
-                "local": local,
-                "lastRunAt": "2026-11-06T00:00:00.000Z",
-            }
-        }
+def state_with(gen, etags, local, cursor=None):
+    rec = {
+        "generation": gen,
+        "etags": etags,
+        "local": local,
+        "lastRunAt": "2026-11-06T00:00:00.000Z",
     }
+    if cursor is not None:
+        rec["cursor"] = cursor
+    return {"humans": {HUMAN: rec}}
 
 
 def responder_for(
@@ -881,3 +880,250 @@ def test_parse_entries_strips_scope_prefix():
         {"entries": {"files/a/b.txt": {"etag": "e1", "size": 3}}}
     )
     assert got == [{"path": "a/b.txt", "etag": "e1", "size": 3}]
+
+
+# ── 增量探测（files/changes?since=<cursor>）─────────────────────────
+
+
+def _full_path_responder(
+    *,
+    generation,
+    listing=None,
+    presign_get=None,
+    put_manifest_status=200,
+    manifest_etag="M1",
+):
+    """全量对账路径应答器（status/manifest/recursive listing/presign/写回）。"""
+
+    def resp(method, path, **kw):
+        params = kw.get("params") or {}
+        if method == "GET" and path == f"{BASE}/sync/status":
+            return jresult(200, {"generation": generation})
+        if method == "GET" and path == f"{BASE}/sync/manifest":
+            return jresult(200, {"entries": []}, {"ETag": manifest_etag})
+        if method == "PUT" and path == f"{BASE}/sync/manifest":
+            return jresult(put_manifest_status, {"ok": True})
+        if (
+            method == "GET"
+            and path == f"{BASE}/files"
+            and params.get("recursive") == "1"
+        ):
+            return jresult(200, {"entries": listing or []})
+        if method == "GET" and path.startswith(f"{BASE}/files/"):
+            rel = path[len(f"{BASE}/files/"):]
+            if (presign_get or {}).get(rel) is not None:
+                return bresult(200, presign_get[rel])
+            return jresult(404, {"error": "not found"})
+        return jresult(404, {"error": "unhandled"})
+
+    return resp
+
+
+def _changes_calls(fake) -> int:
+    return sum(1 for _, p, _ in fake.calls if p.endswith("/files/changes"))
+
+
+def test_changes_no_changes_early_exit(tmp_path):
+    """① cursor 存在 + 无变更 → 不拉 manifest、不扫目录，返回
+    skipped=no-changes，state.cursor 更新（原样回传）。"""
+    clock = Clock()
+    full = _full_path_responder(generation=7)
+
+    def resp(method, path, **kw):
+        params = kw.get("params") or {}
+        if method == "GET" and path == f"{BASE}/files/changes":
+            assert params == {"since": "v1:100", "limit": 1000}
+            return jresult(200, {"items": [], "deleted": [], "cursor": "v1:100"})
+        return full(method, path, **kw)
+
+    fake = FakeCtl(resp)
+    eng = make_engine(
+        tmp_path, fake, clock,
+        state=state_with(6, {"a.txt": "e1"}, {}, cursor="v1:100"),
+    )
+    res = eng.run_once()
+    assert res["skipped"] == "no-changes"
+    # 不拉 manifest、不拉 recursive listing、零下载零上传
+    assert not any(p == f"{BASE}/sync/manifest" for _, p, _ in fake.calls)
+    assert not any(p == f"{BASE}/files" for _, p, _ in fake.calls)
+    # state：cursor 更新 + lastRunAt + generation 盖戳，etags 原样携带
+    st = json.loads((eng.root / ".sync" / "state.json").read_text(encoding="utf-8"))
+    rec = st["humans"][HUMAN]
+    assert rec["cursor"] == "v1:100"
+    assert rec["lastRunAt"] == _iso(clock())
+    assert rec["generation"] == 7
+    assert rec["etags"] == {"a.txt": "e1"}
+    # 二轮：generation 已对齐 → same-generation（不再请求 changes）
+    res2 = eng.run_once()
+    assert res2["skipped"] == "same-generation"
+    assert _changes_calls(fake) == 1
+
+
+def test_changes_410_full_sync_then_latest_cursor(tmp_path):
+    """② 410 CursorExpired → 清 cursor 走一次全量对账，成功后写入
+    响应的 latest 作为新 cursor。"""
+    clock = Clock()
+    full = _full_path_responder(
+        generation=9,
+        listing=[{"path": "files/n.txt", "size": 3, "etag": "e-new"}],
+        presign_get={"n.txt": b"abc"},
+    )
+
+    def resp(method, path, **kw):
+        if method == "GET" and path == f"{BASE}/files/changes":
+            return jresult(410, {"code": "CursorExpired", "latest": "v1:900"})
+        return full(method, path, **kw)
+
+    fake = FakeCtl(resp)
+    eng = make_engine(
+        tmp_path, fake, clock,
+        state=state_with(8, {}, {}, cursor="v1:1"),
+    )
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert res["downloaded"] == 1  # 全量对账确实执行
+    assert (eng.files_dir / "n.txt").read_bytes() == b"abc"
+    st = json.loads((eng.root / ".sync" / "state.json").read_text(encoding="utf-8"))
+    rec = st["humans"][HUMAN]
+    assert rec["cursor"] == "v1:900"  # 旧游标被清，latest 接管
+    assert rec["generation"] == 9
+
+
+def test_changes_404_fallback_full_and_no_repeat_probe(tmp_path):
+    """③ 404 → 老控制器无端点：本轮回落全量（不抛错），本进程后续
+    不再请求 changes。"""
+    clock = Clock()
+    gen = {"n": 3}
+
+    def resp(method, path, **kw):
+        params = kw.get("params") or {}
+        if method == "GET" and path == f"{BASE}/files/changes":
+            return jresult(404, {"error": "not found"})
+        if method == "GET" and path == f"{BASE}/sync/status":
+            return jresult(200, {"generation": gen["n"]})
+        if method == "GET" and path == f"{BASE}/sync/manifest":
+            return jresult(200, {"entries": []}, {"ETag": "M1"})
+        if method == "PUT" and path == f"{BASE}/sync/manifest":
+            return jresult(200, {"ok": True})
+        if (
+            method == "GET"
+            and path == f"{BASE}/files"
+            and params.get("recursive") == "1"
+        ):
+            return jresult(200, {"entries": []})
+        return jresult(404, {"error": "unhandled"})
+
+    fake = FakeCtl(resp)
+    eng = make_engine(
+        tmp_path, fake, clock,
+        state=state_with(2, {}, {}, cursor="v1:50"),
+    )
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert _changes_calls(fake) == 1  # 第 1 轮探测一次（404）
+    # 第 2 轮：generation 再涨 → 再次走全量，但不再请求 changes
+    gen["n"] += 1
+    res2 = eng.run_once()
+    assert res2.get("error") is None
+    assert _changes_calls(fake) == 1
+    # cursor 保留在 state（端点缺失不销毁，供后续控制器升级后使用）
+    st = json.loads((eng.root / ".sync" / "state.json").read_text(encoding="utf-8"))
+    assert st["humans"][HUMAN]["cursor"] == "v1:50"
+
+
+def test_changes_network_error_falls_back_full(tmp_path):
+    """④ changes 网络异常 → 不降级失败，回落全量路径；保留 cursor
+    （下轮再探测），且不重试。"""
+    clock = Clock()
+    full = _full_path_responder(
+        generation=4,
+        listing=[{"path": "files/m.txt", "size": 2, "etag": "e-m"}],
+        presign_get={"m.txt": b"ok"},
+    )
+
+    def resp(method, path, **kw):
+        if method == "GET" and path == f"{BASE}/files/changes":
+            raise ConnectionError("connection reset by peer")
+        return full(method, path, **kw)
+
+    fake = FakeCtl(resp)
+    eng = make_engine(
+        tmp_path, fake, clock,
+        state=state_with(3, {}, {}, cursor="v1:77"),
+    )
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert res["downloaded"] == 1
+    assert _changes_calls(fake) == 1  # 异常后不重试
+    st = json.loads((eng.root / ".sync" / "state.json").read_text(encoding="utf-8"))
+    assert st["humans"][HUMAN]["cursor"] == "v1:77"  # 保留，下轮再探测
+
+
+def test_changes_delta_counts_and_full_reconcile(tmp_path):
+    """⑤ 有增量（items/deleted 非空）→ 返回 delta 计数，仍完成全量
+    对账，成功后写入增量响应的 cursor。"""
+    clock = Clock()
+    full = _full_path_responder(
+        generation=5,
+        listing=[
+            {"path": "files/u.txt", "size": 5, "etag": "e-u"},
+            {"path": "files/v.txt", "size": 4, "etag": "e-v"},
+        ],
+        presign_get={"u.txt": b"12345", "v.txt": b"6789"},
+    )
+
+    def resp(method, path, **kw):
+        if method == "GET" and path == f"{BASE}/files/changes":
+            return jresult(
+                200,
+                {
+                    "items": [
+                        {"path": "files/u.txt", "size": 5, "etag": "e-u", "op": "put"},
+                        {"path": "files/v.txt", "size": 4, "etag": "e-v", "op": "put"},
+                    ],
+                    "deleted": ["files/x.md"],
+                    "cursor": "v1:200",
+                },
+            )
+        return full(method, path, **kw)
+
+    fake = FakeCtl(resp)
+    eng = make_engine(
+        tmp_path, fake, clock,
+        state=state_with(4, {}, {}, cursor="v1:150"),
+    )
+    res = eng.run_once()
+    assert res.get("error") is None
+    assert res["delta"] == {"items": 2, "deleted": 1}
+    # 全量对账仍完成：2 文件下载 + manifest 条件写回
+    assert res["downloaded"] == 2
+    puts = [c for c in fake.calls if c[0] == "PUT" and c[1] == f"{BASE}/sync/manifest"]
+    assert len(puts) == 1
+    st = json.loads((eng.root / ".sync" / "state.json").read_text(encoding="utf-8"))
+    assert st["humans"][HUMAN]["cursor"] == "v1:200"
+
+
+def test_changes_400_clears_cursor_full_sync(tmp_path):
+    """400 InvalidCursor → 按游标损坏处理：清 cursor、走全量；无新游标
+    来源，state.cursor 写回 null，后续不再探测。"""
+    clock = Clock()
+    full = _full_path_responder(generation=6)
+
+    def resp(method, path, **kw):
+        if method == "GET" and path == f"{BASE}/files/changes":
+            return jresult(400, {"code": "InvalidCursor"})
+        return full(method, path, **kw)
+
+    fake = FakeCtl(resp)
+    eng = make_engine(
+        tmp_path, fake, clock,
+        state=state_with(5, {"a.txt": "e1"}, {}, cursor="v1:broken"),
+    )
+    res = eng.run_once()
+    assert res.get("error") is None
+    st = json.loads((eng.root / ".sync" / "state.json").read_text(encoding="utf-8"))
+    assert st["humans"][HUMAN]["cursor"] is None  # 已清
+    # 二轮：无 cursor → 不再请求 changes
+    res2 = eng.run_once()
+    assert res2["skipped"] == "same-generation"
+    assert _changes_calls(fake) == 1

@@ -12,6 +12,11 @@ QwenPaw插件存储与缓存-设计-20261107.md（SYNC-STORE 根布局 + 缓存�
   搬一次（sync_store.migrate_root），state.json 记 ``migratedFrom``。
 - 服务端只存清单不合并（#1499）；写回是条件 PUT（``If-Match`` → 412 本轮
   结束并标记 retry，**不循环**，下一轮重来）。
+- 增量探测（契约见 controller human_files_changes_handler.go）：每轮拉
+  manifest 前 GET ``files/changes?since=<cursor>``——无变更 → 本轮直接结束；
+  有变更 → 仍走全量对账（delta 只计数供观测）；410/400 → 清 cursor 走全量；
+  404/405 → 老控制器无端点，进程级标记后回落全量路径。cursor 记在
+  state.json 的 per-human 记录（不透明，原样回传）。
 - 命名：仓库已有 ``sync_watcher.py``（Matrix /sync 长轮询）易混 → 本单模块名
   ``file_sync_engine``，钩子名 ``agentteams-file-sync``。
 
@@ -58,6 +63,10 @@ JITTER_SECONDS = 30.0
 DEFAULT_HUMAN = "luo"
 # 禁入目录（设计 §6 路径校验：.trash/.sync/.control 不同步）。
 _FORBIDDEN_ROOTS = (".trash", ".sync", ".control")
+# 增量探测页大小（files/changes?since=<cursor>&limit=1000）。items/deleted
+# 非空一律走全量对账；变更超一页时，下一轮探测从响应 cursor 续接，逐轮
+# 收敛。
+CHANGES_PAGE_LIMIT = 1000
 
 
 # ── 时间/路径工具 ─────────────────────────────────────────────────────
@@ -402,6 +411,10 @@ class SyncEngine:
             self._save_state(st)
         self._holding_lock = False
         self._last_error: Optional[str] = None
+        # 老控制器无 files/changes 端点（探测 404/405）：进程级标记——
+        # 一旦置位，本进程及后续各轮跳过增量探测直接走全量路径
+        # （不重试、不每轮打日志）。
+        self._changes_unavailable = False
         # S6 进度统计——引擎可能被后台循环线程与 API 工作线程同时读写，
         # 全部经 _stats_lock（threading.Lock）。
         self._stats_lock = threading.Lock()
@@ -417,6 +430,7 @@ class SyncEngine:
 
         顶层字段取自新顶层 state（``_save_state`` 盖戳）；旧形状
         state.json（无顶层字段）回退 per-human 记录，向后兼容。
+        ``cursor``（增量游标）优先取 per-human 记录，回退遗留顶层字段。
         """
         st = self._load_state()
         rec = (st.get("humans") or {}).get(self.human) or {}
@@ -430,7 +444,7 @@ class SyncEngine:
             "files": len(etags),
             "conflicts": self._conflict_count(),
             "lastRunAt": st.get("lastRunAt") or rec.get("lastRunAt"),
-            "cursor": st.get("cursor"),
+            "cursor": rec.get("cursor") or st.get("cursor"),
             "migratedFrom": st.get("migratedFrom"),
             "lastError": self._last_error,
             "locked": self._lock_held(),
@@ -765,9 +779,11 @@ class SyncEngine:
         - 控制器无清单接口（404/405/501）→ ``{"enabled": False, "reason":
           "controller_without_manifest"}``（**不重试**）
         - generation 未变 → ``{"skipped": "same-generation"}``
+        - cursor 存在且增量探测无变更 → ``{"skipped": "no-changes"}``
+          （不拉 manifest、不扫目录）
         - 清单写回 412 → ``{"retry": True, ...计数}``（本轮结束，不循环）
         - 正常 → ``{changed, downloaded, uploaded, conflicts, skipped,
-          retry: False, generation, lastRunAt}``
+          retry: False, generation, lastRunAt, delta?}``
         - 异常 → ``{"error": "..."}``（吞掉不抛，宿主不受影响）
         """
         if not self._acquire_lock():
@@ -979,6 +995,48 @@ class SyncEngine:
         rec = (st.get("humans") or {}).get(self.human) or {}
         if generation is not None and generation == rec.get("generation"):
             return {"skipped": "same-generation"}
+
+        # 1.5) 增量探测（拉 manifest 之前）：per-human cursor →
+        #      GET files/changes?since=<cursor>&limit=1000（契约见
+        #      _probe_changes；cursor 不透明、原样回传）。
+        #      - 无变更 → 本轮直接结束（不拉 manifest、不扫目录）；
+        #      - items/deleted 非空 → 全量对账（本轮不实现「只应用
+        #        增量」，正确性优先），计数记入返回 delta；
+        #      - 410 过期 / 400 损坏 → 清 cursor 走全量；
+        #      - 404/405 → 进程级标记无端点，本轮及后续走全量；
+        #      - 网络异常 → 不降级失败，走全量。
+        raw_cursor = rec.get("cursor")
+        cursor = raw_cursor if isinstance(raw_cursor, str) and raw_cursor else None
+        probe = self._probe_changes(cursor)
+        if probe["outcome"] == "no-changes":
+            # 无变更：更新 cursor（原样回传）与 lastRunAt；generation 盖戳
+            # （探测已证明无文件变更，下轮走 same-generation 跳过），
+            # etags/local 原样携带。
+            last_run_at = _iso(self._now())
+            st.setdefault("humans", {})[self.human] = {
+                "generation": generation,
+                "etags": rec.get("etags") or {},
+                "local": rec.get("local") or {},
+                "cursor": probe["cursor"],
+                "lastRunAt": last_run_at,
+            }
+            self._save_state(st)
+            return {"skipped": "no-changes", "lastRunAt": last_run_at}
+        # 本轮全量成功后要写入的 cursor：默认保留旧值——
+        # 410 → 响应的 latest（无 latest 则保持清空）；400 → 清空；
+        # delta → 增量响应 cursor（探测时刻、对账之前：落在探测与
+        # 全量完成间隙的变更，下轮 since 仍早于它们会被再次探测到，
+        # 至多多一轮全量，不会漏变更）。
+        next_cursor = cursor
+        delta: Optional[Dict[str, int]] = None
+        if probe["outcome"] == "delta":
+            delta = probe["delta"]
+            if probe.get("cursor"):
+                next_cursor = probe["cursor"]
+        elif probe["outcome"] == "expired":
+            next_cursor = probe.get("cursor")
+        elif probe["outcome"] == "invalid":
+            next_cursor = None
 
         # 2) manifest（响应头 ETag 用于条件写回——真实实现走 httpx 直连）。
         #
@@ -1207,21 +1265,130 @@ class SyncEngine:
         if r.status_code not in (200, 201):
             return {"error": f"sync/manifest PUT HTTP {r.status_code}", **counts}
 
-        # 6) 更新 state（generation/etags/lastRunAt），释放锁在 run_once。
+        # 6) 更新 state（generation/etags/cursor/lastRunAt），释放锁在
+        #    run_once。cursor = next_cursor（按 1.5 探测结果：410 → latest、
+        #    400 → 清空、delta → 响应 cursor、其余保留旧值）——全量失败
+        #    （409/412/错误）走上面的提前返回，不更新 state。
         last_run_at = _iso(self._now())
         st.setdefault("humans", {})[self.human] = {
             "generation": generation,
             "etags": new_etags,
             "local": new_local,
+            "cursor": next_cursor,
             "lastRunAt": last_run_at,
         }
         self._save_state(st)
-        return {
+        out: Dict[str, Any] = {
             "retry": False,
             **counts,
             "generation": generation,
             "lastRunAt": last_run_at,
         }
+        if delta is not None:
+            out["delta"] = delta
+        return out
+
+    # ── 增量探测（files/changes?since=<cursor>）──────────────────────
+
+    def _probe_changes(self, cursor: Optional[str]) -> Dict[str, Any]:
+        """一轮前置增量探测（契约：controller 的
+        human_files_changes_handler.go）。
+
+        ``GET /api/v1/humans/{h}/files/changes?since=<cursor>&limit=1000``：
+        - 200 → ``{items, deleted, cursor}``；items/deleted 均空 = 无变更
+          （cursor 原样回传，客户端零字节往返）；
+        - 400 ``InvalidCursor`` → since 缺/非法（按游标损坏处理：调用方
+          清 cursor 走全量并记 warning）；
+        - 410 ``CursorExpired`` → 游标早于保留窗（7 天/20000 条），响应
+          ``latest`` 为可再用的新游标；
+        - 404/405 → 老控制器无此端点 → 进程级标记
+          ``_changes_unavailable``（本进程及后续轮跳过探测直接走全量，
+          不重试、不每轮打日志）。
+        响应路径均带 ``files/`` 前缀；changeID 字典序=时间序，但游标对
+        客户端不透明（原样回传，本地不解析）。网络异常 → probe-error
+        （调用方回落全量，不当失败）。
+
+        返回 ``{"outcome": ..., ...}``：
+        - ``no-cursor``（无 cursor，首次）/ ``no-endpoint``（端点不可用）；
+        - ``no-changes`` + ``cursor``（回传值）；
+        - ``delta`` + ``delta: {items, deleted}`` + ``cursor``（响应值，
+          可能缺）；
+        - ``expired`` + ``cursor``（latest，可能为 None）；
+        - ``invalid``（400）/ ``probe-error``（网络/其他异常）。
+        """
+        if self._changes_unavailable:
+            return {"outcome": "no-endpoint"}
+        if not cursor:
+            return {"outcome": "no-cursor"}
+        try:
+            r = self.ctl_call(
+                "GET",
+                f"/api/v1/humans/{self.human}/files/changes",
+                params={"since": cursor, "limit": CHANGES_PAGE_LIMIT},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("file sync changes probe failed: %s", exc)
+            return {"outcome": "probe-error"}
+        if r.status_code == 200:
+            try:
+                body = r.json()
+            except Exception:  # noqa: BLE001 - 非 JSON body 按探测失败
+                body = None
+            if not isinstance(body, dict):
+                return {"outcome": "probe-error"}
+            items = body.get("items")
+            deleted = body.get("deleted")
+            items = items if isinstance(items, list) else []
+            deleted = deleted if isinstance(deleted, list) else []
+            resp_cursor = body.get("cursor")
+            resp_cursor = (
+                resp_cursor if isinstance(resp_cursor, str) and resp_cursor else None
+            )
+            if not items and not deleted:
+                # 无变更：本轮直接结束（cursor 原样回传）。
+                return {
+                    "outcome": "no-changes",
+                    "cursor": resp_cursor or cursor,
+                }
+            # 非空：本轮仍走全量对账（不实现「只应用增量」），只回计数
+            # 供观测。
+            return {
+                "outcome": "delta",
+                "delta": {"items": len(items), "deleted": len(deleted)},
+                "cursor": resp_cursor,
+            }
+        if r.status_code == 410:
+            latest: Optional[str] = None
+            try:
+                body = r.json()
+                if isinstance(body, dict):
+                    v = body.get("latest")
+                    if isinstance(v, str) and v:
+                        latest = v
+            except Exception:  # noqa: BLE001
+                pass
+            return {"outcome": "expired", "cursor": latest}
+        if r.status_code in (404, 405):
+            self._changes_unavailable = True
+            logger.info(
+                "file sync: controller has no files/changes endpoint (HTTP %s) "
+                "— this process falls back to full sync",
+                r.status_code,
+            )
+            return {"outcome": "no-endpoint"}
+        if r.status_code == 400:
+            logger.warning(
+                "file sync changes probe HTTP 400 (InvalidCursor) — cursor "
+                "treated as corrupt, cleared; falling back to full sync "
+                "(human=%s)",
+                self.human,
+            )
+            return {"outcome": "invalid"}
+        logger.debug(
+            "file sync changes probe HTTP %s — falling back to full sync",
+            r.status_code,
+        )
+        return {"outcome": "probe-error"}
 
     # ── manifest 宽松解析 / 重建 ─────────────────────────────────────
 
