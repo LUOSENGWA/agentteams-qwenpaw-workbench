@@ -3,6 +3,15 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.124 (Millforge workbench refactor · 2026-11-07)
+
+**Changed**
+- The Millforge entry in the team topology is now a single card button: one `<button>` (minHeight 56, hover/focus-visible/disabled, trailing ›) instead of a card with an inner "Open Millforge injection" button.
+- The Millforge dialog now has four tabs: Inject / Custom team / Module updates / Injection history, each scrolling independently (66vh); dialog width 960.
+- Module updates moved out of Settings into the dialog: `ModuleUpdatesBody({ defaultTeam, autoLoad })`, team plane defaults to the current team, all three planes (team / manager / worker) retained; Settings no longer mounts it.
+- Removed the unmounted `CrdManage.tsx` and the `ModuleUpdatesPanel` forwarding shell; the CRD create-team section and row action are unchanged.
+
+**Tests**: vitest 195 passed · `tsc --noEmit` clean · `npm run build` clean.
 ## 0.5.0-beta.16.123 (2026-11-07 · upload queue / tree batch)
 
 **Added**

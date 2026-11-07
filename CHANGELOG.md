@@ -3,6 +3,15 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.124（千锻工作台重构 · 2026-11-07）
+
+**变更**
+- 团队管理 → 团队拓扑的「千锻」入口改为整卡按钮：单个 `<button>`（minHeight 56、hover/focus-visible/disabled、右侧 ›），不再有内嵌「打开千锻注入」小按钮。
+- 千锻弹窗改为四个 tab：注入 / 自定义团队 / 模块更新 / 注入历史；每 tab 独立滚动（66vh），弹窗宽 960。
+- 模块更新从设置页搬入弹窗：`ModuleUpdatesBody({ defaultTeam, autoLoad })`，团队面默认当前团队，三平面（团队 / manager / worker）全保留；设置页不再挂载。
+- 删除无挂载的 `CrdManage.tsx` 与 `ModuleUpdatesPanel` 转发壳；CRD 建队折叠区与行操作保持不变。
+
+**测试**：vitest 195 passed · `tsc --noEmit` 0 · `npm run build` 0。
 ## 0.5.0-beta.16.123（2026-11-07 · 上传队列 / 树视图批量）
 
 **新增**
