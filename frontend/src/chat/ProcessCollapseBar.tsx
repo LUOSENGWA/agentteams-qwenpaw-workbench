@@ -8,6 +8,10 @@
  *
  * 数据源：buildTurns 吸收的 turn.toolCalls（SSE 帧 → RoomMessage
  * 工具帧，口径不变）；经 aggregateToolCalls 配对 call/result。
+ *
+ * 思考过程：turn 内的 m.notice 推理帧（isThinkingNotice 启发式）由调用方
+ * 抽取为 thoughts 传入——并入同一条折叠（`🧠 思考过程 · 🔧 N 次工具调用`），
+ * 展开区先思考段、再工具行；不再作为红色/斜体正文气泡刷屏。
  */
 import type { AggregatedCall, ToolCall } from "./ChatIR";
 import { aggregateToolCalls } from "./ChatIR";
@@ -117,12 +121,33 @@ function barSpanSec(agg: AggregatedCall[]): number | null {
   return Math.max(0, (last - first) / 1000);
 }
 
-export function ProcessCollapseBar({ calls }: { calls: ToolCall[] }) {
+export function ProcessCollapseBar({
+  calls,
+  thoughts,
+}: {
+  calls: ToolCall[];
+  /** 本 turn 的思考段（已去前缀；调用方 sort 保持原序）。 */
+  thoughts?: string[];
+}) {
   const t = useThemeColors();
   const tr = useT();
   const [open, setOpen] = React.useState(false);
   const agg = React.useMemo(() => aggregateToolCalls(calls), [calls]);
   const span = React.useMemo(() => barSpanSec(agg), [agg]);
+  const notes = thoughts ?? [];
+  const hasThoughts = notes.length > 0;
+  const hasCalls = agg.length > 0;
+  const callsLabel =
+    span != null
+      ? tr("{n} 次工具调用 · {x}s", { n: agg.length, x: span.toFixed(1) })
+      : tr("{n} 次工具调用", { n: agg.length });
+  const title = hasThoughts
+    ? hasCalls
+      ? tr("点击展开思考过程与工具调用详情")
+      : tr("点击展开思考过程")
+    : open
+      ? tr("收起")
+      : tr("点击展开工具调用详情");
   return (
     <div
       onClick={() => setOpen((v) => !v)}
@@ -137,15 +162,28 @@ export function ProcessCollapseBar({ calls }: { calls: ToolCall[] }) {
         color: t.textSecondary,
         userSelect: "none",
       }}
-      title={open ? tr("收起") : tr("点击展开工具调用详情")}
+      title={title}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 12, flexShrink: 0 }}>🔧</span>
-        <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
-          {span != null
-            ? tr("{n} 次工具调用 · {x}s", { n: agg.length, x: span.toFixed(1) })
-            : tr("{n} 次工具调用", { n: agg.length })}
-        </span>
+        {hasThoughts ? (
+          <>
+            <span style={{ fontSize: 12, flexShrink: 0 }}>🧠</span>
+            <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+              {tr("思考过程")}
+            </span>
+          </>
+        ) : null}
+        {hasThoughts && hasCalls ? (
+          <span style={{ color: "#bbb", flexShrink: 0 }}>·</span>
+        ) : null}
+        {hasCalls ? (
+          <>
+            <span style={{ fontSize: 12, flexShrink: 0 }}>🔧</span>
+            <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+              {callsLabel}
+            </span>
+          </>
+        ) : null}
         <span style={{ flex: 1 }} />
         <span style={{ color: "#bbb", fontSize: 11, flexShrink: 0 }}>{open ? "▲" : "▼"}</span>
       </div>
@@ -159,6 +197,40 @@ export function ProcessCollapseBar({ calls }: { calls: ToolCall[] }) {
       >
         <div style={{ overflow: "hidden", minHeight: 0 }}>
           <div style={{ padding: "4px 0 2px" }}>
+            {/* 思考段在前：每段一个 pre（中性底/边框，非红非斜体）；
+                点击不冒泡到折叠头——选中文本/滚动不该收起整个过程条。 */}
+            {hasThoughts ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 6,
+                  paddingBottom: hasCalls ? 4 : 0,
+                }}
+              >
+                {notes.map((note, i) => (
+                  <pre
+                    key={`thought-${i}`}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      margin: 0,
+                      padding: "8px 10px",
+                      background: t.toolBg,
+                      border: `1px solid ${t.border}`,
+                      borderRadius: 6,
+                      color: t.textSecondary,
+                      fontSize: 12,
+                      fontStyle: "normal",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      maxHeight: 240,
+                      overflow: "auto",
+                    }}
+                  >
+                    {note}
+                  </pre>
+                ))}
+              </div>
+            ) : null}
             {agg.map((call) => (
               <CallRow key={call.key} call={call} />
             ))}

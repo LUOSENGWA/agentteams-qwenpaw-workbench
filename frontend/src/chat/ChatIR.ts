@@ -172,3 +172,58 @@ export function aggregateToolCalls(calls: ToolCall[]): AggregatedCall[] {
   }
   return out;
 }
+
+// ── 思考过程识别（m.notice 推理帧 → 过程折叠条）────────────────────
+//
+// 适配器没发结构化 run 块（协议 opt-in，qwenpaw 侧未采用），只能启发式：
+// - 前缀：流式推理结束帧 body = `Thinking:\n\n<text>`；老格式 `[thinking]`；
+// - 长度：completed 推理帧 = m.notice + 推理原文（无前缀）——worker 发来的
+//   长文本 notice 视为思考；短 notice（ACL 拒绝/操作提示）保持原样渲染。
+// 自己的消息（mine）永不吸收：自己写的 notice 就是正文。
+
+/** 长文本启发式阈值（字符）——低于它的 worker notice 视为提示而非推理。 */
+const THINKING_NOTICE_MIN_LENGTH = 200;
+
+/** thinking 前缀（流式结束帧 `Thinking:` / 老格式 `[thinking]`）。 */
+const THINKING_PREFIX_RE = /^(?:Thinking:|\[thinking\])/i;
+
+/** 待判定消息：RoomMessage 带 msgtype；ChatMessage 把 msgtype 存在 type。 */
+export interface ThinkingNoticeLike {
+  sender?: string;
+  body?: string;
+  msgtype?: string;
+  /** ChatMessage 侧的 msgtype 别名（roomMessagesToIR 写入）。 */
+  type?: string;
+}
+
+/**
+ * 是否「思考过程」notice（应吸收进过程折叠条、不再独立成正文气泡）。
+ * - 自己的消息 → false；
+ * - 非 m.notice → false；
+ * - body 带 thinking 前缀 → true（不看发送者/长度）；
+ * - worker 发送且 body ≥ 阈值 → true；
+ * - 其它 → false（短 notice / 未知发送者照旧渲染）。
+ */
+export function isThinkingNotice(
+  msg: ThinkingNoticeLike,
+  mine: boolean,
+  workerMxids: Record<string, unknown>,
+): boolean {
+  if (mine) return false;
+  const msgtype = msg.msgtype ?? msg.type ?? "";
+  if (msgtype !== "m.notice") return false;
+  const body = msg.body ?? "";
+  if (THINKING_PREFIX_RE.test(body)) return true;
+  const sender = msg.sender ?? "";
+  if (!sender || !Object.prototype.hasOwnProperty.call(workerMxids, sender)) {
+    return false;
+  }
+  return body.length >= THINKING_NOTICE_MIN_LENGTH;
+}
+
+/** 去掉 thinking 前缀及其后的空行（trim 收口），返回折叠条展示文本。 */
+export function stripThinkingPrefix(body: string): string {
+  const text = body || "";
+  const m = THINKING_PREFIX_RE.exec(text);
+  return (m ? text.slice(m[0].length) : text).trim();
+}

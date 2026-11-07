@@ -1237,14 +1237,14 @@ function MessageBody({
     );
   }
   if (msg.msgtype !== "m.text") {
-    // m.notice: silent notification — render as muted italic (no protocol type name)
+    // m.notice: silent notification — render as muted italic (no protocol type name).
+    // 思考过程 notice（Thinking 前缀 / worker 长推理）已由 RoomChatMessages
+    // 吸收进过程折叠条（isThinkingNotice），不再在这里判死——漏网（有回复 /
+    // 自己发的 / 短提示）仍按普通 notice 渲染。
     if (msg.msgtype === "m.notice") {
-      const body = msg.body || "";
-      // Legacy thinking messages (pre-#1450) — do not render
-      if (body.startsWith("Thinking:") || body.startsWith("[thinking]")) return null;
       return (
         <div style={{ color: t.textSecondary, fontSize: 12, fontStyle: "italic", opacity: 0.65 }}>
-          {body}
+          {msg.body || ""}
         </div>
       );
     }
