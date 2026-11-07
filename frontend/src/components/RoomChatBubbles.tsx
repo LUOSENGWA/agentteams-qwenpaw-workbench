@@ -27,17 +27,20 @@ import {
   CloseIcon,
   ClipIcon,
   PictureIcon,
+  PlayIcon,
   WrenchIcon,
   ShieldIcon,
   DocIcon,
   MessageIcon,
 } from "./icons";
+import { mediaKindOf, type MediaKind } from "../lib/mediaGallery";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { type WorkerSessionState } from "../workerSessionState";
 import { WbTooltip } from "./WbTooltip";
 import {
   CARD_RADIUS,
   PRIMARY,
+  formatTime,
   isToolMessage,
   parseApproval,
   senderShortName,
@@ -586,6 +589,241 @@ export class BubbleBoundary extends React.Component<
   }
 }
 
+/** 消息文件/媒体动作统一走这里：插件路径（apiPath）经 host.fetch blob
+ * 下载（带鉴权）；纯直链才回落 a[href]（跨域 a[download] 会变导航，
+ * 但 resolveFileTarget 对 http 直链同样给代抓 apiPath，实际极少走到）。 */
+function DownloadAction({
+  apiPath,
+  url,
+  name,
+  label,
+}: {
+  apiPath?: string;
+  url?: string;
+  name: string;
+  label?: string;
+}) {
+  const tr = useT();
+  return (
+    <ActionBtn
+      icon={<DownloadOutlined />}
+      label={label || tr("下载")}
+      href={apiPath ? undefined : url || undefined}
+      disabled={!apiPath && !url}
+      download={name}
+      onClick={
+        apiPath
+          ? (e) => {
+              e.preventDefault();
+              void (async () => {
+                const ok = await downloadViaHost(apiPath, name);
+                if (!ok) antd.message.error(tr("下载失败，请稍后重试"));
+              })();
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+/** 产物验收（交付闭环）：Agent 交付的 m.file 卡下方的接受/修改意见条。
+ * 状态自持——媒体分支与附件卡共用同一套交互。 */
+function DeliverableBar({
+  msg,
+  onDeliverable,
+}: {
+  msg: RoomMessage;
+  onDeliverable: (
+    msg: RoomMessage,
+    action: "accept" | "revise",
+    text?: string,
+  ) => void;
+}) {
+  const tr = useT();
+  const [revising, setRevising] = React.useState(false);
+  const [note, setNote] = React.useState("");
+  const [accepted, setAccepted] = React.useState(false);
+  if (accepted) {
+    return (
+      <div style={{ fontSize: 12, color: "#52c41a" }}>
+        <CheckIcon size={12} style={{ color: "#52c41a", verticalAlign: "-1px" }} />{" "}
+        {tr("已接受")}
+      </div>
+    );
+  }
+  if (revising) {
+    return (
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <antd.Input
+          size="small"
+          value={note}
+          autoFocus
+          placeholder={tr("修改意见…")}
+          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+            setNote(e.target.value)
+          }
+          onKeyDown={(e: ReactNS.KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === "Enter") {
+              onDeliverable(msg, "revise", note.trim() || undefined);
+              setRevising(false);
+              setNote("");
+            }
+            if (e.key === "Escape") setRevising(false);
+          }}
+          style={{ flex: 1, fontSize: 12 }}
+        />
+        <antd.Button
+          size="small"
+          type="primary"
+          style={{ backgroundColor: PRIMARY, borderColor: PRIMARY }}
+          onClick={() => {
+            onDeliverable(msg, "revise", note.trim() || undefined);
+            setRevising(false);
+            setNote("");
+          }}
+        >
+          {tr("发送")}
+        </antd.Button>
+        <antd.Button size="small" onClick={() => setRevising(false)}>
+          {tr("取消")}
+        </antd.Button>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      <antd.Button
+        size="small"
+        style={{
+          backgroundColor: "#52c41a",
+          borderColor: "#52c41a",
+          color: "#fff",
+        }}
+        onClick={() => {
+          onDeliverable(msg, "accept");
+          setAccepted(true);
+        }}
+      >
+        <CheckIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("接受")}
+      </antd.Button>
+      <antd.Button size="small" onClick={() => setRevising(true)}>
+        <DocIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("修改意见")}
+      </antd.Button>
+    </div>
+  );
+}
+
+/** 视频/音频消息内播放器（m.video/m.audio 及音视频类 m.file）：
+ * 原生 controls、深色底、不自动播放（autoplay 在聊天流里会连环抢音）。
+ * src 是媒体代理 blob objectURL（裸 mxc 地址播放器带不了鉴权头）。 */
+function MediaPlaybackCard({
+  kind,
+  src,
+  name,
+  metaLine,
+  apiPath,
+  url,
+}: {
+  kind: "video" | "audio";
+  src: string;
+  name: string;
+  metaLine: string;
+  apiPath?: string;
+  url?: string;
+}) {
+  const t = useThemeColors();
+  const tr = useT();
+  return (
+    <div style={{ display: "grid", gap: 6, width: "100%", maxWidth: 320 }}>
+      <div
+        style={{
+          background: "#111",
+          borderRadius: 10,
+          display: "grid",
+          placeItems: "center",
+          padding: kind === "audio" ? 8 : 0,
+          minHeight: kind === "audio" ? 56 : undefined,
+          overflow: "hidden",
+        }}
+      >
+        {kind === "video" ? (
+          <video
+            src={src}
+            controls
+            preload="metadata"
+            playsInline
+            aria-label={name}
+            style={{
+              display: "block",
+              width: "100%",
+              maxWidth: 320,
+              maxHeight: 240,
+              background: "#111",
+            }}
+          />
+        ) : (
+          <audio
+            src={src}
+            controls
+            preload="metadata"
+            aria-label={name}
+            style={{ display: "block", width: "100%", maxWidth: 320 }}
+          />
+        )}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 12,
+          color: t.textSecondary,
+          minWidth: 0,
+        }}
+      >
+        <PlayIcon size={12} style={{ flexShrink: 0 }} />
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={name}
+        >
+          {name}
+        </span>
+        {metaLine ? <span style={{ flexShrink: 0 }}>{metaLine}</span> : null}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <DownloadAction apiPath={apiPath} url={url} name={name} label={tr("下载")} />
+      </div>
+    </div>
+  );
+}
+
+/** 附件卡类型图标：mimetype 先判，回落扩展名（Worker 附件常不带
+ * mimetype）。文档类用 DocIcon，压缩包用 ClipIcon，其余文件用通用图标。 */
+const DOC_LIKE_EXT = new Set([
+  "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "log",
+  "md", "markdown", "json", "csv", "tsv", "yaml", "yml", "xml", "html",
+  "htm", "ts", "tsx", "js", "jsx", "py", "go", "rs", "sh", "sql",
+]);
+const ARCHIVE_EXT = new Set(["zip", "tar", "gz", "tgz", "rar", "7z", "bz2", "xz"]);
+
+function attachmentIcon(name: string, kind: MediaKind): ReactNS.ReactNode {
+  if (kind === "image") return <PictureIcon size={20} style={{ color: PRIMARY }} />;
+  if (kind === "video" || kind === "audio") {
+    return <PlayIcon size={20} style={{ color: PRIMARY }} />;
+  }
+  const i = name.lastIndexOf(".");
+  const ext = i >= 0 ? name.slice(i + 1).toLowerCase() : "";
+  if (ARCHIVE_EXT.has(ext)) return <ClipIcon size={20} style={{ color: PRIMARY }} />;
+  if (DOC_LIKE_EXT.has(ext)) return <DocIcon size={20} style={{ color: PRIMARY }} />;
+  return <FileOutlined style={{ fontSize: 20, color: PRIMARY }} />;
+}
+
 /** 消息气泡主体：文本 / 图片 / 文件 / 审批卡片 / 其他。 */
 function MessageBody({
   msg,
@@ -598,6 +836,7 @@ function MessageBody({
   live,
   fileRefTeam,
   room,
+  onOpenMedia,
 }: {
   msg: RoomMessage;
   mine: boolean;
@@ -627,6 +866,8 @@ function MessageBody({
   /** ：该卡片 runId 对应的 live 工作流事件
  * （controller 正源，15s 轮询）→ 卡片状态/步骤/Worker 实时 overlay。 */
   live?: WorkflowEvent | null;
+  /** 点击图片 → 打开应用内灯箱（调用方按 event_id 算连续图片画廊）。 */
+  onOpenMedia?: (eventId: string) => void;
 }) {
   const tr = useT();
   const t = useThemeColors();
@@ -642,11 +883,9 @@ function MessageBody({
   // m.file 分支的 state 上提组件顶部——hooks 禁止在分支内
   // 条件调用：撤回（redaction）让同一事件改走 redacted 早退分支，
   // 分支 hook 数量变化 → React #310（Rendered fewer hooks than expected）
-  // 崩掉整个消息列表。上提后所有 msgtype 分支 hook 数量恒定。
+  // 崩掉整个消息列表。上提后所有 msgtype 分支 hook 数量恒定
+  // （交付验收条的 revising/note/accepted 已拆进 DeliverableBar 自持）。
   const [previewFile, setPreviewFile] = React.useState<PreviewFile | null>(null);
-  const [revising, setRevising] = React.useState(false);
-  const [note, setNote] = React.useState("");
-  const [accepted, setAccepted] = React.useState(false);
   // 撤回消息（redaction）——固定提示替代原内容（Element
   // 同款「This message was redacted」；优先级最高，workflow/审批/文件全不渲染）。
   if (msg.redacted) {
@@ -796,33 +1035,94 @@ function MessageBody({
       </>
     );
   }
-  if (msg.msgtype === "m.image" && msg.url) {
+  // 媒体消息分派（m.image / m.file / m.video / m.audio）：
+  // 图片（含 image/* 的 m.file）→ 内联缩略图 + 应用内灯箱；
+  // 视频/音频（含音视频类 m.file）→ 原生播放器；
+  // 其余 m.file → 附件卡。只有这四类参与——m.text 的 body 再像文件名也不当媒体。
+  const mediaMsg =
+    msg.msgtype === "m.image" ||
+    msg.msgtype === "m.file" ||
+    msg.msgtype === "m.video" ||
+    msg.msgtype === "m.audio";
+  const mediaKind: MediaKind = mediaMsg ? mediaKindOf(msg) : "file";
+  if (mediaMsg && mediaKind === "image" && msg.url) {
     // mxc 走 host.fetch blob → objectURL（img src 裸导航带不了
-    // 鉴权头，会落 SPA 兜底/401）；http 直链原样。
-    const thumb = fileSrc;
+    // 鉴权头，会落 SPA 兜底/401）；http 直链经代抓同样落 objectURL。
+    // 点击不再 window.open 新标签——交父级按 event_id 聚成画廊开灯箱。
+    const name = msg.filename || msg.body || tr("图片");
+    const metaLine = [formatSize(msg.size), msg.mimetype]
+      .filter(Boolean)
+      .join(" · ");
     return (
       <div style={{ display: "grid", gap: 6 }}>
         <img
-          src={thumb}
-          alt={msg.body || tr("图片")}
+          src={fileSrc}
+          alt={name}
           loading="lazy"
           style={{
             maxWidth: 320,
             maxHeight: 240,
             borderRadius: 8,
             objectFit: "cover",
-            cursor: "pointer",
-            border: mine ? "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 25%, transparent)" : `1px solid ${t.border}`,
+            cursor: onOpenMedia ? "zoom-in" : "default",
+            border: mine
+              ? "1px solid color-mix(in srgb, var(--app-accent, #FF7F16) 25%, transparent)"
+              : `1px solid ${t.border}`,
           }}
-          onClick={() => thumb && window.open(thumb, "_blank")}
+          onClick={() => onOpenMedia?.(msg.event_id)}
         />
-        <div style={{ fontSize: 12, color: t.textSecondary }}>
-          {msg.body || tr("图片")} · {tr("点击预览")} /{" "}
-          <a href={thumb} download={msg.body || "image"} style={{ color: PRIMARY }}>
-            下载
-          </a>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+            fontSize: 12,
+            color: t.textSecondary,
+          }}
+        >
+          <span
+            style={{
+              maxWidth: 200,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={name}
+          >
+            {name}
+          </span>
+          {metaLine ? <span>· {metaLine}</span> : null}
+          <span>· {tr("点击预览")}</span>
+          <DownloadAction apiPath={fileTarget.apiPath} url={fileTarget.url} name={name} />
         </div>
+        {/* Agent 以 m.file 交付的图片同样保留验收条（原 m.file 卡能力不丢）。 */}
+        {msg.msgtype === "m.file" && !mine && onDeliverable ? (
+          <DeliverableBar msg={msg} onDeliverable={onDeliverable} />
+        ) : null}
       </div>
+    );
+  }
+  if (
+    mediaMsg &&
+    (mediaKind === "video" || mediaKind === "audio") &&
+    msg.url
+  ) {
+    return (
+      <MediaPlaybackCard
+        kind={mediaKind}
+        src={fileSrc}
+        name={
+          msg.filename ||
+          msg.body ||
+          (mediaKind === "video" ? tr("视频") : tr("音频"))
+        }
+        metaLine={[formatSize(msg.size), msg.mimetype]
+          .filter(Boolean)
+          .join(" · ")}
+        apiPath={fileTarget.apiPath}
+        url={fileTarget.url}
+      />
     );
   }
   if (msg.msgtype === "m.file" && msg.url) {
@@ -831,9 +1131,17 @@ function MessageBody({
     // 直链也带 apiPath（media/proxy 服务端代抓绕 CORS）
     // → 下载统一走 host.fetch blob（跨域 a[download] 会变导航）。
     const url = fileTarget.url;
-    // 尺寸取自 msg.size（映射补的 content.info.size——
-    // 此前 formatSize(msg.info) 传对象恒 ""，文件卡尺寸从未显示过）。
-    const sizeLine = [formatSize(msg.size), msg.mimetype].filter(Boolean).join(" · ");
+    const fileName = msg.filename || msg.body || tr("附件");
+    // 元信息行：大小 · mimetype · 时间。尺寸取自 msg.size（映射补的
+    // content.info.size——此前 formatSize(msg.info) 传对象恒 ""）；
+    // 时间给「哪次交付」一个凭据（同批附件可分辨）。
+    const sizeLine = [
+      formatSize(msg.size),
+      msg.mimetype || undefined,
+      formatTime(msg.origin_server_ts),
+    ]
+      .filter(Boolean)
+      .join(" · ");
     return (
       <div
         style={{
@@ -843,11 +1151,14 @@ function MessageBody({
           borderRadius: 10,
           background: t.cardBg,
           border: `1px solid ${t.border}`,
-          minWidth: 220,
+          // 自适应：窄屏（行宽 ≤82%）单列铺满，宽屏不超过 360。
+          width: "100%",
           maxWidth: 360,
+          minWidth: 0,
+          boxSizing: "border-box",
         }}
       >
-        {/* 文件卡：名称行(icon+名/尺寸) + 操作行(下载/查看右对齐) 分两行——
+        {/* 文件卡：名称行(类型图标+名/元信息) + 操作行(下载/查看右对齐) 分两行——
   窄屏 376 单行被挤，拆两行让文件名吃满宽度。 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -862,11 +1173,11 @@ function MessageBody({
               flexShrink: 0,
             }}
           >
-            <FileOutlined style={{ fontSize: 20, color: PRIMARY }} />
+            {attachmentIcon(fileName, mediaKind)}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <WbTooltip
-              title={(msg.filename || msg.body || tr("附件")).length > 19 ? msg.filename || msg.body : undefined}
+              title={fileName.length > 19 ? fileName : undefined}
             >
               <div
                 style={{
@@ -877,7 +1188,7 @@ function MessageBody({
                   wordBreak: "break-word",
                 }}
               >
-                {msg.filename || msg.body || tr("附件")}
+                {fileName}
               </div>
             </WbTooltip>
             {sizeLine ? (
@@ -886,39 +1197,24 @@ function MessageBody({
           </div>
           </div>
           {/* 操作行：下载/查看 右对齐（从名称行拆出，窄屏不挤）。 */}
-          <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" }}>
           {/* 插件路径走 host.fetch blob 下载（带鉴权）；
  直链经代抓同样有 apiPath → 全类型统一
  host 链（跨域 a[download] 会变导航）。url 为空时不渲染
  href（href="" 点击会重载当前页面）。 */}
           {/* 消息文件卡操作统一 ActionBtn（图标+文字+可见规格）。 */}
-          <ActionBtn
-            icon={<DownloadOutlined />}
+          <DownloadAction
+            apiPath={fileTarget.apiPath}
+            url={url}
+            name={fileName}
             label={tr("下载")}
-            href={fileTarget.apiPath ? undefined : url || undefined}
-            disabled={!url && !fileTarget.apiPath}
-            download={msg.filename || msg.body || "file"}
-            onClick={
-              fileTarget.apiPath
-                ? (e) => {
-                    e.preventDefault();
-                    void (async () => {
-                      const ok = await downloadViaHost(
-                        fileTarget.apiPath as string,
-                        msg.filename || msg.body || "file",
-                      );
-                      if (!ok) antd.message.error("下载失败，请稍后重试");
-                    })();
-                  }
-                : undefined
-            }
           />
           <ActionBtn
             icon={<EyeOutlined />}
             label={tr("查看")}
             onClick={() =>
               setPreviewFile({
-                name: msg.filename || msg.body || "file",
+                name: fileName,
                 url,
                 apiPath: fileTarget.apiPath,
                 mimeType: msg.mimetype,
@@ -934,67 +1230,7 @@ function MessageBody({
         {/* 产物验收（Phase 4 交付闭环）：Agent 交付的 m.file 消息
  带验收按钮——接受发确认，修改意见弹输入。 */}
         {!mine && onDeliverable ? (
-          accepted ? (
-            <div style={{ fontSize: 12, color: "#52c41a" }}>
-              <CheckIcon size={12} style={{ color: "#52c41a", verticalAlign: "-1px" }} /> {tr("已接受")}
-            </div>
-          ) : revising ? (
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <antd.Input
-                size="small"
-                value={note}
-                autoFocus
-                placeholder={tr("修改意见…")}
-                onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                  setNote(e.target.value)
-                }
-                onKeyDown={(e: ReactNS.KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === "Enter") {
-                    onDeliverable(msg, "revise", note.trim() || undefined);
-                    setRevising(false);
-                    setNote("");
-                  }
-                  if (e.key === "Escape") setRevising(false);
-                }}
-                style={{ flex: 1, fontSize: 12 }}
-              />
-              <antd.Button
-                size="small"
-                type="primary"
-                style={{ backgroundColor: PRIMARY, borderColor: PRIMARY }}
-                onClick={() => {
-                  onDeliverable(msg, "revise", note.trim() || undefined);
-                  setRevising(false);
-                  setNote("");
-                }}
-              >
-                {tr("发送")}
-              </antd.Button>
-              <antd.Button size="small" onClick={() => setRevising(false)}>
-                {tr("取消")}
-              </antd.Button>
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: 6 }}>
-              <antd.Button
-                size="small"
-                style={{
-                  backgroundColor: "#52c41a",
-                  borderColor: "#52c41a",
-                  color: "#fff",
-                }}
-                onClick={() => {
-                  onDeliverable(msg, "accept");
-                  setAccepted(true);
-                }}
-              >
-                <CheckIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("接受")}
-              </antd.Button>
-              <antd.Button size="small" onClick={() => setRevising(true)}>
-                <DocIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("修改意见")}
-              </antd.Button>
-            </div>
-          )
+          <DeliverableBar msg={msg} onDeliverable={onDeliverable} />
         ) : null}
         <FilePreview file={previewFile} onClose={() => setPreviewFile(null)} />
       </div>

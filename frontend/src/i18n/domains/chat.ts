@@ -367,4 +367,9 @@ export const chatDict: Record<string, { en: string }> = {
   "语音识别出错，请重试": {
     en: "Speech recognition failed. Please try again.",
   },
+  // ── 聊天图片灯箱（应用内查看器：缩放/切图/下载）──
+  "图片预览": { en: "Image preview" },
+  "图片加载失败": { en: "Failed to load image" },
+  "上一张": { en: "Previous" },
+  "下一张": { en: "Next" },
 };

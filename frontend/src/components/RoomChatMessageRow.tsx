@@ -27,6 +27,8 @@ import {
 } from "./RoomChatBubbles";
 import RoomChatMessageToolbar from "./RoomChatMessageToolbar";
 import { ThreadIcon } from "./RoomChatThread";
+import { MediaViewer } from "./MediaViewer";
+import { collectGallery, type GalleryItem } from "../lib/mediaGallery";
 import type { ThemeColors } from "../theme";
 
 const host = window.QwenPaw.host;
@@ -141,6 +143,23 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
   const live = msg.workflow?.runId
     ? (liveByRunId.get(msg.workflow.runId) ?? null)
     : null;
+  // 图片灯箱：点开时按 current visibleMessages 现场算「同发送者连续图片」
+  // 画廊（快照保存）——之后轮询追加消息不会把已打开的画廊序列改掉。
+  const [viewer, setViewer] = React.useState<{
+    items: GalleryItem[];
+    index: number;
+  } | null>(null);
+  const openMedia = React.useCallback(
+    (eventId: string) => {
+      const gallery = collectGallery(visibleMessages, eventId);
+      if (gallery) setViewer(gallery);
+    },
+    [visibleMessages],
+  );
+  const closeViewer = React.useCallback(() => setViewer(null), []);
+  const changeViewerIndex = React.useCallback((index: number) => {
+    setViewer((prev) => (prev ? { ...prev, index } : prev));
+  }, []);
 
   return (
     <div>
@@ -366,6 +385,7 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
                   live={live}
                   fileRefTeam={teamName}
                   room={room ?? null}
+                  onOpenMedia={openMedia}
                 />
               </BubbleBoundary>
               <ReactionChips
@@ -480,6 +500,15 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
             </span>
           </div>
         </div>
+      ) : null}
+      {/* 应用内灯箱（portal 到 body）：行卸载即关闭，不影响消息流。 */}
+      {viewer ? (
+        <MediaViewer
+          items={viewer.items}
+          index={viewer.index}
+          onClose={closeViewer}
+          onIndexChange={changeViewerIndex}
+        />
       ) : null}
     </div>
   );
