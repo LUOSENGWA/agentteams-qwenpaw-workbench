@@ -3,6 +3,14 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.125（修复模块更新崩溃 · 2026-11-07）
+
+**修复**
+- 点开「模块更新」报 `TypeError: ...find is not a function`：上游 `channels.json` 的 `modules` 与每个模块的 `versions` 都是**对象 map**（key=模块名/版本号），插件误按数组消费。
+- `api/domains/modules.ts` 新增 `normalizeIndexResponse()`：`getIndex()` 出口统一把两种形态规范化成数组；版本条目从对象 map 还原并保留 artifacts/requires/commit 等字段，且按「优先 zip」补齐 `artifact/sha256`，避免版本按钮全禁用。
+- `moduleEntryVersions()` 增加对象 map 兜底；新增真实 beta 形状的回归测试（对象 modules + 对象 versions + bundle pluginId）。
+
+**测试**：vitest 198 passed · `tsc --noEmit` 0 · `npm run build` 0。
 ## 0.5.0-beta.16.124（千锻工作台重构 · 2026-11-07）
 
 **变更**

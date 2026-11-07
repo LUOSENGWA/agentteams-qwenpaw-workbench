@@ -3,6 +3,14 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.125 (fix module-updates crash · 2026-11-07)
+
+**Fixed**
+- Opening Module Updates crashed with `TypeError: ...find is not a function`: upstream `channels.json` stores `modules` and each module's `versions` as **object maps** (keyed by module name / version), while the plugin consumed them as arrays.
+- Added `normalizeIndexResponse()` in `api/domains/modules.ts`: `getIndex()` now normalizes both shapes at the API boundary; version entries are rebuilt from the map with artifacts/requires/commit preserved, and `artifact/sha256` are filled from the zip-first artifact so version buttons are not all disabled.
+- `moduleEntryVersions()` also accepts object-shaped versions; regression tests use the real beta payload (object modules + object versions + bundle pluginId).
+
+**Tests**: vitest 198 passed · `tsc --noEmit` clean · `npm run build` clean.
 ## 0.5.0-beta.16.124 (Millforge workbench refactor · 2026-11-07)
 
 **Changed**
