@@ -3,6 +3,16 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.127 (address scheme detection · 2026-11-07)
+
+**Fixed**
+- A bare `host:port` (no `https://`) is no longer forced to `http://`: the frontend submits it as typed and the backend probes **HTTPS first** on save/test/import, falling back to HTTP; when neither answers it stores HTTPS with a `scheme_unresolved` warning (secure default, never a silent downgrade to http).
+- `/config/test` returns the resolved URL plus `resolved_from`; saves return `warnings`, and the address input reflects the final scheme.
+- Explicit `http://` / `https://` is never overridden (no upgrade, no downgrade).
+
+**Rationale**: browser HTTPS-first (Chrome/Edge/Firefox), curl `--proto-default https`, and nginx's 400 when plaintext hits a TLS port. Probe results are cached per host:port for 10 minutes.
+
+**Tests**: pytest 9 (new scheme resolver) + vitest 213 + `tsc` 0 + build 0.
 ## 0.5.0-beta.16.126 (R4 static a11y gate · 2026-11-07)
 
 **Added**

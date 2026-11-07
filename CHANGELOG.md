@@ -3,6 +3,16 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.127（地址协议识别 · 2026-11-07）
+
+**修复**
+- 设置里填 `host:port`（省略 `https://`）不再被强制补 `http://`：前端原样提交，后端在保存/测试/导入时 **HTTPS 优先**探测，失败回退 HTTP；两者都不通按 HTTPS 保存并提示（安全默认，绝不静默 http）。
+- `/config/test` 返回解析后的地址与 `resolved_from`；保存响应带 `warnings`（`scheme_unresolved`），地址框回显最终协议。
+- 显式 `http://` / `https://` 一律不覆盖（不升级、不降级）。
+
+**依据**：浏览器地址栏 HTTPS-first（Chrome/Edge/Firefox）、curl `--proto-default https`、nginx 对 TLS 端口收明文返回 400；探测结果按 host:port 缓存 10 分钟。
+
+**测试**：pytest 9（新增协议解析）+ vitest 213 + `tsc` 0 + build 0。
 ## 0.5.0-beta.16.126（R4 静态 a11y 门 · 2026-11-07）
 
 **新增**
