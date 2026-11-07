@@ -36,6 +36,7 @@ import {
   pairAllowed,
   surfaceBadge,
 } from "../lib/modelAccess";
+import { modelGrantErrorText } from "../lib/modelGrantErrors";
 import ModelPicker, { type ModelPickerProvider } from "../components/ModelPicker";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -573,7 +574,11 @@ function CodingCliModelSection({
         antd.message.success(tr("已跟随主模型"));
         refreshCli(cli);
       } catch (e) {
-        antd.message.error(e instanceof Error ? e.message : String(e));
+        // #1514：grant 错误走统一文案；其余原样提示（不吞错）。
+        antd.message.error(
+          modelGrantErrorText(e, tr) ??
+            (e instanceof Error ? e.message : String(e)),
+        );
       }
     })();
   };
@@ -839,8 +844,11 @@ function CliModelEditDialog({
       onSaved();
       onClose();
     } catch (e) {
-      // 失败原样提示（不吞错）。
-      antd.message.error(e instanceof Error ? e.message : String(e));
+      // #1514：grant 错误走统一文案；其余原样提示（不吞错）。
+      antd.message.error(
+        modelGrantErrorText(e, tr) ??
+          (e instanceof Error ? e.message : String(e)),
+      );
     } finally {
       setSaving(false);
     }

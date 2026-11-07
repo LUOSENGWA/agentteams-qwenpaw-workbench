@@ -39,6 +39,10 @@ import {
   type LoadState,
 } from "./WorkerCodingCliPanelShared";
 import { SettingsTreeEditor } from "./WorkerCodingCliPanelEditor";
+import {
+  classifyModelGrantError,
+  modelGrantErrorText,
+} from "../lib/modelGrantErrors";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -221,9 +225,18 @@ function useCodingCliPanel({
         else await loadSettings(selected);
         onChanged?.();
       } catch (e) {
-        if (httpErrorStatus(e) === 403) {
-          setReadOnly(true);
-          setMsg({ kind: "err", text: tr("当前角色仅可查看，不能修改编码 CLI") });
+        // #1514：grant 分类错误（pair_required/unresolvable/overflow/
+        // forbidden）走统一文案；仅真实权限 403（无 grant code）保留
+        // 整面板只读（既有逻辑）——成对/绑定/超限是数据问题，不锁面板。
+        const grantText = modelGrantErrorText(e, tr);
+        if (grantText) {
+          if (
+            httpErrorStatus(e) === 403 &&
+            classifyModelGrantError(e) === "forbidden"
+          ) {
+            setReadOnly(true);
+          }
+          setMsg({ kind: "err", text: grantText });
         } else if (isTimeoutError(e)) {
           // 15.29：超时≠失败。服务端同步写可能已在客户端放弃后完成
           // （慢盘/审计尾延迟，写本身数秒内已成功）→ 读回验证：已反映

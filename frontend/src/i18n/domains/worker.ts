@@ -259,6 +259,19 @@ export const workerDict: Record<string, { en: string }> = {
     en: "Settings saved (reachable address auto-detected)",
   },
   "保存失败": { en: "Save failed" },
+  // #1514 模型授权强制：写面 grant 错误统一文案（lib/modelGrantErrors）
+  "需同时选择 Provider 和模型": {
+    en: "Provider and model must be selected together",
+  },
+  "该模型无法绑定到网关 Provider（请选择具体 Provider 模型）": {
+    en: "This model cannot be bound to a gateway provider (pick a concrete provider model)",
+  },
+  "授权记录过多（>32），请联系管理员清理": {
+    en: "Too many model grant records (>32) — ask an admin to clean up",
+  },
+  "无权限修改该 Worker 的模型": {
+    en: "No permission to modify this Worker's model",
+  },
   "上次落盘 {time}": { en: "Last persisted {time}" },
   "尚未落盘": { en: "Not persisted yet" },
   "⚠ 配置目录不可写——保存可能不落盘": {

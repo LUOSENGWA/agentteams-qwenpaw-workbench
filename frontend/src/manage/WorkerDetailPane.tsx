@@ -48,6 +48,7 @@ import {
   shouldShowEnsureReady,
 } from "../api/domains/lifecycle";
 import { providerForWrite, resolveProviderBaseline } from "../lib/providerBaseline";
+import { modelGrantErrorText } from "../lib/modelGrantErrors";
 import {
   modelVerdictText,
   providerForModel,
@@ -299,9 +300,11 @@ export default function WorkerDetailPane({
         void onRefreshAdmin?.(true, true);
         return true;
       } catch (e) {
-        // 失败展示后端错误文本（不吞错）。
+        // #1514：grant 错误（pair_required/unresolvable/overflow/forbidden）
+        // 走统一文案；其余错误展示后端错误文本（不吞错）。
         antd.message.error(
-          e instanceof Error ? e.message : tr("保存失败"),
+          modelGrantErrorText(e, tr) ??
+            (e instanceof Error ? e.message : tr("保存失败")),
         );
         return false;
       } finally {

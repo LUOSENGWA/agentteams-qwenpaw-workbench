@@ -36,6 +36,7 @@ import {
   pickLlmTuning,
   type LlmTuningRecord,
 } from "../lib/llm-tuning";
+import { modelGrantErrorText } from "../lib/modelGrantErrors";
 import { useModelCatalog } from "./useModelCatalog";
 
 const host = window.QwenPaw.host;
@@ -271,7 +272,11 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
         invalidateTags(["teams", "admin"]);
         onRefresh?.(true, true);
       } catch (e) {
-        antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+        // #1514：grant 错误走统一文案；其余展示后端错误文本（不吞错）。
+        antd.message.error(
+          modelGrantErrorText(e, tr) ??
+            (e instanceof Error ? e.message : tr("操作失败")),
+        );
       } finally {
         setNw((p) => ({ ...p, busy: false }));
       }
