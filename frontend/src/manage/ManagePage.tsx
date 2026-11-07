@@ -124,6 +124,7 @@ function ManagePage(props: ManagePageProps) {
     onOpenSettings,
     rooms,
     attentionPendingByRoom,
+    dashboardUrl,
     sectionRequest,
     onSectionRequestConsumed,
   } = props;
@@ -145,6 +146,7 @@ function ManagePage(props: ManagePageProps) {
     onOpenSettings,
     rooms,
     attentionPendingByRoom,
+    dashboardUrl,
     activeRef,
   };
 

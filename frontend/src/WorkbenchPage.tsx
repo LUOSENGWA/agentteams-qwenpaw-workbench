@@ -1370,6 +1370,8 @@ export default function WorkbenchPage() {
                 attentionPendingByRoom={
                   attention?.deployed ? attentionPendingByRoom : undefined
                 }
+                /* Dashboard 地址 → Worker 详情「打开 Tracing」跳转（空=隐藏） */
+                dashboardUrl={config?.dashboard_url || ""}
                 /* 一次性 section 深链（首页「去集群」等入口） */
                 sectionRequest={manageSectionReq}
                 onSectionRequestConsumed={clearManageSectionReq}

@@ -993,6 +993,7 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
             sessionState={data.workerSessionByName?.[workerInfo.name]}
             onRefreshAdmin={data.onRefreshAdmin}
             onOpenSettings={data.onOpenSettings}
+            dashboardUrl={data.dashboardUrl}
             onDeleted={() => nav.backTeam()}
           />
         ) : (

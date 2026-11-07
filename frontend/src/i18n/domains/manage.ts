@@ -733,4 +733,10 @@ export const manageDict: Record<string, { en: string }> = {
   "仅管理员可创建或删除资源": {
     en: "Only admins can create or delete resources",
   },
+
+  // ── R3：Worker 详情「打开 Tracing」跳转 Dashboard（配置 dashboard_url）──
+  "打开 Tracing": { en: "Open Tracing" },
+  "打开 Tracing（Dashboard 调用链页面，新窗口）": {
+    en: "Open Tracing (Dashboard call-chain page, new window)",
+  },
 };

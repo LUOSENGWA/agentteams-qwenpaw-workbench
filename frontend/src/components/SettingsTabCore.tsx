@@ -82,6 +82,9 @@ export function useSettingsTabCore({
   // diff），gatewayWan=外网（内网不可达时自动降级）。
   const [gatewayAdminUrl, setGatewayAdminUrl] = React.useState("");
   const [gatewayWan, setGatewayWan] = React.useState("");
+  // Dashboard 地址（可选）——仅用于 Worker 详情「打开 Tracing」跳转；
+  // 空=未配置（入口隐藏）。
+  const [dashboardUrl, setDashboardUrl] = React.useState("");
   // 控制台特效三档（默认 light；取代旧
   // consoleCalm bool——light=动画保留+模糊封顶 / off=全停 / full=原样）。
   const [fxMode, setFxMode] = React.useState<"light" | "off" | "full">(
@@ -482,6 +485,8 @@ export function useSettingsTabCore({
       entryUrl(config.gateway_admin_urls?.[0]) || config.gateway_admin_url || "",
     );
     setGatewayWan(entryUrl(config.gateway_admin_urls?.[1]));
+    // Dashboard 地址回填（空=未配置）。
+    setDashboardUrl(config.dashboard_url || "");
     // 特效三档回填（旧 console_calm
     // bool 迁移：显式 false=full，其余=light）+ 门控属性同步（模块级已先写
     // light，此处以配置覆写；旧 data-wb-calm 已退役）。
@@ -534,6 +539,10 @@ export function useSettingsTabCore({
             },
             // Higress 双地址（凭据随条目，四族同构）。
             gateway_admin_urls: buildAddrEntries("gateway"),
+            // Dashboard 地址（可选；空串=清空 → Tracing 入口隐藏）。
+            // 规范化用 normalizeHttpUrl：显式 http/https 保留，去尾斜杠；
+            // 无协议原样（链接侧 tracingUrl 按 https 优先补全）。
+            dashboard_url: normalizeHttpUrl(dashboardUrl),
           },
         }),
       });
@@ -562,6 +571,10 @@ export function useSettingsTabCore({
         buildAddrEntries("gateway"),
         [setGatewayAdminUrl, setGatewayWan],
       );
+      // Dashboard 地址回显规范化结果（去尾斜杠/保留显式协议）。
+      if (typeof savedCfg.dashboard_url === "string") {
+        setDashboardUrl(savedCfg.dashboard_url);
+      }
       if ((savedCfg.warnings || []).includes("scheme_unresolved")) {
         message.warning(
           tr(
@@ -767,6 +780,8 @@ export function useSettingsTabCore({
     setGatewayAdminUrl,
     gatewayWan,
     setGatewayWan,
+    dashboardUrl,
+    setDashboardUrl,
     fxMode,
     setFxMode,
     verifying,

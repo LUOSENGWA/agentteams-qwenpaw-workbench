@@ -163,6 +163,8 @@ export interface WorkbenchConfig {
   gateway_admin_url?: string;
   // Higress 双地址（canonical；legacy 单值键=urls[0] 镜像）。
   gateway_admin_urls?: AddressEntry[];
+  // Dashboard 地址——仅用于 Worker 详情「打开 Tracing」跳转；空=未配置。
+  dashboard_url?: string;
   // 持久化诊断（后端 GET /config 自 14.12 已返回，
   // 前端此前未消费——「内外网固定没生效/账密没记忆」无法自证时，
   // 设置页直接显示落盘证据）。

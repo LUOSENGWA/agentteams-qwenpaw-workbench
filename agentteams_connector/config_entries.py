@@ -355,6 +355,9 @@ _DEFAULTS: Dict[str, Any] = {
     # Console 管理员会话 cookie（session/login 成功后的 Set-Cookie 值，
     # 服务端自持，redact 脱敏，永不进前端可见明文）。
     "console_session": "",
+    # Dashboard（工作台）地址——仅用于「打开 Tracing」跳转（调用链页面
+    # 是 Dashboard 能力，插件不复制页面）。空=未配置 → 入口隐藏。
+    "dashboard_url": "",
     # 可选模块：集群负载监控（L1 专属——不是每个部署都有本地 SGLang）。
     # enabled=false 时前端不渲染卡片、后端不注册语义（404），零痕迹。
     # 双地址（内网/外网）——有序数组，首个可达 + failover，
