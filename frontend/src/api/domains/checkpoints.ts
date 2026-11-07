@@ -1,6 +1,6 @@
 // 检查点域（controller /projects/*/history、/workers/*/checkpoints/*）：项目干预时间线 + Worker 检查点。
 
-import { requestJson } from "../shared";
+import { httpErrorStatus, requestJson } from "../shared";
 import { cachedRequest } from "../../requestCache";
 
 // ── 项目干预时间线 + Worker 检查点（端点，合并部署后生效）──────────
@@ -53,6 +53,19 @@ export interface CheckpointStatusResponse {
 /** Worker 运行 QwenPaw < 2.1（Controller 502 降级）——调用方渲染占位而非错误。 */
 export class CheckpointUnavailableError extends Error {}
 
+/** 控制器无 checkpoints/{graph,status} 路由（请求 404/405——旧版控制器，
+ * 早于 #1186 检查点只读代理合并）——能力缺口而非错误；调用方隐藏入口并
+ * 显示「该控制器不支持检查点图」。 */
+export class CheckpointNotSupportedError extends Error {}
+
+/** 能力探测（纯函数）：请求错误携带 HTTP 404/405 = 控制器无对应路由
+ * （Go ServeMux 的 404 "404 page not found" / 405 Method Not Allowed）。
+ * 502（QwenPaw<2.1）、网络错误等不算路由缺失。 */
+export function checkpointRouteMissing(e: unknown): boolean {
+  const status = httpErrorStatus(e);
+  return status === 404 || status === 405;
+}
+
 /** 30s 缓存（列表类；key 含 projectId+teamId）。 */
 export function fetchProjectHistory(
   projectId: string,
@@ -95,8 +108,8 @@ export async function fetchProjectHistorySnapshot(
   )) as Record<string, unknown>;
 }
 
-/** 30s 缓存（key=worker+limit；错误路径（含 CheckpointUnavailableError）
- * 不写缓存，与原语义一致）。 */
+/** 30s 缓存（key=worker+limit；错误路径（含 CheckpointUnavailableError /
+ * CheckpointNotSupportedError）不写缓存，与原语义一致）。 */
 export function fetchWorkerCheckpointGraph(
   workerName: string,
   limit = 100,
@@ -145,6 +158,10 @@ export function fetchWorkerCheckpointGraph(
           truncated: Boolean(obj.truncated),
         };
       } catch (e) {
+        // 404/405 = 控制器无对应路由（旧版）→ 能力缺口，不是错误。
+        if (checkpointRouteMissing(e)) {
+          throw new CheckpointNotSupportedError("checkpoint route missing");
+        }
         if (e instanceof Error && e.message.includes("requires QwenPaw 2.1")) {
           throw new CheckpointUnavailableError(e.message);
         }
@@ -155,7 +172,8 @@ export function fetchWorkerCheckpointGraph(
   );
 }
 
-/** 30s 缓存（key=worker；错误路径不写缓存，与原语义一致）。 */
+/** 30s 缓存（key=worker；错误路径（含 CheckpointNotSupportedError）不写
+ * 缓存，与原语义一致）。 */
 export function fetchWorkerCheckpointStatus(
   workerName: string,
 ): Promise<CheckpointStatusResponse> {
@@ -174,6 +192,10 @@ export function fetchWorkerCheckpointStatus(
           workspace_dir: String(obj.workspace_dir || ""),
         };
       } catch (e) {
+        // 404/405 = 控制器无对应路由（旧版）→ 能力缺口，不是错误。
+        if (checkpointRouteMissing(e)) {
+          throw new CheckpointNotSupportedError("checkpoint route missing");
+        }
         if (e instanceof Error && e.message.includes("requires QwenPaw 2.1")) {
           throw new CheckpointUnavailableError(e.message);
         }

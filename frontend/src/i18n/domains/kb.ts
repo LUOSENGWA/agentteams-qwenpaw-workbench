@@ -211,6 +211,9 @@ export const kbDict: Record<string, { en: string }> = {
   "Controller 升级后自动生效": {
     en: "Active after the Controller is upgraded",
   },
+  "该控制器不支持检查点图": {
+    en: "This controller does not support the checkpoint graph",
+  },
   "暂停原因（可选，将通知团队）": {
     en: "Pause reason (optional, notified to the team)",
   },

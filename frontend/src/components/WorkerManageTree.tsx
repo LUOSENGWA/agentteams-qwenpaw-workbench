@@ -1,6 +1,7 @@
 import type * as ReactNS from "react";
 
 import {
+  CheckpointNotSupportedError,
   CheckpointUnavailableError,
   fetchNodeVersion,
   fetchWorkerCheckpointGraph,
@@ -1069,6 +1070,7 @@ function CheckpointCard({
         graph: CheckpointGraphResponse;
       }
     | { kind: "unavailable" }
+    | { kind: "notSupported" }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
 
@@ -1085,6 +1087,11 @@ function CheckpointCard({
       })
       .catch((e: unknown) => {
         if (!alive) return;
+        if (e instanceof CheckpointNotSupportedError) {
+          // 控制器无检查点路由（404/405；旧版）→ 隐藏入口 + 一行提示，不报错。
+          setState({ kind: "notSupported" });
+          return;
+        }
         if (e instanceof CheckpointUnavailableError) {
           setState({ kind: "unavailable" });
           return;
@@ -1100,11 +1107,14 @@ function CheckpointCard({
   }, [open, workerName, gated]);
 
   const nodes = state.kind === "ok" ? state.graph.nodes.slice(0, 5) : [];
+  const notSupported = state.kind === "notSupported";
   return (
     // 段头对齐（10/17 用户）：与卡片族同一 x=33 轨——无卡片边框，
     // marginLeft 23 + paddingLeft 10 = 33（卡片族 = margin 22 + border 1
     // + padding 10）；chevron 槽 12 / 图标 13 / gap 6 / 标题 12/600 同规格。
     <div style={{ marginLeft: 23, fontSize: 12 }}>
+      {/* 控制器无检查点路由（404/405；旧版）→ 隐藏入口行，仅留一行灰字提示。 */}
+      {!notSupported ? (
       <div
         style={{
           display: "flex",
@@ -1129,8 +1139,14 @@ function CheckpointCard({
           />
         ) : null}
       </div>
+      ) : null}
       {open && !gated ? (
         <div style={{ display: "grid", gap: 4, paddingLeft: 14 }}>
+          {state.kind === "notSupported" ? (
+            <span style={{ color: "#999" }}>
+              {tr("该控制器不支持检查点图")}
+            </span>
+          ) : null}
           {state.kind === "loading" ? (
             <span style={{ color: "#999" }}>{tr("加载中…")}</span>
           ) : null}
