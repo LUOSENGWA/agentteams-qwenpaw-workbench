@@ -231,6 +231,7 @@ export const chatDict: Record<string, { en: string }> = {
   "{n} 次工具调用": { en: "{n} tool calls" },
   // 思考过程折叠（m.notice 推理帧并入过程条）
   "思考过程": { en: "Thinking" },
+  "进行中…": { en: "In progress…" },
   "点击展开思考过程": { en: "Click to expand thinking" },
   "点击展开思考过程与工具调用详情": {
     en: "Click to expand thinking and tool-call details",

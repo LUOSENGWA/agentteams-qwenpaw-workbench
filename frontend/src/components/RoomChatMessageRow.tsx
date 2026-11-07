@@ -10,21 +10,23 @@ import {
 } from "../api";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { type WorkerSessionState } from "../workerSessionState";
-import { WbTooltip } from "./WbTooltip";
 import {
   PRIMARY,
   TOUCH_ONLY,
   senderShortName,
   formatTime,
-  dateLabel,
 } from "./RoomChatShared";
 import {
   ReplyBannerMemo,
   ReactionChips,
-  SenderAvatarMemo,
   BubbleBoundary,
   MessageBodyMemo,
 } from "./RoomChatBubbles";
+import {
+  TurnHeader,
+  ChatDatePill,
+  ChatUnreadLine,
+} from "./RoomChatTurnParts";
 import RoomChatMessageToolbar from "./RoomChatMessageToolbar";
 import { ThreadIcon } from "./RoomChatThread";
 import { MediaViewer } from "./MediaViewer";
@@ -34,13 +36,6 @@ import type { ThemeColors } from "../theme";
 const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
-// 宿主 antdIcons 可能非全量（部署版 vs SC main 差异）——缺图标降级为空组件，
-// 避免 React #130（undefined 组件）拖垮聊天室（同 RoomChatBubbles/Composer 模式）。
-const icons = (host.antdIcons || {}) as Record<string, ReactNS.ComponentType>;
-const EmptyIcon = (() => null) as unknown as ReactNS.FC<Record<string, unknown>>;
-const icon = (name: string): ReactNS.FC<Record<string, unknown>> =>
-  (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
-const LoadingOutlined = icon("LoadingOutlined");
 
 export interface RoomChatMessageRowProps {
   msg: RoomMessage;
@@ -166,59 +161,10 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
 
   return (
     <div>
-      {unreadLine ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            margin: "10px 0",
-          }}
-        >
-          <div
-            style={{
-              flex: 1,
-              borderTop: `1px solid ${PRIMARY}`,
-              opacity: 0.5,
-            }}
-          />
-          <span style={{ fontSize: 12, color: PRIMARY }}>
-            {tr("以下为新消息")}
-          </span>
-          <div
-            style={{
-              flex: 1,
-              borderTop: `1px solid ${PRIMARY}`,
-              opacity: 0.5,
-            }}
-          />
-        </div>
-      ) : null}
+      {unreadLine ? <ChatUnreadLine tr={tr} /> : null}
       {/* 日期分隔 Element 同款居中胶囊
 （旧 antd.Divider 通栏线太散，与扁平消息行不搭）。 */}
-      {sep ? (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            margin: "14px 0 10px",
-          }}
-        >
-          <span
-            style={{
-              fontSize: 12,
-              color: t.textSecondary,
-              background: t.cardBg,
-              border: `1px solid ${t.border}`,
-              borderRadius: 12,
-              padding: "2px 12px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {dateLabel(msg.origin_server_ts, tr)}
-          </span>
-        </div>
-      ) : null}
+      {sep ? <ChatDatePill ts={msg.origin_server_ts} t={t} tr={tr} /> : null}
       {absorbedTool || absorbedThinking ? (
         <div data-event-id={msg.event_id} />
       ) : (
@@ -283,67 +229,21 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
                 </span>
               </div>
             ) : (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: t.textSecondary,
-                  marginBottom: 2,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <SenderAvatarMemo
-                  mxid={msg.sender}
-                  room={room}
-                  myUserId={myUserId}
-                  onMention={insertMention}
-                  onDm={onDm}
-                  workerName={memberWorkerNames?.[msg.sender]}
-                  workerRuntime={workerRuntimeByMxid?.[msg.sender]}
-                  onDetail={openDetailMxid}
-                  // （灯在头像角落，不再名字旁）：
-                  // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
-                  sessionState={workerSessionByMxid?.[msg.sender]}
-                  onOpenChats={onOpenWorkerChats}
-                />
-                {senderShortName(msg.sender, room)}
-                <span
-                  style={{
-                    opacity: showTime ? 1 : 0,
-                    transition: "opacity 0.15s",
-                  }}
-                >
-                  {formatTime(msg.origin_server_ts)}
-                </span>
-                {msg.pending ? (
-                  <WbTooltip title={tr("发送中…")}>
-                    <span
-                      style={{
-                        color: t.textSecondary,
-                        fontSize: 12,
-                        display: "inline-flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <LoadingOutlined spin />
-                    </span>
-                  </WbTooltip>
-                ) : null}
-                {msg.failed ? (
-                  <WbTooltip title={tr("发送失败")}>
-                    <span
-                      style={{
-                        color: "#f5222d",
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      !
-                    </span>
-                  </WbTooltip>
-                ) : null}
-              </div>
+              <TurnHeader
+                msg={msg}
+                room={room}
+                myUserId={myUserId}
+                t={t}
+                tr={tr}
+                showTime={showTime}
+                workerSessionByMxid={workerSessionByMxid}
+                memberWorkerNames={memberWorkerNames}
+                workerRuntimeByMxid={workerRuntimeByMxid}
+                insertMention={insertMention}
+                openDetailMxid={openDetailMxid}
+                onDm={onDm}
+                onOpenWorkerChats={onOpenWorkerChats}
+              />
             )}
             {msg.reply?.event_id ? (
               <ReplyBannerMemo

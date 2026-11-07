@@ -9,9 +9,20 @@ import {
   EMPTY_REPLIES,
 } from "./RoomChatShared";
 import { ProcessCollapseBar } from "../chat/ProcessCollapseBar";
-import { isThinkingNotice, stripThinkingPrefix } from "../chat/ChatIR";
+import {
+  isThinkingNotice,
+  shouldContinueGroup,
+  splitTurn,
+  stripThinkingPrefix,
+  type ChatMessage,
+} from "../chat/ChatIR";
 import { TurnTimeline } from "../chat/TurnTimeline";
 import { TaskEventCard } from "../chat/TaskEventCard";
+import {
+  TurnHeader,
+  ChatDatePill,
+  ChatUnreadLine,
+} from "./RoomChatTurnParts";
 import RoomChatMessageRow from "./RoomChatMessageRow";
 import { RoomPendingBar } from "./RoomPendingBar";
 import type { RoomChatProps } from "./RoomChat";
@@ -81,6 +92,16 @@ export default function RoomChatMessages(props: {
     () => ({ ...(memberWorkerNames || {}), ...(workerSessionByMxid || {}) }),
     [memberWorkerNames, workerSessionByMxid],
   );
+
+  // 只有「列表尾部 turn」才可能是进行中：历史 turn 的未闭合工具帧
+  // （call 后没有结果帧）不该让过程条永久停在「进行中/展开」。
+  const lastTurnId = React.useMemo(() => {
+    for (let i = v.renderItems.length - 1; i >= 0; i -= 1) {
+      const it = v.renderItems[i];
+      if (it.kind === "turn") return it.range.turn.id;
+    }
+    return null;
+  }, [v.renderItems]);
 
   // 首次渲染消息时（renderItems 从空→有值）：paint 前贴底（不闪顶）。
   // 根因：useStickToBottom 换房间是 useEffect（paint 后）→ 用户看到 1 帧顶部。
@@ -274,29 +295,102 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                 return <TaskEventCard key={item.key} ev={item.ev} />;
               }
               const { turn, start, end } = item.range;
-              // 本 turn 的思考段（m.notice 推理帧，原序）——并入过程折叠条。
+              // 批次 3 + 第二批：turn 拆三段（思考帧/工具调用/回答帧）。
+              // 有过程的 turn → 渲染顺序 TurnHeader → 过程条 → 回答行；
+              // 无过程的 turn（人聊）→ 仍由组首行自带 header（现状视觉），
+              // 续行判定走 shouldContinueGroup（5 分钟 + 同日 + 同族）。
+              const { thoughts: thoughtMsgs, calls } = splitTurn(turn, {
+                isMine: (m: ChatMessage) => myUserId !== "" && m.sender === myUserId,
+                workerMxids,
+              });
               const thoughts: string[] = [];
-              for (const m of turn.messages) {
-                const msgMine = myUserId !== "" && m.sender === myUserId;
-                if (!isThinkingNotice(m, msgMine, workerMxids)) continue;
+              for (const m of thoughtMsgs) {
                 const text = stripThinkingPrefix(m.body);
                 if (text) thoughts.push(text);
               }
-              const hasProcess = turn.toolCalls.length > 0 || thoughts.length > 0;
+              const hasProcess = calls.length > 0 || thoughts.length > 0;
+              const turnMine = myUserId !== "" && turn.sender === myUserId;
+              const firstTop = start < v.tops.length ? v.tops[start] : null;
+              const prevTop = start > 0 ? v.tops[start - 1] : null;
+              // 日期分隔/未读线：有过程的 turn 提到 header 之前渲染
+              // （顺序：分隔 → header → 过程条 → 回答行）；判定条件不变。
+              const turnSep =
+                hasProcess && firstTop ? wantsDateSeparator(prevTop, firstTop) : false;
+              const turnUnread =
+                hasProcess &&
+                firstTop !== null &&
+                readTs > 0 &&
+                firstTop.origin_server_ts > readTs &&
+                (!prevTop || prevTop.origin_server_ts <= readTs);
+              const turnHeaderShowTime =
+                firstTop !== null &&
+                (hoveredId === firstTop.event_id ||
+                  TOUCH_ONLY ||
+                  start === v.renderedLastTopIdx);
+              const turnAlign = {
+                display: "flex",
+                justifyContent: turnMine ? "flex-end" : "flex-start",
+                padding: "0 6px",
+              } as const;
               return (
                 <div key={turn.id} data-turn-id={turn.id}>
+                {turnUnread ? <ChatUnreadLine tr={tr} /> : null}
+                {turnSep && firstTop ? (
+                  <ChatDatePill ts={firstTop.origin_server_ts} t={t} tr={tr} />
+                ) : null}
+                {/* turn 级 header：头像 + 名字 + 时间/状态，只出现一次。 */}
+                {hasProcess && firstTop ? (
+                  <div style={turnAlign}>
+                    <div style={{ maxWidth: "82%", minWidth: 0, paddingTop: 3 }}>
+                      <TurnHeader
+                        msg={firstTop}
+                        room={room}
+                        myUserId={myUserId}
+                        t={t}
+                        tr={tr}
+                        showTime={turnHeaderShowTime}
+                        workerSessionByMxid={workerSessionByMxid}
+                        memberWorkerNames={memberWorkerNames}
+                        workerRuntimeByMxid={workerRuntimeByMxid}
+                        insertMention={insertMention}
+                        openDetailMxid={openDetailMxid}
+                        onDm={onDm}
+                        onOpenWorkerChats={onOpenWorkerChats}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {/* 过程条在回答之前：思考 + 工具调用（流式中自动展开）。 */}
+                {hasProcess ? (
+                  <div
+                    key={`${turn.id}-process`}
+                    style={{ ...turnAlign, padding: "0 6px 3px" }}
+                  >
+                    <div style={{ maxWidth: "82%", minWidth: 0 }}>
+                      <ProcessCollapseBar
+                        calls={calls}
+                        thoughts={thoughts}
+                        active={turn.status === "active" && turn.id === lastTurnId}
+                      />
+                    </div>
+                  </div>
+                ) : null}
                 {v.tops.slice(start, end).map((msg, i) => {
                   const idx = start + i;
                   const prev = idx > 0 ? v.tops[idx - 1] : null;
-                  const sep = wantsDateSeparator(prev, msg);
+                  const sep =
+                    hasProcess && i === 0
+                      ? false
+                      : wantsDateSeparator(prev, msg);
                   const mine = myUserId !== "" && msg.sender === myUserId;
                   // 16.46：窗口化后以「渲染窗末行」为末行（全列表尾不可见）。
                   const isLast = idx === v.renderedLastTopIdx;
-                  // Element 同款分组——同一发送者连续消息不
-                  // 重复头像+名字（Element 最具辨识度的视觉特征）；日期分隔
-                  // 强制断组（跨天的同发送者也算新组）。
-                  const sameSender =
-                    !sep && prev !== null && prev.sender === msg.sender;
+                  // 有过程的 turn：header 已在 turn 顶只出现一次 → 行内全部
+                  // 视为续行（不再重复头像/名字）；无过程的 turn：沿用
+                  // dashboard MainGrouper 口径（5 分钟 + 同日 + 同族续行）。
+                  const sameSender = hasProcess
+                    ? true
+                    : !sep && shouldContinueGroup(prev, msg);
                   // gutter 时间：hover ∥ 末行 ∥（触屏：组头行常显）——触屏无
                   // hover，tap 虽经 hoveredId 也能显时间，但 tap 的语义是
                   // 弹操作条（对消息动手）不是看时间；组头行（头像+名）常显
@@ -308,6 +402,7 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                     (TOUCH_ONLY && !sameSender);
                   // 未读线：打开房间后新到的消息（ts > readTs）第一条前插线。
                   const unreadLine =
+                    !(hasProcess && i === 0) &&
                     readTs > 0 &&
                     msg.origin_server_ts > readTs &&
                     (!prev || prev.origin_server_ts <= readTs);
@@ -375,27 +470,6 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                     />
                   );
                 })}
-                {/* 批次 3：过程折叠条——本 turn 的工具调用 + 思考过程（默认折叠）。 */}
-                {hasProcess ? (
-                  <div
-                    key={`${turn.id}-process`}
-                    style={{
-                      display: "flex",
-                      justifyContent:
-                        myUserId !== "" && turn.sender === myUserId
-                          ? "flex-end"
-                          : "flex-start",
-                      padding: "0 6px 3px",
-                    }}
-                  >
-                    <div style={{ maxWidth: "82%", minWidth: 0 }}>
-                      <ProcessCollapseBar
-                        calls={turn.toolCalls}
-                        thoughts={thoughts}
-                      />
-                    </div>
-                  </div>
-                ) : null}
                 </div>
               );
             })}

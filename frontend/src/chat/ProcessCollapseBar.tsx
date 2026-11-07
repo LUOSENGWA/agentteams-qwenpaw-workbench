@@ -12,6 +12,10 @@
  * 思考过程：turn 内的 m.notice 推理帧（isThinkingNotice 启发式）由调用方
  * 抽取为 thoughts 传入——并入同一条折叠（`🧠 思考过程 · 🔧 N 次工具调用`），
  * 展开区先思考段、再工具行；不再作为红色/斜体正文气泡刷屏。
+ *
+ * 流式进行中（active）：默认展开 + 转圈（wb-process-spin，reduced-motion
+ * 关闭）+ 折叠头「· 进行中」；turn 结束后自动折叠，用户手动点过则以其
+ * 选择为准（不强制折叠）。
  */
 import type { AggregatedCall, ToolCall } from "./ChatIR";
 import { aggregateToolCalls } from "./ChatIR";
@@ -124,14 +128,20 @@ function barSpanSec(agg: AggregatedCall[]): number | null {
 export function ProcessCollapseBar({
   calls,
   thoughts,
+  active = false,
 }: {
   calls: ToolCall[];
   /** 本 turn 的思考段（已去前缀；调用方 sort 保持原序）。 */
   thoughts?: string[];
+  /** 流式进行中（turn.status === "active"）：默认展开 + 转圈 + 「进行中」。 */
+  active?: boolean;
 }) {
   const t = useThemeColors();
   const tr = useT();
-  const [open, setOpen] = React.useState(false);
+  // 展开态：未手动操作时跟随 active（进行中自动展开，结束自动折叠）；
+  // 用户点过就以用户选择为准（结束后不强制折叠）。
+  const [userOpen, setUserOpen] = React.useState<boolean | null>(null);
+  const open = userOpen === null ? active : userOpen;
   const agg = React.useMemo(() => aggregateToolCalls(calls), [calls]);
   const span = React.useMemo(() => barSpanSec(agg), [agg]);
   const notes = thoughts ?? [];
@@ -141,16 +151,19 @@ export function ProcessCollapseBar({
     span != null
       ? tr("{n} 次工具调用 · {x}s", { n: agg.length, x: span.toFixed(1) })
       : tr("{n} 次工具调用", { n: agg.length });
-  const title = hasThoughts
-    ? hasCalls
-      ? tr("点击展开思考过程与工具调用详情")
-      : tr("点击展开思考过程")
-    : open
-      ? tr("收起")
-      : tr("点击展开工具调用详情");
+  const title = active
+    ? tr("进行中…")
+    : hasThoughts
+      ? hasCalls
+        ? tr("点击展开思考过程与工具调用详情")
+        : tr("点击展开思考过程")
+      : open
+        ? tr("收起")
+        : tr("点击展开工具调用详情");
   return (
     <div
-      onClick={() => setOpen((v) => !v)}
+      className={active ? "wb-process-bar is-active" : "wb-process-bar"}
+      onClick={() => setUserOpen(!open)}
       style={{
         cursor: "pointer",
         padding: "4px 10px",
@@ -181,6 +194,17 @@ export function ProcessCollapseBar({
             <span style={{ fontSize: 12, flexShrink: 0 }}>🔧</span>
             <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
               {callsLabel}
+            </span>
+          </>
+        ) : null}
+        {active ? (
+          <>
+            {hasThoughts || hasCalls ? (
+              <span style={{ color: "#bbb", flexShrink: 0 }}>·</span>
+            ) : null}
+            <span className="wb-process-spin" aria-hidden="true" />
+            <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+              {tr("进行中")}
             </span>
           </>
         ) : null}
