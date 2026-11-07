@@ -68,6 +68,9 @@ interface ConflictRec {
 
 /** S6 进度快照（idle / scanning / syncing / done…）。 */
 export const SYNC_PROGRESS_PATH = "/agentteams-proxy/sync/progress";
+/** S10 暂停/恢复（只停传输，不动任何本地/远端文件）。 */
+export const SYNC_PAUSE_PATH = "/agentteams-proxy/sync/pause";
+export const SYNC_RESUME_PATH = "/agentteams-proxy/sync/resume";
 
 /** antd.Button 最小触控盒（唯一实现：files/format BTN_TOUCH）。 */
 const btnTouch: ReactNS.CSSProperties = BTN_TOUCH;
@@ -113,6 +116,8 @@ interface ProgressSnap {
   queued: number;
   failed: number;
   deferred: number;
+  /** 暂停开关快照（引擎 _idle_progress.paused；缺省 false）。 */
+  paused?: boolean;
 }
 
 export interface SyncSettingsModalProps {
@@ -165,6 +170,9 @@ export default function SyncSettingsModal({
   const [unsyncPath, setUnsyncPath] = React.useState("");
   /** S5 冲突记录（新→旧；null = 端点缺失/未取到 → 整块隐藏）。 */
   const [conflicts, setConflicts] = React.useState<ConflictRec[] | null>(null);
+  /** S10 暂停开关（null = 未取到 → 开关隐藏，不空壳）。 */
+  const [paused, setPaused] = React.useState<boolean | null>(null);
+  const [pauseBusy, setPauseBusy] = React.useState(false);
 
   const num = (v: unknown): number => (typeof v === "number" ? v : 0);
 
@@ -265,6 +273,29 @@ export default function SyncSettingsModal({
     }
   };
 
+  /** S10 暂停/恢复：只停传输，不动任何本地/远端文件（设计 §6 行 10）。 */
+  const doTogglePause = async () => {
+    if (paused === null) return;
+    const next = !paused;
+    const path = next ? SYNC_PAUSE_PATH : SYNC_RESUME_PATH;
+    setPauseBusy(true);
+    try {
+      const resp = await fetchFile(path, resolvePluginUrl(path), { method: "POST" });
+      if (!resp.ok) {
+        antd.message.error(`HTTP ${resp.status}`);
+        return;
+      }
+      const j = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
+      const actual = typeof j.paused === "boolean" ? j.paused : next;
+      setPaused(actual);
+      antd.message.success(actual ? tr("已暂停同步") : tr("已恢复同步"));
+    } catch {
+      antd.message.error(tr("操作失败"));
+    } finally {
+      setPauseBusy(false);
+    }
+  };
+
   /** 导出清单原文（getSyncManifest + downloadTextFile；与旧 SyncCard 同一逻辑）。 */
   const doExport = async () => {
     setExportBusy(true);
@@ -293,6 +324,12 @@ export default function SyncSettingsModal({
         return;
       }
       const j = (await resp.json().catch(() => null)) as Record<string, unknown> | null;
+      if (j === null || typeof j !== "object") {
+        setScope(null);
+        return;
+      }
+      // S10 暂停开关（后端 /sync/config 顶层 paused；缺省按未取到处理）。
+      setPaused(typeof j.paused === "boolean" ? j.paused : null);
       const eff = (j?.effective ?? null) as
         | { include?: unknown; exclude?: unknown; recursive?: unknown; selection?: unknown }
         | null;
@@ -620,6 +657,32 @@ export default function SyncSettingsModal({
             )}
           </div>
         ) : null}
+        {/* S10 暂停开关（只停传输；三态文案：已暂停/同步中/空闲）。 */}
+        <div style={{ display: "grid", gap: 6 }}>
+          <span style={labelStyle(t)}>{tr("同步开关")}</span>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ ...valueStyle(t), flex: 1, minWidth: 0 }}>
+              {paused === true
+                ? tr("已暂停")
+                : prog && (prog.state === "syncing" || prog.state === "scanning")
+                  ? tr("同步中")
+                  : tr("空闲")}
+            </span>
+            {paused === null ? null : (
+              <antd.Button
+                size="small"
+                style={{ minHeight: 40 }}
+                loading={pauseBusy}
+                onClick={() => void doTogglePause()}
+              >
+                {paused ? tr("恢复同步") : tr("暂停同步")}
+              </antd.Button>
+            )}
+          </div>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("暂停只停传输，不动任何本地/远端文件")}
+          </span>
+        </div>
         {/* 立即同步（未就绪仍可点——服务端终裁；404/disabled 后禁用）。 */}
         <div style={{ display: "grid", gap: 6 }}>
           <antd.Button

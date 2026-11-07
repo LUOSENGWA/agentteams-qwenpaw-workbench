@@ -199,6 +199,32 @@ class AgentTeamsWorkbenchPlugin:
             lambda: file_sync_engine.stop(),
         )
 
+        # AT 联动（设计 §6 行 6）：Agent 回合结束 → 标 dirty（2s 去抖合并）
+        # → 立即跑一轮上行。特性探测：宿主无 register_agent_stop_handler
+        # （旧版）→ 静默跳过，定时/手动/宿主 watcher 仍工作。
+        register_stop = getattr(api, "register_agent_stop_handler", None)
+        if callable(register_stop):
+            def _file_sync_agent_stop(*_args: Any, **_kwargs: Any) -> None:
+                try:
+                    file_sync_engine.notify_agent_stop()
+                except Exception:  # noqa: BLE001 - 回调绝不打断宿主回合
+                    logger.debug("agent-stop file sync trigger failed", exc_info=True)
+
+            try:
+                register_stop("agentteams-file-sync-stop", _file_sync_agent_stop)
+                logger.info("file sync agent-stop trigger registered")
+            except Exception:  # noqa: BLE001 - 注册失败按能力缺失降级
+                logger.info(
+                    "register_agent_stop_handler present but rejected; "
+                    "file sync agent-stop trigger disabled",
+                    exc_info=True,
+                )
+        else:
+            logger.info(
+                "host has no register_agent_stop_handler; "
+                "file sync agent-stop trigger disabled"
+            )
+
         # v0.5.0-beta.14.10：KB 预热——上次访问的 agent 后台
         # 静默补 tree+graph（重启后首开知识库同样秒开）。fire-and-forget、
         # 预热失败无碍；不依赖 HTTP 自呼（直调 router 模块 _kb_prewarm_agent

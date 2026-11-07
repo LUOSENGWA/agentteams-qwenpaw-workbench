@@ -84,6 +84,22 @@ LARGE_FILE_BYTES = 8 * 1024 * 1024
 RETRY_MAX = 3
 RETRY_BASE = 0.5
 _RETRY_JITTER = 0.2
+# 同步时机（设计「选择性同步与删除语义-20261107」§6 行 5/6/9/10）：
+# - 宿主 watcher（watchfiles）2s 去抖 + 批量合并，只标 dirty；
+# - AT 回合结束回调同样去抖 2s（回合内多次写文件合并成一轮）；
+# - 关机 flush ≤10s，只传 ≤1MiB 小文件并写回清单，超时放弃；
+# - 暂停只停传输（不碰本地/远端文件），每轮开始检查一次。
+TRIGGER_DEBOUNCE_SECONDS = 2.0
+WATCH_DEBOUNCE_MS = 2000
+SHUTDOWN_FLUSH_SECONDS = 10.0
+SHUTDOWN_FLUSH_MAX_BYTES = 1 * 1024 * 1024
+# 触发优先级（同刻多事件合并为一次；高优先级把待跑轮次「提前」）。
+TRIGGER_PRIORITY = {
+    "timer": 1,
+    "watch": 2,
+    "agent_stop": 3,
+    "manual": 4,
+}
 
 
 def _retryable_status(status_code: int) -> bool:
@@ -487,6 +503,7 @@ class SyncEngine:
             "processed": int(pg.get("processed") or 0),
             "deferred": int(pg.get("deferred") or 0),
             "retries": int(pg.get("retries") or 0),
+            "paused": self.paused(),
         }
 
     # ── S1 同步范围配置 ─────────────────────────────────────────────
@@ -496,6 +513,22 @@ class SyncEngine:
 
     def save_config(self, config: Dict[str, Any]) -> None:
         save_sync_config(self.config_file, config)
+
+    def paused(self) -> bool:
+        """暂停开关（``.sync/config.json`` 顶层 ``sync_paused``，默认 false）。
+
+        每轮开始读一次 → 前端改配置后无需重启引擎；缺省/损坏按未暂停。
+        """
+        cfg = self.load_config()
+        return bool(cfg.get("sync_paused")) if isinstance(cfg, dict) else False
+
+    def set_paused(self, paused: bool) -> Dict[str, Any]:
+        """写暂停开关（只改配置，不碰任何本地/远端文件）。"""
+        cfg = self.load_config()
+        cfg["sync_paused"] = bool(paused)
+        self.save_config(cfg)
+        logger.info("file sync paused=%s", bool(paused))
+        return {"ok": True, "paused": bool(paused)}
 
     def human_scope(self, human: Optional[str] = None) -> Dict[str, List[str]]:
         """当前（或指定）human 的生效范围（缺省项已补齐）。"""
@@ -934,6 +967,8 @@ class SyncEngine:
 
         返回形态：
         - 锁被占 → ``{"locked": True}``
+        - 暂停中（config.sync_paused）→ ``{"paused": True}``（只更新状态，
+          零 ctl 调用、零文件操作）
         - 控制器无清单接口（404/405/501）→ ``{"enabled": False, "reason":
           "controller_without_manifest"}``（**不重试**）
         - generation 未变 → ``{"skipped": "same-generation"}``
@@ -1195,15 +1230,28 @@ class SyncEngine:
     def _run_locked(self) -> Dict[str, Any]:
         """持锁一轮 = S6 进度包裹（scanning → syncing → idle/error）。
 
+        暂停（设计 §6 行 10）：每轮持锁后先检查 ``sync_paused``——暂停时
+        **只更新状态不传输**（不调任何 ctl 端点、不碰本地/远端文件），
+        返回 ``{"paused": True}``。
+
         异常原样上抛（run_once 捕获转 ``{"error": ...}``），进度面先
         标 error；被锁挡下的 run（locked）不碰进度——进度归持锁轮。
         """
         self._progress_begin()
         try:
-            result = self._run_body()
+            if self.paused():
+                result: Dict[str, Any] = {"paused": True}
+            else:
+                result = self._run_body()
         except Exception:  # noqa: BLE001
             self._progress_end(error=True)
             raise
+        if result.get("paused"):
+            with self._stats_lock:
+                self._stats["state"] = "paused"
+                self._stats["paused"] = True
+                self._stats["current_path"] = None
+            return result
         self._progress_set_round(result)
         self._progress_end(error="error" in result)
         return result
@@ -1649,6 +1697,142 @@ class SyncEngine:
         if delta is not None:
             out["delta"] = delta
         return out
+
+    # ── 关机 flush（设计 §6 行 9：≤10s，只小文件 + 写回清单） ────────
+
+    def flush_small(
+        self, timeout: float = SHUTDOWN_FLUSH_SECONDS
+    ) -> Dict[str, Any]:
+        """关机前收尾：截止时间内只上传 ≤1MiB 的本地新增/变更文件。
+
+        - 暂停中 → 直接跳过（暂停语义 = 停传输）；
+        - 锁被占（后台轮还在跑）→ 跳过，不争抢、不阻塞退出；
+        - 只处理小文件：>1MiB 一律留到下次启动（大文件易超时）；
+        - 每个文件前检查截止时间，到点返回 ``{"timeout": True, ...}``；
+        - 有上传才条件写回 manifest（If-Match / 首次 If-None-Match:*）。
+
+        返回 ``{uploaded, skipped|timeout|error?...}``；任何异常吞掉
+        （关机路径不允许抛）。
+        """
+        if self.paused():
+            return {"skipped": "paused", "uploaded": 0}
+        if not self._acquire_lock():
+            return {"skipped": "locked", "uploaded": 0}
+        try:
+            return self._flush_small_locked(self._now() + max(0.0, float(timeout)))
+        except Exception as exc:  # noqa: BLE001 - 关机路径不抛
+            return {"uploaded": 0, "error": f"{type(exc).__name__}: {exc}"}
+        finally:
+            self._release_lock()
+
+    def _flush_small_locked(self, deadline: float) -> Dict[str, Any]:
+        """``flush_small`` 的持锁主体（deadline 为绝对时间戳）。"""
+        if self._now() >= deadline:
+            return {"uploaded": 0, "timeout": True}
+        r = self._call("GET", f"/api/v1/humans/{self.human}/sync/status")
+        if r.status_code != 200:
+            return {"uploaded": 0, "skipped": f"status-{r.status_code}"}
+        try:
+            status = r.json()
+        except Exception:  # noqa: BLE001
+            status = {}
+        generation = status.get("generation") if isinstance(status, dict) else None
+
+        cached = self._load_manifest_cache()
+        get_headers: Dict[str, str] = (
+            {"If-None-Match": cached["etag"]} if cached else {}
+        )
+        r = self._call(
+            "GET",
+            f"/api/v1/humans/{self.human}/sync/manifest",
+            headers=get_headers or None,
+        )
+        creating_manifest = False
+        if r.status_code == 304 and cached is not None:
+            manifest = cached["manifest"]
+            manifest_etag = cached["etag"]
+        elif r.status_code == 404:
+            manifest = {"version": 1, "entries": {}}
+            manifest_etag = None
+            creating_manifest = True
+        elif r.status_code == 200:
+            manifest = r.json()
+            manifest_etag = self._etag_from(r, manifest)
+            if manifest_etag:
+                self._save_manifest_cache(manifest_etag, r.text())
+        else:
+            return {"uploaded": 0, "skipped": f"manifest-{r.status_code}"}
+        entries = self._parse_entries(manifest)
+
+        st = self._load_state()
+        rec = (st.get("humans") or {}).get(self.human) or {}
+        prev_local = rec.get("local") or {}
+        new_local: Dict[str, Dict[str, float]] = dict(prev_local)
+        new_etags: Dict[str, str] = dict(rec.get("etags") or {})
+        new_entries: Dict[str, Dict[str, Any]] = {
+            e["path"]: dict(e) for e in entries
+        }
+
+        uploaded = 0
+        for rel, lnow in sorted(self._scan_local().items()):
+            if self._now() >= deadline:
+                return {"uploaded": uploaded, "timeout": True}
+            size = int(lnow["size"])
+            if size <= 0 or size > SHUTDOWN_FLUSH_MAX_BYTES:
+                continue
+            prev = prev_local.get(rel)
+            if (
+                isinstance(prev, dict)
+                and prev.get("mtime") == lnow["mtime"]
+                and prev.get("size") == lnow["size"]
+            ):
+                continue
+            try:
+                data = (self.files_dir / rel).read_bytes()
+            except Exception:  # noqa: BLE001
+                continue
+            if self._now() >= deadline:
+                return {"uploaded": uploaded, "timeout": True}
+            if not self._upload(rel, data):
+                continue
+            uploaded += 1
+            u_etag = f"local:{_sha16(data)}"
+            new_etags[rel] = u_etag
+            new_local[rel] = dict(lnow)
+            new_entries[rel] = {
+                "path": rel,
+                "etag": u_etag,
+                "size": len(data),
+            }
+
+        if uploaded == 0:
+            return {"uploaded": 0}
+        put_headers: Dict[str, str] = {}
+        if manifest_etag:
+            put_headers["If-Match"] = manifest_etag
+        elif creating_manifest:
+            put_headers["If-None-Match"] = "*"
+        r = self._call(
+            "PUT",
+            f"/api/v1/humans/{self.human}/sync/manifest",
+            json_body=self._rebuild_manifest(manifest, new_entries),
+            headers=put_headers,
+        )
+        if r.status_code not in (200, 201):
+            return {"uploaded": uploaded, "error": f"manifest HTTP {r.status_code}"}
+        last_run_at = _iso(self._now())
+        st.setdefault("humans", {})[self.human] = {
+            "generation": rec.get("generation") if generation is None else generation,
+            "etags": new_etags,
+            "local": new_local,
+            "cursor": rec.get("cursor"),
+            "lastRunAt": last_run_at,
+            "partial": bool(rec.get("partial")),
+            "pending": int(rec.get("pending") or 0),
+            "largeDeferred": rec.get("largeDeferred") or [],
+        }
+        self._save_state(st)
+        return {"uploaded": uploaded, "lastRunAt": last_run_at}
 
     # ── 增量探测（files/changes?since=<cursor>）──────────────────────
 
@@ -2122,6 +2306,225 @@ class SyncEngine:
             logger.debug("file sync conflicts.log write failed: %s", exc)
 
 
+# ── 触发调度（宿主 watcher / AT 回合结束 / 定时 / 手动）──────────────
+
+_WATCH_IGNORE_SUFFIXES = (".part", ".tmp", ".swp", ".sync-tmp")
+_WATCH_IGNORE_PARTS = (".sync", "cache")
+
+
+def watch_change_relevant(changes: Any) -> bool:
+    """watcher 变更集里是否有值得触发一轮的路径。
+
+    设计 §6.2：忽略 ``.sync/``、``cache/``、``*.conflict-*``、临时文件
+    （``~$*``、``*.swp``、``*.tmp``；另含引擎自己的 ``.part`` /
+    ``.sync-tmp``），避免自己写镜像把自己反复唤醒。
+    """
+    for item in changes or ():
+        path = (
+            item[1]
+            if isinstance(item, (tuple, list)) and len(item) > 1
+            else item
+        )
+        p = Path(str(path))
+        name = p.name
+        if name.startswith("~$") or name.endswith(_WATCH_IGNORE_SUFFIXES):
+            continue
+        if ".conflict-" in name:
+            continue
+        if any(part in _WATCH_IGNORE_PARTS for part in p.parts):
+            continue
+        return True
+    return False
+
+
+class SyncTriggers:
+    """同步触发合并器（事件只标 dirty；单轮顺序执行，不并发）。
+
+    宿主文件变更（watchfiles）与 AT 回合结束回调都走 ``mark()``：
+    2s 去抖内多次事件合并成**一轮**；优先级只决定「待跑轮次被谁提前」
+    （手动 > agent_stop > watch > 定时）。实际互斥仍由引擎 ``.sync/lock``
+    兜住（手动 / 定时 / 本 dispatcher 可能同刻触发）。
+    """
+
+    def __init__(
+        self,
+        engine: SyncEngine,
+        *,
+        debounce: float = TRIGGER_DEBOUNCE_SECONDS,
+        watch_debounce_ms: int = WATCH_DEBOUNCE_MS,
+        watch: bool = True,
+    ) -> None:
+        self.engine = engine
+        self.debounce = max(0.0, float(debounce))
+        self.watch_debounce_ms = int(watch_debounce_ms)
+        self._watch_enabled = bool(watch)
+        self._lock = threading.Lock()
+        self._dirty = False
+        self._priority = 0
+        self._source: Optional[str] = None
+        self._wake = asyncio.Event()
+        self._stopping = asyncio.Event()
+        self._watch_stop = asyncio.Event()
+        self._task: Optional[asyncio.Task] = None
+        self._watch_task: Optional[asyncio.Task] = None
+        # start() 时捕获事件循环：AT 回调若从工作线程进来，走
+        # call_soon_threadsafe 而不是直接 set（asyncio.Event 非线程安全）。
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        # watchfiles 不可用（未装/异常）→ False（自动降级，不阻塞启动）。
+        self.watch_available: Optional[bool] = None
+        self.rounds = 0
+        self.last_result: Optional[Dict[str, Any]] = None
+
+    # ── 事件入口 ─────────────────────────────────────────────────
+
+    def mark(self, source: str = "watch", *, priority: Optional[int] = None) -> None:
+        """标 dirty（只置位，不跑轮）；同刻多事件由 dispatcher 合并。"""
+        p = int(
+            priority if priority is not None else TRIGGER_PRIORITY.get(source, 1)
+        )
+        with self._lock:
+            self._dirty = True
+            if p >= self._priority:
+                self._priority = p
+                self._source = source
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            try:
+                loop.call_soon_threadsafe(self._wake.set)
+                return
+            except RuntimeError:  # 事件循环已关闭 → 直接置位兜底
+                pass
+        self._wake.set()
+
+    def pending(self) -> bool:
+        with self._lock:
+            return self._dirty
+
+    def consume(self) -> Tuple[bool, Optional[str], int]:
+        """取走 dirty 快照（手动轮「提前」待跑轮次用它）。"""
+        with self._lock:
+            dirty, source, prio = self._dirty, self._source, self._priority
+            self._dirty = False
+            self._source = None
+            self._priority = 0
+        return dirty, source, prio
+
+    # ── 生命周期 ─────────────────────────────────────────────────
+
+    def start(self) -> None:
+        if self._task is not None and not self._task.done():
+            return
+        self._stopping.clear()
+        self._watch_stop.clear()
+        self._loop = asyncio.get_running_loop()
+        self._task = asyncio.create_task(self._dispatch())
+        if self._watch_enabled:
+            self._watch_task = asyncio.create_task(self._watch())
+
+    async def stop(self) -> None:
+        self._stopping.set()
+        self._wake.set()
+        self._watch_stop.set()
+        watch_task, self._watch_task = self._watch_task, None
+        if watch_task is not None and not watch_task.done():
+            watch_task.cancel()
+            try:
+                await watch_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:  # noqa: BLE001 - 停止路径不抛
+                logger.debug("watch task stopped with error", exc_info=True)
+        task, self._task = self._task, None
+        if task is not None and not task.done():
+            try:
+                await asyncio.wait_for(task, timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.info("file sync trigger loop still busy after 2s; cancelled")
+            except asyncio.CancelledError:
+                pass
+            except Exception:  # noqa: BLE001 - 停止路径不抛
+                logger.debug("trigger loop stopped with error", exc_info=True)
+        self._loop = None
+
+    # ── dispatcher / watcher ─────────────────────────────────────
+
+    async def _dispatch(self) -> None:
+        try:
+            while not self._stopping.is_set():
+                await self._wake.wait()
+                self._wake.clear()
+                if self._stopping.is_set():
+                    break
+                with self._lock:
+                    prio = self._priority
+                delay = (
+                    0.0
+                    if prio >= TRIGGER_PRIORITY["manual"]
+                    else self.debounce
+                )
+                if delay > 0:
+                    try:
+                        await asyncio.wait_for(
+                            self._stopping.wait(), timeout=delay
+                        )
+                    except asyncio.TimeoutError:
+                        pass
+                    if self._stopping.is_set():
+                        break
+                dirty, source, _prio = self.consume()
+                if not dirty:
+                    continue
+                self.rounds += 1
+                try:
+                    res = await asyncio.to_thread(self.engine.run_once)
+                except Exception as exc:  # noqa: BLE001 - 单轮失败不杀循环
+                    res = {"error": f"{type(exc).__name__}: {exc}"}
+                self.last_result = (
+                    res if isinstance(res, dict) else {"result": res}
+                )
+                if isinstance(res, dict) and res.get("error"):
+                    logger.warning(
+                        "file sync trigger (%s) error: %s",
+                        source,
+                        res["error"],
+                    )
+                else:
+                    logger.info("file sync trigger (%s): %s", source, res)
+        except asyncio.CancelledError:
+            raise
+
+    async def _watch(self) -> None:
+        """宿主文件监听：watchfiles.awatch(files_dir, debounce=2s)。
+
+        不可用（未安装 / 启动异常）→ ``watch_available=False`` 并静默
+        降级（定时 + 手动 + AT 回调仍工作），绝不阻塞插件启动。
+        """
+        try:
+            from watchfiles import awatch  # type: ignore
+        except Exception as exc:  # noqa: BLE001
+            self.watch_available = False
+            logger.info(
+                "host file watch unavailable (%s); sync falls back to "
+                "timer/manual/agent-stop",
+                exc,
+            )
+            return
+        self.watch_available = True
+        try:
+            async for changes in awatch(
+                str(self.engine.files_dir),
+                debounce=self.watch_debounce_ms,
+                stop_event=self._watch_stop,
+            ):
+                if watch_change_relevant(changes):
+                    self.mark("watch")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - watcher 异常自动降级
+            self.watch_available = False
+            logger.warning("host file watch disabled: %s", exc)
+
+
 # ── 工作区解析 / 真实 ctl_call / 单例与后台循环 ───────────────────────
 
 
@@ -2262,12 +2665,17 @@ def build_ctl_call() -> Callable[..., HttpResult]:
 
 
 _engine: Optional[SyncEngine] = None
+_triggers: Optional[SyncTriggers] = None
 _task: Optional[asyncio.Task] = None
 _stop_event = asyncio.Event()
 
 
 def get_engine() -> Optional[SyncEngine]:
     return _engine
+
+
+def get_triggers() -> Optional[SyncTriggers]:
+    return _triggers
 
 
 def ensure_engine() -> SyncEngine:
@@ -2281,35 +2689,78 @@ def ensure_engine() -> SyncEngine:
     return _engine
 
 
+def ensure_triggers() -> SyncTriggers:
+    """取（或惰性建）触发调度器（引擎同款惰性语义）。"""
+    global _triggers
+    if _triggers is None:
+        _triggers = SyncTriggers(ensure_engine())
+    return _triggers
+
+
+def notify_agent_stop() -> None:
+    """AT 回合结束回调体（plugin 侧 register_agent_stop_handler 注册）。
+
+    只标 dirty：回合内多次写文件在 2s 去抖窗内合并成一轮；宿主没有
+    ``register_agent_stop_handler`` 时插件不会注册本回调。
+    """
+    t = _triggers
+    if t is None:
+        logger.debug("agent-stop sync trigger ignored (engine not started)")
+        return
+    t.mark("agent_stop")
+
+
+def run_manual() -> Dict[str, Any]:
+    """手动触发（POST /sync/run）：先吃掉待跑的 watch/agent_stop 轮次再直跑。
+
+    手动优先级最高——「把低优先级的待跑轮次提前」，不再额外排一轮。
+    """
+    t = _triggers
+    if t is not None:
+        t.consume()
+    return ensure_engine().run_once()
+
+
 def reset_for_tests() -> None:
-    """测试隔离：清单例（任务循环由 start/stop 自管）。"""
-    global _engine, _task
+    """测试隔离：清单例与触发调度（后台任务由 start/stop 自管）。"""
+    global _engine, _triggers, _task
+    if _triggers is not None:
+        for task in (_triggers._task, _triggers._watch_task):
+            if task is not None and not task.done():
+                task.cancel()
+    if _task is not None and not _task.done():
+        _task.cancel()
     _engine = None
+    _triggers = None
     _task = None
 
 
 def start() -> None:
-    """启动后台同步循环（幂等）。由 plugin.register_startup_hook 调用。
+    """启动同步循环 + 触发调度（幂等）。由 plugin.register_startup_hook 调用。
 
-    启动 60s 后首跑，之后每 300s（±30s jitter）；每轮 run_once 经
-    asyncio.to_thread 跑在工作线程（引擎是同步的）；异常吞掉并记日志
-    ——不影响宿主。
+    - 定时兜底：启动 60s 后首跑，之后每 300s（±30s jitter）；
+    - 触发合并：宿主文件变更（watchfiles，2s 去抖）/ AT 回合结束
+      （2s 去抖）/ 定时 → 单轮顺序执行（引擎 .sync/lock 再兜一层）；
+    - 每轮 run_once 经 asyncio.to_thread 跑工作线程（引擎是同步的）；
+      异常吞掉并记日志——不影响宿主。
     """
     global _task
-    if _engine is None:
-        ensure_engine()
+    engine = ensure_engine()
+    trig = ensure_triggers()
     if _task and not _task.done():
         return
     _stop_event.clear()
+    trig.start()
     _task = asyncio.create_task(_loop())
     logger.info(
         "file sync engine started (root=%s human=%s first in %.0fs, "
-        "then every %.0fs±%.0fs)",
-        _engine.root,
-        _engine.human,
+        "then every %.0fs±%.0fs; watch=%s)",
+        engine.root,
+        engine.human,
         FIRST_DELAY_SECONDS,
         INTERVAL_SECONDS,
         JITTER_SECONDS,
+        trig.watch_available,
     )
 
 
@@ -2317,14 +2768,17 @@ async def _loop() -> None:
     try:
         await asyncio.sleep(FIRST_DELAY_SECONDS)
         while not _stop_event.is_set():
-            try:
-                res = await asyncio.to_thread(_engine.run_once)
-                if isinstance(res, dict) and "error" in res:
-                    logger.warning("file sync run error: %s", res["error"])
-                else:
+            trig = _triggers
+            if trig is not None:
+                # 定时轮走合并器（与 watch/agent_stop 同刻只跑一轮）；
+                # 优先级最低，待跑的高优先级轮次会把它提前。
+                trig.mark("timer")
+            else:  # pragma: no cover - start() 必建触发器，纯兜底
+                try:
+                    res = await asyncio.to_thread(_engine.run_once)
                     logger.info("file sync run: %s", res)
-            except Exception as exc:  # noqa: BLE001 - 单轮失败不杀循环
-                logger.warning("file sync run failed: %s", exc)
+                except Exception as exc:  # noqa: BLE001 - 单轮失败不杀循环
+                    logger.warning("file sync run failed: %s", exc)
             try:
                 await asyncio.wait_for(
                     _stop_event.wait(),
@@ -2337,9 +2791,18 @@ async def _loop() -> None:
 
 
 async def stop() -> None:
-    """停止后台循环。由 plugin.register_shutdown_hook 调用。"""
+    """停止后台循环 + 触发调度，并做关机 flush（≤10s）。由 shutdown hook 调用。
+
+    关机 flush 只处理 ≤1MiB 小文件并写回清单；超时/失败只记日志，
+    不阻塞退出（设计 §6 行 9）。
+    """
     global _task
     _stop_event.set()
+    if _triggers is not None:
+        try:
+            await _triggers.stop()
+        except Exception:  # noqa: BLE001 - 停止路径不抛
+            logger.debug("file sync trigger stop failed", exc_info=True)
     if _task and not _task.done():
         _task.cancel()
         try:
@@ -2347,4 +2810,21 @@ async def stop() -> None:
         except asyncio.CancelledError:  # pragma: no cover
             pass
         _task = None
+    if _engine is not None:
+        try:
+            res = await asyncio.wait_for(
+                asyncio.to_thread(_engine.flush_small),
+                timeout=SHUTDOWN_FLUSH_SECONDS,
+            )
+            if isinstance(res, dict) and res.get("timeout"):
+                logger.warning("file sync shutdown flush timed out: %s", res)
+            else:
+                logger.info("file sync shutdown flush: %s", res)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "file sync shutdown flush aborted after %.0fs",
+                SHUTDOWN_FLUSH_SECONDS,
+            )
+        except Exception as exc:  # noqa: BLE001 - 关机路径不抛
+            logger.warning("file sync shutdown flush failed: %s", exc)
     logger.info("file sync engine stopped")
