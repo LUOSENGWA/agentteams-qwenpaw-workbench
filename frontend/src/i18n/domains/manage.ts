@@ -445,6 +445,19 @@ export const manageDict: Record<string, { en: string }> = {
   "同步失败": { en: "Sync failed" },
   "镜像目录": { en: "Mirror directory" },
 
+  // ── 文件域 v3（同步设置弹窗只读信息块：同步范围 + 上次运行）──
+  // 「上次运行」（creds 域）/「时间」「状态」（kb 域）/「运行中」「空闲」「无」
+  // （chat 域）/「未知」（workflow 域）为全局并集既有键，不重复登记。
+  "同步范围": { en: "Sync scope" },
+  "同步 workspace/{h}/files/**": { en: "Syncs workspace/{h}/files/**" },
+  "不同步 memory/、digest/、.trash/、.sync/": {
+    en: "Not synced: memory/, digest/, .trash/, .sync/",
+  },
+  "远端文档不会被本地删除影响": {
+    en: "Local deletions do not affect remote documents",
+  },
+  "冲突": { en: "Conflicts" },
+
   // ── 危险区：CRD 删除（16.55）──
   "危险区": { en: "Danger zone" },
   "删除人员": { en: "Delete person" },
