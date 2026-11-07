@@ -59,11 +59,18 @@ export default function SyncScopeDialog(props: SyncScopeDialogProps): JSX.Elemen
   );
   const [recursive, setRecursive] = React.useState<boolean>(initial.recursive);
 
+  // 只在「打开的那一刻」用配置初始化；打开期间父组件每次重渲染（同步设置
+  // 里的进度轮询 1s 一次）都会传新的 initial 对象——若把它放进依赖，用户刚关掉
+  // 的开关会被立刻重置回配置值（"关了又被自动打开"）。
+  const wasOpen = React.useRef(false);
   React.useEffect(() => {
-    if (!open) return;
-    setSelection(initial.selection);
-    setRecursive(initial.recursive);
-  }, [open, initial]);
+    if (open && !wasOpen.current) {
+      setSelection(initial.selection);
+      setRecursive(initial.recursive);
+    }
+    wasOpen.current = open;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅按 open 边沿初始化
+  }, [open]);
 
   React.useEffect(() => {
     if (!open) return;

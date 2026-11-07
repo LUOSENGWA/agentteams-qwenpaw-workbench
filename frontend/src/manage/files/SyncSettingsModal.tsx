@@ -451,6 +451,15 @@ export default function SyncSettingsModal({
     });
   };
 
+  /** 稳定的初始值对象（避免每次父渲染都新建 identity 触发子组件重置）。 */
+  const scopeInitial = React.useMemo(
+    () => ({
+      selection: scope?.selection ?? {},
+      recursive: scope?.recursive ?? true,
+    }),
+    [scope],
+  );
+
   /** 范围摘要文案（全选 / n 个文件夹 + 递归态）。 */
   const scopeSummary = (): string => {
     if (!scope) return tr("默认同步 files/**（全部文件）");
@@ -712,7 +721,7 @@ export default function SyncSettingsModal({
           t={t}
           tr={tr}
           humanName={humanName}
-          initial={{ selection: scope?.selection ?? {}, recursive: scope?.recursive ?? true }}
+          initial={scopeInitial}
           saving={scopeBusy}
           onClose={() => setScopeOpen(false)}
           onSave={(next) => void saveScopeSelection(next)}
