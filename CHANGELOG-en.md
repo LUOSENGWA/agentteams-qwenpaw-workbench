@@ -3,6 +3,14 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.79 (2026-11-07 · config and grant interaction fixes)
+
+**Fixed**
+- **Provider select emptied again**: the sync compares content, not the array reference the parent recreates each render; the model select stays disabled until a provider is picked.
+- **Coding CLI is a select**: Qwen Code / OpenCode / Qoder (already-added ones filtered out) instead of a free-text name.
+- **Grouped fields routed**: `approval.* / mcp.* / channels.* / skills.* / tools.*` groups nested inside config faces now go to their capability card, so the config tab stops repeating them.
+- **Boolean width**: boolean fields no longer stretch across the row; the switch keeps its own width.
+
 ## 0.5.0-beta.16.78 (2026-11-07 · config grouping corrected)
 
 **Fixed**

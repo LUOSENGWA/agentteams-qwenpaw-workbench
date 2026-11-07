@@ -3,6 +3,14 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.79（2026-11-07 · 配置与授权交互修正）
+
+**修复**
+- **模型授权 Provider 又被清空**：同步按「内容」比较而不是数组引用（父组件每次渲染都新建数组）；未选 Provider 时模型框禁用；
+- **Coding CLI 改为选择框**：Qwen Code / OpenCode / Qoder 三项（已加的不重复出现），不再手填名字；
+- **按分组归位**：`approval.* / mcp.* / channels.* / skills.* / tools.*` 这类嵌在 config face 里的分组字段，归到对应能力卡，运行配置不再重复显示；
+- **开关宽度**：布尔字段不再被网格拉满整行，保持开关自身宽度。
+
 ## 0.5.0-beta.16.78（2026-11-07 · 配置按 face 分组修正）
 
 **修复**
