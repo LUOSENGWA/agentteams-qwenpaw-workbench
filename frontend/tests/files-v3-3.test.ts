@@ -76,6 +76,9 @@ const antdShim = {
   Tooltip: (p: Record<string, unknown>) => E("span", null, p.children),
   Input: (p: Record<string, unknown>) =>
     E("input", { "data-input": "1", value: p.value ?? "", placeholder: p.placeholder }),
+  // files-dnd：回收站工具栏新增排序下拉（antd.Select）。
+  Select: (p: Record<string, unknown>) =>
+    E("div", { "data-select": String(p.value ?? "") }),
   Modal: Object.assign(
     (p: Record<string, unknown>) =>
       p.open ? E("div", { "data-modal": "1" }, p.title, p.children) : null,

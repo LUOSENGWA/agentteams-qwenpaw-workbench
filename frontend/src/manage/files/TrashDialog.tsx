@@ -7,8 +7,10 @@
  *
  * 内容（任务书 B3）：
  * - 标题「回收站」+ 副标题「共 N 项 · 恢复后回到原路径」（DialogShell 统一外壳）；
- * - 工具行：搜索（按原路径即时过滤）+ 排序（删除时间倒序默认，可切升序）
- *   + 「全部恢复」（>1 项时出现；二次确认；循环 restoreTrash；逐条失败计数汇总）；
+ * - 工具行：搜索（原路径 / 操作人即时过滤）+ 排序下拉（删除时间倒序默认 /
+ *   删除时间正序 / 大小 / 名称）+ 「全部恢复」（>1 项时出现；二次确认；
+ *   循环 restoreTrash；逐条失败计数汇总）；过滤无命中显示「无匹配」；
+ *   搜索/排序不改变批量范围（批量恢复用过滤后的可见行）；
  * - 列表：原路径 / 大小 / 删除时间 / 操作（行高 ≥44px；表头 sticky；
  *   deletedAt 缺失显示空）；窄屏（≤720px）卡片式（路径行 + 「大小 · 时间」行
  *   + 操作行，按钮 ≥44px）；
@@ -45,30 +47,77 @@ export const TRASH_COLUMNS = ["原路径", "大小", "删除时间", "操作"] a
 const TRASH_GRID = "minmax(0, 1fr) 72px 120px 96px";
 
 export type TrashSortDir = "desc" | "asc";
+/** 排序键：删除时间（默认）/ 大小 / 名称。 */
+export type TrashSortKey = "deletedAt" | "size" | "name";
 
-/** 按删除时间排序（缺失/非法恒排尾；同值按 id 稳定）。纯函数。 */
-export function trashRowsSort(rows: HumanTrashEntry[], dir: TrashSortDir): HumanTrashEntry[] {
-  const ms = (e: HumanTrashEntry): number | null => {
-    if (!e.deletedAt) return null;
-    const m = Date.parse(e.deletedAt);
-    return Number.isNaN(m) ? null : m;
-  };
+function deletedMs(e: HumanTrashEntry): number | null {
+  if (!e.deletedAt) return null;
+  const m = Date.parse(e.deletedAt);
+  return Number.isNaN(m) ? null : m;
+}
+
+function trashName(e: HumanTrashEntry): string {
+  const p = normTrashPath(e.path);
+  const i = p.lastIndexOf("/");
+  return (i >= 0 ? p.slice(i + 1) : p).toLowerCase();
+}
+
+/** 可空值比较：缺失恒排尾（与方向无关），方向只翻转有效值。 */
+function cmpNullable<T>(
+  a: T | null,
+  b: T | null,
+  dir: TrashSortDir,
+  cmp: (x: T, y: T) => number,
+): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  const c = cmp(a, b);
+  return dir === "desc" ? -c : c;
+}
+
+/** 回收站排序（删除时间 / 大小 / 名称；缺失恒排尾；同值按 id 稳定）。
+ *  纯函数，不改原数组。 */
+export function trashSortRows(
+  rows: HumanTrashEntry[],
+  key: TrashSortKey,
+  dir: TrashSortDir,
+): HumanTrashEntry[] {
   return [...rows].sort((a, b) => {
-    const ma = ms(a);
-    const mb = ms(b);
-    if (ma == null && mb == null) return a.id.localeCompare(b.id);
-    if (ma == null) return 1;
-    if (mb == null) return -1;
-    if (ma !== mb) return dir === "desc" ? mb - ma : ma - mb;
-    return a.id.localeCompare(b.id);
+    let c = 0;
+    if (key === "deletedAt") {
+      c = cmpNullable(deletedMs(a), deletedMs(b), dir, (x, y) => x - y);
+    } else if (key === "size") {
+      c = cmpNullable(
+        typeof a.size === "number" ? a.size : null,
+        typeof b.size === "number" ? b.size : null,
+        dir,
+        (x, y) => x - y,
+      );
+    } else {
+      c = cmpNullable(trashName(a), trashName(b), dir, (x, y) =>
+        x < y ? -1 : x > y ? 1 : 0,
+      );
+    }
+    return c !== 0 ? c : a.id.localeCompare(b.id);
   });
 }
 
-/** 按原路径子串过滤（大小写不敏感；空白查询 = 原样返回）。纯函数。 */
+/** 兼容入口（历史测试/调用点）：按删除时间排序。 */
+export function trashRowsSort(rows: HumanTrashEntry[], dir: TrashSortDir): HumanTrashEntry[] {
+  return trashSortRows(rows, "deletedAt", dir);
+}
+
+/** 按原路径 / 操作人（caller）子串过滤（大小写不敏感；空白 = 原样返回）。
+ *  纯函数；不改变选择集（本弹窗无选择集，批量恢复用过滤后的可见行）。 */
 export function trashFilter(rows: HumanTrashEntry[], q: string): HumanTrashEntry[] {
   const s = q.trim().toLowerCase();
   if (!s) return rows;
-  return rows.filter((e) => normTrashPath(e.path).toLowerCase().includes(s));
+  return rows.filter(
+    (e) =>
+      normTrashPath(e.path).toLowerCase().includes(s) ||
+      (e.caller ?? "").toLowerCase().includes(s),
+  );
 }
 
 /** 窄屏判定（≤720px 卡片式）。shim/无 matchMedia 环境 → false（表格态）。 */
@@ -116,13 +165,14 @@ export default function TrashDialog({
   onReload,
 }: TrashDialogProps) {
   const [search, setSearch] = React.useState("");
+  const [sortKey, setSortKey] = React.useState<TrashSortKey>("deletedAt");
   const [sortDir, setSortDir] = React.useState<TrashSortDir>("desc");
   const narrow = useNarrow(720);
 
   /** 变更（恢复/彻底删/全部恢复）成功后统一刷新（静默强制，走容器去重）。 */
   const afterMutate = (): void => onReload({ silent: true, force: true });
 
-  const visible = trashFilter(trashRowsSort(entries, sortDir), search);
+  const visible = trashFilter(trashSortRows(entries, sortKey, sortDir), search);
 
   /** 单条恢复（409 = 同名文件已存在：管理员 → 「覆盖恢复」二次确认）。 */
   const doRestore = (e: HumanTrashEntry): void => {
@@ -248,21 +298,42 @@ export default function TrashDialog({
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "12px 0 8px" }}>
       <antd.Input
         style={{ flex: "1 1 200px", minWidth: 160 }}
-        placeholder={tr("按原路径搜索")}
+        placeholder={tr("按原路径/操作人搜索")}
+        aria-label={tr("按原路径/操作人搜索")}
         value={search}
         onChange={(e: { target: { value: string } }) => setSearch(e.target.value)}
       />
-      <antd.Button
-        style={{ minHeight: "var(--hf-btn-min, 40px)" }}
-        onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
-      >
-        {tr("删除时间")} {sortDir === "desc" ? "↓" : "↑"}
-      </antd.Button>
+      <antd.Select
+        size="small"
+        aria-label={tr("排序方式")}
+        style={{ minWidth: 160 }}
+        value={`${sortKey}:${sortDir}`}
+        options={[
+          { value: "deletedAt:desc", label: `${tr("删除时间")} ↓` },
+          { value: "deletedAt:asc", label: `${tr("删除时间")} ↑` },
+          { value: "size:desc", label: `${tr("大小")} ↓` },
+          { value: "size:asc", label: `${tr("大小")} ↑` },
+          { value: "name:asc", label: `${tr("名称")} ↑` },
+          { value: "name:desc", label: `${tr("名称")} ↓` },
+        ]}
+        onChange={(v: string) => {
+          const [k, dir] = v.split(":");
+          if (k === "deletedAt" || k === "size" || k === "name") setSortKey(k);
+          setSortDir(dir === "asc" ? "asc" : "desc");
+        }}
+      />
       {visible.length > 1 ? (
         <antd.Button style={{ minHeight: "var(--hf-btn-min, 40px)" }} onClick={() => doRestoreAll(visible)}>
           {tr("全部恢复")}
         </antd.Button>
       ) : null}
+    </div>
+  );
+
+  /** 过滤后无命中（回收站非空）→ 「无匹配」，不改数据/选择。 */
+  const noMatch = (
+    <div style={{ padding: "32px 12px", textAlign: "center", fontSize: 13, color: t.textSecondary }}>
+      {tr("无匹配")}
     </div>
   );
 
@@ -412,7 +483,7 @@ export default function TrashDialog({
       {entries.length > 0 ? (
         <>
           {toolbar}
-          {narrow ? cards : table}
+          {visible.length === 0 ? noMatch : narrow ? cards : table}
         </>
       ) : null}
     </DialogShell>
