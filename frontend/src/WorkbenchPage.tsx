@@ -220,6 +220,7 @@ export default function WorkbenchPage() {
     memberWorkerNames,
     workerBadgeMap,
     workerSessionStates,
+    messagesFromCache,
   } = useWorkbenchMessages({
     activeRoom,
     setActiveRoom,
@@ -245,6 +246,7 @@ export default function WorkbenchPage() {
     setPendingOriginalId,
     setMinWindowTops,
     setJumpToEventId,
+    matrixUserId: config?.matrix?.user_id,
   });
 
   const {
@@ -441,6 +443,7 @@ export default function WorkbenchPage() {
     setRooms,
     messagesRef,
     setMessages,
+    matrixUserId: config?.matrix?.user_id,
   });
 
   const {
@@ -645,7 +648,9 @@ export default function WorkbenchPage() {
       errorNote={
         roomError === "not_found"
           ? tr("该房间历史暂时无法加载——可能是房间已失效，也可能是权限或服务端问题。可返回聊天页换其他房间。")
-          : ""
+          : messagesFromCache
+            ? tr("显示的是本地缓存——网络消息暂未更新")
+            : ""
       }
  // 回调 prop 全部改用上方稳定化
       // useCallback 引用（内联箭头每次渲染新引用会击穿 RoomChat memo）。

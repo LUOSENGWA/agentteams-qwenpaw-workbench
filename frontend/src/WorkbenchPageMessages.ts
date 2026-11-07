@@ -3,6 +3,7 @@
 // 壳持有的 React state 经 ctx 传入，标识符保持原名。
 
 import {
+  fetchEventContext,
   fetchRoomMessages,
   fetchTeamsSync,
   getCachedMessages,
@@ -19,6 +20,17 @@ import {
   nextBackfillAction,
   computeWindowFloorForJump,
 } from "./originalJump";
+import { locateOriginalMessage } from "./chat/originalLocate";
+import {
+  CHAT_CACHE_DEFAULT_ACCOUNT,
+  getRecent as getCachedRecent,
+  getWindow as getCachedWindow,
+  mergeMessages,
+  pruneAll as pruneCacheAll,
+  pruneRoom as pruneCacheRoom,
+  putMessages as putCachedMessages,
+  setLastRead,
+} from "./lib/chatCache";
 import { useT } from "./i18n";
 import { useWorkerSessionStates } from "./workerSessionState";
 import { useWorkerChatStatuses } from "./workerChatStatus";
@@ -54,10 +66,23 @@ export interface WorkbenchPageMessagesCtx {
   /** （R2 显式跳转）渲染窗口下界 setter（命中原消息时抬升，见 originalJump）。 */
   setMinWindowTops: (v: number) => void;
   setJumpToEventId: (v: string | null) => void;
+  /** 当前 Matrix 账号（config.matrix.user_id）——本地消息缓存的账号键。 */
+  matrixUserId?: string;
 }
 
+/** 会话内只做一次 pruneAll（房间级 LRU 预算），避免每次开房全量扫。 */
+let cachePrunedAll = false;
+
 export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
-  const { activeRoom, setActiveRoom, setTab, writeUiState, rooms, setRooms, workerTree, adminData, tr, setMessages, messagesRef, messagesEnd, setMessagesEnd, setMessagesLoading, setHasMore, setRoomError, setLoadingMore, setMarkingAllRead, pendingOriginalId, setPendingOriginalId, setMinWindowTops, setJumpToEventId } = ctx;
+  const { activeRoom, setActiveRoom, setTab, writeUiState, rooms, setRooms, workerTree, adminData, tr, setMessages, messagesRef, messagesEnd, setMessagesEnd, setMessagesLoading, setHasMore, setRoomError, setLoadingMore, setMarkingAllRead, pendingOriginalId, setPendingOriginalId, setMinWindowTops, setJumpToEventId, matrixUserId } = ctx;
+  /** 本地缓存账号键（config 未就绪 → default）。 */
+  const cacheAccount = matrixUserId || CHAT_CACHE_DEFAULT_ACCOUNT;
+  /** 当前窗口来自本地缓存（网络未确认）——错误条提示「显示的是本地缓存」。 */
+  const [messagesFromCache, setMessagesFromCache] = React.useState(false);
+  // 切房：缓存标记随房间重置（新房间的网络结果由 refreshMessages 决定）。
+  React.useEffect(() => {
+    setMessagesFromCache(false);
+  }, [activeRoom?.room_id]);
 
   // 消息历史窗口状态机——收敛原 windowRoomRef /
   // messagesEndRef / loadingMoreRef / prefetchRef 四个散落 ref（I1–I6
@@ -79,6 +104,11 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       const res = await markRoomRead(roomId, eventId);
       if (res && res.ok) {
         lastReadRef.current = { roomId, eventId };
+        // 本地缓存已读位点（离线首屏可用；写失败静默）。
+        const ts = messagesRef.current.find(
+          (m) => m.event_id === eventId,
+        )?.origin_server_ts;
+        if (ts) void setLastRead(cacheAccount, roomId, ts);
         setRooms((prev) =>
           prev.map((r) =>
             r.room_id === roomId
@@ -88,7 +118,7 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
         );
       }
     },
-    [],
+    [cacheAccount],
   );
 
   const handleMarkAllRead = React.useCallback(async () => {
@@ -127,17 +157,32 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
   const refreshMessages = React.useCallback(async (room: TeamRoom, silent = false) => {
     if (!silent) setMessagesLoading(true);
     try {
-      // 缓存即时显示，后台拉新。
+      // ① 本地持久缓存（IndexedDB）：先上屏旧消息（离线可读），随后网络
+      // 首屏合并覆盖。只取最近 N 条——首屏窗口大小与网络首屏一致。
+      const persisted = silent
+        ? []
+        : await getCachedRecent(cacheAccount, room.room_id, 50);
+      // ② 内存缓存（本会话已加载窗口，含 loadOlder 历史）。
       const cached = getCachedMessages(room.room_id);
       // I1 判定用**调用瞬间**的已加载条数（不是 set 之后的新值）。
       const curCount = messagesRef.current.length;
       const fresh = hist.isFresh(room.room_id, curCount);
-      if (cached) {
+      if (persisted.length) {
+        // 磁盘缓存为底、本房内存窗口覆盖（同 id 以本会话在屏数据为准——
+        // 编辑/撤回等本地最新状态不被旧落盘回退）。基底只取**本房**内存
+        // 缓存：切房瞬间 messagesRef 可能仍是旧房数组，不能混入。
+        const base = cached?.messages ?? [];
+        const preload = base.length ? mergeMessages(persisted, base) : persisted;
+        messagesRef.current = preload;
+        setMessages(preload);
+        setMessagesFromCache(true);
+        if (!silent) setMessagesLoading(false);
+      } else if (cached) {
         setMessages(cached.messages);
-        if (fresh) {
-          setMessagesEnd(cached.end);
-          setHasMore(Boolean(cached.end));
-        }
+      }
+      if (cached && fresh) {
+        setMessagesEnd(cached.end);
+        setHasMore(Boolean(cached.end));
       }
       const page = await fetchRoomMessages(room.room_id, 50);
       // I2 合并基底 = 当前在屏全量 与 缓存窗口 的较长者：
@@ -146,7 +191,7 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       // 路径上破洞——本轮修复的实存 bug）；
       // · 同房静默刷新时两者同长，取 ref（含 poll/send 的尾部增量）。
       const base =
-        curCount >= (cached?.messages.length ?? 0)
+        messagesRef.current.length >= (cached?.messages.length ?? 0)
           ? messagesRef.current
           : (cached?.messages ?? []);
       const merged = mergeForward(base, page.messages);
@@ -163,14 +208,27 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       setRoomError(page.error === "not_found" ? "not_found" : "");
       // I6：缓存存全量已加载历史（含 loadOlder 前插）+ 窗口游标（不回退）。
       setCachedMessages(room.room_id, { ...page, end: windowEnd }, merged);
+      // 本地持久缓存：本页落盘 + 房间预算裁剪（LRU 逐更早）；首次开房
+      // 顺带整理一次全局房间预算（每会话一次）。
+      setMessagesFromCache(false);
+      void putCachedMessages(cacheAccount, room.room_id, page.messages);
+      void pruneCacheRoom(cacheAccount, room.room_id);
+      if (!cachePrunedAll) {
+        cachePrunedAll = true;
+        void pruneCacheAll();
+      }
       // 已读：messages 升序，末条 = 最新。
       void markCurrentRead(room.room_id, page.messages[page.messages.length - 1]?.event_id);
     } catch (e) {
-      if (!silent) message.error(e instanceof Error ? e.message : tr("获取消息失败"));
+      if (!silent) {
+        // 失败保留缓存（已在屏）并在错误条提示「显示的是本地缓存」。
+        if (messagesRef.current.length > 0) setMessagesFromCache(true);
+        else message.error(e instanceof Error ? e.message : tr("获取消息失败"));
+      }
     } finally {
       if (!silent) setMessagesLoading(false);
     }
-  }, []);
+  }, [cacheAccount]);
 
   // 取页状态（R2 显式循环消费）：loaded=落地；busy=他人在飞（I5 单发闸，
   // 调用方稍后重试）；error=取页失败（toast 已给）；none=无房/无游标。
@@ -199,6 +257,11 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       setMessagesEnd(page.end);
       setHasMore(Boolean(page.end));
       setCachedMessages(activeRoom.room_id, { ...page, messages: merged }, merged);
+      // 本地持久缓存：本页（含走查跳过的空页）落盘。
+      void putCachedMessages(cacheAccount, activeRoom.room_id, [
+        ...page.messages,
+        ...older,
+      ]);
       // I3 管道常驻：落盘后立即预取再下一页（用户滚到边界时通常已零等待）。
       hist.prefetch(activeRoom.room_id, page.end);
       return "loaded";
@@ -209,34 +272,45 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       hist.setBusy(false);
       setLoadingMore(false);
     }
-  }, [activeRoom, messagesEnd]);
+  }, [activeRoom, messagesEnd, cacheAccount]);
 
-  // ── 「加载原消息」= 显式分页跳转（R2）────────────────────
-  // 点按钮 → 本函数内串行翻页直到目标进窗口（限页上限 ORIGINAL_PAGE_CAP）
-  // → 抬渲染窗口下界 + 走既有定位/高亮链；上限内找不到 → exhausted（banner
-  // 落 /context 定位区兜底）。替换旧的「kickstart 一页 + 滚到顶自动续拉」
-  // 接力——其游标/在飞闸/空页走查边界态是「有时加载不出来」「前插锚定补偿
-  // 失败跑到顶部」的范式性根因。取页仍全走 loadMore/RoomHistory
-  // （I1–I6 不变量一处收敛），此处只做循环决策（纯函数 originalJump）。
+  // ── 「加载原消息」= 本地缓存 / /context 直接建窗口（R3）────────
+  // 旧版（R2）：串行翻页直到目标进窗口（上限 ORIGINAL_PAGE_CAP=20 页），
+  // 深层目标慢且易 exhausted。新版定位优先级：
+  //   ① 目标已在窗口 → 就地定位（零网络）；
+  //   ② IndexedDB 缓存命中 → 目标 ±25 条注入时间线（零网络）；
+  //   ③ /context（GET /rooms/{id}/context/{eventId}?limit=30）→ 前后文
+  //      合并进缓存与当前窗口（一次请求，不再逐页翻）；
+  //   ④ /context 不可用（404/501/网络错/空）→ 回退 R2 显式分页循环
+  //      （originalJump.nextBackfillAction，上限 20 页不变）。
+  // 命中后一律内联在正常时间线（不再渲染独立「搜索定位」折叠块），
+  // 抬渲染窗口下界 + jumpToEventId 定位/高亮；pendingOriginal 旁路保持到
+  // 定位完成（onJumpHandled → finishPendingOriginalJump）才释放。
   const pendingOrigGenRef = React.useRef(0);
   const pendingOrigIdRef = React.useRef<string | null>(null);
+  const pendingOrigAbortRef = React.useRef<AbortController | null>(null);
   React.useEffect(() => {
     pendingOrigIdRef.current = pendingOriginalId;
   }, [pendingOriginalId]);
   const settlePendingOriginal = React.useCallback(
     (_kind: "found" | "exhausted" | "cancelled") => {
-      // 作废本轮：gen++（在飞循环下一次检查即自止）+ 清 pending（旁路释放）。
+      // 作废本轮：gen++（在飞循环/请求落地后即自止）+ 中止在飞 /context
+      // + 清 pending（旁路释放）。
       pendingOrigGenRef.current += 1;
+      pendingOrigAbortRef.current?.abort();
+      pendingOrigAbortRef.current = null;
       setPendingOriginalId(null);
     },
     [setPendingOriginalId],
   );
   const finishPendingOriginalJump = React.useCallback(() => {
-    // 定位完成（jumpToMessage 高亮 / /context 兜底）→ 释放 pending：
+    // 定位完成（jumpToMessage 高亮）→ 释放 pending：
     // 渲染窗口旁路关闭；下界（minWindowTops）已抬升，深层目标不被裁掉。
     if (pendingOrigIdRef.current) {
       pendingOrigGenRef.current += 1;
       pendingOrigIdRef.current = null;
+      pendingOrigAbortRef.current?.abort();
+      pendingOrigAbortRef.current = null;
       setPendingOriginalId(null);
     }
   }, [setPendingOriginalId]);
@@ -252,51 +326,98 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       if (pendingOrigIdRef.current === eventId) return "cancelled"; // 已在进行中
       // 换目标：作废旧循环（旧循环下一次 gen 检查自止，返回 cancelled）。
       if (pendingOrigIdRef.current) settlePendingOriginal("cancelled");
+      const roomId = activeRoom.room_id;
       const myGen = ++pendingOrigGenRef.current;
       pendingOrigIdRef.current = eventId;
       setPendingOriginalId(eventId);
-      // 停滞看门狗：每页落地重置；30s 无新页（服务端分页异常）→ gen++
-      // 作废本轮（循环自止返回 cancelled，banner 回 idle 可再点），不静默死挂。
+      const ctrl = new AbortController();
+      pendingOrigAbortRef.current = ctrl;
+      const cancelled = () => pendingOrigGenRef.current !== myGen;
+      // 停滞看门狗：每页落地/请求开始重置；30s 无进展（服务端异常）→
+      // gen++ 作废本轮（循环自止返回 cancelled，banner 回 idle 可再点）。
       let stallTimer = 0;
       const armStall = () => {
         window.clearTimeout(stallTimer);
         stallTimer = window.setTimeout(() => {
           pendingOrigGenRef.current += 1;
+          pendingOrigAbortRef.current?.abort();
         }, 30000);
       };
       armStall();
-      try {
+      // 注入时间线：与当前窗口按 ts+id 合并（缓存/上下文片段通常更深）。
+      const inject = (events: RoomMessage[]) => {
+        if (events.length === 0) return;
+        const merged = mergeMessages(messagesRef.current, events);
+        messagesRef.current = merged;
+        React.startTransition(() => setMessages(merged));
+      };
+      // 内联定位：抬渲染窗口下界（旁路释放后目标不丢）+ 既有定位高亮链。
+      const locate = () => {
+        setMinWindowTops(computeWindowFloorForJump(messagesRef.current, eventId));
+        setJumpToEventId(eventId);
+        return "found" as const;
+      };
+      // 回退：R2 显式分页循环（取页全走 loadMore/RoomHistory，I1–I6 收敛）。
+      const paginate = async (): Promise<"found" | "exhausted" | "cancelled"> => {
         let pages = 0;
         for (;;) {
-          if (pendingOrigGenRef.current !== myGen) return "cancelled";
+          if (cancelled()) return "cancelled";
           // 单步决策（纯函数）：进窗口→found / 触底或到上限→exhausted / 否则取页。
           const known = new Set(messagesRef.current.map((m) => m.event_id));
           const action = nextBackfillAction(known.has(eventId), hist.cursor, pages);
           if (action !== "fetch") break;
           const r = await loadMore(true);
           if (r === "busy") continue; // 他人在飞（I5 单发）：等落地后重新决策
-          if (r === "error") break; // 取页失败（toast 已给）：回 idle 可重试
+          if (r === "error") return "exhausted"; // 取页失败（toast 已给）
           if (r === "none") break; // 无可载：交最终判定
           pages += 1;
           armStall();
         }
         React.startTransition(() => { setMessages(messagesRef.current); });
         if (messagesRef.current.some((m) => m.event_id === eventId)) {
-          // 命中：先抬渲染窗口下界（旁路释放后目标不丢），再启动既有
-          // 定位+高亮链；pendingOriginal 旁路保持到定位完成
-          // （onJumpHandled → finishPendingOriginalJump）才释放。
-          setMinWindowTops(computeWindowFloorForJump(messagesRef.current, eventId));
-          setJumpToEventId(eventId);
-          return "found";
+          return locate();
+        }
+        return "exhausted";
+      };
+      try {
+        const res = await locateOriginalMessage({
+          window: messagesRef.current,
+          eventId,
+          cancelled,
+          readCache: async () => {
+            const win = await getCachedWindow(cacheAccount, roomId, eventId, 25, 25);
+            return win.length > 0 ? win : null;
+          },
+          readContext: async () => {
+            armStall();
+            const ctx = await fetchEventContext(roomId, eventId, 30, ctrl.signal);
+            const events = [
+              ...ctx.events_before,
+              ...(ctx.event ? [ctx.event] : []),
+              ...ctx.events_after,
+            ];
+            if (events.length === 0) return null;
+            void putCachedMessages(cacheAccount, roomId, events);
+            return events;
+          },
+          paginate,
+        });
+        if (res.outcome === "cancelled") return "cancelled";
+        if (res.outcome === "found") {
+          inject(res.inject);
+          return locate();
         }
         settlePendingOriginal("exhausted");
         return "exhausted";
       } finally {
         window.clearTimeout(stallTimer);
+        if (pendingOrigAbortRef.current === ctrl) pendingOrigAbortRef.current = null;
+        ctrl.abort();
       }
     },
     [
       activeRoom,
+      cacheAccount,
       hist,
       loadMore,
       messagesRef,
@@ -318,6 +439,8 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
       if (fresh.length) {
         // I2：与窗口路径同一合并原语（去重追加；ref 二次防御并发前插）。
         setMessages((prev) => mergeForward(prev, fresh));
+        // 本地持久缓存：增量落盘。
+        void putCachedMessages(cacheAccount, activeRoom.room_id, fresh);
         // 已读：正在看的房间来了新消息 → 对最新一条发回执。
         void markCurrentRead(
           activeRoom.room_id,
@@ -327,7 +450,7 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
     } catch {
       /* 静默——轮询失败不打扰用户 */
     }
-  }, [activeRoom, markCurrentRead]);
+  }, [activeRoom, markCurrentRead, cacheAccount]);
 
   const openRoom = React.useCallback(
     (roomId: string): boolean => {
@@ -469,6 +592,7 @@ export function useWorkbenchMessages(ctx: WorkbenchPageMessagesCtx) {
   );
   return {
     hist,
+    messagesFromCache,
     markCurrentRead,
     handleMarkAllRead,
     refreshMessages,

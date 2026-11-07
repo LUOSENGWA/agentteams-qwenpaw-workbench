@@ -310,15 +310,18 @@ function mapContextEvent(ev: unknown): RoomMessage | null {
   };
 }
 
-/** 拉取消息上下文：点搜索结果后预览前后文 + 定位跳转。 */
+/** 拉取消息上下文：点搜索结果后预览前后文 + 定位跳转。
+ * signal：切房/换定位目标时中止在飞请求（「加载原消息」/context 路径）。 */
 export async function fetchEventContext(
   roomId: string,
   eventId: string,
   limit = 5,
+  signal?: AbortSignal,
 ): Promise<EventContextPage> {
   const params = new URLSearchParams({ limit: String(limit) });
   const payload = (await requestJson(
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/context/${encodeURIComponent(eventId)}?${params.toString()}`,
+    signal ? { signal } : undefined,
   )) as { events_before?: unknown[]; event?: unknown; events_after?: unknown[] };
   return {
     events_before: (payload.events_before || [])

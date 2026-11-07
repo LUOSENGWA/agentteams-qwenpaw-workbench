@@ -219,7 +219,11 @@ export const chatDict: Record<string, { en: string }> = {
     en: "Auto-retry when an LLM call fails (throttling / timeout / 5xx). When off, failures surface immediately.",
   },
   "最大重试次数": { en: "Max retries" },
-  // ── 跳转上下文窗（jumpContext）──
+  // ── 本地聊天缓存（IndexedDB）──
+  "显示的是本地缓存——网络消息暂未更新": {
+    en: "Showing the local cache — network messages have not updated yet",
+  },
+  // ── 跳转上下文窗（jumpContext，已退役；键留档）──
   "展开全部上下文": { en: "Expand all context" },
   "条": { en: "events" },
   // ── 批次 3：聊天页优化（过程折叠条 / 任务事件卡）──
