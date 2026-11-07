@@ -30,6 +30,18 @@ from ..router import (
 )
 
 
+class MarkReadRequest(BaseModel):
+    """已读回执请求体。
+
+    必须定义在模块级：`from __future__ import annotations` 下，FastAPI 用
+    `get_type_hints`（模块 globals）解析注解；函数内局部类解析不到，会把
+    `req` 当成必填 query 参数 → 正常 JSON body 反被 422。"""
+
+    room_id: str = ""
+    event_id: str = ""
+    room_ids: List[str] = []
+
+
 def build_matrix_router() -> APIRouter:
     """matrix 域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
@@ -637,11 +649,6 @@ def build_matrix_router() -> APIRouter:
                 status_code=502, detail=f"收件箱写入失败：{exc}"
             ) from exc
         return {"ok": True, "event_id": str(event.get("id") or "")}
-
-    class MarkReadRequest(BaseModel):
-        room_id: str = ""
-        event_id: str = ""
-        room_ids: List[str] = []
 
     @router.post("/matrix/mark-read")
     async def matrix_mark_read(req: MarkReadRequest) -> Dict[str, Any]:
