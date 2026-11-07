@@ -828,3 +828,56 @@ def test_manifest_409_retry(tmp_path):
     eng = make_engine(tmp_path, fake, clock, state=state_with(1, {}, {}))
     res = eng.run_once()
     assert res.get("retry") is True, res
+
+
+# ── 远端文件发现：manifest 空也能从 files?recursive=1 下载 ─────────
+
+
+def test_remote_listing_drives_download_when_manifest_empty(tmp_path):
+    """首次同步：manifest 的 entries 为空（客户端记账未写），远端实际有
+    files/lsw/unit.txt —— 必须以递归列表为准发现并下载。"""
+
+    def resp(method, path, **kw):
+        if method == "GET" and path == f"{BASE}/sync/status":
+            return jresult(200, {"generation": 0})
+        if method == "GET" and path == f"{BASE}/sync/manifest":
+            return jresult(200, {"version": 1, "entries": {}, "tombstones": []}, {"ETag": "M1"})
+        if method == "GET" and path == f"{BASE}/files":
+            return jresult(
+                200,
+                {
+                    "entries": [
+                        {
+                            "path": "files/lsw/unit.txt",
+                            "size": 5,
+                            "etag": "e-lsw",
+                        }
+                    ]
+                },
+            )
+        if method == "GET" and path.startswith(f"{BASE}/files/"):
+            return bresult(200, b"hello")
+        if method == "PUT" and path == f"{BASE}/sync/manifest":
+            return jresult(200, {"ok": True})
+        return jresult(404, {"error": "unhandled"})
+
+    clock = Clock()
+    fake = FakeCtl(resp)
+    eng = make_engine(tmp_path, fake, clock, state=state_with(1, {}, {}))
+    res = eng.run_once()
+    assert res.get("error") is None, res
+    assert res.get("downloaded") == 1, res
+    assert (eng.files_dir / "lsw" / "unit.txt").read_bytes() == b"hello"
+    # 写回 manifest 的键必须带 files/ 前缀（Controller validSyncPath）
+    put = [c for c in fake.calls if c[0] == "PUT"][0]
+    entries = (put[2].get("json_body") or {}).get("entries") or {}
+    assert "files/lsw/unit.txt" in entries
+
+
+def test_parse_entries_strips_scope_prefix():
+    from agentteams_connector.file_sync_engine import SyncEngine
+
+    got = SyncEngine._parse_entries(
+        {"entries": {"files/a/b.txt": {"etag": "e1", "size": 3}}}
+    )
+    assert got == [{"path": "a/b.txt", "etag": "e1", "size": 3}]

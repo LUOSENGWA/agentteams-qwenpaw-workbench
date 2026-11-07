@@ -1005,6 +1005,27 @@ class SyncEngine:
             manifest_etag = self._etag_from(r, manifest)
         entries = self._parse_entries(manifest)
 
+        # 2.5) 远端真实文件清单（下载权威）：manifest 是**客户端记账状态**，
+        #      首次同步时为空，光看它永远发现不了远端文件。以
+        #      `files?recursive=1` 为准合并（同路径 listing 的 size/etag 胜出）；
+        #      listing 失败 → 退回 manifest 行为（不放大失败面）。
+        listing = self._fetch_listing(self.human)
+        if listing:
+            by_path = {e["path"]: dict(e) for e in entries}
+            for item in listing:
+                if item.get("kind") != "file":
+                    continue
+                rel = item.get("rel")
+                if not rel:
+                    continue
+                rec_e = by_path.get(rel) or {"path": rel, "etag": None, "size": None}
+                if item.get("etag") is not None:
+                    rec_e["etag"] = item["etag"]
+                if item.get("size") is not None:
+                    rec_e["size"] = item["size"]
+                by_path[rel] = rec_e
+            entries = list(by_path.values())
+
         # 3) 本地扫描 + 逐条比对。
         local = self._scan_local()
         prev_etags = rec.get("etags") or {}
@@ -1260,6 +1281,10 @@ class SyncEngine:
             rel = safe_rel_path(path)
             if rel is None:
                 continue
+            if rel.startswith(_SCOPE_PREFIX):
+                rel = rel[len(_SCOPE_PREFIX):]
+            if not rel:
+                continue
             etag = (
                 e.get("etag")
                 or e.get("ETag")
@@ -1286,11 +1311,13 @@ class SyncEngine:
         （human_sync_handler.go 的 syncManifest）；写成数组会 400
         invalid JSON。保留原始体里的其它键（generation 等由服务端覆盖）。
         """
-        entries = {
-            str(v.get("path")): dict(v)
-            for v in entries_map.values()
-            if isinstance(v, dict) and v.get("path")
-        }
+        entries = {}
+        for v in entries_map.values():
+            if not isinstance(v, dict) or not v.get("path"):
+                continue
+            path = str(v["path"])
+            key = path if path.startswith(_SCOPE_PREFIX) else _SCOPE_PREFIX + path
+            entries[key] = dict(v)
         out: Dict[str, Any] = {}
         if isinstance(original, dict):
             out = {
