@@ -3,6 +3,17 @@
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
 
+## 0.5.0-beta.16.122 (2026-11-07 · team switcher / task notes / mobile quick bar)
+
+**Added**
+- Chat team switcher (`ChatSwitcher`): room/team dropdown, last choice persisted in localStorage, collapses on narrow screens, hidden when no teams exist.
+- Task notes entry (`metaEntry`): workflow task rows and project title reuse `MetaEditorModal` via #1540 GET raw+ETag → PUT `If-Match`; the entry hides itself when the controller has not been upgraded (405).
+- Mobile quick bar (`MobileQuickBar`): on ≤600px viewports a bottom bar with four targets (Files / Workflows / Messages / Settings), 44px touch targets and safe-area padding; hidden on desktop.
+
+**Notes**
+- Per-version notes for 16.82–16.121 live in the integration checklist §8 (`工作台接入清单-20261107.md`), covering the unified model picker, file views and sorting, batch actions, ⌘K palette, sync scope/incremental/conflicts, RBAC gating and model-grant error classification. Per-version entries resume here.
+- Tests: vitest 171 passed; `tsc --noEmit` clean; `npm run build` clean.
+
 ## 0.5.0-beta.16.81 (2026-11-07 · resource card order)
 
 **Improved**

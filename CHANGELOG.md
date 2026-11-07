@@ -3,6 +3,17 @@
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
 English version: [CHANGELOG-en.md](CHANGELOG-en.md)
 
+## 0.5.0-beta.16.122（2026-11-07 · 团队切换 / 任务备注 / 移动快捷条）
+
+**新增**
+- 聊天页顶部团队切换（`ChatSwitcher`）：房间/团队下拉，localStorage 记住上次选择，窄屏自动折叠；无团队时隐藏。
+- 任务备注入口（`metaEntry`）：看板任务行与项目标题共用 `MetaEditorModal`，走 #1540 GET 原文+ETag → PUT `If-Match`；控制器未升级（405）时入口自动隐藏。
+- 移动端快捷条（`MobileQuickBar`）：≤600px 底部 4 项（文件 / 工作流 / 消息 / 设置），触控目标 44px，含 safe-area 内边距，桌面隐藏。
+
+**说明**
+- 16.82–16.121 的逐版变更见 `方案与设计/AgentTeams/下版本1.2.6-1.2.7/12-接入清单/工作台接入清单-20261107.md` §8 版本表（含模型统一选择、文件三视图与排序、批量操作、⌘K 面板、同步范围/增量/冲突、RBAC gating、模型授权错误分类等）；本文件自本节起恢复逐版记录。
+- 测试：vitest 171 passed；`tsc --noEmit` 0；`npm run build` 0。
+
 ## 0.5.0-beta.16.81（2026-11-07 · 资源卡顺序对齐）
 
 **改进**
