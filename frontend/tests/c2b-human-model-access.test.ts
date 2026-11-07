@@ -18,6 +18,8 @@ import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import { selectionReadyToCommit } from "../src/lib/modelSelection.ts";
 import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
 
@@ -518,6 +520,13 @@ ok("i18n：C2b 键齐全（manage.ts；复用键不重登）", () => {
   assert.doesNotMatch(manageI18nSrc, /"Provider":/);
   assert.doesNotMatch(manageI18nSrc, /"可编辑":/);
 });
+
+
+  ok("多选提交门：只选 provider 不提交（否则整条 CLI 授权被删）", () => {
+    assert.equal(selectionReadyToCommit({ providers: ["deepseek"], models: [] }), false);
+    assert.equal(selectionReadyToCommit({ providers: ["deepseek"], models: ["m1"] }), true);
+    assert.equal(selectionReadyToCommit({ providers: [], models: [] }), true); // 全清 = 删除
+  });
 
 console.log(`\nc2b-human-model-access: ${n} passed`);
 

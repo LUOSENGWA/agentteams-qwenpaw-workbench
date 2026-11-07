@@ -132,11 +132,9 @@ function capMeta(
 
 /** (provider, model) 成对字段——目录候选非空 → AutoComplete（可自由输入）；
  * 候选空 → Input 自由输入（目录为空退化路径）。 */
-/** 选中态：provider 多选 + model 多选（各自去重保序）。 */
-export interface PairSelection {
-  providers: string[];
-  models: string[];
-}
+import { selectionReadyToCommit, type PairSelection } from "../lib/modelSelection";
+
+export type { PairSelection };
 
 /** 已授权对 → 两个多选的值（回显）。 */
 export function pairsToSelection(rows: ModelAccessPair[]): PairSelection {
@@ -226,6 +224,9 @@ function EntriesEditor({
 
   const apply = (next: PairSelection) => {
     setSel(next);
+    // 只选了 provider、还没选模型 → 保持编辑态，不写回（否则 rows 变空，
+    // 上层把该 CLI 块/授权整条删掉）。
+    if (!selectionReadyToCommit(next)) return;
     const pairs = selectionToPairs(next, rows, modelsByProvider);
     emittedRef.current = JSON.stringify(pairsToSelection(pairs));
     onChange(pairs);
