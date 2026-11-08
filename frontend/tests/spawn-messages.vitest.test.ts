@@ -133,10 +133,10 @@ test("②b 403 → 'forbidden'（无权限查看）；500/网络错 → 'error'�
 // ── ③ has_more → 提示（源码断言：ok 分支渲染点）──────────────────────
 
 test("③ has_more → 「仅显示最近 N 条」提示接在 ok 分支（按显示条数）", () => {
-  const tree = srcFile("components/WorkerManageTree.tsx");
-  expect(tree).toContain("state.data.has_more");
-  expect(tree).toContain('"仅显示最近 {n} 条"');
-  expect(tree).toContain("n: state.data.messages.length");
+  const messages = srcFile("manage/SpawnMessages.tsx");
+  expect(messages).toContain("state.data.has_more");
+  expect(messages).toContain('"仅显示最近 {n} 条"');
+  expect(messages).toContain("state.data.messages.length");
 });
 
 // ── ④ 消息渲染纯函数（折叠行数 / 换行保留）────────────────────────────
@@ -243,27 +243,29 @@ test("bonus 在飞去重：并发同参数 → 只发一次请求", async () => 
   expect(b).toEqual(a);
 });
 
-test("⑤ 源码接线：SpawnRow 挂「消息」子项 + 懒加载门（收起态不请求）", () => {
-  const tree = srcFile("components/WorkerManageTree.tsx");
+test("⑤ 源码接线：spawn 树挂「消息」子项 + 消息组件懒加载（点开才请求）", () => {
+  const tree = srcFile("manage/SpawnTreeCard.tsx");
   expect(tree).toContain("node.project_id");
-  expect(tree).toContain("tr(\"消息\")");
-  // 请求在 effect 内、open 门控（点开才拉，不在列表渲染时批量请求）。
-  expect(tree).toContain("getSpawnMessages(projectId, sessionId, 200)");
-  expect(tree).toContain("if (!open) return; // 懒加载：收起态不发请求");
+  expect(tree).toContain('tr("消息")');
+  // 消息组件由父级按点击挂载；effect 只在挂载后请求（不随树批量拉取）。
+  const messages = srcFile("manage/SpawnMessages.tsx");
+  expect(messages).toContain("getSpawnMessages(projectId, sessionId, 200)");
+  expect(messages).toContain("React.useEffect(() => {");
 });
 
 test("⑤b 触控目标 ≥44px：消息行 / 重试按钮 / 展开行 三处 minHeight 44", () => {
-  const tree = srcFile("components/WorkerManageTree.tsx");
-  const hits = tree.match(/minHeight: 44/g) || [];
+  const sources =
+    srcFile("manage/SpawnMessages.tsx") + srcFile("manage/SpawnTreeCard.tsx");
+  const hits = sources.match(/minHeight: 44/g) || [];
   expect(hits.length).toBeGreaterThanOrEqual(3);
 });
 
 test("⑤c 状态落点：空态 / 无权限查看 / 加载失败·重试 / has_more 提示", () => {
-  const tree = srcFile("components/WorkerManageTree.tsx");
-  expect(tree).toContain("tr(\"暂无消息\")");
-  expect(tree).toContain("tr(\"无权限查看\")");
-  expect(tree).toContain("tr(\"加载失败\")");
-  expect(tree).toContain("tr(\"重试\")");
+  const messages = srcFile("manage/SpawnMessages.tsx");
+  expect(messages).toContain('tr("暂无消息")');
+  expect(messages).toContain('tr("无权限查看")');
+  expect(messages).toContain('tr("加载失败")');
+  expect(messages).toContain('tr("重试")');
 });
 
 test("⑤d API 路径落点：controller 前缀 + 双段 encodeURIComponent", () => {

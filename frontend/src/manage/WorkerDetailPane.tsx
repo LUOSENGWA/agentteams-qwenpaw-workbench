@@ -69,7 +69,7 @@ import {
   phaseMeta,
 } from "../components/WorkerManageShared";
 import { RuntimeNotice } from "../runtimeGuard";
-import { BulbIcon, PlayIcon } from "../components/icons";
+import { BulbIcon, MessageIcon, PlayIcon } from "../components/icons";
 import { SessionDot } from "../components/WorkerSessionDot";
 import { WbTooltip } from "../components/WbTooltip";
 import type { WorkerSessionState } from "../workerSessionState";
@@ -77,6 +77,8 @@ import { resourceControlDeniedHint } from "../lib/resourceControl";
 import { tracingUrl } from "../lib/tracingUrl";
 import ModelEditModal from "./ModelEditModal";
 import CheckpointCard from "./CheckpointCard";
+import SpawnTreeCard from "./SpawnTreeCard";
+import { dmTargetFor } from "./dmTarget";
 import ResourceCards from "./ResourceCards";
 
 const host = window.QwenPaw.host;
@@ -135,6 +137,7 @@ export default function WorkerDetailPane({
   onRefreshAdmin,
   onOpenSettings,
   onDeleted,
+  onDm,
   dashboardUrl = "",
 }: {
   worker: WorkerInfo;
@@ -159,6 +162,10 @@ export default function WorkerDetailPane({
   /** 删除成功后的导航（回团队拓扑）——父层决定落地位置。 */
   onDeleted?: () => void;
   /**
+   * 私聊入口（ManageData.onDm 透传）：有 MXID 才显示；个人房间存在时直跳。
+   */
+  onDm?: (mxid: string, roomId?: string) => void;
+  /**
    * Dashboard 地址（config.dashboard_url）——「打开 Tracing」跳转目标。
    * 空/非法 → 入口隐藏（Tracing 是 Dashboard 能力，插件只跳转）。
    */
@@ -170,6 +177,8 @@ export default function WorkerDetailPane({
   const l1 = !!hasToken;
   const deniedHint = resourceControlDeniedHint(tr);
   const tracing = tracingUrl(dashboardUrl);
+  // 私聊目标：有 MXID 才可私聊（个人房间可选直跳）。
+  const dm = dmTargetFor(worker);
   const meta = phaseMeta(worker.phase);
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const restarting = (worker.containerState || "").toLowerCase() === "restarting";
@@ -477,6 +486,20 @@ export default function WorkerDetailPane({
           >
             {tr(ROLE_BADGE[worker.role as keyof typeof ROLE_BADGE] ?? "?")}
           </span>
+          <div style={{ flex: 1 }} />
+          {/* 私聊入口（旧拓扑 WorkerRow 行尾 DM 迁入；无 MXID 隐藏）。 */}
+          {dm && onDm ? (
+            <antd.Button
+              size="large"
+              icon={<MessageIcon size={14} />}
+              style={{ minHeight: 44, flexShrink: 0 }}
+              title={tr("私聊")}
+              aria-label={tr("私聊")}
+              onClick={() => onDm(dm.mxid, dm.roomId)}
+            >
+              {tr("私聊")}
+            </antd.Button>
+          ) : null}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span
@@ -727,6 +750,9 @@ export default function WorkerDetailPane({
         workerName={worker.name}
         runtime={worker.runtime}
       />
+      {/* 子会话卡（旧拓扑 SpawnRow/SpawnMessages 迁入）：默认收起；
+          老控制器无 /spawns 路由 → 整卡隐藏。 */}
+      <SpawnTreeCard key={`spawn-${worker.name}`} workerName={worker.name} />
       {/* 模型编辑弹窗（响应式：宽屏左右/窄屏上下；与 Manager 详情面板共用）。 */}
       <ModelEditModal
         open={modelModal}

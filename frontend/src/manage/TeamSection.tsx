@@ -56,6 +56,7 @@ import { canControlResources } from "../lib/resourceControl";
 import ManagerDetailPane from "./ManagerDetailPane";
 import WorkerDetailPane from "./WorkerDetailPane";
 import TeamSettingsPane from "./TeamSettingsPane";
+import { countSpawnNodes } from "./spawnModel";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -641,6 +642,9 @@ function TeamTopologyPane({
       <div style={{ display: "grid", gap: 4 }}>
         {ordered.map((w) => {
           const meta = phaseMeta(w.phase || "");
+          // 子会话数量徽标（数据来自 /teams/structure 已合并的 spawns，
+          // 零额外请求；0 = 不显示）。
+          const spawnCount = countSpawnNodes(w.spawns);
           const showReady =
             l1 &&
             shouldShowEnsureReady(w.phase) &&
@@ -702,6 +706,14 @@ function TeamTopologyPane({
               >
                 {tr(ROLE_BADGE[w.role])}
               </span>
+              {spawnCount > 0 ? (
+                <antd.Tag
+                  style={{ margin: 0, fontSize: 10.5, flexShrink: 0 }}
+                  color="blue"
+                >
+                  {tr("{n} 个子会话", { n: spawnCount })}
+                </antd.Tag>
+              ) : null}
               <div style={{ flex: 1 }} />
               <span
                 title={tr("Worker 状态")}
@@ -854,9 +866,10 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
         manager={mgr}
         hasToken={data.hasToken}
         onRefreshAdmin={data.onRefreshAdmin}
+        onDm={data.onDm}
       />
     );
-  }, [nav.selectedManager, data.admin, data.onRefreshAdmin, data.hasToken]);
+  }, [nav.selectedManager, data.admin, data.onRefreshAdmin, data.hasToken, data.onDm]);
 
   // Manager 行：和团队并列在列表里（"一个等级"）。
 
@@ -993,6 +1006,7 @@ export default function TeamSection({ nav, cols, data, variant }: ManageSectionP
             sessionState={data.workerSessionByName?.[workerInfo.name]}
             onRefreshAdmin={data.onRefreshAdmin}
             onOpenSettings={data.onOpenSettings}
+            onDm={data.onDm}
             dashboardUrl={data.dashboardUrl}
             onDeleted={() => nav.backTeam()}
           />

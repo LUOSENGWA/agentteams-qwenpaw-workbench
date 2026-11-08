@@ -32,8 +32,8 @@ const envPanelSrc = readFileSync(
   new URL("../src/components/WorkerEnvPanel.tsx", import.meta.url),
   "utf8",
 );
-const treeSrc = readFileSync(
-  new URL("../src/components/WorkerManageTree.tsx", import.meta.url),
+const resourceCardsSrc = readFileSync(
+  new URL("../src/manage/ResourceCards.tsx", import.meta.url),
   "utf8",
 );
 
@@ -170,17 +170,17 @@ ok("i18n：「正在读取 Worker 配置…」存在（复用）+「未读取到
 ok("env 门控：两文件不再用 === true / !== true 做渲染门", () => {
   for (const [name, src] of [
     ["WorkerEnvPanel", envPanelSrc],
-    ["WorkerManageTree", treeSrc],
+    ["ResourceCards", resourceCardsSrc],
   ] as const) {
     assert.doesNotMatch(src, /envEditable\s*===\s*true/, `${name} 无 === true`);
     assert.doesNotMatch(src, /envEditable\s*!==\s*true/, `${name} 无 !== true`);
   }
 });
 
-ok("env 门控：改为仅明确 false 隐藏（面板内门 === false；树三处 !== false）", () => {
+ok("env 门控：改为仅明确 false 隐藏（面板内门 === false；资源卡 !== false）", () => {
   assert.match(envPanelSrc, /if \(worker\.envEditable === false\) return null;/);
-  const uses = treeSrc.match(/envEditable !== false/g) || [];
-  assert.ok(uses.length >= 2, `WorkerManageTree 门控处数=${uses.length}（期望 ≥2）`);
+  const uses = resourceCardsSrc.match(/envEditable !== false/g) || [];
+  assert.ok(uses.length >= 1, `ResourceCards 门控处数=${uses.length}（期望 ≥1）`);
 });
 
 console.log(`\n${n} tests passed`);

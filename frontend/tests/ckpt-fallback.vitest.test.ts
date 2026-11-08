@@ -4,8 +4,8 @@
  * 背景：控制器 #1186 引入 /workers/{n}/checkpoints/{graph,status} 只读代理；
  * 更早的控制器版本无该路由 → Go mux 回 404（或 405）。前端域层
  * （api/domains/checkpoints.ts）用纯函数 checkpointRouteMissing 探测错误
- * 状态码，404/405 转 CheckpointNotSupportedError——UI（WorkerManageTree
- * CheckpointCard）隐藏入口行并显示「该控制器不支持检查点图」，不再裸报错。
+ * 状态码，404/405 转 CheckpointNotSupportedError——UI（manage/CheckpointCard）
+ * 隐藏入口行并显示「该控制器不支持检查点图」，不再裸报错。
  * 502（QwenPaw<2.1）保持 CheckpointUnavailableError；正常 200 路径零改动。
  *
  * 运行：npx --no-install vitest run（*.vitest.test.ts 约定，无需改配置）。
@@ -208,9 +208,9 @@ describe("源码接线（URL 拼装收敛在域层，UI 经域层消费）", () 
     expect(offenders).toEqual(["api/domains/checkpoints.ts"]);
   });
 
-  it("WorkerManageTree 经域层消费 + notSupported 降级渲染已接线", () => {
+  it("manage/CheckpointCard 经域层消费 + notSupported 降级渲染已接线", () => {
     const src = readFileSync(
-      join(srcDir, "components", "WorkerManageTree.tsx"),
+      join(srcDir, "manage", "CheckpointCard.tsx"),
       "utf8",
     );
     expect(src).toContain("CheckpointNotSupportedError");

@@ -47,10 +47,13 @@ import {
   BrainIcon,
   BulbIcon,
   CodeIcon,
+  MessageIcon,
   PlugIcon,
   WrenchIcon,
 } from "../components/icons";
 import ModelEditModal from "./ModelEditModal";
+import ManagerLogsCard from "./ManagerLogsCard";
+import { dmTargetFor } from "./dmTarget";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -172,15 +175,19 @@ export default function ManagerDetailPane({
   manager,
   hasToken,
   onRefreshAdmin,
+  onDm,
 }: {
   manager: ManagerInfo;
   /** L1 门控：编辑入口需 Controller 管理员 token（L2 只读摘要）。 */
   hasToken?: boolean;
   onRefreshAdmin?: (silent?: boolean, strong?: boolean) => void;
+  /** 私聊入口（ManageData.onDm 透传）：有 MXID 才显示。 */
+  onDm?: (mxid: string, roomId?: string) => void;
 }) {
   const t = useThemeColors();
   const tr = useT();
   const l1 = !!hasToken;
+  const dm = dmTargetFor(manager);
   const isNarrow = typeof window !== "undefined" && window.innerWidth < 640;
   const pm = phaseMeta(manager.phase);
   const sleeping = manager.state === "Sleeping" || manager.state === "Stopped";
@@ -547,6 +554,19 @@ export default function ManagerDetailPane({
             <span>{RUNTIME_LABELS[manager.runtime ?? ""] ?? manager.runtime ?? "qwenpaw"}</span>
           </div>
         </div>
+        {/* 私聊入口（旧 ManagerDetail 迁入；无 MXID 隐藏）。 */}
+        {dm && onDm ? (
+          <antd.Button
+            size="large"
+            icon={<MessageIcon size={14} />}
+            style={{ minHeight: 44, flexShrink: 0 }}
+            title={tr("私聊")}
+            aria-label={tr("私聊")}
+            onClick={() => onDm(dm.mxid, dm.roomId)}
+          >
+            {tr("私聊")}
+          </antd.Button>
+        ) : null}
       </div>
 
       {!l1 ? (
@@ -588,6 +608,12 @@ export default function ManagerDetailPane({
         {manager.matrixUserID && (
           <Row label="Matrix" value={<code style={{ fontSize: 10 }}>{manager.matrixUserID}</code>} />
         )}
+        {manager.roomID && (
+          <Row
+            label={tr("个人房间")}
+            value={<code style={{ fontSize: 10 }}>{manager.roomID}</code>}
+          />
+        )}
         <Row label={tr("Version")} value={manager.version || "—"} />
         {l1 ? (
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -628,6 +654,10 @@ export default function ManagerDetailPane({
           </div>
         ) : null}
       </div>
+
+      {/* 容器日志（旧 ManagerDetail 日志入口迁入）：默认收起、点击才加载；
+          端点需管理员 token → L1 门控，无 token 不显。 */}
+      <ManagerLogsCard managerName={manager.name} enabled={l1} />
 
       {/* 模型配置（弹窗编辑，与 Worker 详情面板共用 ModelEditModal） */}
       <ConfigCard

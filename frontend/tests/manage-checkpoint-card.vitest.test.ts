@@ -296,10 +296,12 @@ describe("接线与回退", () => {
     expect(detail).toContain("runtime={worker.runtime}");
   });
 
-  it("旧拓扑 WorkerManageTree 的检查点卡保留（回退路径不拆）", () => {
-    const tree = srcText("components/WorkerManageTree.tsx");
-    expect(tree).toContain("<CheckpointCard workerName={group.worker_name}");
-    expect(tree).toContain("function CheckpointCard(");
+  it("旧拓扑组件退场后 WorkerDetailPane 是新卡唯一挂载点", () => {
+    // 旧文件 WorkerManageTree/Tables 的删除由 legacy-migrate 测试断言；
+    // 此处只锁新挂载点，避免与删除门重复失败。
+    const detail = srcText("manage/WorkerDetailPane.tsx");
+    expect(detail).toContain('import CheckpointCard from "./CheckpointCard";');
+    expect(detail).toContain("<CheckpointCard");
   });
 
   it("两端点字面量仍只在域层（新卡经域层消费）", () => {

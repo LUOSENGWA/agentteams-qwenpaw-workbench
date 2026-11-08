@@ -10,8 +10,9 @@
 // 弹窗关闭时零后台负载（各面板自持 30s 轮询/懒加载，只在打开时运行）。
 //
 // 权限：L2 写权由各面板自身 l1/403 门控（运行配置 L1-only 字段只读、
-// 工具 PATCH 403 转只读等，与旧拓扑同语义）；「环境变量」卡仅在
-// envEditable === true 时出现（L2 隐藏，与旧拓扑同门控）。
+// 工具 PATCH 403 转只读等，与旧拓扑同语义）；「环境变量」卡仅 envEditable
+// 明确 false（L2 遮蔽）时隐藏，undefined 照常出卡（旧 Controller 无字段 /
+// 16.61 列表投影丢 envEditable → 面板不得消失；面板内 detail 诚实降级）。
 //
 // 16.31 运行时门控：QwenPaw-only 卡（cfg/mcp/plugins/tools/upgrade——
 // 端点 = Controller 转发 worker 的 QwenPaw app 或 QwenPaw 专属字段）
@@ -231,8 +232,9 @@ export default function ResourceCards({
         qwenpawOnly: true,
       });
     }
-    // 环境变量卡——仅 envEditable === true（L2 隐藏，与旧拓扑同门控）。
-    if (worker.envEditable === true) {
+    // 环境变量卡——仅 envEditable 明确 false（L2 遮蔽）隐藏；undefined
+    // （旧 Controller / 列表投影丢字段）照常出卡，面板内 detail 降级。
+    if (worker.envEditable !== false) {
       list.push({
         id: "env",
         title: tr("环境变量与网关"),

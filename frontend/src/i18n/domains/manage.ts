@@ -837,4 +837,16 @@ export const manageDict: Record<string, { en: string }> = {
   "文件大于 8 MiB，重命名/移动可能较慢": {
     en: "File is larger than 8 MiB; rename/move may be slow",
   },
+
+  // ── Worker 子会话 / Manager 容器日志（旧拓扑组件迁入）──
+  "子会话": { en: "Sub-sessions" },
+  "暂无子会话": { en: "No sub-sessions" },
+  "{n} 个子会话": { en: "{n} sub-session(s)" },
+  "展开/收起子会话": { en: "Expand/collapse sub-session" },
+  "子会话状态": { en: "Sub-session status" },
+  "容器日志": { en: "Container logs" },
+  "该 Manager 无容器日志端点（Controller 未提供）": {
+    en: "This Manager has no container-log endpoint (not provided by the Controller)",
+  },
+  "无权限查看日志": { en: "No permission to view logs" },
 };

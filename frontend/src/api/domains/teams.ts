@@ -1,6 +1,6 @@
 // 团队域（/teams/*、/dm、/matrix/rooms/*/join|leave、/team-files、/matrix/member/messages）：团队结构/spawn/房间列表/邀请/共享文件/成员消息。
 
-import { requestJson, requestJsonConditional } from "../shared";
+import { httpErrorStatus, requestJson, requestJsonConditional } from "../shared";
 import {
   cachedFetch,
   cachedRequest,
@@ -160,11 +160,16 @@ export async function fetchTeamsStructure(
 async function loadWorkerSpawnsRaw(): Promise<{
   byWorker: Record<string, SpawnNode[]>;
   apiOk: boolean;
+  /** 所有项目 /spawns 均 404 且无一成功 = 老控制器无此路由（调用方整卡隐藏）。 */
+  endpointMissing?: boolean;
 }> {
   try {
     const projects = await fetchProjectSummaries();
     const byWorker: Record<string, SpawnNode[]> = {};
     if (projects.length === 0) return { byWorker, apiOk: true };
+    let okCount = 0;
+    let notFound = 0;
+    let otherFail = 0;
     await Promise.all(
       projects.slice(0, 20).map(async (proj) => {
         const pid = String(proj.project_id || "");
@@ -177,6 +182,7 @@ async function loadWorkerSpawnsRaw(): Promise<{
             `/agentteams-proxy/controller/api/v1/projects/${encodeURIComponent(pid)}/spawns` +
               (team ? `?team=${encodeURIComponent(team)}` : ""),
           )) as { workers?: { worker?: string; spawns?: Record<string, unknown>[] }[] };
+          okCount += 1;
           for (const w of resp.workers || []) {
             const name = String(w.worker || "");
             if (!name) continue;
@@ -184,8 +190,10 @@ async function loadWorkerSpawnsRaw(): Promise<{
             if (!byWorker[name]) byWorker[name] = [];
             byWorker[name].push(...nodes);
           }
-        } catch {
-          /* 单项目失败跳过 */
+        } catch (e) {
+          // 单项目失败跳过；404 计数用于「端点整体缺失」判定（老控制器）。
+          if (httpErrorStatus(e) === 404) notFound += 1;
+          else otherFail += 1;
         }
       }),
     );
@@ -207,6 +215,9 @@ async function loadWorkerSpawnsRaw(): Promise<{
       }
       byWorker[name] = roots;
     }
+    if (okCount === 0 && notFound > 0 && otherFail === 0) {
+      return { byWorker: {}, apiOk: true, endpointMissing: true };
+    }
     return { byWorker, apiOk: true };
   } catch {
     return { byWorker: {}, apiOk: false };
@@ -214,13 +225,16 @@ async function loadWorkerSpawnsRaw(): Promise<{
 }
 
 /** 对外缓存包装（worker/spawns，60s，tags
- * ["spawns"]）——让重复调用（组件多处唤起）合并为一次。 */
-export async function fetchWorkerSpawns(): Promise<{
+ * ["spawns"]）——让重复调用（组件多处唤起）合并为一次；force=true 跳过
+ * 缓存直回源（手动刷新）。 */
+export async function fetchWorkerSpawns(force = false): Promise<{
   byWorker: Record<string, SpawnNode[]>;
   apiOk: boolean;
+  endpointMissing?: boolean;
 }> {
   return cachedRequest("worker/spawns", 60000, loadWorkerSpawnsRaw, {
     tags: ["spawns"],
+    force,
   });
 }
 
