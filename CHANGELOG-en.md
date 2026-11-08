@@ -1,3 +1,13 @@
+## 0.5.0-beta.16.141 (global file search · 2026-11-08)
+
+**Added**
+- The file toolbar gains global search across directories by name or full path, case-insensitive; it triggers at 2+ characters with a 250ms debounce.
+- Ranking: name prefix > name contains > path contains; directories first within a rank, then numeric/Chinese-aware name order.
+- First page fetches up to 1000 recursive entries, with `nextKey` load-more; display is capped at 200 with a "keep typing" hint.
+- Result rows show name, relative path, size, modified time and actions; folders navigate, files open details; Esc clears.
+- Unavailable endpoint (404/403/501) degrades to "global search unavailable" while the current-directory filter keeps working.
+
+**Tests**: tsc 0 · build 0.
 ## 0.5.0-beta.16.140 (file detail card rounding · 2026-11-08)
 
 **Styles**
