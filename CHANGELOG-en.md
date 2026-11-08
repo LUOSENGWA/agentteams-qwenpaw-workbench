@@ -1,3 +1,12 @@
+## 0.5.0-beta.16.142 (Coding CLI voice model · 2026-11-08)
+
+**Added**
+- QwenCode settings gains a dedicated "Voice" group exposing top-level `voiceModel`:
+  - Empty = CLI default; never set means no key written; clearing removes the key.
+  - Only shown for QwenCode; opencode/qoder without the field do not render it.
+  - Helper text distinguishes it from the vision/image sections.
+
+**Tests**: pytest 738 passed · tsc 0 · build 0.
 ## 0.5.0-beta.16.141 (global file search · 2026-11-08)
 
 **Added**

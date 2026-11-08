@@ -1,3 +1,12 @@
+## 0.5.0-beta.16.142（CodingCLI 语音模型 · 2026-11-08）
+
+**新增**
+- QwenCode 设置增加独立「语音（Voice）」分组，暴露顶层 `voiceModel`：
+  - 留空使用 CLI 默认，从未设置过不写盘；清空会删除该键；
+  - 仅 QwenCode 显示，opencode/qoder 无该字段则不出现；
+  - 说明行标明「QwenCode 语音/转写模型」，与 vision/image 分区区分。
+
+**测试**：pytest 738 passed · tsc 0 · build 0。
 ## 0.5.0-beta.16.141（文件全局搜索 · 2026-11-08）
 
 **新增**
