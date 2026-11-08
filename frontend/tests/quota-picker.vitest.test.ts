@@ -35,7 +35,7 @@ import {
   selectionToRulePaths,
   toggleSelected,
   type DirLoadMap,
-} from "../src/components/workspacePathPicker";
+} from "../src/components/workspacePathPickerModel";
 import type { HumanFileEntry } from "../src/api/domains/humanFiles";
 import { HumanFilesError } from "../src/api/domains/humanFiles";
 import { hfErrorText } from "../src/manage/files/hfError";
@@ -500,7 +500,7 @@ describe("接线 — 共享 QuotaEditDialog / PathPicker", () => {
     // picker 的可见行与键盘导航复用 treeModel。
     expect(pickerSrc).toContain("pickerTreeRows(dirs, expanded)");
     expect(pickerSrc).toContain("treeKeyNav({ rows, index: i }, e.key");
-    expect(readSrc(join("components", "workspacePathPicker.ts"))).toContain(
+    expect(readSrc(join("components", "workspacePathPickerModel.ts"))).toContain(
       "flattenLazyTree<string>({",
     );
   });

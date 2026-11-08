@@ -28,7 +28,7 @@ import type { ThemeColors } from "../theme";
 import type { TrFn } from "../crdmanage/types";
 import HelpDot from "./HelpDot";
 import WorkspacePathPicker from "./WorkspacePathPicker";
-import { PICKER_MAX_PATHS, mergeRulePaths } from "./workspacePathPicker";
+import { PICKER_MAX_PATHS, mergeRulePaths } from "./workspacePathPickerModel";
 import { CloseIcon } from "./icons";
 
 const host = window.QwenPaw.host;
