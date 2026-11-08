@@ -5,7 +5,8 @@
  *
  * 任务 A 完整配置面板——每卡独立保存（PUT 合并语义：只发被改字段）：
  * - 状态卡：唤醒 / 休眠状态操作（PUT {state}——Controller 对 Manager 无
- *   wake/sleep 端点，desired-state 语义：Running / Sleeping）
+ *   wake/sleep 端点，desired-state 语义：Running / Sleeping）+ 重启
+ *   （#1473：POST /managers/{name}/restart，L1-only）
  * - 模型配置：ModelEditModal 弹窗（响应式，与 Worker 详情面板共用）
  * - SOUL.md / AGENTS.md：全屏 Modal + 等宽 textarea（min-height 300px）
  * - Skills（Select tags）/ MCP Servers（行编辑）/ Env（key-value 行）
@@ -26,6 +27,7 @@ import {
   type ManagerInfo,
   type McpServerInfo,
 } from "../api";
+import { restartManager } from "../api/domains/lifecycle";
 import {
   providerForModel,
   useModelUnionOptions,
@@ -36,6 +38,7 @@ import {
   RUNTIME_LABELS,
   WakeIcon,
   SleepIcon,
+  ReloadIcon,
   phaseMeta,
 } from "../components/WorkerManageShared";
 import {
@@ -44,10 +47,13 @@ import {
   BrainIcon,
   BulbIcon,
   CodeIcon,
+  MessageIcon,
   PlugIcon,
   WrenchIcon,
 } from "../components/icons";
 import ModelEditModal from "./ModelEditModal";
+import ManagerLogsCard from "./ManagerLogsCard";
+import { dmTargetFor } from "./dmTarget";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -169,15 +175,19 @@ export default function ManagerDetailPane({
   manager,
   hasToken,
   onRefreshAdmin,
+  onDm,
 }: {
   manager: ManagerInfo;
   /** L1 门控：编辑入口需 Controller 管理员 token（L2 只读摘要）。 */
   hasToken?: boolean;
   onRefreshAdmin?: (silent?: boolean, strong?: boolean) => void;
+  /** 私聊入口（ManageData.onDm 透传）：有 MXID 才显示。 */
+  onDm?: (mxid: string, roomId?: string) => void;
 }) {
   const t = useThemeColors();
   const tr = useT();
   const l1 = !!hasToken;
+  const dm = dmTargetFor(manager);
   const isNarrow = typeof window !== "undefined" && window.innerWidth < 640;
   const pm = phaseMeta(manager.phase);
   const sleeping = manager.state === "Sleeping" || manager.state === "Stopped";
@@ -241,8 +251,8 @@ export default function ManagerDetailPane({
     [manager.name, union.candidates, onRefreshAdmin, tr, loadFull],
   );
 
-  // ── 状态操作（唤醒/休眠：PUT {state} desired-state 语义）──
-  const [acting, setActing] = React.useState<"wake" | "sleep" | null>(null);
+  // ── 状态操作（唤醒/休眠：PUT {state} desired-state 语义；重启：#1473 端点）──
+  const [acting, setActing] = React.useState<"wake" | "sleep" | "restart" | null>(null);
   const handleState = React.useCallback(
     async (target: "Running" | "Sleeping") => {
       setActing(target === "Running" ? "wake" : "sleep");
@@ -261,6 +271,30 @@ export default function ManagerDetailPane({
     },
     [manager.name, onRefreshAdmin, tr, loadFull],
   );
+
+  // ── 重启（#1473）：POST /managers/{name}/restart（authz=update）──
+  // 刷新沿用本组件既有方式（onRefreshAdmin + loadFull 重读完整 spec）。
+  const handleRestart = React.useCallback(() => {
+    antd.Modal.confirm({
+      title: tr("重启 Manager {name}？", { name: manager.name }),
+      content: tr("停止并重新启动容器：运行中的进程重新读配置；进行中的任务会被中断。"),
+      okText: tr("重启"),
+      cancelText: tr("取消"),
+      onOk: async () => {
+        setActing("restart");
+        try {
+          await restartManager(manager.name);
+          antd.message.success(tr("已发送重启"));
+          void onRefreshAdmin?.(true);
+          loadFull();
+        } catch (e) {
+          antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+        } finally {
+          setActing(null);
+        }
+      },
+    });
+  }, [manager.name, onRefreshAdmin, tr, loadFull]);
 
   // ── SOUL.md / AGENTS.md（全屏等宽编辑）──
   const [docKind, setDocKind] = React.useState<null | "soul" | "agents">(null);
@@ -520,6 +554,19 @@ export default function ManagerDetailPane({
             <span>{RUNTIME_LABELS[manager.runtime ?? ""] ?? manager.runtime ?? "qwenpaw"}</span>
           </div>
         </div>
+        {/* 私聊入口（旧 ManagerDetail 迁入；无 MXID 隐藏）。 */}
+        {dm && onDm ? (
+          <antd.Button
+            size="large"
+            icon={<MessageIcon size={14} />}
+            style={{ minHeight: 44, flexShrink: 0 }}
+            title={tr("私聊")}
+            aria-label={tr("私聊")}
+            onClick={() => onDm(dm.mxid, dm.roomId)}
+          >
+            {tr("私聊")}
+          </antd.Button>
+        ) : null}
       </div>
 
       {!l1 ? (
@@ -561,6 +608,12 @@ export default function ManagerDetailPane({
         {manager.matrixUserID && (
           <Row label="Matrix" value={<code style={{ fontSize: 10 }}>{manager.matrixUserID}</code>} />
         )}
+        {manager.roomID && (
+          <Row
+            label={tr("个人房间")}
+            value={<code style={{ fontSize: 10 }}>{manager.roomID}</code>}
+          />
+        )}
         <Row label={tr("Version")} value={manager.version || "—"} />
         {l1 ? (
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -588,9 +641,23 @@ export default function ManagerDetailPane({
                 {tr("休眠")}
               </antd.Button>
             )}
+            <antd.Button
+              size="large"
+              icon={<ReloadIcon />}
+              loading={acting === "restart"}
+              disabled={acting != null}
+              style={{ minHeight: 44 }}
+              onClick={() => handleRestart()}
+            >
+              {tr("重启")}
+            </antd.Button>
           </div>
         ) : null}
       </div>
+
+      {/* 容器日志（旧 ManagerDetail 日志入口迁入）：默认收起、点击才加载；
+          端点需管理员 token → L1 门控，无 token 不显。 */}
+      <ManagerLogsCard managerName={manager.name} enabled={l1} />
 
       {/* 模型配置（弹窗编辑，与 Worker 详情面板共用 ModelEditModal） */}
       <ConfigCard

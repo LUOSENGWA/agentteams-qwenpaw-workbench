@@ -20,6 +20,7 @@ import {
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
+import { useForceReload } from "../lib/useForceReload";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -54,24 +55,31 @@ export default function VersionTablePicker({
   const [open, setOpen] = React.useState(false);
   const [custom, setCustom] = React.useState("");
 
-  const load = React.useCallback(() => {
+  // async + await（原 .then 链同语义）——useForceReload 需可 await 的 load，
+  // 否则 helper 的 loading 会在取数完成前提前归位。
+  const load = React.useCallback(async () => {
     setLoading(true);
     setError("");
-    fetchUpgradeVersions()
-      .then((d) => {
-        setRows(d.versions);
-        setLatest(d.latest || "");
-      })
-      .catch((e) => setError(httpErrorDetail(e) || tr("版本列表加载失败")))
-      .finally(() => setLoading(false));
+    try {
+      const d = await fetchUpgradeVersions();
+      setRows(d.versions);
+      setLatest(d.latest || "");
+    } catch (e) {
+      setError(httpErrorDetail(e) || tr("版本列表加载失败"));
+    } finally {
+      setLoading(false);
+    }
   }, [tr]);
+
+  // 手动刷新必穿透 300s 版本表缓存（["upgrade"]）——统一走 useForceReload。
+  const { reload, loading: reloadLoading } = useForceReload(load, ["upgrade"]);
 
   // 首次展开才拉（后续展开不重拉；「刷新」按钮手动重拉）。
   const loadedRef = React.useRef(false);
   React.useEffect(() => {
     if (open && !loadedRef.current) {
       loadedRef.current = true;
-      load();
+      void load();
     }
   }, [open, load]);
 
@@ -111,8 +119,8 @@ export default function VersionTablePicker({
           <antd.Button
             size="small"
             type="text"
-            loading={loading}
-            onClick={() => load()}
+            loading={loading || reloadLoading}
+            onClick={() => void reload()}
           >
             {tr("刷新")}
           </antd.Button>

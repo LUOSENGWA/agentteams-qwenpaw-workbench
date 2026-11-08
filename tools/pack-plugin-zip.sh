@@ -9,6 +9,14 @@ cd "$(dirname "$0")/.."
 VERSION=$(python3 -c "import json;print(json.load(open('plugin.json'))['version'])")
 OUT="agentteams-qwenpaw-workbench-v${VERSION}.zip"
 
+# 版本一致性门（16.108 教训）：plugin.json 与 frontend/package.json 必须同步，
+# 否则界面/包名/后端 /health 会出现三个不同版本号。
+FE_VERSION=$(python3 -c "import json;print(json.load(open('frontend/package.json'))['version'])")
+if [ "$VERSION" != "$FE_VERSION" ]; then
+  echo "ERROR: 版本不一致：plugin.json=$VERSION frontend/package.json=$FE_VERSION（先对齐再打包）" >&2
+  exit 1
+fi
+
 # 树必须是干净的（未提交改动 = 半成品，禁止打包）——与 git 纪律同源。
 if [ -n "$(git status --porcelain)" ]; then
   echo "ERROR: 工作区有未提交改动，先提交或还原再打包（git status --short）" >&2

@@ -17,6 +17,27 @@ from typing import Any, Dict, Optional
 # 本模块自建 logger（原实现走 router 模块 logger；可观测语义不变）。
 logger = logging.getLogger("agentteams_connector.ctl_client")
 
+# Controller JSON 调用默认超时（秒）。
+_DEFAULT_TIMEOUT = 30.0
+# 文件读写类调用超时（秒）。
+# 2026-11-06 实测：controller PUT 256KB 耗时 ~34.4s，30s 必超时并 502
+# （"所有地址请求失败：响应超时…"），故文件读写类放宽到 120s，其余保持 30s。
+_FILE_IO_TIMEOUT = 120.0
+
+
+def _timeout_for(method: str, path: str) -> float:
+    """超时选择：文件读写类 → _FILE_IO_TIMEOUT，其余 → _DEFAULT_TIMEOUT。
+
+    文件读写类 = 路径含 /humans/ 且方法为 PUT/POST（文件写入），
+    或路径含 /files/ 且方法为 GET（文件下载）。
+    """
+    m = (method or "").upper()
+    if (m in ("PUT", "POST") and "/humans/" in path) or (
+        m == "GET" and "/files/" in path
+    ):
+        return _FILE_IO_TIMEOUT
+    return _DEFAULT_TIMEOUT
+
 
 async def ctl_json(method: str, url: str, token: str,
                    json_body: Optional[Dict[str, Any]] = None) -> tuple:
@@ -46,11 +67,13 @@ async def ctl_json(method: str, url: str, token: str,
         urls = [url.rsplit("/api/", 1)[0]]
     p = _urlparse(url)
     path_and_query = (p.path or "") + (f"?{p.query}" if p.query else "")
+    # 文件读写（/humans/ PUT|POST、/files/ GET）走放宽超时，其余 30s。
+    timeout = _timeout_for(method, p.path or "")
     last: Optional[tuple] = None
     for b in urls:
         u = f"{b}{path_and_query}"
         try:
-            async with _r.GatedAsyncClient(timeout=30.0, verify=False) as client:
+            async with _r.GatedAsyncClient(timeout=timeout, verify=False) as client:
                 r = await client.request(
                     method, u,
                     json=json_body,

@@ -18,8 +18,8 @@
  *
  * 状态卡：休眠 / 重启中 / 心跳态（agentStatus）/ 在跑任务 /
  * 上次运行 / 上次完成 + loop 预算（GET /workers/{name}/loops/status，
- * 404/失败 → 整行不显，诚实降级）；唤醒/休眠操作 L1-only，
- * 重启按钮不显示（端点未上游，接口位留给后续）。
+ * 404/失败 → 整行不显，诚实降级）；唤醒/休眠/重启操作 L1-only
+ *（重启 = #1473 POST /workers/{name}/restart）。
  *
  * 资源卡（运行配置/环境变量与网关/Coding CLI/MCP/插件/技能/工具/
  * 频道/审批模式/运行时升级）= ResourceCards（P3，本组件下方接续）。
@@ -31,7 +31,9 @@ import { useT } from "../i18n";
 import {
   deleteWorker,
   fetchNodeVersion,
+  fetchWorkerDetail,
   fetchWorkerLoopStatusBySession,
+  httpErrorStatus,
   imageTag,
   postController,
   updateWorkerModel,
@@ -39,6 +41,14 @@ import {
   type WorkerInfo,
   type WorkerLoopStatus,
 } from "../api";
+import {
+  ensureWorkerReadyWithFallback,
+  modelSaveCopyKey,
+  restartWorker,
+  shouldShowEnsureReady,
+} from "../api/domains/lifecycle";
+import { providerForWrite, resolveProviderBaseline } from "../lib/providerBaseline";
+import { modelGrantErrorText } from "../lib/modelGrantErrors";
 import {
   modelVerdictText,
   providerForModel,
@@ -53,13 +63,22 @@ import {
   RUNTIME_LABELS,
   WakeIcon,
   SleepIcon,
+  ReloadIcon,
   fmtRfc3339,
   isStateConsistent,
   phaseMeta,
 } from "../components/WorkerManageShared";
 import { RuntimeNotice } from "../runtimeGuard";
-import { BulbIcon } from "../components/icons";
+import { BulbIcon, MessageIcon, PlayIcon } from "../components/icons";
+import { SessionDot } from "../components/WorkerSessionDot";
+import { WbTooltip } from "../components/WbTooltip";
+import type { WorkerSessionState } from "../workerSessionState";
+import { resourceControlDeniedHint } from "../lib/resourceControl";
+import { tracingUrl } from "../lib/tracingUrl";
 import ModelEditModal from "./ModelEditModal";
+import CheckpointCard from "./CheckpointCard";
+import SpawnTreeCard from "./SpawnTreeCard";
+import { dmTargetFor } from "./dmTarget";
 import ResourceCards from "./ResourceCards";
 
 const host = window.QwenPaw.host;
@@ -113,29 +132,61 @@ export default function WorkerDetailPane({
   worker,
   avatarUrl,
   hasToken,
+  canControl = false,
+  sessionState,
   onRefreshAdmin,
   onOpenSettings,
   onDeleted,
+  onDm,
+  dashboardUrl = "",
 }: {
   worker: WorkerInfo;
   /** 头像源（room 成员表 mxc 头像；undefined → 首字母兜底）。 */
   avatarUrl?: string;
   hasToken?: boolean;
+  /**
+   * Worker 会话态（父层 useWorkerSessionStates 派生，零新增请求）。
+   * undefined = 旧 controller 未派生 / 不在团队树内 → 不渲染指示灯。
+   */
+  sessionState?: WorkerSessionState;
+  /**
+   * #1536：调用者是否 L1（permissionLevel === 1）——资源控制
+   * （删除 Worker）仅此放行；缺省 = false（fail closed）。
+   * 与 hasToken（workbench 配置了管理员 token）是两回事：
+   * L2 带 token 也只能看不能删，后端按调用者档位 403。
+   */
+  canControl?: boolean;
   onRefreshAdmin?: (silent?: boolean, strong?: boolean) => void;
   /** 运行配置卡内「去设置」跳转（透传 WorkerRuntimeConfig）。 */
   onOpenSettings?: () => void;
   /** 删除成功后的导航（回团队拓扑）——父层决定落地位置。 */
   onDeleted?: () => void;
+  /**
+   * 私聊入口（ManageData.onDm 透传）：有 MXID 才显示；个人房间存在时直跳。
+   */
+  onDm?: (mxid: string, roomId?: string) => void;
+  /**
+   * Dashboard 地址（config.dashboard_url）——「打开 Tracing」跳转目标。
+   * 空/非法 → 入口隐藏（Tracing 是 Dashboard 能力，插件只跳转）。
+   */
+  dashboardUrl?: string;
 }) {
   const t = useThemeColors();
   const tr = useT();
   const obj = useAvatarUrl(avatarUrl);
   const l1 = !!hasToken;
+  const deniedHint = resourceControlDeniedHint(tr);
+  const tracing = tracingUrl(dashboardUrl);
+  // 私聊目标：有 MXID 才可私聊（个人房间可选直跳）。
+  const dm = dmTargetFor(worker);
   const meta = phaseMeta(worker.phase);
   const sleeping = worker.phase === "Sleeping" || worker.phase === "Stopped";
   const restarting = (worker.containerState || "").toLowerCase() === "restarting";
   const stateInconsistent = !isStateConsistent(worker.state, worker.containerState);
-  const [acting, setActing] = React.useState<"wake" | "sleep" | null>(null);
+  const [acting, setActing] = React.useState<"wake" | "sleep" | "restart" | "ensureReady" | null>(null);
+  // 拉起就绪入口降级（404 = 老控制器 ensure-ready 与 ready 双路由皆无
+  // → 隐藏按钮不报错，诚实降级）。
+  const [ensureReadyUnsupported, setEnsureReadyUnsupported] = React.useState(false);
 
   // 容器内运行时版本（L1-only 拨号；旧 WorkerManageInfo 同款模式）。
   const [nodeVer, setNodeVer] = React.useState<NodeVersion | null>(null);
@@ -179,24 +230,71 @@ export default function WorkerDetailPane({
   }, [worker.name, worker.roomID]);
 
   // ── 模型配置（任务 A 弹窗化）——候选/校验与 StandaloneWorkerModels 同源 ──
-  // 草稿由 ModelEditModal 持有（打开时重置为当前值）；基线 provider：
-  // Controller 的 modelProvider 优先，旧 Controller 不返回时由 alias 的
-  // binding 推导（与 StandaloneWorkerModels 同基线）。
+  // 草稿由 ModelEditModal 持有（打开时重置为当前值）。
+  // provider 基线（#1477：16.61 起列表投影 fields=spec/status 不含
+  // modelProvider）= 写前读 detail 的 modelProvider > 列表行（仍带时）>
+  // alias 回填推导；detail 成功（或列表带值）才可信，不可信 + 用户未显式
+  // 改 provider → 保存不下发 modelProvider（保持控制器现值，防误清）。
   const union = useModelUnionOptions([worker.model || ""], tr);
   const [modelModal, setModelModal] = React.useState(false);
   const [modelSaving, setModelSaving] = React.useState(false);
-  // 切 worker 不卸载本组件（TeamSection 无 key）→ 复位弹窗态。
+  // 写前读 detail 缓存（fetchWorkerDetail 内 15s TTL；成功/失败各记一次，
+  // 失败下次打开重试）。modelProvider/subagentModel 均以此为准。
+  const [provDetail, setProvDetail] = React.useState<{
+    loading: boolean;
+    failed: boolean;
+    modelProvider?: string;
+    subagentModel?: string;
+  }>({ loading: false, failed: false });
+  // 切 worker 不卸载本组件（TeamSection 无 key）→ 复位弹窗态 + 基线态。
   React.useEffect(() => {
     setModelModal(false);
     setModelSaving(false);
+    setProvDetail({ loading: false, failed: false });
+    setEnsureReadyUnsupported(false);
   }, [worker.name]);
 
-  const baselineProv =
-    worker.modelProvider ||
-    providerForModel(union.gatewayOptions, worker.model || "");
+  const provBaseline = React.useMemo(
+    () =>
+      resolveProviderBaseline(
+        provDetail.modelProvider,
+        worker.modelProvider,
+        providerForModel(union.gatewayOptions, worker.model || ""),
+      ),
+    [provDetail.modelProvider, worker.modelProvider, union.gatewayOptions, worker.model],
+  );
+
+  // 打开弹窗：先起写前读 detail（列表投影下基线不可信的补数路径）；
+  // 加载中弹窗内 provider 字段显「正在读取…」、入口禁用；失败 → 基线保持
+  // 不可信（保存时不下发 modelProvider），弹窗仍可编辑 model。
+  const openModelModal = React.useCallback(() => {
+    if (provDetail.loading || modelSaving) return;
+    setModelModal(true);
+    if (provDetail.modelProvider !== undefined || provDetail.subagentModel !== undefined) {
+      return;
+    }
+    setProvDetail({ loading: true, failed: false });
+    fetchWorkerDetail(worker.name)
+      .then((d) =>
+        setProvDetail({
+          loading: false,
+          failed: false,
+          modelProvider: d.modelProvider,
+          subagentModel: d.subagentModel,
+        }),
+      )
+      .catch(() => setProvDetail({ loading: false, failed: true }));
+  }, [provDetail, modelSaving, worker.name]);
 
   const handleModelSave = React.useCallback(
     async (mIn: string, pIn: string, subIn: string | null): Promise<boolean> => {
+      // 基线仍加载中（含「读取完成但弹窗字段尚未复位」的竞态窗口）→ 不写，
+      // 防把「正在读取…占位文案」当成 provider 下发。
+      const loadingText = tr("正在读取 Worker 配置…");
+      if (provDetail.loading || pIn.trim() === loadingText) {
+        antd.message.warning(loadingText);
+        return false;
+      }
       const m = mIn.trim();
       const p = pIn.trim();
       const vd = validateModelValue(m, union.candidates);
@@ -204,33 +302,42 @@ export default function WorkerDetailPane({
         antd.message.error(modelVerdictText(tr, vd, m, union.candidates));
         return false;
       }
+      // 基线判定（#1477）：可信 → 下发用户值（未改=现值，与旧行为一致）；
+      // 不可信 + 用户未显式改 provider → undefined = 不带 modelProvider，
+      // 控制器 merge 语义保持现值（alias 猜测基线不得写盘）。
+      const pSend = providerForWrite(provBaseline, p === provBaseline.value ? undefined : p);
       setModelSaving(true);
       try {
         // PUT 合并语义：model + modelProvider + subagentModel 同时下发
-        // （subagentModel=null=清除/与主模型相同）。
-        await updateWorkerModel(worker.name, m, p, subIn);
+        // （subagentModel=null=清除/与主模型相同；modelProvider=undefined
+        // 时不带该键=保持控制器现值）。
+        await updateWorkerModel(worker.name, m, pSend, subIn);
         antd.message.success(
           vd.level === "warn"
             ? tr("已保存（提示：{t}）", {
                 t: modelVerdictText(tr, vd, m, union.candidates),
               })
-            : tr("模型已保存（重启 Worker 后生效）"),
+            : tr(modelSaveCopyKey(worker.runtime)),
         );
         // 模型 = Worker spec 变更 → 失效缓存 + 写后强读（#1407）。
         invalidateTags(["teams", "admin"]);
+        // 写后基线作废：下次打开弹窗重新读 detail 取新现值。
+        setProvDetail({ loading: false, failed: false });
         void onRefreshAdmin?.(true, true);
         return true;
       } catch (e) {
-        // 失败展示后端错误文本（不吞错）。
+        // #1514：grant 错误（pair_required/unresolvable/overflow/forbidden）
+        // 走统一文案；其余错误展示后端错误文本（不吞错）。
         antd.message.error(
-          e instanceof Error ? e.message : tr("保存失败"),
+          modelGrantErrorText(e, tr) ??
+            (e instanceof Error ? e.message : tr("保存失败")),
         );
         return false;
       } finally {
         setModelSaving(false);
       }
     },
-    [worker.name, union.candidates, onRefreshAdmin, tr],
+    [worker.name, union.candidates, onRefreshAdmin, tr, provBaseline, provDetail.loading],
   );
 
   const handleLifecycle = React.useCallback(
@@ -252,6 +359,53 @@ export default function WorkerDetailPane({
     },
     [worker.name, onRefreshAdmin, tr],
   );
+
+  // 重启（#1473）：POST /workers/{name}/restart（authz=wake）；停容器
+  // 失败 → 502（后端文本原样透出）；容器不存在 → 仍 Restarting
+  //（控制器 reconcile 拉起），UI 无需特殊分支。
+  const handleRestart = React.useCallback(() => {
+    antd.Modal.confirm({
+      title: tr("重启 Worker {name}？", { name: worker.name }),
+      content: tr("停止并重新启动容器：运行中的进程重新读配置；进行中的任务会被中断。"),
+      okText: tr("重启"),
+      cancelText: tr("取消"),
+      onOk: async () => {
+        setActing("restart");
+        try {
+          await restartWorker(worker.name);
+          antd.message.success(tr("{name} 重启中", { name: worker.name }));
+          // 重启 = Worker 运行态变更 → 失效缓存（同唤醒/休眠）。
+          invalidateTags(["teams", "admin"]);
+          void onRefreshAdmin?.();
+        } catch (e) {
+          antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+        } finally {
+          setActing(null);
+        }
+      },
+    });
+  }, [worker.name, onRefreshAdmin, tr]);
+
+  // 拉起就绪：ensure-ready（任意失败回落 ready，旧控制器版本门）；
+  // 双 404 = 老控制器两路由皆无 → 隐藏按钮（能力降级，不报错）。
+  const handleEnsureReady = React.useCallback(async () => {
+    setActing("ensureReady");
+    try {
+      await ensureWorkerReadyWithFallback(worker.name);
+      antd.message.success(tr("已请求拉起 {name}", { name: worker.name }));
+      // 运行态变更 → 失效缓存 + 刷新（同唤醒/休眠）。
+      invalidateTags(["teams", "admin"]);
+      void onRefreshAdmin?.();
+    } catch (e) {
+      if (httpErrorStatus(e) === 404) {
+        setEnsureReadyUnsupported(true);
+      } else {
+        antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+      }
+    } finally {
+      setActing(null);
+    }
+  }, [worker.name, onRefreshAdmin, tr]);
 
   const tag = imageTag(worker.image);
 
@@ -302,16 +456,25 @@ export default function WorkerDetailPane({
           </antd.Avatar>
           <span
             style={{
-              fontWeight: 700,
-              fontSize: 15,
-              color: t.text,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              display: "inline-flex",
+              alignItems: "center",
               minWidth: 0,
             }}
           >
-            {worker.name}
+            <span
+              style={{
+                fontWeight: 700,
+                fontSize: 15,
+                color: t.text,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
+            >
+              {worker.name}
+            </span>
+            <SessionDot state={sessionState} />
           </span>
           <span
             style={{
@@ -323,6 +486,20 @@ export default function WorkerDetailPane({
           >
             {tr(ROLE_BADGE[worker.role as keyof typeof ROLE_BADGE] ?? "?")}
           </span>
+          <div style={{ flex: 1 }} />
+          {/* 私聊入口（旧拓扑 WorkerRow 行尾 DM 迁入；无 MXID 隐藏）。 */}
+          {dm && onDm ? (
+            <antd.Button
+              size="large"
+              icon={<MessageIcon size={14} />}
+              style={{ minHeight: 44, flexShrink: 0 }}
+              title={tr("私聊")}
+              aria-label={tr("私聊")}
+              onClick={() => onDm(dm.mxid, dm.roomId)}
+            >
+              {tr("私聊")}
+            </antd.Button>
+          ) : null}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span
@@ -383,10 +560,26 @@ export default function WorkerDetailPane({
           borderRadius: 8,
           background: t.cardBg,
           border: `1px solid ${t.border}`,
-          cursor: l1 ? "pointer" : "default",
+          cursor: l1 && !provDetail.loading ? "pointer" : "default",
           transition: "border 0.2s",
         }}
-        onClick={l1 ? () => setModelModal(true) : undefined}
+        // 基线加载中禁用打开（弹窗内 provider 字段另显「正在读取…」）。
+        onClick={l1 && !provDetail.loading ? openModelModal : undefined}
+        // R4 a11y：整卡可点但原先是裸 div（键盘/读屏不可达）——补按钮语义 +
+        // 回车/空格等价点击；不可点时整组属性不挂（不谎报可交互）。
+        role={l1 && !provDetail.loading ? "button" : undefined}
+        tabIndex={l1 && !provDetail.loading ? 0 : undefined}
+        aria-label={l1 ? tr("模型配置") : undefined}
+        onKeyDown={
+          l1 && !provDetail.loading
+            ? (e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openModelModal();
+                }
+              }
+            : undefined
+        }
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <BulbIcon size={14} style={{ color: t.textSecondary, flexShrink: 0 }} />
@@ -401,6 +594,11 @@ export default function WorkerDetailPane({
         <div style={{ marginTop: 6, fontSize: 11, color: t.textSecondary }}>
           {worker.model || tr("未配置")}
           {worker.modelProvider ? ` · ${worker.modelProvider}` : ""}
+          {/* 基线不可信（列表投影丢 modelProvider 且 detail 未读到/失败）：
+              明示保存时不会动 provider（诚实降级，不显猜测值）。 */}
+          {l1 && !provBaseline.trusted
+            ? ` · ${tr("未读取到 Provider（保存时保持不变）")}`
+            : ""}
         </div>
         {!l1 ? (
           <div style={{ marginTop: 6, fontSize: 11, color: t.textSecondary }}>
@@ -408,7 +606,7 @@ export default function WorkerDetailPane({
           </div>
         ) : null}
       </div>
-      {/* 状态卡（方案 §4.1.3：重启按钮不显示——端点未上游） */}
+      {/* 状态卡（方案 §4.1.3：唤醒/休眠/重启 L1-only；重启 = #1473） */}
       <antd.Card
         size="small"
         title={tr("状态")}
@@ -453,6 +651,23 @@ export default function WorkerDetailPane({
             value={`${loop.state}${loop.mode?.name ? ` · ${loop.mode.name}` : ""}`}
           />
         ) : null}
+        {/* Dashboard Tracing 跳转：仅配置了 dashboard 地址时显示（未配置
+            → 隐藏）；只跳转不复制页面，也不拼 worker/筛选参数——tracing
+            页不支持 URL 参数。 */}
+        {tracing ? (
+          <div style={{ display: "flex", marginTop: 8 }}>
+            <antd.Button
+              size="large"
+              aria-label={tr("打开 Tracing（Dashboard 调用链页面，新窗口）")}
+              style={{ minHeight: 44 }}
+              onClick={() =>
+                window.open(tracing, "_blank", "noopener,noreferrer")
+              }
+            >
+              {tr("打开 Tracing")}
+            </antd.Button>
+          </div>
+        ) : null}
         {l1 ? (
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             {sleeping ? (
@@ -481,25 +696,78 @@ export default function WorkerDetailPane({
             )}
             <antd.Button
               size="large"
-              danger
-              style={{ minHeight: 44, marginLeft: "auto" }}
-              onClick={confirmDelete}
+              icon={<ReloadIcon />}
+              loading={acting === "restart"}
+              disabled={acting != null || restarting}
+              style={{ minHeight: 44 }}
+              onClick={() => handleRestart()}
             >
-              {tr("删除")}
+              {tr("重启")}
             </antd.Button>
+            {/* 拉起就绪：仅 phase 非 Running/Ready 时显示（任务书口径）；
+                双 404（老控制器）→ unsupported 态隐藏。 */}
+            {shouldShowEnsureReady(worker.phase) && !ensureReadyUnsupported ? (
+              <antd.Button
+                size="large"
+                icon={<PlayIcon />}
+                loading={acting === "ensureReady"}
+                disabled={acting != null}
+                style={{ minHeight: 44 }}
+                onClick={() => void handleEnsureReady()}
+              >
+                {tr("拉起就绪")}
+              </antd.Button>
+            ) : null}
+            {/* #1536：删除 Worker = 资源控制，非 L1 调用者 disabled +
+                统一提示（不隐藏）；disabled 按钮不触发 mouse 事件 →
+                tooltip 挂在 wrapper span 上。 */}
+            {canControl ? (
+              <antd.Button
+                size="large"
+                danger
+                style={{ minHeight: 44, marginLeft: "auto" }}
+                onClick={confirmDelete}
+              >
+                {tr("删除")}
+              </antd.Button>
+            ) : (
+              <WbTooltip title={deniedHint} tap={false}>
+                <span style={{ display: "inline-block", marginLeft: "auto" }}>
+                  <antd.Button size="large" danger disabled style={{ minHeight: 44 }}>
+                    {tr("删除")}
+                  </antd.Button>
+                </span>
+              </WbTooltip>
+            )}
           </div>
         ) : null}
       </antd.Card>
+      {/* 检查点卡（旧拓扑 CheckpointCard 迁入，只读 + 懒加载：展开才拨
+          /checkpoints/{status,graph}；四态各自降级，失败不外溢到其它面板）。
+          key=worker.name：切 Worker 强制复位折叠/数据态。 */}
+      <CheckpointCard
+        key={worker.name}
+        workerName={worker.name}
+        runtime={worker.runtime}
+      />
+      {/* 子会话卡（旧拓扑 SpawnRow/SpawnMessages 迁入）：默认收起；
+          老控制器无 /spawns 路由 → 整卡隐藏。 */}
+      <SpawnTreeCard key={`spawn-${worker.name}`} workerName={worker.name} />
       {/* 模型编辑弹窗（响应式：宽屏左右/窄屏上下；与 Manager 详情面板共用）。 */}
       <ModelEditModal
         open={modelModal}
         title={tr("Worker 模型配置")}
         currentModel={worker.model ?? ""}
-        currentProvider={baselineProv}
+        // 基线加载中显「正在读取…」占位（读取完成/失败后 effect 复位为
+        // 基线值）；handleModelSave 守卫禁止该占位作为 provider 下发。
+        currentProvider={provDetail.loading ? tr("正在读取 Worker 配置…") : provBaseline.value}
         runtime={worker.runtime}
-        currentSubagentModel={worker.subagentModel ?? ""}
+        // subagentModel 基线同 provider：detail 优先，列表行兜底。
+        currentSubagentModel={provDetail.subagentModel ?? worker.subagentModel ?? ""}
         union={union}
         saving={modelSaving}
+        workerName={worker.name}
+        l1={l1}
         onCancel={() => setModelModal(false)}
         onSave={handleModelSave}
       />

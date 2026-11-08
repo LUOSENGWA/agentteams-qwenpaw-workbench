@@ -78,3 +78,13 @@ export default function WorkerSessionDot({
     </WbTooltip>
   );
 }
+
+/**
+ * 可选状态圆点：state 缺省（旧 controller 未派生 / Worker 不在树内）→
+ * 不渲染（外层行高与布局不变）；有 state → 复用 WorkerSessionDot。
+ * 管理页团队行 / 独立 Worker 行 / Worker 详情头三处共用同一门控。
+ */
+export function SessionDot({ state }: { state?: WorkerSessionState }) {
+  if (!state) return null;
+  return <WorkerSessionDot state={state} />;
+}

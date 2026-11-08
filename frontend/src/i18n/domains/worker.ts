@@ -258,7 +258,23 @@ export const workerDict: Record<string, { en: string }> = {
   "配置已保存（已自动探测生效地址）": {
     en: "Settings saved (reachable address auto-detected)",
   },
+  "未探测到服务，已按 https 保存；若服务只支持 http，请显式写 http://": {
+    en: "No service reachable — saved as https; if it only serves http, write http:// explicitly",
+  },
   "保存失败": { en: "Save failed" },
+  // #1514 模型授权强制：写面 grant 错误统一文案（lib/modelGrantErrors）
+  "需同时选择 Provider 和模型": {
+    en: "Provider and model must be selected together",
+  },
+  "该模型无法绑定到网关 Provider（请选择具体 Provider 模型）": {
+    en: "This model cannot be bound to a gateway provider (pick a concrete provider model)",
+  },
+  "授权记录过多（>32），请联系管理员清理": {
+    en: "Too many model grant records (>32) — ask an admin to clean up",
+  },
+  "无权限修改该 Worker 的模型": {
+    en: "No permission to modify this Worker's model",
+  },
   "上次落盘 {time}": { en: "Last persisted {time}" },
   "尚未落盘": { en: "Not persisted yet" },
   "⚠ 配置目录不可写——保存可能不落盘": {
@@ -348,6 +364,21 @@ export const workerDict: Record<string, { en: string }> = {
     en: "Saved team access for {n} employee(s) (reconcile takes ~5 min)",
   },
   "团队成员（workerMembers）——保存 = 全量替换成员列表": { en: "Team members (workerMembers) — saving replaces the whole list" },
+  // 团队设置折叠分区（基本信息 / LLM 调优 / 团队成员 / 团队技能）。
+  "基本信息": { en: "Basic info" },
+  "团队成员": { en: "Team members" },
+  "保存 = 全量替换成员列表": { en: "Saving replaces the whole member list" },
+  "{n} 人": { en: "{n} member(s)" },
+  "该团队暂无成员（workerMembers 为空）": { en: "This team has no members yet (workerMembers is empty)" },
+  "成员未单独设置时继承": { en: "Inherited when a member sets nothing" },
+  "团队技能": { en: "Team skills" },
+  "目录 / 分配矩阵 / MCP": { en: "Catalog / assignment matrix / MCP" },
+  "改模型": { en: "Change model" },
+  "设置模型": { en: "Set model" },
+  // 「加入 Worker」折叠项（未归属团队的 Worker 并入当前团队）。
+  "加入 Worker": { en: "Add workers" },
+  "{n} 个未归属": { en: "{n} unassigned" },
+  "未归属任何团队的 Worker 一键并入": { en: "Merge workers that belong to no team in one click" },
   // 团队配置窗口批量改模型（leader/workers 两批）。
   "批量设置模型（选中值直接刷到对应角色全部成员；留空 = 不改）": { en: "Batch-set model (the selected value is painted onto all members of the matching role; blank = no change)" },
   "Leader 批（{n} 人）": { en: "Leader batch ({n})" },
@@ -511,6 +542,10 @@ export const workerDict: Record<string, { en: string }> = {
   "技能目录 API 待上游合并": { en: "Skill catalog API awaiting upstream merge" },
   "技能目录 API 待上游合并——合并并升级后本节自动点亮": { en: "Skill catalog API awaiting upstream merge — activates after merge + upgrade" },
   "技能目录加载失败：{m}": { en: "Failed to load skill catalog: {m}" },
+  // 技能包下载（目录行动作；GET /skills/{name}/download 流式 zip）
+  "下载技能包（zip）": { en: "Download skill package (zip)" },
+  "开始下载 {name}": { en: "Downloading {name}" },
+  "下载失败：{m}": { en: "Download failed: {m}" },
   "无 MCP": { en: "No MCP" },
   "无 Worker": { en: "No workers" },
   "无 Worker（admin token 未配置？）": { en: "No workers (admin token not configured?)" },

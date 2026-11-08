@@ -26,6 +26,7 @@ import { useT } from "../i18n";
 import { OpsOverview, OpsLogPane } from "../components/OpsPanel";
 import AuditLog from "../components/AuditLog";
 import RuntimeUpgradePanel from "../components/RuntimeUpgradePanel";
+import ClusterMetaCard from "./ClusterMetaCard";
 import { MonitorIcon, NotesIcon, RefreshIcon } from "../components/icons";
 import type { ManageSectionProps } from "./types";
 
@@ -67,6 +68,9 @@ export default function ClusterSection({ nav, cols, data, variant }: ManageSecti
   // 概览 + 三张入口卡（2/3 栏 mid；四栏 L1 列）。
   const renderOverviewCards = () => (
     <div style={{ display: "grid", gap: 12 }}>
+      {/* 控制器卡（/status 计数 + /version 版本）：挂载时并行拉一次，
+          60s 缓存，失败静默（401/403 整卡隐藏）。 */}
+      <ClusterMetaCard />
       <OpsOverview active />
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 8 }}>
         <button

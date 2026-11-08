@@ -3,6 +3,56 @@
 // 原域字典，此处只收本重构新增、且全库字典无键的中文字符串）。
 
 export const manageDict: Record<string, { en: string }> = {
+  "修改": { en: "Modified" },
+  "创建": { en: "Created" },
+
+  // ── 文件列表：Finder 风格列 ──
+  "类型": { en: "Kind" },
+  "详细类型": { en: "Detailed type" },
+  "文件夹": { en: "Folder" },
+  "图片": { en: "Image" },
+  "文档": { en: "Document" },
+  "文本": { en: "Text" },
+  "表格": { en: "Spreadsheet" },
+  "数据": { en: "Data" },
+  "视频": { en: "Video" },
+  "音频": { en: "Audio" },
+  "压缩包": { en: "Archive" },
+  "代码": { en: "Code" },
+
+  // ── 模型授权：多选式录入（F-CFG-4）──
+  "选择 Provider（可多选，输入可搜索）": { en: "Select providers (multi, searchable)" },
+  "选择模型（可多选，输入可搜索）": { en: "Select models (multi, searchable)" },
+  "先选 Provider，再选模型": { en: "Pick providers first, then models" },
+  "未选择 = 不授权（fail-closed）": { en: "Nothing selected = no grants (fail-closed)" },
+
+  // ── 运行时配置：能力桶与 face 标题（F-CFG-3）──
+  "该运行时没有这部分配置面": { en: "This runtime exposes no fields for this section" },
+  "网关": { en: "Gateway" },
+  "自动化": { en: "Automation" },
+  "技能与插件": { en: "Skills & plugins" },
+  "浏览器": { en: "Browser" },
+  "可观测": { en: "Observability" },
+  "界面": { en: "Interface" },
+  "提供方": { en: "Providers" },
+  "终端": { en: "Terminal" },
+  "数据库": { en: "Database" },
+  "语音": { en: "Voice" },
+  "安全": { en: "Security" },
+
+
+  // ── 运行时配置面板（C2 / F-CFG-2）──
+  "显示高级": { en: "Show advanced" },
+  "已改 {n} 项": { en: "{n} changed" },
+  "{n} 个命中": { en: "{n} matches" },
+  "暂无可配置字段": { en: "No configurable fields" },
+  "上下文": { en: "Context" },
+  "记忆": { en: "Memory" },
+  "嵌入模型": { en: "Embedding model" },
+  "工具执行级别": { en: "Tool execution level" },
+  "LLM 重试": { en: "LLM retry" },
+  "LLM 限流": { en: "LLM rate limiter" },
+
   // ── 页壳 / 导航（P0）──
   "管理": { en: "Manage" },
   "管理导航": { en: "Manage navigation" },
@@ -26,10 +76,7 @@ export const manageDict: Record<string, { en: string }> = {
     en: "This team is not a Team CR (e.g. “Ungrouped”); Millforge injection needs a team target",
   },
   "千锻": { en: "Millforge" },
-  "选模板 / 自定义 → 编译预览 → 注入 Worker": {
-    en: "Template / custom → compile preview → inject into workers",
-  },
-  "打开千锻注入": { en: "Open Millforge injection" },
+  "注入 / 模块更新 / 历史": { en: "Inject / module updates / history" },
   "团队设置": { en: "Team Settings" },
   "所选团队已不在最新数据中": { en: "Selected team no longer in the latest data" },
   "回团队列表": { en: "Back to team list" },
@@ -94,6 +141,22 @@ export const manageDict: Record<string, { en: string }> = {
   "审批档位（QwenPaw 独有）": { en: "Approval levels (QwenPaw-only)" },
   "QwenPaw 运行时就地升级（L1 · 二次确认）": {
     en: "In-place QwenPaw runtime upgrade (L1 · double confirm)",
+  },
+  // 非 QwenPaw 运行时能力卡 desc（surface 驱动口径，与 cfg 卡同句式）
+  "该运行时的 MCP 配置面（surface 驱动）": {
+    en: "This runtime's MCP config surface (surface-driven)",
+  },
+  "该运行时的工具配置面（surface 驱动）": {
+    en: "This runtime's tools config surface (surface-driven)",
+  },
+  "该运行时的技能配置面（surface 驱动）": {
+    en: "This runtime's skills config surface (surface-driven)",
+  },
+  "该运行时的频道配置面（surface 驱动）": {
+    en: "This runtime's channels config surface (surface-driven)",
+  },
+  "该运行时的审批配置面（surface 驱动）": {
+    en: "This runtime's approval config surface (surface-driven)",
   },
 
   // ── CRD 域（P4）──
@@ -250,8 +313,16 @@ export const manageDict: Record<string, { en: string }> = {
   "上传文件": { en: "Upload file" },
   "上传成功": { en: "Uploaded" },
   "新建文件夹": { en: "New folder" },
+  "在 {dir} 下新建": { en: "New in {dir}" },
   "请输入文件夹名": { en: "Enter a folder name" },
   "文件夹已创建": { en: "Folder created" },
+  "双击进入目录": { en: "Double-click to enter directory" },
+  "目录不支持下载，已跳过 {n} 个": {
+    en: "Directories cannot be downloaded; skipped {n}",
+  },
+  "目录删除暂不支持，已跳过 {n} 个（请逐个删除文件）": {
+    en: "Deleting directories is not supported; skipped {n} (delete the files one by one)",
+  },
   "设置配额": { en: "Set quota" },
   "设置人类文件存储上限（MB）。": {
     en: "Set the human-file storage limit (MB).",
@@ -261,6 +332,15 @@ export const manageDict: Record<string, { en: string }> = {
   "清除配额": { en: "Clear quota" },
   "清除配额？": { en: "Clear the quota?" },
   "清除后人类文件存储无限制。": { en: "After clearing, human-file storage is unlimited." },
+  // #1669 删除确认（勾选「移入回收站（可恢复）」/彻底删除）
+  "删除文件？": { en: "Delete this file?" },
+  "移入回收站（可恢复）": { en: "Move to trash (recoverable)" },
+  "将彻底删除，不可恢复": {
+    en: "It will be permanently deleted and cannot be recovered",
+  },
+  "目录删除暂不支持（请逐个删除文件）": {
+    en: "Deleting directories is not supported yet (delete the files one by one)",
+  },
   "移入回收站？": { en: "Move this file to the trash?" },
   "已移入回收站": { en: "Moved to trash" },
   "恢复文件": { en: "Restore file" },
@@ -268,6 +348,32 @@ export const manageDict: Record<string, { en: string }> = {
   "彻底删除": { en: "Purge" },
   "彻底删除此项？": { en: "Purge this item?" },
   "已彻底删除": { en: "Purged" },
+  // files-batch 多选 + 批量操作（列表/网格；目录不可选）
+  "全选": { en: "Select all" },
+  "选择 {name}": { en: "Select {name}" },
+  "等 {n} 个文件": { en: "and {n} more file(s)" },
+  "批量操作": { en: "Batch actions" },
+  "已选 {n} 项": { en: "{n} selected" },
+  "下载中（{a}/{b}）": { en: "Downloading ({a}/{b})" },
+  // files 上传队列（多选并发 ≤2；等待/上传中/成功/失败 + 单项重试）
+  "上传队列": { en: "Upload queue" },
+  "等待": { en: "Waiting" },
+  "上传中": { en: "Uploading" },
+  "完成 {a}/{b}": { en: "{a}/{b} done" },
+  "失败 {n}": { en: "{n} failed" },
+  "清除已完成": { en: "Clear finished" },
+  "重试 {name}": { en: "Retry {name}" },
+  "取消选择": { en: "Clear selection" },
+  // files-ux-r2：按需多选（工具栏开关）+ 窄屏行操作「更多」菜单
+  "多选": { en: "Select" },
+  "更多操作": { en: "More actions" },
+  "删除 {n} 个文件？": { en: "Delete {n} files?" },
+  "将移入回收站（可在回收站恢复）": { en: "They will be moved to the trash (recoverable)" },
+  "{n} 项{noun}成功": { en: "{n} {noun} succeeded" },
+  "{a} 成功 / {b} 失败（{why}）": {
+    en: "{a} succeeded / {b} failed ({why})",
+  },
+  "未知错误": { en: "Unknown error" },
   "仅管理员": { en: "Admin only" },
   "目标路径已存在": { en: "Target path already exists" },
   "覆盖目标路径上的已有文件？（仅管理员）": {
@@ -304,6 +410,114 @@ export const manageDict: Record<string, { en: string }> = {
   },
   "暂无文件": { en: "No files" },
   "大小 {a} · 更新 {b}": { en: "Size {a} · Updated {b}" },
+  // ── 文件域 16.67（排版 / 去重）──
+  "上传一个文件": { en: "Upload a file" },
+  "更新时间": { en: "Updated" },
+  "删除时间": { en: "Deleted" },
+
+  // ── 文件域 16.69（master-detail 断点：split / drawer / sheet）──
+  "选择文件查看详情": { en: "Select a file to see details" },
+  "点列表文件行查看下载 / 覆盖 / 删除": {
+    en: "Pick a file row in the list for download / overwrite / delete",
+  },
+  "选择回收站条目": { en: "Select a trash entry" },
+  "点列表行查看恢复 / 彻底删除": {
+    en: "Pick a row in the list for restore / purge",
+  },
+  "此目录为空": { en: "This directory is empty" },
+  "上传或新建文件夹后开始管理": {
+    en: "Upload a file or create a folder to get started",
+  },
+  "文件详情": { en: "File details" },
+  "回收站条目": { en: "Trash entry" },
+  // ── 文件域 files-dnd（拖拽上传 / 详情抽屉 / 回收站搜索排序）──
+  "松开上传到 {dir}": { en: "Release to upload to {dir}" },
+  "拖入内容超出上限（{n} 个文件 / {size}），已截断": {
+    en: "Drop exceeds the limit ({n} files / {size}); truncated",
+  },
+  "部分目录创建失败（上传仍会尝试）": {
+    en: "Some folders could not be created (upload will still be attempted)",
+  },
+  "路径": { en: "Path" },
+  "复制路径": { en: "Copy path" },
+  "目录详情": { en: "Folder details" },
+  "子项数（已加载）": { en: "Items (loaded)" },
+  "无匹配": { en: "No matches" },
+  "按原路径/操作人搜索": { en: "Filter by original path / operator" },
+  // ── 文件域 H1（#1518 游标列表 / #1519 预签名上传 / #1501 预签名下载 /
+  // #1499 同步状态卡）──
+  "递归": { en: "Recursive" },
+  "当前控制器版本不支持递归列表": {
+    en: "This controller version does not support recursive listing",
+  },
+  "文件超过预签名上传上限（最大 {a}）": {
+    en: "File exceeds the presigned upload limit ({a} max)",
+  },
+  "上传校验失败（checksum 不匹配）——请重新上传": {
+    en: "Upload rejected (checksum mismatch) — please re-upload",
+  },
+  "上传失败（对象不存在）——请重新上传": {
+    en: "Upload failed (object missing) — please re-upload",
+  },
+  "同步状态": { en: "Sync status" },
+  "尚未建立清单": { en: "No manifest yet" },
+  "该人员未授予 file_sync 能力": {
+    en: "This person has not been granted the file_sync capability",
+  },
+  "文件区 {n} 个文件，清单 {m} 条。清单由本地同步客户端维护，请在本地运行同步客户端对齐。": {
+    en: "File area has {n} file(s) but the manifest lists {m}. The manifest is maintained by the local sync client — run it locally to reconcile.",
+  },
+  "条目": { en: "Entries" },
+  "墓碑": { en: "Tombstones" },
+  "代": { en: "Generation" },
+  "更新于 {t}（{by}）": { en: "Updated {t} (by {by})" },
+  "更新于 {t}": { en: "Updated {t}" },
+  "导出清单原文": { en: "Export manifest" },
+  "复制清单原文": { en: "Copy manifest" },
+  "清单原文已导出": { en: "Manifest exported" },
+  "已复制清单原文": { en: "Manifest copied" },
+  "清单获取失败": { en: "Failed to fetch manifest" },
+  // 「导出失败」复用 settings 域既有键（i18n 字典全局并集）。
+  "复制失败（浏览器未授权剪贴板）": {
+    en: "Copy failed (browser clipboard not authorized)",
+  },
+
+  // ── 文件域 v3（F-V3-1 回收站独立页 + 同步设置弹窗）──
+  "原路径": { en: "Original path" },
+  "同步设置": { en: "Sync settings" },
+  "立即同步": { en: "Sync now" },
+  "控制器未提供清单接口": {
+    en: "Controller provides no manifest API",
+  },
+  "尚无清单（本地同步客户端未写入）": {
+    en: "No manifest yet (local sync client has not written one)",
+  },
+  "未授予 file_sync 权限": { en: "file_sync permission not granted" },
+  "最后写入者": { en: "Last writer" },
+  "同步完成：下载 {a} · 上传 {b} · 冲突 {c}": {
+    en: "Synced: {a} downloaded · {b} uploaded · {c} conflicts",
+  },
+  "同步进行中（已有同步任务在跑）": {
+    en: "Sync already in progress",
+  },
+  "已是最新（代数未变化）": {
+    en: "Already up to date (generation unchanged)",
+  },
+  "同步失败": { en: "Sync failed" },
+  "镜像目录": { en: "Mirror directory" },
+
+  // ── 文件域 v3（同步设置弹窗只读信息块：同步范围 + 上次运行）──
+  // 「上次运行」（creds 域）/「时间」「状态」（kb 域）/「运行中」「空闲」「无」
+  // （chat 域）/「未知」（workflow 域）为全局并集既有键，不重复登记。
+  "同步范围": { en: "Sync scope" },
+  "同步 workspace/{h}/files/**": { en: "Syncs workspace/{h}/files/**" },
+  "不同步 memory/、digest/、.trash/、.sync/": {
+    en: "Not synced: memory/, digest/, .trash/, .sync/",
+  },
+  "远端文档不会被本地删除影响": {
+    en: "Local deletions do not affect remote documents",
+  },
+  "冲突": { en: "Conflicts" },
 
   // ── 危险区：CRD 删除（16.55）──
   "危险区": { en: "Danger zone" },
@@ -342,7 +556,308 @@ export const manageDict: Record<string, { en: string }> = {
   "Managers": { en: "Managers" },
   "Worker 模型配置": { en: "Worker model configuration" },
   "点击编辑": { en: "Click to edit" },
+
+  // ── 运行时配置面（P8c / G3）──
+  "已写入，重启后生效：{keys}": { en: "Written; takes effect after restart: {keys}" },
+  "已写入，尚未生效": { en: "Written; not effective yet" },
+  "已保存": { en: "Saved" },
+  "运行时不接受：{keys}": { en: "Runtime rejects: {keys}" },
+  "配置已被他人修改，已重新读取": { en: "Config changed by someone else; reloaded" },
+  "存在未知字段：{fields}（请刷新后重试）": { en: "Unknown fields: {fields} (refresh and retry)" },
+  "JSON 格式不对": { en: "Invalid JSON" },
+  "无改动": { en: "No changes" },
+  "该运行时暂无配置面（已注册：{supported}）": { en: "This runtime has no config surface yet (registered: {supported})" },
+  "读取配置失败": { en: "Failed to load config" },
+  "只读：团队 Leader 或策略限制": { en: "Read-only: team leader or policy restriction" },
+  "回滚到上次写入": { en: "Roll back previous write" },
+  "已生效": { en: "Effective" },
+  "待生效": { en: "Pending" },
+  "该运行时的配置面（L1 可编辑）": { en: "This runtime's config surface (L1 editable)" },
+  "流式超时（热生效，无需重启）": { en: "Stream timeouts (hot, no restart)" },
+  "空 = 继承团队/默认": { en: "Empty = inherit team/default" },
+  "保存（热生效）": { en: "Save (hot)" },
+  "重新读取": { en: "Reload" },
+  "已保存（流式超时热生效，无需重启）": { en: "Saved (stream timeouts applied hot, no restart)" },
+  "core 技能已由 TeamHarness 提供（AgentTeams 1.2.6+），注入只写 SOUL": {
+    en: "The core skill ships with TeamHarness (AgentTeams 1.2.6+); injection writes SOUL only",
+  },
+  "写入 SOUL（core 技能已由 TeamHarness 提供，无需注入）": {
+    en: "Writes SOUL (the core skill is provided by TeamHarness, no injection needed)",
+  },
+  "无变化（已跳过）": { en: "Unchanged (skipped)" },
+  "方式": { en: "Mode" },
+  "跳过": { en: "Skipped" },
+  "写入": { en: "Write" },
+  "回滚": { en: "Roll back" },
+  "操作": { en: "Action" },
+  "已回滚 {name} 的 SOUL": { en: "Rolled back the SOUL of {name}" },
+  "现有 SOUL 将被覆盖": { en: "Existing SOUL will be overwritten" },
+  "覆盖并注入": { en: "Overwrite and inject" },
+  "以下 Worker 已有内容不同的 SOUL。确认后将整体覆盖（覆盖前会留底，可在结果里回滚）：": {
+    en: "These workers already have a different SOUL. Confirming replaces it entirely (a backup is kept and can be rolled back from the result table):",
+  },
+  "现有来源": { en: "Existing source" },
+  "现有长度": { en: "Length" },
+  "现有摘要": { en: "Excerpt" },
+  "手工/未知": { en: "Manual/unknown" },
   "若该 Worker 属于某团队，Controller 会拒绝删除（请先从团队移除）。": {
     en: "If the worker belongs to a team, the controller rejects the deletion (remove it from the team first).",
+  },
+
+  // ── P8C 运行时 surface 表单（G2：SchemaField / SurfaceForm）──
+  "下一轮生效": { en: "Applies next turn" },
+  "需重启": { en: "Requires restart" },
+  "已设置（不回显）": { en: "Set (not shown)" },
+  "通用": { en: "General" },
+  "{n} 个配置项": { en: "{n} field(s)" },
+
+  // ── C2b：人员详情「模型授权」（Human CR spec.modelAccess，#1513 管理员面）──
+  // 「Provider」「模型」「保存」「取消」「删除」「加载中…」「只读」「可编辑」
+  // 「继承自 {x}」「未授权」「BYOK 不支持」「保存失败」复用各域既有键（不重登）。
+  "模型授权": { en: "Model access" },
+  "主模型 / spawn / Coding CLI（Human CR spec.modelAccess，L1）": {
+    en: "Main / spawn / Coding CLI grants (Human CR spec.modelAccess, L1)",
+  },
+  "模型授权（{name}）": { en: "Model access ({name})" },
+  "读取人 CR…": { en: "Reading the Human CR…" },
+  "读取模型授权失败": { en: "Failed to load model access" },
+  "未配置模型授权（fail-closed）：该人员名下的 Worker 默认全部模型锁定": {
+    en: "No model access configured (fail-closed): workers under this person are locked from all models by default",
+  },
+  "添加作用域并授权 (provider, model) 对后保存；role 留空 = 默认作用域。无值 = fail-closed 全锁。": {
+    en: "Add a scope and grant (provider, model) pairs, then save; an empty role means the default scope. No value = fail-closed (all locked).",
+  },
+  "只读：当前授权由上游继承或策略限制（各分区有原因提示）": {
+    en: "Read-only: grants are inherited upstream or restricted by policy (see the per-surface hints for reasons)",
+  },
+  "修改模型授权需 L1 管理权限（Controller 管理员 token）": {
+    en: "Editing model access requires L1 admin access (Controller admin token)",
+  },
+  "模型授权已保存": { en: "Model access saved" },
+  "部分 entries 缺 provider 或 model——补全或删除后再保存": {
+    en: "Some entries miss a provider or a model — complete or remove them before saving",
+  },
+  "写入路径：{via}": { en: "Write via: {via}" },
+  "未配置作用域（无值 = fail-closed，全部模型锁定）": {
+    en: "No scopes configured (no value = fail-closed, all models locked)",
+  },
+  "添加作用域": { en: "Add scope" },
+  "删除作用域": { en: "Delete scope" },
+  "作用域 {n}": { en: "Scope {n}" },
+  "role（空 = 默认作用域）": { en: "role (empty = default scope)" },
+  "共享表（可选）": { en: "Shared table (optional)" },
+  "共享表与内联 entries 二选一，内联 entries 优先": {
+    en: "Shared table and inline entries are either/or — inline entries win",
+  },
+  "已选共享表：{name}（内联 entries 优先）": {
+    en: "Shared table selected: {name} (inline entries win)",
+  },
+  "共享表内容（只读）": { en: "Shared table contents (read-only)" },
+  "表为空": { en: "Table is empty" },
+  "主模型": { en: "Main model" },
+  "spawn / 子代理": { en: "spawn / subagent" },
+  "继承主模型（spawn 空值）": { en: "Inherit main model (when spawn is empty)" },
+  "继承 spawn 模型（CLI 空值）": { en: "Inherit spawn model (when CLI is empty)" },
+  "添加 CLI": { en: "Add CLI" },
+  "删除 CLI": { en: "Delete CLI" },
+  "CLI 名（如 qwen-code）": { en: "CLI name (e.g. qwen-code)" },
+  "未配置 Coding CLI 授权": { en: "No Coding CLI grants" },
+  "添加行": { en: "Add row" },
+  "删除行": { en: "Delete row" },
+  "Provider 与 model 必须成对填写": { en: "Provider and model must be filled as a pair" },
+  "无 entries（空 = 不授权）": { en: "No entries (empty = no grant)" },
+
+  // ── H2：人员详情「工作区访问」（Human CR spec.workspaceAccess，#1502 管理员面）──
+  // 「保存」「取消」「团队」「只读」「读写」「保存失败」复用各域既有键（不重登）。
+  "工作区访问": { en: "Workspace access" },
+  "files/** 团队访问（grants/restrictions，L1）": {
+    en: "files/** team access (grants/restrictions, L1)",
+  },
+  "工作区访问（{name}）": { en: "Workspace access ({name})" },
+  "读取工作区访问…": { en: "Loading workspace access…" },
+  "读取工作区访问失败": { en: "Failed to load workspace access" },
+  "工作区访问已保存": { en: "Workspace access saved" },
+  "工作区访问存在校验错误——先修正红色提示": {
+    en: "Workspace access has validation issues — fix the red items first",
+  },
+  "当前控制器版本不支持工作区访问（保存未生效）": {
+    en: "The current controller version does not support workspace access (save did not take effect)",
+  },
+  "修改工作区访问需 L1 管理权限（Controller 管理员 token）": {
+    en: "Editing workspace access requires L1 admin access (Controller admin token)",
+  },
+  "团队列表不可用——团队名降级为自由输入": {
+    en: "Team list unavailable — team name degrades to free text",
+  },
+  "默认访问": { en: "Default access" },
+  "成员（accessibleTeams ∪ humanMembers）默认对 files/** 读写；grants 仅为非成员团队加授，restrictions 可收窄默认范围（同路径 restriction 优先）。": {
+    en: "Member teams (accessibleTeams ∪ humanMembers) have readwrite on files/** by default; grants only raise access for non-member teams, restrictions can narrow the default scope (restrictions win on the same path).",
+  },
+  "读写 files/**": { en: "Read/Write files/**" },
+  "无默认团队（无成员关系且未配置 accessibleTeams）": {
+    en: "No default teams (no membership / no accessibleTeams)",
+  },
+  "默认访问由成员关系派生，不写字段": {
+    en: "Default access is derived from membership (no field written)",
+  },
+  "授予规则": { en: "Grant rules" },
+  "为非成员团队加授 files/** 访问（只能加，不能低于默认）": {
+    en: "Raise files/** access for non-member teams (raise only, never below default)",
+  },
+  "限制规则": { en: "Restriction rules" },
+  "收窄默认范围（none = 撤销 / read = 降级）": {
+    en: "Narrow the default scope (none = revoke / read = cap)",
+  },
+  "未配置（继承默认）": { en: "Not configured (default inherited)" },
+  "添加授予规则": { en: "Add grant rule" },
+  "添加限制规则": { en: "Add restriction rule" },
+  "删除规则": { en: "Delete rule" },
+  "模式": { en: "Mode" },
+  "无权限": { en: "No access" },
+  "团队名（自由输入）": { en: "Team name (free text)" },
+  "添加路径（支持 * 和 **）": { en: "Add path (* and ** supported)" },
+  // 16.137：路径「浏览…」目录树选择（WorkspacePathPicker）；「选择目录」
+  // 「根目录」「加载中…」「取消」「添加」复用既有键（不重登）。
+  "浏览…": { en: "Browse…" },
+  "从工作区目录树选择": { en: "Pick from the workspace folder tree" },
+  "包含子目录（**）": { en: "Include subdirectories (**)" },
+  "无子目录": { en: "No subdirectories" },
+  "不可访问": { en: "Unavailable" },
+  "无法浏览目录——请手动输入路径": {
+    en: "Cannot browse folders — type the path manually",
+  },
+  "工作区 files/ · 勾选目录生成规则路径": {
+    en: "Workspace files/ — check folders to generate rule paths",
+  },
+  "已选 {n} 个目录": { en: "{n} folder(s) selected" },
+  "勾选目录生成规则路径": { en: "Check folders to generate rule paths" },
+  "剩余 {m} 条": { en: "{m} slot(s) left" },
+  "将添加：{p}": { en: "Will add: {p}" },
+  "已达路径上限（16 条）": { en: "Path limit reached (16)" },
+  "路径非法：{p}": { en: "Invalid path: {p}" },
+  "模式越界：{m}（此列表允许 {allowed}）": {
+    en: "Mode out of range: {m} (allowed here: {allowed})",
+  },
+  "同一团队在列表中重复": { en: "The same team appears twice in this list" },
+  "团队不存在：{team}": { en: "Unknown team: {team}" },
+  "团队不可为空": { en: "Team must not be empty" },
+  "至少需要一条路径": { en: "At least one path is required" },
+  "每列表至多 32 条规则（当前 {m}）": { en: "At most 32 rules per list (got {m})" },
+  "每规则至多 16 条路径（当前 {m}）": { en: "At most 16 paths per rule (got {m})" },
+
+  // ── 工作区文件（知识库）卡 + 拉起就绪（11/7 接入 workspace-files / ready 端点）──
+  "工作区文件": { en: "Workspace files" },
+  "MEMORY / memory / digest · 文本可编辑": {
+    en: "MEMORY / memory / digest · editable text",
+  },
+  "根目录": { en: "Root" },
+  "保存中…": { en: "Saving…" },
+  "已请求拉起 {name}": { en: "Startup requested for {name}" },
+  "文件已被修改，请重新读取后再保存": {
+    en: "File changed since read — reload it before saving",
+  },
+  "无写权限（L2 需 workspaceFileAccess=readwrite）": {
+    en: "No write permission (L2 needs workspaceFileAccess=readwrite)",
+  },
+  "Worker 容器不可达（未就绪），请稍后重试": {
+    en: "Worker container unreachable (not ready) — retry later",
+  },
+  "当前 Controller 不支持工作区文件（需 QwenPaw ≥ 2.1）": {
+    en: "This controller does not support workspace files (needs QwenPaw ≥ 2.1)",
+  },
+  "文件不存在或已移出允许列表": {
+    en: "File not found or outside the allowlist",
+  },
+  "下载已开始": { en: "Download started" },
+  "（空文件）": { en: "(empty file)" },
+
+  // ── #1536 资源控制入口收敛（非 L1 调用者 → disabled + 统一提示）──
+  "仅管理员可创建或删除资源": {
+    en: "Only admins can create or delete resources",
+  },
+
+  // ── R3：Worker 详情「打开 Tracing」跳转 Dashboard（配置 dashboard_url）──
+  "打开 Tracing": { en: "Open Tracing" },
+  "打开 Tracing（Dashboard 调用链页面，新窗口）": {
+    en: "Open Tracing (Dashboard call-chain page, new window)",
+  },
+
+  // ── 文件区第二批：重命名/移动、配额编辑（十进制 MB/GB）、文本在线编辑 ──
+  "重命名": { en: "Rename" },
+  "移动到…": { en: "Move to…" },
+  "移动": { en: "Move" },
+  "编辑配额": { en: "Edit quota" },
+  "新名称": { en: "New name" },
+  "名称非法": { en: "Invalid name" },
+  "名称未变化": { en: "Name unchanged" },
+  "目标目录": { en: "Target folder" },
+  "选择目录": { en: "Choose folder" },
+  "目标目录非法": { en: "Invalid target folder" },
+  "目标目录与当前目录相同": { en: "Target folder is the current folder" },
+  "不能移动到自身或子目录": { en: "Cannot move into itself or a subfolder" },
+  "目标已存在": { en: "Target already exists" },
+  "「{name}」已存在，覆盖？": { en: "\"{name}\" already exists. Overwrite?" },
+  "覆盖保存": { en: "Overwrite" },
+  "内容冲突": { en: "Content conflict" },
+  "文件已被其他人修改。重新加载会丢弃本地修改；覆盖保存将强制写入。": {
+    en: "The file was modified by someone else. Reloading discards your edits; overwrite forces the write.",
+  },
+  "重新加载（丢弃本地）": { en: "Reload (discard local)" },
+  "放弃": { en: "Discard" },
+  "继续编辑": { en: "Keep editing" },
+  "放弃未保存的修改？": { en: "Discard unsaved changes?" },
+  "编辑文本": { en: "Edit text" },
+  "文本上限 1 MiB": { en: "Text limit 1 MiB" },
+  "文件过大，无法在线编辑（≤1 MiB）": {
+    en: "File too large to edit online (≤1 MiB)",
+  },
+  "（无 ETag，保存不带 If-Match）": { en: "(No ETag; save without If-Match)" },
+  "容量": { en: "Capacity" },
+  "单位": { en: "Unit" },
+  "文件数": { en: "File count" },
+  "{n} 个文件": { en: "{n} file(s)" },
+  "留空 = 不限；0 = 零额度": { en: "Empty = unlimited; 0 = zero quota" },
+  "十进制：1 MB = 1,000,000 bytes，1 GB = 1,000,000,000 bytes": {
+    en: "Decimal: 1 MB = 1,000,000 bytes, 1 GB = 1,000,000,000 bytes",
+  },
+  "当前已用 {a}": { en: "Currently used {a}" },
+  "复制中…": { en: "Copying…" },
+  "重命名中…": { en: "Renaming…" },
+  "已移动": { en: "Moved" },
+  "已重命名": { en: "Renamed" },
+  "空目录无可移动文件（已跳过）": {
+    en: "Empty folder has no files to move (skipped)",
+  },
+  "部分文件移动失败（成功 {a} / 失败 {b}）": {
+    en: "Some files failed to move ({a} succeeded / {b} failed)",
+  },
+  "只列出已加载目录；可手输其它路径": {
+    en: "Only loaded folders are listed; you can type another path",
+  },
+  "手输相对路径（留空 = 根目录）": {
+    en: "Type a relative path (empty = root)",
+  },
+  "文件大于 8 MiB，重命名/移动可能较慢": {
+    en: "File is larger than 8 MiB; rename/move may be slow",
+  },
+
+  // ── Worker 子会话 / Manager 容器日志（旧拓扑组件迁入）──
+  "子会话": { en: "Sub-sessions" },
+  "暂无子会话": { en: "No sub-sessions" },
+  "{n} 个子会话": { en: "{n} sub-session(s)" },
+  "展开/收起子会话": { en: "Expand/collapse sub-session" },
+  "子会话状态": { en: "Sub-session status" },
+  "容器日志": { en: "Container logs" },
+  "该 Manager 无容器日志端点（Controller 未提供）": {
+    en: "This Manager has no container-log endpoint (not provided by the Controller)",
+  },
+  "无权限查看日志": { en: "No permission to view logs" },
+  // ── 集群页：控制器卡（/status 计数 + /version 版本，P1）──
+  "控制器": { en: "Controller" },
+  "部署模式": { en: "Deployment mode" },
+  "Controller 版本": { en: "Controller version" },
+  "dev（镜像未注入版本）": { en: "dev (image has no injected version)" },
+  "Controller 实时快照（60s 缓存）": {
+    en: "Controller live snapshot (60s cache)",
   },
 };

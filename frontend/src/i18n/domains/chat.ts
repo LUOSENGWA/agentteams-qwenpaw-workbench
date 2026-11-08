@@ -181,11 +181,26 @@ export const chatDict: Record<string, { en: string }> = {
   },
   // 
   "运行配置": { en: "Runtime config" },
+  "OpenClaw 运行配置": { en: "OpenClaw runtime config" },
+  "Hermes 运行配置": { en: "Hermes runtime config" },
+  "当前控制器版本不支持该运行时配置面（控制器支持：{list}）": {
+    en: "This controller version does not support the config surface for this runtime (supported: {list})",
+  },
   "运行配置不可用": { en: "Runtime config unavailable" },
   "该 Worker 不支持运行配置": { en: "This worker does not support runtime config" },
   "仅 spec.runtime = qwenpaw 的 Worker 支持。": {
     en: "Only workers with spec.runtime = qwenpaw are supported.",
   },
+  // ── O2：OpenClaw 配置面板（通配条目 / 动态行 / 过滤 / 只读）──
+  "添加条目": { en: "Add entry" },
+  "条目名": { en: "Entry name" },
+  "添加一行": { en: "Add row" },
+  "键": { en: "Key" },
+  "值": { en: "Value" },
+  "复合结构，暂不支持编辑": { en: "Composite structure, not editable yet" },
+  "已设置，未修改时保持原值": { en: "Set — kept when unchanged" },
+  "仅看已修改": { en: "Show changed only" },
+  "搜索字段…": { en: "Search fields…" },
   // ── ──
   "已到最早的消息": { en: "You've reached the earliest messages" },
   "等待输入": { en: "Awaiting input" },
@@ -204,12 +219,29 @@ export const chatDict: Record<string, { en: string }> = {
     en: "Auto-retry when an LLM call fails (throttling / timeout / 5xx). When off, failures surface immediately.",
   },
   "最大重试次数": { en: "Max retries" },
-  // ── 跳转上下文窗（jumpContext）──
+  // ── 本地聊天缓存（IndexedDB）──
+  "显示的是本地缓存——网络消息暂未更新": {
+    en: "Showing the local cache — network messages have not updated yet",
+  },
+  // ── 跳转上下文窗（jumpContext，已退役；键留档）──
   "展开全部上下文": { en: "Expand all context" },
   "条": { en: "events" },
   // ── 批次 3：聊天页优化（过程折叠条 / 任务事件卡）──
   "{n} 次工具调用 · {x}s": { en: "{n} tool calls · {x}s" },
   "{n} 次工具调用": { en: "{n} tool calls" },
+  // 思考过程折叠（m.notice 推理帧并入过程条）
+  "思考过程": { en: "Thinking" },
+  // 结构化运行时块（org.agentteams.run）：confirmation / error 呈现
+  "待确认": { en: "Awaiting confirmation" },
+  "需在 Matrix 回复审批": { en: "Reply in Matrix to approve" },
+  "外部文件": { en: "External files" },
+  "运行失败": { en: "Run failed" },
+  "静默结束": { en: "Ended quietly" },
+  "进行中…": { en: "In progress…" },
+  "点击展开思考过程": { en: "Click to expand thinking" },
+  "点击展开思考过程与工具调用详情": {
+    en: "Click to expand thinking and tool-call details",
+  },
   "{x}s": { en: "{x}s" },
   "{w} 已派遣": { en: "{w} dispatched" },
   "{w} 完成": { en: "{w} done" },
@@ -217,4 +249,140 @@ export const chatDict: Record<string, { en: string }> = {
   "{w} 超时": { en: "{w} timed out" },
   // ── 16.46：刻度轨退化文字条（>500 turn）──
   "共 {n} 回合 · 点击回底部": { en: "{n} turns · click to jump to bottom" },
+  // ── C1a-1：模型设置统一「先 Provider 后模型」──
+  "该模型不属于所选 Provider（可直接保存，以 Provider 为准）": {
+    en: "This model does not belong to the selected Provider (you can still save; the Provider decides routing)",
+  },
+  "Provider 决定实际转发目标（仅模型 alias 不够）": {
+    en: "The Provider decides the actual forwarding target (the model alias alone is not enough)",
+  },
+  "Provider 与模型成对刷写；留空=不改": {
+    en: "Provider and model are painted as a pair; empty = leave unchanged",
+  },
+  // ── M1：模型设置入口补全覆盖 + 创建 Worker 改成只创建（C1a-2）──
+  "创建 Worker": { en: "Create worker" },
+  "Worker 已创建": { en: "Worker created" },
+  "Worker 已创建——未配模型（跟随集群默认）": {
+    en: "Worker created — no model set (follows cluster default)",
+  },
+  "加入团队请在团队配置的成员列表中操作": {
+    en: "To add it to a team, edit the member list in team configuration",
+  },
+  // 辅助键（创建表单底部提示）：
+  "创建后由 Controller 调和器拉镜像起容器（数分钟就绪）。": {
+    en: "The Controller reconciler pulls the image and starts the container after creation (ready in minutes).",
+  },
+  "Provider（留空=跟随默认）": { en: "Provider (empty = follow default)" },
+  // ── #1477 消费侧：Worker 列表瘦身（fields=spec,status）+ 写前读 detail ──
+  "正在读取 Worker 配置…": { en: "Loading worker config…" },
+  "未读取到 Provider（保存时保持不变）": { en: "Provider not read (kept unchanged on save)" },
+  "读取 Worker 配置失败": { en: "Failed to load worker config" },
+  "展开后加载": { en: "Load on expand" },
+  "无": { en: "None" },
+  // ── #1473 消费侧：重启动作 + 主模型热应用文案 ──
+  "重启": { en: "Restart" },
+  "重启 Worker {name}？": { en: "Restart Worker {name}?" },
+  "重启 Manager {name}？": { en: "Restart Manager {name}?" },
+  "停止并重新启动容器：运行中的进程重新读配置；进行中的任务会被中断。": {
+    en: "Stop and restart the container: running processes re-read their config; in-flight tasks will be interrupted.",
+  },
+  "{name} 重启中": { en: "{name} is restarting" },
+  "立即重启": { en: "Restart now" },
+  "已发送重启": { en: "Restart sent" },
+  "模型已保存（立即生效）": { en: "Model saved (effective immediately)" },
+  // ── Q：工作区容量配额迁到人员管理（设置入口在人员详情；其余键复用已有：
+  // 保存/取消/已保存/刷新/加载中…/配额（MB）/请输入有效配额/清除配额/清除配额？）──
+  "工作区容量配额": { en: "Workspace storage quota" },
+  "已用 {a} / 上限 {b}": { en: "Used {a} / limit {b}" },
+  "无限制 · 已用 {a}": { en: "Unlimited · used {a}" },
+  "设置配额（MB）": { en: "Set quota (MB)" },
+  "清除后该人员文件存储无限制。": {
+    en: "After clearing, this person's file storage is unlimited.",
+  },
+  "容量配额在「人员管理」中设置": { en: "Storage quota is set in People management" },
+  "配额读取失败（可点开重试）": {
+    en: "Failed to fetch quota (click to open to retry)",
+  },
+  // ── A1b：团队视角（#1503）通知中心「待处理」页签 ──
+  // 复用既有键：全部（worker.ts）/ 加载中…（creds.ts）/ 去房间（本文件），不重复。
+  "全部（聚合）": { en: "All (aggregated)" },
+  "团队视角": { en: "Team view" },
+  "待处理": { en: "Pending" },
+  "逾期": { en: "Overdue" },
+  "已解决": { en: "Resolved" },
+  "聚合视图": { en: "Aggregated view" },
+  "当前控制器不支持团队视角（需 #1503）": {
+    en: "This controller does not support the team view (#1503 required)",
+  },
+  "{n} 个项目读取失败已跳过": { en: "{n} project(s) skipped — failed to read" },
+  "未发送通知": { en: "No notification sent" },
+  "已发送": { en: "Sent" },
+  "房间已接受": { en: "Room accepted" },
+  "通道已接受": { en: "Channel accepted" },
+
+
+  // ── C1a-2：模型设置增加 CodingCLI 条目（先 Provider 后模型；provider 落
+  // model.baseUrl；其余键复用既有：未配置/重试/加载中…/已保存/刷新/取消/保存/Provider/模型）──
+  "CodingCLI 模型": { en: "CodingCLI models" },
+  "跟随 Worker": { en: "Follow worker" },
+  "跟随主模型": { en: "Follows main model" },
+  "独立": { en: "Independent" },
+  "修改": { en: "Edit" },
+  "该 CLI 不支持 Provider 维度（扁平模型名）": {
+    en: "This CLI has no Provider dimension (flat model name)",
+  },
+  "Provider 条目由 Coding CLI 面板维护（L1）": {
+    en: "Provider entries are maintained in the Coding CLI panel (L1)",
+  },
+
+  // ── C2：Model Access（#1513）授权/继承/锁定展示 ──
+  // 复用既有键：只读（worker.ts）；保存/取消/修改等已存在，不重复。
+  "可编辑": { en: "Editable" },
+  "继承自 {x}": { en: "Inherited from {x}" },
+  "未授权": { en: "Not granted" },
+  "BYOK 不支持": { en: "BYOK unsupported" },
+  "当前账号未被授予任何模型，请联系管理员（Model Access）": {
+    en: "This account has no model grants — contact an admin (Model Access)",
+  },
+  "模型目录暂不可用": { en: "Model catalog unavailable" },
+  "该组合不在授权范围": { en: "This combination is outside the granted set" },
+
+  // ── X1c / N：地址免填协议（scheme-less 地址自动识别）──
+  "192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）": {
+    en: "192.168.1.10:6866 or ctlr.example.com:7113 (host:port, https / http auto-detected)",
+  },
+  "未写协议时 https 优先（探测失败回退 http），显式 http:// 不升级": {
+    en: "Without a scheme, https is tried first (falls back to http); an explicit http:// is never upgraded",
+  },
+
+  // ── R15 聊天团队/房间切换 + R13 任务备注 ──
+  "团队切换": { en: "Team" },
+  "房间切换": { en: "Room" },
+  "切换团队/房间": { en: "Switch team / room" },
+  "其他房间": { en: "Other rooms" },
+  "备注": { en: "Notes" },
+  "打开任务备注（meta.json）": { en: "Open task notes (meta.json)" },
+
+  // ── R11 语音输入（Web Speech API）──
+  "语音输入": { en: "Voice input" },
+  "停止语音输入": { en: "Stop voice input" },
+  "正在听…": { en: "Listening…" },
+  "未获得麦克风权限，请在浏览器设置中允许后重试": {
+    en: "Microphone permission denied. Allow it in your browser settings and try again.",
+  },
+  "未找到可用的麦克风": { en: "No microphone available" },
+  "没有识别到语音，请再试一次": {
+    en: "No speech detected. Please try again.",
+  },
+  "语音识别网络错误，请检查网络后重试": {
+    en: "Speech recognition network error. Check your connection and try again.",
+  },
+  "语音识别出错，请重试": {
+    en: "Speech recognition failed. Please try again.",
+  },
+  // ── 聊天图片灯箱（应用内查看器：缩放/切图/下载）──
+  "图片预览": { en: "Image preview" },
+  "图片加载失败": { en: "Failed to load image" },
+  "上一张": { en: "Previous" },
+  "下一张": { en: "Next" },
 };

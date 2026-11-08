@@ -4,7 +4,19 @@
 
 import type * as ReactNS from "react";
 
-import { modelVerdictText, validateModelValue } from "../modelUnion";
+import { fetchGatewayAiProviders, fetchGatewayAiRoutes } from "../api";
+import {
+  buildModelSelectionOptions,
+  type LlmProviderLite,
+  type ModelSelectionOption,
+} from "../modelCatalog";
+import {
+  extractGatewayLists,
+  modelVerdictText,
+  providerModelMismatch,
+  validateModelValue,
+} from "../modelUnion";
+import ModelPicker, { type ModelPickerProvider } from "../components/ModelPicker";
 import type { ThemeColors } from "../theme";
 import { CheckIcon, ClipIcon, CloseIcon, WarnIcon } from "../components/icons";
 import FieldLabel from "./FieldLabel";
@@ -15,9 +27,13 @@ const React: typeof ReactNS = host.React;
 const antd = host.antd;
 
 
+/** 创建表单状态（useTeamCrd 的 nw state）：NwForm + C1a-2 provider
+ * （""=跟随默认；doCreateWorker 随 createWorker body 的 modelProvider 下发）。 */
+type NwFormState = NwForm & { provider: string };
+
 interface CrdWorkerFormProps {
-  nw: NwForm;
-  setNw: ReactNS.Dispatch<ReactNS.SetStateAction<NwForm>>;
+  nw: NwFormState;
+  setNw: ReactNS.Dispatch<ReactNS.SetStateAction<NwFormState>>;
   doCreateWorker: () => void | Promise<void>;
   modelOptions: { value: string }[];
   modelCandidates: string[];
@@ -34,12 +50,66 @@ export default function CrdWorkerForm({
 nw,
 setNw,
 doCreateWorker,
-modelOptions,
 modelCandidates,
 loadSoulFile,
 tr,
 t,
 }: CrdWorkerFormProps) {
+  // C1a-2 provider-first：Provider 名单 + 网关 alias→provider 映射（与
+  // CrdCfgModal 同源数据，经 useModelCatalog().providers 注入方式同形）。
+  // 父组件（建队卡接线）不在本单白名单、传不进 props → 叶子直调
+  // 请求缓存包裹的取数：gateway/ai-routes & gateway/ai-providers 均
+  // cachedRequest（30s TTL + in-flight 去重）+ LRU，同屏 catalog 实例
+  // 挂载即已拉取 → 命中缓存/复用同 key 在途 Promise，零新增网络请求。
+  const [providers, setProviders] = React.useState<LlmProviderLite[]>([]);
+  const [gatewayOpts, setGatewayOpts] = React.useState<
+    ModelSelectionOption[] | null
+  >(null);
+
+  // ModelPicker 的 Provider→Model 候选（网关 alias 按 binding.providerName 归组）。
+  const pickerProviders: ModelPickerProvider[] = React.useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const p of providers) map.set(p.name, new Set());
+    for (const o of gatewayOpts ?? []) {
+      const pn = o.binding?.providerName;
+      if (!pn) continue;
+      if (!map.has(pn)) map.set(pn, new Set());
+      map.get(pn)?.add(o.alias);
+    }
+    return [...map.entries()].map(([name, set]) => ({ name, models: [...set].sort() }));
+  }, [providers, gatewayOpts]);
+  React.useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const [routes, provs] = await Promise.all([
+          fetchGatewayAiRoutes(),
+          fetchGatewayAiProviders(),
+        ]);
+        if (!live) return;
+        if (!routes.available || !provs.available) {
+          setGatewayOpts(null); // 无 Console 会话=正常降级（非错误）
+          setProviders([]);
+          return;
+        }
+        // 共享解包 + 共享构建（与 useModelCatalog 同源零分叉）。
+        const { routesList, providersList } = extractGatewayLists(
+          routes.data,
+          provs.data,
+        );
+        setGatewayOpts(buildModelSelectionOptions(routesList, providersList));
+        setProviders(providersList);
+      } catch {
+        if (live) {
+          setGatewayOpts(null);
+          setProviders([]);
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
   return (
       <antd.Card
         size="small"
@@ -84,17 +154,28 @@ deepseek-harness 补上（上游 RuntimeDeepSeekHarness 常量实锤）、
             ]}
             style={{ width: "100%" }}
           />
+          {/* C1a-2 provider-first：唯一 ModelPicker（Provider → Model，候选按
+Provider 过滤）——实际转发由 Provider 决定，model 只是 alias。 */}
           <FieldLabel>{tr("模型（留空=跟随集群默认）")}</FieldLabel>
-          <antd.AutoComplete
-            size="small"
-            placeholder={tr("模型（留空=跟随集群默认；下拉=在服∪在用∪Higress alias）")}
-            options={modelOptions as { value: string }[]}
-            value={nw.model}
-            onChange={(v: string) =>
-              setNw((p) => ({ ...p, model: v }))
-            }
-            style={{ width: "100%" }}
+          <ModelPicker
+            tr={tr}
+            allowEmpty
+            providers={pickerProviders}
+            provider={nw.provider}
+            model={nw.model}
+            providerPlaceholder={tr("Provider（留空=跟随默认）")}
+            modelPlaceholder={tr("模型（留空=跟随集群默认）")}
+            onChange={(p: string, m: string) => setNw((prev) => ({ ...prev, provider: p, model: m }))}
           />
+          {providerModelMismatch(
+            gatewayOpts ?? [],
+            nw.model,
+            nw.provider,
+          ) ? (
+            <div style={{ fontSize: 10.5, color: "#faad14" }}>
+              {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
+            </div>
+          ) : null}
           {(() => {
             const mv = validateModelValue(nw.model, modelCandidates);
             if (mv.level === "ok" && !(nw.model || "").trim()) return null;
@@ -144,10 +225,12 @@ deepseek-harness 补上（上游 RuntimeDeepSeekHarness 常量实锤）、
             loading={nw.busy}
             onClick={() => void doCreateWorker()}
           >
-            {tr("创建并加入团队")}
+            {tr("创建 Worker")}
           </antd.Button>
-          <div style={{ fontSize: 10.5, color: t.textSecondary }}>
-            {tr("创建后由 Controller 调和器拉镜像起容器（数分钟就绪）；可先保存团队，Worker 就绪后自动生效。")}
+          <div style={{ fontSize: 10.5, color: t.textSecondary, lineHeight: 1.7 }}>
+            {tr("创建后由 Controller 调和器拉镜像起容器（数分钟就绪）。")}
+            {" "}
+            {tr("加入团队请在团队配置的成员列表中操作")}
           </div>
         </div>
       </antd.Card>

@@ -24,6 +24,22 @@ export type CrdView = "list" | "human" | "team" | "worker";
 export type PeopleView = "list" | "access" | "perm";
 export type ClusterView = "overview" | "logs" | "audit" | "upgrade";
 
+/** 一次性深链：域 + 实体（全局命令面板跳人员/团队/Worker/文件）。
+ * 只有 section 的旧形态仍是裸 ManageSection（首页「去集群」等入口零改动）。 */
+export interface ManageSectionFocus {
+  section: ManageSection;
+  /** team 域：直接打开团队拓扑。 */
+  team?: string;
+  /** team 域：直接打开 Worker 详情（不依赖 selectedTeam）。 */
+  worker?: string;
+  /** people 域：选中人员详情。 */
+  human?: string;
+  /** files 域：选中根目录文件。 */
+  file?: string;
+}
+
+export type ManageSectionRequest = ManageSection | ManageSectionFocus;
+
 export interface ManageNav {
   section: ManageSection;
   teamView: TeamView;

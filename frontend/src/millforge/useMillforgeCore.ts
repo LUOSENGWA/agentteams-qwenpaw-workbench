@@ -12,6 +12,9 @@ import {
   fetchMillforgeSource,
   millforgeCompile,
   millforgeInject,
+  millforgePreflightSouls,
+  type MillforgePreflightTarget,
+  millforgeRollbackSoul,
   millforgeImport,
   millforgeParseTeamJson,
   millforgePrompt,
@@ -132,11 +135,16 @@ export function useMillforgeCore(tr: TrFn) {
     void loadSource();
   }, [loadSource]);
 
+  // Segmented 的「用户意图」：custom 只在本地状态生效（custom_url 为空也能停住），
+  // 持久化成功后回到派生值（custom_url 非空 → custom）。
+  const [segIntent, setSegIntent] = React.useState<MfSourceSeg | null>(null);
+
   const persistSource = React.useCallback(
     async (patch: { kind?: string; repo?: string; custom_url?: string }) => {
       setSourceError("");
       try {
         setSource(await putMillforgeSource(patch));
+      setSegIntent(null); // 持久化成功 → 回到派生值
       } catch (e) {
         setSourceError(errText(e));
       }
@@ -144,21 +152,23 @@ export function useMillforgeCore(tr: TrFn) {
     [],
   );
 
-  /** 源 Segmented 现值（custom_url 非空 → custom，否则按 kind）。 */
-  const seg: MfSourceSeg = source
+  /** 源 Segmented 现值：用户意图优先，否则按持久化派生（custom_url 非空 → custom）。 */
+  const derivedSeg: MfSourceSeg = source
     ? source.custom_url
       ? "custom"
       : source.kind === "gitcode"
         ? "gitcode"
         : "github"
     : "github";
+  const seg: MfSourceSeg = segIntent ?? derivedSeg;
 
   const changeSeg = React.useCallback(
     (next: MfSourceSeg) => {
       if (!source) return;
       if (next === "custom") {
-        // 切到自定义：置占位 URL（失焦时再校验 PUT；空串=后端沿用现值）
-        void persistSource({ custom_url: "" });
+        // 只切本地意图：custom_url 为空也能停在「自定义」并显示 URL 输入；
+        // 真正落盘发生在用户输入 URL 后（persistCustomUrl）。
+        setSegIntent("custom");
         return;
       }
       void persistSource({ kind: next, custom_url: "" });
@@ -358,11 +368,13 @@ export function useMillforgeCore(tr: TrFn) {
   const [injectMode, setInjectMode] = React.useState<MfInjectMode>("mapping");
   const [mapping, setMapping] = React.useState<Record<string, string>>({});
   const [createRows, setCreateRows] = React.useState<MfCreateRow[]>([]);
-  const [coreSkill, setCoreSkill] = React.useState(true);
   const [applySoul, setApplySoul] = React.useState(true);
   const [injecting, setInjecting] = React.useState(false);
   const [injectError, setInjectError] = React.useState("");
   const [injectResult, setInjectResult] = React.useState<MillforgeInjectResult | null>(null);
+  // SOUL 冲突（现有内容与 build 不同）：非空 = 需用户确认覆盖
+  const [soulConflicts, setSoulConflicts] = React.useState<MillforgePreflightTarget[] | null>(null);
+  const [pendingInjectTeam, setPendingInjectTeam] = React.useState("");
 
   // 新 build 产出 → 按角色初始化 mapping（空）/ createRows（名留空）。
   React.useEffect(() => {
@@ -386,8 +398,34 @@ export function useMillforgeCore(tr: TrFn) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [build?.build_id]);
 
+  const doInjectRef = React.useRef<((t: string, o?: boolean) => Promise<MillforgeInjectResult | null>) | null>(null);
+
+  const confirmSoulOverwrite = React.useCallback(async () => {
+    const teamName = pendingInjectTeam;
+    setSoulConflicts(null);
+    if (teamName) await doInjectRef.current?.(teamName, true);
+  }, [pendingInjectTeam]);
+
+  const cancelSoulOverwrite = React.useCallback(() => {
+    setSoulConflicts(null);
+    setPendingInjectTeam("");
+  }, []);
+
+  const rollbackSoul = React.useCallback(
+    async (worker: string): Promise<boolean> => {
+      try {
+        const res = await millforgeRollbackSoul(worker);
+        return Boolean(res?.verified);
+      } catch (e) {
+        setInjectError(errText(e));
+        return false;
+      }
+    },
+    [],
+  );
+
   const doInject = React.useCallback(
-    async (teamName: string): Promise<MillforgeInjectResult | null> => {
+    async (teamName: string, overwrite = false): Promise<MillforgeInjectResult | null> => {
       if (!build) return null;
       if (injectMode === "mapping") {
         const m: Record<string, string> = {};
@@ -399,6 +437,21 @@ export function useMillforgeCore(tr: TrFn) {
           setInjectError(tr("至少选择 1 个现有 Worker（mapping）"));
           return null;
         }
+        // 预检：现有 SOUL 与 build 不同时，先让用户确认（不静默覆盖）
+        if (!overwrite) {
+          try {
+            const pf = await millforgePreflightSouls(build.build_id, m);
+            if ((pf.conflict_count || 0) > 0) {
+              setSoulConflicts(
+                (pf.targets || []).filter((t) => t.state === "differs"),
+              );
+              setPendingInjectTeam(teamName);
+              return null;
+            }
+          } catch {
+            /* 预检失败不阻断：注入侧仍有 409 兜底 */
+          }
+        }
         setInjecting(true);
         setInjectError("");
         try {
@@ -407,10 +460,12 @@ export function useMillforgeCore(tr: TrFn) {
             team: teamName,
             mapping: m,
             create_workers: [],
-            core_skill: coreSkill,
+            core_skill: false, // AgentTeams 1.2.6 起 core 已集成在 TeamHarness，只注入 SOUL
             apply_soul: applySoul,
+            overwrite,
           });
           setInjectResult(res);
+          setSoulConflicts(null);
           return res;
         } catch (e) {
           setInjectError(errText(e));
@@ -447,8 +502,9 @@ export function useMillforgeCore(tr: TrFn) {
             model: (r.model || "").trim() || undefined,
             runtime: "qwenpaw",
           })),
-          core_skill: coreSkill,
+          core_skill: false, // AgentTeams 1.2.6 起 core 已集成在 TeamHarness，只注入 SOUL
           apply_soul: applySoul,
+          overwrite,
         });
         setInjectResult(res);
         return res;
@@ -459,8 +515,9 @@ export function useMillforgeCore(tr: TrFn) {
         setInjecting(false);
       }
     },
-    [build, injectMode, mapping, createRows, coreSkill, applySoul, tr],
+    [build, injectMode, mapping, createRows, applySoul, tr],
   );
+  doInjectRef.current = doInject;
 
   // ── D 自定义团队（描述需求 → 提示词 → LLM JSON 校验）──
   const [custom, setCustom] = React.useState<MfCustomState>(EMPTY_CUSTOM);
@@ -575,14 +632,16 @@ export function useMillforgeCore(tr: TrFn) {
     setMapping,
     createRows,
     setCreateRows,
-    coreSkill,
-    setCoreSkill,
     applySoul,
     setApplySoul,
     injecting,
     injectError,
     injectResult,
     doInject,
+    soulConflicts,
+    confirmSoulOverwrite,
+    cancelSoulOverwrite,
+    rollbackSoul,
     // D 自定义
     custom,
     setCustom,

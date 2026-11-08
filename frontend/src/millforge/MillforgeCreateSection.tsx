@@ -59,20 +59,14 @@ export default function MillforgeCreateSection({ mf, workers, teamName, tr, t }:
             <div style={{ display: "grid", gap: 8 }}>
               <MillforgeSourcePack core={core} tr={tr} t={t} />
               <MillforgeTemplatePicker core={core} tr={tr} t={t} />
-              {/* 注入方式——core 技能（默认开；编译前即可见，C） */}
+              {/* 注入方式（提交建队时自动执行）：只写 SOUL——1.2.6 起 core 已集成在 TeamHarness */}
               <div style={{ display: "grid", gap: 4 }}>
                 <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
                   {tr("注入方式（提交建队时自动执行）")}
                 </div>
-                <antd.Space size={4}>
-                  <antd.Checkbox
-                    checked={core.coreSkill}
-                    onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
-                      core.setCoreSkill(e.target.checked)
-                    }
-                  />
-                  <span style={{ fontSize: 12 }}>{tr("core 技能打包（millforge-core，scope=team）")}</span>
-                </antd.Space>
+                <span style={{ fontSize: 12 }}>
+                  {tr("写入 SOUL（core 技能已由 TeamHarness 提供，无需注入）")}
+                </span>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <antd.Button
                     size="small"

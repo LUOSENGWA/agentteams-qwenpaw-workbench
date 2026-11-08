@@ -11,6 +11,7 @@ import {
 } from "../api";
 import {
   buildModelSelectionOptions,
+  type LlmProviderLite,
   type ModelSelectionOption,
 } from "../modelCatalog";
 import {
@@ -41,6 +42,9 @@ export function useModelCatalog({ workers, tr }: UseModelCatalogArgs) {
     ModelSelectionOption[] | null
   >(null);
   const [gatewayLoaded, setGatewayLoaded] = React.useState(false);
+  /** Higress LLM Provider 名单（provider 下拉/批量画笔候选）——复用同一次
+ * fetchGatewayAiProviders 取数（零新增请求），随 alias 拉取成功一并落位。 */
+  const [providers, setProviders] = React.useState<LlmProviderLite[]>([]);
   /** 网关 alias 拉取（一次性；available=false=无 Console
  * 会话，属正常降级非错误）。 */
   const loadGatewayAliases = React.useCallback(async () => {
@@ -51,6 +55,7 @@ export function useModelCatalog({ workers, tr }: UseModelCatalogArgs) {
       ]);
       if (!routes.available || !providers.available) {
         setGatewayOpts(null);
+        setProviders([]);
         return;
       }
       // 起解包逻辑（{code,data} 信封 + providers 键名，
@@ -62,8 +67,10 @@ export function useModelCatalog({ workers, tr }: UseModelCatalogArgs) {
         providers.data,
       );
       setGatewayOpts(buildModelSelectionOptions(routesList, providersList));
+      setProviders(providersList);
     } catch {
       setGatewayOpts(null); // 不可达/网络错误 → 与无会话同路径
+      setProviders([]);
     } finally {
       setGatewayLoaded(true);
     }
@@ -146,6 +153,7 @@ export function useModelCatalog({ workers, tr }: UseModelCatalogArgs) {
     modelCandidates,
     modelOptions,
     modelOf,
+    providers,
     loadGatewayAliases,
     loadSoulFile,
   };

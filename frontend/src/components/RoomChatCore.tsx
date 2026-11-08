@@ -1,6 +1,5 @@
 import type * as ReactNS from "react";
 import {
-  fetchEventContext,
   fetchRoomApprovals,
   type RoomMessage,
   type TeamMember,
@@ -36,6 +35,7 @@ import {
   sameLoopStatus,
 } from "./RoomChatShared";
 import {ThreadPanelView } from "./RoomChatThread";
+import { ChatSwitcher } from "./ChatSwitcher";
 import type {RoomChatProps } from "./RoomChat";
 import { usePendingStore } from "../pending/store";
 import {
@@ -92,6 +92,9 @@ export function useRoomChatCore(props: RoomChatProps) {
     onLoadOriginal,
     pendingOriginal,
     minWindowTops,
+    rooms,
+    teams,
+    onSwitchRoom,
   } = props;
  // 头像点击 → Worker 会话抽屉（只读，
   // #1295 端点；404 版本门占位）。团队管理不再挂会话 tab。
@@ -411,28 +414,25 @@ export function useRoomChatCore(props: RoomChatProps) {
   const tr = useT();
 
   // 引用跳转：滚动定位原消息 + 高亮闪烁（Element 同款 permalink 行为）。
+  // data-jump-target 供验收/测试与滚动锚点观测（高亮 ~2s 后撤除）。
   const jumpToMessage = React.useCallback((eventId: string) => {
     const el = listRef.current?.querySelector<HTMLElement>(
       `[data-event-id="${eventId}"]`,
     );
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.setAttribute("data-jump-target", "1");
     el.style.transition = "background 0.4s";
  el.style.background = "color-mix(in srgb, var(--app-accent, #FF7F16) 18%, transparent)";
     window.setTimeout(() => {
       el.style.background = "transparent";
-    }, 1800);
+      el.removeAttribute("data-jump-target");
+    }, 2000);
   }, []);
 
-  // 搜索跳转定位区（修复）：目标事件不在已加载窗口（搜索结果多为旧消息）
-  // 时，拉 /context 前后文渲染成"定位片段"插在消息流末尾，滚动 + 高亮目标。
-  const [jumpContext, setJumpContext] = React.useState<{
-    events: RoomMessage[];
-    highlightId: string;
-  } | null>(null);
-  const jumpContextRef = React.useRef<HTMLDivElement | null>(null);
-  const clearJumpContext = React.useCallback(() => setJumpContext(null), []);
-
+  // 搜索跳转：目标事件不在已加载窗口（搜索结果多为旧消息）时，走父侧
+  // 「加载原消息」同一路径——本地缓存 / /context 片段直接注入正常时间线
+  // （内联定位），不再渲染独立的「搜索定位」折叠块。
   const handleSearchJump = React.useCallback(
     async (eventId: string) => {
       // 1. 已在消息流中 → 直接滚动定位 + 高亮。
@@ -441,40 +441,24 @@ export function useRoomChatCore(props: RoomChatProps) {
       );
       if (el) {
         jumpToMessage(eventId);
-        setJumpContext(null);
         return;
       }
-      // 2. 未加载 → 拉上下文 → 定位区 → 滚动。
-      if (!room) return;
-      try {
-        const ctx = await fetchEventContext(room.room_id, eventId, 6);
-        const events = [
-          ...ctx.events_before,
-          ...(ctx.event ? [ctx.event] : []),
-          ...ctx.events_after,
-        ];
-        if (events.length === 0) {
-          antd.message.warning(tr("未找到该消息的上下文——可手动加载更早消息后重试"));
-          return;
-        }
-        setJumpContext({ events, highlightId: eventId });
-        requestAnimationFrame(() => {
-          jumpContextRef.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        });
-      } catch {
-        // 不再静默——定位失败的静默是「点了没反应」的直接来源。
+      // 2. 未加载 → 父侧注入（缓存 → /context → 分页回退）。
+      if (!onLoadOriginal) {
         antd.message.warning(tr("定位失败——原消息上下文拉取出错，可手动加载更早消息后重试"));
+        return;
+      }
+      const r = await onLoadOriginal(eventId);
+      if (r === "exhausted") {
+        antd.message.warning(tr("未找到该消息的上下文——可手动加载更早消息后重试"));
       }
     },
-    [room, jumpToMessage, tr],
+    [jumpToMessage, onLoadOriginal, tr],
   );
 
   // 跨房间搜索跳转：jumpToEventId 变化后轮询定位——切房时消息列表
-  // 异步加载，目标事件可能要等几轮才进 DOM；约 2.4s 仍无则走定位区
-  // （未加载上下文片段），避免"点了没反应"。
+  // 异步加载，目标事件可能要等几轮才进 DOM；约 2.4s 仍无则由父侧
+  // 缓存/上下文注入（内联在时间线里），避免"点了没反应"。
   React.useEffect(() => {
     if (!jumpToEventId) return;
     let cancelled = false;
@@ -491,8 +475,8 @@ export function useRoomChatCore(props: RoomChatProps) {
       }
       attempts += 1;
       if (attempts >= 8) {
-        void handleSearchJump(jumpToEventId);
-        onJumpHandled?.();
+        // 注入完成后再释放 pendingOriginal（父侧已抬升渲染窗口下界）。
+        void handleSearchJump(jumpToEventId).finally(() => onJumpHandled?.());
         return;
       }
       window.setTimeout(tryJump, 300);
@@ -1208,6 +1192,16 @@ export function useRoomChatCore(props: RoomChatProps) {
           {room.name}
         </antd.Typography.Title>
       </div>
+      {/* R15：窄屏折叠切换（按钮 + Popover，头部仍保持单行）。 */}
+      {rooms && teams && onSwitchRoom ? (
+        <ChatSwitcher
+          rooms={rooms}
+          teams={teams}
+          activeRoom={room}
+          onSwitchRoom={onSwitchRoom}
+          narrow
+        />
+      ) : null}
       {workerBadge?.phase ? (
         <antd.Tag
           color={
@@ -1325,8 +1319,6 @@ export function useRoomChatCore(props: RoomChatProps) {
     replyTo,
     setReplyTo,
     stickToBottom: stick,
-    jumpContext,
-    setJumpContext,
     roomLoop,
     setRoomLoop,
     liveByRunId,
@@ -1354,8 +1346,6 @@ export function useRoomChatCore(props: RoomChatProps) {
     t,
     tr,
     jumpToMessage,
-    jumpContextRef,
-    clearJumpContext,
     handleSearchJump,
     draftKey,
     handleSend,

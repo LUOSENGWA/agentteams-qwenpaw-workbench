@@ -197,12 +197,14 @@ _HYSTERESIS_RATIO = 0.3
 
 
 def _select_and_mark(
-    kind: str, rows: List[Dict[str, Any]], pinned_url: str | None = None
+    kind: str, rows: List[Dict[str, Any]], pinned: str | List[str] | None = None
 ) -> str:
     """延迟排序选最优并写 working cache。返回选中的 url（无则 ""）。
 
  排序资格 = http_ok（状态码 <400）——401/403 是「已连通但
  未鉴权」，当选生效地址会让真实请求吃 401，不能入选。
+ pinned 兼容单 URL 或按条目候选组（list）——list 时任一候选
+ 命中 ok 行即优先标记它（X1c 固定档=整组候选）。
  """
     ok_rows = [
         r
@@ -214,13 +216,15 @@ def _select_and_mark(
     # 固定档——显示层跟固定值（即使另一条更快）；固定
     # 地址本轮不可达 → 回退最快可达（对用户诚实：显示「固定地址挂了」）。
     # 请求层仍拨固定地址并在失败时报错——两层不混。
-    if pinned_url:
-        pinned_row = next(
-            (r for r in ok_rows if r["url"] == pinned_url), None
+    if pinned:
+        pinned_urls = [pinned] if isinstance(pinned, str) else list(pinned)
+        pinned_hit = next(
+            (u for u in pinned_urls if any(r["url"] == u for r in ok_rows)),
+            None,
         )
-        if pinned_row is not None:
-            _mark_working(kind, pinned_url)
-            return pinned_url
+        if pinned_hit is not None:
+            _mark_working(kind, pinned_hit)
+            return pinned_hit
     best = min(ok_rows, key=lambda r: r["ms"])
     cache = _working_cache()
     current = cache.get(kind, "")
@@ -280,15 +284,15 @@ async def refresh_effective(
     )
     effective: Dict[str, str] = {}
     if "matrix" in kinds:
-        picked = _select_and_mark("matrix", results["matrix"], router_mod._pinned_url(cfg, "matrix"))
+        picked = _select_and_mark("matrix", results["matrix"], router_mod._pinned_candidates(cfg, "matrix"))
         if picked:
             effective["matrix"] = picked
     if "controller" in kinds:
-        picked = _select_and_mark("controller", results["controller"], router_mod._pinned_url(cfg, "controller"))
+        picked = _select_and_mark("controller", results["controller"], router_mod._pinned_candidates(cfg, "controller"))
         if picked:
             effective["controller"] = picked
     if "sglang" in kinds and results.get("sglang"):
-        picked = _select_and_mark("sglang", results["sglang"], router_mod._pinned_url(cfg, "sglang"))
+        picked = _select_and_mark("sglang", results["sglang"], router_mod._pinned_candidates(cfg, "sglang"))
         if picked:
             effective["sglang"] = picked
     return effective
@@ -322,4 +326,7 @@ from .selfcheck_probes import (  # noqa: E402
     _resolve_ip_hint,
     _resolve_ip_hint_uncached,
     diagnose_target,
+    # 无协议地址 → https 优先解析（保存/测试/导入路径共用）。
+    resolve_scheme,
+    split_url_scheme,
 )

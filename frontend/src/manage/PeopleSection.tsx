@@ -3,10 +3,11 @@
  *
  * 栏职责（方案 §4.3，15.35 迭代）：
  * - mid:   人员列表（搜索：名字/MXID）；行 = 头像 + 名字 + 可访问团队数
- * - right: 选中人员 → 单入口卡「访问与权限」（HumanAccessModal chips
+ * - right: 选中人员 → 入口卡「访问与权限」（HumanAccessModal chips
  *          单模态：权限档位 + 可访问团队/Worker chips，一次保存全字段；
  *          旧团队访问矩阵与旧权限弹窗随 15.35 退役——两者同改
- *          accessibleTeams 的重叠已消除）
+ *          accessibleTeams 的重叠已消除）+ 入口卡「工作区容量配额」（Q：
+ *          用量展示 + 设置/清除（admin）；选中人员才拉 getQuota，不预取）
  * - full:  本域不用（竖屏右栏内容走 right variant 推二级页）
  *
  * 权限：本域整体是 L1 管理面——人员列表/访问与权限都依赖 admin
@@ -22,17 +23,56 @@
  */
 import type * as ReactNS from "react";
 
-import { deleteHuman, type TeamMember, type TeamRoom } from "../api";
+import {
+  deleteHuman,
+  fetchSglangModels,
+  getQuota,
+  type AdminData,
+  type HumanInfo,
+  type QuotaResponse,
+  type TeamMember,
+  type TeamRoom,
+} from "../api";
+import {
+  allSurfacesLocked,
+  buildModelAccessPayload,
+  findPairIssues,
+  getHumanModelAccess,
+  getModelAccessTable,
+  listModelAccessTables,
+  saveHumanModelAccess,
+  type HumanModelAccess,
+  type HumanModelAccessView,
+} from "../api/domains/modelAccess";
+import {
+  fetchTeamsForAccess,
+  getHumanWorkspaceAccess,
+  saveWorkspaceAccess,
+  validateAccess,
+  verifyWorkspaceAccessSaved,
+  type TeamsForAccessResult,
+  type WorkspaceAccess,
+} from "../api/domains/workspaceAccess";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
 import HumanAccessModal, {
   computeStandaloneWorkers,
 } from "../crdmanage/HumanAccessModal";
 import { useHumanCrd } from "../crdmanage/useHumanCrd";
+import { useModelCatalog } from "../crdmanage/useModelCatalog";
+import { providerForModel } from "../modelUnion";
 import { LEVEL_META } from "../crdmanage/types";
 import { MxcAvatar } from "../MxcAvatar";
 import TruncatedId from "../components/TruncatedId";
-import { SearchIcon, ShieldIcon, UsersIcon } from "../components/icons";
+import ModelAccessEditor from "../components/ModelAccessEditor";
+import WorkspaceAccessEditor from "../components/WorkspaceAccessEditor";
+import { BrainIcon, BoxIcon, DoorIcon, SearchIcon, ShieldIcon, UsersIcon } from "../components/icons";
+import { WbTooltip } from "../components/WbTooltip";
+import { useCallerLevel } from "../hooks/useCallerLevel";
+import { canControlResources, resourceControlDeniedHint } from "../lib/resourceControl";
+import { hfErrorText } from "./FilesSection";
+import QuotaEditDialog from "./files/QuotaEditDialog";
+import { formatQuotaValue } from "./files/quotaEdit";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -284,13 +324,20 @@ function PeopleList({ nav, data, t, tr }: SubProps) {
   );
 }
 
-// ── right：选中人员 → 单入口卡（「访问与权限」打开 HumanAccessModal）──
+// ── right：选中人员 → 入口卡（「访问与权限」打开 HumanAccessModal；
+// 「工作区容量配额」用量展示 + 设置/清除（admin，Q 从文件区迁入））──
 
 function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const humans = data.admin?.humans ?? [];
   const teams = data.admin?.teams ?? [];
   const workers = data.admin?.workers ?? [];
   const onRefresh = data.onRefreshAdmin ?? (() => undefined);
+  // #1536：资源控制（删除人员 / 访问与权限保存）只对 L1 调用者
+  // （permissionLevel === 1；未知 → fail closed）。
+  const canControl = canControlResources(
+    useCallerLevel({ admin: data.admin, myUserId: data.myUserId, hasToken: data.hasToken }),
+  );
+  const deniedHint = resourceControlDeniedHint(tr);
 
   // 弹窗状态源（仅本域 active 时挂载；useHumanCrd 无挂载拨号，
   // HumanAccessModal 自持草稿/保存/命令，human=null 时渲染 null）。
@@ -310,6 +357,41 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const human = nav.selectedHuman
     ? (humans.find((h) => h.name === nav.selectedHuman) ?? null)
     : null;
+
+  // ── 工作区容量配额（Q：设置入口从文件区迁入人员详情）──
+  // 选中人员才拉 getQuota（一次；不预取全部人员、无 N+1）；human 切换重置。
+  // hooks 必须在下方 early-return 之前声明（react-hooks/rules）。
+  const [quota, setQuotaState] = React.useState<QuotaResponse | null>(null);
+  const [quotaFailed, setQuotaFailed] = React.useState(false);
+  const [quotaOpen, setQuotaOpen] = React.useState(false);
+  const quotaReqRef = React.useRef(0);
+  // 模型授权弹窗（C2b）——按需挂载（maOpen 才拨号，不预取）。
+  const [maOpen, setMaOpen] = React.useState(false);
+  // 工作区访问弹窗（H2 #1502）——按需挂载（waOpen 才拨号，不预取）。
+  const [waOpen, setWaOpen] = React.useState(false);
+  const selectedName = human ? human.name : null;
+
+  const refreshQuota = React.useCallback(async () => {
+    if (!selectedName) return;
+    const req = ++quotaReqRef.current;
+    try {
+      const q = await getQuota(selectedName);
+      if (req !== quotaReqRef.current) return; // 过期响应（人员已切换）
+      setQuotaState(q);
+      setQuotaFailed(false);
+    } catch {
+      if (req !== quotaReqRef.current) return;
+      setQuotaFailed(true);
+    }
+  }, [selectedName]);
+
+  React.useEffect(() => {
+    // human 切换（含取消选中）→ 重置配额态并收起模态框；选中才拉一次。
+    setQuotaState(null);
+    setQuotaFailed(false);
+    setQuotaOpen(false);
+    if (selectedName) void refreshQuota();
+  }, [selectedName, refreshQuota]);
 
   // 未选中（或选中项已不在最新数据）→ 占位。
   if (!human) {
@@ -355,6 +437,77 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
       setDelBusy(false);
     }
   };
+
+  // admin 门（与 FilesSection 同源：hasToken = 已配置 Controller 管理员 token）。
+  const isAdmin = !!data.hasToken;
+
+  // 打开配额模态框（admin；点开 = 重试——失败副标题「可点开重试」）。
+  // 表单/保存/清除全在共享 QuotaEditDialog（文件管理同一份实现）。
+  const openQuota = () => {
+    if (!isAdmin) return;
+    setQuotaOpen(true);
+    void refreshQuota();
+  };
+
+  // 入口卡副标题：有上限 → 已用/上限；无限制；加载中；失败（可点开重试）。
+  const quotaSub = quotaFailed
+    ? tr("配额读取失败（可点开重试）")
+    : quota
+      ? quota.quotaBytes
+        ? tr("已用 {a} / 上限 {b}", {
+            a: formatQuotaValue(quota.usedBytes),
+            b: formatQuotaValue(quota.quotaBytes),
+          })
+        : tr("无限制 · 已用 {a}", { a: formatQuotaValue(quota.usedBytes) })
+      : tr("读取中…");
+
+  // #1536 收敛的两张卡本体（非 L1 时 disabled；L1 路径 DOM 不变）。
+  const permCard = (
+    <button
+      type="button"
+      disabled={!canControl}
+      onClick={() => crd.openPerm(human)}
+      style={{
+        ...entryStyle(t),
+        cursor: canControl ? "pointer" : "not-allowed",
+        opacity: canControl ? 1 : 0.65,
+      }}
+    >
+      <ShieldIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+      <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
+          {tr("访问与权限")}
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tr("权限档位 / 可访问团队 / 可访问 Worker，一次保存；旧版 Controller 回落生成命令")}
+        </span>
+      </span>
+      <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
+        ›
+      </span>
+    </button>
+  );
+  const delHumanCard = (
+    <antd.Button
+      danger
+      disabled={!canControl}
+      style={{ minHeight: 44, justifyContent: "flex-start" }}
+      onClick={() => {
+        setDelName("");
+        setDelOpen(true);
+      }}
+    >
+      {tr("删除人员")}
+    </antd.Button>
+  );
 
   return (
     <div style={{ display: "grid", gap: 10, padding: 4 }}>
@@ -411,17 +564,26 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         </antd.Tag>
       </div>
 
-      {/* 单入口卡（15.35：原「团队访问配置 + 权限设置」两卡合并） */}
+      {/* 入口卡（15.35：原「团队访问配置 + 权限设置」两卡合并；Q：+ 工作区容量配额） */}
       <div style={{ display: "grid", gap: 8 }}>
+        {/* #1536：保存权限档位 = 资源控制，非 L1 disabled + 统一提示。 */}
+        {canControl ? (
+          permCard
+        ) : (
+          <WbTooltip title={deniedHint} tap={false}>
+            <span style={{ display: "block" }}>{permCard}</span>
+          </WbTooltip>
+        )}
+        {/* 第二张入口卡：工作区容量配额（Q：用量展示 + 设置/清除；非 admin 只显用量） */}
         <button
           type="button"
-          onClick={() => crd.openPerm(human)}
-          style={entryStyle(t)}
+          onClick={isAdmin ? openQuota : undefined}
+          style={isAdmin ? entryStyle(t) : { ...entryStyle(t), cursor: "default" }}
         >
-          <ShieldIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          <BoxIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
           <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
             <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
-              {tr("访问与权限")}
+              {tr("工作区容量配额")}
             </span>
             <span
               style={{
@@ -432,7 +594,63 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
                 whiteSpace: "nowrap",
               }}
             >
-              {tr("权限档位 / 可访问团队 / 可访问 Worker，一次保存；旧版 Controller 回落生成命令")}
+              {quotaSub}
+            </span>
+          </span>
+          {isAdmin ? (
+            <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
+              ›
+            </span>
+          ) : null}
+        </button>
+        {/* 第三张入口卡：模型授权（C2b #1513 管理员面；点开才拉人 CR） */}
+        <button
+          type="button"
+          onClick={() => setMaOpen(true)}
+          style={entryStyle(t)}
+        >
+          <BrainIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
+              {tr("模型授权")}
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                color: t.textSecondary,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {tr("主模型 / spawn / Coding CLI（Human CR spec.modelAccess，L1）")}
+            </span>
+          </span>
+          <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
+            ›
+          </span>
+        </button>
+        {/* 第四张入口卡：工作区访问（H2 #1502；点开才拉人 CR + /teams） */}
+        <button
+          type="button"
+          onClick={() => setWaOpen(true)}
+          style={entryStyle(t)}
+        >
+          <DoorIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
+              {tr("工作区访问")}
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                color: t.textSecondary,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {tr("files/** 团队访问（grants/restrictions，L1）")}
             </span>
           </span>
           <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
@@ -441,21 +659,19 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         </button>
       </div>
 
-      {/* 危险区：删除人员（L1；Controller 仅 admin 放行）——输入名字确认。 */}
+      {/* 危险区：删除人员（L1；Controller 仅 admin 放行）——输入名字确认。
+          #1536：非 L1 调用者 disabled + 统一提示（不隐藏）。 */}
       <div style={{ display: "grid", gap: 6 }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: "red" }}>
           {tr("危险区")}
         </span>
-        <antd.Button
-          danger
-          style={{ minHeight: 44, justifyContent: "flex-start" }}
-          onClick={() => {
-            setDelName("");
-            setDelOpen(true);
-          }}
-        >
-          {tr("删除人员")}
-        </antd.Button>
+        {canControl ? (
+          delHumanCard
+        ) : (
+          <WbTooltip title={deniedHint} tap={false}>
+            <span style={{ display: "inline-block" }}>{delHumanCard}</span>
+          </WbTooltip>
+        )}
         <span style={{ fontSize: 11, color: t.textSecondary }}>
           {tr("删除 Human CR：Matrix 账号停用并离开全部房间；文件区保留。不可撤销。")}
         </span>
@@ -498,6 +714,18 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         </div>
       </antd.Modal>
 
+      {/* 工作区容量配额模态框：共享 files/QuotaEditDialog（与文件管理同一份
+          UI/语义：十进制 MB/GB + 文件数 + 清除 + 403 文案）；admin only。 */}
+      <QuotaEditDialog
+        open={quotaOpen}
+        humanName={human.name}
+        quota={quota}
+        t={t}
+        tr={tr}
+        onClose={() => setQuotaOpen(false)}
+        onSaved={() => void refreshQuota()}
+      />
+
       {/* 访问与权限弹窗（chips 单模态；human=null 渲染 null = 零后台负载） */}
       <HumanAccessModal
         human={crd.permHuman}
@@ -508,6 +736,392 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         onClose={() => crd.setPermHuman(null)}
         onSaved={() => void onRefresh(true)}
       />
+
+      {/* 模型授权弹窗（C2b；按需挂载 = maOpen 才拉人 CR + 共享表清单） */}
+      {maOpen ? (
+        <HumanModelAccessModal
+          human={human}
+          workers={workers}
+          isAdmin={isAdmin}
+          tr={tr}
+          t={t}
+          onClose={() => setMaOpen(false)}
+          onSaved={() => void onRefresh(true, true)}
+        />
+      ) : null}
+
+      {/* 工作区访问弹窗（H2 #1502；按需挂载 = waOpen 才拉人 CR + /teams） */}
+      {waOpen ? (
+        <HumanWorkspaceAccessModal
+          human={human}
+          isAdmin={isAdmin}
+          tr={tr}
+          t={t}
+          onClose={() => setWaOpen(false)}
+          onSaved={() => void onRefresh(true, true)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+// ── 模型授权弹窗（C2b #1513 管理员面）────────────────────────────────
+// 读人 CR（含 ?resolve=1 生效值授权）→ ModelAccessEditor 编辑 →
+// 读-改-写保存（只改 spec.modelAccess，其余字段原样带回，见
+// api/domains/modelAccess.saveHumanModelAccess）。保存后刷新管理数据
+// （strong = 写后立即读强一致）。只读条件：非 admin / 全 surface 锁定。
+function HumanModelAccessModal({
+  human,
+  workers,
+  isAdmin,
+  tr,
+  t,
+  onClose,
+  onSaved,
+}: {
+  human: HumanInfo;
+  workers: AdminData["workers"];
+  isAdmin: boolean;
+  tr: (s: string, v?: Record<string, string | number>) => string;
+  t: ThemeColors;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [view, setView] = React.useState<HumanModelAccessView | null>(null);
+  const [loadErr, setLoadErr] = React.useState("");
+  const [draft, setDraft] = React.useState<HumanModelAccess>({ scopes: [] });
+  const [dirty, setDirty] = React.useState(false);
+  const [tableNames, setTableNames] = React.useState<string[] | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [saveErr, setSaveErr] = React.useState("");
+
+  // 模型候选（复用 useModelCatalog：挂载即拉网关 alias；SGLang 一次性
+  // seed——ref guard 防 hook 新引用引发 effect 重跑；候选空 = 自由输入）。
+  const catalog = useModelCatalog({ workers, tr });
+  // 模型 → provider 归属（复用 providerForModel，不在本地重写映射规则）。
+  const modelsByProvider = React.useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const m of catalog.modelCandidates) {
+      const p = providerForModel(catalog.gatewayOpts ?? [], m);
+      if (!p) continue;
+      (out[p] ??= []).push(m);
+    }
+    return out;
+  }, [catalog.modelCandidates, catalog.gatewayOpts]);
+  const setModelOptsRef = React.useRef(catalog.setModelOpts);
+  setModelOptsRef.current = catalog.setModelOpts;
+  React.useEffect(() => {
+    void fetchSglangModels()
+      .then((m) => setModelOptsRef.current(m))
+      .catch(() => undefined);
+  }, []);
+
+  // 打开即读：人 CR + 共享表清单（并行；表 404 = 正常降级 hidden）。
+  React.useEffect(() => {
+    let alive = true;
+    setView(null);
+    setLoadErr("");
+    setDraft({ scopes: [] });
+    setDirty(false);
+    setSaveErr("");
+    setTableNames(null);
+    (async () => {
+      try {
+        const [v, tb] = await Promise.all([
+          getHumanModelAccess(human.name),
+          listModelAccessTables(),
+        ]);
+        if (!alive) return;
+        setView(v);
+        setDraft(v.modelAccess ?? { scopes: [] });
+        setTableNames(tb.supported && tb.tables.length ? tb.tables : null);
+      } catch (e) {
+        if (alive) setLoadErr(hfErrorText(e, tr));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [human.name, tr]);
+
+  const caps = view?.capabilities ?? null;
+  const allLocked = allSurfacesLocked(caps);
+  const scopes = draft.scopes ?? [];
+  const pairIssues = scopes.flatMap((s) => findPairIssues(s));
+  const canSave = isAdmin && !allLocked && dirty && !busy && pairIssues.length === 0;
+
+  const doSave = React.useCallback(async () => {
+    if (pairIssues.length) {
+      antd.message.warning(tr("部分 entries 缺 provider 或 model——补全或删除后再保存"));
+      return;
+    }
+    setBusy(true);
+    setSaveErr("");
+    try {
+      await saveHumanModelAccess(human.name, buildModelAccessPayload(draft));
+      antd.message.success(tr("模型授权已保存"));
+      onSaved();
+      onClose();
+    } catch (e) {
+      setSaveErr(hfErrorText(e, tr));
+    } finally {
+      setBusy(false);
+    }
+  }, [draft, human.name, onSaved, onClose, pairIssues.length, tr]);
+
+  return (
+    <antd.Modal
+      open
+      title={tr("模型授权（{name}）", { name: human.name })}
+      width={760}
+      okText={tr("保存")}
+      cancelText={tr("取消")}
+      confirmLoading={busy}
+      okButtonProps={{ disabled: !canSave }}
+      onOk={() => void doSave()}
+      onCancel={() => {
+        if (!busy) onClose();
+      }}
+    >
+      <div style={{ display: "grid", gap: 10, paddingTop: 8 }}>
+        {loadErr ? (
+          <antd.Alert
+            type="error"
+            showIcon
+            message={tr("读取模型授权失败")}
+            description={loadErr}
+          />
+        ) : null}
+        {!loadErr && !view ? (
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("读取人 CR…")}
+          </span>
+        ) : null}
+        {view ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {!isAdmin ? (
+              <antd.Alert
+                type="info"
+                showIcon
+                message={tr("修改模型授权需 L1 管理权限（Controller 管理员 token）")}
+              />
+            ) : null}
+            {allLocked ? (
+              <antd.Alert
+                type="warning"
+                showIcon
+                message={tr("只读：当前授权由上游继承或策略限制（各分区有原因提示）")}
+              />
+            ) : null}
+            {scopes.length === 0 ? (
+              <antd.Alert
+                type="warning"
+                showIcon
+                message={tr("未配置模型授权（fail-closed）：该人员名下的 Worker 默认全部模型锁定")}
+                description={tr(
+                  "添加作用域并授权 (provider, model) 对后保存；role 留空 = 默认作用域。无值 = fail-closed 全锁。",
+                )}
+              />
+            ) : null}
+            {saveErr ? (
+              <antd.Alert type="error" showIcon message={tr("保存失败")} description={saveErr} />
+            ) : null}
+            <ModelAccessEditor
+              value={draft}
+              capabilities={caps}
+              tables={tableNames}
+              catalog={{
+                providers: catalog.providers.map((p) => p.name),
+                models: catalog.modelCandidates,
+                // 网关 alias → provider 归属（选完 provider 后模型下拉只列
+                // 该 provider 的模型；无会话时为空 → 不过滤）。
+                modelsByProvider: modelsByProvider,
+              }}
+              onChange={(next) => {
+                setDraft(next);
+                setDirty(true);
+              }}
+              tr={tr}
+              t={t}
+              readOnly={!isAdmin || allLocked}
+              getTablePreview={(nm) => getModelAccessTable(nm).then((d) => d.entries)}
+            />
+          </div>
+        ) : null}
+      </div>
+    </antd.Modal>
+  );
+}
+
+// ── 工作区访问弹窗（H2 #1502 管理员面）───────────────────────────────
+// 读人 CR（spec.workspaceAccess；#1502 快照 GET 不回显 → 通常空态）+
+// /teams 清单（404/403 → 团队降级自由输入）→ WorkspaceAccessEditor 编辑
+// → 读-改-写保存（只动 spec.workspaceAccess，其余字段原样带回，PUT
+// 404/405 → PATCH merge-patch 兜底，见 api/domains/workspaceAccess
+// .saveWorkspaceAccess）→ 保存后 re-GET 验证（silent-drop 检测：未回读
+// 到所存内容 = 「当前控制器版本不支持工作区访问（保存未生效）」告警，
+// 弹窗保留供用户查看，不关窗）。只读条件：非 admin。
+function HumanWorkspaceAccessModal({
+  human,
+  isAdmin,
+  tr,
+  t,
+  onClose,
+  onSaved,
+}: {
+  human: HumanInfo;
+  isAdmin: boolean;
+  tr: (s: string, v?: Record<string, string | number>) => string;
+  t: ThemeColors;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [access, setAccess] = React.useState<WorkspaceAccess | null>(null);
+  const [teamsRes, setTeamsRes] = React.useState<TeamsForAccessResult | null>(null);
+  const [loadErr, setLoadErr] = React.useState("");
+  const [draft, setDraft] = React.useState<WorkspaceAccess>({ grants: [], restrictions: [] });
+  const [dirty, setDirty] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [saveErr, setSaveErr] = React.useState("");
+  const [saveWarn, setSaveWarn] = React.useState("");
+
+  // 打开即读：人 CR + /teams（并行；/teams 404/403 = 正常降级，不阻主读）。
+  React.useEffect(() => {
+    let alive = true;
+    setAccess(null);
+    setLoadErr("");
+    setDraft({ grants: [], restrictions: [] });
+    setDirty(false);
+    setSaveErr("");
+    setSaveWarn("");
+    (async () => {
+      try {
+        const [v, tm] = await Promise.all([
+          getHumanWorkspaceAccess(human.name),
+          fetchTeamsForAccess(),
+        ]);
+        if (!alive) return;
+        setAccess(v.access);
+        setTeamsRes(tm);
+        setDraft(v.access ?? { grants: [], restrictions: [] });
+      } catch (e) {
+        if (alive) setLoadErr(hfErrorText(e, tr));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [human.name, tr]);
+
+  // defaultTeams = accessibleTeams ∪ { humanMembers 含该人员的团队 }（只读展示）。
+  const defaultTeams = React.useMemo(() => {
+    const fromMembership: string[] = [];
+    for (const [team, names] of Object.entries(teamsRes?.membership ?? {})) {
+      if (names.includes(human.name)) fromMembership.push(team);
+    }
+    return [...new Set([...(human.accessibleTeams ?? []), ...fromMembership])];
+  }, [teamsRes, human.name, human.accessibleTeams]);
+
+  // /teams 不可用（404/403）→ 候选 null = 团队降级自由输入 + 跳过不存在校验。
+  const teamOptions = teamsRes && !teamsRes.unavailable ? teamsRes.teams : null;
+  const issues = validateAccess(draft, teamOptions);
+  const canSave = isAdmin && dirty && !busy && issues.length === 0;
+
+  const doSave = React.useCallback(async () => {
+    if (issues.length) {
+      antd.message.warning(tr("工作区访问存在校验错误——先修正红色提示"));
+      return;
+    }
+    setBusy(true);
+    setSaveErr("");
+    setSaveWarn("");
+    try {
+      await saveWorkspaceAccess(human.name, draft);
+      const v = await verifyWorkspaceAccessSaved(human.name, draft);
+      if (v.verified) {
+        antd.message.success(tr("工作区访问已保存"));
+        onSaved();
+        onClose();
+      } else {
+        // silent-drop 检测：re-GET 未含所存内容 → 控制器未重建 #1502
+        // （PUT/PATCH 静默丢弃未知字段），或新控制器不回显（同口径告警）。
+        setSaveWarn(tr("当前控制器版本不支持工作区访问（保存未生效）"));
+      }
+    } catch (e) {
+      setSaveErr(hfErrorText(e, tr));
+    } finally {
+      setBusy(false);
+    }
+  }, [draft, human.name, issues.length, onSaved, onClose, tr]);
+
+  const loaded = access !== null || teamsRes !== null;
+
+  return (
+    <antd.Modal
+      open
+      title={tr("工作区访问（{name}）", { name: human.name })}
+      width={720}
+      okText={tr("保存")}
+      cancelText={tr("取消")}
+      confirmLoading={busy}
+      okButtonProps={{ disabled: !canSave }}
+      onOk={() => void doSave()}
+      onCancel={() => {
+        if (!busy) onClose();
+      }}
+    >
+      <div style={{ display: "grid", gap: 10, paddingTop: 8 }}>
+        {loadErr ? (
+          <antd.Alert
+            type="error"
+            showIcon
+            message={tr("读取工作区访问失败")}
+            description={loadErr}
+          />
+        ) : null}
+        {!loadErr && !loaded ? (
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("读取工作区访问…")}
+          </span>
+        ) : null}
+        {loaded ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            {!isAdmin ? (
+              <antd.Alert
+                type="info"
+                showIcon
+                message={tr("修改工作区访问需 L1 管理权限（Controller 管理员 token）")}
+              />
+            ) : null}
+            {teamsRes?.unavailable ? (
+              <antd.Alert
+                type="warning"
+                showIcon
+                message={tr("团队列表不可用——团队名降级为自由输入")}
+              />
+            ) : null}
+            {saveWarn ? (
+              <antd.Alert type="warning" showIcon message={saveWarn} />
+            ) : null}
+            {saveErr ? (
+              <antd.Alert type="error" showIcon message={tr("保存失败")} description={saveErr} />
+            ) : null}
+            <WorkspaceAccessEditor
+              value={draft}
+              defaultTeams={defaultTeams}
+              teams={teamOptions}
+              humanName={human.name}
+              onChange={(next) => {
+                setDraft(next);
+                setDirty(true);
+              }}
+              tr={tr}
+              t={t}
+              readOnly={!isAdmin}
+            />
+          </div>
+        ) : null}
+      </div>
+    </antd.Modal>
   );
 }

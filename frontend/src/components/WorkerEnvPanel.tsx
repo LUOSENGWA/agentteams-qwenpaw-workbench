@@ -4,8 +4,9 @@
  * 契约（上游 v1.2.5 源码实读：agentteams-controller internal/server/
  * worker_env.go / worker_gateway_probe.go / types.go，2026-10-17 对账）：
  * - env 读：GET /workers[/{name}] 回 `env` + `envEditable`。L2 账号被遮蔽
- *   （env=nil、envEditable=false）；旧 Controller 无字段（undefined）——
- *   两者一律不渲染本段（优雅降级，不显空占位）。
+ *   （env=nil、envEditable=false）→ 不渲染本段；undefined（旧 Controller
+ *   无字段 / 16.61 列表投影丢 envEditable）→ 照常渲染，面板内走 detail
+ *   加载态诚实降级（不显空占位）。
  *   ⚠️ 实盘勘误（10/17 实测 v1.2.5）：detail GET 响应实际**不回显 env**
  *   （keys 无 env，写路径 PUT 可用）→ 自定义变量区读到空≠未配置；
  *   「实际生效值」正源 = 本面板「运行时环境」区（容器 PID 1 /proc/1/
@@ -33,7 +34,9 @@ import type * as ReactNS from "react";
 import {
   updateWorker,
   probeWorkerGateway,
+  bindWorkerGatewayConsumer,
   fetchWorkerRuntimeEnv,
+  fetchWorkerDetail,
   httpErrorStatus,
   httpErrorDetail,
   type WorkerInfo,
@@ -41,6 +44,8 @@ import {
 } from "../api";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
+import StreamTimeoutQuickEdit from "./StreamTimeoutQuickEdit";
+import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import { SettingsIcon } from "./icons";
 import { WorkerCollapseCard } from "./WorkerPanelsShared";
 
@@ -91,9 +96,12 @@ const sameMap = (a: Record<string, string>, b: Record<string, string>): boolean 
 function WorkerEnvPanel({
   worker,
   sheet,
+  l1,
   onChanged,
 }: {
   worker: WorkerInfo;
+  /** L1（controller token）：流式超时快捷编辑只在 L1 渲染。 */
+  l1?: boolean;
   /** 竖屏弹窗模式（NarrowSheet 承载）：去卡片外框 + 头部隐藏收起抓手/
    * 图标/标题（与 WorkerRuntimeConfig sheet 同语义），内容零改动。 */
   sheet?: boolean;
@@ -110,6 +118,37 @@ function WorkerEnvPanel({
     () => worker.env,
   );
   const [rows, setRows] = React.useState<EnvRow[]>(() => rowsFromEnv(worker.env));
+  // #1477 写前读 detail：列表已投影（fields=spec,status）不含 env →
+  // 面板打开才取 detail GET /workers/{name}（15s 缓存）作 baseEnv/rows 正源；
+  // loading→写控件 disabled；error→只读+重试（禁列表行兜底）；
+  // 未 ready 禁止提交（整块替换语义下盲写=清掉未知存量）。
+  const [detailState, setDetailState] = React.useState<
+    "idle" | "loading" | "error" | "ready"
+  >("idle");
+  const [detailEnv, setDetailEnv] = React.useState<Record<string, string> | undefined>(
+    undefined,
+  );
+  const [detailErr, setDetailErr] = React.useState("");
+  const loadDetail = React.useCallback(
+    async (force = false) => {
+      setDetailState("loading");
+      setDetailErr("");
+      try {
+        const d = await fetchWorkerDetail(worker.name, { strong: force });
+        setDetailEnv(d.env);
+        setDetailState("ready");
+      } catch (e) {
+        setDetailErr(httpErrorDetail(e) || tr("读取 Worker 配置失败"));
+        setDetailState("error");
+      }
+    },
+    [worker.name, tr],
+  );
+  // 打开面板才取（inline 折叠态/未展开 worker 零请求——不 N+1）。
+  // 失败不自动重试（防循环）——用户点「重试」显式触发 loadDetail(true)。
+  React.useEffect(() => {
+    if (open && detailState === "idle") void loadDetail(false);
+  }, [open, detailState, loadDetail]);
   const [newKey, setNewKey] = React.useState("");
   const [newValue, setNewValue] = React.useState("");
   const [addErr, setAddErr] = React.useState("");
@@ -120,6 +159,8 @@ function WorkerEnvPanel({
   const [probeMcpSel, setProbeMcpSel] = React.useState<string>(
     () => worker.mcpServers?.[0]?.name ?? "",
   );
+  /** 修复网关授权（幂等 bind；排障用）。 */
+  const [authBusy, setAuthBusy] = React.useState(false);
   const [probeRes, setProbeRes] = React.useState<{
     kind: "model" | "mcp";
     ok: boolean;
@@ -164,14 +205,17 @@ function WorkerEnvPanel({
 
   // 空闲（无本地编辑）时数据源更新 → 跟随 re-baseline（他人改过 env 时
   // 视图同步；有本地编辑时不动，防覆盖未保存输入）。
+  // #1477：正源改 detail.env——列表行已投影不含 env（worker.env 恒
+  // undefined），旧源会让 ready 后的真实基线被空值反复覆盖。
   React.useEffect(() => {
+    if (detailState !== "ready") return;
     const idle = sameMap(mapFromRows(rows), baseEnv ?? {});
-    if (idle && !sameMap(baseEnv ?? {}, worker.env ?? {})) {
-      setBaseEnv(worker.env);
-      setRows(rowsFromEnv(worker.env));
+    if (idle && !sameMap(baseEnv ?? {}, detailEnv ?? {})) {
+      setBaseEnv(detailEnv);
+      setRows(rowsFromEnv(detailEnv));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [worker.env]);
+  }, [detailEnv, detailState]);
 
   const original = baseEnv ?? {};
   const current = React.useMemo(() => mapFromRows(rows), [rows]);
@@ -211,6 +255,18 @@ function WorkerEnvPanel({
 
   const save = async () => {
     if (!dirty) return;
+    // #1477 写前读门：detail 未加载成功禁止提交（禁列表行兜底——
+    // 整块替换语义下盲写会清掉未知存量 env）。
+    if (detailState !== "ready") {
+      setMsg({
+        ok: false,
+        text:
+          detailState === "error"
+            ? `${tr("读取 Worker 配置失败")}（${detailErr}）——请先重试`
+            : tr("正在读取 Worker 配置…"),
+      });
+      return;
+    }
     const run = async () => {
       setSaving(true);
       setMsg(null);
@@ -260,6 +316,30 @@ function WorkerEnvPanel({
     void run();
   };
 
+  /** 修复网关授权：POST /gateway/consumers/worker-<name>/bind（幂等）。 */
+  const repairGatewayAuth = async () => {
+    setAuthBusy(true);
+    try {
+      await bindWorkerGatewayConsumer(worker.name);
+      antd.message.success(
+        tr("已授权该 Worker 的网关 Consumer（worker-{n}）", { n: worker.name }),
+      );
+    } catch (e) {
+      const st = httpErrorStatus(e);
+      if (st === 403) {
+        antd.message.error(tr("无权限：仅管理员/负责人可修复授权"));
+      } else if (st === 404 || st === 501) {
+        antd.message.warning(tr("控制器未提供该接口（版本较旧）"));
+      } else {
+        antd.message.error(
+          tr("修复失败：{d}", { d: httpErrorDetail(e) || String(st ?? "") }),
+        );
+      }
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
   const probe = async (kind: "model" | "mcp") => {
     const server = kind === "mcp" ? probeMcpSel : undefined;
     if (kind === "mcp" && !server) {
@@ -290,7 +370,10 @@ function WorkerEnvPanel({
     }
   };
 
-  if (worker.envEditable !== true) return null;
+  // 只有明确 L2 遮蔽（envEditable === false）才隐藏本段；undefined
+  // （旧 Controller 无字段 / 16.61 列表投影丢 envEditable）照常渲染，
+  // 面板内走 detail 加载态诚实降级（写前读门已禁列表行兜底）。
+  if (worker.envEditable === false) return null;
 
   return (
     <WorkerCollapseCard
@@ -308,14 +391,19 @@ function WorkerEnvPanel({
       headerExtra={
         <>
           <div style={{ flex: 1 }} />
-          <antd.Button size="small" type="text" onClick={resetEdits} disabled={!dirty}>
+          <antd.Button
+            size="small"
+            type="text"
+            onClick={resetEdits}
+            disabled={!dirty || detailState !== "ready"}
+          >
             {tr("重置")}
           </antd.Button>
           <antd.Button
             size="small"
             type="primary"
-            disabled={!dirty}
-            loading={saving}
+            disabled={!dirty || detailState !== "ready"}
+            loading={saving || detailState === "loading"}
             onClick={() => void save()}
           >
             {tr("保存")}
@@ -323,6 +411,23 @@ function WorkerEnvPanel({
         </>
       }
     >
+
+      {/* #1477 写前读门态：loading→提示；error→只读+重试（不自动重试防循环）。 */}
+      {detailState === "loading" ? (
+        <antd.Alert type="info" showIcon message={tr("正在读取 Worker 配置…")} />
+      ) : null}
+      {detailState === "error" ? (
+        <antd.Alert
+          type="error"
+          showIcon
+          message={`${tr("读取 Worker 配置失败")}（${detailErr}）`}
+          action={
+            <antd.Button size="small" danger onClick={() => void loadDetail(true)}>
+              {tr("重试")}
+            </antd.Button>
+          }
+        />
+      ) : null}
 
       {msg ? (
         <antd.Alert
@@ -343,12 +448,18 @@ function WorkerEnvPanel({
         </div>
         {rows.length === 0 ? (
           <div style={{ fontSize: 12, color: t.textSecondary }}>
-            {tr("当前无自定义环境变量")}
-            <div style={{ fontSize: 11 }}>
-              {tr(
-                "注意：Controller 当前不回显已保存的自定义变量（保存=整块替换写 CRD）——已保存值以下方「运行时环境」为准（容器重建后生效）。",
-              )}
-            </div>
+            {detailState === "loading" || detailState === "idle" ? (
+              tr("正在读取 Worker 配置…")
+            ) : (
+              <>
+                {tr("当前无自定义环境变量")}
+                <div style={{ fontSize: 11 }}>
+                  {tr(
+                    "注意：Controller 当前不回显已保存的自定义变量（保存=整块替换写 CRD）——已保存值以下方「运行时环境」为准（容器重建后生效）。",
+                  )}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           rows.map((r, i) => (
@@ -391,6 +502,7 @@ function WorkerEnvPanel({
                 size="small"
                 type="text"
                 danger
+                disabled={detailState !== "ready"}
                 onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
               >
                 ×
@@ -404,6 +516,7 @@ function WorkerEnvPanel({
             style={{ width: 190, fontFamily: "monospace" }}
             placeholder={tr("键名（如 MY_VAR）")}
             value={newKey}
+            disabled={detailState !== "ready"}
             onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => {
               setNewKey(ev.target.value);
               setAddErr("");
@@ -414,13 +527,18 @@ function WorkerEnvPanel({
             style={{ flex: 1, minWidth: 120, fontFamily: "monospace" }}
             placeholder={tr("值（可空）")}
             value={newValue}
+            disabled={detailState !== "ready"}
             onChange={(ev: ReactNS.ChangeEvent<HTMLInputElement>) => {
               setNewValue(ev.target.value);
               setAddErr("");
             }}
-            onPressEnter={addRow}
+            onPressEnter={detailState === "ready" ? addRow : undefined}
           />
-          <antd.Button size="small" onClick={addRow}>
+          <antd.Button
+            size="small"
+            disabled={detailState !== "ready"}
+            onClick={addRow}
+          >
             ＋ {tr("添加")}
           </antd.Button>
         </div>
@@ -433,6 +551,9 @@ function WorkerEnvPanel({
           Controller detail GET 不回显 spec.env——自定义区读到空≠未配置，
           实际生效值以此区为准（QwenPaw_* / AGENTTEAMS_* / 镜像内置 + 自定义）。 */}
       <antd.Divider style={{ margin: "4px 0" }}>{tr("运行时环境")}</antd.Divider>
+      {!isQwenpawOnlyDisabled(worker.runtime) ? (
+        <StreamTimeoutQuickEdit name={worker.name} l1={l1} onChanged={onChanged} />
+      ) : null}
       <div
         style={{
           display: "flex",
@@ -610,6 +731,17 @@ function WorkerEnvPanel({
             {tr("（该 Worker 未设置模型）")}
           </span>
         )}
+        <antd.Button
+          size="small"
+          loading={authBusy}
+          disabled={!worker.model}
+          onClick={() => void repairGatewayAuth()}
+          title={tr("授权丢失/403 时用：把 worker-{n} 重新授权到 AI 模型 API", {
+            n: worker.name,
+          })}
+        >
+          {tr("修复网关授权")}
+        </antd.Button>
         {worker.mcpServers?.length ? (
           <React.Fragment>
             <antd.Select

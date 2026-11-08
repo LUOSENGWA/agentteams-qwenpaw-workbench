@@ -9,6 +9,19 @@ import {
   PRIMARY,
   senderShortName,
 } from "./RoomChatShared";
+import {
+  appendTranscript,
+  createSpeechController,
+  detectSpeechRecognition,
+  isSpeechSupported,
+  normalizeTranscript,
+  resolveSpeechLang,
+} from "../lib/speechInput";
+import type {
+  SpeechController,
+  SpeechErrorKind,
+  SpeechStatus,
+} from "../lib/speechInput";
 import type {RoomChatProps } from "./RoomChat";
 import type {RoomChatCoreState } from "./RoomChatCore";
 
@@ -24,6 +37,37 @@ const icon = (name: string): ReactNS.FC<Record<string, unknown>> =>
 const ReplyOutlined = icon("ReplyOutlined");
 const PaperClipOutlined = icon("PaperClipOutlined");
 const LinkOutlined = icon("LinkOutlined");
+
+/** 麦克风图标（R11 语音输入）：宿主 antdIcons 不保证有 AudioOutlined，
+ * 自绘 stroke 图标（currentColor 随按钮文字色，识别中即红色）。 */
+function MicIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ verticalAlign: "-3px" }}
+      aria-hidden
+    >
+      <rect
+        x="9"
+        y="2.75"
+        width="6"
+        height="11"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.25"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState }) {
   const { p, c } = props;
   const {
@@ -67,6 +111,112 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
     handleKeyDown,
     narrow,
   } = c;
+
+  // ── R11 语音输入（浏览器原生 Web Speech API，零新依赖）──────────────
+  // 状态机 / 结果归一在 lib/speechInput.ts（纯逻辑，可 node 测）；这里
+  // 只做浏览器绑定。不支持的环境 speechSupported=false → 麦克风按钮
+  // 完全不渲染（不报错）。hooks 必须在 `if (!room)` 早退之前调用。
+  const [speechSupported] = React.useState(() => isSpeechSupported(window));
+  const [speechStatus, setSpeechStatus] = React.useState<SpeechStatus>("idle");
+  const [speechInterim, setSpeechInterim] = React.useState("");
+  const speechCtrlRef = React.useRef<SpeechController | null>(null);
+  // 识别回调闭包要读最新草稿：直接读 state 会捕获旧值，用 ref 同步。
+  const speechDraftRef = React.useRef(draft);
+  speechDraftRef.current = draft;
+  const roomId = room?.room_id;
+
+  const applyDraftValue = React.useCallback(
+    (value: string) => {
+      // 与键盘输入同一条通道：mention 解析 + 草稿持久化都由
+      // handleDraftChange 负责，语音不另开第二套写入路径。
+      handleDraftChange({
+        target: { value },
+      } as unknown as ReactNS.ChangeEvent<HTMLTextAreaElement>);
+    },
+    [handleDraftChange],
+  );
+
+  const speechToast = React.useCallback(
+    (kind: SpeechErrorKind) => {
+      const msg =
+        kind === "permission"
+          ? tr("未获得麦克风权限，请在浏览器设置中允许后重试")
+          : kind === "no-microphone"
+            ? tr("未找到可用的麦克风")
+            : kind === "no-speech"
+              ? tr("没有识别到语音，请再试一次")
+              : kind === "network"
+                ? tr("语音识别网络错误，请检查网络后重试")
+                : tr("语音识别出错，请重试");
+      antd.message.error(msg);
+    },
+    [tr],
+  );
+
+  const toggleSpeech = React.useCallback(() => {
+    if (!speechSupported) return;
+    if (!speechCtrlRef.current) {
+      speechCtrlRef.current = createSpeechController({
+        createRecognition: () => {
+          const Ctor = detectSpeechRecognition(window);
+          return Ctor ? new Ctor() : null;
+        },
+        lang: resolveSpeechLang(document.documentElement?.lang),
+        handlers: {
+          onStatus: setSpeechStatus,
+          onInterim: setSpeechInterim,
+          onFinal: (text) => {
+            setSpeechInterim("");
+            // 只填输入框，绝不自动发送。
+            applyDraftValue(appendTranscript(speechDraftRef.current, text));
+          },
+          onError: (kind) => {
+            setSpeechInterim("");
+            speechToast(kind);
+          },
+        },
+      });
+    }
+    speechCtrlRef.current.toggle();
+  }, [applyDraftValue, speechSupported, speechToast]);
+
+  // 卸载即停：识别器握着麦克风，组件消失还录着会让人以为在偷听。
+  React.useEffect(
+    () => () => {
+      speechCtrlRef.current?.dispose();
+      speechCtrlRef.current = null;
+    },
+    [],
+  );
+  // 切房：草稿已换房间，识别结果不能落到新房间。
+  React.useEffect(() => {
+    speechCtrlRef.current?.stop();
+    setSpeechInterim("");
+  }, [roomId]);
+  // 发送即停：这句已提交，继续听会把后续话叠进下一条草稿。
+  React.useEffect(() => {
+    if (sending) speechCtrlRef.current?.stop();
+  }, [sending]);
+
+  const handleComposerInputChange = (
+    e: ReactNS.ChangeEvent<HTMLTextAreaElement>,
+  ) => {
+    // 识别中用户动键盘：先停听、清临时文本，再把用户实际输入落草稿——
+    // 不能让只读的临时字幕混进草稿。
+    if (speechInterim) {
+      speechCtrlRef.current?.stop();
+      setSpeechInterim("");
+      const tail = normalizeTranscript(speechInterim);
+      let value = e.target.value;
+      if (tail && value.endsWith(tail)) {
+        value = value.slice(0, -tail.length).replace(/\s+$/, "");
+      }
+      applyDraftValue(value);
+      return;
+    }
+    handleDraftChange(e);
+  };
+
   if (!room) {
     return null;
   }
@@ -358,7 +508,13 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
               <div ref={composerBoxRef} style={{ flex: "1 1 auto", minWidth: 0, width: "100%" }}>
                 <antd.Input.TextArea
                   ref={composerRef}
-                  value={draft}
+                  // 识别中的临时文本只「贴」在草稿末尾显示，不进 draft
+                  // （不提交）；final 结果由 onFinal 追加进草稿。
+                  value={
+                    speechInterim
+                      ? appendTranscript(draft, speechInterim)
+                      : draft
+                  }
                   autoSize={{ minRows: 1, maxRows: 5 }}
                   style={{ resize: "none" }}
                   placeholder={
@@ -368,7 +524,7 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
                         ? tr("发送回复…（Enter 发送，Shift+Enter 换行，Esc 取消回复）")
                         : tr("输入消息，@名字 可以点名成员（Enter 发送，Shift+Enter 换行）")
                   }
-                  onChange={handleDraftChange}
+                  onChange={handleComposerInputChange}
                   onKeyDown={handleKeyDown}
                 />
               </div>
@@ -451,6 +607,52 @@ export function RoomChatComposer(props: { p: RoomChatProps; c: RoomChatCoreState
                   </span>
                 </span>
               </WbTooltip>
+            ) : null}
+            {/* R11 语音输入：仅浏览器原生支持时渲染（不支持 = 完全不出现，
+ 不报错）。点击开始/再次点击停止；识别中按钮变红+脉冲并显示「正在听…」。
+ 只回填输入框，不自动发送；临时文本不提交（见 lib/speechInput.ts）。 */}
+            {speechSupported ? (
+              <>
+                {speechStatus === "listening" ? (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: PRIMARY,
+                      whiteSpace: "nowrap",
+                    }}
+                    aria-live="polite"
+                  >
+                    {tr("正在听…")}
+                  </span>
+                ) : null}
+                <WbTooltip
+                  title={
+                    speechStatus === "listening"
+                      ? tr("停止语音输入")
+                      : tr("语音输入")
+                  }
+                >
+                  <antd.Button
+                    type="text"
+                    className={
+                      speechStatus === "listening"
+                        ? "wb-mic-btn listening"
+                        : "wb-mic-btn"
+                    }
+                    aria-label={tr("语音输入")}
+                    aria-pressed={speechStatus === "listening"}
+                    onClick={toggleSpeech}
+                    icon={<MicIcon size={16} />}
+                    style={{
+                      // 触控目标 ≥44px（与移动端可达性口径一致）。
+                      minWidth: 44,
+                      minHeight: 44,
+                      color:
+                        speechStatus === "listening" ? "#ff4d4f" : undefined,
+                    }}
+                  />
+                </WbTooltip>
+              </>
             ) : null}
             {/* #87 引用工作区文件：仅团队房间（房间名 "Team: <name>"
  推得出 team）显示——按钮与附件同款 text 形态。 */}

@@ -5,7 +5,13 @@
 // 答 = 工作台以人类身份（Matrix 登录 token）发 DECISION 行回任务房间，
 // 不写任务 meta、不改 worker。
 
-import { requestJson, requestJsonConditional, getCachedRooms } from "../shared";
+import {
+  requestJson,
+  requestJsonFull,
+  requestJsonConditional,
+  getCachedRooms,
+  httpErrorStatus,
+} from "../shared";
 import {
   cachedRequest,
   invalidateTags,
@@ -17,6 +23,8 @@ import {
 export interface AttentionOption {
   id: string;
   label: string;
+  /** 选项说明（团队视角 #1503 行 options 字段；聚合视图无）。 */
+  description?: string;
 }
 
 /** 通知结果日志单条（上游 taskflow.py 契约——#1394 字段定案）：
@@ -78,6 +86,23 @@ export interface AttentionItem {
   resolvedAt?: string;
   /** 通知结果日志（room/channel 独立，不互推）。 */
   notification_log?: NotificationLogEntry[];
+  // ── 团队视角（#1503 GET /teams/{name}/attention）扩展字段——仅
+  // teamRowToAttentionItem 赋值，聚合视图缺席。overdue 服务端派生，
+  // 前端只展示、绝不在本地计算。 ──
+  /** 团队（行 teamId）。 */
+  team_id?: string;
+  /** 任务超时时刻（行 timeoutAt，UTC ISO）。 */
+  timeout_at?: string;
+  /** 逾期——服务端派生（pending 且 timeoutAt < now，严格小于）。 */
+  overdue?: boolean;
+  /** 解决结果（行 resolution：所选项 / 自由文本）。 */
+  resolution?: string;
+  /** 自由文本问句（行 freeform）。 */
+  freeform?: string;
+  /** 最新通知日志（行 notified）；null = 未发送——不得由 room 接受推断 sent。 */
+  notified?: TeamAttentionNotified | null;
+  /** Controller 任务详情 URL（行 url）。 */
+  url?: string;
 }
 
 /** 本地已答记录（去重 + 已回答历史）。 */
@@ -102,6 +127,66 @@ export interface AttentionAnsweredRecord {
   resolveEvidence?: Record<string, unknown>;
   resolvedAt?: string;
   notification_log?: NotificationLogEntry[];
+}
+
+// ── 团队视角（#1503 GET /api/v1/teams/{name}/attention）────────────────
+// 行字段逐字（camelCase = controller 字段名；teamRowToAttentionItem 映射
+// 到聚合视图的 snake_case AttentionItem 形状）。
+
+/** 团队视角选项（行 options：id/label/description）。 */
+export interface TeamAttentionOption {
+  id: string;
+  label: string;
+  description?: string | null;
+}
+
+/** 团队视角行 notified 字段 = 最新通知日志单条；null = 未发送。
+ * room/channel 是两条独立验收——**绝不从 room 接受推断 sent**
+ * （上游契约明确；channelAccepted null = adapter 未上报）。 */
+export interface TeamAttentionNotified {
+  sent: boolean;
+  roomAccepted: boolean;
+  /** null = 渠道 adapter 未上报（不可由 room 推断）。 */
+  channelAccepted: boolean | null;
+  recipients?: string[] | null;
+  gaps?: string[] | null;
+  at?: string | null;
+}
+
+/** 团队视角行（#1503 契约行字段逐字）。 */
+export interface TeamAttentionRow {
+  taskId: string;
+  teamId: string;
+  projectId: string;
+  kind: string;
+  question: string;
+  options?: TeamAttentionOption[] | null;
+  requestedAt: string;
+  timeoutAt?: string | null;
+  /** 逾期——服务端派生（pending 且 timeoutAt < now，严格小于）；前端只展示。 */
+  overdue: boolean;
+  resolved: boolean;
+  resolvedVia?: string | null;
+  resolvedBy?: string | null;
+  resolvedAt?: string | null;
+  /** 解决结果（所选项 / 自由文本）。 */
+  resolution?: string | null;
+  /** 自由文本问句。 */
+  freeform?: string | null;
+  /** 最新通知日志；null = 未发送（不得由 room 接受推断）。 */
+  notified?: TeamAttentionNotified | null;
+  roomId?: string | null;
+  /** Controller 任务详情 URL。 */
+  url?: string | null;
+}
+
+/** fetchTeamAttention 结果（unsupported = 端点 404 未部署，非错误）。 */
+export interface TeamAttentionResult {
+  rows: TeamAttentionRow[];
+  /** 读取失败被跳过的坏项目数（响应头 X-Attention-Skipped；缺失=0）。 */
+  skipped: number;
+  /** 404（controller 未部署 #1503）→ true；UI 降级回聚合视图。 */
+  unsupported: boolean;
 }
 
 /** GET /attention 响应（连接器聚合层）。 */
@@ -190,4 +275,76 @@ export function resolveAttentionRoom(item: AttentionItem): string {
     if (m && stripQ(m[1]) === want) return r.room_id;
   }
   return "";
+}
+
+// ── 团队视角（#1503）──────────────────────────────────────────────────
+
+/** 拉取团队级 attention 列表（#1503 契约）。
+ * - 404（controller 未部署该端点）→ `{rows: [], skipped: 0, unsupported: true}`
+ *   ——不抛错；调用方（NotificationCenter.PendingPanel）降级回聚合视图 + 黄条；
+ * - 400（如 limit>1000）等其余错误原样抛出；
+ * - 坏项目跳过数取自响应头 `X-Attention-Skipped`（缺失=0）；
+ * - `overdue` 为服务端派生值，前端透传展示，绝不在本地计算。
+ */
+export async function fetchTeamAttention(
+  team: string,
+  status: "open" | "overdue" | "resolved" | "all",
+  limit = 200,
+): Promise<TeamAttentionResult> {
+  const path =
+    `/agentteams-proxy/controller/api/v1/teams/${encodeURIComponent(team)}/attention` +
+    `?status=${encodeURIComponent(status)}&limit=${encodeURIComponent(String(limit))}`;
+  try {
+    const { payload, response } = await requestJsonFull(path, undefined, 30000);
+    // 契约未固定信封：裸数组或 {rows:[...]} 都接受。
+    const rows: TeamAttentionRow[] = Array.isArray(payload)
+      ? (payload as TeamAttentionRow[])
+      : ((payload as { rows?: TeamAttentionRow[] } | null)?.rows ?? []);
+    const header = response?.headers.get("X-Attention-Skipped");
+    const parsed = header ? Number.parseInt(header, 10) : 0;
+    return {
+      rows,
+      skipped: Number.isFinite(parsed) ? parsed : 0,
+      unsupported: false,
+    };
+  } catch (e) {
+    if (httpErrorStatus(e) === 404) {
+      return { rows: [], skipped: 0, unsupported: true };
+    }
+    throw e;
+  }
+}
+
+/** 把 #1503 团队视角行映射到现有 AttentionItem 形状（snake_case，复用
+ * 聚合视图的行渲染/去重约定）；团队视角专有字段进扩展字段。
+ * `notified` 原样透传（null = 未发送）——**绝不从 roomAccepted 推断 sent**。 */
+export function teamRowToAttentionItem(row: TeamAttentionRow): AttentionItem {
+  return {
+    task_id: row.taskId,
+    team_id: row.teamId,
+    project_id: row.projectId,
+    kind: row.kind,
+    question: row.question,
+    // 行无 attempt 字段（聚合视图去重键约定 attempt ?? 1；0 = 无 attempt 概念）。
+    attempt: 0,
+    requested_at: row.requestedAt,
+    resolved: row.resolved,
+    options: row.options
+      ? row.options.map((o) => ({
+          id: o.id,
+          label: o.label,
+          description: o.description ?? undefined,
+        }))
+      : undefined,
+    room_id: row.roomId ?? undefined,
+    timeout_at: row.timeoutAt ?? undefined,
+    overdue: row.overdue,
+    resolvedVia: row.resolvedVia ?? undefined,
+    resolvedBy: row.resolvedBy ?? undefined,
+    resolvedAt: row.resolvedAt ?? undefined,
+    resolution: row.resolution ?? undefined,
+    freeform: row.freeform ?? undefined,
+    notified: row.notified ?? null,
+    url: row.url ?? undefined,
+  };
 }

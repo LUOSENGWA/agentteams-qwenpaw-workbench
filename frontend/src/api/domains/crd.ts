@@ -1,8 +1,31 @@
 // CRD/L1-L2 管理面（controller /api/v1/workers|teams|humans|managers）：CRD CRUD + admin 聚合取数。
 
-import { controllerRequest, fetchControllerJson } from "../shared";
-import { cachedFetch, invalidateTags } from "../../requestCache";
+import {
+  controllerRequest,
+  fetchControllerJson,
+  httpErrorStatus,
+  recordConsistencyRead,
+  requestJsonConditional,
+} from "../shared";
+import {
+  cachedFetch,
+  cachedRequest,
+  invalidateTags,
+  NOT_MODIFIED,
+  conditionalValue,
+} from "../../requestCache";
 import { lruReadThrough, lruInvalidate } from "../../cache/memoryLru";
+import {
+  mergeWorkerRows,
+  missingSpecNames,
+  shouldFallbackCombined,
+} from "../../lib/workerListMerge";
+
+/** Worker 列表投影字段（#1477 消费侧，docs/design/worker-list-fields-api.md）：
+ * spec（稳定配置）+ status（易变状态）——不含 skills/mcpServers/env/soul/agents
+ * （写编辑器一律先读 detail GET /workers/{name}，禁列表行兜底）。
+ * 旧 Controller 忽略 fields → 返回全量，消费方优雅降级。导出供测试断言。 */
+export const WORKER_LIST_FIELDS = "spec,status";
 
 // ── L1 全量视图（Controller API，需管理员 token）────────────────────
 
@@ -15,6 +38,10 @@ export interface McpServerInfo {
 
 export interface WorkerInfo {
   name: string;
+  /** 显示名（WorkerResponse.workerName，omitempty=未设）。#1477 每个 view 都带
+   * 稳定身份：name（CR 名，恒有）+ workerName（显示名，若有）——
+   * 禁止按列表位置关联行。 */
+  workerName?: string;
   phase: string;
   state: string;
   model: string;
@@ -61,8 +88,10 @@ export interface WorkerInfo {
   /** Worker 环境变量（spec.env 透传，AgentTeams 1.2.5+；
  * L2 账号被服务端遮蔽 → 不存在；旧 Controller 无字段 → undefined）。 */
   env?: Record<string, string>;
-  /** env 是否可编辑（1.2.5+；L1/manager=true，L2=false，旧 Controller=undefined
- * → 前端一律不渲染 env 段，优雅降级）。 */
+  /** env 是否可编辑（1.2.5+；L1/manager=true，L2=false，旧 Controller=
+ * undefined；16.61 起列表投影 fields=spec/status 也丢此字段=undefined）。
+ * 渲染门：仅明确 false（L2 遮蔽）隐藏 env 段；undefined 照常渲染、
+ * 面板内 detail 加载态诚实降级。 */
   envEditable?: boolean;
   /** LLM 调优（AgentTeams 1.2.5+，顶层回显，omitempty=未设置不显；
    * 留空=继承团队默认/registry 默认。写=PUT /workers/{name} 字段级 diff，
@@ -275,7 +304,10 @@ export async function updateWorkerModel(
   subagentModel?: string | null,
 ): Promise<unknown> {
   const body: Record<string, unknown> = { model };
-  if (modelProvider !== undefined) body.modelProvider = modelProvider;
+  // 空 provider 永不下发：列表投影（#1477 fields=spec/status）不含 modelProvider，
+  // 弹窗基线可能取不到值；若把 "" 写下去，控制器 merge 语义会清空该 Worker 的
+  // provider（现存 deepseek / qwen3.6-local 等会被改错路由）。清空不是有效用例。
+  if (modelProvider !== undefined && modelProvider !== "") body.modelProvider = modelProvider;
   if (subagentModel !== undefined) body.subagentModel = subagentModel;
   const r = await controllerRequest("PUT", `/workers/${encodeURIComponent(name)}`, body);
   invalidateTags(["teams", "admin"]);
@@ -317,6 +349,20 @@ export const probeWorkerGateway = (
     `/workers/${encodeURIComponent(name)}/gateway-probe`,
     kind === "mcp" && server ? { kind, server } : { kind },
   ) as Promise<GatewayProbeResult>;
+/** 修复网关授权（POST /gateway/consumers/{name}/bind，幂等）——
+ * Controller 侧把该 Consumer 授权到配置的 AI 模型 API（Higress）。Worker 的
+ * Consumer 名固定为 `worker-<runtimeName>`（member_reconcile.go 同口径），
+ * 正常由 reconciler 自动授权；此调用用于授权丢失后的手工回填。
+ * 204 = 成功（无 body）；403 无权限 / 404·501 老控制器无此路由 / 500 网关侧错误。 */
+export async function bindWorkerGatewayConsumer(
+  workerName: string,
+): Promise<void> {
+  await controllerRequest(
+    "POST",
+    `/gateway/consumers/${encodeURIComponent(`worker-${workerName}`)}/bind`,
+  );
+}
+
 /** 更新 Manager 模型。PUT /managers/{name} 同为合并语义
  * （Controller UpdateManager：if req.Model != "" 才写 spec，其余 spec 不动；
  * resource_handler.go 源码实锤）——只发 {model}，provider 保持原值/默认。 */
@@ -396,6 +442,124 @@ export async function deleteWorker(name: string): Promise<unknown> {
   return r;
 }
 
+// ── S：Worker 列表 slim parallel polling + 条件复验（回灌 dashboard #179，
+// 条件复验统一收敛 requestCache，替换 R1 自写缓存的接线）─────────────────
+// 权威语义（docs/worker-list-compatibility.md，dashboard #179 原文要点）：
+// 1. 轮询并行取 fields=spec 与 fields=status：spec 走 requestCache 条件复验
+//    （ETag/304 → 304 复用缓存字节不重解析，requestCache 内建），status 永远
+//    重新读（fetchControllerJson 直读，不缓存——上游 #1480 明确不缓存）；
+// 2. 按稳定 name 合并行（不看列表位置）；membership 由 status 决定（被删的
+//    Worker 必须消失）；新出现的 name 在 spec 快照缺失 → 同 key force 重读
+//    一次；仍缺 → 合并视图；
+// 3. 任何路径不做每行 detail 请求（无 N+1）——写编辑器仍先读 detail
+//    （P1 不变，fetchWorkerDetail 未动）；
+// 4. 旧 Controller 忽略 fields → 接受完整响应（含旧数组形态，normalizeRows
+//    兼容）；400（拒绝 fields）→ 回退不带 fields 的完整列表；鉴权/权限/
+//    基础设施错误（401/403/5xx/超时）照抛；
+// 5. 缓存仅内存（requestCache 统一 LRU 限容）；写后失效沿用既有约定
+//    invalidateTags(["admin"])（写操作各腿已接线，无全局清缓存）；
+// 6. status 视图永不条件缓存（status 契约恒 200，上游 #1480）。
+
+/** 列表路径与缓存键（#1480：仅 fields=spec 带强 ETag → 走
+ * requestJsonConditional 条件复验；fields=status / fields=spec,status /
+ * 缺省上游明确不缓存 → fetchControllerJson 恒新鲜直读，相对路径自动拼
+ * controller 前缀）。 */
+const SPEC_KEY = "workers:list:spec";
+const SPEC_TTL = 60_000;
+const SPEC_PATH = "/agentteams-proxy/controller/api/v1/workers?fields=spec";
+const STATUS_PATH = "/workers?fields=status";
+const COMBINED_PATH = "/workers?fields=spec,status";
+
+/** 响应归一（worker 列表）：数组形态（旧 Controller 忽略 fields 的全量
+ * 响应）或 {workers: [...]} 形态。 */
+function normalizeRows(payload: unknown): WorkerInfo[] {
+  if (Array.isArray(payload)) return payload as WorkerInfo[];
+  const obj = (payload ?? null) as Record<string, unknown> | null;
+  const rows = obj?.workers;
+  return (Array.isArray(rows) ? rows : []) as WorkerInfo[];
+}
+
+/** S 列表正源（条件复验收敛 requestCache，替换 R1 自写缓存接线）：spec 条件
+ * 复验（ETag/304，304 → requestCache 返回缓存旧值不重解析）+ status 恒新鲜
+ * （不缓存），按 name 合并行（status 权威：覆盖同名字段 + membership +
+ * 顺序）；spec 缺名同 key force 重读一次 → 仍缺走合并视图
+ * （fields=spec,status，单请求无 N+1）；400（旧 Controller 拒绝 fields）→
+ * 回退不带 fields 的完整列表。strong（#1407 写后立即读）：spec force 绕过
+ * TTL + consistency=strong，是否真强一致由 X-Consistency 判定记入 tracker。
+ * 导出供复用（组件层走 fetchAdminData/fetchL2AdminData，零改动）。 */
+export async function listWorkerSummaries(
+  opts?: { strong?: boolean },
+): Promise<WorkerInfo[]> {
+  const strong = !!opts?.strong;
+  const strongOpts = strong ? { strong: true } : undefined;
+  const specPath = strong ? `${SPEC_PATH}&consistency=strong` : SPEC_PATH;
+  // spec 条件复验 fetcher（requestJsonConditional 同源 requestJsonFull：
+  // 30s 封顶 = fetchControllerJson 同源；返回原始响应供读 ETag）。
+  const specFetcher = async (etag?: string) => {
+    const { payload, response } = await requestJsonConditional(
+      specPath,
+      etag,
+      30_000,
+    );
+    // consistency tracker 记录写后读结果（非 strong 为 no-op，P1 strong
+    // 腿同源；304 同样记录——ETag 复核通过正是强一致证据）。
+    recordConsistencyRead(strong, response);
+    if (payload === NOT_MODIFIED) return NOT_MODIFIED;
+    return conditionalValue(
+      normalizeRows(payload),
+      response?.headers.get("etag") ?? null,
+    );
+  };
+  try {
+    // ① spec 条件复验（304 → cachedRequest 返回缓存旧值，不重解析；
+    // force 不发 If-None-Match → 写后立即读必新鲜）
+    const specRows = await cachedRequest<WorkerInfo[]>(
+      SPEC_KEY,
+      SPEC_TTL,
+      specFetcher,
+      { force: strong, tags: ["admin"] },
+    );
+    // ② status 恒新鲜（不缓存）；契约恒 200——异常 304 显式失败（不产空列表）
+    const statusPayload = await fetchControllerJson<unknown>(
+      STATUS_PATH,
+      strongOpts,
+    );
+    if (statusPayload === NOT_MODIFIED) {
+      throw new Error("status 视图返回 304（契约恒 200）——请重新读取");
+    }
+    const statusRows = normalizeRows(statusPayload);
+    // ③ 按 name 合并（status 覆盖同名字段 + membership + 顺序）
+    let merged = mergeWorkerRows(specRows, statusRows);
+    // 新出现的 name 在 spec 快照缺失 → 同 key force 重读一次（force 不带
+    // If-None-Match → 必 200 全量）
+    if (missingSpecNames(specRows, statusRows).length > 0) {
+      const fresh = await cachedRequest<WorkerInfo[]>(
+        SPEC_KEY,
+        SPEC_TTL,
+        specFetcher,
+        { force: true, tags: ["admin"] },
+      );
+      merged = mergeWorkerRows(fresh, statusRows);
+      // 重读后仍缺 → 合并视图（fields=spec,status，单请求，仍无 N+1）
+      if (shouldFallbackCombined(fresh, statusRows)) {
+        return normalizeRows(
+          await fetchControllerJson<unknown>(COMBINED_PATH, strongOpts),
+        );
+      }
+    }
+    return merged;
+  } catch (e) {
+    // 400（旧 Controller 拒绝 fields）→ 回退不带 fields 的完整列表
+    // （normalizeRows 兼容旧数组形态）；其它错误（401/403/5xx/超时）照抛。
+    if (httpErrorStatus(e) === 400) {
+      return normalizeRows(
+        await fetchControllerJson<unknown>("/workers", strongOpts),
+      );
+    }
+    throw e;
+  }
+}
+
 /** cachedFetch 包裹（admin/data，TTL 30s + SWR 30s，tags
  * ["admin"]）——4 路并发取数，WorkerManage 30s 轮询与 CrdManage 失效后
  * 重取合并为一次回源。SWR：30-60s 段先回旧值（面板零等待）+ 后台再验证；
@@ -420,7 +584,13 @@ export async function fetchAdminData(
       30000,
       async () => {
         const [workers, teams, humans, managers] = await Promise.all([
-          fetchControllerJson<unknown>("/workers", strong).then(normalizeList),
+          // R1（回灌 dashboard #179）：slim parallel polling——spec 条件复验
+          // （ETag/304，304 复用缓存字节）+ status 恒重新读，按 name 合并
+          // （status 权威）；旧 Controller 忽略 fields → 全量响应直接接受，
+          // 400（拒绝 fields）→ 回退不带 fields 的完整列表；strong（写后
+          // 立即读）带 consistency=strong 且读后记 consistency tracker，
+          // P1 同源。
+          listWorkerSummaries(strong ? { strong: true } : undefined),
           fetchControllerJson<unknown>("/teams", strong).then(normalizeList),
           // humans/managers
           // 失败不再拖垮 workers/teams（fetchL2AdminData 同款语义）——旧版
@@ -478,7 +648,10 @@ export async function fetchL2AdminData(): Promise<AdminData> {
     30000,
     async () => {
       const [workers, teams, humans, managers] = await Promise.all([
-        fetchControllerJson<unknown>("/workers").then(normalizeList),
+        // R1（回灌 dashboard #179，同 fetchAdminData）：slim parallel polling
+        // （spec 条件复验 + status 恒重新读 + 按 name 合并）；L2 技能中心正源
+        // 同样投影瘦身，400 回退完整列表。
+        listWorkerSummaries(),
         fetchControllerJson<unknown>("/teams").then(normalizeList),
         fetchListSafe("/humans"),
         fetchListSafe("/managers"),
@@ -491,5 +664,25 @@ export async function fetchL2AdminData(): Promise<AdminData> {
       };
     },
     { tags: ["admin"], swrMs: 30000 },
+  );
+}
+
+/** 写前读 detail（#1477 强制）：写编辑器（skills / env / MCP / 全配置）必须
+ * 先 GET /workers/{name} 成功才可编辑；失败/加载中 → 只读 + 错误，禁止用
+ * 列表行兜底（列表已投影为 spec,status，不含 skills/mcpServers/env）。
+ * 只在用户打开/展开对应 worker 时取一次（不预取、不 N+1）；15s 缓存防
+ * 连续展开/重试风暴，写操作后 invalidateTags(["admin"]) 一并失效。
+ *
+ * `strong`（写后立即读同款语义）：force 绕过 TTL 直取上游。 */
+export async function fetchWorkerDetail(
+  name: string,
+  opts?: { strong?: boolean },
+): Promise<WorkerInfo> {
+  const strong = opts?.strong ? { strong: true } : undefined;
+  return cachedFetch(
+    `worker-detail:${name}`,
+    15000,
+    () => fetchControllerJson<WorkerInfo>(`/workers/${encodeURIComponent(name)}`, strong),
+    { tags: ["admin"], ...(strong ? { force: true } : {}) },
   );
 }

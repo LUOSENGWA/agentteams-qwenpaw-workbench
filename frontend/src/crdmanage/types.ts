@@ -50,8 +50,10 @@ export const PHASE_COLOR: Record<string, string> = {
 export interface WorkerRow {
   name: string;
   role: string;
-  /** 团队配置内联编辑 Worker 模型（PUT /workers/{name} 合并语义，provider 不动）。 */
+  /** 团队配置内联编辑 Worker 模型（PUT /workers/{name} 合并语义，provider 随行保存（model+provider 成对下发））。 */
   model?: string;
+  /** 批量画笔刷入的 Provider（""/undefined = 不改；保存时非空随 model 成对下发）。 */
+  provider?: string;
   /** 打开弹窗时的原值——保存时 diff，未改动不发请求。 */
   modelOrig?: string;
   /** ：SOUL 富文本（多行/上传 → spec.soul 内联）。 */
@@ -144,10 +146,15 @@ export interface TeamCfgForm {
   llm: LlmTuningRecord;
 }
 
-/** 批量模型画笔（两把独立画笔：Leader 批 / Workers 批）。 */
+/** 批量画笔（两把独立画笔：Leader 批 / Workers 批）。C1a-1：每把画笔
+ * 含 Provider + 模型两字段，成对刷写（留空=不改）。 */
 export interface CfgBatchModel {
   leader: string;
   workers: string;
+  /** Leader 批的 Provider 刷值（"" = 不改）。 */
+  leaderProvider: string;
+  /** Workers 批的 Provider 刷值（"" = 不改）。 */
+  workersProvider: string;
 }
 
 /** 权限管理表单（Human CRD spec 编辑）。 */

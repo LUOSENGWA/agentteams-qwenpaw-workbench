@@ -85,6 +85,8 @@ export function SettingsTabView(props: {
     setGatewayAdminUrl,
     gatewayWan,
     setGatewayWan,
+    dashboardUrl,
+    setDashboardUrl,
     fxMode,
     setFxMode,
     verifying,
@@ -343,8 +345,9 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.matrix} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("内网：http://192.168.x.x:6867")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={matrixLan}
+            aria-label={tr("Matrix 内网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setMatrixLan(e.target.value)
             }
@@ -355,8 +358,9 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("matrix:0", v)}
           />
           <antd.Input
-            placeholder={tr("外网：https://你的域名:6867（可留空）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={matrixWan}
+            aria-label={tr("Matrix 外网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setMatrixWan(e.target.value)
             }
@@ -372,8 +376,9 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.controller} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("内网：http://192.168.x.x:8090（可留空）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={controllerLan}
+            aria-label={tr("Controller 内网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setControllerLan(e.target.value)
             }
@@ -384,8 +389,9 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("controller:0", v)}
           />
           <antd.Input
-            placeholder={tr("外网：https://你的域名:8090（可留空）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={controllerWan}
+            aria-label={tr("Controller 外网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setControllerWan(e.target.value)
             }
@@ -394,6 +400,26 @@ export function SettingsTabView(props: {
             value={addrAuth["controller:1"] || EMPTY_ADDR_AUTH}
             onChange={(v) => setAddrAuthFor("controller:1", v)}
           />
+        </div>
+
+        {/* Dashboard 地址——Worker 详情「打开 Tracing」跳转目标。
+ Tracing 是 Dashboard 的能力，插件只跳转（不复制页面）；
+ 未配置时按钮隐藏。 */}
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            {tr("Dashboard 地址（可选；Worker 详情「打开 Tracing」跳转目标）")}
+          </div>
+          <antd.Input
+            placeholder="http://localhost:13000"
+            value={dashboardUrl}
+            aria-label={tr("Dashboard 地址")}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
+              setDashboardUrl(e.target.value)
+            }
+          />
+          <div style={{ marginTop: 4, fontSize: 11, color: t.textSecondary }}>
+            {tr("Tracing 是 Dashboard 的能力，插件只做跳转；未配置 Dashboard 地址时「打开 Tracing」按钮隐藏。")}
+          </div>
         </div>
 
  {/* Higress 地址并入地址配置区（与
@@ -408,8 +434,9 @@ export function SettingsTabView(props: {
             <EffectiveBadge url={config?.effective?.gateway} label={tr("当前")} />
           </div>
           <antd.Input
-            placeholder={tr("Higress 地址·内网（Console 管理面；宿主端口部署时自选，默认 18001）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={gatewayAdminUrl}
+            aria-label={tr("Higress 内网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setGatewayAdminUrl(e.target.value)
             }
@@ -422,8 +449,9 @@ export function SettingsTabView(props: {
             onChange={(v) => setAddrAuthFor("gateway:0", v)}
           />
           <antd.Input
-            placeholder={tr("Higress 地址·外网（公网入口，可留空；内网不可达时自动降级）")}
+            placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
             value={gatewayWan}
+            aria-label={tr("Higress 外网地址")}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setGatewayWan(e.target.value)
             }
@@ -446,6 +474,7 @@ export function SettingsTabView(props: {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <antd.Select
               value={addressMode}
+              aria-label={tr("地址模式（内网/外网切换策略）")}
               disabled={config === null}
               onChange={(v: "auto" | "lan" | "wan") => {
                 setAddressMode(v);
@@ -502,6 +531,7 @@ export function SettingsTabView(props: {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <antd.Select
               value={fxMode}
+              aria-label={tr("控制台特效质量")}
               onChange={(v: "light" | "off" | "full") => {
                 setFxMode(v);
                 document.documentElement.dataset.wbFx = v;
@@ -556,6 +586,8 @@ export function SettingsTabView(props: {
                   gatewayAdminUrl.trim() || gatewayWan.trim()
                     ? buildAddrEntries("gateway")
                     : [],
+                  // 手动测试：自动识别的协议回显到地址框。
+                  true,
                 )
               }
             >
@@ -564,6 +596,9 @@ export function SettingsTabView(props: {
             <span style={{ fontSize: 12, color: "#888" }}>
               {tr("逐个地址测延迟（失败重试一次），识别外网/内网，测完自动切到最快；后台按状态自适应重测（稳定时低频、单地址不探测）")}
             </span>
+          </div>
+          <div style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>
+            {tr("未写协议时 https 优先（探测失败回退 http），显式 http:// 不升级")}
           </div>
           {connTest ? (
             <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
@@ -680,6 +715,7 @@ export function SettingsTabView(props: {
           {narrow ? (
             <antd.Radio.Group
               style={{ display: "grid", gap: 6, marginBottom: 8 }}
+              aria-label={tr("Controller 认证（可选）")}
               value={ctlMode}
               onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => {
                 const m = e.target.value as "matrix" | "token";
@@ -694,6 +730,7 @@ export function SettingsTabView(props: {
             <antd.Segmented
               size="small"
               style={{ marginBottom: 8 }}
+              aria-label={tr("Controller 认证（可选）")}
               value={ctlMode}
               onChange={(v: string | number) => {
                 const m = v as "matrix" | "token";
@@ -746,6 +783,7 @@ export function SettingsTabView(props: {
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <antd.Input.Password
                     placeholder={tr("粘贴 token 内容（见上方获取命令；部署期注入 env 时留空即可）")}
+                    aria-label={tr("管理员 token")}
                     value={controllerToken}
                     onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                       setControllerToken(e.target.value)
@@ -822,6 +860,7 @@ export function SettingsTabView(props: {
                 </div>
                 <antd.Input
                   placeholder={tr("admin 账号（如 admin）")}
+                  aria-label={tr("Higress 管理员账号")}
                   value={adminUsername}
                   onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                     setAdminUsername(e.target.value)
@@ -833,6 +872,7 @@ export function SettingsTabView(props: {
                       ? "admin 密码（已保存 · 留空保持不变）"
                       : "admin 密码",
                   )}
+                  aria-label={tr("Higress 管理员密码")}
                   value={adminPassword}
                   onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
                     setAdminPassword(e.target.value)
@@ -981,6 +1021,7 @@ export function SettingsTabView(props: {
           </div>
           <antd.Input
             placeholder={tr("Matrix 账号（不含 @ 和域名）")}
+            aria-label={tr("Matrix 账号（不含 @ 和域名）")}
             value={loginUser}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setLoginUser(e.target.value)
@@ -988,6 +1029,7 @@ export function SettingsTabView(props: {
           />
           <antd.Input.Password
             placeholder={tr("Matrix 密码")}
+            aria-label={tr("Matrix 密码")}
             value={loginPassword}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setLoginPassword(e.target.value)
@@ -1028,6 +1070,7 @@ export function SettingsTabView(props: {
           >
             <antd.Switch
               checked={sglangEnabled}
+              aria-label={tr("集群负载（可选模块）")}
               onChange={setSglangEnabled}
               checkedChildren="开启"
               unCheckedChildren="关闭"
@@ -1037,7 +1080,8 @@ export function SettingsTabView(props: {
  两条路径同一集群，后台自动测延迟切最快，无需手动切换。 */}
           <div style={{ display: "grid", gap: 8 }}>
             <antd.Input
-              placeholder={tr("内网：http://192.168.x.x:30000")}
+              placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
+              aria-label={tr("SGLang 内网地址")}
               value={sglangLan}
               disabled={!sglangEnabled}
               onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -1050,7 +1094,8 @@ export function SettingsTabView(props: {
               disabled={!sglangEnabled}
             />
             <antd.Input
-              placeholder={tr("外网：https://你的域名:30000（可留空）")}
+              placeholder={tr("192.168.1.10:6866 或 ctlr.example.com:7113（host:port，自动识别 https / http）")}
+              aria-label={tr("SGLang 外网地址")}
               value={sglangWan}
               disabled={!sglangEnabled}
               onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -1219,6 +1264,7 @@ export function SettingsTabView(props: {
             setExportPw(e.target.value)
           }
           onPressEnter={() => void doExportWithPw()}
+          aria-label={tr("完整备份密码")}
           placeholder={tr("完整备份密码")}
           autoFocus
         />
@@ -1245,6 +1291,7 @@ export function SettingsTabView(props: {
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
               setSetPw(e.target.value)
             }
+            aria-label={tr("新密码（至少 8 位）")}
             placeholder={tr("新密码（至少 8 位）")}
             autoFocus
           />
@@ -1254,6 +1301,7 @@ export function SettingsTabView(props: {
               setSetPwConfirm(e.target.value)
             }
             onPressEnter={() => void doSetPw()}
+            aria-label={tr("再次输入新密码")}
             placeholder={tr("再次输入新密码")}
           />
         </div>
@@ -1284,6 +1332,7 @@ export function SettingsTabView(props: {
         <antd.Input.TextArea
           value={exportText}
           readOnly
+          aria-label={tr("导出配置（含凭据）")}
           autoSize={{ minRows: 10, maxRows: 24 }}
           style={{ fontFamily: "monospace", fontSize: 12 }}
         />
@@ -1306,6 +1355,7 @@ export function SettingsTabView(props: {
           onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
             setImportPw(e.target.value)
           }
+          aria-label={tr("完整备份密码")}
           placeholder={tr("完整备份密码")}
           style={{ marginBottom: 8 }}
         />
@@ -1314,6 +1364,7 @@ export function SettingsTabView(props: {
           onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
             setImportText(e.target.value)
           }
+          aria-label={tr("导入配置（含凭据）")}
           autoSize={{ minRows: 10, maxRows: 24 }}
           placeholder={`{\n  "matrix_homeservers": []\n}`}
           style={{ fontFamily: "monospace", fontSize: 12 }}
@@ -1326,6 +1377,7 @@ export function SettingsTabView(props: {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
         <antd.Switch
           checked={Boolean(chatForceWide)}
+          aria-label={tr("聊天页面强制左右分栏")}
           onChange={(v: boolean) => onChatForceWideChange?.(v)}
         />
         <div>
@@ -1356,6 +1408,7 @@ export function SettingsTabView(props: {
             ref={importInputRef}
             type="file"
             accept=".json,application/json"
+            aria-hidden="true"
             style={{ display: "none" }}
             onChange={(e) => void importConfig(e)}
           />
@@ -1370,6 +1423,10 @@ export function SettingsTabView(props: {
           {tr("导出配置含全部地址但不含密码/token（显示为 ***）——导入不会覆盖现有凭据。诊断包 = 脱敏配置 + 自检结果，用于排查问题时交给管理员。")}
         </div>
       </div>
+
+ {/* 模块更新（#1526 三平面）已搬进「管理 → 团队 → 千锻」弹窗的
+ 「模块更新」tab（2026-11-07）：设置页不再挂载。 */}
+
  {/* 宿主 Agent 技能管理区块移除（
  「配置页的 QwenPaw 宿主 Agent 技能不需要了」）——SkillsTab 组件
  已删（死代码零残留）；宿主技能系统本体是 QwenPaw 核心功能，

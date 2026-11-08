@@ -19,6 +19,7 @@ import {
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
 import { usePoller } from "../usePoller";
+import { useForceReload } from "../lib/useForceReload";
 import {
   CodingRunDetailModal,
   CodingRunRow,
@@ -64,6 +65,13 @@ function WorkerCodingRuns({ worker }: { worker: string }) {
     [worker],
   );
 
+  // 手动刷新必穿透 30s coding-runs 缓存（listCodingRunsByWorker 委托
+  // listCodingRuns 同享 ["coding-runs"] tag）——统一走 useForceReload。
+  const { reload, loading: reloadLoading } = useForceReload(
+    () => refresh(false),
+    ["coding-runs"],
+  );
+
   React.useEffect(() => {
     setRuns(null);
     setNotDeployed(false);
@@ -101,7 +109,7 @@ function WorkerCodingRuns({ worker }: { worker: string }) {
             {tr("{n} 条", { n: runs.length })}
           </span>
         ) : null}
-        <antd.Button size="small" type="text" onClick={() => void refresh(false)}>
+        <antd.Button size="small" type="text" loading={reloadLoading} onClick={() => void reload()}>
           {tr("刷新")}
         </antd.Button>
       </div>

@@ -3,22 +3,21 @@
 // 任务事件交错 / 视口窗口化）收敛在 RoomChatView（useRoomChatView），
 // 渲染拆为 RoomChatHeader / RoomChatMessages（含 RoomChatMessageRow 行级
 // memo）/ RoomChatComposer / RoomChatSidebar 四子组件。本文件只剩
-// 布局编排 + 搜索定位区（DOM 顺序钉在消息流与输入框之间，不可移）。
+// 布局编排。
 import type * as ReactNS from "react";
 import {
   type AttentionItem,
   type RoomMessage,
   type TeamRoom,
   type WorkerInfo,
+  type WorkerTreeTeam,
   type WorkflowEvent,
 } from "../api";
 import { type FileRef } from "../lib/file-refs";
-import { CloseIcon, PinIcon } from "./icons";
 import { type WorkerSessionState } from "../workerSessionState";
-import { PRIMARY, senderShortName } from "./RoomChatShared";
+import { senderShortName } from "./RoomChatShared";
 import { useRoomChatCore } from "./RoomChatCore";
 import type { RoomChatCoreState } from "./RoomChatCore";
-import { applyContextWindow } from "../jumpContextWindow";
 import { RoomChatHeader } from "./RoomChatHeader";
 import { RoomChatComposer } from "./RoomChatComposer";
 import RoomChatMessages from "./RoomChatMessages";
@@ -27,7 +26,6 @@ import { useRoomChatView } from "./RoomChatView";
 
 const host = window.QwenPaw.host;
 const React = host.React;
-const antd = host.antd;
 
 export interface RoomChatProps {
   room: TeamRoom | null;
@@ -158,6 +156,12 @@ export interface RoomChatProps {
   attentionPending?: AttentionItem[];
   /** 房间标题栏 attention pill 点击 → 父组件打开全局待决策弹窗并定位该房间第一条。 */
   onOpenRoomAttention?: (room: TeamRoom) => void;
+  /** R15 团队/房间切换：父级既有房间列表（/teams/sync）与团队树
+ * （/teams/structure）——切换器零新请求，直接复用。 */
+  rooms?: TeamRoom[];
+  teams?: WorkerTreeTeam[];
+  /** R15：切换房间（父级 openRoom，同时落 ui-state 持久化）。 */
+  onSwitchRoom?: (roomId: string) => void;
 }
 function RoomChat(props: RoomChatProps) {
   const c = useRoomChatCore(props);
@@ -171,33 +175,11 @@ function RoomChat(props: RoomChatProps) {
     tr,
     narrow,
     compactHeader,
-    jumpContext,
-    jumpContextRef,
-    clearJumpContext,
   } = core;
-  // 定位区上下文片段折叠窗：默认只渲染目标 ±2（applyContextWindow）；
-  // 新的定位上下文进来时恒复位折叠（新片段从 ±2 窗开始，不继承旧展开态）。
-  const [jumpContextExpanded, setJumpContextExpanded] = React.useState(false);
-  React.useEffect(() => {
-    setJumpContextExpanded(false);
-  }, [jumpContext]);
 
   // 视图层状态（ChatIR 回合 + 任务事件交错 + 视口窗口化）——
   // 逻辑全部在 RoomChatView hook（本组件只做布局与渲染）。
   const v = useRoomChatView(props, core);
-
-  // 定位片段窗（任务 D §2.3 memo：此前每渲染在 IIFE 里重算 applyContextWindow）。
-  const jcWin = React.useMemo(
-    () =>
-      jumpContext
-        ? applyContextWindow(
-            jumpContext.events,
-            jumpContext.highlightId,
-            jumpContextExpanded,
-          )
-        : null,
-    [jumpContext, jumpContextExpanded],
-  );
 
   return (
     <div
@@ -235,107 +217,9 @@ function RoomChat(props: RoomChatProps) {
         >
           <RoomChatMessages p={props} c={core} v={v} />
 
-          {/* 搜索跳转定位区（修复）：目标事件不在已加载窗口时，展示
-/context 前后文片段 + 高亮目标 + 关闭；点击结果后滚动至此。
-16.23 霸屏修复：片段容器限高 40vh + 内部自滚，默认只渲染目标 ±2 条
-（applyContextWindow），其余收在「展开全部上下文」按钮后——全量
-/context 片段不再把正常消息列表挤出屏幕。
-DOM 顺序钉在消息流与输入框之间（jumpContextRef scroll 目标），不可移。 */}
-          {jumpContext && jcWin ? (
-            <div
-              ref={jumpContextRef}
-              style={{
-                border: `1px solid ${PRIMARY}`,
-                borderRadius: 10,
-                padding: "8px 10px",
-                background: "color-mix(in srgb, var(--app-accent, #FF7F16) 5%, transparent)",
-                marginBottom: 8,
-                animation: "wbJumpIn 0.3s ease-out",
-                // 霸屏修复：片段高度封顶 + 内部滚动；flexShrink:0 保证纵向
-                // 空间紧张时由上方消息列表（flex:1 min-0）让位，而非压扁本区。
-                maxHeight: "40vh",
-                overflowY: "auto",
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 6,
-                }}
-              >
-                <span style={{ fontSize: 12, fontWeight: 700, color: PRIMARY }}>
-                  <PinIcon size={12} style={{ verticalAlign: "-1px" }} /> {tr("搜索定位")}
-                </span>
-                <span style={{ fontSize: 11.5, color: t.textSecondary, flex: 1 }}>
-                  {tr("目标消息不在已加载范围，显示前后文片段")}
-                </span>
-                {jcWin.hiddenCount > 0 ? (
-                  <antd.Button
-                    size="small"
-                    type="link"
-                    onClick={() => setJumpContextExpanded(!jumpContextExpanded)}
-                    style={{ fontSize: 12, flex: "none" }}
-                  >
-                    {jumpContextExpanded
-                      ? tr("收起")
-                      : tr("展开全部上下文")} (
-                    {jumpContext.events.length} {tr("条")})
-                  </antd.Button>
-                ) : null}
-                <antd.Button
-                  size="small"
-                  type="text"
-                  onClick={clearJumpContext}
-                  style={{ fontSize: 12 }}
-                >
-                  <CloseIcon size={12} />
-                </antd.Button>
-              </div>
-              {jcWin.events.map((m) => {
-                const isTarget = m.event_id === jumpContext.highlightId;
-                return (
-                  <div
-                    key={m.event_id}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      marginBottom: 4,
-                      fontSize: 12.5,
-                      background: isTarget ? "color-mix(in srgb, var(--app-accent, #FF7F16) 12%, transparent)" : t.bubbleOther,
-                      border: isTarget
-                        ? `1px solid ${PRIMARY}`
-                        : "1px solid transparent",
-                      wordBreak: "break-word",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    <div
-                      style={{
-                        color: t.textSecondary,
-                        fontSize: 11.5,
-                        marginBottom: 2,
-                        display: "flex",
-                        gap: 6,
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, color: t.text }}>
-                        {senderShortName(m.sender, room)}
-                      </span>
-                      {isTarget ? (
-                        <span style={{ color: PRIMARY, fontWeight: 700 }}>●</span>
-                      ) : null}
-                    </div>
-                    <div style={{ color: t.text }}>
-                      {m.body.slice(0, 600)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
+          {/* 「加载原消息」/搜索跳转的定位一律内联在正常时间线（缓存或
+/context 片段注入消息窗口 + data-jump-target 高亮 2s）；此前的独立
+「搜索定位」折叠块已退役（jumpContextWindow.ts 留档不渲染）。 */}
 
           {/* typing 指示（Element WhoIsTypingTile 同款交互：房间内正在输入提示） */}
           {(room.typing || []).length > 0 ? (

@@ -43,7 +43,8 @@ export default function MyScopeCard(props: MyScopeCardProps) {
     ? humans.find((h) => h.matrixUserID === myUserId)
     : undefined;
 
-  const isL1 = !!self && (self.permissionLevel ?? 2) >= 1;
+  // L1 = 管理员（level 1）；L2=2 / L3=3 均不是管理员（此前 `>= 1` 把 L2 也当 L1）。
+  const isL1 = !!self && self.permissionLevel === 1;
   const teamsArr =
     self?.accessibleTeams?.length
       ? self.accessibleTeams

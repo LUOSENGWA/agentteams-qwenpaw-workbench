@@ -49,6 +49,9 @@ export function roomMessagesToIR(messages: RoomMessage[]): ChatMessage[] {
       body: m.body || "",
       type: m.msgtype,
       ...(call ? { toolCalls: [call] } : {}),
+      ...(m.runBlocks && m.runBlocks.length > 0
+        ? { runBlocks: m.runBlocks }
+        : {}),
       ...(m.pending ? { pending: true } : {}),
     });
   }

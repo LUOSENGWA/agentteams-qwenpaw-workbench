@@ -51,6 +51,190 @@ export interface RoomMessage {
  * m.thread 不作答复关联证据（任务书 §5：线程是结构性关系，
  * 所有线程回复都指向根，不构成「答复了根卡片」的证据）。 */
   reference?: string;
+  /** 结构化运行时块（content['org.agentteams.run']，协议见
+ * SC/AgentTeams/docs/design/runtime-block-protocol.md）。缺省 = 无块，
+ * 渲染层回退现有 body 启发式。 */
+  runBlocks?: RunBlock[];
+}
+
+// ── 运行时块协议（org.agentteams.run）──────────────────────────────
+// 前向兼容层：AgentTeams Matrix 频道目前不发该块，有块用块、无块沿用
+// m.notice/🔧 body 启发式（见 chat/ChatIR.splitTurn）。v1 严格校验 +
+// 归一化（未知字段剥离、缺必填字段的块跳过）；legacy(version 0/缺省)
+// 宽松复制；未知 version / 非对象 / blocks 非数组 → 不设（回退 body）。
+
+export type RunToolStatus = "pending" | "running" | "succeeded" | "failed";
+
+export type RunErrorKind = "cancelled" | "failed" | "quiet";
+
+export interface RunBlockThinking {
+  type: "thinking";
+  content: string;
+  isStreaming?: boolean;
+}
+
+export interface RunBlockText {
+  type: "text";
+  text: string;
+  isStreaming?: boolean;
+}
+
+export interface RunBlockToolCall {
+  type: "tool_call";
+  tool_name: string;
+  arguments?: Record<string, unknown>;
+  status?: RunToolStatus;
+  tool_call_id?: string;
+  started_at?: number;
+  finished_at?: number;
+  result?: unknown;
+}
+
+export interface RunBlockConfirmation {
+  type: "confirmation";
+  tool_name: string;
+  confirmation_id: string;
+  parameters?: string;
+  external_files?: string;
+  expires_at?: number;
+}
+
+export interface RunBlockError {
+  type: "error";
+  kind: RunErrorKind;
+  title: string;
+}
+
+export type RunBlock =
+  | RunBlockThinking
+  | RunBlockText
+  | RunBlockToolCall
+  | RunBlockConfirmation
+  | RunBlockError;
+
+/** 运行时块信封的 content 键。 */
+export const RUN_BLOCK_CONTENT_KEY = "org.agentteams.run";
+
+const RUN_TOOL_STATUSES: RunToolStatus[] = [
+  "pending",
+  "running",
+  "succeeded",
+  "failed",
+];
+
+const RUN_ERROR_KINDS: RunErrorKind[] = ["cancelled", "failed", "quiet"];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/** v1 块归一化：必填字段缺失/非法 → null（跳过，不修复）；可选字段补默认。 */
+function normalizeV1Block(raw: unknown): RunBlock | null {
+  if (!isRecord(raw)) return null;
+  switch (raw.type) {
+    case "thinking":
+      if (!isNonEmptyString(raw.content)) return null;
+      return {
+        type: "thinking",
+        content: raw.content,
+        ...(raw.isStreaming === true ? { isStreaming: true } : {}),
+      };
+    case "text":
+      if (!isNonEmptyString(raw.text)) return null;
+      return {
+        type: "text",
+        text: raw.text,
+        ...(raw.isStreaming === true ? { isStreaming: true } : {}),
+      };
+    case "tool_call":
+      if (!isNonEmptyString(raw.tool_name)) return null;
+      return {
+        type: "tool_call",
+        tool_name: raw.tool_name,
+        arguments: isRecord(raw.arguments) ? raw.arguments : {},
+        status: RUN_TOOL_STATUSES.includes(raw.status as RunToolStatus)
+          ? (raw.status as RunToolStatus)
+          : "running",
+        ...(isNonEmptyString(raw.tool_call_id)
+          ? { tool_call_id: raw.tool_call_id }
+          : {}),
+        ...(typeof raw.started_at === "number"
+          ? { started_at: raw.started_at }
+          : {}),
+        ...(typeof raw.finished_at === "number"
+          ? { finished_at: raw.finished_at }
+          : {}),
+        ...("result" in raw ? { result: raw.result } : {}),
+      };
+    case "confirmation":
+      if (!isNonEmptyString(raw.tool_name) || !isNonEmptyString(raw.confirmation_id)) {
+        return null;
+      }
+      return {
+        type: "confirmation",
+        tool_name: raw.tool_name,
+        confirmation_id: raw.confirmation_id,
+        ...(typeof raw.parameters === "string"
+          ? { parameters: raw.parameters }
+          : {}),
+        ...(typeof raw.external_files === "string"
+          ? { external_files: raw.external_files }
+          : {}),
+        ...(typeof raw.expires_at === "number"
+          ? { expires_at: raw.expires_at }
+          : {}),
+      };
+    case "error":
+      if (!RUN_ERROR_KINDS.includes(raw.kind as RunErrorKind)) return null;
+      if (!isNonEmptyString(raw.title)) return null;
+      return {
+        type: "error",
+        kind: raw.kind as RunErrorKind,
+        title: raw.title,
+      };
+    default:
+      return null;
+  }
+}
+
+/** legacy 块：顶层字段与 payload（对象）合并后按 v1 同规则取字段
+ *（宽松 = 不做未知字段剥离/默认值补齐之外的额外校验）。 */
+function legacyBlock(raw: unknown): RunBlock | null {
+  if (!isRecord(raw)) return null;
+  const payload = isRecord(raw.payload) ? raw.payload : null;
+  if (!payload) return normalizeV1Block(raw);
+  return normalizeV1Block({ ...raw, ...payload, type: raw.type });
+}
+
+/**
+ * 解析消息 content 里的结构化运行时块。
+ * - version "1"：严格归一化，全部无效 → undefined（回退 body）；
+ * - version "0"/缺省：宽松解析，同样空结果 → undefined（回退 body）；
+ * - 未知 version / 非对象 / blocks 非数组 → undefined（回退 body）。
+ *
+ * 注：协议文档 §4.1 规定 legacy 空结果返回空数组（不回退 body）；本实现
+ * 按任务书口径统一回退 body（无块 = 无结构化渲染，正文照旧可读）。
+ */
+export function parseRunBlocks(content: unknown): RunBlock[] | undefined {
+  if (!isRecord(content)) return undefined;
+  const envelope = content[RUN_BLOCK_CONTENT_KEY];
+  if (!isRecord(envelope)) return undefined;
+  const blocks = envelope.blocks;
+  if (!Array.isArray(blocks)) return undefined;
+  const version = envelope.version;
+  const strict = version === "1";
+  const legacy = version === undefined || version === null || version === "0";
+  if (!strict && !legacy) return undefined;
+  const out: RunBlock[] = [];
+  for (const raw of blocks) {
+    const block = strict ? normalizeV1Block(raw) : legacyBlock(raw);
+    if (block) out.push(block);
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 // ── 聊天内 workflow 卡片──────────────────────────────
@@ -310,15 +494,18 @@ function mapContextEvent(ev: unknown): RoomMessage | null {
   };
 }
 
-/** 拉取消息上下文：点搜索结果后预览前后文 + 定位跳转。 */
+/** 拉取消息上下文：点搜索结果后预览前后文 + 定位跳转。
+ * signal：切房/换定位目标时中止在飞请求（「加载原消息」/context 路径）。 */
 export async function fetchEventContext(
   roomId: string,
   eventId: string,
   limit = 5,
+  signal?: AbortSignal,
 ): Promise<EventContextPage> {
   const params = new URLSearchParams({ limit: String(limit) });
   const payload = (await requestJson(
     `/agentteams-proxy/matrix/rooms/${encodeURIComponent(roomId)}/context/${encodeURIComponent(eventId)}?${params.toString()}`,
+    signal ? { signal } : undefined,
   )) as { events_before?: unknown[]; event?: unknown; events_after?: unknown[] };
   return {
     events_before: (payload.events_before || [])
@@ -490,6 +677,8 @@ export async function fetchRoomMessages(
       }
       // workflow 卡片载荷透传（规则 1：content 键存在且为对象）。
       const rawWorkflow = content["agentteams.workflow"];
+      // 结构化运行时块（org.agentteams.run）——无块/畸形 → undefined（回退 body）。
+      const runBlocks = redacted ? undefined : parseRunBlocks(content);
       // 团队共享文件引用（#87）——容错解析（信封/裸数组/畸形丢弃）。
       const refs = parseFileRefs(content[FILE_REFS_CONTENT_KEY]);
       return {
@@ -512,6 +701,7 @@ export async function fetchRoomMessages(
         mentions: redacted || !mentions || mentions.length === 0 ? undefined : mentions,
         in_reply_to: redacted ? undefined : inReplyTo,
         reference: redacted ? undefined : reference,
+        ...(runBlocks ? { runBlocks } : {}),
         ...(editedBy ? { edited: true } : {}),
         ...(redacted ? { redacted: true } : {}),
       };

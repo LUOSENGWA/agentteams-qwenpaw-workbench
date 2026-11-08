@@ -36,6 +36,9 @@ import CrdCheckPanel from "../crdmanage/CrdCheckPanel";
 import CrdWorkerForm from "../crdmanage/CrdWorkerForm";
 import { useMillforgeCreate } from "../millforge/useMillforgeCreate";
 import { UserIcon, TeamIcon, RobotIcon } from "../components/icons";
+import { WbTooltip } from "../components/WbTooltip";
+import { useCallerLevel } from "../hooks/useCallerLevel";
+import { canControlResources, resourceControlDeniedHint } from "../lib/resourceControl";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -79,6 +82,12 @@ function CrdDomain({
   const teams = data.admin?.teams ?? [];
   const workers = data.admin?.workers ?? [];
   const onRefresh = data.onRefreshAdmin ?? (() => undefined);
+  // #1536：创建 = 资源控制，只对 L1 调用者（permissionLevel === 1）开放；
+  // 非 L1（L2/L3/未知→null）入口可见但 disabled + 统一提示（不隐藏）。
+  const canControl = canControlResources(
+    useCallerLevel({ admin: data.admin, myUserId: data.myUserId, hasToken: data.hasToken }),
+  );
+  const deniedHint = resourceControlDeniedHint(tr);
 
   const catalog = useModelCatalog({ workers, tr });
   const human = useHumanCrd({ onRefresh, tr });
@@ -147,59 +156,73 @@ function CrdDomain({
     ];
     return (
       <div style={{ display: "grid", gap: 8, padding: 4 }}>
-        {entries.map((e) => (
-          <button
-            key={e.id}
-            type="button"
-            onClick={() => nav.setCrdView(e.id)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              width: "100%",
-              minHeight: 44,
-              padding: "10px 12px",
-              textAlign: "left",
-              border: `1px solid ${t.border}`,
-              borderRadius: 8,
-              background: nav.crdView === e.id ? t.hoverBg : t.cardBg,
-              color: "inherit",
-              cursor: "pointer",
-              font: "inherit",
-            }}
-          >
-            <e.icon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
-            <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
-              <span
-                style={{
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  color: t.text,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                {e.title}
-                <antd.Tag style={{ margin: 0, fontSize: 10.5 }}>
-                  {tr("{n} 条记录", { n: e.count })}
-                </antd.Tag>
+        {entries.map((e) => {
+          // 入口卡本体：非 L1 时 disabled（原生 button 不触发 onClick），
+          // 视觉降权（cursor/opacity）；L1 路径 DOM 与原先完全一致。
+          const card = (
+            <button
+              type="button"
+              disabled={!canControl}
+              onClick={() => nav.setCrdView(e.id)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                minHeight: 44,
+                padding: "10px 12px",
+                textAlign: "left",
+                border: `1px solid ${t.border}`,
+                borderRadius: 8,
+                background: nav.crdView === e.id ? t.hoverBg : t.cardBg,
+                color: "inherit",
+                cursor: canControl ? "pointer" : "not-allowed",
+                opacity: canControl ? 1 : 0.65,
+                font: "inherit",
+              }}
+            >
+              <e.icon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
+                <span
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    color: t.text,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  {e.title}
+                  <antd.Tag style={{ margin: 0, fontSize: 10.5 }}>
+                    {tr("{n} 条记录", { n: e.count })}
+                  </antd.Tag>
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: t.textSecondary,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {e.desc}
+                </span>
               </span>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: t.textSecondary,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {e.desc}
-              </span>
-            </span>
-            <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>›</span>
-          </button>
-        ))}
+              <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>›</span>
+            </button>
+          );
+          // disabled 按钮不触发 mouse 事件 → tooltip 挂在 wrapper span 上
+          // （tap={false}：仅 hover/focus，触屏无双动作抢手势）。
+          return canControl ? (
+            <React.Fragment key={e.id}>{card}</React.Fragment>
+          ) : (
+            <WbTooltip key={e.id} title={deniedHint} tap={false}>
+              <span style={{ display: "block" }}>{card}</span>
+            </WbTooltip>
+          );
+        })}
       </div>
     );
   };

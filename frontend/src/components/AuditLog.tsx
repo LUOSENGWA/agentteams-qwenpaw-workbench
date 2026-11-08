@@ -23,6 +23,7 @@ import {
 } from "../api";
 import { usePoller } from "../usePoller";
 import { useTabActive } from "../tabActivity";
+import { useForceReload } from "../lib/useForceReload";
 import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
@@ -184,6 +185,12 @@ function AuditLog({
       }
     },
     [team, kind, range],
+  );
+
+  // 手动刷新必穿透 30s 审计缓存（["audit"]）——统一走 useForceReload。
+  const { reload, loading: reloadLoading } = useForceReload(
+    () => fetchPage(false),
+    ["audit"],
   );
 
   // 首次 + 过滤条件变化 → 重置游标 + 重取首页。
@@ -397,8 +404,8 @@ function AuditLog({
           <antd.Button
             size="small"
             icon={<RefreshIcon size={13} />}
-            loading={loading}
-            onClick={() => void fetchPage(false)}
+            loading={loading || reloadLoading}
+            onClick={() => void reload()}
           >
             {tr("刷新")}
           </antd.Button>

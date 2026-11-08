@@ -184,6 +184,73 @@ export function providerForModel(
   return hit?.binding?.providerName || "";
 }
 
+/** C1a-1 provider-first：按所选 Provider 过滤模型候选列表（纯函数——可测）。
+ *
+ * - provider 为空 → 原样返回（跟随默认，不过滤）；
+ * - provider 非空 → Higress alias 组只保留 gatewayOptions 中
+ *   binding.providerName 为该 provider 的 alias（可路由 alias 组 / 该
+ *   provider 的 builtin alias 组，保持原分组格式与标签）；「在服+在用」
+ *   组（local，不属于任何网关 Provider）恒原样保留。
+ * - 平铺列表（无 alias 组，纯在服+在用层）→ 保留非网关 alias 条目 +
+ *   命中该 provider 的条目。
+ * builtin alias 无 binding（不属于任何 Provider）→ 其所在组在过滤结果中
+ * 默认整组落空（AutoComplete 不限于下拉，仍可自由输入）。 */
+export function filterModelOptionsByProvider(
+  allOptions: ModelGroupOption[] | ModelOptionGroup[],
+  gatewayOptions: ModelSelectionOption[],
+  provider: string,
+): ModelGroupOption[] | ModelOptionGroup[] {
+  const p = (provider || "").trim();
+  if (!p) return allOptions;
+  const allowed = new Set(
+    gatewayOptions
+      .filter((o) => o.binding?.providerName === p)
+      .map((o) => o.alias),
+  );
+  const gatewayAliases = new Set(gatewayOptions.map((o) => o.alias));
+  const isGrouped = (
+    a: ModelGroupOption | ModelOptionGroup,
+  ): a is ModelOptionGroup => Array.isArray((a as ModelOptionGroup).options);
+  if (allOptions.some((o) => isGrouped(o))) {
+    const out: ModelOptionGroup[] = [];
+    for (const g of allOptions as ModelOptionGroup[]) {
+      if (!Array.isArray(g.options)) continue;
+      // 在服+在用：不属于任何网关 Provider → 恒保留。
+      if (g.value === "local") {
+        out.push(g);
+        continue;
+      }
+      // Higress alias 组：只保留 binding 指向该 provider 的 alias。
+      const kept = g.options.filter((o) => allowed.has(o.value));
+      if (kept.length > 0) out.push({ ...g, options: kept });
+    }
+    return out;
+  }
+  return (allOptions as ModelGroupOption[]).filter(
+    (o) => allowed.has(o.value) || !gatewayAliases.has(o.value),
+  );
+}
+
+/** C1a-1 provider-first：模型 / Provider 失配判定（纯函数——可测）。
+ * model 是 configured alias 且其 binding 的 Provider ≠ 所选 provider → true
+ * （UI 仅提示、不阻塞保存——按现状保存，实际转发以 Provider 为准）；
+ * 在服模型 / builtin alias 不属于任何网关 Provider → false；
+ * 任一为空 → false（未选 Provider 时不做失配判定）。 */
+export function providerModelMismatch(
+  gatewayOptions: ModelSelectionOption[],
+  model: string,
+  provider: string,
+): boolean {
+  const m = (model || "").trim();
+  const p = (provider || "").trim();
+  if (!m || !p) return false;
+  const boundProviders = gatewayOptions
+    .filter((o) => o.alias === m && o.kind === "configured")
+    .map((o) => o.binding?.providerName ?? "");
+  if (boundProviders.length === 0) return false;
+  return !boundProviders.includes(p);
+}
+
 /** ：
  * Higress Console {code, data: ...} 信封解包 + listKey 提取——CrdManage
  * 旧版 inline 副本提升为共享（同源零分叉教训）。ManagerTable hook

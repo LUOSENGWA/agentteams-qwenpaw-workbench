@@ -1,7 +1,517 @@
+## 0.5.0-beta.17 (2026-11-08)
+
+See `方案与设计/工作台插件/release/RELEASE-v0.5.0-beta.17.md` for the beta.16 → beta.17 summary covering workbench files, chat, team settings, Millforge, Coding CLI, manage and sync.
+
+**Verification**: pytest 738 · tsc 0 · build 0.
+
+## 0.5.0-beta.16.144 (sensitive scan close-out · 2026-11-08)
+
+**Security**
+- Removed the remaining real LAN example address from a source comment (`httpUrl.ts`), replaced with `192.168.x.x`; release artifact contains no internal IPs/credentials.
+
+**Tests**: tsc 0 · build 0; pytest 738 (16.142 baseline).
+## 0.5.0-beta.16.143 (sensitive scan/docs close-out · 2026-11-08)
+
+**Security/docs**
+- Sensitive scan: replaced a real LAN example address in a source comment with `192.168.x.x`; release artifact contains no internal IPs/credentials.
+- README current branch updated to `release/16.69` (16.142→16.143); beta.17 release notes remain DRAFT pending acceptance.
+
+**Tests**: pytest 738 · tsc 0 · build 0.
+## 0.5.0-beta.16.142 (Coding CLI voice model · 2026-11-08)
+
+**Added**
+- QwenCode settings gains a dedicated "Voice" group exposing top-level `voiceModel`:
+  - Empty = CLI default; never set means no key written; clearing removes the key.
+  - Only shown for QwenCode; opencode/qoder without the field do not render it.
+  - Helper text distinguishes it from the vision/image sections.
+
+**Tests**: pytest 738 passed · tsc 0 · build 0.
+## 0.5.0-beta.16.141 (global file search · 2026-11-08)
+
+**Added**
+- The file toolbar gains global search across directories by name or full path, case-insensitive; it triggers at 2+ characters with a 250ms debounce.
+- Ranking: name prefix > name contains > path contains; directories first within a rank, then numeric/Chinese-aware name order.
+- First page fetches up to 1000 recursive entries, with `nextKey` load-more; display is capped at 200 with a "keep typing" hint.
+- Result rows show name, relative path, size, modified time and actions; folders navigate, files open details; Esc clears.
+- Unavailable endpoint (404/403/501) degrades to "global search unavailable" while the current-directory filter keeps working.
+
+**Tests**: tsc 0 · build 0.
+## 0.5.0-beta.16.140 (file detail card rounding · 2026-11-08)
+
+**Styles**
+- Selected-file details, trash details and the detail empty state now share a rounded card (10px radius, border, card background, 10px padding) instead of a bare square panel.
+- Adapts to light/dark tokens; the three file views and detail-pane layout are unchanged.
+
+**Tests**: tsc 0 · build 0.
+## 0.5.0-beta.16.139 (cluster controller card · 2026-11-08)
+
+**Added**
+- Cluster page gains a Controller card: `GET /api/v1/status` shows Worker/Team/Human counts and deployment mode; `GET /api/v1/version` shows the Controller version. 60s cache, no polling.
+- 401/403 hides the card; a single endpoint failure only renders "—" for that cell; a `dev` version is labelled "image has no injected version".
+
+**Tests**: tsc 0 · build 0.
+## 0.5.0-beta.16.138 (file tree highlight fix · 2026-11-08)
+
+**Fixes**
+- Tree `focusIndex` now starts at -1, so entering the file page no longer highlights the first row by default.
+- Folder highlight can be cleared: blank clicks on the page/toolbar/breadcrumb/tree, clicking a file row, or pressing Esc clear `selectedDir`, keyboard focus and the upload target; the target returns to the current directory.
+- Blank-click handling moved to the page root; clicks inside the detail pane (`aside`) do not clear the list state.
+
+**Tests**: tsc 0 · build 0.
+## 0.5.0-beta.16.137 (files close-out · team settings UI · module/bridge install · 2026-11-08)
+
+**Files**
+- Detail pane is now an independent layer: opaque background, sticky, own scroll, `z-index/isolation`; split threshold raised to 1320 with a 380px pane and automatic Drawer/Sheet fallback, so list actions never paint into the detail pane.
+- List columns adapt to the **measured list width**: full at ≥900, type/modified hidden at 700–899, actions collapsed into a "More" menu below 700; header and rows share the same tracks, removing the implicit action column.
+- Checkboxes are hidden by default; Ctrl/Cmd, Shift or the toolbar "Multi-select" button enters multi-select; plain click only focuses; blank click/Esc clears focus and selection.
+- File tree and workspace path picker share `TreeRowShell`/`treeModel`; quota dialogs use the shared `QuotaEditDialog` (decimal MB/GB); the picker logic file was renamed to fix a case-insensitive filename clash.
+
+**Team settings**
+- Four collapsible sections (basics / LLM tuning / members / team skills), team skills collapsed by default, member count badge.
+- Save / edit-model / batch-model / add-worker / delete buttons are 44–48px with SVG icons; narrow layouts use one column, full-width modals and a single-column batch model grid.
+
+**Millforge / Coding CLI**
+- Module updates no longer render one button per version: state badges (update available / up to date / inconsistent) + version dropdown (latest by default) + a single install/update button.
+- The QwenCode card in Coding CLI gains a "QwenPaw × QwenCode bridge" install/update section with stable/beta/alpha channels, version dropdown and one button; shown only on QwenPaw workers.
+
+**Manage**
+- Spawn sub-session tree/messages, Worker/Manager DM entry and Manager container logs are migrated; legacy `WorkerManageTree/Tables` removed.
+
+**Tests**: tsc 0 · build 0; file node tests files-v3-3 12/12, files-layout 9/9; vitest CLI unavailable in the container.
+
 # Changelog
 
 Version history of agentteams-qwenpaw-workbench.
 Chinese version: [CHANGELOG.md](CHANGELOG.md)
+
+## 0.5.0-beta.16.135 (turn-level chat rendering · 2026-11-07)
+
+**Changed**
+- A worker turn renders its avatar/name/time once (`TurnHeader`); order is **header → process disclosure → answer**, with the process no longer trailing the answer.
+- `ProcessCollapseBar` gains `active`: auto-expands while running with "thinking/running" status and collapses when done (unless the user expanded it manually).
+- Continuation rows require **5 minutes + same day + same message family**; a same-sender gap **>10 minutes** or a day change starts a new turn.
+- Approval/confirmation cards stay standalone tiles outside the process fold; task event cards still interleave by ts.
+- `RoomChatTurnParts.tsx` extracts TurnHeader/date separators/unread line shared with the message group header.
+
+**Tests**: pytest 738 · vitest 394 · `tsc` 0 · build 0.
+## 0.5.0-beta.16.134 (thinking fold / files batch 2 / checkpoints / sync triggers · 2026-11-07)
+
+**Added**
+- Chat: `m.notice` / `Thinking:` reasoning is no longer a large italic body; it is collected per turn into the process disclosure (`🧠 Thinking · 🔧 N tool calls · X.Xs`), thinking first on expand, original notice rows hidden.
+- Files: rename/move (read → write new path → trash old, rollback on failure), quota editing (**decimal MB/GB**, 1000-based; blank = unlimited, 0 = zero), in-browser text editing (≤1 MiB, If-Match, 412 reload/overwrite).
+- Manage: checkpoint card moved into Worker detail (lazy four states: loading/unsupported/unavailable/empty/data, read-only).
+- Sync: host `watchfiles` on `files/**` (2 s debounce), agent-turn-end trigger, ≤10 s shutdown flush of small files, `sync_paused` switch (API + UI); priority manual > agent_stop > watch > timer.
+
+**Tests**: pytest 738 · vitest 373 · `tsc` 0 · build 0.
+## 0.5.0-beta.16.133 (chat DB / file DnD / media viewer / sync backpressure / manage dots / tracing / voice · 2026-11-07)
+
+**Added**
+- Chat history now lives in SQLite `cache/chat.db` (WAL, kept permanently, JSON migrated on first start, global 2 GiB LRU); `/context` results are persisted so repeat jumps need no network.
+- In-app media viewer: zoom/pan/gallery/download; native video/audio; unified attachment cards.
+- Files: drag-and-drop upload (recursive folders), detail drawer, trash search/sort.
+- Sync: retry with backoff (±20% jitter, 429/5xx) + 30 s/200-file round budget + >8 MiB deferral.
+- Manage page session dots restored (team leader row / standalone workers / worker detail header).
+- Worker "Open Tracing" link (`dashboard_url`; no fake params; scheme-less defaults to http).
+- Voice input via Web Speech API (no deps; hidden when unsupported; interim not submitted, final appended, never auto-sends).
+
+**Fixed**
+- `clampPan` normalizes -0; failed chat writes no longer pollute the in-memory window.
+
+**Tests**: pytest 728 · vitest 314 · `tsc` 0 · build 0.
+## 0.5.0-beta.16.132 (mark-read 422 fix · 2026-11-07)
+
+**Fixed**
+- `POST /matrix/mark-read` rejected a valid JSON body with 422 `loc:["query","req"]`: `MarkReadRequest` was declared inside `build_matrix_router()`, and with `from __future__ import annotations` FastAPI resolves annotations against module globals, so the local class was invisible and `req` became a required query parameter. The class now lives at module level, with a TestClient regression (200/401, never 422).
+- Keeps 16.131's default `Content-Type: application/json` for other POSTs.
+
+**Tests**: pytest 681 · vitest 222 · build 0.
+## 0.5.0-beta.16.130 (#1544/#1545 adaptation · 2026-11-07)
+
+**Added/adapted**
+- File reads send `If-None-Match`; a 304 reuses the local ETag cache (LRU 50; no ETag means no cache), so previews no longer re-download.
+- Sync engine manifest GET is conditional: a 200 stores raw manifest + ETag in `.sync/manifest.cache.json`; 304 reuses it; missing/corrupt falls back to full.
+- Downloads: 304 skips; an existing `.part` resumes with `Range` + `If-Range` (206 append, 200/416 refetch), response ETag checked (mismatch discards).
+- Restore from remote when the local file is missing while the remote is unchanged.
+- sync/status callers unchanged (same five fields, backed by #1545 metadata).
+
+**Tests**: pytest 680 · vitest 219 · `tsc` 0 · build 0.
+## 0.5.0-beta.16.129 (dual-address slot fix · 2026-11-07)
+
+**Fixed**
+- Saving only the external address no longer copies it into the internal slot: `merge_address_entries` keeps a leading empty placeholder (`["", "https://wan"]`) and trims trailing empties; internal-only stays `["https://lan"]`, both empty `[]`.
+- Per-slot credential inheritance is unchanged (`***` still reuses the stored secret); no position shifting.
+
+**Tests**: pytest 672 · vitest 213 · build 0.
+## 0.5.0-beta.16.127 (address scheme detection · 2026-11-07)
+
+**Fixed**
+- A bare `host:port` (no `https://`) is no longer forced to `http://`: the frontend submits it as typed and the backend probes **HTTPS first** on save/test/import, falling back to HTTP; when neither answers it stores HTTPS with a `scheme_unresolved` warning (secure default, never a silent downgrade to http).
+- `/config/test` returns the resolved URL plus `resolved_from`; saves return `warnings`, and the address input reflects the final scheme.
+- Explicit `http://` / `https://` is never overridden (no upgrade, no downgrade).
+
+**Rationale**: browser HTTPS-first (Chrome/Edge/Firefox), curl `--proto-default https`, and nginx's 400 when plaintext hits a TLS port. Probe results are cached per host:port for 10 minutes.
+
+**Tests**: pytest 9 (new scheme resolver) + vitest 213 + `tsc` 0 + build 0.
+## 0.5.0-beta.16.126 (R4 static a11y gate · 2026-11-07)
+
+**Added**
+- `lib/a11yStatic.ts`: a static accessibility gate — icon-only buttons need `aria-label` or readable text, clickable `div`s need role/tabIndex/keyboard handling, form controls need labels, images need alt text, plus a contrast allowlist. `tests/a11y-static.vitest.test.ts` enforces 13 rules and fails on violations.
+- Fixes on key pages: workflow board (BoardView / blocks / panels), file section (FilesSection), worker detail (WorkerDetailPane) and the sync settings dialog now carry aria-labels and keyboard reachability.
+
+**Tests**: vitest 211 passed · `tsc --noEmit` clean · `npm run build` clean.
+## 0.5.0-beta.16.125 (fix module-updates crash · 2026-11-07)
+
+**Fixed**
+- Opening Module Updates crashed with `TypeError: ...find is not a function`: upstream `channels.json` stores `modules` and each module's `versions` as **object maps** (keyed by module name / version), while the plugin consumed them as arrays.
+- Added `normalizeIndexResponse()` in `api/domains/modules.ts`: `getIndex()` now normalizes both shapes at the API boundary; version entries are rebuilt from the map with artifacts/requires/commit preserved, and `artifact/sha256` are filled from the zip-first artifact so version buttons are not all disabled.
+- `moduleEntryVersions()` also accepts object-shaped versions; regression tests use the real beta payload (object modules + object versions + bundle pluginId).
+
+**Tests**: vitest 198 passed · `tsc --noEmit` clean · `npm run build` clean.
+## 0.5.0-beta.16.124 (Millforge workbench refactor · 2026-11-07)
+
+**Changed**
+- The Millforge entry in the team topology is now a single card button: one `<button>` (minHeight 56, hover/focus-visible/disabled, trailing ›) instead of a card with an inner "Open Millforge injection" button.
+- The Millforge dialog now has four tabs: Inject / Custom team / Module updates / Injection history, each scrolling independently (66vh); dialog width 960.
+- Module updates moved out of Settings into the dialog: `ModuleUpdatesBody({ defaultTeam, autoLoad })`, team plane defaults to the current team, all three planes (team / manager / worker) retained; Settings no longer mounts it.
+- Removed the unmounted `CrdManage.tsx` and the `ModuleUpdatesPanel` forwarding shell; the CRD create-team section and row action are unchanged.
+
+**Tests**: vitest 195 passed · `tsc --noEmit` clean · `npm run build` clean.
+## 0.5.0-beta.16.123 (2026-11-07 · upload queue / tree batch)
+
+**Added**
+- File upload queue: concurrency 3, per-file progress, cancel and retry, aggregated failures; closing the panel does not abort in-flight uploads.
+- Tree-view batch selection: selecting a folder selects its descendants (collapsed included); batch delete/download reuse the 16.120 batch path and confirmation dialog.
+
+**Tests**: vitest 187 passed · `tsc --noEmit` clean · `npm run build` clean.
+
+## 0.5.0-beta.16.122 (2026-11-07 · team switcher / task notes / mobile quick bar)
+
+**Added**
+- Chat team switcher (`ChatSwitcher`): room/team dropdown, last choice persisted in localStorage, collapses on narrow screens, hidden when no teams exist.
+- Task notes entry (`metaEntry`): workflow task rows and project title reuse `MetaEditorModal` via #1540 GET raw+ETag → PUT `If-Match`; the entry hides itself when the controller has not been upgraded (405).
+- Mobile quick bar (`MobileQuickBar`): on ≤600px viewports a bottom bar with four targets (Files / Workflows / Messages / Settings), 44px touch targets and safe-area padding; hidden on desktop.
+
+**Notes**
+- Per-version notes for 16.82–16.121 live in the integration checklist §8 (`工作台接入清单-20261107.md`), covering the unified model picker, file views and sorting, batch actions, ⌘K palette, sync scope/incremental/conflicts, RBAC gating and model-grant error classification. Per-version entries resume here.
+- Tests: vitest 171 passed; `tsc --noEmit` clean; `npm run build` clean.
+
+## 0.5.0-beta.16.81 (2026-11-07 · resource card order)
+
+**Improved**
+- Worker detail cards follow the QwenPaw Agent page order: runtime config → MCP → tools → skills → channels → approval mode → Coding CLI → environment → LLM tuning → worker plugins → runtime upgrade.
+- For non-QwenPaw runtimes the MCP / tools / skills / channels / approval descriptions now say the card is the runtime's surface-driven config face, matching where the data comes from.
+
+## 0.5.0-beta.16.80 (2026-11-07 · model grant 400 fix)
+
+**Fixed**
+- Saving a person's model grant failed with `400 invalid JSON: cannot unmarshal object into ... codingCli of type []v1beta1.ModelAccessCli`: the CRD declares `codingCli` as an **array** of `{cli, entries, inherit}`, while the editor sent a map. The write path now serializes the array and the read path normalizes it back to a map, so the editor is unchanged.
+- "Add CLI" no longer invents `qwen-code-2`: it takes the first unused entry of the fixed three (qwen-code, opencode, qoder), and the button disables once all three are present.
+
+## 0.5.0-beta.16.79 (2026-11-07 · config and grant interaction fixes)
+
+**Fixed**
+- **Provider select emptied again**: the sync compares content, not the array reference the parent recreates each render; the model select stays disabled until a provider is picked.
+- **Coding CLI is a select**: Qwen Code / OpenCode / Qoder (already-added ones filtered out) instead of a free-text name.
+- **Grouped fields routed**: `approval.* / mcp.* / channels.* / skills.* / tools.*` groups nested inside config faces now go to their capability card, so the config tab stops repeating them.
+- **Boolean width**: boolean fields no longer stretch across the row; the switch keeps its own width.
+
+## 0.5.0-beta.16.78 (2026-11-07 · config grouping corrected)
+
+**Fixed**
+- **Provider select dropped the choice**: the selection now keeps its own state instead of being derived from committed pairs; the model select stays disabled until a provider is chosen.
+- **Face sub-groups wired**: surface fields carry their own group (125 distinct in OpenClaw, 182 in Hermes — `gateway.auth`, `agent.agent_cache`, ...). Those render as sub-sections inside the face's tab, so faces no longer mix into one table or duplicate the capability cards.
+- **LLM tuning card is QwenPaw-only**: OpenClaw/Hermes keep retry and timeout fields in their own faces (models / gateway / agent), rendered by the config tab.
+
+**Improved**
+- Config tabs carry icons, matching the capability card icon set.
+
+## 0.5.0-beta.16.77 (2026-11-07 · model grants become multi-select)
+
+**Improved**
+- The person-detail grant editor no longer asks for row-by-row "add row": pick **providers first (multi-select, searchable)**, then **models (multi-select, searchable)**.
+- The model list is narrowed to the selected providers using gateway alias ownership; without ownership data it falls back to the full catalog instead of hiding options.
+- Existing grants show as the selected values in both selects; read-only mode renders tags instead of disabled inputs.
+- The empty-selection hint (no grants = fail-closed) stays.
+
+## 0.5.0-beta.16.76 (2026-11-07 · file tree view)
+
+**Improved**
+- The files page gains a **list / tree** switch in the toolbar (persisted as `manage.filesView`).
+- Tree view: chevrons expand directories, rows indent by level, children load lazily on expand with inline retry on failure, and the row actions stay the existing download/delete.
+- Keyboard: arrows move the focus row, Right expands only directories, Enter selects/expands; rows keep the 44px touch height.
+- The detail pane is unchanged — the tree replaces the list slot only, so exactly one detail view renders at any width.
+
+## 0.5.0-beta.16.75 (2026-11-07 · OpenClaw/Hermes config split into capability cards)
+
+**Improved**
+- OpenClaw and Hermes surfaces are split into the same capability cards QwenPaw uses: **MCP / tools / skills / channels / approval mode**. The runtime config keeps only the config faces, shown as one tab per face.
+- For non-QwenPaw runtimes those cards are surface-driven, with an honest empty state ("this runtime exposes no fields for this section"); QwenPaw keeps its existing panels.
+- The config dialog widens from 720 to 960 and its body no longer scrolls horizontally: long field names shrink, and only the tab strip scrolls.
+- Face titles are translated (gateway, model, agent, session, automation, browser, observability, interface, workspace and more).
+
+## 0.5.0-beta.16.74 (2026-11-07 · config page mirrors QwenPaw layout · i18n)
+
+**Improved**
+- **Runtime config is tabbed**: reactAgent / Agent Loop / LLM retry / LLM rate limiter / context / memory / embedding model / tool execution level, matching the QwenPaw console.
+- **Each hosted capability gets its own card**: MCP / tools / skills / ACP / checkpoints / other, instead of one long table.
+- Search, show-advanced, changed count and reset sit in one toolbar above both the tabs and the cards.
+- Section titles come from the i18n dictionary (10 new keys), no more mixed-language literals.
+
+**Fixed**
+- A controller without the `ModelAccessTable` CRD answers 500 "no matches for kind"; that is now treated as an unsupported capability (empty state) instead of an error.
+
+## 0.5.0-beta.16.73 (2026-11-07 · grouped runtime config)
+
+**Improved**
+- Runtime config turns from one flat list into a **grouped panel**: `Config / MCP / Tools / Skills / ACP / Checkpoints / Other`, with the Config section ordered like QwenPaw's own console (reactAgent, agentLoop, llmRetry, llmRateLimiter, context, memory, embeddingModel, toolExecutionLevel).
+- The panel brings per-section **search**, an **advanced** toggle, a **changed-count** hint and **reset**; under 720px the section list collapses into a select.
+- Field rendering still uses the existing `CfgRow` / `SchemaField`; save, rollback, restart and error reporting are unchanged.
+
+## 0.5.0-beta.16.72 (2026-11-07 · recycle bin dialog · one refresh path · no duplicate list)
+
+**Improved**
+- **The recycle bin is a dialog**: a toolbar button (with an entry-count badge) opens it, so it no longer competes with the main list for the same screen. It offers search, sort by deletion time, restore-all, per-row restore/purge with confirmation, and overwrite on a 409 name clash; under 720px it switches to cards.
+- **Undo after delete**: a soft delete shows an eight second undo bar; one click restores, no need to open the recycle bin.
+- **No duplicate list**: at four columns the page rendered a compact list in the left column and the full list in the middle; only one list remains, and the empty detail pane no longer repeats the upload button.
+- **One refresh path**: the toolbar refresh, the error retry and every mutation now call the same `reload()` (forced fetch, in-flight dedupe, replay of a merged click), subdirectories join the 30s poll, and the list refreshes silently when the window regains focus.
+- **Updated-at column adapts**: controllers that do not return `updatedAt` no longer show a column of dashes.
+
+## 0.5.0-beta.16.71 (2026-11-07 · recycle bin page · sync settings dialog)
+
+**Improved**
+- **Recycle bin gets its own page**: it no longer shares the tab strip and column header with the main list. A dedicated panel shows original path, size, deleted at and actions (restore, purge); the view switch moved to the title row.
+- **Sync settings become a dialog**: the long sync card inside the page is gone; a toolbar button opens a dialog with the sync status (entries/tombstones/generation/last writer), run-now, manifest export and the mirror location, and explains why sync is unavailable when the controller has no manifest routes.
+
+## 0.5.0-beta.16.70 (2026-11-07 · selective scope, local unsync, progress)
+
+**Added**
+- **Sync scope**: `.sync/config.json` with `include`/`exclude` globs (`*` one level, `**` recursive, default `files/**`) plus `GET/PUT /agentteams-proxy/sync/config` (paths must stay under `files/`, no `..` or empty segments).
+- **Unsync affects the local copy only**: `POST /agentteams-proxy/sync/unsync` first proves the remote still holds the entry (etag when reported, size otherwise) and refuses the path when that proof is missing (`remote_missing`). A successful call deletes the local mirror and makes **zero DELETE calls** — the cloud copy is untouched.
+- **Progress snapshot**: `GET /agentteams-proxy/sync/progress` reports `state/files/bytes/speed (5s EMA)/eta/currentPath/queued/failed` for the UI.
+
+## 0.5.0-beta.16.69 (2026-11-07 · file page layout/actions/delete · workspace sync engine)
+
+**Improved**
+- **File page layout**: the detail pane renders exactly once, so landscape no longer shows a duplicated sidebar; the layout follows the width (**split above 1200px, drawer in the middle range, full sheet below 768px**) and an unselected split pane shows an explicit empty state with the upload action.
+- **Actions and touch**: a single handler and file input back every upload entry point (toolbar, empty state, drop zone); rows and buttons reach touch size (44/40, larger on coarse pointers); the detail pane embeds **FilePreview** (images, Markdown, tables, text).
+- **Delete confirmation**: one shared dialog for the list and the detail pane; "move to recycle bin" is checked by default and unchecking follows the soft delete with a purge; no client-side role gate; directory rows disable the action because the API cannot delete directories.
+
+**Added**
+- **Workspace sync engine (backend)**: generation comparison, incremental download/upload, conditional manifest write-back (`If-Match`, 412 retries next round), conflict copies named after the timestamp, a single-writer lock with backoff, and a one-shot disabled state when the controller has no manifest routes.
+- The mirror lives under **`<workspace>/.qwenpaw/agentteams/`**, which follows QwenPaw backup persistence and stays out of checkpoint snapshots.
+
+## 0.5.0-beta.16.68 (2026-11-07 · direct upload when presigning is absent)
+
+**Fixed**
+- Older controllers answer `POST …/files/{path}?presign=1` with **405** (no such route), but the client only treated 500/501 as "presigning unavailable", so uploads failed. A single predicate now decides: **404/405 and 5xx fall back to the streamed upload**, while `401/403/409/412/413` surface as real errors (a fallback would only repeat them). Upload and download share it.
+
+## 0.5.0-beta.16.67 (2026-11-07 · file page cleanup · workspace access)
+
+**Improved**
+- **File manager de-duplication and layout**: the page no longer repeats the same label three times (title, view switch, breadcrumb root) — the breadcrumb only appears inside a directory; upload, create and quota actions move into a single toolbar; the list gains an **updated-at** column (deleted-at in the recycle bin) and shows `—` for directories; rows are clickable for navigation/selection and inline actions stop propagation; the **sync status card** only renders, on one line, when a manifest exists (entries · tombstones · generation + export/copy).
+- **Workspace access on a person** (#1502 admin surface): default access follows membership; `grants` can only widen (read / readwrite) and `restrictions` only narrow (none / read), with restrictions winning per path; paths stay under `files/`, with no traversal, no absolute paths and no top-level reserved directories, and only `*` / `**` globs. The editor mirrors the controller validation before saving and **re-reads the resource** afterwards, so a controller that silently drops unknown fields is reported as "not persisted".
+
+**Fixed**
+- None (the directory navigation, redirect and timeout fixes from 16.66 continue to apply)
+
+## 0.5.0-beta.16.66 (2026-11-06 · human files · model grants · module updates)
+
+**Added**
+- **Human file area now uses the new controller capabilities** (#1518 / #1519 / #1501 / #1499):
+  - Listing entries carry **size / etag**; **recursive flat listing with a key cursor** ("Load more" only when a `nextKey` exists).
+  - Uploads use **presigned direct upload + commit**: bytes no longer traverse the controller; files above `maxBytes` are blocked client-side; `commit` 409/413 clearly ask for a re-upload. Falls back to the previous proxied upload when presigning is unavailable (older controllers).
+  - Large downloads use **short-lived presigned URLs**, re-issued when expired.
+  - **Sync status card**: manifest generation / last writer / entry and tombstone counts; a count mismatch shows a "manifest is maintained by the local sync client" hint; the raw manifest can be exported; a missing `file_sync` grant is called out. The browser **never parses manifest entries nor writes a manifest** (the server stores, never merges).
+- **Model grants in the person detail** (#1513 admin surface): role + CodingCLI axes; `(provider, model)` entered as **pairs**; **inherit** for spawn/CLI; shared model tables referenced with a read-only preview; "empty = not granted (fail-closed)" is stated before saving; `PATCH` merge-patch is used when `PUT` is unavailable.
+- **Settings → Module updates** (#1526): team / manager / worker planes; GitHub or GitCode source, `alpha|beta|stable` channel and **custom forks**; **upgrade and downgrade** (with a requires-difference confirmation); rolling progress and a `consistent` badge for teams; errors mapped per 409/502/404/400/503; unsupported controllers show an explicit "not supported" state.
+
+**Fixed**
+- File-area "parent directory" path join: `join("")` → `join("/")` (previously navigated to a non-existent directory).
+- File listings follow **301** redirects (root trailing slash), fixing the file page error on older controllers.
+- connector: controller **file I/O** timeout 30s → **120s**, wired into the catch-all proxy (file reads 6s → 120s), fixing the reproducible 502 on ~250 KB uploads.
+
+## 0.5.0-beta.16.65 (2026-11-06 - Model Access in the model dialog, hermes runtime config surface)
+
+**Features**
+- **Model Access is now visible in the model dialog** (#1513): the primary, spawn and CodingCLI surfaces each show
+  their grant state — `editable` / `inherited from X` / `read-only` / `not granted` / `BYOK unsupported`. When the
+  account has no granted model at all the dialog becomes read-only with a hint to contact the administrator.
+  - Grants are matched as **(provider, model) pairs**: a provider from one grant combined with a model from another
+    is rejected as out of scope.
+  - Inheriting surfaces stay read-only (spawn inherits the primary model, CodingCLI inherits spawn); an unavailable
+    catalog is surfaced.
+  - Controllers that do not expose the endpoint fall back to the previous behaviour (no grant UI).
+- **hermes runtime config surface** (#1494): the runtime config card labels itself per runtime (OpenClaw / Hermes);
+  when a controller does not support a runtime's surface it now lists the runtimes it does support and offers a retry.
+
+**Quality**
+- Type checking clean; 218 node tests across 14 suites; 593 Python tests.
+
+## 0.5.0-beta.16.64 (2026-11-06 - list-projection regressions, files 301/upload, CodingCLI model entry, team inbox, scheme-less addresses)
+
+**Fixes (user-visible)**
+- **Provider baseline in model settings**: the slim list projection omits `modelProvider`, which previously left the dialog baseline empty and cleared the worker's Provider on save (routing silently fell back to the default gateway). The baseline now comes from the single-worker detail read, and an **empty Provider is never sent**.
+- **Environment panel**: hidden only when it is explicitly not editable; the missing `envEditable` in the projection previously made the whole panel disappear.
+- **Files area**: directory listings always carry a trailing slash (no more controller 301), and 301/308 responses are followed once safely (writes keep their method and never downgrade to GET).
+- **Controller proxy**: keep trailing slashes, rewrite the upstream 301 `Location` into the proxy path (it used to send the browser to a non-existent host path), and **no longer drop binary request bodies** (uploads used to land as 0 bytes).
+
+**Features**
+- **CodingCLI entry in the model dialog**: shows each CLI's global model and Provider, **Provider first, then model**, with the Provider written to `model.baseUrl` (qwen-code uses it to disambiguate Providers sharing a model id).
+- **Create-worker and team-member forms are Provider-first**; the "create and join team" action is now an honest "Create worker" (it only ever created).
+- **Backend addresses may omit `http(s)://`**: enter an IP/domain (optionally with a port) and the scheme is inferred from the port and host type; in fixed LAN/WAN mode candidates fall back within their own entry and never across entries.
+- **Team view in the notification center's Pending tab** (#1503): pick a team and a status (pending/overdue/resolved/all); when the controller does not expose the endpoint it degrades to the aggregated view with a notice, and skipped projects are surfaced.
+
+**Quality**
+- Full refresh/retry audit (41 buttons across 30 files): 8 now bypass caches through one shared `useForceReload`; the remainder are listed in the report.
+- Duplicate i18n keys removed, **type checking is now clean**: any future tsc error is a real regression.
+
+## 0.5.0-beta.16.63 (2026-11-06 - Workspace quota setting moves into people management)
+
+**Changes**
+- **The workspace quota setting now lives in "People"**: selecting a person shows a "Workspace quota" entry with
+  the used amount and the limit (labelled unlimited when there is none), where an administrator can set the
+  quota in MB or clear it (clearing means unlimited). The quota is per person and is read once when that person
+  is opened — no prefetching across people.
+- **The file area no longer owns the setting**: it keeps the usage bar and the upload / new-folder actions, with
+  a note pointing to "People" for the quota.
+
+**Gates**
+- 109 pure-logic tests across 7 suites pass; type check has no new errors; the build succeeds.
+
+## 0.5.0-beta.16.62 (2026-11-06 - One conditional cache for stable reads, skills validators)
+
+**Refactor / performance**
+- **Removed a duplicate conditional-cache implementation**: the worker list carried its own ETag store that
+  overlapped with the shared request cache (TTL + tag invalidation + `If-None-Match` revalidation + reuse of the
+  previous body). The duplicate is gone; the list and the skill catalog now both go through the shared cache, so
+  there is exactly one revalidation path and no chance of the two drifting apart.
+- **Skill catalog revalidates**: its reads now send `If-None-Match`, and a `304` reuses the local data (same
+  cache semantics; writes invalidate through the existing tags).
+- Note: the controller also serves stable ETags for `/version`, `/mcp-servers` and `/gateway/ai-routes`; this
+  plugin does not read the first two directly (MCP goes through the per-worker endpoint), and gateway routes
+  already revalidated.
+
+**Gates**
+- 96 pure-logic tests across 6 suites pass; type check has no new errors; the build succeeds.
+
+## 0.5.0-beta.16.61 (2026-11-06 - Parallel slim worker polling with conditional revalidation; restart and hot-applied primary model)
+
+**Performance**
+- **The worker list now polls in parallel and slim**: `fields=spec` (stable configuration) and `fields=status`
+  (volatile state) are requested together; the spec read revalidates with `If-None-Match` and reuses the local
+  bytes on `304`, while status is always read fresh.
+  - Rows are joined by the stable `name`, and **membership follows status**, so a deleted worker disappears
+    immediately; when a newly observed name is missing from the spec snapshot the spec is reloaded once, and if
+    the snapshots still disagree the combined view is read; controllers that do not support or reject `fields`
+    fall back to the full list, exactly as before.
+  - The conditional cache lives in memory only, is capped at 64 entries, is cleared before and after every
+    write request and on identity/connection changes, and a `304` whose local entry has gone re-fetches —
+    **a `304` never turns into empty data**.
+
+**Features**
+- **Restart actions for workers and managers**: a confirmed restart stops and starts the container (in-flight
+  tasks are interrupted) and refreshes the state afterwards; the runtime configuration card's
+  "needs a restart" note also gains an "restart now" action.
+- **Primary-model save copy is runtime-aware**: changing a QwenPaw worker's primary model now takes effect
+  immediately (the controller hot-applies it), while other runtimes keep the "takes effect after restart" note.
+
+## 0.5.0-beta.16.60 (2026-11-05 - OpenClaw runtime config panel, provider-first model settings, slimmer worker list)
+
+**Features**
+- **OpenClaw runtime configuration panel** rendered natively from the runtime's own surface declaration
+  (16 faces / 609 fields): the face → group → field hierarchy comes straight from the declaration, with no
+  cross-runtime mapping.
+  - Controls cover `number / boolean / secret / array / record / object` (secrets are never echoed back —
+    leaving the field untouched keeps the stored value); `enum` renders as a candidate list on string fields.
+  - **Dynamic entries**: single-wildcard fields render one sub-card per actual entry (e.g. one per channel)
+    with an "add entry" action; double-wildcard compound structures (e.g. per-provider model lists) render
+    read-only and are labelled as such.
+  - Field **search** and a **changed-only** toggle sit above the form; sensitive fields are written as a
+    single whole value and never split into sub-keys.
+  - The runtime config card and the worker runtime badge use the OpenClaw icon; other runtimes are unchanged.
+- **Slimmer worker list**: list requests now ask for `fields=spec,status` (stable config + volatile state),
+  so prompt bodies, env, skills and MCP payloads no longer ride along; controllers that ignore the parameter
+  behave exactly as before.
+  - Skill / env / MCP editors now **read the single-worker detail before enabling edits**: while the detail is
+    loading or after it fails the view stays read-only with a clear error and retry, never falling back to the
+    list row; submits merge with the values that were loaded, so existing entries are not lost.
+  - The worker detail block loads skills / MCP on expansion only — the list itself issues no per-row requests.
+
+**Fixes / consistency**
+- **Model settings are provider-first**: worker / manager model dialogs, the ungrouped worker model panel and
+  the team bulk brush (leader batch / workers batch) all pick the Provider before the model; model candidates
+  are filtered by the chosen Provider; picking a gateway alias auto-fills the Provider only when it is empty,
+  so an explicit choice is never overwritten; a model that does not belong to the selected Provider shows a
+  hint without blocking the save.
+- The team bulk brush now paints **Provider and model as a pair**, and the save path sends `modelProvider`
+  alongside `model` under the existing merge semantics (empty = leave unchanged).
+
+## 0.5.0-beta.16.59 (2026-11-04 - Millforge SOUL injection guards: idempotent, confirm, backup/rollback)
+
+**Features**
+- Read-only preflight before injecting: each target is classified as empty / same / differs with
+  its sha256, provenance and an 80-char excerpt; nothing is written.
+- True idempotency: when the new SOUL has the same sha256 the PUT is skipped (no reconcile, no
+  clobbering manual edits) and the result row shows "unchanged (skipped)".
+- Conflicts require confirmation: a different existing SOUL returns `409 soul_conflict` with
+  per-target details; the UI asks for confirmation (worker, existing source, length, excerpt) and
+  re-injects with `overwrite=true`.
+- Backup and rollback: the previous SOUL is kept before overwriting (3 per worker) and each
+  overwritten row offers "roll back", restoring the previous content and verifying its sha256.
+- Stronger read-back: verification now compares the sha256 of the stored SOUL with what was sent
+  instead of only checking that it is non-empty.
+
+**Notes**
+- Millforge writes SOUL only and never touches AGENTS.md (the controller manages it with markers);
+  team leaders still get marker-based merging while regular workers are fully replaced — the result
+  table's mode column reports apply/overwrite/skipped/rollback accordingly.
+
+## 0.5.0-beta.16.58 (2026-11-04 - Millforge: source switch fix, SOUL-only injection)
+
+**Fixes**
+- The Millforge source switch no longer snaps back when choosing "custom". The previous
+  implementation treated "custom" as "write an empty custom_url", and since the selected
+  segment is derived from custom_url, the empty value immediately fell back to GitHub/GitCode.
+  The segment is now a local intent: choosing "custom" sticks and shows the URL field, and only
+  a typed URL is persisted; switching to GitHub/GitCode writes the kind and clears custom_url.
+
+**Changes**
+- Millforge injection no longer packages or injects the core skill: as of AgentTeams 1.2.6
+  millforge-core ships with TeamHarness, so injection writes SOUL only. The core checkbox is
+  removed from the team form and the inject panel, the request always sends `core_skill: false`
+  (keeping `apply_soul`), and the UI shows a one-line note instead.
+
+## 0.5.0-beta.16.57 (2026-11-04 - Stream timeouts editable from the env card, applied hot)
+
+**Features**
+- The environment panel now offers a focused "stream timeouts (hot)" editor for
+  `QWENPAW_LLM_STREAM_FIRST_CONTENT_TIMEOUT` and `QWENPAW_LLM_STREAM_IDLE_TIMEOUT`:
+  saving writes the worker override and the controller PATCHes the QwenPaw container's
+  `/api/envs`, so it takes effect without a restart. Clearing a value removes the override
+  (inherit team/default), and the panel re-reads the live value after saving.
+- Rendered for L1 only and for the qwenpaw runtime only (the envs API is QwenPaw-specific);
+  field metadata and validation are shared with the LLM tuning panel.
+
+## 0.5.0-beta.16.56 (2026-11-04 - Runtime-native config surface, plugin side)
+
+**Features**
+- **Runtime-native config surface**: the worker detail no longer offers a configuration card for
+  QwenPaw only. The panel reads `worker.runtime`, fetches that runtime's own surface
+  (`GET /api/runtimes/{runtime}/surface`) and renders exactly what the surface declares
+  (faces, groups, fields). No cross-runtime field mapping and no deny list.
+  - Controls are generated from `type` (string / int / float / bool / enum / string-list / read-only object).
+  - `applies` badges: `hot` none, `next-turn` "applies next turn", `restart` "needs restart".
+  - `sensitive` fields take one atomic value; the masked `***` read-back is never written back.
+  - Saving sends a nested diff with the `if-rev` precondition and maps controller errors one by one
+    (`stale_rev` reloads and keeps the draft; `unknown_field` / `no_writable_keys` / `invalid_value`
+    are pinpointed; `runtime_unknown` degrades; 403 is read-only; 502 is retryable); rollback to the
+    previous write is supported.
+  - QwenPaw keeps its existing sectioned panel unchanged; runtimes without a surface show no card
+    (404/405 degrades silently).
+
+**Notes**
+- The surface / member-config routes come from upstream PR #1493. Until it merges, the card stays
+  hidden by design; once merged it lights up without another release.
 
 ## 0.5.0-beta.16.55 (2026-11-04 - Manage page: LLM tuning restored + CRD deletion + nested file API)
 

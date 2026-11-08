@@ -26,6 +26,8 @@ Frontend plugin fetches these same-origin endpoints (no CORS):
 - ``POST /agentteams-proxy/millforge/prompt`` 自定义团队「描述需求」提示词（PHILOSOPHY + schema + §十骨架）
 - ``POST /agentteams-proxy/millforge/parse-team-json`` LLM JSON 校验（Draft7，逐字段 path+message）
 - ``GET /agentteams-proxy/millforge/builds`` / ``.../injections`` 编译/注入历史
+- ``GET/PUT/DELETE /agentteams-proxy/storage/chat/{room_id}`` 聊天消息 SQLite 读写（cache/chat.db，永久保留 + 2GB 房间 LRU）
+- ``GET /agentteams-proxy/storage/state`` / ``POST …/storage/prune`` 缓存容量状态/整理
 - ``{METHOD}/{agentteams-proxy}/{matrix|controller}/{path}`` forwarded
 
 Auto-failover: addresses are ordered lists (LAN first, WAN second). Every
@@ -54,6 +56,9 @@ from pydantic import BaseModel, Field
 
 from . import __version__, config as config_mod
 from . import matrix_client, selfcheck
+# X1c 候选展开（config.py 门面未收录该新名——白名单约束；
+# config_entries 为纯函数模块，直接引用无循环依赖）。
+from .config_entries import address_candidates
 # KB 端点 SWR 磁盘缓存。
 from . import kb_cache
 # 全局拨号闸门 + failover 判定 + 计数。
@@ -270,24 +275,31 @@ _PROBE_TIMEOUT = 6.0
 # 单独压到 3s 快速识破死地址；read 保留 6s（真实响应慢≠地址死）。
 _PROXY_TIMEOUT = httpx.Timeout(connect=3.0, read=6.0, write=10.0, pool=3.0)
 
+# 控制器文件读写：控制器侧 PUT 256KB 实测 ~34s（minio 写路径待优化），
+# 通用 6s 读超时必 502；放宽到 120s（连接/池仍短，防慢挂在别处）。
+_FILE_PROXY_TIMEOUT = httpx.Timeout(connect=5.0, read=120.0, write=120.0, pool=5.0)
+
+
+def _candidate_groups(cfg: Dict[str, Any], kind: str) -> List[List[str]]:
+    # 按条目候选组——组 i = 条目 i 的可拨号候选（address_candidates：
+    # 裸地址按端口/主机类型展开 http(s) 双候选，显式 scheme 单候选）。
+    # 固定档索引语义落在「条目」（组）上、不落在「URL」上——全局展平
+    # 会把 lan/wan 的位置索引打散（X1 教训）。空条目跳过（同旧
+    # _address_list 过滤口径）；dict 条目的 auth 由 _headers_for/
+    # auth_for_url 按 url 反查，不在此丢。
+    raw = _raw_addresses(cfg, kind)
+    return [
+        address_candidates(config_mod.address_url(v))
+        for v in raw
+        if config_mod.address_url(v)
+    ]
+
 
 def _address_list(cfg: Dict[str, Any], kind: str) -> List[str]:
-    # 条目 str | {url, auth?}——统一归一化取 url
-    #（dict 条目的 auth 由 _headers_for/auth_for_url 按 url 反查，不在此丢）。
-    if kind == "matrix":
-        raw = cfg.get("matrix_homeservers") or []
-    elif kind == "sglang":
-        # SGLang 双地址纳入 working cache 体系（自动重排/failover）。
-        raw = (cfg.get("sglang") or {}).get("urls") or []
-    elif kind == "gateway":
-        # Higress Console 双地址（canonical=gateway_admin_urls，
-        # 空则回退 legacy 单值）。
-        raw = cfg.get("gateway_admin_urls") or (
-            [cfg.get("gateway_admin_url")] if cfg.get("gateway_admin_url") else []
-        )
-    else:
-        raw = cfg.get("controller_urls") or []
-    return [config_mod.address_url(v) for v in raw if config_mod.address_url(v)]
+    # 可拨号 URL 展平列表（候选组按条目序展平）——全部拨号点照旧消费；
+    # 固定档位置语义走 _pinned_candidates（按条目分组，不跨组）。
+    # 显式 scheme 配置下候选=单元素，展平结果与旧版逐字节一致。
+    return [u for g in _candidate_groups(cfg, kind) for u in g]
 
 
 def _raw_addresses(cfg: Dict[str, Any], kind: str) -> List[Any]:
@@ -318,15 +330,16 @@ def _headers_for(
 def _ordered_addresses(cfg: Dict[str, Any], kind: str) -> List[str]:
     """Cached working address first, then the rest in configured order.
 
- 固定档（lan/wan）= 单元素链——请求层 failover 自然
- 退化为「只用固定地址」，失败诚实报错。
+ 固定档（lan/wan）= 固定条目的组内候选链——该条目的 http/https
+ 候选按序尝试（组内协议 failover），**不跨组**（不碰另一条目）；
+ 请求层 failover 自然退化为「只用固定条目」，失败诚实报错。
  """
     urls = _address_list(cfg, kind)
     if not urls:
         return []
-    pinned = _pinned_url(cfg, kind)
+    pinned = _pinned_candidates(cfg, kind)
     if pinned:
-        return [pinned]
+        return pinned
     with _cache_lock:
         cached = _working_cache.get(kind)
     if cached and cached in urls:
@@ -339,8 +352,8 @@ def _mark_working(kind: str, url: str) -> None:
         _working_cache[kind] = url
 
 
-# 固定内网/外网——请求只用固定
-# 地址、失败诚实报错（_pinned_note 追加到 502 detail），不静默 failover；
+# 固定内网/外网——请求只用固定条目（含其组内候选）、失败
+# 诚实报错（_pinned_note 追加到 502 detail），不跨条目静默 failover；
 # 探测循环照跑（连通性测试显示另一条路径状态）但不影响路由。列表顺序
 # 约定=[内网, 外网]（设置页内网/外网两个显式输入框同源）。
 _ADDRESS_MODES = ("auto", "lan", "wan")
@@ -351,16 +364,29 @@ def _address_mode(cfg: Dict[str, Any]) -> str:
     return mode if mode in _ADDRESS_MODES else "auto"
 
 
-def _pinned_url(cfg: Dict[str, Any], kind: str) -> str | None:
-    """固定档下该 kind 唯一使用的地址；auto 档或无地址 → None。"""
+def _pinned_candidates(cfg: Dict[str, Any], kind: str) -> List[str]:
+    """固定档（lan/wan）该 kind 固定条目的整组候选；auto 档/缺条目 → []。
+
+ 索引语义 = 条目（组）位置：lan=第 0 组、wan=第 1 组（不落在 URL 上，
+ 裸地址展开双候选后 URL 位置≠条目位置——X1 教训）；固定索引不存在
+ （如只配内网却固定外网）→ 回退第 0 组（与旧 _pinned_url 的 urls[0]
+ 回退同语义）。
+ """
     mode = _address_mode(cfg)
     if mode == "auto":
-        return None
-    urls = _address_list(cfg, kind)
-    if not urls:
-        return None
+        return []
+    groups = _candidate_groups(cfg, kind)
+    if not groups:
+        return []
     idx = 0 if mode == "lan" else 1
-    return urls[idx] if len(urls) > idx else urls[0]
+    return groups[idx] if len(groups) > idx else groups[0]
+
+
+def _pinned_url(cfg: Dict[str, Any], kind: str) -> str | None:
+    """固定档下该 kind 拨号链首个候选（/config/test 展示与
+ selfcheck 兼容的薄封装）；auto 档或无地址 → None。"""
+    cands = _pinned_candidates(cfg, kind)
+    return cands[0] if cands else None
 
 
 def _pinned_map(cfg: Dict[str, Any]) -> Dict[str, Optional[str]]:
@@ -411,14 +437,14 @@ def _ordered_ctl_urls(cfg: Dict[str, Any]) -> List[str]:
 
 
 def _pick_address(cfg: Dict[str, Any], kind: str) -> str:
-    """直拨单地址解析：固定档=固定地址；auto=working cache 优先、
- cache miss 回退列表首个（= 现有语义，零行为变化）。"""
+    """直拨单地址解析：固定档=固定条目组内首个候选；auto=working
+ cache 优先、cache miss 回退列表首个（= 现有语义，零行为变化）。"""
     urls = _address_list(cfg, kind)
     if not urls:
         return ""
-    pinned = _pinned_url(cfg, kind)
+    pinned = _pinned_candidates(cfg, kind)
     if pinned:
-        return pinned
+        return pinned[0]
     with _cache_lock:
         cached = _working_cache.get(kind)
     return cached if cached in urls else urls[0]
@@ -557,6 +583,8 @@ from .routers import (  # noqa: E402
     matrix_api,
     node_version_api,
     status_api,
+    storage_api,
+    sync_api,
     team_files_api,
     teams_api,
     upgrade_api,
@@ -638,6 +666,13 @@ def build_router() -> APIRouter:
     # Controller 端点 404 → 诚实降级 available=false。须在 catch-all
     # 之前，固定路径优先）。
     router.include_router(worker_plugins_api.build_worker_plugins_router())
+    # 工作区文件镜像同步域（/sync/state 只读 + /sync/run 手动触发；
+    # 引擎为同步函数，handler 内经 asyncio.to_thread 跑工作线程。
+    # 须在 catch-all 之前，固定路径优先）。
+    router.include_router(sync_api.build_sync_router())
+    # 插件存储域（聊天缓存磁盘化：/storage/chat 读写 + state/prune。
+    # 前端 chatCache 适配器唯一数据面；固定路径，须在 catch-all 之前）。
+    router.include_router(storage_api.build_storage_router())
     # catch-all 域装配最后（/{target}/{path:path} 位于该域尾部）。
     router.include_router(approval_api.build_approval_router(_kb_shared))
     # 条件请求缓存层（批次 4）：全部 GET 路由统一包 ETag/Last-Modified →

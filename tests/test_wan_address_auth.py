@@ -5,7 +5,7 @@
 - 地址条目解析（str | {url, auth?} 归一化）
 - 凭据匹配（url rstrip 口径 / 无效 auth 降级）
 - headers_with_auth（basic base64 / bearer / 无 auth 原样）
-- merge_address_entries（位置合并 / 显式降级 / *** 继承 / 空 url 丢弃）
+- merge_address_entries（位置合并 / 显式降级 / *** 继承 / 空槽占位）
 - redact（password/token 脱敏，username 保留）
 - update_config 集成（PUT 语义全链路）
 - _classify_challenge（401 三看分诊：Basic 质询 / 空 body key 门 / JSON token 拒）
@@ -136,11 +136,85 @@ def test_merge_bearer_and_clear():
     assert config_mod.merge_address_entries(old := got, new) == ["https://w"]
 
 
-def test_merge_drops_empty_url_and_old_tail():
+def test_merge_keeps_middle_empty_slot_and_drops_old_tail():
     old = ["http://a", "http://b"]
     new = ["http://a", "", "http://c"]
-    # 空 url 丢弃；旧表更长的尾部……这里 new 更长（c 无旧凭据可继承，纯 URL 保留）
-    assert config_mod.merge_address_entries(old, new) == ["http://a", "http://c"]
+    # 中间空槽保留（否则 c 会被挤到 index 1 = 外网位被别人占）；
+    # 旧表更长的尾部丢弃。
+    assert config_mod.merge_address_entries(old, new) == [
+        "http://a",
+        "",
+        "http://c",
+    ]
+
+
+# ── 空槽占位（只填外网时不得回填到内网）────────────────────────────────────
+
+
+def test_merge_wan_only_keeps_slot():
+    """只填外网 → 落库 [空内网槽, 外网]；槽位 2 不迁移到槽位 1。"""
+    new = [{"url": ""}, {"url": "https://wan"}]
+    assert config_mod.merge_address_entries([], new) == ["", "https://wan"]
+
+
+def test_merge_lan_only_compresses_tail():
+    """只填内网 → [内网]（尾空压缩，槽位 1 不变）。"""
+    new = [{"url": "https://lan"}, {"url": ""}]
+    assert config_mod.merge_address_entries([], new) == ["https://lan"]
+
+
+def test_merge_both_empty_clears():
+    new = [{"url": ""}, {"url": ""}]
+    assert config_mod.merge_address_entries(["http://a"], new) == []
+
+
+def test_update_config_wan_only_persists_placeholder_slot(tmp_config):
+    """PUT 只填外网 → 落盘 ['', 'https://wan']（外网不进内网位）。"""
+    import json
+
+    cfg = config_mod.update_config(
+        {"matrix_homeservers": [{"url": ""}, {"url": "https://wan"}]}
+    )
+    assert cfg["matrix_homeservers"] == ["", "https://wan"]
+    raw = json.loads(tmp_config.read_text(encoding="utf-8"))
+    assert raw["matrix_homeservers"] == ["", "https://wan"]
+
+
+def test_update_config_wan_auth_inherits_on_asterisk_without_slot_shift(tmp_config):
+    """外网带 basic 凭据，二次保存回传 *** → 继承旧秘密且槽位不迁移。"""
+    cfg = config_mod.update_config(
+        {
+            "controller_urls": [
+                {"url": ""},
+                {
+                    "url": "https://wan",
+                    "auth": {"type": "basic", "username": "u", "password": "p"},
+                },
+            ]
+        }
+    )
+    assert cfg["controller_urls"][0] == ""
+    assert cfg["controller_urls"][1] == {
+        "url": "https://wan",
+        "auth": {"type": "basic", "username": "u", "password": "p"},
+    }
+
+    cfg2 = config_mod.update_config(
+        {
+            "controller_urls": [
+                {"url": ""},
+                {
+                    "url": "https://wan",
+                    "auth": {"type": "basic", "username": "u", "password": "***"},
+                },
+            ]
+        }
+    )
+    assert cfg2["controller_urls"][0] == ""
+    assert cfg2["controller_urls"][1] == {
+        "url": "https://wan",
+        "auth": {"type": "basic", "username": "u", "password": "p"},
+    }
 
 
 def test_merge_invalid_auth_falls_back_to_str():
@@ -250,3 +324,13 @@ def test_update_config_with_auth_roundtrip(tmp_config):
         {"controller_urls": ["http://lan", {"url": "https://wan", "auth": {"type": "basic", "username": "u", "password": "***"}}]}
     )
     assert cfg2["controller_urls"][1]["auth"]["password"] == "p"
+
+
+def test_load_mirrors_legacy_gateway_url_to_first_non_empty(tmp_config):
+    """空槽占位下 legacy 单值镜像取首个非空条目（旧读者兼容）。"""
+    config_mod.update_config(
+        {"gateway_admin_urls": [{"url": ""}, {"url": "https://gw"}]}
+    )
+    cfg = config_mod.load_config()
+    assert cfg["gateway_admin_urls"] == ["", "https://gw"]
+    assert cfg["gateway_admin_url"] == "https://gw"

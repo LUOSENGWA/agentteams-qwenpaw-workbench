@@ -10,6 +10,7 @@ import {
   type WorkerRuntimeSkill,
 } from "../api";
 import { WbTooltip } from "./WbTooltip";
+import { DownloadIcon } from "./icons";
 import { groupWorkersByTeam } from "./SkillCenterShared";
 import type { SkillDetail } from "./SkillCenterShared";
 
@@ -36,6 +37,8 @@ export function SkillMatrix({
   onDetail,
   preloadBusy,
   togglePreload,
+  skillDlState,
+  onSkillDownload,
   savingRow,
   onSave,
   onRefresh,
@@ -58,6 +61,9 @@ export function SkillMatrix({
   onDetail: (s: SkillDetail | null) => void;
   preloadBusy: Record<string, boolean>;
   togglePreload: (workerName: string, s: WorkerRuntimeSkill, next: boolean) => void;
+  /** 目录行下载状态（SkillCenter 键控：404/405 判 gone → 隐藏；busy=拉取中）。 */
+  skillDlState: (name: string) => "ready" | "busy" | "gone";
+  onSkillDownload: (name: string) => void;
   savingRow: string;
   onSave: (worker: string) => void;
   onRefresh: () => void;
@@ -439,6 +445,36 @@ export function SkillMatrix({
                               >
                                 {tr("详情")}
                               </antd.Button>
+                              {/* 下载技能包（controller 流式 zip；鉴权在
+                          SkillCenter 侧 host.fetch 完成，不裸 <a href>）。
+                          404/405 → skillDlState=gone → 隐藏（能力降级不
+                          报错）；44px 触控区为任务书下限。 */}
+                              {skillDlState(s) !== "gone" ? (
+                                <WbTooltip
+                                  title={tr("下载技能包（zip）")}
+                                  tap={false}
+                                >
+                                  <antd.Button
+                                    size="small"
+                                    type="text"
+                                    icon={<DownloadIcon size={14} />}
+                                    loading={skillDlState(s) === "busy"}
+                                    aria-label={tr("下载")}
+                                    style={{
+                                      flexShrink: 0,
+                                      minWidth: 44,
+                                      minHeight: 44,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                    }}
+                                    onClick={(e: ReactNS.MouseEvent) => {
+                                      e.stopPropagation();
+                                      onSkillDownload(s);
+                                    }}
+                                  />
+                                </WbTooltip>
+                              ) : null}
                             </div>
                           );
                         })}

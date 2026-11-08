@@ -49,6 +49,9 @@ export interface ManageData {
   onDm?: (mxid: string, roomId?: string) => void;
   /** 运行配置 L1 只读 Alert 的「去设置」跳转。 */
   onOpenSettings?: () => void;
+  /** Dashboard 地址（config.dashboard_url）—— Worker 详情「打开 Tracing」
+   * 跳转目标；空 = 未配置 → 入口隐藏。 */
+  dashboardUrl?: string;
 }
 
 /** 四域 section 组件统一 props（nav 驱动栏内容，variant 决定角色）。 */

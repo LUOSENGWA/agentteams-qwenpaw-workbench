@@ -208,6 +208,37 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
 .wb-loop-dot.running {
   animation: wbSessionPulse 1.2s ease-in-out infinite;
 }
+/* 过程折叠条「进行中」转圈（聊天渲染第二批）：流式思考/工具期间显形。
+ 与 10/30「插件动效不受系统减少动态效果压制」的约定不同——过程条转圈
+ 是持续循环的进度指示（非一次性转场），按任务书要求尊重
+ reduced-motion：系统开启时只留静态圆环。 */
+@keyframes wbProcessSpin {
+  to { transform: rotate(360deg); }
+}
+.wb-process-spin {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(127,127,127,0.35);
+  border-top-color: var(--app-accent, #FF7F16);
+  border-radius: 50%;
+  animation: wbProcessSpin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-process-spin { animation: none; }
+}
+/* R11 语音输入：识别中的麦克风按钮红色脉冲（节奏同
+ wbSessionPulse 1.2s；不支持识别的浏览器不渲染该按钮）。 */
+@keyframes wbMicPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255,77,79,0.55); }
+  50% { opacity: 0.75; box-shadow: 0 0 0 5px rgba(255,77,79,0); }
+}
+.wb-mic-btn.listening {
+  animation: wbMicPulse 1.2s ease-in-out infinite;
+  background: rgba(255,77,79,0.10);
+}
 /* ：有待审批时侧栏 logo
  晃一次（bell shake，1.2s）；持续待批挂红点计数（静态，不循环晃）。 */
 @keyframes wbTabShake {

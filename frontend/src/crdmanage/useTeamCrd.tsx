@@ -36,6 +36,7 @@ import {
   pickLlmTuning,
   type LlmTuningRecord,
 } from "../lib/llm-tuning";
+import { modelGrantErrorText } from "../lib/modelGrantErrors";
 import { useModelCatalog } from "./useModelCatalog";
 
 const host = window.QwenPaw.host;
@@ -97,6 +98,9 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     // （agentteams-install.sh L2747 AGENTTEAMS_DEFAULT_WORKER_RUNTIME:-qwenpaw）。
     runtime: "qwenpaw",
     model: "",
+    // C1a-2 provider-first：Provider 与模型成对（""=跟随默认）；
+    // doCreateWorker 随 createWorker body 的 modelProvider 下发。
+    provider: "",
     soul: "",
     busy: false,
   });
@@ -244,24 +248,35 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
           // runtime 透传（Worker CR spec.runtime；留空=安装默认 qwenpaw）。
           runtime: nw.runtime,
           model: nw.model.trim() || undefined,
+          // C1a-2：model 只是 alias，实际转发由 modelProvider 决定；
+          // 空=省略（跟随集群默认）。
+          modelProvider: nw.provider.trim() || undefined,
           soul: nw.soul.trim() || undefined,
         });
+        // 只创建——不写回任何 Team CR（加入团队走「团队配置 → 成员」）。
         antd.message.success(
-          nw.model.trim()
-            ? tr("Worker 已创建并加入团队成员（容器数分钟就绪）")
-            : tr("Worker 已创建并加入团队成员——未配模型（跟随集群默认），请在创建自检页确认"),
+          <div style={{ lineHeight: 1.8 }}>
+            <div>{nw.model.trim() ? tr("Worker 已创建") : tr("Worker 已创建——未配模型（跟随集群默认）")}</div>
+            <div style={{ fontSize: 12 }}>{tr("加入团队请在团队配置的成员列表中操作")}</div>
+          </div>,
+          6,
         );
+        // 本地建队表加一行（仅让表格显示新 Worker；不入任何 Team CR）。
         setWorkerRows((prev) => [
           ...prev,
-          { name, role: "worker", model: nw.model.trim(), modelOrig: nw.model.trim() },
+          { name, role: "worker", model: nw.model.trim(), modelOrig: nw.model.trim(), provider: nw.provider.trim() },
         ]);
-        setNw({ name: "", runtime: "qwenpaw", model: "", soul: "", busy: false });
-        // Worker CRD 变更（加入团队成员）→ 失效
+        setNw({ name: "", runtime: "qwenpaw", model: "", soul: "", provider: "", busy: false });
+        // Worker CRD 变更（新建=独立 Worker，不入任何团队）→ 失效
         // teams/admin 缓存再刷。
         invalidateTags(["teams", "admin"]);
         onRefresh?.(true, true);
       } catch (e) {
-        antd.message.error(e instanceof Error ? e.message : tr("操作失败"));
+        // #1514：grant 错误走统一文案；其余展示后端错误文本（不吞错）。
+        antd.message.error(
+          modelGrantErrorText(e, tr) ??
+            (e instanceof Error ? e.message : tr("操作失败")),
+        );
       } finally {
         setNw((p) => ({ ...p, busy: false }));
       }
@@ -353,27 +368,34 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     const proceed = async () => {
       setTBusy(true);
       try {
-        // 新建行（mode=new）：先按行 POST /workers（body 与独立创建一致）；
-        // 任一失败 → 抛错中止，团队不创建（不做部分成功）。
+        // 新建行（mode=new）：先按行 POST /workers（body 与独立创建一致，
+        // C1a-2 含 modelProvider 成对下发）；任一失败 → 抛错中止，
+        // 团队不创建（不做部分成功）。
         for (const r of rows) {
           if (r.mode !== "new") continue;
           await createWorker({
             name: r.name.trim(),
             runtime: (r.runtime || "").trim() || "qwenpaw",
             model: (r.model || "").trim() || undefined,
+            modelProvider: (r.provider || "").trim() || undefined,
           });
         }
-        // /：既有行上填的 model/soul 先落到 Worker CR（PUT 合并语义：
-        // 只发改动/非空；Team CRD 的 workerMembers 只是引用，model/soul
-        // 只存在于 Worker CR——建团缺陷的结构性根因）。
-        // 新建行跳过：model 已随创建落库，且新建行无 SOUL（表单不显示）。
+        // /：既有行上填的 model/provider/soul 先落到 Worker CR（PUT 合并语义：
+        // 只发改动/非空；Team CRD 的 workerMembers 只是引用，model/provider/
+        // soul 只存在于 Worker CR——建团缺陷的结构性根因）。C1a-2：model 与
+        // modelProvider 成对下发（provider 按 admin 现值 diff，未改不发）。
+        // 新建行跳过：model/provider 已随创建落库，且新建行无 SOUL（表单不显示）。
         for (const r of rows) {
           if (r.mode === "new") continue;
           const m = (r.model || "").trim();
+          const p = (r.provider || "").trim();
           const s = (r.soul || "").trim();
           const cur = catalog.modelOf(r.name.trim());
+          const curP =
+            workers.find((w) => w.name === r.name.trim())?.modelProvider || "";
           const body: Record<string, unknown> = {};
           if (m && m !== cur) body.model = m;
+          if (p && p !== curP) body.modelProvider = p;
           if (s) body.soul = s;
           if (Object.keys(body).length) {
             await updateWorker(r.name.trim(), body);
@@ -496,8 +518,13 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     }
     // 网关 alias（一次性；available=false=无 Higress Console 会话，正常）
     if (!catalog.gatewayLoaded) void catalog.loadGatewayAliases();
- // 批量画笔每次开弹窗复位（不跨团队残留）。
-    setCfgBatchModel({ leader: "", workers: "" });
+ // 批量画笔每次开弹窗复位（不跨团队残留）。C1a-1：含 Provider 刷值。
+    setCfgBatchModel({
+      leader: "",
+      workers: "",
+      leaderProvider: "",
+      workersProvider: "",
+    });
   }, [catalog.modelOf, catalog.modelOpts, catalog.gatewayLoaded, catalog.loadGatewayAliases]);
 
   // 齿轮入口——拓扑 TeamNode「N人」右侧 ⚙ 点按 →
@@ -533,22 +560,35 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
     ]);
   }, []);
 
- // // 批量模型画笔——两把独立画笔（Leader 批 / Workers 批）。选中值即刷到对应
-  // 角色行的 model 字段（行内仍可按人精修，行 diff/橙框/校验态全复用），
-  // 落盘走既有「保存」链（updateTeam + 逐改动行 updateWorkerModel），
-  // 零新端点。留空=不刷。只刷有名字的行（新增空行选 Worker 时自动基线）。
+ // // 批量画笔——两把独立画笔（Leader 批 / Workers 批）。C1a-1：每把画笔
+  // Provider + 模型成对刷写到对应角色行（行内仍可按人精修，行 diff/橙框/
+  // 校验态全复用），落盘走既有「保存」链（updateTeam + 逐改动行
+  // updateWorkerModel(name, model, modelProvider)），零新端点。留空=不刷
+  // （该字段不动）。只刷有名字的行（新增空行选 Worker 时自动基线）。
   const [cfgBatchModel, setCfgBatchModel] = React.useState<{
     leader: string;
     workers: string;
-  }>({ leader: "", workers: "" });
+    leaderProvider: string;
+    workersProvider: string;
+  }>({
+    leader: "",
+    workers: "",
+    leaderProvider: "",
+    workersProvider: "",
+  });
   const applyCfgBatch = React.useCallback(
-    (kind: "leader" | "workers", value: string) => {
+    (kind: "leader" | "workers", model: string, provider: string) => {
       setCfgRows((prev) =>
         prev.map((r) => {
           if (!r.name.trim()) return r;
           const isLeader = r.role === "team_leader";
           const target = kind === "leader" ? isLeader : !isLeader;
-          return target ? { ...r, model: value } : r;
+          if (!target) return r;
+          // 成对刷写：各字段独立判断，空=该字段不改（不覆盖行内精修）。
+          const patch: Partial<WorkerRow> = {};
+          if (model) patch.model = model;
+          if (provider) patch.provider = provider;
+          return Object.keys(patch).length ? { ...r, ...patch } : r;
         }),
       );
     },
@@ -637,14 +677,17 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       try {
         await updateTeam(cfgTeam.name, body);
       // 团队保存成功后，逐个应用改动的 Worker 模型（diff：未改动不发）
+      // C1a-1：model 或 provider（画笔刷入）任一变更=改动行；
+      // provider 空=不改（PUT 合并语义：undefined 不下发）。
       const changed = cfgRows.filter((r) => {
         const m = (r.model || "").trim();
-        return r.name.trim() && m && m !== (r.modelOrig ?? "");
+        const p = (r.provider || "").trim();
+        return r.name.trim() && ((m && m !== (r.modelOrig ?? "")) || p);
       });
       let okCount = 0;
       for (const r of changed) {
         try {
-          await updateWorkerModel(r.name.trim(), (r.model || "").trim());
+          await updateWorkerModel(r.name.trim(), (r.model || "").trim(), (r.provider || "").trim() || undefined);
           okCount += 1;
         } catch (we) {
           antd.message.error(

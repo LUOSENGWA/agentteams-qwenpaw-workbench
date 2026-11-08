@@ -246,6 +246,9 @@ export const upgradeDict: Record<string, { en: string }> = {
   "以下为该 CLI 完整设置表单（字段目录驱动）——未设置项显示为空态，只有你改动并保存的项才写入配置文件；未列出的高级字段用下方 JSON 补丁补充。": {
     en: "Full settings form for this CLI (field-catalog driven) — unset fields show as empty states; only fields you change and save are written to the config file; use the JSON patch below for advanced fields not listed.",
   },
+  "QwenCode 语音/转写模型（写入顶层 voiceModel）；留空=使用 CLI 默认，从未设置过则不写盘。": {
+    en: "QwenCode voice/transcription model (written as the top-level voiceModel); empty = use the CLI default — a field that was never set is not written to disk.",
+  },
   // ── 15.36 B：运行时升级·版本选择 + 兼容性本地判断（单 worker + 批量共用）──
   "选择目标版本": { en: "Select target version" },
   "已是当前版本": { en: "Already at this version" },

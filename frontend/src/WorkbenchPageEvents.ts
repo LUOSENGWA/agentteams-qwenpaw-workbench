@@ -8,6 +8,10 @@ import {
   type TeamRoom,
 } from "./api";
 import { mergeForward } from "./roomHistory";
+import {
+  CHAT_CACHE_DEFAULT_ACCOUNT,
+  putMessages as putCachedMessages,
+} from "./lib/chatCache";
 import { createPoller, type Poller } from "./usePoller";
 import { usePendingStore } from "./pending/store";
 import { attentionPendingKind, parseAttentionMessage } from "./pending/parse";
@@ -27,10 +31,16 @@ export interface WorkbenchPageEventsCtx {
   setRooms: React.Dispatch<React.SetStateAction<TeamRoom[]>>;
   messagesRef: React.MutableRefObject<RoomMessage[]>;
   setMessages: React.Dispatch<React.SetStateAction<RoomMessage[]>>;
+  /** 当前 Matrix 账号（config.matrix.user_id）——本地消息缓存的账号键。 */
+  matrixUserId?: string;
 }
 
 export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
-  const { tab, activeRoom, pollMessages, markCurrentRead, refreshRooms, refreshWorkflow, setRooms, messagesRef, setMessages } = ctx;
+  const { tab, activeRoom, pollMessages, markCurrentRead, refreshRooms, refreshWorkflow, setRooms, messagesRef, setMessages, matrixUserId } = ctx;
+  const cacheAccount = matrixUserId || CHAT_CACHE_DEFAULT_ACCOUNT;
+  // SSE effect deps=[] 一次连接 → 账号走 ref（登录/切账号后即取最新）。
+  const cacheAccountRef = React.useRef(cacheAccount);
+  cacheAccountRef.current = cacheAccount;
 
   // P0 人工介入闭环：SSE room_message（任意房间）→ pending store。
   // SSE effect deps=[] 一次连接——闭包走 ref 取最新 store。
@@ -409,6 +419,8 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
                         origin_server_ts: Number(evp.ts || Date.now()),
                       };
                       setMessages((prev) => mergeForward(prev, [incoming]));
+                      // 本地持久缓存：增量落盘（切回房间首帧即含该条）。
+                      void putCachedMessages(cacheAccountRef.current, rid, [incoming]);
                     }
                     // 正在看的房间来了新消息 → 回执（与 pollMessages 同款）。
                     void markCurrentRead(rid, evId);
@@ -424,13 +436,16 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
                   // 列表预览/未读由 room_list_update 增量覆盖。
                   // 只更新打开过的房间（appendCachedMessage 内部门控）。
                   if (evp && evId && evp.msgtype === "m.text" && !evp.relates_to) {
-                    appendCachedMessage(rid, {
+                    const incoming: RoomMessage = {
                       event_id: evId,
                       sender: String(evp.sender || ""),
                       body: String(evp.body || ""),
                       msgtype: "m.text",
                       origin_server_ts: Number(evp.ts || Date.now()),
-                    });
+                    };
+                    appendCachedMessage(rid, incoming);
+                    // 本地持久缓存：非活动房间也增量落盘（离线可读）。
+                    void putCachedMessages(cacheAccountRef.current, rid, [incoming]);
                   }
                 }
  // 任意房间来消息 → 递增 chatsTick → 打开的头像会话窗立即刷新

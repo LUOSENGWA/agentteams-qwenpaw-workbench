@@ -103,8 +103,9 @@ function removePath(obj: SettingsObject, path: string[]): void {
 
 /** 15.30：剥离 patch 里"用户没填的可选字段空串"——base 该处非空=用户主动
  * 清空（保留 ""=清除语义）；base 该处无值/空=seed 预填的可选字段留空
- * （不写空串，配置保持干净）。对象递归下钻，深度对齐 base。 */
-function stripEmptyLeavesNotInBase(
+ * （不写空串，配置保持干净）。对象递归下钻，深度对齐 base。
+ * 16.141：导出供单测（语音字段「留空不写盘」语义门）。 */
+export function stripEmptyLeavesNotInBase(
   patch: SettingsObject,
   base: SettingsObject,
 ): SettingsObject {
@@ -799,11 +800,16 @@ export function SettingsTreeEditor({
                 : section.zh
               : k;
             const skipName = modelRowEnabled && k === "model";
-            const open = sectionOpen[k] ?? hasContentValue(draft[k]);
+            // 16.141：语音分组（顶层 voiceModel）——目录里有该键即默认展开，
+            // 否则空态（文件未设置）会被「空分区收起」规则藏起来，用户找不到
+            // 入口。其余分组仍是「有内容才展开」。
+            const voiceSpec = k === "voiceModel" ? catalog?.voiceModel : undefined;
+            const defaultOpen = !!voiceSpec || hasContentValue(draft[k]);
+            const open = sectionOpen[k] ?? defaultOpen;
             const toggle = () =>
               setSectionOpen((p) => ({
                 ...p,
-                [k]: !(p[k] ?? hasContentValue(draft[k])),
+                [k]: !(p[k] ?? defaultOpen),
               }));
             const pairs = collectLeafPairs(v, skipName ? "name" : undefined);
             const secDirty =
@@ -913,7 +919,50 @@ export function SettingsTreeEditor({
                         {tr("modelProviders 由 Higress 网关管理，默认跟 Worker——一般无需在此配置；已有路由仍可在下方查看/调整。")}
                       </span>
                     ) : null}
-                    {renderNode(v, [k], skipName ? "name" : undefined)}
+                    {/* 16.141：语音分组——字段标签 + 说明行（顶层标量分区
+                     * 原本只有控件、标签即卡头；语音卡头是「语音（Voice）」，
+                     * 字段名须单独标出，且与 vision/image 分区不混排）。 */}
+                    {voiceSpec ? (
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <span style={{ fontSize: 11, color: t.textSecondary }}>
+                          {tr("QwenCode 语音/转写模型（写入顶层 voiceModel）；留空=使用 CLI 默认，从未设置过则不写盘。")}
+                        </span>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px 8px",
+                            flexWrap: "wrap",
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              flex: "0 1 auto",
+                              minWidth: 0,
+                              fontSize: 11,
+                              color: t.textSecondary,
+                              lineHeight: 1.35,
+                              display: "grid",
+                            }}
+                          >
+                            {specLabel(voiceSpec)}
+                            <span
+                              style={{
+                                fontFamily: "monospace",
+                                fontSize: 10,
+                                opacity: 0.7,
+                              }}
+                            >
+                              voiceModel
+                            </span>
+                          </span>
+                          {renderNode(v, [k])}
+                        </div>
+                      </div>
+                    ) : (
+                      renderNode(v, [k], skipName ? "name" : undefined)
+                    )}
                   </div>
                 ) : null}
               </div>

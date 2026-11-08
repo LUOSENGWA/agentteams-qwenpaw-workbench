@@ -133,6 +133,21 @@ export function ConnRow({
       <div
         onClick={row.diag ? () => setOpen(!open) : undefined}
         title={row.diag ? tr("详情") : undefined}
+        // R4 a11y：有诊断详情时整行可点（原裸 div 键盘不可达）——补按钮语义 +
+        // 回车/空格等价切换；无 diag 的行保持纯展示（不挂交互属性）。
+        role={row.diag ? "button" : undefined}
+        tabIndex={row.diag ? 0 : undefined}
+        aria-expanded={row.diag ? open : undefined}
+        onKeyDown={
+          row.diag
+            ? (e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setOpen((v) => !v);
+                }
+              }
+            : undefined
+        }
         style={{
           display: "flex",
           alignItems: "baseline",
@@ -233,6 +248,7 @@ export function StartupPrefRow() {
       </div>
       <antd.Segmented
         value={pref}
+        aria-label={tr("启动页")}
         onChange={(v: string | number) => apply(v as "last" | "home")}
         options={[
           { label: tr("上次打开的页面"), value: "last" },
@@ -343,6 +359,7 @@ export function AddrAuthEditor({
           size="small"
           value={value.type}
           disabled={disabled}
+          aria-label={tr("地址认证方式")}
           // 换类型=新类型无已存凭据（stored 清零，
           // 防把 A 类型的 stored 标记误带到 B 类型触发 *** 继承）。
           onChange={(t: "none" | "basic" | "bearer") =>
@@ -365,6 +382,7 @@ export function AddrAuthEditor({
           <antd.Input
             size="small"
             placeholder={tr("用户名（与网关一致）")}
+            aria-label={tr("用户名（与网关一致）")}
             value={value.username}
             disabled={disabled}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -379,6 +397,7 @@ export function AddrAuthEditor({
             placeholder={tr(
               value.stored ? "密码（已保存 · 留空保持不变）" : "密码（与网关一致）",
             )}
+            aria-label={tr("密码（与网关一致）")}
             value={value.password}
             disabled={disabled}
             onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>
@@ -394,6 +413,7 @@ export function AddrAuthEditor({
           placeholder={tr(
             value.stored ? "API Key（已保存 · 留空保持不变）" : "API Key（Bearer token）",
           )}
+          aria-label={tr("API Key（Bearer token）")}
           value={value.token}
           disabled={disabled}
           onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) =>

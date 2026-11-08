@@ -116,7 +116,9 @@ export const millforgeDict: Record<string, { en: string }> = {
   "全部成功": { en: "all succeeded" },
   // ── C 对话框 + 历史 ──
   "千锻注入": { en: "Millforge inject" },
+  "注入": { en: "Inject" },
   "自定义团队": { en: "Custom team" },
+  "注入历史": { en: "Injection history" },
   "注入历史（最近 50 条）": { en: "Injection history (last 50)" },
   "（暂无注入记录）": { en: "(no injection records yet)" },
   "整体": { en: "overall" },
@@ -174,5 +176,18 @@ export const millforgeDict: Record<string, { en: string }> = {
   "core 技能：失败": { en: "core skill: failed" },
   "可不预览——提交建队时自动编译 → 注入 → 创建": {
     en: "Preview optional — submitting team creation auto-runs compile → inject → create",
+  },
+  // ── D QwenPaw × QwenCode 桥（CodingCLI 卡内联安装/更新栏）──
+  "QwenPaw × QwenCode 桥": { en: "QwenPaw × QwenCode bridge" },
+  "可更新": { en: "Update available" },
+  "不可用": { en: "Unavailable" },
+  "选择版本": { en: "Select version" },
+  "该频道暂无版本": { en: "No releases in this channel" },
+  "该频道无更新": { en: "No update in this channel" },
+  "降级": { en: "Downgrade" },
+  "已更新到 {v}": { en: "Updated to {v}" },
+  "已安装 {v}": { en: "Installed {v}" },
+  "控制器不支持插件列表（无法检测已装版本）": {
+    en: "The controller does not expose the plugin list (installed version unknown)",
   },
 };

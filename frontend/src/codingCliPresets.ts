@@ -96,7 +96,9 @@ export const FIELD_CATALOG: Record<CodingCliId, Record<string, FieldSpec>> = {
     "compactionModel": { zh: "压缩模型", en: "Compaction model", type: "text" },
     "imageModel": { zh: "图像模型", en: "Image model", type: "text" },
     "visionBridgeTimeoutMs": { zh: "视觉桥超时（ms）", en: "Vision bridge timeout (ms)", type: "number" },
-    "voiceModel": { zh: "语音模型", en: "Voice model", type: "text" },
+    // 16.141：语音独立分组（见 SECTION_LABELS.voiceModel）——placeholder
+    // 「留空使用 CLI 默认」，不与 vision/image 混排。
+    "voiceModel": { zh: "语音模型", en: "Voice model", type: "text", hint: "留空使用 CLI 默认" },
     // ── context
     "context.fileName": { zh: "上下文文件名", en: "Context file name", type: "text" },
     "context.autoCompactThreshold": { zh: "自动压缩阈值（0-1）", en: "Auto-compact threshold (0-1)", type: "number" },
@@ -260,7 +262,8 @@ export const SECTION_LABELS: Record<string, { zh: string; en: string }> = {
   visionModel: { zh: "视觉模型", en: "Vision model" },
   compactionModel: { zh: "压缩模型", en: "Compaction model" },
   imageModel: { zh: "图像模型", en: "Image model" },
-  voiceModel: { zh: "语音模型", en: "Voice model" },
+  // 16.141：语音分组是独立卡片（字段标签见 FIELD_CATALOG.voiceModel）。
+  voiceModel: { zh: "语音（Voice）", en: "Voice" },
   context: { zh: "上下文（Context）", en: "Context" },
   tools: { zh: "工具（Tools）", en: "Tools" },
   goals: { zh: "目标（Goals）", en: "Goals" },

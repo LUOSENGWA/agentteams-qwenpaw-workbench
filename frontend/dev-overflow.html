@@ -155,7 +155,6 @@
     return origFetch(url, opts);
   };
 
-  const { default: CrdManage } = await import("./src/components/CrdManage");
   const { ManagerTable } = await import("./src/components/WorkerManage");
   const root = createRoot(document.getElementById("root"));
   root.render(
@@ -163,11 +162,6 @@
       "div",
       { className: "wb-main" },
       React.createElement("div", { className: "wb-content" },
-        React.createElement(CrdManage, {
-          admin: { workers, teams, humans, managers },
-          onRefresh: () => {},
-          l1TokenMode: false,
-        }),
         React.createElement(ManagerTable, {
           managers,
           usedModels: managers.map((m) => m.model || ""),

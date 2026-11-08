@@ -38,14 +38,16 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
     setMapping,
     createRows,
     setCreateRows,
-    coreSkill,
-    setCoreSkill,
     applySoul,
     setApplySoul,
     injecting,
     injectError,
     injectResult,
     doInject,
+    soulConflicts,
+    confirmSoulOverwrite,
+    cancelSoulOverwrite,
+    rollbackSoul,
   } = core;
 
   if (!build) return null;
@@ -57,7 +59,11 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
   }));
 
   const entryTag = (status: string, verified?: boolean) =>
-    status === "ok" ? (
+    status === "unchanged" ? (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#8c8c8c" }}>
+        {tr("无变化（已跳过）")}
+      </span>
+    ) : status === "ok" ? (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#52c41a" }}>
         <CheckIcon size={11} /> {tr("成功")}{verified ? `（${tr("读回验证")}）` : ""}
       </span>
@@ -160,16 +166,16 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
         </div>
       )}
 
-      {/* core skill / apply soul 开关 */}
+      {/* 注入内容：仅 SOUL。AgentTeams 1.2.6 起 millforge-core 已集成在 TeamHarness，
+          不再单独打包/注入 core 技能。 */}
       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <antd.Space size={4}>
-          <antd.Checkbox checked={coreSkill} onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setCoreSkill(e.target.checked)} />
-          <span style={{ fontSize: 12 }}>{tr("core 技能打包（millforge-core，scope=team）")}</span>
-        </antd.Space>
         <antd.Space size={4}>
           <antd.Checkbox checked={applySoul} onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setApplySoul(e.target.checked)} />
           <span style={{ fontSize: 12 }}>{tr("写入 SOUL（mapping/新建行）")}</span>
         </antd.Space>
+        <span style={{ fontSize: 11, color: t.textSecondary }}>
+          {tr("core 技能已由 TeamHarness 提供（AgentTeams 1.2.6+），注入只写 SOUL")}
+        </span>
       </div>
 
       {!budgetAllOk ? (
@@ -200,6 +206,50 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
         <antd.Alert type="error" showIcon message={tr("注入失败")} description={<span style={{ fontSize: 12, fontFamily: "monospace" }}>{injectError}</span>} />
       ) : null}
 
+      {/* SOUL 冲突确认：现有内容与 build 不同 → 必须显式确认才覆盖 */}
+      <antd.Modal
+        open={!!soulConflicts}
+        title={tr("现有 SOUL 将被覆盖")}
+        okText={tr("覆盖并注入")}
+        cancelText={tr("取消")}
+        okButtonProps={{ danger: true }}
+        onOk={() => void confirmSoulOverwrite()}
+        onCancel={cancelSoulOverwrite}
+        destroyOnClose
+      >
+        <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
+          <span>
+            {tr("以下 Worker 已有内容不同的 SOUL。确认后将整体覆盖（覆盖前会留底，可在结果里回滚）：")}
+          </span>
+          <antd.Table
+            size="small"
+            pagination={false}
+            rowKey={(r: { worker: string }) => r.worker}
+            dataSource={soulConflicts || []}
+            columns={[
+              { title: tr("Worker"), dataIndex: "worker", width: 140, ellipsis: true },
+              { title: tr("角色"), dataIndex: "role_id", width: 80, ellipsis: true },
+              {
+                title: tr("现有来源"),
+                dataIndex: "prev_provenance",
+                width: 120,
+                render: (v?: Record<string, string | boolean>) =>
+                  v && v.millforge ? `${tr("千锻")} ${String(v.build || v.instance_fp || "").slice(0, 10)}` : tr("手工/未知"),
+              },
+              { title: tr("现有长度"), dataIndex: "prev_len", width: 80 },
+              {
+                title: tr("现有摘要"),
+                dataIndex: "prev_head",
+                ellipsis: true,
+                render: (v?: string) => <span style={{ fontFamily: "monospace", fontSize: 11 }}>{v || "—"}</span>,
+              },
+            ]}
+            locale={{ emptyText: "—" }}
+          />
+        </div>
+      </antd.Modal>
+
+      {/* core skill 已退役说明（1.2.6 起由 TeamHarness 提供） */}
       {/* 结果表（逐 worker 状态） */}
       {injectResult ? (
         <div style={{ display: "grid", gap: 4 }}>
@@ -224,6 +274,8 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
                 status: s.status,
                 error: s.error || "",
                 verified: s.verified,
+                mode: s.mode || "",
+                prev_sha256: s.prev_sha256 || "",
               })),
               ...injectResult.created.map((c) => ({
                 target: c.name || "—",
@@ -232,6 +284,8 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
                 status: c.status,
                 error: c.error || "",
                 verified: c.verified,
+                mode: c.mode || "",
+                prev_sha256: c.prev_sha256 || "",
               })),
             ]}
             columns={[
@@ -245,11 +299,39 @@ export default function MillforgeInjectPanel({ core, workers, teamName, embedded
                 render: (v: string, r: { verified?: boolean }) => entryTag(v, r.verified),
               },
               {
+                title: tr("方式"),
+                dataIndex: "mode",
+                width: 80,
+                render: (v: string) =>
+                  v === "overwrite" ? tr("覆盖") : v === "unchanged" ? tr("跳过") : v === "rollback" ? tr("回滚") : v === "apply" ? tr("写入") : "—",
+              },
+              {
                 title: tr("错误"),
                 dataIndex: "error",
                 render: (v: string) =>
                   v ? (
                     <span style={{ fontSize: 11, fontFamily: "monospace", color: "#f5222d", wordBreak: "break-all" }}>{v}</span>
+                  ) : (
+                    "—"
+                  ),
+              },
+              {
+                title: tr("操作"),
+                dataIndex: "prev_sha256",
+                width: 80,
+                render: (v: string, r: { target: string; mode: string }) =>
+                  v && r.mode === "overwrite" ? (
+                    <antd.Button
+                      size="small"
+                      type="link"
+                      style={{ padding: 0 }}
+                      onClick={async () => {
+                        const ok = await rollbackSoul(r.target);
+                        if (ok) antd.message.success(tr("已回滚 {name} 的 SOUL", { name: r.target }));
+                      }}
+                    >
+                      {tr("回滚")}
+                    </antd.Button>
                   ) : (
                     "—"
                   ),

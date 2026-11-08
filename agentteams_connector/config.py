@@ -466,6 +466,8 @@ def load_config() -> Dict[str, Any]:
             # 控制台特效三档（落盘值须重载保留）。
             "console_effects",
             "console_session",
+            # Dashboard 地址（Tracing 跳转目标；落盘值须重载保留）。
+            "dashboard_url",
             "sglang",
             "matrix",
             "address_mode",
@@ -491,8 +493,15 @@ def load_config() -> Dict[str, Any]:
             if legacy_gw:
                 merged["gateway_admin_urls"] = [legacy_gw]
         elif merged.get("gateway_admin_urls"):
-            merged["gateway_admin_url"] = (
-                address_url(merged["gateway_admin_urls"][0]) or ""
+            # 列表可含空槽占位（内网未填，见 merge_address_entries）——
+            # legacy 单值取首个非空条目，与空槽引入前口径一致。
+            merged["gateway_admin_url"] = next(
+                (
+                    address_url(e)
+                    for e in merged["gateway_admin_urls"]
+                    if address_url(e)
+                ),
+                "",
             )
         # Legacy schema migration (v0.1.0 profiles) → auto-failover lists.
         if not merged["matrix_homeservers"] and isinstance(raw.get("profiles"), dict):
@@ -650,6 +659,9 @@ def update_config(
         val = patch["address_mode"].strip()
         if val:
             merged["address_mode"] = val if val in ("auto", "lan", "wan") else "auto"
+    # Dashboard 地址（非秘密；空串=清空 → Worker 详情「打开 Tracing」入口隐藏）。
+    if "dashboard_url" in patch and isinstance(patch["dashboard_url"], str):
+        merged["dashboard_url"] = patch["dashboard_url"].strip()
     if "sglang" in patch and isinstance(patch["sglang"], dict):
         existing = merged.get("sglang") or {}
         incoming = dict(patch["sglang"])

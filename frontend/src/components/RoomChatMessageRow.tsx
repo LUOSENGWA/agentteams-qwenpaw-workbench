@@ -10,35 +10,32 @@ import {
 } from "../api";
 import WorkerSessionDot from "./WorkerSessionDot";
 import { type WorkerSessionState } from "../workerSessionState";
-import { WbTooltip } from "./WbTooltip";
 import {
   PRIMARY,
   TOUCH_ONLY,
   senderShortName,
   formatTime,
-  dateLabel,
 } from "./RoomChatShared";
 import {
   ReplyBannerMemo,
   ReactionChips,
-  SenderAvatarMemo,
   BubbleBoundary,
   MessageBodyMemo,
 } from "./RoomChatBubbles";
+import {
+  TurnHeader,
+  ChatDatePill,
+  ChatUnreadLine,
+} from "./RoomChatTurnParts";
 import RoomChatMessageToolbar from "./RoomChatMessageToolbar";
 import { ThreadIcon } from "./RoomChatThread";
+import { MediaViewer } from "./MediaViewer";
+import { collectGallery, type GalleryItem } from "../lib/mediaGallery";
 import type { ThemeColors } from "../theme";
 
 const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
-// 宿主 antdIcons 可能非全量（部署版 vs SC main 差异）——缺图标降级为空组件，
-// 避免 React #130（undefined 组件）拖垮聊天室（同 RoomChatBubbles/Composer 模式）。
-const icons = (host.antdIcons || {}) as Record<string, ReactNS.ComponentType>;
-const EmptyIcon = (() => null) as unknown as ReactNS.FC<Record<string, unknown>>;
-const icon = (name: string): ReactNS.FC<Record<string, unknown>> =>
-  (icons[name] as ReactNS.FC<Record<string, unknown>>) || EmptyIcon;
-const LoadingOutlined = icon("LoadingOutlined");
 
 export interface RoomChatMessageRowProps {
   msg: RoomMessage;
@@ -50,6 +47,10 @@ export interface RoomChatMessageRowProps {
   sameSender: boolean;
   unreadLine: boolean;
   absorbedTool: boolean;
+  /** 思考过程 notice（isThinkingNotice）：正文已并入过程折叠条，行只留锚点。 */
+  absorbedThinking?: boolean;
+  /** 结构化运行时块（无 text 块）：内容已由过程条/卡片承载，行只留锚点。 */
+  absorbedBlocks?: boolean;
   mine: boolean;
   /** hoveredId === msg.event_id（调用方算好——memo 浅比较对 boolean 友好）。 */
   hovered: boolean;
@@ -101,6 +102,8 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
     sameSender,
     unreadLine,
     absorbedTool,
+    absorbedThinking,
+    absorbedBlocks,
     mine,
     hovered,
     showTime,
@@ -141,63 +144,31 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
   const live = msg.workflow?.runId
     ? (liveByRunId.get(msg.workflow.runId) ?? null)
     : null;
+  // 图片灯箱：点开时按 current visibleMessages 现场算「同发送者连续图片」
+  // 画廊（快照保存）——之后轮询追加消息不会把已打开的画廊序列改掉。
+  const [viewer, setViewer] = React.useState<{
+    items: GalleryItem[];
+    index: number;
+  } | null>(null);
+  const openMedia = React.useCallback(
+    (eventId: string) => {
+      const gallery = collectGallery(visibleMessages, eventId);
+      if (gallery) setViewer(gallery);
+    },
+    [visibleMessages],
+  );
+  const closeViewer = React.useCallback(() => setViewer(null), []);
+  const changeViewerIndex = React.useCallback((index: number) => {
+    setViewer((prev) => (prev ? { ...prev, index } : prev));
+  }, []);
 
   return (
     <div>
-      {unreadLine ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            margin: "10px 0",
-          }}
-        >
-          <div
-            style={{
-              flex: 1,
-              borderTop: `1px solid ${PRIMARY}`,
-              opacity: 0.5,
-            }}
-          />
-          <span style={{ fontSize: 12, color: PRIMARY }}>
-            {tr("以下为新消息")}
-          </span>
-          <div
-            style={{
-              flex: 1,
-              borderTop: `1px solid ${PRIMARY}`,
-              opacity: 0.5,
-            }}
-          />
-        </div>
-      ) : null}
+      {unreadLine ? <ChatUnreadLine tr={tr} /> : null}
       {/* 日期分隔 Element 同款居中胶囊
 （旧 antd.Divider 通栏线太散，与扁平消息行不搭）。 */}
-      {sep ? (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            margin: "14px 0 10px",
-          }}
-        >
-          <span
-            style={{
-              fontSize: 12,
-              color: t.textSecondary,
-              background: t.cardBg,
-              border: `1px solid ${t.border}`,
-              borderRadius: 12,
-              padding: "2px 12px",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {dateLabel(msg.origin_server_ts, tr)}
-          </span>
-        </div>
-      ) : null}
-      {absorbedTool ? (
+      {sep ? <ChatDatePill ts={msg.origin_server_ts} t={t} tr={tr} /> : null}
+      {absorbedTool || absorbedThinking || absorbedBlocks ? (
         <div data-event-id={msg.event_id} />
       ) : (
         // 触屏 tap 切换操作条挂在行上（原内层气泡容器 onClick 上移——
@@ -261,67 +232,21 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
                 </span>
               </div>
             ) : (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: t.textSecondary,
-                  marginBottom: 2,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <SenderAvatarMemo
-                  mxid={msg.sender}
-                  room={room}
-                  myUserId={myUserId}
-                  onMention={insertMention}
-                  onDm={onDm}
-                  workerName={memberWorkerNames?.[msg.sender]}
-                  workerRuntime={workerRuntimeByMxid?.[msg.sender]}
-                  onDetail={openDetailMxid}
-                  // （灯在头像角落，不再名字旁）：
-                  // Worker byMxid 派生（心跳优先），人类无映射 → 不显。
-                  sessionState={workerSessionByMxid?.[msg.sender]}
-                  onOpenChats={onOpenWorkerChats}
-                />
-                {senderShortName(msg.sender, room)}
-                <span
-                  style={{
-                    opacity: showTime ? 1 : 0,
-                    transition: "opacity 0.15s",
-                  }}
-                >
-                  {formatTime(msg.origin_server_ts)}
-                </span>
-                {msg.pending ? (
-                  <WbTooltip title={tr("发送中…")}>
-                    <span
-                      style={{
-                        color: t.textSecondary,
-                        fontSize: 12,
-                        display: "inline-flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <LoadingOutlined spin />
-                    </span>
-                  </WbTooltip>
-                ) : null}
-                {msg.failed ? (
-                  <WbTooltip title={tr("发送失败")}>
-                    <span
-                      style={{
-                        color: "#f5222d",
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      !
-                    </span>
-                  </WbTooltip>
-                ) : null}
-              </div>
+              <TurnHeader
+                msg={msg}
+                room={room}
+                myUserId={myUserId}
+                t={t}
+                tr={tr}
+                showTime={showTime}
+                workerSessionByMxid={workerSessionByMxid}
+                memberWorkerNames={memberWorkerNames}
+                workerRuntimeByMxid={workerRuntimeByMxid}
+                insertMention={insertMention}
+                openDetailMxid={openDetailMxid}
+                onDm={onDm}
+                onOpenWorkerChats={onOpenWorkerChats}
+              />
             )}
             {msg.reply?.event_id ? (
               <ReplyBannerMemo
@@ -366,6 +291,7 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
                   live={live}
                   fileRefTeam={teamName}
                   room={room ?? null}
+                  onOpenMedia={openMedia}
                 />
               </BubbleBoundary>
               <ReactionChips
@@ -480,6 +406,15 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
             </span>
           </div>
         </div>
+      ) : null}
+      {/* 应用内灯箱（portal 到 body）：行卸载即关闭，不影响消息流。 */}
+      {viewer ? (
+        <MediaViewer
+          items={viewer.items}
+          index={viewer.index}
+          onClose={closeViewer}
+          onIndexChange={changeViewerIndex}
+        />
       ) : null}
     </div>
   );

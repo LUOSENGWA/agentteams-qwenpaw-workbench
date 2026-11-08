@@ -14,6 +14,12 @@ import type { CodingRun } from "./upgrade";
 // 502=容器不可达 / 403=写拒绝（整面只读）/ 404=端点不存在（旧版）。
 export type CodingCliId = "qwen-code" | "opencode" | "qoder";
 
+/** 模型形态标志：qwen-code = 对象 {name, baseUrl?}（有 provider 维度）；
+ * opencode / qoder = 扁平字符串（无 provider 维度）。 */
+export function objectModel(cli: CodingCliId): boolean {
+  return cli === "qwen-code";
+}
+
 export interface CodingCliProbeItem {
   cli: CodingCliId;
   installed: boolean;

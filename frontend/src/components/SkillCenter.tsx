@@ -35,12 +35,17 @@ import {
   updateWorker,
   fetchSkillCatalog,
   fetchWorkerSkills,
+  fetchWorkerDetail,
   setWorkerSkillPreload,
   httpErrorStatus,
   uploadTeamSkill,
+  downloadSkill,
+  isSkillDownloadUnavailable,
+  skillDownloadKey,
 } from "../api";
 import { strToU8, zipSync } from "fflate";
 import { invalidateTags } from "../requestCache";
+import { mergeSkillList, mergeMcpList, canWrite } from "../lib/workerDetailGate";
 import { BoltIcon } from "./icons";
 import { WbTooltip } from "./WbTooltip";
 import { useWbViewport } from "../WbViewportContext";
@@ -52,6 +57,20 @@ import { UploadSkillModal, SkillDetailModal } from "./SkillCenterModals";
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 const antd = host.antd;
+
+/** 下载保存：Blob → object URL → a.click（与 WorkerWorkspaceFilesPanel
+ * triggerDownload 同范式——鉴权已在前端 fetch 完成，锚点只触发本地保存，
+ * 不指向任何远端 URL）。 */
+function triggerSkillSave(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
 
 
 /**
@@ -155,6 +174,60 @@ export default function SkillCenter({
     // matByWorker 不入 deps（cur 判断用函数式 setState 兜底竞态）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedWorker]);
+  // #1477 写前读 detail：列表已投影（fields=spec,status）不含 skills/mcpServers
+  // → 展开某 Worker 编辑区才取 detail GET /workers/{name}（15s 缓存，不预取、
+  // 不 N+1）。ready → 矩阵/基线/MCP 用 detail 值（替换投影空值）；error →
+  // 记 err（写控件由 gate 阻断，禁列表行兜底），收起再展开或 onRefresh 可重试。
+  const [detailByWorker, setDetailByWorker] = React.useState<
+    Record<string, WorkerInfo | "loading" | "err">
+  >({});
+  // detail ready 后正源切换：矩阵/基线/MCP 用 detail 值（替换投影空值）。
+  const applyWorkerDetail = React.useCallback((name: string, d: WorkerInfo) => {
+    setDetailByWorker((prev) => ({ ...prev, [name]: d }));
+    setMatrix((prev) => ({ ...prev, [name]: [...(d.skills || [])] }));
+    setBaseMatrix((prev) => ({ ...prev, [name]: [...(d.skills || [])] }));
+    setMcpMap((prev) => ({ ...prev, [name]: [...(d.mcpServers || [])] }));
+  }, []);
+  React.useEffect(() => {
+    if (!expandedWorker) return;
+    const cur = detailByWorker[expandedWorker];
+    if (cur !== undefined && cur !== "err") return; // 已加载/拉取中；err=可重试
+    const name = expandedWorker;
+    setDetailByWorker((prev) =>
+      prev[name] === undefined ? { ...prev, [name]: "loading" } : prev,
+    );
+    let dead = false;
+    void fetchWorkerDetail(name)
+      .then((d) => {
+        if (!dead) applyWorkerDetail(name, d);
+      })
+      .catch(() => {
+        if (dead) return;
+        setDetailByWorker((prev) => ({ ...prev, [name]: "err" }));
+      });
+    return () => {
+      dead = true;
+    };
+    // detailByWorker 不入 deps（cur 判断用函数式 setState 兜底竞态，同物化层）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedWorker, applyWorkerDetail]);
+  // #1477 写门（纯状态判定，canWrite 仅 ready 放行）：detail 未就绪 →
+  // 写控件逻辑禁用（数据层阻断；UI disabled 受子组件 props 所限不渲染）。
+  const detailGateReady = React.useCallback(
+    (worker: string): boolean => {
+      const d = detailByWorker[worker];
+      return canWrite(
+        d === undefined
+          ? "idle"
+          : d === "loading"
+            ? "loading"
+            : d === "err"
+              ? "error"
+              : "ready",
+      );
+    },
+    [detailByWorker],
+  );
   // // 物化层 per-skill 预加载开关——PUT /workers/{name}/skills/{skill}/preload。
   // 语义：技能全文常驻该 Worker 每个 session 的 system prompt（QwenPaw
   // 2.2.1+ 的 always-on 能力，有 per-session token 成本；worker 侧验证 +
@@ -211,6 +284,53 @@ export default function SkillCenter({
       }
     },
     [tr],
+  );
+  // ── 技能包下载（目录行动作；GET /api/v1/skills/{name}/download 流式 zip）──
+  // team 作用域与目录取数同源（loadCatalog 同表达式）：onlyTeam 优先，
+  // 其次 L2 当前团队；L1 全量视图无 team → controller 取全局（shared）
+  // 前缀，builtin/团队层技能 404 → 该行隐藏下载（能力降级，非故障）。
+  const dlTeamScope = onlyTeam || (l2 ? l2Team || undefined : undefined);
+  // 按「作用域×技能名」键控：404/405 = 当前作用域无此下载 → gone（隐藏，
+  // 不弹错）；busy = 拉取中（防重复点击）。
+  const [dlBusy, setDlBusy] = React.useState<Record<string, boolean>>({});
+  const [dlGone, setDlGone] = React.useState<Record<string, true>>({});
+  const skillDlState = React.useCallback(
+    (name: string): "ready" | "busy" | "gone" => {
+      const key = skillDownloadKey(dlTeamScope, name);
+      if (dlGone[key]) return "gone";
+      if (dlBusy[key]) return "busy";
+      return "ready";
+    },
+    [dlTeamScope, dlBusy, dlGone],
+  );
+  const handleSkillDownload = React.useCallback(
+    async (name: string) => {
+      const key = skillDownloadKey(dlTeamScope, name);
+      if (dlGone[key] || dlBusy[key]) return;
+      setDlBusy((p) => ({ ...p, [key]: true }));
+      try {
+        const { blob, filename } = await downloadSkill(name, dlTeamScope);
+        triggerSkillSave(blob, filename);
+        antd.message.success(tr("开始下载 {name}", { name }));
+      } catch (e) {
+        // 404/405 = builtin 技能无存储包 / 老控制器无路由 / 越权隐藏 →
+        // 隐藏该操作（能力降级，不报错）；其余（403/5xx/网络）提示可重试。
+        if (isSkillDownloadUnavailable(e)) {
+          setDlGone((p) => ({ ...p, [key]: true }));
+        } else {
+          antd.message.error(
+            tr("下载失败：{m}", { m: e instanceof Error ? e.message : "?" }),
+          );
+        }
+      } finally {
+        setDlBusy((p) => {
+          const n = { ...p };
+          delete n[key];
+          return n;
+        });
+      }
+    },
+    [dlTeamScope, dlGone, dlBusy, tr],
   );
   const [mcpMap, setMcpMap] = React.useState<Record<string, McpServerInfo[]>>({});
   const [savingRow, setSavingRow] = React.useState("");
@@ -410,12 +530,14 @@ export default function SkillCenter({
     }
   }, [upTeam, upMode, upFile, upName, upDesc, upBody, tr, loadCatalog, loadWorkers]);
   // 技能列 = 目录（如可用）∪ 已分配并集（目录不可用时的降级全集）。
+  // #1477：已分配正源改 matrix——列表行已投影不含 skills（w.skills 恒空，
+  // 旧源会让目录外技能丢列）；detail ready 后 matrix 补值 → 列自动补齐。
   const skillColumns = React.useMemo(() => {
     const set = new Set<string>();
     for (const s of st.catalog || []) set.add(s.name);
-    for (const w of st.workers) for (const s of w.skills || []) set.add(s);
+    for (const skills of Object.values(matrix)) for (const s of skills) set.add(s);
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [st.catalog, st.workers]);
+  }, [st.catalog, matrix]);
 
   const catalogByName = React.useMemo(() => {
     const m = new Map<string, SkillCatalogItem>();
@@ -425,6 +547,17 @@ export default function SkillCenter({
 
   const toggleSkill = React.useCallback(
     (worker: string, skill: string, on: boolean) => {
+      // #1477 写前读门：detail 未 ready → 只读阻断（禁列表行兜底——
+      // 投影后列表行 skills 恒空，基于其勾选=盲写清存量）。
+      if (!detailGateReady(worker)) {
+        const d = detailByWorker[worker];
+        antd.message.warning(
+          d === "err"
+            ? `${tr("读取 Worker 配置失败")}——只读（收起行再展开或点「刷新」重试）`
+            : tr("正在读取 Worker 配置…"),
+        );
+        return;
+      }
       setMatrix((prev) => {
         const cur = new Set(prev[worker] || []);
         if (on) cur.add(skill);
@@ -432,18 +565,31 @@ export default function SkillCenter({
         return { ...prev, [worker]: [...cur].sort() };
       });
     },
-    [],
+    [detailByWorker, detailGateReady],
   );
 
   const saveWorkerSkills = React.useCallback(
     async (worker: string) => {
+      // #1477 写前读门：detail 未加载成功禁止提交。
+      if (!detailGateReady(worker)) {
+        const d = detailByWorker[worker];
+        antd.message.error(
+          d === "err"
+            ? `${tr("读取 Worker 配置失败")}——不可保存（收起行再展开或点「刷新」重试）`
+            : tr("正在读取 Worker 配置…"),
+        );
+        return;
+      }
       setSavingRow(worker);
       try {
-        // PUT 合并语义：只发 skills（整字段替换该 Worker 的 skills）。
-        await updateWorker(worker, { skills: matrix[worker] || [] });
+        // #1477 保留值契约：提交合并后列表（detail 已有 skills ∪ 编辑态，
+        // existing 序在前——已有技能永不丢）；PUT 整字段替换该 Worker。
+        const detail = detailByWorker[worker] as WorkerInfo;
+        const next = mergeSkillList(detail.skills || [], matrix[worker] || []);
+        await updateWorker(worker, { skills: next });
         // 服务端已接受 → 基线推进（脏标记消失）；
         // 失败不推进，dirty 保留可重试。
-        setBaseMatrix((prev) => ({ ...prev, [worker]: [...(matrix[worker] || [])] }));
+        setBaseMatrix((prev) => ({ ...prev, [worker]: [...next] }));
         antd.message.success(tr("{w} 的技能已保存", { w: worker }));
       } catch (e) {
         const s = httpErrorStatus(e);
@@ -458,19 +604,44 @@ export default function SkillCenter({
         setSavingRow("");
       }
     },
-    [matrix, tr],
+    [matrix, tr, detailByWorker, detailGateReady],
   );
 
   const openMcpEdit = React.useCallback(
     (w: string) => {
-      setMcpEditWorker(w);
-      setMcpDraft((mcpMap[w] || []).map((m) => ({ ...m })));
+      // #1477：detail ready 才开编辑器（draft 正源=detail 全量，非列表行）。
+      // 该行未展开过（detail 未取）→ 现取再开（15s 缓存，不 N+1）；
+      // 失败不开 + toast（禁列表行兜底）。
+      if (detailGateReady(w)) {
+        const detail = detailByWorker[w] as WorkerInfo;
+        setMcpEditWorker(w);
+        setMcpDraft((detail.mcpServers || []).map((m) => ({ ...m })));
+        return;
+      }
+      antd.message.info(tr("正在读取 Worker 配置…"));
+      void fetchWorkerDetail(w)
+        .then((d) => {
+          applyWorkerDetail(w, d);
+          setMcpEditWorker(w);
+          setMcpDraft((d.mcpServers || []).map((m) => ({ ...m })));
+        })
+        .catch((e) => {
+          setDetailByWorker((prev) => ({ ...prev, [w]: "err" }));
+          antd.message.error(
+            `${tr("读取 Worker 配置失败")}${e instanceof Error ? `：${e.message}` : ""}`,
+          );
+        });
     },
-    [mcpMap],
+    [detailByWorker, detailGateReady, applyWorkerDetail],
   );
 
   const saveMcp = React.useCallback(async () => {
     if (!mcpEditWorker) return;
+    // #1477 写前读门（双保险：抽屉仅在 ready 后开启，提交处再校验）。
+    if (!detailGateReady(mcpEditWorker)) {
+      antd.message.error(`${tr("读取 Worker 配置失败")}——不可保存`);
+      return;
+    }
     setMcpSaving(true);
     try {
       const clean = mcpDraft
@@ -480,8 +651,12 @@ export default function SkillCenter({
           url: String(m.url || "").trim(),
           ...(m.transport ? { transport: String(m.transport) } : {}),
         }));
-      await updateWorker(mcpEditWorker, { mcpServers: clean });
-      setMcpMap((prev) => ({ ...prev, [mcpEditWorker]: clean }));
+      // #1477 保留值契约：按 name 合并（同名 edited 覆盖、existing 保留、
+      // 新增追加）——已有 MCP 永不丢。
+      const detail = detailByWorker[mcpEditWorker] as WorkerInfo;
+      const next = mergeMcpList(detail.mcpServers || [], clean) as McpServerInfo[];
+      await updateWorker(mcpEditWorker, { mcpServers: next });
+      setMcpMap((prev) => ({ ...prev, [mcpEditWorker]: next }));
       antd.message.success(tr("{w} 的 MCP 已保存", { w: mcpEditWorker }));
       setMcpEditWorker("");
     } catch (e) {
@@ -494,7 +669,7 @@ export default function SkillCenter({
     } finally {
       setMcpSaving(false);
     }
-  }, [mcpEditWorker, mcpDraft, tr]);
+  }, [mcpEditWorker, mcpDraft, tr, detailByWorker, detailGateReady]);
 
   return (
     // minmax(0,1fr) 钉轨道：隐式 auto 轨按 item min-content 撑宽（技能矩阵
@@ -585,11 +760,23 @@ export default function SkillCenter({
           onDetail={setDetailSkill}
           preloadBusy={preloadBusy}
           togglePreload={togglePreload}
+          skillDlState={skillDlState}
+          onSkillDownload={(s) => void handleSkillDownload(s)}
           savingRow={savingRow}
           onSave={(w) => void saveWorkerSkills(w)}
           onRefresh={() => {
             void loadWorkers();
             void loadCatalog();
+            // #1477：detail err 态的重试路径（onlyWorker 嵌入态无收起再展开
+            // 交互）——force 绕过 15s 缓存重取当前展开行。
+            const name = expandedWorker || onlyWorker || undefined;
+            if (name) {
+              void fetchWorkerDetail(name, { strong: true })
+                .then((d) => applyWorkerDetail(name, d))
+                .catch(() =>
+                  setDetailByWorker((prev) => ({ ...prev, [name]: "err" })),
+                );
+            }
           }}
         />
       ) : null}

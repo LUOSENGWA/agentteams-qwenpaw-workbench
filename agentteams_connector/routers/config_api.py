@@ -51,6 +51,80 @@ def _export_gate(request: Request) -> None:
         )
 
 
+def _scheme_warnings(infos: List[Any]) -> List[str]:
+    """解析结果 → 去重后的 warning 码（如 scheme_unresolved）。"""
+    return sorted({str(i.get("warning")) for i in infos if i and i.get("warning")})
+
+
+def _annotate_resolved(rows: Any, infos: List[Any]) -> None:
+    """探测行 ← 协议解析结果：解析后 URL 与原输入不同时补 resolved_from。
+
+ rows 与「非空地址条目」同序（空条目没有探测行，对应 info=None 跳过）。
+ """
+    live = [i for i in infos if i]
+    for row, info in zip(rows or [], live):
+        raw = str((info or {}).get("input") or "")
+        url = str((info or {}).get("url") or "")
+        if isinstance(row, dict) and raw and url and raw != url:
+            row["resolved_from"] = raw
+
+
+async def _resolve_address_entries(
+    entries: Any, timeout: float = 3.0
+) -> tuple:
+    """地址条目列表 → (解析后条目, 逐条 resolve_scheme 结果)。
+
+ 无协议条目先按 https 优先探测（显式协议不覆盖、不探测），结果按
+ host:port 缓存 10 分钟。条目形态（str | {url, auth?}）与凭据原样保留
+ ——解析只换 url 字段，auth 不受影响。结果与 entries 下标一一对应
+ （空条目→None）。
+ """
+    if not isinstance(entries, list):
+        return entries, []
+
+    async def _one(entry: Any) -> tuple:
+        raw = config_mod.address_url(entry)
+        if not raw:
+            return entry, None
+        info = await selfcheck.resolve_scheme(raw, timeout)
+        url = str(info.get("url") or raw)
+        if url == raw:
+            return entry, info
+        if isinstance(entry, dict):
+            return {**entry, "url": url}, info
+        return url, info
+
+    results = await asyncio.gather(*[_one(e) for e in entries]) if entries else []
+    return [r[0] for r in results], [r[1] for r in results]
+
+
+async def _resolve_config_addresses(data: Any) -> List[str]:
+    """配置 dict 内四族地址（matrix/controller/sglang/gateway）原地解析协议。
+
+ 保存/导入前统一走这里：无协议 → https 优先探测，两者都不通按 https
+ 落盘并回 warning（scheme_unresolved）。四族并行，互不阻塞。
+ """
+    if not isinstance(data, dict):
+        return []
+    jobs = []
+    for key in ("matrix_homeservers", "controller_urls", "gateway_admin_urls"):
+        if key in data:
+            jobs.append((data, key))
+    sglang = data.get("sglang")
+    if isinstance(sglang, dict) and "urls" in sglang:
+        jobs.append((sglang, "urls"))
+    if not jobs:
+        return []
+    results = await asyncio.gather(
+        *[_resolve_address_entries(container[key]) for container, key in jobs]
+    )
+    warnings: List[str] = []
+    for (container, key), (resolved, infos) in zip(jobs, results):
+        container[key] = resolved
+        warnings.extend(_scheme_warnings(infos))
+    return sorted(set(warnings))
+
+
 def build_config_router() -> APIRouter:
     """config 域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
@@ -194,6 +268,10 @@ def build_config_router() -> APIRouter:
                 )
         if _gap_msgs:
             raise HTTPException(status_code=400, detail="；".join(_gap_msgs))
+        # 无协议地址 → merge 前解析协议（https 优先；显式协议不覆盖）——
+        # 落盘即解析后的 URL，后续拨号不再被强制 http。放在修订号校验之前：
+        # 探测耗时（最长 2×timeout）不得扩大「校验通过→写入」的竞态窗口。
+        _scheme_warns = await _resolve_config_addresses(incoming)
         # read-error（文件存在但瞬时读失败）→ 无条件拒保存：内存基线
         # 是默认值假状态，任何保存（含带 rev 的全表单、含 force_persist
         # 显式恢复）= 拿默认值盖掉很可能正常的磁盘数据（10/8 wipe 链）。
@@ -278,6 +356,10 @@ def build_config_router() -> APIRouter:
             "gateway": config_mod.persisted_credential_kinds(
                 merged.get("gateway_admin_urls")),
         }
+        if _scheme_warns:
+            # scheme_unresolved = 探测不到服务，已按 https 保存（安全默认）；
+            # 前端据此提示用户「服务只支持 http 时请显式写 http://」。
+            _resp["warnings"] = _scheme_warns
         return _resp
 
     # ── 完整配置备份/恢复 ─────────────────
@@ -332,6 +414,9 @@ def build_config_router() -> APIRouter:
                 status_code=400,
                 detail="导入失败：" + "；".join(errors),
             )
+        # 无协议地址 → 覆盖前解析协议（与 PUT /config 同路径：https 优先，
+        # 显式协议不覆盖；备份文件里也可能存着省略协议的老地址）。
+        _scheme_warns = await _resolve_config_addresses(data)
         prev = config_mod.load_config()
         try:
             config_mod.write_backup(prev)
@@ -364,11 +449,14 @@ def build_config_router() -> APIRouter:
             restart = "none"
         # 生效地址探测转后台（同 PUT /config——effective 随后自动刷新）。
         asyncio.create_task(_safe_refresh_effective(config_mod.load_config()))
-        return {
+        _out = {
             "ok": True,
             "restart": restart,
             "config": config_mod.redact(config_mod.load_config()),
         }
+        if _scheme_warns:
+            _out["warnings"] = _scheme_warns
+        return _out
 
     # ── 完整备份门密码（export/import 的独立门，P0 安全硬化）─────────
     # 宿主鉴权可关 + 8088 绑 0.0.0.0 → 「同源本地」前提可被匿名局域网
@@ -416,29 +504,40 @@ def build_config_router() -> APIRouter:
 
         cfg_matrix = _urls(cfg.get("matrix_homeservers"))
         cfg_ctl = _urls(cfg.get("controller_urls"))
-        matrix_list = _urls(patch.matrix or cfg_matrix)
-        ctl_list = _urls(patch.controller or cfg_ctl)
+        # 无协议地址 → 先解析协议再探测（https 优先；显式协议不覆盖）：
+        # 草稿与已配置同路径——老配置里可能还存着省略协议的地址。
+        matrix_entries, matrix_infos = await _resolve_address_entries(
+            patch.matrix if patch.matrix else cfg.get("matrix_homeservers")
+        )
+        ctl_entries, ctl_infos = await _resolve_address_entries(
+            patch.controller if patch.controller else cfg.get("controller_urls")
+        )
+        matrix_list = _urls(matrix_entries)
+        ctl_list = _urls(ctl_entries)
         # SGLang 双地址（传草稿列表则测草稿，否则测已配置；兼容旧 "url"）。
         cfg_sg = cfg.get("sglang") or {}
-        cfg_sg_urls = _urls(
-            cfg_sg.get("urls")
-            or ([cfg_sg.get("url")] if cfg_sg.get("url") else [])
+        sg_entries, sglang_infos = await _resolve_address_entries(
+            patch.sglang
+            if patch.sglang
+            else (
+                cfg_sg.get("urls")
+                or ([cfg_sg.get("url")] if cfg_sg.get("url") else [])
+            )
         )
-        sglang_list = _urls(patch.sglang or cfg_sg_urls)
+        sglang_list = _urls(sg_entries)
         # Higress 双地址（传草稿列表则测草稿，否则测已配置）。
-        cfg_gw_urls = _urls(cfg.get("gateway_admin_urls"))
-        gateway_list = _urls(patch.gateway or cfg_gw_urls)
+        gw_entries, gateway_infos = await _resolve_address_entries(
+            patch.gateway if patch.gateway else cfg.get("gateway_admin_urls")
+        )
+        gateway_list = _urls(gw_entries)
         # 草稿凭据随测——条目级 auth 图（未保存也能验）。
+        # 键用**解析后**的 URL（探测句柄同源），否则无协议条目的凭据查不到。
         auth_maps = {
-            "matrix": config_mod.build_auth_map(patch.matrix if patch.matrix is not None else cfg.get("matrix_homeservers")),
-            "controller": config_mod.build_auth_map(patch.controller if patch.controller is not None else cfg.get("controller_urls")),
-            "sglang": config_mod.build_auth_map(
-                (patch.sglang if patch.sglang is not None else cfg_sg.get("urls"))
-            ),
+            "matrix": config_mod.build_auth_map(matrix_entries),
+            "controller": config_mod.build_auth_map(ctl_entries),
+            "sglang": config_mod.build_auth_map(sg_entries),
             # Higress 覆盖凭据（同口径）。
-            "gateway": config_mod.build_auth_map(
-                (patch.gateway if patch.gateway is not None else cfg.get("gateway_admin_urls"))
-            ),
+            "gateway": config_mod.build_auth_map(gw_entries),
         }
         token = (cfg.get("controller_token") or "").strip()
 
@@ -479,6 +578,20 @@ def build_config_router() -> APIRouter:
         if same_lists and (matrix_list or ctl_list):
             await selfcheck.refresh_effective(cfg)
             applied = True
+        # 无协议地址的识别结果可见：rows 的 url=解析后，resolved_from=原输入
+        # （仅当不同）——前端据此回显地址框。
+        _annotate_resolved(results.get("matrix"), matrix_infos)
+        _annotate_resolved(results.get("controller"), ctl_infos)
+        _annotate_resolved(results.get("sglang"), sglang_infos)
+        _annotate_resolved(results.get("gateway"), gateway_infos)
+        _scheme_warns = sorted(
+            set(
+                _scheme_warnings(matrix_infos)
+                + _scheme_warnings(ctl_infos)
+                + _scheme_warnings(sglang_infos)
+                + _scheme_warnings(gateway_infos)
+            )
+        )
         effective = {
             "matrix": _pick_address(cfg, "matrix"),
             "controller": _pick_address(cfg, "controller"),
@@ -500,6 +613,9 @@ def build_config_router() -> APIRouter:
             "pinned": _pinned_map(cfg),
             "applied": applied,
             "switched": switched,
+            # scheme_unresolved = 无协议且 https/http 都探测不通
+            # （行 url 仍按 https 显示，前端提示显式写 http://）。
+            "warnings": _scheme_warns,
         }
 
     @router.post("/config/verify-admin")

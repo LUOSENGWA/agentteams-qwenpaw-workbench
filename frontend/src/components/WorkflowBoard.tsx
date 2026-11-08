@@ -26,6 +26,7 @@ import {
   LoopBlock,
 } from "../workflowboard/blocks";
 import { ProjectRail } from "../workflowboard/rail";
+import MetaEditorModal from "./MetaEditorModal";
 
 export type { WfView };
 
@@ -199,6 +200,16 @@ function WorkflowBoard(props: WorkflowBoardProps) {
   const topoEvent = events.find((e) => e.runId === topoRun) || withNodes[0] || null;
   // #1230 任务巡检：任务卡点击 → Drawer（runId+taskId 双键定位；
   // 事件被刷新剔除时 find 落 null → Drawer 自动空态关闭语义由 open 判空覆盖）。
+  /** #1540 meta 编辑目标（项目/任务共用同一弹窗）；R13 备注入口 focus=true。 */
+  const [metaTarget, setMetaTarget] = React.useState<{
+    kind: "project" | "task";
+    id: string;
+    title: string;
+    teamId?: string;
+    focus?: boolean;
+  } | null>(null);
+  /** 首次 405/404 → 本会话隐藏 meta 入口（老控制器静默降级）。 */
+  const [metaSupported, setMetaSupported] = React.useState(true);
   const [inspect, setInspect] = React.useState<{
     runId: string;
     taskId: string;
@@ -235,6 +246,22 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         >
           {statusMeta(topoEvent.status).label}
         </antd.Tag>
+        {metaSupported ? (
+          <antd.Button
+            size="small"
+            type="text"
+            onClick={() =>
+              setMetaTarget({
+                kind: "project",
+                id: topoEvent.runId,
+                title: topoEvent.title || topoEvent.runId,
+                teamId: topoEvent.team_id,
+              })
+            }
+          >
+            {tr("元数据")}
+          </antd.Button>
+        ) : null}
         <InterventionActions ev={topoEvent} onDone={() => onRefresh?.()} />
       </div>
       <InterruptsBlock
@@ -354,6 +381,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <antd.Segmented
             size="small"
+            aria-label={tr("视图切换")}
             value={view}
             onChange={(v: ReactNS.Key | number) => setView(v as WfView)}
             options={[
@@ -390,6 +418,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
           {/* 排序（时间/状态/名称）——看板跟随；拓扑左栏项目列表跟随。 */}
           <antd.Select
             size="small"
+            aria-label={tr("排序方式")}
             value={sortBy}
             onChange={(v: "time_desc" | "time_asc" | "status" | "name") =>
               setSortBy(v)
@@ -406,6 +435,7 @@ function WorkflowBoard(props: WorkflowBoardProps) {
             <antd.Button
               type="text"
               size="small"
+              aria-label={tr("刷新")}
               icon={<ReloadIcon />}
               loading={loading || manualRefresh}
               onClick={() => void handleRefreshClick()}
@@ -458,6 +488,20 @@ overflow:hidden——高度可约束、不撑破页面（10/26）：各视图内
             t={t}
             onTaskDone={() => onRefresh?.()}
             onOpenDetail={(tid, rid) => setInspect({ runId: rid, taskId: tid })}
+            onOpenNotes={
+              metaSupported
+                ? (tid, rid) => {
+                    const ev = events.find((e) => e.runId === rid);
+                    setMetaTarget({
+                      kind: "task",
+                      id: tid,
+                      title: tid,
+                      teamId: ev?.team_id,
+                      focus: true,
+                    });
+                  }
+                : undefined
+            }
           />
           </div>
         )
@@ -505,6 +549,30 @@ overflow:hidden——高度可约束、不撑破页面（10/26）：各视图内
           <ProjectRail events={sortedEvents} selected={topoEvent?.runId ?? ""} onSelect={setTopoRun} />
           <div
             onMouseDown={startRailDrag}
+            // R4 a11y：分栏拖拽只认鼠标 → 分隔条语义 + 键盘 ←/→ 调宽
+            // （Shift=大步），避免键盘用户无法改栏宽。
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={tr("拖动调整项目列表宽度")}
+            aria-valuenow={railW}
+            aria-valuemin={220}
+            aria-valuemax={520}
+            tabIndex={0}
+            onKeyDown={(e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+              if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+              e.preventDefault();
+              const step = e.shiftKey ? 40 : 10;
+              const next = Math.min(
+                520,
+                Math.max(220, railW + (e.key === "ArrowRight" ? step : -step)),
+              );
+              setRailW(next);
+              try {
+                localStorage.setItem(RAIL_KEY, String(next));
+              } catch {
+                /* 隐私模式 localStorage 不可用——本次会话有效即可 */
+              }
+            }}
             title={tr("拖动调整项目列表宽度")}
             style={{
               cursor: "col-resize",
@@ -543,6 +611,30 @@ overflow:hidden——高度可约束、不撑破页面（10/26）：各视图内
         taskId={inspect?.taskId ?? null}
         onClose={() => setInspect(null)}
         onDone={() => onRefresh?.()}
+        metaSupported={metaSupported}
+        onOpenMeta={(taskId, title) =>
+          setMetaTarget({
+            kind: "task",
+            id: taskId,
+            title,
+            teamId: inspectEv?.team_id,
+            focus: true,
+          })
+        }
+      />
+      <MetaEditorModal
+        open={!!metaTarget}
+        kind={metaTarget?.kind ?? "project"}
+        id={metaTarget?.id ?? ""}
+        title={metaTarget?.title ?? ""}
+        teamId={metaTarget?.teamId}
+        focusOnOpen={!!metaTarget?.focus}
+        onClose={() => setMetaTarget(null)}
+        onUnsupported={() => {
+          setMetaSupported(false);
+          setMetaTarget(null);
+        }}
+        onSaved={() => onRefresh?.()}
       />
     </div>
   );

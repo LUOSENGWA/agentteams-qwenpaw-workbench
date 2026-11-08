@@ -1,16 +1,18 @@
 // ResourceCards.tsx — 「管理」页团队域 · Worker 详情资源卡（方案 §4.1.3，P3）。
 //
-// 10 卡 = 旧拓扑 Worker 展开面板的管理段 + 合并分支 MCP/插件卡，一格一卡
-// （替代旧 4-tab 嵌套）：运行配置 / 环境变量与网关 / Coding CLI / MCP /
-// Worker 插件 / 技能 / 工具 / 频道 / 审批模式 / 运行时升级。
+// 11 卡 = 旧拓扑 Worker 展开面板的管理段 + 合并分支 MCP/插件卡 + LLM 调优，
+// 一格一卡（替代旧 4-tab 嵌套）。顺序 = QwenPaw Agent 页语义顺序：运行配置 /
+// MCP / 工具 / 技能 / 频道 / 审批模式 / Coding CLI / 环境变量与网关 / LLM 调优 /
+// Worker 插件 / 运行时升级。
 //
 // 卡 = 入口（标题 + 一行摘要 + 右尖角）；点击打开大弹窗（宽 720，
 // 技能/运行时升级 900；竖屏 narrow → NarrowSheet）。内容懒挂载——
 // 弹窗关闭时零后台负载（各面板自持 30s 轮询/懒加载，只在打开时运行）。
 //
 // 权限：L2 写权由各面板自身 l1/403 门控（运行配置 L1-only 字段只读、
-// 工具 PATCH 403 转只读等，与旧拓扑同语义）；「环境变量」卡仅在
-// envEditable === true 时出现（L2 隐藏，与旧拓扑同门控）。
+// 工具 PATCH 403 转只读等，与旧拓扑同语义）；「环境变量」卡仅 envEditable
+// 明确 false（L2 遮蔽）时隐藏，undefined 照常出卡（旧 Controller 无字段 /
+// 16.61 列表投影丢 envEditable → 面板不得消失；面板内 detail 诚实降级）。
 //
 // 16.31 运行时门控：QwenPaw-only 卡（cfg/mcp/plugins/tools/upgrade——
 // 端点 = Controller 转发 worker 的 QwenPaw app 或 QwenPaw 专属字段）
@@ -29,8 +31,11 @@ import { invalidateTags } from "../requestCache";
 import { isQwenpawOnlyDisabled } from "../runtimeGuard";
 import NarrowSheet from "../components/NarrowSheet";
 import WorkerRuntimeConfig from "../components/WorkerRuntimeConfig";
+import WorkerRuntimeConfigSurface from "../components/WorkerRuntimeConfigSurface";
+import { fetchRuntimeSurface, probeWorkspaceFilesSupported } from "../api";
 import WorkerEnvPanel from "../components/WorkerEnvPanel";
 import WorkerCodingCliPanel from "../components/WorkerCodingCliPanel";
+import WorkerWorkspaceFilesPanel from "../components/WorkerWorkspaceFilesPanel";
 import WorkerMcpPanel from "../components/WorkerMcpPanel";
 import WorkerPluginsPanel from "../components/WorkerPluginsPanel";
 import SkillCenter from "../components/SkillCenter";
@@ -50,6 +55,7 @@ import {
   MessageIcon,
   ShieldIcon,
   MonitorIcon,
+  BoxIcon,
 } from "../components/icons";
 
 const host = window.QwenPaw.host;
@@ -84,6 +90,51 @@ export default function ResourceCards({
   const [openCard, setOpenCard] = React.useState<string | null>(null);
   const [hoverId, setHoverId] = React.useState<string | null>(null);
 
+  // P8c：非 qwenpaw 运行时先探一次 surface（该运行时有没有配置面）。
+  // 有 → 显示「运行配置」卡（surface 驱动）；404/405 → 不显示该卡。
+  const nonQwenpawRuntime = isQwenpawOnlyDisabled(worker.runtime);
+  const [surfaceReady, setSurfaceReady] = React.useState(false);
+  React.useEffect(() => {
+    if (!nonQwenpawRuntime || !worker.runtime) {
+      setSurfaceReady(false);
+      return;
+    }
+    let alive = true;
+    void fetchRuntimeSurface(worker.runtime)
+      .then(() => {
+        if (alive) setSurfaceReady(true);
+      })
+      .catch(() => {
+        if (alive) setSurfaceReady(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [nonQwenpawRuntime, worker.runtime]);
+
+  // 「工作区文件」版本门（QwenPaw ≥ 2.1 / 新控制器才有路由）：探测通过才出卡
+  // （404 老控制器 / 503 kube 模式 / W8 越权 → 隐藏，不报错）。仅 qwenpaw /
+  // runtime 未上报时探测（非 qwenpaw 卡片会被 qwenpawOnly 过滤，不付探测成本）。
+  const [wfilesSupported, setWfilesSupported] = React.useState(false);
+  React.useEffect(() => {
+    if (nonQwenpawRuntime) {
+      setWfilesSupported(false);
+      return;
+    }
+    let alive = true;
+    setWfilesSupported(false);
+    void probeWorkspaceFilesSupported(worker.name)
+      .then((ok) => {
+        if (alive) setWfilesSupported(ok);
+      })
+      .catch(() => {
+        if (alive) setWfilesSupported(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [nonQwenpawRuntime, worker.name]);
+
   const envCount = React.useMemo(
     () => Object.keys(worker.env ?? {}).length,
     [worker.env],
@@ -93,20 +144,97 @@ export default function ResourceCards({
     // 16.31：非 qwenpaw 运行时隐藏 QwenPaw-only 卡（只显示通用的）。
     // runtime 空/未上报 → 放行（老 worker 不误伤，同 runtimeGuard 判据）。
     const nonQwenpaw = isQwenpawOnlyDisabled(worker.runtime);
-    const list: ResourceCardDef[] = [
-      {
+    const list: ResourceCardDef[] = [];
+    // 「运行配置」：qwenpaw → 既有 5 分区面板；其他运行时 → 仅当该运行时
+    // 声明了 surface 才出卡（surface 驱动，没声明 = 没卡）。
+    if (!nonQwenpaw || surfaceReady) {
+      list.push({
         id: "cfg",
         title: tr("运行配置"),
-        desc: tr("并发 / 上下文 / shell 组（L1 可编辑）"),
+        desc: nonQwenpaw ? tr("该运行时的配置面（L1 可编辑）") : tr("并发 / 上下文 / shell 组（L1 可编辑）"),
         icon: SettingsIcon,
+        width: 960,
+      });
+    }
+    // 顺序 = QwenPaw Agent 页语义顺序（MCP → 工具 → 技能 → 频道 → 审批模式
+    // → Coding CLI → 环境变量 → LLM 调优 → Worker 插件 → 运行时升级）。
+    // 非 QwenPaw 时五张能力卡的 desc 换「配置面（surface 驱动）」口径，
+    // QwenPaw 保持原文案（面板实现不变，见 renderContent）。
+    list.push(
+      {
+        id: "mcp",
+        title: tr("MCP"),
+        desc: nonQwenpaw
+          ? tr("该运行时的 MCP 配置面（surface 驱动）")
+          : (worker.mcpServers?.length ?? 0) > 0
+            ? tr("{n} 个 server（CRD 声明 + 自注册合并视图）", {
+                n: worker.mcpServers?.length ?? 0,
+              })
+            : tr("CRD 声明 + Worker 自注册合并视图"),
+        icon: PlugIcon,
         width: 720,
-        // QwenPaw-only：runtime-config 端点字段（并发限流/上下文/shell 组/
-        // auto_title/loop/记忆后端）= QwenPaw app 配置。
-        qwenpawOnly: true,
       },
-    ];
-    // 环境变量卡——仅 envEditable === true（L2 隐藏，与旧拓扑同门控）。
-    if (worker.envEditable === true) {
+      {
+        id: "tools",
+        title: tr("工具"),
+        desc: nonQwenpaw
+          ? tr("该运行时的工具配置面（surface 驱动）")
+          : tr("内置工具启用列表"),
+        icon: WrenchIcon,
+        width: 720,
+      },
+      {
+        id: "skills",
+        title: tr("技能"),
+        desc: nonQwenpaw
+          ? tr("该运行时的技能配置面（surface 驱动）")
+          : (worker.skills?.length ?? 0) > 0
+            ? tr("已配 {n} 项 · 目录 / 分配矩阵", { n: worker.skills?.length ?? 0 })
+            : tr("目录 / 分配矩阵（MCP 独立卡）"),
+        icon: BrainIcon,
+        width: 900,
+      },
+      {
+        id: "channels",
+        title: tr("频道"),
+        desc: nonQwenpaw
+          ? tr("该运行时的频道配置面（surface 驱动）")
+          : tr("频道配置 + 二维码授权"),
+        icon: MessageIcon,
+        width: 720,
+      },
+      {
+        id: "approval",
+        title: tr("审批模式"),
+        desc: nonQwenpaw
+          ? tr("该运行时的审批配置面（surface 驱动）")
+          : tr("审批档位"),
+        icon: ShieldIcon,
+        width: 720,
+      },
+      {
+        id: "cli",
+        title: tr("Coding CLI"),
+        desc: tr("安装 / 升级 / 配置（1.2.5+）"),
+        icon: CodeIcon,
+        width: 720,
+      },
+    );
+    // 工作区文件（知识库）——版本门：探测通过才出卡（老控制器 404 隐藏）。
+    // 紧跟 Coding CLI 之后（任务书顺序）；qwenpawOnly（上游仅 qwenpaw runtime）。
+    if (wfilesSupported) {
+      list.push({
+        id: "wfiles",
+        title: tr("工作区文件"),
+        desc: tr("MEMORY / memory / digest · 文本可编辑"),
+        icon: BoxIcon,
+        width: 720,
+        qwenpawOnly: true,
+      });
+    }
+    // 环境变量卡——仅 envEditable 明确 false（L2 遮蔽）隐藏；undefined
+    // （旧 Controller / 列表投影丢字段）照常出卡，面板内 detail 降级。
+    if (worker.envEditable !== false) {
       list.push({
         id: "env",
         title: tr("环境变量与网关"),
@@ -118,35 +246,16 @@ export default function ResourceCards({
         width: 720,
       });
     }
-    // LLM 调优卡（无条件——通用卡，非 qwenpaw 运行时也显示；面板内部
-    // 惰性加载 + 403 只读降级兜底）。
-    list.push({
-      id: "llm",
-      title: tr("LLM 调优"),
-      desc: tr("重试 / 限流 + 流式超时（流式组热生效）"),
-      icon: BrainIcon,
-      width: 720,
-    });
+    // LLM 调优卡 = QwenPaw 原生能力（重试/限流/流式超时）。OpenClaw /
+    // Hermes 的等价字段在各自 surface 里（models/gateway/agent face），
+    // 由「运行配置」渲染，不再重复一张卡。
     list.push(
       {
-        id: "cli",
-        title: tr("Coding CLI"),
-        desc: tr("安装 / 升级 / 配置（1.2.5+）"),
-        icon: CodeIcon,
+        id: "llm",
+        title: tr("LLM 调优"),
+        desc: tr("重试 / 限流 + 流式超时（流式组热生效）"),
+        icon: BrainIcon,
         width: 720,
-      },
-      {
-        id: "mcp",
-        title: tr("MCP"),
-        desc:
-          (worker.mcpServers?.length ?? 0) > 0
-            ? tr("{n} 个 server（CRD 声明 + 自注册合并视图）", {
-                n: worker.mcpServers?.length ?? 0,
-              })
-            : tr("CRD 声明 + Worker 自注册合并视图"),
-        icon: PlugIcon,
-        width: 720,
-        // QwenPaw-only：合并视图含 worker QwenPaw 自注册腿（/api/mcp）。
         qwenpawOnly: true,
       },
       {
@@ -157,39 +266,6 @@ export default function ResourceCards({
         width: 720,
         // QwenPaw-only：端点 = Controller 转发 worker QwenPaw /api/plugins。
         qwenpawOnly: true,
-      },
-      {
-        id: "skills",
-        title: tr("技能"),
-        desc:
-          (worker.skills?.length ?? 0) > 0
-            ? tr("已配 {n} 项 · 目录 / 分配矩阵", { n: worker.skills?.length ?? 0 })
-            : tr("目录 / 分配矩阵（MCP 独立卡）"),
-        icon: BrainIcon,
-        width: 900,
-      },
-      {
-        id: "tools",
-        title: tr("工具"),
-        desc: tr("内置工具启用列表"),
-        icon: WrenchIcon,
-        width: 720,
-        // QwenPaw-only：内置工具端点 = QwenPaw app 工具集（#1255）。
-        qwenpawOnly: true,
-      },
-      {
-        id: "channels",
-        title: tr("频道"),
-        desc: tr("频道配置 + 二维码授权"),
-        icon: MessageIcon,
-        width: 720,
-      },
-      {
-        id: "approval",
-        title: tr("审批模式"),
-        desc: tr("审批档位（QwenPaw 独有）"),
-        icon: ShieldIcon,
-        width: 720,
       },
       {
         id: "upgrade",
@@ -204,7 +280,7 @@ export default function ResourceCards({
     // 16.31 运行时过滤：非 qwenpaw → 去掉 QwenPaw-only 卡（通用卡保留；
     // 极端组合下全空 = 空 grid，布局自适应不塌，面板内部 gate 仍兜底）。
     return nonQwenpaw ? list.filter((c) => !c.qwenpawOnly) : list;
-  }, [worker.envEditable, worker.env, worker.mcpServers, worker.skills, worker.runtime, envCount, tr]);
+  }, [worker.envEditable, worker.env, worker.mcpServers, worker.skills, worker.runtime, worker.name, envCount, tr, nonQwenpawRuntime, surfaceReady, wfilesSupported]);
 
   // 16.31：切 worker（运行时/envEditable 变化）后已打开的卡若被过滤掉
   // → 关掉弹窗（防 openCard 悬空 = 空标题空内容 Modal）。
@@ -218,7 +294,16 @@ export default function ResourceCards({
     (id: string) => {
       switch (id) {
         case "cfg":
-          return (
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
             <WorkerRuntimeConfig
               name={worker.name}
               l1={!!hasToken}
@@ -230,6 +315,7 @@ export default function ResourceCards({
           return (
             <WorkerEnvPanel
               worker={worker}
+              l1={!!hasToken}
               sheet
               onChanged={() => invalidateTags(["admin"])}
             />
@@ -251,20 +337,85 @@ export default function ResourceCards({
               onChanged={() => invalidateTags(["admin"])}
             />
           );
+        case "wfiles":
+          return (
+            <WorkerWorkspaceFilesPanel
+              key={`wfiles-${worker.name}`}
+              worker={worker}
+              l1={!!hasToken}
+              sheet
+            />
+          );
         case "mcp":
-          return <WorkerMcpPanel worker={worker} sheet />;
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-mcp-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="mcp"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
+            <WorkerMcpPanel worker={worker} sheet />
+          );
         case "plugins":
           return <WorkerPluginsPanel worker={worker} sheet />;
         case "skills":
-          return (
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-skills-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="skills"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
             <SkillCenter onlyWorker={worker.name} sections={["catalog", "matrix"]} />
           );
         case "tools":
-          return <WorkerTools workers={[worker]} />;
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-tools-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="tools"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
+            <WorkerTools workers={[worker]} />
+          );
         case "channels":
-          return <WorkerChannels workers={[worker]} active />;
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-ch-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="channels"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
+            <WorkerChannels workers={[worker]} active />
+          );
         case "approval":
-          return (
+          return nonQwenpawRuntime ? (
+            <WorkerRuntimeConfigSurface
+              key={`surf-appr-${worker.name}`}
+              name={worker.name}
+              runtime={worker.runtime ?? ""}
+              l1={!!hasToken}
+              sheet
+              bucket="approval"
+              onChanged={() => invalidateTags(["admin", "teams"])}
+            />
+          ) : (
             <ApprovalControl
               workerName={worker.name}
               runtime={worker.runtime}
@@ -285,7 +436,7 @@ export default function ResourceCards({
           return null;
       }
     },
-    [worker, hasToken, onOpenSettings],
+    [worker, hasToken, onOpenSettings, nonQwenpawRuntime],
   );
 
   const open = openCard ? cards.find((c) => c.id === openCard) ?? null : null;
@@ -359,8 +510,12 @@ export default function ResourceCards({
           footer={null}
           styles={{
             body: {
-              maxHeight: "min(70vh, 720px)",
+              maxHeight: "min(72vh, 760px)",
               overflowY: "auto",
+              // 横向不滚：内容自身收缩（宽表面板/长字段名），需要横向滚的
+              // 子表各自带容器滚动，不在弹窗体上出现整条横向滚动条。
+              overflowX: "hidden",
+              minWidth: 0,
               paddingTop: 4,
             },
           }}

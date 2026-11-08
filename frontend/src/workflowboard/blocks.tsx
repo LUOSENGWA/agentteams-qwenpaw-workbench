@@ -217,6 +217,7 @@ export function InterventionActions({
           onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
             setReason(e.target.value)
           }
+          aria-label={tr("暂停原因（可选，将通知团队）")}
           placeholder={tr("暂停原因（可选，将通知团队）")}
           rows={3}
           maxLength={200}
@@ -258,6 +259,7 @@ export function InterventionActions({
           onChange={(e: ReactNS.ChangeEvent<HTMLTextAreaElement>) =>
             setReplanText(e.target.value)
           }
+          aria-label={tr("重规划项目（编辑任务 DAG）")}
           rows={12}
           style={{ fontFamily: "monospace", fontSize: 12 }}
         />
@@ -384,6 +386,7 @@ export function InterruptActions({
               setAnswer(e.target.value)
             }
             onPressEnter={() => void submit(answer)}
+            aria-label={tr("填写介入意见…")}
             placeholder={tr("填写介入意见…")}
             style={{ width: 220 }}
           />
