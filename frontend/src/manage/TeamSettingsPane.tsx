@@ -16,10 +16,17 @@ import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
 import { useModelCatalog } from "../crdmanage/useModelCatalog";
 import { useTeamCrd } from "../crdmanage/useTeamCrd";
-import { CrdCfgForm } from "../crdmanage/CrdCfgModal";
+import { CfgSectionLabel, CrdCfgForm } from "../crdmanage/CrdCfgModal";
 import { computeStandaloneWorkers } from "../crdmanage/standalone";
 import { StandaloneWorkerModels } from "../components/StandaloneWorkerModels";
-import { TeamIcon } from "../components/icons";
+import {
+  CheckIcon,
+  PlusIcon,
+  SettingsIcon,
+  TeamIcon,
+  TrashIcon,
+} from "../components/icons";
+import { useWbViewport } from "../WbViewportContext";
 import { WbTooltip } from "../components/WbTooltip";
 import { useCallerLevel } from "../hooks/useCallerLevel";
 import { canControlResources, resourceControlDeniedHint } from "../lib/resourceControl";
@@ -152,6 +159,7 @@ function TeamCfgInline({
 }) {
   const tr = useT();
   const t = useThemeColors();
+  const { narrow } = useWbViewport();
   const deniedHint = resourceControlDeniedHint(tr);
   const catalog = useModelCatalog({ workers, tr });
   const crd = useTeamCrd({ teams, workers, onRefresh, tr, catalog });
@@ -196,7 +204,7 @@ function TeamCfgInline({
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
       {/* 标题栏固定：返回 + 标题 + 保存（滚动内容只在下方区域滚动）。 */}
-      <div style={{ flex: "0 0 auto", padding: "4px 4px 0" }}>
+      <div style={{ flex: "0 0 auto", padding: narrow ? "4px 2px 0" : "4px 4px 0" }}>
         <PaneHeader
           tr={tr}
           t={t}
@@ -206,7 +214,8 @@ function TeamCfgInline({
             <antd.Button
               type="primary"
               loading={crd.cfgBusy}
-              style={{ minHeight: 44 }}
+              icon={<CheckIcon size={16} />}
+              style={{ minHeight: 48, minWidth: 104, fontSize: 14, flexShrink: 0 }}
               onClick={() => void crd.doCfg()}
             >
               {tr("保存")}
@@ -215,7 +224,14 @@ function TeamCfgInline({
         />
       </div>
       <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
-        <div style={{ display: "grid", gap: 10, padding: "4px 4px 12px" }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            // 窄屏收边：375 竖屏下把 4px 侧边距压到 2px，内容多出 4px 宽。
+            padding: narrow ? "4px 2px 12px" : "4px 4px 12px",
+          }}
+        >
           {crd.cfgTeam ? (
             <CrdCfgForm
               cfgTeam={crd.cfgTeam}
@@ -267,18 +283,28 @@ function TeamCfgInline({
               <antd.Button
                 danger
                 disabled={crd.cfgBusy}
-                style={{ minHeight: 44, justifyContent: "flex-start" }}
+                icon={<TrashIcon size={16} />}
+                style={{
+                  minHeight: 48,
+                  justifyContent: "flex-start",
+                  fontSize: 13.5,
+                }}
                 onClick={confirmDelete}
               >
                 {tr("删除团队")}
               </antd.Button>
             ) : (
               <WbTooltip title={deniedHint} tap={false}>
-                <span style={{ display: "inline-block" }}>
+                <span style={{ display: "inline-block", width: "100%" }}>
                   <antd.Button
                     danger
                     disabled
-                    style={{ minHeight: 44, justifyContent: "flex-start" }}
+                    icon={<TrashIcon size={16} />}
+                    style={{
+                      minHeight: 48,
+                      justifyContent: "flex-start",
+                      fontSize: 13.5,
+                    }}
                   >
                     {tr("删除团队")}
                   </antd.Button>
@@ -313,36 +339,73 @@ function AddStandaloneWorkers({
   tr: (s: string, v?: Record<string, string | number>) => string;
   t: ReturnType<typeof useThemeColors>;
 }) {
+  const { narrow } = useWbViewport();
   const standalone = React.useMemo(
     () => computeStandaloneWorkers(teams, workers),
     [teams, workers],
   );
   return (
-    <antd.Card size="small" title={tr("加入 Worker（未归属团队的）")}>
-      <div style={{ display: "grid", gap: 6 }}>
-        {standalone.length ? (
-          standalone.map((n) => (
-            <div
-              key={n}
-              style={{ display: "flex", alignItems: "center", gap: 8 }}
-            >
-              <span style={{ fontSize: 12 }}>{n}</span>
-              <div style={{ flex: 1 }} />
-              <antd.Button size="small" loading={busy} onClick={() => onAdd(n)}>
-                {tr("加入本团队")}
-              </antd.Button>
+    <antd.Collapse
+      ghost
+      size="small"
+      defaultActiveKey={[]}
+      items={[
+        {
+          key: "join",
+          label: (
+            <CfgSectionLabel
+              icon={<PlusIcon size={15} />}
+              title={tr("加入 Worker")}
+              badge={tr("{n} 个未归属", { n: standalone.length })}
+              hint={tr("未归属任何团队的 Worker 一键并入")}
+              t={t}
+            />
+          ),
+          styles: {
+            header: {
+              minHeight: 48,
+              padding: narrow ? "10px 12px" : "12px 10px",
+            },
+            body: { padding: narrow ? "0 12px 12px" : "0 10px 12px" },
+          },
+          children: (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 11, color: t.textSecondary }}>
+                {tr("一键加入 = PUT 合并进当前团队成员（保留原有成员，角色 = worker）。")}
+              </div>
+              {standalone.length ? (
+                standalone.map((n) => (
+                  <div
+                    key={n}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, minWidth: 0 }}>{n}</span>
+                    <div style={{ flex: "1 1 0" }} />
+                    <antd.Button
+                      loading={busy}
+                      icon={<PlusIcon size={15} />}
+                      style={{ minHeight: 44, whiteSpace: "nowrap" }}
+                      onClick={() => onAdd(n)}
+                    >
+                      {tr("加入本团队")}
+                    </antd.Button>
+                  </div>
+                ))
+              ) : (
+                <div style={{ fontSize: 11, color: t.textSecondary }}>
+                  {tr("无未归属 Worker（未被任何 Team CR 引用的 Worker）——可到 CRD 管理 → 新建 Worker 创建。")}
+                </div>
+              )}
             </div>
-          ))
-        ) : (
-          <div style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("无未归属 Worker（未被任何 Team CR 引用的 Worker）——可到 CRD 管理 → 新建 Worker 创建。")}
-          </div>
-        )}
-        <div style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("一键加入 = PUT 合并进当前团队成员（保留原有成员，角色 = worker）。")}
-        </div>
-      </div>
-    </antd.Card>
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -381,6 +444,7 @@ function StandaloneEntry({
           <span>{tr("Worker 级模型可单独改：当前 {n} 个 Worker 未分组。", { n: count })}</span>
           <antd.Button
             type="primary"
+            icon={<SettingsIcon size={16} />}
             style={{ minHeight: 44, justifyContent: "flex-start" }}
             onClick={() => setOpen(true)}
           >

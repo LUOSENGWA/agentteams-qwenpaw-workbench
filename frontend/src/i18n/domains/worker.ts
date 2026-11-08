@@ -364,6 +364,21 @@ export const workerDict: Record<string, { en: string }> = {
     en: "Saved team access for {n} employee(s) (reconcile takes ~5 min)",
   },
   "团队成员（workerMembers）——保存 = 全量替换成员列表": { en: "Team members (workerMembers) — saving replaces the whole list" },
+  // 团队设置折叠分区（基本信息 / LLM 调优 / 团队成员 / 团队技能）。
+  "基本信息": { en: "Basic info" },
+  "团队成员": { en: "Team members" },
+  "保存 = 全量替换成员列表": { en: "Saving replaces the whole member list" },
+  "{n} 人": { en: "{n} member(s)" },
+  "该团队暂无成员（workerMembers 为空）": { en: "This team has no members yet (workerMembers is empty)" },
+  "成员未单独设置时继承": { en: "Inherited when a member sets nothing" },
+  "团队技能": { en: "Team skills" },
+  "目录 / 分配矩阵 / MCP": { en: "Catalog / assignment matrix / MCP" },
+  "改模型": { en: "Change model" },
+  "设置模型": { en: "Set model" },
+  // 「加入 Worker」折叠项（未归属团队的 Worker 并入当前团队）。
+  "加入 Worker": { en: "Add workers" },
+  "{n} 个未归属": { en: "{n} unassigned" },
+  "未归属任何团队的 Worker 一键并入": { en: "Merge workers that belong to no team in one click" },
   // 团队配置窗口批量改模型（leader/workers 两批）。
   "批量设置模型（选中值直接刷到对应角色全部成员；留空 = 不改）": { en: "Batch-set model (the selected value is painted onto all members of the matching role; blank = no change)" },
   "Leader 批（{n} 人）": { en: "Leader batch ({n})" },
