@@ -794,6 +794,7 @@ export const manageDict: Record<string, { en: string }> = {
   "容量": { en: "Capacity" },
   "单位": { en: "Unit" },
   "文件数": { en: "File count" },
+  "{n} 个文件": { en: "{n} file(s)" },
   "留空 = 不限；0 = 零额度": { en: "Empty = unlimited; 0 = zero quota" },
   "十进制：1 MB = 1,000,000 bytes，1 GB = 1,000,000,000 bytes": {
     en: "Decimal: 1 MB = 1,000,000 bytes, 1 GB = 1,000,000,000 bytes",

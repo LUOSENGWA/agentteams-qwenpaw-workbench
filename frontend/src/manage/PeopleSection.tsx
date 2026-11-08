@@ -27,8 +27,6 @@ import {
   deleteHuman,
   fetchSglangModels,
   getQuota,
-  quotaBytesToMb,
-  quotaMbToBytes,
   setQuota,
   type AdminData,
   type HumanInfo,
@@ -74,7 +72,16 @@ import { WbTooltip } from "../components/WbTooltip";
 import { useCallerLevel } from "../hooks/useCallerLevel";
 import { canControlResources, resourceControlDeniedHint } from "../lib/resourceControl";
 import { hfErrorText } from "./FilesSection";
-import { formatQuotaValue } from "./files/quotaEdit";
+import {
+  formatQuotaValue,
+  quotaExactText,
+  quotaFormToPayload,
+  quotaFormValid,
+  quotaInputNumber,
+  quotaToForm,
+  type QuotaForm,
+  type QuotaUnit,
+} from "./files/quotaEdit";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -366,7 +373,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const [quota, setQuotaState] = React.useState<QuotaResponse | null>(null);
   const [quotaFailed, setQuotaFailed] = React.useState(false);
   const [quotaOpen, setQuotaOpen] = React.useState(false);
-  const [quotaMb, setQuotaMb] = React.useState<number | null>(null);
+  const [quotaForm, setQuotaForm] = React.useState<QuotaForm>({ value: null, unit: "MB", files: null });
   const [quotaBusy, setQuotaBusy] = React.useState(false);
   const quotaReqRef = React.useRef(0);
   // 模型授权弹窗（C2b）——按需挂载（maOpen 才拨号，不预取）。
@@ -448,19 +455,19 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   // 打开配额模态框（admin；点开 = 重试——失败副标题「可点开重试」）。
   const openQuota = () => {
     if (!isAdmin) return;
-    setQuotaMb(quota ? quotaBytesToMb(quota.quotaBytes) : null);
+    setQuotaForm(quotaToForm(quota));
     setQuotaOpen(true);
     void refreshQuota();
   };
   const saveQuota = async () => {
     if (!selectedName) return;
-    if (typeof quotaMb !== "number" || !Number.isFinite(quotaMb) || quotaMb <= 0) {
+    if (!quotaFormValid(quotaForm)) {
       antd.message.warning(tr("请输入有效配额"));
       return;
     }
     setQuotaBusy(true);
     try {
-      await setQuota(selectedName, quotaMbToBytes(quotaMb));
+      await setQuota(selectedName, quotaFormToPayload(quotaForm));
       antd.message.success(tr("已保存"));
       setQuotaOpen(false);
       void refreshQuota();
@@ -758,7 +765,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
       {/* 工作区容量配额模态框（复用文件区语义：MB 输入 + 保存 / 清除 confirm；admin only） */}
       <antd.Modal
         open={quotaOpen}
-        title={tr("设置配额（MB）")}
+        title={tr("设置配额")}
         okText={tr("保存")}
         cancelText={tr("取消")}
         confirmLoading={quotaBusy}
@@ -766,16 +773,59 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         onCancel={() => setQuotaOpen(false)}
         destroyOnClose
       >
-        <div style={{ display: "grid", gap: 8, padding: "8px 0" }}>
-          <antd.InputNumber
-            min={1}
-            step={100}
-            value={quotaMb}
-            onChange={(v: unknown) => setQuotaMb(typeof v === "number" ? v : null)}
-            addonAfter="MB"
-            style={{ width: "100%" }}
-            aria-label={tr("配额（MB）")}
-          />
+        <div style={{ display: "grid", gap: 10, padding: "8px 0" }}>
+          <span style={{ fontSize: 12, color: t.textSecondary }}>
+            {tr("十进制：1 MB = 1,000,000 bytes，1 GB = 1,000,000,000 bytes")}
+          </span>
+          <div style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("容量")}</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <antd.InputNumber
+                min={0}
+                step={0.1}
+                value={quotaForm.value}
+                onChange={(v: unknown) =>
+                  setQuotaForm((f) => ({ ...f, value: quotaInputNumber(v) }))
+                }
+                style={{ flex: 1 }}
+                aria-label={tr("容量")}
+              />
+              <antd.Select
+                value={quotaForm.unit}
+                style={{ width: 88 }}
+                onChange={(v: string) =>
+                  setQuotaForm((f) => ({ ...f, unit: (v === "GB" ? "GB" : "MB") as QuotaUnit }))
+                }
+                options={[
+                  { value: "MB", label: "MB" },
+                  { value: "GB", label: "GB" },
+                ]}
+                aria-label={tr("单位")}
+              />
+            </div>
+            <span style={{ fontSize: 11, color: t.textSecondary }}>
+              {quotaExactText(quotaForm.value, quotaForm.unit) ||
+                tr("留空 = 不限；0 = 零额度")}
+            </span>
+          </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("文件数")}</span>
+            <antd.InputNumber
+              min={0}
+              precision={0}
+              value={quotaForm.files}
+              onChange={(v: unknown) =>
+                setQuotaForm((f) => ({ ...f, files: quotaInputNumber(v) }))
+              }
+              style={{ width: "100%" }}
+              aria-label={tr("文件数")}
+            />
+            <span style={{ fontSize: 11, color: t.textSecondary }}>
+              {quotaForm.files === null
+                ? tr("留空 = 不限；0 = 零额度")
+                : tr("{n} 个文件", { n: quotaForm.files })}
+            </span>
+          </div>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <antd.Button danger size="small" onClick={clearQuota}>
               {tr("清除配额")}

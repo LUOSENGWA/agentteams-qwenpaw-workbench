@@ -646,17 +646,6 @@ export async function setQuota(
 }
 
 /** 配额 MB → 字节（四舍五入；非数 / ≤0 → 0）。UI MB 输入 → API 字节。 */
-export function quotaMbToBytes(mb: number): number {
-  if (!Number.isFinite(mb) || mb <= 0) return 0;
-  return Math.round(mb * 1024 * 1024);
-}
-
-/** 配额字节 → MB（null / 非数 / ≤0 → null；否则 Math.max(1, Math.round(bytes/1048576))）。
- * API 字节 → UI MB 预填（1MB 下限 = InputNumber min=1 同源）。 */
-export function quotaBytesToMb(bytes: number | null | undefined): number | null {
-  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) return null;
-  return Math.max(1, Math.round(bytes / 1024 / 1024));
-}
 
 // ── #1519 预签名上传（票 → PUT/POST 对象存储 → commit 记账）────────
 /** 预签名上传票（POST ?presign=1 的 200 响应体）。 */
