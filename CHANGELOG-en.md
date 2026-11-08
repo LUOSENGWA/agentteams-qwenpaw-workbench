@@ -1,3 +1,10 @@
+## 0.5.0-beta.16.139 (cluster controller card · 2026-11-08)
+
+**Added**
+- Cluster page gains a Controller card: `GET /api/v1/status` shows Worker/Team/Human counts and deployment mode; `GET /api/v1/version` shows the Controller version. 60s cache, no polling.
+- 401/403 hides the card; a single endpoint failure only renders "—" for that cell; a `dev` version is labelled "image has no injected version".
+
+**Tests**: tsc 0 · build 0.
 ## 0.5.0-beta.16.138 (file tree highlight fix · 2026-11-08)
 
 **Fixes**
