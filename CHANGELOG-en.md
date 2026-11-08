@@ -1,3 +1,10 @@
+## 0.5.0-beta.16.143 (sensitive scan/docs close-out · 2026-11-08)
+
+**Security/docs**
+- Sensitive scan: replaced a real LAN example address in a source comment with `192.168.x.x`; release artifact contains no internal IPs/credentials.
+- README current branch updated to `release/16.69` (16.142→16.143); beta.17 release notes remain DRAFT pending acceptance.
+
+**Tests**: pytest 738 · tsc 0 · build 0.
 ## 0.5.0-beta.16.142 (Coding CLI voice model · 2026-11-08)
 
 **Added**

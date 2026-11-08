@@ -353,7 +353,7 @@ async def _probe_with_retry(
 
 
 # ── 地址协议识别（无协议 → https 优先）──────────────────────────────
-# 用户常省略 http(s)://（`192.168.54.107:6866`）。业界口径：浏览器
+# 用户常省略 http(s)://（`192.168.x.x:6866`）。业界口径：浏览器
 # HTTPS-first/HTTPS-Upgrade、curl --proto-default https；TLS 端口收到
 # 明文请求回 400 "plain HTTP request was sent to HTTPS port"。故无协议时
 # **https 优先**，失败才回退 http；两者都不通按 https 保存（安全默认，
