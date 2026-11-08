@@ -13,9 +13,11 @@
 // ③ 空白判定：行 / 行内按钮不算空白；aside（详情栏）内空白也不算「点别处」；
 // ④ 源码接线：根容器 onClick / clearNonce → TreeArea effect / Esc / 点文件行。
 //
-// 纯逻辑（files/treeFocus）可直接 node 直跑；涉及 JSX 的接线用源码断言。
-// 直跑：node --experimental-strip-types frontend/tests/files-focus-fix.vitest.test.ts
-//（显式 .ts 扩展名 = 同 files-v3-4.test.ts 口径；vite/vitest 亦接受）
+// 纯逻辑（files/treeFocus）直接断言；涉及 JSX 的接线用源码断言。
+// 跑法：vitest run tests/files-focus-fix.vitest.test.ts（include 见
+// frontend/vitest.config.ts）。注意：直接 `node 本文件` 只会注册用例、
+// 不执行断言——无 vitest CLI 时须用 runner 导入本文件后再跑收集到的用例。
+//（import 显式带 .ts 扩展名：同 files-v3-4.test.ts 口径，node ESM 需要）
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

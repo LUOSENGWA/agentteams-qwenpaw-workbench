@@ -3,9 +3,7 @@
 // 为什么抽出来：TreeArea 的 focusIndex / selectedDir 是组件本地 state，但
 // 「无焦点哨兵」「清空三态」「空白点击判定」本身是纯逻辑——与
 // files/treeModel、files/sortModel 同层，不依赖 React / antd / window，
-// 可 node 直跑单测（tests/files-focus-fix.vitest.test.ts）。
-//
-// 直跑：node --experimental-strip-types frontend/tests/files-focus-fix.vitest.test.ts
+// 可被 tests/files-focus-fix.vitest.test.ts 直接 import 断言（无需渲染）。
 
 /** 空白点击判定（files-ux-r2 C 规则）：点击目标不在行 / 可交互控件内 →
  * 视为「点空白」，清焦点（多选模式同时清选择并退出多选）。 */
