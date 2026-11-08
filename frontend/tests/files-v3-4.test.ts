@@ -171,16 +171,31 @@ assert.ok(_rowCheck);
 
 console.log("files-v3-4: all assertions passed");
 
-// ── 列表列：Finder 风格类型列（F-COLS）──
+// ── 列表列：Finder 风格类型列（F-COLS）+ files-ux-r2 列分档（按列表宽）──
 {
+  // FilesSection / icons 的模块顶层读 window.QwenPaw.host（React / antd）→
+  // 动态 import 前先装最小宿主 shim。
+  const ReactNS = (await import("react")).default as unknown;
+  (globalThis as Record<string, unknown>).window = {
+    QwenPaw: {
+      host: {
+        React: ReactNS,
+        antd: {},
+        antdIcons: {},
+        useLocale: () => "zh",
+        useTheme: () => "light",
+      },
+    },
+  };
   const { fileTypeLabel, columnsFor, listGrid } = await import("../src/manage/FilesSection.tsx");
   assert.equal(fileTypeLabel({ name: "a.PNG", type: "file", size: 1 }), "PNG");
   assert.equal(fileTypeLabel({ name: "docs", type: "dir" }), "文件夹");
-  assert.equal(listGrid({ modified: true, created: false }), "minmax(0, 1fr) 72px 84px 120px 136px");
-  assert.equal(listGrid({ modified: true, created: true }), "minmax(0, 1fr) 72px 84px 120px 120px 136px");
-  assert.equal(columnsFor([{ name: "a", type: "file", size: 1 }]).showCreated, false);
-  assert.equal(
-    columnsFor([{ name: "a", type: "file", size: 1, createdAt: "2026-01-01T00:00:00Z" }]).showCreated,
-    true,
-  );
+  // 轨道数 = 列数（显式列，无隐式 auto 轨）；操作轨 152px 含 3 个触控按钮。
+  assert.equal(listGrid(["name", "size", "type", "modified", "actions"]), "minmax(0, 1fr) 72px 84px 120px 152px");
+  assert.equal(listGrid(["select", "name", "more"]), "44px minmax(0, 1fr) 44px");
+  // 列分档按**列表列宽**：≥900 全列 / <900 收「修改」/ <700 只留名称 + 更多。
+  assert.equal(columnsFor(950, false).showUpdatedAt, true);
+  assert.equal(columnsFor(680, false).showUpdatedAt, false);
+  assert.equal(columnsFor(680, false).compactActions, true);
+  assert.equal(columnsFor(950, false).compactActions, false);
 }

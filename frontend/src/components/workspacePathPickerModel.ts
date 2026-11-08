@@ -1,5 +1,5 @@
 /**
- * workspacePathPicker.ts — 工作区访问「浏览…」目录树的纯逻辑（无 React /
+ * workspacePathPickerModel.ts — 工作区访问「浏览…」目录树的纯逻辑（无 React /
  * window 依赖，可单测；组件 WorkspacePathPicker.tsx 只做渲染与状态接线）。
  *
  * 口径（16.137，#1502 续）：

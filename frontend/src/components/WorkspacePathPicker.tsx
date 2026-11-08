@@ -16,11 +16,11 @@
  * 复用（16.138，不另写一份）：
  * - 行骨架 = manage/files/TreeRowShell（缩进 treeIndent / caret / 44px 行高 /
  *   aria / Space·Enter 基础分发 / hover·focus）；
- * - 可见行 = pickerTreeRows（workspacePathPicker.ts，内部复用
+ * - 可见行 = pickerTreeRows（workspacePathPickerModel.ts，内部复用
  *   treeModel.flattenLazyTree）；键盘 = treeModel.treeKeyNav / isTreeNavKey。
  *
  * 纯逻辑（路径生成 / 去重 / 上限 / 保留名 / 加载状态）在
- * workspacePathPicker.ts（无 window 依赖，可单测）。
+ * workspacePathPickerModel.ts（无 window 依赖，可单测）。
  */
 import type * as ReactNS from "react";
 
@@ -45,7 +45,7 @@ import {
   selectionToRulePaths,
   toggleSelected,
   type DirLoadMap,
-} from "./workspacePathPicker";
+} from "./workspacePathPickerModel";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
