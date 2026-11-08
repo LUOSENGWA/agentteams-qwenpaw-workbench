@@ -16,6 +16,7 @@
  * - 403/404 或其它拉取失败 = 该目录不可浏览（降级手动输入，不报错）。
  */
 import type { HumanFileEntry } from "../api/domains/humanFiles";
+import { flattenLazyTree, type LazyTreeRow } from "../manage/files/treeModel";
 
 /** 每规则路径上限（与 api/domains/workspaceAccess 同口径）。 */
 export const PICKER_MAX_PATHS = 16;
@@ -176,4 +177,27 @@ export async function loadDirState(
   } catch (e) {
     return { status: "unavailable", blocked: isPickerUnavailable(e) };
   }
+}
+
+/**
+ * 目录树可见行（懒加载 + 已展开态）：直接复用 treeModel.flattenLazyTree——
+ * 缩进（treeIndent）、键盘导航（treeKeyNav）、行骨架（TreeRowShell）与文件
+ * 管理树同一套，不另写一份。根 ""（files/）恒为首行；子项只取已加载目录
+ * （未展开 / 未加载 / 不可访问都不产生子行）。
+ */
+export function pickerTreeRows(
+  dirs: DirLoadMap,
+  expanded: readonly string[],
+): LazyTreeRow<string>[] {
+  const children = new Map<string, string[]>();
+  for (const [rel, state] of Object.entries(dirs)) {
+    if (state.status === "loaded") children.set(rel, state.dirs);
+  }
+  return flattenLazyTree<string>({
+    roots: [""],
+    keyOf: (rel) => rel,
+    isDir: () => true,
+    children,
+    expanded: new Set(expanded),
+  });
 }

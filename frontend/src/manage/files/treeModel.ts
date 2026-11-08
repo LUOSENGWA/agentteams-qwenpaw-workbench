@@ -70,27 +70,33 @@ function entryIsDir(e: HumanFileEntry): boolean {
   return typeof e.path === "string" && e.path.endsWith("/");
 }
 
-/** 深度优先拍平：目录未展开则不输出子项；children 缺失该目录 path
- *  视为未加载（同样不输出子项）。depth 0 = 当前目录条目。 */
-export function flattenTree(opts: {
-  roots: HumanFileEntry[];                    // 当前目录条目
-  children: Map<string, HumanFileEntry[]>;    // 已加载的子目录条目（key = 目录 path）
-  expanded: Set<string>;
-}): TreeRow[] {
-  const rows: TreeRow[] = [];
-  const walk = (entries: HumanFileEntry[], depth: number): void => {
-    for (const e of entries) {
-      const p = entryPath(e);
-      const dir = entryIsDir(e);
+/** 通用懒加载树行（不绑定条目类型）：文件管理树 / 工作区目录选择树共用。
+ *  path = 行标识（展开键 / 选择键），node = 调用方原始节点。 */
+export interface LazyTreeRow<T> {
+  path: string;
+  depth: number;
+  isDir: boolean;
+  expanded: boolean;
+  node: T;
+}
+
+/** 通用懒加载树拍平（深度优先、父在子前）：目录未展开则不输出子项；
+ *  children 缺失该 path 视为未加载（同样不输出子项）。
+ *  flattenTree = HumanFileEntry 特化包装（同一实现，禁止再写第二份）。 */
+export function flattenLazyTree<T>(opts: {
+  roots: readonly T[];
+  keyOf: (node: T) => string;
+  isDir: (node: T) => boolean;
+  children: ReadonlyMap<string, readonly T[]>;
+  expanded: ReadonlySet<string>;
+}): LazyTreeRow<T>[] {
+  const rows: LazyTreeRow<T>[] = [];
+  const walk = (nodes: readonly T[], depth: number): void => {
+    for (const node of nodes) {
+      const p = opts.keyOf(node);
+      const dir = opts.isDir(node);
       const isOpen = dir && opts.expanded.has(p);
-      rows.push({
-        path: p,
-        name: entryName(e),
-        depth,
-        isDir: dir,
-        expanded: isOpen,
-        entry: e,
-      });
+      rows.push({ path: p, depth, isDir: dir, expanded: isOpen, node });
       if (isOpen) {
         const kids = opts.children.get(p);
         if (kids !== undefined) walk(kids, depth + 1);
@@ -99,6 +105,28 @@ export function flattenTree(opts: {
   };
   walk(opts.roots, 0);
   return rows;
+}
+
+/** 深度优先拍平（文件条目特化）：depth 0 = 当前目录条目。 */
+export function flattenTree(opts: {
+  roots: HumanFileEntry[];                    // 当前目录条目
+  children: Map<string, HumanFileEntry[]>;    // 已加载的子目录条目（key = 目录 path）
+  expanded: Set<string>;
+}): TreeRow[] {
+  return flattenLazyTree<HumanFileEntry>({
+    roots: opts.roots,
+    keyOf: entryPath,
+    isDir: entryIsDir,
+    children: opts.children,
+    expanded: opts.expanded,
+  }).map((r) => ({
+    path: r.path,
+    name: entryName(r.node),
+    depth: r.depth,
+    isDir: r.isDir,
+    expanded: r.expanded,
+    entry: r.node,
+  }));
 }
 
 /** 树已知条目（根 + 所有已加载子层，含折叠中的缓存子项；按对象去重）。
@@ -122,12 +150,37 @@ export function collectTreeEntries(
   return out;
 }
 
+/** 键盘导航用的最小行形态（TreeRow / LazyTreeRow 结构上直接可用）。 */
+export interface TreeNavRow {
+  path: string;
+  isDir: boolean;
+}
+
+/** 树形键盘导航键（treeKeyNav 的入参联合类型）。 */
+export type TreeNavKey =
+  | "ArrowUp"
+  | "ArrowDown"
+  | "ArrowLeft"
+  | "ArrowRight"
+  | "Enter";
+
+/** e.key 收窄到 TreeNavKey（文件树 / 目录选择器共用，避免各写一份判别）。 */
+export function isTreeNavKey(k: string): k is TreeNavKey {
+  return (
+    k === "ArrowUp" ||
+    k === "ArrowDown" ||
+    k === "ArrowLeft" ||
+    k === "ArrowRight" ||
+    k === "Enter"
+  );
+}
+
 /** 树形键盘导航：返回新的 index（焦点移动由调用方执行）。
  *  Up/Down 夹在 [0, rows.length-1]；Right 落在目录上触发 onToggle(path)
  *  （展开/收起由调用方决定）；Left/Enter/其它一律返回原 index。 */
 export function treeKeyNav(
-  state: { rows: TreeRow[]; index: number },
-  key: "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter",
+  state: { rows: readonly TreeNavRow[]; index: number },
+  key: TreeNavKey,
   onToggle?: (path: string) => void,
 ): number {
   const { rows, index } = state;

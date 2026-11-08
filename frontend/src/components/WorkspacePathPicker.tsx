@@ -1,6 +1,6 @@
 /**
  * WorkspacePathPicker.tsx — 工作区访问规则「浏览…」目录选择弹窗（16.137，
- * #1502 续）。
+ * #1502 续；16.138 树行/键盘改复用文件管理树）。
  *
  * 交互（参考 Google Drive / Dropbox 文件夹选择、Forgejo/GitLab 路径选择）：
  * - 树根 = 工作区 `files/`；展开才调 listFiles 懒拉子目录（只列目录）；
@@ -10,7 +10,14 @@
  *   `files` 不是合法规则路径）；顶层保留名 .trash/.sync/.control 不展示；
  * - 每规则 ≤16 条（existing 计入；到上限禁用新增并提示）；
  * - 403/404 或拉取失败 = picker 不可用 → 提示手动输入，不报错；
- * - 键盘可达：行 tabIndex/role=treeitem，Space 勾选、Enter 展开；触屏可点。
+ * - 键盘可达（与文件管理树同一套）：行 role=treeitem + roving tabindex，
+ *   ↑/↓ 移行、→ 展开、Space 勾选、Enter 展开/收起、caret 点击切展开。
+ *
+ * 复用（16.138，不另写一份）：
+ * - 行骨架 = manage/files/TreeRowShell（缩进 treeIndent / caret / 44px 行高 /
+ *   aria / Space·Enter 基础分发 / hover·focus）；
+ * - 可见行 = pickerTreeRows（workspacePathPicker.ts，内部复用
+ *   treeModel.flattenLazyTree）；键盘 = treeModel.treeKeyNav / isTreeNavKey。
  *
  * 纯逻辑（路径生成 / 去重 / 上限 / 保留名 / 加载状态）在
  * workspacePathPicker.ts（无 window 依赖，可单测）。
@@ -21,17 +28,23 @@ import { listFiles } from "../api";
 import type { ThemeColors } from "../theme";
 import type { TrFn } from "../crdmanage/types";
 import DialogShell from "../manage/files/DialogShell";
+import TreeRowShell from "../manage/files/TreeRowShell";
+import {
+  isTreeNavKey,
+  treeIndent,
+  treeKeyNav,
+} from "../manage/files/treeModel";
 import {
   PICKER_MAX_PATHS,
   applyDirLoaded,
   applyDirUnavailable,
   beginDirLoad,
   loadDirState,
+  pickerTreeRows,
   remainingSlots,
   selectionToRulePaths,
   toggleSelected,
   type DirLoadMap,
-  type DirLoadState,
 } from "./workspacePathPicker";
 
 const host = window.QwenPaw.host;
@@ -51,117 +64,6 @@ export interface WorkspacePathPickerProps {
   onConfirm: (paths: string[]) => void;
 }
 
-interface RowProps {
-  rel: string;
-  depth: number;
-  state: DirLoadState | undefined;
-  expanded: boolean;
-  checked: boolean;
-  checkDisabled: boolean;
-  t: ThemeColors;
-  tr: TrFn;
-  onToggleExpand: () => void;
-  onToggleCheck: () => void;
-}
-
-/** 一行目录（行点击 = 展开；复选框 = 勾选；键盘 Space/Enter）。 */
-function DirRow({
-  rel,
-  depth,
-  state,
-  expanded,
-  checked,
-  checkDisabled,
-  t,
-  tr,
-  onToggleExpand,
-  onToggleCheck,
-}: RowProps): ReactNS.ReactElement {
-  const loading = state?.status === "loading";
-  const hasChildren = state?.status === "loaded" && state.dirs.length > 0;
-  const caret = loading ? "…" : expanded ? "▾" : "▸";
-  return (
-    <div
-      role="treeitem"
-      aria-level={depth + 1}
-      aria-expanded={expanded}
-      aria-selected={checked}
-      aria-checked={checked}
-      aria-busy={loading}
-      tabIndex={0}
-      data-dir-rel={rel}
-      onClick={onToggleExpand}
-      onKeyDown={(e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
-        if (e.key === " ") {
-          e.preventDefault();
-          if (!checkDisabled) onToggleCheck();
-        } else if (e.key === "Enter") {
-          e.preventDefault();
-          onToggleExpand();
-        }
-      }}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        minHeight: 44,
-        padding: "2px 6px",
-        paddingLeft: 6 + depth * 16,
-        borderRadius: 6,
-        cursor: "pointer",
-        outlineOffset: -2,
-        color: t.text,
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          width: 18,
-          textAlign: "center",
-          color: t.textSecondary,
-          flexShrink: 0,
-        }}
-      >
-        {hasChildren || loading || state === undefined ? caret : ""}
-      </span>
-      <span
-        style={{
-          flex: 1,
-          minWidth: 0,
-          fontSize: 12.5,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {rel === "" ? tr("根目录") : rel.split("/").pop()}
-        {rel === "" ? " (files/)" : null}
-      </span>
-      {state?.status === "unavailable" ? (
-        <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
-          {tr("不可访问")}
-        </span>
-      ) : null}
-      {loading ? (
-        <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
-          {tr("加载中…")}
-        </span>
-      ) : null}
-      <span
-        onClick={(e: ReactNS.MouseEvent<HTMLSpanElement>) => e.stopPropagation()}
-        style={{ display: "inline-flex", alignItems: "center", minHeight: 44 }}
-      >
-        <antd.Checkbox
-          checked={checked}
-          disabled={checkDisabled && !checked}
-          onChange={onToggleCheck}
-          aria-label={rel === "" ? tr("根目录") : rel}
-        />
-      </span>
-    </div>
-  );
-}
-
 export default function WorkspacePathPicker({
   open,
   humanName,
@@ -176,6 +78,9 @@ export default function WorkspacePathPicker({
   const [selected, setSelected] = React.useState<string[]>([]);
   const [includeSubdirs, setIncludeSubdirs] = React.useState(true);
   const [rootUnavailable, setRootUnavailable] = React.useState(false);
+  /** roving tabindex：焦点行下标（↑/↓ 移动；行 DOM 引用置于 nodeRefs）。 */
+  const [focusIdx, setFocusIdx] = React.useState(0);
+  const nodeRefs = React.useRef<Array<HTMLDivElement | null>>([]);
   // 打开代号：切换人员 / 重新打开时丢弃在途响应（懒加载按目录并发）。
   const genRef = React.useRef(0);
 
@@ -205,8 +110,14 @@ export default function WorkspacePathPicker({
     setSelected([]);
     setIncludeSubdirs(true);
     setRootUnavailable(false);
+    setFocusIdx(0);
+    nodeRefs.current = [];
     void load("");
   }, [open, humanName, load]);
+
+  // 可见行（懒加载 + 已展开）：拍平逻辑与文件管理树同一份（flattenLazyTree）。
+  const rows = React.useMemo(() => pickerTreeRows(dirs, expanded), [dirs, expanded]);
+  const idx = rows.length === 0 ? 0 : Math.min(focusIdx, rows.length - 1);
 
   const toggleExpand = (rel: string) => {
     setExpanded((prev) => {
@@ -219,59 +130,43 @@ export default function WorkspacePathPicker({
 
   const slots = remainingSlots(existing.length, PICKER_MAX_PATHS);
   const candidates = selectionToRulePaths(selected, includeSubdirs);
+  const checkDisabled = (rel: string): boolean =>
+    !selected.includes(rel) && selected.length >= slots;
+  const toggleCheck = (rel: string): void => {
+    if (checkDisabled(rel)) return;
+    setSelected((prev) => toggleSelected(prev, rel));
+  };
+
+  /** 行按键：Space 勾选（不展开）、Enter 展开、↑/↓ 移焦点、→ 展开。 */
+  const onRowKeyDown =
+    (i: number) =>
+    (e: ReactNS.KeyboardEvent<HTMLDivElement>): void => {
+      const row = rows[i];
+      if (!row) return;
+      if (e.key === " ") {
+        e.preventDefault();
+        toggleCheck(row.path);
+        return;
+      }
+      if (!isTreeNavKey(e.key)) return;
+      e.preventDefault();
+      if (e.key === "Enter") {
+        toggleExpand(row.path);
+        return;
+      }
+      const next = treeKeyNav({ rows, index: i }, e.key, (p) => {
+        // → 只展开（收起由 ← / Enter / 行点击负责），避免方向键误收起。
+        if (!expanded.includes(p)) toggleExpand(p);
+      });
+      if (next !== i) {
+        setFocusIdx(next);
+        nodeRefs.current[next]?.focus();
+      }
+    };
 
   if (!open) return null;
 
-  const renderNode = (rel: string, depth: number): ReactNS.ReactNode => {
-    const state = dirs[rel];
-    const isExpanded = expanded.includes(rel);
-    const checked = selected.includes(rel);
-    const checkDisabled = !checked && selected.length >= slots;
-    const row = (
-      <DirRow
-        key={rel || "/"}
-        rel={rel}
-        depth={depth}
-        state={state}
-        expanded={isExpanded}
-        checked={checked}
-        checkDisabled={checkDisabled}
-        t={t}
-        tr={tr}
-        onToggleExpand={() => toggleExpand(rel)}
-        onToggleCheck={() => setSelected((prev) => toggleSelected(prev, rel))}
-      />
-    );
-    if (!isExpanded) return row;
-    const kids =
-      state?.status === "loaded"
-        ? state.dirs.length > 0
-          ? state.dirs.map((child) => renderNode(child, depth + 1))
-          : [
-              <div
-                key={`${rel || "/"}-empty`}
-                style={{
-                  fontSize: 11,
-                  color: t.textSecondary,
-                  paddingLeft: 30 + depth * 16,
-                  paddingTop: 4,
-                  paddingBottom: 4,
-                }}
-              >
-                {tr("无子目录")}
-              </div>,
-            ]
-        : null;
-    return (
-      <React.Fragment key={rel || "/"}>
-        {row}
-        {kids}
-      </React.Fragment>
-    );
-  };
-
-  const canConfirm =
-    !rootUnavailable && selected.length > 0 && slots > 0;
+  const canConfirm = !rootUnavailable && selected.length > 0 && slots > 0;
 
   const confirm = () => {
     if (!canConfirm) return;
@@ -301,7 +196,95 @@ export default function WorkspacePathPicker({
             aria-label={tr("选择目录")}
             style={{ display: "grid", gap: 1, maxHeight: "48vh", overflowY: "auto" }}
           >
-            {renderNode("", 0)}
+            {rows.map((row, i) => {
+              const state = dirs[row.path];
+              const loading = state?.status === "loading";
+              const hasChildren = state?.status === "loaded" && state.dirs.length > 0;
+              const checked = selected.includes(row.path);
+              // 已加载空目录不给 caret（无子项可展开）；未加载 / 加载中给。
+              const caret =
+                hasChildren || loading || state === undefined
+                  ? loading
+                    ? "…"
+                    : row.expanded
+                      ? "▾"
+                      : "▸"
+                  : "";
+              return (
+                <React.Fragment key={row.path || "/"}>
+                  <TreeRowShell
+                    ref={(el) => {
+                      nodeRefs.current[i] = el;
+                    }}
+                    depth={row.depth}
+                    expanded={row.expanded}
+                    hasChildren={hasChildren}
+                    loading={loading}
+                    caret={caret}
+                    ariaLevel={row.depth + 1}
+                    selected={checked}
+                    t={t}
+                    tabIndex={i === idx ? 0 : -1}
+                    data-dir-rel={row.path}
+                    onClick={() => toggleExpand(row.path)}
+                    onToggleExpand={() => toggleExpand(row.path)}
+                    onKeyDown={onRowKeyDown(i)}
+                    onFocus={() => setFocusIdx(i)}
+                  >
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: 12.5,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {row.path === "" ? tr("根目录") : row.path.split("/").pop()}
+                      {row.path === "" ? " (files/)" : null}
+                    </span>
+                    {state?.status === "unavailable" ? (
+                      <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
+                        {tr("不可访问")}
+                      </span>
+                    ) : null}
+                    {loading ? (
+                      <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
+                        {tr("加载中…")}
+                      </span>
+                    ) : null}
+                    <span
+                      onClick={(e: ReactNS.MouseEvent<HTMLSpanElement>) => e.stopPropagation()}
+                      style={{ display: "inline-flex", alignItems: "center" }}
+                    >
+                      <antd.Checkbox
+                        checked={checked}
+                        disabled={checkDisabled(row.path)}
+                        onChange={() => toggleCheck(row.path)}
+                        aria-label={row.path === "" ? tr("根目录") : row.path}
+                      />
+                    </span>
+                  </TreeRowShell>
+                  {row.expanded &&
+                  state?.status === "loaded" &&
+                  state.dirs.length === 0 ? (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: t.textSecondary,
+                        // 与子行名称列对齐：行内左距 + 子级缩进 + caret 区。
+                        paddingLeft: 8 + treeIndent(row.depth + 1) + 24,
+                        paddingTop: 4,
+                        paddingBottom: 4,
+                      }}
+                    >
+                      {tr("无子目录")}
+                    </div>
+                  ) : null}
+                </React.Fragment>
+              );
+            })}
           </div>
         )}
         <label

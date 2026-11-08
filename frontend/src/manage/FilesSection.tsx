@@ -176,12 +176,14 @@ import {
   collectTreeEntries,
   flattenTree,
   gridMinCols,
+  isTreeNavKey,
   parseFilesView,
-  treeIndent,
   treeKeyNav,
   type FilesView,
   type TreeRow,
 } from "./files/treeModel";
+// 16.138：树行骨架与工作区路径选择器共用（缩进 / caret / 44px / aria / 键盘）。
+import TreeRowShell from "./files/TreeRowShell";
 import {
   UPLOAD_CONCURRENCY,
   makeUploadItems,
@@ -612,18 +614,8 @@ function writeStoredFilesView(v: FilesView): void {
 const VIEW_SEG_CSS =
   "@media (max-width: 600px){.hf-view-seg .hf-view-seg-label{display:none}}";
 
-/** 树形键盘导航键判别（e.key 收窄到 treeKeyNav 的联合类型）。 */
-function isTreeNavKey(
-  k: string,
-): k is "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter" {
-  return (
-    k === "ArrowUp" ||
-    k === "ArrowDown" ||
-    k === "ArrowLeft" ||
-    k === "ArrowRight" ||
-    k === "Enter"
-  );
-}
+// 树形键盘导航键判别 16.138 起在 files/treeModel（isTreeNavKey，本文件与
+// 工作区路径选择器共用）。
 
 // ── #1669 触控目标（用户实测：按钮太小、触屏难点）──
 // TOUCH 常量 F-V3-3 起在 files/format.ts（本文件 import + 重导出）。
@@ -2303,8 +2295,8 @@ function FileRow({
 
 /** F-V3-4 树行：目录行 = 点击设为上传 / 新建目标 + 焦点（展开只由 chevron
  * ▸/▾ 控制）；文件行 = 点击焦点 + 批量选择；行内 下载/删除（复刻 FileRow
- * 的 doDownload / useDeleteConfirm 接线，不新写逻辑）。缩进 =
- * treeIndent(depth)；行高 = --hf-row-min。 */
+ * 的 doDownload / useDeleteConfirm 接线，不新写逻辑）。骨架（缩进 / caret /
+ * 行高 / aria / 键盘 / hover）= files/TreeRowShell，本组件只出各列内容。 */
 function TreeRowView({
   row,
   focused,
@@ -2474,11 +2466,19 @@ function TreeRowView({
       : { border: "1px solid transparent", background: "transparent" };
 
   return (
-    /* a11y-static-exempt: 树行 = roving tabindex（滚动态），键盘由容器
-       （tabIndex=0 + onKeyDown 方向键/Home/End）统一接管，行内不再重复绑定 */
-    <div
-      role="button"
+    /* 树行 = roving tabindex：键盘由容器（tabIndex=0 + onKeyDown 方向键 /
+       Space / Enter）统一接管；行骨架（缩进 / caret / 44px / aria）见
+       files/TreeRowShell（与工作区路径选择器同一份）。 */
+    <TreeRowShell
+      depth={row.depth}
+      expanded={row.expanded}
+      hasChildren={isDir}
+      caret={isDir ? (row.expanded ? "▾" : "▸") : ""}
+      selected={sel || focused}
+      t={t}
       tabIndex={-1}
+      // 键盘（方向键 / Space / Enter）由 TreeArea 容器统一接管。
+      dispatchKeys={false}
       {...dirDropProps}
       onClick={(e) =>
         onActivate(row, {
@@ -2490,62 +2490,32 @@ function TreeRowView({
       onDoubleClick={() => {
         if (isDir) fs.onEnterDir(path);
       }}
-      onMouseEnter={(e) => {
-        if (!sel && !focused) e.currentTarget.style.background = t.hoverBg;
-      }}
-      onMouseLeave={(e) => {
-        if (!sel && !focused) e.currentTarget.style.background = "transparent";
-      }}
+      onToggleExpand={isDir ? () => onToggle(row) : undefined}
+      leading={
+        /* 批量选择列：文件 + 目录都可选（B2）；复选框独立于行焦点 /
+         * 上传目标（不触发展开）。 */
+        <span
+          onDoubleClick={(e) => e.stopPropagation()}
+          style={{ display: "inline-flex", alignItems: "center" }}
+        >
+          <SelCheck
+            t={t}
+            checked={fs.selected.has(path)}
+            onToggle={(shiftKey) => onToggleSelect(path, shiftKey)}
+            label={tr("选择 {name}", { name })}
+          />
+        </span>
+      }
       style={{
         display: "grid",
         // 44px 首列 = 批量选择 checkbox（文件 + 目录都可选；与表头同宽）；
-        // 16px = 展开三角。
+        // 16px = 展开三角（TreeRowShell caret 区）。
         gridTemplateColumns: `44px 16px ${grid}`,
-        gap: 8,
         alignItems: "center",
-        minHeight: "var(--hf-row-min, 44px)",
-        padding: "0 8px",
-        paddingLeft: 8 + treeIndent(row.depth),
-        borderRadius: 6,
-        cursor: "pointer",
         width: "100%",
         ...rowSkin,
       }}
     >
-      {/* 批量选择列：文件 + 目录都可选（B2）；复选框独立于行焦点 / 上传
-       * 目标（不触发展开）。 */}
-      <span onDoubleClick={(e) => e.stopPropagation()}>
-        <SelCheck
-          t={t}
-          checked={fs.selected.has(path)}
-          onToggle={(shiftKey) => onToggleSelect(path, shiftKey)}
-          label={tr("选择 {name}", { name })}
-        />
-      </span>
-      <span
-        role="button"
-        aria-label={isDir ? (row.expanded ? tr("收起") : tr("展开")) : undefined}
-        onClick={(e) => {
-          if (!isDir) return;
-          e.stopPropagation(); // 只切展开，不改选中
-          onToggle(row);
-        }}
-        onDoubleClick={(e) => {
-          // 双击三角 ≠ 进入目录：只吞掉事件，避免冒泡到行触发「打开」。
-          e.stopPropagation();
-        }}
-        style={{
-          width: 16,
-          fontSize: 11,
-          color: t.textSecondary,
-          textAlign: "center",
-          userSelect: "none",
-          flexShrink: 0,
-          cursor: isDir ? "pointer" : "default",
-        }}
-      >
-        {isDir ? (row.expanded ? "▾" : "▸") : ""}
-      </span>
       <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
         {isDir ? (
           row.expanded ? (
@@ -2686,7 +2656,7 @@ function TreeRowView({
       </span>
       {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
       {del.node}
-    </div>
+    </TreeRowShell>
   );
 }
 
@@ -2984,8 +2954,9 @@ function TreeArea({
           <span>{tr("操作")}</span>
         </div>
       ) : null}
-      {fs.status !== "err" && count > 0
-        ? rows.map((r, i) => (
+      {fs.status !== "err" && count > 0 ? (
+        <div role="tree" style={{ display: "grid", gap: 4 }}>
+          {rows.map((r, i) => (
             <TreeRowView
               key={i}
               row={r}
@@ -3008,8 +2979,9 @@ function TreeArea({
               showUpdatedAt={cols.showUpdatedAt}
               showCreated={cols.showCreated}
             />
-          ))
-        : null}
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
