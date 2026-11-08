@@ -105,6 +105,18 @@
  *     网格卡 / 树行「详情」按钮打开；只读列表已有字段（不额外请求）。
  *   - 回收站：TrashDialog 搜索（原路径 / 操作人）+ 排序下拉（删除时间 /
  *     大小 / 名称）。
+ *
+ * 全局搜索（files-global-search）：
+ *   - 入口：工具条搜索框（240 / 窄屏全宽，44px，allowClear 清除；<2 字符只
+ *     提示「输入至少 2 个字符」）；输入去抖 250ms；状态不写 URL。
+ *   - 数据：listFiles(human, "", { recursive:true, limit:1000 }) 根目录递归
+ *     平铺（首屏上限，nextKey 存在 → 「结果基于前 N 项 · 加载更多」，不自动
+ *     无限拉取）；纯逻辑在 files/globalSearch（匹配 / 排序 / 200 上限 / 分页）。
+ *   - 结果：列表行（图标 + 名称 + 相对路径 + 大小/时间 + 操作）；目录 = 清搜索
+ *     进入，文件 = 保留搜索结果 + 选中详情（详情槽经 findEntryByPath 回落
+ *     searchEntries）。搜索期间隐藏面包屑 / 目录内容，改「搜索结果 · N 项」。
+ *   - 清空：Esc / 清除按钮 / 切人员 / 切目录 / 刷新；端点 404/403/501（或老
+ *     控制器递归不可用）→「全局搜索不可用」+ 保留当前目录内容（不白屏）。
  */
 import type * as ReactNS from "react";
 
@@ -148,6 +160,7 @@ import {
   ListIcon,
   PageIcon,
   PictureIcon,
+  SearchIcon,
   TrashIcon,
   TreeIcon,
 } from "../components/icons";
@@ -175,6 +188,18 @@ import {
   type FileSort,
   type FileSortKey,
 } from "./files/sortModel";
+import {
+  formatResultPath,
+  parseSearchQuery,
+  rankSearchResults,
+  resultRelPath,
+  searchPageState,
+  SEARCH_DEBOUNCE_MS,
+  SEARCH_FETCH_LIMIT,
+  SEARCH_RESULT_CAP,
+  type RankedSearch,
+  type SearchPageState,
+} from "./files/globalSearch";
 import {
   collectTreeEntries,
   flattenTree,
@@ -373,6 +398,28 @@ interface FilesState {
   onUndo: () => void;
   /** 打开文件/目录详情抽屉（行 / 网格卡 / 树行的「详情」按钮；不额外发请求）。 */
   onOpenDetail: (path: string, isDir: boolean) => void;
+  /** 全局搜索（跨目录名称 / 路径；状态不写 URL；切人员/切目录/刷新即清空）。 */
+  searchRaw: string;
+  searchTerm: string;
+  searchLoading: boolean;
+  searchLoadingMore: boolean;
+  searchError: string;
+  /** 端点 404/403/501（或老控制器递归不可用）→ 降级提示，保留目录内容。 */
+  searchUnavailable: boolean;
+  /** 已拉取的根目录递归平铺条目（客户端过滤）。 */
+  searchEntries: HumanFileEntry[];
+  searchNextKey: string | null | undefined;
+  /** 排序 / 截断后的结果（容器算一次，工具条标题与结果列表共用）。 */
+  searchRanked: RankedSearch;
+  searchPage: SearchPageState;
+  onSearchChange: (raw: string) => void;
+  /** 清空搜索并回到当前目录（Esc / 清除按钮 / 切目录 / 刷新）。 */
+  onSearchClear: () => void;
+  onSearchLoadMore: () => void;
+  /** 结果行激活：目录 → 清搜索并进入；文件 → 保留搜索结果 + 选中详情。 */
+  onSearchActivate: (path: string, isDir: boolean) => void;
+  /** 搜索结果数据失效（删除成功）→ 重拉一次。 */
+  onSearchRefresh: () => void;
 }
 
 type SubProps = {
@@ -1206,6 +1253,20 @@ function rowPath(e: HumanFileEntry, dirPath: string): string {
   return e.path ? entryRelPath(e) : fullPath(dirPath, e.name ?? "");
 }
 
+/** 按相对路径 + 类型查条目：当前目录列表优先，回落全局搜索结果
+ *（搜索结果选中详情 / 详情抽屉用——目录外的文件也能解析到元数据）。 */
+function findEntryByPath(
+  fs: FilesState,
+  path: string,
+  isDir: boolean,
+): HumanFileEntry | undefined {
+  const match = (e: HumanFileEntry): boolean =>
+    rowPath(e, fs.dirPath) === path && isEntryDir(e) === isDir;
+  // 测试桩可能未提供搜索字段 → 缺省为空数组（不影响当前目录命中）。
+  const search = fs.searchEntries ?? [];
+  return fs.files.find(match) ?? search.find(match);
+}
+
 /** 空白点击判定（files-ux-r2 C 规则）：点击目标不在行 / 可交互控件内 →
  * 视为「点空白」，清焦点（多选模式同时清选择并退出多选）。
  * files-focus-fix：实现迁 files/treeFocus（纯逻辑，node 直跑单测）；
@@ -1700,11 +1761,8 @@ export function FileDetailDrawer({
   const [preview, setPreview] = React.useState<PreviewFile | null>(null);
   const targetPath = target?.path ?? "";
   const targetIsDir = target?.isDir ?? false;
-  const entry = target
-    ? fs.files.find(
-        (e) => rowPath(e, fs.dirPath) === target.path && isEntryDir(e) === target.isDir,
-      )
-    : undefined;
+  // 当前目录优先，回落全局搜索结果（跨目录结果行的「详情」）。
+  const entry = target ? findEntryByPath(fs, target.path, target.isDir) : undefined;
   const name = entry
     ? entryDisplayName(entry)
     : targetPath.split("/").filter(Boolean).pop() ?? "";
@@ -2766,6 +2824,239 @@ function FileRow({
       {cells}
       {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
       {del.node}
+    </div>
+  );
+}
+
+/** 全局搜索结果行：图标 + 名称 + 相对路径（灰色小字）+ 大小/修改时间 +
+ * 操作（目录：进入 / 详情；文件：详情 / 下载 / 删除，沿用既有 handler）。
+ * 列表行（不是树）——点击目录 = 清搜索并进入；点击文件 = 保留搜索结果 +
+ * 选中详情（详情槽经 findEntryByPath 回落 searchEntries）。 */
+function SearchResultRow({
+  entry,
+  t,
+  tr,
+  nav,
+  fs,
+}: SubProps & { entry: HumanFileEntry }) {
+  const isDir = isEntryDir(entry);
+  const path = resultRelPath(entry);
+  // 目录新形态 path 带尾斜杠 → 名称取末段（opNameOf 同口径），不回落整串路径。
+  const name = opNameOf(path, entryDisplayName(entry));
+  const parent = formatResultPath(entry);
+  const sel = !isDir && nav.selectedFile === path;
+  const del = useDeleteConfirm({
+    t,
+    tr,
+    humanName: fs.humanName,
+    onDone: (r) => {
+      if (nav.selectedFile === path) nav.selectFile(null);
+      if (!r.purged) fs.offerUndo({ trashId: r.trashId, name });
+      fs.reload({ silent: true });
+      fs.onSearchRefresh();
+    },
+  });
+  const activate = (): void => fs.onSearchActivate(path, isDir);
+  const rowActions: RowAction[] = [];
+  if (isDir) {
+    rowActions.push({
+      key: "enter",
+      label: tr("进入"),
+      icon: <FolderOpenIcon size={16} />,
+      onSelect: activate,
+    });
+  }
+  rowActions.push({
+    key: "detail",
+    label: tr("详情"),
+    icon: <InfoIcon size={16} />,
+    onSelect: () => fs.onOpenDetail(path, isDir),
+  });
+  if (!isDir) {
+    rowActions.push(
+      {
+        key: "download",
+        label: tr("下载"),
+        icon: <DownloadIcon size={16} />,
+        onSelect: () => {
+          void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
+            if (!ok) antd.message.error(tr("下载失败"));
+          });
+        },
+      },
+      {
+        key: "delete",
+        label: tr("删除"),
+        icon: <TrashIcon size={16} />,
+        onSelect: () => del.request(path, name),
+        danger: true,
+      },
+    );
+  }
+  const rowSkin = sel
+    ? { border: `1px solid ${t.border}`, background: t.hoverBg }
+    : { border: "1px solid transparent", background: "transparent" };
+  const meta = [isDir ? "" : fmtBytes(entry.size), fmtTs(entry.updatedAt)]
+    .filter((s) => s !== "")
+    .join(" · ");
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-hf-row="1"
+      title={tr("相对路径 {p}", { p: path })}
+      onClick={activate}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          activate();
+        }
+      }}
+      onMouseEnter={(e) => {
+        if (!sel) e.currentTarget.style.background = t.hoverBg;
+      }}
+      onMouseLeave={(e) => {
+        if (!sel) e.currentTarget.style.background = "transparent";
+      }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) auto auto",
+        gap: LIST_GAP,
+        alignItems: "center",
+        minHeight: "var(--hf-row-min, 44px)",
+        padding: "0 8px",
+        borderRadius: 6,
+        cursor: "pointer",
+        width: "100%",
+        minWidth: 0,
+        overflow: "hidden",
+        ...rowSkin,
+      }}
+    >
+      <span style={{ display: "grid", gap: 1, minWidth: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          {isDir ? (
+            <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          ) : (
+            <PageIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          )}
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: 12,
+              color: t.text,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0,
+            }}
+          >
+            {name}
+            {isDir ? " ›" : ""}
+          </span>
+        </span>
+        <span
+          title={parent === "" ? tr("根目录") : parent}
+          style={{
+            fontSize: 11,
+            color: t.textSecondary,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0,
+          }}
+        >
+          {parent === "" ? tr("根目录") : parent}
+        </span>
+      </span>
+      <span
+        style={{
+          fontSize: 11,
+          color: t.textSecondary,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          maxWidth: 160,
+        }}
+      >
+        {meta}
+      </span>
+      <RowActions
+        t={t}
+        tr={tr}
+        actions={rowActions}
+        primaryKeys={isDir ? ["enter", "detail"] : ["detail", "download"]}
+        compact={false}
+      />
+      {del.node}
+    </div>
+  );
+}
+
+/** 全局搜索结果区：加载 / 失败 / 空态 / 结果列表 / 200 上限提示 / 分页
+ *（首屏 1000 项 · 加载更多，不自动无限拉取）。 */
+function SearchResults({ t, tr, nav, fs }: SubProps) {
+  const ranked = fs.searchRanked;
+  const page = fs.searchPage;
+  // searchTerm 空 = 去抖中的首次查询（尚未发请求）→ 与加载中同显「搜索中…」。
+  const pending = fs.searchLoading || fs.searchTerm === "";
+  return (
+    <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+      {pending ? (
+        <div style={{ padding: "18px 8px", textAlign: "center", fontSize: 12, color: t.textSecondary }}>
+          {tr("搜索中…")}
+        </div>
+      ) : null}
+      {!pending && fs.searchError !== "" ? (
+        <antd.Alert
+          type="warning"
+          showIcon
+          message={tr("搜索失败")}
+          description={fs.searchError}
+        />
+      ) : null}
+      {!pending && fs.searchError === "" && ranked.matched === 0 ? (
+        <div style={{ padding: "18px 8px", textAlign: "center", fontSize: 12, color: t.textSecondary }}>
+          {tr("没有匹配的文件或文件夹")}
+        </div>
+      ) : null}
+      {ranked.results.map((e) => (
+        <SearchResultRow
+          key={resultRelPath(e) || entryDisplayName(e)}
+          entry={e}
+          t={t}
+          tr={tr}
+          nav={nav}
+          fs={fs}
+        />
+      ))}
+      {ranked.capped ? (
+        <div style={{ fontSize: 11, color: t.textSecondary, padding: "0 8px" }}>
+          {tr("仅显示前 {n} 条，继续输入缩小范围", { n: SEARCH_RESULT_CAP })}
+        </div>
+      ) : null}
+      {page.hasMore ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            padding: "0 8px",
+          }}
+        >
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("结果基于前 {n} 项", { n: page.loaded })}
+          </span>
+          <antd.Button
+            style={btnTouch}
+            loading={fs.searchLoadingMore}
+            onClick={() => fs.onSearchLoadMore()}
+          >
+            {tr("加载更多")}
+          </antd.Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -4610,6 +4901,41 @@ function FilesToolbar({
           <span className="hf-view-seg-label">{tr("网格")}</span>
         </button>
       </div>
+      {/* 全局搜索（跨目录名称 / 路径）：宽度 240 / 窄屏全宽；44px 高；
+       * 有内容时 antd allowClear 出清除按钮；<2 字符只提示不触发。 */}
+      <div
+        style={{
+          display: "grid",
+          gap: 2,
+          flex: narrow ? "1 1 100%" : "0 0 240px",
+          width: narrow ? "100%" : 240,
+          maxWidth: narrow ? "100%" : 240,
+          minWidth: 0,
+        }}
+      >
+        <antd.Input
+          value={fs.searchRaw}
+          allowClear
+          aria-label={tr("搜索全部文件")}
+          placeholder={tr("搜索全部文件（名称或路径）")}
+          prefix={<SearchIcon size={12} />}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+            fs.onSearchChange(e.target.value)
+          }
+          onKeyDown={(e: ReactNS.KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              fs.onSearchClear();
+            }
+          }}
+          style={{ height: "var(--hf-row-min, 44px)", minWidth: 0 }}
+        />
+        {parseSearchQuery(fs.searchRaw).tooShort ? (
+          <span style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("输入至少 2 个字符")}
+          </span>
+        ) : null}
+      </div>
       <div
         title={tr("配额")}
         style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 240px", minWidth: 0 }}
@@ -4709,7 +5035,11 @@ function FilesToolbar({
           icon={<ReloadIcon />}
           narrow={narrow}
           iconOnly
-          onClick={() => fs.reload({ force: true })}
+          onClick={() => {
+            // 任务书：刷新时清空搜索（避免结果停留在旧快照上）。
+            fs.onSearchClear();
+            fs.reload({ force: true });
+          }}
         />
         {/* files-ux-r2：多选按需进入（默认不显示复选框；退出清空选择）。 */}
         <ToolBarButton
@@ -4816,9 +5146,8 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
   const [busy, setBusy] = React.useState<"" | "download" | "overwrite">("");
   const [preview, setPreview] = React.useState<PreviewFile | null>(null); // #1669
   const sel = nav.selectedFile;
-  const entry = sel
-    ? fs.files.find((e) => !isEntryDir(e) && rowPath(e, fs.dirPath) === sel)
-    : undefined;
+  // 当前目录优先，回落全局搜索结果（搜索选中目录外的文件也能出详情）。
+  const entry = sel ? findEntryByPath(fs, sel, false) : undefined;
   // #1669 hook 必须在早退 return 之前（entry 消失 = 切占位，hook 数须稳定）。
   // F-V3-3：软删成功登记撤销条（onDone 闭包晚于渲染执行，name 已初始化）；
   // 刷新走统一 reload。
@@ -5334,6 +5663,121 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     [dedup, load],
   );
 
+  // ── 全局搜索（跨目录名称 / 路径；状态不写 URL）──────────────────
+  // 数据独立于目录列表（files 腿）：根目录递归平铺一次拉取，客户端过滤；
+  // 切人员 / 切目录 / 刷新清空（clearSearch 同时让在途响应失效）。
+  const [searchRaw, setSearchRaw] = React.useState("");
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [searchEntries, setSearchEntries] = React.useState<HumanFileEntry[]>([]);
+  const [searchNextKey, setSearchNextKey] = React.useState<string | null | undefined>(
+    undefined,
+  );
+  const [searchLoading, setSearchLoading] = React.useState(false);
+  const [searchLoadingMore, setSearchLoadingMore] = React.useState(false);
+  const [searchError, setSearchError] = React.useState("");
+  const [searchUnavailable, setSearchUnavailable] = React.useState(false);
+  // 删除成功等数据失效场景 → +1 重拉（不影响查询串）。
+  const [searchNonce, setSearchNonce] = React.useState(0);
+  const searchReqRef = React.useRef(0);
+  const searchQuery = React.useMemo(() => parseSearchQuery(searchRaw), [searchRaw]);
+
+  const clearSearch = React.useCallback(() => {
+    searchReqRef.current += 1; // 在途搜索响应作废
+    setSearchRaw("");
+    setSearchTerm("");
+    setSearchEntries([]);
+    setSearchNextKey(undefined);
+    setSearchLoading(false);
+    setSearchLoadingMore(false);
+    setSearchError("");
+    setSearchUnavailable(false);
+  }, []);
+
+  // 输入去抖 250ms；<2 字符不触发（term 归一为空）。
+  React.useEffect(() => {
+    const id = setTimeout(() => {
+      setSearchTerm(searchQuery.active ? searchQuery.term : "");
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchQuery.term, searchQuery.active]);
+
+  // 有效查询 → 根目录递归平铺（首屏最多 SEARCH_FETCH_LIMIT 条，不自动续拉）。
+  React.useEffect(() => {
+    if (!humanName || searchTerm === "") return;
+    const req = ++searchReqRef.current;
+    setSearchLoading(true);
+    setSearchError("");
+    setSearchUnavailable(false);
+    setSearchEntries([]);
+    setSearchNextKey(undefined);
+    void listFiles(humanName, "", { recursive: true, limit: SEARCH_FETCH_LIMIT })
+      .then((r) => {
+        if (req !== searchReqRef.current) return;
+        // 老控制器：递归参数被 301 回落成一层列表（paginated=false）→ 降级。
+        if (!r.paginated) {
+          setSearchUnavailable(true);
+          return;
+        }
+        setSearchEntries(r.entries);
+        setSearchNextKey(r.nextKey);
+      })
+      .catch((e: unknown) => {
+        if (req !== searchReqRef.current) return;
+        const status = e instanceof HumanFilesError ? e.status : 0;
+        if (status === 404 || status === 403 || status === 501) {
+          setSearchUnavailable(true);
+          return;
+        }
+        setSearchError(hfErrorText(e, tr));
+      })
+      .finally(() => {
+        if (req === searchReqRef.current) setSearchLoading(false);
+      });
+  }, [humanName, searchTerm, searchNonce, tr]);
+
+  // 加载更多：nextKey 游标分页（仅按钮触发，不自动无限拉取）。
+  const searchLoadMore = React.useCallback(() => {
+    if (!humanName || typeof searchNextKey !== "string" || searchLoadingMore) return;
+    void (async () => {
+      const req = ++searchReqRef.current;
+      setSearchLoadingMore(true);
+      try {
+        const r = await listFiles(humanName, "", {
+          recursive: true,
+          limit: SEARCH_FETCH_LIMIT,
+          cursor: searchNextKey,
+        });
+        if (req !== searchReqRef.current) return;
+        setSearchEntries((prev) => [...prev, ...r.entries]);
+        setSearchNextKey(r.nextKey);
+      } catch (e) {
+        if (req === searchReqRef.current) antd.message.error(hfErrorText(e, tr));
+      } finally {
+        if (req === searchReqRef.current) setSearchLoadingMore(false);
+      }
+    })();
+  }, [humanName, searchNextKey, searchLoadingMore, tr]);
+
+  // 切人员 → 清空（切目录在 enterDir、刷新在工具条按钮里清）。
+  React.useEffect(() => {
+    clearSearch();
+  }, [humanName, clearSearch]);
+
+  const searchRanked = React.useMemo(
+    () => rankSearchResults(searchEntries, searchQuery),
+    // searchQuery 每次渲染新建 → 依赖其字段（term/active 决定结果）。
+    [searchEntries, searchQuery.term, searchQuery.active],
+  );
+  const searchPage = React.useMemo(
+    () =>
+      searchPageState({
+        entries: searchEntries,
+        nextKey: searchNextKey,
+        limit: SEARCH_FETCH_LIMIT,
+      }),
+    [searchEntries, searchNextKey],
+  );
+
   // 批量选择派生：当前目录**可见行**路径序列（列表顺序，含目录）——
   // shift 区间定位 / 全选三态 / 剔除基准（B2：文件 + 目录都可选）。
   const visiblePaths = React.useMemo(
@@ -5590,6 +6034,26 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     }
   }, [humanName, dirPath, nextKey, loadingMore, tr]);
 
+  // 目录导航（面包屑 / 行双击 / 搜索结果目录行共用）：清选择 + 清搜索 +
+  // 立即清空列表并取数（请求时经 dirPathRef 瞄准新目录）。
+  const enterDir = React.useCallback(
+    (p: string) => {
+      nav.selectFile(null);
+      clearSearch();
+      // #1666c 切目录立即清空：点进去的瞬间看到加载态，而不是旧目录数据。
+      setFiles([]);
+      setNextKey(undefined);
+      setStatus("");
+      setError("");
+      setLoading(true);
+      dirPathRef.current = p; // 请求时读取的 ref 先行更新 → 立即 load 瞄准新目录
+      setDirPath(p);
+      // 立即取数（不依赖 effect 时序——load 身份已不随目录变化）。
+      void load(false);
+    },
+    [nav, clearSearch, load],
+  );
+
   // 16.67 页面级动作（上传/新建文件夹）唯一入口 handlers——工具条按钮与
   // 列表空态 CTA 共享。必须在下方早退 return 之前调用（hooks 顺序稳定）。
   // F-V3-3：新建文件夹成功 → reload({silent:true})（统一刷新入口）。
@@ -5790,6 +6254,35 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       })();
     },
     onOpenDetail: (path, isDir) => setDetailTarget({ path, isDir }),
+    searchRaw,
+    searchTerm,
+    searchLoading,
+    searchLoadingMore,
+    searchError,
+    searchUnavailable,
+    searchEntries,
+    searchNextKey,
+    searchRanked,
+    searchPage,
+    onSearchChange: (raw) => setSearchRaw(raw),
+    onSearchClear: () => {
+      clearSearch();
+      // 回到当前目录：搜索结果里选中的（可能是目录外）文件不再保留焦点。
+      nav.selectFile(null);
+      setFocusedDirHint(false);
+    },
+    onSearchLoadMore: () => searchLoadMore(),
+    onSearchActivate: (path, isDir) => {
+      if (isDir) {
+        // 目录结果 → 清搜索并进入该目录（目录路径去尾斜杠）。
+        enterDir(path.replace(/\/+$/, ""));
+        return;
+      }
+      // 文件结果 → 保留搜索结果，只设焦点（详情槽正常出详情）。
+      nav.selectFile(path);
+      setFocusedDirHint(false);
+    },
+    onSearchRefresh: () => setSearchNonce((n) => n + 1),
     onSwitchView: (v) => {
       if (v === view) return;
       nav.selectFile(null);
@@ -5803,19 +6296,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       setLoading(true);
       setView(v);
     },
-    onEnterDir: (p) => {
-      nav.selectFile(null);
-      // #1666c 切目录立即清空：点进去的瞬间看到加载态，而不是旧目录数据。
-      setFiles([]);
-      setNextKey(undefined);
-      setStatus("");
-      setError("");
-      setLoading(true);
-      dirPathRef.current = p; // 请求时读取的 ref 先行更新 → 立即 load 瞄准新目录
-      setDirPath(p);
-      // 立即取数（不依赖 effect 时序——load 身份已不随目录变化）。
-      void load(false);
-    },
+    onEnterDir: (p) => enterDir(p),
     onToggleRecursive: (on) => {
       if (on === recursive) return;
       nav.selectFile(null);
@@ -5920,6 +6401,9 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     const panes = ownsDetail && !hiddenTab ? panesFor(mode, hasSelection) : null;
     // 窄屏（实测后确认）= 工具条只留图标 / 批量条贴底 / 上传队列折叠。
     const narrow = widthMeasured && mode === "sheet";
+    // 全局搜索生效（≥2 字符且端点可用）：隐藏面包屑 / 目录内容，改结果列表；
+    // 端点降级（404/403/501 / 老控制器）→ 保留目录内容 + 顶部提示。
+    const searchOn = searchQuery.active && !searchUnavailable;
     // 空白点击（挂在页面根容器：工具栏 / 面包屑 / 列表 / 树 / 网格的
     // 背景都算）：清焦点 + 批量选择 + 树本地高亮；详情栏（aside）内部
     // 不是「点别处」，不清。行 / 按钮 / 复选框 / 菜单项内不算空白。
@@ -5946,6 +6430,11 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       actions.folderOpen;
     const onRootKeyDown = (e: ReactNS.KeyboardEvent<HTMLDivElement>): void => {
       if (e.key !== "Escape" || dialogOpen) return;
+      // 搜索态：Esc 先清空搜索并回到当前目录（再按才清选择 / 焦点）。
+      if (searchQuery.raw !== "") {
+        fs.onSearchClear();
+        return;
+      }
       if (multiSelect || selected.size > 0) {
         onClearSelection();
         clearTreeFocus();
@@ -6059,7 +6548,37 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           <span style={{ flex: 1 }} />
           <RecursiveToggle {...sub} />
         </div>
-        <Breadcrumbs {...sub} />
+        {/* 搜索期间：面包屑 / 目录内容隐藏，改「搜索结果 · N 项」标题 + 清除。 */}
+        {searchOn ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              minHeight: "var(--hf-row-min, 44px)",
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, color: t.text, minWidth: 0 }}>
+              {tr("搜索结果 · {n} 项", { n: searchRanked.matched })}
+            </span>
+            <span style={{ flex: 1 }} />
+            <antd.Button style={btnTouch} onClick={() => fs.onSearchClear()}>
+              {tr("清除")}
+            </antd.Button>
+          </div>
+        ) : (
+          <Breadcrumbs {...sub} />
+        )}
+        {/* 端点 404/403/501（或老控制器不支持递归）→ 全局搜索不可用；
+         * 保留当前目录内容（不白屏），搜索框仍可清空。 */}
+        {searchQuery.active && searchUnavailable ? (
+          <antd.Alert
+            type="warning"
+            showIcon
+            message={tr("全局搜索不可用")}
+            description={tr("当前控制器不支持跨目录搜索，已保留当前目录内容。")}
+          />
+        ) : null}
         {/* F-V3-3 撤销条：软删成功（trashId 非空）→ 8s 自动消失；「撤销」
          * 裸 button（触控计数 btn-var 之一）。 */}
         {undo ? (
@@ -6088,8 +6607,9 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
         ) : null}
         {/* 批量操作条：选中 >0（列表 / 树 / 网格三视图同源）：下载（串行 +
          * 进度）/ 删除（useDeleteConfirm 批量模式 → 进回收站）/ 取消选择。
-         * 批量项 = batchTargets（树含已加载子层，折叠保选）。窄屏换行。 */}
-        {selSummary.count > 0 ? (
+         * 批量项 = batchTargets（树含已加载子层，折叠保选）。窄屏换行。
+         * 搜索态不显示（结果行不参与批量选择）。 */}
+        {!searchOn && selSummary.count > 0 ? (
           <BatchBar
             t={t}
             tr={tr}
@@ -6150,7 +6670,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
               zIndex: 0,
             }}
           >
-            {dropNode}
+            {searchOn ? <SearchResults {...sub} /> : dropNode}
           </div>
           {panes && panes.detail !== null ? (
             <aside

@@ -228,4 +228,22 @@ export const missingDict: Record<string, { en: string }> = {
   "SGLang 外网地址": { en: "SGLang WAN address" },
   "Higress 管理员账号": { en: "Higress admin username" },
   "Higress 管理员密码": { en: "Higress admin password" },
+  // 文件管理 · 全局搜索（files-global-search：跨目录名称 / 路径）。
+  "搜索全部文件（名称或路径）": { en: "Search all files (name or path)" },
+  "搜索全部文件": { en: "Search all files" },
+  "输入至少 2 个字符": { en: "Type at least 2 characters" },
+  "搜索结果 · {n} 项": { en: "Search results · {n} items" },
+  "清除": { en: "Clear" },
+  "全局搜索不可用": { en: "Global search unavailable" },
+  "当前控制器不支持跨目录搜索，已保留当前目录内容。": {
+    en: "This controller does not support cross-directory search; the current directory is kept.",
+  },
+  "搜索中…": { en: "Searching…" },
+  "没有匹配的文件或文件夹": { en: "No matching files or folders" },
+  "仅显示前 {n} 条，继续输入缩小范围": {
+    en: "Showing the first {n} matches — keep typing to narrow the results",
+  },
+  "结果基于前 {n} 项": { en: "Results are based on the first {n} items" },
+  "进入": { en: "Open" },
+  "相对路径 {p}": { en: "Relative path {p}" },
 };
