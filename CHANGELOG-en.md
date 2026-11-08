@@ -1,3 +1,10 @@
+## 0.5.0-beta.16.140 (file detail card rounding · 2026-11-08)
+
+**Styles**
+- Selected-file details, trash details and the detail empty state now share a rounded card (10px radius, border, card background, 10px padding) instead of a bare square panel.
+- Adapts to light/dark tokens; the three file views and detail-pane layout are unchanged.
+
+**Tests**: tsc 0 · build 0.
 ## 0.5.0-beta.16.139 (cluster controller card · 2026-11-08)
 
 **Added**
