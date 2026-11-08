@@ -177,4 +177,17 @@ export const millforgeDict: Record<string, { en: string }> = {
   "可不预览——提交建队时自动编译 → 注入 → 创建": {
     en: "Preview optional — submitting team creation auto-runs compile → inject → create",
   },
+  // ── D QwenPaw × QwenCode 桥（CodingCLI 卡内联安装/更新栏）──
+  "QwenPaw × QwenCode 桥": { en: "QwenPaw × QwenCode bridge" },
+  "可更新": { en: "Update available" },
+  "不可用": { en: "Unavailable" },
+  "选择版本": { en: "Select version" },
+  "该频道暂无版本": { en: "No releases in this channel" },
+  "该频道无更新": { en: "No update in this channel" },
+  "降级": { en: "Downgrade" },
+  "已更新到 {v}": { en: "Updated to {v}" },
+  "已安装 {v}": { en: "Installed {v}" },
+  "控制器不支持插件列表（无法检测已装版本）": {
+    en: "The controller does not expose the plugin list (installed version unknown)",
+  },
 };

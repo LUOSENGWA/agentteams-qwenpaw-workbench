@@ -109,6 +109,8 @@ export type TeamInstallBody = {
   source: ModuleSource;
   repo: string;
   ref: string;
+  /** 发布频道（与索引 channel 一致；11-08 bridge 栏按用户选择透传）。 */
+  channel?: ModuleChannel;
   version: string;
   artifact: string;
   sha256: string;

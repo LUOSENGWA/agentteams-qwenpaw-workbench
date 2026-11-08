@@ -39,6 +39,7 @@ import {
   type LoadState,
 } from "./WorkerCodingCliPanelShared";
 import { SettingsTreeEditor } from "./WorkerCodingCliPanelEditor";
+import { QwenCodeBridgeSection } from "./QwenCodeBridgeSection";
 import {
   classifyModelGrantError,
   modelGrantErrorText,
@@ -59,7 +60,7 @@ function useCodingCliPanel({
   sheet,
   onChanged,
 }: {
-  worker: { name: string };
+  worker: { name: string; runtime?: string };
   sheet?: boolean;
   onChanged?: () => void;
 }) {
@@ -439,6 +440,9 @@ function useCodingCliPanel({
     runInstall,
     tr,
     t,
+    workerName: worker.name,
+    runtime: worker.runtime,
+    onChanged,
   };
 }
 
@@ -702,6 +706,16 @@ function CodingCliPanelBody({
                       </span>
                     ) : null}
                   </div>
+                  {/* 「QwenPaw × QwenCode 桥」安装/更新栏（千锻模块卡同款：
+                   * 状态 Tag + 版本下拉 + 单按钮；仅 QwenPaw 运行时渲染——
+                   * 组件内用 runtimeGuard 判据自持，非 qwenpaw 整段不出现）。 */}
+                  {cli.id === "qwen-code" ? (
+                    <QwenCodeBridgeSection
+                      workerName={s.workerName}
+                      runtime={s.runtime}
+                      onChanged={s.onChanged}
+                    />
+                  ) : null}
                   {/* 15.30：已知坑告警（配置写了但不生效的坑前置——
                    * coding-cli SKILL 实证）。 */}
                   {CODING_CLI_WARNINGS[cli.id] ? (
@@ -817,7 +831,7 @@ function WorkerCodingCliPanel({
   sheet,
   onChanged,
 }: {
-  worker: { name: string };
+  worker: { name: string; runtime?: string };
   sheet?: boolean;
   onChanged?: () => void;
 }) {
