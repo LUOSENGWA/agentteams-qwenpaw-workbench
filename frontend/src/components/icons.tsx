@@ -758,6 +758,20 @@ export const StarOutlineIcon = mkIcon(
 );
 
 
+/** ➕ 新增/添加（手写 stroke，HarmonyOS 无对应件；替代「＋」字符——
+ * 按钮 add 场景统一用它，避免字符宽度/字体不一致）。 */
+export const PlusIcon = mkIcon(
+  <>
+      <path
+        d="M12 5.5v13M5.5 12h13"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+  </>,
+  "PlusIcon"
+);
+
 // 信息提示（ApprovalControl 头）/ 聚焦（KnowledgeBase 焦点退出）
 export function InfoIcon({ size = 14, style }: { size?: number; style?: React.CSSProperties }) {
   return (
