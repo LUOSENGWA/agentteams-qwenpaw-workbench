@@ -187,6 +187,15 @@ import {
 } from "./files/treeModel";
 // 16.138：树行骨架与工作区路径选择器共用（缩进 / caret / 44px / aria / 键盘）。
 import TreeRowShell from "./files/TreeRowShell";
+// files-focus-fix：树高亮 / 焦点的纯逻辑（无焦点哨兵 / 清空三态 / 空白判定）。
+import {
+  TREE_FOCUS_NONE,
+  initialTreeFocusIndex,
+  isBlankClickTarget,
+  isPageBlankClickTarget,
+  treeClearState,
+  treeFocusRow,
+} from "./files/treeFocus";
 import {
   UPLOAD_CONCURRENCY,
   makeUploadItems,
@@ -1198,15 +1207,10 @@ function rowPath(e: HumanFileEntry, dirPath: string): string {
 }
 
 /** 空白点击判定（files-ux-r2 C 规则）：点击目标不在行 / 可交互控件内 →
- * 视为「点空白」，清焦点（多选模式同时清选择并退出多选）。 */
-const BLANK_CLICK_SELECTOR =
-  '[data-hf-row],button,a,input,select,textarea,[role="checkbox"],[role="menuitem"]';
-
-export function isBlankClickTarget(target: EventTarget | null): boolean {
-  const el = target as (Element & { closest?: (s: string) => Element | null }) | null;
-  if (!el || typeof el.closest !== "function") return false;
-  return el.closest(BLANK_CLICK_SELECTOR) === null;
-}
+ * 视为「点空白」，清焦点（多选模式同时清选择并退出多选）。
+ * files-focus-fix：实现迁 files/treeFocus（纯逻辑，node 直跑单测）；
+ * 此处 re-export 保留既有入口（tests/files-ux-r2 取 mod.isBlankClickTarget）。 */
+export { isBlankClickTarget } from "./files/treeFocus";
 
 /** 大文件阈值（#1501 建议值 8 MiB）：≥ 走预签名 URL（免代理长流）；
  * 以下保持现有直下（零行为变化）。 */
@@ -3146,6 +3150,7 @@ function TreeArea({
   onDropToDir,
   listWidth = 0,
   multiSelect = false,
+  clearNonce = 0,
 }: SubProps & {
   actions: FilesActions;
   sort: FileSort;
@@ -3157,6 +3162,9 @@ function TreeArea({
   listWidth?: number;
   /** 多选模式（默认 false：不渲染选择列）。 */
   multiSelect?: boolean;
+  /** 清除信号（父级点空白 / Esc 时 +1）：清树本地高亮（selectedDir /
+   * focusIndex），上传目标回当前目录。 */
+  clearNonce?: number;
 }) {
   const childrenRef = React.useRef<Map<string, HumanFileEntry[]>>(new Map());
   const expandedRef = React.useRef<Set<string>>(new Set());
@@ -3164,9 +3172,18 @@ function TreeArea({
   const [rev, setRev] = React.useState(0);
   const [pending, setPending] = React.useState<ReadonlySet<string>>(new Set<string>());
   const [failed, setFailed] = React.useState<ReadonlySet<string>>(new Set<string>());
-  const [focusIndex, setFocusIndex] = React.useState(0);
+  const [focusIndex, setFocusIndex] = React.useState<number>(initialTreeFocusIndex);
   /** 树里选中的目录（上传目标；单击目录行选择、chevron 只切展开）。 */
   const [selectedDir, setSelectedDir] = React.useState("");
+
+  /** 清树本地高亮（选中目录 / 焦点 / 上传目标回当前目录）——切目录、
+   * 点空白、Esc 三处同口径。 */
+  const clearLocalFocus = React.useCallback((): void => {
+    const reset = treeClearState();
+    setSelectedDir(reset.selectedDir);
+    setFocusIndex(reset.focusIndex);
+    actions.setUploadDir(reset.uploadDir);
+  }, [actions]);
 
   // 切目录 → 代数 +1：重置缓存/展开/焦点；在途懒加载响应经 genRef 校验丢弃。
   React.useEffect(() => {
@@ -3175,17 +3192,23 @@ function TreeArea({
     expandedRef.current = new Set();
     setPending(new Set<string>());
     setFailed(new Set<string>());
-    setFocusIndex(0);
+    setFocusIndex(TREE_FOCUS_NONE);
     setSelectedDir("");
     actions.setUploadDir("");
   }, [fs.dirPath]);
+
+  // 父级点空白 / Esc → clearNonce +1：清树本地高亮（selectedDir /
+  // focusIndex 只在本组件，父级看不到，只能靠信号）。
+  React.useEffect(() => {
+    clearLocalFocus();
+  }, [clearNonce]);
 
   const rows = React.useMemo(() => {
     // 每一层子项都按当前列排序（目录恒在前），树结构不变。
     const { roots, children } = sortTreeLevels(fs.files, childrenRef.current, sort);
     return flattenTree({ roots, children, expanded: expandedRef.current });
   }, [fs.files, rev, sort]);
-  const idx = rows.length === 0 ? 0 : Math.min(focusIndex, rows.length - 1);
+  const idx = treeFocusRow(focusIndex, rows.length);
 
   // 可见行路径（树拍平顺序，**含目录**）——shift 区间定位 / 全选三态 /
   // 行点击区间（B2：文件 + 目录都可选）。
@@ -3294,7 +3317,15 @@ function TreeArea({
         const target = p.replace(/\/+$/, "");
         setSelectedDir(row.path);
         actions.setUploadDir(target);
+      } else {
+        // 点文件行：目录高亮 / 上传目标一并回退（不留旧文件夹高亮）。
+        setSelectedDir("");
+        actions.setUploadDir("");
       }
+      // 点击把键盘焦点也挪到本行（roving）：否则此前键盘导航留下的焦点行
+      // 会与刚点的行同时高亮（实机「两个文件夹都有灰底」的第二种成因）。
+      const at = rows.indexOf(row);
+      if (at >= 0) setFocusIndex(at);
       // 焦点 + 批量选择：无修饰只选本行 / Ctrl 切换 / Shift 可见行区间。
       fs.onRowClick(p, {
         isDir: row.isDir,
@@ -3303,7 +3334,7 @@ function TreeArea({
         paths: visiblePaths,
       });
     },
-    [fs, fs.dirPath, visiblePaths, actions],
+    [fs, fs.dirPath, visiblePaths, actions, rows],
   );
 
   const onKeyDown = (e: ReactNS.KeyboardEvent<HTMLDivElement>): void => {
@@ -3323,7 +3354,9 @@ function TreeArea({
       const r = rows.find((x) => x.path === p);
       if (r) toggleRow(r);
     });
-    setFocusIndex(next);
+    // 无焦点（-1）时首次方向键落在第一行——treeKeyNav 顶格不动，否则 ↑
+    // 在「刚进树视图」状态下没有任何反应。
+    setFocusIndex(next < 0 ? 0 : next);
     if (e.key === "Enter") {
       const r = rows[next];
       if (r) activateRow(r);
@@ -3470,12 +3503,21 @@ function TreeArea({
         </div>
       ) : null}
       {fs.status !== "err" && count > 0 ? (
-        <div role="tree" style={{ display: "grid", gap: 4 }}>
+        <div
+          role="tree"
+          onClick={(e) => {
+            // 树内空白：清本地高亮（selectedDir / focusIndex / 上传目标）；
+            // 不 stopPropagation——根容器继续清焦点 / 批量选择。
+            if (!isBlankClickTarget(e.target)) return;
+            clearLocalFocus();
+          }}
+          style={{ display: "grid", gap: 4 }}
+        >
           {rows.map((r, i) => (
             <TreeRowView
               key={i}
               row={r}
-              focused={i === idx}
+              focused={idx >= 0 && i === idx}
               pending={pending.has(r.path)}
               failed={failed.has(r.path)}
               t={t}
@@ -5101,6 +5143,10 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [multiSelect, setMultiSelect] = React.useState(false);
   // 焦点行是否目录（行点击时明确记录；详情槽据此不渲染 FileDetail）。
   const [focusedDirHint, setFocusedDirHint] = React.useState(false);
+  // 树视图本地高亮清除信号（每次 +1）：selectedDir / focusIndex 是 TreeArea
+  // 本地状态，父级看不到——点空白 / Esc 只能靠信号通知它清掉。
+  const [treeClearNonce, setTreeClearNonce] = React.useState(0);
+  const clearTreeFocus = React.useCallback(() => setTreeClearNonce((n) => n + 1), []);
   // 上传目标镜像（ref 供闭包读取；state 让工具条弹窗标题随树选择重渲染）。
   const [uploadTarget, setUploadTarget] = React.useState("");
   // 批量下载进度（{done,total} | null = 未在批量下载）。
@@ -5836,10 +5882,11 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     const panes = ownsDetail && !hiddenTab ? panesFor(mode, hasSelection) : null;
     // 窄屏（实测后确认）= 工具条只留图标 / 批量条贴底 / 上传队列折叠。
     const narrow = widthMeasured && mode === "sheet";
-    // 空白点击（列表 / 树 / 网格容器背景）：清焦点；多选模式同时清选择并
-    // 退出（行 / 按钮 / 复选框 / 菜单项内的点击不算空白——见 isBlank）。
+    // 空白点击（挂在页面根容器：工具栏 / 面包屑 / 列表 / 树 / 网格的
+    // 背景都算）：清焦点 + 批量选择 + 树本地高亮；详情栏（aside）内部
+    // 不是「点别处」，不清。行 / 按钮 / 复选框 / 菜单项内不算空白。
     const onListBlankClick = (e: ReactNS.MouseEvent<HTMLDivElement>): void => {
-      if (!isBlankClickTarget(e.target)) return;
+      if (!isPageBlankClickTarget(e.target)) return;
       nav.selectFile(null);
       setFocusedDirHint(false);
       if (multiSelect || selected.size > 0) {
@@ -5847,6 +5894,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
         setSelAnchor(null);
         setMultiSelect(false);
       }
+      clearTreeFocus();
     };
     // Esc：第一次清选择 + 退出多选（批量条「取消选择」同义）；第二次清焦点。
     // 弹窗 / 抽屉打开时交给它们自己的 Esc 处理（不误清列表状态）。
@@ -5862,12 +5910,15 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       if (e.key !== "Escape" || dialogOpen) return;
       if (multiSelect || selected.size > 0) {
         onClearSelection();
+        clearTreeFocus();
         return;
       }
       if (nav.selectedFile !== null) {
         nav.selectFile(null);
         setFocusedDirHint(false);
       }
+      // 只剩树本地高亮（选中目录 / 键盘焦点）时也要清。
+      clearTreeFocus();
     };
     // F-V3-3：回收站独立页（TrashPanel）移除——改工具条按钮打开的
     // files/TrashDialog 弹窗（数据 = 容器 load 的 trash 腿，弹窗不自取数）。
@@ -5884,6 +5935,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           onDropToDir={(snap, dir) => onDropSnapshot(snap, dir)}
           listWidth={listWidth}
           multiSelect={multiSelect}
+          clearNonce={treeClearNonce}
         />
       ) : filesView === "grid" ? (
         <GridArea
@@ -5920,6 +5972,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     return (
       <div
         ref={widthRef}
+        onClick={onListBlankClick}
         onKeyDown={onRootKeyDown}
         style={{ display: "grid", gap: 10, padding: 4, minWidth: 0 }}
       >
@@ -6049,7 +6102,6 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           {/* a11y-static-exempt: 空白区域点击只清选中高亮，本身非交互控件 */}
           <div
             ref={setListCol}
-            onClick={onListBlankClick}
             style={{
               flex: "1 1 auto",
               minWidth: 0,
