@@ -32,16 +32,19 @@
  *          条目数，0 不显示；点击 +1 次静默刷新）/ 刷新（reload force）——
  *          页面级动作唯一入口；设置/清除配额在「人员管理」人员详情，Q）+
  *          面包屑（dirPath 非空）+ 撤销条（F-V3-3：Alert + 「撤销」，
- *          8s 自动消失，见「撤销」节）+ 完整列表（名称 / 大小 / 更新时间 /
- *          操作，行高 ≥44px（#1669 触控），目录大小 = —；F-V3-3 列自适应：
- *          整批无 updatedAt → 不渲染「更新时间」列，见 columnsFor）+
+ *          8s 自动消失，见「撤销」节）+ 完整列表（名称 / 大小 / 类型 / 修改 /
+ *          操作，行高 ≥44px（#1669 触控），目录大小 = —；files-ux-r2 列自适应：
+ *          按**列表列实测宽**分档（≥900 全列 / 700–899 收类型·修改 / <700 只留
+ *          名称 + 「更多」菜单；隐藏列时名称第二行补「大小 · 修改时间」，
+ *          见 columnsFor + RowActions）+
  *          回收站弹窗（files/TrashDialog：只消费容器数据，不自取数——
  *          修旧 TrashPanel 双请求）。详情统一由本 section 的「详情槽」（父层）
  *          渲染一次：4 列（files 4 列无右栏）/ 1 列 = mid 持槽，按容器宽度
- *          （ResizeObserver；禁 window.innerWidth）断点——≥1200 split
- *          （列表 + 右侧详情 400，flex 不压缩列表）/ 768–1199 drawer
- *          （点行 → Drawer 420）/ <768 sheet（点行 → 全屏 Sheet）；
- *          2/3 列 = 右栏持槽（mid 只出列表，防右栏 + mid 双详情）；
+ *          （ResizeObserver；禁 window.innerWidth）断点——files-ux-r2：
+ *          ≥1320 且实测列表宽 ≥700 才 split（列表 + 右侧详情 380，详情栏
+ *          自成不透明一层）/ 768–1319 drawer（点行 → Drawer 420，列表满宽）/
+ *          <768 sheet（点行 → 全屏 Sheet）；2/3 列 = 右栏持槽（mid 只出列表，
+ *          防右栏 + mid 双详情）；
  * - right：2/3 列 = 详情槽：选中 → 文件详情（预览 / 下载 / 覆盖 / 删除）/
  *          回收站条目详情（恢复 / 彻底删）；未选中 → 空态（图标 + 主文案 +
  *          副文案；F-V3-3：「上传文件」大按钮删除，改一行次要文字「上传
@@ -332,8 +335,8 @@ interface FilesState {
     path: string,
     opts: { shiftKey: boolean; paths?: readonly string[] },
   ) => void;
-  /** 行点击（焦点与批量选择分离）：无修饰 → 只选本行；Ctrl/Cmd → 切换；
-   *  Shift → 从锚点到本行的可见行区间（文件 + 目录）。 */
+  /** 行点击（焦点与批量选择分离）：无修饰且未进多选 → **只设焦点**；
+   *  Ctrl/Cmd 或 Shift → 自动进入多选再切换 / 区间；多选模式普通点击 = 切换。 */
   onRowClick: (
     path: string,
     opts: {
@@ -343,6 +346,10 @@ interface FilesState {
       paths?: readonly string[];
     },
   ) => void;
+  /** 多选模式（默认 false：复选框只在按需进入后渲染）。 */
+  multiSelect: boolean;
+  /** 工具栏「多选」开关（退出时清空 selected / anchor）。 */
+  onMultiSelectToggle: () => void;
   /** 树视图批量上下文上报（可见行 + 已知条目）；null = 离开树视图。 */
   onTreeBatchChange: (info: TreeBatchInfo | null) => void;
   /** 表头/网格工具条「全选」三态切换（all → 清空；否则并入全部可见行）。 */
@@ -397,15 +404,57 @@ export function sizeCell(entry: HumanFileEntry): string {
 }
 
 /** 16.69 master-detail 断点（纯函数；tests/files-layout-1669.test.ts 断言）：
- * 按文件 section 容器宽度判定（组件内 ResizeObserver；禁 window.innerWidth）——
- * ≥1200 split（列表 + 右侧详情并排）/ 768–1199 drawer（点行 → Drawer 420）/
- * <768 sheet（点行 → 全屏 Sheet）。 */
+ * 按文件 section 容器宽度判定（组件内 ResizeObserver；禁 window.innerWidth）。
+ *
+ * files-ux-r2 起门槛上调：split 只在容器真能容纳「详情栏 380 + 列表最小 700
+ * （+间距）」时才成立（≥1320）——旧 1200 会让 4 栏 mid 被 400px 详情栏压到
+ * 700 以下，行内操作图标溢出画进详情栏（实机「幽灵图标」）。1320 以下改
+ * drawer（点行弹右侧 Drawer，不挤压列表）；<768 sheet（底部全屏）。 */
 export type FilesLayoutMode = "split" | "drawer" | "sheet";
 
+/** split 门槛：容器宽 ≥ 该值（380 详情栏 + 930 列表）才并排。 */
+export const SPLIT_MIN_WIDTH = 1320;
+/** 详情栏宽（原 400 收窄到 380——列表最小可用宽优先）。 */
+export const DETAIL_COL_WIDTH = 380;
+/** split 下列表列的最小可用宽：实测小于此值即降级 drawer（不硬挤）。 */
+export const LIST_MIN_SPLIT_WIDTH = 700;
+/** 列表列与详情栏之间的间距。 */
+export const SPLIT_GAP = 10;
+
 export function layoutMode(width: number): FilesLayoutMode {
-  if (width >= 1200) return "split";
+  if (width >= SPLIT_MIN_WIDTH) return "split";
   if (width >= 768) return "drawer";
   return "sheet";
+}
+
+/** split 布局下列表列的预估宽（首帧未测量时按容器宽推算，避免抖动）。 */
+export function estimatedListWidth(
+  containerWidth: number,
+  mode: FilesLayoutMode,
+): number {
+  if (mode !== "split") return containerWidth;
+  return Math.max(0, containerWidth - DETAIL_COL_WIDTH - SPLIT_GAP);
+}
+
+/** 实际布局模式（纯函数；含「split 降级」）：
+ * - 基础档 = layoutMode(containerWidth)；
+ * - split 下若列表实测宽 < LIST_MIN_SPLIT_WIDTH（侧栏/内边距吃掉宽度）→
+ *   downgrade 到 drawer（否则行必然溢出到详情栏，见实机截图）；
+ * - 未测量（首帧 / 静态渲染）→ 用容器宽预估，量到再切（不抖：只在 split
+ *   布局下采信实测值，见容器里的 ResizeObserver）。 */
+export function effectiveLayoutMode(o: {
+  containerWidth: number;
+  listWidth: number;
+  listMeasured: boolean;
+}): FilesLayoutMode {
+  const base = layoutMode(o.containerWidth);
+  if (base !== "split") return base;
+  const listW =
+    o.listMeasured && o.listWidth > 0
+      ? o.listWidth
+      : estimatedListWidth(o.containerWidth, base);
+  if (listW <= 0) return base;
+  return listW < LIST_MIN_SPLIT_WIDTH ? "drawer" : base;
 }
 
 /** 16.69 栏位划分（纯函数）：任一 (mode, hasSelection) 组合的「详情」槽至多
@@ -454,21 +503,126 @@ export function detailState(o: {
   return "pick";
 }
 
-/** 16.67 列表列模板（表头行与数据行共用 → 列宽稳定）：
- * 名称（伸缩）/ 大小 / 时间（更新·删除）/ 操作（定宽）。
- * #1669：操作列 64→96px（2×40px 图标按钮 + 8px 间距，适配 40px 触控目标）。
- * files-dnd：操作列 96→136px（3×40px：详情 / 下载 / 删除；同样 8px 间距）。 */
-/** 列模板按可见列拼（名称 / 大小 / 类型 / 修改 / 创建 / 操作）。 */
-export function listGrid(o: { modified: boolean; created: boolean }): string {
-  const cols = ["minmax(0, 1fr)", "72px", "84px"];
-  if (o.modified) cols.push("120px");
-  if (o.created) cols.push("120px");
-  cols.push("136px");
-  return cols.join(" ");
+/** 列表列（显式轨道；表头 / 数据行 / 树行同一来源——禁止隐式 auto 列）。
+ * files-ux-r2 根因之二：旧 listGrid 只出 4 轨（名称/大小/类型/修改），而表头
+ * 与行实际 6 个子项（44px 选择列 + 4 + 操作）→ 操作项落进隐式 auto 列，
+ * 总宽超容器后直接画到右侧详情栏上。 */
+export type FilesColumn =
+  | "select"
+  | "name"
+  | "size"
+  | "type"
+  | "modified"
+  | "actions"
+  | "more";
+
+/** 列 → 轨道宽（listGrid 唯一实现；轨道数恒 = 列数）。 */
+export const COLUMN_TRACK: Record<FilesColumn, string> = {
+  select: "44px",
+  // 名称 = 唯一伸缩轨；其余定宽（窄屏靠 columnsFor 收列，不靠压缩）。
+  name: "minmax(0, 1fr)",
+  size: "72px",
+  type: "84px",
+  modified: "120px",
+  // 3 × 40px 图标 + 2 × 8px 间距 = 136；coarse 指针按钮 44px → 148。
+  actions: "152px",
+  more: "44px",
+};
+
+/** 列 → 轨道数值宽（伸缩轨按最小可用宽计；测试「总宽 ≤ listWidth」断言用）。 */
+export const COLUMN_TRACK_PX: Record<FilesColumn, number> = {
+  select: 44,
+  name: 120,
+  size: 72,
+  type: 84,
+  modified: 120,
+  actions: 152,
+  more: 44,
+};
+
+/** 列间 gap（表头 / 行 / 树同一值：grid gap + 总宽预算）。 */
+export const LIST_GAP = 8;
+
+/** 列模板（表头行与数据行共用 → 列宽稳定；轨道数 = columns.length）。 */
+export function listGrid(columns: readonly FilesColumn[]): string {
+  return columns.map((c) => COLUMN_TRACK[c]).join(" ");
 }
-/** 兼容导出（历史测试引用；默认 = 三列 + 操作）。 */
-export const LIST_GRID = listGrid({ modified: true, created: false });
-export const LIST_GRID_NO_TIME = listGrid({ modified: false, created: false });
+
+/** 树行模板：在 select 轨道后插入 16px 展开三角轨道（无 select 则置首），
+ * 其余轨道与 listGrid 完全同源（禁止隐式列）。 */
+export function treeGrid(columns: readonly FilesColumn[]): string {
+  const parts: string[] = [];
+  let caretPlaced = false;
+  for (const c of columns) {
+    parts.push(COLUMN_TRACK[c]);
+    if (c === "select") {
+      parts.push("16px");
+      caretPlaced = true;
+    }
+  }
+  if (!caretPlaced) parts.unshift("16px");
+  return parts.join(" ");
+}
+
+/** 轨道总宽（含 gap）：伸缩轨按最小可用宽 120px 计——断言「任何档位总宽
+ * 不超过实测列表宽」的纯函数基准。 */
+export function columnsTotal(columns: readonly FilesColumn[]): number {
+  const track = columns.reduce((sum, c) => sum + COLUMN_TRACK_PX[c], 0);
+  const gaps = Math.max(0, columns.length - 1) * LIST_GAP;
+  return track + gaps;
+}
+
+export interface FilesColumns {
+  /** 渲染顺序（= 实际 grid 子项顺序；表头 / 行 / 树共用）。 */
+  columns: FilesColumn[];
+  /** grid-template-columns（轨道数 = columns.length）。 */
+  grid: string;
+  /** 轨道总宽（含 gap，伸缩轨按最小宽）。 */
+  total: number;
+  /** 名称列弹「更多」菜单（<700：操作收成单个 44px 菜单）。 */
+  compactActions: boolean;
+  /** 时间列（表头 / 行渲染门控；兼容旧断言名）。 */
+  showUpdatedAt: boolean;
+  /** 大小 + 类型列都在（= 名称列不出第二行摘要）。 */
+  showSize: boolean;
+  /** 多选列（默认 false：复选框积只在按需进入多选后渲染）。 */
+  showMultiSelect: boolean;
+}
+
+/** 列自适应（纯函数；tests/files-ux-r2 断言）——按**列表列实测宽**
+ * （不是容器宽：split 后列表 = 容器宽 − 详情栏 380 − gap）分档：
+ * - ≥900 + 多选关：名称 + 大小 + 类型 + 修改 + 操作；
+ * - 700–899：名称 + 大小 + 操作（隐藏类型 / 修改）；
+ * - <700：名称 + 操作（操作收成单个 44px「更多」菜单）；
+ * - 多选开：在首位插入 44px 选择轨（总宽仍须 ≤ listWidth）。 */
+export function columnsFor(listWidth: number, multiSelect: boolean): FilesColumns {
+  const w = Number.isFinite(listWidth) && listWidth > 0 ? listWidth : 0;
+  const columns: FilesColumn[] = [];
+  if (multiSelect) columns.push("select");
+  columns.push("name");
+  const showSize = w >= 700;
+  const showUpdatedAt = w >= 900;
+  if (showSize) columns.push("size");
+  if (showUpdatedAt) {
+    columns.push("type");
+    columns.push("modified");
+  }
+  const compactActions = w < 700;
+  columns.push(compactActions ? "more" : "actions");
+  return {
+    columns,
+    grid: listGrid(columns),
+    total: columnsTotal(columns),
+    compactActions,
+    showUpdatedAt,
+    showSize,
+    showMultiSelect: multiSelect,
+  };
+}
+
+/** 兼容导出（历史测试引用；= 全列表格 / 无时间列表格）。 */
+export const LIST_GRID = listGrid(["name", "size", "type", "modified", "actions"]);
+export const LIST_GRID_NO_TIME = listGrid(["name", "size", "type", "actions"]);
 
 /** 扩展名（小写，无扩展名 → ""）。 */
 function extOf(name: string): string {
@@ -483,25 +637,35 @@ export function fileTypeLabel(e: HumanFileEntry): string {
   return ext ? ext.toUpperCase() : "文件";
 }
 
-/** F-V3-3 列自适应（纯函数；tests/files-v3-3 断言）：整批条目都没有
- * updatedAt → 不渲染「更新时间」列（表头 / 行 / grid 模板同步）。 */
-export function columnsFor(entries: HumanFileEntry[]): {
-  showUpdatedAt: boolean;
-  showCreated: boolean;
-  grid: string;
-} {
-  const showUpdatedAt = entries.some(
-    (e) => typeof e.updatedAt === "string" && e.updatedAt !== "",
-  );
-  // 创建时间：当前控制器（S3 / embedded）不返回，只有后端提供时才成列。
-  const showCreated = entries.some(
-    (e) => typeof (e as { createdAt?: string }).createdAt === "string" &&
-      (e as { createdAt?: string }).createdAt !== "",
-  );
+/** 行点击意图（纯函数；tests/files-ux-r2 断言）——焦点与批量选择分离：
+ * - 非多选 + 无修饰：只设焦点（不写 selected）；
+ * - Ctrl/Cmd 或 Shift：自动进入多选，再按切换 / 区间语义处理；
+ * - 多选模式：普通点击 = 切换，Shift = 区间（Ctrl 同切换）。 */
+export interface RowClickIntent {
+  /** 只设焦点（清不动 selected）。 */
+  focusOnly: boolean;
+  /** 需要先进入多选模式（当前未开）。 */
+  enterMulti: boolean;
+  /** clickSelection 的 toggle 语义。 */
+  toggle: boolean;
+  /** clickSelection 的区间语义。 */
+  range: boolean;
+}
+
+export function rowClickIntent(o: {
+  multiSelect: boolean;
+  shiftKey: boolean;
+  toggleKey: boolean;
+}): RowClickIntent {
+  const modifier = o.shiftKey || o.toggleKey;
+  if (!o.multiSelect && !modifier) {
+    return { focusOnly: true, enterMulti: false, toggle: false, range: false };
+  }
   return {
-    showUpdatedAt,
-    showCreated,
-    grid: listGrid({ modified: showUpdatedAt, created: showCreated }),
+    focusOnly: false,
+    enterMulti: !o.multiSelect,
+    toggle: o.multiSelect ? !o.shiftKey : o.toggleKey,
+    range: o.shiftKey,
   };
 }
 
@@ -724,6 +888,275 @@ function EditTextIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
   );
 }
 
+/** 行内「更多」图标（三点；<700 单菜单入口）。 */
+function MoreIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <circle cx="3.4" cy="8" r="1.4" />
+      <circle cx="8" cy="8" r="1.4" />
+      <circle cx="12.6" cy="8" r="1.4" />
+    </svg>
+  );
+}
+
+/** 工具条「上传文件」图标（箭头向上入托盘）。 */
+function UploadIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M8 10.5V2.6M5.2 5.4L8 2.6l2.8 2.8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2.6 10.4v2.2c0 .5.4.9.9.9h9c.5 0 .9-.4.9-.9v-2.2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** 工具条「新建文件夹」图标（文件夹 + 加号）。 */
+function NewFolderIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M1.9 4.3c0-.6.5-1.1 1.1-1.1h3l1.4 1.5h5.6c.6 0 1.1.5 1.1 1.1v6c0 .6-.5 1.1-1.1 1.1H3c-.6 0-1.1-.5-1.1-1.1V4.3z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path d="M8 7.2v3.6M6.2 9h3.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** 工具条「同步设置」图标（双向箭头环）。 */
+function SyncToolIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M13.2 6.6A5.3 5.3 0 003 4.6M2.8 9.4a5.3 5.3 0 0010.2 2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M13.4 3.2v3.5h-3.5M2.6 12.8V9.3h3.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 工具条「多选」图标（勾选框列）。 */
+function MultiSelectIcon({ size = 16 }: { size?: number }): ReactNS.ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <rect x="1.9" y="1.9" width="12.2" height="12.2" rx="2.4" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M4.6 8.1l2.2 2.2 4.4-4.4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 行内操作项（列表行 / 树行 / 网格卡共用——三视图不再各写一套按钮）。 */
+interface RowAction {
+  key: string;
+  label: string;
+  icon: ReactNS.ReactElement;
+  onSelect: () => void;
+  disabled?: boolean;
+  /** 禁用原因（tooltip；如目录不可删）。 */
+  disabledReason?: string;
+  danger?: boolean;
+}
+
+/** 行内「更多」菜单（自绘：不引 antd.Dropdown——旧静态渲染桩无该组件；
+ * position:fixed 逃逸列表列的 overflow/contain 裁切，菜单不被切掉）。 */
+function RowMoreMenu({
+  t,
+  tr,
+  actions,
+}: {
+  t: ThemeColors;
+  tr: Tr;
+  actions: RowAction[];
+}) {
+  const [pos, setPos] = React.useState<{ x: number; y: number } | null>(null);
+  const rootRef = React.useRef<HTMLSpanElement | null>(null);
+  React.useEffect(() => {
+    if (!pos) return;
+    // 点菜单内（含触发按钮）不关——否则 mousedown 先卸载菜单项，click 落空。
+    const close = (e: MouseEvent): void => {
+      const root = rootRef.current;
+      if (root && e.target instanceof Node && root.contains(e.target)) return;
+      setPos(null);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setPos(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pos]);
+  const open = (e: ReactNS.MouseEvent<HTMLButtonElement>): void => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (pos) {
+      setPos(null);
+      return;
+    }
+    const r = e.currentTarget.getBoundingClientRect();
+    setPos({ x: Math.max(8, Math.round(r.right - 176)), y: Math.round(r.bottom + 4) });
+  };
+  return (
+    <span ref={rootRef} style={{ position: "relative", display: "inline-flex" }}>
+      <button
+        type="button"
+        aria-label={tr("更多操作")}
+        title={tr("更多操作")}
+        aria-haspopup="menu"
+        aria-expanded={pos !== null}
+        onClick={open}
+        style={iconBtnStyle(t)}
+      >
+        <MoreIcon size={16} />
+      </button>
+      {pos ? (
+        <div
+          role="menu"
+          aria-label={tr("更多操作")}
+          style={{
+            position: "fixed",
+            left: pos.x,
+            top: pos.y,
+            zIndex: 40,
+            minWidth: 176,
+            display: "grid",
+            gap: 2,
+            padding: 4,
+            borderRadius: 8,
+            border: `1px solid ${t.border}`,
+            background: t.cardBg,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+          }}
+        >
+          {actions.map((a) => (
+            <button
+              key={a.key}
+              type="button"
+              role="menuitem"
+              disabled={a.disabled}
+              title={a.disabled ? a.disabledReason : a.label}
+              onClick={(e) => {
+                e.stopPropagation();
+                setPos(null);
+                if (!a.disabled) a.onSelect();
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                minHeight: "var(--hf-btn-min, 40px)",
+                padding: "0 8px",
+                border: "none",
+                borderRadius: 6,
+                background: "transparent",
+                color: a.danger ? "#d4380d" : t.text,
+                opacity: a.disabled ? 0.45 : 1,
+                cursor: a.disabled ? "not-allowed" : "pointer",
+                fontSize: 13,
+                textAlign: "left",
+              }}
+            >
+              <span aria-hidden="true" style={{ display: "inline-flex", color: t.textSecondary }}>
+                {a.icon}
+              </span>
+              <span>{a.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+/** 行操作单元（唯一实现）：宽屏 = 两个主操作图标 + 「更多」（恒 ≤ 3 个
+ * 40/44px 按钮，装进 152px 轨道，绝不溢出）；窄屏（<700）= 单个「更多」菜单
+ * （菜单项顺序 = actions，含全部操作）。 */
+function RowActions({
+  t,
+  tr,
+  actions,
+  primaryKeys,
+  compact,
+}: {
+  t: ThemeColors;
+  tr: Tr;
+  actions: RowAction[];
+  /** 宽屏直接露出的操作（最多 2 个）；其余收进「更多」。 */
+  primaryKeys: readonly string[];
+  compact: boolean;
+}) {
+  const primary = primaryKeys
+    .map((k) => actions.find((a) => a.key === k))
+    .filter((a): a is RowAction => a !== undefined)
+    .slice(0, 2);
+  return (
+    <span
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: TOUCH.iconGap,
+        minWidth: 0,
+        maxWidth: "100%",
+        overflow: "hidden",
+      }}
+    >
+      {compact
+        ? null
+        : primary.map((a) => (
+            <button
+              key={a.key}
+              type="button"
+              disabled={a.disabled}
+              title={a.disabled ? a.disabledReason : a.label}
+              aria-label={a.label}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!a.disabled) a.onSelect();
+              }}
+              style={{
+                ...iconBtnStyle(t),
+                opacity: a.disabled ? 0.4 : 1,
+                cursor: a.disabled ? "not-allowed" : "pointer",
+              }}
+            >
+              {a.icon}
+            </button>
+          ))}
+      <RowMoreMenu t={t} tr={tr} actions={actions} />
+    </span>
+  );
+}
+
 /** F-V3-4 视图分段按钮（裸 <button>；≥44px 触控盒 = --hf-row-min；
  * 激活 = accentBg 底 + text 色）。 */
 function viewSegBtnStyle(t: ThemeColors, active: boolean): ReactNS.CSSProperties {
@@ -762,6 +1195,17 @@ function opNameOf(path: string, fallback: string): string {
  * 老形态 = dirPath/name。选中键 / 下载 / 删除 / 上传全走此值。 */
 function rowPath(e: HumanFileEntry, dirPath: string): string {
   return e.path ? entryRelPath(e) : fullPath(dirPath, e.name ?? "");
+}
+
+/** 空白点击判定（files-ux-r2 C 规则）：点击目标不在行 / 可交互控件内 →
+ * 视为「点空白」，清焦点（多选模式同时清选择并退出多选）。 */
+const BLANK_CLICK_SELECTOR =
+  '[data-hf-row],button,a,input,select,textarea,[role="checkbox"],[role="menuitem"]';
+
+export function isBlankClickTarget(target: EventTarget | null): boolean {
+  const el = target as (Element & { closest?: (s: string) => Element | null }) | null;
+  if (!el || typeof el.closest !== "function") return false;
+  return el.closest(BLANK_CLICK_SELECTOR) === null;
 }
 
 /** 大文件阈值（#1501 建议值 8 MiB）：≥ 走预签名 URL（免代理长流）；
@@ -1199,7 +1643,7 @@ function DetailDrawerShell({
 }
 
 /** 16.69 断点浮层（drawer/sheet 模式点行弹出；该模式下详情只此一处渲染）：
- * 768–1199 → 右侧 Drawer(420)；<768 → 底部全屏 Sheet。 */
+ * 768–1319 → 右侧 Drawer(420)；<768 → 底部全屏 Sheet。 */
 function DetailOverlay({ t, tr, nav, fs, overlay }: SubProps & { overlay: "drawer" | "sheet" }) {
   const title = fs.view === "files" ? tr("文件详情") : tr("回收站条目");
   const close = () => nav.selectFile(null);
@@ -1494,7 +1938,19 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
     </button>
   );
   return (
-    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
+    /* files-ux-r2 竖屏：面包屑单行横滚（不换行挤压列表头）。 */
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "nowrap",
+        gap: 2,
+        overflowX: "auto",
+        overflowY: "hidden",
+        maxWidth: "100%",
+        minWidth: 0,
+      }}
+    >
       {segments.map((s, i) => {
         const p = segments.slice(0, i + 1).join("/");
         const last = i === segments.length - 1;
@@ -1613,6 +2069,7 @@ function BatchBar({
   onDownload,
   onDelete,
   onCancel,
+  narrow = false,
 }: {
   t: ThemeColors;
   tr: Tr;
@@ -1627,6 +2084,8 @@ function BatchBar({
   onDownload: () => void;
   onDelete: () => void;
   onCancel: () => void;
+  /** 窄屏（<768）：sticky 贴底、不遮内容的实底条。 */
+  narrow?: boolean;
 }) {
   const dl = dlProgress;
   const fileCount = count - dirCount;
@@ -1641,10 +2100,14 @@ function BatchBar({
         gap: 8,
         padding: "6px 10px",
         borderRadius: 8,
-        background: t.accentBg,
+        background: narrow ? t.cardBg : t.accentBg,
         border: `1px solid ${t.border}`,
         fontSize: 12,
         color: t.text,
+        // 窄屏贴底：实底（accentBg 是 tint，会透出下面内容）+ 更高层级。
+        ...(narrow
+          ? { position: "sticky" as const, bottom: 8, zIndex: 5, boxShadow: "0 -2px 12px rgba(0,0,0,0.12)" }
+          : null),
       }}
     >
       <span style={{ fontWeight: 700 }}>
@@ -1687,11 +2150,10 @@ function BatchBar({
   );
 }
 
-/** 列表块（F-V3-3：files-only——回收站改工具条按钮 → TrashDialog 弹窗，
- * 不再同屏）：出错+重试（reload force）/ 加载中 / 空态（居中一句 + 主 CTA
- * 文字链接，指向工具条同一处理函数）/ 表头行 + 文件行列表（列自适应
- * columnsFor：整批无 updatedAt → 不渲染「更新时间」列；compact = l1 列
- * 紧凑行）。 */
+/** 列表块（files-only——回收站改工具条按钮 → TrashDialog 弹窗，不同屏）：
+ * 出错+重试（reload force）/ 加载中 / 空态（居中一句 + 主 CTA 文字链接，
+ * 指向工具条同一处理函数）/ 表头行 + 文件行列表（列自适应 columnsFor：按
+ * 列表列实测宽收列，表头 / 行 / 树同一来源；compact = l1 紧凑行）。 */
 /** 可排序表头（列表与树共用）：
  * - 列名点击 = 同列翻转 / 换列升序；
  * - 右侧**两个三角形**（▲ 升序 / ▼ 降序）可分别点击直达方向；
@@ -1778,6 +2240,8 @@ function ListArea({
   sort,
   onSort,
   onSetSort,
+  listWidth = 0,
+  multiSelect = false,
 }: SubProps & {
   actions: FilesActions;
   compact?: boolean;
@@ -1785,10 +2249,15 @@ function ListArea({
   sort: FileSort;
   onSort: (k: FileSortKey) => void;
   onSetSort: (s: FileSort) => void;
+  /** 列表列实测宽（split 后 = 容器宽 − 详情栏 380 − gap）；0 = 未测量。 */
+  listWidth?: number;
+  /** 多选模式（默认 false：不渲染选择列 / 复选框）。 */
+  multiSelect?: boolean;
 }) {
   const count = files.length;
-  // F-V3-3 列自适应：表头 / 行 / grid 模板同一决策（纯函数 columnsFor）。
-  const cols = columnsFor(fs.files);
+  // 列自适应：表头 / 行 / 树模板同一决策（纯函数 columnsFor，按 **列表列**
+  // 实测宽分档——旧实现按页面容器宽，split 后被 400px 详情栏挤压而高估）。
+  const cols = columnsFor(listWidth, multiSelect);
   // 可见行顺序（列表顺序，含目录）：shift 区间 / 全选三态 / 行点击共用。
   const viewPaths = React.useMemo(
     () => files.map((e) => rowPath(e, fs.dirPath)).filter((p) => p !== ""),
@@ -1796,7 +2265,7 @@ function ListArea({
   );
   const selState = selectAllState(fs.selected, viewPaths);
   return (
-    <div style={{ display: "grid", gap: 4 }}>
+    <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
       {!compact && fs.status !== "err" ? (
         <span style={{ fontSize: 11, color: t.textSecondary }}>
           {tr("共 {n} 个条目", { n: count })}
@@ -1844,58 +2313,87 @@ function ListArea({
           </antd.Button>
         </div>
       ) : null}
-      {/* 16.67 列表表头行：名称 / 大小 / 更新时间 / 操作——
-       * 与数据行共用同一 grid 模板（列宽稳定）。F-V3-3：整批无 updatedAt
-       * → 「更新时间」列不渲染（cols.showUpdatedAt 门控）。回收站列头在
-       * files/TrashDialog（原路径 / 大小 / 删除时间 / 操作）。 */}
+      {/* 列表表头行：列集合 / 顺序 / 轨道 = 数据行同一来源（columnsFor），
+       * 表头子项数 ≡ 行子项数 ≡ 轨道数 —— 不再有隐式 auto 列。
+       * 回收站列头在 files/TrashDialog（原路径 / 大小 / 删除时间 / 操作）。 */}
       {!compact && fs.status !== "err" && !fs.loading && count > 0 ? (
         <div
           style={{
             display: "grid",
-            // 44px 首列 = 批量全选 checkbox（与 FileRow 行模板同宽，列宽稳定）。
-            gridTemplateColumns: `44px ${cols.grid}`,
-            gap: 8,
+            gridTemplateColumns: cols.grid,
+            gap: LIST_GAP,
             alignItems: "center",
             padding: "0 8px",
             fontSize: 12,
             color: t.textSecondary,
+            minWidth: 0,
           }}
         >
-          <SelCheck
-            t={t}
-            checked={selState === "all"}
-            indeterminate={selState === "some"}
-            onToggle={() => fs.onSelectAll(viewPaths)}
-            label={tr("全选")}
-          />
-          <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} onSetSort={onSetSort} />
-          <span style={{ textAlign: "right" }}>
-            <SortHeader
-              label={tr("大小")}
-              k="size"
-              sort={sort}
-              onSort={onSort} onSetSort={onSetSort}
-              align="right"
-            />
-          </span>
-          <SortHeader label={tr("类型")} k="type" sort={sort} onSort={onSort} onSetSort={onSetSort} />
-          {cols.showUpdatedAt ? (
-            <SortHeader
-              label={tr("修改")}
-              k="updatedAt"
-              sort={sort}
-              onSort={onSort} onSetSort={onSetSort}
-            />
-          ) : null}
-          {cols.showCreated ? (
-            <SortHeader
-              label={tr("创建")}
-              k="createdAt"
-              sort={sort}
-              onSort={onSort} onSetSort={onSetSort}
-            />
-          ) : null}
-          <span>{tr("操作")}</span>
+          {cols.columns.map((c) => {
+            if (c === "select") {
+              return (
+                <SelCheck
+                  key="select"
+                  t={t}
+                  checked={selState === "all"}
+                  indeterminate={selState === "some"}
+                  onToggle={() => fs.onSelectAll(viewPaths)}
+                  label={tr("全选")}
+                />
+              );
+            }
+            if (c === "name") {
+              return (
+                <SortHeader
+                  key="name"
+                  label={tr("名称")}
+                  k="name"
+                  sort={sort}
+                  onSort={onSort}
+                  onSetSort={onSetSort}
+                />
+              );
+            }
+            if (c === "size") {
+              return (
+                <span key="size" style={{ textAlign: "right" }}>
+                  <SortHeader
+                    label={tr("大小")}
+                    k="size"
+                    sort={sort}
+                    onSort={onSort}
+                    onSetSort={onSetSort}
+                    align="right"
+                  />
+                </span>
+              );
+            }
+            if (c === "type") {
+              return (
+                <SortHeader
+                  key="type"
+                  label={tr("类型")}
+                  k="type"
+                  sort={sort}
+                  onSort={onSort}
+                  onSetSort={onSetSort}
+                />
+              );
+            }
+            if (c === "modified") {
+              return (
+                <SortHeader
+                  key="modified"
+                  label={tr("修改")}
+                  k="updatedAt"
+                  sort={sort}
+                  onSort={onSort}
+                  onSetSort={onSetSort}
+                />
+              );
+            }
+            return <span key={c}>{tr("操作")}</span>;
+          })}
         </div>
       ) : null}
       {files.map((e) => (
@@ -1908,9 +2406,7 @@ function ListArea({
           fs={fs}
           compact={compact}
           paths={viewPaths}
-          grid={cols.grid}
-          showUpdatedAt={cols.showUpdatedAt}
-          showCreated={cols.showCreated}
+          cols={cols}
         />
       ))}
       {/* #1518：仅 nextKey 为 string（满页还有下一页）时显「加载更多」；
@@ -1925,8 +2421,10 @@ function ListArea({
 }
 
 /** 文件行：目录行 = 点击进入；文件行 = 点击选中 + 行内 下载 / 删除(→回收站)。
- * F-V3-3：grid / showUpdatedAt 由 ListArea 的 columnsFor 决策传入（表头/行
- * 同步）；软删成功登记撤销条（fs.offerUndo）+ reload 静默刷新。 */
+ * files-ux-r2：列集合 / 轨道由 ListArea 的 columnsFor 传入（表头 / 行同源）；
+ * 行内操作统一走 RowActions（宽屏 ≤3 个按钮装进 152px 轨道，窄屏单「更多」
+ * 菜单）——旧实现 6 个 40px 图标硬塞 136px 轨道，溢出画进右侧详情栏。
+ * 软删成功登记撤销条（fs.offerUndo）+ reload 静默刷新。 */
 function FileRow({
   entry,
   t,
@@ -1935,17 +2433,14 @@ function FileRow({
   fs,
   compact = false,
   paths,
-  grid = LIST_GRID,
-  showUpdatedAt = true,
-  showCreated = false,
+  cols = columnsFor(900, false),
 }: SubProps & {
   entry: HumanFileEntry;
   compact?: boolean;
   /** 可见行顺序（含目录）：shift 区间 / 行点击区间共用。 */
   paths: readonly string[];
-  grid: string;
-  showUpdatedAt: boolean;
-  showCreated: boolean;
+  /** 列决策（列集合 + 轨道 + 门控，来自 columnsFor）。 */
+  cols?: FilesColumns;
 }) {
   const isDir = isEntryDir(entry);
   const name = entryDisplayName(entry);
@@ -1973,12 +2468,6 @@ function FileRow({
   };
   const toggleSel = (shiftKey: boolean) =>
     fs.onToggleSelect(path, { shiftKey, paths });
-  const onDownload = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
-      if (!ok) antd.message.error(tr("下载失败"));
-    });
-  };
   // #1669 统一删除确认（与详情面板共用 useDeleteConfirm，不各写一份 Modal）：
   // 勾选「移入回收站（可恢复）」（默认）= 软删；未勾选 = 软删后立即彻底删。
   // F-V3-3：软删成功（trashId 非空）登记撤销条；刷新走统一 reload。
@@ -1992,49 +2481,50 @@ function FileRow({
       fs.reload({ silent: true });
     },
   });
-  const onDelete = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    del.request(path, name);
-  };
 
+  // 隐藏列时名称列出第二行摘要（大小 · 修改时间）——窄屏不再丢信息。
+  const nameSecondary =
+    !isDir && (!cols.showSize || !cols.showUpdatedAt)
+      ? [fmtBytes(entry.size), fmtTs(entry.updatedAt)].filter((s) => s !== "").join(" · ")
+      : "";
   const nameCell = (
-    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+    <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
       {isDir ? (
         <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
       ) : (
         <PageIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
       )}
-      <span
-        // 新形态（递归平铺）hover 显相对全路径，便于区分同名条目。
-        title={entry.path ? path : undefined}
-        style={{
-          fontWeight: 600,
-          fontSize: 12,
-          color: t.text,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {name}
-        {isDir ? " ›" : ""}
+      <span style={{ display: "grid", gap: 1, minWidth: 0 }}>
+        <span
+          // 新形态（递归平铺）hover 显相对全路径，便于区分同名条目。
+          title={entry.path ? path : undefined}
+          style={{
+            fontWeight: 600,
+            fontSize: 12,
+            color: t.text,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {name}
+          {isDir ? " ›" : ""}
+        </span>
+        {nameSecondary !== "" ? (
+          <span
+            style={{
+              fontSize: 11,
+              color: t.textSecondary,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {nameSecondary}
+          </span>
+        ) : null}
       </span>
     </span>
-  );
-  const onDetail = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    fs.onOpenDetail(path, isDir);
-  };
-  const detailBtn = (
-    <button
-      type="button"
-      onClick={onDetail}
-      title={tr("详情")}
-      aria-label={tr("详情")}
-      style={iconBtnStyle(t)}
-    >
-      <InfoIcon size={16} />
-    </button>
   );
   // 第二批行操作：重命名 / 移动到…（目录同样支持）；文本文件额外给「编辑」。
   const opTarget: FileOpTarget = {
@@ -2044,97 +2534,129 @@ function FileRow({
     size: entry.size,
     etag: entry.etag,
   };
-  const renameBtn = (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        fs.onRename(opTarget);
-      }}
-      title={tr("重命名")}
-      aria-label={tr("重命名")}
-      style={iconBtnStyle(t)}
-    >
-      <RenameIcon size={16} />
-    </button>
+  // 行操作清单（菜单顺序 = 任务书：详情 / 编辑 / 重命名 / 移动到 / 下载 /
+  // 删除）；宽屏露出的主操作见 primaryKeys（详情 + 下载 / 重命名）。
+  const rowActions: RowAction[] = [
+    { key: "detail", label: tr("详情"), icon: <InfoIcon size={16} />, onSelect: () => fs.onOpenDetail(path, isDir) },
+  ];
+  if (!isDir && isEditableText(name, entry.size)) {
+    rowActions.push({
+      key: "edit",
+      label: tr("编辑"),
+      icon: <EditTextIcon size={16} />,
+      onSelect: () => fs.onEditText(opTarget),
+    });
+  }
+  rowActions.push(
+    {
+      key: "rename",
+      label: tr("重命名"),
+      icon: <RenameIcon size={16} />,
+      onSelect: () => fs.onRename(opTarget),
+    },
+    {
+      key: "move",
+      label: tr("移动到…"),
+      icon: <MoveIcon size={16} />,
+      onSelect: () => fs.onMove(opTarget),
+    },
   );
-  const moveBtn = (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        fs.onMove(opTarget);
-      }}
-      title={tr("移动到…")}
-      aria-label={tr("移动到…")}
-      style={iconBtnStyle(t)}
-    >
-      <MoveIcon size={16} />
-    </button>
-  );
-  const editBtn =
-    !isDir && isEditableText(name, entry.size) ? (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          fs.onEditText(opTarget);
-        }}
-        title={tr("编辑")}
-        aria-label={tr("编辑")}
-        style={iconBtnStyle(t)}
-      >
-        <EditTextIcon size={16} />
-      </button>
-    ) : null;
-  const actionsCell = isDir ? (
-    // #1669 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip 提示。
-    <span style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap }}>
-      {detailBtn}
-      {renameBtn}
-      {moveBtn}
-      <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
-        <span style={{ display: "inline-flex" }}>
-          <button
-            type="button"
-            disabled
-            aria-label={tr("删除")}
-            style={{ ...iconBtnStyle(t), opacity: 0.4, cursor: "not-allowed" }}
-          >
-            <TrashIcon size={16} />
-          </button>
-        </span>
-      </antd.Tooltip>
-    </span>
-  ) : (
-    <span style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap }}>
-      {detailBtn}
-      {editBtn}
-      {renameBtn}
-      {moveBtn}
-      <button
-        type="button"
-        onClick={onDownload}
-        title={tr("下载")}
-        aria-label={tr("下载")}
-        style={iconBtnStyle(t)}
-      >
-        <DownloadIcon size={16} />
-      </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        title={tr("删除")}
-        aria-label={tr("删除")}
-        style={iconBtnStyle(t)}
-      >
-        <TrashIcon size={16} />
-      </button>
-    </span>
-  );
+  if (isDir) {
+    // #1669 目录不可删（服务端不支持目录删除）：禁用 + tooltip 说明。
+    rowActions.push({
+      key: "delete",
+      label: tr("删除"),
+      icon: <TrashIcon size={16} />,
+      onSelect: () => undefined,
+      disabled: true,
+      disabledReason: tr("目录删除暂不支持（请逐个删除文件）"),
+      danger: true,
+    });
+  } else {
+    rowActions.push(
+      {
+        key: "download",
+        label: tr("下载"),
+        icon: <DownloadIcon size={16} />,
+        onSelect: () => {
+          void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
+            if (!ok) antd.message.error(tr("下载失败"));
+          });
+        },
+      },
+      {
+        key: "delete",
+        label: tr("删除"),
+        icon: <TrashIcon size={16} />,
+        onSelect: () => del.request(path, name),
+        danger: true,
+      },
+    );
+  }
   const rowSkin = sel
     ? { border: `1px solid ${t.border}`, background: t.hoverBg }
     : { border: "1px solid transparent", background: "transparent" };
+  const cellText: ReactNS.CSSProperties = {
+    fontSize: 12,
+    color: t.textSecondary,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
+  };
+
+  /** 行内单元格（列集合顺序 = columnsFor；一格一子项，无隐式列）。 */
+  const cells = cols.columns.map((c) => {
+    if (c === "select") {
+      return (
+        <span
+          key="select"
+          onDoubleClick={(e) => e.stopPropagation()}
+          style={{ display: "inline-flex", minWidth: 0 }}
+        >
+          <SelCheck
+            t={t}
+            checked={fs.selected.has(path)}
+            onToggle={toggleSel}
+            label={tr("选择 {name}", { name })}
+          />
+        </span>
+      );
+    }
+    if (c === "name") return <React.Fragment key="name">{nameCell}</React.Fragment>;
+    if (c === "size") {
+      return (
+        <span key="size" style={{ ...cellText, textAlign: "right" }}>
+          {sizeCell(entry)}
+        </span>
+      );
+    }
+    if (c === "type") {
+      return (
+        <span key="type" style={cellText}>
+          {tr(fileTypeLabel(entry))}
+        </span>
+      );
+    }
+    if (c === "modified") {
+      return (
+        <span key="modified" style={cellText}>
+          {fmtTs(entry.updatedAt)}
+        </span>
+      );
+    }
+    return (
+      <span key={c} style={{ minWidth: 0, overflow: "hidden" }}>
+        <RowActions
+          t={t}
+          tr={tr}
+          actions={rowActions}
+          primaryKeys={isDir ? ["detail", "rename"] : ["detail", "download"]}
+          compact={cols.compactActions}
+        />
+      </span>
+    );
+  });
 
   if (compact) {
     // l1 列紧凑行：单行（图标 + 名称 + 文件大小），无时间/操作列。
@@ -2142,6 +2664,7 @@ function FileRow({
       <div
         role="button"
         tabIndex={0}
+        data-hf-row="1"
         title={dirInteractive ? tr("进入目录") : undefined}
         onClick={activate}
         onKeyDown={(e) => {
@@ -2184,14 +2707,14 @@ function FileRow({
     );
   }
 
-  // 16.67 列表行（非 compact）：grid（名称/大小/更新时间/操作；F-V3-3
-  // 整批无 updatedAt → 三列，grid/showUpdatedAt 由 columnsFor 传入）；
-  // B2 选择模型：单击行 = 焦点 + 批量选择（无修饰只选本行 / Ctrl 切换 /
-  // Shift 区间），双击目录进入；复选框只切批量选择（stopPropagation）。
+  // 列表行（非 compact）：grid 轨道 = cols.grid（列集合顺序 = 单元格顺序）。
+  // 选择模型：无修饰点击 = 只设焦点（不写 selected）；Ctrl/Shift 自动进入
+  // 多选再切换 / 区间；多选模式普通点击 = 切换；双击目录进入。
   return (
     <div
       role="button"
       tabIndex={0}
+      data-hf-row="1"
       title={dirInteractive ? tr("双击进入目录") : undefined}
       onClick={rowClick}
       onDoubleClick={() => {
@@ -2214,79 +2737,21 @@ function FileRow({
       }}
       style={{
         display: "grid",
-        // 44px 首列 = 批量选择 checkbox（与表头同宽，列宽稳定；目录行空占位）。
-        gridTemplateColumns: `44px ${grid}`,
-        gap: 8,
+        gridTemplateColumns: cols.grid,
+        gap: LIST_GAP,
         alignItems: "center",
         minHeight: "var(--hf-row-min, 44px)",
         padding: "0 8px",
         borderRadius: 6,
         cursor: dirInteractive || !isDir ? "pointer" : "default",
         width: "100%",
+        minWidth: 0,
+        // 行自身也裁切：任何单元格内容都不可能画到行外（详情栏上）。
+        overflow: "hidden",
         ...rowSkin,
       }}
     >
-      {/* 批量选择列：文件 + 目录都可选（B2）；shift 点击 = 可见行区间；
-       * 复选框独立于行焦点 / 树目标（stopPropagation 不触发展开）。 */}
-      <span onDoubleClick={(e) => e.stopPropagation()}>
-        <SelCheck
-          t={t}
-          checked={fs.selected.has(path)}
-          onToggle={toggleSel}
-          label={tr("选择 {name}", { name })}
-        />
-      </span>
-      {nameCell}
-      <span
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          textAlign: "right",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {sizeCell(entry)}
-      </span>
-      <span
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {tr(fileTypeLabel(entry))}
-      </span>
-      {showUpdatedAt ? (
-        <span
-          style={{
-            fontSize: 12,
-            color: t.textSecondary,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {fmtTs(entry.updatedAt)}
-        </span>
-      ) : null}
-      {showCreated ? (
-        <span
-          style={{
-            fontSize: 12,
-            color: t.textSecondary,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {fmtTs((entry as { createdAt?: string }).createdAt)}
-        </span>
-      ) : null}
-      {actionsCell}
+      {cells}
       {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
       {del.node}
     </div>
@@ -2312,9 +2777,7 @@ function TreeRowView({
   onDropToDir,
   onToggleSelect,
   selected,
-  grid,
-  showUpdatedAt,
-  showCreated,
+  cols = columnsFor(900, false),
 }: SubProps & {
   row: TreeRow;
   focused: boolean;
@@ -2332,9 +2795,8 @@ function TreeRowView({
   onToggleSelect: (path: string, shiftKey: boolean) => void;
   /** 目录行是否为当前上传 / 新建目标。 */
   selected?: boolean;
-  grid: string;
-  showUpdatedAt: boolean;
-  showCreated: boolean;
+  /** 列决策（列集合 + 轨道 + 门控，来自 columnsFor；与列表/网格同源）。 */
+  cols?: FilesColumns;
 }) {
   // flattenTree 恒透传 entry；?? 兜底仅防 name-only 老形态条目。
   const entry = row.entry ?? { name: row.name };
@@ -2344,12 +2806,6 @@ function TreeRowView({
   const sel =
     fs.selected.has(path) ||
     (isDir ? !!selected : nav.selectedFile === path);
-  const onDownload = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
-      if (!ok) antd.message.error(tr("下载失败"));
-    });
-  };
   // #1669 统一删除确认（与 FileRow / 详情面板共用 useDeleteConfirm）。
   const del = useDeleteConfirm({
     t,
@@ -2361,14 +2817,6 @@ function TreeRowView({
       fs.reload({ silent: true });
     },
   });
-  const onDelete = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    del.request(path, name);
-  };
-  const onDetail = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    fs.onOpenDetail(path, isDir);
-  };
   // 第二批行操作（与 FileRow 同源）：重命名 / 移动到… / 文本编辑。
   const opTarget: FileOpTarget = {
     path,
@@ -2377,49 +2825,68 @@ function TreeRowView({
     size: entry.size,
     etag: entry.etag,
   };
-  const renameBtn = (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        fs.onRename(opTarget);
-      }}
-      title={tr("重命名")}
-      aria-label={tr("重命名")}
-      style={iconBtnStyle(t)}
-    >
-      <RenameIcon size={16} />
-    </button>
+  // 行操作清单（与 FileRow 同一形状：详情 / 编辑 / 重命名 / 移动到 / 下载 /
+  // 删除）；目录删除禁用（服务端不支持）。
+  const rowActions: RowAction[] = [
+    { key: "detail", label: tr("详情"), icon: <InfoIcon size={16} />, onSelect: () => fs.onOpenDetail(path, isDir) },
+  ];
+  if (!isDir && isEditableText(name, entry.size)) {
+    rowActions.push({
+      key: "edit",
+      label: tr("编辑"),
+      icon: <EditTextIcon size={16} />,
+      onSelect: () => fs.onEditText(opTarget),
+    });
+  }
+  rowActions.push(
+    {
+      key: "rename",
+      label: tr("重命名"),
+      icon: <RenameIcon size={16} />,
+      onSelect: () => fs.onRename(opTarget),
+    },
+    {
+      key: "move",
+      label: tr("移动到…"),
+      icon: <MoveIcon size={16} />,
+      onSelect: () => fs.onMove(opTarget),
+    },
   );
-  const moveBtn = (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        fs.onMove(opTarget);
-      }}
-      title={tr("移动到…")}
-      aria-label={tr("移动到…")}
-      style={iconBtnStyle(t)}
-    >
-      <MoveIcon size={16} />
-    </button>
-  );
-  const editBtn =
-    !isDir && isEditableText(name, entry.size) ? (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          fs.onEditText(opTarget);
-        }}
-        title={tr("编辑")}
-        aria-label={tr("编辑")}
-        style={iconBtnStyle(t)}
-      >
-        <EditTextIcon size={16} />
-      </button>
-    ) : null;
+  if (isDir) {
+    rowActions.push({
+      key: "delete",
+      label: tr("删除"),
+      icon: <TrashIcon size={16} />,
+      onSelect: () => undefined,
+      disabled: true,
+      disabledReason: tr("目录删除暂不支持（请逐个删除文件）"),
+      danger: true,
+    });
+  } else {
+    rowActions.push(
+      {
+        key: "download",
+        label: tr("下载"),
+        icon: <DownloadIcon size={16} />,
+        onSelect: () => {
+          void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
+            if (!ok) antd.message.error(tr("下载失败"));
+          });
+        },
+      },
+      {
+        key: "delete",
+        label: tr("删除"),
+        icon: <TrashIcon size={16} />,
+        onSelect: () => del.request(path, name),
+        danger: true,
+      },
+    );
+  }
+  // 隐藏列时名称列出第二行摘要（大小 · 修改时间）。
+  const nameSecondary = !isDir && (!cols.showSize || !cols.showUpdatedAt)
+    ? [fmtBytes(entry.size), fmtTs(entry.updatedAt)].filter((s) => s !== "").join(" · ")
+    : "";
   // 拖拽上传目标（目录行）：拦截内部 drag 事件 → 高亮本行 + drop 落此目录；
   // stopPropagation 同时阻止区域遮罩盖住行高亮（遮罩 pointerEvents:none，
   // 但仍会视觉覆盖，故不激活）。
@@ -2477,6 +2944,7 @@ function TreeRowView({
       selected={sel || focused}
       t={t}
       tabIndex={-1}
+      data-hf-row="1"
       // 键盘（方向键 / Space / Enter）由 TreeArea 容器统一接管。
       dispatchKeys={false}
       {...dirDropProps}
@@ -2492,168 +2960,162 @@ function TreeRowView({
       }}
       onToggleExpand={isDir ? () => onToggle(row) : undefined}
       leading={
-        /* 批量选择列：文件 + 目录都可选（B2）；复选框独立于行焦点 /
+        /* 多选列：仅在多选模式渲染（默认不显示），复选框独立于行焦点 /
          * 上传目标（不触发展开）。 */
-        <span
-          onDoubleClick={(e) => e.stopPropagation()}
-          style={{ display: "inline-flex", alignItems: "center" }}
-        >
-          <SelCheck
-            t={t}
-            checked={fs.selected.has(path)}
-            onToggle={(shiftKey) => onToggleSelect(path, shiftKey)}
-            label={tr("选择 {name}", { name })}
-          />
-        </span>
+        cols.showMultiSelect ? (
+          <span
+            onDoubleClick={(e) => e.stopPropagation()}
+            style={{ display: "inline-flex", alignItems: "center" }}
+          >
+            <SelCheck
+              t={t}
+              checked={fs.selected.has(path)}
+              onToggle={(shiftKey) => onToggleSelect(path, shiftKey)}
+              label={tr("选择 {name}", { name })}
+            />
+          </span>
+        ) : null
       }
       style={{
         display: "grid",
-        // 44px 首列 = 批量选择 checkbox（文件 + 目录都可选；与表头同宽）；
-        // 16px = 展开三角（TreeRowShell caret 区）。
-        gridTemplateColumns: `44px 16px ${grid}`,
+        // 轨道 = treeGrid(columnsFor)：多选轨（若有）+ 16px 三角 + 列轨，
+        // 与表头 / 数据行同一来源（无隐式列）。
+        gridTemplateColumns: treeGrid(cols.columns),
         alignItems: "center",
         width: "100%",
+        minWidth: 0,
+        overflow: "hidden",
         ...rowSkin,
       }}
     >
-      <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-        {isDir ? (
-          row.expanded ? (
-            <FolderOpenIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
-          ) : (
-            <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
-          )
-        ) : (
-          <PageIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
-        )}
-        <span
-          // 新形态（带 path）hover 显相对全路径，便于区分同名条目。
-          title={entry.path ? path : undefined}
-          style={{
-            fontWeight: 600,
-            fontSize: 12,
-            color: t.text,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {name}
-          {isDir ? " ›" : ""}
-        </span>
-      </span>
-      <span
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          textAlign: "right",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {sizeCell(entry)}
-      </span>
-      <span
-        style={{
-          fontSize: 12,
-          color: t.textSecondary,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {tr(fileTypeLabel(entry))}
-      </span>
-      {showUpdatedAt ? (
-        <span
-          style={{
-            fontSize: 12,
-            color: t.textSecondary,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {fmtTs(entry.updatedAt)}
-        </span>
-      ) : null}
-      {showCreated ? (
-        <span
-          style={{
-            fontSize: 12,
-            color: t.textSecondary,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {fmtTs((entry as { createdAt?: string }).createdAt)}
-        </span>
-      ) : null}
-      <span
-        style={{ display: "flex", alignItems: "center", gap: TOUCH.iconGap, flexShrink: 0 }}
-      >
-        {/* 懒加载指示：加载中「…」；失败「重试」（点击重拉，不触发行展开）。 */}
-        {pending ? (
-          <span style={{ fontSize: 12, color: t.textSecondary, padding: "0 2px" }}>…</span>
-        ) : null}
-        {failed ? (
-          <span onClick={(e) => e.stopPropagation()}>
-            <antd.Button size="small" style={btnTouch} onClick={() => onRetry(row)}>
-              {tr("重试")}
-            </antd.Button>
-          </span>
-        ) : null}
-        <button
-          type="button"
-          onClick={onDetail}
-          title={tr("详情")}
-          aria-label={tr("详情")}
-          style={iconBtnStyle(t)}
-        >
-          <InfoIcon size={16} />
-        </button>
-        {renameBtn}
-        {moveBtn}
-        {isDir ? (
-          // 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip（同 FileRow）。
-          <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
-            <span style={{ display: "inline-flex" }}>
-              <button
-                type="button"
-                disabled
-                aria-label={tr("删除")}
-                style={{ ...iconBtnStyle(t), opacity: 0.4, cursor: "not-allowed" }}
-              >
-                <TrashIcon size={16} />
-              </button>
+      {/* 选择列由 TreeRowShell 的 leading（caret 之前）承载 → 这里不重复渲染
+       * 占位（否则子项数与轨道数错位一格）。 */}
+      {cols.columns
+        .filter((c) => c !== "select")
+        .map((c) => {
+        if (c === "name") {
+          return (
+            <span
+              key="name"
+              style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}
+            >
+              {isDir ? (
+                row.expanded ? (
+                  <FolderOpenIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+                ) : (
+                  <FolderIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+                )
+              ) : (
+                <PageIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+              )}
+              <span style={{ display: "grid", gap: 1, minWidth: 0 }}>
+                <span
+                  // 新形态（带 path）hover 显相对全路径，便于区分同名条目。
+                  title={entry.path ? path : undefined}
+                  style={{
+                    fontWeight: 600,
+                    fontSize: 12,
+                    color: t.text,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {name}
+                  {isDir ? " ›" : ""}
+                </span>
+                {nameSecondary !== "" ? (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: t.textSecondary,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {nameSecondary}
+                  </span>
+                ) : null}
+              </span>
             </span>
-          </antd.Tooltip>
-        ) : (
-          <>
-            {editBtn}
-            <button
-              type="button"
-              onClick={onDownload}
-              title={tr("下载")}
-              aria-label={tr("下载")}
-              style={iconBtnStyle(t)}
+          );
+        }
+        if (c === "size") {
+          return (
+            <span
+              key="size"
+              style={{
+                fontSize: 12,
+                color: t.textSecondary,
+                textAlign: "right",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
             >
-              <DownloadIcon size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              title={tr("删除")}
-              aria-label={tr("删除")}
-              style={iconBtnStyle(t)}
+              {sizeCell(entry)}
+            </span>
+          );
+        }
+        if (c === "type") {
+          return (
+            <span
+              key="type"
+              style={{
+                fontSize: 12,
+                color: t.textSecondary,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
             >
-              <TrashIcon size={16} />
-            </button>
-          </>
-        )}
-      </span>
+              {tr(fileTypeLabel(entry))}
+            </span>
+          );
+        }
+        if (c === "modified") {
+          return (
+            <span
+              key="modified"
+              style={{
+                fontSize: 12,
+                color: t.textSecondary,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
+            >
+              {fmtTs(entry.updatedAt)}
+            </span>
+          );
+        }
+        return (
+          <span key={c} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
+            {/* 懒加载指示：加载中「…」；失败「重试」（点击重拉，不触发行展开）。 */}
+            {pending ? (
+              <span style={{ fontSize: 12, color: t.textSecondary, padding: "0 2px" }}>…</span>
+            ) : null}
+            {failed ? (
+              <span onClick={(e) => e.stopPropagation()}>
+                <antd.Button size="small" style={btnTouch} onClick={() => onRetry(row)}>
+                  {tr("重试")}
+                </antd.Button>
+              </span>
+            ) : null}
+            <RowActions
+              t={t}
+              tr={tr}
+              actions={rowActions}
+              primaryKeys={isDir ? ["detail", "rename"] : ["detail", "download"]}
+              compact={cols.compactActions}
+            />
+          </span>
+        );
+      })}
       {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
       {del.node}
     </TreeRowShell>
@@ -2682,6 +3144,8 @@ function TreeArea({
   onSort,
   onSetSort,
   onDropToDir,
+  listWidth = 0,
+  multiSelect = false,
 }: SubProps & {
   actions: FilesActions;
   sort: FileSort;
@@ -2689,6 +3153,10 @@ function TreeArea({
   onSetSort: (s: FileSort) => void;
   /** 目录行 drop = 该目录为上传目标（空白区由 FileDropTarget 接管）。 */
   onDropToDir: (snap: DropSnapshot, dir: string) => void;
+  /** 列表列实测宽（列分档依据，与列表 / 网格同源）。 */
+  listWidth?: number;
+  /** 多选模式（默认 false：不渲染选择列）。 */
+  multiSelect?: boolean;
 }) {
   const childrenRef = React.useRef<Map<string, HumanFileEntry[]>>(new Map());
   const expandedRef = React.useRef<Set<string>>(new Set());
@@ -2863,7 +3331,8 @@ function TreeArea({
   };
 
   const count = fs.files.length;
-  const cols = columnsFor(fs.files);
+  // 列决策按列表列实测宽（与列表 / 网格同源）；表头与树行共用同一 cols。
+  const cols = columnsFor(listWidth, multiSelect);
   const selState = selectAllState(fs.selected, visiblePaths);
   return (
     <div
@@ -2922,36 +3391,82 @@ function TreeArea({
         <div
           style={{
             display: "grid",
-            // 44px 选择列 + 16px 三角列（与行模板同宽，列宽稳定）；
-            // B2：表头复选框 = 当前可见行（文件 + 目录）三态全选。
-            gridTemplateColumns: `44px 16px ${cols.grid}`,
-            gap: 8,
+            // 轨道 = treeGrid(columnsFor)：多选轨（多选模式才有）+ 16px 三角
+            // + 列轨——与树行同一来源（无隐式列）。
+            gridTemplateColumns: treeGrid(cols.columns),
+            gap: LIST_GAP,
             alignItems: "center",
             padding: "0 8px",
             fontSize: 12,
             color: t.textSecondary,
+            minWidth: 0,
           }}
         >
-          <SelCheck
-            t={t}
-            checked={selState === "all"}
-            indeterminate={selState === "some"}
-            onToggle={() => fs.onSelectAll(visiblePaths)}
-            label={tr("全选")}
-          />
-          <span />
-          <SortHeader label={tr("名称")} k="name" sort={sort} onSort={onSort} onSetSort={onSetSort} />
-          <span style={{ textAlign: "right" }}>
-            <SortHeader label={tr("大小")} k="size" sort={sort} onSort={onSort} onSetSort={onSetSort} align="right" />
-          </span>
-          <SortHeader label={tr("类型")} k="type" sort={sort} onSort={onSort} onSetSort={onSetSort} />
-          {cols.showUpdatedAt ? (
-            <SortHeader label={tr("修改")} k="updatedAt" sort={sort} onSort={onSort} onSetSort={onSetSort} />
+          {cols.showMultiSelect ? (
+            <SelCheck
+              t={t}
+              checked={selState === "all"}
+              indeterminate={selState === "some"}
+              onToggle={() => fs.onSelectAll(visiblePaths)}
+              label={tr("全选")}
+            />
           ) : null}
-          {cols.showCreated ? (
-            <SortHeader label={tr("创建")} k="createdAt" sort={sort} onSort={onSort} onSetSort={onSetSort} />
-          ) : null}
-          <span>{tr("操作")}</span>
+          <span aria-hidden="true" />
+          {cols.columns
+            .filter((c) => c !== "select")
+            .map((c) => {
+              if (c === "name") {
+                return (
+                  <SortHeader
+                    key="name"
+                    label={tr("名称")}
+                    k="name"
+                    sort={sort}
+                    onSort={onSort}
+                    onSetSort={onSetSort}
+                  />
+                );
+              }
+              if (c === "size") {
+                return (
+                  <span key="size" style={{ textAlign: "right" }}>
+                    <SortHeader
+                      label={tr("大小")}
+                      k="size"
+                      sort={sort}
+                      onSort={onSort}
+                      onSetSort={onSetSort}
+                      align="right"
+                    />
+                  </span>
+                );
+              }
+              if (c === "type") {
+                return (
+                  <SortHeader
+                    key="type"
+                    label={tr("类型")}
+                    k="type"
+                    sort={sort}
+                    onSort={onSort}
+                    onSetSort={onSetSort}
+                  />
+                );
+              }
+              if (c === "modified") {
+                return (
+                  <SortHeader
+                    key="modified"
+                    label={tr("修改")}
+                    k="updatedAt"
+                    sort={sort}
+                    onSort={onSort}
+                    onSetSort={onSetSort}
+                  />
+                );
+              }
+              return <span key={c}>{tr("操作")}</span>;
+            })}
         </div>
       ) : null}
       {fs.status !== "err" && count > 0 ? (
@@ -2975,9 +3490,7 @@ function TreeArea({
                 fs.onToggleSelect(p, { shiftKey, paths: visiblePaths })
               }
               selected={selectedDir === r.path}
-              grid={cols.grid}
-              showUpdatedAt={cols.showUpdatedAt}
-              showCreated={cols.showCreated}
+              cols={cols}
             />
           ))}
         </div>
@@ -3107,12 +3620,6 @@ function GridCard({
     }
     fs.onRowClick(path, { isDir: false, shiftKey: false, toggleKey: false, paths });
   };
-  const onDownload = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
-      if (!ok) antd.message.error(tr("下载失败"));
-    });
-  };
   // 统一删除确认（与 FileRow / 详情面板共用 useDeleteConfirm，不各写 Modal）：
   // 勾选「移入回收站（可恢复）」（默认）= 软删；未勾选 = 软删后立即彻底删。
   const del = useDeleteConfirm({
@@ -3125,10 +3632,6 @@ function GridCard({
       fs.reload({ silent: true });
     },
   });
-  const onDelete = (e: ReactNS.MouseEvent) => {
-    e.stopPropagation();
-    del.request(path, name);
-  };
   // 第二批行操作（与 FileRow / 树行同源）：重命名 / 移动到… / 文本编辑。
   const opTarget: FileOpTarget = {
     path,
@@ -3137,49 +3640,63 @@ function GridCard({
     size: entry.size,
     etag: entry.etag,
   };
-  const renameBtn = (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        fs.onRename(opTarget);
-      }}
-      title={tr("重命名")}
-      aria-label={tr("重命名")}
-      style={iconBtnStyle(t)}
-    >
-      <RenameIcon size={16} />
-    </button>
+  // 卡片操作清单（与列表行 / 树行同一形状，窄卡收进「更多」菜单）。
+  const rowActions: RowAction[] = [
+    { key: "detail", label: tr("详情"), icon: <InfoIcon size={16} />, onSelect: () => fs.onOpenDetail(path, isDir) },
+  ];
+  if (!isDir && isEditableText(name, entry.size)) {
+    rowActions.push({
+      key: "edit",
+      label: tr("编辑"),
+      icon: <EditTextIcon size={16} />,
+      onSelect: () => fs.onEditText(opTarget),
+    });
+  }
+  rowActions.push(
+    {
+      key: "rename",
+      label: tr("重命名"),
+      icon: <RenameIcon size={16} />,
+      onSelect: () => fs.onRename(opTarget),
+    },
+    {
+      key: "move",
+      label: tr("移动到…"),
+      icon: <MoveIcon size={16} />,
+      onSelect: () => fs.onMove(opTarget),
+    },
   );
-  const moveBtn = (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        fs.onMove(opTarget);
-      }}
-      title={tr("移动到…")}
-      aria-label={tr("移动到…")}
-      style={iconBtnStyle(t)}
-    >
-      <MoveIcon size={16} />
-    </button>
-  );
-  const editBtn =
-    !isDir && isEditableText(name, entry.size) ? (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          fs.onEditText(opTarget);
-        }}
-        title={tr("编辑")}
-        aria-label={tr("编辑")}
-        style={iconBtnStyle(t)}
-      >
-        <EditTextIcon size={16} />
-      </button>
-    ) : null;
+  if (isDir) {
+    rowActions.push({
+      key: "delete",
+      label: tr("删除"),
+      icon: <TrashIcon size={16} />,
+      onSelect: () => undefined,
+      disabled: true,
+      disabledReason: tr("目录删除暂不支持（请逐个删除文件）"),
+      danger: true,
+    });
+  } else {
+    rowActions.push(
+      {
+        key: "download",
+        label: tr("下载"),
+        icon: <DownloadIcon size={16} />,
+        onSelect: () => {
+          void doDownload(fs.humanName, path, name, entry.size, tr).then((ok) => {
+            if (!ok) antd.message.error(tr("下载失败"));
+          });
+        },
+      },
+      {
+        key: "delete",
+        label: tr("删除"),
+        icon: <TrashIcon size={16} />,
+        onSelect: () => del.request(path, name),
+        danger: true,
+      },
+    );
+  }
 
   const skin = sel
     ? { border: `1px solid ${t.border}`, background: t.hoverBg }
@@ -3188,6 +3705,7 @@ function GridCard({
     <div
       role="button"
       tabIndex={0}
+      data-hf-row="1"
       title={dirInteractive ? tr("双击进入目录") : undefined}
       onClick={select}
       onDoubleClick={onDbl}
@@ -3220,26 +3738,28 @@ function GridCard({
         ...skin,
       }}
     >
-      {/* 缩略区 + 批量选择 checkbox（文件与目录都可选；B2）：checkbox 叠在
-       * 缩略区左上角，44×44 命中区（coarse 指针随 --hf-row-min 放大）。
+      {/* 缩略区 + 批量选择角标：角标只在多选模式渲染（默认不显示复选框），
+       * 叠在缩略区左上角，44×44 命中区（coarse 指针随 --hf-row-min 放大）。
        * 只切批量选择，不改变焦点 / 上传目标、不触发进入。 */}
-      <div style={{ position: "relative" }}>
+      <div style={{ position: "relative", minWidth: 0 }}>
         <GridThumb entry={entry} apiPath={apiPath} t={t} allowThumb={allowThumb} />
-        <span
-          style={{ position: "absolute", top: 4, left: 4, zIndex: 1 }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
-        >
-          <SelCheck
-            t={t}
-            checked={fs.selected.has(path)}
-            onToggle={(shiftKey) =>
-              fs.onToggleSelect(path, { shiftKey, paths })
-            }
-            label={tr("选择 {name}", { name })}
-          />
-        </span>
+        {fs.multiSelect ? (
+          <span
+            style={{ position: "absolute", top: 4, left: 4, zIndex: 1 }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
+            <SelCheck
+              t={t}
+              checked={fs.selected.has(path)}
+              onToggle={(shiftKey) =>
+                fs.onToggleSelect(path, { shiftKey, paths })
+              }
+              label={tr("选择 {name}", { name })}
+            />
+          </span>
+        ) : null}
       </div>
       <span
         title={name}
@@ -3256,7 +3776,7 @@ function GridCard({
       >
         {name}
       </span>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, minWidth: 0 }}>
         <span
           style={{
             fontSize: 11,
@@ -3264,78 +3784,20 @@ function GridCard({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            minWidth: 0,
           }}
         >
           {sizeCell(entry)}
         </span>
-        {isDir ? (
-          // #1669 目录不可删（服务端不支持目录删除）：禁用删除按钮 + tooltip
-          // 提示（同 FileRow）。
-          <span style={{ display: "inline-flex", alignItems: "center" }}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                fs.onOpenDetail(path, true);
-              }}
-              title={tr("详情")}
-              aria-label={tr("详情")}
-              style={iconBtnStyle(t)}
-            >
-              <InfoIcon size={16} />
-            </button>
-            {renameBtn}
-            {moveBtn}
-            <antd.Tooltip title={tr("目录删除暂不支持（请逐个删除文件）")}>
-              <span style={{ display: "inline-flex" }}>
-                <button
-                  type="button"
-                  disabled
-                  aria-label={tr("删除")}
-                  style={{ ...iconBtnStyle(t), opacity: 0.4, cursor: "not-allowed" }}
-                >
-                  <TrashIcon size={16} />
-                </button>
-              </span>
-            </antd.Tooltip>
-          </span>
-        ) : (
-          <span style={{ display: "inline-flex", alignItems: "center" }}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                fs.onOpenDetail(path, false);
-              }}
-              title={tr("详情")}
-              aria-label={tr("详情")}
-              style={iconBtnStyle(t)}
-            >
-              <InfoIcon size={16} />
-            </button>
-            {editBtn}
-            {renameBtn}
-            {moveBtn}
-            <button
-              type="button"
-              onClick={onDownload}
-              title={tr("下载")}
-              aria-label={tr("下载")}
-              style={iconBtnStyle(t)}
-            >
-              <DownloadIcon size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              title={tr("删除")}
-              aria-label={tr("删除")}
-              style={iconBtnStyle(t)}
-            >
-              <TrashIcon size={16} />
-            </button>
-          </span>
-        )}
+        {/* 卡片操作：与列表行 / 树行同一实现（主操作 + 「更多」菜单），
+         * 不再把 6 个图标硬塞进卡片一行。 */}
+        <RowActions
+          t={t}
+          tr={tr}
+          actions={rowActions}
+          primaryKeys={isDir ? ["detail"] : ["detail", "download"]}
+          compact={false}
+        />
       </div>
       {/* #1669 共用删除确认（关闭态不渲染；antd Modal 走 portal 挂载）。 */}
       {del.node}
@@ -3422,17 +3884,19 @@ function GridArea({
           />
         </div>
       ) : null}
-      {/* 网格工具条（count>0）：「全选」三态 checkbox + 计数（有列表时
-       * 计数并入此行，避免与独立计数行重复）。 */}
+      {/* 网格工具条（count>0）：多选模式才出「全选」三态 checkbox（默认只
+       * 显示计数）；计数行恒在，避免空行跳动。 */}
       {fs.status !== "err" && !fs.loading && count > 0 ? (
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <SelCheck
-            t={t}
-            checked={selState === "all"}
-            indeterminate={selState === "some"}
-            onToggle={() => fs.onSelectAll(viewPaths)}
-            label={tr("全选")}
-          />
+          {fs.multiSelect ? (
+            <SelCheck
+              t={t}
+              checked={selState === "all"}
+              indeterminate={selState === "some"}
+              onToggle={() => fs.onSelectAll(viewPaths)}
+              label={tr("全选")}
+            />
+          ) : null}
           <span style={{ fontSize: 11, color: t.textSecondary }}>
             {tr("共 {n} 个条目", { n: count })}
           </span>
@@ -3953,18 +4417,83 @@ function useFilesActions(
   };
 }
 
+/** 工具条动作按钮（裸 <button>）：≥44 触控盒 + SVG 图标 + 可见文字；
+ * 窄屏（容器 <768 实测）只留图标，名字走 aria-label / title。 */
+function ToolBarButton({
+  t,
+  label,
+  icon,
+  narrow,
+  iconOnly = false,
+  pressed,
+  onClick,
+}: {
+  t: ThemeColors;
+  label: string;
+  icon: ReactNS.ReactElement;
+  /** 窄屏：隐藏可见文字（保留 aria-label / title）。 */
+  narrow: boolean;
+  /** 恒图标（如刷新）。 */
+  iconOnly?: boolean;
+  /** 有值时按开关渲染 aria-pressed。 */
+  pressed?: boolean;
+  onClick: () => void;
+}) {
+  const [hover, setHover] = React.useState(false);
+  const showLabel = !iconOnly && !narrow;
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-pressed={pressed}
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        minHeight: "var(--hf-row-min, 44px)",
+        minWidth: "var(--hf-row-min, 44px)",
+        padding: showLabel ? "0 10px" : 0,
+        border: `1px solid ${pressed ? "var(--app-accent, #FF7F16)" : t.border}`,
+        borderRadius: 6,
+        background: pressed ? t.accentBg : hover ? t.hoverBg : t.cardBg,
+        color: t.text,
+        fontWeight: pressed ? 700 : 400,
+        cursor: "pointer",
+        flexShrink: 0,
+        fontSize: 13,
+      }}
+    >
+      <span aria-hidden="true" style={{ display: "inline-flex", color: t.textSecondary }}>
+        {icon}
+      </span>
+      {showLabel ? <span>{label}</span> : null}
+    </button>
+  );
+}
+
 /** 16.67 工具条（取代旧配额卡）：一行——左 = 配额进度 + 用量文案
  * （hover 显「容量配额在『人员管理』中设置」）；右 = 操作按钮组
  * （上传文件 / 同步设置（v3 弹窗入口）/ 新建文件夹 / 回收站（F-V3-3 弹窗
- * 入口 + 条目数徽标，0 不显示）/ 刷新（F-V3-3 reload force）——页面级
- * 动作唯一入口）；窄栏（<720px）自动换行不重叠。 */
+ * 入口 + 条目数徽标，0 不显示）/ 刷新（F-V3-3 reload force）/ 多选
+ * （files-ux-r2 按需多选）——页面级动作唯一入口）；窄栏自动换行不重叠，
+ * 窄屏（<768）只留图标（aria-label / title 仍是完整名字）。 */
 function FilesToolbar({
   t,
   tr,
   fs,
   actions,
+  narrow,
   onOpenSyncSettings,
-}: SubProps & { actions: FilesActions; onOpenSyncSettings: () => void }) {
+}: SubProps & {
+  actions: FilesActions;
+  narrow: boolean;
+  onOpenSyncSettings: () => void;
+}) {
   const q = fs.quota;
   const hasLimit = q !== null && typeof q.quotaBytes === "number" && (q.quotaBytes ?? 0) > 0;
   const percent =
@@ -4077,44 +4606,69 @@ function FilesToolbar({
         ) : null}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-        <antd.Button style={btnTouch} onClick={actions.onUploadClick}>
-          {tr("上传文件")}
-        </antd.Button>
+        <ToolBarButton
+          t={t}
+          label={tr("上传文件")}
+          icon={<UploadIcon size={16} />}
+          narrow={narrow}
+          onClick={actions.onUploadClick}
+        />
         {/* v3（F-V3-1）：同步设置弹窗入口（替代原页内 SyncCard 长条）。 */}
-        <antd.Button style={btnTouch} onClick={onOpenSyncSettings}>
-          {tr("同步设置")}
-        </antd.Button>
-        <antd.Button style={btnTouch} onClick={actions.openFolderModal}>
-          {tr("新建文件夹")}
-        </antd.Button>
+        <ToolBarButton
+          t={t}
+          label={tr("同步设置")}
+          icon={<SyncToolIcon size={16} />}
+          narrow={narrow}
+          onClick={onOpenSyncSettings}
+        />
+        <ToolBarButton
+          t={t}
+          label={tr("新建文件夹")}
+          icon={<NewFolderIcon size={16} />}
+          narrow={narrow}
+          onClick={actions.openFolderModal}
+        />
         {/* F-V3-3：回收站弹窗入口（替代视图切换 tab；徽标 = 条目数，0 不显示；
          * 点击 = 打开弹窗 + 1 次静默刷新）。 */}
-        <antd.Button style={btnTouch} onClick={() => fs.onOpenTrash()}>
-          <TrashIcon size={15} />
-          {tr("回收站")}
-          {fs.trash.length > 0 ? (
-            <span
-              style={{
-                marginLeft: 6,
-                padding: "0 6px",
-                borderRadius: 9,
-                fontSize: 11,
-                lineHeight: "18px",
-                background: t.accentBg,
-                color: t.text,
-              }}
-            >
-              {fs.trash.length}
-            </span>
-          ) : null}
-        </antd.Button>
-        <antd.Button
-          type="text"
+        <ToolBarButton
+          t={t}
+          label={tr("回收站")}
+          icon={<TrashIcon size={16} />}
+          narrow={narrow}
+          onClick={() => fs.onOpenTrash()}
+        />
+        {fs.trash.length > 0 ? (
+          <span
+            style={{
+              marginLeft: -4,
+              padding: "0 6px",
+              borderRadius: 9,
+              fontSize: 11,
+              lineHeight: "18px",
+              background: t.accentBg,
+              color: t.text,
+              flexShrink: 0,
+            }}
+          >
+            {fs.trash.length}
+          </span>
+        ) : null}
+        <ToolBarButton
+          t={t}
+          label={tr("刷新")}
           icon={<ReloadIcon />}
-          title={tr("刷新")}
-          aria-label={tr("刷新")}
-          style={btnTouch}
+          narrow={narrow}
+          iconOnly
           onClick={() => fs.reload({ force: true })}
+        />
+        {/* files-ux-r2：多选按需进入（默认不显示复选框；退出清空选择）。 */}
+        <ToolBarButton
+          t={t}
+          label={tr("多选")}
+          icon={<MultiSelectIcon size={16} />}
+          narrow={narrow}
+          pressed={fs.multiSelect}
+          onClick={() => fs.onMultiSelectToggle()}
         />
       </div>
       {/* #1669：全页唯一 file input（模块级共享 ref——l1/mid 双实例死按钮
@@ -4542,6 +5096,9 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   const [selected, setSelected] = React.useState<SelectionSet>(new Set<string>());
   // shift 区间锚点 = 最近一次行点击点（shift 点击不改锚点）。
   const [selAnchor, setSelAnchor] = React.useState<string | null>(null);
+  // 多选模式（files-ux-r2：默认 false——复选框 / 全选只在按需进入后渲染；
+  // 工具栏「多选」或 Ctrl/Shift 点击进入）。
+  const [multiSelect, setMultiSelect] = React.useState(false);
   // 焦点行是否目录（行点击时明确记录；详情槽据此不渲染 FileDetail）。
   const [focusedDirHint, setFocusedDirHint] = React.useState(false);
   // 上传目标镜像（ref 供闭包读取；state 让工具条弹窗标题随树选择重渲染）。
@@ -4571,6 +5128,36 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
   // 16.69 容器宽度断点（mid 持槽时的 split / drawer / sheet 判定）。
   // 必须在下方早退 return 之前调用（hooks 顺序稳定）。
   const [widthRef, containerW, widthMeasured] = useContainerWidth();
+  // files-ux-r2：列表列自己的 ResizeObserver（split 后列表宽 = 容器宽 −
+  // 详情栏 380 − gap，用容器宽判断列数会把列表可用宽高估 → 行溢出）。
+  // 只采信 split 布局下的实测值：drawer/sheet 时列表占满容器宽，实测值
+  // 不代表 split 可用宽（否则降级与回升会振荡）。
+  // 回调 ref：布局在 split / drawer 间切换时重新挂观测（同一个 RO 实例
+  // 观察卸载节点会静默失效）。
+  const [listWidthMeasured, setListWidthMeasured] = React.useState(0);
+  const [listMeasured, setListMeasured] = React.useState(false);
+  const renderedModeRef = React.useRef<FilesLayoutMode>("sheet");
+  const listRoRef = React.useRef<ResizeObserver | null>(null);
+  const setListCol = React.useCallback((el: HTMLDivElement | null) => {
+    if (listRoRef.current) {
+      listRoRef.current.disconnect();
+      listRoRef.current = null;
+    }
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      if (renderedModeRef.current !== "split") return;
+      const nw = Math.round(entries[0]?.contentRect.width ?? 0);
+      setListWidthMeasured(nw);
+      setListMeasured(true);
+    });
+    ro.observe(el);
+    listRoRef.current = ro;
+  }, []);
+  // 容器宽变化 → 丢弃旧实测值（重新按容器宽预估，量到再切）。
+  React.useEffect(() => {
+    setListWidthMeasured(0);
+    setListMeasured(false);
+  }, [containerW]);
 
   // 老控制器一次性探测：带 recursive 参数 → 老实现 301 回一层列表（无
   // nextKey）→ paginated=false → 递归不可用。新控制器 → paginated=true。
@@ -4743,6 +5330,9 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       opts: { shiftKey: boolean; paths?: readonly string[] },
     ) => {
       if (p === "") return;
+      // 复选框 / Space 只在多选语义下存在 → 顺手进入多选（幂等），
+      // 否则会出现在单焦点态下「选了但看不到复选框」的隐形选择。
+      setMultiSelect(true);
       const paths = opts.paths ?? visiblePaths;
       setSelected((prev) =>
         toggleSelection(prev, p, {
@@ -4754,7 +5344,11 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     },
     [selAnchor, visiblePaths],
   );
-  // 行点击：焦点 + 批量选择分离模型（无修饰只选本行 / Ctrl 切换 / Shift 区间）。
+  // 行点击：焦点 + 批量选择分离模型（files-ux-r2）：
+  // - 未进多选且无修饰 → **只设焦点**（不写 selected、不显示复选框）；
+  // - Ctrl/Cmd 或 Shift → 自动进入多选，再按切换 / 区间处理（Shift 无锚点
+  //   时用当前焦点行作锚点）；
+  // - 多选模式 → 普通点击 = 切换，Shift = 区间。
   const onRowClick = React.useCallback(
     (
       p: string,
@@ -4767,22 +5361,37 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     ) => {
       if (p === "") return;
       const paths = opts.paths ?? visiblePaths;
-      const r = clickSelection(selected, p, {
+      const intent = rowClickIntent({
+        multiSelect,
         shiftKey: opts.shiftKey,
         toggleKey: opts.toggleKey,
-        anchor: selAnchor,
+      });
+      setFocusedDirHint(opts.isDir);
+      nav.selectFile(p);
+      if (intent.focusOnly) return;
+      if (intent.enterMulti) setMultiSelect(true);
+      // Shift 无锚点 → 用当前焦点行（点击前的选中行）作区间起点。
+      const prevFocus = nav.selectedFile;
+      const anchor =
+        selAnchor ??
+        (prevFocus !== null && prevFocus !== p && paths.includes(prevFocus)
+          ? prevFocus
+          : null);
+      const r = clickSelection(selected, p, {
+        shiftKey: intent.range,
+        toggleKey: intent.toggle,
+        anchor,
         paths,
       });
       setSelected(r.selected);
       setSelAnchor(r.anchor);
-      setFocusedDirHint(opts.isDir);
-      nav.selectFile(p);
     },
-    [selected, selAnchor, visiblePaths, nav],
+    [selected, selAnchor, visiblePaths, nav, multiSelect],
   );
   // 「全选」三态切换：all → 清空；some/none → 并入全部可见行（文件 + 目录）。
   const onSelectAll = React.useCallback(
     (paths: readonly string[]) => {
+      setMultiSelect(true);
       if (selectAllState(selected, paths) === "all") {
         setSelected(clearSelection());
       } else {
@@ -4796,10 +5405,22 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     },
     [selected],
   );
+  // 退出多选 + 清空选择（批量条「取消选择」/ Esc 第一次）。
   const onClearSelection = React.useCallback(() => {
     setSelected(clearSelection());
     setSelAnchor(null);
+    setMultiSelect(false);
   }, []);
+  // 工具栏「多选」开关（进入 / 退出；退出即清空选择与锚点）。
+  const onMultiSelectToggle = React.useCallback(() => {
+    if (multiSelect) {
+      setMultiSelect(false);
+      setSelected(clearSelection());
+      setSelAnchor(null);
+      return;
+    }
+    setMultiSelect(true);
+  }, [multiSelect]);
 
   // 批量删除：容器层单一 useDeleteConfirm 实例（与列表行/网格卡/详情面板
   // 共用同一组件，不另写 Modal）；批量 = 恒软删进回收站（无彻底删选项），
@@ -5062,6 +5683,8 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     focusedIsDir,
     onToggleSelect,
     onRowClick,
+    multiSelect,
+    onMultiSelectToggle,
     onTreeBatchChange,
     onSelectAll,
     onClearSelection,
@@ -5183,12 +5806,25 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
 
   if (variant === "mid" || variant === "full") {
     // 16.69 mid 单一职责 = 恒渲染列表。详情槽归属：无右栏兄弟时（full /
-    // 4 列 / 1 列）由本实例持有，按容器宽度断点——≥1200 split（列表 +
-    // 右侧内联详情 400，flex 不压缩列表）/ 768–1199 drawer（点行 Drawer 420）/
-    // <768 sheet（点行全屏 Sheet）；2/3 列 = 右栏实例持槽（mid 纯列表），
-    // 任何宽度 FileDetail 渲染次数 = 1（panesFor/detailRenderCount）。
+    // 4 列 / 1 列）由本实例持有，按容器宽度断点——≥1320 split（列表 +
+    // 右侧内联详情 380）/ 768–1319 drawer（点行 Drawer 420）/ <768 sheet
+    // （点行全屏 Sheet）；2/3 列 = 右栏实例持槽（mid 纯列表）。
+    // files-ux-r2：split 还需「实测列表宽 ≥700」否则自动降级 drawer——
+    // 列表被详情栏挤压时列必然溢出（实机「幽灵图标」根因）。
     const ownsDetail = variant === "full" || cols === 4 || cols === 1;
-    const mode = layoutMode(containerW);
+    const mode = effectiveLayoutMode({
+      containerWidth: containerW,
+      listWidth: listWidthMeasured,
+      listMeasured,
+    });
+    renderedModeRef.current = mode;
+    // 列分档依据 = 列表列实测宽（split）；drawer/sheet 下列表占满容器宽。
+    const listWidth =
+      mode === "split"
+        ? listMeasured && listWidthMeasured > 0
+          ? listWidthMeasured
+          : estimatedListWidth(containerW, "split")
+        : containerW;
     // 目录焦点不占详情槽（目录详情走行内「详情」按钮的抽屉）。
     const hasSelection = nav.selectedFile != null && !fs.focusedIsDir;
     // 宽度 0 = 该 section 处于隐藏 tab（切到知识库等）或首帧：此时不能按
@@ -5198,6 +5834,41 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
     // 旧语义渲染，保持静态渲染/测试行为。
     const hiddenTab = widthMeasured && containerW === 0;
     const panes = ownsDetail && !hiddenTab ? panesFor(mode, hasSelection) : null;
+    // 窄屏（实测后确认）= 工具条只留图标 / 批量条贴底 / 上传队列折叠。
+    const narrow = widthMeasured && mode === "sheet";
+    // 空白点击（列表 / 树 / 网格容器背景）：清焦点；多选模式同时清选择并
+    // 退出（行 / 按钮 / 复选框 / 菜单项内的点击不算空白——见 isBlank）。
+    const onListBlankClick = (e: ReactNS.MouseEvent<HTMLDivElement>): void => {
+      if (!isBlankClickTarget(e.target)) return;
+      nav.selectFile(null);
+      setFocusedDirHint(false);
+      if (multiSelect || selected.size > 0) {
+        setSelected(clearSelection());
+        setSelAnchor(null);
+        setMultiSelect(false);
+      }
+    };
+    // Esc：第一次清选择 + 退出多选（批量条「取消选择」同义）；第二次清焦点。
+    // 弹窗 / 抽屉打开时交给它们自己的 Esc 处理（不误清列表状态）。
+    const dialogOpen =
+      opDialog !== null ||
+      editorTarget !== null ||
+      quotaDialogOpen ||
+      trashDialogOpen ||
+      detailTarget !== null ||
+      syncModalOpen ||
+      actions.folderOpen;
+    const onRootKeyDown = (e: ReactNS.KeyboardEvent<HTMLDivElement>): void => {
+      if (e.key !== "Escape" || dialogOpen) return;
+      if (multiSelect || selected.size > 0) {
+        onClearSelection();
+        return;
+      }
+      if (nav.selectedFile !== null) {
+        nav.selectFile(null);
+        setFocusedDirHint(false);
+      }
+    };
     // F-V3-3：回收站独立页（TrashPanel）移除——改工具条按钮打开的
     // files/TrashDialog 弹窗（数据 = 容器 load 的 trash 腿，弹窗不自取数）。
     // F-V3-4：tree 模式列表槽渲染树、grid 模式渲染 GridArea（详情槽不变——
@@ -5211,6 +5882,8 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           onSort={onFileSort}
           onSetSort={applyFileSort}
           onDropToDir={(snap, dir) => onDropSnapshot(snap, dir)}
+          listWidth={listWidth}
+          multiSelect={multiSelect}
         />
       ) : filesView === "grid" ? (
         <GridArea
@@ -5228,6 +5901,8 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           sort={fileSort}
           onSort={onFileSort}
           onSetSort={applyFileSort}
+          listWidth={listWidth}
+          multiSelect={multiSelect}
         />
       );
     // files-dnd：列表 / 树 / 网格三视图共用拖拽上传外壳（空白/文件行 drop =
@@ -5243,7 +5918,11 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       </FileDropTarget>
     );
     return (
-      <div ref={widthRef} style={{ display: "grid", gap: 10, padding: 4 }}>
+      <div
+        ref={widthRef}
+        onKeyDown={onRootKeyDown}
+        style={{ display: "grid", gap: 10, padding: 4, minWidth: 0 }}
+      >
         {/* #1669 触控 CSS 变量（:root 作用域；双实例重复注入无害）。 */}
         <style>{touchCss()}</style>
         {/* F-V3-3：工具条恒渲染（回收站入口常驻；打开同步弹窗先取一次
@@ -5251,6 +5930,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
         <FilesToolbar
           {...sub}
           actions={actions}
+          narrow={narrow}
           onOpenSyncSettings={() => {
             loadSync();
             setSyncModalOpen(true);
@@ -5262,7 +5942,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           t={t}
           tr={tr}
           items={actions.uploadItems}
-          compact={widthMeasured && layoutMode(containerW) === "sheet"}
+          compact={narrow}
           onRetry={actions.onRetryUpload}
           onClearFinished={actions.onClearFinishedUploads}
         />
@@ -5347,29 +6027,66 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
               }
             }}
             onCancel={onClearSelection}
+            narrow={narrow}
           />
         ) : null}
-        {panes && panes.detail !== null ? (
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-            <div style={{ flex: "1 1 auto", minWidth: 0, display: "grid", gap: 4 }}>
-              {dropNode}
-            </div>
-            <div
+        {/* 列表列 + （split 时）右侧详情栏。详情栏必须自成一层——不透明底
+         * （t.bg）+ 左侧边框 + sticky + 独立层叠上下文（isolation），否则
+         * 列表行溢出会「画进」详情栏（实机幽灵图标）。 */}
+        <div
+          style={{
+            display: "flex",
+            gap: SPLIT_GAP,
+            alignItems: "flex-start",
+            minWidth: 0,
+          }}
+        >
+          {/* 列表列：自己的 ResizeObserver（列分档依据 listWidth）+ 裁切
+           * （overflow hidden）——行内容不可能溢出到详情栏上。
+           * 注意：不用 contain:paint——它会让本元素成为 fixed 后代的
+           * containing block，把行内「更多」菜单一起裁掉；overflow:hidden
+           * 只裁常规流，fixed 菜单（视口定位）不受影响。 */}
+          {/* a11y-static-exempt: 空白区域点击只清选中高亮，本身非交互控件 */}
+          <div
+            ref={setListCol}
+            onClick={onListBlankClick}
+            style={{
+              flex: "1 1 auto",
+              minWidth: 0,
+              display: "grid",
+              gap: 4,
+              overflow: "hidden",
+              position: "relative",
+              zIndex: 0,
+            }}
+          >
+            {dropNode}
+          </div>
+          {panes && panes.detail !== null ? (
+            <aside
+              aria-label={tr("文件详情")}
               style={{
-                width: 400,
+                width: DETAIL_COL_WIDTH,
                 flexShrink: 0,
+                alignSelf: "flex-start",
+                background: t.bg,
                 borderLeft: `1px solid ${t.border}`,
                 paddingLeft: 10,
                 display: "grid",
                 gap: 8,
+                minWidth: 0,
+                position: "sticky",
+                top: 8,
+                zIndex: 2,
+                isolation: "isolate",
+                maxHeight: "calc(100vh - 120px)",
+                overflowY: "auto",
               }}
             >
               <DetailPane {...sub} />
-            </div>
-          </div>
-        ) : (
-          dropNode
-        )}
+            </aside>
+          ) : null}
+        </div>
         {panes && panes.overlay ? (
           <DetailOverlay {...sub} overlay={panes.overlay} />
         ) : null}
@@ -5380,7 +6097,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
           <FileDetailDrawer
             {...sub}
             target={detailTarget}
-            narrow={layoutMode(containerW) === "sheet"}
+            narrow={narrow}
             onClose={() => setDetailTarget(null)}
             onOpenSyncSettings={() => {
               setDetailTarget(null);

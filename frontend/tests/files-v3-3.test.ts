@@ -174,7 +174,12 @@ try {
     }) => boolean;
     shouldRefetchOnFocus: (last: number, now: number) => boolean;
     FOCUS_REFETCH_MS: number;
-    columnsFor: (entries: unknown[]) => { showUpdatedAt: boolean; grid: string };
+    columnsFor: (listWidth: number, multiSelect: boolean) => {
+      showUpdatedAt: boolean;
+      grid: string;
+      compactActions: boolean;
+      columns: readonly string[];
+    };
     undoEligible: (id: string) => boolean;
     makeReloadDedup: () => (key: string, run: () => Promise<void>) => Promise<void>;
     LIST_GRID: string;
@@ -249,19 +254,18 @@ try {
   assert.equal(shouldRefetchOnFocus(t0, t0), false, "0s → 不重取");
   ok("④ shouldRefetchOnFocus：>10s true / ≤10s false");
 
-  // ── ⑤ 列自适应：整批无 updatedAt → 无「更新时间」列 ────────────
-  const rowsNoTime = [
-    { name: "a.txt", type: "file", size: 12 },
-    { name: "sub", type: "dir" },
-  ];
-  const c1 = columnsFor(rowsNoTime);
-  assert.equal(c1.showUpdatedAt, false, "整批无 updatedAt → 不渲染该列");
-  assert.equal(c1.grid, LIST_GRID_NO_TIME, "grid 模板同步缩列");
+  // ── ⑤ 列自适应：按列表列宽收列（files-ux-r2 起门槛化）──────────
+  const c1 = columnsFor(680, false);
+  assert.equal(c1.showUpdatedAt, false, "窄列表 → 不渲染「修改」列");
   assert.ok(!c1.grid.includes("120px"), "缩列后 grid 无 120px 时间列宽");
-  const c2 = columnsFor([{ name: "b.txt", type: "file", size: 1, updatedAt: "2026-11-06T00:00:00Z" }]);
-  assert.equal(c2.showUpdatedAt, true, "有 updatedAt → 保留该列");
-  assert.equal(c2.grid, LIST_GRID, "grid 模板 = 四列");
-  ok("⑤ columnsFor：无 updatedAt 不含「更新时间」列（表头/行/grid 同步）");
+  assert.equal(c1.compactActions, true, "窄列表操作收成「更多」菜单");
+  const c2 = columnsFor(950, false);
+  assert.equal(c2.showUpdatedAt, true, "宽列表 → 保留「修改」列");
+  assert.equal(c2.grid, LIST_GRID, "宽列表 grid 模板 = 全列");
+  const c3 = columnsFor(950, true);
+  assert.ok(c3.columns.includes("select"), "多选开 → 插入选择列");
+  assert.ok(c3.grid.startsWith("44px "), "选择列 = 44px 定宽轨");
+  ok("⑤ columnsFor：按列表列宽收列（窄屏无修改列 + 操作收「更多」）");
 
   // ── ⑥ fmtTs 缺失 → ""（不再 "—"）───────────────────────────────
   assert.equal(fmtTs(undefined), "");

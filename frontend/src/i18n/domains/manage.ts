@@ -364,6 +364,9 @@ export const manageDict: Record<string, { en: string }> = {
   "清除已完成": { en: "Clear finished" },
   "重试 {name}": { en: "Retry {name}" },
   "取消选择": { en: "Clear selection" },
+  // files-ux-r2：按需多选（工具栏开关）+ 窄屏行操作「更多」菜单
+  "多选": { en: "Select" },
+  "更多操作": { en: "More actions" },
   "删除 {n} 个文件？": { en: "Delete {n} files?" },
   "将移入回收站（可在回收站恢复）": { en: "They will be moved to the trash (recoverable)" },
   "{n} 项{noun}成功": { en: "{n} {noun} succeeded" },

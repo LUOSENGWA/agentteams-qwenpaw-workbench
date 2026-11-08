@@ -143,15 +143,16 @@ try {
   const { layoutMode, panesFor, detailRenderCount, detailState } = mod;
 
   // ── ① 断点纯函数（容器宽度 → split / drawer / sheet）──────────
-  assert.equal(layoutMode(1300), "split");
+  // files-ux-r2 门槛上调：split 需容器 ≥1320（详情栏 380 + 列表最小 930）。
+  assert.equal(layoutMode(1400), "split");
+  assert.equal(layoutMode(1319), "drawer");
   assert.equal(layoutMode(1000), "drawer");
   assert.equal(layoutMode(700), "sheet");
-  // 边界：1200 起 split；1199 → drawer；768 起 drawer；767 → sheet。
-  assert.equal(layoutMode(1200), "split");
-  assert.equal(layoutMode(1199), "drawer");
+  // 边界：1320 起 split；1319 → drawer；768 起 drawer；767 → sheet。
+  assert.equal(layoutMode(1320), "split");
   assert.equal(layoutMode(768), "drawer");
   assert.equal(layoutMode(767), "sheet");
-  ok("① layoutMode：1300→split / 1000→drawer / 700→sheet（含 1200/1199/768/767 边界）");
+  ok("① layoutMode：1400→split / 1000→drawer / 700→sheet（含 1320/1319/768/767 边界）");
 
   // ── ② 详情渲染次数 = 1（纯函数，不渲染 DOM）────────────────────
   for (const m of ["split", "drawer", "sheet"] as const) {
