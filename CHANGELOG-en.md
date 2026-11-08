@@ -1,3 +1,9 @@
+## 0.5.0-beta.16.144 (sensitive scan close-out · 2026-11-08)
+
+**Security**
+- Removed the remaining real LAN example address from a source comment (`httpUrl.ts`), replaced with `192.168.x.x`; release artifact contains no internal IPs/credentials.
+
+**Tests**: tsc 0 · build 0; pytest 738 (16.142 baseline).
 ## 0.5.0-beta.16.143 (sensitive scan/docs close-out · 2026-11-08)
 
 **Security/docs**
