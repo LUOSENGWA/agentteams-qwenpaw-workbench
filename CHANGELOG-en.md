@@ -1,3 +1,9 @@
+## 0.5.0-beta.17 (2026-11-08)
+
+See `方案与设计/工作台插件/release/RELEASE-v0.5.0-beta.17.md` for the beta.16 → beta.17 summary covering workbench files, chat, team settings, Millforge, Coding CLI, manage and sync.
+
+**Verification**: pytest 738 · tsc 0 · build 0.
+
 ## 0.5.0-beta.16.144 (sensitive scan close-out · 2026-11-08)
 
 **Security**
