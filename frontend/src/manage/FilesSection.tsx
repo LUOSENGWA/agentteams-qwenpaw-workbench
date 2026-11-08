@@ -1570,14 +1570,22 @@ function DetailPane({ t, tr, nav, fs }: SubProps) {
   }
   if (st === "loading") {
     return (
-      <div style={{ padding: 12, textAlign: "center", fontSize: 12, color: t.textSecondary }}>
+      <div
+        style={{
+          ...detailCardStyle(t),
+          textAlign: "center",
+          fontSize: 12,
+          color: t.textSecondary,
+        }}
+      >
         {tr("加载中…")}
       </div>
     );
   }
   const emptyDir = st === "empty-dir";
+  // gap 归零：空态各行本就自带 margin，沿用原节奏（卡片只加壳，不改版式）。
   return (
-    <div style={{ padding: 12, textAlign: "center" }}>
+    <div style={{ ...detailCardStyle(t), gap: 0, textAlign: "center" }}>
       <PageIcon size={20} style={{ color: t.textSecondary, margin: "0 auto 6px" }} />
       <div style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
         {emptyDir
@@ -4784,6 +4792,22 @@ function isImageName(name: string): boolean {
   return i >= 0 && IMAGE_EXT.has(s.slice(i + 1));
 }
 
+/** 详情卡外壳（FileDetail / TrashDetail / 详情栏空态共用，避免三份内联样式）：
+ * 圆角 + 细边 + 卡片底，与详情栏 aside 的不透明底分层。overflow hidden 让
+ * 圆角裁住内部按钮（预览走 antd Modal portal，不在裁切范围内）。 */
+function detailCardStyle(t: ThemeColors): ReactNS.CSSProperties {
+  return {
+    display: "grid",
+    gap: 10,
+    padding: 10,
+    border: `1px solid ${t.border}`,
+    borderRadius: 10,
+    background: t.cardBg,
+    overflow: "hidden",
+    minWidth: 0,
+  };
+}
+
 /** 选中文件详情：meta + 预览 / 下载 / 覆盖上传 / 删除(→回收站，#1669 统一
  * 确认框)。#1669：预览 = 复用 components/FilePreview（不新写预览）；覆盖上传
  * 走统一上传入口（模块级唯一 input）；删除 = useDeleteConfirm 共用（与列表
@@ -4811,7 +4835,14 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
 
   if (!entry) {
     return (
-      <div style={{ padding: 12, textAlign: "center", fontSize: 12, color: t.textSecondary }}>
+      <div
+        style={{
+          ...detailCardStyle(t),
+          textAlign: "center",
+          fontSize: 12,
+          color: t.textSecondary,
+        }}
+      >
         {tr("所选文件已不在最新数据中")}
       </div>
     );
@@ -4851,7 +4882,7 @@ function FileDetail({ t, tr, nav, fs }: SubProps) {
   const onDelete = () => del.request(path, name);
 
   return (
-    <div style={{ display: "grid", gap: 10, padding: 4 }}>
+    <div style={detailCardStyle(t)}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <PageIcon size={20} style={{ color: t.textSecondary, flexShrink: 0 }} />
         <div style={{ minWidth: 0, flex: 1, display: "grid", gap: 2 }}>
@@ -4944,7 +4975,14 @@ function TrashDetail({ t, tr, nav, fs }: SubProps) {
 
   if (!entry) {
     return (
-      <div style={{ padding: 12, textAlign: "center", fontSize: 12, color: t.textSecondary }}>
+      <div
+        style={{
+          ...detailCardStyle(t),
+          textAlign: "center",
+          fontSize: 12,
+          color: t.textSecondary,
+        }}
+      >
         {tr("所选文件已不在最新数据中")}
       </div>
     );
@@ -4985,7 +5023,7 @@ function TrashDetail({ t, tr, nav, fs }: SubProps) {
   };
 
   return (
-    <div style={{ display: "grid", gap: 10, padding: 4 }}>
+    <div style={detailCardStyle(t)}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <TrashIcon size={20} style={{ color: t.textSecondary, flexShrink: 0 }} />
         <div style={{ minWidth: 0, flex: 1, display: "grid", gap: 2 }}>
@@ -6124,6 +6162,9 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
                 background: t.bg,
                 borderLeft: `1px solid ${t.border}`,
                 paddingLeft: 10,
+                // 详情卡自带 1px 圆角边：右留同宽檐口，卡片右边框不贴栏边
+                // （与左侧 borderLeft 相距 10px，不构成双重边框）。
+                paddingRight: 10,
                 display: "grid",
                 gap: 8,
                 minWidth: 0,
