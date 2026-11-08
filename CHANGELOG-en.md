@@ -1,3 +1,24 @@
+## 0.5.0-beta.16.137 (files close-out · team settings UI · module/bridge install · 2026-11-08)
+
+**Files**
+- Detail pane is now an independent layer: opaque background, sticky, own scroll, `z-index/isolation`; split threshold raised to 1320 with a 380px pane and automatic Drawer/Sheet fallback, so list actions never paint into the detail pane.
+- List columns adapt to the **measured list width**: full at ≥900, type/modified hidden at 700–899, actions collapsed into a "More" menu below 700; header and rows share the same tracks, removing the implicit action column.
+- Checkboxes are hidden by default; Ctrl/Cmd, Shift or the toolbar "Multi-select" button enters multi-select; plain click only focuses; blank click/Esc clears focus and selection.
+- File tree and workspace path picker share `TreeRowShell`/`treeModel`; quota dialogs use the shared `QuotaEditDialog` (decimal MB/GB); the picker logic file was renamed to fix a case-insensitive filename clash.
+
+**Team settings**
+- Four collapsible sections (basics / LLM tuning / members / team skills), team skills collapsed by default, member count badge.
+- Save / edit-model / batch-model / add-worker / delete buttons are 44–48px with SVG icons; narrow layouts use one column, full-width modals and a single-column batch model grid.
+
+**Millforge / Coding CLI**
+- Module updates no longer render one button per version: state badges (update available / up to date / inconsistent) + version dropdown (latest by default) + a single install/update button.
+- The QwenCode card in Coding CLI gains a "QwenPaw × QwenCode bridge" install/update section with stable/beta/alpha channels, version dropdown and one button; shown only on QwenPaw workers.
+
+**Manage**
+- Spawn sub-session tree/messages, Worker/Manager DM entry and Manager container logs are migrated; legacy `WorkerManageTree/Tables` removed.
+
+**Tests**: tsc 0 · build 0; file node tests files-v3-3 12/12, files-layout 9/9; vitest CLI unavailable in the container.
+
 # Changelog
 
 Version history of agentteams-qwenpaw-workbench.

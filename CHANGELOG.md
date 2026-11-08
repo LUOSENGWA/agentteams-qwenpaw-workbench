@@ -1,3 +1,24 @@
+## 0.5.0-beta.16.137（文件页收口 · 团队设置 UI · 模块更新/桥安装 · 2026-11-08）
+
+**文件管理**
+- 详情栏独立成层：不透明背景、sticky、独立滚动、`z-index/isolation`；split 门槛提高到 1320，详情 380，空间不足自动降级 Drawer/Sheet，列表操作不再画进详情栏。
+- 列表按**实测列宽**分档：≥900 全列、700–899 隐藏类型/修改、<700 操作收「更多」菜单；表头与行共用同一轨道，操作列不再落入隐式列。
+- 默认不显示复选框；Ctrl/Cmd、Shift 或工具栏「多选」才进入多选；无修饰点击只设焦点；空白点击/Esc 清焦点与选择。
+- 文件树与路径选择器共享 `TreeRowShell`/`treeModel`；配额弹窗统一 `QuotaEditDialog`（MB/GB 十进制）；`workspacePathPicker` 纯逻辑文件改名，修大小写重名。
+
+**团队设置**
+- 基本信息 / LLM 调优 / 团队成员 / 团队技能四个可折叠分区；团队技能默认收起；成员区带人数徽标。
+- 保存/改模型/设置模型/添加 Worker/删除等按钮 ≥44–48px + SVG；窄屏单列、全宽 Modal、批量模型自动单列。
+
+**千锻 / CodingCLI**
+- 模块更新不再逐版本渲染按钮：可更新/已是最新/版本不一致状态 + 版本下拉（默认最新）+ 单个安装/更新按钮。
+- CodingCLI → QwenCode 卡新增「QwenPaw × QwenCode 桥」安装/更新栏：stable/beta/alpha 三频道、版本下拉、单按钮；仅 QwenPaw 运行时显示。
+
+**管理页**
+- 迁入 spawn 子会话树/消息、Worker/Manager 私聊、Manager 容器日志；删除旧 `WorkerManageTree/Tables`。
+
+**测试**：tsc 0 · build 0；文件页 node 测试 files-v3-3 12/12、files-layout 9/9；vitest 容器无 CLI 未跑。
+
 # 更新日志 Changelog
 
 本文件记录 agentteams-qwenpaw-workbench 的各版本变更（公开 release 条目）。
