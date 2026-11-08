@@ -208,12 +208,13 @@ import UploadQueuePanel from "./files/UploadQueuePanel";
 import FileDropTarget from "./files/FileDropTarget";
 import {
   FileOpProgressBar,
-  QuotaEditDialog,
   RenameMoveDialog,
   TextEditorDialog,
   type FileOpProgress,
   type FileOpTarget,
 } from "./files/FileOpsDialogs";
+import QuotaEditDialog from "./files/QuotaEditDialog";
+import { hfErrorText } from "./files/hfError";
 import { formatQuotaValue } from "./files/quotaEdit";
 import { isEditableText } from "./files/textEdit";
 import { useCallerLevel } from "../hooks/useCallerLevel";
@@ -873,42 +874,9 @@ export async function forceList(
 }
 
 /** 统一错误 → i18n 文案（按 status/code 分支；413 区分 size vs quota）。
- * 导出：PeopleSection 配额保存/清除 403 提示同源复用（Q）。 */
-export function hfErrorText(e: unknown, tr: Tr): string {
-  if (e instanceof HumanFilesError) {
-    // #1519 前端拦截：file.size > presign maxBytes（status=0，message=上限字节）。
-    if (e.code === "max_bytes") {
-      return tr("文件超过预签名上传上限（最大 {a}）", { a: fmtBytes(Number(e.message) || 0) });
-    }
-    switch (e.status) {
-      case 400:
-        return tr("路径非法");
-      case 403:
-        // #1669 角色无关：权限由服务端裁决，前端不预判角色（原「仅管理员」
-        // 为角色门文案，删除流需要的是通用错误语义）。
-        return tr("无权限");
-      case 404:
-        // #1519 commit：对象已被服务端删 → 「需重新上传」。
-        if (e.code === "object_missing") return tr("上传失败（对象不存在）——请重新上传");
-        return tr("无权限或不存在");
-      case 409:
-        // #1519 commit：checksum 不匹配（对象已被服务端删）→ 「需重新上传」；
-        // 其余 409 = restore 目标路径已存在（旧语义不变）。
-        if (e.code === "checksum_mismatch")
-          return tr("上传校验失败（checksum 不匹配）——请重新上传");
-        return tr("目标路径已存在");
-      case 412:
-        return tr("内容冲突（etag 不匹配）——刷新后重试");
-      case 413:
-        if (e.code === "size_exceeded") return tr("大小超限（单文件 ≤ 64MiB）");
-        if (e.code === "quota_exceeded") return tr("配额已满");
-        return tr("上传失败（大小超限或配额已满）");
-      default:
-        return e.message || `HTTP ${e.status}`;
-    }
-  }
-  return e instanceof Error ? e.message : String(e);
-}
+ * 16.137 起实现迁到 files/hfError.ts（QuotaEditDialog 共用，避免回环），
+ * 此处 re-export 保持外部 import 面（PeopleSection 等）不变。 */
+export { hfErrorText };
 
 /** #1669 删除调用计划（纯函数；tests/files-delete-1669.test.ts 断言）：
  * 勾选（recycle=true）= 仅软删（deleteFile → 回收站，可恢复）；
@@ -5507,16 +5475,14 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
             onSaved={() => void reload({ silent: true, force: true })}
           />
         ) : null}
-        {/* 第二批弹窗：配额编辑（十进制 MB/GB + 文件数；仅 admin）。 */}
-        {quotaDialogOpen ? (
+        {/* 第二批弹窗：配额编辑（共享 QuotaEditDialog；入口仅 canAdmin）。 */}
+        {quotaDialogOpen && canAdmin ? (
           <QuotaEditDialog
             open
-            canAdmin={canAdmin}
+            humanName={humanName}
             quota={quota}
             t={t}
             tr={tr}
-            humanName={humanName}
-            errorText={(e) => hfErrorText(e, tr)}
             onClose={() => setQuotaDialogOpen(false)}
             onSaved={() => void load(true)}
           />

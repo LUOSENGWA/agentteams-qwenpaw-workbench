@@ -713,6 +713,24 @@ export const manageDict: Record<string, { en: string }> = {
   "无权限": { en: "No access" },
   "团队名（自由输入）": { en: "Team name (free text)" },
   "添加路径（支持 * 和 **）": { en: "Add path (* and ** supported)" },
+  // 16.137：路径「浏览…」目录树选择（WorkspacePathPicker）；「选择目录」
+  // 「根目录」「加载中…」「取消」「添加」复用既有键（不重登）。
+  "浏览…": { en: "Browse…" },
+  "从工作区目录树选择": { en: "Pick from the workspace folder tree" },
+  "包含子目录（**）": { en: "Include subdirectories (**)" },
+  "无子目录": { en: "No subdirectories" },
+  "不可访问": { en: "Unavailable" },
+  "无法浏览目录——请手动输入路径": {
+    en: "Cannot browse folders — type the path manually",
+  },
+  "工作区 files/ · 勾选目录生成规则路径": {
+    en: "Workspace files/ — check folders to generate rule paths",
+  },
+  "已选 {n} 个目录": { en: "{n} folder(s) selected" },
+  "勾选目录生成规则路径": { en: "Check folders to generate rule paths" },
+  "剩余 {m} 条": { en: "{m} slot(s) left" },
+  "将添加：{p}": { en: "Will add: {p}" },
+  "已达路径上限（16 条）": { en: "Path limit reached (16)" },
   "路径非法：{p}": { en: "Invalid path: {p}" },
   "模式越界：{m}（此列表允许 {allowed}）": {
     en: "Mode out of range: {m} (allowed here: {allowed})",

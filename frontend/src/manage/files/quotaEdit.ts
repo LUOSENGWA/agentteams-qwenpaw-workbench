@@ -37,6 +37,13 @@ export interface QuotaLike {
   quotaFiles?: number | null;
 }
 
+/** 共享配额视图（QuotaEditDialog 的入参形态）：文件区 getQuota 与人员详情
+ *  getQuota 返回同一 QuotaResponse（usedBytes + quotaBytes + quotaFiles?），
+ *  两处直接按本类型传入，避免字段名分叉。null = 未取到（表单空态）。 */
+export interface QuotaView extends QuotaLike {
+  usedBytes: number;
+}
+
 /** InputNumber 的 onChange 值归一：非有限数 → null；其余原样（0 保留 =
  *  零额度；负数由 quotaFormValid 判非法）。 */
 export function quotaInputNumber(v: unknown): number | null {

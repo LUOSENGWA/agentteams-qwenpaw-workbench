@@ -27,7 +27,6 @@ import {
   deleteHuman,
   fetchSglangModels,
   getQuota,
-  setQuota,
   type AdminData,
   type HumanInfo,
   type QuotaResponse,
@@ -72,16 +71,8 @@ import { WbTooltip } from "../components/WbTooltip";
 import { useCallerLevel } from "../hooks/useCallerLevel";
 import { canControlResources, resourceControlDeniedHint } from "../lib/resourceControl";
 import { hfErrorText } from "./FilesSection";
-import {
-  formatQuotaValue,
-  quotaExactText,
-  quotaFormToPayload,
-  quotaFormValid,
-  quotaInputNumber,
-  quotaToForm,
-  type QuotaForm,
-  type QuotaUnit,
-} from "./files/quotaEdit";
+import QuotaEditDialog from "./files/QuotaEditDialog";
+import { formatQuotaValue } from "./files/quotaEdit";
 import type { ManageSectionProps } from "./types";
 
 const host = window.QwenPaw.host;
@@ -373,8 +364,6 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const [quota, setQuotaState] = React.useState<QuotaResponse | null>(null);
   const [quotaFailed, setQuotaFailed] = React.useState(false);
   const [quotaOpen, setQuotaOpen] = React.useState(false);
-  const [quotaForm, setQuotaForm] = React.useState<QuotaForm>({ value: null, unit: "MB", files: null });
-  const [quotaBusy, setQuotaBusy] = React.useState(false);
   const quotaReqRef = React.useRef(0);
   // 模型授权弹窗（C2b）——按需挂载（maOpen 才拨号，不预取）。
   const [maOpen, setMaOpen] = React.useState(false);
@@ -453,48 +442,11 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
   const isAdmin = !!data.hasToken;
 
   // 打开配额模态框（admin；点开 = 重试——失败副标题「可点开重试」）。
+  // 表单/保存/清除全在共享 QuotaEditDialog（文件管理同一份实现）。
   const openQuota = () => {
     if (!isAdmin) return;
-    setQuotaForm(quotaToForm(quota));
     setQuotaOpen(true);
     void refreshQuota();
-  };
-  const saveQuota = async () => {
-    if (!selectedName) return;
-    if (!quotaFormValid(quotaForm)) {
-      antd.message.warning(tr("请输入有效配额"));
-      return;
-    }
-    setQuotaBusy(true);
-    try {
-      await setQuota(selectedName, quotaFormToPayload(quotaForm));
-      antd.message.success(tr("已保存"));
-      setQuotaOpen(false);
-      void refreshQuota();
-    } catch (e) {
-      antd.message.error(hfErrorText(e, tr));
-    } finally {
-      setQuotaBusy(false);
-    }
-  };
-  const clearQuota = () => {
-    if (!selectedName) return;
-    antd.Modal.confirm({
-      title: tr("清除配额？"),
-      content: tr("清除后该人员文件存储无限制。"),
-      okText: tr("清除配额"),
-      cancelText: tr("取消"),
-      onOk: async () => {
-        try {
-          await setQuota(selectedName, null);
-          antd.message.success(tr("已保存"));
-          setQuotaOpen(false);
-          void refreshQuota();
-        } catch (e) {
-          antd.message.error(hfErrorText(e, tr));
-        }
-      },
-    });
   };
 
   // 入口卡副标题：有上限 → 已用/上限；无限制；加载中；失败（可点开重试）。
@@ -762,77 +714,17 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         </div>
       </antd.Modal>
 
-      {/* 工作区容量配额模态框（复用文件区语义：MB 输入 + 保存 / 清除 confirm；admin only） */}
-      <antd.Modal
+      {/* 工作区容量配额模态框：共享 files/QuotaEditDialog（与文件管理同一份
+          UI/语义：十进制 MB/GB + 文件数 + 清除 + 403 文案）；admin only。 */}
+      <QuotaEditDialog
         open={quotaOpen}
-        title={tr("设置配额")}
-        okText={tr("保存")}
-        cancelText={tr("取消")}
-        confirmLoading={quotaBusy}
-        onOk={() => void saveQuota()}
-        onCancel={() => setQuotaOpen(false)}
-        destroyOnClose
-      >
-        <div style={{ display: "grid", gap: 10, padding: "8px 0" }}>
-          <span style={{ fontSize: 12, color: t.textSecondary }}>
-            {tr("十进制：1 MB = 1,000,000 bytes，1 GB = 1,000,000,000 bytes")}
-          </span>
-          <div style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("容量")}</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <antd.InputNumber
-                min={0}
-                step={0.1}
-                value={quotaForm.value}
-                onChange={(v: unknown) =>
-                  setQuotaForm((f) => ({ ...f, value: quotaInputNumber(v) }))
-                }
-                style={{ flex: 1 }}
-                aria-label={tr("容量")}
-              />
-              <antd.Select
-                value={quotaForm.unit}
-                style={{ width: 88 }}
-                onChange={(v: string) =>
-                  setQuotaForm((f) => ({ ...f, unit: (v === "GB" ? "GB" : "MB") as QuotaUnit }))
-                }
-                options={[
-                  { value: "MB", label: "MB" },
-                  { value: "GB", label: "GB" },
-                ]}
-                aria-label={tr("单位")}
-              />
-            </div>
-            <span style={{ fontSize: 11, color: t.textSecondary }}>
-              {quotaExactText(quotaForm.value, quotaForm.unit) ||
-                tr("留空 = 不限；0 = 零额度")}
-            </span>
-          </div>
-          <div style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("文件数")}</span>
-            <antd.InputNumber
-              min={0}
-              precision={0}
-              value={quotaForm.files}
-              onChange={(v: unknown) =>
-                setQuotaForm((f) => ({ ...f, files: quotaInputNumber(v) }))
-              }
-              style={{ width: "100%" }}
-              aria-label={tr("文件数")}
-            />
-            <span style={{ fontSize: 11, color: t.textSecondary }}>
-              {quotaForm.files === null
-                ? tr("留空 = 不限；0 = 零额度")
-                : tr("{n} 个文件", { n: quotaForm.files })}
-            </span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <antd.Button danger size="small" onClick={clearQuota}>
-              {tr("清除配额")}
-            </antd.Button>
-          </div>
-        </div>
-      </antd.Modal>
+        humanName={human.name}
+        quota={quota}
+        t={t}
+        tr={tr}
+        onClose={() => setQuotaOpen(false)}
+        onSaved={() => void refreshQuota()}
+      />
 
       {/* 访问与权限弹窗（chips 单模态；human=null 渲染 null = 零后台负载） */}
       <HumanAccessModal
@@ -1218,6 +1110,7 @@ function HumanWorkspaceAccessModal({
               value={draft}
               defaultTeams={defaultTeams}
               teams={teamOptions}
+              humanName={human.name}
               onChange={(next) => {
                 setDraft(next);
                 setDirty(true);

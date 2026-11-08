@@ -12,7 +12,8 @@
 // - Grants（read | readwrite，raise only）/ Restrictions（none | read，
 //   收窄默认；同路径 restriction 优先）；
 // - 每条规则 = 团队（Select；候选空降级自由输入）+ 路径 chips（* / **
-//   支持，Enter 添加，× 删除）+ 模式（按列表限定的 Select）+ 删除；
+//   支持，Enter 添加，× 删除；humanName 在场时「浏览…」= WorkspacePathPicker
+//   目录树多选生成规则路径）+ 模式（按列表限定的 Select）+ 删除；
 // - 空列表 = 「未配置（继承默认）」；行内红字 = 该规则的结构化 issue。
 //
 // React/antd 走 window.QwenPaw.host（blob-URL 单文件构建约束，见 vite.config 守卫）。
@@ -26,6 +27,8 @@ import {
 import type { ThemeColors } from "../theme";
 import type { TrFn } from "../crdmanage/types";
 import HelpDot from "./HelpDot";
+import WorkspacePathPicker from "./WorkspacePathPicker";
+import { PICKER_MAX_PATHS, mergeRulePaths } from "./workspacePathPicker";
 import { CloseIcon } from "./icons";
 
 const host = window.QwenPaw.host;
@@ -67,22 +70,43 @@ function issueText(issue: AccessIssue, tr: TrFn): string {
   }
 }
 
-/** 路径 chips（closable Tag + 输入框，Enter 添加；* / ** 支持）。 */
+/** 路径 chips（closable Tag + 输入框，Enter 添加；* / ** 支持）。
+ *  humanName 在场时输入框右侧出「浏览…」（WorkspacePathPicker 目录树，
+ *  多选 + 含子目录开关，生成候选路径）；无 humanName = 只手动输入。 */
 function PathChips({
   paths,
   canEdit,
   tr,
+  t,
+  humanName,
   onChange,
 }: {
   paths: string[];
   canEdit: boolean;
   tr: TrFn;
+  t: ThemeColors;
+  humanName?: string;
   onChange: (next: string[]) => void;
 }) {
   const [draft, setDraft] = React.useState("");
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const atCap = paths.length >= PICKER_MAX_PATHS;
   const commit = () => {
     const p = draft.trim();
-    if (p && !paths.includes(p)) onChange([...paths, p]);
+    if (!p) {
+      setDraft("");
+      return;
+    }
+    if (paths.includes(p)) {
+      setDraft("");
+      return;
+    }
+    if (atCap) {
+      antd.message.warning(tr("每规则至多 16 条路径（当前 {m}）", { m: paths.length }));
+      setDraft("");
+      return;
+    }
+    onChange([...paths, p]);
     setDraft("");
   };
   return (
@@ -98,16 +122,53 @@ function PathChips({
         </antd.Tag>
       ))}
       {canEdit ? (
-        <antd.Input
-          value={draft}
-          onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value)}
-          onPressEnter={commit}
-          onBlur={() => {
-            if (draft.trim()) commit();
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <antd.Input
+            value={draft}
+            onChange={(e: ReactNS.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value)}
+            onPressEnter={commit}
+            onBlur={() => {
+              if (draft.trim()) commit();
+            }}
+            placeholder={tr("添加路径（支持 * 和 **）")}
+            style={{ width: 200 }}
+            aria-label={tr("添加路径（支持 * 和 **）")}
+          />
+          {humanName ? (
+            <antd.Button
+              onClick={() => setPickerOpen(true)}
+              disabled={atCap}
+              title={
+                atCap
+                  ? tr("已达路径上限（16 条）")
+                  : tr("从工作区目录树选择")
+              }
+              style={{ minHeight: 44, minWidth: 44, flexShrink: 0 }}
+              aria-label={tr("浏览…")}
+            >
+              {tr("浏览…")}
+            </antd.Button>
+          ) : null}
+        </div>
+      ) : null}
+      {canEdit && humanName ? (
+        <WorkspacePathPicker
+          open={pickerOpen}
+          humanName={humanName}
+          existing={paths}
+          t={t}
+          tr={tr}
+          onClose={() => setPickerOpen(false)}
+          onConfirm={(candidates) => {
+            // 与手动输入同一落点：onChange 全量数组（去重 / 上限在纯函数里）。
+            const merged = mergeRulePaths(paths, candidates);
+            if (merged.added.length > 0) onChange(merged.paths);
+            if (merged.capped) {
+              antd.message.warning(
+                tr("每规则至多 16 条路径（当前 {m}）", { m: merged.paths.length }),
+              );
+            }
           }}
-          placeholder={tr("添加路径（支持 * 和 **）")}
-          style={{ width: 200 }}
-          aria-label={tr("添加路径（支持 * 和 **）")}
         />
       ) : null}
     </div>
@@ -122,6 +183,7 @@ function RuleRow({
   canEdit,
   tr,
   t,
+  humanName,
   errors,
   onChange,
   onRemove,
@@ -133,6 +195,7 @@ function RuleRow({
   canEdit: boolean;
   tr: TrFn;
   t: ThemeColors;
+  humanName?: string;
   errors: AccessIssue[];
   onChange: (next: WorkspaceAccessRule) => void;
   onRemove: () => void;
@@ -197,6 +260,8 @@ function RuleRow({
         paths={rule.paths}
         canEdit={canEdit}
         tr={tr}
+        t={t}
+        humanName={humanName}
         onChange={(paths) => onChange({ ...rule, paths })}
       />
       {errors.length > 0 ? (
@@ -222,6 +287,7 @@ function RuleListSection({
   canEdit,
   tr,
   t,
+  humanName,
   listIssues,
   onRules,
 }: {
@@ -233,6 +299,7 @@ function RuleListSection({
   canEdit: boolean;
   tr: TrFn;
   t: ThemeColors;
+  humanName?: string;
   /** 列表级 issue（index = -1，如超 32 条）。 */
   listIssues: AccessIssue[];
   onRules: (next: WorkspaceAccessRule[]) => void;
@@ -280,6 +347,7 @@ function RuleListSection({
             canEdit={canEdit}
             tr={tr}
             t={t}
+            humanName={humanName}
             errors={issues.filter((x) => x.list === list && x.index === i)}
             onChange={(next) => onRules(rules.map((r, j) => (j === i ? next : r)))}
             onRemove={() => onRules(rules.filter((_, j) => j !== i))}
@@ -322,12 +390,14 @@ export interface WorkspaceAccessEditorProps {
   onChange: (next: WorkspaceAccess) => void;
   tr: TrFn;
   t: ThemeColors;
+  /** 当前人员名（listFiles 的 humanName）；缺省 → 隐藏「浏览…」只手动输入。 */
+  humanName?: string;
   /** 整体只读（非 admin）。 */
   readOnly?: boolean;
 }
 
 export default function WorkspaceAccessEditor(props: WorkspaceAccessEditorProps) {
-  const { value, defaultTeams, teams, onChange, tr, t } = props;
+  const { value, defaultTeams, teams, humanName, onChange, tr, t } = props;
   const readOnly = props.readOnly ?? false;
   const raw = value ?? null;
   const grants = raw?.grants ?? [];
@@ -388,6 +458,7 @@ export default function WorkspaceAccessEditor(props: WorkspaceAccessEditorProps)
         canEdit={!readOnly}
         tr={tr}
         t={t}
+        humanName={humanName}
         listIssues={validateAccess(raw, teams ?? null).filter(
           (x) => x.list === "grants" && x.index === -1,
         )}
@@ -404,6 +475,7 @@ export default function WorkspaceAccessEditor(props: WorkspaceAccessEditorProps)
         canEdit={!readOnly}
         tr={tr}
         t={t}
+        humanName={humanName}
         listIssues={validateAccess(raw, teams ?? null).filter(
           (x) => x.list === "restrictions" && x.index === -1,
         )}
