@@ -1,3 +1,11 @@
+## 0.5.0-beta.16.138 (file tree highlight fix · 2026-11-08)
+
+**Fixes**
+- Tree `focusIndex` now starts at -1, so entering the file page no longer highlights the first row by default.
+- Folder highlight can be cleared: blank clicks on the page/toolbar/breadcrumb/tree, clicking a file row, or pressing Esc clear `selectedDir`, keyboard focus and the upload target; the target returns to the current directory.
+- Blank-click handling moved to the page root; clicks inside the detail pane (`aside`) do not clear the list state.
+
+**Tests**: tsc 0 · build 0.
 ## 0.5.0-beta.16.137 (files close-out · team settings UI · module/bridge install · 2026-11-08)
 
 **Files**
