@@ -27,7 +27,6 @@ import type * as ReactNS from "react";
 
 import {
   DEFAULT_MODULE_REPO,
-  compareModuleVersions,
   entryPluginId,
   fetchAdminData,
   fetchL2AdminData,
@@ -58,6 +57,13 @@ import type {
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
 import { useForceReload } from "../lib/useForceReload";
+import {
+  buildVersionOptions,
+  moduleUpdateState,
+  pickDefaultVersion,
+  selectionFor,
+} from "./moduleUpdatePicker";
+import type { VersionOptionMode } from "./moduleUpdatePicker";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
@@ -217,48 +223,50 @@ function ModuleCard(props: {
 }) {
   const { tr } = props;
   const { entry, versions } = props;
+  const currentVersion = props.currentVersion;
   const installable = isInstallableKind(entry);
   const mine =
     props.phase && props.phase.t.module === entry.module ? props.phase : null;
   const busy = mine != null && (mine.s === "installing" || mine.s === "confirming");
 
-  const versionButtons = versions.map((v) => {
-    const cmp = props.currentVersion
-      ? compareModuleVersions(v.version, props.currentVersion)
-      : null;
-    const isCurrent = cmp === 0;
-    const disabledReason = !installable
-      ? tr("runner（不可安装）")
-      : !v.artifact || !v.sha256
-        ? tr("制品/校验字段缺失（索引条目不完整），暂不可安装")
-        : null;
-    return (
-      <antd.Button
-        key={v.version}
-        size="small"
-        type={isCurrent ? "default" : cmp == null || cmp > 0 ? "primary" : "default"}
-        disabled={isCurrent || busy || !v.artifact || !v.sha256}
-        title={disabledReason ?? undefined}
-        onClick={() =>
-          props.onStart({
-            module: entry.module,
-            version: v.version,
-            entry: v,
-            direction: cmp == null ? "install" : cmp > 0 ? "update" : "downgrade",
-            currentVersion: props.currentVersion,
-          })
-        }
-      >
-        {isCurrent
-          ? tr("当前")
-          : cmp == null
-            ? tr("安装 {v}", { v: v.version })
-            : cmp > 0
-              ? tr("更新到 {v}", { v: v.version })
-              : tr("降级到 {v}", { v: v.version })}
-      </antd.Button>
-    );
+  // 状态机：未装 / 可更新 / 已是最新 / 版本不一致 / 不可安装 / 无版本
+  const hasInstalled = !!props.installed || (props.members?.length ?? 0) > 0;
+  const state = moduleUpdateState({
+    versions,
+    currentVersion,
+    hasInstalled,
+    consistent: props.consistent ?? null,
+    installable,
   });
+  const mode: VersionOptionMode = state === "update-available" ? "newer" : "all";
+  const options = buildVersionOptions(versions, currentVersion, mode);
+  // 无任何可装版本（索引条目缺 artifact/sha256 或只剩当前版本）= 不给下拉/按钮
+  const pickable = options.some((o) => !o.disabled);
+  const canPick =
+    pickable &&
+    (state === "not-installed" ||
+      state === "update-available" ||
+      state === "inconsistent");
+
+  // 版本选择是卡片级状态：索引/频道或已装版本变化时重置为默认（最新可安装）
+  const [picked, setPicked] = React.useState<string | null>(() =>
+    pickDefaultVersion(options),
+  );
+  const versionKey = versions.map((v) => v.version).join(",");
+  React.useEffect(() => {
+    setPicked(pickDefaultVersion(buildVersionOptions(versions, currentVersion, mode)));
+  }, [versionKey, currentVersion, mode]);
+
+  const selection = selectionFor(versions, currentVersion, picked);
+  const pickedDisabled = !!options.find((o) => o.value === picked)?.disabled;
+  const actionLabel =
+    state === "inconsistent"
+      ? tr("统一到此版本")
+      : selection?.direction === "install"
+        ? tr("安装")
+        : selection?.direction === "downgrade"
+          ? tr("降级")
+          : tr("更新");
 
   return (
     <div
@@ -288,18 +296,7 @@ function ModuleCard(props: {
           </antd.Tag>
         ) : null}
         <span style={{ flex: 1 }} />
-        {props.currentVersion ? (
-          <antd.Tag color="geekblue">
-            {tr("已装 {v}", { v: props.currentVersion })}
-          </antd.Tag>
-        ) : (
-          <antd.Tag>{tr("未装")}</antd.Tag>
-        )}
       </div>
-
-      {versions.length === 0 && (
-        <div style={{ fontSize: 12, color: "#999" }}>{tr("索引中无版本条目")}</div>
-      )}
 
       {(props.members?.length ?? 0) > 0 && (
         <div style={{ fontSize: 12, display: "grid", gap: 2 }}>
@@ -324,9 +321,75 @@ function ModuleCard(props: {
         </div>
       )}
 
-      {installable && versions.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{versionButtons}</div>
+      {/* 状态区：一个状态标签 + 单个版本下拉 + 单个动作按钮（不再逐版本按钮） */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        {state === "not-installed" && <antd.Tag>{tr("未装")}</antd.Tag>}
+        {(state === "update-available" || state === "up-to-date") && (
+          <antd.Tag color="geekblue">
+            {tr("已装 {v}", { v: currentVersion ?? "" })}
+          </antd.Tag>
+        )}
+        {state === "update-available" && (
+          <antd.Tag color="orange">{tr("可更新")}</antd.Tag>
+        )}
+        {state === "up-to-date" && (
+          <antd.Tag color="green">{tr("已是最新")}</antd.Tag>
+        )}
+        {state === "inconsistent" && (
+          <antd.Tag color="orange">{tr("版本不一致")}</antd.Tag>
+        )}
+        {canPick && (
+          <>
+            <antd.Select
+              size="middle"
+              style={{ minWidth: 160, maxWidth: 280, height: 44 }}
+              value={picked ?? undefined}
+              placeholder={tr("选择版本")}
+              showSearch
+              optionFilterProp="label"
+              disabled={busy}
+              onChange={(v: string) => setPicked(v)}
+              options={options.map((o) => ({
+                value: o.value,
+                label:
+                  o.reason === "current"
+                    ? `${o.value} ${tr("（当前）")}`
+                    : o.reason === "unavailable"
+                      ? `${o.value} ${tr("（不可用）")}`
+                      : o.value,
+                disabled: o.disabled,
+              }))}
+            />
+            <antd.Button
+              type="primary"
+              style={{ minHeight: 44, minWidth: 96 }}
+              disabled={busy || !selection || pickedDisabled}
+              loading={busy}
+              onClick={() => {
+                if (!selection) return;
+                props.onStart({ module: entry.module, ...selection });
+              }}
+            >
+              {actionLabel}
+            </antd.Button>
+          </>
+        )}
+      </div>
+
+      {state === "no-versions" && (
+        <div style={{ fontSize: 12, color: "#999" }}>{tr("索引中无版本条目")}</div>
       )}
+      {state === "not-installable" && (
+        <div style={{ fontSize: 12, color: "#999" }}>{tr("runner（不可安装）")}</div>
+      )}
+      {!canPick &&
+        (state === "not-installed" ||
+          state === "update-available" ||
+          state === "inconsistent") && (
+          <div style={{ fontSize: 12, color: "#999" }}>
+            {tr("制品/校验字段缺失（索引条目不完整），暂不可安装")}
+          </div>
+        )}
 
       {/* 安装内联状态（与面板级 phase 联动；逐成员滚动进度见 done 分支） */}
       {mine?.s === "installing" && (
