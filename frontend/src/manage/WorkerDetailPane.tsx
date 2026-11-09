@@ -77,7 +77,7 @@ import { resourceControlDeniedHint } from "../lib/resourceControl";
 import { tracingUrl } from "../lib/tracingUrl";
 import ModelEditModal from "./ModelEditModal";
 import CheckpointCard from "./CheckpointCard";
-import SpawnTreeCard from "./SpawnTreeCard";
+import WorkerChats from "../components/WorkerChats";
 import { dmTargetFor } from "./dmTarget";
 import ResourceCards from "./ResourceCards";
 
@@ -750,9 +750,30 @@ export default function WorkerDetailPane({
         workerName={worker.name}
         runtime={worker.runtime}
       />
-      {/* 子会话卡（旧拓扑 SpawnRow/SpawnMessages 迁入）：默认收起；
-          老控制器无 /spawns 路由 → 整卡隐藏。 */}
-      <SpawnTreeCard key={`spawn-${worker.name}`} workerName={worker.name} />
+      {/* 会话卡（智能体会话 / 子代理会话双 tab）：数据面 = Worker 运行时
+          /workers/{name}/chats（不再从 Worker 详情扇出项目级 /spawns）。
+          key=worker.name：切 Worker 强制复位列表/详情/折叠态。 */}
+      <antd.Card
+        size="small"
+        title={tr("会话")}
+        styles={{ body: { padding: "8px 12px" } }}
+      >
+        <div
+          style={{
+            height: "min(62vh, 560px)",
+            minHeight: 240,
+            minWidth: 0,
+            overflowY: "auto",
+          }}
+        >
+          <WorkerChats
+            key={`chats-${worker.name}`}
+            workers={[worker]}
+            fixedWorker={worker.name}
+            showKindTabs
+          />
+        </div>
+      </antd.Card>
       {/* 模型编辑弹窗（响应式：宽屏左右/窄屏上下；与 Manager 详情面板共用）。 */}
       <ModelEditModal
         open={modelModal}

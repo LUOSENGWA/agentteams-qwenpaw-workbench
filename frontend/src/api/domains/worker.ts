@@ -329,6 +329,13 @@ export interface WorkerChatSpec {
   pinned?: boolean;
   archived?: boolean;
   source?: string;
+  /** qwenpaw ChatSpec.meta——spawn 子会话标记（meta.spawn=true）等
+   * 运行时附加元数据（直透 QwenPaw /api/chats）。 */
+  meta?: Record<string, unknown>;
+  /** 子代理会话的直属父 session（QwenPaw ChatSpec 同名字段，无则缺失）。 */
+  parent_session_id?: string;
+  /** 子代理会话树的根 session（旧 runtime 无父子链接时只用于判 spawn）。 */
+  root_session_id?: string;
   /** qwenpaw ChatSpec.status（app/chats/models.py:136）："idle" | "running"
  * ——qwenpaw app 自维护的 per-session 会话状态（13.8 状态灯正源）。 */
   status?: string;

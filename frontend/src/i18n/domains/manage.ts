@@ -847,6 +847,12 @@ export const manageDict: Record<string, { en: string }> = {
   "{n} 个子会话": { en: "{n} sub-session(s)" },
   "展开/收起子会话": { en: "Expand/collapse sub-session" },
   "子会话状态": { en: "Sub-session status" },
+  // ── Worker 详情「会话」卡：运行时双 tab（智能体 / 子代理）──
+  "智能体会话": { en: "Agent chats" },
+  "子代理会话": { en: "Subagent chats" },
+  "暂无子代理会话（该 Worker 当前没有子代理会话）": {
+    en: "No subagent chats (this Worker has none right now)",
+  },
   "容器日志": { en: "Container logs" },
   "该 Manager 无容器日志端点（Controller 未提供）": {
     en: "This Manager has no container-log endpoint (not provided by the Controller)",

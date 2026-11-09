@@ -44,7 +44,15 @@ import {
 import WorkerSessionDot from "./WorkerSessionDot";
 import WorkerCodingRuns from "./WorkerCodingRuns";
 import { copyText } from "../util";
-import { CHANNEL_LABELS, CHANNEL_COLORS, formatTime, groupTurns } from "./WorkerChatsShared";
+import {
+  CHANNEL_LABELS,
+  CHANNEL_COLORS,
+  buildSpawnChatRows,
+  formatTime,
+  groupTurns,
+  isSpawnChat,
+  spawnChatKey,
+} from "./WorkerChatsShared";
 import type { MsgPart } from "./WorkerChatsShared";
 import { ChatDetail } from "./WorkerChatsDetail";
 
@@ -60,15 +68,26 @@ const antd = host.antd;
  * 点击进详情、全名/全 session_id 换行不裁切、窄容器不挤压）；
  * `refreshTick` = SSE room_message 事件驱动刷新（Element 式主路——
  * 房间来消息即刷当前会话；4s 轮询降为断连兜底）。
+ *
+ * `showKindTabs` = 顶层「智能体会话 / 子代理会话」双 tab（Worker 详情
+ * 页「会话」卡用；默认关闭 = 房间抽屉原行为不变）。两个 tab 的数据面
+ * 都是同一个 /workers/{name}/chats：spawn 是聊天会话的运行时标记
+ * （meta.spawn / source / sub- 前缀 / 父子链接），不拨 /projects/{id}/spawns。
  */
 function WorkerChats({
   workers,
   fixedWorker,
   refreshTick,
+  showKindTabs = false,
+  initialKind = "agent",
 }: {
   workers: WorkerInfo[];
   fixedWorker?: string;
   refreshTick?: number;
+  /** 顶层 kind 双 tab（智能体会话 / 子代理会话）。 */
+  showKindTabs?: boolean;
+  /** 双 tab 模式的初始 tab（默认智能体会话）。 */
+  initialKind?: "agent" | "spawn";
 }) {
   const tr = useT();
   const [sel, setSel] = React.useState(fixedWorker ?? "");
@@ -76,6 +95,14 @@ function WorkerChats({
   const [gateMsg, setGateMsg] = React.useState("");
   const [chats, setChats] = React.useState<WorkerChatSpec[]>([]);
   const [loading, setLoading] = React.useState(false);
+
+  // 顶层会话类别（showKindTabs 生效时）：智能体会话 = 非 spawn；
+  // 子代理会话 = spawn（同一运行时列表按标记分流，不重叠）。
+  const [kind, setKind] = React.useState<"agent" | "spawn">(initialKind);
+  // 子代理会话树折叠集（session_id 键）。
+  const [spawnCollapsed, setSpawnCollapsed] = React.useState<Set<string>>(
+    () => new Set<string>(),
+  );
 
   // QwenPaw 会话页同款 Active/Archived 双 tab + Coding CLI tab。
   // coding CLI 会话归 worker 会话区——同抽屉第三 tab，
@@ -318,8 +345,16 @@ function WorkerChats({
     );
   }
 
-  const active = chats.filter((c) => !c.archived);
-  const archived = chats.filter((c) => !!c.archived);
+  // 双 tab 模式按 spawn 标记分流（同一运行时列表，互斥，不重复展示）；
+  // showKindTabs=false（房间抽屉）= 全量走原 Active/Archived/Coding 语义。
+  const agentChats = showKindTabs ? chats.filter((c) => !isSpawnChat(c)) : chats;
+  const spawnChats = showKindTabs ? chats.filter(isSpawnChat) : [];
+  // 旧 runtime 无 parent/root 字段 → 全部落根层（扁平列表）。
+  const spawnRows = showKindTabs
+    ? buildSpawnChatRows(spawnChats, spawnCollapsed)
+    : [];
+  const active = agentChats.filter((c) => !c.archived);
+  const archived = agentChats.filter((c) => !!c.archived);
   const list = React.useMemo(() => {
     const arr = [...(tab === "active" ? active : archived)];
     arr.sort((a, b) => {
@@ -333,6 +368,14 @@ function WorkerChats({
   const openChatSpec = openId
     ? chats.find((c) => c.id === openId)
     : undefined;
+  const toggleSpawnCollapsed = React.useCallback((key: string) => {
+    setSpawnCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   // （QwenPaw 化：ResponseActions 同款复制——气泡
   // hover 显 ⧉，复制该条全部文本部分）。
@@ -417,8 +460,9 @@ function WorkerChats({
           </>
         )}
         <div style={{ flex: 1 }} />
-        {/* 排序/刷新只对聊天会话 tab 有意义（Coding CLI tab 自带刷新）。 */}
-        {tab !== "coding" ? (
+        {/* 排序/刷新只对聊天会话 tab 有意义（Coding CLI tab 自带刷新；
+            子代理会话 tab 只留刷新，不做排序）。 */}
+        {(!showKindTabs || kind === "agent") && tab !== "coding" ? (
           <antd.Select
             size="small"
             style={{ width: 128 }}
@@ -431,13 +475,175 @@ function WorkerChats({
             ]}
           />
         ) : null}
-        {tab !== "coding" ? (
+        {tab !== "coding" || (showKindTabs && kind === "spawn") ? (
           <antd.Button size="small" onClick={() => void load()} loading={loading}>
             {tr("刷新")}
           </antd.Button>
         ) : null}
       </div>
 
+      {/* 顶层双 tab：智能体会话（非 spawn）/ 子代理会话（spawn）——
+          两个 tab 同一数据面（运行时 /workers/{name}/chats），不重叠。 */}
+      {showKindTabs ? (
+        <antd.Tabs
+          size="small"
+          activeKey={kind}
+          onChange={(k: string) => {
+            setKind(k === "spawn" ? "spawn" : "agent");
+            setOpenId(null);
+          }}
+          items={[
+            { key: "agent", label: `${tr("智能体会话")} (${agentChats.length})` },
+            { key: "spawn", label: `${tr("子代理会话")} (${spawnChats.length})` },
+          ]}
+        />
+      ) : null}
+
+      {showKindTabs && kind === "spawn" ? (
+        <div style={{ minWidth: 0 }}>
+          {loading && chats.length === 0 ? (
+            <antd.Spin size="small" />
+          ) : spawnRows.length === 0 ? (
+            <antd.Alert
+              type="info"
+              showIcon
+              message={tr("暂无子代理会话（该 Worker 当前没有子代理会话）")}
+            />
+          ) : (
+            <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+              {spawnRows.map(({ chat, depth, hasChildren }) => {
+                const rowKey = spawnChatKey(chat);
+                const sid = chat.session_id || chat.id;
+                const dotState: "running" | "idle" =
+                  chat.status === "running" ? "running" : "idle";
+                const collapsed = spawnCollapsed.has(rowKey);
+                return (
+                  <div
+                    key={rowKey}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${tr("查看会话")} ${sid}`}
+                    onClick={() => void openChat(chat.id)}
+                    onKeyDown={(e: ReactNS.KeyboardEvent<HTMLDivElement>) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        void openChat(chat.id);
+                      }
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minHeight: 44,
+                      padding: "4px 6px",
+                      paddingLeft: depth * 18 + 6,
+                      border: "1px solid rgba(127,127,127,0.25)",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      background: "rgba(127,127,127,0.03)",
+                      minWidth: 0,
+                    }}
+                  >
+                    {hasChildren ? (
+                      <button
+                        type="button"
+                        aria-expanded={!collapsed}
+                        aria-label={tr("展开/收起子会话")}
+                        onClick={(e: ReactNS.MouseEvent) => {
+                          e.stopPropagation();
+                          toggleSpawnCollapsed(rowKey);
+                        }}
+                        onKeyDown={(e: ReactNS.KeyboardEvent<HTMLButtonElement>) =>
+                          e.stopPropagation()
+                        }
+                        style={{
+                          width: 44,
+                          minHeight: 44,
+                          border: "none",
+                          background: "transparent",
+                          color: "inherit",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {collapsed ? "▸" : "▾"}
+                      </button>
+                    ) : (
+                      <span style={{ width: 44, flexShrink: 0 }} />
+                    )}
+                    <WorkerSessionDot state={dotState} size={8} />
+                    <span
+                      style={{
+                        flex: "1 1 auto",
+                        minWidth: 0,
+                        display: "grid",
+                        gap: 1,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 12.5,
+                          wordBreak: "break-word",
+                          whiteSpace: "normal",
+                        }}
+                      >
+                        {chat.name || sid}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontFamily:
+                            "ui-monospace, SFMono-Regular, Consolas, monospace",
+                          color: "rgba(127,127,127,0.85)",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {sid}
+                      </span>
+                    </span>
+                    {chat.archived ? (
+                      <antd.Tag style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                        {tr("已归档")}
+                      </antd.Tag>
+                    ) : null}
+                    {chat.updated_at ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(127,127,127,0.9)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {formatTime(chat.updated_at)}
+                      </span>
+                    ) : null}
+                    <antd.Button
+                      size="small"
+                      type="link"
+                      style={{
+                        padding: "0 2px",
+                        color: "#52c41a",
+                        fontSize: 12,
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                      onClick={(e: ReactNS.MouseEvent) => {
+                        e.stopPropagation();
+                        void openChat(chat.id);
+                      }}
+                    >
+                      {tr("查看")}
+                    </antd.Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
       <antd.Tabs
         size="small"
         activeKey={tab}
@@ -571,6 +777,8 @@ function WorkerChats({
           </div>
         )}
       </div>
+      )}
+        </>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 /** WorkerChats 子模块——自 WorkerChats.tsx 纯搬移拆出
  * （行为零变化）。 */
-import type { WorkerChatMessage } from "../api";
+import type { WorkerChatMessage, WorkerChatSpec } from "../api";
 
 /** 通道短名（13.8「会话列表拥挤依旧」：agentteams_matrix 全名 Tag 挤爆 64px
  * 列——短名 + Tooltip 全名；未知值原样回退）。 */
@@ -269,5 +269,105 @@ export function groupTurns(msgs: WorkerChatMessage[]): DetailItem[] {
     }
   }
   flush();
+  return out;
+}
+
+// ── 子代理会话（spawn）——运行时口径 ─────────────────────────────────
+// QwenPaw 没有 /spawns 运行时路由：spawn 就是普通聊天会话，靠 ChatSpec
+// 的 meta.spawn / source / session_id 前缀 / 父子链接区分（旧 runtime
+// 只有前三种，无父子字段 → 树退化为扁平列表，不虚构层级）。
+
+/** 会话树键：session_id 优先（父子链接都指向它），缺省回退 chat id。 */
+export function spawnChatKey(c: WorkerChatSpec): string {
+  return String(c.session_id || c.id || "");
+}
+
+/** 是否子代理会话（QwenPaw ChatSpec 判据并集）。 */
+export function isSpawnChat(c: WorkerChatSpec): boolean {
+  const meta =
+    c.meta && typeof c.meta === "object"
+      ? (c.meta as Record<string, unknown>)
+      : {};
+  const sid = spawnChatKey(c);
+  return (
+    meta.spawn === true ||
+    meta.spawn === "true" ||
+    c.source === "spawn" ||
+    // QwenPaw SessionSource 枚举实值（models.py:23）：chat | cron | subagent。
+    c.source === "subagent" ||
+    sid.startsWith("sub-") ||
+    !!c.parent_session_id ||
+    !!c.root_session_id
+  );
+}
+
+/** 树行：chat + 缩进深度 + 是否有子节点（caret 判定）。 */
+export interface SpawnChatRow {
+  chat: WorkerChatSpec;
+  depth: number;
+  hasChildren: boolean;
+}
+
+/** spawn 会话 → 扁平树行。父 session 不在本列表（属普通智能体会话）→
+ * 该 spawn 落根层；无 parent 字段的旧 runtime 全部落根层（扁平列表）。 */
+export function buildSpawnChatRows(
+  chats: WorkerChatSpec[],
+  collapsed: ReadonlySet<string> = new Set<string>(),
+): SpawnChatRow[] {
+  const byKey = new Map<string, WorkerChatSpec>();
+  for (const c of chats) {
+    const k = spawnChatKey(c);
+    if (!byKey.has(k)) byKey.set(k, c);
+  }
+  const kids = new Map<string, WorkerChatSpec[]>();
+  const roots: WorkerChatSpec[] = [];
+  for (const c of chats) {
+    const parentId = c.parent_session_id || "";
+    const parent = parentId ? byKey.get(parentId) : undefined;
+    if (parent && parent !== c) {
+      const k = spawnChatKey(parent);
+      const arr = kids.get(k) ?? [];
+      arr.push(c);
+      kids.set(k, arr);
+    } else {
+      roots.push(c);
+    }
+  }
+  const byUpdated = (a: WorkerChatSpec, b: WorkerChatSpec) =>
+    String(b.updated_at || "").localeCompare(String(a.updated_at || ""));
+  roots.sort(byUpdated);
+  for (const arr of kids.values()) arr.sort(byUpdated);
+  const out: SpawnChatRow[] = [];
+  const seen = new Set<string>();
+  // 折叠节点的整棵子树标记为「有意隐藏」——末段兜底不得把它们当孤儿补回。
+  const markHidden = (list: WorkerChatSpec[]): void => {
+    for (const c of list) {
+      const k = spawnChatKey(c);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      markHidden(kids.get(k) ?? []);
+    }
+  };
+  const walk = (list: WorkerChatSpec[], depth: number): void => {
+    for (const c of list) {
+      const k = spawnChatKey(c);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const children = kids.get(k) ?? [];
+      out.push({ chat: c, depth, hasChildren: children.length > 0 });
+      if (children.length > 0) {
+        if (collapsed.has(k)) markHidden(children);
+        else walk(children, depth + 1);
+      }
+    }
+  };
+  walk(roots, 0);
+  // 父链成环/重复键（数据脏）时的兜底：未走到的会话仍以根层展示，不丢行。
+  for (const c of chats) {
+    const k = spawnChatKey(c);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ chat: c, depth: 0, hasChildren: false });
+  }
   return out;
 }

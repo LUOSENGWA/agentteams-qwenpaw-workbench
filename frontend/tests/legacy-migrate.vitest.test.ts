@@ -354,8 +354,13 @@ describe("⑥ 旧组件退场 / 新挂载点 / 无 import 引用", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("新挂载点：WorkerDetailPane 挂子会话卡；TeamSection 拓扑行有数量徽标", () => {
-    expect(srcText("manage/WorkerDetailPane.tsx")).toContain("<SpawnTreeCard");
+  it("新挂载点：WorkerDetailPane 挂会话卡（智能体/子代理双 tab）；TeamSection 拓扑行有数量徽标", () => {
+    const worker = srcText("manage/WorkerDetailPane.tsx");
+    expect(worker).toContain("<WorkerChats");
+    // 双 tab（智能体会话 / 子代理会话）= 单一「会话」卡入口。
+    expect(worker).toContain("showKindTabs");
+    // Worker 详情不再走项目级 /spawns 扇出（数据面 = 运行时 /workers/{name}/chats）。
+    expect(worker).not.toContain("SpawnTreeCard");
     const team = srcText("manage/TeamSection.tsx");
     expect(team).toContain("countSpawnNodes(w.spawns)");
     expect(team).toContain('tr("{n} 个子会话", { n: spawnCount })');
