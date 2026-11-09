@@ -130,10 +130,9 @@ async def _fetch_all(include_resolved: bool) -> Dict[str, Any]:
     from . import worker_status
 
     cfg = config_mod.load_config()
-    try:
-        token, _src = router_mod._resolve_controller_token(cfg)
-    except Exception:
-        token = ""
+    # 管理面凭据：显式管理员 token，或能力探测已确认可用的 Matrix token
+    # （matrix_l1/matrix_scoped）——旧 Controller/未探测保持旧语义（502）。
+    token = router_mod._token_or_none(cfg) or ""
     if not token:
         raise HTTPException(
             status_code=502, detail="未配置 Controller token，无法拉取 attention"

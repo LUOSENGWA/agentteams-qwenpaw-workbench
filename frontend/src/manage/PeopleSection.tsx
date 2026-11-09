@@ -25,6 +25,7 @@ import type * as ReactNS from "react";
 
 import {
   deleteHuman,
+  fetchHumanDetail,
   fetchSglangModels,
   getQuota,
   type AdminData,
@@ -55,6 +56,7 @@ import {
 } from "../api/domains/workspaceAccess";
 import { useThemeColors, type ThemeColors } from "../theme";
 import { useT } from "../i18n";
+import { copyText } from "../util";
 import HumanAccessModal, {
   computeStandaloneWorkers,
 } from "../crdmanage/HumanAccessModal";
@@ -393,6 +395,34 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
     if (selectedName) void refreshQuota();
   }, [selectedName, refreshQuota]);
 
+  // 初始密码（#1481：列表响应剥离 initialPassword，仅详情端点返回）——
+  // 点开才拉详情（不逐行预取）；空值=由 SSO/AppService 管理，不报错。
+  const [pwOpen, setPwOpen] = React.useState(false);
+  const [pwLoading, setPwLoading] = React.useState(false);
+  const [pwValue, setPwValue] = React.useState<string | null>(null);
+  const [pwError, setPwError] = React.useState("");
+  const openInitialPassword = React.useCallback(async () => {
+    if (!selectedName) return;
+    setPwOpen(true);
+    setPwLoading(true);
+    setPwError("");
+    setPwValue(null);
+    try {
+      const detail = await fetchHumanDetail(selectedName);
+      setPwValue(detail.initialPassword || "");
+    } catch (e) {
+      setPwError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPwLoading(false);
+    }
+  }, [selectedName]);
+  // 换人 → 关掉初始密码弹窗（防串人）。
+  React.useEffect(() => {
+    setPwOpen(false);
+    setPwValue(null);
+    setPwError("");
+  }, [selectedName]);
+
   // 未选中（或选中项已不在最新数据）→ 占位。
   if (!human) {
     return (
@@ -657,6 +687,33 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
             ›
           </span>
         </button>
+        {/* 第五张入口卡：查看初始密码（列表剥离该字段，点开才拉详情） */}
+        <button
+          type="button"
+          onClick={() => void openInitialPassword()}
+          style={entryStyle(t)}
+        >
+          <SearchIcon size={16} style={{ color: t.textSecondary, flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 2 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
+              {tr("查看初始密码")}
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                color: t.textSecondary,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {tr("入职时的初始密码（仅详情端点返回；点开才读取）")}
+            </span>
+          </span>
+          <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>
+            ›
+          </span>
+        </button>
       </div>
 
       {/* 危险区：删除人员（L1；Controller 仅 admin 放行）——输入名字确认。
@@ -725,6 +782,61 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
         onClose={() => setQuotaOpen(false)}
         onSaved={() => void refreshQuota()}
       />
+
+      {/* 初始密码弹窗（#1481：仅详情端点返回；点开才拉，敏感引导常驻） */}
+      <antd.Modal
+        open={pwOpen}
+        title={tr("初始密码 · {name}", { name: human.name })}
+        footer={null}
+        onCancel={() => setPwOpen(false)}
+        destroyOnClose
+      >
+        <div style={{ display: "grid", gap: 10, fontSize: 12.5 }}>
+          {pwLoading ? (
+            <span style={{ color: t.textSecondary }}>{tr("读取中…")}</span>
+          ) : pwError ? (
+            <span style={{ color: t.mode === "dark" ? "#ff7875" : "#cf1322" }}>
+              {tr("读取失败：{err}", { err: pwError })}
+            </span>
+          ) : pwValue ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <code
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: "6px 8px",
+                  background: t.mode === "dark" ? "rgba(255,255,255,0.08)" : "#f5f5f5",
+                  borderRadius: 6,
+                  fontSize: 13,
+                  userSelect: "all",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {pwValue}
+              </code>
+              <antd.Button
+                size="small"
+                onClick={() =>
+                  copyText(pwValue, (ok) =>
+                    ok
+                      ? antd.message.success(tr("已复制到剪贴板"))
+                      : antd.message.error(tr("复制失败——请手动全选复制")),
+                  )
+                }
+              >
+                {tr("复制")}
+              </antd.Button>
+            </div>
+          ) : (
+            <span style={{ color: t.textSecondary }}>
+              {tr("未保存/由 SSO 或 AppService 管理")}
+            </span>
+          )}
+          <span style={{ fontSize: 11, color: t.textSecondary, lineHeight: 1.6 }}>
+            {tr("这是入职时生成的初始密码，仅此一次可查；敏感信息，请勿转发或写入工单。修改后的密码不在此处。")}
+          </span>
+        </div>
+      </antd.Modal>
 
       {/* 访问与权限弹窗（chips 单模态；human=null 渲染 null = 零后台负载） */}
       <HumanAccessModal

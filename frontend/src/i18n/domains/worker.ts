@@ -747,6 +747,9 @@ export const workerDict: Record<string, { en: string }> = {
   "L1 账号密码登录只带 Higress Console 会话（网关面），不含 Controller 管理 token（CRD/数据面）。请在 设置 → ① Controller 管理员 token 字段粘贴（部署宿主机取法：docker exec agentteams-controller cat /var/run/agentteams/cli-token）。": {
     en: "L1 account/password login only holds a Higress Console session (gateway side), not the Controller admin token (CRD / data plane). Paste the Controller admin token in Settings → ① Controller admin token (obtain on the deployment host: docker exec agentteams-controller cat /var/run/agentteams/cli-token).",
   },
+  "当前没有可用的 Controller 管理凭据：L2/L3 Matrix 账号默认只读；旧版 Controller 1.2.6 请在 设置 →「旧版 Controller / 备用管理员 token」粘贴管理员 token（部署宿主机取法：docker exec agentteams-controller cat /var/run/agentteams/cli-token）。新版 Controller 的 L1 Matrix 账号登录后无需 token。": {
+    en: "No usable Controller admin credential right now: L2/L3 Matrix accounts are read-only by default; for legacy Controller 1.2.6 paste an admin token in Settings → “Legacy Controller / fallback admin token” (obtain it on the deployment host: docker exec agentteams-controller cat /var/run/agentteams/cli-token). On a new Controller, an L1 Matrix account needs no token after login.",
+  },
   /*  */
   "复制失败": { en: "Copy failed" },
   "最后活动 ↓": { en: "Last activity ↓" },

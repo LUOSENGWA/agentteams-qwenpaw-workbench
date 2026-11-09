@@ -30,6 +30,7 @@ import WorkerChats from "./components/WorkerChats";
 import ManagePage from "./manage/ManagePage";
 import type { ManageSectionRequest } from "./manage/useManageNav";
 import { AttentionDecisionModal } from "./components/AttentionDecisionModal";
+import ControllerTokenGate from "./components/ControllerTokenGate";
 import { TeamIcon, TopologyIcon, HomeIcon, MessageIcon, BellIcon, BoxIcon, NotesIcon, SearchIcon, BrainIcon, SettingsIcon, FolderIcon, TargetIcon } from "./components/icons";
 import KnowledgeBase from "./components/KnowledgeBase";
 import ModelsTab from "./ModelsTab";
@@ -256,7 +257,9 @@ export default function WorkbenchPage() {
     refreshRooms,
     refreshTree,
     refreshWorkflow,
-    hasCtlToken,
+    controllerAuth,
+    refreshControllerAuth,
+    isAdmin,
     refreshAdmin,
     attention,
     refreshAttention,
@@ -298,7 +301,7 @@ export default function WorkbenchPage() {
 
   // attention 决策面（NMH §8）——顶栏 badge / 全局弹窗 / 通知页「待决策」
   // 子页签（10/26 原顶层聚合页并入通知页）共用一份数据（30s 轮询在
-  // WorkbenchPageData，hasCtlToken 门控）；本处只管弹窗开合 + 定位 +
+  // WorkbenchPageData，hasControllerAuth 门控）；本处只管弹窗开合 + 定位 +
   // 待答过滤 + 子页签状态。deployed=false（旧 controller）时不显示
   // badge/入口（诚实降级，不报错）。
   const [attentionOpen, setAttentionOpen] = React.useState(false);
@@ -570,12 +573,19 @@ export default function WorkbenchPage() {
     handleJumpHandled();
   }, [finishPendingOriginalJump, handleJumpHandled]);
 
+  // Controller token 验证成功（token 门弹窗）→ 能力/配置双刷新：
+  // admin/tokenRequired 立即翻转，管理员面板无需等下一次轮询。
+  const handleControllerAuthVerified = React.useCallback(() => {
+    void refreshControllerAuth();
+    handleConfigChange();
+  }, [refreshControllerAuth, handleConfigChange]);
+
   // 点 Tab 即刷新（用户要求，所有 top tab）：rc-tabs 内容挂载后保活不卸载，
   // 切回不会自动重取——这里按 tab 显式触发对应数据刷新。
   // 首次运行（prev===""，=挂载/恢复的初始 tab，
   // tab 是持久化的——上次停在「团队管理」则首开即 team）也触发该 tab 的数据刷新。
   // 旧版 prev==="" 早退 = 持久化首开 team tab 时 admin 取数零触发（首屏只显拓扑
-  // 的根因之二；hasCtlToken 翻转 effect 兜底 token 就绪，本处兜底首访意图）。
+  // 的根因之二；isAdmin 翻转 effect 兜底能力就绪，本处兜底首访意图）。
   const prevTabRef = React.useRef("");
   // team（管理）tab 激活态稳定 ref——
   // ManagePage 的 30s 轮询门控读此 ref（tick 时取当前值）。
@@ -1112,6 +1122,15 @@ export default function WorkbenchPage() {
         />
       )}
 
+      {/* Controller 双认证门——旧 Controller 1.2.6 / Matrix 身份被拒时
+          弹管理员 token；Matrix L1 静默通过；网络失败只显示连接错误。 */}
+      <ControllerTokenGate
+        auth={controllerAuth}
+        config={config}
+        onVerified={handleControllerAuthVerified}
+        onRefresh={() => void refreshControllerAuth()}
+      />
+
  {/* 自定义 tab 栏（布局自控——antd Tabs 内部 DOM 不可控，
  高度链断导致头部不固定。自写 tab bar + 内容容器 flex 布局） */}
       <div
@@ -1149,8 +1168,8 @@ export default function WorkbenchPage() {
 
           { key: "settings", label: <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><SettingsIcon size={15} /> {tr("配置")}</span> },
         ]
-          // // 无 Controller token（L1 不可用）时隐藏「模型」入口。
-          .filter((item) => item.key !== "models" || hasCtlToken)
+          // 非管理员（Matrix L2/L3 且无 Controller token）隐藏「模型」入口。
+          .filter((item) => item.key !== "models" || isAdmin)
           .map((item) => {
           const active = tab === item.key;
           return (
@@ -1358,13 +1377,13 @@ export default function WorkbenchPage() {
                 onDm={handleDmStable}
                 /* L1 只读 Alert「去设置」跳配置页 */
                 onOpenSettings={gotoSettings}
-                hasToken={hasCtlToken}
+                hasToken={isAdmin}
                 activeRef={teamActiveRef}
                 treeSource={treeSource}
                 workerSessionByName={workerSessionStates.byName}
                 myUserId={config?.matrix?.user_id || ""}
-                /* L1 走 controller token（config 或 env）且未配 admin 账号密码 = 无 Higress Console 会话 */
-                l1TokenMode={hasCtlToken && !config?.admin_username}
+                /* L1 走 Controller token（config 或 env）且未配 admin 账号密码 = 无 Higress Console 会话 */
+                l1TokenMode={isAdmin && !config?.admin_username}
                 /* 成员头像源（team.room_id → 房间成员 mxc 头像）+ 待决策徽章（room 维度） */
                 rooms={rooms}
                 attentionPendingByRoom={
@@ -1417,8 +1436,8 @@ export default function WorkbenchPage() {
             ),
           },
         ]
-          // 与侧栏同门控——L2 无「模型」页。
-          .filter((it) => it.key !== "models" || hasCtlToken)}
+          // 与侧栏同门控——非管理员无「模型」页。
+          .filter((it) => it.key !== "models" || isAdmin)}
       />
       </div>
       {/* 跨房间消息搜索：点击结果 → 打开房间 + 定位事件；

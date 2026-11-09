@@ -112,13 +112,11 @@ async def _do_sweep() -> None:
  消失的 worker（不在本轮名单）随新表清掉。
  """
     cfg = config_mod.load_config()
-    try:
-        token, _src = router_mod._resolve_controller_token(cfg)
-    except Exception:  # noqa: BLE001 - token 内容非法 → 本轮不拨
-        logger.info("worker_status sweep: controller token 解析失败，跳过本轮")
-        return
+    # 管理面凭据：显式管理员 token，或能力探测已确认可用的 Matrix token。
+    # 旧 Controller/未探测 → None（不拨号，保旧表）。
+    token = router_mod._token_or_none(cfg) or ""
     if not token:
-        return  # 无 token → 不拨号（保旧表）
+        return  # 无凭据 → 不拨号（保旧表）
 
     base_urls = router_mod._ordered_addresses(cfg, "controller")
     if not base_urls:

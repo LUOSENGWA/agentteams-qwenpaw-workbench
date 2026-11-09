@@ -2587,7 +2587,7 @@ def build_ctl_call() -> Callable[..., HttpResult]:
     run_once 经 asyncio.to_thread 跑在工作线程里，这里必须同步。复用
     ``router._ordered_addresses``（地址 failover 顺序）与
     ``router._headers_for``（该地址覆盖凭据）；token 走
-    ``router_models._resolve_controller_token``。绝对 http(s) 路径
+    ``router_models._token_or_none``（显式管理员 token / 已确认的 Matrix L1）。绝对 http(s) 路径
     （预签名直链）原样直拨、不套 controller 凭据。
 
     惰性 import router/config——避免与 routers 包的循环导入
@@ -2617,17 +2617,14 @@ def build_ctl_call() -> Callable[..., HttpResult]:
 
         from . import config as config_mod
         from . import router as router_mod
-        from .router_models import _resolve_controller_token
+        from .router_models import _token_or_none
 
         cfg = config_mod.load_config()
         bases = [b.rstrip("/") for b in router_mod._ordered_addresses(cfg, "controller")]
         if not bases:
             raise ConnectionError("controller 未配置地址")
-        token = ""
-        try:
-            token, _src = _resolve_controller_token(cfg)
-        except Exception:  # noqa: BLE001 - token 非法按无 token 处理
-            token = ""
+        # 显式管理员 token，或能力探测已确认可用的 Matrix token（matrix_l1）。
+        token = _token_or_none(cfg) or ""
         qs = f"?{urlencode(params)}" if params else ""
         m = method
         timeout = (

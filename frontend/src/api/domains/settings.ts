@@ -227,6 +227,47 @@ export interface AuthStatus {
   controller_token: string;
 }
 
+/** Controller 双认证能力（/agentteams-proxy/controller-auth）。
+ * 新 Controller（#1573+）Human L1 的 Matrix 登录即可调管理 API；旧 1.2.6
+ * 无 /api/v1/me，管理面仍需 Controller 管理员 token。
+ * 该端点可能做一次出站 /me 探测（后端 30s 缓存）；token 值永不返回。 */
+export interface ControllerAuthStatus {
+  /** matrix_l1=Matrix 即 L1 / matrix_scoped=L2/L3 只读 / legacy=旧版
+   * Controller / matrix_invalid=Matrix 身份被拒 / unreachable=连不上 /
+   * none=未登录。 */
+  state:
+    | "matrix_l1"
+    | "matrix_scoped"
+    | "legacy"
+    | "matrix_invalid"
+    | "unreachable"
+    | "none";
+  name: string;
+  permissionLevel: number;
+  accessibleTeams: string[];
+  accessibleWorkers: string[];
+  capabilities: string[];
+  credentialSource: "matrix" | "config" | "env" | "none";
+  controllerTokenConfigured: boolean;
+  /** 旧版/身份被拒且无管理员 token → 需要弹 token 框。 */
+  tokenRequired: boolean;
+  /** Matrix L1 或已配置管理员 token。 */
+  admin: boolean;
+  legacy: boolean;
+  reachable: boolean;
+  detail?: string;
+}
+
+/** Controller 能力探测（设置页/登录后各拉一次；不做前端缓存——
+ * 后端已 30s 缓存，任何 UI 抖动都应以最新能力为准）。 */
+export async function fetchControllerAuth(): Promise<ControllerAuthStatus> {
+  return (await requestJson(
+    "/agentteams-proxy/controller-auth",
+    undefined,
+    15000,
+  )) as ControllerAuthStatus;
+}
+
 /** 30s 缓存（与 WorkbenchPageData 30s 轮询同节奏）——只缓存成功值：
  * 请求失败原样抛 → 下方 catch 返 null（不写缓存，下轮重试），
  * 语义与原实现逐字一致（端点不可用=连接器重载窗口）。 */

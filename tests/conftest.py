@@ -34,6 +34,9 @@ _DOMAIN_MODULES = (
     # 测试不得拿上一测的 ETag 互 304；本模块无 router 共享名，
     # rebind 循环的 hasattr 过滤自然跳过）。
     "agentteams_connector.conditional",
+    # Controller 双认证能力探测（_controller_auth_cache 30s 缓存纳入逐测
+    # 清空——同 cfg 的相邻测试不得命中上一测的 /me 结果）。
+    "agentteams_connector.controller_auth",
 )
 
 

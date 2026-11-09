@@ -336,4 +336,74 @@ export const credsDict: Record<string, { en: string }> = {
   "Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。两套独立的 L1 认证：① Controller 管理员 token（L1 管理面模式内配置）——CRD 管理（入职/建队/改配/删除）+ 全部 Worker/Team 状态视图（Controller 唯一凭证，无接口获取——上游安全设计，部署管理员提供，粘贴一次永久记住）；② Higress 账号+密码（下方独立段配置，与 L1/L2 模式无关）——建 Higress Console 会话（模型下拉 alias 层）。两者是不同系统的凭证，互不替代、可同时配置。": {
     en: "Matrix login (L2): view teams this account can access + project operations (start / pause / artifacts) — enough for daily use. Two independent L1 auths: ① Controller admin token (configured in L1 admin mode) — CRD management (onboard / create team / edit / delete) + all Worker/Team status views (the Controller's only credential, no endpoint issues it — upstream security design; provided by the deployment admin, paste once and it is remembered forever); ② Higress account + password (configured in the standalone section below, independent of L1/L2 mode) — establishes a Higress Console session (model dropdown alias layer). They are credentials of different systems, not interchangeable, and can be configured together.",
   },
+  // ── 双认证（#1573+ Matrix L1 vs 旧版 Controller token）──
+  "Matrix 登录（能力自动识别）": { en: "Matrix login (capability auto-detected)" },
+  "旧版 Controller / 备用管理员 token": {
+    en: "Legacy Controller / fallback admin token",
+  },
+  "旧版 Controller / 备用管理员 token（CRD/全量视图/日志）": {
+    en: "Legacy Controller / fallback admin token (CRD / full view / logs)",
+  },
+  "新 Controller（#1573+）的 L1 Matrix 账号登录后已可直接管理，无需此 token；旧版 Controller 1.2.6 没有 /api/v1/me，管理面仍需在这里粘贴管理员 token（也可部署期注入 env）。": {
+    en: "On a new Controller (#1573+) an L1 Matrix account can manage directly after login — no token needed. Controller 1.2.6 has no /api/v1/me, so the admin plane still needs an admin token pasted here (or injected via env at deploy time).",
+  },
+  "Matrix L1（无需 Controller token）": {
+    en: "Matrix L1 (no Controller token needed)",
+  },
+  "Matrix L2（只读）": { en: "Matrix L2 (read-only)" },
+  "Matrix L3（只读）": { en: "Matrix L3 (read-only)" },
+  "当前 Controller 1.2.6：管理面需要 Controller token": {
+    en: "Controller 1.2.6: the admin plane needs a Controller token",
+  },
+  "Controller 连接失败": { en: "Controller connection failed" },
+  "Matrix 身份未被 Controller 接受": {
+    en: "Matrix identity not accepted by the Controller",
+  },
+  "未登录 Matrix：Controller 管理面不可用": {
+    en: "Matrix not logged in: Controller admin plane unavailable",
+  },
+  "Controller 认证检测中…": { en: "Detecting Controller auth…" },
+  "「Matrix 登录」= AgentTeams 消息系统账号（与上方 Matrix 地址同一账号）；权限等级由 Controller 的 /api/v1/me 自动识别，与 QwenPaw 页面自身的登录是两回事，不冲突。": {
+    en: "“Matrix login” is the AgentTeams messaging-system account (the same account as the Matrix address above); its permission level is detected by the Controller's /api/v1/me. It is a different thing from the QwenPaw page login and they do not conflict.",
+  },
+  "使用当前登录的 Matrix 账号，无需 token。新 Controller（#1573+）会自动识别权限等级：L1 直接可管理，L2/L3 只读；旧版 Controller 1.2.6 没有该能力接口，管理面请切到「旧版 Controller / 备用管理员 token」粘贴 token。": {
+    en: "Uses the logged-in Matrix account, no token needed. A new Controller (#1573+) auto-detects the permission level: L1 can manage directly, L2/L3 are read-only. Controller 1.2.6 has no such capability endpoint — switch to “Legacy Controller / fallback admin token” and paste a token for the admin plane.",
+  },
+  "获取（在部署宿主机执行后复制，切到上方「旧版 Controller / 备用管理员 token」模式粘进 token 字段）：": {
+    en: "Get it (run on the Controller host and copy; switch to “Legacy Controller / fallback admin token” above and paste into the token field):",
+  },
+  "Matrix 登录后按 Controller 能力自动分流：L1 直接管理（CRD/全量视图/日志/网关管理 API），L2/L3 只读本团队数据；旧版 Controller 1.2.6 的管理面仍需「旧版 Controller / 备用管理员 token」。Higress Console 账号+密码是另一套独立凭据（模型下拉 alias 层），与 Controller 认证互不替代、可同时配置。": {
+    en: "After Matrix login the Controller capability decides the path: L1 manages directly (CRD / full view / logs / gateway admin API); L2/L3 read their own team data. Controller 1.2.6's admin plane still needs “Legacy Controller / fallback admin token”. Higress Console account + password is a separate credential set (model dropdown alias layer) — not interchangeable with Controller auth, and both can be configured.",
+  },
+  "Controller 管理员 token": { en: "Controller admin token" },
+  "请粘贴 Controller 管理员 token": { en: "Paste the Controller admin token" },
+  "粘贴 Controller 管理员 token": { en: "Paste the Controller admin token" },
+  "验证并保存": { en: "Verify and save" },
+  "稍后": { en: "Later" },
+  "验证失败": { en: "Verification failed" },
+  "Matrix 登录成功。当前 Controller 1.2.6 的管理功能仍需要 Controller 管理员 token。": {
+    en: "Matrix login succeeded. The admin features of Controller 1.2.6 still require a Controller admin token.",
+  },
+  "Matrix 身份未被 Controller 接受；可输入 Controller 管理员 token 继续。": {
+    en: "The Matrix identity was not accepted by the Controller; enter a Controller admin token to continue.",
+  },
+  "当前 Matrix 账号是 L2/L3；管理员功能需要 L1 或 Controller token": {
+    en: "This Matrix account is L2/L3; admin features need L1 or a Controller token",
+  },
+  "当前 Matrix 账号是 L2/L3；管理员功能需要 L1 或 Controller token。": {
+    en: "This Matrix account is L2/L3; admin features need L1 or a Controller token.",
+  },
+  "只读数据面可继续使用；CRD 管理/全量视图/日志等管理员功能需要 L1 Matrix 账号或 Controller 管理员 token。": {
+    en: "The read-only data plane keeps working; admin features such as CRD management, full view and logs need an L1 Matrix account or a Controller admin token.",
+  },
+  "管理功能需要 Controller 管理员 token": {
+    en: "Admin features need a Controller admin token",
+  },
+  "输入 Controller token": { en: "Enter Controller token" },
+  "无法访问 Controller /api/v1/me——请检查 Controller 地址与网络后重试（这不是 token 问题，暂不弹出 token 输入）。": {
+    en: "Cannot reach Controller /api/v1/me — check the Controller address and network, then retry (this is not a token problem, so no token prompt is shown).",
+  },
+  "获取命令（在 Controller 宿主机执行，复制输出粘贴到上方）：": {
+    en: "Get it (run on the Controller host, copy the output and paste above):",
+  },
 };

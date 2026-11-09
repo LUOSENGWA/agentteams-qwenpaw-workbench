@@ -103,6 +103,8 @@ export function SettingsTabView(props: {
     buildAddrEntries,
     ctlMode,
     setCtlMode,
+    controllerAuth,
+    refreshControllerAuth,
     loginUser,
     setLoginUser,
     loginPassword,
@@ -148,6 +150,27 @@ export function SettingsTabView(props: {
     runVerify,
     doLogin,
   } = c;
+
+  // Controller 双认证能力状态（/controller-auth；登录/保存/验证后重探）。
+  const authState = controllerAuth?.state || "";
+  const authLabel =
+    authState === "matrix_l1"
+      ? tr("Matrix L1（无需 Controller token）")
+      : authState === "matrix_scoped"
+        ? controllerAuth?.permissionLevel === 3
+          ? tr("Matrix L3（只读）")
+          : tr("Matrix L2（只读）")
+        : authState === "legacy"
+          ? tr("当前 Controller 1.2.6：管理面需要 Controller token")
+          : authState === "unreachable"
+            ? tr("Controller 连接失败")
+            : authState === "matrix_invalid"
+              ? tr("Matrix 身份未被 Controller 接受")
+              : authState === "none"
+                ? tr("未登录 Matrix：Controller 管理面不可用")
+                : tr("Controller 认证检测中…");
+  const authBad = authState === "unreachable" || authState === "matrix_invalid";
+  const authGood = authState === "matrix_l1";
   return (
     /* 10/30：配置页卡片按屏幕宽度自动排列——外层通栏承载横幅（通栏语义），
        内层卡片区 auto-fit（宽屏 2–3 列、窄屏自动 1 列），不再单列 720px 定宽。 */
@@ -702,10 +725,39 @@ export function SettingsTabView(props: {
       {/* 「认证」卡片（Controller 认证 + 启动偏好）。 */}
       <div style={{ ...cardBox, display: "grid", gap: 16 }}>
         <div style={{ fontWeight: 700 }}>{tr("认证与登录")}</div>
-        {/* Controller 认证双模式（用户需求）——「用 admin 的 matrix
- 账号登录」或「输入 Controller 管理员 token」。无 API 可取 admin
- token（上游安全设计）；L2 需 Human level=2，level-1 走 Matrix
- 登录会被 Controller 401（权限自检有对应提示）。 */}
+        {/* 当前 Controller 能力（双认证的唯一口径）——新 Controller
+ （#1573+）由 /api/v1/me 判定 Matrix 身份等级；旧 1.2.6 无该接口，
+ 管理面仍需管理员 token。 */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12.5,
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: t.hoverBg,
+            color: authBad
+              ? (t.mode === "dark" ? "#ff7875" : "#cf1322")
+              : authGood
+                ? (t.mode === "dark" ? "#95de64" : "#389e0d")
+                : t.textSecondary,
+          }}
+        >
+          {authBad ? (
+            <WarnIcon size={14} />
+          ) : authGood ? (
+            <CheckIcon size={14} />
+          ) : (
+            <RefreshIcon size={14} />
+          )}
+          <span style={{ flex: 1, minWidth: 0 }}>{authLabel}</span>
+          <antd.Button size="small" onClick={() => void refreshControllerAuth()}>
+            {tr("重新检测")}
+          </antd.Button>
+        </div>
+        {/* Controller 认证双模式——Matrix 登录由能力接口自动识别权限；
+ 旧版 Controller 才需要粘贴管理员 token（备用）。 */}
         <div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
             {tr("Controller 认证（可选）")}
@@ -723,8 +775,8 @@ export function SettingsTabView(props: {
                 if (m === "matrix" && controllerToken) setControllerToken("");
               }}
             >
-              <antd.Radio value="matrix">{tr("Matrix 登录（L2，默认）")}</antd.Radio>
-              <antd.Radio value="token">{tr("L1 管理面（Controller 管理员 token）")}</antd.Radio>
+              <antd.Radio value="matrix">{tr("Matrix 登录（能力自动识别）")}</antd.Radio>
+              <antd.Radio value="token">{tr("旧版 Controller / 备用管理员 token")}</antd.Radio>
             </antd.Radio.Group>
           ) : (
             <antd.Segmented
@@ -738,8 +790,8 @@ export function SettingsTabView(props: {
                 if (m === "matrix" && controllerToken) setControllerToken("");
               }}
               options={[
-                { label: tr("Matrix 登录（L2，默认）"), value: "matrix" },
-                { label: tr("L1 管理面（Controller 管理员 token）"), value: "token" },
+                { label: tr("Matrix 登录（能力自动识别）"), value: "matrix" },
+                { label: tr("旧版 Controller / 备用管理员 token"), value: "token" },
               ]}
             />
           )}
@@ -748,7 +800,7 @@ export function SettingsTabView(props: {
  AgentTeams 消息系统的账号（=上方 Matrix 地址区同一账号），
  与 QwenPaw 页面自身的登录无关。 */}
           <div style={{ fontSize: 11.5, color: "#888", marginBottom: 10, lineHeight: 1.6 }}>
-            {tr("「Matrix 登录」= AgentTeams 消息系统账号（与上方 Matrix 地址同一账号，L2 只读）；与 QwenPaw 页面自身的登录是两回事，不冲突。")}
+            {tr("「Matrix 登录」= AgentTeams 消息系统账号（与上方 Matrix 地址同一账号）；权限等级由 Controller 的 /api/v1/me 自动识别，与 QwenPaw 页面自身的登录是两回事，不冲突。")}
           </div>
           {ctlMode === "token" ? (
             <div style={{ display: "grid", gap: 14 }}>
@@ -757,10 +809,10 @@ export function SettingsTabView(props: {
  各带系统归属行，不再是「一套认证里的两个字段」。 */}
               <div style={{ display: "grid", gap: 6, padding: "8px 10px", background: t.hoverBg, borderRadius: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>
-                  {tr("① Controller 认证（管理面：CRD/全量视图/日志）")}
+                  {tr("旧版 Controller / 备用管理员 token（CRD/全量视图/日志）")}
                 </div>
                 <div style={{ fontSize: 11.5, color: "#888", lineHeight: 1.6 }}>
-                  {tr("Controller 只认 SA token 与 Matrix token（Matrix 路径只放行 L2/L3 只读，L1 明确 401，无密码登录端点）——admin 能力只能来自管理员 token。")}
+                  {tr("新 Controller（#1573+）的 L1 Matrix 账号登录后已可直接管理，无需此 token；旧版 Controller 1.2.6 没有 /api/v1/me，管理面仍需在这里粘贴管理员 token（也可部署期注入 env）。")}
                 </div>
                 {/* （「controller token 的文件路径可以
  删掉了，留个命令就行」）：文件路径字段删除，留获取命令。 */}
@@ -844,7 +896,7 @@ export function SettingsTabView(props: {
                 borderRadius: 6,
               }}
             >
-              {tr("使用当前登录的 Matrix 账号，无需 token。注意：Controller 的 Matrix 认证只接受权限等级 2（level 2）的 Human 账号——level 1 的 admin 账号会 401，请改用管理员 token 模式，或让部署管理员把该 Human 改为 level 2（权限自检可见当前账号等级）。")}
+              {tr("使用当前登录的 Matrix 账号，无需 token。新 Controller（#1573+）会自动识别权限等级：L1 直接可管理，L2/L3 只读；旧版 Controller 1.2.6 没有该能力接口，管理面请切到「旧版 Controller / 备用管理员 token」粘贴 token。")}
             </div>
           )}
           {/* ② Higress Console 认证——独立认证系统（10/17 用户：admin token 认证
@@ -968,6 +1020,7 @@ export function SettingsTabView(props: {
               {verifyRes &&
               verifyRes.ok &&
               verifyRes.mode === "password" &&
+              !controllerAuth?.admin &&
               !(
                 config?.controller_token ||
                 config?.controllerTokenSource === "env"
@@ -988,7 +1041,7 @@ export function SettingsTabView(props: {
                     {tr("L1 账号/密码验证通过 = 已持有网关 Console 会话（模型下拉的 alias 可用）。但 Worker 运行配置的 L1 字段（并发限流/上下文管理/shell 组等）与 CRD 管理还需要 Controller 管理员 token——另一套凭证，密码不替代 token。")}
                   </span>
                   <span>
-                    {tr("获取（在部署宿主机执行后复制，切到上方「L1 管理面」模式粘进 ① Controller 认证字段）：")}
+                    {tr("获取（在部署宿主机执行后复制，切到上方「旧版 Controller / 备用管理员 token」模式粘进 token 字段）：")}
                     <code
                       style={{
                         background: t.toolBg,
@@ -1005,7 +1058,7 @@ export function SettingsTabView(props: {
               ) : null}
           </div>
           <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>
-            {tr("Matrix 登录（L2）：查看本账号可访问的团队 + 项目操作（启动/暂停/产物），日常够用。两套独立的 L1 认证：① Controller 管理员 token（L1 管理面模式内配置）——CRD 管理（入职/建队/改配/删除）+ 全部 Worker/Team 状态视图（Controller 唯一凭证，无接口获取——上游安全设计，部署管理员提供，粘贴一次永久记住）；② Higress 账号+密码（下方独立段配置，与 L1/L2 模式无关）——建 Higress Console 会话（模型下拉 alias 层）。两者是不同系统的凭证，互不替代、可同时配置。")}
+            {tr("Matrix 登录后按 Controller 能力自动分流：L1 直接管理（CRD/全量视图/日志/网关管理 API），L2/L3 只读本团队数据；旧版 Controller 1.2.6 的管理面仍需「旧版 Controller / 备用管理员 token」。Higress Console 账号+密码是另一套独立凭据（模型下拉 alias 层），与 Controller 认证互不替代、可同时配置。")}
           </div>
         </div>
         <StartupPrefRow />

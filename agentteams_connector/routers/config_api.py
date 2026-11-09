@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, Request
 
 from .. import config as config_mod, router as router_mod, selfcheck
+from .. import controller_auth
 from ..dial_gate import GatedAsyncClient
 from ..router import (
     ConfigPatch,
@@ -20,7 +21,6 @@ from ..router import (
     _ordered_ctl_urls,
     _pick_address,
     _pinned_map,
-    _resolve_controller_token,
     _safe_refresh_effective,
     _sanitize_token,
     _validate_config_shape,
@@ -156,7 +156,7 @@ def build_config_router() -> APIRouter:
         # 取值："config"|"env"=可用；"invalid"=配置了但坏了。（
         # token 文件路径删除——file/file_unreadable 取值不复存在。）
         try:
-            _t, _src = _resolve_controller_token(cfg)
+            _t, _src = controller_auth.explicit_controller_token(cfg)
             if _t:
                 out["controllerTokenSource"] = _src
             else:
@@ -216,12 +216,23 @@ def build_config_router() -> APIRouter:
             "controller_token": "none",
         }
         try:
-            _t, _src = _resolve_controller_token(cfg)
+            _t, _src = controller_auth.explicit_controller_token(cfg)
             if _t:
                 out["controller_token"] = _src
         except TokenValidationError:
             out["controller_token"] = "invalid"
         return out
+
+    @router.get("/controller-auth")
+    async def get_controller_auth() -> Dict[str, Any]:
+        """Controller 双认证能力（Matrix L1 / 旧版管理员 token）。
+
+ 可能执行一次出站 ``GET /api/v1/me`` 探测（30s 缓存）——与零外发的
+ /auth-status 分开：前者给认证门/登录态决策用，后者只读进程内状态。
+ 返回 tokenRequired/admin 等派生字段（token 值永不出现）。
+ """
+        cfg = config_mod.load_config()
+        return await controller_auth.probe_controller_auth(cfg)
 
     @router.put("/config")
     async def put_config(patch: ConfigPatch) -> Dict[str, Any]:
@@ -338,6 +349,8 @@ def build_config_router() -> APIRouter:
             from .. import sync_watcher as _sw  # noqa: PLC0415
 
             await _sw.restart("config.matrix")
+        # 地址/token/身份变更 → 能力探测缓存作废（下次请求重新探测 /me）。
+        controller_auth.invalidate_controller_auth_cache()
         # 地址探测转后台——保存即时返回
         # （<1s），effective 状态随后自动刷新（前端下次 GET /config 可见）。
         # 旧行为=同步 await 全地址探测（本机实测 ~4.8s，WAN 高延迟下保存
@@ -447,6 +460,8 @@ def build_config_router() -> APIRouter:
 
             await _sw.restart("config.import")
             restart = "none"
+        # 覆盖式导入 = 全量凭据/地址变更 → 能力探测缓存整体作废。
+        controller_auth.invalidate_controller_auth_cache()
         # 生效地址探测转后台（同 PUT /config——effective 随后自动刷新）。
         asyncio.create_task(_safe_refresh_effective(config_mod.load_config()))
         _out = {
@@ -759,11 +774,13 @@ def build_config_router() -> APIRouter:
         # --- 路径 B：Controller 管理员 token ---
         # token 解析在此处（路径 A 早退后）——见函数头
         # N1 注释；token_source ∈ {"input", "config", "env"}。
+        # 只取**显式** token：Matrix L1 的 token 是能力凭据，不是管理员
+        # token——绝不能在此路径被验证后写进 config.controller_token。
         token = (body.controller_token or "").strip()
         token_source = ""
         if token == "***" or not token:
             try:
-                token, token_source = _resolve_controller_token(cfg)
+                token, token_source = controller_auth.explicit_controller_token(cfg)
             except TokenValidationError as e:
                 return {"ok": False, "error": str(e), "tokenPath": False}
         else:
@@ -845,6 +862,9 @@ def build_config_router() -> APIRouter:
                 await asyncio.to_thread(
                     cfgmod.update_config, {"controller_token": token}
                 )
+            # 新管理员 token 到手 → 能力探测缓存作废（下次 /controller-auth
+            # 重新探测，admin/tokenRequired 立即翻转）。
+            controller_auth.invalidate_controller_auth_cache()
             return {
                 "ok": True,
                 "mode": "token",

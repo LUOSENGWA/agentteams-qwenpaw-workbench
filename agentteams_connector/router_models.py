@@ -8,7 +8,6 @@ router.py 以 re-export 壳保持原路径可达。
 """
 from __future__ import annotations
 
-import os
 import re
 from typing import Any, Dict, List, Optional
 
@@ -260,31 +259,28 @@ def _sanitize_token(raw: str) -> str:
 
 
 def _resolve_controller_token(cfg: Dict[str, Any]) -> tuple:
-    """Controller admin token 解析（设计，「controller
- token 的文件路径可以删掉了，留个命令就行」——token 文件路径删除，获取
- 方式=UI 留获取命令（docker exec agentteams-controller cat
- /var/run/agentteams/cli-token）+ 粘贴；非 docker 部署=部署期注入 env）。
+    """Controller 拨号凭据（唯一策略，委托 controller_auth）。
 
- 解析优先级：
- 1. ``controller_token``（手动粘贴）——快照值，轮换后需重贴；
- 2. env ``AGENTTEAMS_CONTROLLER_TOKEN``（非 docker / 部署期注入）。
+ 双认证：新 Controller（#1573+）Human L1 的 Matrix token 可直接调管理
+ API；旧 Controller 1.2.6 仍需管理员 token。优先级见
+ ``controller_auth.preferred_controller_token``：
+ 1. 能力探测 = matrix_l1 → Matrix 访问 token（source ``matrix``）；
+ 2. ``controller_token``（手动粘贴）——快照值，轮换后需重贴；
+ 3. env ``AGENTTEAMS_CONTROLLER_TOKEN``（非 docker / 部署期注入）；
+ 4. 兜底 Matrix 访问 token（旧 Controller 只读路径可能接受）。
 
  安全设计不变：token 值永不离开连接器进程（前端只见来源标记）；不引入任何
  凭据兑换（controller 无 token 签发端点，上游安全设计保持）。
- 返回 (token, source)；source ∈ {"", "config", "env"}。
- token 内容非法 → 抛 TokenValidationError（调用方报明确错误，不裸抛）。
+ 返回 (token, source)；source ∈ {"", "config", "env", "matrix"}。
+ 显式 token 内容非法 → 抛 TokenValidationError（调用方报明确错误，不裸抛）。
  """
-    t = _sanitize_token(str(cfg.get("controller_token") or ""))
-    if t and t != "***":
-        return t, "config"
-    e = _sanitize_token(os.environ.get("AGENTTEAMS_CONTROLLER_TOKEN", ""))
-    if e:
-        return e, "env"
-    return "", ""
+    from .controller_auth import preferred_controller_token  # noqa: PLC0415
+
+    return preferred_controller_token(cfg)
 
 
 def _token_or_none(cfg: Dict[str, Any]) -> Optional[str]:
-    """Controller admin token（或 None）——Controller 管理 API 端点内部用。
+    """Controller admin 凭据（或 None）——Controller 管理 API 端点内部用。
 
  修复（历史缺陷：团队管理页 HTTP 500）：此函数此前
  被 3 个端点调用（teams/structure、/docker-logs/{component}、/approval/set）
@@ -292,12 +288,24 @@ def _token_or_none(cfg: Dict[str, Any]) -> Optional[str]:
  500。现实现为 _resolve_controller_token 的薄封装：解析失败/无 token →
  None（端点优雅降级到 matrix/fallback 路径），token 内容非法 → None
  （校验错误由 /config 的 tokenPath 字段向用户显式报告，管理 API 不裸抛）。
+
+ 双认证附加门（#1573+）：解析结果 source=matrix 时，仅当能力探测已确认
+ ``matrix_l1`` / ``matrix_scoped`` 才放行——旧 Controller / 未探测时保持
+ 旧语义（None → 端点走 matrix/room-fallback），避免把 Matrix token 当
+ 管理员 token 打旧管理面（401 噪音）或误判 L1-only 端点可用。
  """
     try:
-        tok, _src = _resolve_controller_token(cfg)
+        tok, src = _resolve_controller_token(cfg)
     except TokenValidationError:
         return None
-    return tok or None
+    if not tok:
+        return None
+    if src == "matrix":
+        from .controller_auth import cached_controller_auth_state  # noqa: PLC0415
+
+        if cached_controller_auth_state(cfg) not in ("matrix_l1", "matrix_scoped"):
+            return None
+    return tok
 
 
 class NotifyRequest(BaseModel):

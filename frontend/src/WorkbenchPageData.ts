@@ -14,11 +14,13 @@ import {
   requestJson,
   setCachedRooms,
   fetchAuthStatus,
+  fetchControllerAuth,
   fetchAttention,
   resolveAttentionRoom,
   type AdminData,
   type AttentionAnsweredRecord,
   type AttentionPayload,
+  type ControllerAuthStatus,
   type RoomMessage,
   type SpawnNode,
   type TeamRoom,
@@ -476,12 +478,46 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
   // L1 数据面可用 = 本地配置 token 或宿主 env
   // （AGENTTEAMS_CONTROLLER_TOKEN，env 不落盘——config.controller_token 为空
   // 但 controllerTokenSource="env" 时数据面同样可用，门控以此为准）。
-  const hasCtlToken = Boolean(
+  const hasExplicitCtlToken = Boolean(
     config?.controller_token || config?.controllerTokenSource === "env",
   );
 
-  // attention 决策面（读聚合）——30s 静默轮询，hasCtlToken 门控（L2 用户
-  // 无 controller token，后端恒 502，轮询无意义）。badge/全局弹窗/P2「待
+  // Controller 双认证能力（#1573+ Matrix L1 vs 旧版管理员 token）：
+  // 登录/配置就绪后各探测一次；loading 期回退旧的「显式 token」判定，
+  // 避免面板先隐藏再出现（不闪 token 框也是同一原则）。
+  const [controllerAuth, setControllerAuth] =
+    React.useState<ControllerAuthStatus | null>(null);
+  const refreshControllerAuth = React.useCallback(async () => {
+    try {
+      const status = await fetchControllerAuth();
+      setControllerAuth(status);
+      return status;
+    } catch {
+      // 连接器重载窗口/端点暂不可用：保旧值（不把未知当 none）。
+      return null;
+    }
+  }, []);
+  React.useEffect(() => {
+    if (configLoadState !== "ready") return;
+    void refreshControllerAuth();
+    // config_rev 变化 = 保存/验证/登录落盘 → 能力可能翻转，重新探测。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    configLoadState,
+    config?.matrix?.user_id,
+    config?.config_rev,
+    refreshControllerAuth,
+  ]);
+
+  // 两个概念分开：hasControllerAuth = 有任何可用 Controller 凭证（L2/L3
+  // 只读也算，供 scoped 读）；isAdmin = L1 管理员（Matrix L1 或管理员 token）。
+  const hasControllerAuth = controllerAuth
+    ? controllerAuth.admin || controllerAuth.state === "matrix_scoped"
+    : hasExplicitCtlToken;
+  const isAdmin = controllerAuth ? controllerAuth.admin : hasExplicitCtlToken;
+
+  // attention 决策面（读聚合）——30s 静默轮询，hasControllerAuth 门控
+  // （无任何 Controller 凭证时后端恒 502，轮询无意义）。badge/全局弹窗/P2「待
   // 决策」页共用此数据源（全局数据，不绑任何 tab）。失败保旧值（网络抖动
   // 不清已渲染数据）；deployed=false（旧 controller）→ 无 badge 无入口
   // （诚实降级）。
@@ -565,21 +601,22 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
   } = useCachedPolling<AttentionPayload | null>({
     fetcher: (force) => fetchAttention(!!force),
     intervalMs: 30000,
-    active: hasCtlToken,
+    active: hasControllerAuth,
     minPokeMs: 15000,
     useTransition: true,
     initialData: null,
     onFetched: (payload) => { if (payload) syncPendingAttention(payload); },
   });
 
-  // L1 admin view: only when a Controller token is available (config or env).
+  // L1 admin view: only when the caller is admin (Matrix L1 or a Controller
+  // admin token — the capability endpoint decides).
   // strong（#1407 写后立即读）：CRD 保存/团队设置提交后调用方传
   // (true, true)——4 腿带 ?consistency=strong + 同 key force 覆盖写，
   // 是否真强一致由 X-Consistency 响应头判定记入 tracker（普通轮询
   // 不带、不更新标记）。
   const refreshAdmin = React.useCallback(
     async (silent = false, strong = false) => {
-      if (!hasCtlToken) return;
+      if (!isAdmin) return;
       if (!silent) setAdminLoading(true);
       try {
         const data = await fetchAdminData(
@@ -597,33 +634,33 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
         if (!silent) setAdminLoading(false);
       }
     },
-    [hasCtlToken],
+    [isAdmin],
   );
 
-  // hasCtlToken false→true 翻转（config 异步就绪/
-  // env 注入晚于挂载）触发首次 admin 取数。此前该翻转无任何重触发——token 未就绪
-  // 窗口内所有 admin 取数被 `if (!hasCtlToken) return` 短路，token 就绪后 admin
-  // 面板恒空，直到用户手动点刷新（首屏只显拓扑的根因之一）。
+  // isAdmin false→true 翻转（config 异步就绪/能力探测晚于挂载）触发首次
+  // admin 取数。此前该翻转无任何重触发——token 未就绪窗口内所有 admin
+  // 取数被 `if (!isAdmin) return` 短路，就绪后 admin 面板恒空，直到用户
+  // 手动点刷新（首屏只显拓扑的根因之一）。
   const adminArmedRef = React.useRef(false);
   React.useEffect(() => {
-    if (!hasCtlToken) {
+    if (!isAdmin) {
       adminArmedRef.current = false;
       return;
     }
     if (adminArmedRef.current) return;
     adminArmedRef.current = true;
     void refreshAdmin(true);
-  }, [hasCtlToken, refreshAdmin]);
+  }, [isAdmin, refreshAdmin]);
 
-  // 记忆 tab=models 但当前 L2
-  // （config 已落地且无 token）→ 回首页。config ready 前不判——L1 用户
-  // 的 config 异步窗口内 hasCtlToken 短暂为 false，不能误踢。
+  // 记忆 tab=models 但当前非管理员（config/能力已就绪）→ 回首页。
+  // config ready 前不判——管理员配置异步窗口内 isAdmin 短暂为 false，
+  // 不能误踢。能力探测未返回时 isAdmin 回退显式 token 判定（不误判）。
   React.useEffect(() => {
-    if (tab === "models" && !hasCtlToken && configLoadState === "ready") {
+    if (tab === "models" && !isAdmin && configLoadState === "ready") {
       setTabState("home");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, hasCtlToken, configLoadState]);
+  }, [tab, isAdmin, configLoadState]);
 
   // 账号切换（登录成功）= 数据源全切——清本地旧账号数据 + 全量重取。
   // 与后端联动：/login 已同步清 60s 聚合缓存（rooms/workflow/artifacts/
@@ -640,12 +677,15 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     // 换账号：旧账号的待办/已裁决不带走（localStorage 也一并清）。
     pendingRef.current.clear();
     void refreshConfig();
+    // 新 Matrix 身份 = 新的 Controller 能力（L1/L2/L3 可能翻转）——
+    // 登录后立即重探，门控/弹窗据此更新。
+    void refreshControllerAuth();
     void refreshRooms();
     void refreshTree();
     void refreshAdmin();
     void refreshWorkflow();
     void refreshAttention(true);
-  }, [refreshConfig, refreshRooms, refreshTree, refreshAdmin, refreshWorkflow, refreshAttention, resetAttention]);
+  }, [refreshConfig, refreshControllerAuth, refreshRooms, refreshTree, refreshAdmin, refreshWorkflow, refreshAttention, resetAttention]);
   return {
     dismissMatrixNone,
     handleOpenProject,
@@ -653,7 +693,10 @@ export function useWorkbenchData(ctx: WorkbenchPageDataCtx) {
     refreshRooms,
     refreshTree,
     refreshWorkflow,
-    hasCtlToken,
+    controllerAuth,
+    refreshControllerAuth,
+    hasControllerAuth,
+    isAdmin,
     refreshAdmin,
     attention,
     refreshAttention,

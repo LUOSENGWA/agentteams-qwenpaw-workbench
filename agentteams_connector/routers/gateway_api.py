@@ -7,33 +7,146 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Body
 
 from .. import router as router_mod
+from .. import controller_auth
 from ..dial_gate import GatedAsyncClient
-from ..router import _address_list, _mark_working
+from ..router import TokenValidationError, _address_list, _mark_working
+
+# 旧 Controller = 无网关管理端点（能力探测报 legacy）。现代路径仅在这三类
+# 状态上回落 Console——401/403 绝不回落（那会把鉴权/权限问题伪装成可用）。
+_CONSOLE_FALLBACK_STATUSES = (404, 405, 501)
+
+
+def _controller_gateway_path(path: str) -> str:
+    """插件网关路径 → Controller 管理端点路径。
+
+ 插件/Console 契约：``/v1/ai/{routes,providers}[/{name}]``；
+ Controller（#1573+）：``/api/v1/gateway/ai/{routes,providers}[/{name}]``。
+ """
+    if path.startswith("/v1/ai/"):
+        return "/api/v1/gateway" + path[len("/v1"):]
+    return "/api/v1/gateway" + path
+
+
+def _error_detail(resp: Any) -> str:
+    detail = ""
+    try:
+        j = resp.json()
+        msg = j.get("message") or j.get("error") or j.get("detail")
+        if msg:
+            detail = str(msg)
+    except Exception:  # noqa: BLE001 - 非 JSON 错误体
+        detail = ""
+    if not detail:
+        text = getattr(resp, "text", "") or ""
+        if isinstance(text, str):
+            detail = text[:300]
+    return detail
 
 
 def build_gateway_router() -> APIRouter:
     """gateway 透传域子路由（build_router 原段逐字搬移）。"""
     router = APIRouter()
-    async def _gateway_passthrough(
+
+    async def _controller_gateway_passthrough(
+        cfg: Dict[str, Any],
         path: str,
-        method: str = "GET",
-        json_body: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """网关面透传（Higress Console，8001）。
+        method: str,
+        json_body: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """现代 Controller 网关管理面（Bearer 凭据，无 Console 会话）。
 
- 加写面（POST，「添加提供商/添加路由」P7b）；
- 加编辑/删除面（PUT/DELETE，与 dashboard higress
- BFF `/api/higress/ai-{routes,providers}` 同款 Console 端点）；
- 写失败时透出 Console 的 message/detail 供 UI 显示。
-
- 消费密码模式持有的 Console 管理员会话（console_session）；
- 无会话/不可达 → available=false（前端优雅降级：模型选择器
- alias 层隐藏，SGLang 列表+Worker 现值+自由输入不受影响）。
- 原始 JSON 直出，形状由前端解析（与 dashboard higress-api 同义）。
+ 返回 None = 上游 404/405/501（旧 Controller 无该端点）→ 调用方回落
+ Console；其余状态一律显式包装（401/403 不回落，避免掩盖鉴权问题）。
  """
-        from .. import config as cfgmod
+        from ..router import _headers_for, _ordered_addresses  # noqa: PLC0415
 
-        cfg = await asyncio.to_thread(cfgmod.load_config)
+        try:
+            token, _source = controller_auth.preferred_controller_token(cfg)
+        except TokenValidationError as exc:
+            return {
+                "available": False,
+                "data": None,
+                "reason": "invalid_token",
+                "detail": str(exc),
+            }
+        if not token:
+            return {
+                "available": False,
+                "data": None,
+                "reason": "no_controller_credential",
+            }
+        urls = _ordered_addresses(cfg, "controller")
+        if not urls:
+            return {
+                "available": False,
+                "data": None,
+                "reason": "no_controller_address",
+            }
+        ctl_path = _controller_gateway_path(path)
+        resp = None
+        last_err = ""
+        for base in urls:
+            headers = _headers_for(
+                cfg,
+                "controller",
+                base,
+                {
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            try:
+                async with GatedAsyncClient(timeout=8.0, verify=False) as client:
+                    if method == "POST":
+                        resp = await client.post(
+                            f"{base}{ctl_path}", headers=headers, json=json_body or {}
+                        )
+                    elif method == "PUT":
+                        resp = await client.put(
+                            f"{base}{ctl_path}", headers=headers, json=json_body or {}
+                        )
+                    elif method == "DELETE":
+                        resp = await client.delete(f"{base}{ctl_path}", headers=headers)
+                    else:
+                        resp = await client.get(f"{base}{ctl_path}", headers=headers)
+                _mark_working("controller", base)
+                break
+            except Exception as exc:  # noqa: BLE001 - 逐地址降级
+                resp = None
+                last_err = exc.__class__.__name__
+                continue
+        if resp is None:
+            return {
+                "available": False,
+                "data": None,
+                "reason": "unreachable",
+                "detail": last_err,
+            }
+        if resp.status_code in _CONSOLE_FALLBACK_STATUSES:
+            return None
+        if resp.status_code not in (200, 201, 204):
+            out: Dict[str, Any] = {
+                "available": False,
+                "data": None,
+                "reason": f"http_{resp.status_code}",
+            }
+            detail = _error_detail(resp)
+            if detail:
+                out["detail"] = detail
+            return out
+        try:
+            data = resp.json()
+        except Exception:  # noqa: BLE001 - 204/非 JSON 成功体
+            data = None
+        return {"available": True, "data": data, "reason": None}
+
+    async def _console_gateway_passthrough(
+        cfg: Dict[str, Any],
+        path: str,
+        method: str,
+        json_body: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """旧 Controller 路径：Higress Console 会话透传（既有行为）。"""
         session = str(cfg.get("console_session") or "")
         # Higress 双地址（canonical=gateway_admin_urls，空则
         # 回退 legacy 单值）——按序降级。
@@ -156,24 +269,45 @@ def build_gateway_router() -> APIRouter:
                     # 判死语义（前端横幅提示手动重新验证）。
                     # 跨域共享状态，经 router 模块属性写入（勿改回 global）。
                     router_mod._console_session_expired = True
-                detail = ""
-                try:
-                    j = r.json()
-                    msg = j.get("message") or j.get("error") or j.get("detail")
-                    if msg:
-                        detail = str(msg)
-                except Exception:
-                    detail = ""
-                if not detail:
-                    text = getattr(r, "text", "") or ""
-                    if isinstance(text, str):
-                        detail = text[:300]
+                detail = _error_detail(r)
                 if detail:
                     out["detail"] = detail
                 return out
             return {"available": True, "data": r.json()}
         except Exception as exc:
             return {"available": False, "data": None, "reason": exc.__class__.__name__}
+
+    async def _gateway_passthrough(
+        path: str,
+        method: str = "GET",
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """网关面双路径透传（现代 Controller 网关管理 API / 旧 Console）。
+
+ 现代 Controller（#1573+，``GET /api/v1/gateway/ai/*``）优先：能力探测
+ 状态 matrix_l1/matrix_scoped/matrix_invalid 或已配置管理员 token 时
+ 走 Controller + Bearer，并把结果包进既有前端契约
+ ``{available, data, reason}``。仅 404/405/501 回落 Console；401/403
+ 原样暴露（不伪装成 Console 可用）。旧 Controller 保持 Higress Console
+ 会话透传（无会话 → available=false / no_console_session）。
+ """
+        from .. import config as cfgmod  # noqa: PLC0415
+
+        cfg = await asyncio.to_thread(cfgmod.load_config)
+        try:
+            auth = await controller_auth.probe_controller_auth(cfg)
+        except Exception:  # noqa: BLE001 - 探测异常退化为旧路径判定
+            auth = {}
+        state = str(auth.get("state") or "")
+        configured = bool(auth.get("controllerTokenConfigured"))
+        use_modern = state in ("matrix_l1", "matrix_scoped", "matrix_invalid") or (
+            state in ("none", "unreachable") and configured
+        )
+        if use_modern:
+            out = await _controller_gateway_passthrough(cfg, path, method, json_body)
+            if out is not None:
+                return out
+        return await _console_gateway_passthrough(cfg, path, method, json_body)
 
     @router.get("/gateway/ai-routes")
     async def gateway_ai_routes() -> Dict[str, Any]:

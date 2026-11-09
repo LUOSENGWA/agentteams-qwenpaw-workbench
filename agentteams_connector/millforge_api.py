@@ -558,16 +558,17 @@ worker 的 domains 轮转分配（skills 与 domains 同值——生产同式）
 
 
 def _require_token() -> tuple:
-    """(token, base)——L1 管理员 token；401 无 token / 502 无地址。"""
+    """(token, base)——L1 管理员凭据；401 无凭据 / 502 无地址。
+
+ 显式管理员 token 或能力探测已确认可用的 Matrix token（matrix_l1）；
+ 旧 Controller/未探测 → 401（保持「需管理员 token」的旧语义）。
+ """
     from . import config as config_mod  # noqa: PLC0415
     from . import router as router_mod  # noqa: PLC0415
-    from .router_models import TokenValidationError, _resolve_controller_token
+    from .router_models import _token_or_none
 
     cfg = config_mod.load_config()
-    try:
-        tok, _src = _resolve_controller_token(cfg)
-    except TokenValidationError:
-        tok = ""
+    tok = _token_or_none(cfg)
     if not tok:
         raise HTTPException(
             status_code=401,

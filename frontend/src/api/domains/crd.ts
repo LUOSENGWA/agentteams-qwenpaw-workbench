@@ -151,14 +151,15 @@ export interface HumanInfo {
   accessibleWorkers?: string[];
   note?: string;
   message: string;
-}
-
-/** 员工入职响应——initialPassword 只在创建时返回一次。 */
-interface CreateHumanResponse extends HumanInfo {
+  /* 详情端点（GET /humans/{name}）才返回的字段——列表响应剥离
+   * initialPassword（#1481）：别把列表行当详情源。 */
   email?: string;
   initialPassword?: string;
   rooms?: string[];
 }
+
+/** 员工入职响应——initialPassword 只在创建时返回一次（详情端点同样返回）。 */
+interface CreateHumanResponse extends HumanInfo {}
 
 export interface ManagerInfo {
   name: string;
@@ -274,6 +275,17 @@ export async function updateHumanAccess(
   invalidateTags(["teams", "admin"]);
   lruInvalidate("crd:");
   return r;
+}
+
+/** Human 详情（GET /api/v1/humans/{name}）——列表响应剥离 initialPassword
+ * （#1481），只有详情端点返回。按需调用（点开「查看初始密码」），不逐行预取。
+ * 旧 Controller 走管理员 token 路径；新 Controller 走 Matrix L1。 */
+export async function fetchHumanDetail(name: string): Promise<HumanInfo> {
+  const r = (await controllerRequest(
+    "GET",
+    `humans/${encodeURIComponent(name)}`,
+  )) as unknown as HumanInfo | null;
+  return r ?? ({} as HumanInfo);
 }
 /** 创建团队——workerMembers 必须引用已存在的 Worker CR，且 ≥1。 */
 export async function createTeam(body: Record<string, unknown>): Promise<unknown> {

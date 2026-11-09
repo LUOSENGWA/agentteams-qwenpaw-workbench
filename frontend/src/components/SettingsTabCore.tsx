@@ -6,6 +6,7 @@ import {
   entryUrl,
   exportFullConfig,
   exportPasswordStatus,
+  fetchControllerAuth,
   httpErrorStatus,
   importFullConfig,
   requestJson,
@@ -17,6 +18,7 @@ import type {
   AddressEntry,
   AddressTestResult,
   ConfigTestResponse,
+  ControllerAuthStatus,
   VerifyAdminResult,
   WorkbenchConfig,
 } from "../api";
@@ -191,8 +193,24 @@ export function useSettingsTabCore({
     },
     [],
   );
-  // Controller 认证双模式（Matrix 登录 L2 / 管理员 token L1）。
+  // Controller 认证双模式（Matrix 登录能力自动识别 / 旧版管理员 token）。
   const [ctlMode, setCtlMode] = React.useState<"matrix" | "token">("matrix");
+  // Controller 双认证能力（/controller-auth）：新 Controller 的 Matrix L1
+  // 直接可管理；旧 1.2.6 才需要管理员 token。登录/保存/验证后重探。
+  const [controllerAuth, setControllerAuth] =
+    React.useState<ControllerAuthStatus | null>(null);
+  const refreshControllerAuth = React.useCallback(async () => {
+    try {
+      setControllerAuth(await fetchControllerAuth());
+    } catch {
+      /* 连接器重载窗口：保旧值，不误判 */
+    }
+  }, []);
+  React.useEffect(() => {
+    if (!config) return;
+    void refreshControllerAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config?.matrix?.user_id, config?.config_rev, refreshControllerAuth]);
   const [loginUser, setLoginUser] = React.useState("");
   const [loginPassword, setLoginPassword] = React.useState("");
   const [saving, setSaving] = React.useState(false);
@@ -717,6 +735,8 @@ export function useSettingsTabCore({
                 }),
           );
           onConfigChange();
+          // token 到手 = 能力可能翻转（admin/tokenRequired）→ 重探。
+          void refreshControllerAuth();
         }
       } catch (e) {
         setVerifyRes({
@@ -727,7 +747,7 @@ export function useSettingsTabCore({
         setVerifying(false);
       }
     },
-    [onConfigChange, tr],
+    [onConfigChange, refreshControllerAuth, tr],
   );
 
   const doLogin = async () => {
@@ -743,6 +763,9 @@ export function useSettingsTabCore({
         body: JSON.stringify({ user: loginUser, password: loginPassword }),
       });
       message.success(tr("登录成功"));
+      // 登录后不能假设 L2：立即用 /controller-auth 探测（新 Controller 的
+      // L1 Matrix 账号会直接拿到管理能力）。
+      void refreshControllerAuth();
       onConfigChange();
       // 切账号 = 数据源切换。后端 /login 已同步清 60s 聚合缓存 +
       // 重置 sync 游标；前端本地旧账号的房间/树/管理数据必须清掉并重取，
@@ -802,6 +825,8 @@ export function useSettingsTabCore({
     buildAddrEntries,
     ctlMode,
     setCtlMode,
+    controllerAuth,
+    refreshControllerAuth,
     loginUser,
     setLoginUser,
     loginPassword,

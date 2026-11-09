@@ -22,7 +22,8 @@ from ..router import (
     _mark_working,
     _ordered_addresses,
     _pinned_note,
-    _token_or_none,
+    _resolve_controller_token,
+    TokenValidationError,
     logger,
 )
 
@@ -618,12 +619,16 @@ def build_approval_router(kb_shared: Dict[str, Any]) -> APIRouter:
                     detail="Controller 代理仅允许 /api/ 与 /healthz 路径",
                 )
             headers = {}
-            ctl_token = _token_or_none(cfg)
-            if ctl_token:
-                headers["Authorization"] = f"Bearer {ctl_token}"
-            elif matrix_cfg.get("access_token"):
-                # L2 auth: Matrix token once W-PR-1 composite auth lands.
-                headers["Authorization"] = f"Bearer {matrix_cfg.get('access_token')}"
+            # 唯一凭据策略（controller_auth.preferred_controller_token）：
+            # Matrix L1 → Matrix token；否则显式 token > Matrix 兜底。
+            # 显式 token 内容非法（历史配置混入不可见字符）→ 仍按旧行为
+            # 回落 Matrix token（校验错误由 /config 的 tokenPath 显形）。
+            try:
+                cred, _src = _resolve_controller_token(cfg)
+            except TokenValidationError:
+                cred = (matrix_cfg.get("access_token") or "").strip()
+            if cred:
+                headers["Authorization"] = f"Bearer {cred}"
 
         if not base_urls:
             raise HTTPException(

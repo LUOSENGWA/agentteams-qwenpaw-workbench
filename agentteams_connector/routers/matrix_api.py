@@ -862,6 +862,13 @@ def build_matrix_router() -> APIRouter:
                 # 命中旧账号数据）+ 重置 sync 游标（since 跨账号无效，旧游标
                 # 会让 /sync 一直 401、@通知链全断）。
                 invalidate_data_caches("login")
+                # 新 Matrix 身份 → Controller 能力（/me 等级）重新探测。
+                try:
+                    from .. import controller_auth as _ca  # noqa: PLC0415
+
+                    _ca.invalidate_controller_auth_cache()
+                except Exception:  # noqa: BLE001 - 缓存清理不影响登录
+                    pass
                 from .. import sync_watcher as _sw  # noqa: PLC0415
 
                 await _sw.restart("login")
