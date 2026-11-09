@@ -870,7 +870,7 @@ export const manageDict: Record<string, { en: string }> = {
   "未保存/由 SSO 或 AppService 管理": {
     en: "Not stored / managed by SSO or AppService",
   },
-  "这是入职时生成的初始密码，仅此一次可查；敏感信息，请勿转发或写入工单。修改后的密码不在此处。": {
-    en: "This is the initial password generated at onboarding and is shown only here. It is sensitive — do not forward it or paste it into tickets. Passwords changed later are not shown here.",
+  "这是入职时生成的初始密码，可能已因改密而失效；敏感信息，请勿转发或写入工单。修改后的密码不在此处。": {
+    en: "This is the initial password generated at onboarding; it may already be invalid if the password was changed. It is sensitive — do not forward it or paste it into tickets. Passwords changed later are not shown here.",
   },
 };

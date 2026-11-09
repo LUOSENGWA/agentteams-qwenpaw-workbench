@@ -55,7 +55,12 @@ export default function ControllerTokenGate({
   const [error, setError] = React.useState("");
 
   const state = auth?.state || "";
-  const tokenRequired = !!auth && auth.tokenRequired && state !== "matrix_l1";
+  const tokenRequired =
+    !!auth && auth.tokenRequired && state !== "matrix_l1" && state !== "unreachable";
+  // 已保存的 token 实测失效/无权限：弹框文案要说清「重新粘贴」，
+  // 而不是复述旧版 Controller 的通用提示。
+  const tokenInvalid =
+    !!auth && auth.controllerTokenConfigured && auth.controllerTokenValid === false;
   // 换 Matrix 账号 = 重新判定能力：清掉本会话的「稍后」印记。
   // 首帧只记录当前身份，不重置（否则 sessionStorage 里的「稍后」白存）。
   const userId = config?.matrix?.user_id || "";
@@ -117,26 +122,30 @@ export default function ControllerTokenGate({
     <>
       {showNote ? (
         <antd.Alert
-          type={state === "unreachable" ? "warning" : "info"}
+          type={state === "unreachable" || tokenInvalid ? "warning" : "info"}
           showIcon
           style={{ flex: "0 0 auto" }}
           message={
             state === "unreachable"
               ? tr("Controller 连接失败")
-              : scopedNote
-                ? tr("当前 Matrix 账号是 L2/L3；管理员功能需要 L1 或 Controller token")
-                : tr("管理功能需要 Controller 管理员 token")
+              : tokenInvalid
+                ? tr("已保存的 Controller token 已失效或无权限")
+                : scopedNote
+                  ? tr("当前 Matrix 账号是 L2/L3；管理员功能需要 L1 或 Controller token")
+                  : tr("管理功能需要 Controller 管理员 token")
           }
           description={
             state === "unreachable"
               ? tr(
                   "无法访问 Controller /api/v1/me——请检查 Controller 地址与网络后重试（这不是 token 问题，暂不弹出 token 输入）。",
                 )
-              : scopedNote
-                ? tr(
-                    "只读数据面可继续使用；CRD 管理/全量视图/日志等管理员功能需要 L1 Matrix 账号或 Controller 管理员 token。",
-                  )
-                : undefined
+              : tokenInvalid
+                ? tr("已保存的 Controller token 已失效或没有管理员权限；请重新粘贴。")
+                : scopedNote
+                  ? tr(
+                      "只读数据面可继续使用；CRD 管理/全量视图/日志等管理员功能需要 L1 Matrix 账号或 Controller 管理员 token。",
+                    )
+                  : undefined
           }
           action={
             state === "unreachable" ? (
@@ -166,17 +175,19 @@ export default function ControllerTokenGate({
       >
         <div style={{ display: "grid", gap: 10, fontSize: 12.5 }}>
           <span style={{ lineHeight: 1.7 }}>
-            {state === "legacy"
-              ? tr(
-                  "Matrix 登录成功。当前 Controller 1.2.6 的管理功能仍需要 Controller 管理员 token。",
-                )
-              : state === "matrix_invalid"
+            {tokenInvalid
+              ? tr("已保存的 Controller token 已失效或没有管理员权限；请重新粘贴。")
+              : state === "legacy"
                 ? tr(
-                    "Matrix 身份未被 Controller 接受；可输入 Controller 管理员 token 继续。",
+                    "Matrix 登录成功。当前 Controller 1.2.6 的管理功能仍需要 Controller 管理员 token。",
                   )
-                : tr(
-                    "当前 Matrix 账号是 L2/L3；管理员功能需要 L1 或 Controller token。",
-                  )}
+                : state === "matrix_invalid"
+                  ? tr(
+                      "Matrix 身份未被 Controller 接受；可输入 Controller 管理员 token 继续。",
+                    )
+                  : tr(
+                      "当前 Matrix 账号是 L2/L3；管理员功能需要 L1 或 Controller token。",
+                    )}
           </span>
           <antd.Input.Password
             value={token}

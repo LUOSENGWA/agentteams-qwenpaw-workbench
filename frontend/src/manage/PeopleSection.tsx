@@ -833,7 +833,7 @@ function PeopleDetail({ nav, data, t, tr }: SubProps) {
             </span>
           )}
           <span style={{ fontSize: 11, color: t.textSecondary, lineHeight: 1.6 }}>
-            {tr("这是入职时生成的初始密码，仅此一次可查；敏感信息，请勿转发或写入工单。修改后的密码不在此处。")}
+            {tr("这是入职时生成的初始密码，可能已因改密而失效；敏感信息，请勿转发或写入工单。修改后的密码不在此处。")}
           </span>
         </div>
       </antd.Modal>

@@ -8,8 +8,9 @@ token（粘贴或 env ``AGENTTEAMS_CONTROLLER_TOKEN``）。
 
 本模块提供唯一的能力口径：
 - ``probe_controller_auth(cfg)``：探测 ``/me`` → 归一化状态（30s 缓存，
-  缓存键含 Matrix token 身份哈希 + Controller 地址列表 + 是否配置了
-  管理员 token；token 值不进日志/响应）；
+  缓存键含 Matrix token 身份哈希 + Controller 地址列表 + 显式 token 身份
+  哈希；token 值不进日志/响应）；显式 token 另用 ``GET /api/v1/teams``
+  实测有效性（配置了 token ≠ token 可用：陈旧的 token 会被 401/403 拒绝）；
 - ``preferred_controller_token(cfg)``：按能力状态选择拨号凭据
  （Matrix L1 → Matrix token；否则显式 token > Matrix token）；
 - ``explicit_controller_token(cfg)``：仅显式配置（config/env）的 token；
@@ -38,7 +39,8 @@ from .dial_gate import GatedAsyncClient
 from .router_models import TokenValidationError, _sanitize_token
 
 _CACHE_TTL_SECONDS = 30.0
-# 键 = "<matrix token 哈希>|<controller 地址列表>|<是否配置管理员 token>"
+# 键 = "<controller 地址列表>|<matrix token 哈希>|<是否配置管理员 token>|
+#       <显式 token 哈希>|<显式 token 是否非法>"
 # 值 = (expiry_monotonic, payload)。并发首探由 _probe_lock 单飞合并。
 _controller_auth_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _cache_lock = threading.Lock()
@@ -92,15 +94,72 @@ def _controller_urls(cfg: Dict[str, Any]) -> list:
     return [str(u).rstrip("/") for u in _address_list(cfg, "controller") if u]
 
 
-def _cache_key(cfg: Dict[str, Any]) -> str:
-    token = _matrix_token(cfg)
-    digest = (
+def _probe_urls(cfg: Dict[str, Any]) -> list:
+    """探测拨号顺序（working-cache 优先 + 固定档组内候选，同全部拨号点）。"""
+    from .router import _ordered_addresses  # noqa: PLC0415 - 避免模块级循环导入
+
+    return [str(u).rstrip("/") for u in _ordered_addresses(cfg, "controller") if u]
+
+
+def _controller_headers(
+    cfg: Dict[str, Any], base: str, token: str
+) -> Dict[str, str]:
+    """探测/验证请求头——与所有 Controller 拨号点同一凭据策略：
+ 该地址配置了 Basic/Bearer 覆盖凭据则整体替换原生 Authorization。"""
+    from .router import _headers_for  # noqa: PLC0415 - 避免模块级循环导入
+
+    return _headers_for(cfg, "controller", base, {"Authorization": f"Bearer {token}"})
+
+
+async def _validate_explicit_token(
+    cfg: Dict[str, Any], token: str, urls: list
+) -> str:
+    """显式管理员 token 对 Controller 管理 API 的有效性。
+
+ 同一端点/口径同 ``verify-admin`` 的 token 路径（``GET /api/v1/teams``）：
+ 200 → ``valid``；401/403 → ``invalid``（凭据错与地址无关，立即定论）；
+ 连接失败/超时/其他状态（404/5xx）→ 换下一地址，全败 = ``unverified``。
+ token 值只进请求头，不进响应/日志/缓存。
+ """
+    for base in urls:
+        try:
+            async with GatedAsyncClient(
+                timeout=_PROBE_TIMEOUT, verify=False
+            ) as client:
+                resp = await client.get(
+                    f"{base}/api/v1/teams",
+                    headers=_controller_headers(cfg, base, token),
+                )
+        except Exception:  # noqa: BLE001 - 逐地址降级
+            continue
+        if resp.status_code == 200:
+            return "valid"
+        if resp.status_code in _DENIED_STATUSES:
+            return "invalid"
+    return "unverified"
+
+
+def _token_digest(token: str) -> str:
+    return (
         hashlib.sha256(token.encode("utf-8", "replace")).hexdigest()[:16]
         if token
         else ""
     )
-    _t, _src, configured, _invalid = _explicit_configured(cfg)
-    return "|".join(("|".join(_controller_urls(cfg)), digest, "1" if configured else "0"))
+
+
+def _cache_key(cfg: Dict[str, Any]) -> str:
+    ctl_token, _src, configured, invalid = _explicit_configured(cfg)
+    return "|".join(
+        (
+            "|".join(_controller_urls(cfg)),
+            _token_digest(_matrix_token(cfg)),
+            "1" if configured else "0",
+            # 显式 token 身份入键：token 轮换（含新旧都「有效」）不能复用
+            # 旧的验证结果；invalidate_controller_auth_cache() 仍是主通道。
+            _token_digest(ctl_token),
+            "1" if invalid else "0",
+        )
+    )
 
 
 def _peek_cached(cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -148,8 +207,9 @@ def _base_payload(configured: bool) -> Dict[str, Any]:
         "capabilities": [],
         "credentialSource": "none",
         "controllerTokenConfigured": configured,
+        "controllerTokenValid": False,
         "tokenRequired": False,
-        "admin": configured,
+        "admin": False,
         "legacy": False,
         "reachable": False,
     }
@@ -167,18 +227,35 @@ async def _probe_uncached(cfg: Dict[str, Any]) -> Dict[str, Any]:
     payload = _base_payload(configured and not ctl_invalid)
     if ctl_invalid:
         payload["detail"] = "Controller token 内容非法（含非 ASCII 字符）"
-    urls = _controller_urls(cfg)
+    urls = _probe_urls(cfg)
+
+    # 显式 token「已配置」≠「可用」：陈旧/无权限的 token 会被管理 API 拒绝，
+    # 不实测就会把 admin 谎报为 true、token 框永不弹出。
+    ctl_result = "unverified"
+    if ctl_token and urls:
+        ctl_result = await _validate_explicit_token(cfg, ctl_token, urls)
+    token_valid = ctl_result == "valid"
+    payload["controllerTokenValid"] = token_valid
+    if ctl_result == "invalid":
+        payload["detail"] = "已配置的 Controller token 无效或无管理员权限"
 
     if not matrix_token:
-        payload["credentialSource"] = ctl_source if configured and not ctl_invalid else "none"
+        # 无 Matrix 登录：state=none，但显式 token 仍按实测结果定 admin。
+        payload["credentialSource"] = ctl_source if token_valid else "none"
+        payload["admin"] = token_valid
+        payload["tokenRequired"] = ctl_result == "invalid"
+        payload["reachable"] = ctl_result in ("valid", "invalid")
+        if ctl_token and not urls:
+            payload["detail"] = "未配置 Controller 地址，无法验证 Controller token"
+        elif ctl_token and ctl_result == "unverified":
+            # 连接问题 ≠ 凭据问题：只透出 detail，不弹 token 框。
+            payload["detail"] = "已配置的 Controller token 无法验证（Controller 不可达）"
         return payload
 
     if not urls:
         payload["state"] = "unreachable"
         payload["detail"] = "未配置 Controller 地址"
-        payload["credentialSource"] = (
-            ctl_source if configured and not ctl_invalid else "matrix"
-        )
+        payload["credentialSource"] = ctl_source if token_valid else "matrix"
         return payload
 
     for base in urls:
@@ -188,7 +265,9 @@ async def _probe_uncached(cfg: Dict[str, Any]) -> Dict[str, Any]:
             ) as client:
                 resp = await client.get(
                     f"{base}/api/v1/me",
-                    headers={"Authorization": f"Bearer {matrix_token}"},
+                    # 与所有 Controller 拨号点同一凭据策略：该地址的覆盖
+                    # 凭据（Basic/Bearer）替换原生 Authorization。
+                    headers=_controller_headers(cfg, base, matrix_token),
                 )
         except Exception as exc:  # noqa: BLE001 - 逐地址降级
             payload["detail"] = exc.__class__.__name__
@@ -233,17 +312,18 @@ async def _probe_uncached(cfg: Dict[str, Any]) -> Dict[str, Any]:
     state = payload["state"]
     if state == "matrix_l1":
         payload["credentialSource"] = "matrix"
-    elif configured and not ctl_invalid:
+    elif token_valid:
         payload["credentialSource"] = ctl_source
     elif state != "none":
         payload["credentialSource"] = "matrix"
     else:
         payload["credentialSource"] = "none"
-    payload["admin"] = state == "matrix_l1" or (
-        configured and not ctl_invalid
-    )
-    payload["tokenRequired"] = (
-        state in ("legacy", "matrix_invalid") and not (configured and not ctl_invalid)
+    payload["admin"] = state == "matrix_l1" or token_valid
+    # unreachable 绝不升级成 token 提示（网络错误 ≠ 凭据错误）；matrix_l1
+    # 时 Matrix 即管理员，陈旧 token 也不弹框（用户可自行去设置页替换）。
+    payload["tokenRequired"] = state not in ("unreachable", "matrix_l1") and (
+        ctl_result == "invalid"
+        or (state in ("legacy", "matrix_invalid") and not token_valid)
     )
     return payload
 

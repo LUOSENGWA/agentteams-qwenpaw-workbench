@@ -153,24 +153,40 @@ export function SettingsTabView(props: {
 
   // Controller 双认证能力状态（/controller-auth；登录/保存/验证后重探）。
   const authState = controllerAuth?.state || "";
+  // 已保存 token 实测失效（仅当后端明确要求重贴时才算「坏」——不可达
+  // 时 tokenRequired=false，不能把网络问题说成凭据问题）。
+  const tokenInvalid =
+    !!controllerAuth?.controllerTokenConfigured &&
+    controllerAuth?.controllerTokenValid === false &&
+    !!controllerAuth?.tokenRequired;
+  // admin 来自显式 token 时不得冒充 Matrix L1——单独标注 token 管理身份。
+  const tokenBackedAdmin =
+    !!controllerAuth?.controllerTokenValid && !!controllerAuth?.admin;
   const authLabel =
     authState === "matrix_l1"
       ? tr("Matrix L1（无需 Controller token）")
-      : authState === "matrix_scoped"
-        ? controllerAuth?.permissionLevel === 3
-          ? tr("Matrix L3（只读）")
-          : tr("Matrix L2（只读）")
+      : tokenInvalid
+        ? tr("已保存的 Controller token 已失效/无权限")
         : authState === "legacy"
-          ? tr("当前 Controller 1.2.6：管理面需要 Controller token")
-          : authState === "unreachable"
-            ? tr("Controller 连接失败")
-            : authState === "matrix_invalid"
-              ? tr("Matrix 身份未被 Controller 接受")
-              : authState === "none"
-                ? tr("未登录 Matrix：Controller 管理面不可用")
-                : tr("Controller 认证检测中…");
-  const authBad = authState === "unreachable" || authState === "matrix_invalid";
-  const authGood = authState === "matrix_l1";
+          ? tokenBackedAdmin
+            ? tr("Controller 1.2.6（token 已配置）")
+            : tr("当前 Controller 1.2.6：管理面需要 Controller token")
+          : tokenBackedAdmin
+            ? tr("已配置 Controller token（管理身份）")
+            : authState === "matrix_scoped"
+              ? controllerAuth?.permissionLevel === 3
+                ? tr("Matrix L3（只读）")
+                : tr("Matrix L2（只读）")
+              : authState === "unreachable"
+                ? tr("Controller 连接失败")
+                : authState === "matrix_invalid"
+                  ? tr("Matrix 身份未被 Controller 接受")
+                  : authState === "none"
+                    ? tr("未登录 Matrix：Controller 管理面不可用")
+                    : tr("Controller 认证检测中…");
+  const authBad =
+    authState === "unreachable" || authState === "matrix_invalid" || tokenInvalid;
+  const authGood = authState === "matrix_l1" || tokenBackedAdmin;
   return (
     /* 10/30：配置页卡片按屏幕宽度自动排列——外层通栏承载横幅（通栏语义），
        内层卡片区 auto-fit（宽屏 2–3 列、窄屏自动 1 列），不再单列 720px 定宽。 */

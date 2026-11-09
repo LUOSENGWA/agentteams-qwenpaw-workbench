@@ -249,9 +249,13 @@ export interface ControllerAuthStatus {
   capabilities: string[];
   credentialSource: "matrix" | "config" | "env" | "none";
   controllerTokenConfigured: boolean;
+  /** 已配置的 Controller token 是否实测有效（后端 GET /api/v1/teams 200）。
+   * 配置了 token ≠ 可用：false 可能是失效/无权限（tokenRequired=true）
+   * 或无法验证（Controller 不可达，tokenRequired 由 state 决定）。 */
+  controllerTokenValid: boolean;
   /** 旧版/身份被拒且无管理员 token → 需要弹 token 框。 */
   tokenRequired: boolean;
-  /** Matrix L1 或已配置管理员 token。 */
+  /** Matrix L1 或显式 token 实测有效。 */
   admin: boolean;
   legacy: boolean;
   reachable: boolean;

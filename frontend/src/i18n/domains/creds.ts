@@ -355,6 +355,21 @@ export const credsDict: Record<string, { en: string }> = {
   "当前 Controller 1.2.6：管理面需要 Controller token": {
     en: "Controller 1.2.6: the admin plane needs a Controller token",
   },
+  "Controller 1.2.6（token 已配置）": {
+    en: "Controller 1.2.6 (token configured)",
+  },
+  "已保存的 Controller token 已失效/无权限": {
+    en: "Saved Controller token is invalid / lacks admin permission",
+  },
+  "已保存的 Controller token 已失效或无权限": {
+    en: "The saved Controller token is invalid or lacks admin permission",
+  },
+  "已保存的 Controller token 已失效或没有管理员权限；请重新粘贴。": {
+    en: "The saved Controller token is invalid or lacks admin permission; paste a new one.",
+  },
+  "已配置 Controller token（管理身份）": {
+    en: "Controller token configured (admin identity)",
+  },
   "Controller 连接失败": { en: "Controller connection failed" },
   "Matrix 身份未被 Controller 接受": {
     en: "Matrix identity not accepted by the Controller",

@@ -4,8 +4,11 @@
 覆盖：
 - 能力探测：matrix_l1 / matrix_scoped / legacy / matrix_invalid /
   unreachable / none + admin/tokenRequired/credentialSource 派生；
+- 显式 token 实测（GET /api/v1/teams）：有效/401/不可达 → admin 与
+  tokenRequired 翻转；Matrix L1 仍优先；地址覆盖凭据（Basic/Bearer）
+  同时作用于 /me 与 /teams；
 - 凭据选择：matrix_l1 用 Matrix token，否则显式 token 优先、Matrix 兜底；
-- 30s 缓存：TTL 内第二次探测零请求；
+- 30s 缓存：TTL 内第二次探测零请求；显式 token 轮换不复用旧结果；
 - 网关双路径：现代 Controller 网关管理 API（Bearer）vs 旧 Console 会话；
   403 不静默回落 Console；
 - /controller-auth 端点契约。
@@ -15,6 +18,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 
 from agentteams_connector import config as config_mod
@@ -169,6 +173,7 @@ def test_matrix_scoped_l2(monkeypatch) -> None:
     assert out["permissionLevel"] == 2
     assert out["admin"] is False
     assert out["tokenRequired"] is False
+    assert out["controllerTokenValid"] is False
     assert out["credentialSource"] == "matrix"
 
 
@@ -195,14 +200,40 @@ def test_legacy_without_token(monkeypatch) -> None:
 
 
 def test_legacy_with_token(monkeypatch) -> None:
-    _install_probe_client(monkeypatch, [(f"{CTL}/api/v1/me", LEGACY)])
+    """(1) 旧 Controller + 显式 token 实测有效 → admin，不要求重贴。"""
+    _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", LEGACY),
+            (f"{CTL}/api/v1/teams", _Resp(200, {"teams": []})),
+        ],
+    )
     cfg = _cfg(token=CTL_TOKEN)
     out = _probe(cfg)
     assert out["state"] == "legacy"
     assert out["admin"] is True
+    assert out["controllerTokenValid"] is True
     assert out["tokenRequired"] is False
     assert out["credentialSource"] == "config"
+    # token 值绝不进响应。
+    assert CTL_TOKEN not in json.dumps(out)
     assert controller_auth.preferred_controller_token(cfg) == (CTL_TOKEN, "config")
+
+
+def test_legacy_with_stale_token(monkeypatch) -> None:
+    """(2) 旧 Controller + 显式 token 被 401 拒绝 → 必须重新弹 token 框。"""
+    _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", LEGACY),
+            (f"{CTL}/api/v1/teams", _Resp(401, {"message": "unauthorized"})),
+        ],
+    )
+    out = _probe(_cfg(token=CTL_TOKEN))
+    assert out["state"] == "legacy"
+    assert out["admin"] is False
+    assert out["controllerTokenValid"] is False
+    assert out["tokenRequired"] is True
 
 
 def test_invalid_identity_without_token(monkeypatch) -> None:
@@ -214,12 +245,177 @@ def test_invalid_identity_without_token(monkeypatch) -> None:
 
 
 def test_invalid_identity_with_token(monkeypatch) -> None:
-    _install_probe_client(monkeypatch, [(f"{CTL}/api/v1/me", _Resp(403, {}))])
+    _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", _Resp(403, {})),
+            (f"{CTL}/api/v1/teams", _Resp(200, {"teams": []})),
+        ],
+    )
     out = _probe(_cfg(token=CTL_TOKEN))
     assert out["state"] == "matrix_invalid"
     assert out["admin"] is True
+    assert out["controllerTokenValid"] is True
     assert out["tokenRequired"] is False
     assert out["credentialSource"] == "config"
+
+
+def test_no_matrix_login_with_valid_token(monkeypatch) -> None:
+    """(3) 无 Matrix 登录 + 有效显式 token → state=none 但 admin。"""
+    _install_probe_client(
+        monkeypatch, [(f"{CTL}/api/v1/teams", _Resp(200, {"teams": []}))]
+    )
+    out = _probe(_cfg(matrix=False, token=CTL_TOKEN))
+    assert out["state"] == "none"
+    assert out["admin"] is True
+    assert out["controllerTokenValid"] is True
+    assert out["tokenRequired"] is False
+    assert out["credentialSource"] == "config"
+
+
+def test_no_matrix_login_with_stale_token(monkeypatch) -> None:
+    """无 Matrix 登录 + token 被拒 → 仍要重贴（不因未登录而放过）。"""
+    _install_probe_client(
+        monkeypatch, [(f"{CTL}/api/v1/teams", _Resp(403, {"message": "forbidden"}))]
+    )
+    out = _probe(_cfg(matrix=False, token=CTL_TOKEN))
+    assert out["state"] == "none"
+    assert out["admin"] is False
+    assert out["controllerTokenValid"] is False
+    assert out["tokenRequired"] is True
+    assert out["credentialSource"] == "none"
+
+
+def test_matrix_scoped_with_valid_token(monkeypatch) -> None:
+    """(4) L2 只读 + 有效显式 token → token 提供 admin。"""
+    _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", _Resp(200, {"name": "bob", "permissionLevel": 2})),
+            (f"{CTL}/api/v1/teams", _Resp(200, {"teams": []})),
+        ],
+    )
+    out = _probe(_cfg(token=CTL_TOKEN))
+    assert out["state"] == "matrix_scoped"
+    assert out["admin"] is True
+    assert out["controllerTokenValid"] is True
+    assert out["tokenRequired"] is False
+    assert out["credentialSource"] == "config"
+
+
+def test_matrix_l1_wins_over_stale_token(monkeypatch) -> None:
+    """(6) Matrix L1 时陈旧 token 不让 Matrix 丢管理员、也不弹框。"""
+    _install_probe_client(
+        monkeypatch,
+        [
+            (
+                f"{CTL}/api/v1/me",
+                _Resp(200, {"name": "alice", "permissionLevel": 1}),
+            ),
+            (f"{CTL}/api/v1/teams", _Resp(401, {"message": "unauthorized"})),
+        ],
+    )
+    out = _probe(_cfg(token=CTL_TOKEN))
+    assert out["state"] == "matrix_l1"
+    assert out["admin"] is True
+    assert out["controllerTokenValid"] is False
+    assert out["tokenRequired"] is False
+    assert out["credentialSource"] == "matrix"
+
+
+def test_address_auth_applied_to_me_and_teams(monkeypatch) -> None:
+    """(7) 地址覆盖凭据（Basic）替换原生 Authorization——探测/验证同口径。"""
+    clients = _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", LEGACY),
+            (f"{CTL}/api/v1/teams", _Resp(200, {"teams": []})),
+        ],
+    )
+    cfg = {
+        "controller_urls": [
+            {
+                "url": CTL,
+                "auth": {"type": "basic", "username": "u", "password": "p"},
+            }
+        ],
+        "matrix": {"access_token": MATRIX_TOKEN},
+        "controller_token": CTL_TOKEN,
+    }
+    out = _probe(cfg)
+    assert out["state"] == "legacy"
+    assert out["controllerTokenValid"] is True
+    expected = "Basic " + base64.b64encode(b"u:p").decode("ascii")
+    calls = [rec for c in clients for rec in c.records]
+    me_headers = [h for _m, u, h in calls if u.endswith("/api/v1/me")]
+    teams_headers = [h for _m, u, h in calls if u.endswith("/api/v1/teams")]
+    assert me_headers and all(h["Authorization"] == expected for h in me_headers)
+    assert teams_headers and all(h["Authorization"] == expected for h in teams_headers)
+
+
+def test_address_bearer_override_replaces_native_auth(monkeypatch) -> None:
+    """Bearer 覆盖凭据同样整体替换 Matrix / 显式 token 的 Authorization。"""
+    clients = _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", _Resp(200, {"permissionLevel": 2})),
+        ],
+    )
+    cfg = {
+        "controller_urls": [
+            {"url": CTL, "auth": {"type": "bearer", "token": "addr-bearer"}}
+        ],
+        "matrix": {"access_token": MATRIX_TOKEN},
+    }
+    _probe(cfg)
+    calls = [rec for c in clients for rec in c.records]
+    assert calls
+    assert all(h.get("Authorization") == "Bearer addr-bearer" for _m, _u, h in calls)
+
+
+def test_cache_key_changes_with_explicit_token(monkeypatch) -> None:
+    """(8) 显式 token 轮换不复用旧的验证结果。"""
+    cfg_a = _cfg(token="token-a")
+    cfg_b = _cfg(token="token-b")
+    assert controller_auth._cache_key(cfg_a) != controller_auth._cache_key(cfg_b)
+
+    clients = _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", LEGACY),
+            (f"{CTL}/api/v1/teams", _Resp(200, {"teams": []})),
+        ],
+    )
+    first = _probe(cfg_a)
+    assert first["admin"] is True and first["controllerTokenValid"] is True
+    # 一次探测 = token 验证 + /me 各一次拨号。
+    assert len(clients) == 2
+
+    second_clients = _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", LEGACY),
+            (f"{CTL}/api/v1/teams", _Resp(401, {"message": "unauthorized"})),
+        ],
+    )
+    second = _probe(cfg_b)
+    # TTL 内换 token 必须重新实测（否则旧「有效」结果会被复用）。
+    assert len(second_clients) == 2
+    assert second["controllerTokenValid"] is False
+    assert second["admin"] is False
+    assert second["tokenRequired"] is True
+
+
+def test_matrix_scoped_without_token_no_prompt(monkeypatch) -> None:
+    """(5) L2/L3 只读 + 无 token → 不弹 token 框。"""
+    _install_probe_client(
+        monkeypatch,
+        [(f"{CTL}/api/v1/me", _Resp(200, {"permissionLevel": 3}))],
+    )
+    out = _probe(_cfg())
+    assert out["state"] == "matrix_scoped"
+    assert out["admin"] is False
+    assert out["tokenRequired"] is False
 
 
 def test_unreachable_does_not_prompt(monkeypatch) -> None:
@@ -229,6 +425,34 @@ def test_unreachable_does_not_prompt(monkeypatch) -> None:
     assert out["reachable"] is False
     assert out["admin"] is False
     assert out["tokenRequired"] is False
+
+
+def test_unreachable_with_configured_token_does_not_prompt(monkeypatch) -> None:
+    """网络错误不升级成 token 提示（即使已配置 token 无法验证）。"""
+    _install_probe_client(
+        monkeypatch,
+        [
+            (f"{CTL}/api/v1/me", RAISE),
+            (f"{CTL}/api/v1/teams", RAISE),
+        ],
+    )
+    out = _probe(_cfg(token=CTL_TOKEN))
+    assert out["state"] == "unreachable"
+    assert out["admin"] is False
+    assert out["controllerTokenValid"] is False
+    assert out["tokenRequired"] is False
+
+
+def test_no_matrix_login_unreachable_token_unverified(monkeypatch) -> None:
+    """仅显式 token + Controller 不可达 → state=none、只透 detail，不弹框。"""
+    _install_probe_client(monkeypatch, [(f"{CTL}/api/v1/teams", RAISE)])
+    out = _probe(_cfg(matrix=False, token=CTL_TOKEN))
+    assert out["state"] == "none"
+    assert out["admin"] is False
+    assert out["controllerTokenValid"] is False
+    assert out["tokenRequired"] is False
+    assert out["credentialSource"] == "none"
+    assert "不可达" in (out.get("detail") or "")
 
 
 def test_no_matrix_login_state_none(monkeypatch) -> None:
@@ -298,6 +522,7 @@ async def _fake_probe(cfg: dict) -> dict:
         "capabilities": [],
         "credentialSource": "matrix",
         "controllerTokenConfigured": False,
+        "controllerTokenValid": False,
         "tokenRequired": True,
         "admin": False,
         "legacy": True,
@@ -325,6 +550,7 @@ def test_controller_auth_endpoint(monkeypatch) -> None:
         "capabilities",
         "credentialSource",
         "controllerTokenConfigured",
+        "controllerTokenValid",
         "tokenRequired",
         "admin",
         "legacy",
