@@ -118,6 +118,12 @@ export const upgradeDict: Record<string, { en: string }> = {
   "registry 最新 {v}": { en: "Registry latest {v}" },
   "模型名": { en: "Model name" },
   "{cli} settings（结构化表单 · 只保存改动）": { en: "{cli} settings (structured form · saves only changes)" },
+  "模型由 Worker 模型配置统一管理；此处只编辑 CLI 其它设置。": {
+    en: "The model is managed centrally in Worker model config; edit other CLI settings here.",
+  },
+  "暂无其它可编辑项——模型由 Worker 模型配置统一管理；高级字段用下方 JSON 补丁补充。": {
+    en: "Nothing else to edit here — the model is managed in Worker model config; add advanced fields via the JSON patch below.",
+  },
   "已保存，留空保留；输入=替换": { en: "Saved — leave empty to keep; enter to replace" },
   "未设置；输入=设置": { en: "Not set; enter to set" },
   "有未保存改动": { en: "Unsaved changes" },

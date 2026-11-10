@@ -147,10 +147,12 @@ export default function ModelEditModal({
   // C2：fail-closed（locked 整个弹窗只读）+ main/spawn surface 授予集
   //（空 = 无授予集 → 候选/校验均按现状，兼容旧控制器）。
   // 管理员（L1）不受人员授权表约束：控制器对 SA/管理员返回的是 locked
-  // 占位（stub），不能据此把管理员挡在「未授予任何模型」后面。
+  // 占位（stub），不能据此把管理员挡在「未授予任何模型」后面——L1 一律
+  // 空授予集（候选/校验无限制），与控制器写路径跳过 admin/manager grant
+  // 校验对齐。
   const locked = lockedAll(access) && !l1;
-  const mainPairs = access ? grantedPairs(access.surfaces, "main") : [];
-  const spawnPairs = access ? grantedPairs(access.surfaces, "spawn") : [];
+  const mainPairs = !l1 && access ? grantedPairs(access.surfaces, "main") : [];
+  const spawnPairs = !l1 && access ? grantedPairs(access.surfaces, "spawn") : [];
   // 子代理候选：有授予集 → 只列授予对；否则列目录。Provider 只做过滤。
   const subagentProviderOptions = React.useMemo(() => {
     if (spawnPairs.length > 0) {
@@ -291,9 +293,12 @@ export default function ModelEditModal({
          * 不够）。模型下拉按所选 Provider 过滤（在服+在用恒保留）。 */}
         <div style={fieldsLayout}>
           <div style={fieldStyle}>
-            <div style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
-              {accessBadge(access?.capabilities?.main, tr)}
-            </div>
+            {/* C2：main surface 授权徽标（L1 不受人员授权表约束 → 不显示） */}
+            {!l1 ? (
+              <div style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
+                {accessBadge(access?.capabilities?.main, tr)}
+              </div>
+            ) : null}
             <ModelPicker
               tr={(x) => tr(x)}
               providers={pickerProviders}
@@ -340,8 +345,8 @@ export default function ModelEditModal({
               <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>
                 {tr("子代理模型")}
               </span>
-              {/* C2：子代理区授权徽标（五态；无授权信息 → 不显示） */}
-              {accessBadge(access?.capabilities?.spawn, tr)}
+              {/* C2：子代理区授权徽标（五态；无授权信息 / L1 → 不显示） */}
+              {!l1 ? accessBadge(access?.capabilities?.spawn, tr) : null}
               <antd.Switch size="small" checked={subagentSame} disabled={locked} onChange={(v: boolean) => setSubagentSame(v)} />
               <span style={{ fontSize: 12, color: t.textSecondary }}>{tr("与主模型相同")}</span>
             </div>
@@ -405,7 +410,7 @@ export default function ModelEditModal({
         {/* C1a-2：CodingCLI 模型区块——仅 Worker（workerName）+ L1 渲染；
          * Manager 详情不传 workerName → 不渲染（自检①）。 */}
         {workerName && l1 ? (
-          <CodingCliModelSection workerName={workerName} mainModel={currentModel} access={access} />
+          <CodingCliModelSection workerName={workerName} mainModel={currentModel} access={access} l1={l1} />
         ) : null}
 
         <div
@@ -473,14 +478,21 @@ function CodingCliModelSection({
   workerName,
   mainModel,
   access,
+  l1,
 }: {
   workerName: string;
   mainModel: string;
   /** C2（#1513）：Model Access 授权信息（null = 无授权信息 → 现状行为）。 */
   access: ModelAccessPayload | null;
+  /** L1（有 controller token）：控制器写路径对 admin/manager 跳过 grant
+   * 校验 → 授权徽标/限制不生效（restricted=false）；L2 保持原 grant 门控。 */
+  l1: boolean;
 }) {
   const t = useThemeColors();
   const tr = useT();
+  // L1 不受人员授权表约束（控制器对 SA/管理员返回 locked 占位/只读 cap，
+  // 不能据此把管理员挡在「未授权」后面）。
+  const restricted = !l1;
   const [list, setList] = React.useState<CodingCliProbeItem[] | null>(null);
   const [listErr, setListErr] = React.useState("");
   const [settings, setSettings] = React.useState<
@@ -630,8 +642,11 @@ function CodingCliModelSection({
           const modelText = err ? "" : cur && cur.name ? cur.name : tr("未配置");
           const status =
             !cur || !cur.name ? "none" : cur.name === mainModel ? "follow" : "indep";
-          // C2（#1513）：该 CLI 的授权能力（缺 = 无授权信息 → 现状行为）。
-          const cap = access?.capabilities?.codingCli?.[p.cli];
+          // C2（#1513）：该 CLI 的授权能力（缺 = 无授权信息 → 现状行为）；
+          // L1（restricted=false）不受人员授权表约束 → cap/locked 不消费。
+          const cap = restricted ? access?.capabilities?.codingCli?.[p.cli] : undefined;
+          const capLocked = restricted && lockedAll(access);
+          const capBlocked = restricted && cap ? cap.inherit || !cap.canEdit : false;
           return (
             <div
               key={p.cli}
@@ -665,14 +680,14 @@ function CodingCliModelSection({
                 checked={status === "follow" && !pendingIndep.has(p.cli)}
                 disabled={
                   !s ||
-                  lockedAll(access) ||
-                  (cap ? cap.inherit || !cap.canEdit : false) ||
+                  capLocked ||
+                  capBlocked ||
                   (status === "none" && !mainModel)
                 }
                 title={
                   !s
                     ? tr("未安装该 Coding CLI")
-                    : lockedAll(access)
+                    : capLocked
                       ? tr("未授权：无法修改 CodingCLI 模型")
                       : cap?.inherit
                         ? tr("授权要求该 CLI 跟随主模型，不能独立配置")
@@ -690,17 +705,18 @@ function CodingCliModelSection({
                     ? tr("独立")
                     : tr("未配置")}
               </span>
-              {/* C2：该 CLI 授权徽标（五态；inherit → 「继承自 …」且编辑禁用） */}
-              {accessBadge(cap, tr)}
+              {/* C2：该 CLI 授权徽标（五态；inherit → 「继承自 …」且编辑禁用；
+               * L1 不受人员授权表约束 → 不显示） */}
+              {restricted ? accessBadge(cap, tr) : null}
               {err ? (
                 <antd.Button size="small" onClick={() => retryCli(p.cli)}>
                   {tr("重试")}
                 </antd.Button>
               ) : (
-                // C2：locked / inherit / !canEdit → 编辑禁用（无授权信息 → 现状）
+                // C2：locked / inherit / !canEdit → 编辑禁用（无授权信息 → 现状；L1 不受限）
                 <antd.Button
                   size="small"
-                  disabled={!s || lockedAll(access) || (cap ? cap.inherit || !cap.canEdit : false)}
+                  disabled={!s || capLocked || capBlocked}
                   onClick={() => setEditing(p.cli)}
                 >
                   {tr("修改")}
@@ -716,8 +732,12 @@ function CodingCliModelSection({
           workerName={workerName}
           cli={editing}
           settings={settings[editing] as CliSettingsResponse}
+          // L1：空授予集 → ModelPicker 无限制（候选取 CLI modelProviders
+          // 条目并集 + 自由输入）；L2 保持原授予对。
           pairs={
-            access ? grantedPairs(access.surfaces, "codingCli", editing) : []
+            restricted && access
+              ? grantedPairs(access.surfaces, "codingCli", editing)
+              : []
           }
           onClose={() => {
             setEditing(null);

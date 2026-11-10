@@ -21,7 +21,6 @@ import {
 } from "../codingCliPresets";
 import { useT } from "../i18n";
 import { useThemeColors } from "../theme";
-import { useModelUnionOptions } from "../modelUnion";
 import { CodeIcon } from "./icons";
 import { WorkerCollapseCard } from "./WorkerPanelsShared";
 import {
@@ -453,27 +452,16 @@ function CodingCliPanelBody({
 }) {
   const { tr, t } = s;
 
-  // 模型列表选择（15.27，同 Worker 模型选择正源）：候选 = SGLang 在服 ∪
-  // 在用（当前 CLI 的 model.name）∪ 网关 alias；写前校验同款。hook 仅在
-  // 卡片展开时挂载（惰性，无后台轮询）。
-  // 15.29：双格式兼容读——CLI 原生 settings.json 的 model 是**字符串**
-  // （controller 测试夹具 "model":"updated" 实证），早期对象格式
-  // （{name}，dashboard 同款写法）也兼容读。
-  // 15.31：模型名读取收敛到 modelNameOf（对象{name}/扁平串双格式），与
-  // 模型行 dirty 判定、handleSave base 比对同一口径（三处不漂移）。
+  // 模型只读展示（卡头 Tag）：双格式兼容读——CLI 原生 settings.json 的
+  // model 是**字符串**（controller 测试夹具 "model":"updated" 实证），早期
+  // 对象格式（{name}，dashboard 同款写法）也兼容读；15.31：模型名读取收敛
+  // 到 modelNameOf。模型编辑由 Worker 模型配置统一管理（ModelEditModal →
+  // CodingCLI 模型）——本面板不渲染模型行、树内不暴露 model 键、无模型
+  // 保存路径（JSON 补丁仍可改任意字段，同 dashboard 逃逸口）。
   const settingsModel: string = React.useMemo(
     () => modelNameOf(s.settings?.settings),
     [s.settings],
   );
-  const union = useModelUnionOptions(
-    settingsModel ? [settingsModel] : [],
-    tr,
-  );
-  const [modelDraft, setModelDraft] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    // settings 加载/切 CLI/保存回写 → 模型草稿重置为当前生效值。
-    setModelDraft(settingsModel);
-  }, [s.settings, settingsModel]);
 
   if (s.state === "loading") {
     return (
@@ -758,6 +746,9 @@ function CodingCliPanelBody({
                           cli: CLI_LABEL[cli.id],
                         })}
                       </div>
+                      <div style={{ fontSize: 11, color: t.textSecondary }}>
+                        {tr("模型由 Worker 模型配置统一管理；此处只编辑 CLI 其它设置。")}
+                      </div>
                       <SettingsTreeEditor
                         base={
                           acc.settings && Object.keys(acc.settings).length > 0
@@ -766,10 +757,7 @@ function CodingCliPanelBody({
                         }
                         readOnly={s.readOnly}
                         busy={s.busy}
-                        modelValue={modelDraft ?? ""}
-                        onModelChange={setModelDraft}
-                        modelOptions={union.options}
-                        modelCandidates={union.candidates}
+                        hideModel
                         objectModel={cli.id === "qwen-code"}
                         seed={CODING_CLI_SEEDS[cli.id].template}
                         seedSecrets={CODING_CLI_SEEDS[cli.id].secretPaths}

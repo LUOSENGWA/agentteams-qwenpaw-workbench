@@ -176,6 +176,7 @@ export function SettingsTreeEditor({
   onModelChange,
   modelOptions,
   modelCandidates,
+  hideModel,
   objectModel,
   seed,
   seedSecrets,
@@ -194,6 +195,10 @@ export function SettingsTreeEditor({
   onModelChange?: (v: string) => void;
   modelOptions?: ModelOptions;
   modelCandidates?: string[];
+  /** 模型编辑禁用（Worker Coding CLI 面板）：模型专行不渲染，顶层 model
+   * 键整体从树摘出（含对象子字段，不暴露裸编辑）——模型由 Worker 模型配置
+   * 统一管理。开启时 modelValue/onModelChange 不生效（保留供其它调用方）。 */
+  hideModel?: boolean;
   /** 15.29：model 以对象 {name} 写（qwen-code 现行格式）；false=扁平字符串。 */
   objectModel?: boolean;
   /** 15.30：空态模板（base 空时自动预填成结构化表单起点）；不含 model。 */
@@ -706,17 +711,27 @@ export function SettingsTreeEditor({
     );
   };
 
-  const modelRowEnabled = modelValue !== undefined && !!onModelChange;
+  // hideModel：模型专行也不渲染（模型由 Worker 模型配置统一管理）。
+  const modelRowEnabled =
+    !hideModel && modelValue !== undefined && !!onModelChange;
   // 15.30：树从 draft 渲染（结构+值都反映编辑）——原从 base 渲染导致
   // ① base 空时无字段（"没结构化表单"）② 输入框受控于 base，编辑不反映
   // （value 绑 base 但 onChange 写 draft）。draft=base/seed 深拷贝，首帧
   // 与 base 渲染一致，编辑后真实反映。
   // 15.31：model 扁平串（opencode/qoder）整体摘出（专行管）；
   // 对象（qwen-code 现行 {name,...}）保留渲染子字段（name 子键跳过）。
-  const draftTopEntries = Object.entries(draft).filter(
-    ([k, v]) =>
-      !(modelRowEnabled && k === "model" && !(v && typeof v === "object" && !Array.isArray(v))),
-  );
+  // hideModel：顶层 model 键整体摘出（含对象子字段/seed 预填/目录空态）——
+  // 模型由 Worker 模型配置统一管理，树内不暴露裸编辑。
+  const draftTopEntries = Object.entries(draft).filter(([k, v]) => {
+    if (k === "model") {
+      if (hideModel) return false;
+      return !(
+        modelRowEnabled &&
+        !(v && typeof v === "object" && !Array.isArray(v))
+      );
+    }
+    return true;
+  });
   // 15.32：catalog 顶层分组文件未设置的也显示（空态起点，不操作不落盘）。
   // 15.34 修：顶层=目录键本身（无点）∪ 点分键的前缀（context.* → context）
   // ——原 filter(!includes(".")) 漏掉只有点分键的分组（context/general/ui/
@@ -728,7 +743,9 @@ export function SettingsTreeEditor({
             k.includes(".") ? [k.split(".")[0]] : [k],
           ),
         ),
-      ).filter((k) => !draftTopEntries.some(([ek]) => ek === k))
+      )
+        .filter((k) => !hideModel || k !== "model")
+        .filter((k) => !draftTopEntries.some(([ek]) => ek === k))
     : [];
   const topEntries: Array<[string, SettingsValue | undefined]> = [
     ...draftTopEntries,
@@ -773,7 +790,9 @@ export function SettingsTreeEditor({
       ) : null}
       {topEntries.length === 0 && emptyTreeHint ? (
         <div style={{ fontSize: 11, color: t.textSecondary }}>
-          {tr("尚无配置文件——填模型名并保存即创建。")}
+          {hideModel
+            ? tr("暂无其它可编辑项——模型由 Worker 模型配置统一管理；高级字段用下方 JSON 补丁补充。")
+            : tr("尚无配置文件——填模型名并保存即创建。")}
         </div>
       ) : (
         /* 15.34：分区卡——每个顶层分组一张可收放卡（独立收放，非手风琴：
