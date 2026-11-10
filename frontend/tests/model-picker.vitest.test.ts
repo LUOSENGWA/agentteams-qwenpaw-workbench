@@ -1,7 +1,9 @@
-// ModelPicker 纯函数：provider → model 过滤与换 Provider 的模型保留规则。
+// ModelPicker 纯函数：provider → model 过滤与换 Provider 的模型保留规则 +
+// Provider 分组（groupModelPickerProviders：无分组平铺 / 首次出现序 / 兜底组）。
 import { describe, expect, it } from "vitest";
 
 import {
+  groupModelPickerProviders,
   keepModelForProvider,
   modelOptionsForProvider,
 } from "../src/lib/modelPickerModel";
@@ -43,5 +45,59 @@ describe("keepModelForProvider", () => {
 
   it("空模型 → 空", () => {
     expect(keepModelForProvider(providers, "qwen", "")).toBe("");
+  });
+});
+
+describe("groupModelPickerProviders", () => {
+  it("无 group → 单个未分组列表（label \"\"，成员顺序保持）", () => {
+    const out = groupModelPickerProviders([
+      { name: "a" },
+      { name: "b", models: ["m"] },
+    ]);
+    expect(out).toEqual([{ label: "", providers: [{ name: "a" }, { name: "b", models: ["m"] }] }]);
+  });
+
+  it("空列表 → 单个未分组空列表", () => {
+    expect(groupModelPickerProviders([])).toEqual([{ label: "", providers: [] }]);
+  });
+
+  it("全部同一 group → 单个带标签组（仍走分组渲染）", () => {
+    const out = groupModelPickerProviders([
+      { name: "a", group: "g" },
+      { name: "b", group: "g" },
+    ]);
+    expect(out.map((g) => g.label)).toEqual(["g"]);
+    expect(out[0].providers.map((p) => p.name)).toEqual(["a", "b"]);
+  });
+
+  it("带 group → 首次出现序分组；组内成员顺序保持", () => {
+    const out = groupModelPickerProviders([
+      { name: "fw", group: "跟随模式" },
+      { name: "openai", group: "可用提供商" },
+      { name: "spawn", group: "跟随模式" },
+      { name: "worker:qwen", group: "可用提供商" },
+    ]);
+    expect(out.map((g) => g.label)).toEqual(["跟随模式", "可用提供商"]);
+    expect(out[0].providers.map((p) => p.name)).toEqual(["fw", "spawn"]);
+    expect(out[1].providers.map((p) => p.name)).toEqual(["openai", "worker:qwen"]);
+  });
+
+  it("混排无 group 成员 → 归入 defaultGroupLabel 一个组（不并入其他组）", () => {
+    const out = groupModelPickerProviders(
+      [
+        { name: "a", group: "g1" },
+        { name: "b" },
+        { name: "c", group: "g2" },
+        { name: "d" },
+      ],
+      "其他",
+    );
+    expect(out.map((g) => g.label)).toEqual(["g1", "其他", "g2"]);
+    expect(out[1].providers.map((p) => p.name)).toEqual(["b", "d"]);
+  });
+
+  it("defaultGroupLabel 缺省 = \"\"（稳定空标签兜底）", () => {
+    const out = groupModelPickerProviders([{ name: "a", group: "g" }, { name: "b" }]);
+    expect(out.map((g) => g.label)).toEqual(["g", ""]);
   });
 });

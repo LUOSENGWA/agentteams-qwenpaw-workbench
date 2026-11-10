@@ -5,12 +5,15 @@
 //   2. 两个框都可搜索；Provider 允许清空时表示「跟随默认」；
 //   3. 只读态渲染为文本 + 「只读」徽标，而不是禁用输入框（截图标准）；
 //   4. 换 Provider 时，若旧 Model 不属于新 Provider → 由调用方的
-//      onChange(provider, "") 收到清空（本组件负责判定，不悄悄保留）。
+//      onChange(provider, "") 收到清空（本组件负责判定，不悄悄保留）；
+//   5. Provider 候选带 group（分组判定 = lib groupModelPickerProviders）→
+//      Antd 分组 options，搜索同时覆盖组名与选项名；全不带 group = 平铺。
 //
 // 不变量：provider 为空时模型候选 = 全量（跟随默认/自由选择场景）。
 import type * as ReactNS from "react";
 
 import {
+  groupModelPickerProviders,
   keepModelForProvider,
   modelOptionsForProvider,
   type ModelPickerProvider,
@@ -58,11 +61,39 @@ export default function ModelPicker(props: ModelPickerProps): JSX.Element {
     tr,
   } = props;
 
-  const providerOptions = providers.map((p) => ({
-    value: p.name,
-    label: p.label ?? p.name,
-    disabled: p.disabled,
-  }));
+  // Provider 分组（纯逻辑 lib/groupModelPickerProviders）：无分组 = 既有
+  // 平铺 options；有分组 = Antd 分组 options（组名 + 成员，成员顺序保持）。
+  const providerGroups = groupModelPickerProviders(providers);
+  const grouped = providerGroups.length > 1 || providerGroups[0].label !== "";
+  const providerOptions = grouped
+    ? providerGroups.map((g) => ({
+        label: g.label,
+        options: g.providers.map((p) => ({
+          value: p.name,
+          label: p.label ?? p.name,
+          disabled: p.disabled,
+          // 自定义 filterOption 用：按组名搜索（Antd 默认只搜选项 label）。
+          groupLabel: g.label,
+        })),
+      }))
+    : providerGroups[0].providers.map((p) => ({
+        value: p.name,
+        label: p.label ?? p.name,
+        disabled: p.disabled,
+      }));
+  // Provider 搜索：选项名 + 组名都命中即保留（平铺态无 groupLabel，
+  // 行为 = 原 optionFilterProp:"label"）。
+  const providerFilterOption = (
+    input: string,
+    option?: { label?: string; groupLabel?: string },
+  ): boolean => {
+    const q = input.toLowerCase();
+    return (
+      !q ||
+      String(option?.label ?? "").toLowerCase().includes(q) ||
+      String(option?.groupLabel ?? "").toLowerCase().includes(q)
+    );
+  };
   const modelOptions = modelOptionsForProvider(providers, provider).map((m) => ({
     value: m,
     label: m,
@@ -107,7 +138,8 @@ export default function ModelPicker(props: ModelPickerProps): JSX.Element {
           onChange(next, keepModelForProvider(providers, next, model));
         }}
         options={providerOptions}
-        {...searchable}
+        showSearch
+        filterOption={providerFilterOption}
       />
       <antd.Select
         style={inline ? { width: 240 } : { width: "100%" }}

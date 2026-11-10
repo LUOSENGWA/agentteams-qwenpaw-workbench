@@ -1,11 +1,13 @@
 // CodingCLI 模型选择器目录（单一来源）——lib/codingCliModel 纯函数行为
 // 断言：
 // - buildCliModelPickerProviders（跟随选项 / CLI 条目 / Worker 候选 /
-//   同 id 去重 / grantedPairs 授予对）；
+//   同 id 去重 / grantedPairs 授予对 / 无 `· Worker` 后缀 / group 元数据
+//   → groupModelPickerProviders 分组投影）；
 // - classifyCliModel 四态 + cliModelInitialSelection（孤儿回落）；
 // - resolveCliModelSelection 的 baseUrl 规则；
 // - ModelEditModal / ModelPicker 源码接线断言（lib 单一来源、无本地重复、
-//   弹层恰好一个 ModelPicker、provider 先于 model）。
+//   弹层恰好一个 ModelPicker、provider 先于 model、分组渲染 + 搜索走
+//   groupModelPickerProviders / filterOption 组名+选项名）。
 // 直跑：node --experimental-strip-types frontend/tests/coding-cli-model-picker.test.ts
 //（node:assert/strict；lib 模块 node 可直 import——仅 import type，运行时
 // 零依赖；组件依赖 window.QwenPaw host，走源码文本断言）。
@@ -23,6 +25,7 @@ import {
   isCliFollowProvider,
   resolveCliModelSelection,
 } from "../src/lib/codingCliModel.ts";
+import { groupModelPickerProviders } from "../src/lib/modelPickerModel.ts";
 
 const libSrc = readFileSync(
   new URL("../src/lib/codingCliModel.ts", import.meta.url),
@@ -44,7 +47,12 @@ function ok(name: string, fn: () => void): void {
   console.log(`  PASS ${n} ${name}`);
 }
 
-const LABELS = { followWorker: "跟随 Worker", followSpawn: "跟随子代理" };
+const LABELS = {
+  followWorker: "跟随 Worker",
+  followSpawn: "跟随子代理",
+  followGroup: "跟随模式",
+  providerGroup: "可用提供商",
+};
 
 // ── 常量 / 哨兵判定 ──────────────────────────────────────────────────
 ok("常量：哨兵值与前缀保持既有口径（~follow~ / ~follow-spawn~ / worker:）", () => {
@@ -62,7 +70,7 @@ ok("isCliFollowProvider：两哨兵 true；真实 provider / worker: 前缀 / �
 });
 
 // ── buildCliModelPickerProviders ─────────────────────────────────────
-ok("跟随 Worker 选项：models = [mainModel]、不 disabled", () => {
+ok("跟随 Worker 选项：models = [mainModel]、不 disabled、group = followGroup", () => {
   const out = buildCliModelPickerProviders({
     entries: [],
     workerProviders: [],
@@ -74,6 +82,7 @@ ok("跟随 Worker 选项：models = [mainModel]、不 disabled", () => {
   assert.equal(out[0].label, "跟随 Worker");
   assert.deepEqual(out[0].models, ["m-main"]);
   assert.notEqual(out[0].disabled, true);
+  assert.equal(out[0].group, "跟随模式");
 });
 
 ok("mainModel === '' → 跟随 Worker 禁用（models 空）", () => {
@@ -100,6 +109,7 @@ ok("跟随子代理选项：models = [subagentModel]、不 disabled", () => {
   assert.equal(out[1].label, "跟随子代理");
   assert.deepEqual(out[1].models, ["m-spawn"]);
   assert.notEqual(out[1].disabled, true);
+  assert.equal(out[1].group, "跟随模式");
 });
 
 ok("subagentModel === '' → 跟随子代理禁用", () => {
@@ -114,7 +124,7 @@ ok("subagentModel === '' → 跟随子代理禁用", () => {
   assert.deepEqual(out[1].models, []);
 });
 
-ok("CLI 条目：label `id · baseUrl`（无 baseUrl → 纯 id）+ 声明 models", () => {
+ok("CLI 条目：label `id · baseUrl`（无 baseUrl → 纯 id）+ 声明 models + group = providerGroup", () => {
   const out = buildCliModelPickerProviders({
     entries: [
       { id: "openai", baseUrl: "https://a.example/v1", models: ["gpt-4o", "gpt-4o-mini"] },
@@ -126,12 +136,12 @@ ok("CLI 条目：label `id · baseUrl`（无 baseUrl → 纯 id）+ 声明 model
     labels: LABELS,
   });
   assert.deepEqual(out.slice(2), [
-    { name: "openai", label: "openai · https://a.example/v1", models: ["gpt-4o", "gpt-4o-mini"] },
-    { name: "gemini", label: "gemini", models: ["gemini-2"] },
+    { name: "openai", label: "openai · https://a.example/v1", models: ["gpt-4o", "gpt-4o-mini"], group: "可用提供商" },
+    { name: "gemini", label: "gemini", models: ["gemini-2"], group: "可用提供商" },
   ]);
 });
 
-ok("Worker 候选：CLI 条目同 id 时 CLI 优先（不列 worker:<同id>）；label `<name> · Worker`（用 wp.label）", () => {
+ok("Worker 候选：CLI 条目同 id 时 CLI 优先（不列 worker:<同id>）；label = wp.label 无后缀；group = providerGroup", () => {
   const out = buildCliModelPickerProviders({
     entries: [{ id: "deepseek", baseUrl: "https://d.example/v1", models: ["deepseek-chat"] }],
     workerProviders: [
@@ -149,11 +159,12 @@ ok("Worker 候选：CLI 条目同 id 时 CLI 优先（不列 worker:<同id>）�
     "worker:qwen",
   ]);
   const w = out.find((p) => p.name === "worker:qwen")!;
-  assert.equal(w.label, "Qwen (worker) · Worker");
+  assert.equal(w.label, "Qwen (worker)");
+  assert.equal(w.group, "可用提供商");
   assert.deepEqual(w.models, ["qwen3"]);
 });
 
-ok("Worker 候选：name 空 / models 空者剔除；无 label 时回退 name", () => {
+ok("Worker 候选：name 空 / models 空者剔除；无 label 时回退 name（无后缀）", () => {
   const out = buildCliModelPickerProviders({
     entries: [],
     workerProviders: [
@@ -167,8 +178,21 @@ ok("Worker 候选：name 空 / models 空者剔除；无 label 时回退 name", 
   });
   const workers = out.filter((p) => p.name.startsWith(CLI_WORKER_PROVIDER_PREFIX));
   assert.deepEqual(workers, [
-    { name: "worker:solo", label: "solo · Worker", models: ["s1"] },
+    { name: "worker:solo", label: "solo", models: ["s1"], group: "可用提供商" },
   ]);
+});
+
+ok("全目录无 `· Worker` 后缀（label 一律纯净）", () => {
+  const out = buildCliModelPickerProviders({
+    entries: [{ id: "openai", baseUrl: "https://a.example/v1", models: ["gpt-4o"] }],
+    workerProviders: [{ name: "qwen", label: "Qwen", models: ["qwen3"] }],
+    mainModel: "m",
+    subagentModel: "s",
+    labels: LABELS,
+  });
+  for (const p of out) {
+    assert.ok(!p.label.includes("· Worker"), `${p.name} 的 label 不应带 · Worker 后缀`);
+  }
 });
 
 ok("grantedPairs 非空：授予对是唯一独立候选源（模型去重、顺序保留；label 命中条目 → id · baseUrl；不列 Worker 候选）", () => {
@@ -189,8 +213,8 @@ ok("grantedPairs 非空：授予对是唯一独立候选源（模型去重、顺
     ],
   });
   assert.deepEqual(out.slice(2), [
-    { name: "openai", label: "openai · https://a.example/v1", models: ["gpt-4o", "gpt-4o-mini"] },
-    { name: "anthropic", label: "anthropic", models: ["claude-3"] },
+    { name: "openai", label: "openai · https://a.example/v1", models: ["gpt-4o", "gpt-4o-mini"], group: "可用提供商" },
+    { name: "anthropic", label: "anthropic", models: ["claude-3"], group: "可用提供商" },
   ]);
 });
 
@@ -208,6 +232,37 @@ ok("grantedPairs 缺省 → 无限制（跟随 + 条目 + Worker 候选全列）
     "openai",
     "worker:qwen",
   ]);
+});
+
+// ── 分组（group 元数据 → groupModelPickerProviders 投影）──────────────
+ok("分组投影：「跟随模式」在前、「可用提供商」在后（首次出现序），成员归属正确", () => {
+  const out = buildCliModelPickerProviders({
+    entries: [{ id: "openai", baseUrl: "https://a.example/v1", models: ["gpt-4o"] }],
+    workerProviders: [{ name: "qwen", label: "Qwen", models: ["qwen3"] }],
+    mainModel: "m",
+    subagentModel: "s",
+    labels: LABELS,
+  });
+  const groups = groupModelPickerProviders(out);
+  assert.deepEqual(groups.map((g) => g.label), ["跟随模式", "可用提供商"]);
+  assert.deepEqual(groups[0].providers.map((p) => p.name), [
+    CLI_FOLLOW_WORKER,
+    CLI_FOLLOW_SPAWN,
+  ]);
+  assert.deepEqual(groups[1].providers.map((p) => p.name), ["openai", "worker:qwen"]);
+});
+
+ok("分组投影：无 Worker 候选时仍两组（跟随 / 可用提供商只含 CLI 条目）", () => {
+  const out = buildCliModelPickerProviders({
+    entries: [{ id: "openai", baseUrl: "https://a.example/v1", models: ["gpt-4o"] }],
+    workerProviders: [],
+    mainModel: "m",
+    subagentModel: "",
+    labels: LABELS,
+  });
+  const groups = groupModelPickerProviders(out);
+  assert.deepEqual(groups.map((g) => g.label), ["跟随模式", "可用提供商"]);
+  assert.deepEqual(groups[1].providers.map((p) => p.name), ["openai"]);
 });
 
 // ── classifyCliModel：四态 ───────────────────────────────────────────
@@ -410,6 +465,32 @@ ok("lib：`id · baseUrl` label + 跟随标签来自调用方 labels（纯函数
   assert.match(libSrc, /labels\.followWorker/);
   assert.match(libSrc, /labels\.followSpawn/);
   assert.doesNotMatch(libSrc, /window\./);
+});
+
+ok("lib：group 元数据下发（followGroup / providerGroup）+ 源码无 `· Worker` 后缀", () => {
+  assert.match(libSrc, /group: labels\.followGroup/);
+  assert.match(libSrc, /group: labels\.providerGroup/);
+  assert.doesNotMatch(libSrc, /· Worker/);
+});
+
+ok("ModelEditModal：分组标签由调用方 i18n 传入（tr(跟随模式) / tr(可用提供商)）+ 无 `· Worker` 文案", () => {
+  assert.match(modalSrc, /followGroup: tr\("跟随模式"\)/);
+  assert.match(modalSrc, /providerGroup: tr\("可用提供商"\)/);
+  assert.doesNotMatch(modalSrc, /· Worker/);
+});
+
+ok("ModelPicker：分组渲染走 lib groupModelPickerProviders（无本地分组逻辑）", () => {
+  assert.match(pickerSrc, /groupModelPickerProviders\(providers\)/);
+});
+
+ok("ModelPicker：Provider 搜索保留 showSearch，filterOption 覆盖组名 + 选项名", () => {
+  const pStart = pickerSrc.indexOf("options={providerOptions}");
+  assert.ok(pStart > 0, "provider Select 渲染 options={providerOptions}");
+  const after = pickerSrc.slice(pStart, pStart + 200);
+  assert.match(after, /showSearch/);
+  assert.match(after, /filterOption=\{providerFilterOption\}/);
+  assert.match(pickerSrc, /String\(option\?\.groupLabel \?\? ""\)\.toLowerCase\(\)\.includes\(q\)/);
+  assert.match(pickerSrc, /String\(option\?\.label \?\? ""\)\.toLowerCase\(\)\.includes\(q\)/);
 });
 
 ok("ModelPicker：Provider 选择器在 Model 选择器之前（唯一选择器，顺序不变）", () => {

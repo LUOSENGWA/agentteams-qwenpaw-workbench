@@ -326,6 +326,8 @@ export const chatDict: Record<string, { en: string }> = {
   "CodingCLI 模型": { en: "CodingCLI models" },
   "跟随 Worker": { en: "Follow worker" },
   "跟随子代理": { en: "Follow subagent" },
+  "跟随模式": { en: "Follow mode" },
+  "可用提供商": { en: "Available providers" },
   "跟随主模型": { en: "Follows main model" },
   "跟随目标模型未设置，无法保存": { en: "Follow target model is not set; cannot save" },
   "独立": { en: "Independent" },

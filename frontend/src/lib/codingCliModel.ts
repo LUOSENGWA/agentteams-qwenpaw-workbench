@@ -234,16 +234,27 @@ export interface CliModelPickerInput {
   /** L2 授予 (provider, model) 对（缺省/空 = 无授予集 → 无限制；非空 =
    * 授予对是独立 Provider 的唯一候选源，不列 Worker 候选）。 */
   grantedPairs?: ModelAccessPair[];
-  /** 展示标签（调用方 i18n 化后传入；本模块保持纯函数不碰 window）。 */
-  labels: { followWorker: string; followSpawn: string };
+  /** 展示标签与分组名（调用方 i18n 化后传入；本模块保持纯函数不碰
+   * window）。分组经 ModelPickerProvider.group 下发，ModelPicker 统一
+   * 渲染（groupModelPickerProviders），本模块不渲染。 */
+  labels: {
+    followWorker: string;
+    followSpawn: string;
+    /** 「跟随 Worker / 跟随子代理」两选项的分组标签。 */
+    followGroup: string;
+    /** CLI modelProviders 条目 + Worker 目录候选（+L2 授予对）的分组标签。 */
+    providerGroup: string;
+  };
 }
 
 /** CodingCLI 模型弹层的唯一 Provider 目录。顺序 = 跟随 Worker / 跟随
- * 子代理 / CLI 条目（label `id · baseUrl`）/ Worker 候选（`worker:<name>`，
- * label `<name> · Worker`；与 CLI 条目同 id 时 CLI 条目优先，不重复列；
- * name/models 空者剔除）。grantedPairs 非空时独立 Provider 只取授予对
- * （方向 provider → models，模型去重；不列 Worker 候选）。每个 provider
- * 的 models 即 ModelPicker 候选源（过滤/清空由 ModelPicker 统一执行）。 */
+ * 子代理（group = labels.followGroup）/ CLI 条目（label `id · baseUrl`）/
+ * Worker 候选（`worker:<name>`，label `wp.label ?? wp.name`，无后缀；与 CLI
+ * 条目同 id 时 CLI 条目优先，不重复列；name/models 空者剔除），后两者
+ * group = labels.providerGroup。grantedPairs 非空时独立 Provider 只取授予对
+ * （方向 provider → models，模型去重，group 同上；不列 Worker 候选）。每个
+ * provider 的 models 即 ModelPicker 候选源（分组渲染/过滤/清空由 ModelPicker
+ * 统一执行，本模块只下发 group 元数据）。 */
 export function buildCliModelPickerProviders(
   input: CliModelPickerInput,
 ): ModelPickerProvider[] {
@@ -255,12 +266,14 @@ export function buildCliModelPickerProviders(
       label: labels.followWorker,
       models: mainModel ? [mainModel] : [],
       disabled: mainModel === "",
+      group: labels.followGroup,
     },
     {
       name: CLI_FOLLOW_SPAWN,
       label: labels.followSpawn,
       models: subagentModel ? [subagentModel] : [],
       disabled: subagentModel === "",
+      group: labels.followGroup,
     },
   ];
   if (grantedPairs.length > 0) {
@@ -278,6 +291,7 @@ export function buildCliModelPickerProviders(
         name: id,
         label: e?.baseUrl ? `${id} · ${e.baseUrl}` : id,
         models,
+        group: labels.providerGroup,
       });
     }
     return out;
@@ -287,6 +301,7 @@ export function buildCliModelPickerProviders(
       name: e.id,
       label: e.baseUrl ? `${e.id} · ${e.baseUrl}` : e.id,
       models: e.models,
+      group: labels.providerGroup,
     });
   }
   for (const wp of workerProviders) {
@@ -295,8 +310,9 @@ export function buildCliModelPickerProviders(
     if (entries.some((e) => e.id === wp.name)) continue;
     out.push({
       name: `${CLI_WORKER_PROVIDER_PREFIX}${wp.name}`,
-      label: `${wp.label ?? wp.name} · Worker`,
+      label: wp.label ?? wp.name,
       models,
+      group: labels.providerGroup,
     });
   }
   return out;
