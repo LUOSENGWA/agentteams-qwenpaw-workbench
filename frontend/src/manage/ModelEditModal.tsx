@@ -410,7 +410,17 @@ export default function ModelEditModal({
         {/* C1a-2：CodingCLI 模型区块——仅 Worker（workerName）+ L1 渲染；
          * Manager 详情不传 workerName → 不渲染（自检①）。 */}
         {workerName && l1 ? (
-          <CodingCliModelSection workerName={workerName} mainModel={currentModel} subagentModel={currentSubagentModel} access={access} l1={l1} />
+          <CodingCliModelSection
+            workerName={workerName}
+            mainModel={currentModel}
+            subagentModel={currentSubagentModel}
+            access={access}
+            l1={l1}
+            // Worker 主模型 Provider 目录（仅留有候选模型的 provider）→ CLI 模型
+            // 弹层追加「· Worker」候选（无 CLI modelProviders 条目时也是真实
+            // Provider 选择，不只是跟随）。
+            workerProviders={pickerProviders.filter((p) => p.name && p.models.length > 0)}
+          />
         ) : null}
 
         <div
@@ -468,6 +478,9 @@ function accessBadge(
  * （Select option 之一；两者均 = 不写 baseUrl，只把 model 名指向跟随目标）。 */
 const FOLLOW_PROVIDER = "~follow~";
 const FOLLOW_SPAWN_PROVIDER = "~follow-spawn~";
+/** Worker 模型目录候选的 Provider 值前缀（与 CLI modelProviders 条目 id 区分；
+ * 保存 = 仅模型 hint，不写 baseUrl，路由仍按 Worker/CLI 默认解析）。 */
+const WORKER_PROVIDER_PREFIX = "worker:";
 
 // ── C1a-2：CodingCLI 模型区块（仅 Worker 详情 + L1）────────────────
 // 「选 Provider」= 写 model.baseUrl（qwen-code 按 name+baseUrl 成对解析；
@@ -482,6 +495,7 @@ function CodingCliModelSection({
   subagentModel,
   access,
   l1,
+  workerProviders,
 }: {
   workerName: string;
   mainModel: string;
@@ -492,6 +506,8 @@ function CodingCliModelSection({
   /** L1（有 controller token）：控制器写路径对 admin/manager 跳过 grant
    * 校验 → 授权徽标/限制不生效（restricted=false）；L2 保持原 grant 门控。 */
   l1: boolean;
+  /** Worker 主模型 Provider 目录（可选；缺省 = 修改弹层不列「· Worker」候选）。 */
+  workerProviders?: ModelPickerProvider[];
 }) {
   const t = useThemeColors();
   const tr = useT();
@@ -712,6 +728,7 @@ function CodingCliModelSection({
               ? grantedPairs(access.surfaces, "codingCli", editing)
               : []
           }
+          workerProviders={workerProviders}
           onClose={() => setEditing(null)}
           onSaved={() => refreshCli(editing)}
         />
@@ -721,8 +738,10 @@ function CodingCliModelSection({
 }
 
 // 修改弹层（先 Provider 后模型）：Provider 选项 = 「跟随 Worker」+「跟随子代理」
-// + cliModelEntries() 条目（显示 id · baseUrl）；模型选项 = 跟随模式仅跟随
-// 目标（只读/选中）、独立 = 所选 Provider 声明的 models + 自由输入。
+// + cliModelEntries() 条目（显示 id · baseUrl）+ Worker 模型目录候选
+// （值 worker:<name>、label「<name> · Worker」；不写 baseUrl，只把 model 名
+// 指向所选 Worker Provider 的模型）；模型选项 = 跟随模式仅跟随目标（只读/
+// 选中）、独立 = 所选 Provider 声明的 models + 自由输入。
 // 「跟随」= 不指定 baseUrl，把 model 名写成 Worker 主模型 / 子代理模型。
 function CliModelEditDialog({
   workerName,
@@ -731,6 +750,7 @@ function CliModelEditDialog({
   mainModel,
   subagentModel,
   pairs,
+  workerProviders,
   onClose,
   onSaved,
 }: {
@@ -743,6 +763,9 @@ function CliModelEditDialog({
   subagentModel: string;
   /** C2（#1513）：该 CLI surface 的授予 (provider, model) 对（空 = 无授予集 → 现状）。 */
   pairs: ModelAccessPair[];
+  /** Worker 主模型 Provider 目录（可选；缺省 = 不列「· Worker」候选）。
+   * 有授予集（L2）时不列——授予对是唯一候选源（语义不变）。 */
+  workerProviders?: ModelPickerProvider[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -785,14 +808,32 @@ function CliModelEditDialog({
     ? Array.from(new Set(pairs.map((p) => p.provider)))
     : [];
 
+  // Worker 模型目录候选（值 = worker:<name>、label = <name> · Worker）：
+  // 有授予集时不列（授予对是唯一候选源，L2 语义不变）；CLI modelProviders
+  // 已有同 id 条目 → 不重复列（CLI 条目带 baseUrl 优先）。
+  const workerOptions: ModelPickerProvider[] = granted
+    ? []
+    : (workerProviders ?? [])
+        .filter((wp) => wp.name && (wp.models?.length ?? 0) > 0)
+        .filter((wp) => !entries.some((e) => e.id === wp.name))
+        .map((wp) => ({
+          name: `${WORKER_PROVIDER_PREFIX}${wp.name}`,
+          label: `${wp.label ?? wp.name} · Worker`,
+          models: wp.models ?? [],
+        }));
+
   // 唯一 ModelPicker 的候选：跟随哨兵 → 仅跟随目标；独立 provider → 声明
-  // models。有授予集时独立候选只列授予的对（C2/#1513 语义不变）。
-  const modelOptionsFor = (pid: string): string[] =>
-    (
+  // models；Worker 候选 → 该 Worker provider 的模型列表。有授予集时独立
+  // 候选只列授予的对（C2/#1513 语义不变）。
+  const modelOptionsFor = (pid: string): string[] => {
+    const w = workerOptions.find((x) => x.name === pid);
+    if (w) return (w.models ?? []).filter((m, i, a) => a.indexOf(m) === i);
+    return (
       granted
         ? pairs.filter((p) => p.provider === pid).map((p) => p.model)
         : (entries.find((x) => x.id === pid)?.models ?? allModels)
     ).filter((m, i, a) => a.indexOf(m) === i);
+  };
   const providerLabel = (id: string): string => {
     const e = entries.find((x) => x.id === id);
     return e?.baseUrl ? `${id} · ${e.baseUrl}` : id;
@@ -814,6 +855,7 @@ function CliModelEditDialog({
       label: providerLabel(id),
       models: modelOptionsFor(id),
     })),
+    ...workerOptions,
   ];
 
   // 跟随模式：模型恒为跟随目标（展示只读/选中；清空也弹回目标）；
@@ -884,11 +926,18 @@ function CliModelEditDialog({
         )}
         {isObject && entries.length === 0 ? (
           <div style={{ fontSize: 11, color: t.textSecondary }}>
-            {tr("当前没有独立 Provider 条目；可跟随 Worker / 子代理，或在 Coding CLI settings 里配置 modelProviders。")}
+            {workerOptions.length > 0
+              ? tr("CLI settings 暂无 modelProviders 条目；可选 Worker Provider 候选（只写模型名，不写 baseUrl），或跟随 Worker / 子代理。")
+              : tr("当前没有独立 Provider 条目；可跟随 Worker / 子代理，或在 Coding CLI settings 里配置 modelProviders。")}
           </div>
         ) : isObject && orphaned ? (
           <div style={{ fontSize: 11, color: t.textSecondary }}>
             {tr("Provider 条目由 Coding CLI 面板维护（L1）")}
+          </div>
+        ) : null}
+        {isObject && entries.length > 0 && workerOptions.length > 0 ? (
+          <div style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("带「· Worker」后缀 = Worker 模型目录候选（只写模型名，不写 baseUrl；路由仍按 CLI/Worker 默认）。")}
           </div>
         ) : null}
         <div>
