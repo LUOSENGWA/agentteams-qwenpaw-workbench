@@ -27,8 +27,14 @@ import type {
 } from "../api/domains/modelAccess";
 import {
   buildCliModelPatch,
+  buildCliModelPickerProviders,
+  classifyCliModel,
+  CLI_WORKER_PROVIDER_PREFIX,
   cliCurrentModel,
   cliModelEntries,
+  cliModelInitialSelection,
+  isCliFollowProvider,
+  resolveCliModelSelection,
 } from "../lib/codingCliModel";
 import {
   grantedPairs,
@@ -416,10 +422,10 @@ export default function ModelEditModal({
             subagentModel={currentSubagentModel}
             access={access}
             l1={l1}
-            // Worker 主模型 Provider 目录（仅留有候选模型的 provider）→ CLI 模型
-            // 弹层追加「· Worker」候选（无 CLI modelProviders 条目时也是真实
-            // Provider 选择，不只是跟随）。
-            workerProviders={pickerProviders.filter((p) => p.name && p.models.length > 0)}
+            // Worker 主模型 Provider 目录原样透传（空候选在
+            // buildCliModelPickerProviders 内统一剔除）→ CLI 模型弹层
+            // 「· Worker」候选。
+            workerProviders={pickerProviders}
           />
         ) : null}
 
@@ -474,15 +480,10 @@ function accessBadge(
   );
 }
 
-/** 「跟随 Worker（不指定 baseUrl）」/「跟随子代理」的 Provider 哨兵值
- * （Select option 之一；两者均 = 不写 baseUrl，只把 model 名指向跟随目标）。 */
-const FOLLOW_PROVIDER = "~follow~";
-const FOLLOW_SPAWN_PROVIDER = "~follow-spawn~";
-/** Worker 模型目录候选的 Provider 值前缀（与 CLI modelProviders 条目 id 区分；
- * 保存 = 仅模型 hint，不写 baseUrl，路由仍按 Worker/CLI 默认解析）。 */
-const WORKER_PROVIDER_PREFIX = "worker:";
-
 // ── C1a-2：CodingCLI 模型区块（仅 Worker 详情 + L1）────────────────
+// 哨兵值 / 跟随判定 / 保存语义的单一来源 = lib/codingCliModel
+// （CLI_FOLLOW_WORKER / CLI_FOLLOW_SPAWN / CLI_WORKER_PROVIDER_PREFIX /
+//  classifyCliModel / resolveCliModelSelection）。
 // 「选 Provider」= 写 model.baseUrl（qwen-code 按 name+baseUrl 成对解析；
 // 多 provider 同模型名时 baseUrl 是消歧键，见 lib/codingCliModel 头注）。
 // 数据：listCodingCli（探针，只列 installed）→ 逐个 getCliSettings；
@@ -621,26 +622,17 @@ function CodingCliModelSection({
           const s = settings[p.cli];
           const cur = s ? cliCurrentModel(s.settings) : null;
           const modelText = err ? "" : cur && cur.name ? cur.name : tr("未配置");
-          // 状态判定（行内展示 + 修改弹层默认 Provider 同源语义）：
-          // 无 baseUrl + 名 = 主模型 → 跟随 Worker；无 baseUrl + 名 = 子代理模型
-          // （且 ≠ 主模型）→ 跟随子代理；否则 → 独立 / 未配置。
-          const status: "none" | "follow" | "follow-spawn" | "indep" =
-            !cur || !cur.name
-              ? "none"
-              : cur.baseUrl === "" && cur.name === mainModel
-                ? "follow"
-                : cur.baseUrl === "" &&
-                    subagentModel !== "" &&
-                    cur.name === subagentModel &&
-                    subagentModel !== mainModel
-                  ? "follow-spawn"
-                  : "indep";
+          // 状态判定 = classifyCliModel（单一来源；行 statusText 与修改弹层
+          // 默认 Provider 均由它派生）。
+          const status = s
+            ? classifyCliModel(s.settings, mainModel, subagentModel)
+            : "none";
           const statusText =
-            status === "follow"
+            status === "follow-worker"
               ? tr("跟随 Worker")
               : status === "follow-spawn"
                 ? tr("跟随子代理")
-                : status === "indep"
+                : status === "independent"
                   ? tr("独立")
                   : tr("未配置");
           const rowText =
@@ -737,12 +729,14 @@ function CodingCliModelSection({
   );
 }
 
-// 修改弹层（先 Provider 后模型）：Provider 选项 = 「跟随 Worker」+「跟随子代理」
-// + cliModelEntries() 条目（显示 id · baseUrl）+ Worker 模型目录候选
-// （值 worker:<name>、label「<name> · Worker」；不写 baseUrl，只把 model 名
-// 指向所选 Worker Provider 的模型）；模型选项 = 跟随模式仅跟随目标（只读/
-// 选中）、独立 = 所选 Provider 声明的 models + 自由输入。
-// 「跟随」= 不指定 baseUrl，把 model 名写成 Worker 主模型 / 子代理模型。
+// 修改弹层（先 Provider 后模型）：Provider 候选目录 =
+// buildCliModelPickerProviders（lib 单一来源——「跟随 Worker」/「跟随子代理」
+// 哨兵 + cliModelEntries() 条目（id · baseUrl）+ Worker 模型目录候选
+// worker:<name>（label「<name> · Worker」）+ L2 授予对；空候选剔除与 CLI
+// 条目优先于同 id Worker 均在其内）。「跟随」= 不指定 baseUrl，把 model 名
+// 写成 Worker 主模型 / 子代理模型（保存语义 = resolveCliModelSelection；
+// 初始 Provider/Model = cliModelInitialSelection）。模型过滤 / 换 Provider
+// 清空由 ModelPicker 统一执行（modelOptionsForProvider / keepModelForProvider）。
 function CliModelEditDialog({
   workerName,
   cli,
@@ -775,108 +769,61 @@ function CliModelEditDialog({
   const entries = cliModelEntries(settings.settings);
   const cur = cliCurrentModel(settings.settings);
 
-  // 默认 Provider：当前 baseUrl 命中独立条目 → 该 provider；
-  // 否则模型 = 子代理模型（且 ≠ 主模型）→ 跟随子代理；否则 → 跟随 Worker。
-  const initialProvider =
-    cur.providerId ??
-    (subagentModel !== "" && cur.name === subagentModel && subagentModel !== mainModel
-      ? FOLLOW_SPAWN_PROVIDER
-      : FOLLOW_PROVIDER);
-  const [provider, setProvider] = React.useState<string>(initialProvider);
-  const [model, setModel] = React.useState(
-    initialProvider === FOLLOW_PROVIDER
-      ? mainModel
-      : initialProvider === FOLLOW_SPAWN_PROVIDER
-        ? subagentModel
-        : cur.name,
-  );
-  const [saving, setSaving] = React.useState(false);
-
   // 孤儿 baseUrl：有值但反查不到任何 provider 条目（手工改过）→ 行内提示
   // provider 条目由面板维护。
   const orphaned = cur.baseUrl !== "" && cur.providerId === null;
-  const isFollow = provider === FOLLOW_PROVIDER || provider === FOLLOW_SPAWN_PROVIDER;
-  const followTarget =
-    provider === FOLLOW_PROVIDER ? mainModel : provider === FOLLOW_SPAWN_PROVIDER ? subagentModel : "";
-  const chosen = isFollow ? null : (entries.find((e) => e.id === provider) ?? null);
-  const allModels = Array.from(new Set(entries.flatMap((e) => e.models)));
 
-  // C2（#1513）：有授予集 → 候选只列授予的 (provider, model) 对（方向
-  // provider → models）；无 → 现状。
-  const granted = pairs.length > 0;
-  const grantedProviders = granted
-    ? Array.from(new Set(pairs.map((p) => p.provider)))
-    : [];
+  // 初始 Provider/Model = cliModelInitialSelection（lib 单一来源：独立态
+  // 按 baseUrl 命中条目 → 该 provider；孤儿 → 回落跟随 Worker）。
+  const initial = cliModelInitialSelection(settings.settings, mainModel, subagentModel);
+  const [provider, setProvider] = React.useState<string>(initial.provider);
+  const [model, setModel] = React.useState(initial.model);
+  const [saving, setSaving] = React.useState(false);
+  const isFollow = isCliFollowProvider(provider);
 
-  // Worker 模型目录候选（值 = worker:<name>、label = <name> · Worker）：
-  // 有授予集时不列（授予对是唯一候选源，L2 语义不变）；CLI modelProviders
-  // 已有同 id 条目 → 不重复列（CLI 条目带 baseUrl 优先）。
-  const workerOptions: ModelPickerProvider[] = granted
-    ? []
-    : (workerProviders ?? [])
-        .filter((wp) => wp.name && (wp.models?.length ?? 0) > 0)
-        .filter((wp) => !entries.some((e) => e.id === wp.name))
-        .map((wp) => ({
-          name: `${WORKER_PROVIDER_PREFIX}${wp.name}`,
-          label: `${wp.label ?? wp.name} · Worker`,
-          models: wp.models ?? [],
-        }));
+  // ModelPicker 的 Provider 候选目录（单一来源；L2 授予对由 helper 内
+  // 处理——授予集非空时独立候选只取授予对，不列 Worker 候选）。
+  const pickerProviders = buildCliModelPickerProviders({
+    entries,
+    workerProviders: workerProviders ?? [],
+    mainModel,
+    subagentModel,
+    grantedPairs: pairs,
+    labels: { followWorker: tr("跟随 Worker"), followSpawn: tr("跟随子代理") },
+  });
+  const hasWorkerOptions = pickerProviders.some((p) =>
+    p.name.startsWith(CLI_WORKER_PROVIDER_PREFIX),
+  );
 
-  // 唯一 ModelPicker 的候选：跟随哨兵 → 仅跟随目标；独立 provider → 声明
-  // models；Worker 候选 → 该 Worker provider 的模型列表。有授予集时独立
-  // 候选只列授予的对（C2/#1513 语义不变）。
-  const modelOptionsFor = (pid: string): string[] => {
-    const w = workerOptions.find((x) => x.name === pid);
-    if (w) return (w.models ?? []).filter((m, i, a) => a.indexOf(m) === i);
-    return (
-      granted
-        ? pairs.filter((p) => p.provider === pid).map((p) => p.model)
-        : (entries.find((x) => x.id === pid)?.models ?? allModels)
-    ).filter((m, i, a) => a.indexOf(m) === i);
-  };
-  const providerLabel = (id: string): string => {
-    const e = entries.find((x) => x.id === id);
-    return e?.baseUrl ? `${id} · ${e.baseUrl}` : id;
-  };
-  const pickerProviders: ModelPickerProvider[] = [
-    {
-      name: FOLLOW_PROVIDER,
-      label: tr("跟随 Worker"),
-      models: mainModel ? [mainModel] : [],
-    },
-    {
-      name: FOLLOW_SPAWN_PROVIDER,
-      label: tr("跟随子代理"),
-      models: subagentModel ? [subagentModel] : [],
-      disabled: subagentModel === "",
-    },
-    ...(granted ? grantedProviders : entries.map((e) => e.id)).map((id) => ({
-      name: id,
-      label: providerLabel(id),
-      models: modelOptionsFor(id),
-    })),
-    ...workerOptions,
-  ];
-
+  // 保存语义 = resolveCliModelSelection（跟随 → 目标名、不写 baseUrl；
+  // 独立 → 所选/输入模型 trim + 对应条目 baseUrl）。
+  const selection = resolveCliModelSelection(provider, model, mainModel, subagentModel, entries);
   // 跟随模式：模型恒为跟随目标（展示只读/选中；清空也弹回目标）；
   // 独立模式 = 用户所选/输入。
-  const shownModel = isFollow ? followTarget : model;
-  const saveModel = isFollow ? followTarget : model.trim();
+  const shownModel = isFollow ? selection.name : model;
 
   // C2：要保存的值不在授予集合（例如历史值）→ 保存禁用 + 提示。
   // 跟随模式无 provider 维度 → 仅目标模型在授予对中即可；独立对象形态须
   // (provider, model) 成对存在；扁平形态看 model 是否在授予对中出现。
-  const pairOk = granted
-    ? isFollow || !isObject
-      ? pairs.some((p) => p.model === saveModel)
-      : pairAllowed(pairs, provider, saveModel)
-    : true;
+  const pairOk =
+    pairs.length > 0
+      ? isFollow || !isObject
+        ? pairs.some((p) => p.model === selection.name)
+        : pairAllowed(pairs, provider, selection.name)
+      : true;
 
   const labelStyle = { fontSize: 13, color: t.textSecondary, marginBottom: 6 } as const;
 
   const handleSave = async () => {
-    // 跟随模式恒写跟随目标（不受模型框影响）；独立模式 = 所选/输入模型。
-    const name = isFollow ? followTarget : model.trim();
+    // 保存语义 = resolveCliModelSelection（lib 单一来源；跟随模式不受
+    // 模型框影响，恒写跟随目标）。
+    const { name, baseUrl } = resolveCliModelSelection(
+      provider,
+      model,
+      mainModel,
+      subagentModel,
+      entries,
+    );
     if (!name) return;
     setSaving(true);
     try {
@@ -886,7 +833,7 @@ function CliModelEditDialog({
         cli,
         (settings.settings as Record<string, unknown>).model,
         name,
-        isFollow ? "" : chosen ? chosen.baseUrl : "",
+        baseUrl,
       );
       // buildCliModelPatch 返回 Record<string, unknown>（纯函数宽口）；此处
       // 补丁只含 model 键（string | 纯 JSON 对象）= 合法 SettingsObject。
@@ -914,7 +861,7 @@ function CliModelEditDialog({
       okText={tr("保存")}
       cancelText={tr("取消")}
       confirmLoading={saving}
-      okButtonProps={{ disabled: saving || saveModel === "" || !pairOk }}
+      okButtonProps={{ disabled: saving || selection.name === "" || !pairOk }}
       destroyOnClose
       width={Math.min(480, window.innerWidth - 48)}
     >
@@ -926,7 +873,7 @@ function CliModelEditDialog({
         )}
         {isObject && entries.length === 0 ? (
           <div style={{ fontSize: 11, color: t.textSecondary }}>
-            {workerOptions.length > 0
+            {hasWorkerOptions
               ? tr("CLI settings 暂无 modelProviders 条目；可选 Worker Provider 候选（只写模型名，不写 baseUrl），或跟随 Worker / 子代理。")
               : tr("当前没有独立 Provider 条目；可跟随 Worker / 子代理，或在 Coding CLI settings 里配置 modelProviders。")}
           </div>
@@ -935,7 +882,7 @@ function CliModelEditDialog({
             {tr("Provider 条目由 Coding CLI 面板维护（L1）")}
           </div>
         ) : null}
-        {isObject && entries.length > 0 && workerOptions.length > 0 ? (
+        {isObject && entries.length > 0 && hasWorkerOptions ? (
           <div style={{ fontSize: 11, color: t.textSecondary }}>
             {tr("带「· Worker」后缀 = Worker 模型目录候选（只写模型名，不写 baseUrl；路由仍按 CLI/Worker 默认）。")}
           </div>
@@ -952,17 +899,13 @@ function CliModelEditDialog({
             modelPlaceholder={tr("模型")}
             onChange={(p: string, m: string) => {
               setProvider(p);
-              // 跟随模式：模型恒为跟随目标（ModelPicker 的 keep 清空不适用）；
-              // 独立模式：沿用 ModelPicker 的换 Provider 清空判定。
-              if (p === FOLLOW_PROVIDER || p === FOLLOW_SPAWN_PROVIDER) {
-                setModel(p === FOLLOW_PROVIDER ? mainModel : subagentModel);
-              } else {
-                setModel(m);
-              }
+              // 换 Provider 的 keep/清空已由 ModelPicker（keepModelForProvider）
+              // 应用到 m；跟随模式展示值恒为跟随目标（selection 派生）。
+              setModel(m);
             }}
           />
           {/* 跟随目标未设置 → 保存禁用 + 提示（跟随子代理空目标时选项本身已禁用） */}
-          {isFollow && followTarget === "" ? (
+          {isFollow && selection.name === "" ? (
             <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>
               {tr("跟随目标模型未设置，无法保存")}
             </div>

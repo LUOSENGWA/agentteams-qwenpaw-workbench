@@ -303,9 +303,15 @@ ok("CodingCLI：inherit / !canEdit / locked → 编辑禁用；grant 对传入�
 });
 
 ok("授予集合对限制：主区 provider/模型候选来自授予对；CLI 弹层保存门含 pairOk（不在授予集 → 禁用 + 提示）", () => {
-  assert.match(modalSrc, /mainPairs\.filter\(\(p\) => p\.provider === provider\)/);
+  assert.match(
+    modalSrc,
+    /if \(mainPairs\.length > 0\) \{\n\s*for \(const p of mainPairs\) push\(p\.provider, p\.model\)/,
+  );
   assert.match(modalSrc, /pairAllowed\(mainPairs, provider, model\)/);
-  assert.match(modalSrc, /okButtonProps=\{\{ disabled: saving \|\| model\.trim\(\) === "" \|\| !pairOk \}\}/);
+  assert.match(
+    modalSrc,
+    /okButtonProps=\{\{ disabled: saving \|\| selection\.name === "" \|\| !pairOk \}\}/,
+  );
   assert.ok(modalSrc.includes(`tr("该组合不在授权范围")`));
 });
 

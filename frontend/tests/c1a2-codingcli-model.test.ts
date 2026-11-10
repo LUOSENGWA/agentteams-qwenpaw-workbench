@@ -18,6 +18,10 @@ import {
   cliModelEntries,
 } from "../src/lib/codingCliModel.ts";
 
+const libSrc = readFileSync(
+  new URL("../src/lib/codingCliModel.ts", import.meta.url),
+  "utf8",
+);
 const modalSrc = readFileSync(
   new URL("../src/manage/ModelEditModal.tsx", import.meta.url),
   "utf8",
@@ -182,7 +186,10 @@ ok("ModelEditModal：新 props workerName/l1 + 区块门控（仅 workerName 存
   assert.match(modalSrc, /workerName\?: string;/);
   assert.match(modalSrc, /l1\?: boolean;/);
   assert.match(modalSrc, /\{workerName && l1 \?/);
-  assert.match(modalSrc, /<CodingCliModelSection workerName=\{workerName\} mainModel=\{currentModel\}/);
+  assert.match(
+    modalSrc,
+    /<CodingCliModelSection[\s\S]{0,400}?workerName=\{workerName\}[\s\S]{0,200}?mainModel=\{currentModel\}/,
+  );
 });
 
 ok("ModelEditModal：数据链齐全（listCodingCli 探针 + getCliSettings + putCliSettings 保存）", () => {
@@ -192,21 +199,24 @@ ok("ModelEditModal：数据链齐全（listCodingCli 探针 + getCliSettings + p
   assert.match(modalSrc, /p\.installed/);
 });
 
-ok("ModelEditModal：先 Provider 后模型（区块内 Provider 控件在模型控件之前）", () => {
-  const start = modalSrc.indexOf('{tr("CodingCLI 模型")}');
-  assert.ok(start > 0, "CodingCLI 模型区块标记存在");
-  const tail = modalSrc.slice(start);
-  const p = tail.indexOf('{tr("Provider")}');
-  const m = tail.indexOf('{tr("模型")}');
-  assert.ok(p > 0, "区块内有 Provider 控件");
-  assert.ok(m > 0, "区块内有模型控件");
-  assert.ok(p < m, "Provider 在模型之前");
+ok("ModelEditModal：弹层单一 ModelPicker（先 Provider 后模型由 ModelPicker 统一执行）", () => {
+  const start = modalSrc.indexOf("function CliModelEditDialog");
+  assert.ok(start > 0, "CliModelEditDialog 存在");
+  const dialogSrc = modalSrc.slice(start);
+  assert.equal(
+    dialogSrc.split("<ModelPicker").length - 1,
+    1,
+    "弹层恰好一个 ModelPicker",
+  );
+  assert.match(dialogSrc, /providers=\{pickerProviders\}/);
 });
 
-ok("ModelEditModal：Provider 选项 = cliModelEntries() 条目（id · baseUrl）+ 跟随 Worker", () => {
+ok("ModelEditModal：Provider 候选目录 = buildCliModelPickerProviders（lib 单一来源：cliModelEntries 条目 id · baseUrl + 跟随 Worker）", () => {
   assert.match(modalSrc, /cliModelEntries\(settings\.settings\)/);
-  assert.match(modalSrc, /\$\{e\.id\} · \$\{e\.baseUrl\}/);
-  assert.match(modalSrc, /label: tr\("跟随 Worker"\)/);
+  assert.match(modalSrc, /buildCliModelPickerProviders\(/);
+  assert.match(libSrc, /\$\{e\.id\} · \$\{e\.baseUrl\}/);
+  assert.match(libSrc, /labels\.followWorker/);
+  assert.doesNotMatch(modalSrc, /label: tr\("跟随 Worker"\)/);
 });
 
 ok("WorkerDetailPane：传 workerName={worker.name} + l1={l1}；Manager 不传（自检①）", () => {
