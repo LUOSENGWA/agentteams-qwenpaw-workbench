@@ -5,13 +5,10 @@ import type * as ReactNS from "react";
 
 import type { ThemeColors } from "../theme";
 import type { TrFn } from "../crdmanage/types";
-import { pickIcon } from "../lib/antdIcons";
+import MillforgeLogo from "../assets/millforge-logo.svg?inline";
 
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
-
-/** 宿主未提供该图标时 pickIcon 回退空组件（布局不受影响）。 */
-const ThunderboltIcon = pickIcon("ThunderboltOutlined");
 
 interface Props {
   t: ThemeColors;
@@ -61,18 +58,17 @@ export default function MillforgeEntryCard({ t, tr, disabledReason, onClick }: P
         e.currentTarget.style.outlineOffset = "";
       }}
     >
-      <span
+      <img
+        src={MillforgeLogo}
+        alt=""
         style={{
-          display: "inline-flex",
-          width: 20,
-          height: 20,
+          height: 30,
+          width: "auto",
+          maxWidth: 56,
+          display: "block",
           flex: "none",
-          alignItems: "center",
-          justifyContent: "center",
         }}
-      >
-        <ThunderboltIcon style={{ width: 20, height: 20 }} />
-      </span>
+      />
       <span style={{ minWidth: 0, flex: 1, display: "grid", gap: 2 }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>{tr("千锻")}</span>
         <span style={{ fontSize: 11, color: t.textSecondary }}>
