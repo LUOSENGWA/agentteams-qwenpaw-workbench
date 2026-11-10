@@ -77,7 +77,7 @@ import { resourceControlDeniedHint } from "../lib/resourceControl";
 import { tracingUrl } from "../lib/tracingUrl";
 import ModelEditModal from "./ModelEditModal";
 import CheckpointCard from "./CheckpointCard";
-import WorkerChats from "../components/WorkerChats";
+import WorkerChatsModal from "./WorkerChatsModal";
 import { dmTargetFor } from "./dmTarget";
 import ResourceCards from "./ResourceCards";
 
@@ -187,6 +187,8 @@ export default function WorkerDetailPane({
   // 拉起就绪入口降级（404 = 老控制器 ensure-ready 与 ready 双路由皆无
   // → 隐藏按钮不报错，诚实降级）。
   const [ensureReadyUnsupported, setEnsureReadyUnsupported] = React.useState(false);
+  // 会话弹窗（WorkerChatsModal）：关闭即卸载 WorkerChats。
+  const [chatsOpen, setChatsOpen] = React.useState(false);
 
   // 容器内运行时版本（L1-only 拨号；旧 WorkerManageInfo 同款模式）。
   const [nodeVer, setNodeVer] = React.useState<NodeVersion | null>(null);
@@ -252,6 +254,8 @@ export default function WorkerDetailPane({
     setModelSaving(false);
     setProvDetail({ loading: false, failed: false });
     setEnsureReadyUnsupported(false);
+    // 会话弹窗随 Worker 切换关闭（内容卸载，不把上一个 Worker 的列表留下）。
+    setChatsOpen(false);
   }, [worker.name]);
 
   const provBaseline = React.useMemo(
@@ -750,30 +754,53 @@ export default function WorkerDetailPane({
         workerName={worker.name}
         runtime={worker.runtime}
       />
-      {/* 会话卡（智能体会话 / 子代理会话双 tab）：数据面 = Worker 运行时
-          /workers/{name}/chats（不再从 Worker 详情扇出项目级 /spawns）。
-          key=worker.name：切 Worker 强制复位列表/详情/折叠态。 */}
-      <antd.Card
-        size="small"
-        title={tr("会话")}
-        styles={{ body: { padding: "8px 12px" } }}
+      {/* 会话入口卡（原内联 WorkerChats 收进弹窗）：这里只放入口，不渲染
+          聊天列表——详情页不被列表撑高；点击 → WorkerChatsModal（内容 =
+          聊天页同一个 WorkerChats，智能体会话 / 子代理会话双 tab 由它提供）。 */}
+      <button
+        type="button"
+        onClick={() => setChatsOpen(true)}
+        aria-label={tr("会话")}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          width: "100%",
+          minHeight: 44,
+          padding: "8px 12px",
+          textAlign: "left",
+          border: `1px solid ${t.border}`,
+          borderRadius: 8,
+          background: t.cardBg,
+          color: "inherit",
+          cursor: "pointer",
+          font: "inherit",
+        }}
       >
-        <div
-          style={{
-            height: "min(62vh, 560px)",
-            minHeight: 240,
-            minWidth: 0,
-            overflowY: "auto",
-          }}
-        >
-          <WorkerChats
-            key={`chats-${worker.name}`}
-            workers={[worker]}
-            fixedWorker={worker.name}
-            showKindTabs
-          />
-        </div>
-      </antd.Card>
+        <MessageIcon size={15} style={{ color: t.textSecondary, flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0, display: "grid", gap: 1 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: t.text }}>
+            {tr("会话")}
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              color: t.textSecondary,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {tr("智能体会话")} / {tr("子代理会话")}
+          </span>
+        </span>
+        <span style={{ color: t.textSecondary, fontSize: 15, flexShrink: 0 }}>›</span>
+      </button>
+      <WorkerChatsModal
+        worker={worker}
+        open={chatsOpen}
+        onClose={() => setChatsOpen(false)}
+      />
       {/* 模型编辑弹窗（响应式：宽屏左右/窄屏上下；与 Manager 详情面板共用）。 */}
       <ModelEditModal
         open={modelModal}
