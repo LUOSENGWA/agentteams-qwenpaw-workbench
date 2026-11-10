@@ -338,6 +338,9 @@ export const chatDict: Record<string, { en: string }> = {
   "当前没有独立 Provider 条目；可跟随 Worker / 子代理，或在 Coding CLI settings 里配置 modelProviders。": {
     en: "No independent provider entries yet — follow the worker/subagent, or configure modelProviders in Coding CLI settings.",
   },
+  "CLI settings 暂无 modelProviders 条目；可选 Worker Provider 候选（只写模型名，不写 baseUrl），或跟随 Worker / 子代理。": {
+    en: "No modelProviders entries in CLI settings; choose a Worker provider candidate (writes the model name only, no baseUrl), or follow the worker/subagent.",
+  },
   "Provider 条目由 Coding CLI 面板维护（L1）": {
     en: "Provider entries are maintained in the Coding CLI panel (L1)",
   },
