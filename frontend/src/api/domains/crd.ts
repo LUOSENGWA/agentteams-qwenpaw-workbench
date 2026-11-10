@@ -278,7 +278,7 @@ export async function updateHumanAccess(
 }
 
 /** Human 详情（GET /api/v1/humans/{name}）——列表响应剥离 initialPassword
- * （#1481），只有详情端点返回。按需调用（点开「查看初始密码」），不逐行预取。
+ * （#1481），只有详情端点返回。选中人员时按需调用（一次），不逐行预取。
  * 旧 Controller 走管理员 token 路径；新 Controller 走 Matrix L1。 */
 export async function fetchHumanDetail(name: string): Promise<HumanInfo> {
   const r = (await controllerRequest(

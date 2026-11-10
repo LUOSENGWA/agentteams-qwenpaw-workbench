@@ -224,15 +224,18 @@ def _str_list(value: Any) -> list:
 async def _probe_uncached(cfg: Dict[str, Any]) -> Dict[str, Any]:
     matrix_token = _matrix_token(cfg)
     ctl_token, ctl_source, configured, ctl_invalid = _explicit_configured(cfg)
-    payload = _base_payload(configured and not ctl_invalid)
+    # 配置了但内容非法仍算「已配置」——否则前端会把用户填过的 token 当成
+    # 未填，丢掉「token 非法」的真实状态。
+    payload = _base_payload(configured)
     if ctl_invalid:
         payload["detail"] = "Controller token 内容非法（含非 ASCII 字符）"
     urls = _probe_urls(cfg)
 
     # 显式 token「已配置」≠「可用」：陈旧/无权限的 token 会被管理 API 拒绝，
-    # 不实测就会把 admin 谎报为 true、token 框永不弹出。
+    # 不实测就会把 admin 谎报为 true、token 框永不弹出。内容非法则无法
+    # 进入 HTTP header，直接判定无效、不发起验证请求。
     ctl_result = "unverified"
-    if ctl_token and urls:
+    if not ctl_invalid and ctl_token and urls:
         ctl_result = await _validate_explicit_token(cfg, ctl_token, urls)
     token_valid = ctl_result == "valid"
     payload["controllerTokenValid"] = token_valid
@@ -243,7 +246,8 @@ async def _probe_uncached(cfg: Dict[str, Any]) -> Dict[str, Any]:
         # 无 Matrix 登录：state=none，但显式 token 仍按实测结果定 admin。
         payload["credentialSource"] = ctl_source if token_valid else "none"
         payload["admin"] = token_valid
-        payload["tokenRequired"] = ctl_result == "invalid"
+        # 内容非法 = 凭据错误（不是网络问题）→ 要求重新填写。
+        payload["tokenRequired"] = ctl_invalid or ctl_result == "invalid"
         payload["reachable"] = ctl_result in ("valid", "invalid")
         if ctl_token and not urls:
             payload["detail"] = "未配置 Controller 地址，无法验证 Controller token"
@@ -320,9 +324,10 @@ async def _probe_uncached(cfg: Dict[str, Any]) -> Dict[str, Any]:
         payload["credentialSource"] = "none"
     payload["admin"] = state == "matrix_l1" or token_valid
     # unreachable 绝不升级成 token 提示（网络错误 ≠ 凭据错误）；matrix_l1
-    # 时 Matrix 即管理员，陈旧 token 也不弹框（用户可自行去设置页替换）。
+    # 时 Matrix 即管理员，陈旧/非法 token 也不弹框（用户可自行去设置页替换）。
     payload["tokenRequired"] = state not in ("unreachable", "matrix_l1") and (
-        ctl_result == "invalid"
+        ctl_invalid
+        or ctl_result == "invalid"
         or (state in ("legacy", "matrix_invalid") and not token_valid)
     )
     return payload

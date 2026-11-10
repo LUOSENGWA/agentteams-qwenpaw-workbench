@@ -30,6 +30,8 @@ CTL = "http://ctl.local:8666"
 GW = "http://higress.local:18001"
 MATRIX_TOKEN = "matrix-token-abc"
 CTL_TOKEN = "ctl-admin-token-xyz"
+# 内容非法（非 ASCII）→ _sanitize_token 抛 TokenValidationError，不能进 header。
+BAD_TOKEN = "ctl-admin-token-中文"
 
 RAISE = object()  # spec 哨兵：模拟连接层失败
 
@@ -321,6 +323,49 @@ def test_matrix_l1_wins_over_stale_token(monkeypatch) -> None:
     assert out["controllerTokenValid"] is False
     assert out["tokenRequired"] is False
     assert out["credentialSource"] == "matrix"
+
+
+def test_invalid_configured_token_without_matrix(monkeypatch) -> None:
+    """非法配置 token：仍报「已配置」，但无效且要求重填（不发请求）。"""
+    clients = _install_probe_client(monkeypatch, [])
+    out = _probe(_cfg(matrix=False, token=BAD_TOKEN))
+    assert out["controllerTokenConfigured"] is True
+    assert out["controllerTokenValid"] is False
+    assert out["admin"] is False
+    assert out["tokenRequired"] is True
+    assert out["detail"]
+    assert BAD_TOKEN not in json.dumps(out)
+    assert clients == []  # 内容非法 = 不进 HTTP 请求
+
+
+def test_legacy_with_invalid_configured_token(monkeypatch) -> None:
+    """旧 Controller（/me 404）+ 非法配置 token → 仍要求重填 token。"""
+    _install_probe_client(monkeypatch, [(f"{CTL}/api/v1/me", LEGACY)])
+    out = _probe(_cfg(token=BAD_TOKEN))
+    assert out["state"] == "legacy"
+    assert out["controllerTokenConfigured"] is True
+    assert out["controllerTokenValid"] is False
+    assert out["admin"] is False
+    assert out["tokenRequired"] is True
+
+
+def test_matrix_l1_with_invalid_configured_token(monkeypatch) -> None:
+    """Matrix L1 + 非法配置 token → Matrix 即管理员，不弹 token 框。"""
+    _install_probe_client(
+        monkeypatch,
+        [
+            (
+                f"{CTL}/api/v1/me",
+                _Resp(200, {"name": "alice", "permissionLevel": 1}),
+            )
+        ],
+    )
+    out = _probe(_cfg(token=BAD_TOKEN))
+    assert out["state"] == "matrix_l1"
+    assert out["controllerTokenConfigured"] is True
+    assert out["controllerTokenValid"] is False
+    assert out["admin"] is True
+    assert out["tokenRequired"] is False
 
 
 def test_address_auth_applied_to_me_and_teams(monkeypatch) -> None:

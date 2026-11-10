@@ -861,11 +861,7 @@ export const manageDict: Record<string, { en: string }> = {
     en: "Controller live snapshot (60s cache)",
   },
   // ── 人员详情：初始密码（#1481 列表剥离，详情端点才返回）──
-  "查看初始密码": { en: "View initial password" },
-  "入职时的初始密码（仅详情端点返回；点开才读取）": {
-    en: "Initial password from onboarding (detail endpoint only; read on demand)",
-  },
-  "初始密码 · {name}": { en: "Initial password · {name}" },
+  "初始密码": { en: "Initial password" },
   "读取失败：{err}": { en: "Failed to load: {err}" },
   "未保存/由 SSO 或 AppService 管理": {
     en: "Not stored / managed by SSO or AppService",
