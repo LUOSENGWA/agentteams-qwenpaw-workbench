@@ -6,6 +6,8 @@ export interface ModelPickerProvider {
   /** 展示名（缺省 = name）。name 仍是回传的稳定标识（如「跟随 Worker」哨兵值）。 */
   label?: string;
   models?: string[];
+  /** 禁用该 Provider 选项（如「跟随子代理」在子代理模型未设置时）。 */
+  disabled?: boolean;
 }
 
 /** 所选 Provider 的模型；provider 为空或该 provider 未声明模型表 → 全量去重。 */

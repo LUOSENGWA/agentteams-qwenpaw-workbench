@@ -325,11 +325,16 @@ export const chatDict: Record<string, { en: string }> = {
   // model.baseUrl；其余键复用既有：未配置/重试/加载中…/已保存/刷新/取消/保存/Provider/模型）──
   "CodingCLI 模型": { en: "CodingCLI models" },
   "跟随 Worker": { en: "Follow worker" },
+  "跟随子代理": { en: "Follow subagent" },
   "跟随主模型": { en: "Follows main model" },
+  "跟随目标模型未设置，无法保存": { en: "Follow target model is not set; cannot save" },
   "独立": { en: "Independent" },
   "修改": { en: "Edit" },
   "该 CLI 不支持 Provider 维度（扁平模型名）": {
     en: "This CLI has no Provider dimension (flat model name)",
+  },
+  "当前没有独立 Provider 条目；可跟随 Worker / 子代理，或在 Coding CLI settings 里配置 modelProviders。": {
+    en: "No independent provider entries yet — follow the worker/subagent, or configure modelProviders in Coding CLI settings.",
   },
   "Provider 条目由 Coding CLI 面板维护（L1）": {
     en: "Provider entries are maintained in the Coding CLI panel (L1)",

@@ -410,7 +410,7 @@ export default function ModelEditModal({
         {/* C1a-2：CodingCLI 模型区块——仅 Worker（workerName）+ L1 渲染；
          * Manager 详情不传 workerName → 不渲染（自检①）。 */}
         {workerName && l1 ? (
-          <CodingCliModelSection workerName={workerName} mainModel={currentModel} access={access} l1={l1} />
+          <CodingCliModelSection workerName={workerName} mainModel={currentModel} subagentModel={currentSubagentModel} access={access} l1={l1} />
         ) : null}
 
         <div
@@ -464,8 +464,10 @@ function accessBadge(
   );
 }
 
-/** 「跟随 Worker（不指定 baseUrl）」的 Provider 哨兵值（Select option 之一）。 */
+/** 「跟随 Worker（不指定 baseUrl）」/「跟随子代理」的 Provider 哨兵值
+ * （Select option 之一；两者均 = 不写 baseUrl，只把 model 名指向跟随目标）。 */
 const FOLLOW_PROVIDER = "~follow~";
+const FOLLOW_SPAWN_PROVIDER = "~follow-spawn~";
 
 // ── C1a-2：CodingCLI 模型区块（仅 Worker 详情 + L1）────────────────
 // 「选 Provider」= 写 model.baseUrl（qwen-code 按 name+baseUrl 成对解析；
@@ -477,11 +479,14 @@ const FOLLOW_PROVIDER = "~follow~";
 function CodingCliModelSection({
   workerName,
   mainModel,
+  subagentModel,
   access,
   l1,
 }: {
   workerName: string;
   mainModel: string;
+  /** Worker 当前已保存的子代理模型（"" = 未设/与主模型相同 → 跟随子代理不可用）。 */
+  subagentModel: string;
   /** C2（#1513）：Model Access 授权信息（null = 无授权信息 → 现状行为）。 */
   access: ModelAccessPayload | null;
   /** L1（有 controller token）：控制器写路径对 admin/manager 跳过 grant
@@ -555,46 +560,6 @@ function CodingCliModelSection({
       .catch(() => setReload((n) => n + 1));
   };
 
-  /** 「跟随主模型」开关：开 = 把该 CLI 的模型写成主模型（不带 baseUrl，
-   * 即跟随 Worker 的 provider）；关 = 打开编辑器让用户挑独立 provider/model。 */
-  // 取消跟随是「本地待定」态：开关立刻显示为关（不再弹回），同时打开编辑器
-  // 让用户挑独立 provider/model；编辑器取消/失败则回到真实状态。
-  const [pendingIndep, setPendingIndep] = React.useState<Set<string>>(new Set());
-  const setFollow = (cli: CodingCliId, follow: boolean): void => {
-    if (!follow) {
-      setPendingIndep((cur) => new Set(cur).add(cli));
-      setEditing(cli);
-      return;
-    }
-    setPendingIndep((cur) => {
-      if (!cur.has(cli)) return cur;
-      const next = new Set(cur);
-      next.delete(cli);
-      return next;
-    });
-    const s = settings[cli];
-    if (!s || !mainModel) return;
-    void (async () => {
-      try {
-        const patch = buildCliModelPatch(
-          cli,
-          (s.settings as Record<string, unknown>).model,
-          mainModel,
-          "",
-        );
-        await putCliSettings(workerName, cli, patch as SettingsObject);
-        antd.message.success(tr("已跟随主模型"));
-        refreshCli(cli);
-      } catch (e) {
-        // #1514：grant 错误走统一文案；其余原样提示（不吞错）。
-        antd.message.error(
-          modelGrantErrorText(e, tr) ??
-            (e instanceof Error ? e.message : String(e)),
-        );
-      }
-    })();
-  };
-
   const installed = (list ?? []).filter((p) => p.installed);
 
   // 未装任何 CLI → 不渲染本区块（任务书）。
@@ -640,8 +605,30 @@ function CodingCliModelSection({
           const s = settings[p.cli];
           const cur = s ? cliCurrentModel(s.settings) : null;
           const modelText = err ? "" : cur && cur.name ? cur.name : tr("未配置");
-          const status =
-            !cur || !cur.name ? "none" : cur.name === mainModel ? "follow" : "indep";
+          // 状态判定（行内展示 + 修改弹层默认 Provider 同源语义）：
+          // 无 baseUrl + 名 = 主模型 → 跟随 Worker；无 baseUrl + 名 = 子代理模型
+          // （且 ≠ 主模型）→ 跟随子代理；否则 → 独立 / 未配置。
+          const status: "none" | "follow" | "follow-spawn" | "indep" =
+            !cur || !cur.name
+              ? "none"
+              : cur.baseUrl === "" && cur.name === mainModel
+                ? "follow"
+                : cur.baseUrl === "" &&
+                    subagentModel !== "" &&
+                    cur.name === subagentModel &&
+                    subagentModel !== mainModel
+                  ? "follow-spawn"
+                  : "indep";
+          const statusText =
+            status === "follow"
+              ? tr("跟随 Worker")
+              : status === "follow-spawn"
+                ? tr("跟随子代理")
+                : status === "indep"
+                  ? tr("独立")
+                  : tr("未配置");
+          const rowText =
+            status === "none" ? modelText : `${modelText} · ${cur?.providerId ?? statusText}`;
           // C2（#1513）：该 CLI 的授权能力（缺 = 无授权信息 → 现状行为）；
           // L1（restricted=false）不受人员授权表约束 → cap/locked 不消费。
           const cap = restricted ? access?.capabilities?.codingCli?.[p.cli] : undefined;
@@ -665,45 +652,18 @@ function CodingCliModelSection({
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                 }}
-                title={err || `${modelText} · ${cur?.providerId ?? tr("跟随 Worker")}`}
+                title={err || rowText}
               >
                 {err ? (
                   <span style={{ color: "red" }}>{err}</span>
                 ) : s ? (
-                  `${modelText} · ${cur?.providerId ?? tr("跟随 Worker")}`
+                  rowText
                 ) : (
                   tr("加载中…")
                 )}
               </span>
-              <antd.Switch
-                size="small"
-                checked={status === "follow" && !pendingIndep.has(p.cli)}
-                disabled={
-                  !s ||
-                  capLocked ||
-                  capBlocked ||
-                  (status === "none" && !mainModel)
-                }
-                title={
-                  !s
-                    ? tr("未安装该 Coding CLI")
-                    : capLocked
-                      ? tr("未授权：无法修改 CodingCLI 模型")
-                      : cap?.inherit
-                        ? tr("授权要求该 CLI 跟随主模型，不能独立配置")
-                        : cap && !cap.canEdit
-                          ? tr("无权限修改该 CLI 模型")
-                          : undefined
-                }
-                onChange={(v: boolean) => setFollow(p.cli, v)}
-                aria-label={tr("跟随主模型")}
-              />
               <span style={{ fontSize: 11, color: t.textSecondary, flexShrink: 0 }}>
-                {status === "follow"
-                  ? tr("跟随主模型")
-                  : status === "indep"
-                    ? tr("独立")
-                    : tr("未配置")}
+                {statusText}
               </span>
               {/* C2：该 CLI 授权徽标（五态；inherit → 「继承自 …」且编辑禁用；
                * L1 不受人员授权表约束 → 不显示） */}
@@ -717,6 +677,17 @@ function CodingCliModelSection({
                 <antd.Button
                   size="small"
                   disabled={!s || capLocked || capBlocked}
+                  title={
+                    !s
+                      ? tr("未安装该 Coding CLI")
+                      : capLocked
+                        ? tr("未授权：无法修改 CodingCLI 模型")
+                        : cap?.inherit
+                          ? tr("授权要求该 CLI 跟随主模型，不能独立配置")
+                          : cap && !cap.canEdit
+                            ? tr("无权限修改该 CLI 模型")
+                            : undefined
+                  }
                   onClick={() => setEditing(p.cli)}
                 >
                   {tr("修改")}
@@ -732,6 +703,8 @@ function CodingCliModelSection({
           workerName={workerName}
           cli={editing}
           settings={settings[editing] as CliSettingsResponse}
+          mainModel={mainModel}
+          subagentModel={subagentModel}
           // L1：空授予集 → ModelPicker 无限制（候选取 CLI modelProviders
           // 条目并集 + 自由输入）；L2 保持原授予对。
           pairs={
@@ -739,13 +712,7 @@ function CodingCliModelSection({
               ? grantedPairs(access.surfaces, "codingCli", editing)
               : []
           }
-          onClose={() => {
-            setEditing(null);
-            setPendingIndep((cur) => {
-              if (cur.size === 0) return cur;
-              return new Set();
-            });
-          }}
+          onClose={() => setEditing(null)}
           onSaved={() => refreshCli(editing)}
         />
       ) : null}
@@ -753,15 +720,16 @@ function CodingCliModelSection({
   );
 }
 
-// 修改弹层（先 Provider 后模型）：Provider 选项 = cliModelEntries() 条目
-// （显示 id · baseUrl）+「跟随 Worker」；模型选项 = 所选 Provider 声明的
-// models + 自由输入（AutoComplete）。「跟随 Worker」= 不指定 baseUrl（候选
-// 取全部 provider 声明并集——无 baseUrl 时按第一个同 id 条目解析，任何
-// provider 的模型名都合法）。
+// 修改弹层（先 Provider 后模型）：Provider 选项 = 「跟随 Worker」+「跟随子代理」
+// + cliModelEntries() 条目（显示 id · baseUrl）；模型选项 = 跟随模式仅跟随
+// 目标（只读/选中）、独立 = 所选 Provider 声明的 models + 自由输入。
+// 「跟随」= 不指定 baseUrl，把 model 名写成 Worker 主模型 / 子代理模型。
 function CliModelEditDialog({
   workerName,
   cli,
   settings,
+  mainModel,
+  subagentModel,
   pairs,
   onClose,
   onSaved,
@@ -769,6 +737,10 @@ function CliModelEditDialog({
   workerName: string;
   cli: CodingCliId;
   settings: CliSettingsResponse;
+  /** Worker 主模型（「跟随 Worker」的目标）。 */
+  mainModel: string;
+  /** Worker 已保存的子代理模型（「跟随子代理」的目标；空 = 选项禁用）。 */
+  subagentModel: string;
   /** C2（#1513）：该 CLI surface 的授予 (provider, model) 对（空 = 无授予集 → 现状）。 */
   pairs: ModelAccessPair[];
   onClose: () => void;
@@ -779,17 +751,31 @@ function CliModelEditDialog({
   const isObject = objectModel(cli);
   const entries = cliModelEntries(settings.settings);
   const cur = cliCurrentModel(settings.settings);
-  const [provider, setProvider] = React.useState<string>(cur.providerId ?? FOLLOW_PROVIDER);
-  const [model, setModel] = React.useState(cur.name);
+
+  // 默认 Provider：当前 baseUrl 命中独立条目 → 该 provider；
+  // 否则模型 = 子代理模型（且 ≠ 主模型）→ 跟随子代理；否则 → 跟随 Worker。
+  const initialProvider =
+    cur.providerId ??
+    (subagentModel !== "" && cur.name === subagentModel && subagentModel !== mainModel
+      ? FOLLOW_SPAWN_PROVIDER
+      : FOLLOW_PROVIDER);
+  const [provider, setProvider] = React.useState<string>(initialProvider);
+  const [model, setModel] = React.useState(
+    initialProvider === FOLLOW_PROVIDER
+      ? mainModel
+      : initialProvider === FOLLOW_SPAWN_PROVIDER
+        ? subagentModel
+        : cur.name,
+  );
   const [saving, setSaving] = React.useState(false);
 
-  // 孤儿 baseUrl：有值但反查不到任何 provider 条目（手工改过）→ 只能自由
-  // 输入模型（等价“不指定 baseUrl”），行内提示 provider 条目由面板维护。
+  // 孤儿 baseUrl：有值但反查不到任何 provider 条目（手工改过）→ 行内提示
+  // provider 条目由面板维护。
   const orphaned = cur.baseUrl !== "" && cur.providerId === null;
-  const chosen =
-    provider === FOLLOW_PROVIDER
-      ? null
-      : (entries.find((e) => e.id === provider) ?? null);
+  const isFollow = provider === FOLLOW_PROVIDER || provider === FOLLOW_SPAWN_PROVIDER;
+  const followTarget =
+    provider === FOLLOW_PROVIDER ? mainModel : provider === FOLLOW_SPAWN_PROVIDER ? subagentModel : "";
+  const chosen = isFollow ? null : (entries.find((e) => e.id === provider) ?? null);
   const allModels = Array.from(new Set(entries.flatMap((e) => e.models)));
 
   // C2（#1513）：有授予集 → 候选只列授予的 (provider, model) 对（方向
@@ -798,35 +784,31 @@ function CliModelEditDialog({
   const grantedProviders = granted
     ? Array.from(new Set(pairs.map((p) => p.provider)))
     : [];
-  const grantedModels = granted
-    ? Array.from(new Set(pairs.map((p) => p.model)))
-    : [];
 
-  // 唯一 ModelPicker 的候选：Provider（含「跟随 Worker」哨兵）→ 该 Provider
-  // 的模型。有授予集时只列授予的对（C2/#1513 语义不变）。
+  // 唯一 ModelPicker 的候选：跟随哨兵 → 仅跟随目标；独立 provider → 声明
+  // models。有授予集时独立候选只列授予的对（C2/#1513 语义不变）。
   const modelOptionsFor = (pid: string): string[] =>
     (
       granted
-        ? pid === FOLLOW_PROVIDER
-          ? grantedModels
-          : pairs.filter((p) => p.provider === pid).map((p) => p.model)
+        ? pairs.filter((p) => p.provider === pid).map((p) => p.model)
         : (entries.find((x) => x.id === pid)?.models ?? allModels)
     ).filter((m, i, a) => a.indexOf(m) === i);
   const providerLabel = (id: string): string => {
     const e = entries.find((x) => x.id === id);
-    const base = id === FOLLOW_PROVIDER ? tr("跟随 Worker") : id;
-    return e?.baseUrl ? `${base} · ${e.baseUrl}` : base;
+    return e?.baseUrl ? `${id} · ${e.baseUrl}` : id;
   };
   const pickerProviders: ModelPickerProvider[] = [
-    ...(isObject
-      ? [
-          {
-            name: FOLLOW_PROVIDER,
-            label: providerLabel(FOLLOW_PROVIDER),
-            models: modelOptionsFor(FOLLOW_PROVIDER),
-          },
-        ]
-      : []),
+    {
+      name: FOLLOW_PROVIDER,
+      label: tr("跟随 Worker"),
+      models: mainModel ? [mainModel] : [],
+    },
+    {
+      name: FOLLOW_SPAWN_PROVIDER,
+      label: tr("跟随子代理"),
+      models: subagentModel ? [subagentModel] : [],
+      disabled: subagentModel === "",
+    },
     ...(granted ? grantedProviders : entries.map((e) => e.id)).map((id) => ({
       name: id,
       label: providerLabel(id),
@@ -834,28 +816,35 @@ function CliModelEditDialog({
     })),
   ];
 
+  // 跟随模式：模型恒为跟随目标（展示只读/选中；清空也弹回目标）；
+  // 独立模式 = 用户所选/输入。
+  const shownModel = isFollow ? followTarget : model;
+  const saveModel = isFollow ? followTarget : model.trim();
+
   // C2：要保存的值不在授予集合（例如历史值）→ 保存禁用 + 提示。
-  // 对象形态：须显式 provider（跟随 Worker = 不指定 baseUrl，不成对）+
-  // (provider, model) 成对存在；扁平形态：model 在授予对中是否出现。
-  const saveModel = model.trim();
+  // 跟随模式无 provider 维度 → 仅目标模型在授予对中即可；独立对象形态须
+  // (provider, model) 成对存在；扁平形态看 model 是否在授予对中出现。
   const pairOk = granted
-    ? isObject
-      ? provider !== FOLLOW_PROVIDER && pairAllowed(pairs, provider, saveModel)
-      : pairs.some((p) => p.model === saveModel)
+    ? isFollow || !isObject
+      ? pairs.some((p) => p.model === saveModel)
+      : pairAllowed(pairs, provider, saveModel)
     : true;
 
   const labelStyle = { fontSize: 13, color: t.textSecondary, marginBottom: 6 } as const;
 
   const handleSave = async () => {
-    const name = model.trim();
+    // 跟随模式恒写跟随目标（不受模型框影响）；独立模式 = 所选/输入模型。
+    const name = isFollow ? followTarget : model.trim();
     if (!name) return;
     setSaving(true);
     try {
+      // 跟随 = 不写 baseUrl（qwen-code 按第一个同 id 条目解析）；
+      // 独立 = 该 provider 的 baseUrl 消歧。
       const patch = buildCliModelPatch(
         cli,
         (settings.settings as Record<string, unknown>).model,
         name,
-        chosen ? chosen.baseUrl : "",
+        isFollow ? "" : chosen ? chosen.baseUrl : "",
       );
       // buildCliModelPatch 返回 Record<string, unknown>（纯函数宽口）；此处
       // 补丁只含 model 键（string | 纯 JSON 对象）= 合法 SettingsObject。
@@ -883,7 +872,7 @@ function CliModelEditDialog({
       okText={tr("保存")}
       cancelText={tr("取消")}
       confirmLoading={saving}
-      okButtonProps={{ disabled: saving || model.trim() === "" || !pairOk }}
+      okButtonProps={{ disabled: saving || saveModel === "" || !pairOk }}
       destroyOnClose
       width={Math.min(480, window.innerWidth - 48)}
     >
@@ -893,7 +882,11 @@ function CliModelEditDialog({
             {tr("该 CLI 不支持 Provider 维度（扁平模型名）")}
           </div>
         )}
-        {isObject && (entries.length === 0 || orphaned) ? (
+        {isObject && entries.length === 0 ? (
+          <div style={{ fontSize: 11, color: t.textSecondary }}>
+            {tr("当前没有独立 Provider 条目；可跟随 Worker / 子代理，或在 Coding CLI settings 里配置 modelProviders。")}
+          </div>
+        ) : isObject && orphaned ? (
           <div style={{ fontSize: 11, color: t.textSecondary }}>
             {tr("Provider 条目由 Coding CLI 面板维护（L1）")}
           </div>
@@ -905,14 +898,26 @@ function CliModelEditDialog({
             allowEmpty
             providers={pickerProviders}
             provider={provider}
-            model={model}
+            model={shownModel}
             providerPlaceholder={tr("Provider")}
             modelPlaceholder={tr("模型")}
             onChange={(p: string, m: string) => {
               setProvider(p);
-              setModel(m);
+              // 跟随模式：模型恒为跟随目标（ModelPicker 的 keep 清空不适用）；
+              // 独立模式：沿用 ModelPicker 的换 Provider 清空判定。
+              if (p === FOLLOW_PROVIDER || p === FOLLOW_SPAWN_PROVIDER) {
+                setModel(p === FOLLOW_PROVIDER ? mainModel : subagentModel);
+              } else {
+                setModel(m);
+              }
             }}
           />
+          {/* 跟随目标未设置 → 保存禁用 + 提示（跟随子代理空目标时选项本身已禁用） */}
+          {isFollow && followTarget === "" ? (
+            <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>
+              {tr("跟随目标模型未设置，无法保存")}
+            </div>
+          ) : null}
           {/* C2：要保存的组合不在授予集 → 提示（保存按钮同禁用） */}
           {!pairOk ? (
             <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>

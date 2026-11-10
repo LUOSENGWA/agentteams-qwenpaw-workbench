@@ -61,6 +61,7 @@ export default function ModelPicker(props: ModelPickerProps): JSX.Element {
   const providerOptions = providers.map((p) => ({
     value: p.name,
     label: p.label ?? p.name,
+    disabled: p.disabled,
   }));
   const modelOptions = modelOptionsForProvider(providers, provider).map((m) => ({
     value: m,
