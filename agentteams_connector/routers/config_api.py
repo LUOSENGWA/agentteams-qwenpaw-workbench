@@ -794,8 +794,12 @@ def build_config_router() -> APIRouter:
             if not cfg_ctl:
                 return {"ok": False, "error": "请先配置 Controller 地址"}
             # 韧性 + 诊断增强（外网验证 500 根因治理）。
-            # 实测：LAN 活地址 /api/v1/teams Bearer JWT = 200 <1s；外网路径
+            # 实测：LAN 活地址 /api/v1/audit Bearer JWT = 200 <1s；外网路径
             # （Higress 网关→Controller）偶发 500 = 网关/上游瞬时错（非 token 错）。
+            # 端点必须管理员专属：``/api/v1/teams`` 对 L2 也回 200（authorizer
+            # 允许 ActionList，handler 只过滤可见团队）→ 会把 Matrix L2 token
+            # 当管理员 token 验过；``/api/v1/audit``（无 team 作用域）L1=200、
+            # L2/L3=400（handler 拒无作用域读），才是管理员判别口径。
             # 旧版把任何非 200 一律报「token 无效」且 3s 超时（5M WAN 偏紧）
             # → 真 500 被误诊为凭据错、慢验证「一直转圈」。现：
             # ① 5xx = 网关/上游瞬时 → 退避 1s 重试一次（同一活地址再探）；
@@ -816,7 +820,7 @@ def build_config_router() -> APIRouter:
                         # 因超时/连接错直接换址（不重试），最坏成本受控。
                         async with GatedAsyncClient(timeout=5.0, verify=False) as client:
                             rr = await client.get(
-                                f"{base}/api/v1/teams",
+                                f"{base}/api/v1/audit",
                                 headers=headers_ctl(base),
                             )
                     except Exception as exc:  # noqa: BLE001 - 地址级，换下一地址

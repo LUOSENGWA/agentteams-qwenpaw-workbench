@@ -146,10 +146,10 @@ def test_n1_higress_verify_ignores_invalid_token(client):
 
 
 def test_n1_token_verify_still_works(client):
-    """路径 B（Controller token）正常验证通过。"""
+    """路径 B（Controller token）正常验证通过（管理员专属 /audit 探测）。"""
     tc, state = client
-    _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(
-        200, json_body={"teams": []}
+    _FakeClient.get_spec["/api/v1/audit"] = _FakeResponse(
+        200, json_body={"items": []}
     )
     r = tc.post(
         "/config/verify-admin",

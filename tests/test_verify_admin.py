@@ -4,8 +4,9 @@
 覆盖 plan 件 4 的三组护栏：
 
 - **verify-admin 两路径**：admin 账号密码 → Console /session/login（成功持
- 会话 / 失败 / 不可达）；Controller token → GET /api/v1/teams（无尾斜杠，
- Gin 对 /teams/ 返 404；成功 / 无效）；凭据全空 → 「二选一」错误。
+ 会话 / 失败 / 不可达）；Controller token → GET /api/v1/audit（末段无斜杠；
+ 管理员专属探测——/teams 对 L2 也回 200；成功 / 无效）；凭据全空 →
+ 「二选一」错误。
 - **网关地址必填（）**：Console 宿主端口部署时自选（安装脚本
  AGENTTEAMS_PORT_CONSOLE，默认 18001，人人不同）→ 8001/6868 探测已移除；
  gateway_admin_url 留空 → 可操作错误（不再盲探）。
@@ -321,8 +322,8 @@ def test_verify_admin_password_no_gateway_url(client):
 # ── 路径 B：Controller 管理员 token ──────────────────────
 def test_verify_admin_token_success(client):
     tc, state = client
-    # 探测 URL 无尾斜杠（Gin 对 /api/v1/teams/ 返 404）
-    _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(200)
+    # 探测走管理员专属 /audit（末段无斜杠；/teams 对 L2 也回 200 不可用）。
+    _FakeClient.get_spec["/api/v1/audit"] = _FakeResponse(200)
     r = tc.post(
         "/config/verify-admin", json={"controller_token": "tok123"}
     )
@@ -331,13 +332,33 @@ def test_verify_admin_token_success(client):
     assert body["mode"] == "token"
     assert state["data"]["controller_token"] == "tok123"
     c = _last_client()
-    assert ("GET", "http://10.0.0.1:8090/api/v1/teams") in c.calls
-    assert not any(u.endswith("teams/") for _m, u in c.calls)
+    assert ("GET", "http://10.0.0.1:8090/api/v1/audit") in c.calls
+    assert not any(u.endswith("audit/") for _m, u in c.calls)
+    # 不得再用 /teams 当管理员判别端点。
+    assert not any(u.endswith("/api/v1/teams") for _m, u in c.calls)
+
+
+def test_verify_admin_token_l2_teams_200_audit_400_invalid(client):
+    """回归：/teams 200 + /audit 400（L2 token）→ 无效，不落盘。
+
+  Matrix L2 token 粘贴成 controller_token 时旧口径（/teams）返回 200 会
+  误报验证通过；/audit 无 ``?team=`` 作用域被 handler 400 拒 → 无效。
+ """
+    tc, state = client
+    _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(200)
+    _FakeClient.get_spec["/api/v1/audit"] = _FakeResponse(400)
+    r = tc.post("/config/verify-admin", json={"controller_token": "l2-token"})
+    body = r.json()
+    assert body["ok"] is False
+    assert "400" in body["error"]
+    assert state["data"]["controller_token"] == ""
+    used = [u for inst in _FakeClient.instances for _m, u in inst.calls]
+    assert not any(u.endswith("/api/v1/teams") for u in used)
 
 
 def test_verify_admin_token_invalid(client):
     tc, state = client
-    _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(401)
+    _FakeClient.get_spec["/api/v1/audit"] = _FakeResponse(401)
     r = tc.post(
         "/config/verify-admin", json={"controller_token": "bad"}
     )
@@ -351,7 +372,7 @@ def test_verify_admin_token_invalid(client):
 def test_verify_admin_token_5xx_retry_success(client):
     """5xx 瞬时 → 退避重试一次：首响 500、二响 200 → 验证通过（拨 2 次）。"""
     tc, state = client
-    _FakeClient.get_spec["/api/v1/teams"] = [
+    _FakeClient.get_spec["/api/v1/audit"] = [
         _FakeResponse(500, text="upstream connect error"),
         _FakeResponse(200),
     ]
@@ -359,13 +380,13 @@ def test_verify_admin_token_5xx_retry_success(client):
     body = r.json()
     assert body["ok"] is True, body
     assert body["mode"] == "token"
-    # 重试生效：/api/v1/teams 拨了 2 次（首 500 + 重试 200）——跨所有 client
+    # 重试生效：/api/v1/audit 拨了 2 次（首 500 + 重试 200）——跨所有 client
     # 实例计数（每次 GatedAsyncClient 新建实例，重试在第二个实例上）。
     total = sum(
         1
         for inst in _FakeClient.instances
         for _m, u in inst.calls
-        if "/api/v1/teams" in u
+        if "/api/v1/audit" in u
     )
     assert total == 2, f"应拨 2 次（首 500 + 重试 200），实际 {total}"
 
@@ -373,7 +394,7 @@ def test_verify_admin_token_5xx_retry_success(client):
 def test_verify_admin_token_5xx_persistent(client):
     """5xx 持续（重试仍 500）→ 报「外网/网关异常」并透出 body（非 token 错）。"""
     tc, state = client
-    _FakeClient.get_spec["/api/v1/teams"] = [
+    _FakeClient.get_spec["/api/v1/audit"] = [
         _FakeResponse(500, text="bad gateway: mc ls fail"),
         _FakeResponse(503, text="service unavailable"),
     ]
@@ -390,26 +411,26 @@ def test_verify_admin_token_5xx_persistent(client):
 def test_verify_admin_token_4xx_no_retry(client):
     """4xx 凭据错（地址无关）→ 立即报、不重试（只拨 1 次）。"""
     tc, state = client
-    _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(403)
+    _FakeClient.get_spec["/api/v1/audit"] = _FakeResponse(403)
     r = tc.post("/config/verify-admin", json={"controller_token": "nope"})
     body = r.json()
     assert body["ok"] is False
     assert "403" in body["error"]
     c = _last_client()
-    assert sum(1 for _m, u in c.calls if "/api/v1/teams" in u) == 1
+    assert sum(1 for _m, u in c.calls if "/api/v1/audit" in u) == 1
 
 
 def test_verify_admin_token_connection_error(client):
     """连接错/超时（地址级）→ 报「无法连接 Controller」（不重试）。"""
     tc, state = client
     # 匹配到即抛（模拟连接失败/超时，地址级）。
-    _FakeClient.get_spec["/api/v1/teams"] = ConnectionError("net down")
+    _FakeClient.get_spec["/api/v1/audit"] = ConnectionError("net down")
     r = tc.post("/config/verify-admin", json={"controller_token": "tok"})
     body = r.json()
     assert body["ok"] is False
     assert "无法连接" in body["error"]
     c = _last_client()
-    assert sum(1 for _m, u in c.calls if "/api/v1/teams" in u) == 1
+    assert sum(1 for _m, u in c.calls if "/api/v1/audit" in u) == 1
 
 
 # ── 凭据全空 ───────────────────────────────────────────
@@ -555,7 +576,7 @@ def test_verify_admin_token_env_fallback(client, monkeypatch):
     """cfg token 空 + env 已设 → 自动用 env（不落盘，tokenSource=env）。"""
     tc, state = client
     monkeypatch.setenv("AGENTTEAMS_CONTROLLER_TOKEN", "envtok")
-    _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(200)
+    _FakeClient.get_spec["/api/v1/audit"] = _FakeResponse(200)
     r = tc.post("/config/verify-admin", json={})
     body = r.json()
     assert body["ok"] is True
@@ -570,7 +591,7 @@ def test_verify_admin_token_config_beats_env(client, monkeypatch):
     tc, state = client
     state["data"]["controller_token"] = "cfgtok"
     monkeypatch.setenv("AGENTTEAMS_CONTROLLER_TOKEN", "envtok")
-    _FakeClient.get_spec["/api/v1/teams"] = _FakeResponse(200)
+    _FakeClient.get_spec["/api/v1/audit"] = _FakeResponse(200)
     r = tc.post("/config/verify-admin", json={})
     body = r.json()
     assert body["ok"] is True

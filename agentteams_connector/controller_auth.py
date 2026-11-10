@@ -9,8 +9,10 @@ token（粘贴或 env ``AGENTTEAMS_CONTROLLER_TOKEN``）。
 本模块提供唯一的能力口径：
 - ``probe_controller_auth(cfg)``：探测 ``/me`` → 归一化状态（30s 缓存，
   缓存键含 Matrix token 身份哈希 + Controller 地址列表 + 显式 token 身份
-  哈希；token 值不进日志/响应）；显式 token 另用 ``GET /api/v1/teams``
+  哈希；token 值不进日志/响应）；显式 token 另用 ``GET /api/v1/audit``
   实测有效性（配置了 token ≠ token 可用：陈旧的 token 会被 401/403 拒绝）；
+  探测端点必须管理员专属——``/api/v1/teams`` 对 L2 也返回 200（authorizer
+  允许 ``ActionList`` 且 handler 只过滤可见团队），不能用来判定管理员；
 - ``preferred_controller_token(cfg)``：按能力状态选择拨号凭据
  （Matrix L1 → Matrix token；否则显式 token > Matrix token）；
 - ``explicit_controller_token(cfg)``：仅显式配置（config/env）的 token；
@@ -52,6 +54,10 @@ _PROBE_TIMEOUT = httpx.Timeout(connect=2.0, read=4.0, write=4.0, pool=2.0)
 
 _LEGACY_STATUSES = (404, 405, 501)
 _DENIED_STATUSES = (401, 403)
+# 400 = ``GET /api/v1/audit`` 被 handler 拒（它要求 ``?team=`` 作用域）：
+# authorizer 允许 L2/L3 读审计，但无团队作用域的读取被 400 拒 → 非管理员。
+# 这正是 /audit 能区分管理员、而 /teams 不能的原因。
+_NON_ADMIN_STATUSES = (400,)
 
 
 def _matrix_token(cfg: Dict[str, Any]) -> str:
@@ -116,9 +122,14 @@ async def _validate_explicit_token(
 ) -> str:
     """显式管理员 token 对 Controller 管理 API 的有效性。
 
- 同一端点/口径同 ``verify-admin`` 的 token 路径（``GET /api/v1/teams``）：
- 200 → ``valid``；401/403 → ``invalid``（凭据错与地址无关，立即定论）；
- 连接失败/超时/其他状态（404/5xx）→ 换下一地址，全败 = ``unverified``。
+ 同一端点/口径同 ``verify-admin`` 的 token 路径（``GET /api/v1/audit``，
+ 不带 ``?team=``）：200 → ``valid``（管理员读全量审计）；401/403/400 →
+ ``invalid``（凭据错/被拒，地址无关，立即定论——400 是 L2/L3 无团队作用域
+ 读审计被 handler 拒绝）；连接失败/超时/其他状态（404/5xx）→ 换下一地址，
+ 全败 = ``unverified``（审计后端缺失/网关故障 ≠ token 无效）。
+ 端点必须管理员专属：``/api/v1/teams`` 对 L2 返回 200（authorizer 允许
+ ``ActionList``，handler 只过滤可见团队），会把 Matrix L2 token 谎报成
+ 管理员 token。
  token 值只进请求头，不进响应/日志/缓存。
  """
     for base in urls:
@@ -127,14 +138,14 @@ async def _validate_explicit_token(
                 timeout=_PROBE_TIMEOUT, verify=False
             ) as client:
                 resp = await client.get(
-                    f"{base}/api/v1/teams",
+                    f"{base}/api/v1/audit",
                     headers=_controller_headers(cfg, base, token),
                 )
         except Exception:  # noqa: BLE001 - 逐地址降级
             continue
         if resp.status_code == 200:
             return "valid"
-        if resp.status_code in _DENIED_STATUSES:
+        if resp.status_code in _DENIED_STATUSES + _NON_ADMIN_STATUSES:
             return "invalid"
     return "unverified"
 
