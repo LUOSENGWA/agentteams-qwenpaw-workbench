@@ -6,6 +6,7 @@ import {
   TOUCH_ONLY,
   isToolMessage,
   isWorkerPlaceholder,
+  mergeWorkerMxids,
   wantsDateSeparator,
   EMPTY_REPLIES,
 } from "./RoomChatShared";
@@ -92,25 +93,19 @@ export default function RoomChatMessages(props: {
   } = c;
   const onWorkflowIntervened = p.onWorkflowIntervened;
 
-  // worker 判定表（§4.2 四集合并）：成员名表 ∪ 会话状态表 ∪ 运行时表
-  // ∪ props.workerMxids（Set）——worker-run 内联 / 思考帧 / 占位行判定
-  // 同一口径（RoomChatCore 的 isWorkerMxid 与此同集）。
-  const workerMxids = React.useMemo(() => {
-    const out: Record<string, string> = {};
-    for (const [mxid, name] of Object.entries(memberWorkerNames || {})) {
-      out[mxid] = name;
-    }
-    for (const mxid of Object.keys(workerSessionByMxid || {})) {
-      out[mxid] = out[mxid] ?? mxid;
-    }
-    for (const mxid of Object.keys(workerRuntimeByMxid || {})) {
-      out[mxid] = out[mxid] ?? mxid;
-    }
-    if (p.workerMxids) {
-      for (const mxid of p.workerMxids) out[mxid] = out[mxid] ?? mxid;
-    }
-    return out;
-  }, [memberWorkerNames, workerSessionByMxid, workerRuntimeByMxid, p.workerMxids]);
+  // worker 判定表（§4.2 四集合并，口径在 mergeWorkerMxids——话题面板
+  // 复用同一实现）：worker-run 内联 / 思考帧 / 占位行判定同一口径
+  // （RoomChatCore 的 isWorkerMxid 与此同集）。
+  const workerMxids = React.useMemo(
+    () =>
+      mergeWorkerMxids(
+        memberWorkerNames,
+        workerSessionByMxid,
+        workerRuntimeByMxid,
+        p.workerMxids,
+      ),
+    [memberWorkerNames, workerSessionByMxid, workerRuntimeByMxid, p.workerMxids],
+  );
 
   // 结构化 text 块替代 body（org.agentteams.run）：按 event_id 预算一次，
   // 保持 RoomChatMessageRow 的行级 memo 引用稳定（仅 tops 变化时重建）。

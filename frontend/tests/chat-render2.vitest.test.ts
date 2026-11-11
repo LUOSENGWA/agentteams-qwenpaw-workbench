@@ -282,6 +282,7 @@ interface RoomMsgLike {
   body: string;
   msgtype: string;
   pending?: boolean;
+  editedAt?: number;
 }
 
 function roomMsg(
@@ -327,7 +328,7 @@ function render(tops: RoomMsgLike[]): string {
   const renderItems = mapTurnRanges(turns, tops).map((r) => ({
     kind: "turn",
     key: `turn-${r.turn.id}`,
-    ts: tops[r.indices[0]]?.origin_server_ts ?? 0,
+    ts: tops[r.indices[0]]?.editedAt ?? tops[r.indices[0]]?.origin_server_ts ?? 0,
     range: r,
   }));
   const core = {

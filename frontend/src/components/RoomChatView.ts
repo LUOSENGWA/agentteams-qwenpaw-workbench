@@ -112,34 +112,17 @@ export function useRoomChatView(
 
   // 渲染序列 = turn 与任务事件按 ts 交错（事件「插入」不替换）。
   const renderItems = React.useMemo<RoomChatRenderItem[]>(() => {
-    // §4.2 内联块锚定保护：inlineWorkerRuns 已把纯 worker run 整块锚定到
-    // 块根的修订键（editedAt ?? origin）。但块内按 keyOf 排序后，编辑过的
-    // 根排在回复之后——turn 首条消息可能是块内回复，若按回复 ts 排序会把
-    // 整块拉回修订时刻之前（块锚定被渲染层排序抵消）。故 turn 排序槽 =
-    // 首条消息所属内联块的块根键（首条的 threadRoot 仍在 tops = 该回复
-    // 的根未被窗口降级，块完整内联）；普通消息/降级孤儿回复保持自身键。
-    const topById = new Map<string, RoomMessage>();
-    for (const m of tops) {
-      if (!topById.has(m.event_id)) topById.set(m.event_id, m);
-    }
-    const slotKeyOf = (m: RoomMessage): number => {
-      const rootId = m.threadRoot;
-      if (rootId) {
-        const root = topById.get(rootId);
-        if (root) return root.editedAt ?? root.origin_server_ts ?? 0;
-      }
-      return m.editedAt ?? m.origin_server_ts ?? 0;
-    };
     const items: RoomChatRenderItem[] = [];
     for (const r of turnRanges) {
       const first = r.indices.length > 0 ? tops[r.indices[0]] : undefined;
       items.push({
         kind: "turn",
         key: `turn-${r.turn.id}`,
-        // 排序口径 = 首条消息的修订键（editedAt ?? 发送时间，§4.3——
-        // 最终编辑的根按修订时间落位，与主时间线/任务卡交错一致）；
-        // 内联块回复取块根键（§4.2，见 slotKeyOf）。
-        ts: first ? slotKeyOf(first) : 0,
+        // 排序口径 = 首条消息自身的修订键（editedAt ?? 发送时间，§4.3——
+        // 最终编辑的根按修订时间落位，与主时间线/任务卡交错一致）。
+        // §4.2 内联已逐条落位（每条 tops 消息按自身修订键排序），turn
+        // 首条键即块内首条键，无需块根锚定保护。
+        ts: first ? (first.editedAt ?? first.origin_server_ts ?? 0) : 0,
         range: r,
       });
     }

@@ -152,7 +152,8 @@ const isWorker = (mxid) => mxid === W || mxid === W2;
 }
 
 // 7. worker-run 内联（§4.2）：纯 worker 线程 = 一次运行——root+回复
-// 内联进 tops（块内按修订键排）、repliesOf 删键；人类/混合线程原样。
+// 逐条内联进 tops（每条按自身修订键落位，Dashboard 连续 turn 语义）、
+// repliesOf 删键；人类/混合线程原样。
 {
   const root = T("root", W, 100);
   const r1 = T("r1", W2, 300, { threadRoot: "root" });
@@ -165,11 +166,12 @@ const isWorker = (mxid) => mxid === W || mxid === W2;
     "T10 分组前提：threadRoot 归线程",
   );
   const w = inlineWorkerRuns(g.tops, g.repliesOf, isWorker);
-  // 块=原子单元（锚定键=root 发送时间 100），块内按修订键排。
+  // 逐条落位：root(100) < r2(200) < h(250) < r1(300)——run 中途的
+  // 人类消息原位保留（不再被整块锚定压在 run 之后）。
   assert.deepStrictEqual(
     w.tops.map((m) => m.event_id),
-    ["root", "r2", "r1", "h"],
-    "T10 纯 worker run 内联（块整块落位，不交错）",
+    ["root", "r2", "h", "r1"],
+    "T10 纯 worker run 逐条内联（按各自修订键时间序）",
   );
   assert.strictEqual(w.repliesOf.has("root"), false, "T10 repliesOf 删键");
 
@@ -198,7 +200,8 @@ const isWorker = (mxid) => mxid === W || mxid === W2;
   );
 }
 
-// 8. 编辑根整块移到 editedAt 槽位（§4.3/Dashboard revision collapse）。
+// 8. 编辑根移到 editedAt 槽位（§4.3/Dashboard revision collapse）：
+// 过程消息按自身发送时间原位，最终编辑的根单独后移到修订时刻。
 {
   const root = T("root", W, 100, { editedAt: 500 });
   const r = T("r", W, 150, { threadRoot: "root" });
@@ -207,11 +210,11 @@ const isWorker = (mxid) => mxid === W || mxid === W2;
   const h3 = T("h3", H, 600);
   const g = groupThreads([root, r, h1, h2, h3]);
   const w = inlineWorkerRuns(g.tops, g.repliesOf, isWorker);
-  // 块键 = 500 → 落 h2(400) 与 h3(600) 之间；块内 r(150) 先于 root(500)。
+  // 逐条键：r(150) < h1(200) < h2(400) < root(editedAt 500) < h3(600)。
   assert.deepStrictEqual(
     w.tops.map((m) => m.event_id),
-    ["h1", "h2", "r", "root", "h3"],
-    "T12 编辑 run 整块移到修订时刻",
+    ["r", "h1", "h2", "root", "h3"],
+    "T12 编辑根移到修订时刻（过程消息原位）",
   );
   assert.strictEqual(w.repliesOf.has("root"), false, "T12 repliesOf 删键");
 }

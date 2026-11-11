@@ -32,6 +32,7 @@ import {
   MSG_WINDOW_LIMIT,
   CARD_RADIUS,
   isToolMessage,
+  mergeWorkerMxids,
   parseApproval,
   sameLoopStatus,
 } from "./RoomChatShared";
@@ -1091,7 +1092,22 @@ export function useRoomChatCore(props: RoomChatProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.room_id]);
 
+  // worker 判定表（四集合并——RoomChatMessages 同口径，面板 turn 拆分
+  // 复用 splitTurn/isThinkingNotice/isWorkerPlaceholder）。
+  const workerMxidsTable = React.useMemo(
+    () =>
+      mergeWorkerMxids(
+        memberWorkerNames,
+        workerSessionByMxid,
+        workerRuntimeByMxid,
+        workerMxids,
+      ),
+    [memberWorkerNames, workerSessionByMxid, workerRuntimeByMxid, workerMxids],
+  );
+
   // 线程面板内容：宽屏右侧固定面板，窄屏 antd.Drawer。
+  // §4.4：面板正文 = 主列表 turn 管线（TurnHeader/过程条/审批卡/回答行/
+  // 错误条全复用）——handler 与主列表行同源（审批/交付/工作流/灯箱）。
   const threadPanelBody = React.useMemo(() => {
     if (!activeThreadMsg) return null;
     return (
@@ -1108,6 +1124,20 @@ export function useRoomChatCore(props: RoomChatProps) {
         // 主题根/引用原消息可能不在已加载窗口 → handleSearchJump 兜底 /context。
         onJump={(eventId) => void handleSearchJump(eventId)}
         workerSessionByMxid={workerSessionByMxid}
+        memberWorkerNames={memberWorkerNames}
+        workerRuntimeByMxid={workerRuntimeByMxid}
+        workerMxids={workerMxidsTable}
+        liveByRunId={liveByRunId}
+        teamName={teamName}
+        resolvedApprovals={resolvedApprovals}
+        onApprovalAction={handleApprovalAction}
+        onDeliverable={handleDeliverable}
+        onOpenProject={onOpenProject}
+        onWorkflowIntervened={onWorkflowIntervened}
+        onOpenProjectFiles={onOpenProjectFiles}
+        openDetailMxid={openDetailMxid}
+        onDm={onDm}
+        onOpenWorkerChats={onOpenWorkerChats}
       />
     );
   }, [
@@ -1119,6 +1149,21 @@ export function useRoomChatCore(props: RoomChatProps) {
     onSend,
     onReact,
     jumpToMessage,
+    workerSessionByMxid,
+    memberWorkerNames,
+    workerRuntimeByMxid,
+    workerMxidsTable,
+    liveByRunId,
+    teamName,
+    resolvedApprovals,
+    handleApprovalAction,
+    handleDeliverable,
+    onOpenProject,
+    onWorkflowIntervened,
+    onOpenProjectFiles,
+    openDetailMxid,
+    onDm,
+    onOpenWorkerChats,
   ]);
 
  // 话题面板占宽上报（打开/关闭/调宽/宽窄态变化

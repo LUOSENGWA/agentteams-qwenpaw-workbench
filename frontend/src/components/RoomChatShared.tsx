@@ -62,6 +62,32 @@ export function isWorkerPlaceholder(
   );
 }
 
+/** worker 判定表（四集合并）：成员名表 ∪ 会话状态表 ∪ 运行时表 ∪
+ * props.workerMxids（Set）。成员名优先（值为显示名），其余仅登记
+ * mxid。Record 形态供 splitTurn/isThinkingNotice/isWorkerPlaceholder
+ * 复用（RoomChatCore 的 Set 判定与之一致）。 */
+export function mergeWorkerMxids(
+  memberWorkerNames?: Record<string, string>,
+  workerSessionByMxid?: Record<string, unknown>,
+  workerRuntimeByMxid?: Record<string, string>,
+  workerMxids?: Set<string> | null,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [mxid, name] of Object.entries(memberWorkerNames || {})) {
+    out[mxid] = name;
+  }
+  for (const mxid of Object.keys(workerSessionByMxid || {})) {
+    out[mxid] = out[mxid] ?? mxid;
+  }
+  for (const mxid of Object.keys(workerRuntimeByMxid || {})) {
+    out[mxid] = out[mxid] ?? mxid;
+  }
+  if (workerMxids) {
+    for (const mxid of workerMxids) out[mxid] = out[mxid] ?? mxid;
+  }
+  return out;
+}
+
 /** 常用快捷表情（Element 同款交互：hover 消息 → 快捷反应）。 */
 export const QUICK_REACTIONS = ["👍", "❤️", "😄", "🎉", "👀", "✅"];
 
