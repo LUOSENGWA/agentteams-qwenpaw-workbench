@@ -45,9 +45,11 @@ export function groupThreads<T extends ThreadMsg>(
 }
 
 /** worker-run 内联折叠（§4.2）：纯 worker 线程（root 发送者是 worker
- * 且全部回复发送者都是 worker）=「一次运行」——root + 全部回复内联进
- * tops（块内按 editedAt ?? origin_server_ts 稳定排序），不再保留在
- * repliesOf（不进话题列表）；根上的 ThreadIcon 摘要与线程面板读取
+ * 且全部回复发送者都是 worker）=「一次运行」——root + 全部回复逐条
+ * 内联进 tops（每条按自身 editedAt ?? origin_server_ts 落位，Dashboard
+ * 连续 turn 语义：run 中途的人类消息原位保留；最终编辑过的根后移到
+ * 修订时刻，作为独立 turn 渲染在过程之后），不再保留在 repliesOf
+ * （不进话题列表）；根上的 ThreadIcon 摘要与线程面板读取
  * 由渲染层按 threadRoot 反查承载，不依赖 repliesOf。
  * 人类线程 / 混合线程（有人类回复）原样保留（root 顶层 + 回复在线程
  * 分组）——一旦有人参与，整条线程按人类话题处理，不内联。
@@ -63,12 +65,13 @@ export function inlineWorkerRuns<T extends ThreadMsg>(
   // 排序/锚定键：最终编辑过的消息按修订时间（editedAt）——Dashboard
   // revision collapse（agent ts = max(root, edit)）；未编辑 = 发送时间。
   // 人类编辑保持原位的口径由调用方 isWorker 门控体现（本函数只重排
-  // 纯 worker run 块；人类消息 key=origin_server_ts，tops 已按它有序，
-  // 稳定排序下原位不动）。
+  // 纯 worker run 的消息；人类消息 key=origin_server_ts，tops 已按它
+  // 有序，稳定排序下原位不动）。
   const keyOf = (m: T): number => m.editedAt ?? m.origin_server_ts ?? 0;
-  // 渲染单元：普通顶层=自身（键=发送时间）；纯 worker run=「一次运行」
-  // 整块（root + 全部回复，键=root 的修订键——编辑后的 run 整体移到
-  // 修订时刻槽位，块内不与其它顶层消息交错）。
+  // 渲染单元：普通顶层=自身（键=发送时间）；纯 worker run 的 root 与
+  // 每条回复各自成单元（键=该条的修订键）——逐条落位后同发送者的
+  // 过程消息仍连续成 turn（Dashboard AgentTurnGrouper 语义），且
+  // run 中途的人类消息原位保留，最终编辑过的根单独后移到修订时刻。
   const units: { key: number; items: T[] }[] = [];
   const repliesOut = new Map<string, T[]>();
   // 已消费键（tops 对应的线程键）：run 键被有意删除（内联），
@@ -84,9 +87,11 @@ export function inlineWorkerRuns<T extends ThreadMsg>(
       isWorker(m.sender) &&
       rs.every((r) => !!r.sender && isWorker(r.sender));
     if (pureWorkerRun) {
-      // 块内按键稳定排序（JS sort 稳定：同键保持 reply 原序）。
-      const block = [m, ...rs].sort((a, b) => keyOf(a) - keyOf(b));
-      units.push({ key: keyOf(m), items: block });
+      // 逐条成单元：[root, ...replies] 原序，各按自身修订键参与稳定
+      // 合并（同键保持原相对序；未编辑时键=发送时间，原位不动）。
+      for (const item of [m, ...rs]) {
+        units.push({ key: keyOf(item), items: [item] });
+      }
     } else {
       units.push({ key: tsOf(m), items: [m] });
       if (rs) repliesOut.set(m.event_id, rs);
@@ -94,7 +99,7 @@ export function inlineWorkerRuns<T extends ThreadMsg>(
   }
   // 稳定合并：单元按锚定键落位（同键保持原相对序）——未编辑消息键=
   // 发送时间且 tops 已按发送时间有序 → 原位不动；只有编辑过的
-  // 纯 worker run 块会整体后移到修订时刻。
+  // 纯 worker run 消息会各自后移到修订时刻。
   const out: T[] = [];
   units
     .map((u, i) => ({ u, i }))

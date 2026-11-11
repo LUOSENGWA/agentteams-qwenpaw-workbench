@@ -610,7 +610,11 @@ export async function fetchRoomMessages(
     const rel = (c["m.relates_to"] as Record<string, unknown>) || {};
     const nc = (c["m.new_content"] as Record<string, unknown>) || {};
     // 非标注客户端 fallback body 带 "[edit] " 前缀——聚合时剥掉。
-    replaceMap.set(String(rel.event_id), {
+    // dir=b 从新到旧迭代：首次命中 = 最新编辑，后续旧编辑跳过
+    // （无条件 set 会让旧编辑覆盖新编辑的 body/msgtype/editedAt）。
+    const targetId = String(rel.event_id);
+    if (replaceMap.has(targetId)) continue;
+    replaceMap.set(targetId, {
       body: String(nc.body ?? "").replace(/^\[edit\]\s*/, ""),
       msgtype: String(nc.msgtype || "m.text"),
       ts: Number(ev.origin_server_ts || 0),

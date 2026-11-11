@@ -174,6 +174,7 @@ export const missingDict: Record<string, { en: string }> = {
   "输入技能名后回车（如 nacos://team/skills 或本地技能名）": { en: "Type a skill name and press Enter (e.g. nacos://team/skills or a local skill name)" },
   "还没有文件夹（先上传文件或同步一次）": { en: "No folders yet (upload a file or run a sync first)" },
   "远端证据不足时会被拒绝（远端始终不动）": { en: "Refused when remote evidence is insufficient (the remote is never touched)" },
+  "运行过程": { en: "Processing" },
   "选择 Provider": { en: "Select provider" },
   "选择同步的文件夹": { en: "Choose folders to sync" },
   "选择回退模型": { en: "Select a fallback model" },
