@@ -18,7 +18,7 @@ buildSync({
   outfile: path.join(tmp, "threadWindow.mjs"),
   platform: "node",
 });
-const { groupThreads, applyWindow } = await import(
+const { groupThreads, applyWindow, inlineWorkerRuns } = await import(
   path.join(tmp, "threadWindow.mjs")
 );
 
@@ -26,6 +26,18 @@ const M = (id, replyTo) => ({
   event_id: id,
   reply: replyTo ? { event_id: replyTo } : undefined,
 });
+
+// 线程消息（m.thread 口径：threadRoot 指向根）+ worker-run 内联断言用。
+const T = (id, sender, ts, extra = {}) => ({
+  event_id: id,
+  sender,
+  origin_server_ts: ts,
+  ...extra,
+});
+const W = "@w:hs";
+const W2 = "@w2:hs";
+const H = "@h:hs";
+const isWorker = (mxid) => mxid === W || mxid === W2;
 
 // 1. 分组：reply 归线程，target 缺失降级顶层。
 {
@@ -139,4 +151,81 @@ const M = (id, replyTo) => ({
   assert.strictEqual(w2.hiddenCount, 0, "T9 恰好等窗不藏");
 }
 
-console.log("threadWindow smoke: 9 断言组全过");
+// 7. worker-run 内联（§4.2）：纯 worker 线程 = 一次运行——root+回复
+// 内联进 tops（块内按修订键排）、repliesOf 删键；人类/混合线程原样。
+{
+  const root = T("root", W, 100);
+  const r1 = T("r1", W2, 300, { threadRoot: "root" });
+  const r2 = T("r2", W, 200, { threadRoot: "root" });
+  const h = T("h", H, 250);
+  const g = groupThreads([root, h, r1, r2]);
+  assert.deepStrictEqual(
+    g.tops.map((m) => m.event_id),
+    ["root", "h"],
+    "T10 分组前提：threadRoot 归线程",
+  );
+  const w = inlineWorkerRuns(g.tops, g.repliesOf, isWorker);
+  // 块=原子单元（锚定键=root 发送时间 100），块内按修订键排。
+  assert.deepStrictEqual(
+    w.tops.map((m) => m.event_id),
+    ["root", "r2", "r1", "h"],
+    "T10 纯 worker run 内联（块整块落位，不交错）",
+  );
+  assert.strictEqual(w.repliesOf.has("root"), false, "T10 repliesOf 删键");
+
+  // 混合线程（worker 根 + 人类回复）→ 不内联。
+  const mroot = T("mroot", W, 100);
+  const mrw = T("mrw", W, 150, { threadRoot: "mroot" });
+  const mrh = T("mrh", H, 200, { threadRoot: "mroot" });
+  const gm = groupThreads([mroot, mrw, mrh]);
+  const wm = inlineWorkerRuns(gm.tops, gm.repliesOf, isWorker);
+  assert.deepStrictEqual(
+    wm.tops.map((m) => m.event_id),
+    ["mroot"],
+    "T11 混合线程不内联（root 顶层）",
+  );
+  assert.strictEqual(wm.repliesOf.get("mroot").length, 2, "T11 回复保留线程");
+
+  // 人类根 + worker 回复 → 不内联（根不是 worker）。
+  const hroot = T("hroot", H, 100);
+  const hrw = T("hrw", W, 150, { threadRoot: "hroot" });
+  const gh = groupThreads([hroot, hrw]);
+  const wh = inlineWorkerRuns(gh.tops, gh.repliesOf, isWorker);
+  assert.deepStrictEqual(
+    wh.tops.map((m) => m.event_id),
+    ["hroot"],
+    "T11 人类根+worker 回复不内联",
+  );
+}
+
+// 8. 编辑根整块移到 editedAt 槽位（§4.3/Dashboard revision collapse）。
+{
+  const root = T("root", W, 100, { editedAt: 500 });
+  const r = T("r", W, 150, { threadRoot: "root" });
+  const h1 = T("h1", H, 200);
+  const h2 = T("h2", H, 400);
+  const h3 = T("h3", H, 600);
+  const g = groupThreads([root, r, h1, h2, h3]);
+  const w = inlineWorkerRuns(g.tops, g.repliesOf, isWorker);
+  // 块键 = 500 → 落 h2(400) 与 h3(600) 之间；块内 r(150) 先于 root(500)。
+  assert.deepStrictEqual(
+    w.tops.map((m) => m.event_id),
+    ["h1", "h2", "r", "root", "h3"],
+    "T12 编辑 run 整块移到修订时刻",
+  );
+  assert.strictEqual(w.repliesOf.has("root"), false, "T12 repliesOf 删键");
+}
+
+// 9. 纯函数性：内联不修改入参。
+{
+  const root = T("root", W, 100);
+  const r = T("r", W, 150, { threadRoot: "root" });
+  const g = groupThreads([root, r]);
+  const topsSnap = [...g.tops];
+  const repliesSnap = [...(g.repliesOf.get("root") || [])];
+  inlineWorkerRuns(g.tops, g.repliesOf, isWorker);
+  assert.deepStrictEqual(g.tops, topsSnap, "T13 tops 入参未变");
+  assert.deepStrictEqual(g.repliesOf.get("root"), repliesSnap, "T13 repliesOf 入参未变");
+}
+
+console.log("threadWindow smoke: 12 断言组全过");

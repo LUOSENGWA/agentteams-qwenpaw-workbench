@@ -140,6 +140,29 @@ export function buildTurns(messages: ChatMessage[]): Turn[] {
   return turns;
 }
 
+/**
+ * turn → tops 索引映射（允许非连续，§4.3）：turn 消息逐条按 event_id
+ * 查 tops 下标，不再假设「turn = tops 连续切片」。
+ * 非连续来源：worker-run 内联/占位行抑制等渲染序列空洞——切片假设会把
+ * 后续行错位渲染。首命中口径（同 id 重复时取最早下标，与旧 idxById 一致）。
+ * 不在 tops 的 id（防御）跳过。
+ */
+export function mapTurnRanges<T extends { event_id: string }>(
+  turns: Turn[],
+  tops: T[],
+): { turn: Turn; indices: number[] }[] {
+  const idxById = new Map<string, number>();
+  tops.forEach((m, i) => {
+    if (!idxById.has(m.event_id)) idxById.set(m.event_id, i);
+  });
+  return turns.map((turn) => ({
+    turn,
+    indices: turn.messages
+      .map((m) => idxById.get(m.id))
+      .filter((i): i is number => i !== undefined),
+  }));
+}
+
 // ── 续行分组（dashboard MainGrouper 同口径）────────────────────────
 //
 // 同发送者连续消息在「≤5 分钟 + 同一本地日 + 同一 msgtype 族」时隐藏

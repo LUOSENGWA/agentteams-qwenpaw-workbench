@@ -13,6 +13,7 @@ import { type WorkflowEvent } from "../api";
 import {
   groupThreads,
   applyWindow,
+  inlineWorkerRuns,
 } from "../threadWindow";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -377,6 +378,17 @@ export function useRoomChatCore(props: RoomChatProps) {
     [messages, hideTools],
   );
 
+  // worker 判定（§4.2 worker-run 内联门控）：成员名表 ∪ 会话状态表 ∪
+  // runtime 表 ∪ 房间 worker 集合——四表并集，任一表命中即 worker。
+  const isWorkerMxid = React.useCallback(
+    (mxid: string) =>
+      (memberWorkerNames && mxid in memberWorkerNames) ||
+      (workerSessionByMxid && mxid in workerSessionByMxid) ||
+      (workerRuntimeByMxid && mxid in workerRuntimeByMxid) ||
+      (workerMxids ? workerMxids.has(mxid) : false),
+    [memberWorkerNames, workerSessionByMxid, workerRuntimeByMxid, workerMxids],
+  );
+
   // 线程分组（Element/Discord 式）：回复消息折叠进所回复的
   // 消息线程，不再在顶层重复出现——「谁回复了谁的哪条」一目了然。
   //
@@ -386,10 +398,22 @@ export function useRoomChatCore(props: RoomChatProps) {
   // pendingOriginal（「加载原消息」定位中）旁路——目标消息必须恒在 DOM。
   // 目标消息被窗口藏起的回复降级为顶层、置于渲染窗首（消息序连续，
   // 与「target 不在已载窗口」的既有行为一致）。
+  //
+  // worker-run 内联（§4.2）：窗口先于内联——纯 worker 线程（root+回复
+  // 全是 worker）=「一次运行」，root+全部回复内联进主时间线（块锚定
+  // root 修订键，最终编辑根按 editedAt 落位），不再占话题分组；
+  // 人类/混合线程原样保留话题分组。被窗口藏起 root 的孤儿回复保持
+  // applyWindow 既有降级行为（不内联，独立成行）。
   const threadGroups = React.useMemo(() => {
     const g = groupThreads(visibleMessages);
-    return applyWindow(g.tops, g.repliesOf, windowLimit, pendingOriginal);
-  }, [visibleMessages, windowLimit, pendingOriginal]);
+    const w = applyWindow(g.tops, g.repliesOf, windowLimit, pendingOriginal);
+    const inl = inlineWorkerRuns(w.tops, w.repliesOf, isWorkerMxid);
+    return {
+      tops: inl.tops,
+      repliesOf: inl.repliesOf,
+      hiddenCount: w.hiddenCount,
+    };
+  }, [visibleMessages, windowLimit, pendingOriginal, isWorkerMxid]);
   hiddenCountRef.current = threadGroups.hiddenCount;
 
   // 贴底跟随（useStickToBottom：显式 following + rAF 批量 instant 贴底 +
@@ -914,15 +938,18 @@ export function useRoomChatCore(props: RoomChatProps) {
   }, [activeThread, visibleMessages]);
   const activeThreadReplies = React.useMemo(() => {
     if (!activeThread) return [];
-    // 主题根被渲染窗藏起时（孤儿回复降级置顶），从渲染窗内按 reply 目标
-    // 反查该主题的回复——线程面板不因窗口化丢失数据（主题消息本体要
-    // 看仍需先「显示更早」）。
+    // ① 话题分组直取（人类/混合线程：回复在 repliesOf）。
     const direct = threadGroups.repliesOf.get(activeThread);
     if (direct) return direct;
-    return threadGroups.tops.filter(
-      (m) => m.reply?.event_id === activeThread,
+    // ② worker-run 已内联（§4.2：纯 worker 线程的回复不再占 repliesOf，
+    // 已内联进 tops）→ 按 threadRoot 从全量已载消息反查全部回复——
+    // 线程面板读取全量，不因内联丢回复。同法覆盖「主题根被渲染窗藏起
+    // （孤儿回复降级置顶）」场景（threadRoot/reply 目标反查）。
+    return visibleMessages.filter(
+      (m) =>
+        m.threadRoot === activeThread || m.reply?.event_id === activeThread,
     );
-  }, [activeThread, threadGroups]);
+  }, [activeThread, threadGroups, visibleMessages]);
 
  // useCallback——行内 SenderAvatar
   // memo 依赖其引用稳定（普通函数每渲染新引用 → memo 全击穿）。

@@ -5,6 +5,7 @@ import {
   PRIMARY,
   TOUCH_ONLY,
   isToolMessage,
+  isWorkerPlaceholder,
   wantsDateSeparator,
   EMPTY_REPLIES,
 } from "./RoomChatShared";
@@ -91,11 +92,25 @@ export default function RoomChatMessages(props: {
   } = c;
   const onWorkflowIntervened = p.onWorkflowIntervened;
 
-  // 思考过程识别（m.notice 推理帧）的 worker 判定表：成员名表 ∪ 会话状态表。
-  const workerMxids = React.useMemo(
-    () => ({ ...(memberWorkerNames || {}), ...(workerSessionByMxid || {}) }),
-    [memberWorkerNames, workerSessionByMxid],
-  );
+  // worker 判定表（§4.2 四集合并）：成员名表 ∪ 会话状态表 ∪ 运行时表
+  // ∪ props.workerMxids（Set）——worker-run 内联 / 思考帧 / 占位行判定
+  // 同一口径（RoomChatCore 的 isWorkerMxid 与此同集）。
+  const workerMxids = React.useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [mxid, name] of Object.entries(memberWorkerNames || {})) {
+      out[mxid] = name;
+    }
+    for (const mxid of Object.keys(workerSessionByMxid || {})) {
+      out[mxid] = out[mxid] ?? mxid;
+    }
+    for (const mxid of Object.keys(workerRuntimeByMxid || {})) {
+      out[mxid] = out[mxid] ?? mxid;
+    }
+    if (p.workerMxids) {
+      for (const mxid of p.workerMxids) out[mxid] = out[mxid] ?? mxid;
+    }
+    return out;
+  }, [memberWorkerNames, workerSessionByMxid, workerRuntimeByMxid, p.workerMxids]);
 
   // 结构化 text 块替代 body（org.agentteams.run）：按 event_id 预算一次，
   // 保持 RoomChatMessageRow 的行级 memo 引用稳定（仅 tops 变化时重建）。
@@ -108,6 +123,21 @@ export default function RoomChatMessages(props: {
     }
     return map;
   }, [v.tops]);
+
+  // threadRoot → 全部线程回复（全量已载消息反查，§4.2）：纯 worker run
+  // 内联后其回复不再占 repliesOf，根行「N 条回复」摘要 + ThreadIcon 入口
+  // 与线程面板读取全量都靠它（人类/混合线程仍优先 repliesOf）。
+  const inlinedReplies = React.useMemo(() => {
+    const map = new Map<string, RoomMessage[]>();
+    for (const m of visibleMessages) {
+      const r = m.threadRoot;
+      if (!r) continue;
+      const arr = map.get(r);
+      if (arr) arr.push(m);
+      else map.set(r, [m]);
+    }
+    return map;
+  }, [visibleMessages]);
 
   // 只有「列表尾部 turn」才可能是进行中：历史 turn 的未闭合工具帧
   // （call 后没有结果帧）不该让过程条永久停在「进行中/展开」。
@@ -310,7 +340,7 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
               if (item.kind === "event") {
                 return <TaskEventCard key={item.key} ev={item.ev} />;
               }
-              const { turn, start, end } = item.range;
+              const { turn, indices } = item.range;
               // 批次 3 + 第二批：turn 拆三段（思考帧/工具调用/回答帧）。
               // 有过程的 turn → 渲染顺序 TurnHeader → 过程条 → 回答行；
               // 无过程的 turn（人聊）→ 仍由组首行自带 header（现状视觉），
@@ -326,8 +356,11 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
               }
               const hasProcess = calls.length > 0 || thoughts.length > 0;
               const turnMine = myUserId !== "" && turn.sender === myUserId;
-              const firstTop = start < v.tops.length ? v.tops[start] : null;
-              const prevTop = start > 0 ? v.tops[start - 1] : null;
+              // turn 首条消息的 tops 下标（§4.3：indices 允许非连续——
+              // worker-run 内联块整体落位后，「turn=连续切片」假设废弃）。
+              const firstIdx = indices.length > 0 ? indices[0] : -1;
+              const firstTop = firstIdx >= 0 ? v.tops[firstIdx] : null;
+              const prevTop = firstIdx > 0 ? v.tops[firstIdx - 1] : null;
               // 日期分隔/未读线：有过程的 turn 提到 header 之前渲染
               // （顺序：分隔 → header → 过程条 → 回答行）；判定条件不变。
               const turnSep =
@@ -342,12 +375,78 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                 firstTop !== null &&
                 (hoveredId === firstTop.event_id ||
                   TOUCH_ONLY ||
-                  start === v.renderedLastTopIdx);
+                  firstIdx === v.renderedLastTopIdx);
               const turnAlign = {
                 display: "flex",
                 justifyContent: turnMine ? "flex-end" : "flex-start",
                 padding: "0 6px",
               } as const;
+              // 行预计算（turn 内逐行吸收判定 + 续行基准行）：吸收行
+              // （占位根/思考/无回复工具帧/无 text 结构块）不渲染正文、
+              // 也不参与续行——占位根被吸收时，组头（头像+名字）落到首个
+              // 可见行（Dashboard MainGrouper 口径；§4.3）。
+              const rows = indices.map((idx, i) => {
+                const msg = v.tops[idx];
+                // replies 口径：① 话题分组（人类/混合线程的回复在
+                // repliesOf）；② worker-run 已内联（§4.2：回复不再占
+                // repliesOf）→ inlinedReplies 全量反查。EMPTY_REPLIES
+                // 常量 fallback（任务 D §2.3：引用稳定，memo 不击穿）。
+                const replies =
+                  threadGroups.repliesOf.get(msg.event_id) ??
+                  inlinedReplies.get(msg.event_id) ??
+                  EMPTY_REPLIES;
+                const mine = myUserId !== "" && msg.sender === myUserId;
+                // 结构化块（org.agentteams.run）：有块时不走 body 启发式。
+                // 无 text 块 → 只留锚点行；有 text 块 → 正文用块文本。
+                const hasRunBlocks =
+                  !!msg.runBlocks && msg.runBlocks.length > 0;
+                const absorbedBlocks =
+                  hasRunBlocks && !runBlockBodies.has(msg.event_id);
+                // 批次 3：无回复的工具帧吸收进本 turn 的过程折叠条——
+                // 外层 key div 保留，只省独立气泡行。
+                const absorbedTool =
+                  !hasRunBlocks &&
+                  isToolMessage(msg.body || "") &&
+                  replies.length === 0;
+                // 思考 notice：同上不独立成行；有回复的 notice 保留行——
+                // 回复入口不能随正文一起消失。
+                const absorbedThinking =
+                  !hasRunBlocks &&
+                  !absorbedTool &&
+                  replies.length === 0 &&
+                  isThinkingNotice(msg, mine, workerMxids);
+                // worker「处理中...」根占位（§4.3）：内联回复即本次运行
+                // 正文，占位根只留 DOM 锚点、不单独渲染（本行的「N 条
+                // 回复 + ThreadIcon」摘要是行内独立块，不受吸收影响）。
+                const absorbedPlaceholder =
+                  !hasRunBlocks && isWorkerPlaceholder(msg, workerMxids);
+                const absorbed =
+                  absorbedTool ||
+                  absorbedThinking ||
+                  absorbedBlocks ||
+                  absorbedPlaceholder;
+                return {
+                  idx,
+                  i,
+                  msg,
+                  replies,
+                  mine,
+                  absorbedBlocks,
+                  absorbedTool,
+                  absorbedThinking,
+                  absorbedPlaceholder,
+                  absorbed,
+                };
+              });
+              // prevVisibleOf[i] = 第 i 行的上一「可见」行（首行 = turn 首
+              // 索引之前的顶层，与旧首行口径一致）；吸收行不更新基准。
+              let lastVisibleTop: RoomMessage | null =
+                firstIdx > 0 ? v.tops[firstIdx - 1] : null;
+              const prevVisibleOf: (RoomMessage | null)[] = rows.map((row) => {
+                const pv = lastVisibleTop;
+                if (!row.absorbed) lastVisibleTop = row.msg;
+                return pv;
+              });
               return (
                 <div key={turn.id} data-turn-id={turn.id}>
                 {turnUnread ? <ChatUnreadLine tr={tr} /> : null}
@@ -410,22 +509,32 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                     </div>
                   </div>
                 ) : null}
-                {v.tops.slice(start, end).map((msg, i) => {
-                  const idx = start + i;
+                {rows.map((row) => {
+                  const {
+                    idx,
+                    i,
+                    msg,
+                    replies,
+                    mine,
+                    absorbedBlocks,
+                    absorbedTool,
+                    absorbedThinking,
+                    absorbedPlaceholder,
+                  } = row;
                   const prev = idx > 0 ? v.tops[idx - 1] : null;
                   const sep =
                     hasProcess && i === 0
                       ? false
                       : wantsDateSeparator(prev, msg);
-                  const mine = myUserId !== "" && msg.sender === myUserId;
                   // 16.46：窗口化后以「渲染窗末行」为末行（全列表尾不可见）。
                   const isLast = idx === v.renderedLastTopIdx;
                   // 有过程的 turn：header 已在 turn 顶只出现一次 → 行内全部
-                  // 视为续行（不再重复头像/名字）；无过程的 turn：沿用
-                  // dashboard MainGrouper 口径（5 分钟 + 同日 + 同族续行）。
+                  // 视为续行；无过程的 turn：续行基准 = 上一「可见」行
+                  // （dashboard MainGrouper 口径：5 分钟 + 同日 + 同族——
+                  // 占位根被吸收时首个可见行即组头，头像+名字不丢）。
                   const sameSender = hasProcess
                     ? true
-                    : !sep && shouldContinueGroup(prev, msg);
+                    : !sep && shouldContinueGroup(prevVisibleOf[i], msg);
                   // gutter 时间：hover ∥ 末行 ∥（触屏：组头行常显）——触屏无
                   // hover，tap 虽经 hoveredId 也能显时间，但 tap 的语义是
                   // 弹操作条（对消息动手）不是看时间；组头行（头像+名）常显
@@ -436,36 +545,12 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                     isLast ||
                     (TOUCH_ONLY && !sameSender);
                   // 未读线：打开房间后新到的消息（ts > readTs）第一条前插线。
+                  // 基准保持「物理」上一行：线位置不受吸收抑制影响。
                   const unreadLine =
                     !(hasProcess && i === 0) &&
                     readTs > 0 &&
                     msg.origin_server_ts > readTs &&
                     (!prev || prev.origin_server_ts <= readTs);
-                  // EMPTY_REPLIES 常量 fallback（任务 D §2.3）：此前 `|| []`
-                  // 每渲染新建 [] → 行级 memo 该 props 引用永变、白做。
-                  const replies =
-                    threadGroups.repliesOf.get(msg.event_id) ?? EMPTY_REPLIES;
-                  // 结构化块（org.agentteams.run）：有块时不走 body 启发式。
-                  // 无 text 块 → 只留锚点行（思考/工具/审批/错误各自独立呈现）；
-                  // 有 text 块 → 正文用块文本（runBlockBodies 覆盖）。
-                  const hasRunBlocks =
-                    !!msg.runBlocks && msg.runBlocks.length > 0;
-                  const absorbedBlocks =
-                    hasRunBlocks && !runBlockBodies.has(msg.event_id);
-                  // 批次 3：无回复的工具帧吸收进本 turn 的过程折叠条
-                  // （turn.toolCalls 聚合，见循环尾 ProcessCollapseBar）——
-                  // 外层 key div 保留（日期分隔/未读线照旧），只省独立气泡行。
-                  const absorbedTool =
-                    !hasRunBlocks &&
-                    isToolMessage(msg.body || "") &&
-                    replies.length === 0;
-                  // 思考 notice：同上不独立成行（正文改由上方过程折叠条承载）；
-                  // 有回复的 notice 保留行——回复入口不能随正文一起消失。
-                  const absorbedThinking =
-                    !hasRunBlocks &&
-                    !absorbedTool &&
-                    replies.length === 0 &&
-                    isThinkingNotice(msg, mine, workerMxids);
                   return (
                     <RoomChatMessageRow
                       key={msg.event_id || `${msg.sender}-${msg.origin_server_ts}`}
@@ -478,6 +563,7 @@ minHeight: 0 是 flex 高度链必配项（教训 #615：
                       absorbedTool={absorbedTool}
                       absorbedThinking={absorbedThinking}
                       absorbedBlocks={absorbedBlocks}
+                      absorbedPlaceholder={absorbedPlaceholder}
                       mine={mine}
                       hovered={hoveredId === msg.event_id}
                       showTime={showTime}
