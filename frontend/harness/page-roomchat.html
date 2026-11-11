@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ui-harness-roomchat</title>
+<link rel="stylesheet" href="/node_modules/antd/dist/antd.min.css" />
+</head>
+<body>
+<div id="root"></div>
+<script src="/node_modules/react/umd/react.development.js"></script>
+<script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+<script src="/node_modules/dayjs/dayjs.min.js"></script>
+<script src="/node_modules/antd/dist/antd.min.js"></script>
+<script>
+// 宿主 mock（同 page-attention-room 空壳）：React/antd 实例 + 主题 query 参数。
+const params = new URLSearchParams(location.search);
+window.QwenPaw = {
+  host: {
+    React: window.React,
+    antd: window.antd,
+    getApiUrl: (p) => p,
+    getApiToken: () => "",
+    useLocale: () => "zh",
+    // ?theme=dark 切暗色（theme.ts：useTheme() === "dark"）。
+    useTheme: () => (params.get("theme") === "dark" ? "dark" : "light"),
+  },
+};
+// fetch 桩：RoomChat 挂载无网络（messages 走 prop）；一律 404，
+// 意外请求会被 pageerror/404 暴露。
+window.fetch = async () => ({
+  ok: false,
+  status: 404,
+  json: async () => ({ detail: "not found" }),
+  text: async () => JSON.stringify({ detail: "not found" }),
+});
+</script>
+<script src="/harness/bundle-roomchat.js"></script>
+</body>
+</html>

@@ -12,6 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   buildTurns,
+  mapTurnRanges,
   shouldContinueGroup,
   messageFamily,
   splitTurn,
@@ -317,23 +318,18 @@ const ROOM = {
   },
 };
 
-/** 按 RoomChatView 的口径从 tops 造 renderItems（turn 切片）。 */
+/** 按 RoomChatView 的口径从 tops 造 renderItems（turn → indices 映射，§4.3）。 */
 function render(tops: RoomMsgLike[]): string {
   const ir = roomMessagesToIR(tops as never);
   const turns = buildTurns(ir);
-  const idxById = new Map<string, number>();
-  tops.forEach((m, i) => {
-    if (!idxById.has(m.event_id)) idxById.set(m.event_id, i);
-  });
-  const renderItems = turns.map((turn) => {
-    const start = idxById.get(turn.id) ?? 0;
-    return {
-      kind: "turn",
-      key: `turn-${turn.id}`,
-      ts: tops[start]?.origin_server_ts ?? 0,
-      range: { turn, start, end: start + turn.messages.length },
-    };
-  });
+  // §4.3：turn → tops 下标映射走 mapTurnRanges（允许非连续）——与
+  // useRoomChatView 同口径，夹具不再手造连续切片。
+  const renderItems = mapTurnRanges(turns, tops).map((r) => ({
+    kind: "turn",
+    key: `turn-${r.turn.id}`,
+    ts: tops[r.indices[0]]?.origin_server_ts ?? 0,
+    range: r,
+  }));
   const core = {
     room: ROOM,
     loading: false,

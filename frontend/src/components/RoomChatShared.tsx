@@ -46,6 +46,22 @@ export function toolNameOf(body: string): string {
   return m ? m[1] : "";
 }
 
+/** Agent 处理占位正文（后端开工时发 `处理中...` 根占位；
+ * Dashboard isAgentPlaceholderBody 同口径）。 */
+export const AGENT_PLACEHOLDER_RE = /^\s*处理中[.。…]*\s*$/;
+
+/** worker 占位行：发送者 ∈ worker 表且正文 = 占位 → 行只留锚点、
+ * 不单独渲染（§4.3——回复内联后占位根是冗余壳）。 */
+export function isWorkerPlaceholder(
+  m: RoomMessage,
+  workerMxids: Record<string, unknown>,
+): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(workerMxids, m.sender) &&
+    AGENT_PLACEHOLDER_RE.test(m.body || "")
+  );
+}
+
 /** 常用快捷表情（Element 同款交互：hover 消息 → 快捷反应）。 */
 export const QUICK_REACTIONS = ["👍", "❤️", "😄", "🎉", "👀", "✅"];
 

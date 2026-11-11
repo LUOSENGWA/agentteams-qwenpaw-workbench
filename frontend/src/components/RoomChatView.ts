@@ -8,7 +8,7 @@ import {
   type TaskDetail,
   fetchProjectTransitionEvents,
 } from "../api";
-import { buildTurns, type Turn } from "../chat/ChatIR";
+import { buildTurns, mapTurnRanges, type Turn } from "../chat/ChatIR";
 import {
   VWIN_INITIAL,
   VWIN_MIN,
@@ -29,13 +29,15 @@ import type { RoomChatCoreState } from "./RoomChatCore";
 const host = window.QwenPaw.host;
 const React: typeof ReactNS = host.React;
 
-/** 渲染序列项：turn 块 ∥ 任务事件卡（按 ts 交错）。 */
+/** 渲染序列项：turn 块 ∥ 任务事件卡（按 ts 交错）。
+ * turn.range.indices = 本 turn 各消息在 tops 的下标（允许非连续，§4.3——
+ * worker-run 内联/占位行抑制可在渲染序列留洞，连续切片假设会把行错位）。 */
 export type RoomChatRenderItem =
   | {
       kind: "turn";
       key: string;
       ts: number;
-      range: { turn: Turn; start: number; end: number };
+      range: { turn: Turn; indices: number[] };
     }
   | { kind: "event"; key: string; ts: number; ev: TaskEvent };
 
@@ -64,17 +66,12 @@ export function useRoomChatView(
   const tops = core.threadGroups.tops;
   const irMessages = React.useMemo(() => roomMessagesToIR(tops), [tops]);
   const turns = React.useMemo(() => buildTurns(irMessages), [irMessages]);
-  // turn → tops 切片：turn.id = 首条消息 event_id（buildTurns 保证）。
-  const turnRanges = React.useMemo(() => {
-    const idxById = new Map<string, number>();
-    tops.forEach((m, i) => {
-      if (!idxById.has(m.event_id)) idxById.set(m.event_id, i);
-    });
-    return turns.map((turn) => {
-      const start = idxById.get(turn.id) ?? 0;
-      return { turn, start, end: start + turn.messages.length };
-    });
-  }, [turns, tops]);
+  // turn → tops 索引映射（§4.3）：逐条消息 event_id → 下标，允许非连续
+  // （worker-run 内联/占位行抑制后的渲染序列可能有洞）。
+  const turnRanges = React.useMemo(
+    () => mapTurnRanges(turns, tops),
+    [turns, tops],
+  );
 
   // 任务事件内联时间线：数据源 = 当前房间匹配项目的事件端点
   // （现有 workflow API，签名不动）；项目切换即取 + 15s 轮询；
@@ -115,12 +112,34 @@ export function useRoomChatView(
 
   // 渲染序列 = turn 与任务事件按 ts 交错（事件「插入」不替换）。
   const renderItems = React.useMemo<RoomChatRenderItem[]>(() => {
+    // §4.2 内联块锚定保护：inlineWorkerRuns 已把纯 worker run 整块锚定到
+    // 块根的修订键（editedAt ?? origin）。但块内按 keyOf 排序后，编辑过的
+    // 根排在回复之后——turn 首条消息可能是块内回复，若按回复 ts 排序会把
+    // 整块拉回修订时刻之前（块锚定被渲染层排序抵消）。故 turn 排序槽 =
+    // 首条消息所属内联块的块根键（首条的 threadRoot 仍在 tops = 该回复
+    // 的根未被窗口降级，块完整内联）；普通消息/降级孤儿回复保持自身键。
+    const topById = new Map<string, RoomMessage>();
+    for (const m of tops) {
+      if (!topById.has(m.event_id)) topById.set(m.event_id, m);
+    }
+    const slotKeyOf = (m: RoomMessage): number => {
+      const rootId = m.threadRoot;
+      if (rootId) {
+        const root = topById.get(rootId);
+        if (root) return root.editedAt ?? root.origin_server_ts ?? 0;
+      }
+      return m.editedAt ?? m.origin_server_ts ?? 0;
+    };
     const items: RoomChatRenderItem[] = [];
     for (const r of turnRanges) {
+      const first = r.indices.length > 0 ? tops[r.indices[0]] : undefined;
       items.push({
         kind: "turn",
         key: `turn-${r.turn.id}`,
-        ts: tops[r.start]?.origin_server_ts ?? 0,
+        // 排序口径 = 首条消息的修订键（editedAt ?? 发送时间，§4.3——
+        // 最终编辑的根按修订时间落位，与主时间线/任务卡交错一致）；
+        // 内联块回复取块根键（§4.2，见 slotKeyOf）。
+        ts: first ? slotKeyOf(first) : 0,
         range: r,
       });
     }
@@ -192,13 +211,13 @@ export function useRoomChatView(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderItems, roomKey]);
 
-  // tops 索引 → renderItems 索引（turn range 覆盖切片；事件卡不占 tops）。
+  // tops 索引 → renderItems 索引（turn 的 indices 逐条映射；事件卡不占 tops）。
   const topItemOf = React.useMemo(() => {
     const arr: number[] = new Array(tops.length).fill(-1);
     for (let i = 0; i < renderItems.length; i++) {
       const it = renderItems[i];
       if (it.kind !== "turn") continue;
-      for (let k = it.range.start; k < it.range.end; k++) arr[k] = i;
+      for (const k of it.range.indices) arr[k] = i;
     }
     return arr;
   }, [renderItems, tops]);
@@ -338,8 +357,9 @@ export function useRoomChatView(
   let renderedLastTopIdx = -1;
   for (let i = vwin.start; i < Math.min(vwin.end, renderItems.length); i++) {
     const it = renderItems[i];
-    if (it.kind === "turn" && it.range.end - 1 > renderedLastTopIdx) {
-      renderedLastTopIdx = it.range.end - 1;
+    if (it.kind !== "turn") continue;
+    for (const k of it.range.indices) {
+      if (k > renderedLastTopIdx) renderedLastTopIdx = k;
     }
   }
 

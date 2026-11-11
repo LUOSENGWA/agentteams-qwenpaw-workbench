@@ -24,15 +24,27 @@ export interface RoomMessage {
   failed?: boolean;
   /** 被 m.replace 编辑过（Element 同款「已编辑」标记）。 */
   edited?: boolean;
+  /** 编辑事件自身的 origin_server_ts（m.replace 修订时间）。排序口径：
+ * 已编辑的最终根按 editedAt 排（Dashboard revision collapse 同语义）。 */
+  editedAt?: number;
+  /** 最近一次编辑事件的 event_id（最新修订 id；溯源/去重用）。 */
+  latestEventId?: string;
   /** 被撤回（redaction，unsigned.redacted_because）。 */
   redacted?: boolean;
-  /** 引用回复（m.in_reply_to）：被回复消息的 event_id 与 fallback 摘要。 */
+  /** 引用回复（m.in_reply_to）：被回复消息的 event_id 与 fallback 摘要。
+ * 仅 m.in_reply_to 写入；m.thread 走 threadRoot/isThreadReply（不混入）。 */
   reply?: {
     event_id: string;
     /** "> <@sender> 原文" fallback 格式，解析后的发送者+摘要。 */
     sender?: string;
     body?: string;
   };
+  /** 线程根（m.thread rel 的 event_id）：Agent 线程协议——线程回复指向
+ * 根消息；根消息自身不设。分组/worker-run 内联的读模型入口。 */
+  threadRoot?: string;
+  /** 是否线程回复（m.thread）。与 reply（引用横幅）分离：线程回复不显
+ * 引用条，由线程面板/内联折叠承载上下文。 */
+  isThreadReply?: boolean;
   /** 表情反应聚合（m.reaction m.annotation）：emoji → 计数。 */
   reactions?: Record<string, number>;
   /** 聊天内 workflow 卡片载荷（content.agentteams.workflow 自定义字段，
@@ -576,9 +588,12 @@ export async function fetchRoomMessages(
   }
   // m.replace 编辑事件聚合（Element 同款——替换事件不独立
   // 显示，m.new_content 写回原消息 + edited 标记）。预扫一轮建映射。
+  // ts/eventId = 编辑事件自身的 origin_server_ts / event_id（读模型
+  // editedAt/latestEventId——最终修订根按修订时间排序，Dashboard
+  // revision collapse 同语义）。
   const replaceMap = new Map<
     string,
-    { body: string; msgtype: string }
+    { body: string; msgtype: string; ts: number; eventId: string }
   >();
   const isReplaceEvent = (ev: Record<string, unknown>): boolean => {
     const c = (ev.content as Record<string, unknown>) || {};
@@ -598,6 +613,8 @@ export async function fetchRoomMessages(
     replaceMap.set(String(rel.event_id), {
       body: String(nc.body ?? "").replace(/^\[edit\]\s*/, ""),
       msgtype: String(nc.msgtype || "m.text"),
+      ts: Number(ev.origin_server_ts || 0),
+      eventId: String(ev.event_id || ""),
     });
   }
   const messages: RoomMessage[] = (payload.chunk || [])
@@ -616,7 +633,11 @@ export async function fetchRoomMessages(
       const editedBy = redacted ? undefined : replaceMap.get(eventId0);
       // 引用/线程回复解析：m.in_reply_to（用户引用回复）+ m.thread（Agent 线程协议，
       // agentteams-matrix-channel L3618 实锤：rel_type "m.thread" + event_id=thread root）。
+      // 两协议分离（§4.1 读模型）：m.in_reply_to → reply（引用横幅）；
+      // m.thread → threadRoot/isThreadReply（分组 + worker-run 内联），
+      // 线程回复不再混入 reply（不显引用条，上下文由线程面板/内联承载）。
       let reply: RoomMessage["reply"];
+      let threadRoot: string | undefined;
       const relates = content["m.relates_to"] as
         | Record<string, unknown>
         | undefined;
@@ -630,24 +651,29 @@ export async function fetchRoomMessages(
             ev.event_id ||
             "",
         );
-        // Matrix fallback 格式：" > <@sender> 原文摘要"（m.in_reply_to 才有；
-        // m.thread 无 fallback，线程摘要靠历史里的原消息渲染）。
-        const fallback = String(relates["m.in_reply_to"] || "");
-        const senderMatch = />\s*<(@[^>]+)>/.exec(fallback);
-        let body = "";
-        if (fallback) {
-          body = fallback
-            .split("\n")
-            .filter((l) => l.startsWith(">"))
-            .map((l) => l.replace(/^>\s*/, ""))
-            .join("\n");
-          body = body.replace(/^<@[^>]+>\s*/, "").trim();
+        if (relates.rel_type === "m.thread" && replyEventId) {
+          threadRoot = replyEventId;
         }
-        reply = {
-          event_id: replyEventId,
-          sender: senderMatch ? senderMatch[1] : undefined,
-          body: body || undefined,
-        };
+        if (relates.rel_type === "m.in_reply_to") {
+          // Matrix fallback 格式：" > <@sender> 原文摘要"（m.in_reply_to 才有；
+          // m.thread 无 fallback，线程摘要靠历史里的原消息渲染）。
+          const fallback = String(relates["m.in_reply_to"] || "");
+          const senderMatch = />\s*<(@[^>]+)>/.exec(fallback);
+          let body = "";
+          if (fallback) {
+            body = fallback
+              .split("\n")
+              .filter((l) => l.startsWith(">"))
+              .map((l) => l.replace(/^>\s*/, ""))
+              .join("\n");
+            body = body.replace(/^<@[^>]+>\s*/, "").trim();
+          }
+          reply = {
+            event_id: replyEventId,
+            sender: senderMatch ? senderMatch[1] : undefined,
+            body: body || undefined,
+          };
+        }
       }
       // P0 人工介入闭环：@我 结构化提及 + 答复关联证据。
       // in_reply_to 只认标准回复；reference 只认 m.reference；
@@ -701,8 +727,19 @@ export async function fetchRoomMessages(
         mentions: redacted || !mentions || mentions.length === 0 ? undefined : mentions,
         in_reply_to: redacted ? undefined : inReplyTo,
         reference: redacted ? undefined : reference,
+        // 线程协议读模型（redacted 同样不派生——正文已置空，
+        // 线程归属一并去掉，避免红条消息仍归入线程）。
+        ...(!redacted && threadRoot
+          ? { threadRoot, isThreadReply: true as const }
+          : {}),
         ...(runBlocks ? { runBlocks } : {}),
-        ...(editedBy ? { edited: true } : {}),
+        ...(editedBy
+          ? {
+              edited: true as const,
+              editedAt: editedBy.ts,
+              latestEventId: editedBy.eventId,
+            }
+          : {}),
         ...(redacted ? { redacted: true } : {}),
       };
     });
