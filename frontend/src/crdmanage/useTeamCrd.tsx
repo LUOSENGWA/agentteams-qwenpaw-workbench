@@ -372,6 +372,41 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       );
       return;
     }
+    // 失配=不可保存（provider+model 原子对）——有效 pair 按 merge 语义判定：
+    // 新建行直接按指定值；既有行仅当本轮实际写 model/provider（与写循环
+    // diff 同口径：m&&m!==cur / p&&p!==curP）才参与判定，且判值=写后落盘
+    // 值（m||cur, p||curP）——防止只改 SOUL / 存量失配未触碰的行被误伤。
+    // 存在失配行 → 整批不发（createWorker/updateWorker/createTeam 均不落盘）；
+    // 错误文案复用批量键（与 doCfg 同形）。
+    const pairRows = rows
+      .map((r) => {
+        const m = (r.model || "").trim();
+        const p = (r.provider || "").trim();
+        if (r.mode === "new") return { r, m, p };
+        const cur = catalog.modelOf(r.name.trim());
+        const curP =
+          workers.find((w) => w.name === r.name.trim())?.modelProvider || "";
+        return (m && m !== cur) || (p && p !== curP)
+          ? { r, m: m || cur, p: p || curP }
+          : null;
+      })
+      .filter((x): x is { r: WorkerRow; m: string; p: string } => x !== null);
+    const badPairs = pairRows.filter((x) =>
+      providerModelMismatch(catalog.gatewayOpts ?? [], x.m, x.p),
+    );
+    if (badPairs.length) {
+      antd.message.error(
+        tr("模型与 Provider 失配（不可保存，请调整后重试）：{list}", {
+          list: badPairs
+            .map(
+              (x) =>
+                `${x.r.name.trim()}=${x.m}（归属 ${providerForModel(catalog.gatewayOpts ?? [], x.m)}，所选 ${x.p}）`,
+            )
+            .join("、"),
+        }),
+      );
+      return;
+    }
     const warnRows = rows.filter((r) => {
       const v = validateModelValue(r.model || "", catalog.modelCandidates);
       return (r.model || "").trim() && v.level === "warn";
@@ -477,7 +512,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       return;
     }
     void proceed();
-  }, [tForm, workerRows, workers, onRefresh, tr, catalog.modelCandidates, catalog.modelOf, startTeamCheck, millforgePreCreate, millforgePostCreate]);
+  }, [tForm, workerRows, workers, onRefresh, tr, catalog.modelCandidates, catalog.gatewayOpts, catalog.modelOf, startTeamCheck, millforgePreCreate, millforgePostCreate]);
 
   const workerNames = workers.map((x) => x.name);
 

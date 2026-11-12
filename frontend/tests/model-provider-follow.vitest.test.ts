@@ -208,6 +208,47 @@ ok("纯函数：providerModelMismatch 失配/一致/空值矩阵", async () => {
   assert.equal(mod.providerModelMismatch(gw, "  ", "provX"), false);
 }, true);
 
+// ── 7. doCreateTeam（建队流程）：失配拦截 + merge 语义有效 pair + 零新增键 ──
+ok("UTC：doCreateTeam 失配判定在 proceed/createWorker 之前（拦截 return，整批不发）", () => {
+  const d = utcSrc.indexOf("const doCreateTeam = React.useCallback");
+  const proceed = utcSrc.indexOf("const proceed = async", d);
+  const cw = utcSrc.indexOf("await createWorker({", d);
+  assert.ok(d > 0, "doCreateTeam 存在");
+  assert.ok(proceed > d && cw > d, "proceed/createWorker（落盘路径）存在");
+  const seg = utcSrc.slice(d, Math.min(proceed, cw));
+  assert.match(seg, /providerModelMismatch\(/, "doCreateTeam 段存在失配判定");
+  assert.match(
+    seg,
+    /if \(badPairs\.length\) \{[\s\S]*?return;/,
+    "失配分支 return（createWorker/updateWorker/createTeam 均不落盘）",
+  );
+});
+ok("UTC：doCreateTeam 有效 pair 按 merge 语义（m||cur / p||curP，与写循环同口径）", () => {
+  const d = utcSrc.indexOf("const doCreateTeam = React.useCallback");
+  const proceed = utcSrc.indexOf("const proceed = async", d);
+  assert.ok(d > 0 && proceed > d, "doCreateTeam/proceed 存在");
+  const seg = utcSrc.slice(d, proceed);
+  // 参与判据与写循环 diff 同口径：仅当本轮实际写 model/provider 才判定
+  //（只改 SOUL / 存量失配未触碰的行 → 不参与判定，防误伤）。
+  assert.match(seg, /m && m !== cur/);
+  assert.match(seg, /p && p !== curP/);
+  // 判值 = 写后落盘值（非行指定值）。
+  assert.match(seg, /m \|\| cur/);
+  assert.match(seg, /p \|\| curP/);
+});
+ok("i18n：doCreateTeam 失配文案复用既有批量键（本单零新增键）", () => {
+  const d = utcSrc.indexOf("const doCreateTeam = React.useCallback");
+  const proceed = utcSrc.indexOf("const proceed = async", d);
+  assert.ok(d > 0 && proceed > d, "doCreateTeam/proceed 存在");
+  const seg = utcSrc.slice(d, proceed);
+  // 段内唯一失配文案 = chat.ts 已登记的批量键（恰 1 处，未引入新键）。
+  const key = "模型与 Provider 失配（不可保存，请调整后重试）：{list}";
+  const first = seg.indexOf(key);
+  assert.ok(first > 0, "段内使用批量键");
+  assert.equal(seg.indexOf(key, first + 1), -1, "段内仅 1 处");
+  assert.ok(chatI18n.includes(`"${key}":`), "批量键已在 chat.ts 登记（前单既有）");
+});
+
 // ── 执行：gate 下按 runner 契约自注册；直跑下自计数自打印 ───────────
 const underGate = /vitest-shim-runner/.test(process.argv[1] ?? "");
 const vtState = (globalThis as Record<string, unknown>).__qcVt ??= {
