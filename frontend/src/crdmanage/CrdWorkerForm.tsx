@@ -173,7 +173,7 @@ Provider 过滤）——实际转发由 Provider 决定，model 只是 alias。 
             nw.provider,
           ) ? (
             <div style={{ fontSize: 10.5, color: "#faad14" }}>
-              {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
+              {tr("该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）")}
             </div>
           ) : null}
           {(() => {

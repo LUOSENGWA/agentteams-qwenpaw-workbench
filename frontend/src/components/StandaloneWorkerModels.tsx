@@ -13,9 +13,10 @@
  * 为什么必须带 provider：多 Higress Provider 部署下，Worker 的 model 只是
  * 请求 alias，真正转发由 modelProvider（APIG Model API 名）决定。只改
  * model 不改 provider = 仍走旧 provider（用户「选了没用」的根因）。
- * C1a-1 provider-first：先选 Provider 再选模型（模型候选按所选 Provider
- * 过滤，在服+在用恒保留）；选 configured alias 时仅当 Provider 为空才
- * 自动回填 binding.providerName（显式 Provider 是用户意图，不覆盖）。
+ * 契约（provider+model 原子对）：模型候选按所选 Provider 过滤（在服+在用
+ * 恒保留）；模型变更可反查到归属 Provider（configured alias 的
+ * binding.providerName）时无条件置 provider 为归属值；模型与 Provider
+ * 失配 → 不可保存（保存前拦截，无「以 Provider 为准」放行）。
  */
 import type * as ReactNS from "react";
 
@@ -81,6 +82,11 @@ export function StandaloneWorkerModels({
         antd.message.error(
           modelVerdictText(tr, verdict, value, union.candidates),
         );
+        return;
+      }
+      // 失配=不可保存（provider+model 原子对）：不再「以 Provider 为准」放行。
+      if (providerModelMismatch(union.gatewayOptions, value, provider)) {
+        antd.message.error(tr("该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）"));
         return;
       }
       setSaving(name);
@@ -212,14 +218,14 @@ export function StandaloneWorkerModels({
                     placeholder={tr("模型 alias（留空=跟随集群默认）")}
                     onChange={(val: string) => {
                       setDrafts((p) => ({ ...p, [w.name]: val || "" }));
-                      // C1a-1：configured alias → binding.providerName
-                      // 仅当 Provider 当前为空才回填（显式 Provider 是
-                      // 用户意图，不覆盖）。
+                      // provider 跟随模型：configured alias →
+                      // binding.providerName，可反查时无条件置为归属值
+                      // （不可反查 → 不动当前 provider）。
                       const auto = providerForModel(
                         union.gatewayOptions,
                         val || "",
                       );
-                      if (auto && !prov) {
+                      if (auto) {
                         setProvDrafts((p) => ({ ...p, [w.name]: auto }));
                       }
                     }}
@@ -237,7 +243,7 @@ export function StandaloneWorkerModels({
                 </div>
                 {providerModelMismatch(union.gatewayOptions, draft, prov) ? (
                   <div style={{ fontSize: 11, color: "#faad14", paddingLeft: 2 }}>
-                    {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
+                    {tr("该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）")}
                   </div>
                 ) : null}
               </div>
@@ -245,7 +251,7 @@ export function StandaloneWorkerModels({
           })}
           <div style={{ fontSize: 12, color: t.textSecondary }}>
             {tr(
-              "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。选 Higress configured alias 会自动回填对应 Provider。",
+              "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。Provider 自动跟随模型归属（configured alias）；模型与 Provider 不匹配不可保存。",
             )}
           </div>
         </div>

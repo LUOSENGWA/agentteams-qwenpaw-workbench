@@ -867,8 +867,8 @@ export const workerDict: Record<string, { en: string }> = {
   "留空=跟随默认（Higress Provider 名）": {
     en: "Empty = follow default (Higress provider name)",
   },
-  "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。选 Higress configured alias 会自动回填对应 Provider。": {
-    en: "Only model + provider change (PUT merge semantics: only changed fields are sent; empty = follow the cluster default). Picking a configured Higress alias auto-fills its provider.",
+  "只改 model + Provider（PUT 合并语义：仅改动项下发，其它字段不动；留空=跟随集群默认）。Provider 自动跟随模型归属（configured alias）；模型与 Provider 不匹配不可保存。": {
+    en: "Only model + provider change (PUT merge semantics: only changed fields are sent; empty = follow the cluster default). The provider automatically follows the model's owning provider (configured alias); a mismatched pair cannot be saved.",
   },
   // 工具分组卡片（16.29）：组名与空态。「文件/运行时/其他/启用/异步执行/
   // 需配置」复用既有域键（kb/creds/chat），不重复登记。

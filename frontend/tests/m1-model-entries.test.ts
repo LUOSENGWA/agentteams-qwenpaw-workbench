@@ -47,10 +47,10 @@ ok("创建表单：Provider 控件在模型控件前（provider 先选，model �
   assert.ok(p < m, "provider 在模型之前");
 });
 
-ok("创建表单：失配黄字提示不阻塞（providerModelMismatch + 复用 C1a-1 键）", () => {
+ok("创建表单：失配拦截（providerModelMismatch + 复用 C1a-1 键，失配不可保存）", () => {
   assert.match(workerFormSrc, /providerModelMismatch\(/);
   assert.ok(
-    workerFormSrc.includes("该模型不属于所选 Provider（可直接保存，以 Provider 为准）"),
+    workerFormSrc.includes("该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）"),
   );
 });
 
@@ -106,7 +106,7 @@ ok("i18n：M1 五键齐（4 新键 + 1 复用 C1a-1 失配键；精确键形防�
   assert.ok(chatSrc.includes('"Worker 已创建——未配模型（跟随集群默认）":'));
   assert.ok(chatSrc.includes('"加入团队请在团队配置的成员列表中操作":'));
   assert.ok(
-    chatSrc.includes('"该模型不属于所选 Provider（可直接保存，以 Provider 为准）":'),
+    chatSrc.includes('"该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）":'),
   );
 });
 
