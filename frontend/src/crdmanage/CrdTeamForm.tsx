@@ -325,7 +325,7 @@ export default function CrdTeamForm({
                   )}
                 </div>
                 {/* C1a-2 provider-first：行级 Provider 在模型前（与配置团队
-行同几何）；候选按 Provider 过滤，失配黄字提示不阻塞。 */}
+行同几何）；候选按 Provider 过滤，失配黄字提示（提交时拦截，不可保存）。 */}
                 <div style={{ fontSize: 11, color: t.textSecondary, fontWeight: 600 }}>
                   {tr("模型")}
                 </div>
@@ -378,7 +378,7 @@ export default function CrdTeamForm({
                         color: "#faad14",
                       }}
                     >
-                      {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
+                      {tr("该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）")}
                     </div>
                   ) : null}
                 </div>
