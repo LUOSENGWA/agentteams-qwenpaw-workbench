@@ -1,1 +1,4 @@
 src/node_modules/
+
+# ui-harness-roomchat.mjs 每次运行 esbuild 重新生成的产物（不进包）
+harness/bundle-*.js
