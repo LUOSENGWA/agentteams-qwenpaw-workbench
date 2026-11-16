@@ -24,8 +24,8 @@ const PRE_CODE_RE = /<pre[^>]*>\s*<code([^>]*)>([\s\S]*?)<\/code>\s*<\/pre>/gi;
 const TABLE_RE = /<table[^>]*>[\s\S]*?<\/table>/gi;
 const TR_RE = /<tr[^>]*>[\s\S]*?<\/tr>/gi;
 const CELL_RE = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi;
-// GFM 表内行不能含换行（<br> 此时还是标签会被剥掉，此处只防手写 HTML
-// 的裸换行）——压成空格。
+// GFM 表内行不能含换行（硬断行 <br> 已在格级先行转空格，此处只防手写
+// HTML 的裸换行）——压成空格。
 const NEWLINE_RE = /\n/g;
 const INLINE_TAG_RE = /<[^>]+>/g;
 
@@ -45,7 +45,12 @@ function tableToGfm(tableHtml: string): string {
   const rows: string[][] = [];
   for (const rowM of tableHtml.matchAll(TR_RE)) {
     const cells = [...rowM[0].matchAll(CELL_RE)].map((c) =>
-      c[1].replace(INLINE_TAG_RE, "").replace(NEWLINE_RE, " ").trim(),
+      // <br> 是硬断行：先转空格（剥标签会丢分隔致 "a<br>b"→"ab"；markdown-it 表内硬断行产生 <br>）
+      c[1]
+        .replace(/<br\s*\/?>/gi, " ")
+        .replace(INLINE_TAG_RE, "")
+        .replace(NEWLINE_RE, " ")
+        .trim(),
     );
     if (cells.length > 0) rows.push(cells);
   }

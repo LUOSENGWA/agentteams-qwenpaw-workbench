@@ -16,7 +16,7 @@ import { htmlToPlainText } from "../src/lib/mdPlain.ts";
 // 1. <pre><code class="language-x"> → "```x 围栏"（无 class 无语言标记；
 //    inner 原样保留，实体由 7 步链解码）；
 // 2. <table> → GFM 管道表（行=tr 格=th/td，首行后插列数同表 |---| 分隔行，
-//    格内剥内联标签留文本，多表空行分隔）；
+//    格内先 <br>→空格（硬断行不粘连）再剥内联标签留文本，多表空行分隔）；
 // 3. <li> → "- "（嵌套列表 v1 不处理，按平铺降级）；
 // 4. 7 步链：<br>→\n；</p|div|tr|h1-6|li>→\n；剥所有标签；实体按
 //    &lt; &gt; &quot; &#39; &amp; 顺序解码（&amp; 最后，不重复解码）。
@@ -42,6 +42,16 @@ const cases: [string, string, string][] = [
     "格内内联标签剥壳留文本",
     "<table><tr><th><b>k</b></th></tr><tr><td><i>v</i></td></tr></table>",
     "\n| k |\n|---|\n| v |\n",
+  ],
+  [
+    "格内 <br> → 空格（硬断行剥标签不粘连）",
+    "<table><tr><td>a<br>b</td></tr></table>",
+    "\n| a b |\n|---|\n",
+  ],
+  [
+    "格内 <br/> 变体 + 实体组合",
+    "<table><tr><td>a<br/>&amp;b</td></tr></table>",
+    "\n| a &b |\n|---|\n",
   ],
   [
     "<pre><code> → 围栏（无 class 无语言标记）",
