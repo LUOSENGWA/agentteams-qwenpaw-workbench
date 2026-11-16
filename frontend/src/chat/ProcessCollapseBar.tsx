@@ -2,7 +2,8 @@
  * 过程折叠条（批次 3）：一个 turn 的工具调用聚合为一行。
  *
  * 默认折叠：`[Brain|Wrench]Icon 执行过程 · [思考 N 次 ·] WrenchIcon 工具 N 次
- * [· X.Xs]` + 展开箭头（主标签恒「执行过程」，思考/工具各自计数段）；
+ * [· X.Xs]` + 展开箭头（主标签恒「执行过程」，思考/工具各自计数段）；窄宽自动换行
+ * （段为换行单元，点随段，chevron 落末行右端）。
  * 展开：逐次调用（工具名 + 参数摘要 + 耗时 + 状态），
  * 行内再点开看完整参数/结果（原 ToolBubble 展开能力保留）。
  * 高度过渡 150ms（grid-template-rows 0fr→1fr，Chromium 原生支持）。
@@ -262,7 +263,13 @@ export function ProcessCollapseBar({
             setUserOpen(!open);
           }
         }}
-        style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 6,
+          cursor: "pointer",
+        }}
       >
         {/* 主标签恒「执行过程」；前图标 = 有思考 ? brain : wrench（data-icon 同步）。 */}
         <span
@@ -275,15 +282,15 @@ export function ProcessCollapseBar({
           {tr("执行过程")}
         </span>
         {hasThoughts ? (
-          <>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             <span style={{ color: "#bbb", flexShrink: 0 }}>·</span>
             <span style={{ whiteSpace: "nowrap" }}>
               {tr("思考 {n} 次", { n: notes.length })}
             </span>
-          </>
+          </span>
         ) : null}
         {hasCalls ? (
-          <>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             <span style={{ color: "#bbb", flexShrink: 0 }}>·</span>
             <span data-icon="wrench" style={{ display: "inline-flex", flexShrink: 0 }}>
               <WrenchIcon size={12} />
@@ -293,10 +300,10 @@ export function ProcessCollapseBar({
                 ? tr("工具 {n} 次 · {x}s", { n: agg.length, x: span.toFixed(1) })
                 : tr("工具 {n} 次", { n: agg.length })}
             </span>
-          </>
+          </span>
         ) : null}
         {active ? (
-          <>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             {hasThoughts || hasCalls ? (
               <span style={{ color: "#bbb", flexShrink: 0 }}>·</span>
             ) : null}
@@ -304,7 +311,7 @@ export function ProcessCollapseBar({
             <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
               {tr("进行中")}
             </span>
-          </>
+          </span>
         ) : null}
         <span style={{ flex: 1 }} />
         <span style={{ color: "#bbb", fontSize: 11, flexShrink: 0 }}>{open ? "▲" : "▼"}</span>
