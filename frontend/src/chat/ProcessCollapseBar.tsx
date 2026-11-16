@@ -1,7 +1,8 @@
 /**
  * 过程折叠条（批次 3）：一个 turn 的工具调用聚合为一行。
  *
- * 默认折叠：`WrenchIcon N 次工具调用 · X.Xs` + 展开箭头；
+ * 默认折叠：`[Brain|Wrench]Icon 执行过程 · [思考 N 次 ·] WrenchIcon 工具 N 次
+ * [· X.Xs]` + 展开箭头（主标签恒「执行过程」，思考/工具各自计数段）；
  * 展开：逐次调用（工具名 + 参数摘要 + 耗时 + 状态），
  * 行内再点开看完整参数/结果（原 ToolBubble 展开能力保留）。
  * 高度过渡 150ms（grid-template-rows 0fr→1fr，Chromium 原生支持）。
@@ -10,8 +11,8 @@
  * 工具帧，口径不变）；经 aggregateToolCalls 配对 call/result。
  *
  * 思考过程：turn 内的 m.notice 推理帧（isThinkingNotice 启发式）由调用方
- * 抽取为 thoughts 传入——并入同一条折叠（`BrainIcon 思考过程 · WrenchIcon
- * N 次工具调用`），展开区先思考行（可折叠子项，默认折叠）、再工具行；
+ * 抽取为 thoughts 传入——并入同一条折叠（`执行过程 · 思考 N 次 · WrenchIcon
+ * 工具 N 次 [· X.Xs]`），展开区先思考行（可折叠子项，默认折叠）、再工具行；
  * 不再作为红色/斜体正文气泡刷屏。
  *
  * 交互：只有折叠头（标题行）切换展开；子项（思考行/参数/结果）点击只切
@@ -225,10 +226,6 @@ export function ProcessCollapseBar({
   const notes = thoughts ?? [];
   const hasThoughts = notes.length > 0;
   const hasCalls = agg.length > 0;
-  const callsLabel =
-    span != null
-      ? tr("{n} 次工具调用 · {x}s", { n: agg.length, x: span.toFixed(1) })
-      : tr("{n} 次工具调用", { n: agg.length });
   const title = active
     ? tr("进行中…")
     : hasThoughts
@@ -267,26 +264,34 @@ export function ProcessCollapseBar({
         }}
         style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
       >
+        {/* 主标签恒「执行过程」；前图标 = 有思考 ? brain : wrench（data-icon 同步）。 */}
+        <span
+          data-icon={hasThoughts ? "brain" : "wrench"}
+          style={{ display: "inline-flex", flexShrink: 0 }}
+        >
+          {hasThoughts ? <BrainIcon size={12} /> : <WrenchIcon size={12} />}
+        </span>
+        <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+          {tr("执行过程")}
+        </span>
         {hasThoughts ? (
           <>
-            <span data-icon="brain" style={{ display: "inline-flex", flexShrink: 0 }}>
-              <BrainIcon size={12} />
-            </span>
-            <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
-              {tr("思考过程")}
+            <span style={{ color: "#bbb", flexShrink: 0 }}>·</span>
+            <span style={{ whiteSpace: "nowrap" }}>
+              {tr("思考 {n} 次", { n: notes.length })}
             </span>
           </>
         ) : null}
-        {hasThoughts && hasCalls ? (
-          <span style={{ color: "#bbb", flexShrink: 0 }}>·</span>
-        ) : null}
         {hasCalls ? (
           <>
+            <span style={{ color: "#bbb", flexShrink: 0 }}>·</span>
             <span data-icon="wrench" style={{ display: "inline-flex", flexShrink: 0 }}>
               <WrenchIcon size={12} />
             </span>
-            <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>
-              {callsLabel}
+            <span style={{ whiteSpace: "nowrap" }}>
+              {span != null
+                ? tr("工具 {n} 次 · {x}s", { n: agg.length, x: span.toFixed(1) })
+                : tr("工具 {n} 次", { n: agg.length })}
             </span>
           </>
         ) : null}

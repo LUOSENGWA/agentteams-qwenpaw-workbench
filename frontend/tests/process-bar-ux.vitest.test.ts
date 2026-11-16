@@ -235,10 +235,13 @@ describe("ProcessCollapseBar — 图标化", () => {
     cleanup();
   });
 
-  it("折叠头文案不变：思考过程 · N 次工具调用", () => {
+  it("折叠头文案：执行过程 · 思考 N 次 · 工具 N 次（时长挂工具段尾）", () => {
     const { bar, cleanup } = mount({ calls: [CALL_WITH_DETAIL], thoughts: THOUGHTS });
-    expect(bar.textContent).toContain("思考过程");
-    expect(bar.textContent).toContain("1 次工具调用");
+    expect(bar.textContent).toContain("执行过程");
+    expect(bar.textContent).toContain("·");
+    expect(bar.textContent).toContain("思考 2 次");
+    // 时长仍挂工具段尾（单帧 start=end → 0.0s）。
+    expect(bar.textContent).toContain("工具 1 次 · 0.0s");
     cleanup();
   });
 });

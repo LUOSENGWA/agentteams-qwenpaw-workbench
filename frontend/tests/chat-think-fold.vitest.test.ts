@@ -1,12 +1,13 @@
 // 思考过程折叠（chat-think-fold）：m.notice 推理帧的启发式识别、前缀剥离、
-// 过程条合并渲染（🧠 思考过程 · 🔧 N 次工具调用）、原始 notice 行不出现。
+// 过程条合并渲染（执行过程 · 思考 N 次 · 工具 N 次 [· Xs]）、原始 notice 行不出现。
 //
 // 契约（任务书）：
 // ① isThinkingNotice：mine / 非 m.notice / thinking 前缀 / worker+长文本 /
 //    短 ACL notice / 未知 sender 六种判定；
 // ② stripThinkingPrefix：去前缀 + 其后空行，trim；
-// ③ ProcessCollapseBar：thoughts + calls → 折叠头两段；展开区先思考行
-//    （可折叠子项，默认折叠）再工具行；只有 thoughts 也显示折叠条；只有 calls 文案不变；
+// ③ ProcessCollapseBar：thoughts + calls → 主标签「执行过程」+ 思考/工具各自计数段；
+//    展开区先思考行（可折叠子项，默认折叠）再工具行；只有 thoughts → 执行过程 · 思考 N 次；
+//    只有 calls → 执行过程 · 工具 N 次 [· Xs]；
 // ④ RoomChatMessageRow：absorbedThinking → 只留 data-event-id 锚点。
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import React from "react";
@@ -165,35 +166,38 @@ function preCount(html: string): number {
 }
 
 describe("ProcessCollapseBar 思考过程合并", () => {
-  it("思考 + 工具：折叠头两段齐全，展开区 2 行思考（默认折叠）+ 1 行工具", () => {
+  it("思考 + 工具：执行过程 + 思考/工具计数段齐全，展开区 2 行思考（默认折叠）+ 1 行工具", () => {
     const html = renderToStaticMarkup(E(Bar, { calls: [CALL], thoughts: THOUGHTS }));
-    expect(html).toContain("思考过程");
-    expect(html).toContain("1 次工具调用");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("思考 2 次");
+    expect(html).toContain("工具 1 次");
     expect(html).toContain("·");
     // 思考行默认折叠：pre 不渲染（点开行才出现）。
     expect(preCount(html)).toBe(0);
     expect(html).toContain("read_file");
-    // 先思考行、再工具行（顺序契约；行标签恰为「思考」，折叠头是「思考过程」）。
+    // 先思考行、再工具行（顺序契约；行标签恰为「思考」，主标签是「执行过程」）。
     expect(html.split("思考</span>").length - 1).toBe(2);
     expect(html.lastIndexOf("思考</span>")).toBeLessThan(html.indexOf("read_file"));
   });
 
-  it("只有思考：仍显示折叠条，且不出现工具文案", () => {
+  it("只有思考：仍显示折叠条（执行过程 · 思考 N 次），不出现工具段", () => {
     const html = renderToStaticMarkup(E(Bar, { calls: [], thoughts: THOUGHTS }));
     // A2：图标化（BrainIcon），不再使用 emoji。
     expect(html).toContain('data-icon="brain"');
     expect(html).not.toContain("🧠");
-    expect(html).toContain("思考过程");
-    expect(html).not.toContain("次工具调用");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("思考 2 次");
+    expect(html).not.toContain("工具");
     // 2 段思考 = 2 个折叠行（默认折叠，pre 不渲染）。
     expect(html.split("思考</span>").length - 1).toBe(2);
     expect(preCount(html)).toBe(0);
   });
 
-  it("只有工具：文案沿用旧口径，不出现思考段", () => {
+  it("只有工具：执行过程 · 工具 N 次 [· Xs]，不出现思考段", () => {
     const html = renderToStaticMarkup(E(Bar, { calls: [CALL] }));
-    expect(html).not.toContain("思考过程");
-    expect(html).toContain("1 次工具调用");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("工具 1 次");
+    expect(html).not.toContain("思考");
     expect(preCount(html)).toBe(0);
   });
 });

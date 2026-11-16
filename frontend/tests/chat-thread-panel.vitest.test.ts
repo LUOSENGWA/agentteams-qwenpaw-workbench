@@ -2,7 +2,7 @@
 // 面板正文复用主列表 turn 管线（roomMessagesToIR → buildTurns →
 // splitTurn），不再自造第二套解析/分组：
 // ① 已完成的 worker run：字面「处理中...」不再出现；思考/工具调用
-//    进 ProcessCollapseBar（思考过程 + N 次工具调用），最终编辑过的
+//    进 ProcessCollapseBar（执行过程 · 思考 N 次 · 工具 N 次），最终编辑过的
 //    根按 editedAt 落位并渲染最终正文；裸 `Thinking:` 前缀不出现
 //    （stripThinkingPrefix 去前缀）；每 turn 只有一个 header/头像。
 // ② 进行中的 run：worker 占位根（尚无最终编辑）渲染紧凑「运行过程」
@@ -160,15 +160,16 @@ describe("已完成 worker run（编辑过的根 + 思考 + 工具调用）", ()
     expect(html).not.toContain("处理中");
     expect(html).toContain("最终回答：重构完成");
     // 编辑时间（T0+5000）晚于过程帧 → 最终正文排在过程条之后。
-    expect(html.indexOf("1 次工具调用")).toBeLessThan(
+    expect(html.indexOf("工具 1 次")).toBeLessThan(
       html.indexOf("最终回答：重构完成"),
     );
   });
 
-  it("思考/工具调用进过程折叠条（思考过程 + N 次工具调用），无裸 Thinking: 前缀", () => {
+  it("思考/工具调用进过程折叠条（执行过程 · 思考 N 次 · 工具 N 次），无裸 Thinking: 前缀", () => {
     const html = renderPanel(root, replies);
-    expect(html).toContain("思考过程");
-    expect(html).toContain("1 次工具调用");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("思考 1 次");
+    expect(html).toContain("工具 1 次");
     // 思考行（默认折叠子项）存在；思考原文在行内展开态才入 DOM。
     expect(html).toContain("思考</span>");
     expect(html).not.toContain("Thinking:");
@@ -202,9 +203,10 @@ describe("进行中 run（worker 占位根 + 思考帧）", () => {
     expect(html).toContain("运行过程");
   });
 
-  it("思考帧仍进过程条（思考过程），无裸 Thinking:", () => {
+  it("思考帧仍进过程条（执行过程 · 思考 N 次），无裸 Thinking:", () => {
     const html = renderPanel(root, replies);
-    expect(html).toContain("思考过程");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("思考 1 次");
     expect(html).not.toContain("Thinking:");
   });
 });
@@ -223,7 +225,7 @@ describe("人类根 + 人类回复", () => {
     const html = renderPanel(root, replies);
     expect(html).toContain("这个任务在做什么？");
     expect(html).toContain("我看一下，稍等");
-    expect(html).not.toContain("思考过程");
+    expect(html).not.toContain("执行过程");
     expect(count(html, "小明")).toBe(1);
   });
 });
