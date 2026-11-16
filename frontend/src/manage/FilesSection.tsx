@@ -3802,6 +3802,7 @@ function TreeArea({
         </div>
       ) : null}
       {fs.status !== "err" && count > 0 ? (
+        // a11y-static-exempt: 树内空白点击只清本地高亮/上传目标，本身非交互控件（键盘路径走 onRootKeyDown）
         <div
           role="tree"
           onClick={(e) => {
@@ -6497,6 +6498,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
       </FileDropTarget>
     );
     return (
+      // a11y-static-exempt: 列表视图空白点击只清选中，本身非交互控件（键盘路径走 onRootKeyDown）
       <div
         ref={widthRef}
         onClick={onListBlankClick}
