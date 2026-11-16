@@ -1,3 +1,12 @@
+## 0.5.0-beta.17.6（2026-11-16）
+
+**聊天页换房状态隔离（per-room 隔离重构）**
+- key={room_id} remount：换房即整树重建，房内状态（贴底/锚定/话题/窗口/fileRefs 等）随房重建——开群即置底、话题面板不跨房残留（draft 已有 per-room localStorage，无回归）
+- 换房消息切换 useEffect → useLayoutEffect：新房消息 paint 前落地，消灭「新房头+旧房消息」陈旧帧
+- useStickToBottom 换房首观察保护（skipPrependOnce）：换房后首条 firstId 观察按新房首条处理，防旧房 firstId 残留误判前插（误判前插 + 窗口棘轮扩窗把用户打离底部 = 「开群跳到中间」链路一环）
+- 线程状态 room-scoped：THREAD_STATE_KEY 加 room_id 维度，仅同 room 恢复 thread（旧格式无 room_id 不恢复 thread，width 照旧恢复）；话题面板卸载清报（onThreadPanelLayout(false, 0)，父侧分栏宽不再算错）
+- 删除冗余换房重置 effect：逐项重置值核对与初值一致（remount 即初值，reset 恒 no-op）
+
 ## 0.5.0-beta.17.5（2026-11-16）
 
 **聊天页过程条**

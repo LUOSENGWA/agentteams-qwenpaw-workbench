@@ -113,7 +113,10 @@ export default function WorkbenchPage() {
   // 新房最新页) 把两房消息混进同一窗口（「乱了」），setCachedMessages
   // 再把混合体写进新房缓存（切回再「没了」）。Element 口径：timeline
   // 状态是 per-room 的——room_id 变化即归零，再拉/再恢复该房自己的缓存。
-  React.useEffect(() => {
+  // 17.6：useLayoutEffect——换房消息切换 paint 前落地（passive 时换房首帧
+  // 仍是「新房头+旧房消息」陈旧帧，stick hook 前插锚定 effect 把旧房
+  // firstId 记进 prevFirstIdRef，新房首批到达被误判前插）。
+  React.useLayoutEffect(() => {
     // 切房有缓存则先恢复缓存（即时显示，
     // 不闪空态/「正在加载消息…」——旧逻辑归零后 1 帧内屏上无数据即闪
     // loading 文案）；无缓存照旧归零。I1 首窗重建仍在 refreshMessages
@@ -643,8 +646,13 @@ export default function WorkbenchPage() {
   }, [tab]);
 
   // P6：聊天双元素提取（宽/窄屏两分支共用一份 JSX——props 长，禁止复制）。
+  // 17.6：key=room_id——per-room 隔离锚：换房即整树 remount，房内状态
+  // （贴底/锚定/话题/窗口/fileRefs 等）随房重建（开群即置底、话题面板
+  // 不跨房残留）；draft 已有 per-room localStorage 持久化
+  // （room-draft:${room_id}），无回归。
   const chatRoomEl = activeRoom ? (
     <RoomChat
+      key={activeRoom.room_id}
       room={activeRoom}
       messages={messages}
       liveWorkflows={liveWorkflows}

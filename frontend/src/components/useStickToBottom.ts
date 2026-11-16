@@ -17,7 +17,8 @@
 //    回写把视图打回顶部 = 13.10 时代「加载原消息跑到顶部」根因）。浏览器
 //    原生 overflow-anchor 是第一道防线（已处理时 delta≈0 自然 no-op），
 //    本层兜底「内容未溢出/锚定元素丢失」等原生未覆盖边界（useLayoutEffect，
-//    paint 前，闪顶不可见）；
+//    paint 前，闪顶不可见）；换房后首条 firstId 观察跳过前插判定
+//    （skipPrependOnce——防旧房 firstId 残留误判前插）；
 // ⑥ 容器保持原生滚动锚开启（不要设 overflow-anchor: none——全量关闭会
 //    让浏览器找不到锚点）；列表顶部三个可控动态块（加载按钮/错误条/最早
 //    标记）须设 overflow-anchor: none 排除出锚定候选，浏览器才会选消息行
@@ -257,6 +258,10 @@ export function useStickToBottom(opts: StickToBottomOptions): StickToBottom {
   // 换房间时清锚（新房首条 id 变化不是前插，防误恢复）。
   const prevFirstIdRef = React.useRef("");
   const roomKeyRef = React.useRef("");
+  // 换房首观察保护（17.6）：换房后下一次 firstId 观察无论与旧值是否相同，
+  // 一律按「新房首条」处理、不判前插——防旧房 firstId 残留误判前插
+  // （误判前插 + 窗口棘轮扩窗会把用户打离底部 = 「开群跳到中间」链路一环）。
+  const skipPrependOnceRef = React.useRef(false);
   React.useLayoutEffect(() => {
     const rk = opts.roomKey;
     if (roomKeyRef.current !== rk) {
@@ -264,12 +269,15 @@ export function useStickToBottom(opts: StickToBottomOptions): StickToBottom {
       prevFirstIdRef.current = "";
       anchorElRef.current = null;
       anchorOffsetRef.current = null;
+      skipPrependOnceRef.current = true;
     }
     const firstId = opts.firstId;
     const prepended =
       prevFirstIdRef.current !== "" &&
       firstId !== "" &&
-      firstId !== prevFirstIdRef.current;
+      firstId !== prevFirstIdRef.current &&
+      !skipPrependOnceRef.current;
+    if (skipPrependOnceRef.current) skipPrependOnceRef.current = false;
     const el = listRef.current;
     if (prepended && el) {
       const oSaved = anchorOffsetRef.current;
