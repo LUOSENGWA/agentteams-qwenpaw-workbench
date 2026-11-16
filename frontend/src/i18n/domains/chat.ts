@@ -400,9 +400,9 @@ export const chatDict: Record<string, { en: string }> = {
   "图片加载失败": { en: "Failed to load image" },
   "上一张": { en: "Previous" },
   "下一张": { en: "Next" },
-  // ── run-ending 哨兵收尾条（dashboard parseRunEnding 三类文案）──
+  // ── run-ending 哨兵收尾条（dashboard parseRunEnding 三类文案；
+  // 「任务已取消」用 workflow.ts 存量键，tr 跨域解析，此处不重复）──
   "已处理（无回复）": { en: "Processed (no reply)" },
-  "任务已取消": { en: "Task cancelled" },
   "任务异常": { en: "Task failed" },
   // ── 正在输入指示（dashboard typing-indicator 3 档文案；
   // en 复数数走 {x}=N-1 双占位）──
