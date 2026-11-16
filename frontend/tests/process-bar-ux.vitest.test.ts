@@ -244,4 +244,14 @@ describe("ProcessCollapseBar — 图标化", () => {
     expect(bar.textContent).toContain("工具 1 次 · 0.0s");
     cleanup();
   });
+
+  it("头行 style 含 flex-wrap:wrap（窄宽自动换行；段为换行单元，点随段）", () => {
+    const { bar, head, cleanup } = mount({ calls: [CALL_WITH_DETAIL], thoughts: THOUGHTS });
+    expect(bar.querySelector('[role="button"]')).toBe(head);
+    // SSR 验不了真实布局，断 style 属性即可（忽略序列化空白差异）。
+    expect((head.getAttribute("style") ?? "").replace(/\s+/g, "")).toContain(
+      "flex-wrap:wrap",
+    );
+    cleanup();
+  });
 });
