@@ -375,7 +375,7 @@ export function ThreadPanelView({
                     overflowWrap: "anywhere",
                   }}
                 >
-                  <MdText text={renderMsg.body || ""} />
+                  <MdText text={renderMsg.body || ""} formattedBody={renderMsg.formatted_body} />
                 </div>
                 <div
                   onClick={(e) => {
