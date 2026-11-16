@@ -395,4 +395,13 @@ export const chatDict: Record<string, { en: string }> = {
   "图片加载失败": { en: "Failed to load image" },
   "上一张": { en: "Previous" },
   "下一张": { en: "Next" },
+  // ── run-ending 哨兵收尾条（dashboard parseRunEnding 三类文案）──
+  "已处理（无回复）": { en: "Processed (no reply)" },
+  "任务已取消": { en: "Task cancelled" },
+  "任务异常": { en: "Task failed" },
+  // ── 正在输入指示（dashboard typing-indicator 3 档文案；
+  // en 复数数走 {x}=N-1 双占位）──
+  "{n} 正在输入": { en: "{n} is typing" },
+  "{a} 和 {b} 正在输入": { en: "{a} and {b} are typing" },
+  "{a} 等 {n} 人正在输入": { en: "{a} and {x} others are typing" },
 };
