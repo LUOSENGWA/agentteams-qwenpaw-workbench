@@ -64,7 +64,20 @@ export function RoomChatHeader(props: { p: RoomChatProps; c: RoomChatCoreState }
             ← 返回
           </antd.Button>
         ) : null}
-        <antd.Typography.Title level={5} style={{ margin: 0 }}>
+        {/* 房间名窄宽省略（flex 行内 min-width:0 才允许收缩，
+  overflow hidden + ellipsis；完整名走 title）。 */}
+        <antd.Typography.Title
+          level={5}
+          title={room.name}
+          style={{
+            margin: 0,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {room.name}
         </antd.Typography.Title>
         {/* R15：团队/房间切换（复用父级 rooms/teams 列表与 openRoom 路由）。 */}
