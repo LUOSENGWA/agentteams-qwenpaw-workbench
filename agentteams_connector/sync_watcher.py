@@ -993,9 +993,13 @@ async def _run() -> None:
                                 "event_id": eid,
                                 "sender": sender,
                                 "ts": int(ev.get("origin_server_ts") or 0),
-                                "body": str(content.get("body") or "")[:500],
+                                "body": str(content.get("body") or ""),
                                 "msgtype": str(content.get("msgtype") or ""),
                                 "relates_to": content.get("m.relates_to"),
+                                "formatted": content.get("formatted")
+                                if content.get("format")
+                                == "org.matrix.custom.html"
+                                else None,
                             },
                         }
                     )
