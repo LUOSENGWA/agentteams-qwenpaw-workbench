@@ -898,69 +898,69 @@ function MessageBody({
   }
   // run-ending sentinel（dashboard parseRunEnding 同款判定）：运行时收尾
   // 发的纯哨兵正文（body.trim() 精确相等）→ 收尾条替代裸文本；
-  // 不区分 sender。
-  if (msg.msgtype === "m.text") {
-    const sentinel = (msg.body || "").trim();
-    if (sentinel === "已取消" || sentinel === "处理异常" || sentinel === "已处理") {
-      if (sentinel === "已处理") {
-        return (
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              margin: "4px 0",
-              fontSize: 12,
-              color: `color-mix(in srgb, ${t.textSecondary} 70%, transparent)`,
-            }}
-          >
-            <CheckIcon size={12} />
-            {tr("已处理（无回复）")}
-          </span>
-        );
-      }
-      const cancelled = sentinel === "已取消";
-      const dark = t.mode === "dark";
-      const borderColor = cancelled
-        ? dark
-          ? "rgba(251,191,36,0.4)"
-          : "rgba(245,158,11,0.4)"
-        : "rgba(239,68,68,0.4)";
-      const bgColor = cancelled
-        ? dark
-          ? "rgba(251,191,36,0.1)"
-          : "rgba(245,158,11,0.1)"
-        : "rgba(239,68,68,0.1)";
-      const color = cancelled
-        ? dark
-          ? "#fbbf24"
-          : "#b45309"
-        : dark
-          ? "#f87171"
-          : "#b91c1c";
+  // 不区分 sender。生产三哨兵全为 m.notice（thread root 创建即 m.notice，
+  // _edit_thread_root 默认 m.notice）——判定口径=body 精确相等、不区分
+  // msgtype（人手动发同文也渲染成收尾条，与 dashboard 同款行为）。
+  const sentinel = (msg.body || "").trim();
+  if (sentinel === "已取消" || sentinel === "处理异常" || sentinel === "已处理") {
+    if (sentinel === "已处理") {
       return (
-        <div
-          role={cancelled ? "status" : "alert"}
+        <span
           style={{
-            margin: "8px 0",
-            width: "fit-content",
             display: "flex",
             alignItems: "center",
-            gap: 8,
-            borderRadius: 8,
-            padding: "6px 12px",
+            gap: 6,
+            margin: "4px 0",
             fontSize: 12,
-            fontWeight: 500,
-            border: `1px solid ${borderColor}`,
-            background: bgColor,
-            color,
+            color: `color-mix(in srgb, ${t.textSecondary} 70%, transparent)`,
           }}
         >
-          {cancelled ? <CloseIcon size={14} /> : <WarnIcon size={14} />}
-          {cancelled ? tr("任务已取消") : tr("任务异常")}
-        </div>
+          <CheckIcon size={12} />
+          {tr("已处理（无回复）")}
+        </span>
       );
     }
+    const cancelled = sentinel === "已取消";
+    const dark = t.mode === "dark";
+    const borderColor = cancelled
+      ? dark
+        ? "rgba(251,191,36,0.4)"
+        : "rgba(245,158,11,0.4)"
+      : "rgba(239,68,68,0.4)";
+    const bgColor = cancelled
+      ? dark
+        ? "rgba(251,191,36,0.1)"
+        : "rgba(245,158,11,0.1)"
+      : "rgba(239,68,68,0.1)";
+    const color = cancelled
+      ? dark
+        ? "#fbbf24"
+        : "#b45309"
+      : dark
+        ? "#f87171"
+        : "#b91c1c";
+    return (
+      <div
+        role={cancelled ? "status" : "alert"}
+        style={{
+          margin: "8px 0",
+          width: "fit-content",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          borderRadius: 8,
+          padding: "6px 12px",
+          fontSize: 12,
+          fontWeight: 500,
+          border: `1px solid ${borderColor}`,
+          background: bgColor,
+          color,
+        }}
+      >
+        {cancelled ? <CloseIcon size={14} /> : <WarnIcon size={14} />}
+        {cancelled ? tr("任务已取消") : tr("任务异常")}
+      </div>
+    );
   }
   // workflow 卡片（dashboard normalize 规则 1 同款优先级=最高）：
   // content.agentteams.workflow 载荷 → 交互卡片（项目名/状态/步骤进度/干预按钮）。
