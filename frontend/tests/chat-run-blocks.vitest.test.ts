@@ -544,7 +544,9 @@ describe("结构化块渲染", () => {
       }),
     ]);
     expect(html).toContain("思考过程");
-    expect(html).toContain("块里的推理");
+    // 思考行（默认折叠子项）：行标签在；思考原文在行内展开态才入 DOM。
+    expect(html).toContain("思考</span>");
+    expect(html).not.toContain("块里的推理");
     expect(html).toContain("1 次工具调用");
     expect(html).not.toContain("原正文推理");
   });
@@ -556,7 +558,9 @@ describe("结构化块渲染", () => {
       roomMsg("c3", WORKER, T0 + 2000, "启发式回答"),
     ]);
     expect(html).toContain("思考过程");
-    expect(html).toContain("启发式推理");
+    // 思考行（默认折叠子项）：行标签在；思考原文在行内展开态才入 DOM。
+    expect(html).toContain("思考</span>");
+    expect(html).not.toContain("启发式推理");
     expect(html).toContain("1 次工具调用");
     expect(html).toContain("启发式回答");
     expect(count(html, "工人甲")).toBe(1);

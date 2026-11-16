@@ -5,8 +5,8 @@
 // ① isThinkingNotice：mine / 非 m.notice / thinking 前缀 / worker+长文本 /
 //    短 ACL notice / 未知 sender 六种判定；
 // ② stripThinkingPrefix：去前缀 + 其后空行，trim；
-// ③ ProcessCollapseBar：thoughts + calls → 折叠头两段；展开区先 2 段 pre
-//    再工具行；只有 thoughts 也显示折叠条；只有 calls 文案不变；
+// ③ ProcessCollapseBar：thoughts + calls → 折叠头两段；展开区先思考行
+//    （可折叠子项，默认折叠）再工具行；只有 thoughts 也显示折叠条；只有 calls 文案不变；
 // ④ RoomChatMessageRow：absorbedThinking → 只留 data-event-id 锚点。
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import React from "react";
@@ -158,26 +158,24 @@ const CALL: ToolCall = {
 
 const THOUGHTS = ["先看后端怎么发 reasoning", "再决定前端折叠口径"];
 
-/** 折叠条正文里的 pre 段数（思考段各一个；工具行折叠时不渲染 pre）。 */
+/** 折叠条正文里的 pre 数（思考行/工具行的 pre 均只在自己展开时渲染；
+ *  SSR 默认全折叠 → 0）。 */
 function preCount(html: string): number {
   return (html.match(/<pre/g) ?? []).length;
 }
 
 describe("ProcessCollapseBar 思考过程合并", () => {
-  it("思考 + 工具：折叠头两段齐全，展开区 2 段 pre + 1 行工具", () => {
+  it("思考 + 工具：折叠头两段齐全，展开区 2 行思考（默认折叠）+ 1 行工具", () => {
     const html = renderToStaticMarkup(E(Bar, { calls: [CALL], thoughts: THOUGHTS }));
     expect(html).toContain("思考过程");
     expect(html).toContain("1 次工具调用");
     expect(html).toContain("·");
-    expect(preCount(html)).toBe(2);
+    // 思考行默认折叠：pre 不渲染（点开行才出现）。
+    expect(preCount(html)).toBe(0);
     expect(html).toContain("read_file");
-    // 先思考段、再工具行（顺序契约）。
-    expect(html.indexOf(THOUGHTS[0])).toBeLessThan(html.indexOf("read_file"));
-    expect(html.indexOf(THOUGHTS[1])).toBeLessThan(html.indexOf("read_file"));
-    // 中性样式：非斜体、限高可滚。
-    expect(html).toContain("font-style:normal");
-    expect(html).toContain("max-height:240px");
-    expect(html).toContain("white-space:pre-wrap");
+    // 先思考行、再工具行（顺序契约；行标签恰为「思考」，折叠头是「思考过程」）。
+    expect(html.split("思考</span>").length - 1).toBe(2);
+    expect(html.lastIndexOf("思考</span>")).toBeLessThan(html.indexOf("read_file"));
   });
 
   it("只有思考：仍显示折叠条，且不出现工具文案", () => {
@@ -187,7 +185,9 @@ describe("ProcessCollapseBar 思考过程合并", () => {
     expect(html).not.toContain("🧠");
     expect(html).toContain("思考过程");
     expect(html).not.toContain("次工具调用");
-    expect(preCount(html)).toBe(2);
+    // 2 段思考 = 2 个折叠行（默认折叠，pre 不渲染）。
+    expect(html.split("思考</span>").length - 1).toBe(2);
+    expect(preCount(html)).toBe(0);
   });
 
   it("只有工具：文案沿用旧口径，不出现思考段", () => {

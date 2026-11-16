@@ -231,6 +231,7 @@ export const chatDict: Record<string, { en: string }> = {
   "{n} 次工具调用": { en: "{n} tool calls" },
   // 思考过程折叠（m.notice 推理帧并入过程条）
   "思考过程": { en: "Thinking" },
+  "思考": { en: "Thinking" },
   // 结构化运行时块（org.agentteams.run）：confirmation / error 呈现
   "待确认": { en: "Awaiting confirmation" },
   "需在 Matrix 回复审批": { en: "Reply in Matrix to approve" },

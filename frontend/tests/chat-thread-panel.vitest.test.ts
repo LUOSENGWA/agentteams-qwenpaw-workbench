@@ -169,7 +169,8 @@ describe("已完成 worker run（编辑过的根 + 思考 + 工具调用）", ()
     const html = renderPanel(root, replies);
     expect(html).toContain("思考过程");
     expect(html).toContain("1 次工具调用");
-    expect(html).toContain("先看现有结构");
+    // 思考行（默认折叠子项）存在；思考原文在行内展开态才入 DOM。
+    expect(html).toContain("思考</span>");
     expect(html).not.toContain("Thinking:");
   });
 
