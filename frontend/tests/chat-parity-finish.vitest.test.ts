@@ -97,7 +97,7 @@ describe("chat-parity-finish", () => {
     );
   });
 
-  it("R3 run-ending：3 哨兵精确相等判定 → 3 收尾文案（role=status/alert），位于 redacted 后 workflow 前", () => {
+  it("R3 run-ending：3 哨兵 body 精确相等判定（不区分 msgtype——生产哨兵为 m.notice）→ 3 收尾文案（role=status/alert），位于 redacted 后 workflow 前", () => {
     const s = read("src/components/RoomChatBubbles.tsx");
     assert.ok(
       s.includes('sentinel === "已取消" || sentinel === "处理异常" || sentinel === "已处理"'),
@@ -116,9 +116,21 @@ describe("chat-parity-finish", () => {
       iRed >= 0 && iSen > iRed && iWf > iSen,
       "哨兵分支位置错误（应在 redacted 早退后、workflow 分支前）",
     );
+    // 判定口径 = body 精确相等、不区分 msgtype：run-ending 分支
+    // （哨兵行 → workflow 分支之间）不得再含 m.text msgtype 条件。
+    const runEnding = s.slice(iSen, iWf);
+    assert.ok(
+      !runEnding.includes('msgtype === "m.text"'),
+      "run-ending 分支不应含 m.text msgtype 条件（生产哨兵为 m.notice）",
+    );
     const i18n = read("src/i18n/domains/chat.ts");
     assert.ok(i18n.includes('"已处理（无回复）": { en: "Processed (no reply)" }'), "i18n 缺已处理键");
-    assert.ok(i18n.includes('"任务已取消": { en: "Task cancelled" }'), "i18n 缺任务已取消键");
+    // 「任务已取消」键在 workflow.ts 域存量键（tr 跨域解析），chat 域不重复。
+    const wf = read("src/i18n/domains/workflow.ts");
+    assert.ok(
+      wf.includes('"任务已取消": {\n    en: "Task cancelled",\n  }'),
+      "i18n workflow.ts 缺「任务已取消」键",
+    );
     assert.ok(i18n.includes('"任务异常": { en: "Task failed" }'), "i18n 缺任务异常键");
   });
 
