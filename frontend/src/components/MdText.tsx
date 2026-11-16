@@ -1,6 +1,8 @@
 import type * as ReactNS from "react";
 
 import { useT } from "../i18n";
+import { unwrapFencedTables } from "../lib/fencedTable";
+import { htmlToPlainText } from "../lib/mdPlain";
 import { WbTooltip } from "./WbTooltip";
 
 const host = window.QwenPaw.host;
@@ -352,6 +354,9 @@ interface MdTextProps {
   /** 折叠阈值（字符数）；超长文本默认折叠显示前 400 字符。 */
   maxLength?: number;
   onMentionClick?: (name: string) => void;
+  /** 富文本正文（org.matrix.custom.html）——渲染源优先取它并归一成
+   * 纯文本（dashboard markdown-message 同款），缺省走 text。 */
+  formattedBody?: string;
 }
 
 /** 零依赖 markdown 渲染：代码块/标题/列表/引用 + 行内格式 + @高亮 + 长文折叠。
@@ -361,11 +366,19 @@ export default React.memo(function MdText({
   text,
   maxLength = 800,
   onMentionClick,
+  formattedBody,
 }: MdTextProps) {
   const tr = useT();
   const [expanded, setExpanded] = React.useState(false);
-  const isLong = text.length > maxLength;
-  const shown = isLong && !expanded ? text.slice(0, 400) : text;
+  // 渲染源 = formatted_body ? htmlToPlainText(formatted_body) : text
+  // （dashboard markdown-message 口径），再套围栏表格解包（纯文本路径）
+  // ——源确定后、块解析前，GFM 表格行交 parseBlocks 渲染。
+  const source = React.useMemo(
+    () => unwrapFencedTables(formattedBody ? htmlToPlainText(formattedBody) : text),
+    [text, formattedBody],
+  );
+  const isLong = source.length > maxLength;
+  const shown = isLong && !expanded ? source.slice(0, 400) : source;
   const blocks = React.useMemo(() => parseBlocks(shown), [shown]);
 
   return (
@@ -495,7 +508,7 @@ export default React.memo(function MdText({
           style={{ padding: 0, fontSize: 12 }}
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? tr("收起") + " ↑" : tr("展开全文（{kb} KB）↓", { kb: Math.round(text.length / 1024) })}
+          {expanded ? tr("收起") + " ↑" : tr("展开全文（{kb} KB）↓", { kb: Math.round(source.length / 1024) })}
         </antd.Button>
       ) : null}
     </div>
