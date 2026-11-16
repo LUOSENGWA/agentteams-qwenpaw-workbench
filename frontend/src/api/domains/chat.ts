@@ -67,6 +67,10 @@ export interface RoomMessage {
  * SC/AgentTeams/docs/design/runtime-block-protocol.md）。缺省 = 无块，
  * 渲染层回退现有 body 启发式。 */
   runBlocks?: RunBlock[];
+  /** 富文本正文（content.formatted，仅 format === "org.matrix.custom.html"
+ * 时携带）。MdText 渲染源优先（htmlToPlainText 剥 HTML 后走纯文本块解析）；
+ * 无该字段 → 沿用 body。 */
+  formatted_body?: string;
 }
 
 // ── 运行时块协议（org.agentteams.run）──────────────────────────────
@@ -593,7 +597,7 @@ export async function fetchRoomMessages(
   // revision collapse 同语义）。
   const replaceMap = new Map<
     string,
-    { body: string; msgtype: string; ts: number; eventId: string }
+    { body: string; msgtype: string; ts: number; eventId: string; formatted?: string }
   >();
   const isReplaceEvent = (ev: Record<string, unknown>): boolean => {
     const c = (ev.content as Record<string, unknown>) || {};
@@ -619,6 +623,12 @@ export async function fetchRoomMessages(
       msgtype: String(nc.msgtype || "m.text"),
       ts: Number(ev.origin_server_ts || 0),
       eventId: String(ev.event_id || ""),
+      // 编辑后的 formatted 同 body 口径取 m.new_content（仅 html format）——
+      // 防止旧 formatted 残留而 body 已是新文本的不一致。
+      formatted:
+        nc.format === "org.matrix.custom.html"
+          ? (nc.formatted as string | undefined)
+          : undefined,
     });
   }
   const messages: RoomMessage[] = (payload.chunk || [])
@@ -717,6 +727,15 @@ export async function fetchRoomMessages(
         // 撤回消息正文置空（UI 渲染固定提示）；编辑消息用 m.new_content 正文。
         body: redacted ? "" : editedBy ? editedBy.body : String(content.body || ""),
         msgtype: redacted ? "m.text" : editedBy ? editedBy.msgtype : String(content.msgtype || "m.text"),
+        // 富文本正文：仅 format === "org.matrix.custom.html" 时携带
+        // content.formatted（编辑消息同 body 口径取 m.new_content 侧）。
+        formatted_body: redacted
+          ? undefined
+          : editedBy
+            ? editedBy.formatted
+            : content.format === "org.matrix.custom.html"
+              ? (content.formatted as string | undefined)
+              : undefined,
         origin_server_ts: Number(ev.origin_server_ts || 0),
         url: redacted ? undefined : (content.url as string | undefined),
         mimetype: redacted ? undefined : (info.mimetype as string | undefined),
