@@ -11,10 +11,12 @@
  *
  * 思考过程：turn 内的 m.notice 推理帧（isThinkingNotice 启发式）由调用方
  * 抽取为 thoughts 传入——并入同一条折叠（`BrainIcon 思考过程 · WrenchIcon
- * N 次工具调用`），展开区先思考段、再工具行；不再作为红色/斜体正文气泡刷屏。
+ * N 次工具调用`），展开区先思考行（可折叠子项，默认折叠）、再工具行；
+ * 不再作为红色/斜体正文气泡刷屏。
  *
- * 交互：只有折叠头（标题行）切换展开；子项（参数/结果）点击只切自己的
- * 展开态并 stopPropagation，选中文本/点击展开区空白不会收起整个过程条。
+ * 交互：只有折叠头（标题行）切换展开；子项（思考行/参数/结果）点击只切
+ * 自己的展开态并 stopPropagation，选中文本/点击展开区空白不会收起整个
+ * 过程条。
  *
  * 流式进行中（active）：默认展开 + 转圈（wb-process-spin，reduced-motion
  * 关闭）+ 折叠头「· 进行中」；turn 结束后自动折叠，用户手动点过则以其
@@ -33,6 +35,71 @@ function statusIcon(status: AggregatedCall["status"]) {
   if (status === "ok") return <CheckIcon size={12} style={{ color: "#30a46c" }} />;
   if (status === "fail") return <CloseIcon size={12} style={{ color: "#e5484d" }} />;
   return <WrenchIcon size={12} />;
+}
+
+/** 思考行：与 CallRow 同契约的折叠子项（默认折叠，点开看全文）。 */
+function ThinkingRow({ text }: { text: string }) {
+  const t = useThemeColors();
+  const tr = useT();
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div
+      onClick={(e) => {
+        // 子项（思考行）点击不冒泡到父条：展开/选择文本不得收起整个过程条。
+        e.stopPropagation();
+        setOpen((v) => !v);
+      }}
+      style={{ cursor: "pointer" }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "2px 0",
+        }}
+      >
+        <span style={{ flexShrink: 0, fontSize: 12 }}>
+          <BrainIcon size={12} />
+        </span>
+        <span
+          style={{
+            fontWeight: 600,
+            color: t.textSecondary,
+            fontSize: 12,
+            flexShrink: 0,
+          }}
+        >
+          {tr("思考")}
+        </span>
+        <span style={{ flex: 1 }} />
+        <span style={{ color: "#bbb", fontSize: 10, flexShrink: 0 }}>
+          {open ? "▲" : "▼"}
+        </span>
+      </div>
+      {open ? (
+        <pre
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            margin: "4px 0 4px 18px",
+            padding: "8px 10px",
+            background: t.toolBg,
+            border: `1px solid ${t.border}`,
+            borderRadius: 6,
+            color: t.textSecondary,
+            fontSize: 12,
+            fontStyle: "normal",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxHeight: 240,
+            overflow: "auto",
+          }}
+        >
+          {text}
+        </pre>
+      ) : null}
+    </div>
+  );
 }
 
 function CallRow({ call }: { call: AggregatedCall }) {
@@ -249,8 +316,8 @@ export function ProcessCollapseBar({
       >
         <div style={{ overflow: "hidden", minHeight: 0 }}>
           <div style={{ padding: "4px 0 2px" }}>
-            {/* 思考段在前：每段一个 pre（中性底/边框，非红非斜体）；
-                点击不冒泡到折叠头——选中文本/滚动不该收起整个过程条。 */}
+            {/* 思考段在前：每段一个可折叠行（默认折叠，点开看全文）；
+                行/pre 点击不冒泡到折叠头——选中文本/滚动不该收起整个过程条。 */}
             {hasThoughts ? (
               <div
                 style={{
@@ -260,26 +327,7 @@ export function ProcessCollapseBar({
                 }}
               >
                 {notes.map((note, i) => (
-                  <pre
-                    key={`thought-${i}`}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      margin: 0,
-                      padding: "8px 10px",
-                      background: t.toolBg,
-                      border: `1px solid ${t.border}`,
-                      borderRadius: 6,
-                      color: t.textSecondary,
-                      fontSize: 12,
-                      fontStyle: "normal",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      maxHeight: 240,
-                      overflow: "auto",
-                    }}
-                  >
-                    {note}
-                  </pre>
+                  <ThinkingRow key={`thought-${i}`} text={note} />
                 ))}
               </div>
             ) : null}
