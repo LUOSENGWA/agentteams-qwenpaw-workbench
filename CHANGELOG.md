@@ -1,3 +1,17 @@
+## 0.5.0-beta.17.2（2026-11-16）
+
+**聊天页对齐收尾（chat-parity-finish，11 commits）**
+- formatted_body 软换行全数据链（SSE 全量 body + fetch 映射 + MdText/formatted 渲染链）
+- 围栏表格渲染；run-ending 三哨兵（已处理/已取消/处理异常）渲染收尾条（兼容生产 m.notice）
+- typing 指示三态；刻度 M/D 日期；窄宽房间名省略
+- mdPlain：修复表格/代码块/列表三退化，表格单元格内 br 支持
+- i18n：移除 chat 域「任务已取消」重复键（权威定义在 workflow 域）
+
+**a11y**
+- FilesSection 树/列表两个视图根容器按内置机制豁免（空白点击仅清选中/高亮，非交互控件，与 grid 视图先例一致）
+
+**测试**：tsc 0 · a11y 13/13 · build 0
+
 ## 0.5.0-beta.17（2026-11-08）
 
 Beta.17 汇总见 `方案与设计/工作台插件/release/RELEASE-v0.5.0-beta.17.md`。本版覆盖 beta.16 之后的工作台文件/聊天/团队设置/千锻/CodingCLI/管理/同步变化。
