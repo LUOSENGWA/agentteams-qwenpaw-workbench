@@ -419,7 +419,7 @@ describe("turn 级渲染", () => {
   it("过程条在最终回答之前（header → process → answers）", () => {
     const html = render(tops);
     const header = html.indexOf("工人甲");
-    const process = html.indexOf("思考过程");
+    const process = html.indexOf("执行过程");
     const answer = html.indexOf("最终回答：已经改好");
     expect(header).toBeGreaterThanOrEqual(0);
     expect(process).toBeGreaterThan(header);
@@ -432,8 +432,9 @@ describe("turn 级渲染", () => {
       roomMsg("u2", WORKER, T0 + 1000, "🔧 **read_file**\nChatIR.ts"),
     ]);
     expect(count(html, "工人甲")).toBe(1);
-    expect(html).toContain("思考过程");
-    expect(html).toContain("1 次工具调用");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("思考 1 次");
+    expect(html).toContain("工具 1 次");
     expect(html).not.toContain("最终回答");
   });
 

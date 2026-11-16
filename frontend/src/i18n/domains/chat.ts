@@ -227,10 +227,12 @@ export const chatDict: Record<string, { en: string }> = {
   "展开全部上下文": { en: "Expand all context" },
   "条": { en: "events" },
   // ── 批次 3：聊天页优化（过程折叠条 / 任务事件卡）──
-  "{n} 次工具调用 · {x}s": { en: "{n} tool calls · {x}s" },
-  "{n} 次工具调用": { en: "{n} tool calls" },
-  // 思考过程折叠（m.notice 推理帧并入过程条）
-  "思考过程": { en: "Thinking" },
+  // 过程条父头（17.4）：主标签恒「执行过程」，思考/工具各自计数段，时长挂工具段尾
+  "执行过程": { en: "Execution" },
+  "思考 {n} 次": { en: "{n} thoughts" },
+  "工具 {n} 次 · {x}s": { en: "{n} tool calls · {x}s" },
+  "工具 {n} 次": { en: "{n} tool calls" },
+  // 思考行标签（m.notice 推理帧并入过程条，逐段折叠）
   "思考": { en: "Thinking" },
   // 结构化运行时块（org.agentteams.run）：confirmation / error 呈现
   "待确认": { en: "Awaiting confirmation" },
