@@ -215,7 +215,6 @@ export const missingDict: Record<string, { en: string }> = {
   "修改 ↑": { en: "Modified ↑" },
   "修改 ↓": { en: "Modified ↓" },
   "创建 ↑": { en: "Created ↑" },
-  "创建 ↓": { en: "Created ↓" },
   // R4 a11y：表单控件的 aria-label（placeholder 不能当字段名）。
   "排序方式": { en: "Sort order" },
   "地址认证方式": { en: "Address auth mode" },

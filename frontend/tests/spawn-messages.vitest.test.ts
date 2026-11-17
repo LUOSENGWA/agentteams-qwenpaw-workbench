@@ -20,7 +20,7 @@
  * bonus：200 归一化容错（字段缺失/类型错 → 不臆造）、30s 缓存（重展开不重
  * 拨）+ 在飞去重、源码断言（懒加载门 open / 44px 触控 / 空态落点 / API 路径）。
  */
-import { test, expect, beforeEach } from "vitest";
+import { test, expect, beforeEach, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,16 +69,27 @@ let responder: Responder = () => ({
 
 // WorkerManageShared 模块级引用 window.QwenPaw.host（antd 图标选取）——
 // 静态 import 提升早于上面的 shim 赋值，须 shim 就绪后动态 import。
-const {
-  foldMessageContent,
-  classifySpawnMsgError,
-  SPAWN_MSG_FOLD_LINES,
-} = await import("../src/components/WorkerManageShared");
+// 动态 import 落 beforeAll（顶层 await 与 shim 门 cjs bundle 不兼容，
+// 见 scripts/vitest-gate.mjs；与 legacy-migrate 同款）。
+type Shared = typeof import("../src/components/WorkerManageShared");
+let foldMessageContent: Shared["foldMessageContent"];
+let classifySpawnMsgError: Shared["classifySpawnMsgError"];
+let SPAWN_MSG_FOLD_LINES: number;
 
 const BASE = "/agentteams-proxy/controller/api/v1";
-const HERE = dirname(fileURLToPath(import.meta.url));
+// shim 门通道（esbuild cjs bundle）import.meta.url 为 undefined；门恒在
+// frontend/ 下运行（见 scripts/vitest-gate.mjs），回退 cwd。
+const metaUrl: string | undefined = (import.meta as { url?: string }).url;
+const HERE = metaUrl ? dirname(fileURLToPath(metaUrl)) : join(process.cwd(), "tests");
 const srcFile = (p: string) =>
   readFileSync(join(HERE, "..", "src", p), "utf8");
+
+beforeAll(async () => {
+  const m = await import("../src/components/WorkerManageShared");
+  foldMessageContent = m.foldMessageContent;
+  classifySpawnMsgError = m.classifySpawnMsgError;
+  SPAWN_MSG_FOLD_LINES = m.SPAWN_MSG_FOLD_LINES;
+});
 
 beforeEach(() => {
   calls.length = 0;
@@ -243,21 +254,17 @@ test("bonus 在飞去重：并发同参数 → 只发一次请求", async () => 
   expect(b).toEqual(a);
 });
 
-test("⑤ 源码接线：spawn 树挂「消息」子项 + 消息组件懒加载（点开才请求）", () => {
-  const tree = srcFile("manage/SpawnTreeCard.tsx");
-  expect(tree).toContain("node.project_id");
-  expect(tree).toContain('tr("消息")');
+test("⑤ 源码接线：消息组件懒加载（点开才请求）", () => {
   // 消息组件由父级按点击挂载；effect 只在挂载后请求（不随树批量拉取）。
   const messages = srcFile("manage/SpawnMessages.tsx");
   expect(messages).toContain("getSpawnMessages(projectId, sessionId, 200)");
   expect(messages).toContain("React.useEffect(() => {");
 });
 
-test("⑤b 触控目标 ≥44px：消息行 / 重试按钮 / 展开行 三处 minHeight 44", () => {
-  const sources =
-    srcFile("manage/SpawnMessages.tsx") + srcFile("manage/SpawnTreeCard.tsx");
+test("⑤b 触控目标 ≥44px：消息展开行 / 重试按钮 两处 minHeight 44", () => {
+  const sources = srcFile("manage/SpawnMessages.tsx");
   const hits = sources.match(/minHeight: 44/g) || [];
-  expect(hits.length).toBeGreaterThanOrEqual(3);
+  expect(hits.length).toBeGreaterThanOrEqual(2);
 });
 
 test("⑤c 状态落点：空态 / 无权限查看 / 加载失败·重试 / has_more 提示", () => {

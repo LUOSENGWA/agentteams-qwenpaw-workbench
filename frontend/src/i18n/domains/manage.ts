@@ -2,9 +2,8 @@
 // 三顶层 tab 合并为「管理」页后的新增文案（P0–P6 引入；旧 tab 既有键留在
 // 原域字典，此处只收本重构新增、且全库字典无键的中文字符串）。
 
-export const manageDict: Record<string, { en: string }> = {
+export const manageDict: Record<string, { en: string; zh?: string }> = {
   "修改": { en: "Modified" },
-  "创建": { en: "Created" },
 
   // ── 文件列表：Finder 风格列 ──
   "类型": { en: "Kind" },
@@ -565,7 +564,6 @@ export const manageDict: Record<string, { en: string }> = {
   "配置已被他人修改，已重新读取": { en: "Config changed by someone else; reloaded" },
   "存在未知字段：{fields}（请刷新后重试）": { en: "Unknown fields: {fields} (refresh and retry)" },
   "JSON 格式不对": { en: "Invalid JSON" },
-  "无改动": { en: "No changes" },
   "该运行时暂无配置面（已注册：{supported}）": { en: "This runtime has no config surface yet (registered: {supported})" },
   "读取配置失败": { en: "Failed to load config" },
   "只读：团队 Leader 或策略限制": { en: "Read-only: team leader or policy restriction" },
@@ -586,7 +584,6 @@ export const manageDict: Record<string, { en: string }> = {
   },
   "无变化（已跳过）": { en: "Unchanged (skipped)" },
   "方式": { en: "Mode" },
-  "跳过": { en: "Skipped" },
   "写入": { en: "Write" },
   "回滚": { en: "Roll back" },
   "操作": { en: "Action" },
@@ -875,4 +872,11 @@ export const manageDict: Record<string, { en: string }> = {
   "这是入职时生成的初始密码，可能已因改密而失效；敏感信息，请勿转发或写入工单。修改后的密码不在此处。": {
     en: "This is the initial password generated at onboarding; it may already be invalid if the password was changed. It is sensitive — do not forward it or paste it into tickets. Passwords changed later are not shown here.",
   },
+  // ── 0.5.1 发版前清理批：Manager 详情状态卡 / 模型设置高级区英文词键（调用点为英文词，补 zh 回中）──
+  "Temperature": { en: "Temperature", zh: "温度" },
+  "Phase": { en: "Phase", zh: "阶段" },
+  "State": { en: "State", zh: "状态" },
+  "Runtime": { en: "Runtime", zh: "运行时" },
+  "Image": { en: "Image", zh: "镜像" },
+  "Version": { en: "Version", zh: "版本" },
 };
