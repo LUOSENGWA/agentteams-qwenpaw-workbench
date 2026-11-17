@@ -13,6 +13,7 @@ import { type WorkflowEvent } from "../api";
 import {
   groupThreads,
   applyWindow,
+  inlineWorkerRuns,
 } from "../threadWindow";
 import { useThemeColors } from "../theme";
 import { useT } from "../i18n";
@@ -31,6 +32,7 @@ import {
   MSG_WINDOW_LIMIT,
   CARD_RADIUS,
   isToolMessage,
+  mergeWorkerMxids,
   parseApproval,
   sameLoopStatus,
 } from "./RoomChatShared";
@@ -167,18 +169,30 @@ export function useRoomChatCore(props: RoomChatProps) {
   // 打开的线程：activeThread = 线程面板/抽屉中展示的 root event_id
   // （Element ThreadView 同款：宽屏右侧固定面板，窄屏 antd.Drawer 弹出）。
   // 状态记忆：thread + 面板宽度持久化，重开插件恢复上次展开的话题。
+  // 17.6：thread 持久化 room-scoped——存储值补 room_id 维度，仅同 room
+  // 恢复 thread（防跨房残留/切回自动复活）；width 是面板偏好，跨房共享
+  // 照旧恢复。旧格式值（无 room_id）= room 未知 → thread 不恢复。
   const THREAD_STATE_KEY = "agentteams-qwenpaw-workbench:thread-state";
-  const readThreadState = (): { thread?: string; width?: number } => {
+  const readThreadState = (): {
+    room_id?: string;
+    thread?: string;
+    width?: number;
+  } => {
     try {
       const raw = window.localStorage.getItem(THREAD_STATE_KEY);
       if (!raw) return {};
-      const parsed = JSON.parse(raw) as { thread?: string; width?: number };
+      const parsed = JSON.parse(raw) as {
+        room_id?: string;
+        thread?: string;
+        width?: number;
+      };
       return typeof parsed === "object" && parsed ? parsed : {};
     } catch {
       return {};
     }
   };
   const initialThreadState = React.useRef<{
+    room_id?: string;
     thread?: string;
     width?: number;
   } | null>(null);
@@ -193,8 +207,15 @@ export function useRoomChatCore(props: RoomChatProps) {
         Math.max(280, initialThreadState.current?.width || 340),
       ),
   );
+  // 17.6：仅存储 room_id 与当前房一致才恢复 thread（mount 只恢复一次——
+  // 初始化器只在首次渲染执行；room 取当前 room_id 原始值比对）。
   const [activeThread, setActiveThreadState] = React.useState<string | null>(
-    initialThreadState.current.thread || null,
+    () => {
+      const s = initialThreadState.current;
+      if (!s?.thread) return null;
+      if (!s.room_id || s.room_id !== (room?.room_id || "")) return null;
+      return s.thread;
+    },
   );
   // 15.14：窄屏话题=antd.Drawer（portal 覆盖层）。isWide 随窗口收窄
   // true→false 时，宽屏内联面板的话题会「自动转成 Drawer 弹出」——叠加
@@ -217,6 +238,9 @@ export function useRoomChatCore(props: RoomChatProps) {
         window.localStorage.setItem(
           THREAD_STATE_KEY,
           JSON.stringify({
+            // 17.6：room_id 维度（room 经 props 稳定引用——activeRoom 是
+            // 父侧 useState，换房才换引用；换房即 remount，闭包随房重建）。
+            room_id: room?.room_id || "",
             thread: next || "",
             width: panelWidth,
           }),
@@ -225,8 +249,7 @@ export function useRoomChatCore(props: RoomChatProps) {
         /* storage 不可用则跳过 */
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [panelWidth],
+    [panelWidth, room?.room_id],
   );
   // 宽屏判定（≥900px 右侧面板；否则钉钉式 Drawer 弹出）。
   const [isWide, setIsWide] = React.useState(() =>
@@ -377,6 +400,17 @@ export function useRoomChatCore(props: RoomChatProps) {
     [messages, hideTools],
   );
 
+  // worker 判定（§4.2 worker-run 内联门控）：成员名表 ∪ 会话状态表 ∪
+  // runtime 表 ∪ 房间 worker 集合——四表并集，任一表命中即 worker。
+  const isWorkerMxid = React.useCallback(
+    (mxid: string) =>
+      (memberWorkerNames && mxid in memberWorkerNames) ||
+      (workerSessionByMxid && mxid in workerSessionByMxid) ||
+      (workerRuntimeByMxid && mxid in workerRuntimeByMxid) ||
+      (workerMxids ? workerMxids.has(mxid) : false),
+    [memberWorkerNames, workerSessionByMxid, workerRuntimeByMxid, workerMxids],
+  );
+
   // 线程分组（Element/Discord 式）：回复消息折叠进所回复的
   // 消息线程，不再在顶层重复出现——「谁回复了谁的哪条」一目了然。
   //
@@ -386,10 +420,22 @@ export function useRoomChatCore(props: RoomChatProps) {
   // pendingOriginal（「加载原消息」定位中）旁路——目标消息必须恒在 DOM。
   // 目标消息被窗口藏起的回复降级为顶层、置于渲染窗首（消息序连续，
   // 与「target 不在已载窗口」的既有行为一致）。
+  //
+  // worker-run 内联（§4.2）：窗口先于内联——纯 worker 线程（root+回复
+  // 全是 worker）=「一次运行」，root+全部回复内联进主时间线（块锚定
+  // root 修订键，最终编辑根按 editedAt 落位），不再占话题分组；
+  // 人类/混合线程原样保留话题分组。被窗口藏起 root 的孤儿回复保持
+  // applyWindow 既有降级行为（不内联，独立成行）。
   const threadGroups = React.useMemo(() => {
     const g = groupThreads(visibleMessages);
-    return applyWindow(g.tops, g.repliesOf, windowLimit, pendingOriginal);
-  }, [visibleMessages, windowLimit, pendingOriginal]);
+    const w = applyWindow(g.tops, g.repliesOf, windowLimit, pendingOriginal);
+    const inl = inlineWorkerRuns(w.tops, w.repliesOf, isWorkerMxid);
+    return {
+      tops: inl.tops,
+      repliesOf: inl.repliesOf,
+      hiddenCount: w.hiddenCount,
+    };
+  }, [visibleMessages, windowLimit, pendingOriginal, isWorkerMxid]);
   hiddenCountRef.current = threadGroups.hiddenCount;
 
   // 贴底跟随（useStickToBottom：显式 following + rAF 批量 instant 贴底 +
@@ -817,28 +863,14 @@ export function useRoomChatCore(props: RoomChatProps) {
     // 内有 autoLoadRef 防重）。
   }, [messages, hasMore, onLoadMore, nearTop, kickLoadMore]);
 
-  // 换房间：重置消息/窗口状态（贴底由 stick hook 的 roomKey effect 负责，
-  // Element 开房间即在最新消息处）。
-  React.useEffect(() => {
-    lastMsgIdRef.current = "";
- // 换房重置审批通知状态（新房间首批=只登记）。
-    approvalsSeededRef.current = false;
-    seenApprovalsRef.current.clear();
- // 审批解析缓存随房间清（防跨房残留）。
-    approvalParseCacheRef.current.clear();
-    pendingCacheRef.current = null;
-    // 换房重置人工介入摄取状态（新房间首批=只登记，不建项）。
-    pendingSeededRef.current = false;
-    seenPendingRef.current.clear();
-    // 消息窗口回初始（换房=新渲染起点，揭示进度不跨房保留）。
-    // 下界=棘轮值（minWindowTops）：本 effect 是 passive（挂载时晚于
-    // 棘轮 layout effect 落地）；直落 MSG_WINDOW_LIMIT 会把挂载前已抬升
-    // 的棘轮值踩回去 → 渲染窗瞬缩、视口腾空、顶哨兵连环扩窗。
-    // deps 故意不含 minWindowTops：会话中棘轮抬升不得触发换房重置
-    // （清审批/待决登记态）——换房时闭包即新值。
-    setWindowLimit(Math.max(MSG_WINDOW_LIMIT, minWindowTops ?? 0));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.room_id]);
+  // per-room 隔离由父侧 key={room_id} remount 承担（17.6），房内状态 mount
+  // 即初值——原换房重置 effect 逐项核对初值一致后删除（lastMsgIdRef ""/
+  // approvalsSeededRef false/seenApprovalsRef 空 Set/approvalParseCacheRef
+  // 空 Map/pendingCacheRef null/pendingSeededRef false/seenPendingRef 空
+  // Set 均=初值；windowLimit 初值即 MSG_WINDOW_LIMIT——原 reset 的真实作用是
+  // 防 remount 首渲染读到旧房 minWindowTops 被棘轮抬高（单向棘轮降不回）：
+  // 子组件 layout 先于父侧 reset 落地，旧值会把新房 windowLimit 永久抬升。
+  // 该泄漏改由父侧 messagesRoomId 按房打标堵住（17.6 补刀），故删除成立）。
 
  // ── ─────────────
  // 「会话级 loop 状态你需要查清楚应该在哪里显示」——
@@ -914,15 +946,18 @@ export function useRoomChatCore(props: RoomChatProps) {
   }, [activeThread, visibleMessages]);
   const activeThreadReplies = React.useMemo(() => {
     if (!activeThread) return [];
-    // 主题根被渲染窗藏起时（孤儿回复降级置顶），从渲染窗内按 reply 目标
-    // 反查该主题的回复——线程面板不因窗口化丢失数据（主题消息本体要
-    // 看仍需先「显示更早」）。
+    // ① 话题分组直取（人类/混合线程：回复在 repliesOf）。
     const direct = threadGroups.repliesOf.get(activeThread);
     if (direct) return direct;
-    return threadGroups.tops.filter(
-      (m) => m.reply?.event_id === activeThread,
+    // ② worker-run 已内联（§4.2：纯 worker 线程的回复不再占 repliesOf，
+    // 已内联进 tops）→ 按 threadRoot 从全量已载消息反查全部回复——
+    // 线程面板读取全量，不因内联丢回复。同法覆盖「主题根被渲染窗藏起
+    // （孤儿回复降级置顶）」场景（threadRoot/reply 目标反查）。
+    return visibleMessages.filter(
+      (m) =>
+        m.threadRoot === activeThread || m.reply?.event_id === activeThread,
     );
-  }, [activeThread, threadGroups]);
+  }, [activeThread, threadGroups, visibleMessages]);
 
  // useCallback——行内 SenderAvatar
   // memo 依赖其引用稳定（普通函数每渲染新引用 → memo 全击穿）。
@@ -1064,7 +1099,22 @@ export function useRoomChatCore(props: RoomChatProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room?.room_id]);
 
+  // worker 判定表（四集合并——RoomChatMessages 同口径，面板 turn 拆分
+  // 复用 splitTurn/isThinkingNotice/isWorkerPlaceholder）。
+  const workerMxidsTable = React.useMemo(
+    () =>
+      mergeWorkerMxids(
+        memberWorkerNames,
+        workerSessionByMxid,
+        workerRuntimeByMxid,
+        workerMxids,
+      ),
+    [memberWorkerNames, workerSessionByMxid, workerRuntimeByMxid, workerMxids],
+  );
+
   // 线程面板内容：宽屏右侧固定面板，窄屏 antd.Drawer。
+  // §4.4：面板正文 = 主列表 turn 管线（TurnHeader/过程条/审批卡/回答行/
+  // 错误条全复用）——handler 与主列表行同源（审批/交付/工作流/灯箱）。
   const threadPanelBody = React.useMemo(() => {
     if (!activeThreadMsg) return null;
     return (
@@ -1081,6 +1131,20 @@ export function useRoomChatCore(props: RoomChatProps) {
         // 主题根/引用原消息可能不在已加载窗口 → handleSearchJump 兜底 /context。
         onJump={(eventId) => void handleSearchJump(eventId)}
         workerSessionByMxid={workerSessionByMxid}
+        memberWorkerNames={memberWorkerNames}
+        workerRuntimeByMxid={workerRuntimeByMxid}
+        workerMxids={workerMxidsTable}
+        liveByRunId={liveByRunId}
+        teamName={teamName}
+        resolvedApprovals={resolvedApprovals}
+        onApprovalAction={handleApprovalAction}
+        onDeliverable={handleDeliverable}
+        onOpenProject={onOpenProject}
+        onWorkflowIntervened={onWorkflowIntervened}
+        onOpenProjectFiles={onOpenProjectFiles}
+        openDetailMxid={openDetailMxid}
+        onDm={onDm}
+        onOpenWorkerChats={onOpenWorkerChats}
       />
     );
   }, [
@@ -1092,15 +1156,35 @@ export function useRoomChatCore(props: RoomChatProps) {
     onSend,
     onReact,
     jumpToMessage,
+    workerSessionByMxid,
+    memberWorkerNames,
+    workerRuntimeByMxid,
+    workerMxidsTable,
+    liveByRunId,
+    teamName,
+    resolvedApprovals,
+    handleApprovalAction,
+    handleDeliverable,
+    onOpenProject,
+    onWorkflowIntervened,
+    onOpenProjectFiles,
+    openDetailMxid,
+    onDm,
+    onOpenWorkerChats,
   ]);
 
  // 话题面板占宽上报（打开/关闭/调宽/宽窄态变化
   // 均触发）→ 父组件重测分栏。inline 面板（isWide）才吃宽；drawer 模式
-  // 是覆盖层不占布局宽，不上报。
+  // 是覆盖层不占布局宽，不上报。卸载时清报（17.6：换房即 remount——
+  // 无清理则父侧 threadPanelRef 停在旧房带面板的值，分栏宽算错；
+  // deps 变化时的中间清报无害——父侧 rAF 批内读最终值）。
   React.useEffect(() => {
     if (!onThreadPanelLayout) return;
     const open = isWide && threadPanelBody !== null;
     onThreadPanelLayout(open, open ? panelWidth : 0);
+    return () => {
+      onThreadPanelLayout?.(false, 0);
+    };
   }, [isWide, threadPanelBody, panelWidth, onThreadPanelLayout]);
 
   // 竖屏紧凑头（narrow=容器<800，单一判定与聊天单栏同源同步）：宽屏头部的

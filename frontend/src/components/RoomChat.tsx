@@ -15,13 +15,13 @@ import {
 } from "../api";
 import { type FileRef } from "../lib/file-refs";
 import { type WorkerSessionState } from "../workerSessionState";
-import { senderShortName } from "./RoomChatShared";
 import { useRoomChatCore } from "./RoomChatCore";
 import type { RoomChatCoreState } from "./RoomChatCore";
 import { RoomChatHeader } from "./RoomChatHeader";
 import { RoomChatComposer } from "./RoomChatComposer";
 import RoomChatMessages from "./RoomChatMessages";
 import RoomChatSidebar from "./RoomChatSidebar";
+import { RoomChatTyping } from "./RoomChatTyping";
 import { useRoomChatView } from "./RoomChatView";
 
 const host = window.QwenPaw.host;
@@ -171,8 +171,6 @@ function RoomChat(props: RoomChatProps) {
   const core = c as RoomChatCoreState;
   const {
     room,
-    t,
-    tr,
     narrow,
     compactHeader,
   } = core;
@@ -221,22 +219,15 @@ function RoomChat(props: RoomChatProps) {
 /context 片段注入消息窗口 + data-jump-target 高亮 2s）；此前的独立
 「搜索定位」折叠块已退役（jumpContextWindow.ts 留档不渲染）。 */}
 
-          {/* typing 指示（Element WhoIsTypingTile 同款交互：房间内正在输入提示） */}
-          {(room.typing || []).length > 0 ? (
-            <div
-              style={{
-                fontSize: 12,
-                color: t.textSecondary,
-                fontStyle: "italic",
-                padding: "2px 4px",
-              }}
-            >
-              {(room.typing || [])
-                .map((mxid) => senderShortName(mxid, room))
-                .join("、")}{" "}
-              {tr("正在输入…")}
-            </div>
-          ) : null}
+          {/* typing 指示（dashboard typing-indicator 同款：3 档文案 +
+              3 点交错闪烁 + aria-live）；无输入者时组件自身不渲染。 */}
+          <RoomChatTyping
+            typing={room.typing || []}
+            room={room}
+            userId={props.user_id}
+            color={core.t.textSecondary}
+            tr={core.tr}
+          />
 
           {/* 底部输入区。15.14：flexShrink:0——窗口矮时输入区不被压缩
  （压缩会挤压 textarea/autoSize 计算高度 → 输入框视觉跳变），

@@ -51,6 +51,8 @@ export interface RoomChatMessageRowProps {
   absorbedThinking?: boolean;
   /** 结构化运行时块（无 text 块）：内容已由过程条/卡片承载，行只留锚点。 */
   absorbedBlocks?: boolean;
+  /** worker「处理中...」根占位（§4.3）：正文已由内联回复承载，行只留锚点。 */
+  absorbedPlaceholder?: boolean;
   mine: boolean;
   /** hoveredId === msg.event_id（调用方算好——memo 浅比较对 boolean 友好）。 */
   hovered: boolean;
@@ -104,6 +106,7 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
     absorbedTool,
     absorbedThinking,
     absorbedBlocks,
+    absorbedPlaceholder,
     mine,
     hovered,
     showTime,
@@ -168,7 +171,10 @@ function RoomChatMessageRow(props: RoomChatMessageRowProps) {
       {/* 日期分隔 Element 同款居中胶囊
 （旧 antd.Divider 通栏线太散，与扁平消息行不搭）。 */}
       {sep ? <ChatDatePill ts={msg.origin_server_ts} t={t} tr={tr} /> : null}
-      {absorbedTool || absorbedThinking || absorbedBlocks ? (
+      {absorbedTool || absorbedThinking || absorbedBlocks || absorbedPlaceholder ? (
+        // 吸收行：DOM 锚点（搜索/深跳定位目标）保留，正文不渲染。
+        // 占位根（absorbedPlaceholder）的线程摘要「N 条回复 + ThreadIcon」
+        // 在下方独立块，不受吸收影响（§4.2 线程面板入口保留）。
         <div data-event-id={msg.event_id} />
       ) : (
         // 触屏 tap 切换操作条挂在行上（原内层气泡容器 onClick 上移——

@@ -13,6 +13,7 @@ import { parseRunBlocks } from "../src/api/domains/chat";
 import type { RunBlock } from "../src/api";
 import {
   buildTurns,
+  mapTurnRanges,
   splitTurn,
   type ChatMessage,
   type Turn,
@@ -400,23 +401,18 @@ const ROOM = {
   },
 };
 
-/** 按 RoomChatView 的口径从 tops 造 renderItems（turn 切片）。 */
+/** 按 RoomChatView 的口径从 tops 造 renderItems（turn → indices 映射，§4.3）。 */
 function render(tops: RoomMsgLike[]): string {
   const ir = roomMessagesToIR(tops as never);
   const turns = buildTurns(ir);
-  const idxById = new Map<string, number>();
-  tops.forEach((m, i) => {
-    if (!idxById.has(m.event_id)) idxById.set(m.event_id, i);
-  });
-  const renderItems = turns.map((turn) => {
-    const start = idxById.get(turn.id) ?? 0;
-    return {
-      kind: "turn",
-      key: `turn-${turn.id}`,
-      ts: tops[start]?.origin_server_ts ?? 0,
-      range: { turn, start, end: start + turn.messages.length },
-    };
-  });
+  // §4.3：turn → tops 下标映射走 mapTurnRanges（允许非连续）——与
+  // useRoomChatView 同口径，夹具不再手造连续切片。
+  const renderItems = mapTurnRanges(turns, tops).map((r) => ({
+    kind: "turn",
+    key: `turn-${r.turn.id}`,
+    ts: tops[r.indices[0]]?.origin_server_ts ?? 0,
+    range: r,
+  }));
   const core = {
     room: ROOM,
     loading: false,
@@ -520,7 +516,7 @@ describe("结构化块渲染", () => {
     // 无 text 块 → 原正文不渲染（只留行锚点）
     expect(html).not.toContain("请审批");
     // 审批卡不折进过程条
-    expect(html).not.toContain("思考过程");
+    expect(html).not.toContain("执行过程");
   });
 
   it("error 独立成状态条（kind → 文案 + title）", () => {
@@ -538,7 +534,7 @@ describe("结构化块渲染", () => {
     expect(html.indexOf("沙箱拒绝")).toBeGreaterThan(html.indexOf("答案"));
   });
 
-  it("thinking/tool_call 块进过程条（1 次工具调用）", () => {
+  it("thinking/tool_call 块进过程条（执行过程 · 思考 1 次 · 工具 1 次）", () => {
     const html = render([
       roomMsg("b4", WORKER, T0, "Thinking:\n\n原正文推理", {
         runBlocks: [
@@ -547,9 +543,12 @@ describe("结构化块渲染", () => {
         ],
       }),
     ]);
-    expect(html).toContain("思考过程");
-    expect(html).toContain("块里的推理");
-    expect(html).toContain("1 次工具调用");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("思考 1 次");
+    // 思考行（默认折叠子项）：行标签在；思考原文在行内展开态才入 DOM。
+    expect(html).toContain("思考</span>");
+    expect(html).not.toContain("块里的推理");
+    expect(html).toContain("工具 1 次");
     expect(html).not.toContain("原正文推理");
   });
 
@@ -559,9 +558,12 @@ describe("结构化块渲染", () => {
       roomMsg("c2", WORKER, T0 + 1000, "✅ **read_file**:\nChatIR.ts"),
       roomMsg("c3", WORKER, T0 + 2000, "启发式回答"),
     ]);
-    expect(html).toContain("思考过程");
-    expect(html).toContain("启发式推理");
-    expect(html).toContain("1 次工具调用");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("思考 1 次");
+    // 思考行（默认折叠子项）：行标签在；思考原文在行内展开态才入 DOM。
+    expect(html).toContain("思考</span>");
+    expect(html).not.toContain("启发式推理");
+    expect(html).toContain("工具 1 次");
     expect(html).toContain("启发式回答");
     expect(count(html, "工人甲")).toBe(1);
   });

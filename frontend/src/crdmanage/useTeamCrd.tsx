@@ -20,7 +20,12 @@ import {
   type AdminData,
   type TeamInfo,
 } from "../api";
-import { modelVerdictText, validateModelValue } from "../modelUnion";
+import {
+  modelVerdictText,
+  providerForModel,
+  providerModelMismatch,
+  validateModelValue,
+} from "../modelUnion";
 import { invalidateTags } from "../requestCache";
 import { createPoller, type Poller } from "../usePoller";
 import {
@@ -240,6 +245,12 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       antd.message.error(modelVerdictText(tr, mv, nw.model, catalog.modelCandidates));
       return;
     }
+    // 失配=不可保存（provider+model 原子对）：创建路径同样拦截，
+    // 不落盘失配 pair（createWorker body 的 model/modelProvider 成对下发）。
+    if (providerModelMismatch(catalog.gatewayOpts ?? [], nw.model, nw.provider)) {
+      antd.message.error(tr("该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）"));
+      return;
+    }
     const run = async () => {
       setNw((p) => ({ ...p, busy: true }));
       try {
@@ -299,7 +310,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       return;
     }
     void run();
-  }, [nw, workerRows, onRefresh, tr, catalog.modelCandidates]);
+  }, [nw, workerRows, onRefresh, tr, catalog.modelCandidates, catalog.gatewayOpts]);
 
   const doCreateTeam = React.useCallback(async () => {
     const name = tForm.name.trim();
@@ -357,6 +368,41 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       antd.message.error(
         tr("模型校验不通过：{list}", {
           list: badRows.map((r) => `${r.name}=${(r.model || "").trim()}`).join("、"),
+        }),
+      );
+      return;
+    }
+    // 失配=不可保存（provider+model 原子对）——有效 pair 按 merge 语义判定：
+    // 新建行直接按指定值；既有行仅当本轮实际写 model/provider（与写循环
+    // diff 同口径：m&&m!==cur / p&&p!==curP）才参与判定，且判值=写后落盘
+    // 值（m||cur, p||curP）——防止只改 SOUL / 存量失配未触碰的行被误伤。
+    // 存在失配行 → 整批不发（createWorker/updateWorker/createTeam 均不落盘）；
+    // 错误文案复用批量键（与 doCfg 同形）。
+    const pairRows = rows
+      .map((r) => {
+        const m = (r.model || "").trim();
+        const p = (r.provider || "").trim();
+        if (r.mode === "new") return { r, m, p };
+        const cur = catalog.modelOf(r.name.trim());
+        const curP =
+          workers.find((w) => w.name === r.name.trim())?.modelProvider || "";
+        return (m && m !== cur) || (p && p !== curP)
+          ? { r, m: m || cur, p: p || curP }
+          : null;
+      })
+      .filter((x): x is { r: WorkerRow; m: string; p: string } => x !== null);
+    const badPairs = pairRows.filter((x) =>
+      providerModelMismatch(catalog.gatewayOpts ?? [], x.m, x.p),
+    );
+    if (badPairs.length) {
+      antd.message.error(
+        tr("模型与 Provider 失配（不可保存，请调整后重试）：{list}", {
+          list: badPairs
+            .map(
+              (x) =>
+                `${x.r.name.trim()}=${x.m}（归属 ${providerForModel(catalog.gatewayOpts ?? [], x.m)}，所选 ${x.p}）`,
+            )
+            .join("、"),
         }),
       );
       return;
@@ -466,7 +512,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       return;
     }
     void proceed();
-  }, [tForm, workerRows, workers, onRefresh, tr, catalog.modelCandidates, catalog.modelOf, startTeamCheck, millforgePreCreate, millforgePostCreate]);
+  }, [tForm, workerRows, workers, onRefresh, tr, catalog.modelCandidates, catalog.gatewayOpts, catalog.modelOf, startTeamCheck, millforgePreCreate, millforgePostCreate]);
 
   const workerNames = workers.map((x) => x.name);
 
@@ -669,6 +715,35 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       );
       return;
     }
+    // 失配=不可保存（provider+model 原子对）：按本轮将落盘的行前置判定
+    // （model 或 provider 任一变更，与 proceedCfg 的 changed 同口径）；
+    // 存在失配行 → 整批不发（updateTeam/updateWorkerModel 均不落盘）。
+    const pairRows = cfgRows.filter((r) => {
+      const m = (r.model || "").trim();
+      const p = (r.provider || "").trim();
+      return r.name.trim() && ((m && m !== (r.modelOrig ?? "")) || p);
+    });
+    const badPairs = pairRows.filter((r) =>
+      providerModelMismatch(
+        catalog.gatewayOpts ?? [],
+        (r.model || "").trim(),
+        (r.provider || "").trim(),
+      ),
+    );
+    if (badPairs.length) {
+      antd.message.error(
+        tr("模型与 Provider 失配（不可保存，请调整后重试）：{list}", {
+          list: badPairs
+            .map((r) => {
+              const m = (r.model || "").trim();
+              const p = (r.provider || "").trim();
+              return `${r.name.trim()}=${m}（归属 ${providerForModel(catalog.gatewayOpts ?? [], m)}，所选 ${p}）`;
+            })
+            .join("、"),
+        }),
+      );
+      return;
+    }
     const warnCfg = changedRows.filter(
       (r) => validateModelValue(r.model || "", catalog.modelCandidates).level === "warn",
     );
@@ -731,7 +806,7 @@ export function useTeamCrd({ teams, workers, onRefresh, tr, catalog, registerHan
       return;
     }
     void proceedCfg();
-  }, [cfgTeam, cfg, cfgRows, llmBase, workerNames, onRefresh, tr, catalog.modelCandidates]);
+  }, [cfgTeam, cfg, cfgRows, llmBase, workerNames, onRefresh, tr, catalog.modelCandidates, catalog.gatewayOpts]);
 
   /** 团队设置「加入 Worker」：把未归属任何团队的 Worker 一键加进指定团队。
    * PUT /teams/{name} 的 workerMembers = 全量替换 → 以「现值成员

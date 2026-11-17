@@ -5,7 +5,7 @@
  * 覆盖：
  * ① spawn 树 flatten/递归/折叠 + 状态色映射；
  * ② spawn 消息错误分类 404/403/其他 + has_more/折叠阈值纯函数；
- * ③ 子会话卡 / 消息三态静态渲染（加载 / 失败重试 / 空态 / 树行）；
+ * ③ 子会话卡静态渲染随 SpawnTreeCard 退场删除（守卫见 ⑥ 文本断言）；
  * ④ 私聊入口参数（mxid, roomId）与两详情面板接线；
  * ⑤ Manager 容器日志解析 / 空态 / 错误分类 + 静态渲染；
  * ⑥ 旧组件文件已删且无 import 引用（WorkerManageShared 保留）。
@@ -23,7 +23,10 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { SpawnNode } from "../src/api/domains/teams";
 
-const here = dirname(fileURLToPath(import.meta.url));
+// shim 门通道（esbuild cjs bundle）import.meta.url 为 undefined；门恒在
+// frontend/ 下运行（见 scripts/vitest-gate.mjs），回退 cwd。
+const metaUrl: string | undefined = (import.meta as { url?: string }).url;
+const here = metaUrl ? dirname(fileURLToPath(metaUrl)) : join(process.cwd(), "tests");
 const srcDir = join(here, "..", "src");
 const srcText = (rel: string): string => readFileSync(join(srcDir, rel), "utf8");
 const E = React.createElement;
@@ -77,7 +80,6 @@ const E = React.createElement;
 let spawnModel: typeof import("../src/manage/spawnModel");
 let dmTarget: typeof import("../src/manage/dmTarget");
 let managerLogs: typeof import("../src/manage/managerLogs");
-let SpawnTreeCard: typeof import("../src/manage/SpawnTreeCard");
 let ManagerLogsCard: typeof import("../src/manage/ManagerLogsCard");
 let shared: typeof import("../src/components/WorkerManageShared");
 
@@ -85,7 +87,6 @@ beforeAll(async () => {
   spawnModel = await import("../src/manage/spawnModel");
   dmTarget = await import("../src/manage/dmTarget");
   managerLogs = await import("../src/manage/managerLogs");
-  SpawnTreeCard = await import("../src/manage/SpawnTreeCard");
   ManagerLogsCard = await import("../src/manage/ManagerLogsCard");
   shared = await import("../src/components/WorkerManageShared");
 });
@@ -178,58 +179,6 @@ describe("② spawn 消息错误分类 / has_more / 折叠阈值", () => {
     const r = shared.foldMessageContent(seven);
     expect(r.folded).toBe(true);
     expect(r.text.split("\n")).toHaveLength(6);
-  });
-});
-
-describe("③ 子会话卡静态渲染", () => {
-  const html = (state: unknown): string =>
-    renderToStaticMarkup(
-      E(SpawnTreeCard.SpawnTreeBody, { state: state as never }),
-    );
-
-  it("loading → 加载中…", () => {
-    expect(html({ kind: "loading" })).toContain("加载中…");
-  });
-
-  it("error → 加载失败 · 重试（卡内可重试，不外溢）", () => {
-    const out = html({ kind: "error", message: "HTTP 500: boom" });
-    expect(out).toContain("加载失败");
-    expect(out).toContain("重试");
-    expect(out).toContain("HTTP 500: boom");
-  });
-
-  it("ok + 空 → 暂无子会话", () => {
-    expect(html({ kind: "ok", spawns: [] })).toContain("暂无子会话");
-  });
-
-  it("ok + 嵌套树 → 名字 / 状态标签 / 工具与技能白名单 / 子节点", () => {
-    const out = html({
-      kind: "ok",
-      spawns: [
-        node("p", {
-          name: "parent-agent",
-          status: "running",
-          allowedTools: ["read"],
-          skills: ["sk-a"],
-          project_id: "proj-1",
-          children: [node("c1", { name: "child-agent", status: "done" })],
-        }),
-      ],
-    });
-    expect(out).toContain("parent-agent");
-    expect(out).toContain("child-agent");
-    expect(out).toContain("进行中");
-    expect(out).toContain("已完成");
-    expect(out).toContain("工具白名单");
-    expect(out).toContain("read");
-    expect(out).toContain("技能白名单");
-    expect(out).toContain("sk-a");
-    // 消息入口仅 project_id 节点出现。
-    expect(out).toContain("消息");
-  });
-
-  it("absent（老控制器无 /spawns 路由）→ 空渲染（整卡隐藏）", () => {
-    expect(html({ kind: "absent" })).toBe("");
   });
 });
 
@@ -356,9 +305,10 @@ describe("⑥ 旧组件退场 / 新挂载点 / 无 import 引用", () => {
 
   it("新挂载点：WorkerDetailPane 挂会话卡（智能体/子代理双 tab）；TeamSection 拓扑行有数量徽标", () => {
     const worker = srcText("manage/WorkerDetailPane.tsx");
-    expect(worker).toContain("<WorkerChats");
-    // 双 tab（智能体会话 / 子代理会话）= 单一「会话」卡入口。
-    expect(worker).toContain("showKindTabs");
+    expect(worker).toContain("<WorkerChatsModal");
+    // 双 tab（智能体会话 / 子代理会话）= 单一「会话」卡入口：会话卡改由弹窗
+    // 承载后，showKindTabs 落点从 WorkerDetailPane 迁到 WorkerChatsModal。
+    expect(srcText("manage/WorkerChatsModal.tsx")).toContain("showKindTabs");
     // Worker 详情不再走项目级 /spawns 扇出（数据面 = 运行时 /workers/{name}/chats）。
     expect(worker).not.toContain("SpawnTreeCard");
     const team = srcText("manage/TeamSection.tsx");
@@ -366,10 +316,7 @@ describe("⑥ 旧组件退场 / 新挂载点 / 无 import 引用", () => {
     expect(team).toContain('tr("{n} 个子会话", { n: spawnCount })');
   });
 
-  it("卡片数据源：fetchWorkerSpawns(force) + endpointMissing 隐藏 + 60s 缓存", () => {
-    const card = srcText("manage/SpawnTreeCard.tsx");
-    expect(card).toContain("fetchWorkerSpawns(force)");
-    expect(card).toContain("endpointMissing");
+  it("数据源：worker/spawns 60s 缓存（teams.ts，WorkbenchPageData 在用）", () => {
     expect(srcText("api/domains/teams.ts")).toContain(
       'cachedRequest("worker/spawns", 60000',
     );

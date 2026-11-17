@@ -17,8 +17,9 @@ import { missingDict } from "./i18n/domains/missing";
 const host = window.QwenPaw.host;
 
 /** 双语字典。key 用中文原文（zh 为源语言），en 为英文对照。
- * 由 i18n/domains/* 域字典合并（基线 1616 键 + 千锻域）。 */
-const DICT: Record<string, { en: string }> = {
+ * 由 i18n/domains/* 域字典合并（基线 1616 键 + 千锻域）。
+ * 个别英文词键（Temperature/Phase 等）携带 zh 字段：zh 模式下 tr 回中。 */
+const DICT: Record<string, { en: string; zh?: string }> = {
   ...adminDict,
   ...attentionDict,
   ...chatDict,
@@ -66,6 +67,8 @@ export function useT(): (text: string, vars?: Record<string, string | number>) =
         let out = text;
         if (lang === "en" && DICT[text]) {
           out = DICT[text].en;
+        } else if (lang === "zh" && DICT[text]?.zh) {
+          out = DICT[text].zh;
         }
         if (vars) {
           for (const [k, v] of Object.entries(vars)) {

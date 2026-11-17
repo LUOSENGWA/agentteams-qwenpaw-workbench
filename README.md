@@ -1,6 +1,6 @@
 # AgentTeams QwenPaw Workbench（AgentTeams 团队工作台）
 
-**版本 Version**：0.5.0-beta.16 ｜ **作者 Author**：LUOSENGWA
+**版本 Version**：0.5.1 ｜ **作者 Author**：LUOSENGWA
 **依赖要求 Requirements**：QwenPaw 2.0–2.2（`qwenpaw_version: >=2.0.0, <3.0.0`，2.1+ 解锁宿主技能详情/知识图谱/重索引；2.0 下对应功能自动降级）+ AgentTeams Controller（HiClaw 集群）
 
 > 英文版: [README-en.md](README-en.md) ｜ 更新日志: [CHANGELOG.md](CHANGELOG.md)（[en](CHANGELOG-en.md)）

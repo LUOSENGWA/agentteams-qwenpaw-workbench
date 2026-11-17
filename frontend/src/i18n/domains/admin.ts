@@ -1,6 +1,6 @@
 // admin 域 i18n 字典（自 i18n.ts 按域拆分）：运维（审计/CRD 管理/集群负载）。
 
-export const adminDict: Record<string, { en: string }> = {
+export const adminDict: Record<string, { en: string; zh?: string }> = {
   // ── 审计（A7，#1270 GET /api/v1/audit 消费）──
   "审计": { en: "Audit" },
   "审计日志": { en: "Audit Log" },
@@ -131,7 +131,6 @@ export const adminDict: Record<string, { en: string }> = {
   "确认删除该团队？（不可恢复）": {
     en: "Delete this team? (irreversible)",
   },
-  "已保存": { en: "Saved" },
   "描述（留空 = 保持不变）": { en: "Description (blank = unchanged)" },
   "心跳间隔（留空 = 保持不变，如 10m）": {
     en: "Heartbeat interval (blank = unchanged, e.g. 10m)",
@@ -165,6 +164,7 @@ export const adminDict: Record<string, { en: string }> = {
   // ── 15.36 D：权限档位 Select 短 label（完整语义进 HelpDot tooltip）──
   "L1 · 管理员": { en: "L1 · Admin" },
   "L2 · 团队成员": { en: "L2 · Team member" },
+  "L3 · Worker": { en: "L3 · Worker", zh: "L3 · Worker" },
   // ── 16.41 批次 1：建队表单行内新建 Worker（mode=new）+ 独立 Worker 显式化 ──
   "选已有": { en: "Existing" },
   "Worker 名（新建，唯一）": { en: "Worker name (new, unique)" },

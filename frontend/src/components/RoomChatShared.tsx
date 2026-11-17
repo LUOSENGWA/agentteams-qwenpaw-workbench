@@ -46,6 +46,48 @@ export function toolNameOf(body: string): string {
   return m ? m[1] : "";
 }
 
+/** Agent 处理占位正文（后端开工时发 `处理中...` 根占位；
+ * Dashboard isAgentPlaceholderBody 同口径）。 */
+export const AGENT_PLACEHOLDER_RE = /^\s*处理中[.。…]*\s*$/;
+
+/** worker 占位行：发送者 ∈ worker 表且正文 = 占位 → 行只留锚点、
+ * 不单独渲染（§4.3——回复内联后占位根是冗余壳）。 */
+export function isWorkerPlaceholder(
+  m: RoomMessage,
+  workerMxids: Record<string, unknown>,
+): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(workerMxids, m.sender) &&
+    AGENT_PLACEHOLDER_RE.test(m.body || "")
+  );
+}
+
+/** worker 判定表（四集合并）：成员名表 ∪ 会话状态表 ∪ 运行时表 ∪
+ * props.workerMxids（Set）。成员名优先（值为显示名），其余仅登记
+ * mxid。Record 形态供 splitTurn/isThinkingNotice/isWorkerPlaceholder
+ * 复用（RoomChatCore 的 Set 判定与之一致）。 */
+export function mergeWorkerMxids(
+  memberWorkerNames?: Record<string, string>,
+  workerSessionByMxid?: Record<string, unknown>,
+  workerRuntimeByMxid?: Record<string, string>,
+  workerMxids?: Set<string> | null,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [mxid, name] of Object.entries(memberWorkerNames || {})) {
+    out[mxid] = name;
+  }
+  for (const mxid of Object.keys(workerSessionByMxid || {})) {
+    out[mxid] = out[mxid] ?? mxid;
+  }
+  for (const mxid of Object.keys(workerRuntimeByMxid || {})) {
+    out[mxid] = out[mxid] ?? mxid;
+  }
+  if (workerMxids) {
+    for (const mxid of workerMxids) out[mxid] = out[mxid] ?? mxid;
+  }
+  return out;
+}
+
 /** 常用快捷表情（Element 同款交互：hover 消息 → 快捷反应）。 */
 export const QUICK_REACTIONS = ["👍", "❤️", "😄", "🎉", "👀", "✅"];
 

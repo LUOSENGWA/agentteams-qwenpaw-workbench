@@ -1,8 +1,9 @@
 // 过程折叠条交互（A1/A2 实测 UX）：
-// - 子项（调用行 / 参数结果 pre）点击不收起父条；
+// - 子项（思考行 / 调用行 / 参数结果 pre）点击不收起父条；
 // - 只有折叠头切换展开；展开区空白点击不收起；
 // - 父条收起再展开后，子项展开态保留（grid 0fr 隐藏不卸载）；
-// - 图标化：思考 = BrainIcon、工具 = WrenchIcon（无 emoji）。
+// - 思考段 = 可折叠子项（BrainIcon +「思考」行，默认折叠，点开看全文，
+//   与工具行交互契约一致）；图标化无 emoji。
 // @vitest-environment jsdom
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
@@ -147,6 +148,83 @@ describe("ProcessCollapseBar — 子项独立展开 / 父条只由头部切换",
   });
 });
 
+describe("ProcessCollapseBar — 思考行（可折叠子项）", () => {
+  /** 第 idx 个思考行（标签文本恰为「思考」的行的可点击外层容器）。 */
+  function thoughtRow(bar: HTMLElement, idx: number): HTMLElement {
+    const labels = [...bar.querySelectorAll("span")].filter(
+      (s) => s.textContent === "思考",
+    );
+    return labels[idx].parentElement?.parentElement as HTMLElement;
+  }
+
+  it("默认折叠；点开看全文且父条保持展开；再点收起", () => {
+    const { bar, head, body, click, cleanup } = mount({
+      calls: [CALL_WITH_DETAIL],
+      thoughts: THOUGHTS,
+    });
+    click(head); // 展开父条
+    expect(expanded(head)).toBe("true");
+    // 默认折叠：展开区 DOM 不含思考 pre（无 pre、无思考文本）。
+    expect(bar.querySelector("pre")).toBeNull();
+    expect(body.textContent).not.toContain(THOUGHTS[0]);
+
+    // 点击思考行 → 展开：pre 出现且含思考文本，父条保持 open（不收起）。
+    click(thoughtRow(bar, 0));
+    const pre = [...bar.querySelectorAll("pre")].find(
+      (p) => p.textContent === THOUGHTS[0],
+    );
+    expect(pre).toBeTruthy();
+    expect(expanded(head)).toBe("true");
+
+    // 再点 → 收起（pre 移除），父条仍 open。
+    click(thoughtRow(bar, 0));
+    expect(
+      [...bar.querySelectorAll("pre")].some((p) => p.textContent === THOUGHTS[0]),
+    ).toBe(false);
+    expect(expanded(head)).toBe("true");
+    cleanup();
+  });
+
+  it("父条收起 → 再展开：思考行 open 态保留（grid 0fr 隐藏不卸载）", () => {
+    const { bar, head, body, click, cleanup } = mount({
+      calls: [CALL_WITH_DETAIL],
+      thoughts: THOUGHTS,
+    });
+    click(head); // 展开父条
+    click(thoughtRow(bar, 1)); // 打开第二个思考行
+    expect(body.textContent).toContain(THOUGHTS[1]);
+
+    click(head); // 收起父条
+    expect(expanded(head)).toBe("false");
+    expect(rowsStyle(body)).toBe("0fr");
+    // 内容未卸载（思考行状态因此保留）。
+    expect(body.textContent).toContain(THOUGHTS[1]);
+
+    click(head); // 再展开
+    expect(expanded(head)).toBe("true");
+    expect(body.textContent).toContain(THOUGHTS[1]);
+    cleanup();
+  });
+
+  it("思考行含 BrainIcon（svg + currentColor），无 emoji，标签「思考」", () => {
+    const { bar, head, click, cleanup } = mount({
+      calls: [CALL_WITH_DETAIL],
+      thoughts: THOUGHTS,
+    });
+    click(head);
+    // 2 段思考 = 2 个「思考」行。
+    const labels = [...bar.querySelectorAll("span")].filter(
+      (s) => s.textContent === "思考",
+    );
+    expect(labels).toHaveLength(2);
+    const row = labels[0].parentElement?.parentElement as HTMLElement;
+    expect(row.querySelector("svg")).toBeTruthy();
+    expect(row.querySelector("svg path[stroke='currentColor']")).toBeTruthy();
+    expect(bar.textContent).not.toContain("🧠");
+    cleanup();
+  });
+});
+
 describe("ProcessCollapseBar — 图标化", () => {
   it("思考 = BrainIcon、工具 = WrenchIcon（SVG + currentColor），无 emoji", () => {
     const { bar, cleanup } = mount({ calls: [CALL_WITH_DETAIL], thoughts: THOUGHTS });
@@ -157,10 +235,23 @@ describe("ProcessCollapseBar — 图标化", () => {
     cleanup();
   });
 
-  it("折叠头文案不变：思考过程 · N 次工具调用", () => {
+  it("折叠头文案：执行过程 · 思考 N 次 · 工具 N 次（时长挂工具段尾）", () => {
     const { bar, cleanup } = mount({ calls: [CALL_WITH_DETAIL], thoughts: THOUGHTS });
-    expect(bar.textContent).toContain("思考过程");
-    expect(bar.textContent).toContain("1 次工具调用");
+    expect(bar.textContent).toContain("执行过程");
+    expect(bar.textContent).toContain("·");
+    expect(bar.textContent).toContain("思考 2 次");
+    // 时长仍挂工具段尾（单帧 start=end → 0.0s）。
+    expect(bar.textContent).toContain("工具 1 次 · 0.0s");
+    cleanup();
+  });
+
+  it("头行 style 含 flex-wrap:wrap（窄宽自动换行；段为换行单元，点随段）", () => {
+    const { bar, head, cleanup } = mount({ calls: [CALL_WITH_DETAIL], thoughts: THOUGHTS });
+    expect(bar.querySelector('[role="button"]')).toBe(head);
+    // SSR 验不了真实布局，断 style 属性即可（忽略序列化空白差异）。
+    expect((head.getAttribute("style") ?? "").replace(/\s+/g, "")).toContain(
+      "flex-wrap:wrap",
+    );
     cleanup();
   });
 });
