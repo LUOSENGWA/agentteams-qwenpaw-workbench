@@ -243,6 +243,11 @@ export default function ModelEditModal({
       : true;
 
   const handleOk = async () => {
+    // 失配=不可保存（provider+model 原子对）：不再「以 Provider 为准」放行。
+    if (providerModelMismatch(union.gatewayOptions, model, provider)) {
+      antd.message.error(tr("该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）"));
+      return;
+    }
     // subagentSame=true → ""（显式清除覆盖=回到主模型）
     // subagentSame=false → 选中的模型名（或 null 保持）
     // 非 qwenpaw → null（不传=不影响）
@@ -316,9 +321,12 @@ export default function ModelEditModal({
               modelPlaceholder={tr("模型 alias（留空=跟随集群默认）")}
               emptyText={tr("跟随集群默认")}
               onChange={(p, m) => {
-                // 目录模式：模型能反查到归属且当前未显式指定 Provider 时回填
-                // （显式选择是用户意图，不覆盖）。
-                const auto = !p && m ? providerForModel(union.gatewayOptions, m) : "";
+                // provider 跟随模型：模型可反查到归属 Provider 时无条件置为
+                // 归属值（不可反查 → 保持传入的 p）。换 Provider 时
+                // ModelPicker（keepModelForProvider）已清空不属于新
+                // Provider 的模型 → m 为空，auto="" → setProvider(p)，
+                // 无冲突。
+                const auto = m ? providerForModel(union.gatewayOptions, m) : "";
                 setProvider(auto || p);
                 setModel(m);
               }}
@@ -330,7 +338,7 @@ export default function ModelEditModal({
             ) : null}
             {providerModelMismatch(union.gatewayOptions, model, provider) ? (
               <div style={{ fontSize: 11, color: "#faad14", marginTop: 4 }}>
-                {tr("该模型不属于所选 Provider（可直接保存，以 Provider 为准）")}
+                {tr("该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）")}
               </div>
             ) : null}
           </div>

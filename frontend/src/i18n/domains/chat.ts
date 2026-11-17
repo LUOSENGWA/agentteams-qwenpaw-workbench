@@ -254,8 +254,13 @@ export const chatDict: Record<string, { en: string }> = {
   // ── 16.46：刻度轨退化文字条（>500 turn）──
   "共 {n} 回合 · 点击回底部": { en: "{n} turns · click to jump to bottom" },
   // ── C1a-1：模型设置统一「先 Provider 后模型」──
-  "该模型不属于所选 Provider（可直接保存，以 Provider 为准）": {
-    en: "This model does not belong to the selected Provider (you can still save; the Provider decides routing)",
+  // 失配=不可保存（provider+model 原子对）：提示 div 与保存拦截 message
+  // 复用本键（不另设第二套文案）。
+  "该模型不属于所选 Provider（不可保存：请调整 Provider 或重新选择模型）": {
+    en: "Model does not belong to the selected Provider (cannot save: adjust the Provider or reselect the model)",
+  },
+  "模型与 Provider 失配（不可保存，请调整后重试）：{list}": {
+    en: "Model/Provider mismatch (cannot save; adjust and retry): {list}",
   },
   "Provider 决定实际转发目标（仅模型 alias 不够）": {
     en: "The Provider decides the actual forwarding target (the model alias alone is not enough)",
