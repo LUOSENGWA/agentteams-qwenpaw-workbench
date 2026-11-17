@@ -858,8 +858,8 @@ const btnTouch: ReactNS.CSSProperties = BTN_TOUCH;
  * #1669：30×30 → ≥40×40 触控盒（16px 图标居中 → 有效留白 12px ≥ 8）。 */
 function iconBtnStyle(t: ThemeColors): ReactNS.CSSProperties {
   return {
-    width: "var(--hf-btn-min, 40px)",
-    height: "var(--hf-btn-min, 40px)",
+    width: "var(--hf-btn-min, 44px)",
+    height: "var(--hf-btn-min, 44px)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -1129,7 +1129,7 @@ function RowMoreMenu({
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
-                minHeight: "var(--hf-btn-min, 40px)",
+                minHeight: "var(--hf-btn-min, 44px)",
                 padding: "0 8px",
                 border: "none",
                 borderRadius: 6,
@@ -1994,7 +1994,7 @@ function Breadcrumbs({ t, tr, fs }: SubProps) {
         // #1669：触控目标（minHeight ≥40 + 垂直居中）。
         display: "inline-flex",
         alignItems: "center",
-        minHeight: "var(--hf-btn-min, 40px)",
+        minHeight: "var(--hf-btn-min, 44px)",
         border: "none",
         background: "transparent",
         padding: 0,
@@ -4975,7 +4975,7 @@ function FilesToolbar({
         {fs.canAdmin ? (
           <antd.Button
             size="small"
-            style={{ minHeight: "var(--hf-btn-min, 40px)", flexShrink: 0 }}
+            style={{ minHeight: "var(--hf-btn-min, 44px)", flexShrink: 0 }}
             onClick={() => fs.onEditQuota()}
           >
             {tr("编辑配额")}
@@ -6592,7 +6592,7 @@ export default function FilesSection({ nav, cols, data, variant }: ManageSection
               <button
                 type="button"
                 style={{
-                  minHeight: "var(--hf-btn-min, 40px)",
+                  minHeight: "var(--hf-btn-min, 44px)",
                   padding: "0 12px",
                   border: `1px solid ${t.border}`,
                   borderRadius: 6,
