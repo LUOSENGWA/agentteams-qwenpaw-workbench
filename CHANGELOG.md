@@ -1,3 +1,24 @@
+## 0.5.1（2026-11-17）
+
+**首个正式版（脱离 beta 线）**：打包 beta.17.2–17.6 聊天线 + provider 成对写入 + 发版前全量审计清理。
+
+**聊天（对齐 dashboard 渲染）**
+- 富渲染：turn 级单头、过程前置、tool 分组与思考折叠（17.2–17.4）、过程条父头窄宽换行（17.5）
+- 渲染源优先 `formatted_body`：`htmlToPlainText` 1:1 移植（`<br>` 软换行、列表、表格、代码块），修复 HTML 软换行丢失（三方审计 P2-1）
+- 已读回执：开房首屏 `m.read`+`m.fully_read` 双写 + 列表角标即时清零；轮询新消息补发回执（P3-2）
+- 换房状态隔离（17.6）：`key={room_id}` remount；换房消息切换 useLayoutEffect；`skipPrependOnce` 首观察保护；线程状态 room-scoped（旧格式不恢复 thread、宽度照旧）；窗口棘轮按房打标 `scopedMinWindowTops`（防旧房 `minWindowTops` 抬高新房渲染窗）
+
+**模型**
+- provider 成对写入强制执行：provider 无条件跟随模型归属（`providerForModel` 可解析即跟随）；失配禁保存覆盖全部写路径（StandaloneWorkerModels / ModelEditModal / doCreateWorker / doCfg 批量整批不发 / doSaveTeam merge 语义守卫只拦本轮实写行）；新增 16 条回归测试
+
+**发版前审计清理（逻辑/屎山/UI 三维）**
+- 删死模块 879 行（CrdListTables / SpawnTreeCard / WorkerResourcePanel）+ 伴随测试治理（legacy-migrate 守卫语义保留、spawn-messages 精简）
+- i18n 归零：补 8 缺键（Temperature/Phase/Version/Image/State/Runtime 中文补齐、L3 · Worker 与 API Key（Bearer）原样）+ 去重 12 键 → **缺 0 重 0**（DICT=2909）
+- 触控 ≥44px：Thread「回到最新消息」浮钮改 44×44 命中盒（视觉圆保持 32）；文件页 `--hf-btn-min` fallback 40→44px（5 处）
+- 深浅色：theme 新增 `ok`/`fail` 语义 token（暗色亮变体 `#4ade80`/`#f87171`），聊天状态色硬编码清零（双 red/双 green 归一）
+
+**验证**：tsc 0 · canonical 8/8 · i18n 缺 0 重 0 · 聊天专项 10/10 · provider 专项 16/16 · build 绿（`chat-room-isolation` 容器内 esbuild svg loader 环境限制已注记，宿主 vite 管线原生支持）
+
 ## 0.5.0-beta.17.6（2026-11-16）
 
 **聊天页换房状态隔离（per-room 隔离重构）**

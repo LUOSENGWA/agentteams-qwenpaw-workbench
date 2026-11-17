@@ -1,3 +1,24 @@
+## 0.5.1 (2026-11-17)
+
+**First stable release (leaves the beta line)**: packages the beta.17.2–17.6 chat line, enforced provider/model pairing, and the full pre-release audit cleanup.
+
+**Chat (dashboard-aligned rendering)**
+- Rich rendering: single per-turn header, process block first, tool grouping and thinking fold (17.2–17.4), wrapping process-bar header (17.5)
+- Render source prefers `formatted_body`: 1:1 port of `htmlToPlainText` (`<br>` soft breaks, lists, tables, code fences) — fixes lost HTML line breaks (audit P2-1)
+- Read receipts: `m.read` + `m.fully_read` on room open with instant badge clear; receipts backfilled on poll (P3-2)
+- Per-room state isolation (17.6): `key={room_id}` remount; message switch via useLayoutEffect; `skipPrependOnce` first-observation guard; room-scoped thread state (legacy format restores width only); room-tagged window ratchet `scopedMinWindowTops`
+
+**Models**
+- Enforced provider/model pairing: provider unconditionally follows the model's owning provider; mismatched pairs blocked on every write path (StandaloneWorkerModels / ModelEditModal / doCreateWorker / doCfg batch / doSaveTeam merge-semantics guard limited to rows actually written); 16 regression tests added
+
+**Pre-release audit cleanup (logic / dead code / UI)**
+- Removed 879 lines of dead modules (CrdListTables / SpawnTreeCard / WorkerResourcePanel) with test governance
+- i18n at zero debt: 8 missing keys backfilled (Temperature/Phase/Version/Image/State/Runtime in zh; L3 · Worker and API Key（Bearer）kept as-is), 12 duplicate keys deduped → **0 missing / 0 duplicate** (DICT=2909)
+- Touch targets ≥44px: thread "back to latest" button now a 44×44 hit box (32px visual kept); files page `--hf-btn-min` fallback 40→44px (5 sites)
+- Light/dark: new theme `ok`/`fail` semantic tokens (brighter dark variants `#4ade80`/`#f87171`); chat status colors fully tokenized
+
+**Verification**: tsc 0 · canonical 8/8 · i18n 0/0 · chat suite 10/10 · provider suite 16/16 · build green (`chat-room-isolation` hits the container's esbuild svg-loader limitation, documented; host vite handles svg natively).
+
 ## 0.5.0-beta.17 (2026-11-08)
 
 See `方案与设计/工作台插件/release/RELEASE-v0.5.0-beta.17.md` for the beta.16 → beta.17 summary covering workbench files, chat, team settings, Millforge, Coding CLI, manage and sync.
