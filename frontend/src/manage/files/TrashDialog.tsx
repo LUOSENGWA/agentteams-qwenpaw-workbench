@@ -259,8 +259,8 @@ export default function TrashDialog({
   };
 
   const iconBtn: ReactNS.CSSProperties = {
-    width: "var(--hf-btn-min, 40px)",
-    height: "var(--hf-btn-min, 40px)",
+    width: "var(--hf-btn-min, 44px)",
+    height: "var(--hf-btn-min, 44px)",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -323,7 +323,7 @@ export default function TrashDialog({
         }}
       />
       {visible.length > 1 ? (
-        <antd.Button style={{ minHeight: "var(--hf-btn-min, 40px)" }} onClick={() => doRestoreAll(visible)}>
+        <antd.Button style={{ minHeight: "var(--hf-btn-min, 44px)" }} onClick={() => doRestoreAll(visible)}>
           {tr("全部恢复")}
         </antd.Button>
       ) : null}
@@ -460,7 +460,7 @@ export default function TrashDialog({
       subtitle={tr("共 {n} 项 · 恢复后回到原路径", { n: entries.length })}
       onClose={onClose}
       footer={
-        <antd.Button style={{ minHeight: "var(--hf-btn-min, 40px)" }} onClick={onClose}>
+        <antd.Button style={{ minHeight: "var(--hf-btn-min, 44px)" }} onClick={onClose}>
           {tr("关闭")}
         </antd.Button>
       }

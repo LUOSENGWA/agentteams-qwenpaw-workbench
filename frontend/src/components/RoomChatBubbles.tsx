@@ -473,14 +473,14 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
   }, [body, tr]);
   const { firstLine, name, status, rest, detail } = derived;
   const statusIcon = status === "ok" ? (
-    <CheckIcon size={12} style={{ color: "#30a46c" }} />
+    <CheckIcon size={12} style={{ color: t.ok }} />
   ) : status === "fail" ? (
-    <CloseIcon size={12} style={{ color: "#e5484d" }} />
+    <CloseIcon size={12} style={{ color: t.fail }} />
   ) : (
     <WrenchIcon size={12} />
   );
   const nameColor =
-    status === "fail" ? "#e5484d" : status === "ok" ? "#30a46c" : t.textSecondary;
+    status === "fail" ? t.fail : status === "ok" ? t.ok : t.textSecondary;
   return (
     <div
       onClick={() => setOpen((v) => !v)}
@@ -544,7 +544,7 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
                 status === "fail"
                   ? "1px solid rgba(229,72,77,0.3)"
                   : `1px solid ${t.border}`,
-              color: status === "fail" ? "#a13336" : t.textSecondary,
+              color: status === "fail" ? t.fail : t.textSecondary,
               borderRadius: 6,
               fontSize: 12,
               whiteSpace: "pre-wrap",
@@ -641,13 +641,14 @@ function DeliverableBar({
   ) => void;
 }) {
   const tr = useT();
+  const t = useThemeColors();
   const [revising, setRevising] = React.useState(false);
   const [note, setNote] = React.useState("");
   const [accepted, setAccepted] = React.useState(false);
   if (accepted) {
     return (
-      <div style={{ fontSize: 12, color: "#52c41a" }}>
-        <CheckIcon size={12} style={{ color: "#52c41a", verticalAlign: "-1px" }} />{" "}
+      <div style={{ fontSize: 12, color: t.ok }}>
+        <CheckIcon size={12} style={{ color: t.ok, verticalAlign: "-1px" }} />{" "}
         {tr("已接受")}
       </div>
     );
@@ -696,8 +697,8 @@ function DeliverableBar({
       <antd.Button
         size="small"
         style={{
-          backgroundColor: "#52c41a",
-          borderColor: "#52c41a",
+          backgroundColor: t.ok,
+          borderColor: t.ok,
           color: "#fff",
         }}
         onClick={() => {
@@ -992,7 +993,7 @@ function MessageBody({
         ? "#f5222d"
         : severity === "MEDIUM"
           ? "#fa8c16"
-          : "#52c41a";
+          : t.ok;
     const resolved = approvalResolved || null;
     return (
       <div
@@ -1046,8 +1047,8 @@ function MessageBody({
             <antd.Button
               size="small"
               style={{
-                backgroundColor: "#52c41a",
-                borderColor: "#52c41a",
+                backgroundColor: t.ok,
+                borderColor: t.ok,
                 color: "#fff",
               }}
               onClick={() => onApprovalAction?.(msg, "approve")}

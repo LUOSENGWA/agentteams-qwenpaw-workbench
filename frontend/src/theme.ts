@@ -41,6 +41,12 @@ export interface ThemeColors {
   toolBg: string;
   /** 主色浅底（accent 10% tint；管理页 rail 选中行等）。 */
   accentBg: string;
+  /** 成功语义色（工具 ✅、交付验收「已接受/接受」、LOW severity）。
+   * 亮色档=现状硬编码值（观感不变）；暗色档取更亮一档。 */
+  ok: string;
+  /** 失败语义色（工具 ❌、错误详情、任务异常）。
+   * 亮色档=现状硬编码值（观感不变）；暗色档取更亮一档。 */
+  fail: string;
 }
 
 const LIGHT: ThemeColors = {
@@ -58,6 +64,8 @@ const LIGHT: ThemeColors = {
   popoverBg: "#ffffff",
   toolBg: "rgba(0,0,0,0.03)",
   accentBg: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
+  ok: "#30a46c",
+  fail: "#e5484d",
 };
 
 const DARK: ThemeColors = {
@@ -75,6 +83,11 @@ const DARK: ThemeColors = {
   popoverBg: "#2a2a2a",
   toolBg: "rgba(255,255,255,0.06)",
   accentBg: "color-mix(in srgb, var(--app-accent, #FF7F16) 10%, transparent)",
+  // 暗色档取亮色值更亮一档（tailwind green-400 / red-400）：对暗底色
+  // #141414 对比度 #4ade80≈10.6:1、#f87171≈6.7:1；对最亮暗底
+  // toolBg(叠后≈#222) 9.1:1 / 5.8:1——均 ≥4.5:1。
+  ok: "#4ade80",
+  fail: "#f87171",
 };
 
 /** 读取宿主主题（host.useTheme，插件组件内调用）。

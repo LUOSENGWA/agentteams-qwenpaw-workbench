@@ -302,7 +302,7 @@ export function RenameMoveDialog({
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setMoveDir(e.target.value)}
               aria-label={tr("选择目录")}
               style={{
-                minHeight: "var(--hf-btn-min, 40px)",
+                minHeight: "var(--hf-btn-min, 44px)",
                 border: `1px solid ${t.border}`,
                 borderRadius: 6,
                 background: t.cardBg,
@@ -606,8 +606,8 @@ export function FileOpProgressBar({
         aria-label={tr("关闭")}
         title={tr("关闭")}
         style={{
-          minWidth: "var(--hf-btn-min, 40px)",
-          minHeight: "var(--hf-btn-min, 40px)",
+          minWidth: "var(--hf-btn-min, 44px)",
+          minHeight: "var(--hf-btn-min, 44px)",
           border: "none",
           background: "transparent",
           color: t.textSecondary,
