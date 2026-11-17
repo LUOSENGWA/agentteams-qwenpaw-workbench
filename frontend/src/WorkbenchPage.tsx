@@ -56,6 +56,21 @@ const host = window.QwenPaw.host;
 const React = host.React;
 const antd = host.antd;
 
+/**
+ * 17.6 补刀：minWindowTops 按房打标判定（与 messages 换房处理同一原则——
+ * 跨房值不同房消费）。remount 首渲染（C1）时父侧 minWindowTops 还是旧房值
+ * （reset 在 C1 父 layout 才落地），而 RoomChatCore 棘轮单向（只升不降）→
+ * 旧值放行会永久抬高新房渲染窗（windowLimit）。仅当 messagesRoomId
+ * （所属房标）与当前房一致时传原值，否则传 0。
+ */
+export function scopedMinWindowTops(
+  messagesRoomId: string,
+  roomId: string | undefined,
+  value: number,
+): number {
+  return roomId !== undefined && messagesRoomId === roomId ? value : 0;
+}
+
 export default function WorkbenchPage() {
   const { t, themeCfg, tr, pluginVersion, connectorVersion, buildVersion } = useWorkbenchTheme();
 
@@ -108,6 +123,10 @@ export default function WorkbenchPage() {
   // R2 显式跳转：渲染窗口下界——「加载原消息」命中深层目标时抬升
   // （旁路释放后仍罩住目标行）；单向棘轮在 RoomChatCore，切房归零。
   const [minWindowTops, setMinWindowTops] = React.useState(0);
+  // messages/minWindowTops 的所属房间标——remount 首渲染时父侧 state 尚是
+  // 旧房值（reset 在 C1 父 layout 才落地），prop 按房打标后跨房值不会被新房实例
+  // 消费（17.6 补刀：minWindowTops 旧值会把新房渲染窗棘轮永久抬高）。
+  const [messagesRoomId, setMessagesRoomId] = React.useState<string>("");
   // // 换房间时消息状态必须整体重置。此前 messagesRef/messagesEnd 残留**上
   // 一个房间**的数据 → refreshMessages 的 mergeMessagePages(旧房全量,
   // 新房最新页) 把两房消息混进同一窗口（「乱了」），setCachedMessages
@@ -130,6 +149,7 @@ export default function WorkbenchPage() {
     setHasMore(Boolean(cached?.end));
     setRoomError("");
     setMinWindowTops(0); // R2：渲染窗口下界不跨房保留
+    setMessagesRoomId(roomId || ""); // 17.6 补刀：所属房标随同 effect 落地
     messagesRef.current = cached ? cached.messages : [];
   }, [activeRoom?.room_id]);
 
@@ -650,6 +670,14 @@ export default function WorkbenchPage() {
   // （贴底/锚定/话题/窗口/fileRefs 等）随房重建（开群即置底、话题面板
   // 不跨房残留）；draft 已有 per-room localStorage 持久化
   // （room-draft:${room_id}），无回归。
+  // 17.6 补刀：minWindowTops 按房打标（同 messages 原则——跨房值不同房消费）：
+  // remount 首渲染（C1）父侧 state 尚是旧房值（reset 在 C1 父 layout 才落地），
+  // 子侧棘轮单向（只升不降）→ 不打标会永久抬高新房渲染窗（windowLimit）。
+  const chatMinWindowTops = scopedMinWindowTops(
+    messagesRoomId,
+    activeRoom?.room_id,
+    minWindowTops,
+  );
   const chatRoomEl = activeRoom ? (
     <RoomChat
       key={activeRoom.room_id}
@@ -661,7 +689,7 @@ export default function WorkbenchPage() {
       hasMore={hasMore}
       onLoadOriginal={loadOriginal}
       pendingOriginal={pendingOriginalId}
-      minWindowTops={minWindowTops}
+      minWindowTops={chatMinWindowTops}
       user_id={config?.matrix?.user_id}
       errorNote={
         roomError === "not_found"
