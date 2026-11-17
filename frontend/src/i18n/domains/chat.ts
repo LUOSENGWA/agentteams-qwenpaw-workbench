@@ -104,7 +104,6 @@ export const chatDict: Record<string, { en: string }> = {
   "名称": { en: "Name" },
   "添加提供商": { en: "Add provider" },
   "添加路由": { en: "Add route" },
-  "类型": { en: "Type" },
   "协议": { en: "Protocol" },
   "令牌（每行一个）": { en: "Tokens (one per line)" },
   "Base URL（可选）": { en: "Base URL (optional)" },
@@ -121,7 +120,9 @@ export const chatDict: Record<string, { en: string }> = {
   "启用认证": { en: "Enable auth" },
   "授权 Consumer（每行一个，可选）": { en: "Allowed consumers (one per line, optional)" },
   "取消": { en: "Cancel" },
-  "创建": { en: "Create" },
+  // 去重对齐原 DICT 生效值：manage 域同键 "Created" 在合并序中在后（先展示），
+  // 删其定义后此处须保留 "Created" 以零行为变化。
+  "创建": { en: "Created" },
   "创建失败": { en: "Create failed" },
   "名称不能为空": { en: "Name is required" },
   "至少需要一个凭据": { en: "At least one token is required" },
@@ -339,7 +340,6 @@ export const chatDict: Record<string, { en: string }> = {
   "跟随主模型": { en: "Follows main model" },
   "跟随目标模型未设置，无法保存": { en: "Follow target model is not set; cannot save" },
   "独立": { en: "Independent" },
-  "修改": { en: "Edit" },
   "该 CLI 不支持 Provider 维度（扁平模型名）": {
     en: "This CLI has no Provider dimension (flat model name)",
   },

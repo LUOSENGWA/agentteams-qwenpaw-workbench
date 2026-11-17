@@ -625,7 +625,8 @@ export function ThreadPanelView({
           })}
         </div>
       </div>
-      {/* 纯 div 圆（弃 antd Button——CSS 对抗 inline 尺寸致纵向拉长），32×32 恒圆。 */}
+      {/* 命中区 44×44（触控目标）；视觉圆保持 32×32（弃 antd Button——CSS 对抗 inline 尺寸致纵向拉长）。
+          外盒 right/bottom 各收 6px，视觉圆心不变。 */}
       {threadShowJump ? (
         <div
           role="button"
@@ -634,27 +635,37 @@ export function ThreadPanelView({
           onClick={threadJumpToBottom}
           style={{
             position: "absolute",
-            right: 10,
-            // safe-area：notch/手势条设备上抬高到安全区之上
-            bottom: "max(8px, env(safe-area-inset-bottom))",
+            right: 4,
+            // safe-area：notch/手势条设备上抬高到安全区之上（外盒再收 6px 对齐旧圆心）
+            bottom: "calc(max(8px, env(safe-area-inset-bottom)) - 6px)",
             zIndex: 5,
-            width: 32,
-            height: 32,
-            boxSizing: "border-box",
-            borderRadius: "50%",
+            width: 44,
+            height: 44,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: PRIMARY,
-            color: "#fff",
-            border: `1px solid ${PRIMARY}`,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
-            fontSize: 14,
-            lineHeight: 1,
             cursor: "pointer",
           }}
         >
-          ↓
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              boxSizing: "border-box",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: PRIMARY,
+              color: "#fff",
+              border: `1px solid ${PRIMARY}`,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
+              fontSize: 14,
+              lineHeight: 1,
+            }}
+          >
+            ↓
+          </div>
         </div>
       ) : null}
       </div>
