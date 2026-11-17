@@ -2,8 +2,13 @@
 //
 // 环境边界（如实声明）：容器 vitest-shim 通道是 node runner（无 jsdom），
 // 本文件容器内跑不了——`node scripts/vitest-gate.mjs tests/chat-room-isolation.vitest.test.ts`
-// 容器内 FAIL（document.createElement 不可用一类报错）= 环境局限、非回归；
-// 宿主 vitest（@vitest-environment jsdom）全跑。
+// 容器内 FAIL = 环境局限、非回归；宿主 vitest（@vitest-environment jsdom）全跑。
+// 失败形态（17.6 补刀后）：本文件现动态 import ../src/WorkbenchPage，
+// 其图含 3 个 svg 资产（openclaw.svg / agentteams-logo.svg?inline /
+// millforge-logo.svg?inline）——esbuild shim 通道无 .svg loader，
+// 打包即 FAIL（「No loader is configured for .svg」）；补刀前是跑起来后
+// document.createElement/localStorage 不可用一类报错（无 jsdom）。
+// 宿主 vite 管线原生处理 svg（?inline 强制内联），不受影响。
 //
 // 覆盖 17.6 per-room 隔离机制（父侧 key={room_id} remount + 换房消息 paint 前落地）：
 // ① useStickToBottom 换房首观察保护（skipPrependOnce）：
@@ -17,6 +22,10 @@
 //    ② 同时覆盖 17.6 卸载清报（onThreadPanelLayout unmount cleanup）：
 //    换房（remount）旧房卸载时向父侧报 (false, 0)——
 //    无清理则父侧 threadPanelRef 停在旧房带面板的值，分栏宽算错。
+// ③ minWindowTops 按房打标（scopedMinWindowTops，17.6 补刀）：
+//    messagesRoomId ≠ 当前房 → 传 0（remount 首渲染不消费旧房值——
+//    子侧单向棘轮会把它永久抬高新房 windowLimit）；
+//    = 当前房 → 传原值（房内正常棘轮值不受影响）；无房/未打标 → 0。
 //
 // 测试环境陷阱（chatTabActive1514）：「离开聊天 tab → 关话题」effect 依赖
 // useTabActive("chat")；测试环境 currentTab="" → false → mount 后会清掉已恢复的
@@ -85,18 +94,25 @@ let useStickToBottom: (opts: StickToBottomOptions) => StickToBottom;
 let useRoomChatCore: (props: RoomChatProps) => RoomChatCoreState;
 let PendingProvider: (props: { children: React.ReactNode }) => React.ReactElement;
 let setActiveTab: (tab: string) => void;
+let scopedMinWindowTops: (
+  messagesRoomId: string,
+  roomId: string | undefined,
+  value: number,
+) => number;
 
 beforeAll(async () => {
-  const [stick, core, pending, tab] = await Promise.all([
+  const [stick, core, pending, tab, wb] = await Promise.all([
     import("../src/components/useStickToBottom"),
     import("../src/components/RoomChatCore"),
     import("../src/pending/store"),
     import("../src/tabActivity"),
+    import("../src/WorkbenchPage"),
   ]);
   useStickToBottom = stick.useStickToBottom;
   useRoomChatCore = core.useRoomChatCore;
   PendingProvider = pending.PendingProvider;
   setActiveTab = tab.setActiveTab;
+  scopedMinWindowTops = wb.scopedMinWindowTops;
   setActiveTab("chat"); // chatTabActive1514 门：见文件头陷阱说明
 });
 
@@ -265,5 +281,27 @@ describe("线程状态 room-scoped（THREAD_STATE_KEY 加 room_id 维度，17.6�
     expect(c.activeThread()).toBe(null);
     expect(c.panelWidth()).toBe(400);
     c.cleanup();
+  });
+});
+
+// ── ③ minWindowTops 按房打标（scopedMinWindowTops，17.6 补刀）────────
+// remount 首渲染（C1）父侧 minWindowTops 还是旧房值（reset 在 C1 父 layout
+// 才落地），RoomChatCore 棘轮单向（只升不降）→ 旧值放行会永久抬高新房
+// windowLimit。判定抽成 WorkbenchPage.tsx 导出纯函数（调用点同步改用
+// scopedMinWindowTops），本处单测判定语义——WorkbenchPage 整体 mount
+// 成本过高（全量 hook 树 + 宿主桥），不 mount。
+describe("minWindowTops 按房打标（scopedMinWindowTops，17.6 补刀）", () => {
+  it("messagesRoomId ≠ 当前房 → 0；= 当前房 → 原值；无房/未打标 → 0", () => {
+    // remount 首渲染：父侧 state 还是旧房（!a）的棘轮值，当前房已切 !b → 不放行。
+    expect(scopedMinWindowTops("!a", "!b", 30)).toBe(0);
+    // 房内正常：所属房标 = 当前房 → 原值放行（「加载原消息」抬升的棘轮生效）。
+    expect(scopedMinWindowTops("!a", "!a", 30)).toBe(30);
+    // 首挂载（打标 effect 尚未落地，messagesRoomId=""）→ 不放行。
+    expect(scopedMinWindowTops("", "!a", 30)).toBe(0);
+    // 无活跃房（activeRoom=null）→ 不放行。
+    expect(scopedMinWindowTops("!a", undefined, 30)).toBe(0);
+    // 初值零值幂等（两种判定路径同结果）。
+    expect(scopedMinWindowTops("!a", "!a", 0)).toBe(0);
+    expect(scopedMinWindowTops("!a", "!b", 0)).toBe(0);
   });
 });

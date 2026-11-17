@@ -867,8 +867,10 @@ export function useRoomChatCore(props: RoomChatProps) {
   // 即初值——原换房重置 effect 逐项核对初值一致后删除（lastMsgIdRef ""/
   // approvalsSeededRef false/seenApprovalsRef 空 Set/approvalParseCacheRef
   // 空 Map/pendingCacheRef null/pendingSeededRef false/seenPendingRef 空
-  // Set 均=初值；windowLimit 挂载时棘轮 layout effect 先于 passive 落地，
-  // max(MSG_WINDOW_LIMIT, minWindowTops) 即当前值，reset 恒 no-op）。
+  // Set 均=初值；windowLimit 初值即 MSG_WINDOW_LIMIT——原 reset 的真实作用是
+  // 防 remount 首渲染读到旧房 minWindowTops 被棘轮抬高（单向棘轮降不回）：
+  // 子组件 layout 先于父侧 reset 落地，旧值会把新房 windowLimit 永久抬升。
+  // 该泄漏改由父侧 messagesRoomId 按房打标堵住（17.6 补刀），故删除成立）。
 
  // ── ─────────────
  // 「会话级 loop 状态你需要查清楚应该在哪里显示」——
