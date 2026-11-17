@@ -1,6 +1,6 @@
 // creds 域 i18n 字典（自 i18n.ts 按域拆分）：凭据网关（地址凭据/Controller/Higress/Matrix 认证/L1-L2 双轨）。
 
-export const credsDict: Record<string, { en: string }> = {
+export const credsDict: Record<string, { en: string; zh?: string }> = {
   // ── 地址手动固定档（address_mode）+ 事件流连接态（S1-4）──
   "地址模式（内网/外网切换策略）": { en: "Address mode (LAN/WAN switching)" },
  // 控制台特效安抚开关。
@@ -45,6 +45,7 @@ export const credsDict: Record<string, { en: string }> = {
   // 15.36 D：认证类型 Select 短 label（完整语义进 HelpDot tooltip，长键保留）。
   "服务自身认证": { en: "Service-native auth" },
   "Basic 认证": { en: "Basic auth" },
+  "API Key（Bearer）": { en: "API Key（Bearer）", zh: "API Key（Bearer）" },
   "使用服务自身认证（内网默认，留空即用；选此项=清除该地址已存凭据）": { en: "Use the service's own auth (LAN default — leave empty; picking this clears saved credentials for this address)" },
   "Basic 认证（公网网关 Basic 门，如 Caddy）": { en: "Basic auth (public gateway Basic gate, e.g. Caddy)" },
   "API Key（Bearer，公网网关 API key 门，如 Higress）": { en: "API key (Bearer; public gateway key gate, e.g. Higress)" },

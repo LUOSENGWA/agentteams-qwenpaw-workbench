@@ -207,7 +207,7 @@ try {
   // 按钮（iconBtnStyle / 视图 Tab / 面包屑）引用按钮变量。
   const rowVarUses = count(src, "var(--hf-row-min, 44px)");
   assert.ok(rowVarUses >= 4, `行高变量引用 ${rowVarUses} 处（应 ≥ 4）`);
-  const btnVarUses = count(src, "var(--hf-btn-min, 40px)");
+  const btnVarUses = count(src, "var(--hf-btn-min, 44px)");
   assert.ok(btnVarUses >= 5, `按钮变量引用 ${btnVarUses} 处（应 ≥ 5）`);
   assert.ok(!src.includes("height: 36") && !src.includes("minHeight: 36"), "无硬编码 36px 行高残留");
   ok(`② touchTargets：行 ≥44 / 按钮 ≥40 / 间距 ≥8；coarse +10%；行 ${rowVarUses} 处 + 按钮 ${btnVarUses} 处引用变量`);

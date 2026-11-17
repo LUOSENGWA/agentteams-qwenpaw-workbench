@@ -368,6 +368,7 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
                     body?: string;
                     msgtype?: string;
                     relates_to?: unknown;
+                    formatted?: string | null;
                   };
                 }).event;
                 const evId = String(evp?.event_id || "");
@@ -417,6 +418,9 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
                         body: String(evp.body || ""),
                         msgtype: "m.text",
                         origin_server_ts: Number(evp.ts || Date.now()),
+                        ...(typeof evp.formatted === "string"
+                          ? { formatted_body: evp.formatted }
+                          : {}),
                       };
                       setMessages((prev) => mergeForward(prev, [incoming]));
                       // 本地持久缓存：增量落盘（切回房间首帧即含该条）。
@@ -442,6 +446,9 @@ export function useWorkbenchEvents(ctx: WorkbenchPageEventsCtx) {
                       body: String(evp.body || ""),
                       msgtype: "m.text",
                       origin_server_ts: Number(evp.ts || Date.now()),
+                      ...(typeof evp.formatted === "string"
+                        ? { formatted_body: evp.formatted }
+                        : {}),
                     };
                     appendCachedMessage(rid, incoming);
                     // 本地持久缓存：非活动房间也增量落盘（离线可读）。

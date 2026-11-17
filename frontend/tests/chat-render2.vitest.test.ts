@@ -12,6 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   buildTurns,
+  mapTurnRanges,
   shouldContinueGroup,
   messageFamily,
   splitTurn,
@@ -281,6 +282,7 @@ interface RoomMsgLike {
   body: string;
   msgtype: string;
   pending?: boolean;
+  editedAt?: number;
 }
 
 function roomMsg(
@@ -317,23 +319,18 @@ const ROOM = {
   },
 };
 
-/** 按 RoomChatView 的口径从 tops 造 renderItems（turn 切片）。 */
+/** 按 RoomChatView 的口径从 tops 造 renderItems（turn → indices 映射，§4.3）。 */
 function render(tops: RoomMsgLike[]): string {
   const ir = roomMessagesToIR(tops as never);
   const turns = buildTurns(ir);
-  const idxById = new Map<string, number>();
-  tops.forEach((m, i) => {
-    if (!idxById.has(m.event_id)) idxById.set(m.event_id, i);
-  });
-  const renderItems = turns.map((turn) => {
-    const start = idxById.get(turn.id) ?? 0;
-    return {
-      kind: "turn",
-      key: `turn-${turn.id}`,
-      ts: tops[start]?.origin_server_ts ?? 0,
-      range: { turn, start, end: start + turn.messages.length },
-    };
-  });
+  // §4.3：turn → tops 下标映射走 mapTurnRanges（允许非连续）——与
+  // useRoomChatView 同口径，夹具不再手造连续切片。
+  const renderItems = mapTurnRanges(turns, tops).map((r) => ({
+    kind: "turn",
+    key: `turn-${r.turn.id}`,
+    ts: tops[r.indices[0]]?.editedAt ?? tops[r.indices[0]]?.origin_server_ts ?? 0,
+    range: r,
+  }));
   const core = {
     room: ROOM,
     loading: false,
@@ -422,7 +419,7 @@ describe("turn 级渲染", () => {
   it("过程条在最终回答之前（header → process → answers）", () => {
     const html = render(tops);
     const header = html.indexOf("工人甲");
-    const process = html.indexOf("思考过程");
+    const process = html.indexOf("执行过程");
     const answer = html.indexOf("最终回答：已经改好");
     expect(header).toBeGreaterThanOrEqual(0);
     expect(process).toBeGreaterThan(header);
@@ -435,8 +432,9 @@ describe("turn 级渲染", () => {
       roomMsg("u2", WORKER, T0 + 1000, "🔧 **read_file**\nChatIR.ts"),
     ]);
     expect(count(html, "工人甲")).toBe(1);
-    expect(html).toContain("思考过程");
-    expect(html).toContain("1 次工具调用");
+    expect(html).toContain("执行过程");
+    expect(html).toContain("思考 1 次");
+    expect(html).toContain("工具 1 次");
     expect(html).not.toContain("最终回答");
   });
 

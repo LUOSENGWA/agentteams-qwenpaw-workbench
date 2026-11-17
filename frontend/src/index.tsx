@@ -239,6 +239,12 @@ if (typeof document !== "undefined" && !document.getElementById(WB_STYLE_ID)) {
   animation: wbMicPulse 1.2s ease-in-out infinite;
   background: rgba(255,77,79,0.10);
 }
+/* 正在输入指示 3 点交错闪烁（dashboard typing-indicator [0.3,1,0.3]
+ 1.2s；延迟 0/0.2/0.4s 由 RoomChatTyping 内联 animation 指定）。 */
+@keyframes rcTypingDot {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
 /* ：有待审批时侧栏 logo
  晃一次（bell shake，1.2s）；持续待批挂红点计数（静态，不循环晃）。 */
 @keyframes wbTabShake {

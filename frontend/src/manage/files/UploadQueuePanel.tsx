@@ -88,8 +88,8 @@ export default function UploadQueuePanel({
           title={open ? tr("收起") : tr("展开")}
           onClick={() => setOpen((v) => !v)}
           style={{
-            minWidth: "var(--hf-btn-min, 40px)",
-            minHeight: "var(--hf-btn-min, 40px)",
+            minWidth: "var(--hf-btn-min, 44px)",
+            minHeight: "var(--hf-btn-min, 44px)",
             border: "none",
             background: "transparent",
             color: t.textSecondary,

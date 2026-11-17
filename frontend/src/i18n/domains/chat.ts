@@ -104,7 +104,6 @@ export const chatDict: Record<string, { en: string }> = {
   "名称": { en: "Name" },
   "添加提供商": { en: "Add provider" },
   "添加路由": { en: "Add route" },
-  "类型": { en: "Type" },
   "协议": { en: "Protocol" },
   "令牌（每行一个）": { en: "Tokens (one per line)" },
   "Base URL（可选）": { en: "Base URL (optional)" },
@@ -121,7 +120,9 @@ export const chatDict: Record<string, { en: string }> = {
   "启用认证": { en: "Enable auth" },
   "授权 Consumer（每行一个，可选）": { en: "Allowed consumers (one per line, optional)" },
   "取消": { en: "Cancel" },
-  "创建": { en: "Create" },
+  // 去重对齐原 DICT 生效值：manage 域同键 "Created" 在合并序中在后（先展示），
+  // 删其定义后此处须保留 "Created" 以零行为变化。
+  "创建": { en: "Created" },
   "创建失败": { en: "Create failed" },
   "名称不能为空": { en: "Name is required" },
   "至少需要一个凭据": { en: "At least one token is required" },
@@ -227,10 +228,13 @@ export const chatDict: Record<string, { en: string }> = {
   "展开全部上下文": { en: "Expand all context" },
   "条": { en: "events" },
   // ── 批次 3：聊天页优化（过程折叠条 / 任务事件卡）──
-  "{n} 次工具调用 · {x}s": { en: "{n} tool calls · {x}s" },
-  "{n} 次工具调用": { en: "{n} tool calls" },
-  // 思考过程折叠（m.notice 推理帧并入过程条）
-  "思考过程": { en: "Thinking" },
+  // 过程条父头（17.4）：主标签恒「执行过程」，思考/工具各自计数段，时长挂工具段尾
+  "执行过程": { en: "Execution" },
+  "思考 {n} 次": { en: "{n} thoughts" },
+  "工具 {n} 次 · {x}s": { en: "{n} tool calls · {x}s" },
+  "工具 {n} 次": { en: "{n} tool calls" },
+  // 思考行标签（m.notice 推理帧并入过程条，逐段折叠）
+  "思考": { en: "Thinking" },
   // 结构化运行时块（org.agentteams.run）：confirmation / error 呈现
   "待确认": { en: "Awaiting confirmation" },
   "需在 Matrix 回复审批": { en: "Reply in Matrix to approve" },
@@ -331,7 +335,6 @@ export const chatDict: Record<string, { en: string }> = {
   "跟随主模型": { en: "Follows main model" },
   "跟随目标模型未设置，无法保存": { en: "Follow target model is not set; cannot save" },
   "独立": { en: "Independent" },
-  "修改": { en: "Edit" },
   "该 CLI 不支持 Provider 维度（扁平模型名）": {
     en: "This CLI has no Provider dimension (flat model name)",
   },
@@ -395,4 +398,13 @@ export const chatDict: Record<string, { en: string }> = {
   "图片加载失败": { en: "Failed to load image" },
   "上一张": { en: "Previous" },
   "下一张": { en: "Next" },
+  // ── run-ending 哨兵收尾条（dashboard parseRunEnding 三类文案；
+  // 「任务已取消」用 workflow.ts 存量键，tr 跨域解析，此处不重复）──
+  "已处理（无回复）": { en: "Processed (no reply)" },
+  "任务异常": { en: "Task failed" },
+  // ── 正在输入指示（dashboard typing-indicator 3 档文案；
+  // en 复数数走 {x}=N-1 双占位）──
+  "{n} 正在输入": { en: "{n} is typing" },
+  "{a} 和 {b} 正在输入": { en: "{a} and {b} are typing" },
+  "{a} 等 {n} 人正在输入": { en: "{a} and {x} others are typing" },
 };

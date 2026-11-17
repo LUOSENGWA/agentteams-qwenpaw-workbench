@@ -1,7 +1,8 @@
 /**
  * 会话导航刻度轨（批次 3；16.46 窗口化）：聊天区顶部 sticky 28px 刻度条。
  *
- * - 每个 turn 一个刻度（sender 首字 + HH:mm）；
+ * - 每个 turn 一个刻度（sender 首字 + HH:mm；跨天刻度显 M/D，
+ *   tooltip=完整日期时间+发送者）；
  * - 滚动时高亮当前可见 turn（scroll spy，rAF 节流）；
  * - 点击刻度 → 列表平滑滚动到该 turn（[data-turn-id] 锚点）；
  * - turns.length <= 8 不渲染（短会话不需要导航）；
@@ -29,6 +30,23 @@ const HIGHLIGHT_BORDER = "var(--app-accent, #FF7F16)";
 const TICK_PAD = 5;
 /** > 该 turn 数退化为文字条（深跳大房间刻度条既无用又重）。 */
 const DEGRADE_AT = 500;
+
+/** 日期键（本地时 Y-M-D）——刻度跨天判定。 */
+function dayKey(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+/** M/D（不补零）——跨天刻度标签。 */
+function dayLabel(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+/** 完整日期时间 Y-M-D HH:mm（补零）——刻度 tooltip。 */
+function formatFull(ts: number): string {
+  const d = new Date(ts);
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 export function TurnTimeline(props: {
   turns: TurnTick[];
@@ -173,7 +191,14 @@ export function TurnTimeline(props: {
         overflow: "hidden",
       }}
     >
-      {props.turns.slice(win.start, win.end).map((t) => {
+      {props.turns.slice(win.start, win.end).map((t, vi) => {
+        const gi = win.start + vi;
+        const prev = gi > 0 ? props.turns[gi - 1] : null;
+        // 跨天刻度：该 turn 起始日期 ≠ 前一 turn 日期（或首个可见
+        // turn）→ M/D；同日内维持 HH:mm（滚动定位/scroll spy/
+        // ±5 窗口化不动）。
+        const showDay =
+          gi === win.start || !prev || dayKey(t.startTime) !== dayKey(prev.startTime);
         const firstChar =
           senderShortName(t.sender, props.room ?? null).slice(0, 1).toUpperCase();
         const active = activeId === t.id;
@@ -182,7 +207,7 @@ export function TurnTimeline(props: {
             key={t.id}
             data-tick
             role="button"
-            title={`${senderShortName(t.sender, props.room ?? null)} ${formatTime(t.startTime)}`}
+            title={`${formatFull(t.startTime)} ${senderShortName(t.sender, props.room ?? null)}`}
             onClick={() => jump(t.id)}
             style={{
               flex: 1,
@@ -222,7 +247,7 @@ export function TurnTimeline(props: {
                 whiteSpace: "nowrap",
               }}
             >
-              {formatTime(t.startTime) || "·"}
+              {showDay ? dayLabel(t.startTime) : formatTime(t.startTime) || "·"}
             </span>
           </div>
         );

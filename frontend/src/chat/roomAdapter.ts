@@ -45,7 +45,9 @@ export function roomMessagesToIR(messages: RoomMessage[]): ChatMessage[] {
     out.push({
       id: m.event_id,
       sender: m.sender,
-      ts: m.origin_server_ts,
+      // 最终编辑过的消息按修订时间（Dashboard revision collapse：agent
+      // ts = max(root, edit)）——turn 组装/排序口径同主时间线。
+      ts: m.editedAt ?? m.origin_server_ts,
       body: m.body || "",
       type: m.msgtype,
       ...(call ? { toolCalls: [call] } : {}),

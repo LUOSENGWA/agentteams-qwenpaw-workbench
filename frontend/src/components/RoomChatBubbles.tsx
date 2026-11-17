@@ -32,6 +32,7 @@ import {
   ShieldIcon,
   DocIcon,
   MessageIcon,
+  WarnIcon,
 } from "./icons";
 import { mediaKindOf, type MediaKind } from "../lib/mediaGallery";
 import WorkerSessionDot from "./WorkerSessionDot";
@@ -472,14 +473,14 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
   }, [body, tr]);
   const { firstLine, name, status, rest, detail } = derived;
   const statusIcon = status === "ok" ? (
-    <CheckIcon size={12} style={{ color: "#30a46c" }} />
+    <CheckIcon size={12} style={{ color: t.ok }} />
   ) : status === "fail" ? (
-    <CloseIcon size={12} style={{ color: "#e5484d" }} />
+    <CloseIcon size={12} style={{ color: t.fail }} />
   ) : (
     <WrenchIcon size={12} />
   );
   const nameColor =
-    status === "fail" ? "#e5484d" : status === "ok" ? "#30a46c" : t.textSecondary;
+    status === "fail" ? t.fail : status === "ok" ? t.ok : t.textSecondary;
   return (
     <div
       onClick={() => setOpen((v) => !v)}
@@ -543,7 +544,7 @@ function ToolBubble({ msg, mine }: { msg: RoomMessage; mine: boolean }) {
                 status === "fail"
                   ? "1px solid rgba(229,72,77,0.3)"
                   : `1px solid ${t.border}`,
-              color: status === "fail" ? "#a13336" : t.textSecondary,
+              color: status === "fail" ? t.fail : t.textSecondary,
               borderRadius: 6,
               fontSize: 12,
               whiteSpace: "pre-wrap",
@@ -640,13 +641,14 @@ function DeliverableBar({
   ) => void;
 }) {
   const tr = useT();
+  const t = useThemeColors();
   const [revising, setRevising] = React.useState(false);
   const [note, setNote] = React.useState("");
   const [accepted, setAccepted] = React.useState(false);
   if (accepted) {
     return (
-      <div style={{ fontSize: 12, color: "#52c41a" }}>
-        <CheckIcon size={12} style={{ color: "#52c41a", verticalAlign: "-1px" }} />{" "}
+      <div style={{ fontSize: 12, color: t.ok }}>
+        <CheckIcon size={12} style={{ color: t.ok, verticalAlign: "-1px" }} />{" "}
         {tr("已接受")}
       </div>
     );
@@ -695,8 +697,8 @@ function DeliverableBar({
       <antd.Button
         size="small"
         style={{
-          backgroundColor: "#52c41a",
-          borderColor: "#52c41a",
+          backgroundColor: t.ok,
+          borderColor: t.ok,
           color: "#fff",
         }}
         onClick={() => {
@@ -895,6 +897,72 @@ function MessageBody({
       </span>
     );
   }
+  // run-ending sentinel（dashboard parseRunEnding 同款判定）：运行时收尾
+  // 发的纯哨兵正文（body.trim() 精确相等）→ 收尾条替代裸文本；
+  // 不区分 sender。生产三哨兵全为 m.notice（thread root 创建即 m.notice，
+  // _edit_thread_root 默认 m.notice）——判定口径=body 精确相等、不区分
+  // msgtype（人手动发同文也渲染成收尾条，与 dashboard 同款行为）。
+  const sentinel = (msg.body || "").trim();
+  if (sentinel === "已取消" || sentinel === "处理异常" || sentinel === "已处理") {
+    if (sentinel === "已处理") {
+      return (
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            margin: "4px 0",
+            fontSize: 12,
+            color: `color-mix(in srgb, ${t.textSecondary} 70%, transparent)`,
+          }}
+        >
+          <CheckIcon size={12} />
+          {tr("已处理（无回复）")}
+        </span>
+      );
+    }
+    const cancelled = sentinel === "已取消";
+    const dark = t.mode === "dark";
+    const borderColor = cancelled
+      ? dark
+        ? "rgba(251,191,36,0.4)"
+        : "rgba(245,158,11,0.4)"
+      : "rgba(239,68,68,0.4)";
+    const bgColor = cancelled
+      ? dark
+        ? "rgba(251,191,36,0.1)"
+        : "rgba(245,158,11,0.1)"
+      : "rgba(239,68,68,0.1)";
+    const color = cancelled
+      ? dark
+        ? "#fbbf24"
+        : "#b45309"
+      : dark
+        ? "#f87171"
+        : "#b91c1c";
+    return (
+      <div
+        role={cancelled ? "status" : "alert"}
+        style={{
+          margin: "8px 0",
+          width: "fit-content",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          borderRadius: 8,
+          padding: "6px 12px",
+          fontSize: 12,
+          fontWeight: 500,
+          border: `1px solid ${borderColor}`,
+          background: bgColor,
+          color,
+        }}
+      >
+        {cancelled ? <CloseIcon size={14} /> : <WarnIcon size={14} />}
+        {cancelled ? tr("任务已取消") : tr("任务异常")}
+      </div>
+    );
+  }
   // workflow 卡片（dashboard normalize 规则 1 同款优先级=最高）：
   // content.agentteams.workflow 载荷 → 交互卡片（项目名/状态/步骤进度/干预按钮）。
   if (msg.workflow) {
@@ -925,7 +993,7 @@ function MessageBody({
         ? "#f5222d"
         : severity === "MEDIUM"
           ? "#fa8c16"
-          : "#52c41a";
+          : t.ok;
     const resolved = approvalResolved || null;
     return (
       <div
@@ -979,8 +1047,8 @@ function MessageBody({
             <antd.Button
               size="small"
               style={{
-                backgroundColor: "#52c41a",
-                borderColor: "#52c41a",
+                backgroundColor: t.ok,
+                borderColor: t.ok,
                 color: "#fff",
               }}
               onClick={() => onApprovalAction?.(msg, "approve")}
@@ -1029,7 +1097,7 @@ function MessageBody({
             border: `1px solid ${t.border}`,
           }}
         >
-          <MdText text={msg.body || ""} />
+          <MdText text={msg.body || ""} formattedBody={msg.formatted_body} />
         </div>
         <AttentionDecisionCard msg={msg} room={room ?? null} />
       </>
@@ -1281,7 +1349,7 @@ function MessageBody({
           : `1px solid ${t.border}`,
       }}
     >
-      <MdText text={msg.body || ""} />
+      <MdText text={msg.body || ""} formattedBody={msg.formatted_body} />
       {/* 「已编辑」标记（Element 同款；m.replace 聚合在
  fetchRoomMessages——替换事件不独立显示，正文写回原消息）。 */}
       {msg.edited ? (

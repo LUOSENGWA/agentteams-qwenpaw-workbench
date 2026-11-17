@@ -15,7 +15,7 @@ export const TOUCH = {
 
 /** antd.Button 最小触控盒（CSS 变量由 FilesSection touchCss 注入；coarse 指针自动放大）。
  * 唯一实现——各文件子面板从此导入，禁止各自复制一份。 */
-export const BTN_TOUCH = { minHeight: "var(--hf-btn-min, 40px)" } as const;
+export const BTN_TOUCH = { minHeight: "var(--hf-btn-min, 44px)" } as const;
 
 /** 文件域错误文案：存储不可用（Controller #1538 的
  * ``503 storage_unavailable``）给可操作提示，其余原样透出。

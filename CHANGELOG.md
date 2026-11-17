@@ -1,3 +1,41 @@
+## 0.5.0-beta.17.6（2026-11-16）
+
+**聊天页换房状态隔离（per-room 隔离重构）**
+- key={room_id} remount：换房即整树重建，房内状态（贴底/锚定/话题/窗口/fileRefs 等）随房重建——开群即置底、话题面板不跨房残留（draft 已有 per-room localStorage，无回归）
+- 换房消息切换 useEffect → useLayoutEffect：新房消息 paint 前落地，消灭「新房头+旧房消息」陈旧帧
+- useStickToBottom 换房首观察保护（skipPrependOnce）：换房后首条 firstId 观察按新房首条处理，防旧房 firstId 残留误判前插（误判前插 + 窗口棘轮扩窗把用户打离底部 = 「开群跳到中间」链路一环）
+- 线程状态 room-scoped：THREAD_STATE_KEY 加 room_id 维度，仅同 room 恢复 thread（旧格式无 room_id 不恢复 thread，width 照旧恢复）；话题面板卸载清报（onThreadPanelLayout(false, 0)，父侧分栏宽不再算错）
+- 删除冗余换房重置 effect：逐项重置值核对与初值一致（remount 即初值，reset 恒 no-op）
+
+## 0.5.0-beta.17.5（2026-11-16）
+
+**聊天页过程条**
+- 父头窄宽自动换行：计数段整体折行（段内不断行、点号随段），chevron 保持末行右端
+
+## 0.5.0-beta.17.4（2026-11-16）
+
+**聊天页过程条**
+- 父条头改「执行过程 · 思考 X 次 · 工具 X 次」（思考/工具各自计数段，时长仍挂工具段尾；i18n 同步，旧 3 键删除）
+
+## 0.5.0-beta.17.3（2026-11-16）
+
+**聊天页过程条**
+- 思考段逐段改为可折叠子项（BrainIcon +「思考」行，点开看全文，默认折叠；与工具调用行交互一致；父条/子项状态语义不变）
+
+## 0.5.0-beta.17.2（2026-11-16）
+
+**聊天页对齐收尾（chat-parity-finish，11 commits）**
+- formatted_body 软换行全数据链（SSE 全量 body + fetch 映射 + MdText/formatted 渲染链）
+- 围栏表格渲染；run-ending 三哨兵（已处理/已取消/处理异常）渲染收尾条（兼容生产 m.notice）
+- typing 指示三态；刻度 M/D 日期；窄宽房间名省略
+- mdPlain：修复表格/代码块/列表三退化，表格单元格内 br 支持
+- i18n：移除 chat 域「任务已取消」重复键（权威定义在 workflow 域）
+
+**a11y**
+- FilesSection 树/列表两个视图根容器按内置机制豁免（空白点击仅清选中/高亮，非交互控件，与 grid 视图先例一致）
+
+**测试**：tsc 0 · a11y 13/13 · build 0
+
 ## 0.5.0-beta.17（2026-11-08）
 
 Beta.17 汇总见 `方案与设计/工作台插件/release/RELEASE-v0.5.0-beta.17.md`。本版覆盖 beta.16 之后的工作台文件/聊天/团队设置/千锻/CodingCLI/管理/同步变化。
