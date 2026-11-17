@@ -1,3 +1,41 @@
+## 0.5.1 (first stable release: chat parity finish · provider/model pairing · pre-release audit cleanup · 2026-11-17)
+
+First stable release, leaving the `0.5.0-beta` line: packages the `0.5.0-beta.17.2`–`17.6` chat line, enforced provider/model pairing on every write path, and the full pre-release audit cleanup. Per-version details live in the `beta.17.x` entries below; release notes in `方案与设计/工作台插件/release/RELEASE-v0.5.1.md`.
+
+**Chat rendering (dashboard-aligned)**
+- Single per-turn header, process block first, tool grouping and thinking fold (17.2–17.4): thinking segments are collapsible sub-rows (BrainIcon + "thinking" row, collapsed by default, same interaction as tool rows); header reads "process · thinking ×N · tools ×N" with per-segment counts and duration on the tools segment
+- Process-bar header wraps on narrow widths (17.5): count segments wrap as a whole (no mid-segment breaks, dots stay with their segment), chevron stays at the end of the last line
+- Render source prefers `formatted_body`: `mdPlain.htmlToPlainText` (1:1 dashboard port — `<br>` → soft break, `</li>` → newline, tables → GFM, `pre` → fences, `br` inside table cells); `MdText` uses the converted text when `formattedBody` exists and falls back to the plain body otherwise — fixes lost HTML soft line breaks (audit P2-1)
+- run-ending sentinels (processed / cancelled / failed) render a closing bar (production `m.notice` compatible); typing indicator three-state; M/D tick dates; room names ellipsized on narrow widths
+- Read receipts: `m.read` + `m.fully_read` written on room open (deduped by ref) → list badge clears immediately; receipts backfilled on poll (P3-2)
+
+**Per-room chat isolation (17.6)**
+- `key={room_id}` remount: switching rooms rebuilds the tree (stick-to-bottom / anchor / thread / window / fileRefs all rebuilt), opening a room lands at the bottom and the thread panel never leaks across rooms (per-room localStorage draft unchanged)
+- Room-switch message swap moved from `useEffect` to `useLayoutEffect`: new-room messages land before paint, eliminating the stale "new header + old messages" frame
+- `useStickToBottom` first-observation guard (`skipPrependOnce`): the first firstId observation after a room switch is treated as the new room's, preventing a stale prepend misjudgement
+- Thread state is room-scoped: `THREAD_STATE_KEY` gains a room_id dimension, thread restores only within the same room (legacy format without room_id restores width only); panel unmount clears its report (`onThreadPanelLayout(false, 0)`)
+- Window ratchet is room-tagged via `scopedMinWindowTops(messagesRoomId, roomId, value)`: the parent only treats `minWindowTops` as valid after `messagesRoomId` lands in the room-switch effect, preventing the remount's first render from reading the old room's value and permanently raising the new room's render window through the one-way ratchet (`if m > windowLimit`)
+- Removed the redundant room-switch reset effect: each reset value was verified equal to the initial value (remount already resets everything)
+
+**Models (enforced provider/model pairing)**
+- Provider unconditionally follows the model's owning provider: when the model resolves to a configured alias binding it follows (the old `if (auto && !prov)` / `!p && m` guards are gone); unresolvable models (local/builtin/blank) leave the current provider alone
+- Mismatched pairs are blocked on every write path: StandaloneWorkerModels / ModelEditModal / doCreateWorker / doCfg (whole batch refused) / doSaveTeam (judged on the post-merge effective pair, only rows actually writing model/provider; SOUL-only edits and untouched legacy mismatches are not affected)
+- Mismatch copy unified to "cannot save: adjust the provider or pick another model" (zh/en registered); 16 regression tests added; fixed the stale `m1-model-entries` test (assertions never updated after the C1a-2 ModelPicker switch — broken on main too)
+
+**Dead code removal (879 lines)**
+- Removed `CrdListTables` (255) / `SpawnTreeCard` (416; WorkerDetailPane now uses WorkerChatsModal) / `WorkerResourcePanel` (208); `legacy-migrate` keeps the "new detail pane must not reference SpawnTreeCard" text guard, `spawn-messages` keeps only the SpawnMessages assertions; `a11yStatic` is kept as a functional static gate
+
+**i18n at zero debt**
+- Backfilled 8 missing keys: Temperature/Phase/Version/Image/State/Runtime now have Chinese labels (previously rendered in English via fallback); "L3 · Worker" and "API Key（Bearer）" registered as en=zh
+- Deduped 12 keys (identical values across domain files, redundant definitions removed) → **0 missing / 0 duplicate**, DICT=2909
+
+**Touch targets & light/dark**
+- Thread "back to latest" button now a 44×44 hit box (the outer element carries onClick/role/aria-label, the visual circle stays 32)
+- Files page `--hf-btn-min` fallback 40→44px (format / FileOpsDialogs×3 / TrashDialog×4; the variable has no CSS definition, so the fallback is the effective value)
+- Theme gains `ok`/`fail` semantic tokens (light keeps `#30a46c`/`#e5484d`, dark uses `#4ade80`/`#f87171` for contrast); five hard-coded status colours in `RoomChatBubbles` removed (double red / double green unified)
+
+**Verification**: tsc 0 · canonical 8/8 · i18n 0/0 (DICT=2909 / 2547 used) · chat suite 10/10 · provider suite 16/16 · think-fold 16/16 · build green (dist `7bf7432d65a4`; `chat-room-isolation` hits the container's esbuild svg-loader limitation, documented — host vite handles svg natively) · on-device E2E passed (stick-to-bottom, no cross-room thread revival, HTML line breaks, instant badge clear, 44px targets, mismatch save blocking)
+
 ## 0.5.0-beta.17 (2026-11-08)
 
 See `方案与设计/工作台插件/release/RELEASE-v0.5.0-beta.17.md` for the beta.16 → beta.17 summary covering workbench files, chat, team settings, Millforge, Coding CLI, manage and sync.

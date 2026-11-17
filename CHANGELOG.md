@@ -1,3 +1,41 @@
+## 0.5.1（首个正式版：聊天对齐收口 · 模型成对写入 · 发版前审计清理 · 2026-11-17）
+
+首个正式版，脱离 `0.5.0-beta` 线：内容 = `0.5.0-beta.17.2`–`17.6` 聊天线 + 模型 provider/model 成对写入强制执行 + 发版前全量审计清理。逐版明细见下方各 `beta.17.x` 条目，发布说明见 `方案与设计/工作台插件/release/RELEASE-v0.5.1.md`。
+
+**聊天渲染（对齐 dashboard）**
+- turn 级单头 + 过程前置 + tool 分组 + 思考折叠（17.2–17.4）：思考段为可折叠子项（BrainIcon +「思考」行，点开看全文、默认折叠，交互与工具调用行一致）；父条头「执行过程 · 思考 X 次 · 工具 X 次」（思考/工具各自计数段，时长挂工具段尾）
+- 过程条父头窄宽自动换行（17.5）：计数段整体折行（段内不断行、点号随段），chevron 保持末行右端
+- 渲染源优先 `formatted_body`：`mdPlain.htmlToPlainText`（dashboard 1:1 移植：`<br>`→软换行、`</li>`→行、表格→GFM、`pre`→fence、表格单元格内 `br` 支持）；`MdText` 有 `formattedBody` 时走转换文本、否则回退纯文本 body —— 修复 HTML 软换行丢失（三方审计 P2-1）
+- run-ending 三哨兵（已处理/已取消/处理异常）渲染收尾条（兼容生产 `m.notice`）；typing 指示三态；刻度 M/D 日期；窄宽房间名省略
+- 已读回执：开房首屏 `m.read` + `m.fully_read` 双写（去重 ref）→ 列表角标即时清零；轮询新消息补发回执（P3-2）
+
+**聊天页换房隔离（per-room 重构，17.6）**
+- `key={room_id}` remount：换房整树重建（贴底/锚定/话题/窗口/fileRefs 随房重建），开群即置底、话题面板不跨房残留（draft 已有 per-room localStorage，无回归）
+- 换房消息切换 `useEffect` → `useLayoutEffect`：新房消息 paint 前落地，消灭「新房头 + 旧房消息」陈旧帧
+- `useStickToBottom` 换房首观察保护（`skipPrependOnce`）：换房后首条 firstId 观察按新房处理，防旧房 firstId 残留误判前插
+- 线程状态 room-scoped：`THREAD_STATE_KEY` 加 room_id 维度，仅同房恢复 thread（旧格式无 room_id 不恢复 thread，width 照旧）；面板卸载清报（`onThreadPanelLayout(false, 0)`）
+- 窗口棘轮按房打标 `scopedMinWindowTops(messagesRoomId, roomId, value)`：父侧 `messagesRoomId` 随切房 effect 落地后才视为有效值，防 remount 首渲染读到旧房 `minWindowTops` 被单向棘轮（`if m > windowLimit`）永久抬高新房渲染窗
+- 删除冗余换房重置 effect：逐项重置值核对与初值一致（remount 即初值，reset 恒 no-op）
+
+**模型（provider 成对写入强制执行）**
+- provider 无条件跟随模型归属：模型可反查 configured alias 归属即跟随（删旧 `if (auto && !prov)` / `!p && m` 保护）；不可反查（local/builtin/留空）不动当前 provider
+- 失配禁保存覆盖全部写路径：StandaloneWorkerModels / ModelEditModal / doCreateWorker / doCfg（批量整批不发）/ doSaveTeam（判据 = merge 后有效 pair，仅本轮实际写 model/provider 的行参与，只改 SOUL 或未触碰的存量失配行不误伤）
+- 失配文案统一「不可保存：请调整 Provider 或重新选择模型」（zh/en 登记）；新增 16 条回归测试；顺手修 `m1-model-entries` 存量坏测试（C1a-2 换 ModelPicker 后断言未更新，main 上亦崩）
+
+**死代码清理（879 行）**
+- 删 `CrdListTables`(255) / `SpawnTreeCard`(416，WorkerDetailPane 已改 WorkerChatsModal) / `WorkerResourcePanel`(208)；`legacy-migrate` 保留「新详情不引用 SpawnTreeCard」文本守卫、`spawn-messages` 精简 SpawnMessages 断言；`a11yStatic` 为功能性静态门保留
+
+**i18n 归零**
+- 补 8 缺键：Temperature/Phase/Version/Image/State/Runtime 中文补齐（原回退显示英文），「L3 · Worker」「API Key（Bearer）」en=zh 原样入表
+- 去重 12 键（跨域文件值逐键一致，删冗余定义）→ **缺 0 / 重 0**，DICT=2909
+
+**触控与深浅色**
+- Thread「回到最新消息」浮钮改 44×44 命中盒（外层承担 onClick/role/aria-label，视觉圆保持 32）
+- 文件页 `--hf-btn-min` fallback 40→44px（format / FileOpsDialogs×3 / TrashDialog×4；变量无 CSS 定义，实际生效值即 fallback）
+- theme 新增 `ok`/`fail` 语义 token（light 沿用 `#30a46c`/`#e5484d`，dark 用 `#4ade80`/`#f87171` 提对比）；`RoomChatBubbles` 5 处硬编码状态色清零（双 red/双 green 归一）
+
+**测试**：tsc 0 · canonical 8/8 · i18n 缺 0 重 0（DICT=2909 / 使用 2547）· 聊天专项 10/10 · provider 专项 16/16 · think-fold 16/16 · build 绿（dist `7bf7432d65a4`；`chat-room-isolation` 容器内 esbuild svg loader 限制已注记、宿主 vite 原生支持）· 真机 E2E 通过（置底/话题不跨房复活/HTML 分段/角标即时清/44px/失配拦截）
+
 ## 0.5.0-beta.17.6（2026-11-16）
 
 **聊天页换房状态隔离（per-room 隔离重构）**
